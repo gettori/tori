@@ -1,5 +1,15 @@
-import { createMemo, onMount } from "solid-js";
-import { Group, Row, Stepper, idsIn, optionalNumber, setAutopilot, type PaneProps } from "../../components/paneKit";
+import { createMemo, createResource, createSignal, onMount, Show } from "solid-js";
+import { invoke } from "@tauri-apps/api/core";
+import {
+  CardSection,
+  Group,
+  Row,
+  Stepper,
+  idsIn,
+  optionalNumber,
+  setAutopilot,
+  type PaneProps,
+} from "../../components/paneKit";
 import styles from "../../Settings.module.css";
 import { settings } from "../../settingsStore";
 import Switch from "../../../../components/Switch/Switch";
@@ -20,6 +30,15 @@ import { ensureAdaptersLoaded } from "../../../../utils/agents";
 import { enabledChatAgents } from "../../../../utils/agentEnabled";
 import { ensureModelCatalogsLoaded, isProbing, modelCatalogs } from "../../../../utils/modelCatalog";
 import { setAutopilotAvailable } from "../../../../utils/autopilotStore";
+import {
+  contractFor,
+  loadContracts,
+  sameFolder,
+  setContract,
+  type ContractPatch,
+} from "../../../../utils/autopilotContracts";
+import type { NavSpace } from "../../../../utils/mentionNavigator";
+import ProjectContract from "./ProjectContract";
 
 // Whole, because Rust keeps it as a u32 and a fraction would fail the save.
 const percent = (n: number | null) => (n === null ? null : Math.min(95, Math.round(n)));
@@ -47,84 +66,147 @@ export default function AutopilotPane(props: PaneProps) {
   );
   const models = () => providers().find((p) => p.agentId === agentId() && p.profile === profile())?.models ?? [];
 
+  const [spaces] = createResource(() =>
+    invoke<{ spaces: NavSpace[] }>("get_config")
+      .then((c) => c.spaces ?? [])
+      .catch(() => [] as NavSpace[]),
+  );
+  const projects = () =>
+    (spaces() ?? []).flatMap((s) => s.projects.map((p) => ({ value: p.path, label: `${p.name} (${s.name})` })));
+  const [picked, setPicked] = createSignal<string | null>(null);
+  const project = () => picked() ?? projects()[0]?.value ?? null;
+  const [contracts, { mutate }] = createResource(() => loadContracts().catch(() => ({})));
+  const contract = () => contractFor(contracts() ?? {}, project() ?? "");
+  // Rust keys a project by the first spelling it saw, so any other spelling of this folder goes.
+  const setFor = (path: string) => (patch: ContractPatch) =>
+    setContract(path, patch).then((saved) =>
+      mutate((prev) => ({
+        ...Object.fromEntries(Object.entries(prev ?? {}).filter(([key]) => !sameFolder(key, path))),
+        [path]: saved,
+      })),
+    );
+  const workerAgent = () => contract().agent ?? agentId();
+  const workerModels = () =>
+    providers().find((p) => p.agentId === workerAgent() && p.profile === contract().account)?.models ?? [];
+
   return (
-    <Group {...props} title="Autopilot" ids={idsIn("autopilot")}>
-      <Row {...props} id="autopilot-on" label="Enable autopilot">
-        <Switch checked={settings.autopilot.available} onChange={setAutopilotAvailable} aria-label="Enable autopilot" />
-      </Row>
+    <>
+      <Group {...props} title="Autopilot" ids={idsIn("autopilot").filter((id) => id !== "autopilot-projects")}>
+        <Row {...props} id="autopilot-on" label="Enable autopilot">
+          <Switch
+            checked={settings.autopilot.available}
+            onChange={setAutopilotAvailable}
+            aria-label="Enable autopilot"
+          />
+        </Row>
 
-      <Row {...props} id="autopilot-model" label="Autopilot model">
-        <ModelPicker
-          models={models()}
-          providers={providers()}
-          value={settings.autopilot.model}
-          agentId={agentId()}
-          profile={profile()}
-          profileLabel={profileLabel(agentId(), profile())}
-          effort={settings.autopilot.effort}
-          modelPending={false}
-          effortPending={false}
-          disabled={!settings.autopilot.available}
-          onSelectModel={(agent, profile, model) =>
-            setAutopilot({
-              agent,
-              profile,
-              model: model.value,
-              effort: model.effortLevels.some((l) => l.level === settings.autopilot.effort)
-                ? settings.autopilot.effort
-                : null,
-            })
+        <Row {...props} id="autopilot-model" label="Autopilot model">
+          <ModelPicker
+            models={models()}
+            providers={providers()}
+            value={settings.autopilot.model}
+            agentId={agentId()}
+            profile={profile()}
+            profileLabel={profileLabel(agentId(), profile())}
+            effort={settings.autopilot.effort}
+            modelPending={false}
+            effortPending={false}
+            disabled={!settings.autopilot.available}
+            onSelectModel={(agent, profile, model) =>
+              setAutopilot({
+                agent,
+                profile,
+                model: model.value,
+                effort: model.effortLevels.some((l) => l.level === settings.autopilot.effort)
+                  ? settings.autopilot.effort
+                  : null,
+              })
+            }
+            onSelectEffort={(effort) => setAutopilot({ effort })}
+            onHighlightAgent={(agent, profile) => probeOnHighlight(agent, profile)}
+            onRecheckAgent={(agent, profile) => recheckAgent(agent, profile)}
+            onFixAgent={openAgentCard}
+          />
+        </Row>
+
+        <Row {...props} id="autopilot-stall" label="Worker stalled after">
+          <Stepper
+            value={settings.autopilot.stallMinutes}
+            min={5}
+            max={240}
+            step={5}
+            onChange={(stallMinutes) => setAutopilot({ stallMinutes })}
+            aria-label="Worker stalled after"
+          />
+        </Row>
+
+        <Row
+          {...props}
+          id="autopilot-workers"
+          label="Workers at once"
+          hint={
+            settings.forge.enabled
+              ? undefined
+              : "Forge status is off, so issues and reviews assigned to you are not picked up."
           }
-          onSelectEffort={(effort) => setAutopilot({ effort })}
-          onHighlightAgent={(agent, profile) => probeOnHighlight(agent, profile)}
-          onRecheckAgent={(agent, profile) => recheckAgent(agent, profile)}
-          onFixAgent={openAgentCard}
-        />
-      </Row>
+        >
+          <Stepper
+            value={settings.autopilot.maxWorkers}
+            min={1}
+            max={16}
+            step={1}
+            onChange={(maxWorkers) => setAutopilot({ maxWorkers })}
+            aria-label="Workers at once"
+          />
+        </Row>
 
-      <Row {...props} id="autopilot-stall" label="Worker stalled after">
-        <Stepper
-          value={settings.autopilot.stallMinutes}
-          min={5}
-          max={240}
-          step={5}
-          onChange={(stallMinutes) => setAutopilot({ stallMinutes })}
-          aria-label="Worker stalled after"
-        />
-      </Row>
-
-      <Row
-        {...props}
-        id="autopilot-workers"
-        label="Workers at once"
-        hint={
-          settings.forge.enabled
-            ? undefined
-            : "Forge status is off, so issues and reviews assigned to you are not picked up."
-        }
-      >
-        <Stepper
-          value={settings.autopilot.maxWorkers}
-          min={1}
-          max={16}
-          step={1}
-          onChange={(maxWorkers) => setAutopilot({ maxWorkers })}
-          aria-label="Workers at once"
-        />
-      </Row>
-
-      <Row {...props} id="autopilot-compact" label="Compact at context">
-        <input
-          type="number"
-          min="10"
-          max="95"
-          placeholder="agent decides"
-          aria-label="Compact at context"
-          class={`${styles.input} ${styles.numField}`}
-          value={settings.autopilot.compactAt ?? ""}
-          onChange={(e) => setAutopilot({ compactAt: percent(optionalNumber(e.currentTarget.value, 10)) })}
-        />
-      </Row>
-    </Group>
+        <Row {...props} id="autopilot-compact" label="Compact at context">
+          <input
+            type="number"
+            min="10"
+            max="95"
+            placeholder="agent decides"
+            aria-label="Compact at context"
+            class={`${styles.input} ${styles.numField}`}
+            value={settings.autopilot.compactAt ?? ""}
+            onChange={(e) => setAutopilot({ compactAt: percent(optionalNumber(e.currentTarget.value, 10)) })}
+          />
+        </Row>
+      </Group>
+      <Group {...props} title="Projects" ids={["autopilot-projects"]}>
+        <CardSection {...props} id="autopilot-projects">
+          <Show when={project()} fallback={<p class={styles.note}>No projects yet.</p>}>
+            {(path) => (
+              <ProjectContract
+                projects={projects()}
+                project={path()}
+                onProject={setPicked}
+                contract={contract()}
+                onSet={setFor(path())}
+                workersOn={(set) => (
+                  <ModelPicker
+                    models={workerModels()}
+                    providers={providers()}
+                    value={contract().model}
+                    agentId={workerAgent()}
+                    profile={contract().account}
+                    profileLabel={profileLabel(workerAgent(), contract().account)}
+                    effort={null}
+                    modelPending={false}
+                    effortPending={false}
+                    disabled={false}
+                    onSelectModel={(agent, account, model) => set({ agent, account, model: model.value })}
+                    onSelectEffort={() => {}}
+                    onHighlightAgent={(agent, account) => probeOnHighlight(agent, account)}
+                    onRecheckAgent={(agent, account) => recheckAgent(agent, account)}
+                    onFixAgent={openAgentCard}
+                  />
+                )}
+              />
+            )}
+          </Show>
+        </CardSection>
+      </Group>
+    </>
   );
 }

@@ -673,6 +673,12 @@ export const SETTINGS: SettingEntry[] = [
     label: "Workers at once",
     hint: "How many workers the autopilot runs at a time. Kept one under Warn above, so the autopilot fits too; the rest wait at the dock.",
   },
+  {
+    id: "autopilot-projects",
+    section: "autopilot",
+    label: "Project contracts",
+    hint: "Per project: how work ships, how far the autopilot goes before asking, whether it picks up work on its own, what workers run on, and the issue sources it reads.",
+  },
 
   {
     id: "remote-on",
