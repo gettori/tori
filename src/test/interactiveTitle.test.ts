@@ -96,6 +96,7 @@ const KEPT = new Map<string, Kept>([
   ["App.tsx", { count: 1, reason: `${HEADING} - the quit confirmation` }],
   ["components/Dialog/Dialog.test.tsx", { count: 1, reason: FIXTURE }],
   ["components/Dialogs/AddAccountDialog.tsx", { count: 1, reason: HEADING }],
+  ["components/Dialogs/RenameAccountDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/AddBranchDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/AskpassDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/BranchRemoveDialog.tsx", { count: 1, reason: HEADING }],
