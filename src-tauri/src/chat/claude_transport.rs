@@ -38,8 +38,8 @@ use crate::agents::ChatEffortExtra;
 
 use super::claude::ClaudeMapper;
 use super::model::{
-    file_ref_locator, ChatConfigValue, ChatEvent, ChatQuestion, ContentBlock, PermissionDecision, PermissionMode,
-    PermissionScope, PermissionSuggestion, QuestionAnswer,
+    file_ref_locator, ref_note, refs_first, ChatConfigValue, ChatEvent, ChatQuestion, ContentBlock, PermissionDecision,
+    PermissionMode, PermissionScope, PermissionSuggestion, QuestionAnswer,
 };
 use super::transport::{build_command, emit, AgentTransport, Sink, StartSpec};
 
@@ -372,10 +372,10 @@ impl ClaudeTransport {
 /// names the path and range: dropping it would silently lose an `@`-mention,
 /// and inventing a block type the CLI does not accept would fail the turn.
 pub fn turn_frame(blocks: &[ContentBlock]) -> Value {
-    let content: Vec<Value> = blocks
-        .iter()
+    let content: Vec<Value> = refs_first(blocks)
         .filter_map(|b| match b {
             ContentBlock::Text { text } => Some(json!({ "type": "text", "text": text })),
+            ContentBlock::Ref { label, target } => Some(json!({ "type": "text", "text": ref_note(label, target) })),
             ContentBlock::Image { media_type, data } => Some(json!({
                 "type": "image",
                 "source": { "type": "base64", "media_type": media_type, "data": data },

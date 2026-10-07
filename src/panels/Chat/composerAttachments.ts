@@ -21,6 +21,9 @@ import {
   type ComposerKey,
 } from "../../utils/chatCompose";
 import type { ChatCapabilities } from "../../utils/chatTypes";
+import type { PullRequest } from "../../utils/forgeTypes";
+import { ensurePrList, prListEntry } from "../../utils/prListStore";
+import { prLabel, prRef } from "../../utils/prMention";
 
 /** A pasted or dropped file, as the composer read it. */
 export type UploadFile = { name: string; bytes: Uint8Array };
@@ -35,6 +38,13 @@ export type ComposerAttachments = {
    *  where the file landed rather than waiting to be clicked. */
   onAttachPaths: (absPaths: string[]) => string[];
   onAttachUploads: (files: UploadFile[]) => Promise<string[]>;
+  /** The open pull requests `#` lists, read on the first `#`. */
+  prs: () => readonly PullRequest[];
+  loadPrs: () => void;
+  /** A picked pull request becomes a ref chip; picking one already held
+   *  answers its token without a second chip. */
+  onAttachPr: (pr: PullRequest) => string;
+  resolvePr: (number: number) => Promise<PullRequest | null>;
 };
 
 /** The filename rides in a header because the body is the file itself. */
@@ -81,6 +91,15 @@ export function composerAttachments(
   }
 
   return {
+    prs: () => prListEntry(cwd()).items,
+    loadPrs: () => ensurePrList(cwd()),
+    onAttachPr: (pr) => {
+      const label = prLabel(pr.number);
+      const held = pendingFor(key()).some((p) => p.block.type === "ref" && p.block.label === label);
+      if (!held) offerToComposer(key(), [prRef(pr)]);
+      return label;
+    },
+    resolvePr: (number) => invoke<PullRequest>("forge_get_pr", { projectPath: cwd(), number }).catch(() => null),
     // The project's file index, for `@` completion. Fetched on demand rather
     // than on mount: it is a full walk of the tree, and a chat that never
     // mentions a file should not pay for one. The composer asks once and caches.

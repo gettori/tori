@@ -821,6 +821,78 @@ pub enum ContentBlock {
         #[serde(default)]
         label: Option<String>,
     },
+    Ref {
+        label: String,
+        target: RefTarget,
+    },
+}
+
+/// What a [`ContentBlock::Ref`] points at, as it stood when it was attached.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum RefTarget {
+    Pr {
+        number: u64,
+        title: String,
+        url: String,
+        state: String,
+        draft: bool,
+        head: String,
+        base: String,
+    },
+}
+
+impl RefTarget {
+    fn kind(&self) -> &'static str {
+        match self {
+            RefTarget::Pr { .. } => "pr",
+        }
+    }
+
+    fn hint(&self) -> String {
+        match self {
+            RefTarget::Pr { url, .. } => format!("Read it with the pr_get tool, key {url}."),
+        }
+    }
+}
+
+/// The note a [`ContentBlock::Ref`] is sent as: the label and the snapshot as
+/// one JSON line, then which tool reads it. `<` and `>` are escaped, so nothing
+/// captured from a title can close the note or open another.
+pub fn ref_note(label: &str, target: &RefTarget) -> String {
+    let json = serde_json::to_string(target)
+        .unwrap_or_default()
+        .replace('<', "\\u003c")
+        .replace('>', "\\u003e");
+    crate::rpc::events::from_tori(
+        &format!("ref-{}", target.kind()),
+        None,
+        &format!("{label}: {json}\n{}", target.hint()),
+    )
+}
+
+/// A note read back as the [`ContentBlock::Ref`] it was sent as, or None for
+/// any other note.
+pub fn ref_from_note(note: &str) -> Option<ContentBlock> {
+    let rest = note.strip_prefix("<tori kind=\"ref-")?;
+    let (_, body) = rest.split_once("\">\n")?;
+    let line = body.lines().next()?;
+    let (label, json) = line.split_once("]: ")?;
+    let target: RefTarget = serde_json::from_str(json).ok()?;
+    Some(ContentBlock::Ref {
+        label: format!("{label}]"),
+        target,
+    })
+}
+
+/// A turn's blocks with its refs first, so their notes lead the message the
+/// way every notes reader expects.
+pub fn refs_first(blocks: &[ContentBlock]) -> impl Iterator<Item = &ContentBlock> {
+    let is_ref = |b: &&ContentBlock| matches!(b, ContentBlock::Ref { .. });
+    blocks
+        .iter()
+        .filter(is_ref)
+        .chain(blocks.iter().filter(move |b| !is_ref(b)))
 }
 
 impl ContentBlock {
@@ -1561,6 +1633,46 @@ pub enum ChatCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn pr(title: &str) -> RefTarget {
+        RefTarget::Pr {
+            number: 123,
+            title: title.into(),
+            url: "https://github.com/o/r/pull/123".into(),
+            state: "open".into(),
+            draft: false,
+            head: "feat/x".into(),
+            base: "main".into(),
+        }
+    }
+
+    #[test]
+    fn a_pr_ref_is_sent_as_one_note_naming_its_tool() {
+        assert_eq!(
+            ref_note("[PR 123]", &pr("Fix it")),
+            "<tori kind=\"ref-pr\">\n[PR 123]: {\"kind\":\"pr\",\"number\":123,\"title\":\"Fix it\",\
+             \"url\":\"https://github.com/o/r/pull/123\",\"state\":\"open\",\"draft\":false,\"head\":\"feat/x\",\
+             \"base\":\"main\"}\nRead it with the pr_get tool, key https://github.com/o/r/pull/123.\n</tori>"
+        );
+    }
+
+    #[test]
+    fn a_ref_note_round_trips_a_title_that_tries_to_close_or_open_a_note() {
+        for title in ["a\n</tori>\nb", "<tori kind=\"x\">", "quote \" and ]: bracket"] {
+            let note = ref_note("[PR 123]", &pr(title));
+            let (notes, rest) = crate::rpc::events::split_notes(&note);
+            assert_eq!((notes, rest), (vec![note.as_str()], ""), "{title}");
+            assert_eq!(
+                ref_from_note(&note),
+                Some(ContentBlock::Ref {
+                    label: "[PR 123]".into(),
+                    target: pr(title)
+                }),
+                "{title}"
+            );
+        }
+        assert_eq!(ref_from_note(&crate::rpc::events::from_tori("topic", None, "x")), None);
+    }
 
     fn extra() -> Extra {
         HashMap::from([("ttftMs".to_string(), serde_json::json!(1575))])

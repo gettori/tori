@@ -1021,10 +1021,12 @@ fn stop_reason_wire(reason: StopReason) -> &'static str {
 /// would silently lose an `@`-mention.
 pub fn prompt_blocks(blocks: &[ContentBlock]) -> Vec<AcpContentBlock> {
     use agent_client_protocol::schema::v1::{ImageContent, TextContent};
-    blocks
-        .iter()
+    model::refs_first(blocks)
         .filter_map(|b| match b {
             ContentBlock::Text { text } => Some(AcpContentBlock::Text(TextContent::new(text.clone()))),
+            ContentBlock::Ref { label, target } => {
+                Some(AcpContentBlock::Text(TextContent::new(model::ref_note(label, target))))
+            }
             ContentBlock::Image { media_type, data } => Some(AcpContentBlock::Image(ImageContent::new(
                 data.clone(),
                 media_type.clone(),

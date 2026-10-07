@@ -343,6 +343,14 @@
   font-size: 0.9em;
 }
 
+/* A reference opens what it names, so it is a button drawn as the same chip. */
+button.promptChip {
+  border: 0;
+  color: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+
 /* A replayed image, whose bytes the transcript reader left on disk. Numbered
    the way the CLI writes one, and muted, because it is a note about the turn
    rather than part of what was asked. */
