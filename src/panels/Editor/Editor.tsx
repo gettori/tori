@@ -354,6 +354,7 @@ import {
   closedByWs,
   setClosedByWs,
   resetEditorTabModel,
+  registerFileRestore,
   type FileTab,
 } from "./editorTabStore";
 import { noteTabFocus, kindPaneFocused } from "../../layout/layoutStore";
@@ -1753,7 +1754,7 @@ export default function Editor(props: {
   const touchedWs = new Set<string>();
   // Workspaces already offered a restore this run, so returning to one does not
   // re-restore over tabs you have since closed.
-  const restoredWs = new Set<string>();
+  const restoredWs = new Map<string, Promise<void>>();
 
   createEffect(() => {
     const live = toStore(
@@ -1821,11 +1822,19 @@ export default function Editor(props: {
     return (tabsByWs()[w] ?? []).filter((t) => !isSyntheticId(t.path));
   }
 
+  function fileRestore(w: string): Promise<void> {
+    let running = restoredWs.get(w);
+    if (!running) {
+      running = restoreWorkspace(w);
+      restoredWs.set(w, running);
+    }
+    return running;
+  }
+  onCleanup(registerFileRestore(fileRestore));
+
   createEffect(() => {
     const w = ws();
-    if (!w || restoredWs.has(w)) return;
-    restoredWs.add(w);
-    void restoreWorkspace(w);
+    if (w) void fileRestore(w);
   });
 
   async function closeTab(id: string) {

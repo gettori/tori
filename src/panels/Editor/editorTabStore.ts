@@ -43,3 +43,21 @@ export function resetEditorTabModel() {
   setActiveByWs({});
   setClosedByWs({});
 }
+
+// The panel owns the restore (it needs the stash and the stored set it read at
+// setup), so it registers how to start one. With no panel mounted there is
+// nothing to restore and the answer is immediate.
+let startFileRestore: ((ws: string) => Promise<void>) | null = null;
+
+export function registerFileRestore(start: (ws: string) => Promise<void>): () => void {
+  startFileRestore = start;
+  return () => {
+    if (startFileRestore === start) startFileRestore = null;
+  };
+}
+
+// Starts this workspace's file restore or joins the one in flight, the
+// editor's `stripReady`.
+export function fileStripReady(ws: string): Promise<void> {
+  return startFileRestore ? startFileRestore(ws) : Promise.resolve();
+}

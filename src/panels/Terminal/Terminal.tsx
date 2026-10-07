@@ -79,6 +79,7 @@ import {
   ensureAgentHealthLoaded,
   namedProfiles,
   profileLabel,
+  profileSignedOut,
 } from "../../utils/agentHealth";
 import { runExitEffects } from "../../utils/jobExit";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
@@ -172,10 +173,11 @@ import {
   type TabKind,
 } from "./terminalTabStore";
 import { nextActiveAfterClose } from "../../layout/paneLayout";
-import { kindPaneFocused, revealKindPane } from "../../layout/layoutStore";
+import { kindPaneFocused, layoutRoot, revealKindPane } from "../../layout/layoutStore";
 import { dockFocused, showDock } from "../../layout/dockStore";
 import { stageHost, dropStageHost } from "../../tabs/stageHost";
-import { forgetTab } from "../../layout/tabPlacement";
+import { forgetTab, paneOfTab, setPaneActive } from "../../layout/tabPlacement";
+import { fileStripReady, tabsByWs } from "../Editor/editorTabStore";
 import { paneMenuItems, visibleInPane } from "../../tabs/paneTabs";
 import ContextMenu from "../../components/Menu/ContextMenu";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
@@ -865,7 +867,7 @@ export default function Terminal(props: {
   const paneFocused = () => kindPaneFocused(activeWorkspace() ?? "", "shell");
   // The group the tab keys address: the dock's while it holds them.
   const keyedGroup = () => (dockFocused() ? SHELLS_KEY : paneFocused() ? activeWorkspace() : null);
-  const focusIn = (ws: string, id: string) => (isShellsKey(ws) ? focusDockTab(id) : focusTab(ws, id));
+  const focusIn = (ws: string, id: string) => (isShellsKey(ws) ? focusDockTab(id) : bringToFront(ws, id));
 
   // Cmd+W. Not the strip's close button, which stays immediate: the keystroke
   // is blind (whatever happens to be active), so the busy cases ask first.
@@ -911,7 +913,7 @@ export default function Terminal(props: {
       // Pane-aware (plan phase 6): a hidden or unfocused pane is revealed and
       // focused before the tab inside it, or the jump lands off screen.
       revealKindPane(tab.workspace, tab.kind);
-      focusTab(tab.workspace, tab.id);
+      bringToFront(tab.workspace, tab.id);
     }
   });
   onCleanup(offNextWaiting);
@@ -922,7 +924,7 @@ export default function Terminal(props: {
     const tab = open().find((t) => t.id === tabId);
     if (tab) {
       revealKindPane(tab.workspace, tab.kind);
-      focusTab(tab.workspace, tab.id);
+      bringToFront(tab.workspace, tab.id);
     }
   });
   onCleanup(offFocusSessionTab);
@@ -1084,7 +1086,6 @@ export default function Terminal(props: {
       const tabId = openChatDraft(ws, root, sel.projectName, agent, draftProfile(ws, root, agent));
       // Offered, never sent. The user reads what is in the box and decides.
       offerToComposer(tabId, d.blocks);
-      focusTab(ws, tabId);
     });
     // Sidebar "New session": matches the "+ Claude" main button (claude, non-yolo).
     // Spawns at the named folder, with no props.selected timing dependency.
@@ -1094,8 +1095,16 @@ export default function Terminal(props: {
     offNewChatAt = onWith<NewChatAt>(NEW_CHAT_AT, async ({ folderPath, projectName, prompt, origin }) => {
       // A reused worktree folder can have stored tabs coming back, and those
       // win: a draft is only for a strip that would otherwise sit empty.
-      await stripReady(folderPath);
-      if (!prompt && tabsIn(folderPath).length) return;
+      const empty = await stripEmpty(folderPath);
+      const auto = untouchedAutoDraft(folderPath);
+      if (prompt && auto) {
+        setDraft(auto, prompt);
+        if (origin) setDraftOrigin(auto, origin);
+        autoDrafts.delete(folderPath);
+        bringToFront(folderPath, auto);
+        return;
+      }
+      if (!prompt && !empty) return;
       const agent = draftAgent(folderPath, folderPath);
       if (!agent) return;
       const id = openChatDraft(folderPath, folderPath, projectName, agent, draftProfile(folderPath, folderPath, agent));
@@ -1182,7 +1191,18 @@ export default function Terminal(props: {
     if (!open().some((o) => o.id === t.id)) {
       setOpen([...open(), t]);
     }
-    if (focus) focusTab(t.workspace, t.id);
+    if (focus) bringToFront(t.workspace, t.id);
+  }
+
+  // `focusTab` moves only the terminal claim, and a pane's stored pick beats it
+  // while a file there is still claimed. Restore stays on `focusTab`: the pick
+  // it would overwrite is the one the user left.
+  function bringToFront(ws: string, id: string) {
+    focusTab(ws, id);
+    const tab = open().find((o) => o.id === id);
+    const root = layoutRoot(ws);
+    const pane = tab && root && !isShellsKey(ws) ? paneOfTab(ws, tab, root) : null;
+    if (pane) setPaneActive(ws, pane, id);
   }
 
   /**
@@ -1383,10 +1403,53 @@ export default function Terminal(props: {
           // pane focus (phase 5) with nobody having clicked anything.
           if (prev !== undefined) revealKindPane(ws, "shell");
           void openSelectedSession(sel);
+        } else if (sel.kind !== "topic") {
+          void draftIntoEmpty(sel);
         }
       },
     ),
   );
+
+  // Only once both restores are back: a strip still being filled is early,
+  // not empty.
+  async function stripEmpty(ws: string): Promise<boolean> {
+    await Promise.all([stripReady(ws), fileStripReady(ws)]);
+    return !tabsIn(ws).length && !(tabsByWs()[ws] ?? []).length;
+  }
+
+  // The draft an empty strip was given, until the user writes in it. The next
+  // explicit open takes it over, so selecting a worktree and starting something
+  // in it at once never leaves two tabs.
+  const autoDrafts = new Map<string, string>();
+  function untouchedAutoDraft(ws: string): string | null {
+    const id = autoDrafts.get(ws);
+    const t = id ? open().find((o) => o.id === id) : undefined;
+    if (!t || t.sessionId || draftFor(t.id).trim()) {
+      autoDrafts.delete(ws);
+      return null;
+    }
+    return t.id;
+  }
+  function dropAutoDraft(ws: string) {
+    const id = untouchedAutoDraft(ws);
+    if (!id) return;
+    autoDrafts.delete(ws);
+    closeId(id);
+  }
+
+  async function draftIntoEmpty(sel: Selection) {
+    const ws = workspaceKey(sel);
+    const root = chatRoot(sel);
+    if (!ws || !root || !(await stripEmpty(ws))) return;
+    // The draft focuses its workspace, so one that resolved after the user moved
+    // on would pull them back.
+    if (workspaceKey(props.selected) !== ws) return;
+    const agent = draftAgent(ws, root);
+    if (!agent) return;
+    const profile = draftProfile(ws, root, agent);
+    if (profileSignedOut(agent, profile)) return;
+    autoDrafts.set(ws, openChatDraft(ws, root, sel.projectName, agent, profile));
+  }
 
   // Extra launch args a Tori-launched session gets that an externally-typed
   // registered adapter invocation never would (Phase 3): today just
@@ -1455,7 +1518,7 @@ export default function Terminal(props: {
     const a = findAdapter(agentId);
     const existing = open().find((t) => t.sessionId === sessionId);
     if (existing) {
-      if (focus) focusTab(existing.workspace, existing.id);
+      if (focus) bringToFront(existing.workspace, existing.id);
       // A chat tab already drives this session over stream-json. It hosts no
       // PTY, so there is nothing to retype into, and a second driver would
       // corrupt the transcript anyway.
@@ -1650,6 +1713,7 @@ export default function Terminal(props: {
       // wall-clock second as the spawn.
       spawnedAt: Math.floor(Date.now() / 1000),
     });
+    dropAutoDraft(workspace);
   }
 
   // A chat tab hosts no shell. Every one of them is opened here, draft or not,
@@ -1992,6 +2056,12 @@ export default function Terminal(props: {
     const ws = workspaceKey(sel);
     const agent = agentId ?? draftAgent(ws, root);
     if (!agent) return;
+    const auto = agentId ? null : untouchedAutoDraft(ws);
+    if (auto) {
+      autoDrafts.delete(ws);
+      bringToFront(ws, auto);
+      return;
+    }
     openChatDraft(ws, root, sel.projectName, agent, draftProfile(ws, root, agent));
   }
 
@@ -2013,7 +2083,7 @@ export default function Terminal(props: {
     if (!sessionId) return;
     const existing = open().find((t) => t.sessionId === sessionId);
     if (existing) {
-      focusTab(existing.workspace, existing.id);
+      bringToFront(existing.workspace, existing.id);
       return;
     }
     const refused = agentRefusal(sel.sessionCwd || sel.folderPath, agentId, sel.profile ?? null);
