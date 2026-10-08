@@ -15,6 +15,7 @@ import { liveChats } from "../../utils/chatSessions";
 import { checkpointClock } from "../../utils/syntheticTabs";
 import { chatTier } from "../../utils/chatCapabilities";
 import { findAdapter } from "../../utils/agents";
+import { catalogFor, ensureModelCatalogsLoaded } from "../../utils/modelCatalog";
 import {
   askRefusal,
   CALLS_SHOWN,
@@ -28,6 +29,7 @@ import {
   type CallRef,
   type ClaimReader,
   type ClaimRange,
+  type SessionLabel,
   type TurnRef,
 } from "../../utils/provenance";
 import Button from "../../components/Button/Button";
@@ -104,12 +106,18 @@ function RangeClaim(props: { file: string; hunk: DiffHunk; range: ClaimRange; la
   );
 }
 
-function canFork(agentId: string): boolean {
-  return chatTier(findAdapter(agentId).chat?.transport).rewind === "fork";
+// Claude forks by its transport, which Tori measured. An ACP agent forks only
+// if it said so on a handshake Tori has cached, since the verb is unstable in
+// the protocol and agents differ.
+function canFork(session: SessionLabel): boolean {
+  const transport = findAdapter(session.agent).chat?.transport;
+  if (chatTier(transport).rewind === "fork") return true;
+  return transport === "acp" && !!catalogFor(session.agent, session.profile)?.catalogue?.capabilities?.fork;
 }
 
 const POLL_MS = 1500;
 const GIVE_UP_MS = 10 * 60 * 1000;
+const NOT_STARTED_MS = 30 * 1000;
 
 function AskWhy(props: { file: string; hunk: DiffHunk; range: ClaimRange; calls: CallRef[] }) {
   const [text, setText] = createSignal("");
@@ -117,8 +125,11 @@ function AskWhy(props: { file: string; hunk: DiffHunk; range: ClaimRange; calls:
   const [reply, setReply] = createSignal<string | null>(null);
   const [gaveUp, setGaveUp] = createSignal(false);
   const [readError, setReadError] = createSignal<string | null>(null);
+  const [failed, setFailed] = createSignal<string | null>(null);
+  const [notStarted, setNotStarted] = createSignal(false);
   let timer: ReturnType<typeof setInterval> | undefined;
   onCleanup(() => clearInterval(timer));
+  void ensureModelCatalogsLoaded();
 
   const refusal = () => askRefusal(props.range.claim, canFork);
   const fork = () => {
@@ -159,18 +170,20 @@ function AskWhy(props: { file: string; hunk: DiffHunk; range: ClaimRange; calls:
     timer = setInterval(async () => {
       const a = asked();
       if (!a) return;
-      let said: string | null = null;
+      let said: { reply: string | null; failed: string | null; started: boolean } | null = null;
       try {
-        said = await invoke<string | null>("ask_why_reply", {
-          sessionId: a.forkId,
-          agentId: a.agentId,
-          question: a.line,
-        });
+        said = await invoke("ask_why_reply", { sessionId: a.forkId, agentId: a.agentId, question: a.line });
         setReadError(null);
       } catch (e) {
         setReadError(String(e));
       }
-      if (said) setReply(said);
+      if (said?.reply) setReply(said.reply);
+      if (said?.failed) {
+        setFailed(said.failed);
+        clearInterval(timer);
+        return;
+      }
+      setNotStarted(!!said && !said.started && Date.now() - started > NOT_STARTED_MS);
       if (done()) clearInterval(timer);
       else if (Date.now() - started > GIVE_UP_MS) {
         clearInterval(timer);
@@ -215,6 +228,10 @@ function AskWhy(props: { file: string; hunk: DiffHunk; range: ClaimRange; calls:
           </Show>
           <Show when={waiting()}>
             <div class={styles.quiet}>The fork is waiting for you in its chat.</div>
+          </Show>
+          <Show when={failed()}>{(why) => <div class={styles.quiet}>The fork could not open: {why()}</div>}</Show>
+          <Show when={notStarted() && !failed()}>
+            <div class={styles.quiet}>The fork has not started yet. Its chat says why.</div>
           </Show>
           <Show when={!reply() && readError()}>
             {(why) => <div class={styles.quiet}>Could not read the fork's answer yet: {why()}</div>}

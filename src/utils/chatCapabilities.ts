@@ -215,12 +215,11 @@ const TIERS: Record<ChatTransport, ChatTier> = {
   // advertised on its handshake and arrives as `ChatCapabilities`, which
   // `publishedCapabilities` folds in - see `capabilityNotes`.
   acp: {
-    // Tori's rewind is a fork plus a tree snapshot, and the ACP transport
-    // implements no fork verb: `fork_args` is empty for every ACP adapter
-    // because ACP has no command line to put it on. Both measured agents do
-    // advertise `sessionCapabilities.fork`, so this is Tori's gap rather than
-    // the protocol's - and publishing the agent's advertisement would offer a
-    // rewind that fails when clicked.
+    // Tori's rewind is a fork, a tree snapshot and a replay cut at the turn.
+    // The transport forks over `session/fork` when the agent advertises it,
+    // which is what a hunk's side question uses, but cutting an ACP replay at a
+    // turn is not built, so offering rewind would offer one that fails when
+    // clicked.
     rewind: "none",
     // Refused rather than degraded by the transport: ACP has no mid-turn
     // delivery, and a queued turn is indistinguishable upstream from a steer

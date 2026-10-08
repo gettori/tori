@@ -660,15 +660,12 @@ pub struct ChatCapabilities {
     pub list_sessions: bool,
     /// The agent accepts an ACP image content block in a prompt.
     pub image_input: bool,
+    /// The agent can fork a conversation it holds (`session/fork`, unstable in
+    /// the protocol). Left out of the wire when false, and defaulted on the way
+    /// in, so a catalogue cached before it existed reads as "not advertised".
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fork: bool,
 }
-
-// Session **fork** is deliberately absent, and the reason is worth keeping.
-// Both measured agents advertise `sessionCapabilities.fork` on the wire, but the
-// protocol schema this build speaks (v1) models no such field, so reading it
-// would mean parsing raw JSON around the crate. That would be worth doing for a
-// capability Tori could use - and it cannot: Tori's fork is `fork_args` plus a
-// tree snapshot, and the ACP transport implements no fork verb at all. A
-// capability published here would be one the UI could only offer and then fail.
 
 /// Who the session is signed in as, from the `initialize` handshake.
 ///
@@ -1946,6 +1943,7 @@ mod tests {
                     load_session: true,
                     list_sessions: true,
                     image_input: true,
+                    fork: false,
                 }),
             },
             ChatEvent::TurnStarted {

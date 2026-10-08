@@ -34,11 +34,11 @@ use std::thread;
 use std::time::Duration;
 
 use agent_client_protocol::schema::v1::{
-    AuthMethod, CancelNotification, EnvVariable, InitializeRequest, InitializeResponse, ListSessionsRequest,
-    LoadSessionRequest, McpServer, McpServerStdio, NewSessionRequest, PromptRequest, RequestPermissionOutcome,
-    RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome, SessionConfigId,
-    SessionConfigOption, SessionConfigOptionValue, SessionConfigValueId, SessionId, SessionModeId, SessionNotification,
-    SessionUpdate, SetSessionConfigOptionRequest, SetSessionModeRequest,
+    AuthMethod, CancelNotification, EnvVariable, ForkSessionRequest, InitializeRequest, InitializeResponse,
+    ListSessionsRequest, LoadSessionRequest, McpServer, McpServerStdio, NewSessionRequest, PromptRequest,
+    RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
+    SessionConfigId, SessionConfigOption, SessionConfigOptionValue, SessionConfigValueId, SessionId, SessionModeId,
+    SessionNotification, SessionUpdate, SetSessionConfigOptionRequest, SetSessionModeRequest,
 };
 use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::{Agent, ByteStreams, Client, ConnectionTo, ErrorCode, Responder};
@@ -397,6 +397,8 @@ pub struct AcpTransport {
     /// transport: a switch applied mid-turn would show a mode the running turn
     /// is not in.
     pending_mode: Option<PermissionMode>,
+    /// The Tori session this one is a fork of, when it is one.
+    fork_from: Option<String>,
 }
 
 impl AcpTransport {
@@ -420,7 +422,13 @@ impl AcpTransport {
             pid: None,
             overrides,
             pending_mode: None,
+            fork_from: None,
         }
+    }
+
+    pub fn with_fork_from(mut self, from: Option<String>) -> Self {
+        self.fork_from = from;
+        self
     }
 
     fn send_command(&self, command: Command) -> Result<(), String> {
@@ -473,6 +481,7 @@ impl AgentTransport for AcpTransport {
         let overrides = self.overrides.clone();
         let cwd = spec.cwd.clone();
         let agent = self.agent.clone();
+        let fork_from = self.fork_from.clone();
         thread::Builder::new()
             .name(format!("acp-{}", self.shared.session_id))
             .spawn(move || {
@@ -484,6 +493,7 @@ impl AgentTransport for AcpTransport {
                     cwd,
                     agent,
                     overrides,
+                    fork_from,
                 ));
                 // Whatever happened, nothing is left blocked on a question
                 // nobody will answer.
@@ -716,6 +726,7 @@ impl AgentTransport for AcpTransport {
 }
 
 /// The connection's whole life: handshake, session, then commands until close.
+#[allow(clippy::too_many_arguments)]
 async fn run_session(
     transport: ByteStreams<async_process::ChildStdin, async_process::ChildStdout>,
     mut commands: mpsc::UnboundedReceiver<Command>,
@@ -724,6 +735,7 @@ async fn run_session(
     cwd: String,
     agent: String,
     overrides: AcpOverrides,
+    fork_from: Option<String>,
 ) -> Result<(), String> {
     let notification_shared = shared.clone();
     let notification_sink = sink.clone();
@@ -762,7 +774,17 @@ async fn run_session(
             agent_client_protocol::on_receive_request!(),
         )
         .connect_with(transport, |conn: ConnectionTo<Agent>| async move {
-            let result = drive_session(&conn, &mut commands, &shared, &sink, &cwd, &agent, &overrides).await;
+            let result = drive_session(
+                &conn,
+                &mut commands,
+                &shared,
+                &sink,
+                &cwd,
+                &agent,
+                &overrides,
+                fork_from.as_deref(),
+            )
+            .await;
             if let Err(message) = result {
                 if !shared.finished.load(Ordering::SeqCst) {
                     emit(
@@ -865,6 +887,7 @@ async fn drive_session(
     cwd: &str,
     agent: &str,
     overrides: &AcpOverrides,
+    fork_from: Option<&str>,
 ) -> Result<(), String> {
     let init = with_deadline(
         conn.send_request(initialize_request(overrides)).block_task(),
@@ -902,7 +925,10 @@ async fn drive_session(
     let OpenedSession {
         session_id: session,
         config_options,
-    } = open_session(conn, shared, sink, cwd, agent, &servers, &init).await?;
+    } = match fork_from.filter(|_| acp_sessions::read(&shared.session_id).is_none()) {
+        Some(from) => fork_session(conn, shared, cwd, agent, &servers, &init, from).await?,
+        None => open_session(conn, shared, sink, cwd, agent, &servers, &init).await?,
+    };
     adopt_session(shared, sink, cwd, &config_options);
     // **After the chat is open, never before it.** Enumerating an agent's other
     // sessions is worth one request on a connection that already exists, but it
@@ -1408,6 +1434,43 @@ fn adopt_session(shared: &Arc<Shared>, sink: &Sink, cwd: &str, config_options: &
             options: acp::config_options(config_options),
         },
     );
+}
+
+/// Refused rather than opened empty when the agent cannot fork or has lost
+/// the conversation: a fork that remembers nothing would answer from nothing.
+/// Only on the fork's first start; after that it resumes its own locator.
+async fn fork_session(
+    conn: &ConnectionTo<Agent>,
+    shared: &Arc<Shared>,
+    cwd: &str,
+    agent: &str,
+    servers: &[McpServer],
+    init: &InitializeResponse,
+    from: &str,
+) -> Result<OpenedSession, String> {
+    if init.agent_capabilities.session_capabilities.fork.is_none() {
+        return Err("this agent cannot fork a conversation".to_string());
+    }
+    let record = acp_sessions::read(from).ok_or("Tori has no record of the conversation to fork")?;
+    let request = ForkSessionRequest::new(SessionId::new(record.acp_session_id.as_str()), PathBuf::from(cwd))
+        .mcp_servers(servers.to_vec());
+    let forked = conn
+        .send_request(request)
+        .block_task()
+        .await
+        .map_err(|e| format!("the agent could not fork that conversation: {e}"))?;
+    let _ = acp_sessions::record(&AcpSession {
+        id: shared.session_id.clone(),
+        agent: agent.to_string(),
+        acp_session_id: forked.session_id.0.to_string(),
+        cwd: cwd.to_string(),
+        title: "(untitled session)".to_string(),
+        updated_at: now_secs(),
+    });
+    Ok(OpenedSession {
+        session_id: forked.session_id,
+        config_options: forked.config_options.unwrap_or_default(),
+    })
 }
 
 async fn open_session(
@@ -3027,6 +3090,97 @@ mod tests {
                 .count(),
             1,
             "a listing must not add a second row for a session Tori already had"
+        );
+    }
+
+    #[test]
+    #[ignore = "drives the real `opencode acp` binary: costs tokens"]
+    fn a_forked_chat_carries_the_conversation_it_was_forked_from() {
+        use super::super::transport::new_sink;
+
+        let origin = "live-fork-origin";
+        let ((mut first, seen), cwd) = live_session_as(origin, "opencode", &["acp"]);
+        let started = wait_for(&seen, 60, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::SessionReady { .. }))
+                && e.iter().any(|e| matches!(e, ChatEvent::SessionStarted { .. }))
+        });
+        let advertised = started.iter().find_map(|e| match e {
+            ChatEvent::SessionReady { capabilities, .. } => *capabilities,
+            _ => None,
+        });
+        assert_eq!(
+            advertised.map(|c| c.fork),
+            Some(true),
+            "opencode advertises session/fork"
+        );
+        first
+            .send(&[ContentBlock::Text {
+                text: "Remember the word heron. Reply with exactly: OK".to_string(),
+            }])
+            .expect("the first turn should submit");
+        wait_for(&seen, 120, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::TurnCompleted { .. }))
+        });
+        let _ = first.close();
+        let before = acp_sessions::read(origin).expect("the origin must leave a locator");
+
+        let fork = "live-fork-fork";
+        let forked: Arc<Mutex<Vec<ChatEvent>>> = Arc::new(Mutex::new(Vec::new()));
+        let collected = forked.clone();
+        let sink = new_sink(Box::new(move |ev| collected.lock().unwrap().push(ev)));
+        let mut second =
+            AcpTransport::new(fork, "opencode", AcpOverrides::default()).with_fork_from(Some(origin.to_string()));
+        second
+            .start(
+                StartSpec {
+                    session_id: fork.to_string(),
+                    cwd: cwd.clone(),
+                    program: "opencode".to_string(),
+                    args: vec!["acp".to_string()],
+                    env: HashMap::new(),
+                },
+                sink,
+            )
+            .expect("the fork should start");
+        wait_for(&forked, 60, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::SessionStarted { .. }))
+        });
+        second
+            .send(&[ContentBlock::Text {
+                text: "Which word did I ask you to remember? Reply with that word only.".to_string(),
+            }])
+            .expect("the fork's turn should submit");
+        let events = wait_for(&forked, 120, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::TurnCompleted { .. }))
+        });
+        let _ = second.close();
+
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, ChatEvent::SessionError { fatal: true, .. })),
+            "the fork must open: {events:?}"
+        );
+        let said: String = events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::TextDelta { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            said.to_lowercase().contains("heron"),
+            "the fork must remember: {said:?}"
+        );
+        let mine = acp_sessions::read(fork).expect("the fork must record its own locator");
+        assert_ne!(
+            mine.acp_session_id, before.acp_session_id,
+            "a fork is a new agent session"
+        );
+        assert_eq!(
+            acp_sessions::read(origin).map(|r| r.acp_session_id),
+            Some(before.acp_session_id),
+            "the origin's locator is left alone"
         );
     }
 

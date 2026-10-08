@@ -356,6 +356,7 @@ pub fn capabilities(init: &InitializeResponse) -> ChatCapabilities {
         load_session: init.agent_capabilities.load_session,
         list_sessions: sessions.list.is_some(),
         image_input: init.agent_capabilities.prompt_capabilities.image,
+        fork: sessions.fork.is_some(),
     }
 }
 
