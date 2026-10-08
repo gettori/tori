@@ -1350,6 +1350,11 @@ pub enum ChatEvent {
         /// Claude, whose `name` is already the human-readable thing.
         #[serde(default)]
         title: Option<String>,
+        /// Secret files this emission read or named. Filled where events leave
+        /// Rust, never by an adapter, and `None` here does not clear a hit an
+        /// earlier emission of the same call carried.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        secret: Option<crate::secret_watch::SecretHit>,
     },
 
     /// Streaming arguments for a call whose input is still arriving, so a card
@@ -1973,6 +1978,10 @@ mod tests {
                 // Filled rather than `None`, so a mirror that dropped the field
                 // fails on the sample instead of agreeing with it by accident.
                 title: Some("Running echo hi".into()),
+                secret: Some(crate::secret_watch::SecretHit {
+                    paths: vec![".env".into()],
+                    strength: crate::secret_watch::SecretStrength::Named,
+                }),
             },
             ChatEvent::ToolCallProgress {
                 session_id: "s1".into(),
@@ -2408,6 +2417,22 @@ mod tests {
     fn text_that_fits_is_not_cut() {
         assert_eq!(cap_output(&"x".repeat(TOOL_OUTPUT_CAP)), None);
         assert_eq!(cap_output(""), None);
+    }
+
+    #[test]
+    fn a_tool_call_saved_before_secret_watch_reads_back_unmarked() {
+        let old = serde_json::json!({
+            "type": "toolCallStarted",
+            "sessionId": "s1",
+            "turnId": "t1",
+            "toolUseId": "toolu_1",
+            "name": "Read",
+            "input": { "file_path": ".env" },
+        });
+        match serde_json::from_value::<ChatEvent>(old).unwrap() {
+            ChatEvent::ToolCallStarted { secret, .. } => assert_eq!(secret, None),
+            other => panic!("expected a tool call, got {other:?}"),
+        }
     }
 
     #[test]

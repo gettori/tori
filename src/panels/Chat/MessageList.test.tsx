@@ -857,6 +857,7 @@ describe("agent work collapsed into a card", () => {
     files: [],
     durationMs: null,
     edits: [],
+    secret: null,
     ...over,
   });
   const waiting = (id: string) =>
@@ -980,5 +981,20 @@ describe("agent work collapsed into a card", () => {
     await expectNoAxeViolations(container);
     fireEvent.click(screen.getByRole("button", { name: "2 tool calls, 1 failed" }));
     await expectNoAxeViolations(container);
+  });
+
+  it("says at the head of the turn that a folded call read a secret", async () => {
+    const secret = { paths: ["/repo/.env"], strength: "read" as const };
+    const { container } = mount([PROMPT, call("a", { secret }), REPLY]);
+    expect(screen.getByText("Read a secret file")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "1 tool call" }));
+    expect(screen.getByRole("img", { name: "Secret file" })).toBeTruthy();
+    await expectNoAxeViolations(container);
+  });
+
+  it("makes the weaker claim when a command only named a secret", () => {
+    mount([PROMPT, call("a", { secret: { paths: [".env"], strength: "named" } }), REPLY]);
+    expect(screen.getByText("A command named a secret file")).toBeTruthy();
+    expect(screen.queryByText("Read a secret file")).toBeNull();
   });
 });

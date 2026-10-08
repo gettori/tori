@@ -246,6 +246,7 @@ fn push_block(
                 // no written paths below.
                 locations: Vec::new(),
                 title: None,
+                secret: None,
             });
             return Some(tool_use_id);
         }

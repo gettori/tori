@@ -408,6 +408,7 @@ export default function ChatView(props: {
       fromSessionId: props.forkFrom ?? null,
       agentId: props.agentId,
       cursor,
+      cwd: props.cwd,
     })
       .then((page) => {
         // Stale if the cursor moved while this was in flight.
@@ -668,6 +669,7 @@ export default function ChatView(props: {
       // since the rewind. The banner survives the restart (`rewindTo` is
       // persisted); the cut deliberately does not.
       upToPromptTs: props.forkFrom ? (props.rewindTo ?? null) : null,
+      cwd: props.cwd,
     })
       .then((tail) => {
         openTrace?.replied();

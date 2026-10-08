@@ -12,9 +12,17 @@ import {
   onMount,
   type JSX,
 } from "solid-js";
-import { Brain, ChevronDown, ChevronRight, FoldVertical, Info, TriangleAlert, Webhook } from "lucide-solid";
+import { Brain, ChevronDown, ChevronRight, FoldVertical, Info, KeyRound, TriangleAlert, Webhook } from "lucide-solid";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { hasEarlier, windowed, WINDOW_STEP, type ChatItem, type QuestionItem, type ToolItem } from "./chatStore";
+import {
+  hasEarlier,
+  turnSecrets,
+  windowed,
+  WINDOW_STEP,
+  type ChatItem,
+  type QuestionItem,
+  type ToolItem,
+} from "./chatStore";
 import { attachmentKind } from "../../utils/chatCompose";
 import type { ContentBlock, PermissionMode, QuestionAnswer, RefTarget } from "../../utils/chatTypes";
 import { openPrByNumber } from "../../utils/openPrTab";
@@ -412,6 +420,10 @@ export default function MessageList(props: {
     return lines;
   });
 
+  // Said at the head of the turn, not only on the card that made the read: a
+  // card can sit folded inside a run of calls nobody opens.
+  const secrets = createMemo(() => turnSecrets(props.items));
+
   // Zero height: it exists to carry the turn id, not to take up room. The
   // negative bottom margin cancels the flex gap it would otherwise open.
   const TurnAnchor = (p: { itemId: string; off?: boolean }) => (
@@ -420,6 +432,14 @@ export default function MessageList(props: {
         <>
           <div class={styles.turnAnchor} data-turn-id={id()} />
           <Show when={modelLines().get(p.itemId)}>{(label) => <div class={styles.turnModel}>{label()}</div>}</Show>
+          <Show when={secrets().get(id())}>
+            {(hit) => (
+              <Tooltip<HTMLSpanElement> as="span" tabIndex={0} class={styles.turnSecret} label={hit().paths.join("\n")}>
+                <Icon icon={KeyRound} size={12} />
+                {hit().strength === "read" ? "Read a secret file" : "A command named a secret file"}
+              </Tooltip>
+            )}
+          </Show>
         </>
       )}
     </Show>

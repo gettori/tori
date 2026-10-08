@@ -230,7 +230,13 @@
         "line": 12
       }
     ],
-    "title": "Running echo hi"
+    "title": "Running echo hi",
+    "secret": {
+      "paths": [
+        ".env"
+      ],
+      "strength": "named"
+    }
   },
   {
     "type": "toolCallProgress",

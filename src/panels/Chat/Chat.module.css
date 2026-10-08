@@ -389,6 +389,15 @@ button.promptChip {
   font-size: calc(var(--chat-font-size) - 2px);
 }
 
+.turnSecret {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: calc(4px * var(--ui-scale));
+  color: var(--attention-fg);
+  font-size: calc(var(--chat-font-size) - 2px);
+}
+
 /* Quiet until it is wanted. Rewinding is rare and destructive, so it earns no
    permanent room next to the prompt; revealed on hover of that prompt, and by
    keyboard focus so it is not mouse-only. */
@@ -988,6 +997,15 @@ button.promptChip {
 
 .toolBlocked .toolState {
   color: var(--brand-default);
+}
+
+.toolSecret {
+  border-color: var(--attention-emphasis);
+}
+
+.toolSecretKey {
+  display: inline-flex;
+  color: var(--attention-fg);
 }
 
 .toolBody {

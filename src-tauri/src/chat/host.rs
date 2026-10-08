@@ -706,6 +706,21 @@ impl ChatHost {
         }
     }
 
+    /// Mark a replayed conversation's secret reads the way a live one's are
+    /// marked in `wrap`, against the settings as they are now. A live session's
+    /// own folder wins over the caller's, which may be a fork's.
+    pub fn mark_secrets(&self, session_id: &str, cwd: Option<String>, events: &mut [ChatEvent]) {
+        let cwd = lock(&self.sessions)
+            .get(session_id)
+            .map(|e| e.cwd.clone())
+            .or(cwd)
+            .map(std::path::PathBuf::from);
+        let rules = crate::secret_watch::current().0;
+        for event in events {
+            crate::secret_watch::annotate(event, cwd.as_deref(), &rules);
+        }
+    }
+
     /// This session's snapshot cache, for a card the user expanded.
     pub fn snapshots(&self, session_id: &str) -> Option<Arc<Mutex<SnapshotCache>>> {
         lock(&self.bridges).get(session_id).map(|b| b.snapshots.clone())
@@ -935,13 +950,18 @@ impl ChatHost {
                 // webview reload - and the claim has to follow, or it names a
                 // tab that no longer exists and `close` releases nothing.
                 entry.tab_id = tab_id.to_string();
-                (entry.listener.clone(), transport, entry.mirror.clone())
+                (
+                    entry.listener.clone(),
+                    transport,
+                    entry.mirror.clone(),
+                    entry.cwd.clone(),
+                )
             })
         };
-        if let Some((listener, transport, mirror)) = rewired {
+        if let Some((listener, transport, mirror, cwd)) = rewired {
             // Shadows the caller's on purpose: this session already has one, and
             // adopting a second would write every turn from here on twice.
-            *lock(&listener) = Some(self.wrap(session_id, emit, mirror.clone()));
+            *lock(&listener) = Some(self.wrap(session_id, &cwd, emit, mirror.clone()));
             self.registry.retag(session_id, tab_id);
             // **Opened before the transport is asked, never after.** `replay`
             // returns as soon as the command is queued and the frames it causes
@@ -981,7 +1001,7 @@ impl ChatHost {
         // transcript that looks stalled, where a session wrongly unpaced only
         // costs what it cost before this existed. `chat_spawn` corrects it
         // immediately for a tab that is not on screen.
-        let listener = new_sink(self.wrap(session_id, emit, mirror.clone()));
+        let listener = new_sink(self.wrap(session_id, &spec.cwd, emit, mirror.clone()));
         let pacer = Arc::new(Pacer::new(listener.clone(), true, HIDDEN_RELEASE_MS, monotonic_clock()));
         let into_pacer = pacer.clone();
         let sink = new_sink(Box::new(move |event| into_pacer.deliver(event)));
@@ -1039,7 +1059,7 @@ impl ChatHost {
     /// Wrap a caller's emit closure so a fatal event tears the session down on
     /// its way past. Every event still reaches the caller: the UI needs to see
     /// the error that killed the session, not just its absence.
-    fn wrap(&self, session_id: &str, emit: Emit, mirror: Option<Arc<Mirror>>) -> Emit {
+    fn wrap(&self, session_id: &str, cwd: &str, emit: Emit, mirror: Option<Arc<Mirror>>) -> Emit {
         let sessions = self.sessions.clone();
         let registry = self.registry.clone();
         let bridges = self.bridges.clone();
@@ -1049,8 +1069,12 @@ impl ChatHost {
         let lifecycle = self.lifecycle.clone();
         let notes = self.notes.clone();
         let id = session_id.to_string();
+        let cwd = std::path::PathBuf::from(cwd);
         Box::new(move |event| {
             for mut event in split_user_notes(event) {
+                if matches!(event, ChatEvent::ToolCallStarted { .. }) {
+                    crate::secret_watch::annotate(&mut event, Some(&cwd), &crate::secret_watch::current().0);
+                }
                 let fatal = ends_session(&event);
                 // Two frames per session and one per turn, so the lock is taken
                 // that often rather than once per event.
@@ -1361,9 +1385,9 @@ impl ChatHost {
         let found = lock(&self.sessions)
             .get(session_id)
             .filter(|e| e.tab_id == tab_id)
-            .map(|e| (e.listener.clone(), e.mirror.clone()));
-        if let Some((listener, mirror)) = found {
-            *lock(&listener) = Some(self.wrap(session_id, Box::new(|_| {}), mirror));
+            .map(|e| (e.listener.clone(), e.mirror.clone(), e.cwd.clone()));
+        if let Some((listener, mirror, cwd)) = found {
+            *lock(&listener) = Some(self.wrap(session_id, &cwd, Box::new(|_| {}), mirror));
             self.set_visible(session_id, false);
         }
     }
@@ -1971,6 +1995,62 @@ mod tests {
         }
         assert_eq!(host.tool_output("s1", "toolu_1").map(|s| s.len()), Some(big.len()));
         assert_eq!(host.tool_output("s1", "toolu_2"), None, "a short output is not cached");
+    }
+
+    fn read_call(session_id: &str, path: &str) -> ChatEvent {
+        ChatEvent::ToolCallStarted {
+            session_id: session_id.into(),
+            turn_id: "t1".into(),
+            tool_use_id: "toolu_r".into(),
+            name: "Read".into(),
+            input: serde_json::json!({ "file_path": path }),
+            kind: crate::chat::model::ToolKind::Read,
+            locations: Vec::new(),
+            title: None,
+            secret: None,
+        }
+    }
+
+    fn secret_of(event: &ChatEvent) -> Option<Vec<String>> {
+        match event {
+            ChatEvent::ToolCallStarted { secret, .. } => secret.as_ref().map(|s| s.paths.clone()),
+            other => panic!("expected a tool call, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_live_secret_read_is_marked_on_its_way_past() {
+        let host = ChatHost::at(temp_store());
+        let seen = Collector::default();
+        let sink_out: Arc<Mutex<Option<Sink>>> = Arc::new(Mutex::new(None));
+        let out = sink_out.clone();
+        host.spawn_plain("s1", "tab-a", seen.emit(), spec("s1"), move || {
+            Box::new(Puppet {
+                sink_out: Some(out),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+        let sink = lock(&sink_out).clone().expect("the puppet published its sink");
+
+        crate::chat::transport::emit(&sink, read_call("s1", ".env"));
+        crate::chat::transport::emit(&sink, read_call("s1", "src/main.rs"));
+
+        let seen = seen.events();
+        assert_eq!(secret_of(&seen[0]), Some(vec![".env".to_string()]));
+        assert_eq!(secret_of(&seen[1]), None);
+    }
+
+    #[test]
+    fn a_replayed_secret_read_is_marked_for_a_dead_session_too() {
+        let host = ChatHost::at(temp_store());
+        let mut events = vec![
+            read_call("gone", "/repo/.env.local"),
+            read_call("gone", "/repo/.env.example"),
+        ];
+        host.mark_secrets("gone", Some("/repo".into()), &mut events);
+        assert_eq!(secret_of(&events[0]), Some(vec!["/repo/.env.local".to_string()]));
+        assert_eq!(secret_of(&events[1]), None);
     }
 
     /// History can be read for a session that is never spawned. Those outputs
