@@ -166,7 +166,7 @@ export default function CheckpointDiffView(props: { workspace: string; arg: stri
                   <WhyToggle open={whyOpen.has(hi())} onClick={() => whyOpen.toggle(hi())} />
                 </div>
                 <Show when={whyOpen.has(hi())}>
-                  <HunkProvenance hunk={hunk} read={checkpointClaims(props.workspace, target())} />
+                  <HunkProvenance file={file()} hunk={hunk} read={checkpointClaims(props.workspace, target())} />
                 </Show>
                 <DiffRows
                   rows={buildRows(hunk.lines, { old: hunk.oldStart, new: hunk.startLine })}

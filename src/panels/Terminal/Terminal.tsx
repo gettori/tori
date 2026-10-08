@@ -58,6 +58,8 @@ import {
   TAB_CYCLE,
   NEXT_WAITING_SESSION,
   FOCUS_SESSION_TAB,
+  ASK_WHY,
+  type AskWhy,
   TERMINAL_TAB_FOCUSED,
   type OpenTerminal,
   type NewSession,
@@ -931,6 +933,9 @@ export default function Terminal(props: {
   });
   onCleanup(offFocusSessionTab);
 
+  const offAskWhy = onWith<AskWhy>(ASK_WHY, (ev) => void askWhy(ev));
+  onCleanup(offAskWhy);
+
   // A space is being deleted: kill + close every terminal tab whose cwd is rooted
   // under it, so no agent keeps running in a folder that is about to vanish.
   const offPurge = onWith<PurgeUnderPath>(PURGE_UNDER_PATH, ({ path }) => {
@@ -1786,6 +1791,24 @@ export default function Terminal(props: {
       forkFrom,
       rewindTo,
     });
+  }
+
+  // A fork stays on the account it came from: the transcript it replays lives
+  // in that account's home.
+  async function askWhy(ev: AskWhy) {
+    await stripReady(ev.cwd);
+    const tabId = chatId();
+    markAutoSend(tabId, ev.text);
+    openChatTab(
+      ev.cwd,
+      ev.cwd,
+      ev.title,
+      ev.agentId,
+      asTabProfile(ev.profile),
+      { sessionId: ev.forkId, forkFrom: ev.from },
+      tabId,
+      false,
+    );
   }
 
   /**

@@ -498,6 +498,17 @@ export type SessionDeleted = { sessionId: string };
 export const REVEAL_TURN = "tori:reveal-turn";
 export type RevealTurn = { sessionId: string; promptTs: number };
 
+export const ASK_WHY = "tori:ask-why";
+export type AskWhy = {
+  forkId: string;
+  from: string;
+  agentId: string;
+  cwd: string;
+  profile: string | null;
+  title: string;
+  text: string;
+};
+
 // Payload-carrying event: rewind a chat to one of its checkpoints, asked for
 // from the Changes panel. The chat tab hosting the session answers, because the
 // rewind is its own: it forks the session and cuts the replay as well as

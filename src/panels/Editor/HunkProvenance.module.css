@@ -60,3 +60,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.answer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--tori-space-1);
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: var(--canvas-card);
+}

@@ -73,6 +73,8 @@ pub struct SessionRef {
     pub id: String,
     pub agent: String,
     pub title: String,
+    pub cwd: String,
+    pub profile: Option<String>,
     /// When its transcript last moved, which bounds its last turn. 0 when not
     /// known, which leaves that turn open.
     pub last_active: u64,
@@ -93,6 +95,8 @@ pub struct SessionLabel {
     pub id: String,
     pub agent: String,
     pub title: String,
+    pub cwd: String,
+    pub profile: Option<String>,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -810,6 +814,8 @@ impl<'a> Reader<'a> {
             id: session.id.clone(),
             agent: session.agent.clone(),
             title: session.title.clone(),
+            cwd: session.cwd.clone(),
+            profile: session.profile.clone(),
         }
     }
 
@@ -1131,6 +1137,8 @@ pub fn worktree_sessions(index: &crate::sessions::SessionIndex, root: &str) -> V
             title: s.name.clone().unwrap_or_else(|| s.title.clone()),
             id: s.id,
             agent: s.agent,
+            cwd: s.cwd,
+            profile: s.profile,
             last_active: s.last_active,
         })
         .collect()
@@ -1442,6 +1450,35 @@ pub fn pr_provenance(
     )
 }
 
+pub fn reply_after(turns: &[TranscriptTurn], question: &str) -> Option<String> {
+    let texts = |t: &TranscriptTurn| -> Vec<String> {
+        t.blocks
+            .iter()
+            .filter(|b| b.kind == "text")
+            .filter_map(|b| b.text.clone())
+            .collect()
+    };
+    let asked = turns
+        .iter()
+        .rposition(|t| t.role == "user" && texts(t).iter().any(|text| text.contains(question)))?;
+    let mut said: Vec<String> = Vec::new();
+    for turn in &turns[asked + 1..] {
+        if turn.role == "user" && !texts(turn).is_empty() {
+            break;
+        }
+        if turn.role == "assistant" {
+            said.extend(texts(turn).into_iter().filter(|t| !t.trim().is_empty()));
+        }
+    }
+    (!said.is_empty()).then(|| said.join("\n\n"))
+}
+
+#[tauri::command(async)]
+pub fn ask_why_reply(session_id: String, agent_id: String, question: String) -> Option<String> {
+    let path = crate::sessions::transcript_path(&session_id, &agent_id)?;
+    reply_after(&crate::sessions::transcript_turns(&path, &agent_id), &question)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1700,6 +1737,8 @@ mod tests {
             id: id.into(),
             agent: agent.into(),
             title: format!("{id} title"),
+            cwd: String::new(),
+            profile: None,
             last_active,
         }
     }
@@ -1871,6 +1910,32 @@ mod tests {
     }
 
     #[test]
+    fn a_forks_answer_is_what_it_said_after_the_question() {
+        let dir = std::env::temp_dir().join(format!("tori_reply_after_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let t = Transcript::default()
+            .prompt(1000, "the original work")
+            .say(1001, "Done with the original work.")
+            .prompt(2000, "Context first.\n\nQuestion: why two?\n\nAnswer from memory.")
+            .call(2001, "toolu_r", "Read", serde_json::json!({ "file_path": "/r/f" }))
+            .say(2002, "Because the parser needs it.")
+            .say(2003, "That is all.")
+            .prompt(3000, "a later prompt")
+            .say(3001, "Not part of the answer.");
+        let path = dir.join("fork.jsonl");
+        let body: Vec<String> = t.0.iter().map(Value::to_string).collect();
+        std::fs::write(&path, body.join("\n") + "\n").unwrap();
+        let turns = crate::sessions::transcript_turns(&path.to_string_lossy(), "claude");
+
+        assert_eq!(
+            reply_after(&turns, "Question: why two?").as_deref(),
+            Some("Because the parser needs it.\n\nThat is all.")
+        );
+        assert_eq!(reply_after(&turns, "Question: never asked"), None);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
     fn a_heredoc_is_claimed_as_its_shell_command() {
         let mut fx = Fixture::new("one\n");
         let a = fx.session("a");
@@ -1958,6 +2023,8 @@ mod tests {
                     id: p.clone(),
                     agent: "claude".into(),
                     title: format!("{p} title"),
+                    cwd: String::new(),
+                    profile: None,
                 }],
             }
         );

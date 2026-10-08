@@ -478,6 +478,7 @@ pub fn run() {
             provenance::diff_provenance,
             provenance::checkpoint_provenance,
             provenance::pr_provenance,
+            provenance::ask_why_reply,
             conflict::git_conflict_stages,
             conflict::git_conflict_op,
             conflict::git_conflict_sides,
