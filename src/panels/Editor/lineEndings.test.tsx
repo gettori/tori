@@ -65,6 +65,8 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve(HEAD);
       case "git_blame":
         return Promise.resolve(BLAME);
+      case "agent_lines":
+        return Promise.resolve({ lines: [], turns: [] });
       case "git_status":
       case "git_diff_file":
       case "fs_read_dir":
