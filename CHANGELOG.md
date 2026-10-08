@@ -8,6 +8,56 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## Unreleased
+
+- Every hunk can say who wrote it. A toggle on the hunk header in the diff
+  tab, a Checkpoints diff or a pull request's file view opens the turn and
+  session that wrote those lines, with the prompt, what the agent said before
+  the call and the call itself, or a plain reason when nothing Tori recorded
+  can say. The editor gutter reads the same answer, and
+  `tori checkpoint diff --why` (or `--json`) prints it per hunk.
+- From that panel you can ask the session why. The question goes to a fork of
+  it in a background tab, so the session itself is never interrupted, and the
+  answer shows under the hunk. ACP agents get it when they say they can fork.
+- A turn that changed code says whether a test, type check, lint or build ran
+  after its last edit: verified, failed or unverified. The mark shows on the
+  turn, the session's tab, its History row and Checkpoints. Each project can
+  set the commands that count from its menu (Verification commands).
+  Settings > Chat > Mark unverified turns turns it off.
+- A turn in which the agent read a secret file is marked, and so is a command
+  that named one. The key shows on the tab, the History row and Checkpoints.
+  `secretWatch.patterns` in settings.json adds to the default list.
+  Settings > Chat > Mark secret file reads turns it off.
+- An ACP agent's edit to a file it never read, searched or named is marked
+  "Edited without reading". Settings > Chat > Mark edits made without reading
+  turns it off. Nothing is blocked by any of these marks.
+- The composer can reference more than files. `#` lists the project's open
+  pull requests, `@` lists the repo's sessions above the files, and
+  `@spaces/` and `@projects/` walk the sidebar's tree. The agent gets a
+  pointer it can read, not a paste, and the chip opens what it names. Pi chats
+  don't offer sessions, spaces or projects.
+- The autopilot can pick up a project's issues from other repos, filtered by
+  labels, milestone, assignee or extra qualifiers. Settings > Autopilot >
+  Projects edits each project's contract, issue sources included.
+- Tori can remove worktrees on its own once their pull request merged or
+  after they sat idle (Settings > Integrations > Cleanup, both off by
+  default). The branch is kept, and a worktree with open tabs, a live session
+  or autopilot work is never touched.
+- Each added Claude account gets its own `claude-<name>` command in
+  `~/.local/bin`, so the other accounts work outside Tori too. Renaming an
+  account can move its command along.
+- A new or focused session comes in front of a file sharing its pane, which
+  used to stay on top. Selecting a worktree with nothing open opens a chat
+  draft.
+- Astro files get a language server. A server config can now say which
+  TypeScript to load, so Vue and MDX servers can be added as config files.
+- A branch row measures the branch against the base it was cut from, or its
+  pull request's base, instead of always the default branch. Its pull request
+  line wraps instead of dropping what doesn't fit.
+- Commits, pushes and merges Tori makes itself skip your repo's git hooks, so
+  a slow pre-push hook never blocks the app.
+- solid-js and KaTeX are updated to clear new security advisories.
+
 ## 26.1005.1-alpha
 
 - When Tori closes on its own, it writes a crash file under
