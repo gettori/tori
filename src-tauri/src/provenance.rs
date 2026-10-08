@@ -132,6 +132,9 @@ pub enum NoneReason {
     Overlapping,
     /// While no session Tori knows of was in a turn that could have written it.
     Unseen,
+    /// On a pull request whose branch no worktree here holds, so no session
+    /// Tori ran could have written it here.
+    Outside,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -1347,6 +1350,98 @@ pub fn checkpoint_provenance(
     ))
 }
 
+/// A pull request's head as the forge reports it.
+pub struct PrHead {
+    pub branch: String,
+    pub sha: String,
+    /// False for a fork's pull request, whose branch is never one here.
+    pub from_origin: bool,
+}
+
+/// Who wrote each hunk of a pull request's file, read at the PR's head.
+///
+/// Only a branch Tori's own sessions worked on can be attributed, since the
+/// worktree checked out on it is where their checkpoints are. A fork's pull
+/// request, or a branch no worktree here holds, reads `Outside` on every hunk.
+/// The walk stops at the head commit's time, so work done after the push
+/// cannot move the lines the pull request shows.
+pub fn pr_claims(
+    repo: &str,
+    head: &PrHead,
+    file: &str,
+    hunks: &[Vec<Span>],
+    sessions_in: &dyn Fn(&str) -> Vec<SessionRef>,
+    histories: &Histories,
+) -> Result<Vec<Vec<ClaimRange>>, String> {
+    let worktree = head
+        .from_origin
+        .then(|| crate::worktree::list_worktrees_body(repo.to_string()).ok())
+        .flatten()
+        .and_then(|list| list.into_iter().find(|w| w.branch == head.branch))
+        .map(|w| w.path);
+    let Some(root) = worktree else {
+        return Ok(outside(hunks));
+    };
+    let tree = capture(&root, &["rev-parse", &format!("{}^{{tree}}", head.sha)])
+        .ok_or("the pull request's head is not in this clone yet")?;
+    let at: u64 = capture(&root, &["show", "-s", "--format=%ct", &head.sha])
+        .and_then(|t| t.trim().parse().ok())
+        .ok_or("the pull request's head has no commit time")?;
+    let end = End {
+        tree: tree.trim().to_string(),
+        until: Some(at + 1),
+    };
+    let sessions = sessions_in(&root);
+    Ok(hunk_provenance(&root, file, &end, &sessions, hunks, histories))
+}
+
+fn outside(hunks: &[Vec<Span>]) -> Vec<Vec<ClaimRange>> {
+    hunks
+        .iter()
+        .map(|blocks| {
+            blocks
+                .iter()
+                .map(|span| ClaimRange {
+                    start: span.start,
+                    count: span.count,
+                    claim: Claim::None {
+                        reason: NoneReason::Outside,
+                        sessions: Vec::new(),
+                    },
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// Tauri: who wrote each hunk of a pull request's file. The head commit has to
+/// be in the local object store already, which the gap expansion's fetch does.
+#[tauri::command(async)]
+pub fn pr_provenance(
+    index: tauri::State<'_, crate::sessions::SessionIndex>,
+    project_path: String,
+    head_ref: String,
+    head_sha: String,
+    head_repo_is_origin: bool,
+    file: String,
+    hunks: Vec<String>,
+) -> Result<Vec<Vec<ClaimRange>>, String> {
+    let blocks: Vec<Vec<Span>> = hunks.iter().map(|h| hunk_spans(h)).collect();
+    let head = PrHead {
+        branch: head_ref,
+        sha: head_sha,
+        from_origin: head_repo_is_origin,
+    };
+    pr_claims(
+        &project_path,
+        &head,
+        &file,
+        &blocks,
+        &|root| worktree_sessions(&index, root),
+        &Histories::default(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1725,6 +1820,54 @@ mod tests {
 
         assert_eq!(call_of(&out[0][0].claim).1.tool_use_id, "toolu_x");
         assert_eq!(call_of(&out[1][0].claim).1.tool_use_id, "toolu_y");
+    }
+
+    #[test]
+    fn a_pull_request_is_attributed_only_from_the_worktree_that_holds_its_branch() {
+        let mut fx = Fixture::new("one\n");
+        let a = fx.session("a");
+        let wt_dir = fx.dir.with_extension("wt");
+        git(
+            &fx.dir,
+            &["worktree", "add", "-q", "-b", "feature", &wt_dir.to_string_lossy()],
+        );
+        let wt = std::fs::canonicalize(&wt_dir).unwrap().to_string_lossy().into_owned();
+        let abs = format!("{wt}/f.txt");
+        checkpoint_snapshot_body(a.clone(), wt.clone(), 1000).unwrap();
+        std::fs::write(&abs, "one\ntwo\n").unwrap();
+        fx.touched(&a, 1000, "Edit", vec![abs.clone()]);
+        git(Path::new(&wt), &["commit", "-qam", "two"]);
+        let head = capture(&wt, &["rev-parse", "HEAD"]).unwrap().trim().to_string();
+        let transcript = Transcript::default().prompt(1000, "add two").call(
+            1001,
+            "toolu_pr",
+            "Edit",
+            serde_json::json!({ "file_path": abs, "old_string": "one\n", "new_string": "one\ntwo\n" }),
+        );
+        let histories = Histories::with(Box::new(loader(&fx.dir, vec![(a.clone(), Source::Claude(transcript))])));
+        let sessions = |_: &str| vec![session(&a, "claude", 0)];
+        let hunks = [vec![Span { start: 2, count: 1 }]];
+        let claims = |branch: &str, from_origin: bool| {
+            let pr = PrHead {
+                branch: branch.into(),
+                sha: head.clone(),
+                from_origin,
+            };
+            pr_claims(&fx.repo, &pr, "f.txt", &hunks, &sessions, &histories).unwrap()
+        };
+
+        assert_eq!(call_of(&claims("feature", true)[0][0].claim).1.tool_use_id, "toolu_pr");
+        let elsewhere = Claim::None {
+            reason: NoneReason::Outside,
+            sessions: Vec::new(),
+        };
+        assert_eq!(claims("a-teammates-branch", true)[0][0].claim, elsewhere);
+        assert_eq!(
+            claims("feature", false)[0][0].claim,
+            elsewhere,
+            "a fork's branch is never this worktree's"
+        );
+        git(&fx.dir, &["worktree", "remove", "--force", &wt]);
     }
 
     #[test]
