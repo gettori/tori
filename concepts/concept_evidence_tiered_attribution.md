@@ -84,9 +84,20 @@ file". A shell command that only has the path among its words (`cat .env`,
 named a secret file". When a turn has both, the stronger claim wins. See
 [[component_secret_watch]].
 
+## Verification: an exit not seen is not a pass
+
+The verification badge applies the rule to exit codes. A check whose exit
+reached the call (the last `&&` run of the line, nothing after it, not
+backgrounded, not timed out or interrupted) passes or fails on that exit. A
+check whose exit was masked (`cargo test | tail`, `pnpm test || true`, a `;`
+after it) "ran, exit not seen", and a turn resting on one reads unverified,
+never verified. Trusting the call's status there would read a piped failing
+suite as verified. See [[component_verification]].
+
 ## Related
 
 - [[component_secret_watch]] the read versus named claims
+- [[component_verification]] the exit not seen tier
 - [[component_turn_checkpoints]] — the revert guard's home; the tree revert this protects.
 - [[component_session_worklog]] — the indicator's surfaces (tree rows, tabs, Session panel).
 - [[concept_needs_you_floor]] — where "Executing" is composed; the reason the guard lives in the frontend and the backend cannot see it.

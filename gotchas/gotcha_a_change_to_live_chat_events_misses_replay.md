@@ -12,4 +12,5 @@ Don't treat `ChatHost::wrap` as the one place every chat event passes. Why: it w
 ## Related
 
 - [[component_secret_watch]] the second change that had to be made twice
+- [[component_verification]] the third, plus a transcript with no `TurnCompleted`
 - [[component_history_tail]] where the replayed tail is cut
