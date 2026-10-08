@@ -232,7 +232,7 @@ export default function ChatPane(props: PaneProps) {
           {...props}
           id="verification"
           label="Mark unverified turns"
-          hint="On, a turn that changed code says whether a test, type check, lint or build ran after its last edit: verified, failed, or unverified when nothing ran or its exit was not seen. Shown in the chat. Nothing is blocked either way."
+          hint="On, a turn that changed code says whether a test, type check, lint or build ran after its last edit: verified, failed, or unverified when nothing ran or its exit was not seen. Shown in the chat, on its tab and in Checkpoints. Nothing is blocked either way."
         >
           <Switch
             checked={settings.verification.enabled}
