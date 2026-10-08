@@ -164,10 +164,10 @@ impl Default for ConfigWatch {
     }
 }
 
-/// Cached git probe per project dir, invalidated when the dir or its HEAD changes.
+/// Cached git probe per project dir, invalidated when the dir or any HEAD changes.
 struct ProbeEntry {
     dir_mtime: SystemTime,
-    head_mtime: SystemTime,
+    heads: HeadStamp,
     units: Vec<BranchUnit>,
 }
 
@@ -538,18 +538,44 @@ fn mtime_of(path: &Path) -> SystemTime {
         .unwrap_or(SystemTime::UNIX_EPOCH)
 }
 
-/// HEAD mtime: `.git/HEAD` for a plain repo, `.bare/HEAD` for a worktree
-/// container. Changes on checkout, so it invalidates the cached branch/isCurrent.
-fn head_mtime(path: &Path) -> SystemTime {
-    for cand in [path.join(".git/HEAD"), path.join(".bare/HEAD")] {
-        if cand.exists() {
-            return mtime_of(&cand);
-        }
-    }
-    SystemTime::UNIX_EPOCH
+/// What a checkout anywhere in the project moves: the main HEAD, the newest
+/// linked worktree HEAD, and the `worktrees/` admin dir that an add or remove
+/// rewrites. Newest alone misses removing a worktree whose HEAD was older.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct HeadStamp {
+    main: SystemTime,
+    newest_linked: SystemTime,
+    linked_dir: SystemTime,
 }
 
-/// Probe a project, reusing the cached result when neither the dir nor HEAD moved.
+/// The gitdir is `.git` for a plain repo and `.bare` for a worktree container.
+fn head_stamp(path: &Path) -> HeadStamp {
+    let Some(gitdir) = [path.join(".git"), path.join(".bare")]
+        .into_iter()
+        .find(|d| d.join("HEAD").exists())
+    else {
+        return HeadStamp {
+            main: SystemTime::UNIX_EPOCH,
+            newest_linked: SystemTime::UNIX_EPOCH,
+            linked_dir: SystemTime::UNIX_EPOCH,
+        };
+    };
+    let linked = gitdir.join("worktrees");
+    let newest_linked = std::fs::read_dir(&linked)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| mtime_of(&e.path().join("HEAD")))
+        .max()
+        .unwrap_or(SystemTime::UNIX_EPOCH);
+    HeadStamp {
+        main: mtime_of(&gitdir.join("HEAD")),
+        newest_linked,
+        linked_dir: mtime_of(&linked),
+    }
+}
+
+/// Probe a project, reusing the cached result when neither the dir nor any HEAD moved.
 ///
 /// The cache lock is never held across `probe_project` (a subprocess), and a
 /// per-path flight lock coalesces concurrent misses: the first caller probes,
@@ -557,11 +583,11 @@ fn head_mtime(path: &Path) -> SystemTime {
 /// `get_config` calls racing through a switch cost one probe, not two.
 fn cached_probe(index: &ProjectIndex, path: &Path) -> Vec<BranchUnit> {
     let dir_mtime = mtime_of(path);
-    let head_mtime = head_mtime(path);
+    let heads = head_stamp(path);
     let hit = |cache: &HashMap<PathBuf, ProbeEntry>| {
         cache
             .get(path)
-            .filter(|e| e.dir_mtime == dir_mtime && e.head_mtime == head_mtime)
+            .filter(|e| e.dir_mtime == dir_mtime && e.heads == heads)
             .map(|e| e.units.clone())
     };
     if let Some(units) = index.0.lock().ok().as_deref().and_then(hit) {
@@ -579,7 +605,7 @@ fn cached_probe(index: &ProjectIndex, path: &Path) -> Vec<BranchUnit> {
             path.to_path_buf(),
             ProbeEntry {
                 dir_mtime,
-                head_mtime,
+                heads,
                 units: units.clone(),
             },
         );
@@ -2394,6 +2420,112 @@ mod tests {
             .find(|u| u.is_current)
             .and_then(|u| u.branch.clone());
         assert_eq!(cur2.as_deref(), Some("main"));
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    fn branches(cfg: &ResolvedConfig, project_name: &str) -> Vec<String> {
+        project(cfg, "personal", project_name)
+            .branch_units
+            .iter()
+            .filter_map(|u| u.branch.clone())
+            .collect()
+    }
+
+    #[test]
+    fn switch_inside_container_worktree_invalidates_cached_probe() {
+        let tmp = unique_tmp();
+        let root = tmp.join("Projects");
+        let src = tmp.join("src");
+        init_repo(&src, "main");
+        git(&src, &["branch", "feature"]);
+        let wt = root.join("personal/wtproj");
+        std::fs::create_dir_all(&wt).unwrap();
+        git(
+            &tmp,
+            &[
+                "clone",
+                "-q",
+                "--bare",
+                src.to_str().unwrap(),
+                wt.join(".bare").to_str().unwrap(),
+            ],
+        );
+        std::fs::write(wt.join(".git"), "gitdir: ./.bare\n").unwrap();
+        git(
+            &wt,
+            &["worktree", "add", "-q", wt.join("main").to_str().unwrap(), "main"],
+        );
+        git(
+            &wt,
+            &["worktree", "add", "-q", wt.join("feature").to_str().unwrap(), "feature"],
+        );
+
+        let index = ProjectIndex::default();
+        let roots = [root.to_str().unwrap()];
+        let before = branches(&resolve(raw(&roots, &[]), &index), "wtproj");
+        assert!(before.contains(&"feature".to_string()));
+
+        // Writes `.bare/worktrees/feature/HEAD`, never `.bare/HEAD` or the container dir.
+        git(&wt.join("feature"), &["switch", "-q", "-c", "renamed"]);
+        let after = branches(&resolve(raw(&roots, &[]), &index), "wtproj");
+        assert!(after.contains(&"renamed".to_string()), "{after:?}");
+        assert!(!after.contains(&"feature".to_string()), "{after:?}");
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn switch_inside_plain_repo_worktree_invalidates_cached_probe() {
+        let tmp = unique_tmp();
+        let root = tmp.join("Projects");
+        let repo = root.join("personal/repo");
+        init_repo(&repo, "main");
+        let topic = repo.join(".tori/worktrees/topic");
+        git(
+            &repo,
+            &["worktree", "add", "-q", "-b", "topic", topic.to_str().unwrap()],
+        );
+
+        let index = ProjectIndex::default();
+        let roots = [root.to_str().unwrap()];
+        let before = branches(&resolve(raw(&roots, &[]), &index), "repo");
+        assert!(before.contains(&"topic".to_string()));
+
+        git(&topic, &["switch", "-q", "-c", "topic-2"]);
+        let after = branches(&resolve(raw(&roots, &[]), &index), "repo");
+        assert!(after.contains(&"topic-2".to_string()), "{after:?}");
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn removing_an_older_linked_worktree_invalidates_cached_probe() {
+        let tmp = unique_tmp();
+        let root = tmp.join("Projects");
+        let repo = root.join("personal/repo");
+        init_repo(&repo, "main");
+        let first = repo.join(".tori/worktrees/first");
+        let second = repo.join(".tori/worktrees/second");
+        git(
+            &repo,
+            &["worktree", "add", "-q", "-b", "first", first.to_str().unwrap()],
+        );
+        git(
+            &repo,
+            &["worktree", "add", "-q", "-b", "second", second.to_str().unwrap()],
+        );
+        // Makes `first` the newest linked HEAD, so removing `second` leaves it unchanged.
+        git(&first, &["switch", "-q", "-c", "first-2"]);
+
+        let index = ProjectIndex::default();
+        let roots = [root.to_str().unwrap()];
+        let before = branches(&resolve(raw(&roots, &[]), &index), "repo");
+        assert!(before.contains(&"second".to_string()));
+
+        git(&repo, &["worktree", "remove", second.to_str().unwrap()]);
+        let after = branches(&resolve(raw(&roots, &[]), &index), "repo");
+        assert!(!after.contains(&"second".to_string()), "{after:?}");
 
         std::fs::remove_dir_all(&tmp).ok();
     }
