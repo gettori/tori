@@ -272,6 +272,9 @@
           " ctx"
         ]
       }
+    ],
+    "blindEdits": [
+      "/tmp/w/probe.txt"
     ]
   },
   {

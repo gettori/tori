@@ -44,6 +44,7 @@ function card(over: Partial<ToolItem> = {}): ToolItem {
     approval: null,
     edits: [],
     secret: null,
+    blindEdits: [],
     files: [],
     ...over,
   };
@@ -217,6 +218,27 @@ describe("ToolCallCard", () => {
   // A collapsed transcript that cannot be read without opening anything is the
   // problem this row is here to fix; a row with no summary has to look exactly
   // as it did before it existed.
+  it("marks an edit made without reading, and only while the setting is on", () => {
+    const blind = card({ toolKind: "edit", name: "edit", blindEdits: ["/repo/src/a.rs"] });
+    const marked = mount(blind);
+    expect(screen.getByRole("img", { name: "Edited without reading" })).toBeTruthy();
+    marked.unmount();
+    const plain = mount(card());
+    expect(screen.queryByRole("img", { name: "Edited without reading" })).toBeNull();
+    plain.unmount();
+    render(() => (
+      <ToolCallCard
+        card={blind}
+        showBlindEdit={false}
+        sessionId="s1"
+        cwd="/repo"
+        onSetMode={() => {}}
+        onRevertHunk={async () => false}
+      />
+    ));
+    expect(screen.queryByRole("img", { name: "Edited without reading" })).toBeNull();
+  });
+
   it("reports the result on the collapsed row, and says nothing without one", () => {
     const { getByText } = mount(card({ summary: { type: "execute", exitCode: 1, lines: 118 } }));
     expect(getByText("exit 1, 118 lines")).toBeTruthy();

@@ -214,6 +214,7 @@ pub fn map_codex(ev: CodexEvent) -> ChatEvent {
             summary: None,
             output_truncated: false,
             patch: Vec::new(),
+            blind_edits: Vec::new(),
         },
         // Streaming stdout of a running command is progress on its call, not
         // assistant prose - it belongs inside the tool card.
@@ -234,6 +235,7 @@ pub fn map_codex(ev: CodexEvent) -> ChatEvent {
             summary: None,
             output_truncated: false,
             patch: Vec::new(),
+            blind_edits: Vec::new(),
         },
         // Codex's approvals are native and in-protocol rather than hook-based,
         // but they carry the same payload the prompt needs, so they land on the
@@ -337,6 +339,7 @@ pub fn map_acp(update: AcpSessionUpdate) -> ChatEvent {
             summary: None,
             output_truncated: false,
             patch: Vec::new(),
+            blind_edits: Vec::new(),
         },
         AcpSessionUpdate::Plan => ChatEvent::PlanUpdate {
             session_id: sid(),

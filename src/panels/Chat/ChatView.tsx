@@ -2470,6 +2470,7 @@ export default function ChatView(props: {
           replyMark={props.cockpit ? ReplyMark : undefined}
           collapseWork={settings.chatDefaults.collapseWork}
           showSecrets={settings.secretWatch?.enabled !== false}
+          showBlindEdits={settings.blindEdits?.enabled !== false}
         />
       </Show>
       {/* Selected transcript text goes into the reply as a quote. Scoped to this

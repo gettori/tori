@@ -643,6 +643,12 @@ export const SETTINGS: SettingEntry[] = [
     hint: "A turn that read a file like .env or a key, or ran a command naming one, says so in the chat, on its tab and in Checkpoints. Never blocks.",
   },
   {
+    id: "blind-edits",
+    section: "chat",
+    label: "Mark edits made without reading",
+    hint: "An ACP agent's edit to a file the session never read, searched or named says so on the call and its turn. Never blocks.",
+  },
+  {
     id: "resume-at-reset",
     section: "chat",
     label: "Resume at reset",

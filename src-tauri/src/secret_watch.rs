@@ -121,7 +121,7 @@ fn default_name(name: &str) -> bool {
         || name == ".netrc"
 }
 
-fn expand(raw: &str, home: &Path) -> PathBuf {
+pub(crate) fn expand(raw: &str, home: &Path) -> PathBuf {
     for prefix in ["~/", "$HOME/", "${HOME}/"] {
         if let Some(rest) = raw.strip_prefix(prefix) {
             return home.join(rest);
@@ -135,7 +135,7 @@ fn expand(raw: &str, home: &Path) -> PathBuf {
 
 // Lexical: the file may not exist, and a symlink is not followed, since the
 // claim is about the path the agent wrote down.
-fn normalize(path: &Path) -> PathBuf {
+pub(crate) fn normalize(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for part in path.components() {
         match part {
@@ -153,14 +153,14 @@ fn normalize(path: &Path) -> PathBuf {
 
 // Wider than whitespace, so `--env-file=.env`, `$(cat .env)` and
 // `open('.env')` all surface `.env` as a word of its own.
-fn shell_words(command: &str) -> impl Iterator<Item = &str> {
+pub(crate) fn shell_words(command: &str) -> impl Iterator<Item = &str> {
     command
         .split(|c: char| c.is_whitespace() || "'\"()`;&|<>=,[]".contains(c))
         .filter(|w| !w.is_empty())
 }
 
 // ACP sends a command as either one string or an argument list.
-fn command_text(input: &Value) -> Option<String> {
+pub(crate) fn command_text(input: &Value) -> Option<String> {
     match input.get("command")? {
         Value::String(s) => Some(s.clone()),
         Value::Array(parts) => Some(parts.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(" ")),

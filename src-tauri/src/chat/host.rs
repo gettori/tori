@@ -575,6 +575,9 @@ pub struct ChatHost {
     /// What Tori has to tell an idle session, carried on the user's next turn
     /// rather than starting a turn of its own that the agent would answer.
     notes: Arc<Mutex<HashMap<String, Vec<ContentBlock>>>>,
+    /// Which files each session has seen, for marking an edit made without
+    /// reading. Outlives a rewire, since a reload replays into the same one.
+    blind: Arc<Mutex<HashMap<String, crate::blind_edit::Tracker>>>,
 }
 
 /// Tauri state wrapper, matching `PtyState`'s shape.
@@ -666,6 +669,7 @@ impl ChatHost {
             waiting: Arc::default(),
             lifecycle: Lifecycle::default(),
             notes: Arc::default(),
+            blind: Arc::default(),
         }
     }
 
@@ -718,6 +722,25 @@ impl ChatHost {
         let rules = crate::secret_watch::current().0;
         for event in events {
             crate::secret_watch::annotate(event, cwd.as_deref(), &rules);
+        }
+    }
+
+    /// Mark a replayed conversation's blind edits the way `wrap` marks a live
+    /// one's, from the whole history in order and against the setting as it is
+    /// now, so a mark the log carries is dropped when it is switched off.
+    pub fn mark_blind_edits(&self, session_id: &str, cwd: Option<String>, events: &mut [ChatEvent]) {
+        let cwd = lock(&self.sessions)
+            .get(session_id)
+            .map(|e| e.cwd.clone())
+            .or(cwd)
+            .map(std::path::PathBuf::from);
+        let mut tracker = crate::blind_edit::Tracker::new(cwd);
+        let on = crate::blind_edit::enabled();
+        for event in events {
+            let marks = tracker.observe(event);
+            if let ChatEvent::ToolCallCompleted { blind_edits, .. } = event {
+                *blind_edits = if on { marks } else { Vec::new() };
+            }
         }
     }
 
@@ -1068,6 +1091,7 @@ impl ChatHost {
         let waiting = self.waiting.clone();
         let lifecycle = self.lifecycle.clone();
         let notes = self.notes.clone();
+        let blind = self.blind.clone();
         let id = session_id.to_string();
         let cwd = std::path::PathBuf::from(cwd);
         Box::new(move |event| {
@@ -1109,6 +1133,24 @@ impl ChatHost {
                     }
                     _ => {}
                 }
+                // After the cut, so a replay of the log sees the same output
+                // this did and reaches the same answer.
+                if matches!(
+                    event,
+                    ChatEvent::ToolCallStarted { .. }
+                        | ChatEvent::FileEdit { .. }
+                        | ChatEvent::ToolCallCompleted { .. }
+                ) {
+                    let marks = lock(&blind)
+                        .entry(id.clone())
+                        .or_insert_with(|| crate::blind_edit::Tracker::new(Some(cwd.clone())))
+                        .observe(&event);
+                    if !marks.is_empty() && crate::blind_edit::enabled() {
+                        if let ChatEvent::ToolCallCompleted { blind_edits, .. } = &mut event {
+                            *blind_edits = marks;
+                        }
+                    }
+                }
                 // **After the cut, before the UI.** The log holds what the panel
                 // holds - a card's capped extract, not the megabytes behind it -
                 // and one `if let Some` is the whole of what a session without a
@@ -1130,6 +1172,7 @@ impl ChatHost {
                     lock(&outputs).remove(&id);
                     lock(&waiting).remove(&id);
                     lock(&notes).remove(&id);
+                    lock(&blind).remove(&id);
                     if let Some(bridge) = lock(&bridges).remove(&id) {
                         bridge.teardown();
                     }
@@ -1357,6 +1400,7 @@ impl ChatHost {
         let entry = lock(&self.sessions).remove(session_id);
         lock(&self.waiting).remove(session_id);
         lock(&self.notes).remove(session_id);
+        lock(&self.blind).remove(session_id);
         let Some(entry) = entry else { return Ok(()) };
         let result = lock(&entry.transport).close();
         self.registry.release(session_id, &entry.tab_id);
@@ -1841,6 +1885,7 @@ mod tests {
             summary: None,
             output_truncated: false,
             patch: Vec::new(),
+            blind_edits: Vec::new(),
         }
     }
 
@@ -2051,6 +2096,116 @@ mod tests {
         host.mark_secrets("gone", Some("/repo".into()), &mut events);
         assert_eq!(secret_of(&events[0]), Some(vec!["/repo/.env.local".to_string()]));
         assert_eq!(secret_of(&events[1]), None);
+    }
+
+    fn blind_conversation(session_id: &str) -> Vec<ChatEvent> {
+        let call = |id: &str, kind: crate::chat::model::ToolKind, path: &str| ChatEvent::ToolCallStarted {
+            session_id: session_id.into(),
+            turn_id: "t1".into(),
+            tool_use_id: id.into(),
+            name: String::new(),
+            input: serde_json::Value::Null,
+            kind,
+            locations: vec![crate::chat::model::ToolLocation {
+                path: path.into(),
+                line: None,
+            }],
+            title: None,
+            secret: None,
+        };
+        let edit = |id: &str, path: &str| ChatEvent::FileEdit {
+            session_id: session_id.into(),
+            turn_id: "t1".into(),
+            tool_use_id: id.into(),
+            path: path.into(),
+            kind: crate::chat::model::FileEditKind::Modified,
+            before_blob: None,
+        };
+        use crate::chat::model::ToolKind::{Edit, Read};
+        vec![
+            call("r1", Read, "/repo/a.rs"),
+            completed(session_id, "r1", ""),
+            call("e1", Edit, "/repo/a.rs"),
+            edit("e1", "/repo/a.rs"),
+            completed(session_id, "e1", ""),
+            call("e2", Edit, "/repo/b.rs"),
+            edit("e2", "/repo/b.rs"),
+            completed(session_id, "e2", ""),
+            call("r2", Read, "/repo/b.rs"),
+            completed(session_id, "r2", ""),
+        ]
+    }
+
+    fn blind_marks(events: &[ChatEvent]) -> Vec<(String, Vec<String>)> {
+        events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::ToolCallCompleted {
+                    tool_use_id,
+                    blind_edits,
+                    ..
+                } => Some((tool_use_id.clone(), blind_edits.clone())),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_blind_edit_is_marked_the_same_live_replayed_and_reloaded() {
+        let host = ChatHost::at(temp_store());
+        let seen = Collector::default();
+        let sink_out: Arc<Mutex<Option<Sink>>> = Arc::new(Mutex::new(None));
+        let out = sink_out.clone();
+        host.spawn_plain("s1", "tab-a", seen.emit(), spec("s1"), move || {
+            Box::new(Puppet {
+                sink_out: Some(out),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+        let sink = lock(&sink_out).clone().expect("the puppet published its sink");
+
+        let conversation = blind_conversation("s1");
+        // Twice, the way a `Reload` sends the whole conversation again.
+        for event in conversation.iter().chain(conversation.iter()) {
+            crate::chat::transport::emit(&sink, event.clone());
+        }
+        let live = blind_marks(&seen.events());
+        let expected: Vec<(String, Vec<String>)> = ["r1", "e1", "e2", "r2"]
+            .into_iter()
+            .map(|id| {
+                let marks = if id == "e2" {
+                    vec!["/repo/b.rs".to_string()]
+                } else {
+                    Vec::new()
+                };
+                (id.to_string(), marks)
+            })
+            .collect();
+        assert_eq!(live[..4], expected[..], "live");
+        assert_eq!(live[4..], expected[..], "reloaded");
+
+        let mut replayed = blind_conversation("gone");
+        host.mark_blind_edits("gone", Some("/repo".into()), &mut replayed);
+        assert_eq!(blind_marks(&replayed), expected, "replayed from the log");
+
+        let mut after = blind_conversation("s1")[5..8].to_vec();
+        for event in &mut after {
+            if let ChatEvent::ToolCallStarted { tool_use_id, .. }
+            | ChatEvent::FileEdit { tool_use_id, .. }
+            | ChatEvent::ToolCallCompleted { tool_use_id, .. } = event
+            {
+                *tool_use_id = "e3".into();
+            }
+        }
+        for event in after {
+            crate::chat::transport::emit(&sink, event);
+        }
+        assert_eq!(
+            blind_marks(&seen.events()).last(),
+            Some(&("e3".to_string(), Vec::new())),
+            "a live edit after the reload, to a file read before it"
+        );
     }
 
     /// History can be read for a session that is never spawned. Those outputs

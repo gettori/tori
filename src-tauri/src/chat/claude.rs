@@ -1208,6 +1208,7 @@ impl ClaudeMapper {
                     summary: summarise_result(&frame["tool_use_result"]),
                     output_truncated: false,
                     patch: structured_patch(&frame["tool_use_result"]),
+                    blind_edits: Vec::new(),
                 }
             })
             .collect()

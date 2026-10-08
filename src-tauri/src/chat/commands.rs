@@ -1159,6 +1159,7 @@ pub(crate) async fn history_reply(
     // here because replay does not pass through it, and applied through the
     // same cache so a backfilled card can fetch its remainder too.
     host.cut_outputs(&session_id, &mut tail.events);
+    host.mark_blind_edits(&session_id, cwd.clone(), &mut tail.events);
     host.mark_secrets(&session_id, cwd, &mut tail.events);
     if traced {
         let start = crate::trace::now_ms();
@@ -1568,6 +1569,7 @@ mod tests {
                 summary: None,
                 output_truncated: false,
                 patch: Vec::new(),
+                blind_edits: Vec::new(),
             })
             .unwrap(),
         ];
