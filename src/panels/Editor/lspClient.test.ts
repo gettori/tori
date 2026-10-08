@@ -20,10 +20,15 @@ const channels: { onmessage: ((m: string) => void) | null }[] = [];
 const clientConfigs: {
   rootUri?: string;
   timeout?: number;
+  initializationOptions?: unknown;
   workspace?: (client: unknown) => unknown;
   sanitizeHTML?: (html: string) => string;
   extensions?: unknown[];
 }[] = [];
+
+// What the backend resolved a server's `initialization_options` to for this
+// start, per server id. The registry's copy is never what a client sends.
+let startOptions: Record<string, unknown> = {};
 
 // Two servers with disjoint extensions, mirroring the bundled pair. `rs` has a
 // generous timeout the way rust.toml does; `ts` a smaller one.
@@ -127,7 +132,10 @@ vi.mock("@tauri-apps/api/core", () => ({
       if (startFails) return Promise.reject(new Error("`rust-analyzer` was not found on your PATH"));
       if (untrusted.has(a.serverId)) return Promise.reject("untrusted");
       if (notInstalled.has(a.serverId)) return Promise.reject("not_installed");
-      const result = { serverId: a.serverId, root: resolveRoot(a) };
+      const result = {
+        handle: { serverId: a.serverId, root: resolveRoot(a) },
+        initializationOptions: startOptions[a.serverId] ?? null,
+      };
       return holdStart ? holdStart.then(() => result) : Promise.resolve(result);
     }
     if (cmd === "fs_read_file") {
@@ -248,6 +256,7 @@ beforeEach(() => {
   untrusted = new Set();
   notInstalled = new Set();
   installFails = null;
+  startOptions = {};
   resolve = claimantOf;
   holdStart = null;
 });
@@ -488,6 +497,21 @@ describe("per-server timeout", () => {
     resolveRoot = () => "/proj/s/packages/a";
     await m.ensureLspFor("/proj/s/packages/a/index.ts", "/proj/s");
     expect(clientConfigs[0].rootUri).toBe("file:///proj/s/packages/a");
+  });
+
+  it("sends the initialization options the backend resolved for this start", async () => {
+    // A `${tsdk}` only the backend can fill in, so the registry's copy would be
+    // the literal placeholder and the server would refuse `initialize`.
+    const m = await freshModule();
+    startOptions = { typescript: { typescript: { tsdk: "/proj/s/node_modules/typescript/lib" } } };
+    await m.ensureLspFor("/proj/s/a.ts", "/proj/s");
+    expect(clientConfigs[0].initializationOptions).toEqual({
+      typescript: { tsdk: "/proj/s/node_modules/typescript/lib" },
+    });
+
+    // No options is `undefined`, so the field stays off the wire entirely.
+    await m.ensureLspFor("/proj/s/b.rs", "/proj/s");
+    expect(clientConfigs[1]).toHaveProperty("initializationOptions", undefined);
   });
 });
 
@@ -1591,6 +1615,18 @@ describe("secondary servers", () => {
     expect(diagnostics()["/proj/a/a.ts"]).toBeUndefined();
     expect(diagnosticsIn("file:///proj/a/a.ts", "eslint", r)).toEqual([]);
     expect(m.lspPluginFor("/proj/a/a.ts")).toEqual([]);
+  });
+
+  it("a secondary initializes with the options the backend resolved too", async () => {
+    withEslint();
+    const m = await freshModule();
+    startOptions = { eslint: { typescript: { tsdk: "/bundled/typescript/lib" } } };
+    await m.ensureLspFor("/proj/a/a.ts", "/proj/a");
+    const initialize = sends
+      .filter((s) => s.handle.serverId === "eslint")
+      .map((s) => JSON.parse(s.message) as { method?: string; params?: { initializationOptions?: unknown } })
+      .find((f) => f.method === "initialize");
+    expect(initialize?.params?.initializationOptions).toEqual({ typescript: { tsdk: "/bundled/typescript/lib" } });
   });
 
   async function formatterFor(eslintFeatures: string[]) {

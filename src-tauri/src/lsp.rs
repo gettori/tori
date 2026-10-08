@@ -45,6 +45,17 @@ pub struct LspHandle {
     pub root: String,
 }
 
+/// What `lsp_start` answers: the handle, and this start's
+/// `initializationOptions` with every placeholder resolved for that root. The
+/// frontend sends these rather than the registry's copy, which cannot know a
+/// per-root path.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LspStarted {
+    pub handle: LspHandle,
+    pub initialization_options: Option<serde_json::Value>,
+}
+
 pub struct LspSession {
     child: Child,
     stdin: ChildStdin,
@@ -125,6 +136,88 @@ impl LspState {
         });
         String::from_utf8_lossy(&tail.unwrap_or_default()).into_owned()
     }
+
+    fn note(&self, handle: &LspHandle, line: &str) {
+        let Ok(logs) = self.logs.lock() else { return };
+        let Some(log) = logs.get(handle) else { return };
+        let Ok(mut tail) = log.lock() else { return };
+        tail.extend(line.as_bytes());
+        tail.push_back(b'\n');
+        let over = tail.len().saturating_sub(LOG_CAP);
+        tail.drain(..over);
+    }
+}
+
+const TSDK_PLACEHOLDER: &str = "${tsdk}";
+const BUNDLED_TSDK: &str = "resources/lsp/node_modules/typescript/lib";
+
+/// The `typescript/lib` a Volar-style server should load: the project's own,
+/// walking from the server's root up to the project, else Tori's bundled copy.
+/// The project's wins so the server's type errors agree with the project's
+/// `tsc`; most Astro projects have none, since `astro` does not depend on
+/// `typescript`, which is why the bundled copy is not optional.
+fn tsdk_for(root: &Path, project: &Path, bundled: Option<PathBuf>) -> Option<PathBuf> {
+    // A root outside the project would walk to `/` and could pick up a stray
+    // `~/node_modules/typescript`, so the walk is skipped rather than unbounded.
+    if root.starts_with(project) {
+        let mut dir = Some(root);
+        while let Some(current) = dir {
+            let lib = current.join("node_modules").join("typescript").join("lib");
+            if lib.join("typescript.js").is_file() {
+                return Some(lib);
+            }
+            if current == project {
+                break;
+            }
+            dir = current.parent();
+        }
+    }
+    bundled.filter(|lib| lib.join("typescript.js").is_file())
+}
+
+/// `options` with every `${tsdk}` inside a string replaced by the resolved
+/// `typescript/lib`. A config without the placeholder passes through untouched
+/// and never resolves anything. Returns the path used, for the session log.
+fn resolve_tsdk(
+    options: Option<&serde_json::Value>,
+    root: &Path,
+    project: &Path,
+    bundled: Option<PathBuf>,
+) -> Result<(Option<serde_json::Value>, Option<PathBuf>), String> {
+    fn mentions(value: &serde_json::Value) -> bool {
+        match value {
+            serde_json::Value::String(s) => s.contains(TSDK_PLACEHOLDER),
+            serde_json::Value::Array(items) => items.iter().any(mentions),
+            serde_json::Value::Object(map) => map.values().any(mentions),
+            _ => false,
+        }
+    }
+    fn substitute(value: &serde_json::Value, tsdk: &str) -> serde_json::Value {
+        match value {
+            serde_json::Value::String(s) => serde_json::Value::String(s.replace(TSDK_PLACEHOLDER, tsdk)),
+            serde_json::Value::Array(items) => {
+                serde_json::Value::Array(items.iter().map(|v| substitute(v, tsdk)).collect())
+            }
+            serde_json::Value::Object(map) => {
+                serde_json::Value::Object(map.iter().map(|(k, v)| (k.clone(), substitute(v, tsdk))).collect())
+            }
+            other => other.clone(),
+        }
+    }
+
+    let Some(options) = options else {
+        return Ok((None, None));
+    };
+    if !mentions(options) {
+        return Ok((Some(options.clone()), None));
+    }
+    let tsdk = tsdk_for(root, project, bundled).ok_or_else(|| {
+        format!(
+            "no TypeScript for `{TSDK_PLACEHOLDER}`: this project has no node_modules/typescript and Tori's bundled copy is missing (run `pnpm lsp:install`)"
+        )
+    })?;
+    let resolved = substitute(options, &tsdk.to_string_lossy());
+    Ok((Some(resolved), Some(tsdk)))
 }
 
 /// Locate a bundled server entry: the packaged resource first, then the dev
@@ -311,14 +404,23 @@ pub fn lsp_start(
     file_path: String,
     project_path: String,
     on_message: Channel<String>,
-) -> Result<LspHandle, String> {
+) -> Result<LspStarted, String> {
     let server = registry::find(&server_id).ok_or_else(|| format!("no lsp server registered as `{server_id}`"))?;
-    let root = registry::root_for(server, Path::new(&file_path), Path::new(&project_path));
+    let project = Path::new(&project_path);
+    let root = registry::root_for(server, Path::new(&file_path), project);
     // Before the trust gate, so a missing server fails as missing, not as a trust
     // prompt. No lock: a login-shell lookup is too slow to hold every other send
     // behind, and `install_session` settles two starts that race to one handle.
-    let cmd = command_for(&app, server, &root, Path::new(&project_path))?;
-    crate::trust::gate(server, Path::new(&project_path))?;
+    let cmd = command_for(&app, server, &root, project)?;
+    crate::trust::gate(server, project)?;
+    // After both, so an uninstalled server still fails as `not_installed`.
+    let (initialization_options, tsdk) = resolve_tsdk(
+        server.initialization_options.as_ref(),
+        &root,
+        project,
+        bundled_entry(&app, BUNDLED_TSDK),
+    )
+    .map_err(|e| format!("{}: {e}", server.id))?;
 
     let handle = LspHandle {
         server_id: server_id.clone(),
@@ -326,7 +428,7 @@ pub fn lsp_start(
     };
 
     let exit_handle = handle.clone();
-    start_session(
+    let started = start_session(
         &state,
         &handle,
         cmd,
@@ -339,7 +441,13 @@ pub fn lsp_start(
             }
         },
     )?;
-    Ok(handle)
+    if let (true, Some(tsdk)) = (started, tsdk) {
+        state.note(&handle, &format!("tori: typescript.tsdk = {}", tsdk.display()));
+    }
+    Ok(LspStarted {
+        handle,
+        initialization_options,
+    })
 }
 
 /// Spawn and install a session for `handle`, unless one is already live.
@@ -354,9 +462,9 @@ fn start_session(
     cmd: Command,
     sink: impl Fn(String) + Send + 'static,
     on_eof: impl FnOnce(u64) + Send + 'static,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     if state.sessions.lock().map_err(|e| e.to_string())?.contains_key(handle) {
-        return Ok(());
+        return Ok(false);
     }
 
     let (session, stdout, stderr) = spawn_session(cmd, &handle.root)?;
@@ -365,7 +473,7 @@ fn start_session(
     {
         let mut sessions = state.sessions.lock().map_err(|e| e.to_string())?;
         if !install_session(&mut sessions, handle, session) {
-            return Ok(());
+            return Ok(false);
         }
         state
             .logs
@@ -375,7 +483,7 @@ fn start_session(
     }
     pump_log(stderr, log);
     pump_frames(stdout, sink, move || on_eof(serial));
-    Ok(())
+    Ok(true)
 }
 
 #[tauri::command]
@@ -1104,6 +1212,15 @@ mod tests {
         assert_eq!(json, r#"{"serverId":"typescript","root":"/p"}"#);
         // Round-trips, so the frontend can hand back exactly what it was given.
         assert_eq!(serde_json::from_str::<LspHandle>(&json).unwrap(), handle);
+
+        let started = LspStarted {
+            handle,
+            initialization_options: Some(serde_json::json!({ "typescript": { "tsdk": "/lib" } })),
+        };
+        assert_eq!(
+            serde_json::to_string(&started).unwrap(),
+            r#"{"handle":{"serverId":"typescript","root":"/p"},"initializationOptions":{"typescript":{"tsdk":"/lib"}}}"#
+        );
     }
 
     /// Every command this module defines has to be *registered*, or it does not
@@ -1224,5 +1341,128 @@ mod tests {
         let (primary, secondaries) = registry::resolve(&servers, &file, &project, &disabled);
         assert_eq!(primary.map(|s| s.id.as_str()), Some("typescript"));
         assert!(secondaries.is_empty());
+    }
+
+    // --- `${tsdk}` resolution ---
+
+    fn tsdk_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("tori_lsp_tsdk_{}_{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// A `typescript/lib` with the one file Volar's loader looks for.
+    fn fake_tsdk(under: &Path) -> PathBuf {
+        let lib = under.join("node_modules").join("typescript").join("lib");
+        std::fs::create_dir_all(&lib).unwrap();
+        std::fs::write(lib.join("typescript.js"), "").unwrap();
+        lib
+    }
+
+    fn astro_options() -> serde_json::Value {
+        serde_json::json!({ "typescript": { "tsdk": "${tsdk}" }, "contentIntellisense": false })
+    }
+
+    fn tsdk_in(options: &serde_json::Value) -> &str {
+        options["typescript"]["tsdk"].as_str().unwrap()
+    }
+
+    #[test]
+    fn the_projects_own_typescript_wins_over_the_bundled_copy() {
+        let dir = tsdk_dir("project_wins");
+        let project = dir.join("project");
+        let own = fake_tsdk(&project);
+        let bundled = fake_tsdk(&dir.join("bundled"));
+
+        let (resolved, used) =
+            resolve_tsdk(Some(&astro_options()), &project.join("src"), &project, Some(bundled)).unwrap();
+        assert_eq!(tsdk_in(resolved.as_ref().unwrap()), own.to_string_lossy());
+        assert_eq!(used, Some(own));
+        // Everything beside the placeholder is carried through as written.
+        assert_eq!(resolved.unwrap()["contentIntellisense"], serde_json::Value::Bool(false));
+    }
+
+    #[test]
+    fn without_a_project_typescript_the_bundled_copy_is_used() {
+        let dir = tsdk_dir("bundled");
+        let project = dir.join("project");
+        std::fs::create_dir_all(&project).unwrap();
+        let bundled = fake_tsdk(&dir.join("bundled"));
+
+        let (resolved, used) = resolve_tsdk(Some(&astro_options()), &project, &project, Some(bundled.clone())).unwrap();
+        assert_eq!(tsdk_in(resolved.as_ref().unwrap()), bundled.to_string_lossy());
+        assert_eq!(used, Some(bundled));
+    }
+
+    #[test]
+    fn neither_typescript_is_an_error_naming_the_install_step() {
+        let dir = tsdk_dir("neither");
+        let project = dir.join("project");
+        std::fs::create_dir_all(&project).unwrap();
+        // A bundled directory with no `typescript.js` in it counts as missing.
+        let empty = dir.join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+
+        let err = resolve_tsdk(Some(&astro_options()), &project, &project, Some(empty)).unwrap_err();
+        assert!(err.contains("pnpm lsp:install"), "{err}");
+    }
+
+    #[test]
+    fn a_root_outside_the_project_does_not_walk() {
+        let dir = tsdk_dir("outside");
+        let project = dir.join("project");
+        std::fs::create_dir_all(&project).unwrap();
+        // A typescript above the root that the walk would reach if unbounded.
+        let elsewhere = dir.join("elsewhere");
+        fake_tsdk(&elsewhere);
+        let root = elsewhere.join("deeper");
+        std::fs::create_dir_all(&root).unwrap();
+        let bundled = fake_tsdk(&dir.join("bundled"));
+
+        let (_, used) = resolve_tsdk(Some(&astro_options()), &root, &project, Some(bundled.clone())).unwrap();
+        assert_eq!(used, Some(bundled));
+    }
+
+    #[test]
+    fn options_without_the_placeholder_pass_through_and_resolve_nothing() {
+        let dir = tsdk_dir("passthrough");
+        let options = serde_json::json!({ "preferences": { "importModuleSpecifier": "relative" } });
+        // No typescript anywhere: a config that never asked must not fail.
+        let (resolved, used) = resolve_tsdk(Some(&options), &dir, &dir, None).unwrap();
+        assert_eq!(resolved, Some(options));
+        assert_eq!(used, None);
+
+        let (resolved, used) = resolve_tsdk(None, &dir, &dir, None).unwrap();
+        assert_eq!((resolved, used), (None, None));
+    }
+
+    /// The placeholder the doc's schema block shows is the one the resolver
+    /// fills, so the two cannot drift apart.
+    #[test]
+    fn the_documented_tsdk_placeholder_resolves() {
+        let doc = include_str!("../../docs/LSP-SERVERS.md");
+        let after = doc
+            .split("\n## Schema\n")
+            .nth(1)
+            .expect("the doc must have a Schema section");
+        let start = after
+            .find("```toml")
+            .expect("the Schema section must show a toml block")
+            + 7;
+        let block = &after[start..][..after[start..].find("```").expect("unterminated toml block")];
+        let server = registry::load_server_str(block, "LSP-SERVERS.md schema").unwrap();
+
+        let dir = tsdk_dir("documented");
+        let bundled = fake_tsdk(&dir.join("bundled"));
+        let (resolved, used) = resolve_tsdk(
+            server.initialization_options.as_ref(),
+            &dir,
+            &dir,
+            Some(bundled.clone()),
+        )
+        .unwrap();
+        assert_eq!(used, Some(bundled.clone()));
+        assert_eq!(tsdk_in(resolved.as_ref().unwrap()), bundled.to_string_lossy());
     }
 }
