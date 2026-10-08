@@ -61,6 +61,7 @@ function list(
     agentTurn?: (turnId: string) => boolean;
     onRewind?: (promptTs: number) => void;
     collapseWork?: boolean;
+    showSecrets?: boolean;
   } = {},
 ) {
   return (
@@ -990,6 +991,13 @@ describe("agent work collapsed into a card", () => {
     fireEvent.click(screen.getByRole("button", { name: "1 tool call" }));
     expect(screen.getByRole("img", { name: "Secret file" })).toBeTruthy();
     await expectNoAxeViolations(container);
+  });
+
+  it("shows no mark at all with secret watch switched off", () => {
+    const secret = { paths: ["/repo/.env"], strength: "read" as const };
+    render(() => list({ items: [PROMPT, call("a", { secret }), REPLY], collapseWork: false, showSecrets: false }));
+    expect(screen.queryByText("Read a secret file")).toBeNull();
+    expect(screen.queryByRole("img", { name: "Secret file" })).toBeNull();
   });
 
   it("makes the weaker claim when a command only named a secret", () => {
