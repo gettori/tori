@@ -1397,6 +1397,10 @@ pub enum ChatEvent {
         /// one.
         #[serde(default)]
         patch: Vec<PatchHunk>,
+        /// Files this call changed without the session having seen them first.
+        /// Filled where events leave Rust, never by an adapter.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        blind_edits: Vec<String>,
     },
 
     /// A file was written, with the before-state addressed by content hash so
@@ -2012,6 +2016,7 @@ mod tests {
                     new_lines: 4,
                     lines: vec![" ctx".into(), "-was".into(), "+is".into(), "+and".into(), " ctx".into()],
                 }],
+                blind_edits: vec!["/tmp/w/probe.txt".into()],
             },
             ChatEvent::FileEdit {
                 session_id: "s1".into(),
@@ -2432,6 +2437,21 @@ mod tests {
         match serde_json::from_value::<ChatEvent>(old).unwrap() {
             ChatEvent::ToolCallStarted { secret, .. } => assert_eq!(secret, None),
             other => panic!("expected a tool call, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_completion_saved_before_blind_edits_reads_back_unmarked() {
+        let old = serde_json::json!({
+            "type": "toolCallCompleted",
+            "sessionId": "s1",
+            "turnId": "t1",
+            "toolUseId": "toolu_1",
+            "status": "ok",
+        });
+        match serde_json::from_value::<ChatEvent>(old).unwrap() {
+            ChatEvent::ToolCallCompleted { blind_edits, .. } => assert!(blind_edits.is_empty()),
+            other => panic!("expected a completion, got {other:?}"),
         }
     }
 

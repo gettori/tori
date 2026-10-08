@@ -389,7 +389,8 @@ button.promptChip {
   font-size: calc(var(--chat-font-size) - 2px);
 }
 
-.turnSecret {
+.turnSecret,
+.turnBlindEdit {
   display: inline-flex;
   align-items: center;
   align-self: flex-start;
@@ -1003,7 +1004,8 @@ button.promptChip {
   border-color: var(--attention-emphasis);
 }
 
-.toolSecretKey {
+.toolSecretKey,
+.toolBlindEdit {
   display: inline-flex;
   color: var(--attention-fg);
 }

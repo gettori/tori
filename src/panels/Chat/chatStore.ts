@@ -172,6 +172,8 @@ export type ToolItem = {
   edits: ChatFileEdit[];
   /** Secret files the call read or named, gathered across its emissions. */
   secret: SecretHit | null;
+  /** Files the call changed without the session having seen them first. */
+  blindEdits: string[];
 };
 
 /** One hook frame, as a transcript row.
@@ -781,6 +783,16 @@ export function mergeSecret(a: SecretHit | null, b: SecretHit): SecretHit {
   };
 }
 
+/** Each turn's blind edits, folded from its tool cards. */
+export function turnBlindEdits(items: readonly ChatItem[]): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const it of items) {
+    if (it.kind !== "tool" || !it.blindEdits.length || !it.turnId) continue;
+    out.set(it.turnId, [...new Set([...(out.get(it.turnId) ?? []), ...it.blindEdits])].sort());
+  }
+  return out;
+}
+
 /** Each turn's secret reads, folded from its tool cards. */
 export function turnSecrets(items: readonly ChatItem[]): Map<string, SecretHit> {
   const out = new Map<string, SecretHit>();
@@ -819,6 +831,7 @@ function ensureTool(s: ChatState, toolUseId: string, turnId: string | null): Too
     durationMs: null,
     edits: [],
     secret: null,
+    blindEdits: [],
   };
   s.toolIndex[toolUseId] = s.items.length;
   push(s, card);
@@ -1508,6 +1521,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       card.patch = ev.patch;
       card.files = ev.files;
       card.durationMs = ev.durationMs;
+      card.blindEdits = ev.blindEdits ?? [];
       return;
     }
     case "fileEdit": {

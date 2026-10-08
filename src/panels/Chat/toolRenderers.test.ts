@@ -35,6 +35,7 @@ const card = (over: Partial<ToolItem> = {}): ToolItem => ({
   durationMs: null,
   edits: [],
   secret: null,
+  blindEdits: [],
   ...over,
 });
 

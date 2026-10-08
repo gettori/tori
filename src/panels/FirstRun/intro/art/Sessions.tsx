@@ -95,6 +95,7 @@ function tool(
     durationMs: running ? null : 900,
     edits: [],
     secret: null,
+    blindEdits: [],
   };
 }
 
