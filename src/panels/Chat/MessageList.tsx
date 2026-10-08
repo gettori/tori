@@ -326,6 +326,8 @@ export default function MessageList(props: {
   /** Draw each run of thinking, calls, hooks and answered questions as a one
    *  line card, so the transcript reads as prompts and replies. */
   collapseWork?: boolean;
+  /** Off hides the secret marks a session's calls already carry. */
+  showSecrets?: boolean;
 }) {
   const [limit, setLimit] = createSignal(WINDOW_STEP);
   // Read once, deliberately: whether this list opens pinned to the bottom is an
@@ -422,7 +424,7 @@ export default function MessageList(props: {
 
   // Said at the head of the turn, not only on the card that made the read: a
   // card can sit folded inside a run of calls nobody opens.
-  const secrets = createMemo(() => turnSecrets(props.items));
+  const secrets = createMemo(() => (props.showSecrets === false ? new Map() : turnSecrets(props.items)));
 
   // Zero height: it exists to carry the turn id, not to take up room. The
   // negative bottom margin cancels the flex gap it would otherwise open.
@@ -752,6 +754,7 @@ export default function MessageList(props: {
             <TurnAnchor itemId={it().id} off={p.unanchored} />
             <ToolCallCard
               card={it()}
+              showSecret={props.showSecrets !== false}
               also={folded().followers.get(it().id) ?? []}
               sessionId={props.sessionId}
               cwd={props.cwd}

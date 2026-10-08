@@ -29,6 +29,14 @@ let turnFiles: { path: string; status: string }[] = [];
 let sinceFiles: { path: string; status: string }[] | null = null;
 // Who else is writing in this folder, as `folderActors` reports it.
 let live: { sessionId: string; sessionName: string; folderPath: string; status: string }[] = [];
+// What `session_secrets` answers for s1, which the store below knows the path of.
+let secretTurns: { promptTs: number | null; paths: string[]; strength: string }[] = [];
+
+vi.mock("../../utils/sessionStore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../utils/sessionStore")>()),
+  findSession: (id: string) =>
+    id === "s1" ? { folder: "/proj", session: { id, path: "/t/s1.jsonl", agent: "claude", cwd: "/proj" } } : null,
+}));
 
 vi.mock("../../utils/sessionActivity", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../utils/sessionActivity")>()),
@@ -47,6 +55,8 @@ vi.mock("@tauri-apps/api/core", () => ({
         turnFileArgs.push(asked);
         return Promise.resolve(asked.cumulative ? (sinceFiles ?? turnFiles) : turnFiles);
       }
+      case "session_secrets":
+        return Promise.resolve(secretTurns);
       case "backstop_restore_tree":
         restoreArgs.push(args);
         return Promise.resolve({ restored: ["src/a.ts"], deleted: [] });
@@ -73,6 +83,7 @@ beforeEach(() => {
   checkpoints = [];
   turnFiles = [];
   sinceFiles = null;
+  secretTurns = [];
 });
 
 const restoreButton = () => screen.findByText(`Restore tree to ${checkpointClock(1_700_000_000)}`);
@@ -176,6 +187,23 @@ describe("the checkpoints, to axe", () => {
     fireEvent.click(await screen.findByText("Untitled turn", { selector: "span" }));
     await screen.findByText("a.ts");
 
+    await expectNoAxeViolations(document.body);
+  });
+});
+
+describe("a turn that read a secret", () => {
+  it("wears the key on its own row and on no other", async () => {
+    checkpoints = [
+      { prompt_ts: 1_700_000_100, kind: "", file_count: 1, bytes: 40 },
+      { prompt_ts: 1_700_000_500, kind: "", file_count: 1, bytes: 40 },
+    ];
+    // Ten seconds off the checkpoint, inside the drift a prompt is joined by.
+    secretTurns = [{ promptTs: 1_700_000_110, paths: [".env"], strength: "named" }];
+    render(() => <CheckpointTimeline root="/proj" sessionId="s1" folderPath="/proj" />);
+
+    const key = await screen.findByRole("img", { name: "A command named a secret file" });
+    expect(key.closest("button")?.textContent).toContain(checkpointClock(1_700_000_100));
+    expect(screen.getAllByRole("img", { name: /secret file/ })).toHaveLength(1);
     await expectNoAxeViolations(document.body);
   });
 });

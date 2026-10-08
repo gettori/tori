@@ -966,30 +966,40 @@ pub struct Settings {
     /// Keyed by project path, same shape and same reason as `chat`.
     #[serde(default)]
     pub worktree: std::collections::HashMap<String, WorktreePrefs>,
-    #[serde(default, deserialize_with = "secret_watch")]
+    #[serde(default, deserialize_with = "lenient_secret_watch")]
     pub secret_watch: SecretWatch,
 }
 
-/// Additions to the secret watch list. Edited by hand only, so it is the key
-/// most likely to be malformed, and `set_settings` keeps the file's copy since
-/// the panel never holds one.
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+/// Whether secret reads are marked, and additions to the list. The patterns
+/// are edited by hand only, so they are the part most likely to be malformed,
+/// and `set_settings` keeps the file's copy since the panel never holds one.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SecretWatch {
-    #[serde(default)]
+    pub enabled: bool,
     pub patterns: Vec<String>,
+}
+
+impl Default for SecretWatch {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            patterns: Vec::new(),
+        }
+    }
 }
 
 // Any shape but a list of strings reads as no additions: `load_from` has no
 // per-section recovery, so a strict parse here would reset every other setting.
-fn secret_watch<'de, D: serde::Deserializer<'de>>(d: D) -> Result<SecretWatch, D::Error> {
+fn lenient_secret_watch<'de, D: serde::Deserializer<'de>>(d: D) -> Result<SecretWatch, D::Error> {
     let raw = serde_json::Value::deserialize(d)?;
     let patterns = raw
         .get("patterns")
         .and_then(|p| p.as_array())
         .map(|list| list.iter().filter_map(|p| p.as_str().map(str::to_string)).collect())
         .unwrap_or_default();
-    Ok(SecretWatch { patterns })
+    let enabled = raw.get("enabled").and_then(|e| e.as_bool()).unwrap_or(true);
+    Ok(SecretWatch { enabled, patterns })
 }
 
 /// What a project does to a worktree Tori has just created for it.
@@ -1167,11 +1177,11 @@ fn keep_rust_owned(settings: &mut Settings, on_disk: Settings) {
     settings.forge.picks = on_disk.forge.picks;
     settings.autopilot.enabled = on_disk.autopilot.enabled;
     settings.remote = on_disk.remote;
-    settings.secret_watch = on_disk.secret_watch;
+    settings.secret_watch.patterns = on_disk.secret_watch.patterns;
 }
 
-pub fn secret_patterns() -> Vec<String> {
-    load_from(&settings_path()).secret_watch.patterns
+pub fn secret_watch() -> SecretWatch {
+    load_from(&settings_path()).secret_watch
 }
 
 /// When settings.json last changed, `None` while it does not exist.
@@ -2388,12 +2398,27 @@ mod tests {
         let mut stale = Settings::default();
         let on_disk = Settings {
             secret_watch: SecretWatch {
+                enabled: true,
                 patterns: vec!["*.secret".into()],
             },
             ..Settings::default()
         };
+        stale.secret_watch.enabled = false;
         keep_rust_owned(&mut stale, on_disk);
         assert_eq!(stale.secret_watch.patterns, vec!["*.secret".to_string()]);
+        assert!(!stale.secret_watch.enabled, "the switch is the panel's to set");
+    }
+
+    #[test]
+    fn secret_watch_is_on_unless_the_file_says_off() {
+        let p = tmp_file();
+        std::fs::write(&p, "{}").unwrap();
+        assert!(load_from(&p).secret_watch.enabled);
+        std::fs::write(&p, r#"{"secretWatch":{"patterns":["*.secret"]}}"#).unwrap();
+        assert!(load_from(&p).secret_watch.enabled);
+        std::fs::write(&p, r#"{"secretWatch":{"enabled":false}}"#).unwrap();
+        assert!(!load_from(&p).secret_watch.enabled);
+        std::fs::remove_file(&p).ok();
     }
 
     #[test]

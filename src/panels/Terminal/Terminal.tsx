@@ -2,6 +2,7 @@ import { createSignal, createEffect, createMemo, on, onCleanup, onMount, untrack
 import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { sessionSecret, watchSecrets } from "../../utils/secretReads";
 import TerminalView, { type PtyExit } from "./TerminalView";
 import ChatView from "../Chat/ChatView";
 import ChatDraft from "../Chat/ChatDraft";
@@ -2330,6 +2331,20 @@ export default function Terminal(props: {
     return t.sessionId ? sessionStatus(t.sessionId) : null;
   }
 
+  // A session running with no tab is live too, and the History dropdown lists
+  // it among the open ones.
+  watchSecrets(() => {
+    const tabbed = open()
+      .filter((t) => marksSession(t) && t.sessionId && tabState(t) === "live")
+      .map((t) => ({ id: t.sessionId!, agent: t.program, cwd: t.cwd, status: tabStatus(t) as string | null }));
+    const seen = new Set(tabbed.map((t) => t.id));
+    const detached = Object.values(sessions())
+      .flat()
+      .filter((s) => !seen.has(s.id) && sessionStatus(s.id) !== "none" && seen.add(s.id))
+      .map((s) => ({ id: s.id, agent: s.agent ?? "claude", cwd: s.cwd, status: sessionStatus(s.id) as string | null }));
+    return [...tabbed, ...detached];
+  });
+
   /** On which tier. A chat's own event stream states its status outright; a PTY
    *  agent tab's is composed from a pgrep probe, PTY quiet and a transcript
    *  tail, which is the same answer the sidebar has always shown for it. */
@@ -2712,7 +2727,13 @@ export default function Terminal(props: {
     icon: (u) => {
       const t = asTerm(u);
       const mark = marksSession(t) ? (
-        <TabMark agentId={t.program} status={tabStatus(t)} certainty={tabCertainty(t)} background={chatBackground(t)} />
+        <TabMark
+          agentId={t.program}
+          status={tabStatus(t)}
+          certainty={tabCertainty(t)}
+          background={chatBackground(t)}
+          secret={t.sessionId ? sessionSecret(t.sessionId) : null}
+        />
       ) : (
         <Icon icon={KIND_GLYPHS[t.kind]} />
       );

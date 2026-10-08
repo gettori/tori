@@ -337,6 +337,9 @@ export type Settings = {
   remote: { enabled: boolean; address: string | null; port: number };
   /** Mirrors `WorktreePrefs` in src-tauri/src/settings.rs, keyed by project path. */
   worktree: Record<string, WorktreePrefs>;
+  /** Mirrors `SecretWatch` in src-tauri/src/settings.rs. `patterns` is edited in
+   *  the file only; a save from here keeps whatever the file says. */
+  secretWatch: { enabled: boolean; patterns: string[] };
 };
 
 /** What a project runs in a worktree Tori has just created. An empty command
@@ -454,6 +457,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   remote: { enabled: false, address: null, port: 47821 },
   worktree: {},
+  secretWatch: { enabled: true, patterns: [] },
 };
 
 /**
