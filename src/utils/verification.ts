@@ -1,4 +1,6 @@
+import { invoke } from "@tauri-apps/api/core";
 import { formatDuration } from "../panels/Chat/toolRenderers";
+import { saveSettings, settings } from "../panels/Settings/settingsStore";
 import type { Check, Verdict } from "./chatTypes";
 import { turnWatch } from "./turnWatch";
 
@@ -53,3 +55,17 @@ export function sessionVerdict(sessionId: string): Verdict | null {
 export const watchVerification = verified.watch;
 
 export const resetVerificationForTests = verified.reset;
+
+/** The commands that count as a check in a project, as written: its own list,
+ *  else the built-in one. */
+export const projectChecks = (projectPath: string) =>
+  invoke<string[]>("verification_commands", { project: projectPath });
+
+/** Replace the commands that count as a check in one project. None returns it
+ *  to the built-in list. */
+export function setProjectChecks(projectPath: string, commands: string[]): Promise<void> {
+  const next = { ...settings.verification.commands };
+  if (commands.length) next[projectPath] = commands;
+  else delete next[projectPath];
+  return saveSettings({ ...settings, verification: { ...settings.verification, commands: next } });
+}

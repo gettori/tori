@@ -6,8 +6,8 @@
 //! and a turn resting on one of those reads unverified, never verified.
 
 use std::collections::HashMap;
-use std::path::Path;
-use std::sync::Mutex;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime};
 
 use serde::Serialize;
@@ -63,8 +63,43 @@ pub const DEFAULTS: &[&str] = &[
     "swift test",
 ];
 
-pub fn entries_for(_cwd: Option<&Path>) -> Vec<Vec<String>> {
-    parse_entries(DEFAULTS.iter().copied())
+/// The check list for a session in `cwd`: the list of the deepest project
+/// holding it, else the defaults. A worktree sits under its project's path, so
+/// it finds the project's list.
+pub fn entries_for(cwd: Option<&Path>) -> Vec<Vec<String>> {
+    match cwd {
+        Some(cwd) => entries_in(&settings().commands, cwd),
+        None => parse_entries(DEFAULTS.iter().copied()),
+    }
+}
+
+pub(crate) fn entries_in(commands: &HashMap<String, Vec<String>>, cwd: &Path) -> Vec<Vec<String>> {
+    match project_list(commands, cwd) {
+        Some(list) => parse_entries(list.iter().map(String::as_str)),
+        None => parse_entries(DEFAULTS.iter().copied()),
+    }
+}
+
+/// The commands that count as a check in `project`, as written, for the
+/// project dialog to start from.
+#[tauri::command]
+pub async fn verification_commands(project: String) -> Vec<String> {
+    crate::exec::blocking("verification_commands", move || {
+        let settings = settings();
+        match project_list(&settings.commands, Path::new(&project)) {
+            Some(list) => list.to_vec(),
+            None => DEFAULTS.iter().map(|c| c.to_string()).collect(),
+        }
+    })
+    .await
+}
+
+fn project_list<'a>(commands: &'a HashMap<String, Vec<String>>, cwd: &Path) -> Option<&'a [String]> {
+    commands
+        .iter()
+        .filter(|(path, list)| !list.is_empty() && cwd.starts_with(path))
+        .max_by_key(|(path, _)| Path::new(path).components().count())
+        .map(|(_, list)| list.as_slice())
 }
 
 fn parse_entries<'a>(list: impl IntoIterator<Item = &'a str>) -> Vec<Vec<String>> {
@@ -75,17 +110,21 @@ fn parse_entries<'a>(list: impl IntoIterator<Item = &'a str>) -> Vec<Vec<String>
 }
 
 pub fn enabled() -> bool {
-    static CACHE: Mutex<Option<(Option<SystemTime>, bool)>> = Mutex::new(None);
+    settings().enabled
+}
+
+fn settings() -> Arc<crate::settings::Verification> {
+    static CACHE: Mutex<Option<(Option<SystemTime>, Arc<crate::settings::Verification>)>> = Mutex::new(None);
     let stamp = crate::settings::modified();
     let mut cache = CACHE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    if let Some((at, on)) = *cache {
-        if at == stamp {
-            return on;
+    if let Some((at, settings)) = &*cache {
+        if *at == stamp {
+            return settings.clone();
         }
     }
-    let on = crate::settings::verification().enabled;
-    *cache = Some((stamp, on));
-    on
+    let settings = Arc::new(crate::settings::verification());
+    *cache = Some((stamp, settings.clone()));
+    settings
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -598,6 +637,7 @@ fn verification_event(session_id: &str, turn_id: &str, turn: &Turn) -> Option<Ch
 /// One live session's turns, fed every event in order. Returns the
 /// `TurnVerification` to send ahead of a `TurnCompleted`.
 pub struct Tracker {
+    cwd: Option<PathBuf>,
     entries: Vec<Vec<String>>,
     turns: HashMap<String, Turn>,
     // The first answer per turn. An ACP load replays the conversation through
@@ -609,6 +649,7 @@ pub struct Tracker {
 impl Tracker {
     pub fn new(cwd: Option<&Path>) -> Self {
         Self {
+            cwd: cwd.map(Path::to_path_buf),
             entries: entries_for(cwd),
             turns: HashMap::new(),
             verdicts: HashMap::new(),
@@ -620,6 +661,11 @@ impl Tracker {
             ChatEvent::ToolCallStarted { turn_id, .. }
             | ChatEvent::FileEdit { turn_id, .. }
             | ChatEvent::ToolCallCompleted { turn_id, .. } => {
+                // Read once per turn, so a list saved mid-session applies from
+                // the next turn without the current one changing its rules.
+                if !self.turns.contains_key(turn_id) {
+                    self.entries = entries_for(self.cwd.as_deref());
+                }
                 self.turns
                     .entry(turn_id.clone())
                     .or_default()
@@ -766,8 +812,7 @@ pub struct VerifiedTurn {
 /// Fold a conversation into one entry per turn that changed code, oldest
 /// first. `prompts` pairs each prompt's timestamp with the index of its first
 /// event; with none, calls are grouped by the turn id they carry instead.
-pub fn session_turns(events: &[ChatEvent], prompts: &[(u64, usize)], cwd: Option<&Path>) -> Vec<VerifiedTurn> {
-    let entries = entries_for(cwd);
+pub fn session_turns(events: &[ChatEvent], prompts: &[(u64, usize)], entries: &[Vec<String>]) -> Vec<VerifiedTurn> {
     let measured = measured(events);
     let mut turns: Vec<(String, Option<u64>, Turn)> = Vec::new();
     for (at, event) in events.iter().enumerate() {
@@ -790,7 +835,7 @@ pub fn session_turns(events: &[ChatEvent], prompts: &[(u64, usize)], cwd: Option
                 turns.len() - 1
             }
         };
-        turns[at].2.observe(event, None, &entries);
+        turns[at].2.observe(event, None, entries);
     }
     turns
         .into_iter()
@@ -848,6 +893,39 @@ mod tests {
         for line in ["echo cargo test", "ls -la", "git status", "cat Cargo.toml", "rg cargo"] {
             assert!(!is_check(line), "{line}");
         }
+    }
+
+    #[test]
+    fn a_projects_list_reaches_its_worktrees_and_nothing_beside_it() {
+        let commands = HashMap::from([
+            ("/work/app".to_string(), vec!["just ci".to_string()]),
+            ("/work/app/vendor/lib".to_string(), vec!["make verify".to_string()]),
+            ("/work/empty".to_string(), Vec::new()),
+        ]);
+        let list = |cwd: &str| entries_in(&commands, Path::new(cwd));
+        let app = vec![vec!["just".to_string(), "ci".to_string()]];
+        assert_eq!(list("/work/app"), app);
+        assert_eq!(
+            list("/work/app/feature-x"),
+            app,
+            "a sibling worktree under the container"
+        );
+        assert_eq!(
+            list("/work/app/.tori/worktrees/x"),
+            app,
+            "a worktree Tori made inside the repo"
+        );
+        assert_eq!(
+            list("/work/app/vendor/lib/src"),
+            vec![vec!["make".to_string(), "verify".to_string()]]
+        );
+        assert_eq!(
+            list("/work/app-other"),
+            defaults(),
+            "a path that only shares a prefix string"
+        );
+        assert_eq!(list("/elsewhere"), defaults());
+        assert_eq!(list("/work/empty"), defaults(), "an empty list is no entry");
     }
 
     #[test]

@@ -1401,8 +1401,8 @@ pub async fn session_verification(
             return turns;
         }
         let parsed = marked_history(&session_id, &source, &agent_id, &path);
-        let cwd = cwd.as_deref().map(std::path::Path::new);
-        let turns = crate::verification::session_turns(&parsed.events, &parsed.prompts, cwd);
+        let entries = crate::verification::entries_for(cwd.as_deref().map(std::path::Path::new));
+        let turns = crate::verification::session_turns(&parsed.events, &parsed.prompts, &entries);
         cache().put(&key, stamp, turns.clone());
         turns
     })
@@ -2305,7 +2305,7 @@ mod verification_tests {
 
     fn turns_of(path: &str) -> Vec<crate::verification::VerifiedTurn> {
         let (events, prompts) = read_with_prompts("s1", &HistorySource::Transcript(path.into()), "claude");
-        crate::verification::session_turns(&events, &prompts, None)
+        crate::verification::session_turns(&events, &prompts, &crate::verification::entries_for(None))
     }
 
     #[test]
@@ -2366,8 +2366,24 @@ mod verification_tests {
             ),
             done("c2", "t2"),
         ];
-        let turns = crate::verification::session_turns(&events, &[], None);
+        let turns = crate::verification::session_turns(&events, &[], &crate::verification::entries_for(None));
         let verdicts: Vec<_> = turns.iter().map(|t| (t.prompt_ts, t.verdict)).collect();
         assert_eq!(verdicts, vec![(None, Verdict::Unverified), (None, Verdict::Verified)]);
+    }
+
+    #[test]
+    fn a_worktree_session_is_checked_against_its_projects_list() {
+        let (events, prompts) = read_with_prompts(
+            "s1",
+            &HistorySource::Transcript(session("project", &bash("just ci", false, "ok"))),
+            "claude",
+        );
+        let verdict =
+            |entries: &[Vec<String>]| crate::verification::session_turns(&events, &prompts, entries)[0].verdict;
+        assert_eq!(verdict(&crate::verification::entries_for(None)), Verdict::Unverified);
+
+        let commands = std::collections::HashMap::from([("/work/app".to_string(), vec!["just ci".to_string()])]);
+        let worktree = crate::verification::entries_in(&commands, std::path::Path::new("/work/app/.tori/worktrees/x"));
+        assert_eq!(verdict(&worktree), Verdict::Verified);
     }
 }
