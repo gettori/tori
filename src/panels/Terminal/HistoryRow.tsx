@@ -3,6 +3,7 @@ import ContextMenu from "../../components/Menu/ContextMenu";
 import { type MenuItem } from "../../components/Menu/rows";
 import type { SessionStatus } from "../../utils/sessionStatus";
 import type { StatusCertainty } from "../../utils/sessionStatus";
+import type { Verdict } from "../../utils/chatTypes";
 import TabMark from "./TabMark";
 import styles from "./HistoryPanel.module.css";
 
@@ -14,6 +15,7 @@ export default function HistoryRow(props: {
   status: SessionStatus | null;
   certainty?: StatusCertainty;
   secret?: "read" | "named" | null;
+  verdict?: Verdict | null;
   /** Which account, only when there is a second one to tell it from. */
   profile?: string | null;
   /** Relative last activity, e.g. "3m". */
@@ -48,7 +50,13 @@ export default function HistoryRow(props: {
           rather than the sidebar's four-glyph one: these rows are scanned, and
           a row that changes shape when a session merely goes quiet pulls the
           eye to the wrong one. */}
-      <TabMark agentId={props.agentId} status={props.status} certainty={props.certainty} secret={props.secret} />
+      <TabMark
+        agentId={props.agentId}
+        status={props.status}
+        certainty={props.certainty}
+        secret={props.secret}
+        verdict={props.verdict}
+      />
       {props.lead}
       <span class={styles.rowLabel}>{props.label}</span>
       {/* The backend sends a label only when there is a second account to tell

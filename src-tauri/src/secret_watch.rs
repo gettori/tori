@@ -316,22 +316,29 @@ pub fn secret_turns(
 /// Per-session results, kept while neither the history nor the settings file
 /// has moved. Both are part of the key: a pattern added in settings changes the
 /// answer for a transcript that did not change at all.
-#[derive(Default)]
-pub struct TurnCache {
-    entries: HashMap<String, (Stamp, Vec<SecretTurn>)>,
+pub struct TurnCache<T = SecretTurn> {
+    entries: HashMap<String, (Stamp, Vec<T>)>,
+}
+
+impl<T> Default for TurnCache<T> {
+    fn default() -> Self {
+        Self {
+            entries: HashMap::new(),
+        }
+    }
 }
 
 pub type Stamp = (Option<SystemTime>, Option<SystemTime>);
 
 const TURN_CACHE_CAP: usize = 256;
 
-impl TurnCache {
-    pub fn get(&self, session_id: &str, stamp: Stamp) -> Option<Vec<SecretTurn>> {
+impl<T: Clone> TurnCache<T> {
+    pub fn get(&self, session_id: &str, stamp: Stamp) -> Option<Vec<T>> {
         let (at, turns) = self.entries.get(session_id)?;
         (*at == stamp).then(|| turns.clone())
     }
 
-    pub fn put(&mut self, session_id: &str, stamp: Stamp, turns: Vec<SecretTurn>) {
+    pub fn put(&mut self, session_id: &str, stamp: Stamp, turns: Vec<T>) {
         if self.entries.len() >= TURN_CACHE_CAP {
             self.entries.clear();
         }

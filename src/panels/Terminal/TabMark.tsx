@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { KeyRound } from "lucide-solid";
+import { Check, CircleDashed, KeyRound, X } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import { providerIcon, providerMarkKey } from "../../components/Icon/ProviderIcon";
 import agentStyles from "../../components/Icon/agentMarks.module.css";
@@ -11,7 +11,11 @@ import {
   type SessionStatus,
 } from "../../utils/sessionStatus";
 import type { StatusCertainty } from "../../utils/sessionStatus";
+import type { Verdict } from "../../utils/chatTypes";
+import { VERDICT_LABEL } from "../../utils/verification";
 import styles from "./TabMark.module.css";
+
+const VERDICT_GLYPH = { verified: Check, failed: X, unverified: CircleDashed } as const;
 
 /**
  * A session's leading glyph: whose agent it is, and what it is doing. Worn by
@@ -53,6 +57,8 @@ export default function TabMark(props: {
   background?: { agents: number; tasks: number };
   /** Whether the session read a secret file, or a command named one. */
   secret?: "read" | "named" | null;
+  /** The verdict of the session's latest turn that changed code. */
+  verdict?: Verdict | null;
 }) {
   const working = () => props.status !== null && isWorking(props.status);
   // Whose logo this ended up being, for the tint. Resolved rather than assumed
@@ -74,7 +80,10 @@ export default function TabMark(props: {
 
   const secretLabel = () =>
     props.secret === "read" ? "Read a secret file" : props.secret === "named" ? "A command named a secret file" : null;
-  const title = () => [shown()?.title, secretLabel()].filter(Boolean).join("\n") || undefined;
+  const verdictLabel = () => (props.verdict ? VERDICT_LABEL[props.verdict] : null);
+  // Verified is the quiet one: a healthy session should not ask for a look.
+  const verdictNews = () => props.verdict === "failed" || props.verdict === "unverified";
+  const title = () => [shown()?.title, secretLabel(), verdictLabel()].filter(Boolean).join("\n") || undefined;
 
   return (
     <span
@@ -97,7 +106,7 @@ export default function TabMark(props: {
       // Only the states worth interrupting a screen reader for. Idle is the
       // absence of news, and every tab announcing "Idle" would bury the one
       // that is asking for something. A secret read is news at any status.
-      aria-label={working() || needsYou() || secretLabel() ? title() : undefined}
+      aria-label={working() || needsYou() || secretLabel() || verdictNews() ? title() : undefined}
     >
       <Icon icon={providerIcon(null, props.agentId)} size={13} />
       <Show when={needsYou()}>
@@ -107,6 +116,13 @@ export default function TabMark(props: {
         <span class={styles.secret} aria-hidden="true">
           <Icon icon={KeyRound} size={8} />
         </span>
+      </Show>
+      <Show when={props.verdict}>
+        {(verdict) => (
+          <span class={styles.verdict} data-verdict={verdict()} aria-hidden="true">
+            <Icon icon={VERDICT_GLYPH[verdict()]} size={8} />
+          </span>
+        )}
       </Show>
     </span>
   );

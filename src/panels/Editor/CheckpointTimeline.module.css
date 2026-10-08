@@ -71,14 +71,23 @@
   background: var(--brand-subtle);
 }
 
-.row.active .rowSecret {
+.row.active .rowTime {
+  color: var(--brand-default);
+}
+
+.rowSecret,
+.rowVerdict {
   display: inline-flex;
   flex: none;
   color: var(--attention-fg);
 }
 
-.rowTime {
-  color: var(--brand-default);
+.rowVerdict[data-verdict="verified"] {
+  color: var(--success-fg);
+}
+
+.rowVerdict[data-verdict="failed"] {
+  color: var(--danger-fg);
 }
 
 .rowTime {

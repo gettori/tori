@@ -31,6 +31,7 @@ let sinceFiles: { path: string; status: string }[] | null = null;
 let live: { sessionId: string; sessionName: string; folderPath: string; status: string }[] = [];
 // What `session_secrets` answers for s1, which the store below knows the path of.
 let secretTurns: { promptTs: number | null; paths: string[]; strength: string }[] = [];
+let verifiedTurns: { promptTs: number | null; verdict: string; checks: unknown[] }[] = [];
 
 vi.mock("../../utils/sessionStore", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../utils/sessionStore")>()),
@@ -57,6 +58,8 @@ vi.mock("@tauri-apps/api/core", () => ({
       }
       case "session_secrets":
         return Promise.resolve(secretTurns);
+      case "session_verification":
+        return Promise.resolve(verifiedTurns);
       case "backstop_restore_tree":
         restoreArgs.push(args);
         return Promise.resolve({ restored: ["src/a.ts"], deleted: [] });
@@ -84,6 +87,7 @@ beforeEach(() => {
   turnFiles = [];
   sinceFiles = null;
   secretTurns = [];
+  verifiedTurns = [];
 });
 
 const restoreButton = () => screen.findByText(`Restore tree to ${checkpointClock(1_700_000_000)}`);
@@ -204,6 +208,31 @@ describe("a turn that read a secret", () => {
     const key = await screen.findByRole("img", { name: "A command named a secret file" });
     expect(key.closest("button")?.textContent).toContain(checkpointClock(1_700_000_100));
     expect(screen.getAllByRole("img", { name: /secret file/ })).toHaveLength(1);
+    await expectNoAxeViolations(document.body);
+  });
+});
+
+describe("a turn that changed code", () => {
+  it("says on its own row whether it was verified, failed or unverified", async () => {
+    checkpoints = [
+      { prompt_ts: 1_700_000_100, kind: "", file_count: 1, bytes: 40 },
+      { prompt_ts: 1_700_000_500, kind: "", file_count: 1, bytes: 40 },
+      { prompt_ts: 1_700_000_900, kind: "", file_count: 1, bytes: 40 },
+      { prompt_ts: 1_700_001_300, kind: "", file_count: 1, bytes: 40 },
+    ];
+    verifiedTurns = [
+      { promptTs: 1_700_000_105, verdict: "verified", checks: [] },
+      { promptTs: 1_700_000_500, verdict: "failed", checks: [] },
+      { promptTs: 1_700_000_890, verdict: "unverified", checks: [] },
+    ];
+    render(() => <CheckpointTimeline root="/proj" sessionId="s1" folderPath="/proj" />);
+
+    const rowOf = async (name: string) => (await screen.findByRole("img", { name })).closest("button")?.textContent;
+    expect(await rowOf("Verified")).toContain(checkpointClock(1_700_000_100));
+    expect(await rowOf("Checks failed")).toContain(checkpointClock(1_700_000_500));
+    expect(await rowOf("Unverified")).toContain(checkpointClock(1_700_000_900));
+    // The turn that changed no code wears nothing.
+    expect(screen.getAllByRole("img", { name: /^(Verified|Checks failed|Unverified)$/ })).toHaveLength(3);
     await expectNoAxeViolations(document.body);
   });
 });
