@@ -1027,16 +1027,22 @@ fn lenient_blind_edits<'de, D: serde::Deserializer<'de>>(d: D) -> Result<BlindEd
     Ok(BlindEdits { enabled })
 }
 
-/// Whether each turn that changed code is marked with what it ran to check it.
+/// Whether each turn that changed code is marked with what it ran to check it,
+/// and the commands that count as a check, keyed by project path. A project
+/// with no entry uses the built-in list.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Verification {
     pub enabled: bool,
+    pub commands: std::collections::HashMap<String, Vec<String>>,
 }
 
 impl Default for Verification {
     fn default() -> Self {
-        Self { enabled: true }
+        Self {
+            enabled: true,
+            commands: std::collections::HashMap::new(),
+        }
     }
 }
 
@@ -1045,7 +1051,23 @@ impl Default for Verification {
 fn lenient_verification<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Verification, D::Error> {
     let raw = serde_json::Value::deserialize(d)?;
     let enabled = raw.get("enabled").and_then(|e| e.as_bool()).unwrap_or(true);
-    Ok(Verification { enabled })
+    let commands = raw
+        .get("commands")
+        .and_then(|c| c.as_object())
+        .map(|projects| {
+            projects
+                .iter()
+                .filter_map(|(path, list)| {
+                    let list = list.as_array()?;
+                    Some((
+                        path.clone(),
+                        list.iter().filter_map(|c| c.as_str().map(str::to_string)).collect(),
+                    ))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(Verification { enabled, commands })
 }
 
 /// What a project does to a worktree Tori has just created for it.
@@ -2512,10 +2534,19 @@ mod tests {
             std::fs::write(&p, body).unwrap();
             let s = load_from(&p);
             assert_eq!(s.verification.enabled, on, "{body}");
+            assert!(s.verification.commands.is_empty(), "{body}");
             if !on {
                 assert_eq!(s.appearance.theme, "catppuccin-mocha", "the rest of the file survives");
             }
         }
+        std::fs::write(
+            &p,
+            r#"{"verification":{"commands":{"/a":["just ci",3],"/b":"just ci"}}}"#,
+        )
+        .unwrap();
+        let commands = load_from(&p).verification.commands;
+        assert_eq!(commands.get("/a"), Some(&vec!["just ci".to_string()]));
+        assert!(!commands.contains_key("/b"), "a list that is not a list is no entry");
         std::fs::remove_file(&p).ok();
     }
 

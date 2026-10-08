@@ -1490,3 +1490,13 @@ li[data-picked] .branchDelete {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.commandList {
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-md);
+  line-height: var(--tori-line-normal);
+  resize: vertical;
+}
+.leadAction {
+  margin-right: auto;
+}

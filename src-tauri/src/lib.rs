@@ -385,6 +385,7 @@ pub fn run() {
             chat::commands::chat_history_page,
             chat::commands::session_secrets,
             chat::commands::session_verification,
+            verification::verification_commands,
             chat::commands::chat_mark_turn,
             chat::commands::chat_take_interrupted_turn,
             chat::commands::chat_orphans,

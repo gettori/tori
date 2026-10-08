@@ -342,8 +342,9 @@ export type Settings = {
   secretWatch: { enabled: boolean; patterns: string[] };
   /** Mirrors `BlindEdits` in src-tauri/src/settings.rs. */
   blindEdits: { enabled: boolean };
-  /** Mirrors `Verification` in src-tauri/src/settings.rs. */
-  verification: { enabled: boolean };
+  /** Mirrors `Verification` in src-tauri/src/settings.rs. `commands` is keyed
+   *  by project path; a project with no entry uses the built-in list. */
+  verification: { enabled: boolean; commands: Record<string, string[]> };
 };
 
 /** What a project runs in a worktree Tori has just created. An empty command
@@ -463,7 +464,7 @@ export const DEFAULT_SETTINGS: Settings = {
   worktree: {},
   secretWatch: { enabled: true, patterns: [] },
   blindEdits: { enabled: true },
-  verification: { enabled: true },
+  verification: { enabled: true, commands: {} },
 };
 
 /**
