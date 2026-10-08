@@ -69,6 +69,19 @@ shape.
   its number is the handler plus two frames, and reading it as one number hides
   which half moved.
 
+## The chat open row (2026-10-04)
+
+- **`chat-open`**, one line per side for each chat open: the backend writes
+  session, `at`, event count, read time, serialized bytes and what counting
+  them cost (`size`); the frontend note carries session, `start`, invoke round
+  trip, fold and paint. `trace-report.mjs` joins each note to the backend line
+  whose `at` falls inside its invoke window, by time not order, because
+  autopilot reads a session's history too and its line has no frontend twin.
+  IPC is the round trip minus read minus `size`. Printed under "chat opens".
+- Measuring the decision behind [[adr_chat_opens_on_a_bounded_tail]] did not use
+  it in the end: throwaway release probes (a `--release` Rust test and a vitest
+  fold) answered read, payload and fold without a GUI run.
+
 ## The work recipe (2026-10-05)
 
 `TORI_RECIPE=work` runs `src/utils/perfWorkRecipe.tsx` instead of the switch recipe: it mounts the real components over generated fixtures (`src/utils/perfFixtures.ts`, deterministic) and drives one pass per candidate, closing each with a control row of empty frames.
@@ -107,6 +120,7 @@ itself and exits on its own. `TORI_TRACE=1` alone traces manual clicking.
 - [[concept_release_profile_tracing]] - the mechanism
 - [[concept_perf_budgets]] - the gating sibling: counts and bytes held in `cargo test` and `pnpm test`
 - [[concept_switch_cost_anatomy]] - what it found, so it is not re-derived
+- [[component_history_tail]]: what the `chat-open` row measures
 - [[lesson_a_same_state_control_row]] - why the control row is in the same run
 - [[lesson_a_redundant_write_was_load_bearing]] - the census beside the latency number earning its keep
 - [[concept_trusted_input_verification]] - the other harness; tab clicks here go through the real strip because its gesture guard checks in-flight state, not trustedness

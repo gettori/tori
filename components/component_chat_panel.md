@@ -1,7 +1,7 @@
 ---
 summary: chat panel folds live and replayed events through one applyEvent reducer, so history and a running turn render alike
 status: current
-updated: 2026-10-02
+updated: 2026-10-04
 source: "plan \"Chat composer Tier 1, spell check, safe sends, draft tooling\" (branch `composer-260907`), commits 39a05ac, face7c4, c3eb12f, 8e8579e; plan \"Multi-account: pick, lock and default an account per session\" (branch `multiaccount`), phases 3 and 4, commits 0bac9e3, 7b33143; `src/panels/Chat/`"
 ---
 
@@ -110,7 +110,7 @@ Every attachment is now a labelled token the sentence can name (`[Image 1]`), no
 - **The removal rule lives in the store, not the composer** (`dropPending`), because the draft text lives there and the same rule has to hold for every surface that composes.
 - **The prompt bubble draws a token back as a chip only when the turn carries a ref with that label.** A bare `[Image 9]` stays text. An attachment the sentence never named is appended as its token, so attaching a file and pressing Enter still leaves a visible trace.
 - **The attach control names what this agent can open** and is disabled outright where nothing can be uploaded. Giving the hidden file input the same accessible name is also what let the chip's axe scan run: it had been failing on that input's missing label, a violation older than this work.
-- **A send waits for the label seed.** `ChatView` seeds the counters inside the same `edit` that applies `chat_history`, and an ACP chat raises them from its replayed user turns instead, since that transport has no transcript to read.
+- **A send waits for the label seed.** `ChatView` seeds the counters inside the same `edit` that applies `chat_history`, from the history summary's labels plus the tail's own, and an ACP chat raises them from its replayed user turns instead, since that transport has no transcript to read.
 
 ## What a tab opens on (2026-09-04)
 
@@ -121,6 +121,7 @@ Every attachment is now a labelled token the sentence can name (`[Image 1]`), no
 - **`shownModel()` ranks four sources**, most-trusted first: a pick this tab sent (resolved against the id the child reported), the reported id alone, `openingModel`, then the transcript scan's `detail()?.model`. A spawn re-declares the model the transcript predates, which is why the seed outranks the scan; the child's own report outranks both.
 - **Seeding in the component body is only safe because replay emits no `sessionStarted` and no `turnStarted`.** If `events_from_turns` ever gains them, the backfill will clobber every seed.
 - The transcript is **not** the source for any of this: see [[gotcha_a_resume_does_not_restore_the_permission_mode_so_the_transcripts_record_is_history]].
+- **The history it folds is a tail (2026-10-04).** `chat_history` answers the last 75 rows plus a summary of what came before, and "load earlier" pages the rest in through `chat_history_page`, merged in front. The strip's prompt, call and touched-file counts add `state.unloaded`. See [[component_history_tail]] and [[adr_chat_opens_on_a_bounded_tail]].
 
 ## The composer's Tier 1 (2026-09-07)
 
@@ -151,6 +152,7 @@ Seven changes to the input box, all of them **on the existing textarea**. The su
 ## Related
 
 - [[concept_collapsed_agent_work]] - the cards between replies, and why the cut is at every text
+- [[component_history_tail]]: the bounded history it opens on, and the paged merge
 - [[component_pdf_viewer]] - the other surface mounting `components/QuoteSelection/`, which is why it is no longer this panel's file.
 - [[concept_scratch_draft_link]] - the draft's one-writer link to a scratch tab
 - [[lesson_keep_the_composer_a_textarea_until_colour_is_the_ask]] - why the textarea stayed
