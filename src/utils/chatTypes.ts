@@ -278,6 +278,9 @@ export type ChatCapabilities = {
   listSessions: boolean;
   /** The agent accepts an ACP image content block in a prompt. */
   imageInput: boolean;
+  /** The agent can fork a conversation it holds (`session/fork`). Absent when
+   *  it did not say so, and on a catalogue cached before this was read. */
+  fork?: boolean;
 };
 
 /// Who the session is signed in as, from the `initialize` handshake, which is

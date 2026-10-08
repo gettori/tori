@@ -1473,10 +1473,63 @@ pub fn reply_after(turns: &[TranscriptTurn], question: &str) -> Option<String> {
     (!said.is_empty()).then(|| said.join("\n\n"))
 }
 
+/// The same for a mirror log, where the answer is the main agent's text that
+/// streamed in after the user message carrying `question`.
+pub fn reply_after_events(events: &[ChatEvent], question: &str) -> Option<String> {
+    let asked = events.iter().rposition(|e| match e {
+        ChatEvent::UserMessage { blocks, .. } => blocks
+            .iter()
+            .any(|b| matches!(b, ContentBlock::Text { text } if text.contains(question))),
+        _ => false,
+    })?;
+    let mut said = String::new();
+    for event in &events[asked + 1..] {
+        match event {
+            ChatEvent::UserMessage { .. } => break,
+            ChatEvent::TextDelta {
+                text, agent_id: None, ..
+            } => said.push_str(text),
+            _ => {}
+        }
+    }
+    let said = said.trim();
+    (!said.is_empty()).then(|| said.to_string())
+}
+
+/// What a side question's fork has to show so far.
+#[derive(Serialize, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ForkReply {
+    pub reply: Option<String>,
+    /// The fork could not open, in the agent's words.
+    pub failed: Option<String>,
+    /// Anything of the fork is on disk yet.
+    pub started: bool,
+}
+
 #[tauri::command(async)]
-pub fn ask_why_reply(session_id: String, agent_id: String, question: String) -> Option<String> {
-    let path = crate::sessions::transcript_path(&session_id, &agent_id)?;
-    reply_after(&crate::sessions::transcript_turns(&path, &agent_id), &question)
+pub fn ask_why_reply(session_id: String, agent_id: String, question: String) -> ForkReply {
+    use crate::chat::commands::{history_source, read_with_prompts, HistorySource};
+    match history_source(&session_id, &agent_id) {
+        HistorySource::Transcript(path) => ForkReply {
+            reply: reply_after(&crate::sessions::transcript_turns(&path, &agent_id), &question),
+            failed: None,
+            started: true,
+        },
+        source => {
+            let events = read_with_prompts(&session_id, &source, &agent_id).0;
+            ForkReply {
+                reply: reply_after_events(&events, &question),
+                failed: events.iter().find_map(|e| match e {
+                    ChatEvent::SessionError {
+                        message, fatal: true, ..
+                    } => Some(message.clone()),
+                    _ => None,
+                }),
+                started: !events.is_empty(),
+            }
+        }
+    }
 }
 
 #[cfg(test)]

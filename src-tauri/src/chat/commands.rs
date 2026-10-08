@@ -46,6 +46,7 @@ fn make_transport(
     acp: AcpOverrides,
     effort_extras: Vec<ChatEffortExtra>,
     questions_as_permissions: bool,
+    fork_from: Option<String>,
 ) -> Box<dyn AgentTransport> {
     match transport {
         // The extras ride along because claude advertises fewer effort levels
@@ -64,7 +65,7 @@ fn make_transport(
         // adapter id travels with it only so the session locators this transport
         // writes can name the agent they came from, and `acp` is that table's
         // `[chat.acp]` quirks rather than this build's defaults.
-        ChatTransport::Acp => Box::new(AcpTransport::new(session_id, agent_id, acp)),
+        ChatTransport::Acp => Box::new(AcpTransport::new(session_id, agent_id, acp).with_fork_from(fork_from)),
     }
 }
 
@@ -457,6 +458,7 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
     let questions_as_permissions = !crate::settings::answer_questions_inline();
     let id_for_factory = session_id.clone();
     let agent_for_factory = agent_id.clone();
+    let fork_for_factory = fork_from.clone();
     // **Only a transport whose conversation Tori cannot otherwise read back.**
     // A claude session's transcript is a file `chat_history` already reads, so
     // it gets `None` and pays one `if let Some` per event and nothing else.
@@ -472,6 +474,7 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
             acp_overrides.clone(),
             effort_extras.clone(),
             questions_as_permissions,
+            fork_for_factory.clone(),
         )
     });
     let spawned = match spawned {
@@ -2072,7 +2075,15 @@ mod tests {
         );
         assert_eq!(with_model, vec!["acp"]);
 
-        let t = make_transport(chat.transport, "s1", "opencode", chat.acp.clone(), Vec::new(), false);
+        let t = make_transport(
+            chat.transport,
+            "s1",
+            "opencode",
+            chat.acp.clone(),
+            Vec::new(),
+            false,
+            None,
+        );
         assert!(t.child_pid().is_none(), "a transport is inert until started");
     }
 
@@ -2087,6 +2098,7 @@ mod tests {
             Default::default(),
             chat.effort_extras.clone(),
             false,
+            None,
         );
         assert!(t.child_pid().is_none(), "a transport is inert until started");
     }

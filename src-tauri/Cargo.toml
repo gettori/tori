@@ -48,7 +48,9 @@ trash = { version = "5.2.6", default-features = false }
 # The generic ACP client. Brings the smol stack (`async-io`, `async-process`,
 # `futures-lite`, `blocking`) rather than tokio, so it runs on its own dedicated
 # thread per session and never becomes a second runtime beside Tauri's.
-agent-client-protocol = "2"
+# Pinned exactly because `session/fork` is behind an unstable feature, which a
+# minor release is free to reshape.
+agent-client-protocol = { version = "=2.0.0", features = ["unstable_session_fork"] }
 # The SDK's stream and channel vocabulary: `ByteStreams` is defined over
 # `futures`' `AsyncRead`/`AsyncWrite`, and the command channel feeding the
 # connection loop has to be sendable from the sync trait methods.
