@@ -320,10 +320,9 @@ describe("the ACP tier", () => {
   });
 
   it("offers no rewind timestamp, so revert is unavailable rather than failing when clicked", () => {
-    // ChatView gates on `rewind === "fork"`. Both measured agents advertise
-    // `sessionCapabilities.fork`, but Tori's fork is `fork_args` plus a tree
-    // snapshot and the ACP transport implements no fork verb, so the honest
-    // answer is that the control does not appear.
+    // ChatView gates on `rewind === "fork"`. The transport can fork an ACP
+    // session, but a rewind also cuts the replay at its turn, which ACP lacks,
+    // so the honest answer is that the control does not appear.
     expect(chatTier("acp").rewind).not.toBe("fork");
   });
 

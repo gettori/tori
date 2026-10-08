@@ -132,10 +132,10 @@ export function rangeLabel(range: ClaimRange): string {
 }
 
 /** Why these lines cannot be asked about, or null when they can. */
-export function askRefusal(claim: Claim, canFork: (agentId: string) => boolean): string | null {
+export function askRefusal(claim: Claim, canFork: (session: SessionLabel) => boolean): string | null {
   if (claim.tier === "none") return "No turn is named for these lines, so there is no one to ask.";
-  if (!canFork(claim.turn.session.agent)) {
-    return `A ${claim.turn.session.agent} chat cannot be forked yet, so there is no side conversation to ask in.`;
+  if (!canFork(claim.turn.session)) {
+    return `${claim.turn.session.agent} has not said it can fork a conversation, so there is no side conversation to ask in.`;
   }
   return null;
 }
