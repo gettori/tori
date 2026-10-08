@@ -110,6 +110,9 @@ async function openInEditor(path: string) {
 async function showPreviewOf(path: string) {
   preview = render(() => <MarkdownPreview path={path} />);
   await waitFor(() => expect(preview!.container.querySelector(".tree-empty")).toBeNull());
+  // A buffer's text is there at mount, so no Loading row ever shows, but the
+  // lex still runs in frame-sized steps and can need more than one frame.
+  await waitFor(() => expect(rendered().trim()).not.toBe(""));
   return preview.container;
 }
 
