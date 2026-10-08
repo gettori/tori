@@ -1309,6 +1309,32 @@ pub(crate) fn read_with_prompts(
     super::history::events_and_prompts(session_id, &turns, &subagents)
 }
 
+static MARK_HISTORY: Mutex<PageCache> = Mutex::new(PageCache::new(2));
+
+// The secret and verification marks read the same history on the same refresh,
+// and a mid-turn transcript moves between refreshes, so the second reuses the
+// first's parse while the files stand still.
+fn marked_history(
+    session_id: &str,
+    source: &HistorySource,
+    agent_id: &str,
+    path: &std::path::Path,
+) -> std::sync::Arc<Parsed> {
+    let stamp = (
+        crate::secret_watch::history_stamp(path).unwrap_or(std::time::UNIX_EPOCH),
+        std::fs::metadata(path).map_or(0, |m| m.len()),
+    );
+    super::tail::cached(
+        &MARK_HISTORY,
+        &format!("{session_id}\n{}", path.display()),
+        stamp,
+        || {
+            let (events, prompts) = read_with_prompts(session_id, source, agent_id);
+            Parsed { events, prompts }
+        },
+    )
+}
+
 static SECRET_TURNS: std::sync::LazyLock<Mutex<crate::secret_watch::TurnCache>> =
     std::sync::LazyLock::new(Mutex::default);
 
@@ -1336,9 +1362,47 @@ pub async fn session_secrets(
         if let Some(turns) = cache().get(&key, stamp) {
             return turns;
         }
-        let (events, prompts) = read_with_prompts(&session_id, &source, &agent_id);
+        let parsed = marked_history(&session_id, &source, &agent_id, &path);
         let cwd = cwd.as_deref().map(std::path::Path::new);
-        let turns = crate::secret_watch::secret_turns(&events, &prompts, cwd, &rules);
+        let turns = crate::secret_watch::secret_turns(&parsed.events, &parsed.prompts, cwd, &rules);
+        cache().put(&key, stamp, turns.clone());
+        turns
+    })
+    .await
+}
+
+static VERIFIED_TURNS: std::sync::LazyLock<Mutex<crate::secret_watch::TurnCache<crate::verification::VerifiedTurn>>> =
+    std::sync::LazyLock::new(Mutex::default);
+
+/// Each turn of a session that changed code, with what it ran to check it, for
+/// the surfaces that show a session without its tool calls: the tab, the
+/// History row and the Checkpoints timeline.
+#[tauri::command]
+pub async fn session_verification(
+    session_id: String,
+    agent_id: String,
+    cwd: Option<String>,
+) -> Vec<crate::verification::VerifiedTurn> {
+    crate::exec::blocking("session_verification", move || {
+        if !crate::verification::enabled() {
+            return Vec::new();
+        }
+        let source = history_source(&session_id, &agent_id);
+        let path = match &source {
+            HistorySource::Transcript(path) => std::path::PathBuf::from(path),
+            HistorySource::Log(path) => path.clone(),
+            HistorySource::Missing => return Vec::new(),
+        };
+        let stamp = (crate::secret_watch::history_stamp(&path), crate::settings::modified());
+        let cache = || VERIFIED_TURNS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        // The cwd picks the check list.
+        let key = format!("{session_id}\u{0}{}", cwd.as_deref().unwrap_or_default());
+        if let Some(turns) = cache().get(&key, stamp) {
+            return turns;
+        }
+        let parsed = marked_history(&session_id, &source, &agent_id, &path);
+        let cwd = cwd.as_deref().map(std::path::Path::new);
+        let turns = crate::verification::session_turns(&parsed.events, &parsed.prompts, cwd);
         cache().put(&key, stamp, turns.clone());
         turns
     })
@@ -2195,5 +2259,115 @@ mod secret_tests {
     #[test]
     fn a_session_that_touched_no_secret_has_no_turns() {
         assert!(turns_of(&session("none", None, None)).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod verification_tests {
+    use super::*;
+    use crate::chat::model::Verdict;
+
+    fn session(name: &str, extra: &[serde_json::Value]) -> String {
+        let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dev/fixtures/sessions");
+        let dir = std::env::temp_dir().join(format!("tori-verification-{}-{name}", std::process::id()));
+        let subagents = dir.join("s1/subagents");
+        std::fs::create_dir_all(&subagents).unwrap();
+        std::fs::copy(fixtures.join("subagent-foreground.jsonl"), dir.join("s1.jsonl")).unwrap();
+        for entry in std::fs::read_dir(fixtures.join("subagent-foreground/subagents"))
+            .unwrap()
+            .flatten()
+        {
+            let mut text = std::fs::read_to_string(entry.path()).unwrap();
+            if entry.path().extension().is_some_and(|e| e == "jsonl") {
+                for line in extra {
+                    text = format!("{}\n{line}\n", text.trim_end());
+                }
+            }
+            std::fs::write(subagents.join(entry.file_name()), text).unwrap();
+        }
+        dir.join("s1.jsonl").to_string_lossy().into_owned()
+    }
+
+    fn bash(command: &str, error: bool, output: &str) -> [serde_json::Value; 2] {
+        [
+            serde_json::json!({
+                "type": "assistant",
+                "timestamp": "2026-08-13T22:12:33.000Z",
+                "message": { "content": [{ "type": "tool_use", "id": "toolu_check", "name": "Bash", "input": { "command": command } }] },
+            }),
+            serde_json::json!({
+                "type": "user",
+                "timestamp": "2026-08-13T22:12:33.500Z",
+                "message": { "role": "user", "content": [{ "type": "tool_result", "tool_use_id": "toolu_check", "content": output, "is_error": error }] },
+            }),
+        ]
+    }
+
+    fn turns_of(path: &str) -> Vec<crate::verification::VerifiedTurn> {
+        let (events, prompts) = read_with_prompts("s1", &HistorySource::Transcript(path.into()), "claude");
+        crate::verification::session_turns(&events, &prompts, None)
+    }
+
+    #[test]
+    fn a_subagents_edit_and_check_belong_to_the_turn_that_launched_it() {
+        let launched = crate::sessions::parse_rfc3339_secs("2026-08-13T22:12:26.301Z");
+
+        let turns = turns_of(&session("edit", &[]));
+        assert_eq!(turns.len(), 1, "{turns:?}");
+        assert_eq!(turns[0].prompt_ts, launched);
+        assert_eq!(turns[0].verdict, Verdict::Unverified, "its write was never checked");
+
+        let turns = turns_of(&session("pass", &bash("cargo test", false, "ok")));
+        assert_eq!(turns[0].verdict, Verdict::Verified);
+        assert_eq!(turns[0].checks[0].exit_code, Some(0));
+
+        let turns = turns_of(&session("fail", &bash("cargo test", true, "Exit code 101\nfailed")));
+        assert_eq!(turns[0].verdict, Verdict::Failed);
+        assert_eq!(turns[0].checks[0].exit_code, Some(101));
+    }
+
+    #[test]
+    fn a_log_without_prompts_groups_by_turn_id() {
+        use crate::chat::model::{ToolKind, ToolStatus};
+        let started = |id: &str, turn: &str, kind: ToolKind, input: serde_json::Value| ChatEvent::ToolCallStarted {
+            session_id: "s1".into(),
+            turn_id: turn.into(),
+            tool_use_id: id.into(),
+            name: "Bash".into(),
+            input,
+            kind,
+            locations: Vec::new(),
+            title: None,
+            secret: None,
+        };
+        let done = |id: &str, turn: &str| ChatEvent::ToolCallCompleted {
+            session_id: "s1".into(),
+            turn_id: turn.into(),
+            tool_use_id: id.into(),
+            status: ToolStatus::Ok,
+            output: Some(String::new()),
+            files: Vec::new(),
+            duration_ms: None,
+            summary: None,
+            output_truncated: false,
+            patch: Vec::new(),
+            blind_edits: Vec::new(),
+        };
+        let events = vec![
+            started("e1", "t1", ToolKind::Edit, serde_json::Value::Null),
+            done("e1", "t1"),
+            started("e2", "t2", ToolKind::Edit, serde_json::Value::Null),
+            done("e2", "t2"),
+            started(
+                "c2",
+                "t2",
+                ToolKind::Execute,
+                serde_json::json!({ "command": "cargo test" }),
+            ),
+            done("c2", "t2"),
+        ];
+        let turns = crate::verification::session_turns(&events, &[], None);
+        let verdicts: Vec<_> = turns.iter().map(|t| (t.prompt_ts, t.verdict)).collect();
+        assert_eq!(verdicts, vec![(None, Verdict::Unverified), (None, Verdict::Verified)]);
     }
 }

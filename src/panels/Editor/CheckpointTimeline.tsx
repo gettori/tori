@@ -1,7 +1,16 @@
 import { createSignal, createEffect, createMemo, on, onMount, onCleanup, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { ChevronLeft, ChevronRight, CircleDashed, Columns2, FileCode, KeyRound } from "lucide-solid";
+import {
+  ChevronLeft,
+  ChevronRight,
+  CircleCheck,
+  CircleDashed,
+  CircleX,
+  Columns2,
+  FileCode,
+  KeyRound,
+} from "lucide-solid";
 import {
   emitWith,
   OPEN_IN_EDITOR,
@@ -18,6 +27,7 @@ import { folderActors } from "../../utils/folderActors";
 import { chatsInFolder, liveChats } from "../../utils/chatSessions";
 import { findSession } from "../../utils/sessionStore";
 import type { SecretTurn } from "../../utils/secretReads";
+import { VERDICT_LABEL, type VerifiedTurn } from "../../utils/verification";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { isWorking } from "../../utils/sessionStatus";
 import { UNATTRIBUTED_NOTICE } from "../../utils/attribution";
@@ -43,6 +53,8 @@ const PROMPT_DRIFT_SECS = 15;
 
 /** How many files a detail lists before the rest fold behind "+N more". */
 const FILES_SHOWN = 7;
+
+const VERDICT_GLYPH = { verified: CircleCheck, failed: CircleX, unverified: CircleDashed } as const;
 
 type CheckpointEntry = {
   prompt_ts: number;
@@ -109,10 +121,10 @@ export function promptTitle(prompts: readonly PromptLine[] | undefined, ts: numb
   return best && Math.abs(best.ts - ts) <= PROMPT_DRIFT_SECS ? best.text : null;
 }
 
-/** The secret reads of the turn a checkpoint was taken at, joined the way
- *  `promptTitle` joins its prompt. */
-export function turnSecret(turns: readonly SecretTurn[] | undefined, ts: number): SecretTurn | null {
-  let best: SecretTurn | null = null;
+/** The turn a checkpoint was taken at, joined the way `promptTitle` joins its
+ *  prompt. */
+export function turnAt<T extends { promptTs: number | null }>(turns: readonly T[] | undefined, ts: number): T | null {
+  let best: T | null = null;
   for (const t of turns ?? []) {
     if (t.promptTs === null) continue;
     if (!best || Math.abs(t.promptTs - ts) < Math.abs(best.promptTs! - ts)) best = t;
@@ -141,6 +153,7 @@ export default function CheckpointTimeline(props: {
   const [listed, setListed] = createSignal<SessionEntries[]>([]);
   const [prompts, setPrompts] = createSignal<Record<string, PromptLine[]>>({});
   const [secrets, setSecrets] = createSignal<Record<string, SecretTurn[]>>({});
+  const [verified, setVerified] = createSignal<Record<string, VerifiedTurn[]>>({});
   const [backstops, setBackstops] = createSignal<BackstopRecord[]>([]);
   const [open, setOpen] = createSignal<Target | null>(null);
   const [lastOpened, setLastOpened] = createSignal<string | null>(null);
@@ -230,21 +243,29 @@ export default function CheckpointTimeline(props: {
 
   // Not gated like the prompts: a pattern added in settings changes the answer
   // for a transcript that did not move, and the backend's cache keys on both.
-  async function loadSecrets(list: readonly SessionEntries[]) {
+  async function loadTurns<T>(
+    command: string,
+    set: (f: (prev: Record<string, T[]>) => Record<string, T[]>) => void,
+    list: readonly SessionEntries[],
+  ) {
     await Promise.all(
       list.map(async ({ sessionId }) => {
         const meta = findSession(sessionId)?.session;
         if (!meta) return;
-        const turns = await invoke<SecretTurn[]>("session_secrets", {
+        const turns = await invoke<T[]>(command, {
           sessionId,
           agentId: meta.agent ?? "claude",
           cwd: meta.cwd,
         }).catch(() => null);
-        if (!isList<SecretTurn>(turns)) return;
-        setSecrets((prev) => ({ ...prev, [sessionId]: turns }));
+        if (!isList<T>(turns)) return;
+        set((prev) => ({ ...prev, [sessionId]: turns }));
       }),
     );
   }
+  const loadMarks = (list: readonly SessionEntries[]) => {
+    void loadTurns("session_secrets", setSecrets, list);
+    void loadTurns("session_verification", setVerified, list);
+  };
 
   // Which read is current: the root can change while one is in flight, and the
   // earlier root's sessions must not land over the later one's.
@@ -284,7 +305,7 @@ export default function CheckpointTimeline(props: {
     if (mine !== listRead) return;
     setListed(list);
     void loadPrompts(list);
-    void loadSecrets(list);
+    loadMarks(list);
   }
 
   /** Keyed on the worktree alone, so this runs whether or not a session is
@@ -592,7 +613,7 @@ export default function CheckpointTimeline(props: {
   let unlistenSettings: UnlistenFn | undefined;
   let refreshTimer: ReturnType<typeof setTimeout> | undefined;
   onMount(async () => {
-    unlistenSettings = await listen("settings://changed", () => void loadSecrets(listed()));
+    unlistenSettings = await listen("settings://changed", () => loadMarks(listed()));
     unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
       if (e.payload.root && e.payload.root !== props.root) return;
       clearTimeout(refreshTimer);
@@ -748,7 +769,7 @@ export default function CheckpointTimeline(props: {
                           >
                             <span class={styles.rowTime}>{checkpointClock(e.prompt_ts)}</span>
                             <span class={styles.rowTitle}>{titleOf(g.sessionId, e.prompt_ts)}</span>
-                            <Show when={turnSecret(secrets()[g.sessionId], e.prompt_ts)}>
+                            <Show when={turnAt(secrets()[g.sessionId], e.prompt_ts)}>
                               {(hit) => (
                                 <span
                                   class={styles.rowSecret}
@@ -758,6 +779,18 @@ export default function CheckpointTimeline(props: {
                                   }
                                 >
                                   <Icon icon={KeyRound} size={12} />
+                                </span>
+                              )}
+                            </Show>
+                            <Show when={turnAt(verified()[g.sessionId], e.prompt_ts)}>
+                              {(turn) => (
+                                <span
+                                  class={styles.rowVerdict}
+                                  data-verdict={turn().verdict}
+                                  role="img"
+                                  aria-label={VERDICT_LABEL[turn().verdict]}
+                                >
+                                  <Icon icon={VERDICT_GLYPH[turn().verdict]} size={12} />
                                 </span>
                               )}
                             </Show>
