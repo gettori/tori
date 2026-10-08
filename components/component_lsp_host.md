@@ -1,8 +1,8 @@
 ---
 summary: a language server is a config file, sessions key by server id and root so a package never borrows a sibling compiler
 status: current
-updated: 2026-08-11
-source: "CM6 editor migration plan; Phase 11; commit 15d039e, rewritten by Editor wave 4: language intelligence foundations (personal/tori, branch `wave-4`); Phases 1-2, 5, 7; commits 7bb34d2, 0802a17, cbc5b0a, 075b5d7, extended by Editor wave 7: language intelligence depth (branch `wave-7`); Phases 1, 5, 6, 9; commits c4750d7, a620384, 506d7e7, d7a6e3e"
+updated: 2026-10-09
+source: "CM6 editor migration plan; Phase 11; commit 15d039e, rewritten by Editor wave 4: language intelligence foundations (personal/tori, branch `wave-4`); Phases 1-2, 5, 7; commits 7bb34d2, 0802a17, cbc5b0a, 075b5d7, extended by Editor wave 7: language intelligence depth (branch `wave-7`); Phases 1, 5, 6, 9; commits c4750d7, a620384, 506d7e7, d7a6e3e; Support Astro plan (branch `phase-1-block-1`, gettori/tickets#70); commit 7d4a6ee2"
 ---
 
 # LSP host: a registry of language servers, one session per root
@@ -67,11 +67,20 @@ Wave 8 built [[component_dap_host]] from this page deliberately: the same regist
 - **One adapter process serves many connections.** Debugging is inherently multi-session ([[concept_dap_session_tree]]), so `dap_connect` exists beside `dap_start`; there is no LSP equivalent.
 - **Termination is target-kind-dependent.** An attached debuggee is a process Tori never started and must never be killed.
 
+## `initialization_options` comes back from `lsp_start`, resolved for the root
+
+`lsp_start` answers `LspStarted { handle, initializationOptions }`, and both client kinds send *that*, never `server.initialization_options` from the registry snapshot. The snapshot is per server; the options are per start, because a placeholder in them depends on the root.
+
+- **One placeholder, `${tsdk}`.** Any string inside `[initialization_options]` may carry it. `resolve_tsdk` fills it with the project's `node_modules/typescript/lib` (walking from the root up to the project), else Tori's bundled `resources/lsp/node_modules/typescript/lib`, else fails the start naming `pnpm lsp:install`. A config without it passes through untouched and resolves nothing. See [[gotcha_volar_servers_refuse_initialize_without_a_tsdk]] for why it exists.
+- **The walk is skipped unless `root.starts_with(project)`.** `format::project_bin` stops on bare equality instead, which a symlink disagreement turns into a climb toward `$HOME`; this walk does not inherit that.
+- **Resolved after `command_for` and the trust gate**, so an uninstalled server still fails as `not_installed` and the editor still offers Install.
+- **The path used is written into the session's log tail** (`LspState::note`, capped like the stderr it sits beside), the log "Show log" opens on a crash.
+
+Until `@codemirror/lsp-client` 6.3.0 this field reached no primary server at all: 6.2.5 had no config for it, so it was parsed, typed and documented and arrived nowhere (found in wave 7 Phase 5). The fix was the upgrade, not a rewrite of the `initialize` frame at the transport.
+
 ## Does NOT
 
 Bundle a Node runtime (system `node` via `env::augmented_path`), support languages beyond the shipped configs without a config file, or answer server-initiated requests beyond the four routed ones.
-
-**`initialization_options` is documented, parsed, typed, and reaches no server at all.** The library takes no such config and Tori never injects one, so a user following `LSP-SERVERS.md` gets silence. Pre-existing, found in wave 7 Phase 5, and left unfixed: the fix means injecting into `initialize` at the transport. Anything a server needs before it will answer therefore has to go through `[settings]` today.
 
 **Known caveat, unresolved across all eight phases:** `root_for` compares non-canonicalised paths, so a project path that disagrees on symlinks (`/tmp` vs `/private/tmp`) falls back to the project root instead of walking. Latent only — in production both paths come from the same file-tree source. `format.rs`'s ancestry check inherits it.
 
@@ -87,4 +96,5 @@ Bundle a Node runtime (system `node` via `env::augmented_path`), support languag
 - [[lesson_a_hoisted_export_can_outrun_its_own_module]] — `lspCodeActions` and `lspCodeLens` import back into `lspClient`, and a project switch reaching it through `import(...)` outran its own body; the warm-root LRU now lives in the cycle-free `lspWarmRoots.ts` and the switch calls that directly (#159).
 - [[lesson_the_handshake_succeeded_and_the_feature_is_silent]] — why a health card saying "found" is not the end of the check.
 - [[gotcha_gui_launched_processes_inherit_a_minimal_path]] · [[gotcha_lsp_client_assumes_one_editor_view_per_file]]
+- [[gotcha_volar_servers_refuse_initialize_without_a_tsdk]] , what the `${tsdk}` placeholder exists for.
 - [[component_dap_host]] , the sibling host built from this shape, and the three places it diverges.
