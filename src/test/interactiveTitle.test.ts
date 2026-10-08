@@ -121,6 +121,7 @@ const KEPT = new Map<string, Kept>([
   ["components/Dialogs/PickerModal.test.tsx", { count: 2, reason: FIXTURE }],
   ["components/Dialogs/ProjectAgentsDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/ProjectIconDialog.tsx", { count: 1, reason: HEADING }],
+  ["components/Dialogs/VerificationCommandsDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/ServerMessageDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/PickerModal.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/PromptModal.test.tsx", { count: 1, reason: FIXTURE }],
