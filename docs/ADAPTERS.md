@@ -253,8 +253,8 @@ An unrecognised value is rejected loudly and the id keeps its previous adapter,
 the same way a broken override does.
 
 **An `acp` adapter declares far less, and the empty templates are not
-omissions.** ACP carries session ids, resume, model switching and modes *in the
-protocol*, so there is no command line to put them on: `session_id_args`,
+omissions.** ACP carries session ids, resume, forking, model switching and
+modes *in the protocol*, so there is no command line to put them on: `session_id_args`,
 `resume_args`, `fork_args`, `model_args`, `effort_args` and `mode_args` are all
 empty for an ACP agent, and `[[chat.models]]` is empty too because the agent
 reports its own catalogue on the handshake (measured: `opencode acp` 1.18.3 lists
@@ -620,7 +620,11 @@ three**, and the loader requires all three or none:
 - **None** - an agent whose sessions only its own protocol reaches. Allowed only
   when `chat.transport` is one that carries sessions in-protocol (today: `acp`).
   Tori keeps its own small locator file per session instead, records what the
-  protocol told it, and reopens a conversation with `session/load`.
+  protocol told it, and reopens a conversation with `session/load`. It forks
+  one with `session/fork` only when the agent advertises
+  `sessionCapabilities.fork` on its handshake, which is what lets a hunk's
+  side question reach that agent; the verb is unstable in the protocol, so the
+  crate is pinned. Rewind still needs a replay cut at a turn, which ACP lacks.
 - **Some** - always rejected, naming the missing tables. This is the case the
   rule exists for: a typo that loses `[discovery]` from a Claude-shaped adapter
   would otherwise resolve as a protocol-backed one, and its sessions would simply
