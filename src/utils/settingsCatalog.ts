@@ -649,6 +649,12 @@ export const SETTINGS: SettingEntry[] = [
     hint: "An ACP agent's edit to a file the session never read, searched or named says so on the call and its turn. Never blocks.",
   },
   {
+    id: "verification",
+    section: "chat",
+    label: "Mark unverified turns",
+    hint: "A turn that changed code says if a test, type check, lint or build ran after its last edit, and how it came back. Never blocks.",
+  },
+  {
     id: "resume-at-reset",
     section: "chat",
     label: "Resume at reset",

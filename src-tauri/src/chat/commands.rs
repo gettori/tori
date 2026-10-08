@@ -1160,7 +1160,8 @@ pub(crate) async fn history_reply(
     // same cache so a backfilled card can fetch its remainder too.
     host.cut_outputs(&session_id, &mut tail.events);
     host.mark_blind_edits(&session_id, cwd.clone(), &mut tail.events);
-    host.mark_secrets(&session_id, cwd, &mut tail.events);
+    host.mark_secrets(&session_id, cwd.clone(), &mut tail.events);
+    host.mark_verification(&session_id, cwd, &mut tail.events);
     if traced {
         let start = crate::trace::now_ms();
         let bytes = serde_json::to_vec(&tail).map_or(0, |v| v.len());
@@ -1190,7 +1191,8 @@ pub async fn chat_history_page(
     .await
     .ok_or("this session's earlier history moved; reopen the chat to read it")?;
     state.0.cut_outputs(&session_id, &mut page.events);
-    state.0.mark_secrets(&session_id, cwd, &mut page.events);
+    state.0.mark_secrets(&session_id, cwd.clone(), &mut page.events);
+    state.0.mark_verification(&session_id, cwd, &mut page.events);
     Ok(page)
 }
 

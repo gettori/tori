@@ -68,6 +68,7 @@ mod update;
 mod usage_probe;
 mod usage_snapshot;
 mod usage_token;
+mod verification;
 mod workspace_settings;
 mod worktree;
 mod worktree_cleanup;

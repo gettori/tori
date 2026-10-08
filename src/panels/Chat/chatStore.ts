@@ -31,6 +31,7 @@ import type {
   ChatAccount,
   ChatCapabilities,
   ChatEvent,
+  Check,
   ChatConfigOption,
   ChatModeInfo,
   ChatModelInfo,
@@ -51,6 +52,7 @@ import type {
   ToolLocation,
   ToolSummary,
   Usage,
+  Verdict,
 } from "../../utils/chatTypes";
 import { currentOf, parseChatEvent, type HistoryTail } from "../../utils/chatTypes";
 import { toriNote } from "../../utils/toriNote";
@@ -469,6 +471,8 @@ export type ChatState = {
    *  be made before the frame naming its lane, and because a nested `Agent`
    *  call is how a depth-2 lane finds its parent. */
   laneOfCall: Record<string, string>;
+  /** `turnId` -> what that turn ran to check the code it changed. */
+  verifications: Record<string, TurnCheck>;
   /** When this chat last showed a sign of life, of any kind. Read by nothing
    *  but the thinking span, which needs to know when the model went quiet, and
    *  the last frame is the only thing that knows. */
@@ -671,6 +675,7 @@ export function initialChat(sessionId: string, answerQuestionsInline = true): Ch
     lanes: {},
     selectedLane: null,
     laneOfCall: {},
+    verifications: {},
     lastFrameAt: Date.now(),
     ready: false,
     started: false,
@@ -782,6 +787,9 @@ export function mergeSecret(a: SecretHit | null, b: SecretHit): SecretHit {
     strength: a.strength === "read" || b.strength === "read" ? "read" : "named",
   };
 }
+
+/** A turn's verification verdict and the checks behind it. */
+export type TurnCheck = { verdict: Verdict; checks: Check[] };
 
 /** Each turn's blind edits, folded from its tool cards. */
 export function turnBlindEdits(items: readonly ChatItem[]): Map<string, string[]> {
@@ -1610,6 +1618,9 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       // about. This is one session's copy of the last frame it saw.
       s.rateLimit = rateLimitFrom(ev);
       return;
+    case "turnVerification":
+      s.verifications[ev.turnId] = { verdict: ev.verdict, checks: ev.checks };
+      return;
     case "turnCompleted": {
       const known = s.turns[ev.turnId];
       if (known?.completed) return;
@@ -1890,6 +1901,7 @@ export function prependHistory(s: ChatState, events: readonly unknown[]) {
   s.items = [...page.items, ...kept];
   s.turns = { ...page.turns, ...s.turns };
   s.laneOfCall = { ...page.laneOfCall, ...s.laneOfCall };
+  s.verifications = { ...page.verifications, ...s.verifications };
   // The totals stand; only where they are counted from moved.
   s.unloaded.prompts += prompts - promptsSent(s);
   s.unloaded.toolCalls += toolCalls - toolCallsSeen(s);
@@ -1942,6 +1954,7 @@ export function resetTranscript(s: ChatState) {
   s.lanes = {};
   s.selectedLane = null;
   s.laneOfCall = {};
+  s.verifications = {};
   s.compactions = 0;
   s.compactionReclaimed = 0;
   s.compactingItemId = null;
