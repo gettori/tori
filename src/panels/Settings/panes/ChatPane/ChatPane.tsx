@@ -12,6 +12,7 @@ import {
   setChatDefaults,
   setCheckpoints,
   setSecretWatch,
+  setVerification,
   type PaneProps,
 } from "../../components/paneKit";
 import { settings, type DefaultSurface, type NotificationSettings, type TranscriptDensity } from "../../settingsStore";
@@ -49,6 +50,7 @@ const SESSIONS = [
   "attach-long-pastes",
   "secret-watch",
   "blind-edits",
+  "verification",
   "resume-at-reset",
 ];
 
@@ -223,6 +225,19 @@ export default function ChatPane(props: PaneProps) {
             checked={settings.blindEdits.enabled}
             onChange={setBlindEdits}
             aria-label="Mark edits made without reading"
+          />
+        </Row>
+
+        <Row
+          {...props}
+          id="verification"
+          label="Mark unverified turns"
+          hint="On, a turn that changed code says whether a test, type check, lint or build ran after its last edit: verified, failed, or unverified when nothing ran or its exit was not seen. Shown in the chat. Nothing is blocked either way."
+        >
+          <Switch
+            checked={settings.verification.enabled}
+            onChange={setVerification}
+            aria-label="Mark unverified turns"
           />
         </Row>
 

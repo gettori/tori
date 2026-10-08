@@ -244,6 +244,7 @@ fn keep(event: &ChatEvent) -> Keep {
         | ChatEvent::SubagentUpdate { .. }
         | ChatEvent::PlanUpdate { .. }
         | ChatEvent::Usage { .. }
+        | ChatEvent::TurnVerification { .. }
         | ChatEvent::TurnCompleted { .. } => Keep::Whole,
     }
 }

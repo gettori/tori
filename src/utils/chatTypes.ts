@@ -318,6 +318,22 @@ export type SubagentUsage = {
   durationMs: number;
 };
 
+/// Mirrors `Verdict` in src-tauri/src/chat/model.rs.
+export type Verdict = "verified" | "failed" | "unverified";
+
+/// Mirrors `CheckResult`. `notSeen` ran, but its own exit never reached the
+/// call: piped, followed by `;` or `||`, backgrounded, interrupted, timed out.
+export type CheckResult = "passed" | "failed" | "notSeen";
+
+/// Mirrors `Check`. A failing `&&` chain of checks is one entry naming all.
+export type Check = {
+  toolUseId: string;
+  command: string;
+  result: CheckResult;
+  exitCode: number | null;
+  durationMs: number | null;
+};
+
 /// Mirrors `result.permission_denials`, which measurably carries no reason -
 /// the denial reason reaches the model as the tool result instead.
 export type PermissionDenial = {
@@ -648,6 +664,15 @@ export type ChatEvent =
       /// Whether overage spending is available, not whether a limit is hit.
       overageStatus: string | null;
     }
+  /// What a turn that changed code ran to check it, sent just before its
+  /// `turnCompleted`. Absent for a turn that changed no code.
+  | {
+      type: "turnVerification";
+      sessionId: string;
+      turnId: string;
+      verdict: Verdict;
+      checks: Check[];
+    }
   | {
       type: "turnCompleted";
       sessionId: string;
@@ -694,6 +719,7 @@ export const CHAT_EVENT_TYPES = [
   "planUpdate",
   "usage",
   "rateLimit",
+  "turnVerification",
   "turnCompleted",
   "sessionError",
   "sessionEnded",
@@ -878,6 +904,7 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
   rateLimit: {
     required: ["sessionId", "status", "resetsAt", "limitType", "utilization", "windows", "overageStatus"],
   },
+  turnVerification: { required: ["sessionId", "turnId", "verdict", "checks"] },
   turnCompleted: {
     required: ["sessionId", "turnId", "outcome", "stopReason", "usage", "costUsd", "permissionDenials"],
     optional: ["extra"],
@@ -916,6 +943,7 @@ export const CHAT_NESTED_KEYS = {
   subagentUsage: keysOf<SubagentUsage>({ totalTokens: true, toolUses: true, durationMs: true }),
   usageWindow: keysOf<UsageWindow>({ kind: true, utilization: true, resetsAt: true }),
   patchHunk: keysOf<PatchHunk>({ oldStart: true, oldLines: true, newStart: true, newLines: true, lines: true }),
+  check: keysOf<Check>({ toolUseId: true, command: true, result: true, exitCode: true, durationMs: true }),
   // One entry per `ToolSummary` variant rather than one `keysOf` over the
   // union. `Record<keyof T, true>` on a union resolves to the keys they *share*,
   // which for these six is only `type`, so a single entry would have pinned the

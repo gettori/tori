@@ -390,13 +390,22 @@ button.promptChip {
 }
 
 .turnSecret,
-.turnBlindEdit {
+.turnBlindEdit,
+.turnVerification {
   display: inline-flex;
   align-items: center;
   align-self: flex-start;
   gap: calc(4px * var(--ui-scale));
   color: var(--attention-fg);
   font-size: calc(var(--chat-font-size) - 2px);
+}
+
+.turnVerification[data-verdict="verified"] {
+  color: var(--success-fg);
+}
+
+.turnVerification[data-verdict="failed"] {
+  color: var(--danger-fg);
 }
 
 /* Quiet until it is wanted. Rewinding is rare and destructive, so it earns no

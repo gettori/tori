@@ -16,6 +16,9 @@ import {
   Brain,
   ChevronDown,
   ChevronRight,
+  CircleCheck,
+  CircleDashed,
+  CircleX,
   EyeOff,
   FoldVertical,
   Info,
@@ -33,8 +36,10 @@ import {
   type ChatItem,
   type QuestionItem,
   type ToolItem,
+  type TurnCheck,
 } from "./chatStore";
 import { attachmentKind } from "../../utils/chatCompose";
+import { VERDICT_LABEL, verdictDetail } from "../../utils/verification";
 import type { ContentBlock, PermissionMode, QuestionAnswer, RefTarget } from "../../utils/chatTypes";
 import { openPrByNumber } from "../../utils/openPrTab";
 import { emitWith, NAVIGATE, SESSION_ACTION, type NavTarget, type SessionAction } from "../../utils/events";
@@ -49,6 +54,8 @@ import styles from "./Chat.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import Markdown from "./Markdown";
 import { foldEdits, groupRuns, runLabel, thoughtLabel, type RunCache, type WorkRun } from "./toolRenderers";
+
+const VERDICT_ICON = { verified: CircleCheck, failed: CircleX, unverified: CircleDashed } as const;
 
 function blockText(blocks: readonly ContentBlock[]): string {
   const typed = blocks.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n");
@@ -341,6 +348,10 @@ export default function MessageList(props: {
   showSecrets?: boolean;
   /** Off hides the blind edit marks a session's calls already carry. */
   showBlindEdits?: boolean;
+  /** `turnId` -> what that turn ran to check the code it changed. */
+  verifications?: Record<string, TurnCheck>;
+  /** Off hides the verification marks a session's turns already carry. */
+  showVerification?: boolean;
 }) {
   const [limit, setLimit] = createSignal(WINDOW_STEP);
   // Read once, deliberately: whether this list opens pinned to the bottom is an
@@ -461,6 +472,20 @@ export default function MessageList(props: {
               <Tooltip<HTMLSpanElement> as="span" tabIndex={0} class={styles.turnBlindEdit} label={paths().join("\n")}>
                 <Icon icon={EyeOff} size={12} />
                 Edited without reading
+              </Tooltip>
+            )}
+          </Show>
+          <Show when={props.showVerification !== false && props.verifications?.[id()]}>
+            {(v) => (
+              <Tooltip<HTMLSpanElement>
+                as="span"
+                tabIndex={0}
+                class={styles.turnVerification}
+                data-verdict={v().verdict}
+                label={verdictDetail(v().verdict, v().checks)}
+              >
+                <Icon icon={VERDICT_ICON[v().verdict]} size={12} />
+                {VERDICT_LABEL[v().verdict]}
               </Tooltip>
             )}
           </Show>

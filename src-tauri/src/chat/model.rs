@@ -772,6 +772,40 @@ pub struct UsageWindow {
     pub resets_at: Option<u64>,
 }
 
+/// A turn's answer to "did anything check the code it changed".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Verdict {
+    Verified,
+    Failed,
+    Unverified,
+}
+
+/// How one verification command came back. `NotSeen` is a command that ran
+/// but whose own exit never reached the call: piped, followed by `;` or `||`,
+/// backgrounded, interrupted or timed out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CheckResult {
+    Passed,
+    Failed,
+    NotSeen,
+}
+
+/// One verification command a turn ran. A failing `&&` chain of checks is one
+/// entry naming all of them, because the exit cannot say which one failed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Check {
+    pub tool_use_id: String,
+    pub command: String,
+    pub result: CheckResult,
+    #[serde(default)]
+    pub exit_code: Option<i32>,
+    #[serde(default)]
+    pub duration_ms: Option<u64>,
+}
+
 /// A record of a tool call that was blocked, mirroring `result`'s
 /// `permission_denials`.
 ///
@@ -1563,6 +1597,18 @@ pub enum ChatEvent {
         overage_status: Option<String>,
     },
 
+    /// What a turn that changed code ran to check it, sent just before its
+    /// `TurnCompleted`. Its own event because a replayed Claude transcript has
+    /// no `TurnCompleted` to carry it. Filled where events leave Rust, never by
+    /// an adapter, and absent for a turn that changed no code.
+    TurnVerification {
+        session_id: String,
+        turn_id: String,
+        verdict: Verdict,
+        #[serde(default)]
+        checks: Vec<Check>,
+    },
+
     TurnCompleted {
         session_id: String,
         turn_id: String,
@@ -2213,6 +2259,18 @@ mod tests {
                 ],
                 overage_status: Some("rejected".into()),
             },
+            ChatEvent::TurnVerification {
+                session_id: "s1".into(),
+                turn_id: "t1".into(),
+                verdict: Verdict::Failed,
+                checks: vec![Check {
+                    tool_use_id: "toolu_4".into(),
+                    command: "cargo build && cargo test".into(),
+                    result: CheckResult::Failed,
+                    exit_code: Some(101),
+                    duration_ms: Some(14_200),
+                }],
+            },
             ChatEvent::TurnCompleted {
                 session_id: "s1".into(),
                 turn_id: "t1".into(),
@@ -2580,6 +2638,7 @@ mod tests {
                 ChatEvent::PlanUpdate { .. } => "planUpdate",
                 ChatEvent::Usage { .. } => "usage",
                 ChatEvent::RateLimit { .. } => "rateLimit",
+                ChatEvent::TurnVerification { .. } => "turnVerification",
                 ChatEvent::TurnCompleted { .. } => "turnCompleted",
                 ChatEvent::SessionError { .. } => "sessionError",
                 ChatEvent::SessionEnded { .. } => "sessionEnded",
@@ -2589,7 +2648,7 @@ mod tests {
         // A mismatch means a sample is missing or duplicated.
         assert_eq!(
             events.len(),
-            29,
+            30,
             "every_event() must hold exactly one sample per variant"
         );
     }

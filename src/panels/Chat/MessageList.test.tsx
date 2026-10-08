@@ -5,8 +5,8 @@ import { createStore } from "solid-js/store";
 import { expectNoAxeViolations } from "../../test/axe";
 import MessageList from "./MessageList";
 import { applyEvent, initialChat, prependHistory, pushUserTurn } from "./chatStore";
-import type { ChatItem, QuestionItem, ToolItem } from "./chatStore";
-import type { ContentBlock, QuestionAnswer } from "../../utils/chatTypes";
+import type { ChatItem, QuestionItem, ToolItem, TurnCheck } from "./chatStore";
+import type { Check, ContentBlock, QuestionAnswer, Verdict } from "../../utils/chatTypes";
 import { invoke } from "@tauri-apps/api/core";
 import { NAVIGATE, onWith, SESSION_ACTION, type NavTarget, type SessionAction } from "../../utils/events";
 
@@ -63,6 +63,8 @@ function list(
     collapseWork?: boolean;
     showSecrets?: boolean;
     showBlindEdits?: boolean;
+    verifications?: Record<string, TurnCheck>;
+    showVerification?: boolean;
   } = {},
 ) {
   return (
@@ -1026,5 +1028,61 @@ describe("agent work collapsed into a card", () => {
     render(() => list({ items, collapseWork: false, showBlindEdits: false }));
     expect(screen.queryByText("Edited without reading")).toBeNull();
     expect(screen.queryByRole("img", { name: "Edited without reading" })).toBeNull();
+  });
+});
+
+describe("a turn that changed code says what checked it", () => {
+  const items: ChatItem[] = [
+    { kind: "user", id: "u1", blocks: [{ type: "text", text: "fix it" }], steer: false },
+    { kind: "text", id: "t1", turnId: "turn-1", text: "fixed", agentId: null },
+  ];
+  const check = (over: Partial<Check>): Check => ({
+    toolUseId: "toolu_1",
+    command: "cargo test",
+    result: "passed",
+    exitCode: 0,
+    durationMs: 14_200,
+    ...over,
+  });
+
+  // Through the store, so the event's fold is covered too.
+  function verified(verdict: Verdict, checks: Check[]) {
+    const s = initialChat("s1");
+    applyEvent(s, { type: "turnVerification", sessionId: "s1", turnId: "turn-1", verdict, checks });
+    return s.verifications;
+  }
+
+  function tooltipOf(label: string): string {
+    const mark = screen.getByText(label).closest<HTMLElement>("[tabindex]");
+    if (!mark) throw new Error(`no mark for ${label}`);
+    return described(mark);
+  }
+
+  it("says verified, with each check's result and time", async () => {
+    const { container } = render(() => list({ items, verifications: verified("verified", [check({})]) }));
+    expect(tooltipOf("Verified")).toContain("cargo test: passed in 14.2s");
+    await expectNoAxeViolations(container);
+  });
+
+  it("says the checks failed, with the exit", () => {
+    const checks = [check({ command: "cargo build && cargo test", result: "failed", exitCode: 101, durationMs: null })];
+    render(() => list({ items, verifications: verified("failed", checks) }));
+    expect(tooltipOf("Checks failed")).toContain("cargo build && cargo test: failed, exit 101");
+  });
+
+  it("says unverified when nothing ran after the last edit", () => {
+    render(() => list({ items, verifications: verified("unverified", []) }));
+    expect(tooltipOf("Unverified")).toBe("Changed code and ran no check.");
+  });
+
+  it("says a check whose exit never reached the call ran, and no more", () => {
+    const checks = [check({ command: "cargo test 2>&1", result: "notSeen", exitCode: null, durationMs: null })];
+    render(() => list({ items, verifications: verified("unverified", checks) }));
+    expect(tooltipOf("Unverified")).toContain("cargo test 2>&1: ran, exit not seen");
+  });
+
+  it("shows no mark with the setting switched off", () => {
+    render(() => list({ items, verifications: verified("failed", [check({})]), showVerification: false }));
+    expect(screen.queryByText("Checks failed")).toBeNull();
   });
 });

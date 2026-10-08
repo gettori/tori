@@ -488,6 +488,21 @@
     "overageStatus": "rejected"
   },
   {
+    "type": "turnVerification",
+    "sessionId": "s1",
+    "turnId": "t1",
+    "verdict": "failed",
+    "checks": [
+      {
+        "toolUseId": "toolu_4",
+        "command": "cargo build && cargo test",
+        "result": "failed",
+        "exitCode": 101,
+        "durationMs": 14200
+      }
+    ]
+  },
+  {
     "type": "turnCompleted",
     "sessionId": "s1",
     "turnId": "t1",
