@@ -11,6 +11,7 @@ mod auth;
 mod autopilot;
 mod backstop;
 mod blame;
+mod blind_edit;
 mod catalog_probe;
 mod chat;
 mod checkpoint;

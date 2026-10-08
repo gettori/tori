@@ -968,6 +968,8 @@ pub struct Settings {
     pub worktree: std::collections::HashMap<String, WorktreePrefs>,
     #[serde(default, deserialize_with = "lenient_secret_watch")]
     pub secret_watch: SecretWatch,
+    #[serde(default, deserialize_with = "lenient_blind_edits")]
+    pub blind_edits: BlindEdits,
 }
 
 /// Whether secret reads are marked, and additions to the list. The patterns
@@ -1000,6 +1002,27 @@ fn lenient_secret_watch<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Secret
         .unwrap_or_default();
     let enabled = raw.get("enabled").and_then(|e| e.as_bool()).unwrap_or(true);
     Ok(SecretWatch { enabled, patterns })
+}
+
+/// Whether an edit to a file the session never saw is marked.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct BlindEdits {
+    pub enabled: bool,
+}
+
+impl Default for BlindEdits {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+// Same reason as `lenient_secret_watch`: a malformed block must not reset the
+// rest of the file.
+fn lenient_blind_edits<'de, D: serde::Deserializer<'de>>(d: D) -> Result<BlindEdits, D::Error> {
+    let raw = serde_json::Value::deserialize(d)?;
+    let enabled = raw.get("enabled").and_then(|e| e.as_bool()).unwrap_or(true);
+    Ok(BlindEdits { enabled })
 }
 
 /// What a project does to a worktree Tori has just created for it.
@@ -1182,6 +1205,10 @@ fn keep_rust_owned(settings: &mut Settings, on_disk: Settings) {
 
 pub fn secret_watch() -> SecretWatch {
     load_from(&settings_path()).secret_watch
+}
+
+pub fn blind_edits() -> BlindEdits {
+    load_from(&settings_path()).blind_edits
 }
 
 /// When settings.json last changed, `None` while it does not exist.
@@ -2418,6 +2445,28 @@ mod tests {
         assert!(load_from(&p).secret_watch.enabled);
         std::fs::write(&p, r#"{"secretWatch":{"enabled":false}}"#).unwrap();
         assert!(!load_from(&p).secret_watch.enabled);
+        std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn blind_edits_are_marked_unless_the_file_says_off() {
+        let p = tmp_file();
+        for (body, on) in [
+            ("{}", true),
+            (r#"{"blindEdits":"x"}"#, true),
+            (r#"{"blindEdits":{"enabled":"no"}}"#, true),
+            (
+                r#"{"blindEdits":{"enabled":false},"appearance":{"theme":"catppuccin-mocha"}}"#,
+                false,
+            ),
+        ] {
+            std::fs::write(&p, body).unwrap();
+            let s = load_from(&p);
+            assert_eq!(s.blind_edits.enabled, on, "{body}");
+            if !on {
+                assert_eq!(s.appearance.theme, "catppuccin-mocha", "the rest of the file survives");
+            }
+        }
         std::fs::remove_file(&p).ok();
     }
 

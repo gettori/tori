@@ -62,6 +62,7 @@ function list(
     onRewind?: (promptTs: number) => void;
     collapseWork?: boolean;
     showSecrets?: boolean;
+    showBlindEdits?: boolean;
   } = {},
 ) {
   return (
@@ -859,6 +860,7 @@ describe("agent work collapsed into a card", () => {
     durationMs: null,
     edits: [],
     secret: null,
+    blindEdits: [],
     ...over,
   });
   const waiting = (id: string) =>
@@ -1004,5 +1006,25 @@ describe("agent work collapsed into a card", () => {
     mount([PROMPT, call("a", { secret: { paths: [".env"], strength: "named" } }), REPLY]);
     expect(screen.getByText("A command named a secret file")).toBeTruthy();
     expect(screen.queryByText("Read a secret file")).toBeNull();
+  });
+
+  it("says at the head of the turn that a folded call edited a file it never read", async () => {
+    const { container } = mount([PROMPT, call("a", { blindEdits: ["/repo/src/a.rs"] }), REPLY]);
+    expect(screen.getByText("Edited without reading")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "1 tool call" }));
+    expect(screen.getByRole("img", { name: "Edited without reading" })).toBeTruthy();
+    await expectNoAxeViolations(container);
+  });
+
+  it("marks nothing for a turn whose edits all followed a read", () => {
+    mount([PROMPT, call("a"), REPLY]);
+    expect(screen.queryByText("Edited without reading")).toBeNull();
+  });
+
+  it("shows no blind edit mark with the setting switched off", () => {
+    const items = [PROMPT, call("a", { blindEdits: ["/repo/src/a.rs"] }), REPLY];
+    render(() => list({ items, collapseWork: false, showBlindEdits: false }));
+    expect(screen.queryByText("Edited without reading")).toBeNull();
+    expect(screen.queryByRole("img", { name: "Edited without reading" })).toBeNull();
   });
 });

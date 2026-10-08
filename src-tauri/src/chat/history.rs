@@ -292,6 +292,7 @@ fn push_block(
                 // captures a before-state for a session this process
                 // never watched run.
                 patch: block.tool_patch.clone(),
+                blind_edits: Vec::new(),
             });
         }
         _ => {}

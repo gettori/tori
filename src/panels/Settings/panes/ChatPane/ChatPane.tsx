@@ -7,6 +7,7 @@ import {
   optionalNumber,
   rowLabelId,
   setAlert,
+  setBlindEdits,
   setBudgets,
   setChatDefaults,
   setCheckpoints,
@@ -47,6 +48,7 @@ const SESSIONS = [
   "answer-questions",
   "attach-long-pastes",
   "secret-watch",
+  "blind-edits",
   "resume-at-reset",
 ];
 
@@ -208,6 +210,19 @@ export default function ChatPane(props: PaneProps) {
             checked={settings.secretWatch.enabled}
             onChange={setSecretWatch}
             aria-label="Mark secret file reads"
+          />
+        </Row>
+
+        <Row
+          {...props}
+          id="blind-edits"
+          label="Mark edits made without reading"
+          hint="On, an ACP agent's edit to an existing file the session never read, searched or named says so on the call and at the head of its turn. Claude's own tools already refuse such an edit. Nothing is blocked either way."
+        >
+          <Switch
+            checked={settings.blindEdits.enabled}
+            onChange={setBlindEdits}
+            aria-label="Mark edits made without reading"
           />
         </Row>
 

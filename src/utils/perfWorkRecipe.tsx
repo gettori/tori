@@ -186,6 +186,7 @@ function editCard(): ToolItem {
     durationMs: null,
     edits: [],
     secret: null,
+    blindEdits: [],
   };
 }
 

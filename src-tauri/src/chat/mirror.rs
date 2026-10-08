@@ -728,6 +728,7 @@ mod tests {
             summary: None,
             output_truncated: false,
             patch: Vec::new(),
+            blind_edits: Vec::new(),
         }
     }
 

@@ -549,6 +549,8 @@ export type ChatEvent =
       /// every call that wrote nothing, for a patch too big for the wire, and
       /// for every ACP agent, none of which publish one.
       patch: PatchHunk[];
+      /// Files the call changed without the session having seen them first.
+      blindEdits?: string[];
     }
   | {
       type: "fileEdit";
@@ -850,6 +852,7 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
       "outputTruncated",
       "patch",
     ],
+    optional: ["blindEdits"],
   },
   fileEdit: {
     required: ["sessionId", "turnId", "toolUseId", "path", "kind", "beforeBlob"],

@@ -12,10 +12,21 @@ import {
   onMount,
   type JSX,
 } from "solid-js";
-import { Brain, ChevronDown, ChevronRight, FoldVertical, Info, KeyRound, TriangleAlert, Webhook } from "lucide-solid";
+import {
+  Brain,
+  ChevronDown,
+  ChevronRight,
+  EyeOff,
+  FoldVertical,
+  Info,
+  KeyRound,
+  TriangleAlert,
+  Webhook,
+} from "lucide-solid";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   hasEarlier,
+  turnBlindEdits,
   turnSecrets,
   windowed,
   WINDOW_STEP,
@@ -328,6 +339,8 @@ export default function MessageList(props: {
   collapseWork?: boolean;
   /** Off hides the secret marks a session's calls already carry. */
   showSecrets?: boolean;
+  /** Off hides the blind edit marks a session's calls already carry. */
+  showBlindEdits?: boolean;
 }) {
   const [limit, setLimit] = createSignal(WINDOW_STEP);
   // Read once, deliberately: whether this list opens pinned to the bottom is an
@@ -425,6 +438,7 @@ export default function MessageList(props: {
   // Said at the head of the turn, not only on the card that made the read: a
   // card can sit folded inside a run of calls nobody opens.
   const secrets = createMemo(() => (props.showSecrets === false ? new Map() : turnSecrets(props.items)));
+  const blindEdits = createMemo(() => (props.showBlindEdits === false ? new Map() : turnBlindEdits(props.items)));
 
   // Zero height: it exists to carry the turn id, not to take up room. The
   // negative bottom margin cancels the flex gap it would otherwise open.
@@ -439,6 +453,14 @@ export default function MessageList(props: {
               <Tooltip<HTMLSpanElement> as="span" tabIndex={0} class={styles.turnSecret} label={hit().paths.join("\n")}>
                 <Icon icon={KeyRound} size={12} />
                 {hit().strength === "read" ? "Read a secret file" : "A command named a secret file"}
+              </Tooltip>
+            )}
+          </Show>
+          <Show when={blindEdits().get(id())}>
+            {(paths) => (
+              <Tooltip<HTMLSpanElement> as="span" tabIndex={0} class={styles.turnBlindEdit} label={paths().join("\n")}>
+                <Icon icon={EyeOff} size={12} />
+                Edited without reading
               </Tooltip>
             )}
           </Show>
@@ -755,6 +777,7 @@ export default function MessageList(props: {
             <ToolCallCard
               card={it()}
               showSecret={props.showSecrets !== false}
+              showBlindEdit={props.showBlindEdits !== false}
               also={folded().followers.get(it().id) ?? []}
               sessionId={props.sessionId}
               cwd={props.cwd}

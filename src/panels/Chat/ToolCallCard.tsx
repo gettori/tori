@@ -1,5 +1,5 @@
 import { For, Show, Switch, Match, createMemo, createSignal, createResource } from "solid-js";
-import { ChevronRight, KeyRound } from "lucide-solid";
+import { ChevronRight, EyeOff, KeyRound } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import { invoke } from "@tauri-apps/api/core";
 import { parseDiffHunks } from "../../utils/diffHunks";
@@ -57,6 +57,7 @@ export default function ToolCallCard(props: {
   also?: ToolItem[];
   sessionId: string;
   showSecret?: boolean;
+  showBlindEdit?: boolean;
   cwd: string;
   onAnswer?: (card: ToolItem, answer: Answer) => void;
   onSetMode: (mode: PermissionMode) => void;
@@ -182,6 +183,7 @@ export default function ToolCallCard(props: {
   }
 
   const secretShown = () => props.showSecret !== false && !!props.card.secret;
+  const blindShown = () => props.showBlindEdit !== false && props.card.blindEdits.length > 0;
 
   return (
     <div
@@ -208,6 +210,11 @@ export default function ToolCallCard(props: {
         <Show when={secretShown()}>
           <span class={styles.toolSecretKey} role="img" aria-label="Secret file">
             <Icon icon={KeyRound} size={12} />
+          </span>
+        </Show>
+        <Show when={blindShown()}>
+          <span class={styles.toolBlindEdit} role="img" aria-label="Edited without reading">
+            <Icon icon={EyeOff} size={12} />
           </span>
         </Show>
         {/* What the call did, once it has said. A row with no summary is the
