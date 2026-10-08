@@ -68,3 +68,4 @@ and spawns on the first send.
 - [[concept_workspace_tab_grouping]] - the always-mounted stage it amends
 - [[concept_session_certainty_tiers]] - the tier an inert tab reports on
 - [[lesson_a_mount_gate_is_a_destroy_gate]] - why the latch is one-way
+- [[adr_chat_opens_on_a_bounded_tail]]: a reload reattaching every tab is half of why history is bounded
