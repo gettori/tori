@@ -434,7 +434,7 @@ export default function PrFileBody(props: {
                   <WhyToggle open={whyOpen.has(hi())} onClick={() => whyOpen.toggle(hi())} />
                 </div>
                 <Show when={whyOpen.has(hi())}>
-                  <HunkProvenance hunk={hunk} read={prClaims} />
+                  <HunkProvenance file={props.file.path} hunk={hunk} read={prClaims} />
                 </Show>
                 <For each={segments()}>
                   {(seg) => (

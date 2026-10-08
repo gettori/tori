@@ -661,7 +661,7 @@ export default function DiffView(props: {
                     <WhyToggle open={whyOpen.has(hi())} onClick={() => whyOpen.toggle(hi())} />
                   </div>
                   <Show when={whyOpen.has(hi())}>
-                    <HunkProvenance hunk={hunk} read={diffTabClaims(props.workspace, file(), staged())} />
+                    <HunkProvenance file={file()} hunk={hunk} read={diffTabClaims(props.workspace, file(), staged())} />
                   </Show>
                   <DiffRows
                     rows={buildRows(hunk.lines, { old: hunk.oldStart, new: hunk.startLine })}

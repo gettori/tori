@@ -219,6 +219,8 @@ mod tests {
             id: session.into(),
             agent: "claude".into(),
             title: String::new(),
+            cwd: String::new(),
+            profile: None,
             last_active: 0,
         }];
         lines_for(&dir.to_string_lossy(), file, &sessions, &Histories::default())
