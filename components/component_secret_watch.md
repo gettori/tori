@@ -29,6 +29,7 @@ A turn in which an agent opened, or a command named, a secret-shaped file is mar
 ## Related
 
 - [[concept_evidence_tiered_attribution]] the read versus named wording
+- [[component_blind_edit]] the stateful sibling that reuses `shell_words`, `normalize`, `expand` and `command_text`
 - [[gotcha_a_change_to_live_chat_events_misses_replay]] why marking happens in two places
 - [[component_history_dropdown]] the row that reuses the tab's mark
 - [[component_turn_checkpoints]] the timeline whose turn rows carry the key
