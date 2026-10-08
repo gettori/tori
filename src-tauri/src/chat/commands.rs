@@ -1129,11 +1129,12 @@ pub async fn chat_history(
     from_session_id: Option<String>,
     agent_id: String,
     up_to_prompt_ts: Option<u64>,
+    cwd: Option<String>,
 ) -> Result<HistoryTail, String> {
     let source = from_session_id.unwrap_or_else(|| session_id.clone());
     let agent = agent_id.clone();
     let from = move || history_source(&source, &agent);
-    Ok(history_reply(&state.0, session_id, from, agent_id, up_to_prompt_ts).await)
+    Ok(history_reply(&state.0, session_id, from, agent_id, up_to_prompt_ts, cwd).await)
 }
 
 /// What `chat_history` sends back, apart from Tauri state so the perf budgets
@@ -1144,6 +1145,7 @@ pub(crate) async fn history_reply(
     from: impl FnOnce() -> HistorySource + Send + 'static,
     agent_id: String,
     up_to_prompt_ts: Option<u64>,
+    cwd: Option<String>,
 ) -> HistoryTail {
     let id = session_id.clone();
     let traced = crate::trace::enabled();
@@ -1157,6 +1159,7 @@ pub(crate) async fn history_reply(
     // here because replay does not pass through it, and applied through the
     // same cache so a backfilled card can fetch its remainder too.
     host.cut_outputs(&session_id, &mut tail.events);
+    host.mark_secrets(&session_id, cwd, &mut tail.events);
     if traced {
         let start = crate::trace::now_ms();
         let bytes = serde_json::to_vec(&tail).map_or(0, |v| v.len());
@@ -1176,6 +1179,7 @@ pub async fn chat_history_page(
     from_session_id: Option<String>,
     agent_id: String,
     cursor: HistoryCursor,
+    cwd: Option<String>,
 ) -> Result<HistoryPage, String> {
     let source = from_session_id.unwrap_or_else(|| session_id.clone());
     let id = session_id.clone();
@@ -1185,6 +1189,7 @@ pub async fn chat_history_page(
     .await
     .ok_or("this session's earlier history moved; reopen the chat to read it")?;
     state.0.cut_outputs(&session_id, &mut page.events);
+    state.0.mark_secrets(&session_id, cwd, &mut page.events);
     Ok(page)
 }
 

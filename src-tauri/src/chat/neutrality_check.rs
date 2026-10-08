@@ -201,6 +201,7 @@ pub fn map_codex(ev: CodexEvent) -> ChatEvent {
             kind: ToolKind::Execute,
             locations: vec![],
             title: None,
+            secret: None,
         },
         CodexEvent::ItemCompleted => ChatEvent::ToolCallCompleted {
             session_id: sid(),
@@ -320,6 +321,7 @@ pub fn map_acp(update: AcpSessionUpdate) -> ChatEvent {
             kind: ToolKind::Read,
             locations: vec![],
             title: Some("read_text_file".into()),
+            secret: None,
         },
         // ACP folds progress and completion into one update discriminated by
         // its status field, and the completed case is the one that carries the

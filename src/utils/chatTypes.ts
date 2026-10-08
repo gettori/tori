@@ -53,6 +53,10 @@ export type ToolKind =
 /// only the paths a call wrote.
 export type ToolLocation = { path: string; line: number | null };
 
+/// A secret file a tool call opened (`read`) or a shell command mentioned
+/// (`named`). The weaker evidence gets the weaker claim.
+export type SecretHit = { paths: string[]; strength: "read" | "named" };
+
 /// One hunk of a measured diff, in the shape Claude's `structuredPatch` sends:
 /// each entry of `lines` carries its own `+`, `-` or space marker.
 ///
@@ -519,6 +523,7 @@ export type ChatEvent =
       kind: ToolKind;
       locations: ToolLocation[];
       title: string | null;
+      secret?: SecretHit;
     }
   | {
       type: "toolCallProgress";
@@ -829,6 +834,7 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
   thinkingDelta: { required: ["sessionId", "turnId", "text", "agentId"] },
   toolCallStarted: {
     required: ["sessionId", "turnId", "toolUseId", "name", "input", "kind", "locations", "title"],
+    optional: ["secret"],
   },
   toolCallProgress: { required: ["sessionId", "turnId", "toolUseId", "partialInput"] },
   toolCallCompleted: {

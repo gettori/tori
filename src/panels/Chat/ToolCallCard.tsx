@@ -1,5 +1,5 @@
 import { For, Show, Switch, Match, createMemo, createSignal, createResource } from "solid-js";
-import { ChevronRight } from "lucide-solid";
+import { ChevronRight, KeyRound } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import { invoke } from "@tauri-apps/api/core";
 import { parseDiffHunks } from "../../utils/diffHunks";
@@ -181,7 +181,10 @@ export default function ToolCallCard(props: {
   }
 
   return (
-    <div class={`${styles.tool} ${props.card.state === "awaitingApproval" ? styles.toolBlocked : ""}`}>
+    <div
+      class={`${styles.tool} ${props.card.state === "awaitingApproval" ? styles.toolBlocked : ""}`}
+      classList={{ [styles.toolSecret]: !!props.card.secret }}
+    >
       <button type="button" class={styles.toolRow} onClick={toggleOpen} aria-expanded={open()}>
         <span class={styles.toolCaret} classList={{ [styles.toolCaretOpen]: open() }} aria-hidden="true">
           <Icon icon={ChevronRight} size={12} />
@@ -199,6 +202,11 @@ export default function ToolCallCard(props: {
           {props.card.title ?? props.card.name ?? "tool"}
         </span>
         <span class={styles.toolArg}>{arg()}</span>
+        <Show when={props.card.secret}>
+          <span class={styles.toolSecretKey} role="img" aria-label="Secret file">
+            <Icon icon={KeyRound} size={12} />
+          </span>
+        </Show>
         {/* What the call did, once it has said. A row with no summary is the
             row exactly as it was before this existed. A write says it in two
             numbers that carry their own verdict, so those get the diff's own
