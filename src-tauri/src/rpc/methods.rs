@@ -20,8 +20,9 @@ use super::server::{
     CheckpointsParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams,
     IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams,
     ModelParams, OpenParams, PendingParams, PrCreateParams, PrGetParams, PrMergeParams, PrWatchParams,
-    ProjectIconParams, ProjectSetParams, ReviewSubmitParams, SessionAnswerParams, SpawnParams, SteerParams, TailParams,
-    TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, DEFAULT_LOG_LIMIT,
+    ProjectIconParams, ProjectSetParams, ProvenanceParams, ReviewSubmitParams, SessionAnswerParams, SpawnParams,
+    SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams,
+    WorktreeParams, DEFAULT_LOG_LIMIT,
 };
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
@@ -1253,22 +1254,70 @@ impl Backend for TauriBackend {
 
     fn checkpoint_diff(&self, params: CheckpointDiffParams) -> Result<Value, RpcError> {
         let (cwd, ts) = self.checkpoint(&params.id, params.turn)?;
-        if let Some(to) = params.to.filter(|to| *to != params.turn) {
-            let (_, to_ts) = self.checkpoint(&params.id, to)?;
-            let (files, diff) =
-                crate::checkpoint::checkpoint_range_diff(&cwd, &params.id, ts, to_ts).map_err(refused)?;
+        let why = params.why.unwrap_or(false);
+        if why && crate::checkpoint::worktree_members(&cwd).is_some() {
+            return Err(refused(
+                "why reads one worktree, and this session runs across a Topic's worktrees".into(),
+            ));
+        }
+        let mut last_ts = ts;
+        let (files, diff) = match params.to.filter(|to| *to != params.turn) {
+            Some(to) => {
+                let (_, to_ts) = self.checkpoint(&params.id, to)?;
+                last_ts = to_ts;
+                let (files, diff) =
+                    crate::checkpoint::checkpoint_range_diff(&cwd, &params.id, ts, to_ts).map_err(refused)?;
+                (serde_json::to_value(files).unwrap_or_default(), diff)
+            }
+            None => {
+                let files = crate::checkpoint::checkpoint_turn_files(cwd.clone(), params.id.clone(), ts, None, None)
+                    .map_err(refused)?;
+                let mut diff = String::new();
+                for file in &files {
+                    let one = crate::checkpoint::checkpoint_diff_file(
+                        cwd.clone(),
+                        params.id.clone(),
+                        ts,
+                        file.path.clone(),
+                        None,
+                    )
+                    .map_err(refused)?;
+                    diff.push_str(&one);
+                }
+                (serde_json::to_value(files).unwrap_or_default(), diff)
+            }
+        };
+        if !why {
             return Ok(json!({ "files": files, "diff": diff }));
         }
-        let files = crate::checkpoint::checkpoint_turn_files(cwd.clone(), params.id.clone(), ts, None, None)
-            .map_err(refused)?;
-        let mut diff = String::new();
-        for file in &files {
-            let one =
-                crate::checkpoint::checkpoint_diff_file(cwd.clone(), params.id.clone(), ts, file.path.clone(), None)
-                    .map_err(refused)?;
-            diff.push_str(&one);
+        let end = crate::provenance::checkpoint_end(&cwd, &params.id, last_ts).map_err(refused)?;
+        let sessions = crate::provenance::worktree_sessions(&self.app.state::<SessionIndex>(), &cwd);
+        let histories = crate::provenance::Histories::default();
+        let why: Vec<Value> = crate::provenance::spans_of(&diff)
+            .into_iter()
+            .map(|(path, spans)| {
+                let hunks = crate::provenance::hunk_provenance(&cwd, &path, &end, &sessions, &spans, &histories);
+                json!({ "path": path, "hunks": hunks })
+            })
+            .collect();
+        Ok(json!({ "files": files, "diff": diff, "why": why }))
+    }
+
+    fn provenance_hunks(&self, params: ProvenanceParams) -> Result<Value, RpcError> {
+        if !crate::checkpoint::is_git_worktree(&params.folder) {
+            return Err(refused(format!("{} is not a git worktree", params.folder)));
         }
-        Ok(json!({ "files": files, "diff": diff }))
+        let end = crate::provenance::live_end(&params.folder).map_err(refused)?;
+        let sessions = crate::provenance::worktree_sessions(&self.app.state::<SessionIndex>(), &params.folder);
+        let hunks = crate::provenance::hunk_provenance(
+            &params.folder,
+            &params.file,
+            &end,
+            &sessions,
+            &params.hunks,
+            &crate::provenance::Histories::default(),
+        );
+        serde_json::to_value(hunks).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))
     }
 
     fn checkpoint_revert(&self, principal: &Principal, params: CheckpointParams) -> Result<Value, RpcError> {

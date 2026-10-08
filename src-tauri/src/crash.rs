@@ -106,7 +106,7 @@ fn write(dir: &Path, report: &Report, at: SystemTime) -> std::io::Result<PathBuf
 /// `20261003T0912Z`-style, no separators that a filename would mind. Hand
 /// rolled from the epoch so the hook pulls in nothing that could allocate
 /// surprisingly; the civil-date arithmetic is the standard days-to-ymd one.
-fn stamp(secs: u64) -> String {
+pub(crate) fn stamp(secs: u64) -> String {
     let days = secs / 86_400;
     let rem = secs % 86_400;
     let (h, m, s) = (rem / 3600, (rem % 3600) / 60, rem % 60);

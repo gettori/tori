@@ -8,7 +8,7 @@ import codeEditorSource from "../panels/Editor/CodeEditor.tsx?raw";
 // writes the file - so the cache has no key that notices, and the drop is the
 // whole invalidation story.
 
-let calls: { projectPath: string; file: string; sessions: string[] }[] = [];
+let calls: { projectPath: string; file: string }[] = [];
 let fails = false;
 
 const TURN = { session_id: "sess-1", prompt_ts: 1700, ordinal: 3 };
@@ -19,27 +19,16 @@ vi.mock("@tauri-apps/api/core", () => ({
     calls.push({
       projectPath: String(args.projectPath),
       file: String(args.file),
-      sessions: args.sessions as string[],
     });
     if (fails) return Promise.reject("no such session");
     return Promise.resolve({ lines: [-1, 0], turns: [TURN] });
   },
 }));
 
-const {
-  agentLinesFor,
-  dropAgentLines,
-  clearAgentLinesCache,
-  agentLabel,
-  agentKey,
-  turnIdAt,
-  revealTarget,
-  emptyAgentLines,
-  NO_TURN,
-} = await import("./agentLines");
+const { agentLinesFor, dropAgentLines, clearAgentLinesCache, agentLabel, agentKey, turnIdAt, revealTarget, NO_TURN } =
+  await import("./agentLines");
 
 const REPO = "/proj";
-const SESSIONS = ["sess-1"];
 
 beforeEach(() => {
   calls = [];
@@ -49,26 +38,17 @@ beforeEach(() => {
 
 describe("reading who wrote a file's uncommitted lines", () => {
   it("reads a file once, however many times it is asked for", async () => {
-    await agentLinesFor(REPO, "a.ts", SESSIONS);
-    await agentLinesFor(REPO, "a.ts", SESSIONS);
+    await agentLinesFor(REPO, "a.ts");
+    await agentLinesFor(REPO, "a.ts");
 
     expect(calls.length).toBe(1);
-    expect(calls[0]).toEqual({ projectPath: REPO, file: "a.ts", sessions: SESSIONS });
-  });
-
-  it("asks for nothing when no chat is open in the worktree", async () => {
-    // The walk is a diff per interval, and with no session there are no
-    // intervals: the answer is known without a subprocess.
-    const out = await agentLinesFor(REPO, "a.ts", []);
-
-    expect(calls).toEqual([]);
-    expect(out).toEqual(emptyAgentLines());
+    expect(calls[0]).toEqual({ projectPath: REPO, file: "a.ts" });
   });
 
   it("keeps files apart, and repos apart", async () => {
-    await agentLinesFor(REPO, "a.ts", SESSIONS);
-    await agentLinesFor(REPO, "b.ts", SESSIONS);
-    await agentLinesFor("/other", "a.ts", SESSIONS);
+    await agentLinesFor(REPO, "a.ts");
+    await agentLinesFor(REPO, "b.ts");
+    await agentLinesFor("/other", "a.ts");
 
     expect(calls.length).toBe(3);
     expect(agentKey(REPO, "a.ts")).not.toBe(agentKey("/other", "a.ts"));
@@ -76,7 +56,7 @@ describe("reading who wrote a file's uncommitted lines", () => {
 
   it("answers empty instead of throwing at the file you opened", async () => {
     fails = true;
-    const out = await agentLinesFor(REPO, "a.ts", SESSIONS);
+    const out = await agentLinesFor(REPO, "a.ts");
 
     expect(out.lines).toEqual([]);
     expect(out.turns).toEqual([]);
@@ -84,9 +64,9 @@ describe("reading who wrote a file's uncommitted lines", () => {
 
   it("does not cache a failure, so a transient one clears itself", async () => {
     fails = true;
-    await agentLinesFor(REPO, "a.ts", SESSIONS);
+    await agentLinesFor(REPO, "a.ts");
     fails = false;
-    const out = await agentLinesFor(REPO, "a.ts", SESSIONS);
+    const out = await agentLinesFor(REPO, "a.ts");
 
     expect(calls.length).toBe(2);
     expect(out.turns).toEqual([TURN]);
@@ -95,26 +75,26 @@ describe("reading who wrote a file's uncommitted lines", () => {
   it("re-reads a file once it has been written to", async () => {
     // The only thing that changes the answer, and the only thing that
     // invalidates it: there is no HEAD-shaped key here to notice on its own.
-    await agentLinesFor(REPO, "a.ts", SESSIONS);
-    await agentLinesFor(REPO, "b.ts", SESSIONS);
+    await agentLinesFor(REPO, "a.ts");
+    await agentLinesFor(REPO, "b.ts");
 
     dropAgentLines(REPO, "a.ts");
 
-    await agentLinesFor(REPO, "b.ts", SESSIONS);
+    await agentLinesFor(REPO, "b.ts");
     // The file nobody wrote to is still cached.
     expect(calls.length).toBe(2);
-    await agentLinesFor(REPO, "a.ts", SESSIONS);
+    await agentLinesFor(REPO, "a.ts");
     expect(calls.length).toBe(3);
   });
 
   it("stops growing past its bound", async () => {
-    for (let i = 0; i < 60; i++) await agentLinesFor(REPO, `f${i}.ts`, SESSIONS);
+    for (let i = 0; i < 60; i++) await agentLinesFor(REPO, `f${i}.ts`);
     expect(calls.length).toBe(60);
 
     // The oldest is gone (re-reads), the newest is still there (does not).
-    await agentLinesFor(REPO, "f0.ts", SESSIONS);
+    await agentLinesFor(REPO, "f0.ts");
     expect(calls.length).toBe(61);
-    await agentLinesFor(REPO, "f59.ts", SESSIONS);
+    await agentLinesFor(REPO, "f59.ts");
     expect(calls.length).toBe(61);
   });
 });

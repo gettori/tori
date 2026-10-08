@@ -298,44 +298,6 @@ fn write_touched_index(session_id: &str, index: &TouchedIndex) {
     }
 }
 
-/// One turn that wrote a file, and where it sits in its session.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TouchedTurn {
-    pub session_id: String,
-    pub prompt_ts: u64,
-    /// 1-based position among the turns this session has recorded, so the
-    /// widget can say "turn 12" rather than an epoch timestamp.
-    pub ordinal: usize,
-}
-
-/// Every turn of `session_id` that wrote `abs_file`, oldest first.
-///
-/// One file read. A session with no index answers empty rather than falling
-/// back to a scan: the scan is the cost this exists to avoid, and a session that
-/// predates the index is exactly the case where it would run every time.
-/// `rebuild_touched_index` covers that case once, at open.
-pub(crate) fn turns_touching(session_id: &str, abs_file: &str) -> Vec<TouchedTurn> {
-    let Some(index) = read_touched_index(session_id) else {
-        return Vec::new();
-    };
-    let Some(at) = index.files.get(abs_file) else {
-        return Vec::new();
-    };
-    let mut order: Vec<u64> = index.turns.clone();
-    order.sort_unstable();
-    let mut out: Vec<TouchedTurn> = at
-        .iter()
-        .filter_map(|i| index.turns.get(*i as usize).copied())
-        .map(|ts| TouchedTurn {
-            session_id: session_id.to_string(),
-            prompt_ts: ts,
-            ordinal: order.iter().position(|t| *t == ts).map(|i| i + 1).unwrap_or(0),
-        })
-        .collect();
-    out.sort_by_key(|t| t.prompt_ts);
-    out
-}
-
 /// Build the index from the per-turn records for a session that has none.
 ///
 /// The one place the 200-read scan is allowed, and it happens once per session
@@ -370,6 +332,24 @@ pub(crate) fn rebuild_touched_index(session_id: &str) {
         fold_into_index(&mut index, ts, &rec.files);
     }
     write_touched_index(session_id, &index);
+}
+
+/// Every turn this session recorded a tool call in, ascending.
+pub(crate) fn recorded_turns(session_id: &str) -> Vec<u64> {
+    rebuild_touched_index(session_id);
+    let mut turns = read_touched_index(session_id).map(|i| i.turns).unwrap_or_default();
+    turns.sort_unstable();
+    turns
+}
+
+/// One turn's recorded tools and written paths, or `None` when nothing was
+/// recorded for it.
+pub(crate) fn turn_record(session_id: &str, prompt_ts: u64) -> Option<(Vec<String>, Vec<String>)> {
+    read_touched(session_id, prompt_ts).map(|rec| (rec.tools, rec.files))
+}
+
+pub(crate) fn path_parseable(tool: &str) -> bool {
+    PATH_PARSEABLE_TOOLS.contains(&tool)
 }
 
 /// A session's record for one turn, or `None` when there is no readable one.
@@ -527,7 +507,7 @@ fn parse_ref_segment(segment: &str) -> Option<(u64, String, Option<u64>)> {
 
 // A Topic chat runs in the Topic's home, which is no repository, so a call
 // made there runs once per worktree member and answers with absolute paths.
-fn worktree_members(at: &str) -> Option<Vec<String>> {
+pub(crate) fn worktree_members(at: &str) -> Option<Vec<String>> {
     let topics = crate::unit_home::topics();
     let topic = crate::topic_home::topic_at_home(&topics, at)?;
     let mut members: Vec<&crate::topics::Member> = topic
@@ -604,15 +584,12 @@ fn list_checkpoints(repo: &str, session_id: &str) -> Vec<Checkpoint> {
     entries
 }
 
-/// Every tree this session has snapshotted, ascending by timestamp.
-///
-/// Backstops are included. A backstop is a real intermediate state of the tree,
-/// and a line walk that skipped it would carry line numbers across a change
-/// nothing in its plan accounts for.
-pub(crate) fn checkpoint_trees(repo: &str, session_id: &str) -> Vec<(u64, String)> {
+/// Every tree this session has snapshotted, ascending, each marked with whether
+/// it is a backstop rather than a prompt boundary.
+pub(crate) fn checkpoint_points(repo: &str, session_id: &str) -> Vec<(u64, String, bool)> {
     list_checkpoints(repo, session_id)
         .into_iter()
-        .map(|c| (c.ts, c.tree))
+        .map(|c| (c.ts, c.tree, c.kind == KIND_BACKSTOP))
         .collect()
 }
 
@@ -1693,39 +1670,6 @@ mod tests {
     }
 
     #[test]
-    fn a_files_turns_are_found_without_opening_every_turns_record() {
-        // 200 turns, three of which wrote the file. The lookup costs one read,
-        // proven by deleting every per-turn record first: an answer that still
-        // arrives cannot have come from scanning them.
-        let (dir, session) = tmp_repo();
-        let file = dir.join("a.ts").to_string_lossy().into_owned();
-        let other = dir.join("b.ts").to_string_lossy().into_owned();
-        for i in 0..200u64 {
-            let wrote = if i == 3 || i == 77 || i == 150 { &file } else { &other };
-            checkpoint_note_touched(session.clone(), 1000 + i, "Edit".into(), vec![wrote.clone()]).unwrap();
-        }
-        let records = attribution_path(&session, 0).parent().unwrap().to_path_buf();
-        for entry in std::fs::read_dir(&records).unwrap().flatten() {
-            if entry.file_name() != "index.json" {
-                std::fs::remove_file(entry.path()).unwrap();
-            }
-        }
-
-        let turns = turns_touching(&session, &file);
-
-        assert_eq!(
-            turns.iter().map(|t| t.prompt_ts).collect::<Vec<_>>(),
-            vec![1003, 1077, 1150]
-        );
-        // The session's own numbering, not a count of the three: the widget says
-        // "turn 4", and turn 4 is what the timeline calls it too.
-        assert_eq!(turns[0].ordinal, 4);
-        assert_eq!(turns[2].ordinal, 151);
-        assert!(turns_touching(&session, &dir.join("never.ts").to_string_lossy()).is_empty());
-        cleanup(&dir, &session);
-    }
-
-    #[test]
     fn a_session_recorded_before_the_index_existed_is_indexed_once_on_demand() {
         // Without this every session from before this feature reads as having
         // written nothing, which looks exactly like an agent that wrote nothing.
@@ -1734,24 +1678,11 @@ mod tests {
         checkpoint_note_touched(session.clone(), 1000, "Edit".into(), vec![file.clone()]).unwrap();
         checkpoint_note_touched(session.clone(), 2000, "Edit".into(), vec![file.clone()]).unwrap();
         std::fs::remove_file(touched_index_path(&session)).unwrap();
-        assert!(turns_touching(&session, &file).is_empty(), "no index, no answer");
+        assert!(read_touched_index(&session).is_none(), "no index, no answer");
 
         rebuild_touched_index(&session);
 
-        assert_eq!(turns_touching(&session, &file).len(), 2);
-        cleanup(&dir, &session);
-    }
-
-    #[test]
-    fn a_turn_that_named_no_file_still_takes_its_place_in_the_numbering() {
-        // A Bash-only turn writes nothing this can see, but it is still a turn:
-        // skipping it would shift every later turn's number by one.
-        let (dir, session) = tmp_repo();
-        let file = dir.join("a.ts").to_string_lossy().into_owned();
-        checkpoint_note_touched(session.clone(), 1000, "Bash".into(), vec![]).unwrap();
-        checkpoint_note_touched(session.clone(), 2000, "Edit".into(), vec![file.clone()]).unwrap();
-
-        assert_eq!(turns_touching(&session, &file)[0].ordinal, 2);
+        assert_eq!(read_touched_index(&session).unwrap().files[&file].len(), 2);
         cleanup(&dir, &session);
     }
 
@@ -2603,7 +2534,7 @@ mod tests {
         checkpoint_snapshot_body(sid.clone(), repo.clone(), 300).unwrap();
         std::fs::write(dir.join("turn3.txt"), "three").unwrap();
         checkpoint_snapshot_body(sid.clone(), repo.clone(), 400).unwrap();
-        let trees = checkpoint_trees(&repo, &sid);
+        let trees = checkpoint_points(&repo, &sid);
 
         let (files, diff) = checkpoint_range_diff(&repo, &sid, 100, 200).unwrap();
         let expected = git_output(&repo, &["diff", "--no-color", &trees[0].1, &trees[2].1]).unwrap();

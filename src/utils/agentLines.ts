@@ -50,22 +50,19 @@ export function agentKey(root: string, file: string): string {
  * Who wrote this file's uncommitted lines, from cache when it has been read
  * before.
  *
- * `sessions` are the chats in this worktree. They are passed in rather than
- * discovered because a bare repo's worktrees share one ref store: the sessions
- * git can see include ones from other worktrees, whose checkpoints describe an
- * entirely different set of files.
+ * The backend finds the sessions that ran in `root` itself, chat and terminal
+ * alike, the same set a diff hunk's provenance weighs.
  *
  * A failure is an empty answer, not a throw, for the reason blame's is: this is
  * decoration on a file you were trying to read.
  */
-export async function agentLinesFor(root: string, file: string, sessions: string[]): Promise<AgentLines> {
-  if (!sessions.length) return emptyAgentLines();
+export async function agentLinesFor(root: string, file: string): Promise<AgentLines> {
   const key = agentKey(root, file);
   const hit = cache.get(key);
   if (hit) return hit;
   let read: AgentLines;
   try {
-    read = await invoke<AgentLines>("agent_lines", { projectPath: root, file, sessions });
+    read = await invoke<AgentLines>("agent_lines", { projectPath: root, file });
   } catch {
     // Not cached, same as blame: a failed read is a fact about the backend, not
     // about who wrote this file.
