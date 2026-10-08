@@ -35,3 +35,4 @@ source: "Blind-edit warning plan (branch `phase-1-block-1`, gettori/tickets#27);
 - [[gotcha_a_change_to_live_chat_events_misses_replay]] why marking happens in two places
 - [[gotcha_an_acp_load_hands_history_back_through_the_live_sink]] the replay the verdict cache survives
 - [[concept_evidence_tiered_attribution]] why the seen set is lenient
+- [[component_verification]] the sibling tracker in `wrap` that marks turns

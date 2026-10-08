@@ -14,10 +14,13 @@ So anything in `wrap` that treats an event as something happening now (announcin
 The fix is the mirror's rule. Mark the session as replaying when it is announced and again when a rewire asks for a replay (`Lifecycle::expect_replay`, beside `Mirror::expect_replay`), and let `SessionStarted` clear it. A test emits a `TurnStarted` before `SessionStarted` and checks nothing went out.
 
 State that `wrap` builds up from events meets the same replay. A per-session seen set (blind edits) holds every later read by the time a replayed edit passes, so recomputing a verdict then gives a different answer. Resetting it on `SessionStarted` wipes what the replay just rebuilt, and resetting it where the host calls `replay()` races frames that land before the call returns, and empties it when no replay comes. Keep the first answer per call id instead, so the second pass reuses it.
+The verification tracker does the same per turn id, and measures no time while
+the session is replaying, since replayed frames arrive all at once.
 
 ## Related
 
 - [[component_blind_edit]] - the verdict cache per call id
+- [[component_verification]] - the verdict cache per turn id
 - [[concept_socket_event_vocabulary]] - the events this gate protects
 - [[component_chat_host]] - `wrap` and `Lifecycle`
 - [[component_acp_transport]] - where the load is sent
