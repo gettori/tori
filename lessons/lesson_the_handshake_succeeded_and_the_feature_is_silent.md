@@ -1,7 +1,7 @@
 ---
 summary: three language features passed every fake server test and did nothing real, since a handshake only claims a server can
 status: current
-updated: 2026-08-08
+updated: 2026-10-09
 source: "Editor wave 7: language intelligence depth (personal/tori, branch `wave-7`); Phase 5 (commit a620384), Phase 6 (506d7e7), Phase 9 (d7a6e3e); issues #65, #68"
 ---
 
@@ -27,7 +27,7 @@ All three failures share a shape: **the honest-looking empty answer**. Zero diag
 
 **Treat an empty answer from a real server as a bug until proven otherwise.** Zero diagnostics on a file you know is wrong is a finding, not a pass. In all three cases the end-to-end check "succeeded" first and only looked wrong on the second reading.
 
-**When a feature depends on server-side configuration, prove the delivery mechanism rather than assuming the obvious one.** Grep the installed server for where it reads the preference ([[lesson_grep_the_installed_dep_before_wiring_a_binding]] generalises here): the YAML server pulls, tsserver reads `getWorkspacePreferencesForFile` and not `initializationOptions`, and Tori's `initialization_options` reaches no server at all.
+**When a feature depends on server-side configuration, prove the delivery mechanism rather than assuming the obvious one.** Grep the installed server for where it reads the preference ([[lesson_grep_the_installed_dep_before_wiring_a_binding]] generalises here): the YAML server pulls, tsserver reads `getWorkspacePreferencesForFile` and not `initializationOptions`, and Tori's `initialization_options` reached no primary server at all until the `lsp-client` 6.3.0 bump (see [[component_lsp_host]]).
 
 ## Related
 
