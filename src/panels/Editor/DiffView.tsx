@@ -7,7 +7,6 @@ import {
   Columns2,
   Copy,
   FileCode,
-  Footprints,
   Minus,
   Pilcrow,
   Plus,
@@ -45,7 +44,8 @@ import { isReference } from "../../utils/topics";
 import Breadcrumbs from "./Breadcrumbs";
 import DiffRows, { diffRowClasses } from "./DiffRows";
 import HunkCommentInput from "./HunkCommentInput";
-import HunkProvenance from "./HunkProvenance";
+import HunkProvenance, { createOpenHunks, WhyToggle } from "./HunkProvenance";
+import { diffTabClaims } from "../../utils/provenance";
 import type { RevertOutcome } from "./CheckpointTimeline";
 import ConfirmDialog, { type ConfirmReq } from "../../components/Dialogs/ConfirmDialog";
 import IconButton from "../../components/IconButton/IconButton";
@@ -114,7 +114,7 @@ export default function DiffView(props: {
   // hunk at a time: the patch is rebuilt from a single hunk's body, so a
   // selection spanning two could not be applied as one request anyway.
   const [picked, setPicked] = createSignal<{ hunk: number; lines: ReadonlySet<number> } | null>(null);
-  const [whyOpen, setWhyOpen] = createSignal<ReadonlySet<number>>(new Set());
+  const whyOpen = createOpenHunks();
   const [fileText, setFileText] = createSignal<string | null>(null);
   const [blame, setBlame] = createSignal<Blame | null>(null);
   const [caret, setCaret] = createSignal<{ line: number; column: number } | null>(null);
@@ -140,7 +140,7 @@ export default function DiffView(props: {
   // A line selection is indices into one hunk's body, so it means nothing once
   // the hunks move.
   createEffect(on(diff, () => setPicked(null)));
-  createEffect(on(diff, () => setWhyOpen(new Set<number>())));
+  createEffect(on(diff, () => whyOpen.clear()));
 
   const twoColumn = () => sideBySide() && paneWidth() >= SIDE_BY_SIDE_MIN_WIDTH;
   // Staging re-derives the diff without -w, so a hunk read with it matches
@@ -658,22 +658,10 @@ export default function DiffView(props: {
                       startLine={hunk.startLine}
                       endLine={hunk.endLine}
                     />
-                    <IconButton
-                      size="sm"
-                      icon={<Icon icon={Footprints} />}
-                      active={whyOpen().has(hi())}
-                      tooltip={whyOpen().has(hi()) ? "Hide who wrote this hunk" : "Who wrote this hunk"}
-                      onClick={() =>
-                        setWhyOpen((prev) => {
-                          const next = new Set(prev);
-                          if (!next.delete(hi())) next.add(hi());
-                          return next;
-                        })
-                      }
-                    />
+                    <WhyToggle open={whyOpen.has(hi())} onClick={() => whyOpen.toggle(hi())} />
                   </div>
-                  <Show when={whyOpen().has(hi())}>
-                    <HunkProvenance root={props.workspace} file={file()} hunk={hunk} staged={staged()} />
+                  <Show when={whyOpen.has(hi())}>
+                    <HunkProvenance hunk={hunk} read={diffTabClaims(props.workspace, file(), staged())} />
                   </Show>
                   <DiffRows
                     rows={buildRows(hunk.lines, { old: hunk.oldStart, new: hunk.startLine })}

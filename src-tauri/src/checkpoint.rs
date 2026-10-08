@@ -538,7 +538,7 @@ fn absolute(root: &str, path: &str) -> String {
 }
 
 // The longest root wins, so a member nested in another answers for itself.
-fn in_member(roots: &[String], file: &str) -> Result<(String, String), String> {
+pub(crate) fn in_member(roots: &[String], file: &str) -> Result<(String, String), String> {
     roots
         .iter()
         .filter_map(|r| relative_to(r, file).map(|rel| (r.clone(), rel)))

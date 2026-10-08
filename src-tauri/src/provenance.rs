@@ -1314,6 +1314,39 @@ pub fn diff_provenance(
     ))
 }
 
+/// Tauri: who wrote each hunk of a Checkpoints diff. A turn's diff ends at
+/// that turn's next checkpoint; a "since" diff and a backstop's (no session)
+/// end at the working tree, as their diffs do.
+#[tauri::command(async)]
+pub fn checkpoint_provenance(
+    index: tauri::State<'_, crate::sessions::SessionIndex>,
+    repo_path: String,
+    session_id: Option<String>,
+    prompt_ts: u64,
+    file: String,
+    cumulative: bool,
+    hunks: Vec<String>,
+) -> Result<Vec<Vec<ClaimRange>>, String> {
+    let (root, file) = match worktree_members(&repo_path) {
+        Some(roots) => crate::checkpoint::in_member(&roots, &file)?,
+        None => (repo_path, file),
+    };
+    let end = match session_id {
+        Some(session) if !cumulative => checkpoint_end(&root, &session, prompt_ts)?,
+        _ => live_end(&root)?,
+    };
+    let sessions = worktree_sessions(&index, &root);
+    let blocks: Vec<Vec<Span>> = hunks.iter().map(|h| hunk_spans(h)).collect();
+    Ok(hunk_provenance(
+        &root,
+        &file,
+        &end,
+        &sessions,
+        &blocks,
+        &Histories::default(),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1642,6 +1675,56 @@ mod tests {
         let (turn, call) = call_of(&out[0][1].claim);
         assert_eq!(call.tool_use_id, "toolu_2");
         assert_eq!(turn.ordinal, 2);
+    }
+
+    #[test]
+    fn a_checkpoint_turn_with_two_edits_names_each_on_its_own_hunk() {
+        let lines: Vec<String> = (1..=10).map(|i| format!("line {i}")).collect();
+        let mut fx = Fixture::new(&(lines.join("\n") + "\n"));
+        let a = fx.session("a");
+        let abs = fx.abs();
+        fx.snapshot(&a, 1000);
+        let mut one = lines.clone();
+        one[1] = "two, edited".into();
+        one[8] = "nine, edited".into();
+        fx.write(&(one.join("\n") + "\n"));
+        fx.touched(&a, 1000, "Edit", vec![abs.clone()]);
+        fx.snapshot(&a, 2000);
+        let mut two = one.clone();
+        two.insert(0, "a line on top, later".into());
+        fx.write(&(two.join("\n") + "\n"));
+        fx.touched(&a, 2000, "Edit", vec![abs.clone()]);
+        let edit = |id: &str, old: &str, new: &str| {
+            (
+                id.to_string(),
+                serde_json::json!({ "file_path": abs, "old_string": old, "new_string": new }),
+            )
+        };
+        let (x, y, z) = (
+            edit("toolu_x", "line 2", "two, edited"),
+            edit("toolu_y", "line 9", "nine, edited"),
+            edit("toolu_z", "line 1", "a line on top, later\nline 1"),
+        );
+        let transcript = Transcript::default()
+            .prompt(1000, "edit two and nine")
+            .call(1001, &x.0, "Edit", x.1)
+            .call(1002, &y.0, "Edit", y.1)
+            .prompt(2000, "add a line on top")
+            .call(2001, &z.0, "Edit", z.1);
+        let histories = Histories::with(Box::new(loader(&fx.dir, vec![(a.clone(), Source::Claude(transcript))])));
+        let end = checkpoint_end(&fx.repo, &a, 1000).unwrap();
+
+        let out = hunk_provenance(
+            &fx.repo,
+            "f.txt",
+            &end,
+            &[session(&a, "claude", 0)],
+            &[vec![Span { start: 2, count: 1 }], vec![Span { start: 9, count: 1 }]],
+            &histories,
+        );
+
+        assert_eq!(call_of(&out[0][0].claim).1.tool_use_id, "toolu_x");
+        assert_eq!(call_of(&out[1][0].claim).1.tool_use_id, "toolu_y");
     }
 
     #[test]
