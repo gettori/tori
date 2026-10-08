@@ -120,6 +120,7 @@ fn history_bytes(name: &str, body: &str) -> u64 {
         from,
         "claude".into(),
         None,
+        None,
     ));
     let _ = std::fs::remove_file(&path);
     serde_json::to_vec(&reply).unwrap().len() as u64

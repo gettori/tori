@@ -50,6 +50,7 @@ function tool(id: string, over: Partial<ToolItem>): ToolItem {
     durationMs: null,
     approval: null,
     edits: [],
+    secret: null,
     files: [],
     ...over,
   };

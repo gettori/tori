@@ -6,6 +6,7 @@ import { BLOCKED_REASON, sendWithProbeGate } from "../../utils/safeSend";
 import {
   answerable,
   applyEvent,
+  turnSecrets,
   beginReconnect,
   chatStatus,
   clearAwaitingTurn,
@@ -764,6 +765,48 @@ describe("a tool card is materialized by whichever channel arrives first", () =>
   });
 });
 
+describe("secret watch", () => {
+  type Started = Extract<ChatEvent, { type: "toolCallStarted" }>;
+  const call = (toolUseId: string, over: Partial<Started> = {}): ChatEvent => ({
+    ...(started("t1", toolUseId, "Read", { file_path: "/repo/src/a.ts" }) as Started),
+    kind: "read",
+    ...over,
+  });
+
+  it("marks the turn as read when a read tool opened a secret, and as named for a command", () => {
+    const s = replay([
+      call("a", { secret: { paths: ["/repo/.env"], strength: "read" } }),
+      call("b", { turnId: "t2", name: "Bash", kind: "execute", secret: { paths: [".env"], strength: "named" } }),
+      call("c", { turnId: "t3" }),
+    ]);
+    const marks = turnSecrets(s.items);
+    expect(marks.get("t1")).toEqual({ paths: ["/repo/.env"], strength: "read" });
+    expect(marks.get("t2")).toEqual({ paths: [".env"], strength: "named" });
+    expect(marks.has("t3")).toBe(false);
+  });
+
+  it("lets a read outrank a mention within one turn", () => {
+    const s = replay([
+      call("a", { name: "Bash", kind: "execute", secret: { paths: [".env"], strength: "named" } }),
+      call("b", { secret: { paths: ["/repo/.netrc"], strength: "read" } }),
+    ]);
+    expect(turnSecrets(s.items).get("t1")).toEqual({ paths: ["/repo/.netrc", ".env"].sort(), strength: "read" });
+  });
+
+  it("keeps the mark when a later frame of the same call says nothing about it", () => {
+    const s = replay([call("a", { secret: { paths: ["/repo/.env"], strength: "read" } }), call("a")]);
+    expect(tool(s, "a").secret).toEqual({ paths: ["/repo/.env"], strength: "read" });
+  });
+
+  it("marks the card when only a later patch carries the hit", () => {
+    const s = replay([
+      call("a", { name: "read", input: null }),
+      call("a", { name: "", input: null, secret: { paths: ["/home/me/.aws/credentials"], strength: "read" } }),
+    ]);
+    expect(tool(s, "a").secret?.paths).toEqual(["/home/me/.aws/credentials"]);
+  });
+});
+
 describe("the neutral facts a collapsed row reads", () => {
   type Started = Extract<ChatEvent, { type: "toolCallStarted" }>;
   const declared = (over: Partial<Started> = {}): ChatEvent => ({
@@ -1319,6 +1362,7 @@ describe("reasoningFor", () => {
     files: [],
     durationMs: null,
     edits: [],
+    secret: null,
   });
   const text = (id: string, body: string, agentId: string | null = null): ChatItem => ({
     kind: "text",

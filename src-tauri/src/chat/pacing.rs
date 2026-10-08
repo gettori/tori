@@ -453,6 +453,7 @@ mod tests {
             kind: ToolKind::Read,
             locations: vec![],
             title: None,
+            secret: None,
         };
         pacer.deliver(started.clone());
 

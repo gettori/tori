@@ -185,6 +185,7 @@ function editCard(): ToolItem {
     files: [],
     durationMs: null,
     edits: [],
+    secret: null,
   };
 }
 

@@ -94,6 +94,7 @@ function tool(
     files: [],
     durationMs: running ? null : 900,
     edits: [],
+    secret: null,
   };
 }
 

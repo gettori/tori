@@ -771,6 +771,7 @@ fn tool_call_started(session_id: &str, turn_id: &str, call: &ToolCall) -> ChatEv
         // An agent that sent an empty title said nothing, and `Some("")` would
         // make a renderer falling back on `name` show a blank row instead.
         title: (!call.title.is_empty()).then(|| call.title.clone()),
+        secret: None,
     }
 }
 
@@ -912,6 +913,7 @@ fn describe_tool_call(session_id: &str, turn_id: &str, tool_use_id: String, upda
         kind: f.kind.as_ref().map(tool_kind).unwrap_or_default(),
         locations: f.locations.as_deref().map(tool_locations).unwrap_or_default(),
         title: f.title.clone(),
+        secret: None,
     }]
 }
 

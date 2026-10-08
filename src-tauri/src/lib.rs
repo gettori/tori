@@ -51,6 +51,7 @@ mod pty;
 mod rpc;
 mod scratch;
 mod search;
+mod secret_watch;
 mod sessions;
 mod settings;
 mod setup;

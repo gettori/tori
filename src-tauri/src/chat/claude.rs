@@ -984,6 +984,7 @@ impl ClaudeMapper {
                         input: block["input"].clone(),
                         locations: Vec::new(),
                         title: None,
+                        secret: None,
                     });
                 }
                 _ => {}
@@ -1061,6 +1062,7 @@ impl ClaudeMapper {
                         // emission.
                         locations: Vec::new(),
                         title: None,
+                        secret: None,
                     }],
                     _ => Vec::new(),
                 };
@@ -1122,6 +1124,7 @@ impl ClaudeMapper {
                             kind: tool_kind(name),
                             locations: Vec::new(),
                             title: None,
+                            secret: None,
                         }]
                     }
                     _ => Vec::new(),

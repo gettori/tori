@@ -966,6 +966,30 @@ pub struct Settings {
     /// Keyed by project path, same shape and same reason as `chat`.
     #[serde(default)]
     pub worktree: std::collections::HashMap<String, WorktreePrefs>,
+    #[serde(default, deserialize_with = "secret_watch")]
+    pub secret_watch: SecretWatch,
+}
+
+/// Additions to the secret watch list. Edited by hand only, so it is the key
+/// most likely to be malformed, and `set_settings` keeps the file's copy since
+/// the panel never holds one.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretWatch {
+    #[serde(default)]
+    pub patterns: Vec<String>,
+}
+
+// Any shape but a list of strings reads as no additions: `load_from` has no
+// per-section recovery, so a strict parse here would reset every other setting.
+fn secret_watch<'de, D: serde::Deserializer<'de>>(d: D) -> Result<SecretWatch, D::Error> {
+    let raw = serde_json::Value::deserialize(d)?;
+    let patterns = raw
+        .get("patterns")
+        .and_then(|p| p.as_array())
+        .map(|list| list.iter().filter_map(|p| p.as_str().map(str::to_string)).collect())
+        .unwrap_or_default();
+    Ok(SecretWatch { patterns })
 }
 
 /// What a project does to a worktree Tori has just created for it.
@@ -1143,6 +1167,16 @@ fn keep_rust_owned(settings: &mut Settings, on_disk: Settings) {
     settings.forge.picks = on_disk.forge.picks;
     settings.autopilot.enabled = on_disk.autopilot.enabled;
     settings.remote = on_disk.remote;
+    settings.secret_watch = on_disk.secret_watch;
+}
+
+pub fn secret_patterns() -> Vec<String> {
+    load_from(&settings_path()).secret_watch.patterns
+}
+
+/// When settings.json last changed, `None` while it does not exist.
+pub fn modified() -> Option<std::time::SystemTime> {
+    std::fs::metadata(settings_path()).and_then(|m| m.modified()).ok()
 }
 
 /// Load-modify-save on the remote front, under the same lock and for the same
@@ -2326,6 +2360,40 @@ mod tests {
         stale.remote.enabled = true;
         keep_rust_owned(&mut stale, Settings::default());
         assert!(!stale.remote.enabled);
+    }
+
+    #[test]
+    fn a_malformed_secret_watch_block_reads_as_no_additions_and_keeps_the_rest() {
+        let p = tmp_file();
+        for block in [r#""x""#, r#"{"patterns":"x"}"#, r#"{"patterns":[1,"*.secret"]}"#] {
+            std::fs::write(
+                &p,
+                format!(r#"{{"appearance":{{"theme":"catppuccin-mocha"}},"secretWatch":{block}}}"#),
+            )
+            .unwrap();
+            let s = load_from(&p);
+            assert_eq!(s.appearance.theme, "catppuccin-mocha", "{block}");
+            let kept: Vec<String> = if block.contains("*.secret") {
+                vec!["*.secret".into()]
+            } else {
+                vec![]
+            };
+            assert_eq!(s.secret_watch.patterns, kept, "{block}");
+        }
+        std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn a_frontend_save_keeps_the_secret_patterns_on_disk() {
+        let mut stale = Settings::default();
+        let on_disk = Settings {
+            secret_watch: SecretWatch {
+                patterns: vec!["*.secret".into()],
+            },
+            ..Settings::default()
+        };
+        keep_rust_owned(&mut stale, on_disk);
+        assert_eq!(stale.secret_watch.patterns, vec!["*.secret".to_string()]);
     }
 
     #[test]

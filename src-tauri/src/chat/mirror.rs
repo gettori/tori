@@ -712,6 +712,7 @@ mod tests {
             kind: model::ToolKind::Read,
             locations: Vec::new(),
             title: None,
+            secret: None,
         }
     }
 

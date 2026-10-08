@@ -44,6 +44,7 @@ import type {
   PermissionSuggestion,
   PlanItem,
   QuestionAnswer,
+  SecretHit,
   SlashCommand,
   SubagentUsage,
   ToolKind,
@@ -169,6 +170,8 @@ export type ToolItem = {
   files: string[];
   durationMs: number | null;
   edits: ChatFileEdit[];
+  /** Secret files the call read or named, gathered across its emissions. */
+  secret: SecretHit | null;
 };
 
 /** One hook frame, as a transcript row.
@@ -769,6 +772,25 @@ function push(s: ChatState, item: ChatItem) {
 
 /** The card for a tool call, created on first reference from whichever channel
  *  got here first. Never returns a second card for the same `toolUseId`. */
+/** Two hits on one call or one turn: every path, and a read outranks a mention. */
+export function mergeSecret(a: SecretHit | null, b: SecretHit): SecretHit {
+  if (!a) return b;
+  return {
+    paths: [...new Set([...a.paths, ...b.paths])].sort(),
+    strength: a.strength === "read" || b.strength === "read" ? "read" : "named",
+  };
+}
+
+/** Each turn's secret reads, folded from its tool cards. */
+export function turnSecrets(items: readonly ChatItem[]): Map<string, SecretHit> {
+  const out = new Map<string, SecretHit>();
+  for (const it of items) {
+    if (it.kind !== "tool" || !it.secret || !it.turnId) continue;
+    out.set(it.turnId, mergeSecret(out.get(it.turnId) ?? null, it.secret));
+  }
+  return out;
+}
+
 function ensureTool(s: ChatState, toolUseId: string, turnId: string | null): ToolItem {
   const at = s.toolIndex[toolUseId];
   if (at !== undefined) {
@@ -796,6 +818,7 @@ function ensureTool(s: ChatState, toolUseId: string, turnId: string | null): Too
     files: [],
     durationMs: null,
     edits: [],
+    secret: null,
   };
   s.toolIndex[toolUseId] = s.items.length;
   push(s, card);
@@ -1452,6 +1475,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       if (ev.kind !== "other") card.toolKind = ev.kind;
       if (ev.locations.length) card.locations = ev.locations;
       if (ev.input !== null && ev.input !== undefined) card.input = ev.input;
+      if (ev.secret) card.secret = mergeSecret(card.secret, ev.secret);
       // Never walk a card backwards: the completion (or a pending approval) can
       // legitimately have landed before the declaration.
       if (card.state === "running" && card.approval) card.state = "awaitingApproval";

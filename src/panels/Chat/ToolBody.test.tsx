@@ -48,6 +48,7 @@ function card(over: Partial<ToolItem> = {}): ToolItem {
     durationMs: 120,
     approval: null,
     edits: [],
+    secret: null,
     files: [],
     ...over,
   };
