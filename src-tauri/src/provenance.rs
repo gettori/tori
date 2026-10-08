@@ -1154,26 +1154,85 @@ pub fn checkpoint_end(repo: &str, session_id: &str, ts: u64) -> Result<End, Stri
     }
 }
 
-/// Every hunk of a unified diff as its blocks of changed lines on the new
-/// side, per file in order. A run of removals with nothing added in its place
-/// is a block of count 0 after the line above it.
+/// One hunk's changed lines as blocks on the new side, built a line at a time.
+/// A run of removals with nothing added in its place is a block of count 0
+/// after the line above it.
+struct Blocks {
+    line: usize,
+    open: Option<(usize, usize, bool)>,
+    out: Vec<Span>,
+}
+
+impl Blocks {
+    /// From a hunk header, `@@ -a,b +c,d @@`.
+    fn new(header: &str) -> Option<Self> {
+        let new = header
+            .strip_prefix("@@ -")?
+            .split_once(" +")
+            .and_then(|(_, r)| r.split_once(" @@"))
+            .map(|(n, _)| n)?;
+        let (start, count) = match new.split_once(',') {
+            None => (new.parse().ok()?, 1),
+            Some((start, count)) => (start.parse().ok()?, count.parse().ok()?),
+        };
+        Some(Blocks {
+            // An empty new side names the line it follows, not the one it is.
+            line: if count == 0 { start + 1 } else { start },
+            open: None,
+            out: Vec::new(),
+        })
+    }
+
+    fn feed(&mut self, text: &str) {
+        if text.starts_with('+') {
+            self.open.get_or_insert((self.line, 0, false)).1 += 1;
+            self.line += 1;
+        } else if text.starts_with('-') {
+            self.open.get_or_insert((self.line, 0, false)).2 = true;
+        } else if text.starts_with(' ') {
+            self.close();
+            self.line += 1;
+        }
+    }
+
+    fn close(&mut self) {
+        match self.open.take() {
+            Some((start, count, _)) if count > 0 => self.out.push(Span { start, count }),
+            Some((start, _, true)) => self.out.push(Span {
+                start: start - 1,
+                count: 0,
+            }),
+            _ => {}
+        }
+    }
+
+    fn finish(mut self) -> Vec<Span> {
+        self.close();
+        self.out
+    }
+}
+
+/// One hunk, header and body, as its blocks of changed lines.
+pub fn hunk_spans(hunk: &str) -> Vec<Span> {
+    let mut lines = hunk.lines();
+    let Some(mut blocks) = lines.next().and_then(Blocks::new) else {
+        return Vec::new();
+    };
+    for text in lines {
+        blocks.feed(text);
+    }
+    blocks.finish()
+}
+
+/// Every hunk of a unified diff as its blocks of changed lines, per file in
+/// order.
 pub fn spans_of(diff: &str) -> Vec<(String, Vec<Vec<Span>>)> {
     let mut out: Vec<(String, Vec<Vec<Span>>)> = Vec::new();
     let mut old_path = String::new();
-    let mut line = 0usize;
-    let mut open: Option<(usize, usize, bool)> = None;
-    let close = |open: &mut Option<(usize, usize, bool)>, out: &mut Vec<(String, Vec<Vec<Span>>)>| {
-        if let (Some((start, count, removed)), Some(blocks)) =
-            (open.take(), out.last_mut().and_then(|f| f.1.last_mut()))
-        {
-            if count > 0 {
-                blocks.push(Span { start, count });
-            } else if removed {
-                blocks.push(Span {
-                    start: start - 1,
-                    count: 0,
-                });
-            }
+    let mut hunk: Option<Blocks> = None;
+    let finish = |hunk: &mut Option<Blocks>, out: &mut Vec<(String, Vec<Vec<Span>>)>| {
+        if let (Some(blocks), Some(file)) = (hunk.take(), out.last_mut()) {
+            file.1.push(blocks.finish());
         }
     };
     // Only a file's header carries `---` and `+++` lines. Inside a hunk the
@@ -1181,7 +1240,7 @@ pub fn spans_of(diff: &str) -> Vec<(String, Vec<Vec<Span>>)> {
     let mut in_header = false;
     for text in diff.lines() {
         if text.starts_with("diff --git ") {
-            close(&mut open, &mut out);
+            finish(&mut hunk, &mut out);
             in_header = true;
         } else if let Some(path) = text.strip_prefix("--- ").filter(|_| in_header) {
             old_path = path.strip_prefix("a/").unwrap_or(path).to_string();
@@ -1191,56 +1250,66 @@ pub fn spans_of(diff: &str) -> Vec<(String, Vec<Vec<Span>>)> {
                 p => p.strip_prefix("b/").unwrap_or(p).to_string(),
             };
             out.push((path, Vec::new()));
-        } else if let Some(rest) = text.strip_prefix("@@ -") {
-            close(&mut open, &mut out);
+        } else if text.starts_with("@@ -") {
+            finish(&mut hunk, &mut out);
             in_header = false;
-            let Some(new) = rest
-                .split_once(" +")
-                .and_then(|(_, r)| r.split_once(" @@"))
-                .map(|(n, _)| n)
-            else {
-                continue;
-            };
-            let (start, count) = match new.split_once(',') {
-                None => (new.parse().unwrap_or(0), 1),
-                Some((start, count)) => (start.parse().unwrap_or(0), count.parse().unwrap_or(0)),
-            };
-            // An empty new side names the line it follows, not the one it is.
-            line = if count == 0 { start + 1 } else { start };
-            if let Some(file) = out.last_mut() {
-                file.1.push(Vec::new());
-            }
-        } else if text.starts_with('+') {
-            let (_, count, _) = open.get_or_insert((line, 0, false));
-            *count += 1;
-            line += 1;
-        } else if text.starts_with('-') {
-            open.get_or_insert((line, 0, false)).2 = true;
-        } else if text.starts_with(' ') {
-            close(&mut open, &mut out);
-            line += 1;
+            hunk = Blocks::new(text);
+        } else if let Some(blocks) = hunk.as_mut() {
+            blocks.feed(text);
         }
     }
-    close(&mut open, &mut out);
+    finish(&mut hunk, &mut out);
     out
 }
 
-/// Tauri: who wrote each hunk of `file` as it stands in the working tree.
+/// The index as a tree, written from a copy of it so the user's own index,
+/// and the cache tree git would store back into it, is never touched.
+pub fn index_end(repo: &str) -> Result<End, String> {
+    let index = capture(repo, &["rev-parse", "--path-format=absolute", "--git-path", "index"])
+        .map(|p| p.trim().to_string())
+        .ok_or("no index to read")?;
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let copy = std::env::temp_dir().join(format!("tori-provenance-index-{}-{seq}", std::process::id()));
+    std::fs::copy(&index, &copy).map_err(|e| e.to_string())?;
+    let tree = crate::exec::git_in(repo)
+        .args(["write-tree"])
+        .env("GIT_INDEX_FILE", &copy)
+        .output();
+    let _ = std::fs::remove_file(&copy);
+    let out = tree.map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    Ok(End {
+        tree: String::from_utf8_lossy(&out.stdout).trim().to_string(),
+        until: None,
+    })
+}
+
+/// Tauri: who wrote each hunk of a diff tab, whose new side is the working
+/// tree, or the index for a staged diff.
 #[tauri::command(async)]
-pub fn hunk_provenance_live(
+pub fn diff_provenance(
     index: tauri::State<'_, crate::sessions::SessionIndex>,
     project_path: String,
     file: String,
-    hunks: Vec<Vec<Span>>,
+    hunks: Vec<String>,
+    staged: bool,
 ) -> Result<Vec<Vec<ClaimRange>>, String> {
-    let end = live_end(&project_path)?;
+    let end = if staged {
+        index_end(&project_path)?
+    } else {
+        live_end(&project_path)?
+    };
     let sessions = worktree_sessions(&index, &project_path);
+    let blocks: Vec<Vec<Span>> = hunks.iter().map(|h| hunk_spans(h)).collect();
     Ok(hunk_provenance(
         &project_path,
         &file,
         &end,
         &sessions,
-        &hunks,
+        &blocks,
         &Histories::default(),
     ))
 }

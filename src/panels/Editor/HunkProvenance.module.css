@@ -1,0 +1,62 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-2);
+  padding: calc(6px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  border-left: 2px solid var(--border-default);
+  margin: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  font-size: var(--tori-text-md);
+  color: var(--fg-default);
+}
+
+.quiet {
+  color: var(--fg-muted);
+}
+
+.range {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-1);
+}
+
+.rangeLabel {
+  color: var(--fg-muted);
+  font-size: var(--tori-text-xs);
+}
+
+.headline {
+  font-weight: 600;
+}
+
+.turn {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--tori-space-2);
+  color: var(--fg-muted);
+}
+
+.prompt {
+  flex-basis: 100%;
+  white-space: pre-wrap;
+  font-style: italic;
+}
+
+.call {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-1);
+}
+
+.reply {
+  white-space: pre-wrap;
+  color: var(--fg-muted);
+}
+
+.command {
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
