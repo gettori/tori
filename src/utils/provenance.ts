@@ -37,28 +37,27 @@ export type ClaimRange = { start: number; count: number; claim: Claim };
 /** How many of a turn's calls the panel lists before counting the rest. */
 export const CALLS_SHOWN = 3;
 
-/**
- * Who wrote each changed line of `hunk`, resolved against the working tree, or the
- * index when the diff is the staged one. Null when the backend could not read
- * it, which the panel says rather than showing an empty claim.
- */
-export async function hunkProvenance(
-  root: string,
-  file: string,
-  hunk: DiffHunk,
-  staged: boolean,
-): Promise<ClaimRange[] | null> {
-  try {
-    const out = await invoke<ClaimRange[][]>("diff_provenance", {
-      projectPath: root,
-      file,
-      hunks: [[hunk.header, ...hunk.lines].join("\n")],
-      staged,
-    });
-    return out[0] ?? [];
-  } catch {
-    return null;
-  }
+/** Reads who wrote each changed line of one hunk, against whatever tree the
+ *  view's diff ends at. Null when the backend could not read it, which the
+ *  panel says rather than showing an empty claim. */
+export type ClaimReader = (hunk: DiffHunk) => Promise<ClaimRange[] | null>;
+
+/** A reader over one of the provenance commands, which all take the hunks as
+ *  their raw text and parse them on the Rust side. */
+export function claimsVia(command: string, args: Record<string, unknown>): ClaimReader {
+  return async (hunk) => {
+    try {
+      const out = await invoke<ClaimRange[][]>(command, { ...args, hunks: [[hunk.header, ...hunk.lines].join("\n")] });
+      return out[0] ?? [];
+    } catch {
+      return null;
+    }
+  };
+}
+
+/** The diff tab's: the working tree, or the index when the diff is staged. */
+export function diffTabClaims(root: string, file: string, staged: boolean): ClaimReader {
+  return claimsVia("diff_provenance", { projectPath: root, file, staged });
 }
 
 function titleOf(session: SessionLabel): string {
