@@ -10,11 +10,20 @@
   <img alt="The Tori window: projects and branches on the left, an agent session waiting for approval in the middle, source control and checkpoints on the right" src="docs/images/workspace.png" width="900">
 </p>
 
-Tori is a macOS app that puts every agent session you have going into one
-window: a tree of projects and branches, a real terminal per session, an editor
-with LSP, and a review panel that stages and commits what the agent wrote. It
-does not bundle an agent and it is not tied to one. Claude ships supported out
-of the box, and any other CLI agent is a TOML file away.
+```sh
+brew install --cask gettori/tap/tori
+```
+
+Tori is a macOS app for supervising the coding agents you already run. Every
+hunk an agent writes traces back to the turn, the reply and the tool call that
+wrote it, and every prompt is a checkpoint you can diff or revert on its own.
+Nothing leaves the machine without you: an agent's permission prompts stay
+yours to answer, and the autopilot stops and asks before it opens a pull
+request or sends anything else out. Around that sit a real terminal per
+session, an editor with LSP and debuggers, and a git client that stages,
+commits and reviews pull requests. Seven agents ship with adapters, Claude and
+Codex among them, and any other CLI agent is a TOML file away. No account, no
+telemetry.
 
 **Status: alpha.** It is used every day by the person who builds it, it ships
 often, and things still move. macOS only, on Apple Silicon and Intel, with a
@@ -32,6 +41,17 @@ row in the tree says **working**, **needs you**, or **done**, and a parent row
 rolls its children up. You look at one list and know where to go next.
 
 ## What it does
+
+**Provenance.** Every hunk in a diff, a checkpoint or a pull request built here
+says who wrote it: the prompt and session behind it, the reply the agent gave
+around the edit, and the exact tool call that made it. When a turn wrote the
+file in several calls and none can be singled out, it lists them. When a shell
+command wrote it, it shows the command. When nothing Tori recorded wrote a
+line, it says so and why, and never guesses. Ask why on a hunk and Tori forks
+the session that wrote it, puts the question to the fork with the hunk and the
+tool call attached, and shows the answer under the hunk; the original session
+never sees it. That works for Claude and for ACP agents that can fork a
+session. `tori checkpoint diff --why` prints the same thing for scripts.
 
 **Sessions.** A tree of sessions grouped into spaces, with a git-branch graph
 and worktree support. Clicking a session focuses its terminal tab, or resumes
@@ -54,30 +74,36 @@ stops and asks before anything leaves the machine, such as opening a pull
 request, and a worker's permission prompts stay yours to answer.
 
 <p align="center">
-  <img alt="The autopilot's cockpit: two workers on deck, one waiting for approval to open its pull request, and a log of what happened" src="docs/images/autopilot.png" width="900">
+  <img alt="The autopilot's view: two workers running, one waiting for approval to open its pull request, and a log of what happened" src="docs/images/autopilot.png" width="900">
 </p>
 
 **Interface.** Command palette (`Cmd+K`), quick open (`Cmd+P`), a shortcut
-sheet on `Cmd+/`, and remappable hotkeys. Menu-bar tray, OS notifications, and
-a dock badge for sessions that need you. Dark and light themes, and you can
-import a VS Code theme file.
+sheet on `Cmd+/`. Menu-bar tray, OS notifications, and a dock badge for
+sessions that need you. Dark and light themes, and you can import a VS Code
+theme file.
 
 ## Supported agents
 
-| Agent | Sessions read from | Status detection |
+| Agent | Chat runs over | Measured |
 | --- | --- | --- |
-| **Claude** (`claude`) | `~/.claude/projects` | Hook-driven, plus transcript and process state |
-| **OpenCode** (`opencode acp`) | the agent, over ACP | The child process Tori started |
-| **Gemini** (`gemini --acp`) | the agent, over ACP | The child process Tori started |
+| **Claude** (`claude`) | Claude's stream JSON, plus its hooks | Yes |
+| **Codex** (`codex`) | ACP, through the `codex-acp` wrapper | Yes |
+| **OpenCode** (`opencode acp`) | ACP | Yes |
+| **Copilot** (`copilot --acp`) | ACP | Not yet |
+| **Gemini** (`gemini --acp`) | ACP | Not yet |
+| **Kimi** (`kimi acp`) | ACP | Not yet |
+| **Pi** (`pi`) | ACP, through the `pi-acp` bridge | Not yet |
 
 Tori drives the agent CLIs you have installed; it does not ship one. After
 first launch, **Settings > Agents** shows which ones it found, at what version,
-and what it can do with each - including what it *cannot* do with each, since
-the three bundled adapters do not have the same capabilities.
+and what it can do with each, including what it *cannot* do with each, since
+the seven bundled adapters do not have the same capabilities.
 
-**Gemini ships untested.** Nothing has measured it, Settings says so on its card,
-and it is there because an ACP adapter is mostly launch instructions rather than
-captured wire format. OpenCode is measured against `opencode 1.18.3`.
+**Measured** means someone ran that agent at a pinned version and captured what
+it actually sends. The others were written from the vendor's documentation and
+are a starting point; an ACP adapter is mostly launch instructions, which is
+why shipping one unmeasured is reasonable. The pinned versions are in
+[ADAPTERS.md](docs/ADAPTERS.md).
 
 Adding another agent does not require a fork. Drop a TOML file into
 `~/.config/tori/agents/` describing how to launch it. For an agent that speaks
@@ -87,13 +113,6 @@ permission questions and the history itself. For one that does not, the TOML als
 says where its transcripts live and how to spot a live process. The schema is
 documented and stable at v2, and v1 files still load: see
 [ADAPTERS.md](docs/ADAPTERS.md).
-
-**Settings > Agents also lists the ~40 other agents that speak ACP**, read from
-the official [ACP Registry](https://github.com/agentclientprotocol/registry) with
-the command to launch each. Those are suggestions, not supported agents: Tori
-has run none of them, each is labelled untested, and none can be started until
-somebody writes its adapter - which is also the moment somebody decides it is
-worth trusting.
 
 An adapter that omits the optional `[chat]` table runs its agent as a **PTY
 tab**, and that is the universal fallback: any CLI you can launch in a terminal
@@ -108,13 +127,9 @@ in its environment, and how to keep a tmux auto-attach out of the tab, is in
 
 ## Install
 
-```sh
-brew install --cask gettori/tap/tori
-```
-
-The cask clears the quarantine flag as it installs, and `brew upgrade --cask
-tori` keeps it current. Otherwise download the latest
-`Tori_<version>_universal.dmg` from the
+The brew line at the top installs the cask. It clears the quarantine flag as it
+installs, and `brew upgrade --cask tori` keeps it current. Otherwise download
+the latest `Tori_<version>_universal.dmg` from the
 [Releases page](https://github.com/gettori/tori/releases), drag it into
 Applications, then follow **[docs/INSTALL.md](docs/INSTALL.md)** for the first
 launch.
@@ -134,17 +149,29 @@ run.
 ## Privacy
 
 **Tori sends no telemetry.** There is no analytics, no crash reporting, and no
-usage tracking of any kind. It makes two network requests on its own behalf,
-both anonymous, both at most once a day, both silent on failure:
+usage tracking of any kind. Its own network requests are these six. The forge
+calls carry what you send through them, such as a pull request you open or a
+review you submit; nothing about your code or your sessions goes out in any of
+the others:
 
-- **GitHub Releases**, to see whether a newer version of Tori exists. It never
-  downloads or installs anything.
-- **`openrouter.ai/api/v1/models`**, for the published per-model context-window
-  sizes that the context meter reads. It is a public model list, unauthenticated,
-  and the response is cached to disk.
+- **GitHub Releases**, at most once a day, to see whether a newer version of
+  Tori exists. Anonymous. It never downloads or installs anything.
+- **`openrouter.ai/api/v1/models`**, at most once a day, for the published
+  per-model context-window sizes the context meter reads. Anonymous, and cached
+  to disk.
+- **SchemaStore's catalog** (`schemastore.org`), at most once a day and only
+  when the JSON or YAML language server starts, so it knows which schema
+  validates which file. Anonymous, and cached to disk.
+- **Installs you accept**: a language server, debugger or agent that Tori
+  offers to install. A downloaded release is checked against the sha256 pinned
+  for it; a package install runs `npm` or `pip` the way you would.
+- **GitHub or GitLab's API**, only when you sign in to that forge and from then
+  on, for pull requests, issues, checks and reviews. It carries your own token.
+- **`api.anthropic.com/api/oauth/usage`**, only if you light a model's own
+  weekly chip on a Claude account, for that window's quota. It carries that
+  account's token, read from your login Keychain for the one request.
 
-Nothing about you, your code, or your sessions is included in either. Use the
-app offline to stop both.
+The first three fail silently. Use the app offline to stop all six.
 
 **Your agent's own traffic is its own.** A chat tab runs the same `claude` on
 your machine that you would run in a terminal, under your own subscription, and
