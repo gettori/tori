@@ -1,5 +1,10 @@
 import { formatDuration } from "../panels/Chat/toolRenderers";
 import type { Check, Verdict } from "./chatTypes";
+import { turnWatch } from "./turnWatch";
+
+/** One turn that changed code. `promptTs` is null for a history with no
+ *  prompts to anchor on, which is an ACP log. */
+export type VerifiedTurn = { promptTs: number | null; verdict: Verdict; checks: Check[] };
 
 export const VERDICT_LABEL: Record<Verdict, string> = {
   verified: "Verified",
@@ -32,3 +37,19 @@ export function verdictDetail(verdict: Verdict, checks: readonly Check[]): strin
           : "The last check after the last edit passed.";
   return [head, ...checks.map(checkLine)].join("\n");
 }
+
+const verified = turnWatch<VerifiedTurn>("session_verification");
+
+export const verifiedTurnsOf = verified.turnsOf;
+
+/** The latest code-changing turn's verdict, so a later fix clears an earlier
+ *  failure. Null for a session that changed no code. */
+export function sessionVerdict(sessionId: string): Verdict | null {
+  const turns = verifiedTurnsOf(sessionId);
+  return turns[turns.length - 1]?.verdict ?? null;
+}
+
+/** Keep the verdicts for exactly the live sessions in `targets`. */
+export const watchVerification = verified.watch;
+
+export const resetVerificationForTests = verified.reset;

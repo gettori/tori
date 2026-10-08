@@ -3,6 +3,7 @@ import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { sessionSecret, watchSecrets } from "../../utils/secretReads";
+import { sessionVerdict, watchVerification } from "../../utils/verification";
 import TerminalView, { type PtyExit } from "./TerminalView";
 import ChatView from "../Chat/ChatView";
 import ChatDraft from "../Chat/ChatDraft";
@@ -2333,7 +2334,7 @@ export default function Terminal(props: {
 
   // A session running with no tab is live too, and the History dropdown lists
   // it among the open ones.
-  watchSecrets(() => {
+  const liveSessions = createMemo(() => {
     const tabbed = open()
       .filter((t) => marksSession(t) && t.sessionId && tabState(t) === "live")
       .map((t) => ({ id: t.sessionId!, agent: t.program, cwd: t.cwd, status: tabStatus(t) as string | null }));
@@ -2344,6 +2345,8 @@ export default function Terminal(props: {
       .map((s) => ({ id: s.id, agent: s.agent ?? "claude", cwd: s.cwd, status: sessionStatus(s.id) as string | null }));
     return [...tabbed, ...detached];
   });
+  watchSecrets(liveSessions);
+  watchVerification(liveSessions);
 
   /** On which tier. A chat's own event stream states its status outright; a PTY
    *  agent tab's is composed from a pgrep probe, PTY quiet and a transcript
@@ -2733,6 +2736,7 @@ export default function Terminal(props: {
           certainty={tabCertainty(t)}
           background={chatBackground(t)}
           secret={t.sessionId ? sessionSecret(t.sessionId) : null}
+          verdict={t.sessionId ? sessionVerdict(t.sessionId) : null}
         />
       ) : (
         <Icon icon={KIND_GLYPHS[t.kind]} />

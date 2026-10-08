@@ -10,6 +10,7 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Instant, SystemTime};
 
+use serde::Serialize;
 use serde_json::Value;
 
 use crate::chat::model::{ChatEvent, Check, CheckResult, ToolKind, ToolStatus, ToolSummary, Verdict};
@@ -645,18 +646,8 @@ impl Tracker {
 /// `TurnCompleted`s (a mirror log) groups by turn id; a transcript has none and
 /// groups by prompt, marking the first reply turn after each.
 pub fn mark_history(events: &mut Vec<ChatEvent>, cwd: Option<&Path>, enabled: bool) {
-    let mut measured: HashMap<(String, String), u64> = HashMap::new();
-    events.retain(|e| match e {
-        ChatEvent::TurnVerification { checks, .. } => {
-            for c in checks {
-                if let Some(ms) = c.duration_ms {
-                    measured.insert((c.tool_use_id.clone(), c.command.clone()), ms);
-                }
-            }
-            false
-        }
-        _ => true,
-    });
+    let measured = measured(events);
+    events.retain(|e| !matches!(e, ChatEvent::TurnVerification { .. }));
     if !enabled {
         return;
     }
@@ -664,11 +655,7 @@ pub fn mark_history(events: &mut Vec<ChatEvent>, cwd: Option<&Path>, enabled: bo
     let with_durations = |event: Option<ChatEvent>| {
         let mut event = event?;
         if let ChatEvent::TurnVerification { checks, .. } = &mut event {
-            for c in checks {
-                if c.duration_ms.is_none() {
-                    c.duration_ms = measured.get(&(c.tool_use_id.clone(), c.command.clone())).copied();
-                }
-            }
+            fill(checks, &measured);
         }
         Some(event)
     };
@@ -736,6 +723,87 @@ pub fn mark_history(events: &mut Vec<ChatEvent>, cwd: Option<&Path>, enabled: bo
         close(&mut turn, &mut anchor, &mut out);
     }
     *events = out;
+}
+
+// What a logged `TurnVerification` measured live, keyed by call and command,
+// since a replay has no timing of its own.
+type Measured = HashMap<(String, String), u64>;
+
+fn measured(events: &[ChatEvent]) -> Measured {
+    let mut out = Measured::new();
+    for event in events {
+        if let ChatEvent::TurnVerification { checks, .. } = event {
+            for c in checks {
+                if let Some(ms) = c.duration_ms {
+                    out.insert((c.tool_use_id.clone(), c.command.clone()), ms);
+                }
+            }
+        }
+    }
+    out
+}
+
+fn fill(checks: &mut [Check], measured: &Measured) {
+    for c in checks {
+        if c.duration_ms.is_none() {
+            c.duration_ms = measured.get(&(c.tool_use_id.clone(), c.command.clone())).copied();
+        }
+    }
+}
+
+/// One turn that changed code, for the surfaces that show a session without
+/// its tool calls: the tab, the History row, Checkpoints, and later the review
+/// inbox's risk score.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VerifiedTurn {
+    /// `None` for a history with no prompts to anchor on, which is an ACP log.
+    pub prompt_ts: Option<u64>,
+    pub verdict: Verdict,
+    pub checks: Vec<Check>,
+}
+
+/// Fold a conversation into one entry per turn that changed code, oldest
+/// first. `prompts` pairs each prompt's timestamp with the index of its first
+/// event; with none, calls are grouped by the turn id they carry instead.
+pub fn session_turns(events: &[ChatEvent], prompts: &[(u64, usize)], cwd: Option<&Path>) -> Vec<VerifiedTurn> {
+    let entries = entries_for(cwd);
+    let measured = measured(events);
+    let mut turns: Vec<(String, Option<u64>, Turn)> = Vec::new();
+    for (at, event) in events.iter().enumerate() {
+        let (ChatEvent::ToolCallStarted { turn_id, .. }
+        | ChatEvent::FileEdit { turn_id, .. }
+        | ChatEvent::ToolCallCompleted { turn_id, .. }) = event
+        else {
+            continue;
+        };
+        let prompt_ts = prompts.iter().rev().find(|(_, first)| *first <= at).map(|(ts, _)| *ts);
+        let key = match prompt_ts {
+            Some(ts) => ts.to_string(),
+            None if prompts.is_empty() => turn_id.clone(),
+            None => String::new(),
+        };
+        let at = match turns.iter().position(|(k, _, _)| *k == key) {
+            Some(at) => at,
+            None => {
+                turns.push((key, prompt_ts, Turn::default()));
+                turns.len() - 1
+            }
+        };
+        turns[at].2.observe(event, None, &entries);
+    }
+    turns
+        .into_iter()
+        .filter_map(|(_, prompt_ts, turn)| {
+            let (verdict, mut checks) = turn.finish()?;
+            fill(&mut checks, &measured);
+            Some(VerifiedTurn {
+                prompt_ts,
+                verdict,
+                checks,
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
