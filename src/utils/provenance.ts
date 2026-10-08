@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { DiffHunk } from "./diffHunks";
 
-export type SessionLabel = { id: string; agent: string; title: string };
+export type SessionLabel = { id: string; agent: string; title: string; cwd: string; profile: string | null };
 
 export type TurnRef = {
   session: SessionLabel;
@@ -129,4 +129,52 @@ export function rangeLabel(range: ClaimRange): string {
   if (range.count === 0) return `Removed after line ${range.start}`;
   if (range.count === 1) return `Line ${range.start}`;
   return `Lines ${range.start} to ${range.start + range.count - 1}`;
+}
+
+/** Why these lines cannot be asked about, or null when they can. */
+export function askRefusal(claim: Claim, canFork: (agentId: string) => boolean): string | null {
+  if (claim.tier === "none") return "No turn is named for these lines, so there is no one to ask.";
+  if (!canFork(claim.turn.session.agent)) {
+    return `A ${claim.turn.session.agent} chat cannot be forked yet, so there is no side conversation to ask in.`;
+  }
+  return null;
+}
+
+/** The line a fork's transcript is searched for to find its answer. */
+export function questionLine(question: string): string {
+  return `Question: ${question.trim()}`;
+}
+
+/** How many of the hunk's lines go into the question, so a huge hunk does not
+ *  become a huge prompt. */
+export const SEED_LINES = 120;
+
+/** The first message of the side conversation: where the lines are, the turn
+ *  and call that wrote them, the hunk itself, then the question. */
+export function whySeed(p: {
+  file: string;
+  range: ClaimRange;
+  turn: TurnRef;
+  calls: CallRef[];
+  hunk: DiffHunk;
+  question: string;
+}): string {
+  const body = [p.hunk.header, ...p.hunk.lines];
+  const shown = body.slice(0, SEED_LINES);
+  if (body.length > shown.length) shown.push(`... ${body.length - shown.length} more lines`);
+  return [
+    "Someone reviewing this work is asking about lines you wrote earlier in this conversation.",
+    "",
+    `File: ${p.file}, ${rangeLabel(p.range).toLowerCase()}`,
+    `Written in turn ${p.turn.ordinal}${p.turn.prompt ? `, prompted with: ${p.turn.prompt}` : ""}`,
+    ...(p.calls.length ? [`By: ${p.calls.map(callSummary).join("; ")}`] : []),
+    "",
+    "```diff",
+    ...shown,
+    "```",
+    "",
+    questionLine(p.question),
+    "",
+    "Answer from what you remember of that turn. There is no need to change any files.",
+  ].join("\n");
 }

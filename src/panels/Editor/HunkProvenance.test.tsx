@@ -24,7 +24,7 @@ const HUNK = {
   lines: [" one", "+two", " three"],
 };
 
-const SESSION = { id: "sess-1", agent: "claude", title: "fix the parser" };
+const SESSION = { id: "sess-1", agent: "claude", title: "fix the parser", cwd: "/repo", profile: null };
 const TURN = { session: SESSION, ordinal: 4, promptTs: 1_800_000_000, prompt: "add line two" };
 const EDIT = {
   toolUseId: "toolu_1",
@@ -38,7 +38,7 @@ const SHELL = { ...EDIT, toolUseId: "toolu_2", name: "Bash", kind: "execute", in
 
 function show(claim: Claim) {
   answer = [{ start: 2, count: 1, claim }];
-  render(() => <HunkProvenance hunk={HUNK} read={diffTabClaims("/repo", "src/a.ts", false)} />);
+  render(() => <HunkProvenance file="src/a.ts" hunk={HUNK} read={diffTabClaims("/repo", "src/a.ts", false)} />);
 }
 
 beforeEach(() => {
