@@ -1,7 +1,7 @@
 ---
 summary: rewind forks the session with its real frames, reverts the tree to that turn and admits the agent still remembers
 status: current
-updated: 2026-07-29
+updated: 2026-10-08
 source: Chat surface plan, phase 5 (branch `chat`); `src/panels/Chat/rewind.ts`; `src-tauri/src/chat/commands.rs:105`; commit "Rewind a chat by forking it, and say what did not go back"
 ---
 
@@ -63,7 +63,13 @@ The published capability value is therefore `rewind: fork`, which is a measured
 outcome rather than the phase's name, per
 [[concept_harness_capability_tiers]].
 
+## An ACP agent can fork now, and still cannot rewind (2026-10-08)
+
+The ACP transport sends `session/fork` when the agent advertises it (unstable in the protocol, so the crate is pinned with `unstable_session_fork`), for the side question a hunk asks ([[concept_ask_why_by_fork]]). Rewind stays claude only: it also cuts the replay at the turn, which an ACP replay has no way to do yet, so the ACP tier still publishes `rewind: none`.
+
 ## Related
+
+- [[concept_ask_why_by_fork]] the other use of a fork
 
 - [[component_turn_checkpoints]] - the per-turn refs the revert uses
 - [[component_chat_panel]] - where rewind is offered and the banner lives

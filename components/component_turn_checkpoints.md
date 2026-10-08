@@ -1,7 +1,7 @@
 ---
 summary: a git write tree snapshot per prompt boundary, keyed by timestamp not a counter, powers per turn diff and tree revert
 status: current
-updated: 2026-07-31
+updated: 2026-10-08
 source: "Adapter registry, pulse, presence, checkpoints (personal/tori, branch `topbar`); Phase 4; `src-tauri/src/checkpoint.rs`; Status deepening: checkpoint timeline, tree revert, touched markers, live indicator (personal/tori, branch `main`); Phase 1; `src/panels/Editor/CheckpointTimeline.tsx`, `src/utils/revertGuard.ts`; Chat surface plan, phases 1, 3, 5 (branch `chat`)"
 ---
 
@@ -88,10 +88,13 @@ one number. `ChatView` already knows it and passes it down.
 
 Editor wave 2 added [[concept_worktree_backstops]] beside these rather than inside them: pre-destruction snapshots for actions with no session and no prompt boundary, owned by a **worktree identity** instead of a session id. They share the scratch-index snapshot pattern and the timeline that renders them, and nothing else. `list_checkpoints` returns a `Checkpoint { ts, tree, kind }` so the kind rides along, and the timeline's render gate widened from `sessionId && entries().length` to include `backstops().length`, since a backstop can exist in a worktree with no session at all.
 
-The touched-index also gained a **reverse** direction. `checkpoint_note_touched` now maintains `{turns: [ts], files: {path: [index]}}`, append-only, so a file can ask which turns wrote it without reading every per-turn record. That is what makes per-line agent attribution affordable ([[concept_line_provenance]]): the trees these refs hold were already the answer, and only the lookup was missing.
+The touched-index also gained a **reverse** direction. `checkpoint_note_touched` now maintains `{turns: [ts], files: {path: [index]}}`, append-only, so a file can ask which turns wrote it without reading every per-turn record. That is what made per-line agent attribution affordable ([[concept_line_provenance]]): the trees these refs hold were already the answer, and only the lookup was missing.
+
+**Since 2026-10-08 the `files` half of that index is written but not read.** Line and hunk attribution now walk every checkpoint of every session in the worktree ([[component_provenance]]) and read each turn's own transcript, so `turns_touching` went with the old walk. `recorded_turns` still reads the `turns` half, as the list of turns a session made a tool call in. Dropping the `files` map would change the stored format, so it stays.
 
 ## Related
 
+- [[component_provenance]] - walks these trees to say who wrote a hunk or a line.
 - [[component_chat_panel]] - the source of the exact per-turn file lists.
 - [[concept_worktree_backstops]] - the sibling snapshot family, keyed by worktree rather than session.
 - [[concept_line_provenance]] - the third consumer of these trees, replaying diffs between them to attribute uncommitted lines.

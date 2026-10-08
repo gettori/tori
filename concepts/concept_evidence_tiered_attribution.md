@@ -94,8 +94,13 @@ after it) "ran, exit not seen", and a turn resting on one reads unverified,
 never verified. Trusting the call's status there would read a piped failing
 suite as verified. See [[component_verification]].
 
+## Hunk provenance: one sentence per grade
+
+The rule set a whole feature's wording. A hunk's claim names one call only when one call is shown to have written it, falls back to "one of these calls", "a shell command", and then to `none` with the reason nobody can be named: there before the first checkpoint, older than the walk, a session Tori ran but cannot read, several sessions at once, nobody Tori saw, or a pull request whose branch no worktree here holds. "Ran but cannot read" is kept apart from "never saw", because the touched record exists only for chats with a view open and an absent record is not an absent session. See [[concept_who_wrote_an_interval]].
+
 ## Related
 
+- [[component_provenance]] the hunk claims
 - [[component_secret_watch]] the read versus named claims
 - [[component_verification]] the exit not seen tier
 - [[component_turn_checkpoints]] — the revert guard's home; the tree revert this protects.
