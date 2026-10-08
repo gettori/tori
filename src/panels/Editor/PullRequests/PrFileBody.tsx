@@ -54,6 +54,9 @@ import {
   type ReviewThread,
 } from "../../../utils/forgeTypes";
 import DiffRows, { diffRowClasses, rovingHunk } from "../DiffRows";
+import HunkProvenance, { createOpenHunks, WhyToggle } from "../HunkProvenance";
+import { claimsVia, type ClaimReader } from "../../../utils/provenance";
+import hunkStyles from "../HunkCommentInput.module.css";
 import PrThreadCard from "./PrThreadCard";
 import Button from "../../../components/Button/Button";
 import styles from "./PrFileBody.module.css";
@@ -86,6 +89,7 @@ export default function PrFileBody(props: {
   // says "this file", not which of the two noticed.
   const [failure, setFailure] = createSignal<string | null>(null);
   const [picked, setPicked] = createSignal<Picked | null>(null);
+  const whyOpen = createOpenHunks();
 
   const entry = createMemo(() => prEntry(props.root, props.pr.number));
   const grouped = createMemo(() => groupThreads(entry().threads));
@@ -105,10 +109,28 @@ export default function PrFileBody(props: {
   createEffect(
     on(
       () => props.file.path,
-      () => setPicked(null),
+      () => {
+        setPicked(null);
+        whyOpen.clear();
+      },
       { defer: true },
     ),
   );
+
+  const prClaims: ClaimReader = async (hunk) => {
+    try {
+      await ensurePrHead(props.root, props.pr.number, props.pr.headSha);
+    } catch (e) {
+      return { error: forgeErrorMessage(e) };
+    }
+    return claimsVia("pr_provenance", {
+      projectPath: props.root,
+      headRef: props.pr.headRef,
+      headSha: props.pr.headSha,
+      headRepoIsOrigin: props.pr.headRepoIsOrigin,
+      file: props.file.path,
+    })(hunk);
+  };
 
   // Reveal an unchanged stretch, read from the PR's head rather than from the
   // working tree: the head is usually not checked out, so the file on disk would
@@ -407,7 +429,13 @@ export default function PrFileBody(props: {
             };
             return (
               <div>
-                <div class={`${diffRowClasses.line} ${diffRowClasses.hunk}`}>{hunk.header}</div>
+                <div class={`${diffRowClasses.line} ${diffRowClasses.hunk} ${hunkStyles.hunkHeaderRow}`}>
+                  <span class={hunkStyles.hunkHeaderText}>{hunk.header}</span>
+                  <WhyToggle open={whyOpen.has(hi())} onClick={() => whyOpen.toggle(hi())} />
+                </div>
+                <Show when={whyOpen.has(hi())}>
+                  <HunkProvenance hunk={hunk} read={prClaims} />
+                </Show>
                 <For each={segments()}>
                   {(seg) => (
                     <>

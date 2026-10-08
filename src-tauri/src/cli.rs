@@ -821,6 +821,7 @@ fn claim_text(claim: &Value) -> String {
                 "written while {} were each in a turn that could have written it",
                 titles(&claim["sessions"])
             ),
+            "outside" => "written outside any session Tori saw: no worktree here holds this branch".into(),
             _ => {
                 "written while no session Tori knows of was in a turn: by hand, or by a session Tori did not see".into()
             }

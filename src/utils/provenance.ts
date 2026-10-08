@@ -22,7 +22,7 @@ export type CallRef = {
   reply: string | null;
 };
 
-export type NoneReason = "before" | "capped" | "unrecorded" | "overlapping" | "unseen";
+export type NoneReason = "before" | "capped" | "unrecorded" | "overlapping" | "unseen" | "outside";
 
 export type Claim =
   | { tier: "call"; turn: TurnRef; call: CallRef }
@@ -37,10 +37,13 @@ export type ClaimRange = { start: number; count: number; claim: Claim };
 /** How many of a turn's calls the panel lists before counting the rest. */
 export const CALLS_SHOWN = 3;
 
+/** Why a hunk could not be read, said to the reader rather than shown as an
+ *  empty claim. */
+export type ReadFailure = { error: string };
+
 /** Reads who wrote each changed line of one hunk, against whatever tree the
- *  view's diff ends at. Null when the backend could not read it, which the
- *  panel says rather than showing an empty claim. */
-export type ClaimReader = (hunk: DiffHunk) => Promise<ClaimRange[] | null>;
+ *  view's diff ends at. */
+export type ClaimReader = (hunk: DiffHunk) => Promise<ClaimRange[] | ReadFailure>;
 
 /** A reader over one of the provenance commands, which all take the hunks as
  *  their raw text and parse them on the Rust side. */
@@ -49,8 +52,8 @@ export function claimsVia(command: string, args: Record<string, unknown>): Claim
     try {
       const out = await invoke<ClaimRange[][]>(command, { ...args, hunks: [[hunk.header, ...hunk.lines].join("\n")] });
       return out[0] ?? [];
-    } catch {
-      return null;
+    } catch (e) {
+      return { error: String(e) };
     }
   };
 }
@@ -115,6 +118,8 @@ export function claimHeadline(claim: Claim): string {
           return `${names(claim.sessions)} were each in a turn that could have written this, so Tori names none of them.`;
         case "unseen":
           return "No session Tori knows of was in a turn when this was written: by hand, or by a session Tori did not see.";
+        case "outside":
+          return "Written outside any session Tori saw. No worktree here holds this pull request's branch.";
       }
   }
 }

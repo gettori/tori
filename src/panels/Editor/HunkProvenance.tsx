@@ -28,6 +28,14 @@ export default function HunkProvenance(props: { hunk: DiffHunk; read: ClaimReade
     () => ({ hunk: props.hunk, read: props.read }),
     (k) => k.read(k.hunk),
   );
+  const failure = () => {
+    const r = ranges();
+    return r && !Array.isArray(r) ? r.error : null;
+  };
+  const claims = () => {
+    const r = ranges();
+    return Array.isArray(r) ? r : null;
+  };
 
   return (
     <div class={styles.panel}>
@@ -35,13 +43,13 @@ export default function HunkProvenance(props: { hunk: DiffHunk; read: ClaimReade
         <Match when={ranges.loading}>
           <div class={styles.quiet}>Reading the sessions that ran here...</div>
         </Match>
-        <Match when={ranges() === null}>
-          <div class={styles.quiet}>Tori could not work out who wrote this hunk.</div>
+        <Match when={failure()}>
+          {(why) => <div class={styles.quiet}>Tori could not work out who wrote this hunk: {why()}</div>}
         </Match>
-        <Match when={ranges()?.length === 0}>
+        <Match when={claims()?.length === 0}>
           <div class={styles.quiet}>Tori cannot follow this file line by line.</div>
         </Match>
-        <Match when={ranges()}>
+        <Match when={claims()}>
           {(all) => <For each={all()}>{(range) => <RangeClaim range={range} labelled={all().length > 1} />}</For>}
         </Match>
       </Switch>
