@@ -1,7 +1,7 @@
 ---
 summary: every session for the branch on screen sits in one dropdown, replacing the sidebar tree, at the cost of showing less
 status: current
-updated: 2026-09-24
+updated: 2026-10-08
 source: "Session navigation moves to a History dropdown; pi and opencode are removed (branch `navigation`, phases 5-6); commits a713a26, 61eb767, dfda207; Kobalte migration: plan \"Popover onto Kobalte Popover\" (branch `104-popover`, issue #104)"
 ---
 
@@ -45,8 +45,11 @@ Every session anchored on the workspace currently on screen, as a dropdown off t
 
 **It borrows its look rather than inventing one.** Base font size sits on the panel and is inherited, the way the sidebar puts it on `.tree`; the search field is the sidebar's filter field to the pixel; the breadcrumb takes *segments* so its separator can be the menubar's `ChevronRight` rather than a slash baked into a string.
 
+**A row can carry a secret key.** `HistoryRow` passes `secret` to `TabMark`, so a live session that read a secret file wears the same key as its tab. The open-now group includes sessions running with no tab, and `secretReads.ts` watches those too, so the row is the one place such a session shows it.
+
 ## Related
 
+- [[component_secret_watch]]: the key a row's mark can wear
 - [[component_autopilot_parts]]: the marks the row's slots carry
 - [[gotcha_a_window_listener_registered_in_an_async_onmount_can_miss_a_startup_event]] — why the sidebar's handler moved to the component body
 - [[gotcha_overflow_hidden_on_a_positioned_bar_clips_its_own_dropdown]] — why the panel is portalled

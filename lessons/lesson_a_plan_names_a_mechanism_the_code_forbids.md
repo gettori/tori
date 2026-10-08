@@ -1,7 +1,7 @@
 ---
 summary: a plan written from reading the code can still name a mechanism the code forbids, caught by a guard or test in hand
 status: current
-updated: 2026-08-28
+updated: 2026-10-08
 source: "Feature lifecycle, member management and repair (personal/tori, branch `feature-workspace`, issue #159) - all five phases - commits 774704d, ef3779b, ede61ff, 70756f3; and again in #160 phase 3, same branch"
 ---
 
@@ -22,6 +22,12 @@ The plan for #159 was written after reading the code it was going to change, was
 
 The tell this time was inside the task itself. The mechanism and its verify disagreed, and the verify was right. A task that states both is cheap to check before writing any code, and nobody checked.
 
+### And a surface that no longer exists (gettori/tickets#28)
+
+- **"The sidebar marks live session rows."** The ticket said "the session row" and the plan carried it. The sidebar stopped drawing a row per session when the History dropdown replaced them ([[component_history_dropdown]]); its deepest row is the branch, which only rolls statuses up. Found mid-phase by tracing `selectSession` and the needs-you tests, not by reading the plan. A live session's own surfaces are its tab and its History open-now row, and that is where the mark went ([[component_secret_watch]]).
+
+The tell: a ticket written against the product as someone remembers it. Before planning a mark on a surface, find the component that draws one instance of the thing.
+
 ## Why
 
 A plan is written at one remove from the code: from grepping, from a component's doc comment, from what a mechanism is *called*. Every one of these four is a case where the name was right and the mechanism behind it was not. Three of them were caught by something that already existed and already knew better than the plan: a source-scanning guard, a component's own docs, a prop signature.
@@ -36,6 +42,7 @@ A plan is written at one remove from the code: from grepping, from a component's
 
 ## Related
 
+- [[component_secret_watch]] - where the fifth one landed instead.
 - [[concept_named_exemption_guard]] - the guard that caught the first one, and why exempting is the wrong repair.
 - [[component_menu]] - `refusing` and `describedBy`, which were already the documented answer.
 - [[lesson_a_named_exemption_can_be_wrong_and_still_pass]] - the failure mode on the other side of the same guard.
