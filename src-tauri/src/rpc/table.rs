@@ -12,8 +12,9 @@ use super::server::{
     CheckpointsParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams,
     IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams,
     ModelParams, OpenParams, PendingParams, PrCreateParams, PrGetParams, PrMergeParams, PrWatchParams,
-    ProjectIconParams, ProjectSetParams, ReviewSubmitParams, SessionAnswerParams, SpawnParams, SteerParams, TailParams,
-    TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, UNITS_GIT_MAX,
+    ProjectIconParams, ProjectSetParams, ProvenanceParams, ReviewSubmitParams, SessionAnswerParams, SpawnParams,
+    SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams,
+    WorktreeParams, UNITS_GIT_MAX,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -313,6 +314,15 @@ pub static METHODS: &[Method] = &[
             }
             b.checkpoint_diff(p)
         },
+    },
+    Method {
+        name: "provenance.hunks",
+        description: "Who wrote each hunk of a file in a worktree: the turn, the tool call and the agent's words before it, or why nothing recorded can say.",
+        params: schema::<ProvenanceParams>,
+        callers: ANYONE,
+        refusal: None,
+        outward: false,
+        call: |b, _, v| b.provenance_hunks(params(v)?),
     },
     Method {
         name: "checkpoint.revert",

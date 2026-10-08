@@ -48,6 +48,7 @@ mod patch;
 #[cfg(test)]
 mod perf_budgets;
 mod presence;
+mod provenance;
 mod pty;
 mod rpc;
 mod scratch;
@@ -474,6 +475,7 @@ pub fn run() {
             git::git_base_offset,
             blame::git_blame,
             agent_lines::agent_lines,
+            provenance::hunk_provenance_live,
             conflict::git_conflict_stages,
             conflict::git_conflict_op,
             conflict::git_conflict_sides,

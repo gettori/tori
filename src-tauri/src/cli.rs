@@ -42,7 +42,7 @@ const USAGE: &str = "usage:
   tori interrupt <id>
   tori worktree new <branch> [--project <path>] [--from <ref>]
   tori checkpoints <id> [--json]
-  tori checkpoint diff <id> <n> [<m>]
+  tori checkpoint diff <id> <n> [<m>] [--why] [--json]
   tori checkpoint revert <id> <n> [--force]
   tori spawn [--agent <id>] [--account <id>] [--model <id>] [--mode <id>] [--effort <level>] [--folder <path> | --new-worktree <branch> [--project <path>] [--from <ref>]]
              [--prompt <text>] [--attach <path>]... [--background] [--json]
@@ -655,8 +655,8 @@ fn checkpoint_turn(args: &[String], switches: &[&str]) -> Result<Value, Failure>
     Ok(json!({ "id": id, "turn": turn, "force": p.has("force").then_some(true) }))
 }
 
-fn diff_params(args: &[String]) -> Result<Value, Failure> {
-    let p = Parsed::new(args, &[], &[])?;
+fn diff_params(args: &[String]) -> Result<(Value, Parsed), Failure> {
+    let p = Parsed::new(args, &[], &["why", "json"])?;
     let (id, turn, to) = match p.positional.as_slice() {
         [id, turn] => (id, turn, None),
         [id, turn, to] => (id, turn, Some(to)),
@@ -670,13 +670,162 @@ fn diff_params(args: &[String]) -> Result<Value, Failure> {
         v.parse::<usize>()
             .map_err(|_| usage(format!("turn must be a number, got {v}")))
     };
-    Ok(json!({ "id": id, "turn": number(turn)?, "to": to.map(number).transpose()? }))
+    let params = json!({
+        "id": id,
+        "turn": number(turn)?,
+        "to": to.map(number).transpose()?,
+        "why": p.has("why").then_some(true),
+    });
+    Ok((params, p))
 }
 
 fn checkpoint_diff(args: &[String]) -> Result<(), Failure> {
-    let params = diff_params(args)?;
+    let (params, p) = diff_params(args)?;
     let diff = connect()?.call("checkpoint.diff", params)?;
-    Ok(write!(io::stdout().lock(), "{}", diff["diff"].as_str().unwrap_or(""))?)
+    let mut out = io::stdout().lock();
+    if p.has("json") {
+        return Ok(writeln!(out, "{diff}")?);
+    }
+    let text = diff["diff"].as_str().unwrap_or("");
+    if !p.has("why") {
+        return Ok(write!(out, "{text}")?);
+    }
+    Ok(write!(out, "{}", annotated(text, &diff["why"]))?)
+}
+
+/// The diff with `# why` lines above each hunk, matched to `why` by file and
+/// hunk order, the order the server read them in.
+fn annotated(diff: &str, why: &Value) -> String {
+    let mut out = String::new();
+    let mut file: Option<usize> = None;
+    let mut hunk = 0;
+    // A `+++ ` inside a hunk is an added `++ ` line, not the next file.
+    let mut in_header = false;
+    for line in diff.split_inclusive('\n') {
+        if line.starts_with("diff --git ") {
+            in_header = true;
+        } else if in_header && line.starts_with("+++ ") {
+            file = Some(file.map_or(0, |f| f + 1));
+            hunk = 0;
+        } else if line.starts_with("@@ -") {
+            in_header = false;
+            if let Some(f) = file {
+                for range in why[f]["hunks"][hunk].as_array().into_iter().flatten() {
+                    out.push_str(&format!("# why {}: {}\n", lines_of(range), claim_text(&range["claim"])));
+                    if let Some(reply) = range["claim"]["call"]["reply"].as_str() {
+                        out.push_str(&format!("#   said: {}\n", first_line(reply, 160)));
+                    }
+                }
+            }
+            hunk += 1;
+        }
+        out.push_str(line);
+    }
+    out
+}
+
+fn lines_of(range: &Value) -> String {
+    let start = range["start"].as_u64().unwrap_or(0);
+    match range["count"].as_u64().unwrap_or(0) {
+        0 => format!("deleted after line {start}"),
+        1 => format!("line {start}"),
+        n => format!("lines {start} to {}", start + n - 1),
+    }
+}
+
+fn first_line(text: &str, cap: usize) -> String {
+    let line = text.lines().next().unwrap_or("");
+    match line.char_indices().nth(cap) {
+        Some((at, _)) => format!("{}...", &line[..at]),
+        None => line.to_string(),
+    }
+}
+
+fn titles(sessions: &Value) -> String {
+    let names: Vec<&str> = sessions
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|s| s["title"].as_str().filter(|t| !t.is_empty()).or(s["id"].as_str()))
+        .collect();
+    names.join(", ")
+}
+
+fn call_text(call: &Value) -> String {
+    let name = call["name"].as_str().unwrap_or("call");
+    let input = &call["input"];
+    let detail = input["command"]
+        .as_str()
+        .map(without_cd)
+        .or(input["file_path"].as_str())
+        .map(|d| format!(" {}", first_line(d, 120)))
+        .unwrap_or_default();
+    format!("{name}{detail}")
+}
+
+/// How many calls a `# why` line lists before it counts the rest.
+const CALLS_SHOWN: usize = 3;
+
+/// A turn's candidate calls, the ones naming the file first, since a long turn
+/// can hold dozens of shell commands.
+fn calls_text(calls: &Value) -> String {
+    let all: Vec<&Value> = calls.as_array().into_iter().flatten().collect();
+    let mut ordered: Vec<&Value> = all.iter().copied().filter(|c| c["namesFile"] == true).collect();
+    ordered.extend(all.iter().copied().filter(|c| c["namesFile"] != true));
+    let mut text: Vec<String> = ordered.iter().take(CALLS_SHOWN).map(|c| call_text(c)).collect();
+    if ordered.len() > CALLS_SHOWN {
+        text.push(format!("and {} more", ordered.len() - CALLS_SHOWN));
+    }
+    text.join("; ")
+}
+
+/// A command without the `cd <dir>;` an agent puts in front of nearly every
+/// one, which would otherwise make every line read the same.
+fn without_cd(command: &str) -> &str {
+    let Some(rest) = command.strip_prefix("cd ") else {
+        return command;
+    };
+    [";", "&&"]
+        .iter()
+        .filter_map(|sep| rest.find(sep).map(|at| rest[at + sep.len()..].trim_start()))
+        .min_by_key(|tail| std::cmp::Reverse(tail.len()))
+        .unwrap_or(command)
+}
+
+/// One line saying who wrote the range, worded as strongly as the claim is.
+fn claim_text(claim: &Value) -> String {
+    let turn = &claim["turn"];
+    let who = format!(
+        "turn {} of {} at {}",
+        turn["ordinal"].as_u64().unwrap_or(0),
+        turn["session"]["title"]
+            .as_str()
+            .filter(|t| !t.is_empty())
+            .or(turn["session"]["id"].as_str())
+            .unwrap_or(""),
+        crate::crash::stamp(turn["promptTs"].as_u64().unwrap_or(0)),
+    );
+    match claim["tier"].as_str().unwrap_or("") {
+        "call" => format!("{who}, {}", call_text(&claim["call"])),
+        "candidates" if calls_text(&claim["calls"]).is_empty() => format!("{who}, a call Tori could not read back"),
+        "candidates" => format!("{who}, one of: {}", calls_text(&claim["calls"])),
+        "shell" => format!("{who}, shell: {}", calls_text(&claim["calls"])),
+        _ => match claim["reason"].as_str().unwrap_or("") {
+            "before" => "no session Tori recorded wrote this, it was there at the first checkpoint".into(),
+            "capped" => "older than the changes Tori walks back".into(),
+            "unrecorded" => format!(
+                "written in a turn of {}, which Tori ran but cannot read back",
+                titles(&claim["sessions"])
+            ),
+            "overlapping" => format!(
+                "written while {} were each in a turn that could have written it",
+                titles(&claim["sessions"])
+            ),
+            _ => {
+                "written while no session Tori knows of was in a turn: by hand, or by a session Tori did not see".into()
+            }
+        },
+    }
 }
 
 fn checkpoint_revert(args: &[String]) -> Result<(), Failure> {
@@ -1402,12 +1551,12 @@ mod tests {
     #[test]
     fn checkpoint_diff_takes_an_optional_last_turn() {
         assert_eq!(
-            diff_params(&args(&["s1", "2"])).ok(),
-            Some(json!({ "id": "s1", "turn": 2, "to": null }))
+            diff_params(&args(&["s1", "2"])).ok().map(|(v, _)| v),
+            Some(json!({ "id": "s1", "turn": 2, "to": null, "why": null }))
         );
         assert_eq!(
-            diff_params(&args(&["s1", "2", "4"])).ok(),
-            Some(json!({ "id": "s1", "turn": 2, "to": 4 }))
+            diff_params(&args(&["s1", "2", "4", "--why"])).ok().map(|(v, _)| v),
+            Some(json!({ "id": "s1", "turn": 2, "to": 4, "why": true }))
         );
         assert!(diff_params(&args(&["s1", "2", "x"])).is_err());
         assert!(diff_params(&args(&["s1", "2", "3", "4"])).is_err());

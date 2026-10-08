@@ -41,8 +41,8 @@ import { diffGutterExtension, diffLineNumbers, setDiffMarkers, type Hunk } from 
 import { blameExtension, setAgentMarkers, setBlameMarkers, type TurnLink } from "./blameGutter";
 import { conflictBands } from "./conflictBands";
 import { blameFor, canPlaceBlame, dropBlame, emptyBlame } from "../../utils/blame";
-import { agentLinesFor, dropAgentLines, emptyAgentLines } from "../../utils/agentLines";
-import { chatsInFolder, liveChats } from "../../utils/chatSessions";
+import { agentLinesFor, dropAgentLines } from "../../utils/agentLines";
+import { liveChats } from "../../utils/chatSessions";
 import { gitStateFor } from "../../utils/gitActions";
 import { traceMark } from "../../utils/perfTrace";
 import {
@@ -771,11 +771,7 @@ export default function CodeEditor(props: {
     const root = props.projectRoot;
     if (!path || !root || !view) return;
     if (!props.blame) return;
-    // The chats in this worktree. Passed in rather than discovered because a
-    // bare repo's worktrees share one ref store, so the sessions git can see
-    // include ones whose checkpoints describe a different set of files.
-    const sessions = chatsInFolder(root).map((c) => c.sessionId);
-    const agent = sessions.length ? await agentLinesFor(root, relTo(root, path), sessions) : emptyAgentLines();
+    const agent = await agentLinesFor(root, relTo(root, path));
     if (!view || shown !== path || !props.blame) return;
     if (!canPlaceBlame(view.state.sliceDoc(), buffers.get(path)?.savedText)) return;
     setAgentMarkers(view, agent);
