@@ -8,9 +8,12 @@ import { sideBySideOn as sideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } f
 import { copyText } from "../../utils/clipboard";
 import { checkpointClock, parseCheckpointDiffArg, WORKTREE_SOURCE } from "../../utils/syntheticTabs";
 import DiffRows, { diffRowClasses } from "./DiffRows";
+import HunkProvenance, { createOpenHunks, WhyToggle } from "./HunkProvenance";
+import { claimsVia, type ClaimReader } from "../../utils/provenance";
 import IconButton from "../../components/IconButton/IconButton";
 import Icon from "../../components/Icon/Icon";
 import styles from "./CommitDiffView.module.css";
+import hunkStyles from "./HunkCommentInput.module.css";
 
 const fileName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 const fileDir = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf("/")));
@@ -32,6 +35,20 @@ export function checkpointFileDiff(
   });
 }
 
+/** Who wrote a checkpoint diff's hunks, against the tree that diff ends at. */
+export function checkpointClaims(
+  workspace: string,
+  target: { source: string; ts: number; scope: "turn" | "since"; file: string },
+): ClaimReader {
+  return claimsVia("checkpoint_provenance", {
+    repoPath: workspace,
+    sessionId: target.source === WORKTREE_SOURCE ? null : target.source,
+    promptTs: target.ts,
+    file: target.file,
+    cumulative: target.scope === "since",
+  });
+}
+
 /**
  * One file's change within one checkpoint, as its own tab. The Checkpoints
  * panel shows the same patch inline under the file's row; this is the same read
@@ -43,6 +60,7 @@ export default function CheckpointDiffView(props: { workspace: string; arg: stri
   const [error, setError] = createSignal("");
   const [loading, setLoading] = createSignal(true);
   const [paneWidth, setPaneWidth] = createSignal(Infinity);
+  const whyOpen = createOpenHunks();
 
   const hunks = createMemo(() => parseDiffHunks(diff()));
   const twoColumn = () => sideBySide() && paneWidth() >= SIDE_BY_SIDE_MIN_WIDTH;
@@ -58,6 +76,7 @@ export default function CheckpointDiffView(props: { workspace: string; arg: stri
       setLoading(true);
       setDiff("");
       setError("");
+      whyOpen.clear();
       try {
         const text = await checkpointFileDiff(workspace, target);
         if (mine === current) setDiff(text);
@@ -140,9 +159,15 @@ export default function CheckpointDiffView(props: { workspace: string; arg: stri
       >
         <div class={styles.body}>
           <For each={hunks()}>
-            {(hunk) => (
+            {(hunk, hi) => (
               <div>
-                <div class={`${diffRowClasses.line} ${diffRowClasses.hunk}`}>{hunk.header}</div>
+                <div class={`${diffRowClasses.line} ${diffRowClasses.hunk} ${hunkStyles.hunkHeaderRow}`}>
+                  <span class={hunkStyles.hunkHeaderText}>{hunk.header}</span>
+                  <WhyToggle open={whyOpen.has(hi())} onClick={() => whyOpen.toggle(hi())} />
+                </div>
+                <Show when={whyOpen.has(hi())}>
+                  <HunkProvenance hunk={hunk} read={checkpointClaims(props.workspace, target())} />
+                </Show>
                 <DiffRows
                   rows={buildRows(hunk.lines, { old: hunk.oldStart, new: hunk.startLine })}
                   path={file()}

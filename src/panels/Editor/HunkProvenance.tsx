@@ -1,4 +1,5 @@
-import { createResource, For, Match, Show, Switch } from "solid-js";
+import { createResource, createSignal, For, Match, Show, Switch } from "solid-js";
+import { Footprints } from "lucide-solid";
 import { emitWith, REVEAL_TURN, type RevealTurn } from "../../utils/events";
 import type { DiffHunk } from "../../utils/diffHunks";
 import { liveChats } from "../../utils/chatSessions";
@@ -7,23 +8,25 @@ import {
   CALLS_SHOWN,
   callSummary,
   claimHeadline,
-  hunkProvenance,
   orderedCalls,
   rangeLabel,
   turnLabel,
   type CallRef,
+  type ClaimReader,
   type ClaimRange,
   type TurnRef,
 } from "../../utils/provenance";
 import Button from "../../components/Button/Button";
+import IconButton from "../../components/IconButton/IconButton";
+import Icon from "../../components/Icon/Icon";
 import styles from "./HunkProvenance.module.css";
 
 /** One hunk's provenance, read when the panel opens: who wrote each run of its
  *  lines, in what turn, by which call, and what the agent said before it. */
-export default function HunkProvenance(props: { root: string; file: string; hunk: DiffHunk; staged: boolean }) {
+export default function HunkProvenance(props: { hunk: DiffHunk; read: ClaimReader }) {
   const [ranges] = createResource(
-    () => ({ root: props.root, file: props.file, hunk: props.hunk, staged: props.staged }),
-    (k) => hunkProvenance(k.root, k.file, k.hunk, k.staged),
+    () => ({ hunk: props.hunk, read: props.read }),
+    (k) => k.read(k.hunk),
   );
 
   return (
@@ -102,5 +105,33 @@ function CallBlock(props: { call: CallRef }) {
       <Show when={props.call.reply}>{(reply) => <div class={styles.reply}>{reply()}</div>}</Show>
       <code class={styles.command}>{callSummary(props.call)}</code>
     </div>
+  );
+}
+
+/** Which hunks of one diff have their provenance open, by index into it. */
+export function createOpenHunks() {
+  const [open, setOpen] = createSignal<ReadonlySet<number>>(new Set());
+  return {
+    has: (hunk: number) => open().has(hunk),
+    toggle: (hunk: number) =>
+      setOpen((prev) => {
+        const next = new Set(prev);
+        if (!next.delete(hunk)) next.add(hunk);
+        return next;
+      }),
+    clear: () => setOpen(new Set<number>()),
+  };
+}
+
+/** The hunk header's control for the panel. */
+export function WhyToggle(props: { open: boolean; onClick: () => void }) {
+  return (
+    <IconButton
+      size="sm"
+      icon={<Icon icon={Footprints} />}
+      active={props.open}
+      tooltip={props.open ? "Hide who wrote this hunk" : "Who wrote this hunk"}
+      onClick={props.onClick}
+    />
   );
 }

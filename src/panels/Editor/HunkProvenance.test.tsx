@@ -14,6 +14,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 const { default: HunkProvenance } = await import("./HunkProvenance");
+const { diffTabClaims } = await import("../../utils/provenance");
 
 const HUNK = {
   header: "@@ -1,2 +1,3 @@",
@@ -37,7 +38,7 @@ const SHELL = { ...EDIT, toolUseId: "toolu_2", name: "Bash", kind: "execute", in
 
 function show(claim: Claim) {
   answer = [{ start: 2, count: 1, claim }];
-  render(() => <HunkProvenance root="/repo" file="src/a.ts" hunk={HUNK} staged={false} />);
+  render(() => <HunkProvenance hunk={HUNK} read={diffTabClaims("/repo", "src/a.ts", false)} />);
 }
 
 beforeEach(() => {

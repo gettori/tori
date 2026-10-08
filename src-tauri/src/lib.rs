@@ -476,6 +476,7 @@ pub fn run() {
             blame::git_blame,
             agent_lines::agent_lines,
             provenance::diff_provenance,
+            provenance::checkpoint_provenance,
             conflict::git_conflict_stages,
             conflict::git_conflict_op,
             conflict::git_conflict_sides,
