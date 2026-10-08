@@ -8,7 +8,7 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
-## Unreleased
+## 26.1008.0-alpha
 
 - Every hunk can say who wrote it. A toggle on the hunk header in the diff
   tab, a Checkpoints diff or a pull request's file view opens the turn and
