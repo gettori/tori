@@ -79,8 +79,8 @@ exact before-state diffs and hunk revert - or a spend ceiling, since ACP reports
 context occupancy and no cost. Settings > Agents publishes the
 list per agent, and a chat session publishes its own under Session.
 
-**codex** ships bundled over ACP, measured against `codex-cli 0.147.0` with the
-`@agentclientprotocol/codex-acp` wrapper. It is the one adapter whose chat
+**codex** ships bundled over ACP, measured against `codex-cli 0.155.1` with the
+`@agentclientprotocol/codex-acp 1.12.0` wrapper. It is the one adapter whose chat
 binary is not its launch binary: the PTY tab runs the `codex` a user installed,
 and chat runs the first-party wrapper over `npx`, which drives that same
 `codex` underneath. `codex.toml` carries the full reasoning.
