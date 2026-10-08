@@ -1,8 +1,8 @@
 ---
-summary: line provenance shows a commit if blame has one, else the turn that wrote it, replayed via git diff -U0 over trees
+summary: line provenance shows a commit if blame has one, else the turn that wrote it, from the same walk as hunk provenance
 status: current
-updated: 2026-08-02
-source: "Editor wave 2: git depth (personal/tori, branch `wave-2`); Phases 8 and 9 (commits ad173e9, 6dc425f); `src-tauri/src/blame.rs`, `src-tauri/src/agent_lines.rs`, `src/utils/blame.ts`, `src/utils/agentLines.ts`, `src/panels/Editor/blameGutter.ts`"
+updated: 2026-10-08
+source: "Editor wave 2: git depth (personal/tori, branch `wave-2`); Phases 8 and 9 (commits ad173e9, 6dc425f); `src-tauri/src/blame.rs`, `src-tauri/src/agent_lines.rs`, `src/utils/blame.ts`, `src/utils/agentLines.ts`, `src/panels/Editor/blameGutter.ts`; reworked by the provenance plan, gettori/tickets#25 (branch phase-1-block-1), commit a402d912, `src-tauri/src/provenance.rs` (`line_turns`)"
 ---
 
 # Line provenance: a commit if it has one, otherwise a turn
@@ -22,13 +22,12 @@ Every line in the editor can say where it came from. Two marker layers answer th
 
 **The uncommitted layer (agent attribution)**
 
-- **The checkpoints already hold the answer.** Each turn checkpoint is a full tree, so the difference between two consecutive trees *is* what happened in that interval. Attribution replays `git diff -U0` over a per-line vector, stamping each hunk's new lines with the turn that introduced them. No per-line ledger and no new write on the hot path.
-- **The intervals have to tile, and that is the whole correctness story.** A turn that wrote the file through a `Bash` heredoc records no path, so it is not in the plan, but it still moved the lines. The plan therefore carries **unnamed gap steps** between named turns plus a tail step to the live tree.
-- **The reverse index is `{turns: [ts], files: {path: [index]}}`, append-only.** Per-turn records answer "what did turn N write"; a line asks the opposite, and answering it from those records is 200 file reads to find 3. The verify is proven by deleting every per-turn record and asking again.
-- **A turn that named no file is still registered**, so "turn 12" is the session's own numbering rather than a count of the turns that happened to write something.
-- **Sessions come from the caller, not from the refs**, because a bare repo's worktrees share one ref store and `refs/tori/checkpoint/*` lists sessions whose trees describe a different set of files.
+- **Since 2026-10-08 this is `provenance::line_turns`**, the walk [[component_provenance]] runs for a diff hunk, read once per line. `agent_lines` is a thin projection of it, so the gutter and the hunk panel cannot disagree. The old walk over only the turns that named the file (`work_plan`, `resolve_lines`) is gone, and so is the reverse index's only reader.
+- **The checkpoints still hold the answer.** Each turn checkpoint is a full tree, so the difference between two consecutive trees is what happened in that interval. Every checkpoint of every session in the worktree is a point on one timeline, and one batched `cat-file` drops the intervals where the file did not change before any diff runs.
+- **Who wrote an interval is graded, not assumed** ([[concept_who_wrote_an_interval]]): a terminal session is read from its transcript like a chat, and a turn that wrote through a shell command is named as such rather than read as nobody.
+- **Sessions are found by worktree in Rust** (`worktree_sessions`), no longer passed in by the editor from its open chats, which missed terminal sessions. The bare-repo reason still holds: the shared ref store lists sessions of other worktrees, so they are found by cwd, never from the refs.
 - The cache is dropped in `flushAgentWrites` **before** the "does this path have a buffer" test, so a file cached while open, closed, then rewritten does not come back stale.
-- The walk is capped at **40 turns, newest kept**, and what the cap costs is stated: a dropped turn's lines read as written by nobody, never as written by the wrong turn.
+- The walk keeps the **40 newest changes** to the file, and what the cap costs is stated: an older line reads as older than the walk, never as written by the wrong turn.
 
 ## Why it's this way
 
@@ -40,7 +39,10 @@ Every line in the editor can say where it came from. Two marker layers answer th
 
 ## Related
 
-- [[component_turn_checkpoints]] - the trees this replays over, and the touched-index that makes the lookup cheap.
+- [[component_turn_checkpoints]] - the trees this replays over.
+- [[component_provenance]] - the resolver the gutter now reads.
+- [[concept_who_wrote_an_interval]] - how an interval's writer is graded.
+- [[gotcha_grep_here_skips_files_it_thinks_are_binary]] - why the gutter once looked unwired.
 - [[concept_evidence_tiered_attribution]] - the same discipline about stating what is measured versus inferred, one layer up.
 - [[component_cm6_editor]] - the buffer both marker sets decorate.
 - [[gotcha_a_cm6_gutter_marker_needs_startside_1_or_the_line_you_just_typed_inherits_its_neighbours_blame]] - the mapping default that silently misattributes.
