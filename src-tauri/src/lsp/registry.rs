@@ -652,6 +652,7 @@ const BUILTINS: &[(&str, &str)] = &[
     ("bundled:eslint", BUILTIN_ESLINT),
     ("bundled:biome", BUILTIN_BIOME),
     ("bundled:oxlint", BUILTIN_OXLINT),
+    ("bundled:astro", include_str!("../../lsp/astro.toml")),
     ("bundled:bash", include_str!("../../lsp/bash.toml")),
     ("bundled:clangd", include_str!("../../lsp/clangd.toml")),
     ("bundled:clojure", include_str!("../../lsp/clojure.toml")),

@@ -1,0 +1,30 @@
+# Astro via @astrojs/language-server. See LSP-SERVERS.md.
+
+schema_version = 1
+id = "astro"
+label = "Astro"
+root_markers = ["package.json", ".git"]
+
+# Loads the project's own `astro` package for its types, and runs the project's
+# TypeScript when there is one.
+runs_project_code = true
+
+[languages]
+astro = "astro"
+
+[launch]
+kind = "managed"
+runtime = "node"
+program = "astro-ls"
+args = ["--stdio"]
+
+[install]
+kind = "npm"
+package = "@astrojs/language-server"
+version = "2.17.2"
+
+# The server refuses `initialize` without this: it embeds a TypeScript service
+# rather than talking to tsserver, so it has to be told which `typescript/lib`
+# to load. `${tsdk}` is the project's own, else Tori's bundled copy.
+[initialization_options.typescript]
+tsdk = "${tsdk}"

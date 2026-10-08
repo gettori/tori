@@ -41,6 +41,7 @@ installed by you, with a hint on its card saying how.
 | `python` | `pyright-langserver` | npm `pyright` |
 | `bash` | `bash-language-server` | npm `bash-language-server` |
 | `svelte` | `svelteserver` | npm `svelte-language-server` |
+| `astro` | `astro-ls` | npm `@astrojs/language-server`. Needs a `typescript/lib`, see "Placeholders" |
 | `php` | `intelephense` | npm `intelephense` |
 | `vim` | `vim-language-server` | npm `vim-language-server` |
 | `elm` | `elm-language-server` | npm `@elm-tooling/elm-language-server` (needs `elm`) |
@@ -187,9 +188,13 @@ args = ["--stdio"]
 kind = "hint"
 text = "Install it with `brew install some-language-server`."
 
-# optional: passed to the server as `initializationOptions`, verbatim.
+# optional: passed to the server as `initializationOptions`, verbatim except
+# for the placeholders under "Placeholders" below.
 [initialization_options]
 someServerSpecificFlag = true
+
+[initialization_options.typescript]
+tsdk = "${tsdk}"
 
 # optional: server configuration. See "Configuration" below.
 [settings.someServer]
@@ -216,6 +221,27 @@ route that carries the values. A config author should not have to know which.
 An unrecognized top-level field is warned about and ignored, so a config written
 for a newer Tori still loads. A missing **required** field is an error, and the
 message names every missing field at once rather than just the first.
+
+### Placeholders
+
+A config cannot know a path that depends on the project, so a string inside
+`[initialization_options]` may carry a placeholder that `lsp_start` fills in
+for the root it resolved. There is one:
+
+| Placeholder | Resolves to |
+|---|---|
+| `${tsdk}` | A `typescript/lib` directory: the project's own `node_modules/typescript/lib`, found by walking from the server's root up to the project directory, else the copy Tori bundles for its TypeScript server. Neither existing is a start error that names `pnpm lsp:install`. |
+
+Servers built on Volar (Astro, Vue, MDX) embed a TypeScript service rather than
+talking to tsserver, and refuse `initialize` unless `typescript.tsdk` tells
+them which one to load. The project's copy wins so their type errors agree with
+the project's own `tsc`; the bundled copy is what most Astro projects get,
+since `astro` does not depend on `typescript`. The path used is written to the
+server's log, the one "Show log" opens when a server stops, so a crash report
+says which TypeScript it was running on.
+
+A config without a placeholder is passed through untouched and resolves
+nothing. `[settings]` takes no placeholders.
 
 ### Launch kinds
 
