@@ -315,6 +315,19 @@ pub struct CheckpointDiffParams {
     pub turn: usize,
     /// The last turn of a range, the same turn when left out; never before `turn`.
     pub to: Option<usize>,
+    /// Also say, per hunk, which turn and tool call wrote it.
+    pub why: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProvenanceParams {
+    /// The worktree the file is in.
+    pub folder: String,
+    /// The file, relative to the folder.
+    pub file: String,
+    /// Each hunk as its blocks of changed lines on the working tree side: a start line and a line count, a count of 0 being a deletion after that line.
+    pub hunks: Vec<Vec<crate::provenance::Span>>,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
@@ -668,6 +681,7 @@ pub trait Backend: Send + Sync {
     fn worktree_new(&self, principal: &Principal, params: WorktreeParams) -> Result<Value, RpcError>;
     fn checkpoints_list(&self, params: CheckpointsParams) -> Result<Value, RpcError>;
     fn checkpoint_diff(&self, params: CheckpointDiffParams) -> Result<Value, RpcError>;
+    fn provenance_hunks(&self, params: ProvenanceParams) -> Result<Value, RpcError>;
     fn checkpoint_revert(&self, principal: &Principal, params: CheckpointParams) -> Result<Value, RpcError>;
     fn session_spawn(&self, principal: &Principal, params: SpawnParams) -> Result<Value, RpcError>;
     fn window_open(&self, params: OpenParams) -> Result<Value, RpcError>;
@@ -999,6 +1013,9 @@ pub mod tests {
         }
         fn checkpoint_diff(&self, p: CheckpointDiffParams) -> Result<Value, RpcError> {
             Ok(json!({ "turn": p.turn }))
+        }
+        fn provenance_hunks(&self, p: ProvenanceParams) -> Result<Value, RpcError> {
+            Ok(json!({ "file": p.file }))
         }
         fn checkpoint_revert(&self, _: &Principal, p: CheckpointParams) -> Result<Value, RpcError> {
             Ok(json!({ "turn": p.turn }))
