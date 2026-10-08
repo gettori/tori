@@ -494,6 +494,7 @@ mod tests {
             ChatEvent::PlanUpdate { .. } => "planUpdate",
             ChatEvent::Usage { .. } => "usage",
             ChatEvent::RateLimit { .. } => "rateLimit",
+            ChatEvent::TurnVerification { .. } => "turnVerification",
             ChatEvent::TurnCompleted { .. } => "turnCompleted",
             ChatEvent::SessionError { .. } => "sessionError",
             ChatEvent::SessionEnded { .. } => "sessionEnded",

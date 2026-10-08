@@ -201,6 +201,13 @@ describe("chatTypes mirrors the Rust chat model", () => {
         case "rateLimit":
           expect(ev.limitType).toBe("five_hour");
           break;
+        case "turnVerification":
+          // A failing chain is one entry naming every check in it.
+          expect(ev.verdict).toBe("failed");
+          expect(ev.checks[0]?.command).toBe("cargo build && cargo test");
+          expect(ev.checks[0]?.exitCode).toBe(101);
+          expect(Object.keys(ev.checks[0] ?? {}).sort()).toEqual([...CHAT_NESTED_KEYS.check].sort());
+          break;
         case "turnCompleted":
           // The distinction the composer queue turns on.
           expect(ev.outcome).toBe("cancelled");

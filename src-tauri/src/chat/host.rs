@@ -136,6 +136,10 @@ impl Lifecycle {
         lock(&self.replaying).insert(id.to_string());
     }
 
+    fn replaying(&self, id: &str) -> bool {
+        lock(&self.replaying).contains(id)
+    }
+
     fn observe(&self, id: &str, event: &ChatEvent) {
         if matches!(event, ChatEvent::SessionStarted { .. }) {
             lock(&self.replaying).remove(id);
@@ -578,6 +582,9 @@ pub struct ChatHost {
     /// Which files each session has seen, for marking an edit made without
     /// reading. Outlives a rewire, since a reload replays into the same one.
     blind: Arc<Mutex<HashMap<String, crate::blind_edit::Tracker>>>,
+    /// Each session's turns in progress, for marking what a turn that changed
+    /// code ran to check it. Outlives a rewire for the same reason.
+    verify: Arc<Mutex<HashMap<String, crate::verification::Tracker>>>,
 }
 
 /// Tauri state wrapper, matching `PtyState`'s shape.
@@ -670,6 +677,7 @@ impl ChatHost {
             lifecycle: Lifecycle::default(),
             notes: Arc::default(),
             blind: Arc::default(),
+            verify: Arc::default(),
         }
     }
 
@@ -742,6 +750,18 @@ impl ChatHost {
                 *blind_edits = if on { marks } else { Vec::new() };
             }
         }
+    }
+
+    /// Mark a replayed conversation's turns with what each ran to check the
+    /// code it changed, the way `wrap` marks a live one's, against the check
+    /// list and the setting as they are now.
+    pub fn mark_verification(&self, session_id: &str, cwd: Option<String>, events: &mut Vec<ChatEvent>) {
+        let cwd = lock(&self.sessions)
+            .get(session_id)
+            .map(|e| e.cwd.clone())
+            .or(cwd)
+            .map(std::path::PathBuf::from);
+        crate::verification::mark_history(events, cwd.as_deref(), crate::verification::enabled());
     }
 
     /// This session's snapshot cache, for a card the user expanded.
@@ -1092,10 +1112,30 @@ impl ChatHost {
         let lifecycle = self.lifecycle.clone();
         let notes = self.notes.clone();
         let blind = self.blind.clone();
+        let verify = self.verify.clone();
         let id = session_id.to_string();
         let cwd = std::path::PathBuf::from(cwd);
         Box::new(move |event| {
-            for mut event in split_user_notes(event) {
+            let mut events = split_user_notes(event);
+            if let Some(
+                last @ (ChatEvent::ToolCallStarted { .. }
+                | ChatEvent::FileEdit { .. }
+                | ChatEvent::ToolCallCompleted { .. }
+                | ChatEvent::TurnCompleted { .. }),
+            ) = events.last()
+            {
+                // A replay has no timing to measure, so durations are live only.
+                let now = (!lifecycle.replaying(&id)).then(std::time::Instant::now);
+                let verdict = lock(&verify)
+                    .entry(id.clone())
+                    .or_insert_with(|| crate::verification::Tracker::new(Some(&cwd)))
+                    .observe(last, now)
+                    .filter(|_| crate::verification::enabled());
+                if let Some(verdict) = verdict {
+                    events.insert(events.len() - 1, verdict);
+                }
+            }
+            for mut event in events {
                 if matches!(event, ChatEvent::ToolCallStarted { .. }) {
                     crate::secret_watch::annotate(&mut event, Some(&cwd), &crate::secret_watch::current().0);
                 }
@@ -1173,6 +1213,7 @@ impl ChatHost {
                     lock(&waiting).remove(&id);
                     lock(&notes).remove(&id);
                     lock(&blind).remove(&id);
+                    lock(&verify).remove(&id);
                     if let Some(bridge) = lock(&bridges).remove(&id) {
                         bridge.teardown();
                     }
@@ -1401,6 +1442,7 @@ impl ChatHost {
         lock(&self.waiting).remove(session_id);
         lock(&self.notes).remove(session_id);
         lock(&self.blind).remove(session_id);
+        lock(&self.verify).remove(session_id);
         let Some(entry) = entry else { return Ok(()) };
         let result = lock(&entry.transport).close();
         self.registry.release(session_id, &entry.tab_id);
@@ -2206,6 +2248,91 @@ mod tests {
             Some(&("e3".to_string(), Vec::new())),
             "a live edit after the reload, to a file read before it"
         );
+    }
+
+    fn checked_turn(session_id: &str) -> Vec<ChatEvent> {
+        let call = |id: &str, kind: crate::chat::model::ToolKind, name: &str, input: serde_json::Value| {
+            ChatEvent::ToolCallStarted {
+                session_id: session_id.into(),
+                turn_id: "t1".into(),
+                tool_use_id: id.into(),
+                name: name.into(),
+                input,
+                kind,
+                locations: Vec::new(),
+                title: None,
+                secret: None,
+            }
+        };
+        use crate::chat::model::ToolKind::{Edit, Execute};
+        vec![
+            call("e1", Edit, "Edit", serde_json::json!({ "file_path": "/repo/a.rs" })),
+            completed(session_id, "e1", ""),
+            call("c1", Execute, "Bash", serde_json::json!({ "command": "cargo test" })),
+            completed(session_id, "c1", "ok"),
+            ChatEvent::TurnCompleted {
+                session_id: session_id.into(),
+                turn_id: "t1".into(),
+                outcome: crate::chat::model::TurnOutcome::Completed,
+                stop_reason: None,
+                usage: crate::chat::model::Usage::default(),
+                cost_usd: None,
+                permission_denials: Vec::new(),
+                extra: crate::chat::model::Extra::new(),
+            },
+        ]
+    }
+
+    fn verdicts(events: &[ChatEvent]) -> Vec<(usize, crate::chat::model::Verdict)> {
+        events
+            .iter()
+            .enumerate()
+            .filter_map(|(at, e)| match e {
+                ChatEvent::TurnVerification { verdict, .. } => Some((at, *verdict)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_turns_verification_is_the_same_live_reloaded_and_replayed() {
+        use crate::chat::model::Verdict::Verified;
+        let host = ChatHost::at(temp_store());
+        let seen = Collector::default();
+        let sink_out: Arc<Mutex<Option<Sink>>> = Arc::new(Mutex::new(None));
+        let out = sink_out.clone();
+        host.spawn_plain("s1", "tab-a", seen.emit(), spec("s1"), move || {
+            Box::new(Puppet {
+                sink_out: Some(out),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+        let sink = lock(&sink_out).clone().expect("the puppet published its sink");
+
+        // Twice, the way a `Reload` sends the whole conversation again.
+        let turn = checked_turn("s1");
+        for event in turn.iter().chain(turn.iter()) {
+            crate::chat::transport::emit(&sink, event.clone());
+        }
+        let live: Vec<ChatEvent> = seen
+            .events()
+            .into_iter()
+            .filter(|e| !matches!(e, ChatEvent::SessionStarted { .. } | ChatEvent::SessionReady { .. }))
+            .collect();
+        let marks = verdicts(&live);
+        assert_eq!(marks.len(), 2, "one per pass");
+        for (at, verdict) in &marks {
+            assert_eq!(*verdict, Verified);
+            assert!(
+                matches!(live[at + 1], ChatEvent::TurnCompleted { .. }),
+                "sent ahead of its turn's end"
+            );
+        }
+
+        let mut replayed = live[..marks[0].0 + 2].to_vec();
+        host.mark_verification("gone", Some("/repo".into()), &mut replayed);
+        assert_eq!(verdicts(&replayed), vec![marks[0]], "replayed from the log, once");
     }
 
     /// History can be read for a session that is never spawned. Those outputs

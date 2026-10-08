@@ -970,6 +970,8 @@ pub struct Settings {
     pub secret_watch: SecretWatch,
     #[serde(default, deserialize_with = "lenient_blind_edits")]
     pub blind_edits: BlindEdits,
+    #[serde(default, deserialize_with = "lenient_verification")]
+    pub verification: Verification,
 }
 
 /// Whether secret reads are marked, and additions to the list. The patterns
@@ -1023,6 +1025,27 @@ fn lenient_blind_edits<'de, D: serde::Deserializer<'de>>(d: D) -> Result<BlindEd
     let raw = serde_json::Value::deserialize(d)?;
     let enabled = raw.get("enabled").and_then(|e| e.as_bool()).unwrap_or(true);
     Ok(BlindEdits { enabled })
+}
+
+/// Whether each turn that changed code is marked with what it ran to check it.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Verification {
+    pub enabled: bool,
+}
+
+impl Default for Verification {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+// Same reason as `lenient_secret_watch`: a malformed block must not reset the
+// rest of the file.
+fn lenient_verification<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Verification, D::Error> {
+    let raw = serde_json::Value::deserialize(d)?;
+    let enabled = raw.get("enabled").and_then(|e| e.as_bool()).unwrap_or(true);
+    Ok(Verification { enabled })
 }
 
 /// What a project does to a worktree Tori has just created for it.
@@ -1209,6 +1232,10 @@ pub fn secret_watch() -> SecretWatch {
 
 pub fn blind_edits() -> BlindEdits {
     load_from(&settings_path()).blind_edits
+}
+
+pub fn verification() -> Verification {
+    load_from(&settings_path()).verification
 }
 
 /// When settings.json last changed, `None` while it does not exist.
@@ -2463,6 +2490,28 @@ mod tests {
             std::fs::write(&p, body).unwrap();
             let s = load_from(&p);
             assert_eq!(s.blind_edits.enabled, on, "{body}");
+            if !on {
+                assert_eq!(s.appearance.theme, "catppuccin-mocha", "the rest of the file survives");
+            }
+        }
+        std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn verification_is_marked_unless_the_file_says_off() {
+        let p = tmp_file();
+        for (body, on) in [
+            ("{}", true),
+            (r#"{"verification":"x"}"#, true),
+            (r#"{"verification":{"enabled":"no"}}"#, true),
+            (
+                r#"{"verification":{"enabled":false},"appearance":{"theme":"catppuccin-mocha"}}"#,
+                false,
+            ),
+        ] {
+            std::fs::write(&p, body).unwrap();
+            let s = load_from(&p);
+            assert_eq!(s.verification.enabled, on, "{body}");
             if !on {
                 assert_eq!(s.appearance.theme, "catppuccin-mocha", "the rest of the file survives");
             }
