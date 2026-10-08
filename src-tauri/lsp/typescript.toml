@@ -47,9 +47,9 @@ args = ["--stdio"]
 # Read out of the *workspace* configuration and not out of
 # `initialization_options`, which is what it looks like it should be: the
 # provider calls `getWorkspacePreferencesForFile` (`cli.mjs:21129`), which
-# indexes this table by `typescript`/`javascript`. `initialization_options` also
-# happens to reach no server at all today (wave 7 Phase 5), so the mechanism
-# that does work is the one used here.
+# indexes this table by `typescript`/`javascript`, so the mechanism that works
+# is the one used here. (`initialization_options` reached no primary server at
+# all until the `lsp-client` 6.3.0 bump, which is the other reason.)
 #
 # Enabling it here costs nothing while Tori's setting is off, because the
 # expense is in the request and Tori does not make one: `provideCodeLenses`

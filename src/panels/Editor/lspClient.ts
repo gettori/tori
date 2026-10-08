@@ -82,6 +82,11 @@ import type { ApplyDeps, MaterialisedFile, Mapping } from "./workspaceEdit";
  *  frontend only ever holds and returns it. */
 type LspHandle = { serverId: string; root: string };
 
+/** What `lsp_start` answers. The options are this root's, with placeholders
+ *  such as `${tsdk}` already resolved, so they are sent in place of the
+ *  registry's copy. */
+type LspStarted = { handle: LspHandle; initializationOptions: unknown };
+
 /** The file a session was first started for. A restart asks the backend for a
  *  root again, and this file is the one known to resolve to this session's,
  *  whether or not its tab is still open. */
@@ -365,13 +370,16 @@ async function startFor(server: LspServer, path: string, projectPath: string, st
   const ours = key({ serverId: server.id, root: "" });
   for (const k of diedEarly) if (k.startsWith(ours)) diedEarly.delete(k);
   let handle: LspHandle;
+  let initializationOptions: unknown;
   try {
-    handle = await invoke<LspHandle>("lsp_start", {
+    const started = await invoke<LspStarted>("lsp_start", {
       serverId: server.id,
       filePath: path,
       projectPath,
       onMessage: channel,
     });
+    handle = started.handle;
+    initializationOptions = started.initializationOptions ?? undefined;
   } catch (e) {
     if (e === UNTRUSTED) {
       if (noteRefused(projectPath)) {
@@ -422,7 +430,7 @@ async function startFor(server: LspServer, path: string, projectPath: string, st
       rootUri: pathToUri(handle.root),
       timeoutMs: server.request_timeout_ms,
       settings: server.settings,
-      initializationOptions: server.initialization_options,
+      initializationOptions,
       onDiagnostics: (publish) => showSecondaryDiagnostics(server.id, client, publish),
       applyEdit: (params) =>
         answerApplyEdit(params, secondaryApplyDeps(client, "lsp.applyEdit"), (message) =>
@@ -455,6 +463,7 @@ async function startFor(server: LspServer, path: string, projectPath: string, st
     // `initialize` too, so 3s would take the whole client down rather than
     // just failing one request.
     timeout: server.request_timeout_ms,
+    initializationOptions,
     // Without this the library's own workspace answers `displayFile` with the
     // view of a file that is already on screen and null for everything else,
     // which is every cross-file operation there is.
