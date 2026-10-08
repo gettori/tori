@@ -1,7 +1,7 @@
 ---
 summary: a weak signal must produce a weaker claim, never a confident one, and unknown actors must never read as empty ones
 status: current
-updated: 2026-07-29
+updated: 2026-10-08
 source: "Status deepening: checkpoint timeline, tree revert, touched markers, live indicator (personal/tori, branch `main`); Phases 1 and 2; `src/utils/revertGuard.ts`, `src/utils/editingNow.ts`, `src/utils/folderActors.ts`, `src/panels/Editor/Editor.tsx`; Chat surface plan, phase 1 (branch `chat`); `src-tauri/src/checkpoint.rs`, `src-tauri/src/chat/claude.rs`; commits \"Stop recording a read file as one the session wrote\", \"Grade per-turn attribution instead of asserting it\""
 ---
 
@@ -75,8 +75,18 @@ same shape a write does (`file.filePath`), so `files_touched` was recording file
 the session only opened. Fixed by keying off the *call's* name (`READ_ONLY_TOOLS`)
 rather than guessing at the result's shape.
 
+## Secret watch: read versus named
+
+The same rule set the wording of the secret mark. A read or search tool names
+the path it opened, which is direct evidence, so the turn says "Read a secret
+file". A shell command that only has the path among its words (`cat .env`,
+`ls ~/.aws`, `--env-file=.env`) may or may not have read it, so it says "A command
+named a secret file". When a turn has both, the stronger claim wins. See
+[[component_secret_watch]].
+
 ## Related
 
+- [[component_secret_watch]] the read versus named claims
 - [[component_turn_checkpoints]] — the revert guard's home; the tree revert this protects.
 - [[component_session_worklog]] — the indicator's surfaces (tree rows, tabs, Session panel).
 - [[concept_needs_you_floor]] — where "Executing" is composed; the reason the guard lives in the frontend and the backend cannot see it.
