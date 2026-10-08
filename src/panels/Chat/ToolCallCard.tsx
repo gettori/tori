@@ -56,6 +56,7 @@ export default function ToolCallCard(props: {
    *  moves. */
   also?: ToolItem[];
   sessionId: string;
+  showSecret?: boolean;
   cwd: string;
   onAnswer?: (card: ToolItem, answer: Answer) => void;
   onSetMode: (mode: PermissionMode) => void;
@@ -180,10 +181,12 @@ export default function ToolCallCard(props: {
     }
   }
 
+  const secretShown = () => props.showSecret !== false && !!props.card.secret;
+
   return (
     <div
       class={`${styles.tool} ${props.card.state === "awaitingApproval" ? styles.toolBlocked : ""}`}
-      classList={{ [styles.toolSecret]: !!props.card.secret }}
+      classList={{ [styles.toolSecret]: secretShown() }}
     >
       <button type="button" class={styles.toolRow} onClick={toggleOpen} aria-expanded={open()}>
         <span class={styles.toolCaret} classList={{ [styles.toolCaretOpen]: open() }} aria-hidden="true">
@@ -202,7 +205,7 @@ export default function ToolCallCard(props: {
           {props.card.title ?? props.card.name ?? "tool"}
         </span>
         <span class={styles.toolArg}>{arg()}</span>
-        <Show when={props.card.secret}>
+        <Show when={secretShown()}>
           <span class={styles.toolSecretKey} role="img" aria-label="Secret file">
             <Icon icon={KeyRound} size={12} />
           </span>

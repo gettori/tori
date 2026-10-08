@@ -101,6 +101,8 @@ export const setPanePins = (p: Partial<PanePins>) =>
   saveSettings({ ...settings, panePins: { ...settings.panePins, ...p } });
 export const setBudgets = (b: Partial<Budgets>) =>
   saveSettings({ ...settings, budgets: { ...settings.budgets, ...b } });
+export const setSecretWatch = (enabled: boolean) =>
+  saveSettings({ ...settings, secretWatch: { ...settings.secretWatch, enabled } });
 export const setAgent = (h: Partial<Agent>) => saveSettings({ ...settings, agent: { ...settings.agent, ...h } });
 export const setAutopilot = (a: Partial<Omit<AutopilotSettings, "enabled">>) =>
   saveSettings({ ...settings, autopilot: { ...settings.autopilot, ...a } });

@@ -4,6 +4,7 @@
 //! evidence differs: a read or search tool says which path it opened, while a
 //! shell command only mentions one, and `ls ~/.aws` mentions without reading.
 
+use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use std::time::SystemTime;
@@ -35,6 +36,7 @@ const SSH_PUBLIC: [&str; 3] = ["config", "known_hosts", "authorized_keys"];
 
 /// The default list plus the user's additions, resolved against one home.
 pub struct Rules {
+    enabled: bool,
     home: PathBuf,
     globs: Vec<globset::GlobMatcher>,
     prefixes: Vec<PathBuf>,
@@ -51,14 +53,29 @@ impl Rules {
                 globs.push(glob.compile_matcher());
             }
         }
-        Self { home, globs, prefixes }
+        Self {
+            enabled: true,
+            home,
+            globs,
+            prefixes,
+        }
+    }
+
+    /// Rules that match nothing, for when secret watch is switched off.
+    pub fn off() -> Self {
+        Self {
+            enabled: false,
+            home: PathBuf::new(),
+            globs: Vec::new(),
+            prefixes: Vec::new(),
+        }
     }
 
     /// Is `raw` a secret file, once `~`, `$HOME` and a relative `cwd` are
     /// resolved? A path that cannot be anchored is still judged by its name.
     pub fn matches(&self, raw: &str, cwd: Option<&Path>) -> bool {
         let raw = raw.trim();
-        if raw.is_empty() {
+        if !self.enabled || raw.is_empty() {
             return false;
         }
         let mut path = expand(raw, &self.home);
@@ -206,8 +223,12 @@ pub fn current() -> (std::sync::Arc<Rules>, Option<SystemTime>) {
             return (rules.clone(), stamp);
         }
     }
-    let home = dirs::home_dir().unwrap_or_default();
-    let rules = std::sync::Arc::new(Rules::new(home, &crate::settings::secret_patterns()));
+    let watch = crate::settings::secret_watch();
+    let rules = std::sync::Arc::new(if watch.enabled {
+        Rules::new(dirs::home_dir().unwrap_or_default(), &watch.patterns)
+    } else {
+        Rules::off()
+    });
     *cache = Some((stamp, rules.clone()));
     (rules, stamp)
 }
@@ -225,6 +246,114 @@ pub fn annotate(event: &mut crate::chat::model::ChatEvent, cwd: Option<&Path>, r
     {
         *secret = classify(name, *kind, input, locations, cwd, rules);
     }
+}
+
+/// One turn's secret reads, for a surface that shows a turn without its calls.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretTurn {
+    /// `None` for a history with no prompts to anchor on, which is an ACP log.
+    pub prompt_ts: Option<u64>,
+    pub paths: Vec<String>,
+    pub strength: SecretStrength,
+}
+
+fn merge(into: &mut SecretTurn, hit: SecretHit) {
+    into.paths.extend(hit.paths);
+    into.paths.sort();
+    into.paths.dedup();
+    if hit.strength == SecretStrength::Read {
+        into.strength = SecretStrength::Read;
+    }
+}
+
+/// Fold a conversation's calls into one entry per turn. `prompts` pairs each
+/// prompt's timestamp with the index of its first event; with none, calls are
+/// grouped by the turn id they carry instead.
+pub fn secret_turns(
+    events: &[crate::chat::model::ChatEvent],
+    prompts: &[(u64, usize)],
+    cwd: Option<&Path>,
+    rules: &Rules,
+) -> Vec<SecretTurn> {
+    let mut out: Vec<(String, SecretTurn)> = Vec::new();
+    for (at, event) in events.iter().enumerate() {
+        let crate::chat::model::ChatEvent::ToolCallStarted {
+            turn_id,
+            name,
+            input,
+            kind,
+            locations,
+            ..
+        } = event
+        else {
+            continue;
+        };
+        let Some(hit) = classify(name, *kind, input, locations, cwd, rules) else {
+            continue;
+        };
+        let prompt_ts = prompts.iter().rev().find(|(_, first)| *first <= at).map(|(ts, _)| *ts);
+        let key = match prompt_ts {
+            Some(ts) => ts.to_string(),
+            None if prompts.is_empty() => turn_id.clone(),
+            None => String::new(),
+        };
+        match out.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, turn)) => merge(turn, hit),
+            None => out.push((
+                key,
+                SecretTurn {
+                    prompt_ts,
+                    paths: hit.paths,
+                    strength: hit.strength,
+                },
+            )),
+        }
+    }
+    out.into_iter().map(|(_, turn)| turn).collect()
+}
+
+/// Per-session results, kept while neither the history nor the settings file
+/// has moved. Both are part of the key: a pattern added in settings changes the
+/// answer for a transcript that did not change at all.
+#[derive(Default)]
+pub struct TurnCache {
+    entries: HashMap<String, (Stamp, Vec<SecretTurn>)>,
+}
+
+pub type Stamp = (Option<SystemTime>, Option<SystemTime>);
+
+const TURN_CACHE_CAP: usize = 256;
+
+impl TurnCache {
+    pub fn get(&self, session_id: &str, stamp: Stamp) -> Option<Vec<SecretTurn>> {
+        let (at, turns) = self.entries.get(session_id)?;
+        (*at == stamp).then(|| turns.clone())
+    }
+
+    pub fn put(&mut self, session_id: &str, stamp: Stamp, turns: Vec<SecretTurn>) {
+        if self.entries.len() >= TURN_CACHE_CAP {
+            self.entries.clear();
+        }
+        self.entries.insert(session_id.to_string(), (stamp, turns));
+    }
+}
+
+/// The newest write to a transcript or to any of its subagents' files, which
+/// is when its conversation last changed.
+pub fn history_stamp(source: &Path) -> Option<SystemTime> {
+    let modified = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    let mut newest = modified(source);
+    let subagents = source.to_str().and_then(crate::sessions::subagents_dir);
+    for entry in subagents
+        .and_then(|d| std::fs::read_dir(d).ok())
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
+        newest = newest.max(modified(&entry.path()));
+    }
+    newest
 }
 
 #[cfg(test)]
@@ -290,6 +419,20 @@ mod tests {
     }
 
     #[test]
+    fn switched_off_nothing_is_a_secret() {
+        assert!(!Rules::off().matches(".env", None));
+        let call = classify(
+            "Bash",
+            ToolKind::Execute,
+            &json!({ "command": "cat .env" }),
+            &[],
+            None,
+            &Rules::off(),
+        );
+        assert_eq!(call, None);
+    }
+
+    #[test]
     fn added_patterns_extend_the_list_by_name_or_by_prefix() {
         let rules = Rules::new(
             PathBuf::from("/Users/me"),
@@ -299,6 +442,22 @@ mod tests {
         assert!(rules.matches("/Users/me/vault/db.txt", None));
         assert!(!rules.matches("a.txt", None));
         assert!(!rules.matches("/Users/me/vaulted/db.txt", None));
+    }
+
+    #[test]
+    fn a_cached_answer_holds_until_the_history_or_the_settings_move() {
+        let at = |s: u64| Some(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(s));
+        let turn = SecretTurn {
+            prompt_ts: Some(1),
+            paths: vec![".env".into()],
+            strength: SecretStrength::Read,
+        };
+        let mut cache = TurnCache::default();
+        cache.put("s1", (at(10), at(20)), vec![turn.clone()]);
+        assert_eq!(cache.get("s1", (at(10), at(20))), Some(vec![turn]));
+        assert_eq!(cache.get("s1", (at(11), at(20))), None, "the transcript grew");
+        assert_eq!(cache.get("s1", (at(10), at(21))), None, "a pattern was added");
+        assert_eq!(cache.get("s2", (at(10), at(20))), None);
     }
 
     fn started(name: &str, kind: ToolKind, input: Value, locations: &[&str]) -> Option<SecretHit> {

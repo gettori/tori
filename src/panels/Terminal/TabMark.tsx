@@ -1,4 +1,5 @@
 import { Show } from "solid-js";
+import { KeyRound } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import { providerIcon, providerMarkKey } from "../../components/Icon/ProviderIcon";
 import agentStyles from "../../components/Icon/agentMarks.module.css";
@@ -50,6 +51,8 @@ export default function TabMark(props: {
   /** What a `waitingOnBackground` session is waiting on, which words the
    *  tooltip. Absent falls back to the status's own name. */
   background?: { agents: number; tasks: number };
+  /** Whether the session read a secret file, or a command named one. */
+  secret?: "read" | "named" | null;
 }) {
   const working = () => props.status !== null && isWorking(props.status);
   // Whose logo this ended up being, for the tint. Resolved rather than assumed
@@ -69,6 +72,10 @@ export default function TabMark(props: {
         )
       : null;
 
+  const secretLabel = () =>
+    props.secret === "read" ? "Read a secret file" : props.secret === "named" ? "A command named a secret file" : null;
+  const title = () => [shown()?.title, secretLabel()].filter(Boolean).join("\n") || undefined;
+
   return (
     <span
       class={styles.mark}
@@ -86,15 +93,20 @@ export default function TabMark(props: {
       }}
       // What the colour keys on, and what a test reads to check it.
       data-mark={markKey() ?? undefined}
-      title={shown()?.title}
+      title={title()}
       // Only the states worth interrupting a screen reader for. Idle is the
       // absence of news, and every tab announcing "Idle" would bury the one
-      // that is asking for something.
-      aria-label={working() || needsYou() ? shown()!.title : undefined}
+      // that is asking for something. A secret read is news at any status.
+      aria-label={working() || needsYou() || secretLabel() ? title() : undefined}
     >
       <Icon icon={providerIcon(null, props.agentId)} size={13} />
       <Show when={needsYou()}>
         <span class={styles.badge} aria-hidden="true" />
+      </Show>
+      <Show when={secretLabel()}>
+        <span class={styles.secret} aria-hidden="true">
+          <Icon icon={KeyRound} size={8} />
+        </span>
       </Show>
     </span>
   );

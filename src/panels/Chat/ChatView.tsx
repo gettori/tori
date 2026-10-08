@@ -2469,6 +2469,7 @@ export default function ChatView(props: {
           onRewind={onRewind}
           replyMark={props.cockpit ? ReplyMark : undefined}
           collapseWork={settings.chatDefaults.collapseWork}
+          showSecrets={settings.secretWatch?.enabled !== false}
         />
       </Show>
       {/* Selected transcript text goes into the reply as a quote. Scoped to this

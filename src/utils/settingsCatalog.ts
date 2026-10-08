@@ -637,6 +637,12 @@ export const SETTINGS: SettingEntry[] = [
     hint: "A paste over 30 lines or 3000 characters becomes a file chip. Off keeps every paste in the box.",
   },
   {
+    id: "secret-watch",
+    section: "chat",
+    label: "Mark secret file reads",
+    hint: "A turn that read a file like .env or a key, or ran a command naming one, says so in the chat, on its tab and in Checkpoints. Never blocks.",
+  },
+  {
     id: "resume-at-reset",
     section: "chat",
     label: "Resume at reset",

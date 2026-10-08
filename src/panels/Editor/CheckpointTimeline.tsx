@@ -1,7 +1,7 @@
 import { createSignal, createEffect, createMemo, on, onMount, onCleanup, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { ChevronLeft, ChevronRight, CircleDashed, Columns2, FileCode } from "lucide-solid";
+import { ChevronLeft, ChevronRight, CircleDashed, Columns2, FileCode, KeyRound } from "lucide-solid";
 import {
   emitWith,
   OPEN_IN_EDITOR,
@@ -17,6 +17,7 @@ import { revertGuard, type RevertBlocker } from "../../utils/revertGuard";
 import { folderActors } from "../../utils/folderActors";
 import { chatsInFolder, liveChats } from "../../utils/chatSessions";
 import { findSession } from "../../utils/sessionStore";
+import type { SecretTurn } from "../../utils/secretReads";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { isWorking } from "../../utils/sessionStatus";
 import { UNATTRIBUTED_NOTICE } from "../../utils/attribution";
@@ -108,6 +109,17 @@ export function promptTitle(prompts: readonly PromptLine[] | undefined, ts: numb
   return best && Math.abs(best.ts - ts) <= PROMPT_DRIFT_SECS ? best.text : null;
 }
 
+/** The secret reads of the turn a checkpoint was taken at, joined the way
+ *  `promptTitle` joins its prompt. */
+export function turnSecret(turns: readonly SecretTurn[] | undefined, ts: number): SecretTurn | null {
+  let best: SecretTurn | null = null;
+  for (const t of turns ?? []) {
+    if (t.promptTs === null) continue;
+    if (!best || Math.abs(t.promptTs - ts) < Math.abs(best.promptTs! - ts)) best = t;
+  }
+  return best && Math.abs(best.promptTs! - ts) <= PROMPT_DRIFT_SECS ? best : null;
+}
+
 /** The Changes panel's checkpoints: every turn checkpoint taken in this
  *  worktree, grouped by the session that took it, over the backstops written
  *  before a revert or a discard. A row opens its detail in place: the files
@@ -128,6 +140,7 @@ export default function CheckpointTimeline(props: {
 }) {
   const [listed, setListed] = createSignal<SessionEntries[]>([]);
   const [prompts, setPrompts] = createSignal<Record<string, PromptLine[]>>({});
+  const [secrets, setSecrets] = createSignal<Record<string, SecretTurn[]>>({});
   const [backstops, setBackstops] = createSignal<BackstopRecord[]>([]);
   const [open, setOpen] = createSignal<Target | null>(null);
   const [lastOpened, setLastOpened] = createSignal<string | null>(null);
@@ -215,6 +228,24 @@ export default function CheckpointTimeline(props: {
     );
   }
 
+  // Not gated like the prompts: a pattern added in settings changes the answer
+  // for a transcript that did not move, and the backend's cache keys on both.
+  async function loadSecrets(list: readonly SessionEntries[]) {
+    await Promise.all(
+      list.map(async ({ sessionId }) => {
+        const meta = findSession(sessionId)?.session;
+        if (!meta) return;
+        const turns = await invoke<SecretTurn[]>("session_secrets", {
+          sessionId,
+          agentId: meta.agent ?? "claude",
+          cwd: meta.cwd,
+        }).catch(() => null);
+        if (!isList<SecretTurn>(turns)) return;
+        setSecrets((prev) => ({ ...prev, [sessionId]: turns }));
+      }),
+    );
+  }
+
   // Which read is current: the root can change while one is in flight, and the
   // earlier root's sessions must not land over the later one's.
   let listRead = 0;
@@ -253,6 +284,7 @@ export default function CheckpointTimeline(props: {
     if (mine !== listRead) return;
     setListed(list);
     void loadPrompts(list);
+    void loadSecrets(list);
   }
 
   /** Keyed on the worktree alone, so this runs whether or not a session is
@@ -557,8 +589,10 @@ export default function CheckpointTimeline(props: {
   // and an agent mid-turn emits fs://changed continuously, so the refresh is
   // debounced on the trailing edge: one rebuild per burst, not per event.
   let unlistenFs: UnlistenFn | undefined;
+  let unlistenSettings: UnlistenFn | undefined;
   let refreshTimer: ReturnType<typeof setTimeout> | undefined;
   onMount(async () => {
+    unlistenSettings = await listen("settings://changed", () => void loadSecrets(listed()));
     unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
       if (e.payload.root && e.payload.root !== props.root) return;
       clearTimeout(refreshTimer);
@@ -571,6 +605,7 @@ export default function CheckpointTimeline(props: {
   });
   onCleanup(() => {
     unlistenFs?.();
+    unlistenSettings?.();
     clearTimeout(refreshTimer);
   });
 
@@ -713,6 +748,19 @@ export default function CheckpointTimeline(props: {
                           >
                             <span class={styles.rowTime}>{checkpointClock(e.prompt_ts)}</span>
                             <span class={styles.rowTitle}>{titleOf(g.sessionId, e.prompt_ts)}</span>
+                            <Show when={turnSecret(secrets()[g.sessionId], e.prompt_ts)}>
+                              {(hit) => (
+                                <span
+                                  class={styles.rowSecret}
+                                  role="img"
+                                  aria-label={
+                                    hit().strength === "read" ? "Read a secret file" : "A command named a secret file"
+                                  }
+                                >
+                                  <Icon icon={KeyRound} size={12} />
+                                </span>
+                              )}
+                            </Show>
                             <span class={styles.rowCount}>{e.file_count}</span>
                             <Icon icon={ChevronRight} class={styles.rowChevron} />
                           </Tooltip>

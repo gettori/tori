@@ -1306,6 +1306,42 @@ pub(crate) fn read_with_prompts(
     super::history::events_and_prompts(session_id, &turns, &subagents)
 }
 
+static SECRET_TURNS: std::sync::LazyLock<Mutex<crate::secret_watch::TurnCache>> =
+    std::sync::LazyLock::new(Mutex::default);
+
+/// Each turn of a session that read or named a secret file, for the surfaces
+/// that show a session without its tool calls: the sidebar row and the
+/// Checkpoints timeline.
+#[tauri::command]
+pub async fn session_secrets(
+    session_id: String,
+    agent_id: String,
+    cwd: Option<String>,
+) -> Vec<crate::secret_watch::SecretTurn> {
+    crate::exec::blocking("session_secrets", move || {
+        let source = history_source(&session_id, &agent_id);
+        let path = match &source {
+            HistorySource::Transcript(path) => std::path::PathBuf::from(path),
+            HistorySource::Log(path) => path.clone(),
+            HistorySource::Missing => return Vec::new(),
+        };
+        let (rules, settings_at) = crate::secret_watch::current();
+        let stamp = (crate::secret_watch::history_stamp(&path), settings_at);
+        let cache = || SECRET_TURNS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        // The cwd is part of the answer: it resolves the relative paths.
+        let key = format!("{session_id}\u{0}{}", cwd.as_deref().unwrap_or_default());
+        if let Some(turns) = cache().get(&key, stamp) {
+            return turns;
+        }
+        let (events, prompts) = read_with_prompts(&session_id, &source, &agent_id);
+        let cwd = cwd.as_deref().map(std::path::Path::new);
+        let turns = crate::secret_watch::secret_turns(&events, &prompts, cwd, &rules);
+        cache().put(&key, stamp, turns.clone());
+        turns
+    })
+    .await
+}
+
 /// Does this agent write a transcript Tori can find on disk?
 ///
 /// **Asked of the adapter, not of `transcript_path`.** Both answers are `None`
@@ -2072,5 +2108,88 @@ mod tail_tests {
         let tail = read_tail("s", &HistorySource::Missing, "claude", None);
         assert!(tail.events.is_empty());
         assert_eq!(tail.cursor, None);
+    }
+}
+
+#[cfg(test)]
+mod secret_tests {
+    use super::*;
+    use crate::secret_watch::{secret_turns, Rules, SecretStrength};
+
+    /// The foreground-subagent session, copied so its calls can be rewritten:
+    /// `main` swaps the `Agent` call's tool and input, `sub` does the same to
+    /// the subagent's own `Write`.
+    fn session(name: &str, main: Option<(&str, serde_json::Value)>, sub: Option<(&str, serde_json::Value)>) -> String {
+        let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dev/fixtures/sessions");
+        let dir = std::env::temp_dir().join(format!("tori-secret-{}-{name}", std::process::id()));
+        let subagents = dir.join("s1/subagents");
+        std::fs::create_dir_all(&subagents).unwrap();
+        let rewrite = |text: String, swap: &Option<(&str, serde_json::Value)>| -> String {
+            let Some((tool, input)) = swap else { return text };
+            text.lines()
+                .map(|line| {
+                    let Ok(mut v) = serde_json::from_str::<serde_json::Value>(line) else {
+                        return line.to_string();
+                    };
+                    if let Some(blocks) = v["message"]["content"].as_array_mut() {
+                        for b in blocks.iter_mut().filter(|b| b["type"] == "tool_use") {
+                            b["name"] = serde_json::json!(tool);
+                            b["input"] = input.clone();
+                        }
+                    }
+                    v.to_string()
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let main_text = std::fs::read_to_string(fixtures.join("subagent-foreground.jsonl")).unwrap();
+        std::fs::write(dir.join("s1.jsonl"), rewrite(main_text, &main)).unwrap();
+        let src = fixtures.join("subagent-foreground/subagents");
+        for entry in std::fs::read_dir(&src).unwrap().flatten() {
+            let text = std::fs::read_to_string(entry.path()).unwrap();
+            let is_transcript = entry.path().extension().is_some_and(|e| e == "jsonl");
+            let text = if is_transcript { rewrite(text, &sub) } else { text };
+            std::fs::write(subagents.join(entry.file_name()), text).unwrap();
+        }
+        dir.join("s1.jsonl").to_string_lossy().into_owned()
+    }
+
+    fn turns_of(path: &str) -> Vec<crate::secret_watch::SecretTurn> {
+        let (events, prompts) = read_with_prompts("s1", &HistorySource::Transcript(path.into()), "claude");
+        let rules = Rules::new(PathBuf::from("/Users/dev"), &[]);
+        secret_turns(&events, &prompts, Some(std::path::Path::new("/Users/dev/proj")), &rules)
+    }
+
+    #[test]
+    fn a_terminal_sessions_cat_of_a_secret_is_its_turns() {
+        let path = session(
+            "main",
+            Some(("Bash", serde_json::json!({ "command": "cat .env" }))),
+            None,
+        );
+        let turns = turns_of(&path);
+        assert_eq!(turns.len(), 1, "{turns:?}");
+        assert!(turns[0].prompt_ts.is_some(), "anchored on its prompt");
+        assert_eq!(turns[0].paths, vec![".env".to_string()]);
+        assert_eq!(turns[0].strength, SecretStrength::Named);
+    }
+
+    #[test]
+    fn a_subagents_secret_read_belongs_to_the_turn_that_launched_it() {
+        let read = serde_json::json!({ "file_path": "/Users/dev/proj/.env" });
+        let path = session("sub", None, Some(("Read", read)));
+        let turns = turns_of(&path);
+        assert_eq!(turns.len(), 1, "{turns:?}");
+        assert_eq!(
+            turns[0].prompt_ts,
+            crate::sessions::parse_rfc3339_secs("2026-08-13T22:12:26.301Z")
+        );
+        assert_eq!(turns[0].paths, vec!["/Users/dev/proj/.env".to_string()]);
+        assert_eq!(turns[0].strength, SecretStrength::Read);
+    }
+
+    #[test]
+    fn a_session_that_touched_no_secret_has_no_turns() {
+        assert!(turns_of(&session("none", None, None)).is_empty());
     }
 }

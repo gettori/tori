@@ -71,7 +71,13 @@
   background: var(--brand-subtle);
 }
 
-.row.active .rowTime {
+.row.active .rowSecret {
+  display: inline-flex;
+  flex: none;
+  color: var(--attention-fg);
+}
+
+.rowTime {
   color: var(--brand-default);
 }
 

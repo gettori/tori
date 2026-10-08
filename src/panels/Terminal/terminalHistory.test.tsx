@@ -17,6 +17,7 @@ const bridge = vi.hoisted(() => ({
   // the second is false, which is the case the routing gate gets wrong.
   liveHere: [] as string[],
   elsewhere: [] as string[],
+  secrets: {} as Record<string, unknown[]>,
 }));
 
 // The default surface decides whether a session selection opens a chat tab or a
@@ -46,6 +47,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "agent_hook_launch_args") return Promise.resolve([]);
     if (cmd === "profile_spawn_env") return Promise.resolve({});
     if (cmd === "folder_historical") return Promise.resolve(false);
+    if (cmd === "session_secrets") return Promise.resolve(bridge.secrets[String(args?.sessionId)] ?? []);
     return Promise.resolve(null);
   },
 }));
@@ -124,6 +126,7 @@ describe("the History button on the tab bar", () => {
     bridge.surface = "chat";
     bridge.liveHere = [];
     bridge.elsewhere = [];
+    bridge.secrets = {};
     localStorage.clear();
   });
 
@@ -182,6 +185,13 @@ describe("the History button on the tab bar", () => {
     noteDots([{ id: "outsider", dot: "hollow", certainty: "inferred", home: null }]);
 
     await waitFor(() => expect(screen.getByTitle("1 session running here with no tab open")).toBeTruthy());
+
+    // It is live, so a secret read shows on its row among the open ones.
+    bridge.secrets = { outsider: [{ promptTs: 1, paths: [".env"], strength: "read" }] };
+    noteDots([{ id: "outsider", dot: "working", certainty: "inferred", home: null }]);
+    fireEvent.click(historyBtn());
+    expect(await screen.findByTitle(/Read a secret file/)).toBeTruthy();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
 
     // It exited: Rust's next dot says so, and the badge goes.
     noteDots([{ id: "outsider", dot: "none", certainty: "inferred", home: null }]);
@@ -264,5 +274,22 @@ describe("the mark a PTY agent tab wears", () => {
     rust("needsYou");
     const blocked = await screen.findByTitle("Waiting for approval");
     expect(blocked.childElementCount).toBe(2);
+  });
+
+  it("wears a key once the session has read a secret", async () => {
+    bridge.secrets = { s1: [{ promptTs: 1, paths: ["/root/work/repo/.env"], strength: "read" }] };
+    mount({
+      ...branchSelection,
+      sessionId: "s1",
+      agent: "claude",
+      sessionFile: `${REPO}/.t/s1.jsonl`,
+      sessionCwd: REPO,
+    });
+    await trackFolders([REPO]);
+    await waitFor(() => expect(screen.getByTestId("pty")).toBeTruthy());
+    noteDots([{ id: "s1", dot: "solid", certainty: "inferred", home: null }]);
+
+    const mark = await screen.findByLabelText(/Idle\s+Read a secret file/);
+    expect(mark.childElementCount).toBe(2);
   });
 });

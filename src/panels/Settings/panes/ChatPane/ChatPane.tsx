@@ -10,6 +10,7 @@ import {
   setBudgets,
   setChatDefaults,
   setCheckpoints,
+  setSecretWatch,
   type PaneProps,
 } from "../../components/paneKit";
 import { settings, type DefaultSurface, type NotificationSettings, type TranscriptDensity } from "../../settingsStore";
@@ -45,6 +46,7 @@ const SESSIONS = [
   "collapse-work",
   "answer-questions",
   "attach-long-pastes",
+  "secret-watch",
   "resume-at-reset",
 ];
 
@@ -193,6 +195,19 @@ export default function ChatPane(props: PaneProps) {
             checked={settings.chatDefaults.attachLongPastes}
             onChange={(attachLongPastes) => setChatDefaults({ attachLongPastes })}
             aria-label="Attach long pastes as files"
+          />
+        </Row>
+
+        <Row
+          {...props}
+          id="secret-watch"
+          label="Mark secret file reads"
+          hint="On, a turn in which an agent read a file like .env or a key, or ran a command naming one, says so in the chat, on its tab and in Checkpoints. Nothing is blocked either way. Add patterns under secretWatch.patterns in settings.json."
+        >
+          <Switch
+            checked={settings.secretWatch.enabled}
+            onChange={setSecretWatch}
+            aria-label="Mark secret file reads"
           />
         </Row>
 

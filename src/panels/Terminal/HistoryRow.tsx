@@ -13,6 +13,7 @@ export default function HistoryRow(props: {
   agentId: string;
   status: SessionStatus | null;
   certainty?: StatusCertainty;
+  secret?: "read" | "named" | null;
   /** Which account, only when there is a second one to tell it from. */
   profile?: string | null;
   /** Relative last activity, e.g. "3m". */
@@ -47,7 +48,7 @@ export default function HistoryRow(props: {
           rather than the sidebar's four-glyph one: these rows are scanned, and
           a row that changes shape when a session merely goes quiet pulls the
           eye to the wrong one. */}
-      <TabMark agentId={props.agentId} status={props.status} certainty={props.certainty} />
+      <TabMark agentId={props.agentId} status={props.status} certainty={props.certainty} secret={props.secret} />
       {props.lead}
       <span class={styles.rowLabel}>{props.label}</span>
       {/* The backend sends a label only when there is a second account to tell
