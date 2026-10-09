@@ -22,6 +22,9 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 - Topic chats come back after a reload, and History lists them. Both looked
   for a Topic's sessions as if its key were a folder, so every Topic chat tab
   was dropped as missing.
+- The Gemini and Kimi agents and the Nix language server no longer ship with
+  Tori. Nobody could measure them: Google refuses Gemini CLI sessions on
+  individual accounts, kimi-cli is unmaintained, and nil needs Nix to build.
 
 ## 26.1009.0-alpha
 

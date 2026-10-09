@@ -579,12 +579,7 @@ mod tests {
     /// label it untested instead of supported.
     #[test]
     fn an_adapter_that_declares_no_measurement_never_reports_a_match() {
-        let gemini = agents::find("gemini").expect("gemini ships bundled");
-        assert_eq!(gemini.verified_against, None);
-        assert_eq!(
-            compare(Some("0.9.0"), gemini.verified_against.as_deref()),
-            BinaryStatus::VersionUnknown
-        );
+        assert_eq!(compare(Some("0.9.0"), None), BinaryStatus::VersionUnknown);
 
         // And the measured one does match its declared version.
         let opencode = agents::find("opencode").expect("opencode ships bundled");

@@ -21,7 +21,7 @@ Nothing leaves the machine without you: an agent's permission prompts stay
 yours to answer, and the autopilot stops and asks before it opens a pull
 request or sends anything else out. Around that sit a real terminal per
 session, an editor with LSP and debuggers, and a git client that stages,
-commits and reviews pull requests. Seven agents ship with adapters, Claude and
+commits and reviews pull requests. Five agents ship with adapters, Claude and
 Codex among them, and any other CLI agent is a TOML file away. No account, no
 telemetry.
 
@@ -90,14 +90,12 @@ theme file.
 | **Codex** (`codex`) | ACP, through the `codex-acp` wrapper | Yes |
 | **OpenCode** (`opencode acp`) | ACP | Yes |
 | **Copilot** (`copilot --acp`) | ACP | Not yet |
-| **Gemini** (`gemini --acp`) | ACP | Not yet |
-| **Kimi** (`kimi acp`) | ACP | Not yet |
 | **Pi** (`pi`) | ACP, through the `pi-acp` bridge | Not yet |
 
 Tori drives the agent CLIs you have installed; it does not ship one. After
 first launch, **Settings > Agents** shows which ones it found, at what version,
 and what it can do with each, including what it *cannot* do with each, since
-the seven bundled adapters do not have the same capabilities.
+the five bundled adapters do not have the same capabilities.
 
 **Measured** means someone ran that agent at a pinned version and captured what
 it actually sends. The others were written from the vendor's documentation and

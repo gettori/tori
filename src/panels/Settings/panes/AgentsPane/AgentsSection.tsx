@@ -90,8 +90,6 @@ const PROVIDER: Record<string, string> = {
   claude: "Anthropic",
   codex: "OpenAI",
   copilot: "GitHub",
-  gemini: "Google",
-  kimi: "Moonshot AI",
   opencode: "SST",
   pi: "Mario Zechner",
 };

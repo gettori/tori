@@ -1375,7 +1375,7 @@ mod tests {
             "default where present, plus one added"
         );
         assert_eq!(counts.get("codex"), Some(&1), "the default alone");
-        assert_eq!(counts.get("gemini"), None, "gemini declares no [accounts]");
+        assert_eq!(counts.get("pi"), None, "pi declares no [accounts]");
     }
 
     #[test]

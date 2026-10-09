@@ -122,8 +122,7 @@ what a loader accepts is also a change to what packs CI accepts:
 - Run `tori validate-pack src-tauri/packs` before tagging. It checks every
   bundled pack the way a contribution is checked, offline; add `--assets
   --registry` to also download each release asset and look up each pinned
-  package. nix, gemini and kimi fail it until someone measures them; each
-  file's header says why.
+  package.
 - A new `schema_version` for any kind needs a line in gettori/packs'
   `tori-support.json` naming this release, after it is published. Until then
   `tori packs-index` refuses a pack written at that version.

@@ -110,8 +110,8 @@ mod tests {
     /// No `[install]` means instructions, never a guessed package manager.
     #[test]
     fn an_adapter_without_the_table_stays_on_instructions() {
-        assert!(bundled("kimi").install.is_none(), "kimi declares no [install] yet");
-        assert_eq!(install_route(&bundled("kimi")), InstallRoute::Undeclared);
+        assert!(bundled("pi").install.is_none(), "pi declares no [install] yet");
+        assert_eq!(install_route(&bundled("pi")), InstallRoute::Undeclared);
     }
 
     /// `npm install -g` is also npm's documented update, and `npm uninstall -g`

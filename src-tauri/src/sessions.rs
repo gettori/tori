@@ -3359,8 +3359,8 @@ mod tests {
     // locator, which is a real file and not a transcript. Each of the six is
     // answered here rather than left to produce a plausible zero by accident.
     //
-    // `gemini` is the bundled adapter with no parser kind, which is what makes
-    // a session store-less. Its own registry entry is the fixture.
+    // `pi` is a bundled adapter with no parser kind, which is what makes a
+    // session store-less. Its own registry entry is the fixture.
 
     #[test]
     fn a_store_less_session_reports_no_counts_rather_than_failing() {
@@ -3368,16 +3368,16 @@ mod tests {
         let path = locator.to_string_lossy().into_owned();
         let touched = TouchedIndex::default();
 
-        let d = detail_of(&touched, &path, "gemini").expect("a store-less session still answers");
+        let d = detail_of(&touched, &path, "pi").expect("a store-less session still answers");
         assert_eq!(d.prompt_count, 0);
         assert_eq!(d.turn_count, 0);
         assert_eq!(d.touched_count, 0);
         assert_eq!(d.model, None);
 
         // The other three readers of the same path say the same thing.
-        assert!(extract_touched_files(&path, "gemini").is_empty());
-        assert!(parse_transcript_turns(&path, "gemini").is_empty());
-        let tail = session_prompt_tail_body(path.clone(), "gemini".into()).expect("prompt tail answers");
+        assert!(extract_touched_files(&path, "pi").is_empty());
+        assert!(parse_transcript_turns(&path, "pi").is_empty());
+        let tail = session_prompt_tail_body(path.clone(), "pi".into()).expect("prompt tail answers");
         assert_eq!((tail.count, tail.last_ts), (0, 0));
 
         std::fs::remove_file(&locator).ok();
@@ -3394,7 +3394,7 @@ mod tests {
         let path = locator.to_string_lossy().into_owned();
         let index = TouchedIndex::default();
 
-        assert!(touched_files_cached(&index, &path, "gemini").is_empty());
+        assert!(touched_files_cached(&index, &path, "pi").is_empty());
         let cache = index.0.lock().unwrap();
         let entry = cache.get(&locator).expect("the answer was cached");
         assert_ne!(
@@ -3416,7 +3416,7 @@ mod tests {
         let stranger = tmp_file("not-a-locator.json", "{}\n");
         let path = stranger.to_string_lossy().into_owned();
 
-        let err = delete_session(path.clone(), "gemini".into()).unwrap_err();
+        let err = delete_session(path.clone(), "pi".into()).unwrap_err();
         assert!(err.contains("not one of Tori's session records"), "{err}");
         assert!(stranger.exists(), "the file it refused is still there");
 
