@@ -1,5 +1,5 @@
 # Draft a GitHub Release from a `v*` tag: build the universal macOS bundle,
-# prove it really is universal, and attach the DMG.
+# prove it really is universal, and attach the DMG and the CLI tarball.
 #
 # Version scheme: YY.MDD.patch with a stage suffix while unstable, e.g.
 # 26.824.0-alpha is the Aug 24 2026 alpha, 26.1205.0 a Dec 5 stable. The
@@ -118,6 +118,17 @@ jobs:
           fi
           echo "path=${dmgs[0]}" >> "$GITHUB_OUTPUT"
 
+      # gettori/packs CI runs validate-pack and packs-index from this, pinned by
+      # tag, so it ships with every release.
+      - name: Pack the CLI
+        id: cli
+        run: |
+          path=$(.github/scripts/cli-tarball.sh \
+            "src-tauri/target/universal-apple-darwin/release/bundle/macos/Tori.app" \
+            "${{ steps.version.outputs.version }}" \
+            src-tauri/target/universal-apple-darwin/release/bundle/cli)
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+
       # The cask needs this checksum; printing it here lets a manual cask edit
       # copy it straight from the build that produced the DMG.
       - name: Report the DMG checksum
@@ -140,7 +151,8 @@ jobs:
             "${flags[@]}" \
             --title "Tori $GITHUB_REF_NAME" \
             --notes-file release-notes.md \
-            "${{ steps.dmg.outputs.path }}"
+            "${{ steps.dmg.outputs.path }}" \
+            "${{ steps.cli.outputs.path }}"
 
       # The rehearsal's payoff: a real DMG to install and check by hand before
       # any tag exists, so the Gatekeeper steps in docs/INSTALL.md are verified
@@ -151,4 +163,12 @@ jobs:
         with:
           name: tori-rehearsal-dmg
           path: ${{ steps.dmg.outputs.path }}
+          if-no-files-found: error
+
+      - name: Upload the rehearsal CLI
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tori-rehearsal-cli
+          path: ${{ steps.cli.outputs.path }}
           if-no-files-found: error

@@ -66,11 +66,13 @@ built. It:
 1. checks the Android toolchain, the signing keystore, and that the repo is
    public, before any long build,
 2. builds the universal macOS app and checks every binary in it is universal,
-3. builds and signs the Android APK,
-4. tags the commit `v<version>` and pushes the tag,
-5. creates the GitHub release as a draft, confirms both files are attached,
-   then publishes it,
-6. points the Homebrew cask at the new DMG.
+3. packs the app's binary as `tori-cli-<version>-macos-universal.tar.gz`,
+   after checking it answers as the CLI,
+4. builds and signs the Android APK,
+5. tags the commit `v<version>` and pushes the tag,
+6. creates the GitHub release as a draft, confirms all three files are
+   attached, then publishes it,
+7. points the Homebrew cask at the new DMG.
 
 It needs, on this Mac: Rust with `rustup`, Node 22 and pnpm, a JDK 17, the
 Android SDK and NDK, `mobile/src-tauri/gen/android/keystore.properties` with
@@ -111,7 +113,10 @@ the next one.
 ## Packs
 
 Every release carries `tori validate-pack` and `tori packs-index`, and
-gettori/packs runs them in CI from a released binary. So a release that changes
+gettori/packs runs them in CI from the release's
+`tori-cli-<version>-macos-universal.tar.gz`, a tarball holding the app's own
+binary as `tori`. Packs CI pins that asset by tag in its `tori-support.json`,
+so a missing asset breaks packs CI for that release. A release that changes
 what a loader accepts is also a change to what packs CI accepts:
 
 - Run `tori validate-pack src-tauri/packs` before tagging. It checks every
@@ -128,7 +133,7 @@ what a loader accepts is also a change to what packs CI accepts:
 
 ## The workflows
 
-`.github/workflows/release.yml` builds a DMG from a pushed tag. It is not the
-release path yet, since it cannot sign the APK, and it must stay disabled while
-this script is: both would try to create the same release. Enable it only to
-rehearse by manual dispatch, and disable it again afterwards.
+`.github/workflows/release.yml` builds a DMG and the CLI tarball from a pushed
+tag. It is not the release path yet, since it cannot sign the APK, and it must
+stay disabled while this script is: both would try to create the same release.
+Enable it only to rehearse by manual dispatch, and disable it again afterwards.
