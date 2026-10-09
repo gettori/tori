@@ -57,7 +57,6 @@ describe("providerIcon", () => {
   it("keeps an agent's mark for a model of the vendor that agent is", () => {
     expect(isBrandMark("gpt-5.6-terra", "codex")).toBe(true);
     expect(isBrandMark("gpt-5.4-mini", "codex")).toBe(true);
-    expect(isBrandMark("gemini-3-pro", "gemini")).toBe(true);
 
     // And the mismatch still loses its mark, from the other direction.
     expect(isBrandMark("claude-opus-5", "codex")).toBe(true); // Anthropic's own mark wins

@@ -6,9 +6,8 @@ transcripts live, how to tell a live process apart from a stray `less` on the
 same file, and which built-in parser turns its transcript into Tori's session
 model.
 
-Seven adapters ship bundled: `claude`, `codex`, `copilot`, `gemini`, `kimi`,
-`opencode` and `pi`. You add your own by dropping a TOML file into
-`~/.config/tori/packs/agents/`.
+Five adapters ship bundled: `claude`, `codex`, `copilot`, `opencode` and `pi`.
+You add your own by dropping a TOML file into `~/.config/tori/packs/agents/`.
 
 ## Agent, adapter, provider
 
@@ -85,19 +84,6 @@ binary is not its launch binary: the PTY tab runs the `codex` a user installed,
 and chat runs the first-party wrapper over `npx`, which drives that same
 `codex` underneath. `codex.toml` carries the full reasoning.
 
-**gemini** ships bundled and **unmeasured**, so it declares no
-`verified_against`. Gemini CLI 0.63.0 answers ACP `initialize`, but on
-2026-10-09 Google refused to open a session for an individual account, pointing
-at Antigravity. Whether a paid or enterprise account still gets through has not
-been measured. Treat it as a starting point rather than a supported agent: a
-distinction this file keeps and the app, by design, does not recite.
-
-**kimi** ships bundled and **unmeasured** for a different reason: kimi-cli
-1.52.0 says it is no longer maintained in favour of the separate Kimi Code CLI,
-and its `kimi acp` did not answer `initialize`. An ACP adapter is mostly launch
-instructions, which is what makes shipping one unmeasured reasonable, not what
-makes it tested.
-
 **copilot** ships bundled over ACP (`copilot --acp`, first-party in the CLI),
 measured against `copilot 1.0.94` as far as the handshake: the measuring account
 had no Copilot CLI access, so opening a session was refused. It additionally
@@ -157,7 +143,7 @@ wants `needs_you = false`.
 schema_version = 6   # required; 1 to 6. v2 adds [chat], v3 adds [accounts], v4 adds [usage], v5 adds [config], v6 adds launch-only adapters and whoami_kind = "json" - all optional, all below
 id = "..."            # required; the agent's identifier throughout Tori
 label = "..."         # required; display name (sidebar, launch buttons)
-icon = "..."          # optional; which bundled agent logo to wear - "claude", "codex", "copilot", "gemini", "kimi", "opencode", "pi". An unknown or absent name is not an error: the UI falls back to the label's first letter rather than to another agent's mark
+icon = "..."          # optional; which bundled agent logo to wear - "claude", "codex", "copilot", "opencode", "pi". An unknown or absent name is not an error: the UI falls back to the label's first letter rather than to another agent's mark
 verified_against = "..."  # optional; the agent CLI version this was captured against, echoed here for reference
 verified_on = "..."       # optional; the day verified_against was measured, written YYYY-MM-DD
 description = "..."       # optional; one line for the agent's card
@@ -737,7 +723,7 @@ transport = "acp"
 base_args = ["acp"]
 ```
 
-The bundled `opencode` and `gemini` adapters are this plus comments explaining
+The bundled `opencode` adapter is this plus comments explaining
 what was measured. Everything the chat surface shows - the model list, the
 permission questions, whether a closed chat can be reopened - comes from the
 agent's own handshake, so there is nothing here to keep in step with it.
