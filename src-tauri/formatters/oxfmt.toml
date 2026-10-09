@@ -15,6 +15,7 @@ contributor = { name = "Tori", github = "gettori" }
 priority = 10
 
 verified_against = "oxfmt 0.70.0"
+verified_on = "2026-09-21"
 
 [markers]
 # Read from the binary, and each confirmed to change the output.

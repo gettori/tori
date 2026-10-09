@@ -7,6 +7,8 @@ label = "Zig"
 description = "Zig, through ZLS"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "zls 0.16.0"
+verified_on = "2026-10-09"
 root_markers = ["build.zig", ".git"]
 
 # Runs `build.zig` to learn the build.

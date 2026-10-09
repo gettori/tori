@@ -7,6 +7,8 @@ label = "Swift"
 description = "Swift, through SourceKit-LSP"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "sourcekit-lsp from Swift 6.4 (Xcode 27.0)"
+verified_on = "2026-10-09"
 root_markers = ["Package.swift", ".git"]
 request_timeout_ms = 60000
 

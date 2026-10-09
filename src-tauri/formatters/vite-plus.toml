@@ -12,6 +12,7 @@ license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
 
 verified_against = "vite-plus 0.3.3"
+verified_on = "2026-09-21"
 
 [launch]
 kind = "project_bin"

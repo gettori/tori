@@ -7,6 +7,8 @@ label = "C#"
 description = "C#, through csharp-ls"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "csharp-ls 0.28.0"
+verified_on = "2026-10-09"
 root_markers = ["global.json", ".git"]
 request_timeout_ms = 120000
 

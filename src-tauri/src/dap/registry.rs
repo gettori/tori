@@ -556,6 +556,19 @@ program = "demo-dap"
     }
 
     #[test]
+    fn every_bundled_pack_is_measured() {
+        for (source, text) in BUILTINS {
+            // Pinned by sha256 in resources/dap/manifest.json, and it states no `node` floor.
+            if *source == "bundled:js-debug" {
+                continue;
+            }
+            let pack = load_adapter_str(text, source).unwrap();
+            assert!(pack.verified_against.is_some(), "{source} has no verified_against");
+            assert!(pack.verified_on.is_some(), "{source} has no verified_on");
+        }
+    }
+
+    #[test]
     fn every_bundled_pack_carries_metadata() {
         for (source, text) in BUILTINS {
             let meta = load_adapter_str(text, source).unwrap().meta;

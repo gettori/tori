@@ -62,6 +62,9 @@ const AGENTS = {
     args: ["-y", "@agentclientprotocol/codex-acp"],
     models_cli: null,
   },
+  "pi-acp": { program: "npx", args: ["-y", "pi-acp@0.0.33"], models_cli: null },
+  kimi: { program: "kimi", args: ["acp"], models_cli: null },
+  copilot: { program: "copilot", args: ["--acp"], models_cli: null },
 };
 
 const args = process.argv.slice(2);

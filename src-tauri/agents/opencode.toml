@@ -13,6 +13,7 @@ icon = "opencode"
 # runtime. So this file is short on purpose, and a shorter file is the point of
 # the ACP transport rather than a gap in this one.
 verified_against = "opencode 1.18.3"
+verified_on = "2026-08-14"
 
 [launch]
 program = "opencode"

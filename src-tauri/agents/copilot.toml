@@ -6,23 +6,14 @@ license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
 icon = "copilot"
 
-# **No `verified_against`, and that is the load-bearing part of this file.**
-#
-# The key names the CLI version an adapter's conventions were empirically
-# captured against. `copilot` is not installed on the machine this was written
-# on, so nothing here has been measured: the launch command is read from the
-# `@github/copilot` package (its `--acp` flag is first-party, the same binary
-# whether installed globally or fetched by npx; the ACP Registry pins 1.0.80),
-# and everything else is the ACP transport's own default behaviour. Absent
-# rather than guessed, because a version string here would claim a measurement
-# that never happened, and the Agents settings surface reads this key to tell a
-# measured agent from an untested one.
-#
-# What makes shipping it honest anyway is that an ACP adapter declares almost
-# nothing: the model list, the modes and the permission prompts all come from
-# the agent's own handshake at runtime, so there is far less here that *could*
-# be wrong than in a typed adapter. Re-measure with `node dev/acp-probe.mjs
-# --agent copilot` on a machine that has it, then pin the version.
+# Measured with `node dev/acp-probe.mjs --agent copilot` as far as the
+# handshake: 1.0.94 starts with `--acp` and answers `initialize`, but the
+# measuring account has no Copilot CLI access, so `session/new` was refused with
+# a 403. Everything past the handshake (models, modes, permission prompts) is
+# read from the agent at runtime, which is why the handshake is the part this
+# file can be wrong about.
+verified_against = "copilot 1.0.94"
+verified_on = "2026-10-09"
 
 [launch]
 program = "copilot"

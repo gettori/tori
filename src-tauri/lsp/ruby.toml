@@ -7,6 +7,8 @@ label = "Ruby"
 description = "Ruby, through Ruby LSP"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "ruby-lsp 0.26.11"
+verified_on = "2026-10-09"
 root_markers = ["Gemfile", ".git"]
 
 # Boots the project's bundle to read its gems.

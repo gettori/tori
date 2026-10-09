@@ -6,18 +6,12 @@ license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
 icon = "kimi"
 
-# **No `verified_against`, and that is the load-bearing part of this file.**
+# **No `verified_against`, and `every_bundled_pack_is_measured` exempts it.**
 #
-# The key names the CLI version an adapter's conventions were empirically
-# captured against. `kimi` (MoonshotAI's kimi-cli) is not installed on the
-# machine this was written on, so nothing here has been measured: the launch
-# command is read from the ACP Registry's entry, whose `kimi acp` subcommand is
-# first-party in the CLI itself, and everything else is the ACP transport's own
-# default behaviour. Absent rather than guessed, because a version string here
-# would claim a measurement that never happened, and the Agents settings
-# surface reads this key to tell a measured agent from an untested one.
-# Re-measure with `node dev/acp-probe.mjs --agent kimi` on a machine that has
-# it, then pin the version.
+# kimi-cli 1.52.0 says it is no longer maintained and points at the separate
+# Kimi Code CLI, and on 2026-10-09 `kimi acp` did not answer `initialize` within
+# a minute. Nothing here is measured, so no version is claimed. Moving this pack
+# to Kimi Code is its own decision.
 
 [launch]
 program = "kimi"

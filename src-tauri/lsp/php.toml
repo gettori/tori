@@ -6,6 +6,8 @@ label = "PHP (Intelephense)"
 description = "PHP, through Intelephense"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "intelephense 1.18.5"
+verified_on = "2026-10-09"
 root_markers = ["composer.json", ".git"]
 
 # Static analysis only.

@@ -9,6 +9,7 @@ contributor = { name = "Tori", github = "gettori" }
 extensions = ["lua", "luau"]
 
 verified_against = "stylua 2.5.2"
+verified_on = "2026-09-21"
 
 [markers]
 files = ["stylua.toml", ".stylua.toml"]

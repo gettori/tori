@@ -15,6 +15,7 @@ icon = "codex"
 # health.rs reads the first semver-looking token, so the `codex-cli` version has
 # to come first.
 verified_against = "codex-cli 0.155.1 with @agentclientprotocol/codex-acp 1.12.0"
+verified_on = "2026-09-20"
 
 [launch]
 program = "codex"

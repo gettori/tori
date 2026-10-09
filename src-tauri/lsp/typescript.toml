@@ -8,6 +8,8 @@ label = "TypeScript / JavaScript"
 description = "TypeScript and JavaScript, through typescript-language-server"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "typescript-language-server 4.4.1"
+verified_on = "2026-10-09"
 
 # `tsconfig.json`/`jsconfig.json` first so a package inside a monorepo gets a
 # server rooted at its own compiler config rather than at the repo root.

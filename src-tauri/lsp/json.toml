@@ -22,6 +22,7 @@ contributor = { name = "Tori", github = "gettori" }
 root_markers = [".git"]
 
 verified_against = "vscode-json-languageserver 1.3.4"
+verified_on = "2026-08-05"
 
 # Send this server the SchemaStore catalog after initialize. Nothing else needs
 # configuring: the notification handler applies the associations itself.

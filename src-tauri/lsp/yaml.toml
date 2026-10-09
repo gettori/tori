@@ -20,6 +20,7 @@ contributor = { name = "Tori", github = "gettori" }
 root_markers = [".git"]
 
 verified_against = "yaml-language-server 1.24.0"
+verified_on = "2026-08-05"
 
 # Reads documents and fetches schemas but executes nothing from the project, so
 # it keeps working in a project the user has not trusted.

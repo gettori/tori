@@ -12,6 +12,8 @@ label = "Rust, C and C++ (lldb-dap)"
 description = "Debug Rust, C and C++ with lldb-dap"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "lldb-dap 21.0.0 (Xcode 27.0)"
+verified_on = "2026-10-09"
 
 # A Rust debuggee runs from its package, where `cargo build` ran. C and C++
 # have no marker every project shares, so they run from the project root.

@@ -169,7 +169,7 @@ pub(crate) fn parse_version(output: &str) -> Option<String> {
 /// Shared with `crate::lsp`'s server health so a language server's card
 /// reports drift by the same rules an agent's does.
 pub(crate) fn compare(running: Option<&str>, verified: Option<&str>) -> BinaryStatus {
-    match (running, verified.and_then(parse_version)) {
+    match (running.and_then(parse_version), verified.and_then(parse_version)) {
         (Some(running), Some(verified)) => {
             if running == verified {
                 BinaryStatus::VersionMatch

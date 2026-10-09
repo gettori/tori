@@ -8,6 +8,8 @@ label = "TOML (Tombi)"
 description = "TOML, through Tombi"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "tombi 1.5.5"
+verified_on = "2026-10-09"
 root_markers = ["tombi.toml", ".git"]
 
 # Validates against SchemaStore schemas; it may download them, but runs nothing.

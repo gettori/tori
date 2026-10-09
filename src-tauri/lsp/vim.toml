@@ -6,6 +6,8 @@ label = "Vim script"
 description = "Vim script, through vim-language-server"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "vim-language-server 2.3.1"
+verified_on = "2026-10-09"
 root_markers = [".git"]
 
 runs_project_code = false

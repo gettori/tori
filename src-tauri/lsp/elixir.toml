@@ -7,6 +7,8 @@ label = "Elixir"
 description = "Elixir, through ElixirLS"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "elixir-ls 0.31.1"
+verified_on = "2026-10-09"
 root_markers = ["mix.exs", ".git"]
 # Outside a Mix project elixir-ls builds nothing and only reports that it found
 # no mixfile, so a loose script gets highlighting and no server.

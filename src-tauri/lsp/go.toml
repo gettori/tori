@@ -7,6 +7,8 @@ label = "Go"
 description = "Go, through gopls"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "gopls v0.23.0"
+verified_on = "2026-10-09"
 root_markers = ["go.work", "go.mod", ".git"]
 request_timeout_ms = 60000
 

@@ -6,21 +6,13 @@ license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
 icon = "gemini"
 
-# **No `verified_against`, and that is the load-bearing part of this file.**
+# **No `verified_against`, and `every_bundled_pack_is_measured` exempts it.**
 #
-# The key names the CLI version an adapter's conventions were empirically
-# captured against. `gemini` is not installed on the machine this was written on,
-# so nothing here has been measured: the launch command is read from Gemini
-# CLI's documentation, and everything else is the ACP transport's own default
-# behaviour. Absent rather than guessed, because a version string here would
-# claim a measurement that never happened, and the Agents settings surface reads
-# this key to tell a measured agent from an untested one.
-#
-# What makes shipping it honest anyway is that an ACP adapter declares almost
-# nothing: the model list, the modes and the permission prompts all come from
-# the agent's own handshake at runtime, so there is far less here that *could*
-# be wrong than in a typed adapter. Re-measure with `node dev/acp-probe.mjs
-# --agent gemini` on a machine that has it, then pin the version.
+# Gemini CLI 0.63.0 answers `initialize` over `--acp`, but on 2026-10-09 Google
+# refused `session/new` for an individual account: "This client is no longer
+# supported for Gemini Code Assist for individuals", pointing at Antigravity.
+# Whether a paid or enterprise account still gets through is unmeasured, so no
+# version is claimed. Replacing or dropping this pack is its own decision.
 
 [launch]
 program = "gemini"

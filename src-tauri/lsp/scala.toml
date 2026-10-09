@@ -7,6 +7,8 @@ label = "Scala"
 description = "Scala, through Metals"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "metals 1.6.9"
+verified_on = "2026-10-09"
 root_markers = ["build.sbt", "build.sc", "build.mill", ".git"]
 request_timeout_ms = 120000
 

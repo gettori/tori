@@ -11,6 +11,8 @@ label = "Go (Delve)"
 description = "Debug Go programs and tests with Delve"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "dlv 1.27.2"
+verified_on = "2026-10-09"
 
 # The module a package builds in. Delve runs `go build` from its own working
 # directory, which is this root.

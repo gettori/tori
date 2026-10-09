@@ -7,6 +7,8 @@ label = "Elm"
 description = "Elm, through elm-language-server"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "@elm-tooling/elm-language-server 2.8.0"
+verified_on = "2026-10-09"
 root_markers = ["elm.json", ".git"]
 
 # Compiles with `elm make`, which runs nothing from the project.

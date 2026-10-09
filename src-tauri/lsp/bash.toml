@@ -6,6 +6,8 @@ label = "Bash"
 description = "Bash and sh scripts, through bash-language-server"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "bash-language-server 5.8.1"
+verified_on = "2026-10-09"
 root_markers = [".git"]
 
 # Parses scripts and hands them to shellcheck; it runs none of them.

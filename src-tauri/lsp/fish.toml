@@ -6,6 +6,8 @@ label = "fish"
 description = "fish shell scripts, through fish-lsp"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "fish-lsp 1.1.4"
+verified_on = "2026-10-09"
 root_markers = [".git"]
 
 # Runs `fish` over the files it serves.

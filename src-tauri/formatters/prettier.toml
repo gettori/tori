@@ -13,6 +13,7 @@ license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
 
 verified_against = "prettier 3.9.8"
+verified_on = "2026-09-21"
 
 [markers]
 # Prettier takes `.prettierrc` under eight extensions and `prettier.config`

@@ -16,6 +16,7 @@ contributor = { name = "Tori", github = "gettori" }
 priority = 20
 
 verified_against = "biome 2.5.14"
+verified_on = "2026-09-21"
 
 [markers]
 files = ["biome.json", "biome.jsonc"]

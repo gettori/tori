@@ -7,6 +7,8 @@ label = "HTML"
 description = "HTML, through the VS Code HTML language server"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "vscode-langservers-extracted 4.10.0"
+verified_on = "2026-10-09"
 
 root_markers = [".git"]
 

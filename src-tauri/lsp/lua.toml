@@ -6,6 +6,8 @@ label = "Lua"
 description = "Lua, through lua-language-server"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "lua-language-server 3.19.1"
+verified_on = "2026-10-09"
 root_markers = [".luarc.json", ".luarc.jsonc", ".git"]
 
 # A `.luarc.json` can name a plugin script from the project, which it runs.

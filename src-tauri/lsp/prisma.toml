@@ -6,6 +6,8 @@ label = "Prisma"
 description = "Prisma schemas, through the Prisma language server"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "@prisma/language-server 31.12.10"
+verified_on = "2026-10-09"
 root_markers = ["package.json", ".git"]
 
 runs_project_code = false

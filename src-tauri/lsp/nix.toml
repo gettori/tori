@@ -7,6 +7,11 @@ label = "Nix"
 description = "Nix expressions, through nil"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+
+# No `verified_against`, and `every_bundled_pack_is_measured` exempts it: nil's
+# build dumps the Nix builtins with `nix` itself, so measuring it needs Nix
+# installed, which the machine this was measured on did not have.
+
 root_markers = ["flake.nix", ".git"]
 
 # Can evaluate the flake it is pointed at.
