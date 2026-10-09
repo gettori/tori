@@ -18,6 +18,7 @@ import { listSelectableThemes, DEFAULT_THEME_ID, type ThemeChoice } from "../../
 import { primaryFamily } from "../../../../utils/fontLoad";
 import Select, { type SelectGroup, type SelectOption, type SelectTab } from "../../../../components/Select/Select";
 import styles from "../../Settings.module.css";
+import NeedsFixing from "../../components/NeedsFixing";
 
 const SPACE_STRIPS: SelectOption[] = [
   { value: "bottom", label: "Bottom" },
@@ -54,7 +55,7 @@ export default function AppearancePane(props: PaneProps) {
     const user = list.filter((t) => t.source !== "bundled");
     return [
       { label: "Bundled", options: list.filter((t) => t.source === "bundled").map(asOption) },
-      ...(user.length > 0 ? [{ label: "From ~/.config/tori/themes", options: user.map(asOption) }] : []),
+      ...(user.length > 0 ? [{ label: "From ~/.config/tori/packs/themes", options: user.map(asOption) }] : []),
     ];
   };
 
@@ -73,6 +74,7 @@ export default function AppearancePane(props: PaneProps) {
 
   return (
     <>
+      <NeedsFixing kind="themes" />
       {/* "Display" rather than "Theme": the group holds the theme and the zoom,
           and naming it after one of its two rows read as a mislabel. */}
       <Group {...props} title="Display" ids={idsIn("appearance")}>

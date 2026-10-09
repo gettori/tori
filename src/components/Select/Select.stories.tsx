@@ -25,7 +25,7 @@ const THEMES: SelectGroup[] = [
     ],
   },
   {
-    label: "From ~/.config/tori/themes",
+    label: "From ~/.config/tori/packs/themes",
     options: [
       { value: "nord", label: "Nord" },
       { value: "gruvbox", label: "Gruvbox" },

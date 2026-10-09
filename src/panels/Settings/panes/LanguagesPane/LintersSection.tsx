@@ -29,7 +29,7 @@ export default function LintersSection() {
           </Show>
           <div class={styles.note}>
             A linter runs beside the language's own server, in projects with its config. Add one with a TOML file in{" "}
-            <code>~/.config/tori/lsp/</code>; see LSP-SERVERS.md.
+            <code>~/.config/tori/packs/lsp/</code>; see LSP-SERVERS.md.
           </div>
         </Match>
       </Switch>

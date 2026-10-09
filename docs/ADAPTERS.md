@@ -7,8 +7,8 @@ same file, and which built-in parser turns its transcript into Tori's session
 model.
 
 Seven adapters ship bundled: `claude`, `codex`, `copilot`, `gemini`, `kimi`,
-`opencode` and `pi`. You add your own, or whole-replace a bundled one, by
-dropping a TOML file into `~/.config/tori/agents/`.
+`opencode` and `pi`. You add your own by dropping a TOML file into
+`~/.config/tori/packs/agents/`.
 
 ## Agent, adapter, provider
 
@@ -21,7 +21,7 @@ Two other words remain, and they are not synonyms for it:
 
 | Word | What it means | Seen in |
 | --- | --- | --- |
-| **agent** | an AI coding CLI. Also the protocol's own word, the `A` in ACP. | `agentId`, `agent_health`, `~/.config/tori/agents/` |
+| **agent** | an AI coding CLI. Also the protocol's own word, the `A` in ACP. | `agentId`, `agent_health`, `~/.config/tori/packs/agents/` |
 | **adapter** | the TOML that says *how* to drive one, and the record it loads into. Data, never behaviour. Exactly one per agent. | this file, `agents/*.toml`, `AgentAdapter`, `Adapter` |
 | **provider** | the vendor behind a **model**. | `providerIcon`, the model pill |
 
@@ -126,19 +126,28 @@ wants `needs_you = false`.
 
 - Bundled adapters: `src-tauri/packs/agents/*.toml`, compiled into Tori, not
   user-editable.
-- User adapters: every `*.toml` file directly inside `~/.config/tori/agents/`.
+- User adapters: every `*.toml` file directly inside
+  `~/.config/tori/packs/agents/`. The first launch of the release that
+  introduced packs moved them there from `~/.config/tori/agents/`.
 - Loaded once at startup (not live-watched - restart Tori after editing).
-- A user file whose `id` matches a bundled adapter **whole-replaces** it: the
-  entire adapter definition, not a field-by-field merge. A user file that
-  fails validation never silently falls back to pretending nothing's wrong -
-  the error is logged (visible in Tori's console/log output) naming what's
-  wrong, and the id it would have overridden keeps its previous (bundled or
+- A user file may not reuse a bundled adapter's `id`; it is refused, with the
+  fix "copy it under your own id and switch the bundled one off". A copy under
+  a new id is a new agent, with its own accounts and sessions. The exception is
+  a bundled-id file the move found: an agent id runs through accounts, profile
+  homes and session records, so Tori kept its id and recorded it in
+  `~/.config/tori/packs/installed.json` as an override of the bundled adapter.
+  It whole-replaces the bundled one (the entire definition, not a
+  field-by-field merge) while it stays unedited, and its card says when the
+  bundled adapter has changed since.
+- A user file that fails validation never silently falls back to pretending
+  nothing's wrong: Settings lists it under "Needs fixing" naming what's wrong,
+  and the id it would have replaced keeps its previous (bundled or
   earlier-loaded) definition so one broken file can't make an agent vanish.
 - An unrecognized top-level field is a warning, not a rejection. A missing
   required field, an unsupported `schema_version`, or a `parser.kind` outside
   the closed set below is a rejection - the whole file is skipped.
 - A file is named after its `id`: `claude.toml` holds `id = "claude"`. A user
-  file whose name and id differ still loads, with a warning naming both. An id
+  file whose name and id differ is refused, naming both. An id
   is lowercase letters, digits, `.`, `_` and `-`, and starts with a letter or
   digit; any other id is refused.
 
@@ -704,7 +713,7 @@ pattern = 'acme --resume {id}'
 pty_quiet_ms = 2000
 ```
 
-Save this as `~/.config/tori/agents/acme.toml` and restart Tori; a "+ Acme"
+Save this as `~/.config/tori/packs/agents/acme.toml` and restart Tori; a "+ Acme"
 launch option appears alongside the bundled agents.
 
 ### An ACP agent

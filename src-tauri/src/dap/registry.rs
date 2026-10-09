@@ -2,7 +2,7 @@
 //
 // Every `dap/*.toml` ships embedded at compile time, and a user can add or
 // whole-replace one by dropping a `schema_version = 1` TOML file into
-// `~/.config/tori/dap/`. The rules are `lsp/registry.rs`'s on purpose: the same
+// `~/.config/tori/packs/dap/`. The rules are `lsp/registry.rs`'s on purpose: the same
 // bundled-then-user merge, the same whole-replace by id, the same loud log that
 // keeps the previous entry when a file is broken, and a launch kind from a
 // closed set, so a TOML naming one with no implementation is a load error
@@ -19,13 +19,13 @@ use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
-use crate::packs::{self, Meta};
+use crate::packs::{self, Kind, LoadError, Meta};
 
 /// The newest schema this build writes and documents.
 pub const SCHEMA_VERSION: u32 = 1;
 
 /// Every schema version this build still loads, kept for the reason
-/// `lsp::registry` keeps its list: a working file in `~/.config/tori/dap/`
+/// `lsp::registry` keeps its list: a working file in `~/.config/tori/packs/dap/`
 /// should survive a v2.
 const SUPPORTED_SCHEMA_VERSIONS: [u32; 1] = [SCHEMA_VERSION];
 
@@ -418,16 +418,19 @@ fn load_adapter_file(text: &str, source: &str) -> Result<DapAdapter, String> {
     Ok(adapter)
 }
 
-fn user_dap_dir() -> PathBuf {
-    crate::owned_state::config_dir().join("dap")
+/// Whether `id` is one of the adapters this build ships.
+pub fn is_bundled(id: &str) -> bool {
+    builtins().any(|(source, _)| source.strip_prefix("bundled:") == Some(id))
 }
 
-/// Bundled built-ins, then every `*.toml` in `user_dir`. A user file whose id
-/// matches an earlier entry whole-replaces it, never field by field. A user
-/// file that fails validation is logged and the id keeps its previous entry, so
-/// one broken file cannot take a language's debugger away.
-fn build_registry_from(user_dir: &Path) -> Vec<DapAdapter> {
+/// Bundled built-ins, then every `*.toml` in `user_dir`, with an error for each
+/// user file refused. A user file whose id matches an earlier entry
+/// whole-replaces it, never field by field, and may only take a bundled id as
+/// a recorded install. A refused file leaves the id with its previous entry,
+/// so one broken file cannot take a language's debugger away.
+fn build_registry_from(user_dir: &Path) -> (Vec<DapAdapter>, Vec<LoadError>) {
     let mut list: Vec<DapAdapter> = Vec::new();
+    let mut errors = Vec::new();
     let mut admit = |adapter: DapAdapter| {
         list.retain(|a| a.id != adapter.id);
         list.push(adapter);
@@ -440,35 +443,28 @@ fn build_registry_from(user_dir: &Path) -> Vec<DapAdapter> {
         }
     }
 
-    // Sorted so which of two conflicting user files wins does not depend on
-    // the order the filesystem lists them in.
-    let mut files: Vec<PathBuf> = std::fs::read_dir(user_dir)
-        .map(|entries| entries.flatten().map(|e| e.path()).collect())
-        .unwrap_or_default();
-    files.retain(|p| p.extension().and_then(|e| e.to_str()) == Some("toml"));
-    files.sort();
-
-    for path in files {
-        let source = path.to_string_lossy().into_owned();
-        match std::fs::read_to_string(&path).map_err(|e| format!("{source}: {e}")) {
-            Ok(text) => match load_adapter_str(&text, &source).inspect(|a| packs::warn_stem(&source, &a.id)) {
-                Ok(adapter) => admit(adapter),
-                Err(e) => eprintln!("tori: ERROR loading debug adapter {e} (keeping the previous adapter for this id)"),
-            },
-            Err(e) => eprintln!("tori: ERROR reading debug adapter {e}"),
+    let installed = packs::installed_beside(user_dir);
+    for path in packs::user_files(user_dir, Kind::Dap) {
+        match packs::load_user_file(Kind::Dap, &path, &installed, load_adapter_str, |a| &a.id) {
+            Ok(adapter) => admit(adapter),
+            Err(e) => errors.push(e),
         }
     }
 
     list.sort_by(|a, b| a.id.cmp(&b.id));
-    list
+    (list, errors)
 }
 
 /// Every adapter Tori knows how to start: bundled, then
-/// `~/.config/tori/dap/*.toml`. Loaded once; restart to pick up an edit, as
-/// with every other loaded-at-startup config in Tori.
+/// `~/.config/tori/packs/dap/*.toml`. Loaded once; restart to pick up an edit,
+/// as with every other loaded-at-startup config in Tori.
 pub fn registry() -> &'static [DapAdapter] {
     static REGISTRY: OnceLock<Vec<DapAdapter>> = OnceLock::new();
-    REGISTRY.get_or_init(|| build_registry_from(&user_dap_dir()))
+    REGISTRY.get_or_init(|| {
+        let (list, errors) = build_registry_from(&packs::kind_dir(Kind::Dap));
+        packs::report(Kind::Dap, errors);
+        list
+    })
 }
 
 /// The adapter registered as `id`.
@@ -548,6 +544,16 @@ program = "demo-dap"
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
         std::env::temp_dir().join(format!("tori-dap-{label}-{}-{nanos}-{seq}", std::process::id()))
+    }
+
+    #[test]
+    fn a_broken_file_is_one_load_error_naming_it() {
+        let dir = temp_dir("broken-toml").join("dap");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("mine.toml"), "not = [toml").unwrap();
+        let (_, errors) = build_registry_from(&dir);
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert!(errors[0].file.ends_with("mine.toml") && errors[0].kind == Some(Kind::Dap));
     }
 
     #[test]

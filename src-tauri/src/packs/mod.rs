@@ -2,13 +2,200 @@
 // cannot drift apart on what a pack is.
 
 pub mod index_rows;
+pub mod installed;
+pub mod migrate;
 pub mod publish;
 pub mod snapshot;
 pub mod validate;
 
 use serde::{Deserialize, Serialize};
-use std::path::Path;
-use std::sync::OnceLock;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+
+/// The five kinds of pack, each a folder under `packs/` named as its loader
+/// names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Kind {
+    Lsp,
+    Dap,
+    Formatters,
+    Themes,
+    Agents,
+}
+
+impl Kind {
+    pub const ALL: [Kind; 5] = [Kind::Lsp, Kind::Dap, Kind::Formatters, Kind::Themes, Kind::Agents];
+
+    pub fn folder(self) -> &'static str {
+        match self {
+            Kind::Lsp => "lsp",
+            Kind::Dap => "dap",
+            Kind::Formatters => "formatters",
+            Kind::Themes => "themes",
+            Kind::Agents => "agents",
+        }
+    }
+
+    pub fn ext(self) -> &'static str {
+        match self {
+            Kind::Themes => "json",
+            _ => "toml",
+        }
+    }
+}
+
+/// `~/.config/tori/packs`, the one folder every kind loads from.
+pub fn dir() -> PathBuf {
+    crate::owned_state::config_dir().join("packs")
+}
+
+pub fn kind_dir(kind: Kind) -> PathBuf {
+    dir().join(kind.folder())
+}
+
+/// Whether `id` names a pack this build ships.
+pub fn is_bundled(kind: Kind, id: &str) -> bool {
+    match kind {
+        Kind::Dap => crate::dap::registry::is_bundled(id),
+        _ => snapshot::text(kind.folder(), id).is_some(),
+    }
+}
+
+pub fn sha256(text: &str) -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(text.as_bytes()))
+}
+
+/// What a file carrying a bundled id is told to do instead.
+pub const FIX_NEW_ID: &str = "copy it under your own id and switch the bundled one off";
+
+/// A file Tori read and would not load, with what to do about it. `kind` is
+/// `None` for `installed.json`, which belongs to no one kind.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadError {
+    pub kind: Option<Kind>,
+    pub file: String,
+    pub message: String,
+    pub fix: Option<String>,
+}
+
+impl LoadError {
+    /// `message` may lead with `file`, as the loaders' errors do; it is said
+    /// once, in `file`.
+    pub fn new(kind: Option<Kind>, file: &str, message: &str, fix: Option<&str>) -> Self {
+        let message = message.strip_prefix(&format!("{file}: ")).unwrap_or(message);
+        LoadError {
+            kind,
+            file: file.to_string(),
+            message: message.to_string(),
+            fix: fix.map(str::to_string),
+        }
+    }
+}
+
+static ERRORS: Mutex<BTreeMap<Kind, Vec<LoadError>>> = Mutex::new(BTreeMap::new());
+
+/// Replace one kind's errors with what its latest load found.
+pub fn report(kind: Kind, errors: Vec<LoadError>) {
+    for e in &errors {
+        eprintln!("tori: ERROR loading {} {}: {}", kind.folder(), e.file, e.message);
+    }
+    ERRORS.lock().unwrap_or_else(|e| e.into_inner()).insert(kind, errors);
+}
+
+/// The recorded installs beside a kind folder, or none when the record cannot
+/// be read. None refuses every file that carries a bundled id, which is the
+/// safe side; `packs_load_errors` says why.
+pub fn installed_beside(kind_dir: &Path) -> installed::Installed {
+    kind_dir
+        .parent()
+        .and_then(|packs| installed::read_at(&packs.join(installed::FILE)).ok())
+        .unwrap_or_default()
+}
+
+/// A user file may carry a bundled id only as a pack Tori recorded and that
+/// nobody has edited since.
+pub fn check_bundled_id(
+    kind: Kind,
+    id: &str,
+    text: &str,
+    source: &str,
+    installed: &installed::Installed,
+) -> Result<(), String> {
+    if !is_bundled(kind, id) {
+        return Ok(());
+    }
+    match installed.find(kind, id) {
+        Some(record) if record.sha256 == sha256(text) => Ok(()),
+        Some(_) => Err(format!(
+            "{source}: this override of the bundled `{id}` was edited after Tori recorded it"
+        )),
+        None => Err(format!("{source}: `{id}` is the id of a bundled pack")),
+    }
+}
+
+/// The files in one kind's folder, in name order so which of two conflicting
+/// files is refused never depends on how the filesystem lists them.
+pub fn user_files(dir: &Path, kind: Kind) -> Vec<PathBuf> {
+    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
+        .map(|entries| entries.flatten().map(|e| e.path()).collect())
+        .unwrap_or_default();
+    files.retain(|p| p.extension().and_then(|e| e.to_str()) == Some(kind.ext()));
+    files.sort();
+    files
+}
+
+/// One user file through its kind's string loader and the rules every user
+/// file meets: named after its id, and no bundled id unless recorded.
+pub fn load_user_file<T>(
+    kind: Kind,
+    path: &Path,
+    installed: &installed::Installed,
+    load: impl Fn(&str, &str) -> Result<T, String>,
+    id: impl Fn(&T) -> &str,
+) -> Result<T, LoadError> {
+    let source = path.to_string_lossy().into_owned();
+    let fail = |message: String, fix: Option<&str>| LoadError::new(Some(kind), &source, &message, fix);
+    let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string(), None))?;
+    let pack = load(&text, &source).map_err(|e| fail(e, None))?;
+    check_stem(&source, id(&pack)).map_err(|e| fail(e, None))?;
+    check_bundled_id(kind, id(&pack), &text, &source, installed).map_err(|e| fail(e, Some(FIX_NEW_ID)))?;
+    Ok(pack)
+}
+
+/// Every load error, each registry built first so its errors are in.
+#[tauri::command(async)]
+pub fn packs_load_errors() -> Vec<LoadError> {
+    let _ = crate::lsp::registry::registry();
+    let _ = crate::dap::registry::registry();
+    let _ = crate::format::registry::registry();
+    let _ = crate::agents::registry();
+    let _ = crate::themes::list_user_themes();
+    let path = dir().join(installed::FILE);
+    let mut out: Vec<LoadError> = installed::read_at(&path)
+        .err()
+        .map(|e| LoadError::new(None, &path.to_string_lossy(), &e, None))
+        .into_iter()
+        .collect();
+    out.extend(
+        ERRORS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .values()
+            .flatten()
+            .cloned(),
+    );
+    out
+}
+
+/// What this launch's migration moved, for the notice.
+#[tauri::command(async)]
+pub fn packs_migration_report() -> Option<migrate::Report> {
+    migrate::last_report()
+}
 
 /// Who wrote a pack, credited on its card.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -63,14 +250,6 @@ pub fn check_stem(source: &str, id: &str) -> Result<(), String> {
     }
 }
 
-/// `check_stem` for a user file, reported rather than enforced: a file written
-/// before the rule keeps loading until the packs migration renames it.
-pub fn warn_stem(source: &str, id: &str) {
-    if let Err(e) = check_stem(source, id) {
-        eprintln!("tori: WARNING {e}");
-    }
-}
-
 /// One exact version, `1.2.3` or `1.2.3-rc.1`. A range or a tag like `latest`
 /// would install whatever the registry says today, which nobody has checked.
 pub fn is_exact_version(version: &str) -> bool {
@@ -116,6 +295,24 @@ license = "MIT"
 contributor = { name = "Ada", github = "ada" }
 verified_on = "2026-10-09"
 "#;
+
+/// Record `text` in `installed.json` beside `kind_dir` as an override of the
+/// bundled `id`, as the migration does.
+#[cfg(test)]
+pub(crate) fn record_override(kind_dir: &Path, kind: Kind, id: &str, text: &str) {
+    let path = kind_dir.parent().unwrap().join(installed::FILE);
+    let mut record = installed::read_at(&path).unwrap();
+    record.record(installed::Record {
+        kind,
+        id: id.into(),
+        sha256: sha256(text),
+        source: installed::Source::Override,
+        packs_commit: None,
+        installed_at: 0,
+        bundled_sha256: None,
+    });
+    installed::write_at(&path, &record).unwrap();
+}
 
 #[cfg(test)]
 pub(crate) fn test_meta() -> Meta {

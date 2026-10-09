@@ -13,19 +13,20 @@ the user folder is watched, so a saved file appears without a restart.
 
 Bundled themes live in `src-tauri/packs/themes/*.json` and are compiled into the
 frontend and embedded in the app with the other bundled packs. User themes live
-in `~/.config/tori/themes/*.json`.
+in `~/.config/tori/packs/themes/*.json`, where the first launch of the release
+that introduced packs moved them from `~/.config/tori/themes/`.
 
 - Every file in the user folder is checked when Tori starts and again whenever
   a `.json` file in it changes.
 - A file that fails is never silently dropped: the problem is shown as an
   error toast naming the file.
 - A user file may not take a bundled theme's id. Give your variant its own id.
+  The move above did that for you: a file that carried a bundled id became
+  `<id>-custom`, and a selected theme followed it.
 - A file is named after its `id`: `dracula.json` holds `"id": "dracula"`. A
-  file whose name and id differ still loads, with a warning naming both. An id
+  file whose name and id differ is refused, naming both. An id
   is lowercase letters, digits, `.`, `_` and `-`, and starts with a letter or
   digit; any other id is refused.
-- Two files claiming one id: the first in filename order wins, and the second
-  is reported.
 - A theme that is structurally sound but illegible (text too close to its
   background) is refused by the contrast gate before anything paints, and the
   app stays on the theme it was showing.
