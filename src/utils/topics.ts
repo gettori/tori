@@ -252,14 +252,6 @@ export function selectionRoot(
   return sel.folderPath || null;
 }
 
-/** The folders a `topic:<id>` workspace spans, for a per-folder backend call
- *  that has to be unioned; a plain workspace is its own single folder. */
-export function workspaceFolders(ws: string, sel: Selection | null | undefined): string[] {
-  if (!isTopicKey(ws)) return [ws];
-  if (sel && workspaceKey(sel) === ws) return sel.roots ?? [];
-  return [];
-}
-
 /** Does `folder` own a cwd for attribution: at or under it, but never under
  *  the folder's own `.tori/worktrees/`, where its Topic worktrees live and
  *  which the member folder claims by prefix instead. The same rule as the
