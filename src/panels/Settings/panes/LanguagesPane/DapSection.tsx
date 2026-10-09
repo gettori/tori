@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import Toggle from "../../../../components/Switch/Switch";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { setDebuggerDisabled } from "../../settingsStore";
-import type { PackMeta } from "../../../../utils/packs";
+import { onPacksChanged, type PackMeta } from "../../../../utils/packs";
 import { createToolActions } from "./toolActions";
 import styles from "../../Settings.module.css";
 import NeedsFixing from "../../components/NeedsFixing";
@@ -138,6 +138,7 @@ function DapCard(props: { adapter: DapHealth; onChange: () => Promise<DapHealth[
 
 export default function DapSection() {
   const [health, { refetch }] = createResource(() => invoke<DapHealth[]>("dap_health"));
+  onPacksChanged("dap", () => void refetch());
 
   return (
     <section class={styles.section}>

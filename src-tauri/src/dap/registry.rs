@@ -15,7 +15,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use serde::{Deserialize, Serialize};
 
@@ -455,21 +455,27 @@ fn build_registry_from(user_dir: &Path) -> (Vec<DapAdapter>, Vec<LoadError>) {
     (list, errors)
 }
 
+fn build_registry() -> Vec<DapAdapter> {
+    let (list, errors) = build_registry_from(&packs::kind_dir(Kind::Dap));
+    packs::report(Kind::Dap, errors);
+    list
+}
+
+static REGISTRY: packs::Registry<DapAdapter> = packs::Registry::new();
+
 /// Every adapter Tori knows how to start: bundled, then
-/// `~/.config/tori/packs/dap/*.toml`. Loaded once; restart to pick up an edit,
-/// as with every other loaded-at-startup config in Tori.
-pub fn registry() -> &'static [DapAdapter] {
-    static REGISTRY: OnceLock<Vec<DapAdapter>> = OnceLock::new();
-    REGISTRY.get_or_init(|| {
-        let (list, errors) = build_registry_from(&packs::kind_dir(Kind::Dap));
-        packs::report(Kind::Dap, errors);
-        list
-    })
+/// `~/.config/tori/packs/dap/*.toml`, as of the last load or `reload`.
+pub fn registry() -> Arc<Vec<DapAdapter>> {
+    REGISTRY.get(build_registry)
+}
+
+pub fn reload() {
+    REGISTRY.set(build_registry());
 }
 
 /// The adapter registered as `id`.
-pub fn find(id: &str) -> Option<&'static DapAdapter> {
-    registry().iter().find(|a| a.id == id)
+pub fn find(id: &str) -> Option<DapAdapter> {
+    registry().iter().find(|a| a.id == id).cloned()
 }
 
 /// The root a debug session for `file_path` should run at: the nearest ancestor
@@ -706,14 +712,14 @@ uninstall = "rm \"$(go env GOPATH)/bin/dlv\""
         // The workspace root also has a `package.json`, so a walk that stopped
         // at the first one from the top would answer `tmp` and hand the
         // debuggee the wrong `cwd`.
-        assert_eq!(root_for(js, &file, &tmp), api);
+        assert_eq!(root_for(&js, &file, &tmp), api);
 
         // A file with no `package.json` above it inside the project falls back
         // to the project root rather than escaping it.
         let loose = tmp.join("scratch/y.ts");
         fs::create_dir_all(loose.parent().unwrap()).unwrap();
         fs::write(&loose, "").unwrap();
-        assert_eq!(root_for(js, &loose, &tmp.join("scratch")), tmp.join("scratch"));
+        assert_eq!(root_for(&js, &loose, &tmp.join("scratch")), tmp.join("scratch"));
 
         fs::remove_dir_all(&tmp).ok();
     }
@@ -721,7 +727,7 @@ uninstall = "rm \"$(go env GOPATH)/bin/dlv\""
     #[test]
     fn a_file_outside_the_project_falls_back_to_the_project_root() {
         let js = find("js-debug").unwrap();
-        let root = root_for(js, Path::new("/elsewhere/x.ts"), Path::new("/project"));
+        let root = root_for(&js, Path::new("/elsewhere/x.ts"), Path::new("/project"));
         assert_eq!(root, PathBuf::from("/project"));
     }
 }

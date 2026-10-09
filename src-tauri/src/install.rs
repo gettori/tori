@@ -71,19 +71,19 @@ fn verb_route(adapter: &agents::AgentAdapter, args_of: fn(&agents::InstallSpec) 
 #[tauri::command(async)]
 pub fn agent_install_route(adapter_id: String) -> Result<InstallRoute, String> {
     let adapter = agents::find(&adapter_id).ok_or_else(|| format!("unknown agent `{adapter_id}`"))?;
-    Ok(install_route(adapter))
+    Ok(install_route(&adapter))
 }
 
 #[tauri::command(async)]
 pub fn agent_update_route(adapter_id: String) -> Result<InstallRoute, String> {
     let adapter = agents::find(&adapter_id).ok_or_else(|| format!("unknown agent `{adapter_id}`"))?;
-    Ok(update_route(adapter))
+    Ok(update_route(&adapter))
 }
 
 #[tauri::command(async)]
 pub fn agent_uninstall_route(adapter_id: String) -> Result<InstallRoute, String> {
     let adapter = agents::find(&adapter_id).ok_or_else(|| format!("unknown agent `{adapter_id}`"))?;
-    Ok(uninstall_route(adapter))
+    Ok(uninstall_route(&adapter))
 }
 
 #[cfg(test)]
@@ -151,7 +151,7 @@ mod tests {
     /// Every bundled adapter reaches a rung, so no detail page dead-ends.
     #[test]
     fn every_bundled_adapter_resolves_to_a_rung() {
-        for adapter in agents::registry() {
+        for adapter in agents::registry().iter() {
             let _ = install_route(adapter);
         }
     }

@@ -16,7 +16,7 @@ use crate::packs::{self, Kind, LoadError, Meta};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::Arc;
 
 /// The newest schema this build writes and documents. Asserted against
 /// LSP-SERVERS.md by `the_doc_documents_every_schema_field`.
@@ -719,17 +719,20 @@ fn build_registry() -> Vec<LspServer> {
     list
 }
 
-static REGISTRY: OnceLock<Vec<LspServer>> = OnceLock::new();
+static REGISTRY: packs::Registry<LspServer> = packs::Registry::new();
 
-/// The process-wide server registry, loaded once on first use (bundled +
-/// `~/.config/tori/packs/lsp/*.toml`; not live-watched, restart to pick up edits,
-/// same as every other loaded-at-startup config in Tori).
-pub fn registry() -> &'static [LspServer] {
-    REGISTRY.get_or_init(build_registry)
+/// The process-wide server registry: bundled, then
+/// `~/.config/tori/packs/lsp/*.toml`, as of the last load or `reload`.
+pub fn registry() -> Arc<Vec<LspServer>> {
+    REGISTRY.get(build_registry)
 }
 
-pub fn find(id: &str) -> Option<&'static LspServer> {
-    registry().iter().find(|s| s.id == id)
+pub fn reload() {
+    REGISTRY.set(build_registry());
+}
+
+pub fn find(id: &str) -> Option<LspServer> {
+    registry().iter().find(|s| s.id == id).cloned()
 }
 
 /// The servers that should run for `file`: the winning primary, and every
@@ -1174,6 +1177,25 @@ version = "1.2.3"
         assert_eq!(errors.len(), 1, "{errors:?}");
         assert!(errors[0].file.ends_with("typescript.toml"));
         assert_eq!(errors[0].fix.as_deref(), Some(packs::FIX_NEW_ID));
+    }
+
+    #[test]
+    fn a_reload_picks_up_a_file_written_after_the_first_load() {
+        let dir = temp_dir("reload");
+        let registry = packs::Registry::new();
+        let first = registry.get(|| build_registry_from(&dir).0);
+        std::fs::write(dir.join("demo.toml"), VALID).unwrap();
+        assert!(
+            registry.get(|| unreachable!()).iter().all(|s| s.id != "demo"),
+            "kept until a reload"
+        );
+
+        registry.set(build_registry_from(&dir).0);
+        assert!(registry.get(|| unreachable!()).iter().any(|s| s.id == "demo"));
+        assert!(
+            first.iter().all(|s| s.id != "demo"),
+            "a list already handed out never changes"
+        );
     }
 
     #[test]

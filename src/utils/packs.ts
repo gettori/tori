@@ -1,7 +1,8 @@
 // Mirrors `packs::Meta`, `packs::LoadError` and `packs::migrate::Report` in
 // src-tauri/src/packs/.
-import { createSignal } from "solid-js";
+import { createSignal, onCleanup } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 export type Contributor = { name: string; github: string };
 
@@ -30,6 +31,18 @@ export async function refreshLoadErrors(): Promise<LoadError[]> {
   const errors = await invoke<unknown>("packs_load_errors").catch(() => null);
   if (Array.isArray(errors)) setLoadErrors(errors as LoadError[]);
   return loadErrors();
+}
+
+/** `packs::CHANGED`: one kind was reloaded from its folder. */
+export const PACKS_CHANGED = "packs:changed";
+
+/** Call `fn` each time `kind` is reloaded, for as long as the calling
+ *  component is mounted. */
+export function onPacksChanged(kind: PackKind, fn: () => void) {
+  const off = listen<PackKind>(PACKS_CHANGED, (e) => {
+    if (e.payload === kind) fn();
+  }).catch(() => null);
+  onCleanup(() => void off.then((unlisten) => unlisten?.()));
 }
 
 const files = (n: number) => `${n} file${n === 1 ? "" : "s"}`;

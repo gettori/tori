@@ -407,12 +407,12 @@ pub fn lsp_start(
 ) -> Result<LspStarted, String> {
     let server = registry::find(&server_id).ok_or_else(|| format!("no lsp server registered as `{server_id}`"))?;
     let project = Path::new(&project_path);
-    let root = registry::root_for(server, Path::new(&file_path), project);
+    let root = registry::root_for(&server, Path::new(&file_path), project);
     // Before the trust gate, so a missing server fails as missing, not as a trust
     // prompt. No lock: a login-shell lookup is too slow to hold every other send
     // behind, and `install_session` settles two starts that race to one handle.
-    let cmd = command_for(&app, server, &root, project)?;
-    crate::trust::gate(server, project)?;
+    let cmd = command_for(&app, &server, &root, project)?;
+    crate::trust::gate(&server, project)?;
     // After both, so an uninstalled server still fails as `not_installed`.
     let (initialization_options, tsdk) = resolve_tsdk(
         server.initialization_options.as_ref(),
@@ -771,7 +771,7 @@ pub async fn lsp_health(app: AppHandle, root: Option<String>) -> Vec<LspHealth> 
 #[tauri::command(async)]
 pub fn lsp_install(server_id: String) -> Result<(), String> {
     let server = registry::find(&server_id).ok_or_else(|| format!("no lsp server registered as `{server_id}`"))?;
-    managed::install(server, &managed::servers_dir()).map(|_| ())
+    managed::install(&server, &managed::servers_dir()).map(|_| ())
 }
 
 /// Remove Tori's own copy of a server.
@@ -793,12 +793,9 @@ pub struct Resolution {
 #[tauri::command(async)]
 pub fn lsp_resolve(file_path: String, project_path: String) -> Resolution {
     let disabled = disabled_servers(crate::settings::get_settings().lsp.disabled, Some(&project_path));
-    let (primary, secondaries) = registry::resolve(
-        registry::registry(),
-        Path::new(&file_path),
-        Path::new(&project_path),
-        &disabled,
-    );
+    let servers = registry::registry();
+    let (primary, secondaries) =
+        registry::resolve(&servers, Path::new(&file_path), Path::new(&project_path), &disabled);
     Resolution {
         primary: primary.map(|s| s.id.clone()),
         secondaries: secondaries.iter().map(|s| s.id.clone()).collect(),
@@ -1145,7 +1142,7 @@ mod tests {
         // call this healthy. It is not: without the entry script every
         // `lsp_start` fails, and a card that says "found" sends the user
         // chasing the wrong problem.
-        let missing = check(ts, true, None);
+        let missing = check(&ts, true, None);
         assert_eq!(missing.status, crate::health::BinaryStatus::NotFound);
         assert!(
             missing.detail.as_deref().unwrap_or_default().contains("lsp:install"),
@@ -1154,14 +1151,14 @@ mod tests {
         );
 
         // With the entry present the same server stops reporting a problem.
-        let present = check(ts, false, None);
+        let present = check(&ts, false, None);
         assert!(present.detail.is_none());
         assert_ne!(present.status, crate::health::BinaryStatus::NotFound);
 
         // A `path` server has no entry script, so it can never be in this state.
         // It can carry a detail of its own (a rustup proxy with no component),
         // which depends on the machine, so only this one is ruled out.
-        let rust = check(registry::find("rust").unwrap(), false, None);
+        let rust = check(&registry::find("rust").unwrap(), false, None);
         assert!(!rust.detail.unwrap_or_default().contains("lsp:install"));
     }
 

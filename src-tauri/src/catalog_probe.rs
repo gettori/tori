@@ -1275,8 +1275,12 @@ fn agent_lock(agent_id: &str, profile_id: &str) -> Arc<Mutex<()>> {
 }
 
 /// Every agent that could have a catalogue, in adapter order.
-fn probeable() -> Vec<&'static AgentAdapter> {
-    crate::agents::registry().iter().filter(|a| a.chat.is_some()).collect()
+fn probeable() -> Vec<AgentAdapter> {
+    crate::agents::registry()
+        .iter()
+        .filter(|a| a.chat.is_some())
+        .cloned()
+        .collect()
 }
 
 /// Probe one account of one agent and write the result, keeping any previous
@@ -1347,9 +1351,9 @@ pub async fn model_catalogs() -> Vec<ModelCatalog> {
 pub async fn refresh_model_catalog(agent_id: String, profile_id: Option<String>) -> Result<ModelCatalog, String> {
     let adapter = crate::agents::find(&agent_id).ok_or_else(|| format!("unknown agent {agent_id}"))?;
     let profile = profile_id.as_deref().unwrap_or(crate::accounts::DEFAULT_PROFILE_ID);
-    let home = crate::accounts::profile_pair(adapter, &crate::accounts::load(), Some(profile))?;
+    let home = crate::accounts::profile_pair(&adapter, &crate::accounts::load(), Some(profile))?;
     let version = versions().await.get(&agent_id).cloned().flatten();
-    Ok(refresh_one(adapter, profile, home.as_ref(), version))
+    Ok(refresh_one(&adapter, profile, home.as_ref(), version))
 }
 
 /// Fold a live session's handshake into the cache, so the next draft opens on
@@ -1780,13 +1784,13 @@ mod tests {
             "/tmp/tori-homes/claude-globex".to_string(),
         );
 
-        let scoped = probe_spec(claude, chat, Some(&home));
+        let scoped = probe_spec(&claude, chat, Some(&home));
         assert_eq!(
             scoped.env.get("CLAUDE_CONFIG_DIR").map(String::as_str),
             Some("/tmp/tori-homes/claude-globex")
         );
         assert!(
-            probe_spec(claude, chat, None).env.is_empty(),
+            probe_spec(&claude, chat, None).env.is_empty(),
             "the default account sets nothing"
         );
     }
@@ -2204,7 +2208,7 @@ mod tests {
         let before = session_files();
 
         let catalogue =
-            probe_with(claude, None, Some("live".into()), PROBE_DEADLINE).expect("claude should answer the handshake");
+            probe_with(&claude, None, Some("live".into()), PROBE_DEADLINE).expect("claude should answer the handshake");
 
         assert!(
             !catalogue.models.is_empty(),
@@ -2249,7 +2253,7 @@ mod tests {
         let opencode = crate::agents::find("opencode").expect("the bundled opencode adapter");
 
         let catalogue =
-            probe_with(opencode, None, Some("live".into()), PROBE_DEADLINE).expect("opencode should answer");
+            probe_with(&opencode, None, Some("live".into()), PROBE_DEADLINE).expect("opencode should answer");
 
         assert!(
             catalogue.models.len() > 2,
@@ -2304,7 +2308,7 @@ mod tests {
     fn the_real_codex_answers_a_catalogue_from_one_session() {
         let codex = crate::agents::find("codex").expect("the bundled codex adapter");
 
-        let catalogue = probe_with(codex, None, Some("live".into()), PROBE_DEADLINE).expect("codex should answer");
+        let catalogue = probe_with(&codex, None, Some("live".into()), PROBE_DEADLINE).expect("codex should answer");
 
         assert!(
             !catalogue.models.is_empty(),
@@ -2390,7 +2394,7 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         acp_sessions::use_dir_for_tests(root.join("locators"));
 
-        probe_with(codex, None, None, PROBE_DEADLINE).expect("codex should answer the probe");
+        probe_with(&codex, None, None, PROBE_DEADLINE).expect("codex should answer the probe");
 
         let id = "live-codex-phantom";
         let args = crate::chat::commands::build_args(chat, id, false, None, None, None, None, &[]);
@@ -2464,7 +2468,7 @@ mod tests {
     #[ignore = "drives the real `opencode` binary"]
     fn a_probe_leaves_nothing_in_the_history_tori_would_adopt() {
         let opencode = crate::agents::find("opencode").expect("the bundled opencode adapter");
-        probe_with(opencode, None, None, PROBE_DEADLINE).expect("opencode should answer");
+        probe_with(&opencode, None, None, PROBE_DEADLINE).expect("opencode should answer");
 
         let probe_dir = probe_cwd_ready().expect("the probe directory exists after a probe");
         let listed = crate::chat::acp_sessions::ListedSession {

@@ -12,7 +12,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::Arc;
 
 /// The newest schema this build writes and documents.
 pub const SCHEMA_VERSION: u32 = 1;
@@ -412,15 +412,21 @@ fn build_registry_from(user_dir: &Path) -> (Vec<Formatter>, Vec<LoadError>) {
     (by_id.into_values().collect(), errors)
 }
 
-static REGISTRY: OnceLock<Vec<Formatter>> = OnceLock::new();
+fn build_registry() -> Vec<Formatter> {
+    let (list, errors) = build_registry_from(&packs::kind_dir(Kind::Formatters));
+    packs::report(Kind::Formatters, errors);
+    list
+}
 
-/// Every formatter, loaded once on first use. Restart to pick up an edit.
-pub fn registry() -> &'static [Formatter] {
-    REGISTRY.get_or_init(|| {
-        let (list, errors) = build_registry_from(&packs::kind_dir(Kind::Formatters));
-        packs::report(Kind::Formatters, errors);
-        list
-    })
+static REGISTRY: packs::Registry<Formatter> = packs::Registry::new();
+
+/// Every formatter, as of the last load or `reload`.
+pub fn registry() -> Arc<Vec<Formatter>> {
+    REGISTRY.get(build_registry)
+}
+
+pub fn reload() {
+    REGISTRY.set(build_registry());
 }
 
 #[cfg(test)]

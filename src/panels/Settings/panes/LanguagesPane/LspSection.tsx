@@ -4,7 +4,7 @@ import Toggle from "../../../../components/Switch/Switch";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { installServer, serverInstalled } from "../../../../utils/serverInstall";
 import { overlayRoot, setServerDisabled } from "../../settingsStore";
-import type { PackMeta } from "../../../../utils/packs";
+import { onPacksChanged, type PackMeta } from "../../../../utils/packs";
 import { createToolActions } from "./toolActions";
 import styles from "../../Settings.module.css";
 import NeedsFixing from "../../components/NeedsFixing";
@@ -208,6 +208,7 @@ export function LspCard(props: { server: LspHealth; onChange: () => Promise<LspH
 
 export default function LspSection() {
   const [health, { refetch }] = createResource(probeLspHealth);
+  onPacksChanged("lsp", () => void refetch());
   const servers = () => (health() ?? []).filter((s) => s.role === "primary");
   const [picked, setPicked] = createSignal<Tab | null>(null);
   const [query, setQuery] = createSignal("");

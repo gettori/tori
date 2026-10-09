@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import Toggle from "../../../../components/Switch/Switch";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { setFormatterDisabled } from "../../settingsStore";
-import type { PackMeta } from "../../../../utils/packs";
+import { onPacksChanged, type PackMeta } from "../../../../utils/packs";
 import { TONE, type BinaryStatus } from "./LspSection";
 import styles from "../../Settings.module.css";
 import NeedsFixing from "../../components/NeedsFixing";
@@ -95,7 +95,8 @@ function FormatterCard(props: { formatter: FormatterHealth }) {
 }
 
 export default function FormattersSection() {
-  const [formatters] = createResource(() => invoke<FormatterHealth[]>("formatter_health"));
+  const [formatters, { refetch }] = createResource(() => invoke<FormatterHealth[]>("formatter_health"));
+  onPacksChanged("formatters", () => void refetch());
 
   return (
     <section class={styles.section}>

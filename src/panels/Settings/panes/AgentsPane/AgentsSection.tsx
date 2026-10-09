@@ -13,9 +13,11 @@ import {
   ensureAdaptersLoaded,
   findAdapter,
   isLaunchOnly,
+  reloadAdapters,
   type Adapter,
   type ChatTransport,
 } from "../../../../utils/agents";
+import { onPacksChanged } from "../../../../utils/packs";
 import {
   catalogFor,
   distinctModelCount,
@@ -264,6 +266,7 @@ function orderRows(rows: CardRow[]): CardRow[] {
 
 export default function AgentsSection(props: { projectRoot?: string | null }) {
   const [health, { refetch }] = createResource(() => invoke<AgentHealth[]>("agent_health"));
+  onPacksChanged("agents", () => void reloadAdapters().then(() => refetch()));
   // Counts come from the stored accounts file, no subprocess behind them, so
   // fetching on every open is as cheap as the read it is.
   const [accountCounts, { refetch: refetchCounts }] = createResource(() =>

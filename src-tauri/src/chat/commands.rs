@@ -347,7 +347,7 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
         .then(|| crate::sessions::transcript_of(source, &agent_id))
         .flatten();
     let profile_id = resolve_profile(profile.as_deref(), found.as_ref().map(|t| t.profile.as_str()))?;
-    let profile_env = crate::accounts::profile_env(adapter, &crate::accounts::load(), Some(&profile_id))?;
+    let profile_env = crate::accounts::profile_env(&adapter, &crate::accounts::load(), Some(&profile_id))?;
 
     let ownership = {
         let want = Claim {
@@ -1572,8 +1572,8 @@ pub async fn chat_terminate_orphan(
 mod tests {
     use super::*;
 
-    fn claude_chat() -> &'static ChatConfig {
-        agents::find("claude").unwrap().chat.as_ref().unwrap()
+    fn claude_chat() -> ChatConfig {
+        agents::find("claude").unwrap().chat.unwrap()
     }
 
     /// **Which store a session's history comes out of is the adapter's answer,
@@ -1686,11 +1686,11 @@ mod tests {
     #[test]
     fn a_fresh_session_selects_its_own_id_and_a_resume_attaches_to_one() {
         let chat = claude_chat();
-        let fresh = build_args(chat, "abc-123", false, None, None, None, None, &[]);
+        let fresh = build_args(&chat, "abc-123", false, None, None, None, None, &[]);
         assert!(fresh.windows(2).any(|w| w == ["--session-id", "abc-123"]));
         assert!(!fresh.iter().any(|a| a == "--resume"));
 
-        let resumed = build_args(chat, "abc-123", true, None, None, None, None, &[]);
+        let resumed = build_args(&chat, "abc-123", true, None, None, None, None, &[]);
         assert!(resumed.windows(2).any(|w| w == ["--resume", "abc-123"]));
         assert!(!resumed.iter().any(|a| a == "--session-id"));
     }
@@ -1700,7 +1700,16 @@ mod tests {
     /// start.
     #[test]
     fn the_stream_json_protocol_flags_come_first() {
-        let args = build_args(claude_chat(), "s1", false, None, Some("claude-opus-5"), None, None, &[]);
+        let args = build_args(
+            &claude_chat(),
+            "s1",
+            false,
+            None,
+            Some("claude-opus-5"),
+            None,
+            None,
+            &[],
+        );
         let base = &claude_chat().base_args;
         assert_eq!(&args[..base.len()], base.as_slice());
     }
@@ -1708,7 +1717,7 @@ mod tests {
     #[test]
     fn model_mode_and_effort_all_reach_the_argv() {
         let args = build_args(
-            claude_chat(),
+            &claude_chat(),
             "s1",
             false,
             None,
@@ -1728,7 +1737,7 @@ mod tests {
     /// the id Tori chose, and the original transcript never saw the fork's turn.
     #[test]
     fn a_fork_reads_the_old_session_and_claims_the_new_one() {
-        let args = build_args(claude_chat(), "new-id", false, Some("old-id"), None, None, None, &[]);
+        let args = build_args(&claude_chat(), "new-id", false, Some("old-id"), None, None, None, &[]);
         assert!(args.windows(2).any(|w| w == ["--resume", "old-id"]));
         assert!(args.windows(2).any(|w| w == ["--session-id", "new-id"]));
         assert!(args.iter().any(|a| a == "--fork-session"));
@@ -1739,18 +1748,18 @@ mod tests {
     /// a resume flag left in would reuse the id the fork exists to avoid.
     #[test]
     fn naming_a_session_picks_exactly_one_form() {
-        let fork = build_args(claude_chat(), "new-id", true, Some("old-id"), None, None, None, &[]);
+        let fork = build_args(&claude_chat(), "new-id", true, Some("old-id"), None, None, None, &[]);
         // `resume: true` is ignored outright rather than layered on: a fork that
         // also resumed in place would write into the session it forked from.
         assert_eq!(fork.iter().filter(|a| *a == "--resume").count(), 1);
         assert!(fork.windows(2).all(|w| w != ["--resume", "new-id"]));
 
-        let resumed = build_args(claude_chat(), "s1", true, None, None, None, None, &[]);
+        let resumed = build_args(&claude_chat(), "s1", true, None, None, None, None, &[]);
         assert!(resumed.windows(2).any(|w| w == ["--resume", "s1"]));
         assert!(!resumed.iter().any(|a| a == "--fork-session"));
         assert!(!resumed.iter().any(|a| a == "--session-id"));
 
-        let fresh = build_args(claude_chat(), "s1", false, None, None, None, None, &[]);
+        let fresh = build_args(&claude_chat(), "s1", false, None, None, None, None, &[]);
         assert!(fresh.windows(2).any(|w| w == ["--session-id", "s1"]));
         assert!(!fresh.iter().any(|a| a == "--resume"));
     }
@@ -1844,7 +1853,7 @@ mod tests {
 
         let launch = crate::topic_home::launch_for(&store, &home).expect("a home chat");
         let dirs = with_member_roots(vec!["/attachments".into()], Some(&launch));
-        let args = build_args(claude_chat(), "s1", false, None, None, None, None, &dirs);
+        let args = build_args(&claude_chat(), "s1", false, None, None, None, None, &dirs);
         assert!(args.windows(2).any(|w| w == ["--add-dir", root_s.as_str()]));
         assert!(args.windows(2).any(|w| w == ["--add-dir", "/attachments"]));
 
@@ -1868,7 +1877,7 @@ mod tests {
     #[test]
     fn each_extra_directory_gets_its_own_flag() {
         let args = build_args(
-            claude_chat(),
+            &claude_chat(),
             "s1",
             false,
             None,
@@ -1896,13 +1905,13 @@ mod tests {
     /// can reach here.
     #[test]
     fn no_model_asked_for_means_no_model_flag() {
-        let args = build_args(claude_chat(), "s1", false, None, None, None, None, &[]);
+        let args = build_args(&claude_chat(), "s1", false, None, None, None, None, &[]);
         assert!(!args.iter().any(|a| a == "--model"));
 
         // And an id that no TOML mentions now reaches the argv, because the
         // catalogue it came from is what vouched for it.
         let args = build_args(
-            claude_chat(),
+            &claude_chat(),
             "s1",
             false,
             None,
@@ -1925,7 +1934,7 @@ mod tests {
     /// declared default and is asserted explicitly, and `chat_spawn` says so.
     #[test]
     fn an_undeclared_mode_downgrades_to_the_adapters_default_rather_than_vanishing() {
-        let args = build_args(claude_chat(), "s1", false, None, None, Some("no-such-mode"), None, &[]);
+        let args = build_args(&claude_chat(), "s1", false, None, None, Some("no-such-mode"), None, &[]);
         assert!(
             args.windows(2).any(|w| w == ["--permission-mode", "default"]),
             "expected the adapter's declared default in {args:?}"
@@ -1940,7 +1949,7 @@ mod tests {
     /// different session from the one the CLI would have started.
     #[test]
     fn no_mode_at_all_passes_no_mode_flag() {
-        let args = build_args(claude_chat(), "s1", false, None, None, None, None, &[]);
+        let args = build_args(&claude_chat(), "s1", false, None, None, None, None, &[]);
         assert!(!args.iter().any(|a| a == "--permission-mode"));
     }
 

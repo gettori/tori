@@ -11,7 +11,7 @@ pub mod validate;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError, RwLock};
 
 /// The five kinds of pack, each a folder under `packs/` named as its loader
 /// names it.
@@ -43,6 +43,36 @@ impl Kind {
             Kind::Themes => "json",
             _ => "toml",
         }
+    }
+}
+
+/// One kind's loaded packs, built on first use and replaced whole by a reload.
+/// A caller holds the `Arc` it was handed, so a reload never changes a list
+/// under someone mid-iteration.
+pub struct Registry<T>(RwLock<Option<Arc<Vec<T>>>>);
+
+impl<T> Default for Registry<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> Registry<T> {
+    pub const fn new() -> Self {
+        Registry(RwLock::new(None))
+    }
+
+    pub fn get(&self, build: impl FnOnce() -> Vec<T>) -> Arc<Vec<T>> {
+        if let Some(list) = self.0.read().unwrap_or_else(PoisonError::into_inner).as_ref() {
+            return list.clone();
+        }
+        self.set(build())
+    }
+
+    pub fn set(&self, list: Vec<T>) -> Arc<Vec<T>> {
+        let list = Arc::new(list);
+        *self.0.write().unwrap_or_else(PoisonError::into_inner) = Some(list.clone());
+        list
     }
 }
 
@@ -189,6 +219,31 @@ pub fn packs_load_errors() -> Vec<LoadError> {
             .cloned(),
     );
     out
+}
+
+/// Rebuild one kind from its folder, and its load errors with it. Themes are
+/// read fresh on every ask, so for them this only refreshes the errors.
+pub fn reload(kind: Kind) {
+    match kind {
+        Kind::Lsp => crate::lsp::registry::reload(),
+        Kind::Dap => crate::dap::registry::reload(),
+        Kind::Formatters => crate::format::registry::reload(),
+        Kind::Agents => crate::agents::reload(),
+        Kind::Themes => {
+            let _ = crate::themes::list_user_themes();
+        }
+    }
+}
+
+pub const CHANGED: &str = "packs:changed";
+
+/// Reload one kind and tell the frontend, which asks again for what it shows.
+/// A running language server or debugger keeps the config it started with.
+#[tauri::command(async)]
+pub fn packs_reload(app: tauri::AppHandle, kind: Kind) {
+    use tauri::Emitter;
+    reload(kind);
+    let _ = app.emit(CHANGED, kind);
 }
 
 /// What this launch's migration moved, for the notice.
