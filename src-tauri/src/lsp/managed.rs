@@ -254,7 +254,7 @@ fn make_executable(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn download(url: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn download(url: &str) -> Result<Vec<u8>, String> {
     // GitHub redirects a release download to its object store. HTTPS only, so
     // no hop can move the download onto plain HTTP.
     let agent = ureq::AgentBuilder::new()

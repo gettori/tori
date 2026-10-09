@@ -59,7 +59,7 @@ const REQUIRED_TOP_LEVEL: [&str; 5] = ["schemaVersion", "id", "label", "appearan
 /// Parse + validate one palette JSON source. `source` labels the origin in every
 /// error message. Names every missing top-level field in one message rather than
 /// only the first, the way a bare serde error would.
-fn load_theme_str(text: &str, source: &str) -> Result<Palette, String> {
+pub(crate) fn load_theme_str(text: &str, source: &str) -> Result<Palette, String> {
     let value: serde_json::Value = serde_json::from_str(text).map_err(|e| format!("{source}: {e}"))?;
 
     if let Some(object) = value.as_object() {

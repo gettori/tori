@@ -31,6 +31,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
 toml_edit = "0.20"
+# Signs the packs index (`tori packs-index`); Tori verifies it with the same
+# crate. pkcs8 and pem read the key `openssl genpkey -algorithm ed25519` writes.
+ed25519-dalek = { version = "2", features = ["pkcs8", "pem"] }
 # A pack's version is the sha256 of its bytes (src/packs/index_rows.rs), and
 # the Keychain service name `claude` derives for a non-default
 # CLAUDE_CONFIG_DIR is `sha256(dir)[:8]`.

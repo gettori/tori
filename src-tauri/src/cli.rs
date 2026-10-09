@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 
 use crate::rpc::client::{self, Client, Found};
 
-const COMMANDS: [&str; 17] = [
+const COMMANDS: [&str; 19] = [
     "sessions",
     "projects",
     "session",
@@ -26,6 +26,8 @@ const COMMANDS: [&str; 17] = [
     "pr",
     "autopilot",
     "mcp",
+    "validate-pack",
+    "packs-index",
 ];
 
 const USAGE: &str = "usage:
@@ -62,7 +64,9 @@ const USAGE: &str = "usage:
   tori autopilot project [--project <path>] [--ships pr|local] [--autonomy ask-everything|auto-until-outward]
                          [--pickup ask|auto] [--agent <id>] [--account <id>] [--model <id>] [--issues <json>] [--json]
   tori autopilot hold resolve <id> [--json]
-  tori mcp";
+  tori mcp
+  tori validate-pack <file|dir>... [--assets] [--registry] [--json]
+  tori packs-index <dir> [--sign-key-env <name> --key-id <id>]";
 
 pub fn is_cli() -> bool {
     std::env::args()
@@ -94,6 +98,7 @@ enum Failure {
     Client(client::ClientError),
     Io(io::Error),
     Unanswered(String),
+    Refused(String),
 }
 
 impl std::fmt::Display for Failure {
@@ -103,6 +108,7 @@ impl std::fmt::Display for Failure {
             Failure::Client(e) => write!(f, "{e}"),
             Failure::Io(e) => write!(f, "{e}"),
             Failure::Unanswered(id) => write!(f, "no answer yet for {id}"),
+            Failure::Refused(message) => write!(f, "{message}"),
         }
     }
 }
@@ -156,6 +162,8 @@ fn dispatch(args: &[String]) -> Result<(), Failure> {
         "pr" => pr(rest),
         "autopilot" => autopilot(rest),
         "mcp" => Ok(crate::mcp::run()?),
+        "validate-pack" => validate_pack(rest),
+        "packs-index" => packs_index(rest),
         other => Err(usage(format!("unknown command {other}"))),
     }
 }
@@ -534,6 +542,86 @@ fn session_answer(args: &[String]) -> Result<(), Failure> {
     let params = answer_params(args)?;
     connect()?.call("session.answer", params)?;
     Ok(())
+}
+
+fn validate_pack(args: &[String]) -> Result<(), Failure> {
+    use crate::packs::validate::{check_file, check_remote, collect, Remote};
+
+    let p = Parsed::new(args, &[], &["assets", "registry", "json"])?;
+    if p.positional.is_empty() {
+        return Err(usage("validate-pack needs a pack file or a directory of them"));
+    }
+    let paths: Vec<std::path::PathBuf> = p.positional.iter().map(Into::into).collect();
+    let mut results = Vec::new();
+    for found in collect(&paths) {
+        let mut checked = match found {
+            Ok((path, kind)) => check_file(&path, kind),
+            Err(refused) => refused,
+        };
+        if checked.ok() {
+            for remote in &checked.remotes {
+                let wanted = match remote {
+                    Remote::Asset { .. } => p.has("assets"),
+                    Remote::Npm { .. } | Remote::Pypi { .. } => p.has("registry"),
+                };
+                if wanted {
+                    if let Err(e) = check_remote(remote) {
+                        checked.errors.push(e);
+                    }
+                }
+            }
+        }
+        results.push(checked);
+    }
+
+    let failed = results.iter().filter(|c| !c.ok()).count();
+    let mut out = io::stdout().lock();
+    if p.has("json") {
+        let rows: Vec<Value> = results
+            .iter()
+            .map(|c| json!({ "path": c.path, "kind": c.kind, "id": c.id, "ok": c.ok(), "errors": c.errors }))
+            .collect();
+        writeln!(out, "{}", Value::Array(rows))?;
+    } else {
+        for checked in results.iter().filter(|c| !c.ok()) {
+            for error in &checked.errors {
+                eprintln!("{}: {error}", checked.path.display());
+            }
+        }
+        if failed == 0 {
+            writeln!(out, "{} packs ok", results.len())?;
+        }
+    }
+    if failed > 0 {
+        return Err(Failure::Refused(format!("{failed} of {} packs failed", results.len())));
+    }
+    Ok(())
+}
+
+fn packs_index(args: &[String]) -> Result<(), Failure> {
+    use crate::packs::publish::{write, Signing};
+
+    let p = Parsed::new(args, &["sign-key-env", "key-id"], &[])?;
+    let [dir] = p.positional.as_slice() else {
+        return Err(usage("packs-index needs exactly one packs directory"));
+    };
+    let signing = match (p.value("sign-key-env"), p.value("key-id")) {
+        (None, None) => None,
+        (Some(env), Some(key_id)) => {
+            let key_pem = std::env::var(env)
+                .ok()
+                .filter(|v| !v.trim().is_empty())
+                .ok_or_else(|| Failure::Refused(format!("${env} holds no signing key")))?;
+            Some(Signing {
+                key_pem,
+                key_id: key_id.to_string(),
+            })
+        }
+        _ => return Err(usage("--sign-key-env and --key-id go together")),
+    };
+    let rows = write(std::path::Path::new(dir), signing.as_ref()).map_err(Failure::Refused)?;
+    let signed = if signing.is_some() { ", signed" } else { "" };
+    Ok(writeln!(io::stdout().lock(), "wrote index.json, {rows} rows{signed}")?)
 }
 
 fn whoami(args: &[String]) -> Result<(), Failure> {
