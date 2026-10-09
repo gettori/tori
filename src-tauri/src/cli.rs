@@ -545,6 +545,7 @@ fn session_answer(args: &[String]) -> Result<(), Failure> {
 }
 
 fn validate_pack(args: &[String]) -> Result<(), Failure> {
+    use crate::packs::index_rows::ICONS;
     use crate::packs::validate::{check_file, check_remote, collect, Remote};
 
     let p = Parsed::new(args, &[], &["assets", "registry", "json"])?;
@@ -575,6 +576,11 @@ fn validate_pack(args: &[String]) -> Result<(), Failure> {
     }
 
     let failed = results.iter().filter(|c| !c.ok()).count();
+    let icons = results.iter().filter(|c| c.kind == Some(ICONS)).count();
+    let checked = match icons {
+        0 => format!("{} packs", results.len()),
+        _ => format!("{} packs and {icons} icons", results.len() - icons),
+    };
     let mut out = io::stdout().lock();
     if p.has("json") {
         let rows: Vec<Value> = results
@@ -589,11 +595,11 @@ fn validate_pack(args: &[String]) -> Result<(), Failure> {
             }
         }
         if failed == 0 {
-            writeln!(out, "{} packs ok", results.len())?;
+            writeln!(out, "{checked} ok")?;
         }
     }
     if failed > 0 {
-        return Err(Failure::Refused(format!("{failed} of {} packs failed", results.len())));
+        return Err(Failure::Refused(format!("{failed} of {checked} failed")));
     }
     Ok(())
 }

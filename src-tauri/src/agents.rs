@@ -714,6 +714,9 @@ pub struct AgentAdapter {
     /// is that a v3 file carrying `icon` is rejected by a build that predates
     /// the key, which is the same trade every additive key here has taken.
     pub icon: Option<String>,
+    /// `packs/icons/<id>.svg` when there is one, drawn for an agent this build
+    /// has no mark for. Only ever used as a CSS mask, never read as markup.
+    pub icon_file: Option<String>,
     pub program: String,
     pub base_args: Vec<String>,
     pub yolo_args: Vec<String>,
@@ -1570,6 +1573,7 @@ pub(crate) fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter,
         id: raw.id,
         label: raw.label,
         icon: raw.icon,
+        icon_file: None,
         program: raw.launch.program,
         base_args: raw.launch.base_args,
         yolo_args: raw.launch.yolo_args,
@@ -1736,6 +1740,12 @@ fn build_registry_from(user_dir: &Path) -> (Vec<AgentAdapter>, Vec<packs::LoadEr
 
     let mut list: Vec<AgentAdapter> = by_id.into_values().collect();
     list.sort_by(|a, b| a.id.cmp(&b.id));
+    if let Some(packs_dir) = user_dir.parent() {
+        for adapter in &mut list {
+            let icon = packs::icon_path(packs_dir, &adapter.id);
+            adapter.icon_file = icon.is_file().then(|| icon.display().to_string());
+        }
+    }
     (list, errors)
 }
 

@@ -21,6 +21,18 @@
     color: var(--fg-muted);
   }
 
+  /* A pack's icon, shape only: the mask takes its alpha and the text colour
+     fills it, the same treatment the bundled marks get from currentColor.
+     Sized like a mark, at 0.7 of the box. */
+  .file {
+    --icon: none;
+    width: calc(var(--glyph-size) * 0.7);
+    height: calc(var(--glyph-size) * 0.7);
+    background-color: currentColor;
+    -webkit-mask: var(--icon) center / contain no-repeat;
+    mask: var(--icon) center / contain no-repeat;
+  }
+
   /* Mono, like every other machine-supplied string in the panel, and sized off
      the box so one rule covers every call site's `size`. */
   .letter {
