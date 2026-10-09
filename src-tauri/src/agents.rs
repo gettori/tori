@@ -1784,6 +1784,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn every_bundled_pack_is_measured() {
+        for (source, text) in BUNDLED {
+            // Unmeasurable as they stand: see the header of each file.
+            if ["bundled:gemini", "bundled:kimi"].contains(&source) {
+                continue;
+            }
+            let pack = load_adapter_str(text, source).unwrap();
+            assert!(pack.verified_against.is_some(), "{source} has no verified_against");
+            assert!(pack.verified_on.is_some(), "{source} has no verified_on");
+        }
+    }
+
+    #[test]
     fn every_bundled_pack_carries_metadata() {
         for (source, text) in BUNDLED {
             let meta = load_adapter_str(text, source).unwrap().meta;

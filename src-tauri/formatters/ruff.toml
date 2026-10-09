@@ -10,6 +10,7 @@ contributor = { name = "Tori", github = "gettori" }
 extensions = ["py", "pyi"]
 
 verified_against = "ruff 0.16.8"
+verified_on = "2026-09-21"
 
 [markers]
 files = ["ruff.toml", ".ruff.toml"]

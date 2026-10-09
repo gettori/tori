@@ -29,6 +29,7 @@ activation_markers = [
 ]
 
 verified_against = "vscode-langservers-extracted 4.10.0"
+verified_on = "2026-09-21"
 
 # Loads the project's own `eslint`, its config and its plugins.
 runs_project_code = true

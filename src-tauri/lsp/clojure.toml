@@ -6,6 +6,8 @@ label = "Clojure"
 description = "Clojure, ClojureScript and EDN, through clojure-lsp"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "clojure-lsp 2026.07.06-14.34.19"
+verified_on = "2026-10-09"
 root_markers = ["deps.edn", "project.clj", "shadow-cljs.edn", "bb.edn", ".git"]
 request_timeout_ms = 60000
 

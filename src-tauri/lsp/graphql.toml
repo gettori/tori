@@ -7,6 +7,8 @@ label = "GraphQL"
 description = "GraphQL schemas and queries, through the GraphQL language service"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "graphql-language-service-cli 3.5.0"
+verified_on = "2026-10-09"
 root_markers = [".graphqlrc", ".graphqlrc.yml", ".graphqlrc.json", "graphql.config.js", "graphql.config.ts", "package.json", ".git"]
 
 # A `graphql.config.js` or `.ts` is loaded as code.

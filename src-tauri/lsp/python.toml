@@ -8,6 +8,8 @@ label = "Python (pyright)"
 description = "Python type checking and navigation, through pyright"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "pyright 1.1.414"
+verified_on = "2026-10-09"
 root_markers = ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "pyrightconfig.json", ".git"]
 request_timeout_ms = 30000
 

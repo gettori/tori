@@ -6,6 +6,8 @@ label = "Astro"
 description = "Astro components, through the Astro language server"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "@astrojs/language-server 2.17.2"
+verified_on = "2026-10-09"
 root_markers = ["package.json", ".git"]
 
 # Loads the project's own `astro` package for its types, and runs the project's

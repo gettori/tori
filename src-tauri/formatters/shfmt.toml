@@ -12,6 +12,7 @@ contributor = { name = "Tori", github = "gettori" }
 extensions = ["sh", "bash"]
 
 verified_against = "shfmt v3.14.1"
+verified_on = "2026-09-21"
 
 [launch]
 kind = "path"

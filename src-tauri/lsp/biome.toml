@@ -19,6 +19,7 @@ root_markers = [".git"]
 activation_markers = ["biome.json", "biome.jsonc"]
 
 verified_against = "biome 2.5.14"
+verified_on = "2026-09-21"
 
 [languages]
 ts = "typescript"

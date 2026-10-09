@@ -7,6 +7,8 @@ label = "Java"
 description = "Java, through the Eclipse JDT language server"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "jdtls 1.61.0"
+verified_on = "2026-10-09"
 root_markers = ["pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", ".git"]
 request_timeout_ms = 120000
 

@@ -19,6 +19,7 @@ activation_markers = ["ruff.toml", ".ruff.toml"]
 activation_keys = [{ file = "pyproject.toml", key = "tool.ruff" }]
 
 verified_against = "ruff 0.16.8"
+verified_on = "2026-09-22"
 
 [languages]
 py = "python"
