@@ -4,6 +4,7 @@
 pub mod index_rows;
 pub mod installed;
 pub mod migrate;
+pub mod provenance;
 pub mod publish;
 pub mod snapshot;
 pub mod validate;
@@ -85,12 +86,16 @@ pub fn kind_dir(kind: Kind) -> PathBuf {
     dir().join(kind.folder())
 }
 
-/// Whether `id` names a pack this build ships.
-pub fn is_bundled(kind: Kind, id: &str) -> bool {
+/// The hash of the pack this build ships under `id`, if it ships one.
+pub fn bundled_sha(kind: Kind, id: &str) -> Option<String> {
     match kind {
-        Kind::Dap => crate::dap::registry::is_bundled(id),
-        _ => snapshot::text(kind.folder(), id).is_some(),
+        Kind::Dap => crate::dap::registry::bundled_text(id).map(sha256),
+        _ => snapshot::sha256(kind.folder(), id).map(str::to_string),
     }
+}
+
+pub fn is_bundled(kind: Kind, id: &str) -> bool {
+    bundled_sha(kind, id).is_some()
 }
 
 pub fn sha256(text: &str) -> String {
@@ -101,6 +106,9 @@ pub fn sha256(text: &str) -> String {
 /// What a file carrying a bundled id is told to do instead.
 pub const FIX_NEW_ID: &str = "copy it under your own id and switch the bundled one off";
 
+/// What a recorded file that was edited since is told to do.
+pub const FIX_MODIFIED: &str = "restore it from the catalog or delete it";
+
 /// A file Tori read and would not load, with what to do about it. `kind` is
 /// `None` for `installed.json`, which belongs to no one kind.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -110,6 +118,8 @@ pub struct LoadError {
     pub file: String,
     pub message: String,
     pub fix: Option<String>,
+    /// The id `packs_remove` takes, for a recorded file edited since.
+    pub removable: Option<String>,
 }
 
 impl LoadError {
@@ -122,6 +132,7 @@ impl LoadError {
             file: file.to_string(),
             message: message.to_string(),
             fix: fix.map(str::to_string),
+            removable: None,
         }
     }
 }
@@ -136,37 +147,6 @@ pub fn report(kind: Kind, errors: Vec<LoadError>) {
     ERRORS.lock().unwrap_or_else(|e| e.into_inner()).insert(kind, errors);
 }
 
-/// The recorded installs beside a kind folder, or none when the record cannot
-/// be read. None refuses every file that carries a bundled id, which is the
-/// safe side; `packs_load_errors` says why.
-pub fn installed_beside(kind_dir: &Path) -> installed::Installed {
-    kind_dir
-        .parent()
-        .and_then(|packs| installed::read_at(&packs.join(installed::FILE)).ok())
-        .unwrap_or_default()
-}
-
-/// A user file may carry a bundled id only as a pack Tori recorded and that
-/// nobody has edited since.
-pub fn check_bundled_id(
-    kind: Kind,
-    id: &str,
-    text: &str,
-    source: &str,
-    installed: &installed::Installed,
-) -> Result<(), String> {
-    if !is_bundled(kind, id) {
-        return Ok(());
-    }
-    match installed.find(kind, id) {
-        Some(record) if record.sha256 == sha256(text) => Ok(()),
-        Some(_) => Err(format!(
-            "{source}: this override of the bundled `{id}` was edited after Tori recorded it"
-        )),
-        None => Err(format!("{source}: `{id}` is the id of a bundled pack")),
-    }
-}
-
 /// The files in one kind's folder, in name order so which of two conflicting
 /// files is refused never depends on how the filesystem lists them.
 pub fn user_files(dir: &Path, kind: Kind) -> Vec<PathBuf> {
@@ -178,22 +158,114 @@ pub fn user_files(dir: &Path, kind: Kind) -> Vec<PathBuf> {
     files
 }
 
-/// One user file through its kind's string loader and the rules every user
-/// file meets: named after its id, and no bundled id unless recorded.
-pub fn load_user_file<T>(
+/// One kind folder's user files, judged against what Tori recorded installing
+/// and the last catalog index it fetched.
+pub struct UserDir {
     kind: Kind,
-    path: &Path,
-    installed: &installed::Installed,
-    load: impl Fn(&str, &str) -> Result<T, String>,
-    id: impl Fn(&T) -> &str,
-) -> Result<T, LoadError> {
-    let source = path.to_string_lossy().into_owned();
-    let fail = |message: String, fix: Option<&str>| LoadError::new(Some(kind), &source, &message, fix);
-    let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string(), None))?;
-    let pack = load(&text, &source).map_err(|e| fail(e, None))?;
-    check_stem(&source, id(&pack)).map_err(|e| fail(e, None))?;
-    check_bundled_id(kind, id(&pack), &text, &source, installed).map_err(|e| fail(e, Some(FIX_NEW_ID)))?;
-    Ok(pack)
+    record_path: PathBuf,
+    /// Empty when the record cannot be read, which refuses every file with a
+    /// bundled id: the safe side. `packs_load_errors` says why.
+    pub installed: installed::Installed,
+    readable: bool,
+    cached: provenance::Cached,
+    adopted: Vec<installed::Record>,
+    now: u64,
+}
+
+impl UserDir {
+    pub fn open(kind: Kind, kind_dir: &Path) -> Self {
+        let packs = kind_dir.parent().unwrap_or(kind_dir);
+        let record_path = packs.join(installed::FILE);
+        let read = installed::read_at(&record_path);
+        UserDir {
+            kind,
+            readable: read.is_ok(),
+            installed: read.unwrap_or_default(),
+            cached: provenance::read_cache(packs),
+            record_path,
+            adopted: Vec::new(),
+            now: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or_default(),
+        }
+    }
+
+    /// One file through its kind's string loader and the rules every user file
+    /// meets: named after its id, no bundled id unless recorded, and no
+    /// recorded file edited since.
+    pub fn load<T>(
+        &mut self,
+        path: &Path,
+        load: impl Fn(&str, &str) -> Result<T, String>,
+        id: impl Fn(&T) -> &str,
+    ) -> Result<(T, provenance::Provenance), LoadError> {
+        use provenance::{Class, Provenance, Source};
+        let kind = self.kind;
+        let source = path.to_string_lossy().into_owned();
+        let fail = |message: String, fix: Option<&str>| LoadError::new(Some(kind), &source, &message, fix);
+        let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string(), None))?;
+        let pack = load(&text, &source).map_err(|e| fail(e, None))?;
+        let pack_id = id(&pack).to_string();
+        check_stem(&source, &pack_id).map_err(|e| fail(e, None))?;
+        let sha = sha256(&text);
+        let bundled = bundled_sha(kind, &pack_id);
+        let c = provenance::classify(kind, &pack_id, &sha, &self.installed, bundled.as_deref(), &self.cached);
+        let source_tag = match c.class {
+            Class::Modified => {
+                return Err(LoadError {
+                    removable: Some(pack_id),
+                    ..fail(
+                        format!("{source}: this file was changed after Tori recorded it"),
+                        Some(FIX_MODIFIED),
+                    )
+                })
+            }
+            Class::BundledId => {
+                return Err(fail(
+                    format!("{source}: `{pack_id}` is the id of a bundled pack"),
+                    Some(FIX_NEW_ID),
+                ))
+            }
+            Class::Adopted if !self.readable => Source::Custom,
+            Class::Adopted => {
+                let record = installed::Record {
+                    kind,
+                    id: pack_id,
+                    sha256: sha,
+                    source: installed::Source::Catalog,
+                    packs_commit: self.cached.packs_commit.clone(),
+                    installed_at: self.now,
+                    bundled_sha256: None,
+                };
+                self.installed.record(record.clone());
+                self.adopted.push(record);
+                Source::Catalog
+            }
+            Class::Catalog => Source::Catalog,
+            Class::Override => Source::Override,
+            Class::Custom => Source::Custom,
+        };
+        let provenance = Provenance {
+            source: source_tag,
+            update_available: c.update_available,
+            catalog_conflict: c.catalog_conflict,
+        };
+        Ok((pack, provenance))
+    }
+
+    /// Write the files adopted along the way into the record, or say why not.
+    pub fn finish(self) -> Option<LoadError> {
+        if self.adopted.is_empty() {
+            return None;
+        }
+        let adopted = self.adopted;
+        installed::update(&self.record_path, |record| {
+            adopted.into_iter().for_each(|r| record.record(r))
+        })
+        .err()
+        .map(|e| LoadError::new(None, &self.record_path.to_string_lossy(), &e, None))
+    }
 }
 
 /// Every load error, each registry built first so its errors are in.
@@ -244,6 +316,36 @@ pub fn packs_reload(app: tauri::AppHandle, kind: Kind) {
     use tauri::Emitter;
     reload(kind);
     let _ = app.emit(CHANGED, kind);
+}
+
+/// Delete a pack Tori recorded and the record with it, then reload its kind.
+/// A file Tori never recorded is the user's own, and is theirs to delete.
+#[tauri::command(async)]
+pub fn packs_remove(app: tauri::AppHandle, kind: Kind, id: String) -> Result<(), String> {
+    use tauri::Emitter;
+    remove_at(&dir(), kind, &id)?;
+    reload(kind);
+    let _ = app.emit(CHANGED, kind);
+    Ok(())
+}
+
+fn remove_at(packs: &Path, kind: Kind, id: &str) -> Result<(), String> {
+    check_id(id, "packs_remove")?;
+    let record_path = packs.join(installed::FILE);
+    if installed::read_at(&record_path)?.find(kind, id).is_none() {
+        return Err(format!(
+            "`{id}` is not a pack Tori installed, so it is yours to delete by hand"
+        ));
+    }
+    let file = packs.join(kind.folder()).join(format!("{id}.{}", kind.ext()));
+    match std::fs::remove_file(&file) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(format!("{}: {e}", file.display())),
+    }
+    installed::update(&record_path, |record| {
+        record.packs.retain(|r| !(r.kind == kind && r.id == id))
+    })
 }
 
 /// What this launch's migration moved, for the notice.

@@ -206,6 +206,7 @@ pub struct LspServer {
     /// `"bundled:<id>"` for a built-in, or the absolute path of the user TOML
     /// that defined (or whole-replaced) it, so a forgotten override is visible.
     pub source: String,
+    pub provenance: crate::packs::provenance::Provenance,
 }
 
 impl LspServer {
@@ -568,6 +569,7 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
         activation_keys,
         install,
         source: source.to_string(),
+        provenance: Default::default(),
     })
 }
 
@@ -669,10 +671,11 @@ fn build_registry_from(user_dir: &Path) -> (Vec<LspServer>, Vec<LoadError>) {
         }
     }
 
-    let installed = packs::installed_beside(user_dir);
+    let mut user = packs::UserDir::open(Kind::Lsp, user_dir);
     for path in packs::user_files(user_dir, Kind::Lsp) {
-        let loaded = packs::load_user_file(Kind::Lsp, &path, &installed, load_server_str, |s| &s.id);
-        let admitted = loaded.and_then(|s| {
+        let loaded = user.load(&path, load_server_str, |s| &s.id);
+        let admitted = loaded.and_then(|(s, provenance)| {
+            let s = LspServer { provenance, ..s };
             admit(&mut list, s).map_err(|e| LoadError::new(Some(Kind::Lsp), &path.to_string_lossy(), &e, None))
         });
         if let Err(e) = admitted {
@@ -680,6 +683,7 @@ fn build_registry_from(user_dir: &Path) -> (Vec<LspServer>, Vec<LoadError>) {
         }
     }
 
+    errors.extend(user.finish());
     list.sort_by(|a, b| a.id.cmp(&b.id));
     (list, errors)
 }
@@ -1196,6 +1200,58 @@ version = "1.2.3"
             first.iter().all(|s| s.id != "demo"),
             "a list already handed out never changes"
         );
+    }
+
+    #[test]
+    fn every_loaded_server_says_where_it_came_from_and_an_edited_catalog_file_is_refused() {
+        use crate::packs::provenance::Source;
+        let dir = temp_dir("provenance");
+        let mine = VALID.replace("\"demo\"", "\"mine\"");
+        let theirs = VALID.replace("\"demo\"", "\"theirs\"").replace("demo = ", "theirs = ");
+        std::fs::write(dir.join("mine.toml"), &mine).unwrap();
+        std::fs::write(dir.join("theirs.toml"), &theirs).unwrap();
+        packs::record_override(&dir, Kind::Lsp, "theirs", &theirs);
+        let (list, errors) = build_registry_from(&dir);
+        let source = |id: &str| list.iter().find(|s| s.id == id).map(|s| s.provenance.source);
+        assert_eq!(source("mine"), Some(Source::Custom));
+        assert_eq!(source("theirs"), Some(Source::Override));
+        assert_eq!(source("rust"), Some(Source::Bundled));
+        assert!(errors.is_empty(), "{errors:?}");
+
+        std::fs::write(dir.join("theirs.toml"), theirs.replace("Demo", "Edited")).unwrap();
+        let (list, errors) = build_registry_from(&dir);
+        assert!(list.iter().all(|s| s.id != "theirs"), "a modified file is not loaded");
+        assert_eq!(errors[0].fix.as_deref(), Some(packs::FIX_MODIFIED));
+    }
+
+    #[test]
+    fn a_file_matching_a_cached_catalog_row_is_recorded_and_a_different_one_is_flagged() {
+        use crate::packs::provenance::Source;
+        let dir = temp_dir("adopt");
+        let root = dir.parent().unwrap();
+        let adopted = VALID.replace("\"demo\"", "\"fresh\"");
+        let clash = VALID.replace("\"demo\"", "\"clash\"").replace("demo = ", "clash = ");
+        std::fs::write(dir.join("fresh.toml"), &adopted).unwrap();
+        std::fs::write(dir.join("clash.toml"), &clash).unwrap();
+        let row = |id: &str, sha: String| serde_json::json!({ "kind": "lsp", "id": id, "sha256": sha });
+        let cache = serde_json::json!({ "index": { "packs_commit": "abc", "rows": [
+            row("fresh", packs::sha256(&adopted)),
+            row("clash", packs::sha256("something else")),
+        ]}});
+        std::fs::write(root.join("catalog.json"), cache.to_string()).unwrap();
+
+        let (list, errors) = build_registry_from(&dir);
+        assert!(errors.is_empty(), "{errors:?}");
+        let fresh = list.iter().find(|s| s.id == "fresh").unwrap();
+        assert_eq!(fresh.provenance.source, Source::Catalog);
+        let record = packs::installed::read_at(&root.join("installed.json")).unwrap();
+        assert_eq!(
+            record.find(Kind::Lsp, "fresh").unwrap().packs_commit.as_deref(),
+            Some("abc")
+        );
+        let clash = list.iter().find(|s| s.id == "clash").unwrap();
+        assert_eq!(clash.provenance.source, Source::Custom);
+        assert!(clash.provenance.catalog_conflict && !clash.provenance.update_available);
     }
 
     #[test]
