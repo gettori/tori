@@ -88,7 +88,7 @@ const ALLOWLIST = new Map([
 // goes stale the moment a theme is added, and the staleness is silent.
 const ALLOWLIST_PREFIXES = new Map([
   [
-    "src/theme/palettes/",
+    "src-tauri/packs/themes/",
     "theme palettes: flat hex primitives ARE the file's content, and roles.ts derives every semantic role from them",
   ],
 ]);
@@ -284,7 +284,7 @@ if (violations.length > 0) {
 // to the generated region of tokens.css - which would put the boot fallback and
 // the runtime theme at odds, visible only as a flash of the wrong colour.
 
-const PALETTE_DIR = join(SRC, "theme/palettes");
+const PALETTE_DIR = join(ROOT, "src-tauri/packs/themes");
 const palettes = readdirSync(PALETTE_DIR)
   .filter((f) => f.endsWith(".json"))
   .map((f) => [f.replace(/\.json$/, ""), JSON.parse(readFileSync(join(PALETTE_DIR, f), "utf8"))]);

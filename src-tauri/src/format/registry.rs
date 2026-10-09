@@ -374,17 +374,9 @@ pub fn load_formatter_str(text: &str, source: &str) -> Result<Formatter, String>
     })
 }
 
-pub(crate) const BUILTINS: &[(&str, &str)] = &[
-    ("bundled:biome", include_str!("../../formatters/biome.toml")),
-    ("bundled:prettier", include_str!("../../formatters/prettier.toml")),
-    ("bundled:oxfmt", include_str!("../../formatters/oxfmt.toml")),
-    ("bundled:ruff", include_str!("../../formatters/ruff.toml")),
-    ("bundled:black", include_str!("../../formatters/black.toml")),
-    ("bundled:gofmt", include_str!("../../formatters/gofmt.toml")),
-    ("bundled:shfmt", include_str!("../../formatters/shfmt.toml")),
-    ("bundled:stylua", include_str!("../../formatters/stylua.toml")),
-    ("bundled:vite-plus", include_str!("../../formatters/vite-plus.toml")),
-];
+pub(crate) fn builtins() -> impl Iterator<Item = (String, &'static str)> {
+    packs::snapshot::bundled("formatters")
+}
 
 fn load_formatter_file(text: &str, source: &str) -> Result<Formatter, String> {
     let formatter = load_formatter_str(text, source)?;
@@ -400,8 +392,8 @@ fn user_formatters_dir() -> PathBuf {
 fn build_registry_from(user_dir: &Path) -> Vec<Formatter> {
     let mut by_id: BTreeMap<String, Formatter> = BTreeMap::new();
 
-    for (source, text) in BUILTINS {
-        match load_formatter_file(text, source) {
+    for (source, text) in builtins() {
+        match load_formatter_file(text, &source) {
             Ok(f) => {
                 by_id.insert(f.id.clone(), f);
             }
@@ -465,8 +457,8 @@ args = ["--stdin", "{file}"]
 
     #[test]
     fn every_bundled_pack_is_measured() {
-        for (source, text) in BUILTINS {
-            let pack = load_formatter_str(text, source).unwrap();
+        for (source, text) in builtins() {
+            let pack = load_formatter_str(text, &source).unwrap();
             assert!(pack.verified_against.is_some(), "{source} has no verified_against");
             assert!(pack.verified_on.is_some(), "{source} has no verified_on");
         }
@@ -474,8 +466,8 @@ args = ["--stdin", "{file}"]
 
     #[test]
     fn every_bundled_pack_carries_metadata() {
-        for (source, text) in BUILTINS {
-            let meta = load_formatter_str(text, source).unwrap().meta;
+        for (source, text) in builtins() {
+            let meta = load_formatter_str(text, &source).unwrap().meta;
             assert!(meta.description.is_some(), "{source} has no description");
             assert!(meta.contributor.is_some(), "{source} has no contributor");
             assert!(meta.license.is_some(), "{source} has no license");
@@ -524,8 +516,8 @@ args = ["--stdin", "{file}"]
 
     #[test]
     fn every_bundled_formatter_parses() {
-        for (source, text) in BUILTINS {
-            load_formatter_str(text, source).unwrap_or_else(|e| panic!("{e}"));
+        for (source, text) in builtins() {
+            load_formatter_str(text, &source).unwrap_or_else(|e| panic!("{e}"));
         }
     }
 
@@ -671,6 +663,6 @@ args = ["--stdin", "{file}"]
         let list = build_registry_from(&dir);
         let biome = list.iter().find(|f| f.id == "biome").expect("must not disappear");
         assert_eq!(biome.label, "Biome");
-        assert_eq!(list.len(), BUILTINS.len());
+        assert_eq!(list.len(), builtins().count());
     }
 }

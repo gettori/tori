@@ -174,10 +174,10 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    /// The one bundled palette Rust can see, used as a known-good fixture. It is
-    /// the same file the frontend registry imports, so a schema change that
-    /// breaks the loader breaks this test rather than only user installs.
-    const TORI_DARK: &str = include_str!("../../src/theme/palettes/tori-dark.json");
+    /// A bundled palette as a known-good fixture. It is the same file the
+    /// frontend registry imports, so a schema change that breaks the loader
+    /// breaks this test rather than only user installs.
+    const TORI_DARK: &str = include_str!("../packs/themes/tori-dark.json");
 
     fn tmp_dir() -> PathBuf {
         static SEQ: AtomicU64 = AtomicU64::new(0);

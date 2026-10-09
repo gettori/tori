@@ -124,7 +124,8 @@ wants `needs_you = false`.
 
 ## File location and loading
 
-- Bundled adapters: compiled into Tori, not user-editable.
+- Bundled adapters: `src-tauri/packs/agents/*.toml`, compiled into Tori, not
+  user-editable.
 - User adapters: every `*.toml` file directly inside `~/.config/tori/agents/`.
 - Loaded once at startup (not live-watched - restart Tori after editing).
 - A user file whose `id` matches a bundled adapter **whole-replaces** it: the

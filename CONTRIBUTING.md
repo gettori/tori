@@ -1,8 +1,8 @@
 # Contributing
 
 Thanks for looking. Tori is open source, and **pull requests are open for the
-adapters**: the bundled TOML files in `src-tauri/agents/`, the captures they
-were measured against under `dev/fixtures/`, and
+adapters**: the bundled TOML files in `src-tauri/packs/agents/`, the captures
+they were measured against under `dev/fixtures/`, and
 [`docs/ADAPTERS.md`](docs/ADAPTERS.md). That is the part of Tori that breaks
 most often, since the agent CLIs ship weekly, and the part someone else can own
 without touching the core. Repairs to a bundled adapter and new adapters are

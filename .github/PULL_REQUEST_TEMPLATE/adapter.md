@@ -1,5 +1,5 @@
 <!-- Keep the sections; delete the guidance comments. This template is for
-     changes to src-tauri/agents/*.toml, dev/fixtures/ and docs/ADAPTERS.md.
+     changes to src-tauri/packs/agents/*.toml, dev/fixtures/ and docs/ADAPTERS.md.
      Anything else uses the default template. -->
 
 ## Adapter

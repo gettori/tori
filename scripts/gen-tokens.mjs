@@ -26,7 +26,7 @@ const BEGIN = "/* ---- BEGIN GENERATED ROLE TOKENS. Run scripts/gen-tokens.mjs; 
 const END = "/* ---- END GENERATED ROLE TOKENS ---- */";
 
 const PALETTES = ["tori-dark", "tori-light"].map((id) =>
-  JSON.parse(readFileSync(join(ROOT, `src/theme/palettes/${id}.json`), "utf8")),
+  JSON.parse(readFileSync(join(ROOT, `src-tauri/packs/themes/${id}.json`), "utf8")),
 );
 
 /** Group roles for readability, in the order roles.ts declares them. */
@@ -51,7 +51,7 @@ function render() {
   return [
     `  ${BEGIN}`,
     "",
-    "  /* Derived from src/theme/palettes/*.json by src/theme/roles.ts. Values are",
+    "  /* Derived from src-tauri/packs/themes/*.json by src/theme/roles.ts. Values are",
     "     literal because this is a fallback: it must paint correctly before any",
     "     script runs, so it cannot depend on the runtime that resolves palettes. */",
     "",

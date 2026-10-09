@@ -1,5 +1,5 @@
 <!-- Keep the sections; delete the guidance comments.
-     Touching an adapter (src-tauri/agents, dev/fixtures, docs/ADAPTERS.md)?
+     Touching an adapter (src-tauri/packs/agents, dev/fixtures, docs/ADAPTERS.md)?
      Use the adapter template: add ?template=adapter.md to this page's URL
      (&template= if it already has a ?) and reload. -->
 

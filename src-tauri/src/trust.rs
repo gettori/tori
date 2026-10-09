@@ -251,7 +251,7 @@ mod tests {
     }
 
     fn typescript() -> LspServer {
-        bundled(include_str!("../lsp/typescript.toml"), "typescript")
+        bundled(include_str!("../packs/lsp/typescript.toml"), "typescript")
     }
 
     #[test]
@@ -280,10 +280,10 @@ mod tests {
         std::fs::create_dir_all(&worktree).unwrap();
 
         for (text, id, gated) in [
-            (include_str!("../lsp/typescript.toml"), "typescript", true),
-            (include_str!("../lsp/rust.toml"), "rust", true),
-            (include_str!("../lsp/json.toml"), "json", false),
-            (include_str!("../lsp/yaml.toml"), "yaml", false),
+            (include_str!("../packs/lsp/typescript.toml"), "typescript", true),
+            (include_str!("../packs/lsp/rust.toml"), "rust", true),
+            (include_str!("../packs/lsp/json.toml"), "json", false),
+            (include_str!("../packs/lsp/yaml.toml"), "yaml", false),
         ] {
             let expected = if gated { Err(UNTRUSTED.to_string()) } else { Ok(()) };
             assert_eq!(
@@ -320,7 +320,7 @@ mod tests {
         let project = root.join("work/repo");
         std::fs::create_dir_all(&project).unwrap();
 
-        let json = bundled(include_str!("../lsp/json.toml"), "json");
+        let json = bundled(include_str!("../packs/lsp/json.toml"), "json");
         assert_eq!(gate_at(&store, Vec::new, &json, &project), Ok(()));
         assert_eq!(gate_project_at(&store, Vec::new, &project), Err(UNTRUSTED.to_string()));
 

@@ -17,6 +17,11 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+# build.rs embeds the bundled packs through src/packs/index_rows.rs, which the
+# app compiles too, so these match the versions below.
+toml = "0.8"
+serde_json = "1"
+sha2 = "0.10"
 
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset", "tray-icon", "image-png"] }
@@ -26,6 +31,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
 toml_edit = "0.20"
+# A pack's version is the sha256 of its bytes (src/packs/index_rows.rs), and
+# the Keychain service name `claude` derives for a non-default
+# CLAUDE_CONFIG_DIR is `sha256(dir)[:8]`.
+sha2 = "0.10"
 notify = "6"
 dirs = "5"
 portable-pty = "0.8"
@@ -83,10 +92,6 @@ uuid = { version = "1", features = ["v4"] }
 # other credential the user has); `protected` is the data-protection keychain,
 # which needs an app-group entitlement Tori does not have.
 apple-native-keyring-store = { version = "1", features = ["keychain"] }
-# The Keychain service name `claude` derives for a non-default CLAUDE_CONFIG_DIR
-# is `sha256(dir)[:8]`, so the token rung has to compute one. Already in the
-# lock file as a tauri build dependency; this makes it a runtime one too.
-sha2 = "0.10"
 # GitLab identifies a diff line by a SHA1 of its path, which is the only way to
 # anchor a multi-line review comment (`forge/gitlab.rs`).
 sha1 = "0.10"

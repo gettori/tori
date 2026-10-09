@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import { CONTRAST_RULES, checkPalette, composite, contrastRatio, formatReport, parseColor, ratioOn } from "./contrast";
 import { listThemes } from "./bundled";
-import toriDark from "./palettes/tori-dark.json";
-import toriLight from "./palettes/tori-light.json";
+import toriDark from "../../src-tauri/packs/themes/tori-dark.json";
+import toriLight from "../../src-tauri/packs/themes/tori-light.json";
 import { ROLES, buildRoleValues } from "./roles";
 import type { Palette } from "./schema";
 
