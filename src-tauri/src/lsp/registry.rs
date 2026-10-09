@@ -661,7 +661,7 @@ fn builtins() -> impl Iterator<Item = (String, &'static str)> {
 /// a recorded install. A refused file leaves the id it would have replaced
 /// with its previous entry, so one broken file can never make a language
 /// silently lose its server.
-fn build_registry_from(user_dir: &Path) -> (Vec<LspServer>, Vec<LoadError>) {
+pub(crate) fn build_registry_from(user_dir: &Path) -> (Vec<LspServer>, Vec<LoadError>) {
     let mut list: Vec<LspServer> = Vec::new();
     let mut errors = Vec::new();
 

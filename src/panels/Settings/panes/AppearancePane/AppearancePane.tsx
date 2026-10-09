@@ -1,4 +1,4 @@
-import { createMemo } from "solid-js";
+import { For, createMemo } from "solid-js";
 import {
   EDITOR_FONT_FALLBACK,
   Group,
@@ -15,10 +15,13 @@ import {
 } from "../../components/paneKit";
 import { settings, setZoom, zoom, ZOOM_MAX, ZOOM_MIN, type SpaceStrip } from "../../settingsStore";
 import { listSelectableThemes, DEFAULT_THEME_ID, type ThemeChoice } from "../../../../theme";
+import { listUserThemes } from "../../../../theme/userThemes";
 import { primaryFamily } from "../../../../utils/fontLoad";
 import Select, { type SelectGroup, type SelectOption, type SelectTab } from "../../../../components/Select/Select";
 import styles from "../../Settings.module.css";
 import NeedsFixing from "../../components/NeedsFixing";
+import AddPack from "../../components/AddPack";
+import { CatalogConflict } from "../../components/ProvenanceTag";
 
 const SPACE_STRIPS: SelectOption[] = [
   { value: "bottom", label: "Bottom" },
@@ -74,6 +77,7 @@ export default function AppearancePane(props: PaneProps) {
 
   return (
     <>
+      <AddPack kind="themes" label="Add a theme" />
       <NeedsFixing kind="themes" />
       {/* "Display" rather than "Theme": the group holds the theme and the zoom,
           and naming it after one of its two rows read as a mislabel. */}
@@ -88,6 +92,9 @@ export default function AppearancePane(props: PaneProps) {
               onChange={(value) => setAppearance({ theme: value })}
               aria-labelledby={rowLabelId("theme")}
             />
+            <For each={listUserThemes()}>
+              {(t) => t.provenance && <CatalogConflict provenance={t.provenance} id={t.id} />}
+            </For>
           </div>
         </Row>
         <Row {...props} id="zoom" label="Zoom">

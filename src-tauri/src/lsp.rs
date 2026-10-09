@@ -100,6 +100,12 @@ impl LspState {
         }))
     }
 
+    pub fn runs(&self, server_id: &str) -> bool {
+        self.sessions
+            .lock()
+            .map_or(true, |sessions| sessions.keys().any(|h| h.server_id == server_id))
+    }
+
     fn stop_all(&self) -> Result<Vec<LspExited>, String> {
         let drained: Vec<_> = self.sessions.lock().map_err(|e| e.to_string())?.drain().collect();
         Ok(drained

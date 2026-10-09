@@ -4,6 +4,7 @@
 pub mod catalog;
 pub mod index_rows;
 pub mod installed;
+pub mod manage;
 pub mod migrate;
 pub mod provenance;
 pub mod publish;
@@ -133,6 +134,8 @@ pub struct LoadError {
     pub fix: Option<String>,
     /// The id `packs_remove` takes, for a recorded file edited since.
     pub removable: Option<String>,
+    /// Whether `packs_update` can put it back: it came from the catalog.
+    pub restorable: bool,
 }
 
 impl LoadError {
@@ -146,6 +149,7 @@ impl LoadError {
             message: message.to_string(),
             fix: fix.map(str::to_string),
             removable: None,
+            restorable: false,
         }
     }
 }
@@ -226,13 +230,18 @@ impl UserDir {
         let c = provenance::classify(kind, &pack_id, &sha, &self.installed, bundled.as_deref(), &self.cached);
         let source_tag = match c.class {
             Class::Modified => {
+                let restorable = self
+                    .installed
+                    .find(kind, &pack_id)
+                    .is_some_and(|r| r.source == installed::Source::Catalog);
                 return Err(LoadError {
                     removable: Some(pack_id),
+                    restorable,
                     ..fail(
                         format!("{source}: this file was changed after Tori recorded it"),
                         Some(FIX_MODIFIED),
                     )
-                })
+                });
             }
             Class::BundledId => {
                 return Err(fail(
@@ -334,8 +343,14 @@ pub fn packs_reload(app: tauri::AppHandle, kind: Kind) {
 /// Delete a pack Tori recorded and the record with it, then reload its kind.
 /// A file Tori never recorded is the user's own, and is theirs to delete.
 #[tauri::command(async)]
-pub fn packs_remove(app: tauri::AppHandle, kind: Kind, id: String) -> Result<(), String> {
+pub fn packs_remove(
+    app: tauri::AppHandle,
+    lsp: tauri::State<'_, crate::lsp::LspState>,
+    kind: Kind,
+    id: String,
+) -> Result<(), String> {
     use tauri::Emitter;
+    manage::check_idle(kind, &id, |id| lsp.runs(id))?;
     remove_at(&dir(), kind, &id)?;
     reload(kind);
     let _ = app.emit(CHANGED, kind);

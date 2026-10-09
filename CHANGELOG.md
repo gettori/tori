@@ -10,6 +10,11 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
 ## Unreleased
 
+- Packs: every language server, linter, debugger, formatter, theme and agent
+  is a pack, and Settings can add more from the packs catalog at
+  gettori.app/packs. Each pane has an "Add a ..." button listing what the
+  catalog has, who contributed it, and whether you have it already. The
+  catalog is signed, and Tori refuses any file that does not match it.
 - Your own config files now live in one folder, `~/.config/tori/packs/<kind>/`.
   Tori moves the old per-kind folders there on first start and says what it
   moved. A language server, formatter or theme file that reused a bundled id
@@ -25,6 +30,8 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 - The Gemini and Kimi agents and the Nix language server no longer ship with
   Tori. Nobody could measure them: Google refuses Gemini CLI sessions on
   individual accounts, kimi-cli is unmaintained, and nil needs Nix to build.
+- New packs are contributed to gettori/packs rather than to Tori itself.
+  See its README.
 
 ## 26.1009.0-alpha
 

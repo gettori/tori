@@ -4,7 +4,8 @@ import Toggle from "../../../../components/Switch/Switch";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { setFormatterDisabled } from "../../settingsStore";
 import { onPacksChanged, type PackMeta, type Provenance } from "../../../../utils/packs";
-import ProvenanceTag from "../../components/ProvenanceTag";
+import ProvenanceTag, { CatalogConflict } from "../../components/ProvenanceTag";
+import AddPack from "../../components/AddPack";
 import { TONE, type BinaryStatus } from "./LspSection";
 import styles from "../../Settings.module.css";
 import NeedsFixing from "../../components/NeedsFixing";
@@ -53,6 +54,7 @@ function FormatterCard(props: { formatter: FormatterHealth }) {
         </Show>
       </div>
       <code class={styles.toolProgram}>{f().program}</code>
+      <CatalogConflict provenance={f().provenance} id={f().id} />
 
       <div class={styles.toolStatus}>
         <Show
@@ -107,6 +109,7 @@ export default function FormattersSection() {
         <span>Formatters</span>
         <span class={styles.sectionRule} />
       </div>
+      <AddPack kind="formatters" label="Add a formatter" />
       <NeedsFixing kind="formatters" />
       <Switch>
         <Match when={formatters.state === "pending"}>

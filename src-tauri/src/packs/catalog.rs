@@ -239,6 +239,7 @@ pub struct CatalogRow {
     pub installed: bool,
     pub bundled: bool,
     pub update_available: bool,
+    pub custom_file: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -252,11 +253,13 @@ pub struct Catalog {
 
 /// The rows of `index` this build can load. An update is the catalog's hash
 /// differing from the recorded one, or from the embedded one when nothing is
-/// recorded. An override is never offered one.
+/// recorded. An override is never offered one. `custom_file` is a file Tori
+/// did not record holding the id, which blocks the install.
 pub fn rows(
     index: &Value,
     installed: &Installed,
     bundled_sha: impl Fn(Kind, &str) -> Option<String>,
+    on_disk: impl Fn(Kind, &str) -> bool,
 ) -> Vec<CatalogRow> {
     let Some(all) = index["rows"].as_array() else {
         return Vec::new();
@@ -275,6 +278,7 @@ pub fn rows(
                 installed: record.is_some(),
                 bundled: bundled.is_some(),
                 update_available,
+                custom_file: record.is_none() && on_disk(kind, id),
             })
         })
         .collect()
@@ -295,7 +299,15 @@ pub fn packs_catalog(app: tauri::AppHandle, force_revalidate: bool) -> Catalog {
     }
     let index = served.index.unwrap_or(Value::Null);
     let (rows, problem) = match installed::read_at(&super::dir().join(installed::FILE)) {
-        Ok(installed) => (rows(&index, &installed, super::bundled_sha), served.problem),
+        Ok(installed) => {
+            let on_disk = |kind: Kind, id: &str| {
+                super::kind_dir(kind)
+                    .join(format!("{id}.{}", kind.ext()))
+                    .symlink_metadata()
+                    .is_ok()
+            };
+            (rows(&index, &installed, super::bundled_sha, on_disk), served.problem)
+        }
         Err(e) => (Vec::new(), Some(Problem::Record(e))),
     };
     Catalog {
@@ -472,7 +484,7 @@ mod tests {
             row("y", 99, "aa"),
             { "kind": "someday", "id": "z", "schema_version": 1, "sha256": "aa" },
         ]});
-        let ids: Vec<_> = rows(&index, &Installed::default(), |_, _| None)
+        let ids: Vec<_> = rows(&index, &Installed::default(), |_, _| None, |_, _| false)
             .into_iter()
             .map(|r| r.pack["id"].clone())
             .collect();
@@ -483,9 +495,9 @@ mod tests {
     fn a_bundled_id_with_a_new_hash_has_an_update_and_an_override_never_does() {
         let index = json!({ "rows": [row("x", 1, "new")] });
         let bundled = |_: Kind, _: &str| Some("old".to_string());
-        let r = &rows(&index, &Installed::default(), bundled)[0];
+        let r = &rows(&index, &Installed::default(), bundled, |_, _| false)[0];
         assert_eq!((r.bundled, r.installed, r.update_available), (true, false, true));
-        let r = &rows(&index, &installed_override("x", "old"), bundled)[0];
+        let r = &rows(&index, &installed_override("x", "old"), bundled, |_, _| false)[0];
         assert_eq!((r.installed, r.update_available), (true, false));
     }
 }

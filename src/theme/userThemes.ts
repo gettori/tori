@@ -14,9 +14,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { admit } from "./admit";
 import { listThemes } from "./bundled";
 import type { Appearance, Palette } from "./schema";
+import type { Provenance } from "../utils/packs";
 
 /** One file in the themes directory that parsed and validated in Rust. */
-export type LoadedTheme = { palette: Palette; source: string };
+export type LoadedTheme = { palette: Palette; source: string; provenance?: Provenance };
 
 /** What Rust's `list_user_themes` returns: the files that validated, plus a
  *  named error for each that did not. */
@@ -31,6 +32,7 @@ export type UserTheme = {
   source: string;
   /** Empty when the theme passed `admit()`; otherwise why it did not. */
   problems: string[];
+  provenance?: Provenance;
 };
 
 const [userThemes, setUserThemes] = createSignal<UserTheme[]>([]);
@@ -51,7 +53,7 @@ export function admitLoaded(payload: UserThemesPayload): {
   const themes: UserTheme[] = [];
   const problems: string[] = [...payload.errors];
 
-  for (const { palette, source } of payload.themes) {
+  for (const { palette, source, provenance } of payload.themes) {
     // A user file may not shadow a bundled theme. Allowing it would make
     // "Tori Dark" mean different things on two machines, and the picker groups
     // by source precisely so a user can tell them apart.
@@ -67,6 +69,7 @@ export function admitLoaded(payload: UserThemesPayload): {
       palette,
       source,
       problems: admission.ok ? [] : admission.problems,
+      provenance,
     };
     themes.push(entry);
     problems.push(...entry.problems);
