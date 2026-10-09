@@ -120,8 +120,8 @@ beforeEach(() => {
 afterEach(() => resetTerminalTabModel());
 
 describe("the terminal inside a Topic", () => {
-  it("restores the Topic's strip from every member root and keeps it off the member's own unit", async () => {
-    bridge.byFolder = { [B]: [session("s-b", B)] };
+  it("restores the Topic's strip from the Topic's own listing and keeps it off the member's own unit", async () => {
+    bridge.byFolder = { "topic:f1": [session("s-b", B)] };
     const [sel, setSel] = createSignal<Record<string, unknown>>(topicSel(A));
     render(() => (
       <>
@@ -130,9 +130,9 @@ describe("the terminal inside a Topic", () => {
       </>
     ));
     await waitFor(() => expect(stripTitles()).toContain("Auth shell"));
-    // The chat's session lives under B, so only a union across roots finds it.
+    // The backend resolves the Topic key, home and member worktrees alike.
     await waitFor(() => expect(stripTitles()).toContain("s-b chat"));
-    expect(listedFolders()).toEqual(expect.arrayContaining([A, B]));
+    expect(listedFolders()).toContain("topic:f1");
 
     setSel(unitSel);
     await waitFor(() => expect(stripTitles()).not.toContain("Auth shell"));

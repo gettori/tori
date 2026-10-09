@@ -94,7 +94,6 @@ import {
   chatRoot,
   ensureTopicsNoted,
   SHELLS_KEY,
-  workspaceFolders,
   workspaceKey,
 } from "../../utils/topics";
 import { commandStatus, commandVerdict, dropCommandStatus, reportCommandExit } from "./commandStatus";
@@ -444,16 +443,8 @@ export default function Terminal(props: {
     });
   }
 
-  // A `topic:<id>` workspace spans its member folders, so a per-folder
-  // listing is unioned. Only the selected Topic's roots are known here; a
-  // Topic that is not selected lists nothing.
   async function listSessionsFor<T>(ws: string): Promise<T[]> {
-    const lists = await Promise.all(
-      workspaceFolders(ws, props.selected).map((folder) =>
-        invoke<T[]>("list_sessions", { folder }).catch(() => [] as T[]),
-      ),
-    );
-    return lists.flat();
+    return invoke<T[]>("list_sessions", { folder: ws }).catch(() => [] as T[]);
   }
 
   async function restoreInto(ws: string, entry: WorkspaceTabs) {
