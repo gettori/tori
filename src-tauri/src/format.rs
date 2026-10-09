@@ -490,9 +490,8 @@ mod tests {
     }
 
     fn bundled() -> Vec<Formatter> {
-        registry::BUILTINS
-            .iter()
-            .map(|(source, text)| load_formatter_str(text, source).unwrap())
+        registry::builtins()
+            .map(|(source, text)| load_formatter_str(text, &source).unwrap())
             .collect()
     }
 
@@ -501,11 +500,7 @@ mod tests {
     }
 
     fn bundled_one_text(id: &str) -> &'static str {
-        registry::BUILTINS
-            .iter()
-            .find(|(source, _)| source.strip_prefix("bundled:") == Some(id))
-            .unwrap()
-            .1
+        crate::packs::snapshot::text("formatters", id).unwrap()
     }
 
     /// A formatter config run from the project's `node_modules/.bin/<id>`.

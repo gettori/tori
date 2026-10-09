@@ -404,18 +404,13 @@ pub fn load_adapter_str(text: &str, source: &str) -> Result<DapAdapter, String> 
     })
 }
 
+// js-debug stays out of the packs snapshot: its bundle ships inside the app,
+// pinned by sha256 in resources/dap/manifest.json.
 const BUILTIN_JS_DEBUG: &str = include_str!("../../dap/js-debug.toml");
-const BUILTIN_DEBUGPY: &str = include_str!("../../dap/debugpy.toml");
-const BUILTIN_DELVE: &str = include_str!("../../dap/delve.toml");
-const BUILTIN_LLDB: &str = include_str!("../../dap/lldb.toml");
 
-/// Every bundled config.
-const BUILTINS: &[(&str, &str)] = &[
-    ("bundled:js-debug", BUILTIN_JS_DEBUG),
-    ("bundled:debugpy", BUILTIN_DEBUGPY),
-    ("bundled:delve", BUILTIN_DELVE),
-    ("bundled:lldb", BUILTIN_LLDB),
-];
+fn builtins() -> impl Iterator<Item = (String, &'static str)> {
+    std::iter::once(("bundled:js-debug".to_string(), BUILTIN_JS_DEBUG)).chain(packs::snapshot::bundled("dap"))
+}
 
 fn load_adapter_file(text: &str, source: &str) -> Result<DapAdapter, String> {
     let adapter = load_adapter_str(text, source)?;
@@ -438,8 +433,8 @@ fn build_registry_from(user_dir: &Path) -> Vec<DapAdapter> {
         list.push(adapter);
     };
 
-    for &(source, text) in BUILTINS {
-        match load_adapter_file(text, source) {
+    for (source, text) in builtins() {
+        match load_adapter_file(text, &source) {
             Ok(adapter) => admit(adapter),
             Err(e) => eprintln!("tori: ERROR loading built-in debug adapter {source}: {e}"),
         }
@@ -557,12 +552,12 @@ program = "demo-dap"
 
     #[test]
     fn every_bundled_pack_is_measured() {
-        for (source, text) in BUILTINS {
+        for (source, text) in builtins() {
             // Pinned by sha256 in resources/dap/manifest.json, and it states no `node` floor.
-            if *source == "bundled:js-debug" {
+            if source == "bundled:js-debug" {
                 continue;
             }
-            let pack = load_adapter_str(text, source).unwrap();
+            let pack = load_adapter_str(text, &source).unwrap();
             assert!(pack.verified_against.is_some(), "{source} has no verified_against");
             assert!(pack.verified_on.is_some(), "{source} has no verified_on");
         }
@@ -570,8 +565,8 @@ program = "demo-dap"
 
     #[test]
     fn every_bundled_pack_carries_metadata() {
-        for (source, text) in BUILTINS {
-            let meta = load_adapter_str(text, source).unwrap().meta;
+        for (source, text) in builtins() {
+            let meta = load_adapter_str(text, &source).unwrap().meta;
             assert!(meta.description.is_some(), "{source} has no description");
             assert!(meta.contributor.is_some(), "{source} has no contributor");
             assert!(meta.license.is_some(), "{source} has no license");
@@ -683,8 +678,8 @@ uninstall = "rm \"$(go env GOPATH)/bin/dlv\""
     /// has no debugger.
     #[test]
     fn every_bundled_adapter_loads() {
-        for &(source, text) in BUILTINS {
-            if let Err(e) = load_adapter_str(text, source) {
+        for (source, text) in builtins() {
+            if let Err(e) = load_adapter_str(text, &source) {
                 panic!("{e}");
             }
         }

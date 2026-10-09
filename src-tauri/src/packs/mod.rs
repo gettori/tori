@@ -1,6 +1,9 @@
 // One place for the catalog fields and the id rules, so the five pack kinds
 // cannot drift apart on what a pack is.
 
+pub mod index_rows;
+pub mod snapshot;
+
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::OnceLock;

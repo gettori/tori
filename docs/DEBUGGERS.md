@@ -75,8 +75,10 @@ Two details worth knowing:
 
 ## File location and loading
 
-Bundled configs live in `src-tauri/dap/*.toml` and are embedded at compile time.
-User configs live in `~/.config/tori/dap/*.toml`.
+Bundled configs live in `src-tauri/packs/dap/*.toml` and are embedded at compile
+time. js-debug is the exception: its bundle ships inside the app, so its config
+stays beside it in `src-tauri/dap/js-debug.toml`. User configs live in
+`~/.config/tori/dap/*.toml`.
 
 The rules are the language servers':
 
