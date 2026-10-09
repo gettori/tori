@@ -354,7 +354,7 @@ mod tests {
         let mut default = crate::accounts::default_profile();
         default.label = "Personal".into();
         assert_eq!(
-            command_for(adapter, &default, Path::new("/nowhere")).as_deref(),
+            command_for(&adapter, &default, Path::new("/nowhere")).as_deref(),
             Some("claude")
         );
     }
@@ -426,12 +426,12 @@ mod tests {
         let adapter = crate::agents::find("claude").unwrap();
         let mut work = added("work", "Work", "/h/work");
         work.command = Some("claude-work".into());
-        assert_eq!(command_for(adapter, &work, &dir), None);
+        assert_eq!(command_for(&adapter, &work, &dir), None);
         std::fs::write(dir.join("claude-work"), "#!/bin/sh\necho mine\n").unwrap();
-        assert_eq!(command_for(adapter, &work, &dir), None);
+        assert_eq!(command_for(&adapter, &work, &dir), None);
         let ours = script_text(build_tag(), "claude", "work", "V", "/h/work", "claude");
         std::fs::write(dir.join("claude-work"), ours).unwrap();
-        assert_eq!(command_for(adapter, &work, &dir).as_deref(), Some("claude-work"));
+        assert_eq!(command_for(&adapter, &work, &dir).as_deref(), Some("claude-work"));
         std::fs::remove_dir_all(&dir).ok();
     }
 

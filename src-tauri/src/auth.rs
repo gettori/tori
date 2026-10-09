@@ -380,9 +380,7 @@ pub fn login_route(adapter: &crate::agents::AgentAdapter, home: Option<(String, 
 /// user already has: no variable set is what resolves it.
 #[tauri::command(async)]
 pub fn agent_login_route(adapter_id: String) -> Result<LoginRoute, String> {
-    let adapter = crate::agents::find(&adapter_id)
-        .cloned()
-        .ok_or_else(|| format!("no agent adapter `{adapter_id}`"))?;
+    let adapter = crate::agents::find(&adapter_id).ok_or_else(|| format!("no agent adapter `{adapter_id}`"))?;
     Ok(login_route(&adapter, None))
 }
 
@@ -805,7 +803,7 @@ mod tests {
     /// Every bundled adapter reaches a rung, so no card is ever a dead entry.
     #[test]
     fn every_bundled_adapter_resolves_to_a_rung() {
-        for adapter in crate::agents::registry() {
+        for adapter in crate::agents::registry().iter() {
             let _ = login_route(adapter, None);
         }
     }

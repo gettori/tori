@@ -480,7 +480,7 @@ mod tests {
     #[test]
     fn the_default_accounts_row_reuses_the_answer_the_sweep_already_has() {
         let adapter = agents::find("claude").expect("claude ships bundled");
-        if !crate::accounts::default_present(adapter) {
+        if !crate::accounts::default_present(&adapter) {
             eprintln!("skipping: this machine has no default claude home, so there is no default account row");
             return;
         }
@@ -491,7 +491,7 @@ mod tests {
         };
 
         // No resolved binary, so anything that probed would come back Unknown.
-        let rows = profile_health(adapter, None, &answer);
+        let rows = profile_health(&adapter, None, &answer);
         let default = rows
             .iter()
             .find(|r| r.id == crate::accounts::DEFAULT_PROFILE_ID)
@@ -560,7 +560,7 @@ mod tests {
     /// broken install rather than as a different design.
     #[test]
     fn a_protocol_backed_adapter_reports_no_sessions_directory() {
-        for adapter in agents::registry() {
+        for adapter in agents::registry().iter() {
             let health = check(adapter);
             assert_eq!(
                 health.sessions_dir.is_some(),

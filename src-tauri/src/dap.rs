@@ -470,7 +470,7 @@ fn prepare(
     disabled: &[String],
     bundled: impl FnOnce(&str) -> Option<PathBuf>,
     gate: impl FnOnce(&Path) -> Result<(), String>,
-) -> Result<(&'static DapAdapter, String, PathBuf), String> {
+) -> Result<(DapAdapter, String, PathBuf), String> {
     let adapter = registry::find(adapter_id).ok_or_else(|| format!("no debug adapter registered as `{adapter_id}`"))?;
     if disabled.contains(&adapter.id) {
         return Err(format!(
@@ -478,9 +478,9 @@ fn prepare(
             adapter.label
         ));
     }
-    let located = locate(adapter, bundled)?;
+    let located = locate(&adapter, bundled)?;
     gate(Path::new(project_path))?;
-    let root = registry::root_for(adapter, Path::new(file_path), Path::new(project_path));
+    let root = registry::root_for(&adapter, Path::new(file_path), Path::new(project_path));
     Ok((adapter, root.to_string_lossy().into_owned(), located))
 }
 
@@ -503,7 +503,7 @@ pub async fn dap_start(
         |rel| bundled_entry(&app, rel),
         crate::trust::gate_project,
     )?;
-    let started = start_adapter(adapter, &root, &located)?;
+    let started = start_adapter(&adapter, &root, &located)?;
 
     let handle = DapHandle {
         server: DapServerId(next_id("dap")),
@@ -641,7 +641,7 @@ pub async fn dap_root_for(adapter_id: String, file_path: String, project_path: S
 fn root_for_adapter(adapter_id: &str, file_path: &str, project_path: &str) -> Result<String, String> {
     let adapter = registry::find(adapter_id).ok_or_else(|| format!("no debug adapter registered as `{adapter_id}`"))?;
     let root = registry::root_for(
-        adapter,
+        &adapter,
         std::path::Path::new(file_path),
         std::path::Path::new(project_path),
     );
@@ -838,7 +838,7 @@ pub async fn dap_health(app: AppHandle) -> Vec<DapHealth> {
 pub fn dap_install(adapter_id: String) -> Result<(), String> {
     let adapter =
         registry::find(&adapter_id).ok_or_else(|| format!("no debug adapter registered as `{adapter_id}`"))?;
-    managed::install(adapter, &managed::debuggers_dir()).map(|_| ())
+    managed::install(&adapter, &managed::debuggers_dir()).map(|_| ())
 }
 
 /// Remove Tori's own copy of an adapter.
@@ -1339,8 +1339,8 @@ mod tests {
             return;
         }
 
-        let located = locate(js, test_client::dev_bundled).expect("the bundle is installed");
-        let started = start_adapter(js, "/tmp", &located).expect("the real adapter accepts");
+        let located = locate(&js, test_client::dev_bundled).expect("the bundle is installed");
+        let started = start_adapter(&js, "/tmp", &located).expect("the real adapter accepts");
         let mut writer = started.writer;
         let mut server = Server {
             child: started.child,
@@ -1441,14 +1441,14 @@ mod tests {
     fn an_uninstalled_bundle_reads_not_found_even_though_node_is_here() {
         let adapter = registry::find("js-debug").expect("js-debug is registered");
 
-        let missing = check(adapter, true, Path::new("/nonexistent"));
+        let missing = check(&adapter, true, Path::new("/nonexistent"));
         assert!(matches!(missing.status, crate::health::BinaryStatus::NotFound));
         let detail = missing.detail.expect("a missing bundle explains itself");
         // Actionable, not merely negative: the message names the command that
         // fixes it, the way `lsp_health`'s does.
         assert!(detail.contains("dap:install"), "unhelpful detail: {detail}");
 
-        let installed = check(adapter, false, Path::new("/nonexistent"));
+        let installed = check(&adapter, false, Path::new("/nonexistent"));
         assert!(installed.detail.is_none());
         assert_eq!(installed.program, "node");
         let Launch::BundledNodeSocket { version, .. } = &adapter.launch else {
@@ -1472,7 +1472,7 @@ mod tests {
             .to_string();
         let dir = std::env::temp_dir().join(format!("tori-dap-health-{}-{}", std::process::id(), next_id("t")));
 
-        let without = check(debugpy, false, &dir);
+        let without = check(&debugpy, false, &dir);
         assert!(matches!(without.status, BinaryStatus::NotFound));
         assert_eq!(without.available_version.as_deref(), Some(pinned.as_str()));
         assert_eq!(without.installed_version, None);
@@ -1493,7 +1493,7 @@ mod tests {
         };
 
         install(&format!("echo {pinned}"));
-        let with = check(debugpy, false, &dir);
+        let with = check(&debugpy, false, &dir);
         assert!(matches!(with.status, BinaryStatus::VersionMatch), "{:?}", with.status);
         assert_eq!(
             with.path,
@@ -1503,7 +1503,7 @@ mod tests {
         assert!(with.detail.is_none());
 
         install("exit 1");
-        let broken = check(debugpy, false, &dir);
+        let broken = check(&debugpy, false, &dir);
         assert!(matches!(broken.status, BinaryStatus::NotFound));
         assert_eq!(broken.installed_version, None);
         assert!(broken.detail.is_some_and(|d| d.contains("no longer runs")));

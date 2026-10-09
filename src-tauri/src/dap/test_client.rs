@@ -261,7 +261,7 @@ fn it_hits_a_breakpoint_in_a_js_file_under_the_real_js_debug() {
         "console": "internalConsole",
         "stopOnEntry": true,
     });
-    let stopped = run_to_breakpoint(js, &dir, &file, 3, config);
+    let stopped = run_to_breakpoint(&js, &dir, &file, 3, config);
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(stopped.expect("the breakpoint is hit")["reason"], "breakpoint");
 }
@@ -271,7 +271,7 @@ fn it_hits_a_breakpoint_in_a_js_file_under_the_real_js_debug() {
 fn it_hits_a_breakpoint_in_a_python_file_whose_venv_has_no_debugpy() {
     let debugpy = registry::find("debugpy").expect("debugpy is registered");
     let dir = std::env::temp_dir().join(format!("tori-dap-client-{}-{}", std::process::id(), next_id("t")));
-    let installed = super::managed::install(debugpy, &dir.join("debuggers")).expect("debugpy installs");
+    let installed = super::managed::install(&debugpy, &dir.join("debuggers")).expect("debugpy installs");
 
     // Another Python than the adapter's when the machine has one: a Homebrew
     // venv for Tori and a project on some other version is the common case.
@@ -363,8 +363,8 @@ fn it_hits_a_breakpoint_in_a_go_package_and_in_its_test() {
             "outputMode": "remote",
         })
     };
-    let package = run_to_breakpoint(delve, &dir, &main, 8, launch("debug", "Debug sample"));
-    let tests = run_to_breakpoint(delve, &dir, &test, 7, launch("test", "Debug tests in sample"));
+    let package = run_to_breakpoint(&delve, &dir, &main, 8, launch("debug", "Debug sample"));
+    let tests = run_to_breakpoint(&delve, &dir, &test, 7, launch("test", "Debug tests in sample"));
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(
         package.expect("the package's breakpoint is hit")["reason"],
@@ -376,7 +376,7 @@ fn it_hits_a_breakpoint_in_a_go_package_and_in_its_test() {
 #[test]
 fn it_hits_a_breakpoint_in_a_c_binary_built_with_cc() {
     let lldb = registry::find("lldb").expect("lldb is registered");
-    if locate(lldb, dev_bundled).is_err() || crate::env::resolve_binary("cc").is_none() {
+    if locate(&lldb, dev_bundled).is_err() || crate::env::resolve_binary("cc").is_none() {
         eprintln!("skipping: lldb-dap or `cc` is not installed");
         return;
     }
@@ -404,7 +404,7 @@ fn it_hits_a_breakpoint_in_a_c_binary_built_with_cc() {
         "program": binary,
         "cwd": dir,
     });
-    let stopped = run_to_breakpoint(lldb, &dir, &source, 6, config);
+    let stopped = run_to_breakpoint(&lldb, &dir, &source, 6, config);
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(stopped.expect("the breakpoint is hit")["reason"], "breakpoint");
 }
@@ -412,7 +412,7 @@ fn it_hits_a_breakpoint_in_a_c_binary_built_with_cc() {
 #[test]
 fn it_hits_a_breakpoint_in_a_cargo_binary_it_built() {
     let lldb = registry::find("lldb").expect("lldb is registered");
-    if locate(lldb, dev_bundled).is_err() || crate::env::resolve_binary("cargo").is_none() {
+    if locate(&lldb, dev_bundled).is_err() || crate::env::resolve_binary("cargo").is_none() {
         eprintln!("skipping: lldb-dap or cargo is not installed");
         return;
     }
@@ -444,7 +444,7 @@ fn it_hits_a_breakpoint_in_a_cargo_binary_it_built() {
             format!("command source -s 1 \"{sysroot}/lib/rustlib/etc/lldb_commands\""),
         ],
     });
-    let stopped = run_to_breakpoint(lldb, &dir, &main, 4, config);
+    let stopped = run_to_breakpoint(&lldb, &dir, &main, 4, config);
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(stopped.expect("the breakpoint is hit")["reason"], "breakpoint");
 }

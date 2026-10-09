@@ -322,6 +322,12 @@ export function ensureAdaptersLoaded(): Promise<void> {
   return loading;
 }
 
+/** Ask for the adapters again, after the registry was reloaded. */
+export function reloadAdapters(): Promise<void> {
+  loading = null;
+  return ensureAdaptersLoaded();
+}
+
 /** What an id no loaded adapter claims resolves to: a session row from an
  *  agent since removed, or a catalog-installed one before `list_agents` lands.
  *  Never another agent's args, which would resume the session in the wrong CLI. */

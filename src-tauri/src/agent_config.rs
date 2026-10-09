@@ -328,7 +328,7 @@ pub fn delete_in_home(entry: &ConfigEntry, home: &Path, name: &str) -> Result<Pa
 
 // --- thin wrappers: pick the homes, call the core ---
 
-fn adapter(adapter_id: &str) -> Result<&'static AgentAdapter, String> {
+fn adapter(adapter_id: &str) -> Result<AgentAdapter, String> {
     crate::agents::find(adapter_id).ok_or_else(|| format!("unknown agent `{adapter_id}`"))
 }
 
@@ -356,14 +356,14 @@ pub(crate) fn homes_for(adapter: &AgentAdapter) -> Vec<(String, String, PathBuf)
 #[tauri::command]
 pub async fn agent_config_files(adapter_id: String) -> Result<ConfigFilesView, String> {
     let adapter = adapter(&adapter_id)?;
-    let Some(config) = adapter.config.as_ref() else {
+    let Some(entries) = adapter.config.as_ref().map(|c| c.entries.clone()) else {
         return Ok(ConfigFilesView {
             adapter_id,
             declared: false,
             profiles: Vec::new(),
         });
     };
-    let homes = homes_for(adapter);
+    let homes = homes_for(&adapter);
     crate::exec::blocking("agent_config_files", move || {
         let profiles = homes
             .into_iter()
@@ -371,7 +371,7 @@ pub async fn agent_config_files(adapter_id: String) -> Result<ConfigFilesView, S
                 profile_id,
                 label,
                 home: home.to_string_lossy().into_owned(),
-                entries: entries_for_home(&config.entries, &home),
+                entries: entries_for_home(&entries, &home),
             })
             .collect();
         Ok(ConfigFilesView {
@@ -400,14 +400,15 @@ pub async fn agent_config_new(
         .entries
         .iter()
         .find(|e| e.id == entry_id)
+        .cloned()
         .ok_or_else(|| format!("`{adapter_id}` declares no config file `{entry_id}`"))?;
-    let (_, _, home) = homes_for(adapter)
+    let (_, _, home) = homes_for(&adapter)
         .into_iter()
         .find(|(id, _, _)| *id == profile_id)
         .ok_or_else(|| format!("`{adapter_id}` has no account `{profile_id}` with a home"))?;
 
     crate::exec::blocking("agent_config_new", move || {
-        create_in_home(entry, &home, &name).map(|p| p.to_string_lossy().into_owned())
+        create_in_home(&entry, &home, &name).map(|p| p.to_string_lossy().into_owned())
     })
     .await
 }
@@ -425,14 +426,15 @@ pub async fn agent_config_delete(
         .config
         .as_ref()
         .and_then(|c| c.entries.iter().find(|e| e.id == entry_id))
+        .cloned()
         .ok_or_else(|| format!("`{adapter_id}` declares no config file `{entry_id}`"))?;
-    let (_, _, home) = homes_for(adapter)
+    let (_, _, home) = homes_for(&adapter)
         .into_iter()
         .find(|(id, _, _)| *id == profile_id)
         .ok_or_else(|| format!("`{adapter_id}` has no account `{profile_id}` with a home"))?;
 
     crate::exec::blocking("agent_config_delete", move || {
-        delete_in_home(entry, &home, &name).map(|p| p.to_string_lossy().into_owned())
+        delete_in_home(&entry, &home, &name).map(|p| p.to_string_lossy().into_owned())
     })
     .await
 }

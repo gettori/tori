@@ -349,8 +349,8 @@ fn roots_for<'a>(adapter: &'a agents::AgentAdapter, profiles: &[crate::accounts:
 }
 
 /// Every `(profile, root)` pair across every registered adapter.
-fn discovery_roots(file: &crate::accounts::AccountsFile) -> Vec<Root<'static>> {
-    agents::registry()
+fn discovery_roots<'a>(adapters: &'a [agents::AgentAdapter], file: &crate::accounts::AccountsFile) -> Vec<Root<'a>> {
+    adapters
         .iter()
         // `None` discovery is a protocol-backed adapter: nothing of its is on
         // disk to walk, and its sessions arrive from the locator store instead.
@@ -544,7 +544,8 @@ fn index_roots(index: &SessionIndex, roots: &[Root]) -> Vec<SessionMeta> {
 /// Takes the accounts file rather than reading it, so a caller that also needs
 /// it for the listing's labels reads it once.
 fn ensure_index(index: &SessionIndex, accounts: &crate::accounts::AccountsFile) -> Vec<SessionMeta> {
-    let mut all = index_roots(index, &discovery_roots(accounts));
+    let adapters = agents::registry();
+    let mut all = index_roots(index, &discovery_roots(&adapters, accounts));
     all.extend(acp_sessions());
     all
 }
@@ -1036,7 +1037,11 @@ fn session_pattern(agent: &str, id: &str) -> Option<String> {
 /// user-added ACP agent answers correctly without being named here.
 fn found_by_pattern(agent: &str) -> bool {
     !matches!(
-        agents::find(agent).and_then(|a| a.chat.as_ref()).map(|c| c.transport),
+        agents::registry()
+            .iter()
+            .find(|a| a.id == agent)
+            .and_then(|a| a.chat.as_ref())
+            .map(|c| c.transport),
         Some(agents::ChatTransport::Acp)
     )
 }
@@ -1727,7 +1732,10 @@ pub fn session_editing_now(
 /// when its protocol says so, which no filesystem watcher sees.
 pub(crate) fn watch_dirs() -> Vec<PathBuf> {
     let accounts = crate::accounts::load();
-    discovery_roots(&accounts).into_iter().map(|r| r.dir).collect()
+    discovery_roots(&agents::registry(), &accounts)
+        .into_iter()
+        .map(|r| r.dir)
+        .collect()
 }
 
 /// A missing root is created only under a home Tori manages. Any other is the
@@ -1815,7 +1823,8 @@ fn folders_for(index: &SessionIndex, touched: &HashSet<PathBuf>) -> Option<Vec<S
 /// asks for a listing.
 #[tauri::command(async)]
 pub fn sessions_watch_start(app: AppHandle, state: State<SessionWatch>) -> Result<(), String> {
-    let dirs = watchable_dirs(discovery_roots(&crate::accounts::load()))?;
+    let adapters = agents::registry();
+    let dirs = watchable_dirs(discovery_roots(&adapters, &crate::accounts::load()))?;
 
     // Trailing-edge debounce. The watcher callback only records WHEN the last
     // filesystem event landed; a background thread emits `sessions://changed`
@@ -2214,7 +2223,7 @@ pub(crate) fn transcript_of(session_id: &str, agent: &str) -> Option<Transcript>
         return None;
     }
     let profiles = crate::accounts::profiles_for(&crate::accounts::load(), agent);
-    find_transcript(&roots_for(adapter, &profiles), session_id)
+    find_transcript(&roots_for(&adapter, &profiles), session_id)
 }
 
 /// Where an agent wrote this session's transcript, for a caller that does not

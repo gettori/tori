@@ -379,7 +379,7 @@ pub fn format_document(path: String, text: String, project_path: String) -> Form
         disabled: format.disabled,
     };
     format_with(
-        registry::registry(),
+        &registry::registry(),
         &path,
         text,
         Path::new(&project_path),

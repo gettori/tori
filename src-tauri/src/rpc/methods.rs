@@ -1128,9 +1128,9 @@ impl Backend for TauriBackend {
                 let chat = self
                     .agent_of(&params.id)
                     .and_then(|agent| crate::agents::find(&agent))
-                    .and_then(|a| a.chat.as_ref());
+                    .and_then(|a| a.chat);
                 let rows: Vec<Value> = chat
-                    .map(|c| &c.modes)
+                    .map(|c| c.modes)
                     .into_iter()
                     .flatten()
                     .map(|m| json!({ "id": m.id, "label": m.label, "hint": m.hint, "requires": m.requires, "permissive": m.permissive }))

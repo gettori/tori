@@ -162,7 +162,7 @@ impl Default for AccountsFile {
 /// Every profile for `adapter_id`, default first when [`default_present`] says
 /// it exists.
 pub fn profiles_for(file: &AccountsFile, adapter_id: &str) -> Vec<Profile> {
-    let present = crate::agents::find(adapter_id).is_none_or(default_present);
+    let present = crate::agents::find(adapter_id).is_none_or(|a| default_present(&a));
     profiles_for_with(file, adapter_id, present)
 }
 
@@ -759,9 +759,7 @@ fn no_logout_warning(adapter: &crate::agents::AgentAdapter, accounts: &crate::ag
 // --- commands ---
 
 fn adapter(adapter_id: &str) -> Result<crate::agents::AgentAdapter, String> {
-    crate::agents::find(adapter_id)
-        .cloned()
-        .ok_or_else(|| format!("no agent adapter `{adapter_id}`"))
+    crate::agents::find(adapter_id).ok_or_else(|| format!("no agent adapter `{adapter_id}`"))
 }
 
 /// One profile row, from the sweep's cached answer about it.
@@ -1370,7 +1368,7 @@ mod tests {
         let mut file = AccountsFile::default();
         add_profile(&mut file, "claude", added("work", "/tmp/w")).unwrap();
         let counts = account_counts(&file);
-        let claude_default = crate::agents::find("claude").is_none_or(default_present) as usize;
+        let claude_default = crate::agents::find("claude").is_none_or(|a| default_present(&a)) as usize;
         assert_eq!(
             counts.get("claude"),
             Some(&(claude_default + 1)),
@@ -1755,7 +1753,7 @@ mod tests {
         let cached: Vec<crate::health::ProfileHealth> = Vec::new();
         let work = added("work", "/canonical/work");
 
-        let row = status_of(claude, &accounts, &work, &cached);
+        let row = status_of(&claude, &accounts, &work, &cached);
         match row.login {
             crate::auth::LoginRoute::Terminal { home, .. } => assert_eq!(
                 home,
@@ -1767,7 +1765,7 @@ mod tests {
 
         // And the default profile signs in with the variable unset, exactly as
         // it runs.
-        let row = status_of(claude, &accounts, &default_profile(), &cached);
+        let row = status_of(&claude, &accounts, &default_profile(), &cached);
         match row.login {
             crate::auth::LoginRoute::Terminal { home, .. } => assert_eq!(home, None),
             other => panic!("got {other:?}"),
@@ -1799,14 +1797,14 @@ mod tests {
             },
         ];
 
-        let row = status_of(claude, &accounts, &default_profile(), &cached);
+        let row = status_of(&claude, &accounts, &default_profile(), &cached);
         assert_eq!(row.sign_in, crate::auth::SignIn::SignedIn);
         assert_eq!(row.account.as_deref(), Some("a@b.c"));
         assert_eq!(row.api_key_source.as_deref(), Some("ANTHROPIC_API_KEY"));
 
         // Its own row, never the default's: two accounts sign in and out
         // independently, and handing one the other's answer is the failure.
-        let row = status_of(claude, &accounts, &added("work", "/canonical/w"), &cached);
+        let row = status_of(&claude, &accounts, &added("work", "/canonical/w"), &cached);
         assert_eq!(row.sign_in, crate::auth::SignIn::SignedOut);
         assert_eq!(row.account, None);
     }
@@ -1819,7 +1817,7 @@ mod tests {
         let claude = crate::agents::find("claude").expect("claude ships bundled");
         let accounts = claude.accounts.clone().expect("claude declares accounts");
 
-        let row = status_of(claude, &accounts, &added("fresh", "/canonical/f"), &[]);
+        let row = status_of(&claude, &accounts, &added("fresh", "/canonical/f"), &[]);
         assert_eq!(row.sign_in, crate::auth::SignIn::Unknown);
     }
 
@@ -1904,7 +1902,7 @@ mod tests {
             "this test is about the no-logout branch"
         );
 
-        let warning = no_logout_warning(opencode, accounts);
+        let warning = no_logout_warning(&opencode, accounts);
         assert!(warning.contains("valid until they expire"), "{warning}");
         assert!(
             warning.contains("opencode auth"),

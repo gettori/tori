@@ -723,6 +723,7 @@ pub fn run() {
             themes::list_user_themes,
             packs::packs_load_errors,
             packs::packs_migration_report,
+            packs::packs_reload,
             themes::themes_watch_start,
             trace::trace_config,
             trace::trace_write,
