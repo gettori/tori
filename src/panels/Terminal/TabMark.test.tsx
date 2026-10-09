@@ -47,7 +47,7 @@ describe("a chat tab's provider mark", () => {
       return (container.firstElementChild as HTMLElement).getAttribute("data-mark");
     };
     expect(at("claude")).toBe("claude");
-    expect(at("gemini")).toBe("gemini");
+    expect(at("codex")).toBe("codex");
     expect(at("some-adapter-with-no-logo")).toBeNull();
   });
 

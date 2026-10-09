@@ -158,10 +158,10 @@ describe("the accounts table crosses the Rust/TypeScript boundary intact", () =>
   });
 
   // An adapter that declares no table is not "signed out", it is unknown, so
-  // the frontend must be able to tell those apart. Gemini is the one that ships
-  // without a table, because its CLI is not installed anywhere anybody measured.
+  // the frontend must be able to tell those apart. Pi is the one that ships
+  // without a table.
   it("reports null for an adapter that declares no accounts table", () => {
-    expect(resolved.find((a) => a.id === "gemini")!.accounts ?? null).toBeNull();
+    expect(resolved.find((a) => a.id === "pi")!.accounts ?? null).toBeNull();
   });
 
   // Declaring a table and claiming isolation are two different claims, and only

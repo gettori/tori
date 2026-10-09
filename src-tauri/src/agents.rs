@@ -1698,7 +1698,7 @@ fn load_adapter_file(text: &str, source: &str) -> Result<AgentAdapter, String> {
 /// (built-in or earlier-loaded) entry, so one broken file can't make an agent
 /// disappear.
 ///
-/// Seven built-ins ship today: one Claude-shaped file adapter and six ACP ones.
+/// Five built-ins ship today: one Claude-shaped file adapter and four ACP ones.
 /// The loop stays a loop: what makes this a registry is that nothing downstream
 /// knows how many adapters there are.
 fn build_registry_from(user_dir: &Path) -> (Vec<AgentAdapter>, Vec<packs::LoadError>) {
@@ -1888,10 +1888,6 @@ mod tests {
     #[test]
     fn every_bundled_pack_is_measured() {
         for (source, text) in bundled() {
-            // Unmeasurable as they stand: see the header of each file.
-            if ["bundled:gemini", "bundled:kimi"].contains(&source.as_str()) {
-                continue;
-            }
             let pack = load_adapter_str(text, &source).unwrap();
             assert!(pack.verified_against.is_some(), "{source} has no verified_against");
             assert!(pack.verified_on.is_some(), "{source} has no verified_on");
@@ -2040,11 +2036,11 @@ mod tests {
         assert!(claude.hooks);
     }
 
-    /// The registry mechanism is the point, not the count. Seven built-ins ship
+    /// The registry mechanism is the point, not the count. Five built-ins ship
     /// and nothing downstream may assume that number.
     ///
     /// What is worth pinning is the *shape spread*: one file-backed adapter and
-    /// six protocol-backed ones, so both halves of the loader's session-plumbing
+    /// four protocol-backed ones, so both halves of the loader's session-plumbing
     /// rule are exercised by something that actually ships rather than only by a
     /// fixture.
     #[test]
@@ -2052,10 +2048,7 @@ mod tests {
         let reg = build_registry_from(&PathBuf::from("/nonexistent/agents")).0;
         let mut ids: Vec<&str> = reg.iter().map(|a| a.id.as_str()).collect();
         ids.sort();
-        assert_eq!(
-            ids,
-            vec!["claude", "codex", "copilot", "gemini", "kimi", "opencode", "pi"]
-        );
+        assert_eq!(ids, vec!["claude", "codex", "copilot", "opencode", "pi"]);
 
         let by_id = |id: &str| reg.iter().find(|a| a.id == id).expect("bundled adapter").clone();
         let claude = by_id("claude");
@@ -2063,7 +2056,7 @@ mod tests {
         assert!(claude.parser_kind.is_some());
         assert!(claude.running_pattern.is_some());
 
-        for id in ["opencode", "gemini", "codex", "copilot", "kimi", "pi"] {
+        for id in ["opencode", "codex", "copilot", "pi"] {
             let a = by_id(id);
             assert_eq!(
                 a.chat.as_ref().map(|c| c.transport),
@@ -2084,15 +2077,13 @@ mod tests {
         }
     }
 
-    /// Gemini ships **unmeasured**, and `verified_against` is how that is said.
-    /// Naming a version there would claim a measurement nobody took; the Agents
+    /// `verified_against` names the version that was measured; the Agents
     /// surface reads its absence to tell a measured agent from an untested one.
     #[test]
-    fn an_unmeasured_bundled_adapter_declares_no_verified_version() {
+    fn a_measured_bundled_adapter_names_its_version() {
         let reg = build_registry_from(&PathBuf::from("/nonexistent/agents")).0;
         let find = |id: &str| reg.iter().find(|a| a.id == id).expect("bundled adapter");
         assert_eq!(find("opencode").verified_against.as_deref(), Some("opencode 1.18.3"));
-        assert_eq!(find("gemini").verified_against, None);
         // Codex names two versions because two binaries are involved, and the
         // one health.rs compares against `codex --version` has to come first.
         let codex = find("codex").verified_against.clone().expect("codex is measured");
@@ -2360,10 +2351,7 @@ pattern = 'claude-beta (--resume|-r) {id}'
         let reg = build_registry_from(&dir).0;
         let mut ids: Vec<&str> = reg.iter().map(|a| a.id.as_str()).collect();
         ids.sort();
-        assert_eq!(
-            ids,
-            vec!["claude", "codex", "copilot", "gemini", "kimi", "opencode", "pi", "x"]
-        );
+        assert_eq!(ids, vec!["claude", "codex", "copilot", "opencode", "pi", "x"]);
 
         std::fs::remove_dir_all(&dir).ok();
     }

@@ -849,10 +849,6 @@ program = "demo-server"
     #[test]
     fn every_bundled_pack_is_measured() {
         for (source, text) in builtins() {
-            // Unmeasured until a machine with Nix measures it: see its header.
-            if source == "bundled:nix" {
-                continue;
-            }
             let pack = load_server_str(text, &source).unwrap();
             assert!(pack.verified_against.is_some(), "{source} has no verified_against");
             assert!(pack.verified_on.is_some(), "{source} has no verified_on");

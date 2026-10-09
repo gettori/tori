@@ -50,20 +50,6 @@
     --tori-fg-navy-dim: #98a0b0; /* dim text (muted slate) */
     --tori-fg-navy-faint: #666e7e; /* faint text (dim slate): quiet icons, placeholders, meta */
 
-    /* ---- Agent brand hues ----
-       A vendor's own colour, worn by its mark while a turn is running. A
-       primitive rather than a palette role: a logo's colour is the vendor's
-       fact, not the theme's, and the palette carries a role only where a mark
-       is also chrome (--agent-claude, worn in the toolbar crumb, which a light
-       theme darkens for contrast).
-
-       Gemini's is the only value here, because it is the only mark this build
-       has whose brand colour is a colour: Codex, Copilot, Kimi, OpenCode and Pi
-       are all published as monochrome black, and their faithful rendering is
-       the theme's own foreground rather than a hue. Source is Simple Icons,
-       slug `googlegemini`, the same set the paths come from. */
-    --tori-agent-gemini: #8e75b2;
-
     /* Accent (blue) */
     --tori-blue-100: #cfe3fb;
     --tori-blue-500: #4a9eff;

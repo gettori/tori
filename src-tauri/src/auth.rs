@@ -774,8 +774,8 @@ mod tests {
     /// Neither rung. The link is to what an adapter has to declare, because the
     /// missing button is a fact about the adapter file.
     ///
-    /// Built rather than taken from the bundled four, none of which lands here:
-    /// all four declare `[chat]`, so the ACP rung catches gemini. The shape that
+    /// Built rather than taken from the bundled five, none of which lands here:
+    /// all of them declare `[chat]`, so the ACP rung catches pi. The shape that
     /// does land here is the minimal adapter ADAPTERS.md documents, which is
     /// what a user dropping a four-line TOML into `~/.config/tori/packs/agents/`
     /// writes, so the rung has a real producer even though nothing bundled is
@@ -790,14 +790,14 @@ mod tests {
         }
     }
 
-    /// Gemini is the near miss worth naming: it declares no `[accounts]`, so it
+    /// Pi is the near miss worth naming: it declares no `[accounts]`, so it
     /// has no login command, but it does speak ACP and so relays its own
     /// instructions rather than falling through to a link.
     #[test]
     fn an_acp_agent_with_no_accounts_table_still_beats_a_documentation_link() {
-        let gemini = bundled("gemini");
-        assert!(gemini.accounts.is_none());
-        assert_eq!(login_route(&gemini, None), LoginRoute::AgentStates);
+        let pi = bundled("pi");
+        assert!(pi.accounts.is_none());
+        assert_eq!(login_route(&pi, None), LoginRoute::AgentStates);
     }
 
     /// Every bundled adapter reaches a rung, so no card is ever a dead entry.

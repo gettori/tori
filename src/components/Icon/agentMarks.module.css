@@ -24,17 +24,12 @@
     color: var(--agent-claude);
   }
 
-  .tint[data-mark="gemini"] {
-    color: var(--tori-agent-gemini);
-  }
-
-  /* Codex, Copilot, Kimi, OpenCode and Pi are all published as monochrome black
+  /* Codex, Copilot, OpenCode and Pi are all published as monochrome black
      (Simple Icons; Codex has no entry and OpenAI's own mark is black on light,
      white on dark). The faithful rendering of a black-or-white brand is the
      theme's foreground, not a fixed black that would vanish into a dark strip. */
   .tint[data-mark="codex"],
   .tint[data-mark="copilot"],
-  .tint[data-mark="kimi"],
   .tint[data-mark="opencode"],
   .tint[data-mark="pi"] {
     color: var(--fg-default);

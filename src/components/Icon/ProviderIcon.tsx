@@ -41,8 +41,6 @@ const MODEL_VENDORS: [RegExp, string][] = [
 const MARK_VENDORS: Record<string, string> = {
   claude: "anthropic",
   codex: "openai",
-  gemini: "google",
-  kimi: "moonshot",
 };
 
 function vendorOfModel(id: string): string | undefined {

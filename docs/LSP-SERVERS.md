@@ -70,7 +70,6 @@ installed by you, with a hint on its card saying how.
 | `dart` | `dart language-server` | Ships with the Dart and Flutter SDKs |
 | `terraform` | `terraform-ls` | You: `brew install hashicorp/tap/terraform-ls` |
 | `scala` | `metals` | You: `cs install metals` |
-| `nix` | `nil` | You: `nix profile install nixpkgs#nil` |
 
 A server Tori can install still prefers your own copy: if its program is on
 your login PATH, that one runs.
