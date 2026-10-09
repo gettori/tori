@@ -412,6 +412,7 @@ pub struct FormatterHealth {
     pub runs_per_project: bool,
     /// Named in your `format.disabled`.
     pub disabled: bool,
+    pub provenance: crate::packs::provenance::Provenance,
 }
 
 /// Health for every registered formatter.
@@ -436,6 +437,7 @@ pub fn formatter_health() -> Vec<FormatterHealth> {
                 verified_against: f.verified_against.clone(),
                 verified_on: f.verified_on.clone(),
                 meta: f.meta.clone(),
+                provenance: f.provenance,
                 extensions: f.extensions.clone(),
                 markers: markers
                     .files

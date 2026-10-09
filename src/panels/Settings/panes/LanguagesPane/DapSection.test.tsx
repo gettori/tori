@@ -38,6 +38,7 @@ const delve = (over: Partial<DapHealth> = {}): DapHealth => ({
   hint: null,
   update: null,
   uninstall: null,
+  provenance: { source: "bundled", updateAvailable: false, catalogConflict: false },
   ...over,
 });
 

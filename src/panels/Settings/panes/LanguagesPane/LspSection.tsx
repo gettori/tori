@@ -4,7 +4,8 @@ import Toggle from "../../../../components/Switch/Switch";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { installServer, serverInstalled } from "../../../../utils/serverInstall";
 import { overlayRoot, setServerDisabled } from "../../settingsStore";
-import { onPacksChanged, type PackMeta } from "../../../../utils/packs";
+import { onPacksChanged, type PackMeta, type Provenance } from "../../../../utils/packs";
+import ProvenanceTag from "../../components/ProvenanceTag";
 import { createToolActions } from "./toolActions";
 import styles from "../../Settings.module.css";
 import NeedsFixing from "../../components/NeedsFixing";
@@ -22,6 +23,7 @@ import NeedsFixing from "../../components/NeedsFixing";
 export type BinaryStatus = "notFound" | "versionUnknown" | "versionMatch" | "versionDrift";
 
 export type LspHealth = PackMeta & {
+  provenance: Provenance;
   id: string;
   label: string;
   role: "primary" | "secondary";
@@ -128,6 +130,7 @@ export function LspCard(props: { server: LspHealth; onChange: () => Promise<LspH
           {s().label}
         </span>
         <span class={styles.kindTag}>{kindOf(s())}</span>
+        <ProvenanceTag provenance={s().provenance} contributor={s().contributor} />
         <span class={styles.toolControls}>
           <Show when={switchable()}>
             <Toggle

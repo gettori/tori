@@ -4,7 +4,7 @@
 // without hardcoding an agent id lives here.
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import type { PackMeta } from "./packs";
+import type { PackMeta, Provenance } from "./packs";
 
 export type ParserKind = "claude_jsonl";
 
@@ -171,6 +171,7 @@ export type Adapter = {
   verified_on?: string | null;
   /** Set for a user file kept under a bundled id as a recorded override. */
   bundled_override?: { bundled_changed: boolean } | null;
+  provenance?: Provenance;
 } & Partial<PackMeta>;
 
 // Matches the bundled TOML (src-tauri/packs/agents/*.toml) so

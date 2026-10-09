@@ -84,6 +84,7 @@ pub struct Formatter {
     /// When `verified_against` was measured, `YYYY-MM-DD`.
     pub verified_on: Option<String>,
     pub meta: Meta,
+    pub provenance: crate::packs::provenance::Provenance,
 }
 
 impl Formatter {
@@ -371,6 +372,7 @@ pub fn load_formatter_str(text: &str, source: &str) -> Result<Formatter, String>
         verified_against: raw.verified_against,
         verified_on: raw.verified_on,
         meta: raw.meta,
+        provenance: Default::default(),
     })
 }
 
@@ -399,15 +401,16 @@ fn build_registry_from(user_dir: &Path) -> (Vec<Formatter>, Vec<LoadError>) {
         }
     }
 
-    let installed = packs::installed_beside(user_dir);
+    let mut user = packs::UserDir::open(Kind::Formatters, user_dir);
     for path in packs::user_files(user_dir, Kind::Formatters) {
-        match packs::load_user_file(Kind::Formatters, &path, &installed, load_formatter_str, |f| &f.id) {
-            Ok(f) => {
-                by_id.insert(f.id.clone(), f);
+        match user.load(&path, load_formatter_str, |f| &f.id) {
+            Ok((f, provenance)) => {
+                by_id.insert(f.id.clone(), Formatter { provenance, ..f });
             }
             Err(e) => errors.push(e),
         }
     }
+    errors.extend(user.finish());
 
     (by_id.into_values().collect(), errors)
 }
