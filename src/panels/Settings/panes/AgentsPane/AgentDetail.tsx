@@ -10,6 +10,7 @@ import AgentGlyph from "../../../../components/Icon/AgentGlyph";
 import Toggle from "../../../../components/Switch/Switch";
 import { findAdapter, isLaunchOnly } from "../../../../utils/agents";
 import { provenanceLabel } from "../../../../utils/packs";
+import { CatalogConflict } from "../../components/ProvenanceTag";
 import { agentChosen, enableBlockedReason, setAgentEnabled } from "../../../../utils/agentEnabled";
 import {
   chatTier,
@@ -768,7 +769,12 @@ export default function AgentDetail(props: {
         </div>
       </Show>
       <Show when={findAdapter(a().id).provenance}>
-        {(p) => <div class={styles.cardMeta}>{provenanceLabel(p(), findAdapter(a().id).contributor)}</div>}
+        {(p) => (
+          <>
+            <div class={styles.cardMeta}>{provenanceLabel(p(), findAdapter(a().id).contributor)}</div>
+            <CatalogConflict provenance={p()} id={a().id} />
+          </>
+        )}
       </Show>
       <Show when={findAdapter(a().id).bundled_override}>
         {(o) => (

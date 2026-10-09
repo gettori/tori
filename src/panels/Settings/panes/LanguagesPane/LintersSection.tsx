@@ -1,9 +1,12 @@
 import { For, Show, Switch, Match, createResource } from "solid-js";
 import { LspCard, probeLspHealth } from "./LspSection";
+import { onPacksChanged } from "../../../../utils/packs";
+import AddPack from "../../components/AddPack";
 import styles from "../../Settings.module.css";
 
 export default function LintersSection() {
   const [health, { refetch }] = createResource(probeLspHealth);
+  onPacksChanged("lsp", () => void refetch());
   const linters = () => (health() ?? []).filter((s) => s.role === "secondary");
 
   return (
@@ -12,6 +15,7 @@ export default function LintersSection() {
         <span>Linters</span>
         <span class={styles.sectionRule} />
       </div>
+      <AddPack kind="lsp" label="Add a linter" filter={(p) => p.role === "secondary"} />
       <Switch>
         <Match when={health.state === "pending"}>
           <div class={styles.note}>Checking which linters are installed...</div>
