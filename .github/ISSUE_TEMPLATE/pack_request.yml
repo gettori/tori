@@ -1,19 +1,20 @@
-name: Adapter request
-description: Ask for support for an agent CLI Tori does not know about
+name: Pack request
+description: An agent whose transcripts no parser in Tori can read
 labels: ["adapter"]
 body:
   - type: markdown
     attributes:
       value: |
-        **You may not need this issue.** Agents are data, not code: a
-        `schema_version = 1` TOML in `~/.config/tori/agents/` can add one
-        yourself, and the schema is stable at v1. See
+        **You may not need this issue.** An agent is a pack, not code: a TOML
+        file in `~/.config/tori/packs/agents/` adds one yourself, and
+        [gettori/packs](https://github.com/gettori/packs) takes it as a pull
+        request so everyone gets it. An agent that speaks the Agent Client
+        Protocol needs nothing more. See
         [ADAPTERS.md](../../docs/ADAPTERS.md).
 
         Open this issue if you tried that and the agent's transcript format
-        does not fit any implemented parser kind. A working adapter you want
-        bundled for everyone goes in as a pull request instead:
-        [CONTRIBUTING.md](../../CONTRIBUTING.md) says what one needs.
+        does not fit any implemented parser kind. That part is a change to
+        Tori itself.
 
   - type: input
     id: agent
@@ -61,7 +62,7 @@ body:
     attributes:
       label: What you tried
       description: >
-        If you already wrote an adapter TOML, paste it and say where it fell
+        If you already wrote the pack, paste it and say where it fell
         short.
       render: toml
     validations:

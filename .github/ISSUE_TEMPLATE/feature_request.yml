@@ -9,7 +9,7 @@ body:
         doing when you missed the feature, more than the feature itself: there
         is often a smaller change that solves the same problem.
 
-        For a new agent, use the adapter request form instead.
+        For a new agent that no parser fits, use the pack request form instead.
 
   - type: textarea
     id: problem

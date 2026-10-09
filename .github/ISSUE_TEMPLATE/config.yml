@@ -5,11 +5,11 @@ contact_links:
     about: >
       macOS blocking the first launch is expected: Tori is not signed yet. The
       install doc has the two ways past it.
-  - name: Adding an agent yourself
-    url: https://github.com/gettori/tori/blob/main/docs/ADAPTERS.md
+  - name: Contribute a pack
+    url: https://github.com/gettori/packs
     about: >
-      Agents are TOML files, not code. This is the full schema, with a
-      from-scratch example.
+      Languages, debuggers, formatters, themes and agents are packs, not code.
+      gettori/packs takes pull requests for them.
   - name: Ask a question or float an idea
     url: https://github.com/gettori/tori/discussions
     about: >
