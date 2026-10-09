@@ -17,7 +17,7 @@ use std::sync::Arc;
 /// The newest schema this build writes and documents.
 pub const SCHEMA_VERSION: u32 = 1;
 
-const SUPPORTED_SCHEMA_VERSIONS: [u32; 1] = [SCHEMA_VERSION];
+pub(crate) const SUPPORTED_SCHEMA_VERSIONS: [u32; 1] = [SCHEMA_VERSION];
 
 /// Where the formatter binary is looked for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

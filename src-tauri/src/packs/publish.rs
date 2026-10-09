@@ -152,7 +152,7 @@ fn head_commit(dir: &Path) -> Result<String, String> {
 
 /// `secs` since the epoch as `YYYY-MM-DDTHH:MM:SSZ`, a fixed width so two of
 /// them compare as strings.
-fn rfc3339(secs: u64) -> String {
+pub(super) fn rfc3339(secs: u64) -> String {
     let days = (secs / 86_400) as i64;
     let rem = secs % 86_400;
     // Howard Hinnant's civil_from_days.
