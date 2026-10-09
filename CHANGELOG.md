@@ -8,7 +8,7 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
-## Unreleased
+## 26.1009.0-alpha
 
 - The Monokai Pro theme is gone, since Monokai Pro is a paid theme and was
   never Tori's to ship. If you had it picked, Tori switches to Tori Dark and
