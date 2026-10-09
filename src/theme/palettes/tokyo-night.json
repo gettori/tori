@@ -3,6 +3,9 @@
   "id": "tokyo-night",
   "label": "Tokyo Night",
   "appearance": "dark",
+  "description": "A port of Tokyo Night",
+  "license": "MIT",
+  "contributor": { "name": "Enkia", "github": "enkia" },
   "colors": {
     "canvas": "#16161e",
     "card": "#1a1b26",

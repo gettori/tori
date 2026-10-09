@@ -3,6 +3,9 @@
   "id": "github-light",
   "label": "GitHub Light",
   "appearance": "light",
+  "description": "A port of GitHub's light theme",
+  "license": "MIT",
+  "contributor": { "name": "Primer", "github": "primer" },
   "colors": {
     "canvas": "#f6f8fa",
     "card": "#ffffff",

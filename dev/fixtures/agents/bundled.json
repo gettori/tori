@@ -18,6 +18,13 @@
     "needs_you": true,
     "hooks": true,
     "verified_against": "claude 2.1.231",
+    "verified_on": null,
+    "description": "Claude Code, with chat over its stream-json protocol",
+    "contributor": {
+      "name": "Tori",
+      "github": "gettori"
+    },
+    "license": "Apache-2.0",
     "chat": {
       "transport": "claude_stream_json",
       "program": "claude",
@@ -200,6 +207,13 @@
     "needs_you": false,
     "hooks": false,
     "verified_against": "codex-cli 0.155.1 with @agentclientprotocol/codex-acp 1.12.0",
+    "verified_on": null,
+    "description": "OpenAI's Codex CLI, with chat over ACP",
+    "contributor": {
+      "name": "Tori",
+      "github": "gettori"
+    },
+    "license": "Apache-2.0",
     "chat": {
       "transport": "acp",
       "program": "npx",
@@ -263,6 +277,13 @@
     "needs_you": false,
     "hooks": false,
     "verified_against": null,
+    "verified_on": null,
+    "description": "GitHub Copilot CLI, with chat over ACP",
+    "contributor": {
+      "name": "Tori",
+      "github": "gettori"
+    },
+    "license": "Apache-2.0",
     "chat": {
       "transport": "acp",
       "program": "copilot",
@@ -316,6 +337,13 @@
     "needs_you": false,
     "hooks": false,
     "verified_against": null,
+    "verified_on": null,
+    "description": "Google's Gemini CLI, with chat over ACP",
+    "contributor": {
+      "name": "Tori",
+      "github": "gettori"
+    },
+    "license": "Apache-2.0",
     "chat": {
       "transport": "acp",
       "program": "gemini",
@@ -358,6 +386,13 @@
     "needs_you": false,
     "hooks": false,
     "verified_against": null,
+    "verified_on": null,
+    "description": "Moonshot AI's Kimi CLI, with chat over ACP",
+    "contributor": {
+      "name": "Tori",
+      "github": "gettori"
+    },
+    "license": "Apache-2.0",
     "chat": {
       "transport": "acp",
       "program": "kimi",
@@ -402,6 +437,13 @@
     "needs_you": false,
     "hooks": false,
     "verified_against": "opencode 1.18.3",
+    "verified_on": null,
+    "description": "OpenCode, with chat over ACP",
+    "contributor": {
+      "name": "Tori",
+      "github": "gettori"
+    },
+    "license": "Apache-2.0",
     "chat": {
       "transport": "acp",
       "program": "opencode",
@@ -457,6 +499,13 @@
     "needs_you": false,
     "hooks": false,
     "verified_against": null,
+    "verified_on": null,
+    "description": "The pi coding agent, with chat over ACP",
+    "contributor": {
+      "name": "Tori",
+      "github": "gettori"
+    },
+    "license": "Apache-2.0",
     "chat": {
       "transport": "acp",
       "program": "npx",

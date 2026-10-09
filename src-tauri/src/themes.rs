@@ -81,6 +81,7 @@ fn load_theme_str(text: &str, source: &str) -> Result<Palette, String> {
     if !problems.is_empty() {
         return Err(format!("{source}: {}", problems.join("; ")));
     }
+    crate::packs::check_id(&palette.id, source)?;
     Ok(palette)
 }
 
@@ -111,7 +112,7 @@ fn load_themes_from(dir: &Path) -> UserThemes {
                 continue;
             }
         };
-        match load_theme_str(&text, &source) {
+        match load_theme_str(&text, &source).inspect(|p| crate::packs::warn_stem(&source, &p.id)) {
             Ok(palette) => {
                 if let Some(first) = out.themes.iter().find(|t| t.palette.id == palette.id) {
                     out.errors.push(format!(
@@ -226,6 +227,32 @@ mod tests {
         let text = TORI_DARK.replacen("\"canvas\":", "\"canvasss\":", 1);
         let err = load_theme_str(&text, "t.json").unwrap_err();
         assert!(err.contains("canvasss"), "error should name the unknown key: {err}");
+    }
+
+    #[test]
+    fn the_catalog_fields_load_and_stay_optional() {
+        let mut bare: serde_json::Value = serde_json::from_str(TORI_DARK).unwrap();
+        for key in ["description", "license", "contributor"] {
+            bare.as_object_mut().unwrap().remove(key);
+        }
+        let bare = bare.to_string();
+        let text = bare.replacen(
+            "{",
+            r#"{ "description": "One line for the card", "license": "MIT", "contributor": { "name": "Ada", "github": "ada" },"#,
+            1,
+        );
+        let with = load_theme_str(&text, "t.json").unwrap();
+        assert_eq!(with.description.as_deref(), Some("One line for the card"));
+        assert_eq!(with.license.as_deref(), Some("MIT"));
+        assert_eq!(with.contributor.map(|c| c.github), Some("ada".to_string()));
+        let without = load_theme_str(&bare, "t.json").unwrap();
+        assert!(without.description.is_none() && without.contributor.is_none() && without.license.is_none());
+    }
+
+    #[test]
+    fn an_id_that_could_climb_out_of_its_folder_is_refused() {
+        let text = TORI_DARK.replacen("\"tori-dark\"", "\"../x\"", 1);
+        assert!(load_theme_str(&text, "t.json").unwrap_err().contains("../x"));
     }
 
     #[test]

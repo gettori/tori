@@ -3,6 +3,9 @@
   "id": "catppuccin-latte",
   "label": "Catppuccin Latte",
   "appearance": "light",
+  "description": "A port of Catppuccin Latte",
+  "license": "MIT",
+  "contributor": { "name": "Catppuccin", "github": "catppuccin" },
   "colors": {
     "canvas": "#e6e9ef",
     "card": "#eff1f5",

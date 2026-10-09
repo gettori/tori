@@ -3,6 +3,9 @@
   "id": "night-owl",
   "label": "Night Owl",
   "appearance": "dark",
+  "description": "A port of Night Owl",
+  "license": "MIT",
+  "contributor": { "name": "Sarah Drasner", "github": "sdras" },
   "colors": {
     "canvas": "#010e1a",
     "card": "#011627",

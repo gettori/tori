@@ -3,6 +3,9 @@
   "id": "quiet-light",
   "label": "Quiet Light",
   "appearance": "light",
+  "description": "A port of Quiet Light from VS Code",
+  "license": "MIT",
+  "contributor": { "name": "Microsoft", "github": "microsoft" },
   "colors": {
     "canvas": "#ededf5",
     "card": "#f5f5f5",

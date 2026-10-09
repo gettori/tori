@@ -7,6 +7,7 @@
 // than camel-casing at the boundary.
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import type { PackMeta } from "./packs";
 import { isToriSettingsFile } from "./toriSettingsFiles";
 
 export type LspLaunch =
@@ -17,7 +18,7 @@ export type LspLaunch =
 
 export type LspFeature = "diagnostics" | "code_action" | "format";
 
-export type LspServer = {
+export type LspServer = PackMeta & {
   id: string;
   label: string;
   /** Extension (dotless, lowercase) to LSP language id. */
@@ -39,6 +40,7 @@ export type LspServer = {
    *  config rather than handed to everything. */
   schema_associations: boolean;
   verified_against: string | null;
+  verified_on: string | null;
   /** Refused by `lsp_start` in a project the user has not trusted. */
   runs_project_code: boolean;
   role: "primary" | "secondary";

@@ -3,6 +3,9 @@
   "id": "tori-light",
   "label": "Tori Light",
   "appearance": "light",
+  "description": "Tori's own light theme",
+  "license": "Apache-2.0",
+  "contributor": { "name": "Tori", "github": "gettori" },
   "colors": {
     "canvas": "#ffffff",
     "card": "#f3f3f3",

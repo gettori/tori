@@ -4,6 +4,7 @@ import Toggle from "../../../../components/Switch/Switch";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { installServer, serverInstalled } from "../../../../utils/serverInstall";
 import { overlayRoot, setServerDisabled } from "../../settingsStore";
+import type { PackMeta } from "../../../../utils/packs";
 import { createToolActions } from "./toolActions";
 import styles from "../../Settings.module.css";
 
@@ -19,7 +20,7 @@ import styles from "../../Settings.module.css";
 
 export type BinaryStatus = "notFound" | "versionUnknown" | "versionMatch" | "versionDrift";
 
-export type LspHealth = {
+export type LspHealth = PackMeta & {
   id: string;
   label: string;
   role: "primary" | "secondary";
@@ -28,6 +29,7 @@ export type LspHealth = {
   path: string | null;
   version: string | null;
   verifiedAgainst: string | null;
+  verifiedOn: string | null;
   extensions: string[];
   // Set when something other than a missing `program` is wrong: today, a
   // bundled server whose entry script was never installed. `node` resolves

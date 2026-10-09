@@ -4,6 +4,9 @@
 schema_version = 1
 id = "ruby"
 label = "Ruby"
+description = "Ruby, through Ruby LSP"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 root_markers = ["Gemfile", ".git"]
 
 # Boots the project's bundle to read its gems.

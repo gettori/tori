@@ -9,6 +9,9 @@
 schema_version = 1
 id = "json"
 label = "JSON"
+description = "JSON and JSONC with SchemaStore schemas, through the VS Code JSON server"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 
 # `.git` alone, and `package.json` deliberately absent. `root_for` returns the
 # first ancestor holding *any* marker, so a monorepo with a `package.json` in

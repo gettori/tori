@@ -1,6 +1,9 @@
 schema_version = 5
 id = "claude"
 label = "Claude"
+description = "Claude Code, with chat over its stream-json protocol"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 icon = "claude"
 # The CLI these conventions were empirically captured against. The chat
 # transport below is a measurement of this version's wire format, so a drift

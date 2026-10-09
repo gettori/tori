@@ -3,6 +3,9 @@
 schema_version = 1
 id = "typst"
 label = "Typst (Tinymist)"
+description = "Typst, through Tinymist"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 root_markers = ["typst.toml", ".git"]
 
 # Typst compiles in a sandbox: a document cannot run a program.

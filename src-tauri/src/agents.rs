@@ -19,6 +19,7 @@
 // `SessionDetail`/touched-files/transcript-turns needs a real parser
 // implementation. A user adapter may only reference an existing kind.
 
+use crate::packs::{self, Meta};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -736,6 +737,10 @@ pub struct AgentAdapter {
     /// captured against (e.g. `"claude 2.1.220"`), echoed in ADAPTERS.md.
     /// Optional: not every adapter carries one.
     pub verified_against: Option<String>,
+    /// When `verified_against` was measured, `YYYY-MM-DD`.
+    pub verified_on: Option<String>,
+    #[serde(flatten)]
+    pub meta: Meta,
     /// The `[chat]` table, or `None` for an adapter with no chat transport.
     ///
     /// `None` is the normal case, not a degraded one: a PTY-only adapter is
@@ -809,6 +814,10 @@ struct AdapterToml {
     capabilities: CapabilitiesToml,
     #[serde(default)]
     verified_against: Option<String>,
+    #[serde(default)]
+    verified_on: Option<String>,
+    #[serde(flatten)]
+    meta: Meta,
     #[serde(default)]
     chat: Option<ChatToml>,
     #[serde(default)]
@@ -1028,7 +1037,7 @@ pub(crate) fn expand_tilde(path: &str) -> PathBuf {
 /// they obey is a combination rather than a per-key requirement and lives in
 /// [`check_session_plumbing`].
 const REQUIRED_TOP_LEVEL: [&str; 4] = ["schema_version", "id", "label", "launch"];
-const KNOWN_TOP_LEVEL: [&str; 15] = [
+const KNOWN_TOP_LEVEL: [&str; 19] = [
     "schema_version",
     "id",
     "label",
@@ -1039,6 +1048,10 @@ const KNOWN_TOP_LEVEL: [&str; 15] = [
     "running",
     "capabilities",
     "verified_against",
+    "verified_on",
+    "description",
+    "contributor",
+    "license",
     "chat",
     "accounts",
     "usage",
@@ -1141,6 +1154,10 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
             "{source}: unsupported schema_version {} (tori supports {supported})",
             raw.schema_version
         ));
+    }
+    packs::check_id(&raw.id, source)?;
+    if let Some(date) = &raw.verified_on {
+        packs::check_date(date, "verified_on", source)?;
     }
 
     // Honouring a table in a file that declares a version predating it would
@@ -1484,6 +1501,8 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
         needs_you: raw.capabilities.needs_you,
         hooks: raw.capabilities.hooks,
         verified_against: raw.verified_against,
+        verified_on: raw.verified_on,
+        meta: raw.meta,
         chat,
         accounts,
         usage,
@@ -1565,6 +1584,12 @@ const BUNDLED: [(&str, &str); 7] = [
     ("bundled:pi", BUILTIN_PI),
 ];
 
+fn load_adapter_file(text: &str, source: &str) -> Result<AgentAdapter, String> {
+    let adapter = load_adapter_str(text, source)?;
+    packs::check_stem(source, &adapter.id)?;
+    Ok(adapter)
+}
+
 fn user_agents_dir() -> PathBuf {
     crate::owned_state::config_dir().join("agents")
 }
@@ -1583,7 +1608,7 @@ fn build_registry_from(user_dir: &Path) -> Vec<AgentAdapter> {
     let mut by_id: HashMap<String, AgentAdapter> = HashMap::new();
 
     for (source, text) in BUNDLED {
-        match load_adapter_str(text, source) {
+        match load_adapter_file(text, source) {
             Ok(a) => {
                 by_id.insert(a.id.clone(), a);
             }
@@ -1605,7 +1630,7 @@ fn build_registry_from(user_dir: &Path) -> Vec<AgentAdapter> {
                     continue;
                 }
             };
-            match load_adapter_str(&text, &source) {
+            match load_adapter_str(&text, &source).inspect(|a| packs::warn_stem(&source, &a.id)) {
                 Ok(a) => {
                     by_id.insert(a.id.clone(), a);
                 }
@@ -1757,6 +1782,56 @@ pub fn test_adapter_with_chat(program: &str, chat_program: &str) -> AgentAdapter
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_bundled_pack_carries_metadata() {
+        for (source, text) in BUNDLED {
+            let meta = load_adapter_str(text, source).unwrap().meta;
+            assert!(meta.description.is_some(), "{source} has no description");
+            assert!(meta.contributor.is_some(), "{source} has no contributor");
+            assert!(meta.license.is_some(), "{source} has no license");
+        }
+    }
+
+    /// Every schema field the loader knows must appear in ADAPTERS.md, so adding
+    /// one without documenting it fails here rather than shipping undocumented.
+    #[test]
+    fn the_doc_documents_every_schema_field() {
+        let doc = include_str!("../../docs/ADAPTERS.md");
+        for field in KNOWN_TOP_LEVEL {
+            assert!(doc.contains(field), "ADAPTERS.md does not document `{field}`");
+        }
+    }
+
+    #[test]
+    fn the_catalog_fields_load_and_stay_optional() {
+        let with = load_adapter_str(&format!("{}{}", packs::TEST_CATALOG_TOML, VALID_MINIMAL), "test").unwrap();
+        assert_eq!(with.meta, packs::test_meta());
+        assert_eq!(with.verified_on.as_deref(), Some("2026-10-09"));
+        let without = load_adapter_str(VALID_MINIMAL, "test").unwrap();
+        assert_eq!(without.meta, packs::Meta::default());
+        assert_eq!(without.verified_on, None);
+    }
+
+    #[test]
+    fn a_malformed_verified_on_is_refused_naming_the_file() {
+        let text = format!("verified_on = \"2026-13-01\"\n{}", VALID_MINIMAL);
+        let err = load_adapter_str(&text, "/x/x.toml").unwrap_err();
+        assert!(err.contains("/x/x.toml") && err.contains("verified_on"), "{err}");
+    }
+
+    #[test]
+    fn a_file_named_other_than_its_id_is_refused_naming_both() {
+        let err = load_adapter_file(VALID_MINIMAL, "/x/other.toml").unwrap_err();
+        assert!(err.contains("`other`") && err.contains("`x`"), "{err}");
+        assert!(load_adapter_file(VALID_MINIMAL, "/x/x.toml").is_ok());
+    }
+
+    #[test]
+    fn an_id_that_could_climb_out_of_its_folder_is_refused() {
+        let text = VALID_MINIMAL.replace("id = \"x\"", "id = \"../x\"");
+        assert!(load_adapter_str(&text, "test").unwrap_err().contains("../x"));
+    }
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn tmp_dir() -> PathBuf {
