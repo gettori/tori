@@ -8,7 +8,14 @@ import IconButton from "../../../../components/IconButton/IconButton";
 import Toggle from "../../../../components/Switch/Switch";
 import AgentGlyph from "../../../../components/Icon/AgentGlyph";
 import { agentChosen, enableBlockedReason, setAgentEnabled } from "../../../../utils/agentEnabled";
-import { agents, ensureAdaptersLoaded, findAdapter, type Adapter, type ChatTransport } from "../../../../utils/agents";
+import {
+  agents,
+  ensureAdaptersLoaded,
+  findAdapter,
+  isLaunchOnly,
+  type Adapter,
+  type ChatTransport,
+} from "../../../../utils/agents";
 import {
   catalogFor,
   distinctModelCount,
@@ -93,14 +100,16 @@ const TRANSPORT_LABEL: Record<ChatTransport, string> = {
   acp: "ACP",
 };
 
-/** "GitHub · ACP": provider, then transport. Read off the resolved adapter,
- *  so before `list_agents` lands (the fallback carries no chat table) the note
- *  is the provider alone rather than a wrong claim; an adapter Tori knows
- *  neither fact about shows its program, the one fact the adapter itself
- *  states. */
+/** "GitHub · ACP": provider, then transport, or "Terminal" for a launch-only
+ *  adapter. Read off the resolved adapter, so before `list_agents` lands (the
+ *  fallback carries no chat table) the note is the provider alone rather than
+ *  a wrong claim; an adapter Tori knows neither fact about shows its program,
+ *  the one fact the adapter itself states. */
 function rowNote(id: string, program: string): string {
-  const transport = findAdapter(id).chat?.transport;
-  const parts = [PROVIDER[id], transport && TRANSPORT_LABEL[transport]].filter(Boolean);
+  const adapter = findAdapter(id);
+  const transport = adapter.chat?.transport;
+  const drive = transport ? TRANSPORT_LABEL[transport] : isLaunchOnly(adapter) && "Terminal";
+  const parts = [PROVIDER[id], drive].filter(Boolean);
   return parts.length ? parts.join(" · ") : program;
 }
 
