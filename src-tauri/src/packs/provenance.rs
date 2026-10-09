@@ -50,7 +50,8 @@ pub const CACHE_FILE: &str = "catalog.json";
 
 /// The index cached in `packs/catalog.json`. The cache is only ever written
 /// after its signature checked out, so it is read here without checking again.
-/// A row of a kind this build does not know is skipped.
+/// A row of a kind or schema_version this build does not load is skipped: it
+/// can be neither installed nor offered as an update.
 pub fn read_cache(packs_dir: &Path) -> Cached {
     let Some(value) = std::fs::read_to_string(packs_dir.join(CACHE_FILE))
         .ok()
@@ -64,10 +65,11 @@ pub fn read_cache(packs_dir: &Path) -> Cached {
         .map(|rows| {
             rows.iter()
                 .filter_map(|row| {
+                    let (kind, id, sha256) = super::catalog::loadable(row)?;
                     Some(CachedRow {
-                        kind: serde_json::from_value(row["kind"].clone()).ok()?,
-                        id: row["id"].as_str()?.to_string(),
-                        sha256: row["sha256"].as_str()?.to_string(),
+                        kind,
+                        id: id.to_string(),
+                        sha256: sha256.to_string(),
                     })
                 })
                 .collect()
@@ -253,8 +255,8 @@ mod tests {
         std::fs::write(
             dir.join(CACHE_FILE),
             r#"{"etag":"e","index":{"packs_commit":"abc","rows":[
-                {"kind":"lsp","id":"x","sha256":"aa","url":"u"},
-                {"kind":"someday","id":"y","sha256":"bb"}]}}"#,
+                {"kind":"lsp","id":"x","schema_version":1,"sha256":"aa","url":"u"},
+                {"kind":"someday","id":"y","schema_version":1,"sha256":"bb"}]}}"#,
         )
         .unwrap();
         assert_eq!(read_cache(&dir), cached(MINE));
