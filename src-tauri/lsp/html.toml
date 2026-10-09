@@ -4,6 +4,9 @@
 schema_version = 1
 id = "html"
 label = "HTML"
+description = "HTML, through the VS Code HTML language server"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 
 root_markers = [".git"]
 

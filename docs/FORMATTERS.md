@@ -111,6 +111,10 @@ order:
 - An unrecognized top-level field is warned about and ignored. A missing
   required field is an error naming every missing field at once.
 - Files are read once at startup. Editing one means restarting Tori.
+- A file is named after its `id`: `prettier.toml` holds `id = "prettier"`. A user
+  file whose name and id differ still loads, with a warning naming both. An id
+  is lowercase letters, digits, `.`, `_` and `-`, and starts with a letter or
+  digit; any other id is refused.
 
 ## Schema
 
@@ -133,6 +137,15 @@ extensions = ["ts", "tsx"]
 
 # optional: the version these arguments were checked against. Documentation only.
 verified_against = "prettier 3.9.8"
+
+# optional: the day verified_against was measured, written YYYY-MM-DD.
+verified_on = "2026-10-09"
+
+# optional: the catalog fields. One line for the formatter's card, the SPDX id
+# of the licence this file is shared under, and who wrote it.
+description = "JavaScript, TypeScript, CSS, Markdown and more"
+license = "MIT"
+contributor = { name = "Tori", github = "gettori" }
 
 # --- tables below this line; nothing top-level may follow them ---
 

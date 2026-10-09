@@ -131,6 +131,10 @@ wants `needs_you = false`.
 - An unrecognized top-level field is a warning, not a rejection. A missing
   required field, an unsupported `schema_version`, or a `parser.kind` outside
   the closed set below is a rejection - the whole file is skipped.
+- A file is named after its `id`: `claude.toml` holds `id = "claude"`. A user
+  file whose name and id differ still loads, with a warning naming both. An id
+  is lowercase letters, digits, `.`, `_` and `-`, and starts with a letter or
+  digit; any other id is refused.
 
 ## Schema
 
@@ -140,6 +144,10 @@ id = "..."            # required; the agent's identifier throughout Tori
 label = "..."         # required; display name (sidebar, launch buttons)
 icon = "..."          # optional; which bundled agent logo to wear - "claude", "codex", "copilot", "gemini", "kimi", "opencode", "pi". An unknown or absent name is not an error: the UI falls back to the label's first letter rather than to another agent's mark
 verified_against = "..."  # optional; the agent CLI version this was captured against, echoed here for reference
+verified_on = "..."       # optional; the day verified_against was measured, written YYYY-MM-DD
+description = "..."       # optional; one line for the agent's card
+license = "..."           # optional; the SPDX id of the licence this file is shared under
+contributor = { name = "...", github = "..." }  # optional; who wrote this file, credited on its card
 
 [launch]
 program = "..."        # required; the executable to seed into the tab's shell

@@ -3,6 +3,9 @@
   "id": "synthwave-84",
   "label": "SynthWave '84",
   "appearance": "dark",
+  "description": "A port of SynthWave '84",
+  "license": "MIT",
+  "contributor": { "name": "Robb Owen", "github": "robb0wen" },
   "colors": {
     "canvas": "#171520",
     "card": "#262335",

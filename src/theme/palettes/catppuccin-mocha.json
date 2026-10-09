@@ -3,6 +3,9 @@
   "id": "catppuccin-mocha",
   "label": "Catppuccin Mocha",
   "appearance": "dark",
+  "description": "A port of Catppuccin Mocha",
+  "license": "MIT",
+  "contributor": { "name": "Catppuccin", "github": "catppuccin" },
   "colors": {
     "canvas": "#181825",
     "card": "#1e1e2e",

@@ -4,6 +4,9 @@
 schema_version = 1
 id = "nix"
 label = "Nix"
+description = "Nix expressions, through nil"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 root_markers = ["flake.nix", ".git"]
 
 # Can evaluate the flake it is pointed at.

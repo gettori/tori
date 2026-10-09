@@ -5,6 +5,9 @@
 schema_version = 1
 id = "typescript"
 label = "TypeScript / JavaScript"
+description = "TypeScript and JavaScript, through typescript-language-server"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 
 # `tsconfig.json`/`jsconfig.json` first so a package inside a monorepo gets a
 # server rooted at its own compiler config rather than at the repo root.

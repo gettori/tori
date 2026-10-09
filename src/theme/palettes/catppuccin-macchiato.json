@@ -3,6 +3,9 @@
   "id": "catppuccin-macchiato",
   "label": "Catppuccin Macchiato",
   "appearance": "dark",
+  "description": "A port of Catppuccin Macchiato",
+  "license": "MIT",
+  "contributor": { "name": "Catppuccin", "github": "catppuccin" },
   "colors": {
     "canvas": "#1e2030",
     "card": "#24273a",

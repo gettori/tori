@@ -3,16 +3,18 @@ import { invoke } from "@tauri-apps/api/core";
 import Toggle from "../../../../components/Switch/Switch";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { setFormatterDisabled } from "../../settingsStore";
+import type { PackMeta } from "../../../../utils/packs";
 import { TONE, type BinaryStatus } from "./LspSection";
 import styles from "../../Settings.module.css";
 
-type FormatterHealth = {
+type FormatterHealth = PackMeta & {
   id: string;
   label: string;
   program: string;
   status: BinaryStatus;
   version: string | null;
   verifiedAgainst: string | null;
+  verifiedOn: string | null;
   // Null takes any file the formatter has a parser for.
   extensions: string[] | null;
   markers: string[];

@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import Toggle from "../../../../components/Switch/Switch";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { setDebuggerDisabled } from "../../settingsStore";
+import type { PackMeta } from "../../../../utils/packs";
 import { createToolActions } from "./toolActions";
 import styles from "../../Settings.module.css";
 
@@ -12,7 +13,7 @@ import styles from "../../Settings.module.css";
 
 type BinaryStatus = "notFound" | "versionUnknown" | "versionMatch" | "versionDrift";
 
-export type DapHealth = {
+export type DapHealth = PackMeta & {
   id: string;
   label: string;
   program: string;
@@ -20,6 +21,8 @@ export type DapHealth = {
   path: string | null;
   version: string | null;
   adapterVersion: string | null;
+  verifiedAgainst: string | null;
+  verifiedOn: string | null;
   extensions: string[];
   detail: string | null;
   disabled: boolean;
