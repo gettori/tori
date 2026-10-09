@@ -25,7 +25,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::Arc;
 
 /// The newest schema this build writes and documents.
 pub const SCHEMA_VERSION: u32 = 6;
@@ -1739,13 +1739,16 @@ fn build_registry() -> Vec<AgentAdapter> {
     list
 }
 
-static REGISTRY: OnceLock<Vec<AgentAdapter>> = OnceLock::new();
+static REGISTRY: packs::Registry<AgentAdapter> = packs::Registry::new();
 
-/// The process-wide adapter registry, loaded once on first use (bundled +
-/// `~/.config/tori/packs/agents/*.toml`; not live-watched - restart to pick up
-/// edits, same as any other loaded-at-startup config in Tori today).
-pub fn registry() -> &'static [AgentAdapter] {
-    REGISTRY.get_or_init(build_registry)
+/// The process-wide adapter registry: bundled, then
+/// `~/.config/tori/packs/agents/*.toml`, as of the last load or `reload`.
+pub fn registry() -> Arc<Vec<AgentAdapter>> {
+    REGISTRY.get(build_registry)
+}
+
+pub fn reload() {
+    REGISTRY.set(build_registry());
 }
 
 impl AgentAdapter {
@@ -1771,8 +1774,8 @@ impl AgentAdapter {
     }
 }
 
-pub fn find(id: &str) -> Option<&'static AgentAdapter> {
-    registry().iter().find(|a| a.id == id)
+pub fn find(id: &str) -> Option<AgentAdapter> {
+    registry().iter().find(|a| a.id == id).cloned()
 }
 
 /// Substitute `{id}`/`{file}` placeholders in an arg template.

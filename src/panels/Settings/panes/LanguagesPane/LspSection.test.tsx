@@ -27,6 +27,18 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
+type Handler = (e: { payload: unknown }) => void;
+let handlers: { name: string; fn: Handler }[] = [];
+const emit = (name: string, payload: unknown) =>
+  handlers.filter((h) => h.name === name).forEach((h) => h.fn({ payload }));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: (name: string, fn: Handler) => {
+    const entry = { name, fn };
+    handlers.push(entry);
+    return Promise.resolve(() => (handlers = handlers.filter((h) => h !== entry)));
+  },
+}));
+
 const { default: LspSection } = await import("./LspSection");
 const { default: TrustedProjects } = await import("./TrustedProjects");
 
@@ -80,6 +92,19 @@ beforeEach(() => {
 });
 
 describe("LspSection", () => {
+  it("shows a server added to the packs folder once the folder is reloaded", async () => {
+    health = [server()];
+    render(() => <LspSection />);
+    await waitFor(() => expect(screen.getByText("TypeScript / JavaScript")).toBeTruthy());
+
+    health = [server(), server({ id: "mine", label: "Mine" })];
+    emit("packs:changed", "dap");
+    await Promise.resolve();
+    expect(screen.queryByText("Mine")).toBeNull();
+    emit("packs:changed", "lsp");
+    await waitFor(() => expect(screen.getByText("Mine")).toBeTruthy());
+  });
+
   it("lists a language server file that did not load, and no other kind's", async () => {
     loadErrors = [
       { kind: "lsp", file: "/cfg/packs/lsp/typescript.toml", message: "bundled id", fix: "copy it" },

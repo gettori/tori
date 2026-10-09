@@ -106,9 +106,8 @@ fn installed_in(kind: PluginsKind, home: &Path) -> Vec<InstalledPlugin> {
 /// The plugins each account of this adapter has installed.
 #[tauri::command]
 pub async fn agent_plugins(adapter_id: String) -> Result<PluginsView, String> {
-    let adapter: AgentAdapter = crate::agents::find(&adapter_id)
-        .cloned()
-        .ok_or_else(|| format!("no agent adapter `{adapter_id}`"))?;
+    let adapter: AgentAdapter =
+        crate::agents::find(&adapter_id).ok_or_else(|| format!("no agent adapter `{adapter_id}`"))?;
     let Some(kind) = adapter.accounts.as_ref().and_then(|a| a.plugins_kind) else {
         return Ok(PluginsView {
             adapter_id,

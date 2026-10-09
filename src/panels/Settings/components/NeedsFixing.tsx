@@ -1,10 +1,11 @@
 import { For, Show, onMount } from "solid-js";
-import { loadErrors, refreshLoadErrors, type PackKind } from "../../../utils/packs";
+import { loadErrors, onPacksChanged, refreshLoadErrors, type PackKind } from "../../../utils/packs";
 import styles from "../Settings.module.css";
 
 /** The files of one pack kind that did not load, with what to do about each. */
 export default function NeedsFixing(props: { kind: PackKind }) {
   onMount(() => void refreshLoadErrors());
+  onPacksChanged(props.kind, () => void refreshLoadErrors());
   const mine = () => loadErrors().filter((e) => e.kind === props.kind);
 
   return (

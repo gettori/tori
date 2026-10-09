@@ -109,7 +109,7 @@ mod tests {
                 continue;
             }
             let dir = temp_dir("pip");
-            let installed = install_with(adapter, &dir, Path::new(python)).unwrap_or_else(|e| panic!("{python}: {e}"));
+            let installed = install_with(&adapter, &dir, Path::new(python)).unwrap_or_else(|e| panic!("{python}: {e}"));
 
             let (bin, manifest) = crate::lsp::managed::installed(&dir, "debugpy").expect("the manifest is written");
             assert_eq!(manifest, installed);

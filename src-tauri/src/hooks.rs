@@ -188,7 +188,9 @@ fn write_claude_settings_file() -> Result<PathBuf, String> {
 /// `AgentAdapter::hooks`) or if the settings file can't be written.
 #[tauri::command(async)]
 pub fn agent_hook_launch_args(agent_id: String) -> Vec<String> {
-    crate::agents::find(&agent_id).map(launch_args).unwrap_or_default()
+    crate::agents::find(&agent_id)
+        .map(|a| launch_args(&a))
+        .unwrap_or_default()
 }
 
 // Tori's MCP server reaches any claude transport, whether or not its adapter
