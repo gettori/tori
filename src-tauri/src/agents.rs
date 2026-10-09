@@ -2,7 +2,7 @@
 // through sessions.rs is now data. One adapter ships bundled
 // (agents/claude.toml, embedded at compile time); a user can add or
 // whole-replace an adapter by dropping a
-// `schema_version = 1` through `= 5` TOML file into `~/.config/tori/agents/`.
+// `schema_version = 1` through `= 6` TOML file into `~/.config/tori/agents/`.
 // See ADAPTERS.md for the schema. Every version so far is purely additive: v2
 // adds the optional `[chat]` table describing how to drive the agent as a
 // structured chat session rather than a PTY, v3 adds the optional
@@ -10,8 +10,9 @@
 // than one account at once, v4 adds the optional `[usage]` table naming the
 // rungs of the source ladder this agent can answer a quota reading from, and v5
 // adds the optional `[config]` table naming the files this agent reads out of
-// an account home. An older file loads unchanged, reporting `None` for the
-// tables it predates.
+// an account home. v6 admits a launch-only adapter (`capabilities.sessions =
+// false`, no session tables and no `[chat]`) and the `json` whoami kind. An
+// older file loads unchanged, reporting `None` for the tables it predates.
 //
 // Parser kinds and chat transports stay code (an enum, not a config string): a config-driven
 // launch/discovery/running-pattern description is enough to make an agent
@@ -27,7 +28,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 /// The newest schema this build writes and documents.
-pub const SCHEMA_VERSION: u32 = 5;
+pub const SCHEMA_VERSION: u32 = 6;
 
 /// Every schema version this build still loads.
 ///
@@ -42,7 +43,7 @@ pub const SCHEMA_VERSION: u32 = 5;
 /// holding three entries, so the build stops until the new version is listed.
 /// Writing `[1, 2, SCHEMA_VERSION]` would look like it derives itself and would
 /// quietly become `[1, 2, 4]`, dropping v3 support with no error anywhere.
-pub const SUPPORTED_SCHEMA_VERSIONS: [u32; SCHEMA_VERSION as usize] = [1, 2, 3, 4, 5];
+pub const SUPPORTED_SCHEMA_VERSIONS: [u32; SCHEMA_VERSION as usize] = [1, 2, 3, 4, 5, 6];
 
 /// The version each optional table was introduced in.
 ///
@@ -55,6 +56,8 @@ const CHAT_MIN_VERSION: u32 = 2;
 const ACCOUNTS_MIN_VERSION: u32 = 3;
 const USAGE_MIN_VERSION: u32 = 4;
 const CONFIG_MIN_VERSION: u32 = 5;
+const LAUNCH_ONLY_MIN_VERSION: u32 = 6;
+const JSON_WHOAMI_MIN_VERSION: u32 = 6;
 
 /// How Tori drives an agent as a structured chat session rather than a PTY.
 ///
@@ -159,8 +162,7 @@ impl ParserKind {
 /// code: doing so would report OpenCode signed in while it holds no credentials
 /// at all. Guessing wrong here produces a confident false positive, so the kind
 /// is declared per adapter and the loader refuses probe args without one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WhoamiKind {
     /// A JSON object carrying `loggedIn`, and optionally `email` and
     /// `apiKeySource`.
@@ -169,16 +171,29 @@ pub enum WhoamiKind {
     ExitCode,
     /// A `N credentials` count in OpenCode's own table output.
     OpencodeCredentials,
+    /// Any JSON object: a boolean at `signed_in_key`, and optionally the
+    /// account's name at `account_key`, both dotted paths.
+    Json {
+        signed_in_key: String,
+        account_key: Option<String>,
+    },
 }
 
 impl WhoamiKind {
-    fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "claude_json" => Some(Self::ClaudeJson),
-            "exit_code" => Some(Self::ExitCode),
-            "opencode_credentials" => Some(Self::OpencodeCredentials),
-            _ => None,
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::ClaudeJson => "claude_json",
+            Self::ExitCode => "exit_code",
+            Self::OpencodeCredentials => "opencode_credentials",
+            Self::Json { .. } => "json",
         }
+    }
+}
+
+// The frontend reads only which kind it is; the keys are the backend's.
+impl Serialize for WhoamiKind {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
     }
 }
 
@@ -733,6 +748,9 @@ pub struct AgentAdapter {
     /// (phase 1's `--settings` injection spike); every other adapter stays
     /// on the tail-join floor.
     pub hooks: bool,
+    /// False for a launch-only adapter, which has no session list and no chat
+    /// pane: it runs in a terminal tab and nothing more.
+    pub sessions: bool,
     /// The agent CLI version this adapter's conventions were empirically
     /// captured against (e.g. `"claude 2.1.220"`), echoed in ADAPTERS.md.
     /// Optional: not every adapter carries one.
@@ -908,6 +926,10 @@ struct AccountsToml {
     #[serde(default)]
     whoami_kind: Option<String>,
     #[serde(default)]
+    whoami_signed_in_key: Option<String>,
+    #[serde(default)]
+    whoami_account_key: Option<String>,
+    #[serde(default)]
     supports_isolation: bool,
     #[serde(default)]
     onboarded_file: Option<String>,
@@ -958,7 +980,9 @@ struct LaunchToml {
     base_args: Vec<String>,
     #[serde(default)]
     yolo_args: Vec<String>,
-    resume_args: Vec<String>,
+    /// Required unless the adapter is launch-only, which resumes nothing.
+    #[serde(default)]
+    resume_args: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1001,6 +1025,10 @@ struct CapabilitiesToml {
     /// each one is agent-specific code in `crate::hooks`.
     #[serde(default)]
     hooks: bool,
+    /// False for a launch-only adapter: Tori starts it in a terminal tab and
+    /// lists no sessions for it. See [`check_session_plumbing`].
+    #[serde(default = "default_sessions")]
+    sessions: bool,
 }
 
 impl Default for CapabilitiesToml {
@@ -1009,8 +1037,13 @@ impl Default for CapabilitiesToml {
             pty_quiet_ms: default_quiet_ms(),
             needs_you: default_needs_you(),
             hooks: false,
+            sessions: default_sessions(),
         }
     }
+}
+
+fn default_sessions() -> bool {
+    true
 }
 
 fn default_quiet_ms() -> u64 {
@@ -1067,10 +1100,11 @@ const KNOWN_TOP_LEVEL: [&str; 19] = [
 ///
 ///   * **All three present.** A file-backed adapter, which is every v1 adapter
 ///     and every Claude-shaped one. Always allowed.
-///   * **All three absent.** Only allowed when `[chat]` names a transport whose
-///     sessions come over the protocol. Otherwise the adapter could list no
-///     sessions at all and would look, from the outside, exactly like an agent
-///     the user has never run.
+///   * **All three absent.** Allowed when `[chat]` names a transport whose
+///     sessions come over the protocol, or, from v6, with no `[chat]` at all
+///     when `capabilities.sessions = false` says so out loud. Otherwise the
+///     adapter could list no sessions and would look, from the outside, exactly
+///     like an agent the user has never run.
 ///   * **Some present.** Always an error, naming the missing ones. This is the
 ///     case worth the code: a typo in `[[discovery]]` or a table accidentally
 ///     nested under `[chat]` would otherwise turn a working Claude-shaped
@@ -1086,6 +1120,13 @@ fn check_session_plumbing(raw: &AdapterToml, source: &str) -> Result<(), String>
         .filter(|(_, present)| !present)
         .map(|(k, _)| *k)
         .collect();
+
+    if !raw.capabilities.sessions && (missing.len() < declared.len() || raw.chat.is_some()) {
+        return Err(format!(
+            "{source}: capabilities.sessions = false declares a launch-only adapter, which \
+             takes no [discovery], [parser], [running] or [chat]"
+        ));
+    }
 
     if missing.is_empty() {
         return Ok(());
@@ -1108,6 +1149,17 @@ fn check_session_plumbing(raw: &AdapterToml, source: &str) -> Result<(), String>
         return Ok(());
     }
 
+    if !raw.capabilities.sessions {
+        if raw.schema_version < LAUNCH_ONLY_MIN_VERSION {
+            return Err(format!(
+                "{source}: a launch-only adapter (capabilities.sessions = false) requires \
+                 schema_version >= {LAUNCH_ONLY_MIN_VERSION} (this file declares {})",
+                raw.schema_version
+            ));
+        }
+        return Ok(());
+    }
+
     let protocol_transports: Vec<&str> = ChatTransport::ALL
         .iter()
         .filter(|t| t.sessions_over_protocol())
@@ -1115,7 +1167,8 @@ fn check_session_plumbing(raw: &AdapterToml, source: &str) -> Result<(), String>
         .collect();
     Err(format!(
         "{source}: missing required field(s): {} (omit all three only for a \
-         chat.transport that reaches its sessions over the protocol: {})",
+         chat.transport that reaches its sessions over the protocol: {}, or for a \
+         launch-only adapter declaring capabilities.sessions = false)",
         missing.join(", "),
         protocol_transports.join(", ")
     ))
@@ -1188,6 +1241,9 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
     // absent at all depends on the chat transport, so the combination is checked
     // before any of them is resolved.
     check_session_plumbing(&raw, source)?;
+    if raw.capabilities.sessions && raw.launch.resume_args.is_none() {
+        return Err(format!("{source}: missing required field(s): launch.resume_args"));
+    }
 
     let parser_kind = raw
         .parser
@@ -1267,7 +1323,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
     // second one out.
     let accounts = raw
         .accounts
-        .map(|a| {
+        .map(|mut a| {
             if a.supports_isolation && a.home_env.is_none() {
                 return Err(format!(
                     "{source}: accounts.supports_isolation = true requires accounts.home_env \
@@ -1292,12 +1348,19 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
             // would leave the reader guessing, and the measured shapes make
             // every guess wrong somewhere: assume the exit code and OpenCode
             // reports signed in while holding no credentials at all.
+            let (signed_in_key, account_key) = match a.whoami_kind.as_deref() {
+                Some("json") => (a.whoami_signed_in_key.take(), a.whoami_account_key.take()),
+                _ => (None, None),
+            };
             let whoami_kind = match (a.whoami_args.is_empty(), a.whoami_kind.as_deref()) {
                 (true, None) => None,
-                (false, Some(kind)) => Some(
-                    WhoamiKind::from_str(kind)
-                        .ok_or_else(|| format!("{source}: unknown accounts.whoami_kind `{kind}`"))?,
-                ),
+                (false, Some(kind)) => Some(whoami_kind(
+                    kind,
+                    signed_in_key,
+                    account_key,
+                    raw.schema_version,
+                    source,
+                )?),
                 (false, None) => {
                     return Err(format!(
                         "{source}: accounts.whoami_args needs accounts.whoami_kind \
@@ -1332,6 +1395,12 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
                         .ok_or_else(|| format!("{source}: unknown accounts.plugins_kind `{kind}`"))
                 })
                 .transpose()?;
+            if a.whoami_signed_in_key.is_some() || a.whoami_account_key.is_some() {
+                return Err(format!(
+                    "{source}: accounts.whoami_signed_in_key and accounts.whoami_account_key \
+                     are read only by whoami_kind = \"json\""
+                ));
+            }
             Ok(AccountsConfig {
                 home_env: a.home_env,
                 home_default: a.home_default.as_deref().map(expand_tilde),
@@ -1493,13 +1562,14 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
         program: raw.launch.program,
         base_args: raw.launch.base_args,
         yolo_args: raw.launch.yolo_args,
-        resume_args: raw.launch.resume_args,
+        resume_args: raw.launch.resume_args.unwrap_or_default(),
         discovery,
         parser_kind,
         running_pattern: raw.running.map(|r| r.pattern),
         pty_quiet_ms: raw.capabilities.pty_quiet_ms,
         needs_you: raw.capabilities.needs_you,
         hooks: raw.capabilities.hooks,
+        sessions: raw.capabilities.sessions,
         verified_against: raw.verified_against,
         verified_on: raw.verified_on,
         meta: raw.meta,
@@ -1511,6 +1581,38 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
         install,
         source: source.to_string(),
     })
+}
+
+/// `accounts.whoami_kind`, given the keys only `json` reads. Keys declared
+/// beside any other kind are refused by the caller.
+fn whoami_kind(
+    kind: &str,
+    signed_in_key: Option<String>,
+    account_key: Option<String>,
+    schema_version: u32,
+    source: &str,
+) -> Result<WhoamiKind, String> {
+    match kind {
+        "claude_json" => Ok(WhoamiKind::ClaudeJson),
+        "exit_code" => Ok(WhoamiKind::ExitCode),
+        "opencode_credentials" => Ok(WhoamiKind::OpencodeCredentials),
+        "json" => {
+            if schema_version < JSON_WHOAMI_MIN_VERSION {
+                return Err(format!(
+                    "{source}: accounts.whoami_kind = \"json\" requires schema_version >= \
+                     {JSON_WHOAMI_MIN_VERSION} (this file declares {schema_version})"
+                ));
+            }
+            let signed_in_key = signed_in_key
+                .filter(|k| !k.trim().is_empty())
+                .ok_or_else(|| format!("{source}: whoami_kind = \"json\" needs accounts.whoami_signed_in_key"))?;
+            Ok(WhoamiKind::Json {
+                signed_in_key,
+                account_key,
+            })
+        }
+        _ => Err(format!("{source}: unknown accounts.whoami_kind `{kind}`")),
+    }
 }
 
 /// Is `value` a path that stays inside the directory it is resolved against?
@@ -2524,7 +2626,7 @@ supports_isolation = true
     fn each_measured_agent_declares_the_shape_of_its_own_answer() {
         let kinds: Vec<(String, Option<WhoamiKind>)> = bundled()
             .filter_map(|(source, text)| load_adapter_str(text, &source).ok())
-            .filter_map(|a| a.accounts.as_ref().map(|acc| (a.id.clone(), acc.whoami_kind)))
+            .filter_map(|a| a.accounts.as_ref().map(|acc| (a.id.clone(), acc.whoami_kind.clone())))
             .collect();
         assert_eq!(
             kinds,
@@ -3268,6 +3370,48 @@ default = true
         assert!(load_adapter_str(&with_claude, "test").is_err());
     }
 
+    const LAUNCH_ONLY: &str = r#"
+schema_version = 6
+id = "x"
+label = "X"
+
+[launch]
+program = "x"
+
+[capabilities]
+sessions = false
+
+[install]
+program = "npm"
+args = ["install", "-g", "x"]
+
+[accounts]
+login_args = ["login"]
+whoami_args = ["whoami", "--json"]
+whoami_kind = "json"
+whoami_signed_in_key = "auth.signedIn"
+"#;
+
+    #[test]
+    fn a_launch_only_adapter_loads_at_v6_and_is_refused_at_v5() {
+        let a = load_adapter_str(LAUNCH_ONLY, "test").expect("a launch-only adapter loads at v6");
+        assert!(!a.sessions);
+        assert!(a.discovery.is_none() && a.chat.is_none());
+
+        let v5 = LAUNCH_ONLY
+            .replacen("schema_version = 6", "schema_version = 5", 1)
+            .replacen(
+                "whoami_kind = \"json\"\nwhoami_signed_in_key = \"auth.signedIn\"",
+                "whoami_kind = \"exit_code\"",
+                1,
+            );
+        let err = load_adapter_str(&v5, "test").unwrap_err();
+        assert!(
+            err.contains("schema_version >= 6") && err.contains("declares 5"),
+            "{err}"
+        );
+    }
+
     #[test]
     fn unknown_parser_kind_is_rejected() {
         let text = VALID_MINIMAL.replacen("kind = \"claude_jsonl\"", "kind = \"made_up_kind\"", 1);
@@ -3316,6 +3460,30 @@ default = true
         );
         assert!(a.parser_kind.is_none());
         assert!(a.running_pattern.is_none());
+    }
+
+    #[test]
+    fn adapters_md_launch_only_example_parses() {
+        let doc = include_str!("../../docs/ADAPTERS.md");
+        let heading = "### A launch-only agent";
+        let after = doc
+            .find(heading)
+            .expect("ADAPTERS.md must document a launch-only example")
+            + heading.len();
+        let rest = &doc[after..];
+        let fence_start = rest
+            .find("```toml")
+            .expect("the launch-only example needs a ```toml block")
+            + "```toml".len();
+        let fence_end = rest[fence_start..].find("```").expect("unterminated fence") + fence_start;
+
+        let a = load_adapter_str(rest[fence_start..fence_end].trim(), "ADAPTERS.md launch-only example")
+            .expect("the launch-only example TOML should parse");
+        assert!(!a.sessions && a.chat.is_none() && a.discovery.is_none());
+        assert!(matches!(
+            a.accounts.and_then(|acc| acc.whoami_kind),
+            Some(WhoamiKind::Json { .. })
+        ));
     }
 
     #[test]

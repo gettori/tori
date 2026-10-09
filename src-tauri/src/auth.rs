@@ -88,7 +88,7 @@ impl Whoami {
 /// Pure: it sees a run that finished, so "the process never ran" is the
 /// caller's problem and is [`SignIn::Unknown`] there. Each arm was measured both
 /// ways on 2026-08-14; see the `[accounts]` comment in each adapter's TOML.
-pub fn parse_whoami(kind: WhoamiKind, exit_ok: bool, stdout: &str, stderr: &str) -> Whoami {
+pub fn parse_whoami(kind: &WhoamiKind, exit_ok: bool, stdout: &str, stderr: &str) -> Whoami {
     match kind {
         WhoamiKind::ClaudeJson => parse_claude_json(stdout),
         // The exit code is the entire answer here, which is only true because
@@ -99,6 +99,36 @@ pub fn parse_whoami(kind: WhoamiKind, exit_ok: bool, stdout: &str, stderr: &str)
             Whoami::state(if exit_ok { SignIn::SignedIn } else { SignIn::SignedOut })
         }
         WhoamiKind::OpencodeCredentials => parse_opencode_credentials(stdout),
+        WhoamiKind::Json {
+            signed_in_key,
+            account_key,
+        } => parse_json(stdout, signed_in_key, account_key.as_deref()),
+    }
+}
+
+/// A declared JSON shape: a boolean at `signed_in_key`, and the account's
+/// name at `account_key`. Keys are dotted paths into nested objects. A missing
+/// key or a value that is not a boolean is unknown, as with `claude_json`.
+fn parse_json(stdout: &str, signed_in_key: &str, account_key: Option<&str>) -> Whoami {
+    let Some(value) = first_json_object(stdout).map(serde_json::Value::Object) else {
+        return Whoami::state(SignIn::Unknown);
+    };
+    let at = |path: &str| path.split('.').try_fold(&value, |v, key| v.get(key));
+    let state = match at(signed_in_key).and_then(|v| v.as_bool()) {
+        Some(true) => SignIn::SignedIn,
+        Some(false) => SignIn::SignedOut,
+        None => SignIn::Unknown,
+    };
+    let email = account_key
+        .and_then(at)
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    Whoami {
+        state,
+        email,
+        api_key_source: None,
     }
 }
 
@@ -222,7 +252,7 @@ pub fn probe_command(
 /// signed out would hide a working install behind a sign-in prompt it cannot
 /// satisfy.
 pub fn whoami(path: &std::path::Path, accounts: &AccountsConfig, home: Option<&(String, String)>) -> Whoami {
-    let Some(kind) = accounts.whoami_kind else {
+    let Some(kind) = &accounts.whoami_kind else {
         return Whoami::state(SignIn::Unknown);
     };
     let mut cmd = probe_command(path, &accounts.whoami_args, home);
@@ -360,6 +390,40 @@ pub fn agent_login_route(adapter_id: String) -> Result<LoginRoute, String> {
 mod tests {
     use super::*;
 
+    fn json_kind(account_key: Option<&str>) -> WhoamiKind {
+        WhoamiKind::Json {
+            signed_in_key: "auth.signedIn".into(),
+            account_key: account_key.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn the_json_kind_reads_a_signed_in_answer_at_its_dotted_path() {
+        let out = r#"{"auth": {"signedIn": true, "user": {"login": "ada"}}}"#;
+        let answer = parse_whoami(&json_kind(Some("auth.user.login")), true, out, "");
+        assert_eq!(answer.state, SignIn::SignedIn);
+        assert_eq!(answer.email.as_deref(), Some("ada"));
+    }
+
+    #[test]
+    fn the_json_kind_reads_a_signed_out_answer() {
+        let answer = parse_whoami(&json_kind(None), false, r#"{"auth": {"signedIn": false}}"#, "");
+        assert_eq!(answer.state, SignIn::SignedOut);
+        assert_eq!(answer.email, None);
+    }
+
+    #[test]
+    fn the_json_kind_is_unknown_when_the_key_is_missing() {
+        let answer = parse_whoami(&json_kind(Some("auth.user")), true, r#"{"auth": {}}"#, "");
+        assert_eq!(answer, Whoami::default());
+    }
+
+    #[test]
+    fn the_json_kind_is_unknown_for_output_that_is_not_json() {
+        let answer = parse_whoami(&json_kind(None), true, "Signed in as ada\n", "");
+        assert_eq!(answer.state, SignIn::Unknown);
+    }
+
     fn config(kind: Option<WhoamiKind>) -> AccountsConfig {
         AccountsConfig {
             home_env: Some("X_HOME".into()),
@@ -408,7 +472,7 @@ mod tests {
 
     #[test]
     fn claude_reports_its_account_from_json() {
-        let answer = parse_whoami(WhoamiKind::ClaudeJson, true, CLAUDE_IN, "");
+        let answer = parse_whoami(&WhoamiKind::ClaudeJson, true, CLAUDE_IN, "");
         assert_eq!(answer.state, SignIn::SignedIn);
         assert_eq!(answer.email.as_deref(), Some("dev@example.com"));
         assert_eq!(answer.api_key_source, None);
@@ -416,7 +480,7 @@ mod tests {
 
     #[test]
     fn claude_reports_signed_out_from_json() {
-        let answer = parse_whoami(WhoamiKind::ClaudeJson, false, CLAUDE_OUT, "");
+        let answer = parse_whoami(&WhoamiKind::ClaudeJson, false, CLAUDE_OUT, "");
         assert_eq!(answer.state, SignIn::SignedOut);
         assert_eq!(answer.email, None);
     }
@@ -426,7 +490,7 @@ mod tests {
     /// environment variables matter to which agent.
     #[test]
     fn an_inherited_api_key_is_reported_by_the_agent_not_guessed() {
-        let answer = parse_whoami(WhoamiKind::ClaudeJson, true, CLAUDE_WITH_KEY, "");
+        let answer = parse_whoami(&WhoamiKind::ClaudeJson, true, CLAUDE_WITH_KEY, "");
         assert_eq!(answer.api_key_source.as_deref(), Some("ANTHROPIC_API_KEY"));
         // Still signed in, so the warning is a notice beside a working session
         // rather than a reason to withhold one.
@@ -441,7 +505,7 @@ mod tests {
     fn unreadable_claude_output_is_unknown_rather_than_signed_out() {
         for text in ["", "not json at all", "{}", r#"{"loggedIn":"yes"}"#] {
             assert_eq!(
-                parse_whoami(WhoamiKind::ClaudeJson, false, text, "").state,
+                parse_whoami(&WhoamiKind::ClaudeJson, false, text, "").state,
                 SignIn::Unknown,
                 "{text:?} should be unknown"
             );
@@ -452,7 +516,7 @@ mod tests {
     fn a_json_object_after_a_line_of_noise_still_parses() {
         let text = format!("warning: something\n{CLAUDE_IN}");
         assert_eq!(
-            parse_whoami(WhoamiKind::ClaudeJson, true, &text, "").state,
+            parse_whoami(&WhoamiKind::ClaudeJson, true, &text, "").state,
             SignIn::SignedIn
         );
     }
@@ -462,11 +526,11 @@ mod tests {
     #[test]
     fn codex_reads_its_exit_code() {
         assert_eq!(
-            parse_whoami(WhoamiKind::ExitCode, true, "", "Logged in using ChatGPT\n").state,
+            parse_whoami(&WhoamiKind::ExitCode, true, "", "Logged in using ChatGPT\n").state,
             SignIn::SignedIn
         );
         assert_eq!(
-            parse_whoami(WhoamiKind::ExitCode, false, "", "Not logged in\n").state,
+            parse_whoami(&WhoamiKind::ExitCode, false, "", "Not logged in\n").state,
             SignIn::SignedOut
         );
     }
@@ -475,7 +539,7 @@ mod tests {
     /// a guess about a sentence nobody promised to keep.
     #[test]
     fn codex_reports_no_account_name() {
-        let answer = parse_whoami(WhoamiKind::ExitCode, true, "", "Logged in using ChatGPT\n");
+        let answer = parse_whoami(&WhoamiKind::ExitCode, true, "", "Logged in using ChatGPT\n");
         assert_eq!(answer.email, None);
         assert_eq!(answer.api_key_source, None);
     }
@@ -497,15 +561,15 @@ mod tests {
     #[test]
     fn opencode_reads_its_credential_count_because_the_exit_code_says_nothing() {
         assert_eq!(
-            parse_whoami(WhoamiKind::OpencodeCredentials, true, OPENCODE_IN, "").state,
+            parse_whoami(&WhoamiKind::OpencodeCredentials, true, OPENCODE_IN, "").state,
             SignIn::SignedIn
         );
         assert_eq!(
-            parse_whoami(WhoamiKind::OpencodeCredentials, true, OPENCODE_OUT, "").state,
+            parse_whoami(&WhoamiKind::OpencodeCredentials, true, OPENCODE_OUT, "").state,
             SignIn::SignedOut
         );
         assert_eq!(
-            parse_whoami(WhoamiKind::ExitCode, true, OPENCODE_OUT, "").state,
+            parse_whoami(&WhoamiKind::ExitCode, true, OPENCODE_OUT, "").state,
             SignIn::SignedIn,
             "which is exactly the false positive the kind prevents"
         );
@@ -517,7 +581,7 @@ mod tests {
     fn an_unreadable_opencode_table_is_unknown() {
         assert_eq!(
             parse_whoami(
-                WhoamiKind::OpencodeCredentials,
+                &WhoamiKind::OpencodeCredentials,
                 true,
                 "\u{250c}  Credentials /tmp/a\n",
                 ""
@@ -526,7 +590,7 @@ mod tests {
             SignIn::Unknown
         );
         assert_eq!(
-            parse_whoami(WhoamiKind::OpencodeCredentials, true, "providers: none\n", "").state,
+            parse_whoami(&WhoamiKind::OpencodeCredentials, true, "providers: none\n", "").state,
             SignIn::Unknown
         );
     }
