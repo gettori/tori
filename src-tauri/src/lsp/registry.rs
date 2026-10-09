@@ -25,7 +25,7 @@ pub const SCHEMA_VERSION: u32 = 1;
 /// Every schema version this build still loads. Only one exists so far; when a
 /// v2 lands, the older entries stay here so someone's working config in
 /// `~/.config/tori/packs/lsp/` keeps loading, the way `agents.rs` keeps v1.
-const SUPPORTED_SCHEMA_VERSIONS: [u32; 1] = [SCHEMA_VERSION];
+pub(crate) const SUPPORTED_SCHEMA_VERSIONS: [u32; 1] = [SCHEMA_VERSION];
 
 /// How a server process is started.
 ///
@@ -1229,7 +1229,8 @@ version = "1.2.3"
         let clash = VALID.replace("\"demo\"", "\"clash\"").replace("demo = ", "clash = ");
         std::fs::write(dir.join("fresh.toml"), &adopted).unwrap();
         std::fs::write(dir.join("clash.toml"), &clash).unwrap();
-        let row = |id: &str, sha: String| serde_json::json!({ "kind": "lsp", "id": id, "sha256": sha });
+        let row =
+            |id: &str, sha: String| serde_json::json!({ "kind": "lsp", "id": id, "schema_version": 1, "sha256": sha });
         let cache = serde_json::json!({ "index": { "packs_commit": "abc", "rows": [
             row("fresh", packs::sha256(&adopted)),
             row("clash", packs::sha256("something else")),

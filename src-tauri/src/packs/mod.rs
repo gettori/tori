@@ -1,6 +1,7 @@
 // One place for the catalog fields and the id rules, so the five pack kinds
 // cannot drift apart on what a pack is.
 
+pub mod catalog;
 pub mod index_rows;
 pub mod installed;
 pub mod migrate;
@@ -44,6 +45,18 @@ impl Kind {
             Kind::Themes => "json",
             _ => "toml",
         }
+    }
+
+    /// Whether this build's loader reads a pack of `schema_version`.
+    pub fn supports(self, schema_version: u64) -> bool {
+        let supported: &[u32] = match self {
+            Kind::Lsp => &crate::lsp::registry::SUPPORTED_SCHEMA_VERSIONS,
+            Kind::Dap => &crate::dap::registry::SUPPORTED_SCHEMA_VERSIONS,
+            Kind::Formatters => &crate::format::registry::SUPPORTED_SCHEMA_VERSIONS,
+            Kind::Themes => &[crate::palette::PALETTE_SCHEMA_VERSION],
+            Kind::Agents => &crate::agents::SUPPORTED_SCHEMA_VERSIONS,
+        };
+        supported.iter().any(|&v| u64::from(v) == schema_version)
     }
 }
 

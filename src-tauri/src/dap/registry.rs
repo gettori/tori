@@ -27,7 +27,7 @@ pub const SCHEMA_VERSION: u32 = 1;
 /// Every schema version this build still loads, kept for the reason
 /// `lsp::registry` keeps its list: a working file in `~/.config/tori/packs/dap/`
 /// should survive a v2.
-const SUPPORTED_SCHEMA_VERSIONS: [u32; 1] = [SCHEMA_VERSION];
+pub(crate) const SUPPORTED_SCHEMA_VERSIONS: [u32; 1] = [SCHEMA_VERSION];
 
 /// The installer's manifest, as much of it as Rust needs.
 #[derive(Debug, Deserialize)]
