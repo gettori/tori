@@ -3,6 +3,9 @@
   "id": "rose-pine-dawn",
   "label": "Rosé Pine Dawn",
   "appearance": "light",
+  "description": "A port of Rose Pine Dawn",
+  "license": "MIT",
+  "contributor": { "name": "Rose Pine", "github": "rose-pine" },
   "colors": {
     "canvas": "#fffaf3",
     "card": "#faf4ed",

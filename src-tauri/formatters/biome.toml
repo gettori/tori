@@ -7,6 +7,9 @@
 schema_version = 1
 id = "biome"
 label = "Biome"
+description = "Format JavaScript, TypeScript, JSON and CSS with Biome"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 
 # Above Prettier: a repo holding both configs has migrated and left the old
 # file behind, and the newer tool is the one CI runs.

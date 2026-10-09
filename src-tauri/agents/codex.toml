@@ -1,6 +1,9 @@
 schema_version = 4
 id = "codex"
 label = "Codex"
+description = "OpenAI's Codex CLI, with chat over ACP"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 icon = "codex"
 
 # Measured against this pair with

@@ -3,6 +3,9 @@
   "id": "one-dark-pro",
   "label": "One Dark Pro",
   "appearance": "dark",
+  "description": "A port of One Dark Pro",
+  "license": "MIT",
+  "contributor": { "name": "Binaryify", "github": "Binaryify" },
   "colors": {
     "canvas": "#21252b",
     "card": "#282c34",

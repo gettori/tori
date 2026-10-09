@@ -582,6 +582,9 @@ pub struct LspHealth {
     pub path: Option<String>,
     pub version: Option<String>,
     pub verified_against: Option<String>,
+    pub verified_on: Option<String>,
+    #[serde(flatten)]
+    pub meta: crate::packs::Meta,
     /// Extensions this server claims, for the card's chips.
     pub extensions: Vec<String>,
     /// What is wrong beyond a missing `program`, when anything is. Today the
@@ -703,6 +706,8 @@ fn check(
         path: resolved.map(|p| p.to_string_lossy().into_owned()),
         version,
         verified_against: server.verified_against.clone(),
+        verified_on: server.verified_on.clone(),
+        meta: server.meta.clone(),
         extensions: server.languages.keys().cloned().collect(),
         detail,
         override_path: server.is_override().then(|| server.source.clone()),

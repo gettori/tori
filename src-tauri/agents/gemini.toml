@@ -1,6 +1,9 @@
 schema_version = 2
 id = "gemini"
 label = "Gemini"
+description = "Google's Gemini CLI, with chat over ACP"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 icon = "gemini"
 
 # **No `verified_against`, and that is the load-bearing part of this file.**

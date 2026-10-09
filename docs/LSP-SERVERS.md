@@ -110,6 +110,10 @@ Loading is bundled-first, then every `*.toml` in the user directory:
   previous entry. One broken file can't make a language lose its server.
 - Files are read once at startup. Editing one means restarting Tori, the same as
   every other loaded-at-startup config.
+- A file is named after its `id`: `typescript.toml` holds `id = "typescript"`. A user
+  file whose name and id differ still loads, with a warning naming both. An id
+  is lowercase letters, digits, `.`, `_` and `-`, and starts with a letter or
+  digit; any other id is refused.
 
 ## Schema
 
@@ -139,6 +143,15 @@ schema_associations = false
 # against, e.g. "rust-analyzer 0.3.1900". Omitting it is normal and makes the
 # health card render neutral; it never renders as drift.
 verified_against = "some-language-server 1.2.3"
+
+# optional: the day verified_against was measured, written YYYY-MM-DD.
+verified_on = "2026-10-09"
+
+# optional: the catalog fields. One line for the server's card, the SPDX id of
+# the licence this file is shared under, and who wrote it.
+description = "TypeScript and JavaScript"
+license = "MIT"
+contributor = { name = "Tori", github = "gettori" }
 
 # optional (default true): this server executes code from the project it
 # serves, so it only starts in a project the user has trusted. See "Project

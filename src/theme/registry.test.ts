@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { DEFAULT_THEME_ID, getBundledTheme, listSelectableBundled } from "./bundled";
+import { DEFAULT_THEME_ID, getBundledTheme, listSelectableBundled, listThemes } from "./bundled";
 import { dropLegacy, readCache, type CacheStore } from ".";
 import { paintRoles, type StyleTarget } from "./resolver";
 import { buildRoles, ROLES } from "./roles";
@@ -20,8 +20,8 @@ describe("bundled registry", () => {
     // Tori's own two lead the registry; the picker sorts by label on its own.
     expect(ids.slice(0, 2)).toEqual(["tori-dark", "tori-light"]);
     expect(ids.slice(2)).toEqual(ids.slice(2).sort());
-    expect(ids).toHaveLength(22);
-    expect(new Set(ids).size).toBe(22);
+    expect(ids).toHaveLength(21);
+    expect(new Set(ids).size).toBe(21);
   });
 
   it("defaults to Tori Dark", () => {
@@ -36,6 +36,14 @@ describe("bundled registry", () => {
     ["import", "tori-dark"],
   ])("resolves the legacy id %s to %s", (legacy, canonical) => {
     expect(getBundledTheme(legacy)?.id).toBe(canonical);
+  });
+
+  it("credits every bundled theme with a description, a contributor and a license", () => {
+    for (const t of listThemes()) {
+      expect(t.palette.description, `${t.id}.description`).toBeTruthy();
+      expect(t.palette.contributor, `${t.id}.contributor`).toBeTruthy();
+      expect(t.palette.license, `${t.id}.license`).toBeTruthy();
+    }
   });
 
   it("returns undefined for an unknown id, so callers can fall back", () => {

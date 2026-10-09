@@ -3,6 +3,9 @@
   "id": "nord",
   "label": "Nord",
   "appearance": "dark",
+  "description": "A port of Nord",
+  "license": "MIT",
+  "contributor": { "name": "Sven Greb", "github": "svengreb" },
   "colors": {
     "canvas": "#272c36",
     "card": "#2e3440",

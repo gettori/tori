@@ -10,7 +10,6 @@ import catppuccinMocha from "./palettes/catppuccin-mocha.json";
 import dracula from "./palettes/dracula.json";
 import githubDark from "./palettes/github-dark.json";
 import githubLight from "./palettes/github-light.json";
-import monokaiPro from "./palettes/monokai-pro.json";
 import nightOwl from "./palettes/night-owl.json";
 import nord from "./palettes/nord.json";
 import oneDarkPro from "./palettes/one-dark-pro.json";
@@ -63,7 +62,6 @@ const THEMES: BundledTheme[] = [
   port(dracula),
   port(githubDark),
   port(githubLight),
-  port(monokaiPro),
   port(nightOwl),
   port(nord),
   port(oneDarkPro),

@@ -4,6 +4,9 @@
 schema_version = 1
 id = "kotlin"
 label = "Kotlin"
+description = "Kotlin, through kotlin-language-server"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 root_markers = ["settings.gradle.kts", "settings.gradle", "build.gradle.kts", "build.gradle", "pom.xml", ".git"]
 request_timeout_ms = 120000
 

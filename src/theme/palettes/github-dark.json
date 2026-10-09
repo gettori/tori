@@ -3,6 +3,9 @@
   "id": "github-dark",
   "label": "GitHub Dark",
   "appearance": "dark",
+  "description": "A port of GitHub's dark theme",
+  "license": "MIT",
+  "contributor": { "name": "Primer", "github": "primer" },
   "colors": {
     "canvas": "#010409",
     "card": "#0d1117",

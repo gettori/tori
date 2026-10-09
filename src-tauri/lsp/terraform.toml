@@ -4,6 +4,9 @@
 schema_version = 1
 id = "terraform"
 label = "Terraform"
+description = "Terraform, through terraform-ls"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 root_markers = [".terraform", ".git"]
 
 # Asks the project's providers for their schemas, which runs them.

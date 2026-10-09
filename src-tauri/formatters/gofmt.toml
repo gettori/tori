@@ -6,6 +6,9 @@
 schema_version = 1
 id = "gofmt"
 label = "gofmt"
+description = "Format Go with gofmt"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 extensions = ["go"]
 
 verified_against = "go1.27.1"

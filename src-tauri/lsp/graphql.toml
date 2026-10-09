@@ -4,6 +4,9 @@
 schema_version = 1
 id = "graphql"
 label = "GraphQL"
+description = "GraphQL schemas and queries, through the GraphQL language service"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 root_markers = [".graphqlrc", ".graphqlrc.yml", ".graphqlrc.json", "graphql.config.js", "graphql.config.ts", "package.json", ".git"]
 
 # A `graphql.config.js` or `.ts` is loaded as code.

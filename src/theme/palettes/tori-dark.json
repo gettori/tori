@@ -3,6 +3,9 @@
   "id": "tori-dark",
   "label": "Tori Dark",
   "appearance": "dark",
+  "description": "Tori's own dark theme, the default",
+  "license": "Apache-2.0",
+  "contributor": { "name": "Tori", "github": "gettori" },
   "colors": {
     "canvas": "#15171c",
     "card": "#1b1e25",

@@ -12,6 +12,7 @@
 // fails to spawn looks exactly like a language with no support at all.
 
 use crate::format::registry::{DirScan, KeyMarker, KeyMarkerToml};
+use crate::packs::{self, Meta};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -182,6 +183,10 @@ pub struct LspServer {
     /// The server version this config's conventions were captured against.
     /// `None` is normal and renders neutral, never as drift.
     pub verified_against: Option<String>,
+    /// When `verified_against` was measured, `YYYY-MM-DD`.
+    pub verified_on: Option<String>,
+    #[serde(flatten)]
+    pub meta: Meta,
     /// Whether this server executes code from the project it serves, which is
     /// what makes `lsp_start` refuse it in a project the user has not trusted.
     pub runs_project_code: bool,
@@ -254,6 +259,10 @@ struct ServerToml {
     schema_associations: bool,
     #[serde(default)]
     verified_against: Option<String>,
+    #[serde(default)]
+    verified_on: Option<String>,
+    #[serde(flatten)]
+    meta: Meta,
     #[serde(default = "default_runs_project_code")]
     runs_project_code: bool,
     #[serde(default)]
@@ -334,6 +343,10 @@ const KNOWN_TOP_LEVEL: &[&str] = &[
     "settings",
     "schema_associations",
     "verified_against",
+    "verified_on",
+    "description",
+    "contributor",
+    "license",
     "runs_project_code",
     "role",
     "priority",
@@ -378,6 +391,10 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
             "{source}: unsupported schema_version {} (tori supports {supported})",
             raw.schema_version
         ));
+    }
+    packs::check_id(&raw.id, source)?;
+    if let Some(date) = &raw.verified_on {
+        packs::check_date(date, "verified_on", source)?;
     }
 
     if raw.languages.is_empty() {
@@ -541,6 +558,8 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
         settings,
         schema_associations: raw.schema_associations,
         verified_against: raw.verified_against,
+        verified_on: raw.verified_on,
+        meta: raw.meta,
         runs_project_code,
         role,
         priority: raw.priority,
@@ -703,7 +722,7 @@ fn build_registry_from(user_dir: &Path) -> Vec<LspServer> {
     let mut list: Vec<LspServer> = Vec::new();
 
     for &(source, text) in BUILTINS {
-        if let Err(e) = load_server_str(text, source).and_then(|s| admit(&mut list, s)) {
+        if let Err(e) = load_server_file(text, source).and_then(|s| admit(&mut list, s)) {
             eprintln!("tori: ERROR loading built-in lsp server {source}: {e}");
         }
     }
@@ -725,13 +744,20 @@ fn build_registry_from(user_dir: &Path) -> Vec<LspServer> {
                 continue;
             }
         };
-        if let Err(e) = load_server_str(&text, &source).and_then(|s| admit(&mut list, s)) {
+        let loaded = load_server_str(&text, &source).inspect(|s| packs::warn_stem(&source, &s.id));
+        if let Err(e) = loaded.and_then(|s| admit(&mut list, s)) {
             eprintln!("tori: ERROR loading lsp server {e} (keeping the previous server for this id)");
         }
     }
 
     list.sort_by(|a, b| a.id.cmp(&b.id));
     list
+}
+
+fn load_server_file(text: &str, source: &str) -> Result<LspServer, String> {
+    let server = load_server_str(text, source)?;
+    packs::check_stem(source, &server.id)?;
+    Ok(server)
 }
 
 /// Add `server`, whole-replacing any entry with its id, unless it and another
@@ -874,6 +900,46 @@ program = "demo-server"
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn every_bundled_pack_carries_metadata() {
+        for (source, text) in BUILTINS {
+            let meta = load_server_str(text, source).unwrap().meta;
+            assert!(meta.description.is_some(), "{source} has no description");
+            assert!(meta.contributor.is_some(), "{source} has no contributor");
+            assert!(meta.license.is_some(), "{source} has no license");
+        }
+    }
+
+    #[test]
+    fn the_catalog_fields_load_and_stay_optional() {
+        let with = load_server_str(&format!("{}{}", packs::TEST_CATALOG_TOML, VALID), "test").unwrap();
+        assert_eq!(with.meta, packs::test_meta());
+        assert_eq!(with.verified_on.as_deref(), Some("2026-10-09"));
+        let without = load_server_str(VALID, "test").unwrap();
+        assert_eq!(without.meta, packs::Meta::default());
+        assert_eq!(without.verified_on, None);
+    }
+
+    #[test]
+    fn a_malformed_verified_on_is_refused_naming_the_file() {
+        let text = format!("verified_on = \"2026-13-01\"\n{}", VALID);
+        let err = load_server_str(&text, "/x/demo.toml").unwrap_err();
+        assert!(err.contains("/x/demo.toml") && err.contains("verified_on"), "{err}");
+    }
+
+    #[test]
+    fn a_file_named_other_than_its_id_is_refused_naming_both() {
+        let err = load_server_file(VALID, "/x/other.toml").unwrap_err();
+        assert!(err.contains("`other`") && err.contains("`demo`"), "{err}");
+        assert!(load_server_file(VALID, "/x/demo.toml").is_ok());
+    }
+
+    #[test]
+    fn an_id_that_could_climb_out_of_its_folder_is_refused() {
+        let text = VALID.replace("id = \"demo\"", "id = \"../x\"");
+        assert!(load_server_str(&text, "test").unwrap_err().contains("../x"));
     }
 
     // --- P1.1: the bundled configs parse, and an unknown launch kind does not ---

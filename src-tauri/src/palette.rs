@@ -12,6 +12,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::packs::Contributor;
+
 pub const PALETTE_SCHEMA_VERSION: u32 = 1;
 
 /// Whether the OS should draw native scrollbars/controls light or dark.
@@ -154,6 +156,14 @@ pub struct Palette {
     pub label: String,
     pub appearance: Appearance,
     pub colors: PaletteColors,
+    // Declared one by one rather than flattened from `packs::Meta`, because
+    // serde refuses `flatten` beside `deny_unknown_fields`.
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub contributor: Option<Contributor>,
+    #[serde(default)]
+    pub license: Option<String>,
 }
 
 /// `#rgb`, `#rrggbb`, or `#rrggbbaa`.
@@ -290,5 +300,31 @@ impl PaletteColors {
             ("synAttribute", &self.syn_attribute),
             ("synPunctuation", &self.syn_punctuation),
         ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every top-level field a palette can carry must appear in THEMES.md, so
+    /// adding one without documenting it fails here rather than shipping
+    /// undocumented. Read off the serialized struct, so there is no second
+    /// list to forget.
+    #[test]
+    fn the_doc_documents_every_schema_field() {
+        let doc = include_str!("../../docs/THEMES.md");
+        let palette: Palette = serde_json::from_str(include_str!("../../src/theme/palettes/tori-dark.json")).unwrap();
+        let value = serde_json::to_value(&palette).unwrap();
+        for field in value.as_object().unwrap().keys() {
+            assert!(
+                doc.contains(&format!("`{field}`")),
+                "THEMES.md does not document `{field}`"
+            );
+        }
+        assert!(
+            doc.contains(&format!("\"schemaVersion\": {PALETTE_SCHEMA_VERSION}")),
+            "the doc must show the current schemaVersion"
+        );
     }
 }

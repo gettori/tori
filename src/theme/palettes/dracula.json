@@ -3,6 +3,9 @@
   "id": "dracula",
   "label": "Dracula",
   "appearance": "dark",
+  "description": "A port of Dracula",
+  "license": "MIT",
+  "contributor": { "name": "Dracula Theme", "github": "dracula" },
   "colors": {
     "canvas": "#21222c",
     "card": "#282a36",

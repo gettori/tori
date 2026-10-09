@@ -43,6 +43,7 @@ mod mcp;
 mod model;
 mod onboarding;
 mod owned_state;
+pub mod packs;
 pub mod palette;
 mod patch;
 #[cfg(test)]

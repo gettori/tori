@@ -10,6 +10,9 @@
 schema_version = 1
 id = "yaml"
 label = "YAML"
+description = "YAML with SchemaStore schemas, through yaml-language-server"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 
 # `.git` alone, for `json.toml`'s reason: nothing about this server is
 # per-package, so a marker that appears in every package of a monorepo would

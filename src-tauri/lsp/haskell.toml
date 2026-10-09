@@ -4,6 +4,9 @@
 schema_version = 1
 id = "haskell"
 label = "Haskell"
+description = "Haskell, through haskell-language-server"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 root_markers = ["hie.yaml", "stack.yaml", "cabal.project", "package.yaml", ".git"]
 request_timeout_ms = 120000
 

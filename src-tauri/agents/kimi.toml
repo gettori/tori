@@ -1,6 +1,9 @@
 schema_version = 2
 id = "kimi"
 label = "Kimi"
+description = "Moonshot AI's Kimi CLI, with chat over ACP"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 icon = "kimi"
 
 # **No `verified_against`, and that is the load-bearing part of this file.**

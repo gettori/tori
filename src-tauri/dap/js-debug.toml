@@ -7,6 +7,9 @@
 schema_version = 1
 id = "js-debug"
 label = "JavaScript / TypeScript (vscode-js-debug)"
+description = "Debug JavaScript and TypeScript in Node with vscode-js-debug, bundled with Tori"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 
 # `package.json` is the honest marker for a node target: it is what decides
 # module resolution and which scripts exist, and in a monorepo it is the

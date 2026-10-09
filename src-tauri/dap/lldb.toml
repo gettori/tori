@@ -9,6 +9,9 @@
 schema_version = 1
 id = "lldb"
 label = "Rust, C and C++ (lldb-dap)"
+description = "Debug Rust, C and C++ with lldb-dap"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 
 # A Rust debuggee runs from its package, where `cargo build` ran. C and C++
 # have no marker every project shares, so they run from the project root.

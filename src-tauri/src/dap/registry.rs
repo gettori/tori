@@ -19,6 +19,8 @@ use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
+use crate::packs::{self, Meta};
+
 /// The newest schema this build writes and documents.
 pub const SCHEMA_VERSION: u32 = 1;
 
@@ -164,6 +166,10 @@ pub struct DapAdapter {
     /// The adapter version this config was captured against. `None` is normal
     /// and renders neutral, never as drift.
     pub verified_against: Option<String>,
+    /// When `verified_against` was measured, `YYYY-MM-DD`.
+    pub verified_on: Option<String>,
+    #[serde(flatten)]
+    pub meta: Meta,
 }
 
 // --- raw TOML shape, kept apart from `DapAdapter` for `lsp::registry`'s
@@ -184,6 +190,10 @@ struct AdapterToml {
     install: Option<InstallToml>,
     #[serde(default)]
     verified_against: Option<String>,
+    #[serde(default)]
+    verified_on: Option<String>,
+    #[serde(flatten)]
+    meta: Meta,
 }
 
 #[derive(Debug, Deserialize)]
@@ -222,6 +232,10 @@ const KNOWN_TOP_LEVEL: &[&str] = &[
     "child_sessions",
     "install",
     "verified_against",
+    "verified_on",
+    "description",
+    "contributor",
+    "license",
 ];
 
 const REQUIRED_TOP_LEVEL: &[&str] = &["schema_version", "id", "label", "languages", "root_markers", "launch"];
@@ -266,6 +280,10 @@ pub fn load_adapter_str(text: &str, source: &str) -> Result<DapAdapter, String> 
             "{source}: unsupported schema_version {} (tori supports {supported})",
             raw.schema_version
         ));
+    }
+    packs::check_id(&raw.id, source)?;
+    if let Some(date) = &raw.verified_on {
+        packs::check_date(date, "verified_on", source)?;
     }
     if raw.languages.is_empty() {
         return Err(format!("{source}: [languages] must map at least one extension"));
@@ -381,6 +399,8 @@ pub fn load_adapter_str(text: &str, source: &str) -> Result<DapAdapter, String> 
         child_sessions: raw.child_sessions,
         install,
         verified_against: raw.verified_against,
+        verified_on: raw.verified_on,
+        meta: raw.meta,
     })
 }
 
@@ -396,6 +416,12 @@ const BUILTINS: &[(&str, &str)] = &[
     ("bundled:delve", BUILTIN_DELVE),
     ("bundled:lldb", BUILTIN_LLDB),
 ];
+
+fn load_adapter_file(text: &str, source: &str) -> Result<DapAdapter, String> {
+    let adapter = load_adapter_str(text, source)?;
+    packs::check_stem(source, &adapter.id)?;
+    Ok(adapter)
+}
 
 fn user_dap_dir() -> PathBuf {
     crate::owned_state::config_dir().join("dap")
@@ -413,7 +439,7 @@ fn build_registry_from(user_dir: &Path) -> Vec<DapAdapter> {
     };
 
     for &(source, text) in BUILTINS {
-        match load_adapter_str(text, source) {
+        match load_adapter_file(text, source) {
             Ok(adapter) => admit(adapter),
             Err(e) => eprintln!("tori: ERROR loading built-in debug adapter {source}: {e}"),
         }
@@ -430,7 +456,7 @@ fn build_registry_from(user_dir: &Path) -> Vec<DapAdapter> {
     for path in files {
         let source = path.to_string_lossy().into_owned();
         match std::fs::read_to_string(&path).map_err(|e| format!("{source}: {e}")) {
-            Ok(text) => match load_adapter_str(&text, &source) {
+            Ok(text) => match load_adapter_str(&text, &source).inspect(|a| packs::warn_stem(&source, &a.id)) {
                 Ok(adapter) => admit(adapter),
                 Err(e) => eprintln!("tori: ERROR loading debug adapter {e} (keeping the previous adapter for this id)"),
             },
@@ -506,6 +532,18 @@ mod tests {
 
     /// A temp dir no other test can collide with.
     ///
+    const VALID: &str = r#"
+schema_version = 1
+id = "demo"
+label = "Demo"
+root_markers = ["demo.json"]
+[languages]
+demo = "demo"
+[launch]
+kind = "stdio"
+program = "demo-dap"
+"#;
+
     /// Keying on `process::id()` alone is the documented trap: every test in one
     /// `cargo test` run shares that pid, so two tests using the same recipe race
     /// over one path and each passes alone while failing together. Nanos plus a
@@ -515,6 +553,56 @@ mod tests {
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
         std::env::temp_dir().join(format!("tori-dap-{label}-{}-{nanos}-{seq}", std::process::id()))
+    }
+
+    #[test]
+    fn every_bundled_pack_carries_metadata() {
+        for (source, text) in BUILTINS {
+            let meta = load_adapter_str(text, source).unwrap().meta;
+            assert!(meta.description.is_some(), "{source} has no description");
+            assert!(meta.contributor.is_some(), "{source} has no contributor");
+            assert!(meta.license.is_some(), "{source} has no license");
+        }
+    }
+
+    /// Every schema field the loader knows must appear in DEBUGGERS.md, so adding
+    /// one without documenting it fails here rather than shipping undocumented.
+    #[test]
+    fn the_doc_documents_every_schema_field() {
+        let doc = include_str!("../../../docs/DEBUGGERS.md");
+        for field in KNOWN_TOP_LEVEL {
+            assert!(doc.contains(field), "DEBUGGERS.md does not document `{field}`");
+        }
+    }
+
+    #[test]
+    fn the_catalog_fields_load_and_stay_optional() {
+        let with = load_adapter_str(&format!("{}{}", packs::TEST_CATALOG_TOML, VALID), "test").unwrap();
+        assert_eq!(with.meta, packs::test_meta());
+        assert_eq!(with.verified_on.as_deref(), Some("2026-10-09"));
+        let without = load_adapter_str(VALID, "test").unwrap();
+        assert_eq!(without.meta, packs::Meta::default());
+        assert_eq!(without.verified_on, None);
+    }
+
+    #[test]
+    fn a_malformed_verified_on_is_refused_naming_the_file() {
+        let text = format!("verified_on = \"2026-13-01\"\n{}", VALID);
+        let err = load_adapter_str(&text, "/x/demo.toml").unwrap_err();
+        assert!(err.contains("/x/demo.toml") && err.contains("verified_on"), "{err}");
+    }
+
+    #[test]
+    fn a_file_named_other_than_its_id_is_refused_naming_both() {
+        let err = load_adapter_file(VALID, "/x/other.toml").unwrap_err();
+        assert!(err.contains("`other`") && err.contains("`demo`"), "{err}");
+        assert!(load_adapter_file(VALID, "/x/demo.toml").is_ok());
+    }
+
+    #[test]
+    fn an_id_that_could_climb_out_of_its_folder_is_refused() {
+        let text = VALID.replace("id = \"demo\"", "id = \"../x\"");
+        assert!(load_adapter_str(&text, "test").unwrap_err().contains("../x"));
     }
 
     #[test]

@@ -3,6 +3,9 @@
 schema_version = 1
 id = "latex"
 label = "LaTeX (TexLab)"
+description = "LaTeX and BibTeX, through TexLab"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 root_markers = [".latexmkrc", "latexmkrc", ".texlabroot", "texlabroot", "Tectonic.toml", ".git"]
 
 # Builds only when asked to, which Tori never does.

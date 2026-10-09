@@ -4,6 +4,9 @@
 schema_version = 1
 id = "css"
 label = "CSS"
+description = "CSS, SCSS and Less, through the VS Code CSS language server"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 
 root_markers = [".git"]
 

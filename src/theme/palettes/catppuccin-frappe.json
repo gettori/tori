@@ -3,6 +3,9 @@
   "id": "catppuccin-frappe",
   "label": "Catppuccin Frappé",
   "appearance": "dark",
+  "description": "A port of Catppuccin Frappe",
+  "license": "MIT",
+  "contributor": { "name": "Catppuccin", "github": "catppuccin" },
   "colors": {
     "canvas": "#292c3c",
     "card": "#303446",

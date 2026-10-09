@@ -3,6 +3,9 @@
   "id": "atom-one-light",
   "label": "Atom One Light",
   "appearance": "light",
+  "description": "A port of Atom's One Light",
+  "license": "MIT",
+  "contributor": { "name": "GitHub", "github": "atom" },
   "colors": {
     "canvas": "#eaeaeb",
     "card": "#fafafa",

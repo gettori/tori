@@ -4,6 +4,9 @@
 schema_version = 1
 id = "clangd"
 label = "C / C++ (clangd)"
+description = "C and C++, through clangd"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 root_markers = ["compile_commands.json", "compile_flags.txt", ".clangd", ".git"]
 request_timeout_ms = 30000
 

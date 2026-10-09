@@ -4,6 +4,9 @@
 schema_version = 1
 id = "ruff"
 label = "Ruff"
+description = "Format Python with Ruff"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 extensions = ["py", "pyi"]
 
 verified_against = "ruff 0.16.8"

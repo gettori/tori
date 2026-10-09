@@ -3,6 +3,9 @@
 schema_version = 1
 id = "svelte"
 label = "Svelte"
+description = "Svelte components, through the Svelte language server"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 root_markers = ["svelte.config.js", "package.json", ".git"]
 
 # Loads the project's `svelte.config.js` and its preprocessors.

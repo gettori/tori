@@ -4,6 +4,7 @@
 // without hardcoding an agent id lives here.
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import type { PackMeta } from "./packs";
 
 export type ParserKind = "claude_jsonl";
 
@@ -162,7 +163,9 @@ export type Adapter = {
   // Why `usage` is null, in the words the Usage block shows beside the greyed
   // control. Null exactly when `usage` is set.
   usage_reason?: string | null;
-};
+  verified_against?: string | null;
+  verified_on?: string | null;
+} & Partial<PackMeta>;
 
 // Matches the bundled TOML (src-tauri/agents/*.toml) so
 // the first paint - before `list_agents` resolves - looks identical to the

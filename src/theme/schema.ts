@@ -9,6 +9,8 @@
 //
 // See adr_theme_palette_roles for the role taxonomy this feeds.
 
+import type { Contributor } from "../utils/packs";
+
 export const PALETTE_SCHEMA_VERSION = 1;
 
 /** `#rgb`, `#rrggbb`, or `#rrggbbaa`. */
@@ -190,6 +192,9 @@ export type Palette = {
   label: string;
   appearance: Appearance;
   colors: PaletteColors;
+  description?: string;
+  contributor?: Contributor;
+  license?: string;
 };
 
 /** Every key roles.ts requires, in authoring order. Exported so the validator

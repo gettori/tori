@@ -3,6 +3,9 @@
   "id": "ayu-light",
   "label": "Ayu Light",
   "appearance": "light",
+  "description": "A port of ayu's light variant",
+  "license": "MIT",
+  "contributor": { "name": "Ike Kurghinyan", "github": "dempfi" },
   "colors": {
     "canvas": "#f1f2f4",
     "card": "#fcfcfc",

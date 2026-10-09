@@ -6,6 +6,9 @@
 schema_version = 1
 id = "oxfmt"
 label = "oxfmt"
+description = "Format JavaScript and TypeScript with oxfmt"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 
 # Above Prettier: `oxfmt --migrate prettier` writes an .oxfmtrc.json and leaves
 # the .prettierrc where it was.

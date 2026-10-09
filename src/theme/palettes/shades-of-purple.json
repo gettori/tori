@@ -3,6 +3,9 @@
   "id": "shades-of-purple",
   "label": "Shades of Purple",
   "appearance": "dark",
+  "description": "A port of Shades of Purple",
+  "license": "MIT",
+  "contributor": { "name": "Ahmad Awais", "github": "ahmadawais" },
   "colors": {
     "canvas": "#1e1e3f",
     "card": "#2d2b55",

@@ -3,6 +3,9 @@
   "id": "ayu-dark",
   "label": "Ayu Dark",
   "appearance": "dark",
+  "description": "A port of ayu's dark variant",
+  "license": "MIT",
+  "contributor": { "name": "Ike Kurghinyan", "github": "dempfi" },
   "colors": {
     "canvas": "#0d1017",
     "card": "#10141c",

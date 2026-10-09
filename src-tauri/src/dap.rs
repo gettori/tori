@@ -691,6 +691,10 @@ pub struct DapHealth {
     /// The bundled adapter's release, from the installer's manifest. `None` for
     /// an adapter Tori does not bundle.
     pub adapter_version: Option<String>,
+    pub verified_against: Option<String>,
+    pub verified_on: Option<String>,
+    #[serde(flatten)]
+    pub meta: crate::packs::Meta,
     /// Extensions this adapter claims, for the card's chips.
     pub extensions: Vec<String>,
     /// What is wrong beyond a missing `program`: a bundle that was never
@@ -764,6 +768,9 @@ fn check(adapter: &DapAdapter, entry_missing: bool, debuggers: &Path) -> DapHeal
             Launch::BundledNodeSocket { version, .. } => Some(version.clone()),
             Launch::Stdio { .. } | Launch::Tcp { .. } => None,
         },
+        verified_against: adapter.verified_against.clone(),
+        verified_on: adapter.verified_on.clone(),
+        meta: adapter.meta.clone(),
         extensions: adapter.languages.keys().cloned().collect(),
         detail,
         disabled: false,

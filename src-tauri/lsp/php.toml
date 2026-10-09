@@ -3,6 +3,9 @@
 schema_version = 1
 id = "php"
 label = "PHP (Intelephense)"
+description = "PHP, through Intelephense"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 root_markers = ["composer.json", ".git"]
 
 # Static analysis only.

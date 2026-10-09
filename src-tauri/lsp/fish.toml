@@ -3,6 +3,9 @@
 schema_version = 1
 id = "fish"
 label = "fish"
+description = "fish shell scripts, through fish-lsp"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 root_markers = [".git"]
 
 # Runs `fish` over the files it serves.

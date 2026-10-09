@@ -3,6 +3,9 @@
 schema_version = 1
 id = "astro"
 label = "Astro"
+description = "Astro components, through the Astro language server"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 root_markers = ["package.json", ".git"]
 
 # Loads the project's own `astro` package for its types, and runs the project's

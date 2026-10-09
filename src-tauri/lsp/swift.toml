@@ -4,6 +4,9 @@
 schema_version = 1
 id = "swift"
 label = "Swift"
+description = "Swift, through SourceKit-LSP"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 root_markers = ["Package.swift", ".git"]
 request_timeout_ms = 60000
 

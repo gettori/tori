@@ -3,6 +3,9 @@
   "id": "solarized-light",
   "label": "Solarized Light",
   "appearance": "light",
+  "description": "A port of Solarized Light",
+  "license": "MIT",
+  "contributor": { "name": "Ethan Schoonover", "github": "altercation" },
   "colors": {
     "canvas": "#eee8d5",
     "card": "#fdf6e3",

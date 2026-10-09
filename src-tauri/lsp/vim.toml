@@ -3,6 +3,9 @@
 schema_version = 1
 id = "vim"
 label = "Vim script"
+description = "Vim script, through vim-language-server"
+license = "Apache-2.0"
+contributor = { name = "Tori", github = "gettori" }
 root_markers = [".git"]
 
 runs_project_code = false

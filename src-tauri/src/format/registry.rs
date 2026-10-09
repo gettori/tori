@@ -7,6 +7,7 @@
 // filename order, whole-replace by id, a broken user file logged loudly while
 // the id keeps its previous entry, and a closed `launch.kind`.
 
+use crate::packs::{self, Meta};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
@@ -80,6 +81,9 @@ pub struct Formatter {
     pub args: Vec<String>,
     pub not_applicable: Option<NotApplicable>,
     pub verified_against: Option<String>,
+    /// When `verified_against` was measured, `YYYY-MM-DD`.
+    pub verified_on: Option<String>,
+    pub meta: Meta,
 }
 
 impl Formatter {
@@ -195,6 +199,10 @@ struct FormatterToml {
     not_applicable: Option<NotApplicableToml>,
     #[serde(default)]
     verified_against: Option<String>,
+    #[serde(default)]
+    verified_on: Option<String>,
+    #[serde(flatten)]
+    meta: Meta,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -251,6 +259,10 @@ const KNOWN_TOP_LEVEL: &[&str] = &[
     "priority",
     "extensions",
     "verified_against",
+    "verified_on",
+    "description",
+    "contributor",
+    "license",
     "markers",
     "launch",
     "not_applicable",
@@ -286,6 +298,10 @@ pub fn load_formatter_str(text: &str, source: &str) -> Result<Formatter, String>
             "{source}: unsupported schema_version {} (tori supports {supported})",
             raw.schema_version
         ));
+    }
+    packs::check_id(&raw.id, source)?;
+    if let Some(date) = &raw.verified_on {
+        packs::check_date(date, "verified_on", source)?;
     }
 
     let launch = match raw.launch.kind.as_str() {
@@ -353,6 +369,8 @@ pub fn load_formatter_str(text: &str, source: &str) -> Result<Formatter, String>
         args: raw.launch.args,
         not_applicable,
         verified_against: raw.verified_against,
+        verified_on: raw.verified_on,
+        meta: raw.meta,
     })
 }
 
@@ -368,6 +386,12 @@ pub(crate) const BUILTINS: &[(&str, &str)] = &[
     ("bundled:vite-plus", include_str!("../../formatters/vite-plus.toml")),
 ];
 
+fn load_formatter_file(text: &str, source: &str) -> Result<Formatter, String> {
+    let formatter = load_formatter_str(text, source)?;
+    packs::check_stem(source, &formatter.id)?;
+    Ok(formatter)
+}
+
 fn user_formatters_dir() -> PathBuf {
     crate::owned_state::config_dir().join("formatters")
 }
@@ -377,7 +401,7 @@ fn build_registry_from(user_dir: &Path) -> Vec<Formatter> {
     let mut by_id: BTreeMap<String, Formatter> = BTreeMap::new();
 
     for (source, text) in BUILTINS {
-        match load_formatter_str(text, source) {
+        match load_formatter_file(text, source) {
             Ok(f) => {
                 by_id.insert(f.id.clone(), f);
             }
@@ -395,7 +419,8 @@ fn build_registry_from(user_dir: &Path) -> Vec<Formatter> {
         let source = path.to_string_lossy().into_owned();
         let loaded = std::fs::read_to_string(&path)
             .map_err(|e| format!("{source}: {e}"))
-            .and_then(|text| load_formatter_str(&text, &source));
+            .and_then(|text| load_formatter_str(&text, &source))
+            .inspect(|f| packs::warn_stem(&source, &f.id));
         match loaded {
             Ok(f) => {
                 by_id.insert(f.id.clone(), f);
@@ -436,6 +461,56 @@ args = ["--stdin", "{file}"]
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn every_bundled_pack_carries_metadata() {
+        for (source, text) in BUILTINS {
+            let meta = load_formatter_str(text, source).unwrap().meta;
+            assert!(meta.description.is_some(), "{source} has no description");
+            assert!(meta.contributor.is_some(), "{source} has no contributor");
+            assert!(meta.license.is_some(), "{source} has no license");
+        }
+    }
+
+    /// Every schema field the loader knows must appear in FORMATTERS.md, so adding
+    /// one without documenting it fails here rather than shipping undocumented.
+    #[test]
+    fn the_doc_documents_every_schema_field() {
+        let doc = include_str!("../../../docs/FORMATTERS.md");
+        for field in KNOWN_TOP_LEVEL {
+            assert!(doc.contains(field), "FORMATTERS.md does not document `{field}`");
+        }
+    }
+
+    #[test]
+    fn the_catalog_fields_load_and_stay_optional() {
+        let with = load_formatter_str(&format!("{}{}", packs::TEST_CATALOG_TOML, VALID), "test").unwrap();
+        assert_eq!(with.meta, packs::test_meta());
+        assert_eq!(with.verified_on.as_deref(), Some("2026-10-09"));
+        let without = load_formatter_str(VALID, "test").unwrap();
+        assert_eq!(without.meta, packs::Meta::default());
+        assert_eq!(without.verified_on, None);
+    }
+
+    #[test]
+    fn a_malformed_verified_on_is_refused_naming_the_file() {
+        let text = format!("verified_on = \"2026-13-01\"\n{}", VALID);
+        let err = load_formatter_str(&text, "/x/demo.toml").unwrap_err();
+        assert!(err.contains("/x/demo.toml") && err.contains("verified_on"), "{err}");
+    }
+
+    #[test]
+    fn a_file_named_other_than_its_id_is_refused_naming_both() {
+        let err = load_formatter_file(VALID, "/x/other.toml").unwrap_err();
+        assert!(err.contains("`other`") && err.contains("`demo`"), "{err}");
+        assert!(load_formatter_file(VALID, "/x/demo.toml").is_ok());
+    }
+
+    #[test]
+    fn an_id_that_could_climb_out_of_its_folder_is_refused() {
+        let text = VALID.replace("id = \"demo\"", "id = \"../x\"");
+        assert!(load_formatter_str(&text, "test").unwrap_err().contains("../x"));
     }
 
     #[test]

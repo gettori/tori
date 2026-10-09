@@ -87,6 +87,10 @@ The rules are the language servers':
   away.
 - User files load in filename order, and files are read once at startup, so an
   edit needs a restart.
+- A file is named after its `id`: `debugpy.toml` holds `id = "debugpy"`. A user
+  file whose name and id differ still loads, with a warning naming both. An id
+  is lowercase letters, digits, `.`, `_` and `-`, and starts with a letter or
+  digit; any other id is refused.
 
 ## Schema
 
@@ -112,6 +116,15 @@ child_sessions = false
 # adapter that reports one (debugpy does, `dlv` does not). Omitting it is
 # normal and makes the card render neutral; it never renders as drift.
 # verified_against = "1.8.22"
+
+# optional: the day verified_against was measured, written YYYY-MM-DD.
+# verified_on = "2026-10-09"
+
+# optional: the catalog fields. One line for the adapter's card, the SPDX id of
+# the licence this file is shared under, and who wrote it.
+# description = "Python, through debugpy"
+# license = "MIT"
+# contributor = { name = "Tori", github = "gettori" }
 
 # --- tables below this line; nothing top-level may follow them ---
 

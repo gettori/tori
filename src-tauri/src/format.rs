@@ -399,6 +399,9 @@ pub struct FormatterHealth {
     pub status: crate::health::BinaryStatus,
     pub version: Option<String>,
     pub verified_against: Option<String>,
+    pub verified_on: Option<String>,
+    #[serde(flatten)]
+    pub meta: crate::packs::Meta,
     /// `None` takes any file the formatter has a parser for.
     pub extensions: Option<Vec<String>>,
     /// What turns it on in a project. A prefix reads as `.prettierrc*`, a key
@@ -431,6 +434,8 @@ pub fn formatter_health() -> Vec<FormatterHealth> {
                 },
                 version,
                 verified_against: f.verified_against.clone(),
+                verified_on: f.verified_on.clone(),
+                meta: f.meta.clone(),
                 extensions: f.extensions.clone(),
                 markers: markers
                     .files
