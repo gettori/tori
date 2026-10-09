@@ -8,7 +8,7 @@ import IconButton from "../../../../components/IconButton/IconButton";
 import AgentGlyph from "../../../../components/Icon/AgentGlyph";
 // Aliased: this module already imports Solid's control-flow `Switch`.
 import Toggle from "../../../../components/Switch/Switch";
-import { findAdapter } from "../../../../utils/agents";
+import { findAdapter, isLaunchOnly } from "../../../../utils/agents";
 import { agentChosen, enableBlockedReason, setAgentEnabled } from "../../../../utils/agentEnabled";
 import {
   chatTier,
@@ -350,6 +350,7 @@ export default function AgentDetail(props: {
   // From the resolved adapter rather than from `agent_health`, which answers
   // about the binary on disk and knows nothing about the chat transport.
   const tier = () => chatTier(findAdapter(a().id).chat?.transport);
+  const launchOnly = () => isLaunchOnly(findAdapter(a().id));
   const capabilities = () => publishedCapabilities(tier());
   const missing = () => (capabilities().length ? unavailableCapabilities(tier()) : []);
 
@@ -759,7 +760,11 @@ export default function AgentDetail(props: {
         </For>
       </div>
       <Show when={!capabilities().length}>
-        <div class={styles.cardMeta}>Terminal only. Tori has no chat transport for this agent.</div>
+        <div class={styles.cardMeta}>
+          {launchOnly()
+            ? "Runs in a terminal tab, no chat pane."
+            : "Terminal only. Tori has no chat transport for this agent."}
+        </div>
       </Show>
       {/* The reasons in full rather than behind hover text: they answer "why is
           this control missing", and a tooltip would make finding that the
@@ -769,23 +774,25 @@ export default function AgentDetail(props: {
           <For each={missing()}>{(gap) => <li>{gap.why}</li>}</For>
         </ul>
       </Show>
-      <div class={styles.groupHead}>
-        <span class={styles.groupTitle}>Sessions</span>
-        <span class={styles.sectionRule} />
-      </div>
-      <div class={styles.cardMeta}>
-        <Switch>
-          {/* No directory at all, because this agent keeps its sessions
-              somewhere only its protocol reaches. */}
-          <Match when={!a().sessionsDir}>Sessions come over the agent's own protocol.</Match>
-          <Match when={a().sessionsDirExists}>
-            Sessions read from <code>{a().sessionsDir}</code>
-          </Match>
-          <Match when={true}>
-            No sessions yet at <code>{a().sessionsDir}</code>
-          </Match>
-        </Switch>
-      </div>
+      <Show when={!launchOnly()}>
+        <div class={styles.groupHead}>
+          <span class={styles.groupTitle}>Sessions</span>
+          <span class={styles.sectionRule} />
+        </div>
+        <div class={styles.cardMeta}>
+          <Switch>
+            {/* No directory at all, because this agent keeps its sessions
+                somewhere only its protocol reaches. */}
+            <Match when={!a().sessionsDir}>Sessions come over the agent's own protocol.</Match>
+            <Match when={a().sessionsDirExists}>
+              Sessions read from <code>{a().sessionsDir}</code>
+            </Match>
+            <Match when={true}>
+              No sessions yet at <code>{a().sessionsDir}</code>
+            </Match>
+          </Switch>
+        </div>
+      </Show>
       <div class={styles.chips}>
         <Show when={a().hooks}>
           <span class={styles.chip} title="Status comes from the agent's own hooks">

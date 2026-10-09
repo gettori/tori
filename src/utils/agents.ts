@@ -113,7 +113,7 @@ export type AccountsConfig = {
   // to read. Three kinds because the three measured agents agree on nothing:
   // Claude answers in JSON, Codex says everything in its exit code, and
   // OpenCode exits 0 either way and puts the answer in a table.
-  whoami_kind: "claude_json" | "exit_code" | "opencode_credentials" | null;
+  whoami_kind: "claude_json" | "exit_code" | "opencode_credentials" | "json" | null;
   supports_isolation: boolean;
 };
 
@@ -150,6 +150,10 @@ export type Adapter = {
   parser_kind: ParserKind | null;
   running_pattern: string | null;
   pty_quiet_ms: number;
+  // False for a launch-only adapter: a terminal tab, no session list, no chat
+  // pane. Optional in the mirror so a literal need not spell it; the backend
+  // always sends it.
+  sessions?: boolean;
   // Null for a PTY-only agent, which is the normal case rather than a
   // degraded one: a PTY-only adapter ships without a chat transport.
   chat?: ChatConfig | null;
@@ -316,8 +320,32 @@ export function ensureAdaptersLoaded(): Promise<void> {
   return loading;
 }
 
+/** What an id no loaded adapter claims resolves to: a session row from an
+ *  agent since removed, or a catalog-installed one before `list_agents` lands.
+ *  Never another agent's args, which would resume the session in the wrong CLI. */
+export function unknownAdapter(id: string): Adapter {
+  return {
+    id,
+    label: "Unknown agent",
+    icon: null,
+    program: "",
+    base_args: [],
+    yolo_args: [],
+    resume_args: [],
+    parser_kind: null,
+    running_pattern: null,
+    pty_quiet_ms: 2000,
+    chat: null,
+    accounts: null,
+  };
+}
+
 export function findAdapter(id: string): Adapter {
-  return agents().find((a) => a.id === id) ?? FALLBACK_ADAPTERS[0];
+  return agents().find((a) => a.id === id) ?? unknownAdapter(id);
+}
+
+export function isLaunchOnly(adapter: Adapter): boolean {
+  return adapter.sessions === false;
 }
 
 /** The adapter id behind a launch binary.

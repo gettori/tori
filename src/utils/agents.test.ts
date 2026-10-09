@@ -8,6 +8,7 @@ import {
   modeArgsFor,
   modelArgsFor,
   FALLBACK_ADAPTERS,
+  findAdapter,
   type Adapter,
   type ChatConfig,
 } from "./agents";
@@ -22,6 +23,19 @@ const agent = (program: string, resume_args: string[]): Adapter => ({
   parser_kind: "claude_jsonl",
   running_pattern: "",
   pty_quiet_ms: 0,
+});
+
+describe("findAdapter", () => {
+  // A session row from an agent Tori no longer has, or a catalog-installed one
+  // before `list_agents` lands, must never borrow claude's launch and resume.
+  it("resolves an id no adapter claims to a neutral stub, never claude", () => {
+    const a = findAdapter("acme");
+    expect(a.id).toBe("acme");
+    expect(a.label).toBe("Unknown agent");
+    expect(a.program).toBe("");
+    expect([...a.base_args, ...a.yolo_args, ...a.resume_args]).toEqual([]);
+    expect(a.chat).toBeNull();
+  });
 });
 
 describe("resumeCommand", () => {

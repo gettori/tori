@@ -1521,7 +1521,8 @@ export default function Terminal(props: {
   // one on the way past.
   async function focusOrResume(sel: ResumeTarget, id: string = shellId(), focus = true) {
     const sessionId = sel.sessionId!;
-    const agentId = agents().some((a) => a.id === sel.agent) ? sel.agent! : "claude";
+    // A row with no agent predates the registry and is claude's.
+    const agentId = sel.agent ?? "claude";
     const a = findAdapter(agentId);
     const existing = open().find((t) => t.sessionId === sessionId);
     if (existing) {
@@ -1538,6 +1539,13 @@ export default function Terminal(props: {
       if (!running) {
         invoke("pty_write", { id: existing.id, data: agentInit(existing.program, existing.args) }).catch(() => {});
       }
+      return;
+    }
+    if (!a.program) {
+      emitWith<ToastEvent>(TOAST, {
+        message: "This session's agent is not installed, so it cannot be resumed.",
+        kind: "error",
+      });
       return;
     }
     const args = [

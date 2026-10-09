@@ -145,7 +145,7 @@ wants `needs_you = false`.
 ## Schema
 
 ```toml
-schema_version = 5   # required; 1 to 5. v2 adds [chat], v3 adds [accounts], v4 adds [usage], v5 adds [config] - all optional, all below
+schema_version = 6   # required; 1 to 6. v2 adds [chat], v3 adds [accounts], v4 adds [usage], v5 adds [config], v6 adds launch-only adapters and whoami_kind = "json" - all optional, all below
 id = "..."            # required; the agent's identifier throughout Tori
 label = "..."         # required; display name (sidebar, launch buttons)
 icon = "..."          # optional; which bundled agent logo to wear - "claude", "codex", "copilot", "gemini", "kimi", "opencode", "pi". An unknown or absent name is not an error: the UI falls back to the label's first letter rather than to another agent's mark
@@ -159,7 +159,7 @@ contributor = { name = "...", github = "..." }  # optional; who wrote this file,
 program = "..."        # required; the executable to seed into the tab's shell
 base_args = []          # optional, default []; args always included
 yolo_args = []           # optional, default []; extra args for "skip permissions" launches
-resume_args = []        # required; template for resuming a session - see placeholders below
+resume_args = []        # required, except for a launch-only adapter; template for resuming a session - see placeholders below
 
 # --- the three file-era tables: all three, or none at all - see below ---
 [discovery]
@@ -177,6 +177,7 @@ pattern = '...'   # required with [discovery]; ERE template (for `pgrep -f`) wit
 pty_quiet_ms = 2000   # optional, default 2000; PTY quiet threshold used by the working/needs-you pulse
 needs_you = true      # optional, default true; whether quiet+pending-tool_use is trusted as "needs you" - see below
 hooks = false         # optional, default false; whether a verified hook-driven status mechanism overrides the tail join - see below
+sessions = true       # optional, default true; v6: false declares a launch-only adapter - see below
 
 # --- v2 only; omit the whole table for a PTY-only agent ---
 [chat]
@@ -221,7 +222,9 @@ home_markers = []           # optional; names a non-empty folder must already ho
 login_args = []             # optional; args that start an interactive login, run in a real PTY
 logout_args = []            # optional; args that sign the profile out
 whoami_args = []            # optional; bounded, non-interactive "who is signed in here" probe
-whoami_kind = "..."         # required with whoami_args; claude_json | exit_code | opencode_credentials
+whoami_kind = "..."         # required with whoami_args; claude_json | exit_code | opencode_credentials | json (v6)
+whoami_signed_in_key = "..." # required with whoami_kind = "json"; dotted path to a boolean
+whoami_account_key = "..."   # optional, json only; dotted path to the account's name
 supports_isolation = false  # optional, default false; whether two accounts can coexist - see below
 
 # --- v5 only; omit the whole table for an agent whose config files nobody has measured ---
@@ -361,6 +364,15 @@ must be bounded and answer without a terminal, and it comes with a
 the same way (claude prints JSON, codex says it in its exit code, opencode
 exits 0 either way and states a credential count), so there is nothing to fall
 back on and args without a kind are rejected.
+
+**`whoami_kind = "json"` (v6) is for an agent whose probe prints a JSON
+object.** `whoami_signed_in_key` is a dotted path to a boolean in it, `true`
+signed in and `false` signed out, and `whoami_account_key` an optional dotted
+path to the account's name, shown beside the account. Given
+`{"auth": {"signedIn": true, "user": {"login": "ada"}}}`, the keys are
+`auth.signedIn` and `auth.user.login`. A missing key, a value of the wrong type,
+or output that is not JSON reads as unknown, never as signed out. The two keys
+are refused beside any other kind.
 
 **`home_default` is what makes a second account's history findable.** An agent
 pointed at an isolated home writes its transcripts under that home, in the same
@@ -639,6 +651,13 @@ three**, and the loader requires all three or none:
   `sessionCapabilities.fork` on its handshake, which is what lets a hunk's
   side question reach that agent; the verb is unstable in the protocol, so the
   crate is pinned. Rewind still needs a replay cut at a turn, which ACP lacks.
+- **None, and no `[chat]`** - a launch-only adapter (v6), declared with
+  `capabilities.sessions = false`. Tori starts it in a terminal tab and lists no
+  sessions for it, and its card says so. `launch.resume_args` may be omitted,
+  since there is nothing to resume. The declaration is required rather than
+  inferred, because an adapter that silently lost its tables must not read as
+  one that never had any; `sessions = false` beside any of the four tables is
+  rejected.
 - **Some** - always rejected, naming the missing tables. This is the case the
   rule exists for: a typo that loses `[discovery]` from a Claude-shaped adapter
   would otherwise resolve as a protocol-backed one, and its sessions would simply
@@ -713,6 +732,34 @@ The bundled `opencode` and `gemini` adapters are this plus comments explaining
 what was measured. Everything the chat surface shows - the model list, the
 permission questions, whether a closed chat can be reopened - comes from the
 agent's own handshake, so there is nothing here to keep in step with it.
+
+### A launch-only agent
+
+For an agent Tori should only start, with no chat pane and no session list,
+this is the whole file. It needs v6:
+
+```toml
+schema_version = 6
+id = "acme-cli"
+label = "Acme CLI"
+
+[launch]
+program = "acme"
+
+[capabilities]
+sessions = false
+
+[install]
+program = "npm"
+args = ["install", "-g", "acme-cli"]
+
+[accounts]
+login_args = ["login"]
+whoami_args = ["whoami", "--json"]
+whoami_kind = "json"
+whoami_signed_in_key = "signedIn"
+whoami_account_key = "user.email"
+```
 
 ## Whole-replacing a bundled adapter
 
