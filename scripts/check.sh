@@ -9,7 +9,8 @@
 #   scripts/check.sh rust    format, clippy, desktop crate tests, mobile crate
 #                            check
 #   scripts/check.sh audit   npm and crate advisories
-#   scripts/check.sh all     all three, in that order
+#   scripts/check.sh packs   the pack snapshot against src-tauri/packs.lock
+#   scripts/check.sh all     all four, in that order
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -67,17 +68,35 @@ audit() {
   cargo-audit audit --file mobile/src-tauri/Cargo.lock
 }
 
+# Packs are changed in gettori/packs and brought in by scripts/sync-packs.sh,
+# never edited here: the lock is what says which packs commit this build ships.
+packs() {
+  step "pack snapshot matches src-tauri/packs.lock"
+  local lock=src-tauri/packs.lock
+  if ! (cd src-tauri/packs && grep -v '^#\|^commit ' "../packs.lock" | shasum -a 256 -c --quiet); then
+    echo "error: a file in src-tauri/packs differs from $lock; change it in gettori/packs and run scripts/sync-packs.sh" >&2
+    exit 1
+  fi
+  if ! diff <(grep -v '^#\|^commit ' "$lock" | sed 's/^[0-9a-f]*  //') \
+    <(cd src-tauri/packs && find lsp dap formatters themes agents -type f | LC_ALL=C sort); then
+    echo "error: src-tauri/packs and $lock list different files (< lock only, > disk only); run scripts/sync-packs.sh" >&2
+    exit 1
+  fi
+}
+
 case "${1:-}" in
   ts) ts ;;
   rust) rust ;;
   audit) audit ;;
+  packs) packs ;;
   all)
     ts
     rust
     audit
+    packs
     ;;
   *)
-    echo "usage: scripts/check.sh ts|rust|audit|all" >&2
+    echo "usage: scripts/check.sh ts|rust|audit|packs|all" >&2
     exit 2
     ;;
 esac
