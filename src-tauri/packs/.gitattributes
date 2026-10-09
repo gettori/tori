@@ -1,0 +1,4 @@
+# A pack's version is the sha256 of its bytes, so a CRLF checkout would
+# change every hash.
+*.toml text eol=lf
+*.json text eol=lf

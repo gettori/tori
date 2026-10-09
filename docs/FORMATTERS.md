@@ -98,7 +98,7 @@ no formatter is shown the same way.
 
 ## File location and loading
 
-Bundled configs live in `src-tauri/formatters/*.toml` and are embedded at compile
+Bundled configs live in `src-tauri/packs/formatters/*.toml` and are embedded at compile
 time. User configs live in `~/.config/tori/formatters/*.toml`.
 
 Loading is bundled first, then every `*.toml` in the user directory in filename

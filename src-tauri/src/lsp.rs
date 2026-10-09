@@ -1328,7 +1328,7 @@ mod tests {
             .unwrap()
         };
         let servers = [
-            registry::load_server_str(include_str!("../lsp/typescript.toml"), "bundled:typescript").unwrap(),
+            registry::load_server_str(include_str!("../packs/lsp/typescript.toml"), "bundled:typescript").unwrap(),
             config(
                 "eslint",
                 "role = \"secondary\"\nactivation_markers = [\"eslint.config.js\"]",

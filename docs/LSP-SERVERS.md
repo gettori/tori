@@ -97,7 +97,7 @@ YAML files still open, edit, highlight and save.
 
 ## File location and loading
 
-Bundled configs live in `src-tauri/lsp/*.toml` and are embedded at compile time.
+Bundled configs live in `src-tauri/packs/lsp/*.toml` and are embedded at compile time.
 User configs live in `~/.config/tori/lsp/*.toml`.
 
 Loading is bundled-first, then every `*.toml` in the user directory:

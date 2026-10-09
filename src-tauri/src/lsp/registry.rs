@@ -653,61 +653,9 @@ pub fn inside(path: &Path) -> bool {
         && path.components().next().is_some()
 }
 
-const BUILTIN_TYPESCRIPT: &str = include_str!("../../lsp/typescript.toml");
-const BUILTIN_RUST: &str = include_str!("../../lsp/rust.toml");
-const BUILTIN_JSON: &str = include_str!("../../lsp/json.toml");
-const BUILTIN_YAML: &str = include_str!("../../lsp/yaml.toml");
-const BUILTIN_ESLINT: &str = include_str!("../../lsp/eslint.toml");
-const BUILTIN_BIOME: &str = include_str!("../../lsp/biome.toml");
-const BUILTIN_OXLINT: &str = include_str!("../../lsp/oxlint.toml");
-
-/// Every bundled config. `every_bundled_toml_is_embedded` keeps this in step
-/// with the directory.
-const BUILTINS: &[(&str, &str)] = &[
-    ("bundled:typescript", BUILTIN_TYPESCRIPT),
-    ("bundled:rust", BUILTIN_RUST),
-    ("bundled:json", BUILTIN_JSON),
-    ("bundled:yaml", BUILTIN_YAML),
-    ("bundled:eslint", BUILTIN_ESLINT),
-    ("bundled:biome", BUILTIN_BIOME),
-    ("bundled:oxlint", BUILTIN_OXLINT),
-    ("bundled:astro", include_str!("../../lsp/astro.toml")),
-    ("bundled:bash", include_str!("../../lsp/bash.toml")),
-    ("bundled:clangd", include_str!("../../lsp/clangd.toml")),
-    ("bundled:clojure", include_str!("../../lsp/clojure.toml")),
-    ("bundled:csharp", include_str!("../../lsp/csharp.toml")),
-    ("bundled:css", include_str!("../../lsp/css.toml")),
-    ("bundled:dart", include_str!("../../lsp/dart.toml")),
-    ("bundled:elixir", include_str!("../../lsp/elixir.toml")),
-    ("bundled:elm", include_str!("../../lsp/elm.toml")),
-    ("bundled:fish", include_str!("../../lsp/fish.toml")),
-    ("bundled:go", include_str!("../../lsp/go.toml")),
-    ("bundled:graphql", include_str!("../../lsp/graphql.toml")),
-    ("bundled:haskell", include_str!("../../lsp/haskell.toml")),
-    ("bundled:html", include_str!("../../lsp/html.toml")),
-    ("bundled:java", include_str!("../../lsp/java.toml")),
-    ("bundled:kotlin", include_str!("../../lsp/kotlin.toml")),
-    ("bundled:latex", include_str!("../../lsp/latex.toml")),
-    ("bundled:lua", include_str!("../../lsp/lua.toml")),
-    ("bundled:markdown", include_str!("../../lsp/markdown.toml")),
-    ("bundled:nix", include_str!("../../lsp/nix.toml")),
-    ("bundled:ocaml", include_str!("../../lsp/ocaml.toml")),
-    ("bundled:perl", include_str!("../../lsp/perl.toml")),
-    ("bundled:php", include_str!("../../lsp/php.toml")),
-    ("bundled:prisma", include_str!("../../lsp/prisma.toml")),
-    ("bundled:python", include_str!("../../lsp/python.toml")),
-    ("bundled:ruby", include_str!("../../lsp/ruby.toml")),
-    ("bundled:ruff", include_str!("../../lsp/ruff.toml")),
-    ("bundled:scala", include_str!("../../lsp/scala.toml")),
-    ("bundled:svelte", include_str!("../../lsp/svelte.toml")),
-    ("bundled:swift", include_str!("../../lsp/swift.toml")),
-    ("bundled:terraform", include_str!("../../lsp/terraform.toml")),
-    ("bundled:toml", include_str!("../../lsp/toml.toml")),
-    ("bundled:typst", include_str!("../../lsp/typst.toml")),
-    ("bundled:vim", include_str!("../../lsp/vim.toml")),
-    ("bundled:xml", include_str!("../../lsp/xml.toml")),
-    ("bundled:zig", include_str!("../../lsp/zig.toml")),
-];
+fn builtins() -> impl Iterator<Item = (String, &'static str)> {
+    packs::snapshot::bundled("lsp")
+}
 
 fn user_lsp_dir() -> PathBuf {
     crate::owned_state::config_dir().join("lsp")
@@ -721,8 +669,8 @@ fn user_lsp_dir() -> PathBuf {
 fn build_registry_from(user_dir: &Path) -> Vec<LspServer> {
     let mut list: Vec<LspServer> = Vec::new();
 
-    for &(source, text) in BUILTINS {
-        if let Err(e) = load_server_file(text, source).and_then(|s| admit(&mut list, s)) {
+    for (source, text) in builtins() {
+        if let Err(e) = load_server_file(text, &source).and_then(|s| admit(&mut list, s)) {
             eprintln!("tori: ERROR loading built-in lsp server {source}: {e}");
         }
     }
@@ -893,6 +841,10 @@ kind = "path"
 program = "demo-server"
 "#;
 
+    fn bundled(id: &str) -> &'static str {
+        packs::snapshot::text("lsp", id).unwrap()
+    }
+
     fn temp_dir(name: &str) -> PathBuf {
         static SEQ: AtomicUsize = AtomicUsize::new(0);
         let n = SEQ.fetch_add(1, Ordering::SeqCst);
@@ -904,12 +856,12 @@ program = "demo-server"
 
     #[test]
     fn every_bundled_pack_is_measured() {
-        for (source, text) in BUILTINS {
+        for (source, text) in builtins() {
             // Unmeasured until a machine with Nix measures it: see its header.
-            if *source == "bundled:nix" {
+            if source == "bundled:nix" {
                 continue;
             }
-            let pack = load_server_str(text, source).unwrap();
+            let pack = load_server_str(text, &source).unwrap();
             assert!(pack.verified_against.is_some(), "{source} has no verified_against");
             assert!(pack.verified_on.is_some(), "{source} has no verified_on");
         }
@@ -917,8 +869,8 @@ program = "demo-server"
 
     #[test]
     fn every_bundled_pack_carries_metadata() {
-        for (source, text) in BUILTINS {
-            let meta = load_server_str(text, source).unwrap().meta;
+        for (source, text) in builtins() {
+            let meta = load_server_str(text, &source).unwrap().meta;
             assert!(meta.description.is_some(), "{source} has no description");
             assert!(meta.contributor.is_some(), "{source} has no contributor");
             assert!(meta.license.is_some(), "{source} has no license");
@@ -959,13 +911,13 @@ program = "demo-server"
 
     #[test]
     fn both_bundled_configs_parse() {
-        let ts = load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap();
+        let ts = load_server_str(bundled("typescript"), "bundled:typescript").unwrap();
         assert_eq!(ts.id, "typescript");
         assert_eq!(ts.language_id_for("/p/a.tsx"), Some("typescriptreact"));
         assert_eq!(ts.language_id_for("/p/a.mjs"), Some("javascript"));
         assert!(ts.root_markers.contains(&"tsconfig.json".to_string()));
 
-        let rs = load_server_str(BUILTIN_RUST, "bundled:rust").unwrap();
+        let rs = load_server_str(bundled("rust"), "bundled:rust").unwrap();
         assert_eq!(rs.id, "rust");
         assert_eq!(rs.language_id_for("/p/a.rs"), Some("rust"));
         // The two bundled servers must not both claim an extension: as
@@ -1001,7 +953,7 @@ program = "demo-server"
 
     #[test]
     fn bundled_typescript_launches_the_bundled_entry_and_rust_a_path_binary() {
-        let ts = load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap();
+        let ts = load_server_str(bundled("typescript"), "bundled:typescript").unwrap();
         match &ts.launch {
             Launch::BundledNode { entry, args } => {
                 assert!(entry.ends_with("typescript-language-server/lib/cli.mjs"), "{entry}");
@@ -1012,7 +964,7 @@ program = "demo-server"
             other => panic!("typescript should be bundled_node, got {other:?}"),
         }
 
-        let rs = load_server_str(BUILTIN_RUST, "bundled:rust").unwrap();
+        let rs = load_server_str(bundled("rust"), "bundled:rust").unwrap();
         match &rs.launch {
             Launch::Path { program, .. } => assert_eq!(program, "rust-analyzer"),
             other => panic!("rust should be path, got {other:?}"),
@@ -1022,7 +974,7 @@ program = "demo-server"
 
     #[test]
     fn a_path_server_carries_a_generous_timeout_not_the_library_default() {
-        let rs = load_server_str(BUILTIN_RUST, "bundled:rust").unwrap();
+        let rs = load_server_str(bundled("rust"), "bundled:rust").unwrap();
         // The point of the field: 3000 (the @codemirror/lsp-client default)
         // rejects nearly every first request against a cold rust-analyzer.
         assert!(rs.request_timeout_ms > 3000, "got {}", rs.request_timeout_ms);
@@ -1034,7 +986,7 @@ program = "demo-server"
     fn bundled_servers_load_with_no_user_dir() {
         let list = build_registry_from(Path::new("/nonexistent/tori/lsp"));
         // Equal lengths mean `admit` refused none of them.
-        assert_eq!(list.len(), BUILTINS.len());
+        assert_eq!(list.len(), builtins().count());
         for id in [
             "biome",
             "eslint",
@@ -1048,25 +1000,6 @@ program = "demo-server"
             assert!(list.iter().any(|s| s.id == id), "{id} is missing");
         }
         assert!(list.iter().all(|s| !s.is_override()));
-    }
-
-    #[test]
-    fn every_bundled_toml_is_embedded() {
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("lsp");
-        let mut on_disk: Vec<String> = std::fs::read_dir(dir)
-            .unwrap()
-            .flatten()
-            .filter_map(|e| {
-                e.file_name()
-                    .to_str()?
-                    .strip_suffix(".toml")
-                    .map(|n| format!("bundled:{n}"))
-            })
-            .collect();
-        on_disk.sort();
-        let mut embedded: Vec<String> = BUILTINS.iter().map(|(source, _)| source.to_string()).collect();
-        embedded.sort();
-        assert_eq!(on_disk, embedded);
     }
 
     // Elixir starts only inside a Mix project (elixir.toml), so outside one
@@ -1294,7 +1227,7 @@ version = "1.2.3"
     fn a_non_toml_file_in_the_user_dir_is_skipped() {
         let dir = temp_dir("notoml");
         std::fs::write(dir.join("README.md"), "not a config").unwrap();
-        assert_eq!(build_registry_from(&dir).len(), BUILTINS.len());
+        assert_eq!(build_registry_from(&dir).len(), builtins().count());
     }
 
     #[test]
@@ -1307,7 +1240,7 @@ version = "1.2.3"
 
     #[test]
     fn a_dotted_directory_cannot_fake_an_extension() {
-        let ts = load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap();
+        let ts = load_server_str(bundled("typescript"), "bundled:typescript").unwrap();
         assert_eq!(ts.language_id_for("/p/some.ts/README"), None);
         assert_eq!(ts.language_id_for("/p/no-extension"), None);
     }
@@ -1333,7 +1266,7 @@ version = "1.2.3"
         std::fs::write(dir.join("tsconfig.json"), "{}").unwrap();
         std::fs::write(pkg.join("tsconfig.json"), "{}").unwrap();
 
-        let ts = load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap();
+        let ts = load_server_str(bundled("typescript"), "bundled:typescript").unwrap();
         assert_eq!(root_for(&ts, &pkg.join("src/index.ts"), &dir), pkg);
     }
 
@@ -1342,7 +1275,7 @@ version = "1.2.3"
         let dir = temp_dir("nomarker");
         std::fs::create_dir_all(dir.join("src")).unwrap();
 
-        let ts = load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap();
+        let ts = load_server_str(bundled("typescript"), "bundled:typescript").unwrap();
         assert_eq!(root_for(&ts, &dir.join("src/index.ts"), &dir), dir);
     }
 
@@ -1354,7 +1287,7 @@ version = "1.2.3"
         // A marker *outside* the project must not be picked up.
         std::fs::write(dir.join("tsconfig.json"), "{}").unwrap();
 
-        let ts = load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap();
+        let ts = load_server_str(bundled("typescript"), "bundled:typescript").unwrap();
         assert_eq!(root_for(&ts, &project.join("src/index.ts"), &project), project);
     }
 
@@ -1367,7 +1300,7 @@ version = "1.2.3"
         std::fs::create_dir_all(&elsewhere).unwrap();
         std::fs::write(elsewhere.join("tsconfig.json"), "{}").unwrap();
 
-        let ts = load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap();
+        let ts = load_server_str(bundled("typescript"), "bundled:typescript").unwrap();
         assert_eq!(root_for(&ts, &elsewhere.join("a.ts"), &project), project);
     }
 
@@ -1378,7 +1311,7 @@ version = "1.2.3"
         std::fs::create_dir_all(pkg.join("src/deep")).unwrap();
         std::fs::write(pkg.join("tsconfig.json"), "{}").unwrap();
 
-        let ts = load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap();
+        let ts = load_server_str(bundled("typescript"), "bundled:typescript").unwrap();
         // This is what makes `lsp_start` reuse rather than respawn: two files
         // in the same package produce the same root, so the same handle, so
         // the running session is found already in the map.
@@ -1398,7 +1331,7 @@ version = "1.2.3"
         }
         std::fs::write(dir.join("tsconfig.json"), "{}").unwrap();
 
-        let ts = load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap();
+        let ts = load_server_str(bundled("typescript"), "bundled:typescript").unwrap();
         let a = root_for(&ts, &dir.join("packages/a/index.ts"), &dir);
         let b = root_for(&ts, &dir.join("packages/b/index.ts"), &dir);
         // The whole reason sessions are keyed by (id, root): one shared
@@ -1453,7 +1386,7 @@ version = "1.2.3"
         // to this server: it has no per-package configuration to be right
         // about, so a session per package would differ in nothing but cost.
         let dir = monorepo("json_roots");
-        let json = load_server_str(BUILTIN_JSON, "bundled:json").unwrap();
+        let json = load_server_str(bundled("json"), "bundled:json").unwrap();
 
         let roots: Vec<PathBuf> = ["a", "b", "c"]
             .iter()
@@ -1472,7 +1405,7 @@ version = "1.2.3"
         // "tidied" back into an ordering.
         let dir = monorepo("json_roots_split");
         let split = load_server_str(
-            &BUILTIN_JSON.replace(
+            &bundled("json").replace(
                 r#"root_markers = [".git"]"#,
                 r#"root_markers = [".git", "package.json"]"#,
             ),
@@ -1487,7 +1420,7 @@ version = "1.2.3"
     #[test]
     fn yaml_roots_the_same_way() {
         let dir = monorepo("yaml_roots");
-        let yaml = load_server_str(BUILTIN_YAML, "bundled:yaml").unwrap();
+        let yaml = load_server_str(bundled("yaml"), "bundled:yaml").unwrap();
         assert_eq!(root_for(&yaml, &dir.join("packages/a/ci.yml"), &dir), dir);
     }
 
@@ -1498,7 +1431,7 @@ version = "1.2.3"
         // defaults `schemaStore.enable` to true, but only builds the store
         // inside its configuration handler, so a config that never arrives is
         // a store that never loads.
-        let yaml = load_server_str(BUILTIN_YAML, "bundled:yaml").unwrap();
+        let yaml = load_server_str(bundled("yaml"), "bundled:yaml").unwrap();
         let settings = yaml.settings.expect("yaml.toml must carry a [settings] table");
 
         assert_eq!(
@@ -1526,10 +1459,10 @@ version = "1.2.3"
         // is one server's protocol extension, and sending it to another draws a
         // warning at best.
         let by_id = |text, source| load_server_str(text, source).unwrap();
-        assert!(by_id(BUILTIN_JSON, "bundled:json").schema_associations);
-        assert!(!by_id(BUILTIN_YAML, "bundled:yaml").schema_associations);
-        assert!(!by_id(BUILTIN_TYPESCRIPT, "bundled:typescript").schema_associations);
-        assert!(!by_id(BUILTIN_RUST, "bundled:rust").schema_associations);
+        assert!(by_id(bundled("json"), "bundled:json").schema_associations);
+        assert!(!by_id(bundled("yaml"), "bundled:yaml").schema_associations);
+        assert!(!by_id(bundled("typescript"), "bundled:typescript").schema_associations);
+        assert!(!by_id(bundled("rust"), "bundled:rust").schema_associations);
     }
 
     #[test]
@@ -1538,7 +1471,7 @@ version = "1.2.3"
         // none and is unaffected by the feature's existence; the TypeScript
         // config gained one in wave 7 (see below), which is why it is no longer
         // one of the two named here.
-        let server = load_server_str(BUILTIN_RUST, "bundled:rust").unwrap();
+        let server = load_server_str(bundled("rust"), "bundled:rust").unwrap();
         assert!(server.settings.is_none(), "rust should carry no settings");
         assert!(!server.schema_associations, "rust should not ask for associations");
     }
@@ -1555,7 +1488,7 @@ version = "1.2.3"
         // Asserted here rather than left to the TOML, because the failure is
         // silent in both directions: the setting toggles, the request goes out,
         // the server answers `[]`, and nothing anywhere says why.
-        let server = load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap();
+        let server = load_server_str(bundled("typescript"), "bundled:typescript").unwrap();
         let settings = server.settings.expect("typescript should carry a settings table");
         for language in ["typescript", "javascript"] {
             assert_eq!(
@@ -1687,7 +1620,7 @@ version = "1.2.3"
         std::fs::write(dir.join("tsconfig.json"), "{}").unwrap();
         std::fs::write(pkg.join("package.json"), "{}").unwrap();
 
-        let ts = load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap();
+        let ts = load_server_str(bundled("typescript"), "bundled:typescript").unwrap();
         assert_eq!(root_for(&ts, &pkg.join("a.ts"), &dir), pkg);
     }
 
@@ -1732,7 +1665,7 @@ program = "deno"
         let file = project.join("src/a.ts");
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
         let servers = [
-            load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap(),
+            load_server_str(bundled("typescript"), "bundled:typescript").unwrap(),
             load_server_str(ESLINT, "eslint").unwrap(),
         ];
 
@@ -1750,7 +1683,7 @@ program = "deno"
 
     #[test]
     fn the_bundled_eslint_runs_beside_typescript_only_under_a_config() {
-        let eslint = load_server_str(BUILTIN_ESLINT, "bundled:eslint").unwrap();
+        let eslint = load_server_str(bundled("eslint"), "bundled:eslint").unwrap();
         assert_eq!(eslint.role, Role::Secondary);
         assert!(
             eslint.runs_project_code,
@@ -1760,7 +1693,7 @@ program = "deno"
         let file = project.join("src/a.ts");
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
         let servers = [
-            load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap(),
+            load_server_str(bundled("typescript"), "bundled:typescript").unwrap(),
             eslint,
         ];
 
@@ -1782,10 +1715,10 @@ program = "deno"
         let file = project.join("src/a.ts");
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
         let servers = [
-            load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap(),
-            load_server_str(BUILTIN_ESLINT, "bundled:eslint").unwrap(),
-            load_server_str(BUILTIN_BIOME, "bundled:biome").unwrap(),
-            load_server_str(BUILTIN_OXLINT, "bundled:oxlint").unwrap(),
+            load_server_str(bundled("typescript"), "bundled:typescript").unwrap(),
+            load_server_str(bundled("eslint"), "bundled:eslint").unwrap(),
+            load_server_str(bundled("biome"), "bundled:biome").unwrap(),
+            load_server_str(bundled("oxlint"), "bundled:oxlint").unwrap(),
         ];
         for linter in &servers[2..] {
             assert_eq!(linter.role, Role::Secondary, "{}", linter.id);
@@ -1823,7 +1756,7 @@ program = "deno"
         std::fs::create_dir_all(web.parent().unwrap()).unwrap();
         std::fs::write(project.join("packages/edge/deno.json"), "{}").unwrap();
         let servers = [
-            load_server_str(BUILTIN_TYPESCRIPT, "bundled:typescript").unwrap(),
+            load_server_str(bundled("typescript"), "bundled:typescript").unwrap(),
             load_server_str(DENO, "deno").unwrap(),
         ];
 

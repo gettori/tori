@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import toriDark from "./palettes/tori-dark.json";
-import toriLight from "./palettes/tori-light.json";
+import toriDark from "../../src-tauri/packs/themes/tori-dark.json";
+import toriLight from "../../src-tauri/packs/themes/tori-light.json";
 import { alpha, buildRoles, mix, ROLES, variants } from "./roles";
 import { PALETTE_KEYS, validatePalette, type Palette } from "./schema";
 

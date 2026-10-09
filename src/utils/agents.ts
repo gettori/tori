@@ -167,7 +167,7 @@ export type Adapter = {
   verified_on?: string | null;
 } & Partial<PackMeta>;
 
-// Matches the bundled TOML (src-tauri/agents/*.toml) so
+// Matches the bundled TOML (src-tauri/packs/agents/*.toml) so
 // the first paint - before `list_agents` resolves - looks identical to the
 // pre-registry hardcoded behavior, and so a failed `invoke` degrades to that
 // same shape.

@@ -11,8 +11,9 @@ the user folder is watched, so a saved file appears without a restart.
 
 ## File location and loading
 
-Bundled themes live in `src/theme/palettes/*.json` and are compiled into the
-frontend. User themes live in `~/.config/tori/themes/*.json`.
+Bundled themes live in `src-tauri/packs/themes/*.json` and are compiled into the
+frontend and embedded in the app with the other bundled packs. User themes live
+in `~/.config/tori/themes/*.json`.
 
 - Every file in the user folder is checked when Tori starts and again whenever
   a `.json` file in it changes.

@@ -314,7 +314,7 @@ mod tests {
     #[test]
     fn the_doc_documents_every_schema_field() {
         let doc = include_str!("../../docs/THEMES.md");
-        let palette: Palette = serde_json::from_str(include_str!("../../src/theme/palettes/tori-dark.json")).unwrap();
+        let palette: Palette = serde_json::from_str(include_str!("../packs/themes/tori-dark.json")).unwrap();
         let value = serde_json::to_value(&palette).unwrap();
         for field in value.as_object().unwrap().keys() {
             assert!(

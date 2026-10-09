@@ -189,7 +189,7 @@
 
   /* ---- BEGIN GENERATED ROLE TOKENS. Run scripts/gen-tokens.mjs; do not edit by hand. ---- */
 
-  /* Derived from src/theme/palettes/*.json by src/theme/roles.ts. Values are
+  /* Derived from src-tauri/packs/themes/*.json by src/theme/roles.ts. Values are
      literal because this is a fallback: it must paint correctly before any
      script runs, so it cannot depend on the runtime that resolves palettes. */
 

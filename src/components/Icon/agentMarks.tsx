@@ -4,7 +4,7 @@ import styles from "./agentMarks.module.css";
 /**
  * Every agent logo Tori has, in one place.
  *
- * The marks are keyed by an adapter's `icon` field (`src-tauri/agents/*.toml`),
+ * The marks are keyed by an adapter's `icon` field (`src-tauri/packs/agents/*.toml`),
  * not by its id, so a user's own `claude-yolo` adapter can wear the Claude mark
  * by naming it rather than by being called Claude. An adapter that names no
  * icon, or names one this build has never heard of, gets nothing back from

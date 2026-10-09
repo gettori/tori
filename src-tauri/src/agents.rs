@@ -1560,29 +1560,15 @@ pub fn apply_chat_template(template: &[String], vars: &[(&str, &str)]) -> Vec<St
         .collect()
 }
 
-const BUILTIN_CLAUDE: &str = include_str!("../agents/claude.toml");
-const BUILTIN_OPENCODE: &str = include_str!("../agents/opencode.toml");
-const BUILTIN_GEMINI: &str = include_str!("../agents/gemini.toml");
-const BUILTIN_CODEX: &str = include_str!("../agents/codex.toml");
-const BUILTIN_COPILOT: &str = include_str!("../agents/copilot.toml");
-const BUILTIN_KIMI: &str = include_str!("../agents/kimi.toml");
-const BUILTIN_PI: &str = include_str!("../agents/pi.toml");
-
 /// Every adapter compiled into the binary, source label and text.
 ///
 /// One list, because there are two readers: the registry builder and the test
 /// that emits the frontend's fallback fixture. Kept apart, a new bundled adapter
 /// would reach the app while the fixture the TypeScript fallback is checked
 /// against still described the old set - and that check would keep passing.
-const BUNDLED: [(&str, &str); 7] = [
-    ("bundled:claude", BUILTIN_CLAUDE),
-    ("bundled:opencode", BUILTIN_OPENCODE),
-    ("bundled:gemini", BUILTIN_GEMINI),
-    ("bundled:codex", BUILTIN_CODEX),
-    ("bundled:copilot", BUILTIN_COPILOT),
-    ("bundled:kimi", BUILTIN_KIMI),
-    ("bundled:pi", BUILTIN_PI),
-];
+fn bundled() -> impl Iterator<Item = (String, &'static str)> {
+    packs::snapshot::bundled("agents")
+}
 
 fn load_adapter_file(text: &str, source: &str) -> Result<AgentAdapter, String> {
     let adapter = load_adapter_str(text, source)?;
@@ -1607,8 +1593,8 @@ fn user_agents_dir() -> PathBuf {
 fn build_registry_from(user_dir: &Path) -> Vec<AgentAdapter> {
     let mut by_id: HashMap<String, AgentAdapter> = HashMap::new();
 
-    for (source, text) in BUNDLED {
-        match load_adapter_file(text, source) {
+    for (source, text) in bundled() {
+        match load_adapter_file(text, &source) {
             Ok(a) => {
                 by_id.insert(a.id.clone(), a);
             }
@@ -1783,14 +1769,18 @@ pub fn test_adapter_with_chat(program: &str, chat_program: &str) -> AgentAdapter
 mod tests {
     use super::*;
 
+    fn builtin(id: &str) -> &'static str {
+        packs::snapshot::text("agents", id).unwrap()
+    }
+
     #[test]
     fn every_bundled_pack_is_measured() {
-        for (source, text) in BUNDLED {
+        for (source, text) in bundled() {
             // Unmeasurable as they stand: see the header of each file.
-            if ["bundled:gemini", "bundled:kimi"].contains(&source) {
+            if ["bundled:gemini", "bundled:kimi"].contains(&source.as_str()) {
                 continue;
             }
-            let pack = load_adapter_str(text, source).unwrap();
+            let pack = load_adapter_str(text, &source).unwrap();
             assert!(pack.verified_against.is_some(), "{source} has no verified_against");
             assert!(pack.verified_on.is_some(), "{source} has no verified_on");
         }
@@ -1798,8 +1788,8 @@ mod tests {
 
     #[test]
     fn every_bundled_pack_carries_metadata() {
-        for (source, text) in BUNDLED {
-            let meta = load_adapter_str(text, source).unwrap().meta;
+        for (source, text) in bundled() {
+            let meta = load_adapter_str(text, &source).unwrap().meta;
             assert!(meta.description.is_some(), "{source} has no description");
             assert!(meta.contributor.is_some(), "{source} has no contributor");
             assert!(meta.license.is_some(), "{source} has no license");
@@ -1864,7 +1854,7 @@ mod tests {
     /// detached tier, the sidebar status dot) was therefore blind to chats.
     #[test]
     fn the_running_pattern_matches_chat_command_lines_not_just_pty_ones() {
-        let claude = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("claude parses");
+        let claude = load_adapter_str(builtin("claude"), "bundled:claude").expect("claude parses");
         let id = "2e0777d8-a84b-425c-9a71-7b875918dcf1";
         let pattern = claude
             .running_pattern
@@ -1905,7 +1895,7 @@ mod tests {
 
     #[test]
     fn an_untrusted_folder_starts_claude_without_the_folders_own_settings() {
-        let claude = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("claude parses");
+        let claude = load_adapter_str(builtin("claude"), "bundled:claude").expect("claude parses");
         let chat = claude.chat.as_ref().expect("claude has a chat table");
         assert_eq!(chat.trust_args(false).unwrap(), ["--setting-sources", "user"]);
         assert!(
@@ -1916,7 +1906,7 @@ mod tests {
 
     #[test]
     fn an_agent_that_cannot_leave_a_folders_config_out_does_not_start_in_an_untrusted_one() {
-        let opencode = load_adapter_str(BUILTIN_OPENCODE, "bundled:opencode").expect("opencode parses");
+        let opencode = load_adapter_str(builtin("opencode"), "bundled:opencode").expect("opencode parses");
         let chat = opencode.chat.as_ref().expect("opencode has a chat table");
         assert_eq!(chat.trust_args(false), Err(crate::trust::UNTRUSTED.to_string()));
         assert!(chat.trust_args(true).unwrap().is_empty());
@@ -1924,7 +1914,7 @@ mod tests {
 
     #[test]
     fn bundled_adapters_load_and_validate() {
-        let claude = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("claude parses");
+        let claude = load_adapter_str(builtin("claude"), "bundled:claude").expect("claude parses");
         assert_eq!(claude.id, "claude");
         assert_eq!(claude.program, "claude");
         assert_eq!(claude.parser_kind, Some(ParserKind::ClaudeJsonl));
@@ -2532,21 +2522,20 @@ supports_isolation = true
     /// the moment two of them shared a kind, one of them would be a guess.
     #[test]
     fn each_measured_agent_declares_the_shape_of_its_own_answer() {
-        let kinds: Vec<(String, Option<WhoamiKind>)> = BUNDLED
-            .iter()
-            .filter_map(|(source, text)| load_adapter_str(text, source).ok())
+        let kinds: Vec<(String, Option<WhoamiKind>)> = bundled()
+            .filter_map(|(source, text)| load_adapter_str(text, &source).ok())
             .filter_map(|a| a.accounts.as_ref().map(|acc| (a.id.clone(), acc.whoami_kind)))
             .collect();
         assert_eq!(
             kinds,
             [
                 ("claude".to_string(), Some(WhoamiKind::ClaudeJson)),
-                ("opencode".to_string(), Some(WhoamiKind::OpencodeCredentials)),
                 ("codex".to_string(), Some(WhoamiKind::ExitCode)),
                 // A login command with no probe: copilot documents no
                 // non-interactive status command, so its sign-in state is
                 // honestly unknown rather than read from a guessed shape.
                 ("copilot".to_string(), None),
+                ("opencode".to_string(), Some(WhoamiKind::OpencodeCredentials)),
             ],
             "a new adapter has to come here and say which answer shape it measured"
         );
@@ -2585,7 +2574,7 @@ supports_isolation = true
     /// would sit waiting for a keystroke.
     #[test]
     fn opencode_declares_no_logout_because_it_has_none_to_declare() {
-        let a = load_adapter_str(BUILTIN_OPENCODE, "bundled:opencode").expect("opencode parses");
+        let a = load_adapter_str(builtin("opencode"), "bundled:opencode").expect("opencode parses");
         let acc = a.accounts.expect("opencode declares accounts");
         assert!(acc.logout_args.is_empty());
         assert!(!acc.login_args.is_empty(), "but it does have a login");
@@ -2741,16 +2730,16 @@ sources = ["sessions", "token"]
         let declared =
             |text: &str, source: &str| load_adapter_str(text, source).expect("parses").usage.map(|u| u.sources);
         assert_eq!(
-            declared(BUILTIN_CLAUDE, "bundled:claude"),
+            declared(builtin("claude"), "bundled:claude"),
             Some(vec![UsageRung::Sessions, UsageRung::Token])
         );
-        assert_eq!(declared(BUILTIN_CODEX, "bundled:codex"), Some(vec![UsageRung::Cli]));
+        assert_eq!(declared(builtin("codex"), "bundled:codex"), Some(vec![UsageRung::Cli]));
 
-        for (source, text) in BUNDLED {
+        for (source, text) in bundled() {
             if source == "bundled:claude" || source == "bundled:codex" {
                 continue;
             }
-            let adapter = load_adapter_str(text, source).expect("parses");
+            let adapter = load_adapter_str(text, &source).expect("parses");
             assert!(adapter.usage.is_none(), "{source} declares a ladder nothing climbs");
             assert!(adapter.usage_reason.is_some(), "{source} must say why it offers none");
         }
@@ -2774,8 +2763,8 @@ sources = ["sessions", "token"]
     /// is the check that would have caught the `< SCHEMA_VERSION` gate.
     #[test]
     fn every_bundled_adapter_loads() {
-        for (source, text) in BUNDLED {
-            if let Err(e) = load_adapter_str(text, source) {
+        for (source, text) in bundled() {
+            if let Err(e) = load_adapter_str(text, &source) {
                 panic!("bundled adapter {source} failed to load: {e}");
             }
         }
@@ -2786,7 +2775,7 @@ sources = ["sessions", "token"]
     /// than left to drift.
     #[test]
     fn the_bundled_claude_adapter_declares_its_measured_accounts_table() {
-        let a = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("claude.toml parses");
+        let a = load_adapter_str(builtin("claude"), "bundled:claude").expect("claude.toml parses");
         let acc = a.accounts.clone().expect("claude declares [accounts]");
         assert_eq!(acc.home_env.as_deref(), Some("CLAUDE_CONFIG_DIR"));
         assert!(acc.supports_isolation, "measured in Phase 0: two simultaneous logins");
@@ -2825,9 +2814,8 @@ sources = ["sessions", "token"]
     /// copy-paste.
     #[test]
     fn only_a_measured_adapter_claims_account_isolation() {
-        let claiming: Vec<String> = BUNDLED
-            .iter()
-            .filter_map(|(source, text)| load_adapter_str(text, source).ok())
+        let claiming: Vec<String> = bundled()
+            .filter_map(|(source, text)| load_adapter_str(text, &source).ok())
             .filter(|a| a.accounts.as_ref().is_some_and(|acc| acc.supports_isolation))
             .map(|a| a.id)
             .collect();
@@ -2838,7 +2826,7 @@ sources = ["sessions", "token"]
     /// asserted against real content rather than mere presence.
     #[test]
     fn bundled_claude_declares_modes_effort_and_no_models() {
-        let claude = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("claude parses");
+        let claude = load_adapter_str(builtin("claude"), "bundled:claude").expect("claude parses");
         let chat = claude.chat.expect("claude ships a chat table");
         assert_eq!(chat.transport, ChatTransport::ClaudeStreamJson);
         assert_eq!(claude.verified_against.as_deref(), Some("claude 2.1.231"));
@@ -2887,7 +2875,7 @@ sources = ["sessions", "token"]
         // replacement - and against the tables rather than the struct, since
         // `ChatMode` ignores keys it does not know, so a leftover declaration
         // would be silently dropped instead of failing anything.
-        let raw: toml::Value = toml::from_str(BUILTIN_CLAUDE).expect("the bundled adapter parses as TOML");
+        let raw: toml::Value = toml::from_str(builtin("claude")).expect("the bundled adapter parses as TOML");
         for table in raw["chat"]["modes"].as_array().expect("modes is an array of tables") {
             assert!(
                 table.get("permissive_caveat").is_none(),
@@ -2945,9 +2933,8 @@ sources = ["sessions", "token"]
     /// real wire shape, not a restatement of it.
     #[test]
     fn emit_bundled_adapters_for_the_typescript_fallback() {
-        let mut adapters: Vec<AgentAdapter> = BUNDLED
-            .into_iter()
-            .map(|(source, text)| load_adapter_str(text, source).expect("bundled adapter parses"))
+        let mut adapters: Vec<AgentAdapter> = bundled()
+            .map(|(source, text)| load_adapter_str(text, &source).expect("bundled adapter parses"))
             .collect();
         adapters.sort_by(|a, b| a.id.cmp(&b.id));
 
@@ -3063,7 +3050,7 @@ default = true
             "the fixture must not contain Claude's spelling"
         );
 
-        let claude = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("parses");
+        let claude = load_adapter_str(builtin("claude"), "bundled:claude").expect("parses");
         let claude_chat = claude.chat.expect("a chat table");
         assert_eq!(claude_chat.default_mode().map(|m| m.id.as_str()), Some("default"));
         assert_eq!(
@@ -3143,7 +3130,7 @@ default = true
     /// `--permission-mode`, so this probes what Tori would really send.
     #[test]
     fn every_declared_mode_is_one_the_cli_accepts() {
-        let claude = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("parses");
+        let claude = load_adapter_str(builtin("claude"), "bundled:claude").expect("parses");
         let chat = claude.chat.expect("claude ships a chat table");
 
         // `--version` on a bare program name, as the cheapest possible check
@@ -3186,7 +3173,7 @@ default = true
     /// but the resolver still gates on the model being declared.
     #[test]
     fn model_args_come_from_the_template_for_a_declared_model() {
-        let claude = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("parses");
+        let claude = load_adapter_str(builtin("claude"), "bundled:claude").expect("parses");
         let chat = claude.chat.unwrap();
         assert_eq!(
             chat.model_args_for("claude-opus-5"),
@@ -3198,7 +3185,7 @@ default = true
     /// mismatch there would make the precedence rule observable as a bug.
     #[test]
     fn the_bundled_adapters_two_forms_agree() {
-        let claude = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("parses");
+        let claude = load_adapter_str(builtin("claude"), "bundled:claude").expect("parses");
         let chat = claude.chat.unwrap();
         for m in &chat.modes {
             assert_eq!(

@@ -139,7 +139,7 @@ async function main() {
     console.error(`  effort levels drifted (fixture from ${golden.verifiedAgainst}, CLI ${version})`);
     for (const d of drift) console.error(`      ${d}`);
     console.error(
-      `\n  A level gained or lost changes what [[chat.effort_extras]] in src-tauri/agents/claude.toml may ` +
+      `\n  A level gained or lost changes what [[chat.effort_extras]] in src-tauri/packs/agents/claude.toml may ` +
         `claim, and every row there names the version it was measured on. Re-capture with --write, then ` +
         `move the row in or out of that table by hand and bump its measured_on.`,
     );

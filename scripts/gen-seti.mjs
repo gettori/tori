@@ -159,7 +159,7 @@ function hueOf(hex) {
     throw new Error(
       `seti colour ${hex} has no hue name. Add it to HEX_TO_HUE here, add a ` +
         `scale.<name> role in src/theme/roles.ts, and give every palette in ` +
-        `src/theme/palettes/ a value for it.`,
+        `src-tauri/packs/themes/ a value for it.`,
     );
   }
   return hue;
