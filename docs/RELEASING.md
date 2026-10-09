@@ -71,11 +71,13 @@ built. It:
 2. builds the universal macOS app and checks every binary in it is universal,
 3. packs the app's binary as `tori-cli-<version>-macos-universal.tar.gz`,
    after checking it answers as the CLI,
-4. builds and signs the Android APK,
-5. tags the commit `v<version>` and pushes the tag,
-6. creates the GitHub release as a draft, confirms all three files are
+4. runs that binary's `tori packs-catalog --check`, which fetches the live
+   index from gettori.app and verifies it with the keys this build trusts,
+5. builds and signs the Android APK,
+6. tags the commit `v<version>` and pushes the tag,
+7. creates the GitHub release as a draft, confirms all three files are
    attached, then publishes it,
-7. points the Homebrew cask at the new DMG.
+8. points the Homebrew cask at the new DMG.
 
 It needs, on this Mac: Rust with `rustup`, Node 22 and pnpm, a JDK 17, the
 Android SDK and NDK, `mobile/src-tauri/gen/android/keystore.properties` with
@@ -105,6 +107,7 @@ Run `scripts/release.sh status`. Then:
 | `prepare` failed before the PR | nothing, or a `release/<version>` branch on GitHub | delete that branch if it exists, run `prepare` again |
 | The release PR is wrong | an open PR | close it, delete its branch, fix `main`, run `prepare` again |
 | `publish` failed during a build | nothing: the tag is made only after both builds | fix the cause, run `publish` again |
+| `packs-catalog --check` failed | nothing | the index on gettori.app is missing, expired, or signed with a key this build does not trust: run gettori/packs' Publish workflow, or ship the key first (gettori/packs MAINTAINING.md), then run `publish` again |
 | The APK build says `Unresolved reference: TauriActivity` | nothing | the identifier changed since the last Android build on this machine, and Tauri's build script did not notice: `cargo clean -p tauri --release --target <triple>` for the four Android triples, delete the stale `gen/android/app/src/main/java/<old package path>`, run `publish` again |
 | `publish` failed during upload | the tag and a draft release | run `publish` again, it replaces the draft |
 | `publish` failed at the cask | a published release, the old cask | `publish` will not run again on a published release, so dispatch the `Update cask` workflow or edit the cask by hand |
