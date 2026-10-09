@@ -8,6 +8,25 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## Unreleased
+
+- The Monokai Pro theme is gone, since Monokai Pro is a paid theme and was
+  never Tori's to ship. If you had it picked, Tori switches to Tori Dark and
+  says so.
+- Every bundled language server, debugger, formatter, theme and agent now says
+  who wrote it, under which licence, and which version of its tool it was
+  checked against and when. The files moved to `src-tauri/packs/`.
+- An agent file can now just start the agent in a terminal tab, with no chat
+  and no session list: `capabilities.sessions = false` at `schema_version =
+  6`. Sign-in can also be read from any JSON output with `whoami_kind =
+  "json"`. See docs/ADAPTERS.md.
+- A session whose agent is no longer installed shows as "Unknown agent" and
+  is not resumed in Claude anymore.
+- `tori validate-pack` checks a pack file the way a contribution will be
+  checked, and `tori packs-index` writes the signed index for the packs
+  catalog. Releases now carry the CLI as
+  `tori-cli-<version>-macos-universal.tar.gz`.
+
 ## 26.1008.0-alpha
 
 - Every hunk can say who wrote it. A toggle on the hunk header in the diff
