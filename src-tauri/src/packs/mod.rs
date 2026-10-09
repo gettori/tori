@@ -2,7 +2,9 @@
 // cannot drift apart on what a pack is.
 
 pub mod index_rows;
+pub mod publish;
 pub mod snapshot;
+pub mod validate;
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -67,6 +69,15 @@ pub fn warn_stem(source: &str, id: &str) {
     if let Err(e) = check_stem(source, id) {
         eprintln!("tori: WARNING {e}");
     }
+}
+
+/// One exact version, `1.2.3` or `1.2.3-rc.1`. A range or a tag like `latest`
+/// would install whatever the registry says today, which nobody has checked.
+pub fn is_exact_version(version: &str) -> bool {
+    static EXACT: OnceLock<regex::Regex> = OnceLock::new();
+    EXACT
+        .get_or_init(|| regex::Regex::new(r"^\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$").unwrap())
+        .is_match(version)
 }
 
 /// A calendar date written `YYYY-MM-DD`.

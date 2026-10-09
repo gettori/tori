@@ -2,8 +2,9 @@
 # rather than an install. `dlv dap` listens on the port Tori picks, serves one
 # session and exits with it.
 #
-# No `verified_against`: `dlv` has no `--version` (its `dlv version` prints
-# three lines), so the health card has no version to compare.
+# `verified_against` is stated from `dlv version`, not checked: `dlv` has no
+# `--version` (`dlv version` prints three lines), so the health card has no
+# version to compare and says so.
 
 schema_version = 1
 id = "delve"

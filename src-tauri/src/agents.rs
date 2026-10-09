@@ -1180,7 +1180,7 @@ fn check_session_plumbing(raw: &AdapterToml, source: &str) -> Result<(), String>
 /// field in one message (not just the first, the way a bare serde error
 /// would), warns (doesn't reject) on an unrecognized top-level field, and
 /// rejects a `parser.kind` outside the closed set of implemented parsers.
-fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
+pub(crate) fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
     let value: toml::Value = toml::from_str(text).map_err(|e| format!("{source}: {e}"))?;
 
     if let Some(table) = value.as_table() {

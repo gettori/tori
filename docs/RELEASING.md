@@ -108,6 +108,24 @@ Run `scripts/release.sh status`. Then:
 A tag that has been pushed is never moved. If a published release is bad, cut
 the next one.
 
+## Packs
+
+Every release carries `tori validate-pack` and `tori packs-index`, and
+gettori/packs runs them in CI from a released binary. So a release that changes
+what a loader accepts is also a change to what packs CI accepts:
+
+- Run `tori validate-pack src-tauri/packs` before tagging. It checks every
+  bundled pack the way a contribution is checked, offline; add `--assets
+  --registry` to also download each release asset and look up each pinned
+  package. nix, gemini and kimi fail it until someone measures them; each
+  file's header says why.
+- A new `schema_version` for any kind needs a line in gettori/packs'
+  `tori-support.json` naming this release, after it is published. Until then
+  `tori packs-index` refuses a pack written at that version.
+- `packs-index` signs with an Ed25519 key in PKCS#8 PEM. macOS's own `openssl`
+  (LibreSSL) cannot make one; use Homebrew's: `$(brew --prefix
+  openssl@3)/bin/openssl genpkey -algorithm ed25519`.
+
 ## The workflows
 
 `.github/workflows/release.yml` builds a DMG from a pushed tag. It is not the

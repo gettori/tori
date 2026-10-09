@@ -632,12 +632,8 @@ fn load_install(raw: InstallToml, program: &str, source: &str) -> Result<Install
     }
 }
 
-// Pinned means one exact version: a range or a tag like `latest` would install
-// whatever the registry says today, which nobody has checked.
 fn pinned(version: String, source: &str) -> Result<String, String> {
-    static EXACT: OnceLock<regex::Regex> = OnceLock::new();
-    let exact = EXACT.get_or_init(|| regex::Regex::new(r"^\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$").unwrap());
-    if exact.is_match(&version) {
+    if packs::is_exact_version(&version) {
         Ok(version)
     } else {
         Err(format!(

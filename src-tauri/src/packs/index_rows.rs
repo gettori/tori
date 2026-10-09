@@ -21,7 +21,8 @@ pub struct PackFile {
     pub row: Value,
 }
 
-fn extension(kind: &str) -> &'static str {
+/// The file extension a kind's packs carry.
+pub fn extension(kind: &str) -> &'static str {
     if kind == "themes" {
         "json"
     } else {
