@@ -726,6 +726,8 @@ pub fn run() {
             packs::packs_reload,
             packs::packs_remove,
             packs::catalog::packs_catalog,
+            packs::manage::packs_install,
+            packs::manage::packs_update,
             themes::themes_watch_start,
             trace::trace_config,
             trace::trace_write,

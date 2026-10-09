@@ -4,7 +4,8 @@ import Toggle from "../../../../components/Switch/Switch";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { setDebuggerDisabled } from "../../settingsStore";
 import { onPacksChanged, type PackMeta, type Provenance } from "../../../../utils/packs";
-import ProvenanceTag from "../../components/ProvenanceTag";
+import ProvenanceTag, { CatalogConflict } from "../../components/ProvenanceTag";
+import AddPack from "../../components/AddPack";
 import { createToolActions } from "./toolActions";
 import styles from "../../Settings.module.css";
 import NeedsFixing from "../../components/NeedsFixing";
@@ -84,6 +85,7 @@ function DapCard(props: { adapter: DapHealth; onChange: () => Promise<DapHealth[
         </span>
       </div>
       <code class={styles.toolProgram}>{a().program}</code>
+      <CatalogConflict provenance={a().provenance} id={a().id} />
 
       <div class={styles.toolStatus}>
         <Switch>
@@ -149,6 +151,7 @@ export default function DapSection() {
         <span>Debuggers</span>
         <span class={styles.sectionRule} />
       </div>
+      <AddPack kind="dap" label="Add a debugger" />
       <NeedsFixing kind="dap" />
       <Switch>
         <Match when={health.state === "pending"}>

@@ -1,5 +1,5 @@
-// Mirrors `packs::Meta`, `packs::LoadError`, `packs::provenance::Provenance`
-// and `packs::migrate::Report` in src-tauri/src/packs/.
+// Mirrors `packs::Meta`, `packs::LoadError`, `packs::provenance::Provenance`,
+// `packs::migrate::Report` and `packs::catalog::Catalog` in src-tauri/src/packs/.
 import { createSignal, onCleanup } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -15,13 +15,15 @@ export type PackMeta = {
 export type PackKind = "lsp" | "dap" | "formatters" | "themes" | "agents";
 
 /** A file Tori would not load. `kind` is null for `installed.json`;
- *  `removable` is the id `packs_remove` takes, for a recorded file edited since. */
+ *  `removable` is the id `packs_remove` takes, for a recorded file edited since,
+ *  and `restorable` says `packs_update` can put it back from the catalog. */
 export type LoadError = {
   kind: PackKind | null;
   file: string;
   message: string;
   fix: string | null;
   removable: string | null;
+  restorable: boolean;
 };
 
 export type PackSource = "bundled" | "catalog" | "override" | "custom";
@@ -97,3 +99,38 @@ export function packsNotice(report: MigrationReport | null, errors: LoadError[])
   }
   return parts.length > 0 ? parts.join(" ") : null;
 }
+
+/** One row of the signed index, as gettori.app serves it. */
+export type CatalogPack = {
+  kind: PackKind;
+  id: string;
+  role: "primary" | "secondary" | null;
+  label: string | null;
+  description: string | null;
+  contributor: Contributor | null;
+  license: string | null;
+  verified_against: string | null;
+  verified_on: string | null;
+  platforms: string[];
+};
+
+export type CatalogRow = {
+  pack: CatalogPack;
+  installed: boolean;
+  bundled: boolean;
+  updateAvailable: boolean;
+  customFile: boolean;
+};
+
+export type CatalogProblem = { kind: "offline" | "unverified" | "record"; message: string };
+
+export type Catalog = {
+  rows: CatalogRow[];
+  generatedAt: string | null;
+  stale: boolean;
+  problem: CatalogProblem | null;
+};
+
+/** The catalog, asked for again past the cache's TTL: an add list is opened
+ *  to see what is there now. */
+export const loadCatalog = () => invoke<Catalog>("packs_catalog", { forceRevalidate: true });

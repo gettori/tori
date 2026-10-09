@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
+import { describe, it, expect, vi, beforeEach, onTestFinished } from "vite-plus/test";
 import { render, screen, waitFor, cleanup, fireEvent } from "@solidjs/testing-library";
 import type { LspHealth } from "./LspSection";
-import type { LoadError } from "../../../../utils/packs";
+import type { Catalog, CatalogRow, LoadError } from "../../../../utils/packs";
 
 // What the language-server cards must say, driven through the real component.
 //
@@ -15,6 +15,7 @@ let health: LspHealth[] = [];
 let trusted: string[] = [];
 let calls: [string, unknown][] = [];
 let loadErrors: LoadError[] = [];
+let catalog: Catalog = { rows: [], generatedAt: null, stale: false, problem: null };
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: { path?: string }) => {
@@ -22,6 +23,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "lsp_health") return Promise.resolve(health);
     if (cmd === "trusted_projects") return Promise.resolve(trusted);
     if (cmd === "packs_load_errors") return Promise.resolve(loadErrors);
+    if (cmd === "packs_catalog") return Promise.resolve(catalog);
     if (cmd === "revoke_project") trusted = trusted.filter((p) => p !== args?.path);
     return Promise.resolve(null);
   },
@@ -90,7 +92,33 @@ beforeEach(() => {
   trusted = [];
   calls = [];
   loadErrors = [];
+  catalog = { rows: [], generatedAt: null, stale: false, problem: null };
 });
+
+const row = (id: string, over: Partial<CatalogRow> = {}, pack: Partial<CatalogRow["pack"]> = {}): CatalogRow => ({
+  pack: {
+    kind: "lsp",
+    id,
+    role: "primary",
+    label: `Pack ${id}`,
+    description: `The ${id} server`,
+    contributor: { name: "Ada", github: "ada" },
+    license: "MIT",
+    verified_against: "1.0.0",
+    verified_on: "2026-10-01",
+    platforms: ["macos"],
+    ...pack,
+  },
+  installed: false,
+  bundled: false,
+  updateAvailable: false,
+  customFile: false,
+  ...over,
+});
+
+const openAddList = async () => {
+  fireEvent.click(await waitFor(() => screen.getByText("Add a language")));
+};
 
 describe("LspSection", () => {
   it("shows a server added to the packs folder once the folder is reloaded", async () => {
@@ -128,7 +156,14 @@ describe("LspSection", () => {
 
   it("deletes a recorded file that was edited since, from the Needs fixing list", async () => {
     loadErrors = [
-      { kind: "lsp", file: "/cfg/packs/lsp/fresh.toml", message: "changed", fix: "restore it", removable: "fresh" },
+      {
+        kind: "lsp",
+        file: "/cfg/packs/lsp/fresh.toml",
+        message: "changed",
+        fix: "restore it",
+        removable: "fresh",
+        restorable: false,
+      },
     ];
     render(() => <LspSection />);
 
@@ -139,8 +174,22 @@ describe("LspSection", () => {
 
   it("lists a language server file that did not load, and no other kind's", async () => {
     loadErrors = [
-      { kind: "lsp", file: "/cfg/packs/lsp/typescript.toml", message: "bundled id", fix: "copy it", removable: null },
-      { kind: "dap", file: "/cfg/packs/dap/mine.toml", message: "broken", fix: null, removable: null },
+      {
+        kind: "lsp",
+        file: "/cfg/packs/lsp/typescript.toml",
+        message: "bundled id",
+        fix: "copy it",
+        removable: null,
+        restorable: false,
+      },
+      {
+        kind: "dap",
+        file: "/cfg/packs/dap/mine.toml",
+        message: "broken",
+        fix: null,
+        removable: null,
+        restorable: false,
+      },
     ];
     render(() => <LspSection />);
 
@@ -322,5 +371,110 @@ describe("LspSection", () => {
 
     await waitFor(() => expect(screen.queryByText("/work/repo")).toBeNull());
     expect(screen.getByText("/work/other")).toBeTruthy();
+  });
+
+  it("opens the add list by asking the catalog to revalidate, with each row's state", async () => {
+    catalog.rows = [
+      row("fresh"),
+      row("rust", { bundled: true }),
+      row("mine", { installed: true }),
+      row("old", { installed: true, updateAvailable: true }),
+      row("clash", { customFile: true }),
+      row("lint", {}, { role: "secondary" }),
+    ];
+    render(() => <LspSection />);
+    await openAddList();
+
+    await waitFor(() => expect(screen.getByText("Pack fresh")).toBeTruthy());
+    expect(calls).toContainEqual(["packs_catalog", { forceRevalidate: true }]);
+    const card = (id: string) => document.querySelector(`[data-pack="${id}"]`) as HTMLElement;
+    expect(card("fresh").textContent).toContain("Install");
+    expect(card("fresh").textContent).toContain("By Ada (@ada), MIT");
+    expect(card("fresh").textContent).toContain("Verified against 1.0.0 on 2026-10-01");
+    expect(card("rust").textContent).toContain("Bundled");
+    expect(card("rust").querySelector("button")).toBeNull();
+    expect(card("mine").textContent).toContain("Installed");
+    expect(card("mine").textContent).toContain("Remove");
+    expect(card("old").textContent).toContain("Update available");
+    expect(card("old").textContent).toContain("Update");
+    expect(card("clash").textContent).toContain("Your custom file uses this id");
+    expect(card("clash").textContent).toContain("Rename yours to install this one.");
+    expect((card("clash").querySelector("button") as HTMLButtonElement).disabled).toBe(true);
+    expect(card("lint")).toBeNull();
+  });
+
+  it("shows an installed pack's health card with its contributor", async () => {
+    catalog.rows = [row("fresh")];
+    render(() => <LspSection />);
+    await openAddList();
+    fireEvent.click(await waitFor(() => screen.getByText("Install")));
+    await waitFor(() => expect(calls).toContainEqual(["packs_install", { kind: "lsp", id: "fresh" }]));
+
+    health = [
+      server({
+        id: "fresh",
+        label: "Fresh",
+        contributor: { name: "Ada", github: "ada" },
+        provenance: { source: "catalog", updateAvailable: false, catalogConflict: false },
+      }),
+    ];
+    emit("packs:changed", "lsp");
+    await waitFor(() => expect(screen.getByText("Fresh")).toBeTruthy());
+    expect(screen.getByText("Catalog, by Ada")).toBeTruthy();
+  });
+
+  it("says why the catalog is offline, unverified or stale in one neutral line", async () => {
+    const toasts: unknown[] = [];
+    const toast = (e: Event) => toasts.push(e);
+    window.addEventListener("tori:toast", toast);
+    onTestFinished(() => window.removeEventListener("tori:toast", toast));
+    for (const [problem, text] of [
+      [{ kind: "offline", message: "no network" }, "The catalog could not be reached: no network"],
+      [{ kind: "unverified", message: "bad sig" }, "The catalog did not verify: bad sig"],
+    ] as const) {
+      cleanup();
+      catalog = { rows: [], generatedAt: null, stale: false, problem };
+      render(() => <LspSection />);
+      await openAddList();
+      await waitFor(() => expect(screen.getByText(text)).toBeTruthy());
+    }
+    cleanup();
+    catalog = { rows: [row("fresh")], generatedAt: "2026-09-01T00:00:00Z", stale: true, problem: null };
+    render(() => <LspSection />);
+    await openAddList();
+    await waitFor(() => expect(screen.getByText("Catalog last refreshed on 2026-09-01.")).toBeTruthy());
+    expect(screen.getByText("Install")).toBeTruthy();
+    expect(toasts).toEqual([]);
+  });
+
+  it("marks a custom server whose id the catalog uses, quietly", async () => {
+    const toasts: unknown[] = [];
+    const toast = (e: Event) => toasts.push(e);
+    window.addEventListener("tori:toast", toast);
+    onTestFinished(() => window.removeEventListener("tori:toast", toast));
+    health = [server({ id: "mine", provenance: { source: "custom", updateAvailable: false, catalogConflict: true } })];
+    render(() => <LspSection />);
+
+    await waitFor(() => expect(screen.getByText(/The catalog also has a pack called/)).toBeTruthy());
+    expect(screen.getByText(/Rename yours to install it\./)).toBeTruthy();
+    expect(screen.queryByText("Needs fixing")).toBeNull();
+    expect(toasts).toEqual([]);
+  });
+
+  it("restores an edited catalog pack from the Needs fixing list", async () => {
+    loadErrors = [
+      {
+        kind: "lsp",
+        file: "/cfg/packs/lsp/fresh.toml",
+        message: "changed",
+        fix: "restore it",
+        removable: "fresh",
+        restorable: true,
+      },
+    ];
+    render(() => <LspSection />);
+
+    fireEvent.click(await waitFor(() => screen.getByLabelText("Restore /cfg/packs/lsp/fresh.toml")));
+    await waitFor(() => expect(calls).toContainEqual(["packs_update", { kind: "lsp", id: "fresh" }]));
   });
 });
