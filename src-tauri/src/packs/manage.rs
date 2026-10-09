@@ -28,7 +28,7 @@ pub fn put(
     id: &str,
     mode: Mode,
     index: &Value,
-    download: impl FnOnce(&str) -> Result<Vec<u8>, String>,
+    mut download: impl FnMut(&str) -> Result<Vec<u8>, String>,
     now: u64,
 ) -> Result<(), String> {
     super::check_id(id, "packs_install")?;
@@ -44,6 +44,11 @@ pub fn put(
     let url = row["url"]
         .as_str()
         .ok_or_else(|| format!("the catalog row for `{id}` has no url"))?;
+    let icon = match (row["icon_sha256"].as_str(), row["icon_url"].as_str()) {
+        (Some(sha), Some(url)) if kind == Kind::Agents => Some((sha, url)),
+        (Some(_), None) => return Err(format!("the catalog row for `{id}` has an icon hash but no icon url")),
+        _ => None,
+    };
 
     let record_path = packs.join(installed::FILE);
     let recorded = installed::read_at(&record_path)?.find(kind, id).map(|r| r.source);
@@ -63,19 +68,19 @@ pub fn put(
         _ => {}
     }
 
-    let text = String::from_utf8(download(url)?).map_err(|_| format!("{url} is not a text file"))?;
-    let got = super::sha256(&text);
-    if got != sha {
-        return Err(format!(
-            "{url} does not match the signed catalog (sha256 {got}, expected {sha})"
-        ));
-    }
+    let text = fetch_checked(&mut download, url, sha)?;
+    let icon_text = icon
+        .map(|(sha, url)| fetch_checked(&mut download, url, sha))
+        .transpose()?;
     std::fs::create_dir_all(packs.join(kind.folder())).map_err(|e| e.to_string())?;
     crate::owned_state::write_atomically(&target, &text)?;
+    if kind == Kind::Agents {
+        put_icon(&super::icon_path(packs, id), icon_text.as_deref())?;
+    }
     let record = Record {
         kind,
         id: id.to_string(),
-        sha256: got,
+        sha256: sha.to_string(),
         source: Recorded::Catalog,
         packs_commit: index["packs_commit"].as_str().map(str::to_string),
         installed_at: now,
@@ -84,8 +89,40 @@ pub fn put(
     let recorded_now = installed::update(&record_path, |r| r.record(record));
     if recorded_now.is_err() && !occupied {
         let _ = std::fs::remove_file(&target);
+        if kind == Kind::Agents {
+            let _ = std::fs::remove_file(super::icon_path(packs, id));
+        }
     }
     recorded_now
+}
+
+fn fetch_checked(
+    download: &mut impl FnMut(&str) -> Result<Vec<u8>, String>,
+    url: &str,
+    sha: &str,
+) -> Result<String, String> {
+    let text = String::from_utf8(download(url)?).map_err(|_| format!("{url} is not a text file"))?;
+    let got = super::sha256(&text);
+    if got != sha {
+        return Err(format!(
+            "{url} does not match the signed catalog (sha256 {got}, expected {sha})"
+        ));
+    }
+    Ok(text)
+}
+
+fn put_icon(path: &Path, text: Option<&str>) -> Result<(), String> {
+    match text {
+        Some(text) => {
+            std::fs::create_dir_all(path.parent().unwrap_or(path)).map_err(|e| e.to_string())?;
+            crate::owned_state::write_atomically(path, text)
+        }
+        None => match std::fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(format!("{}: {e}", path.display())),
+        },
+    }
 }
 
 pub fn check_idle(kind: Kind, id: &str, runs: impl Fn(&str) -> bool) -> Result<(), String> {
@@ -181,7 +218,7 @@ mod tests {
         dir
     }
 
-    fn serve(body: &str) -> impl FnOnce(&str) -> Result<Vec<u8>, String> + '_ {
+    fn serve(body: &str) -> impl FnMut(&str) -> Result<Vec<u8>, String> + '_ {
         move |url| {
             assert_eq!(url, URL);
             Ok(body.as_bytes().to_vec())

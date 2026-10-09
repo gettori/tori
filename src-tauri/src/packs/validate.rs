@@ -10,12 +10,15 @@ use regex::Regex;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-use super::index_rows::{extension, KINDS};
+use super::index_rows::{extension, ICONS, KINDS};
 use super::{check_stem, is_exact_version, Meta};
 use crate::{agents, dap, format, lsp, themes};
 
 /// The package managers an agent's `[install]` may run.
 const INSTALLERS: [&str; 10] = ["npm", "pnpm", "bun", "pip", "pipx", "uv", "brew", "cargo", "go", "gem"];
+
+/// The largest agent icon accepted, in bytes.
+const MAX_ICON_BYTES: usize = 32 * 1024;
 
 /// The runners a `[chat].program` may be, each fetching a pinned package.
 const RUNNERS: [&str; 3] = ["npx", "bunx", "uvx"];
@@ -75,6 +78,7 @@ pub fn collect(paths: &[PathBuf]) -> Vec<Result<(PathBuf, &'static str), Checked
             Some(kind) => vec![(path.clone(), kind)],
             None => KINDS
                 .iter()
+                .chain([&ICONS])
                 .map(|kind| (path.join(kind), *kind))
                 .filter(|(dir, _)| dir.is_dir())
                 .collect(),
@@ -100,6 +104,8 @@ pub fn collect(paths: &[PathBuf]) -> Vec<Result<(PathBuf, &'static str), Checked
                 }
                 if entry.extension().and_then(|e| e.to_str()) == Some(extension(kind)) && entry.is_file() {
                     out.push(Ok((entry, kind)));
+                } else if kind == ICONS {
+                    out.push(Err(Checked::refused(entry, "not an icon: icons are .svg files".into())));
                 } else {
                     let message = format!("not a pack: {kind} packs are .{} files", extension(kind));
                     out.push(Err(Checked::refused(entry, message)));
@@ -112,7 +118,7 @@ pub fn collect(paths: &[PathBuf]) -> Vec<Result<(PathBuf, &'static str), Checked
 
 fn folder_kind(dir: &Path) -> Option<&'static str> {
     let name = dir.file_name()?.to_str()?;
-    KINDS.iter().find(|k| **k == name).copied()
+    KINDS.iter().chain([&ICONS]).find(|k| **k == name).copied()
 }
 
 fn kind_of(file: &Path) -> Option<&'static str> {
@@ -131,7 +137,12 @@ pub fn check_file(path: &Path, kind: &'static str) -> Checked {
     match std::fs::read_to_string(path) {
         Ok(text) => {
             let source = path.display().to_string();
-            match check_text(kind, &text, &source) {
+            let verdict = if kind == ICONS {
+                Ok(check_icon(path, &text, &source))
+            } else {
+                check_text(kind, &text, &source)
+            };
+            match verdict {
                 Ok((id, errors, remotes)) => {
                     checked.id = Some(id);
                     checked.errors = errors;
@@ -153,6 +164,91 @@ pub fn check_file(path: &Path, kind: &'static str) -> Checked {
 }
 
 type Verdict = (String, Vec<String>, Vec<Remote>);
+
+/// Tori only ever draws an icon as a CSS mask, which runs nothing, so these
+/// rules keep it small, drawable and free of anything active should some other
+/// viewer open it as a page.
+fn check_icon(path: &Path, text: &str, source: &str) -> Verdict {
+    let id = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default()
+        .to_string();
+    let mut errors = Vec::new();
+    if let Err(e) = super::check_id(&id, source) {
+        errors.push(e);
+    }
+    let agent = path
+        .parent()
+        .and_then(Path::parent)
+        .map(|root| root.join("agents").join(format!("{id}.toml")));
+    if !agent.is_some_and(|p| p.is_file()) {
+        errors.push(format!(
+            "no agents/{id}.toml beside it: an icon belongs to the agent pack of the same id"
+        ));
+    }
+    if text.len() > MAX_ICON_BYTES {
+        errors.push(format!("{} bytes, over the {MAX_ICON_BYTES} allowed", text.len()));
+    }
+    errors.extend(svg_errors(text));
+    (id, errors, Vec::new())
+}
+
+fn svg_errors(text: &str) -> Vec<String> {
+    use quick_xml::events::Event;
+    let mut errors = Vec::new();
+    let mut reader = quick_xml::Reader::from_str(text);
+    let mut root = true;
+    // quick-xml reports a mismatched end tag but not one that never comes.
+    let mut open = 0usize;
+    loop {
+        let element = match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                open += 1;
+                e
+            }
+            Ok(Event::Empty(e)) => e,
+            Ok(Event::End(_)) => {
+                open = open.saturating_sub(1);
+                continue;
+            }
+            Ok(Event::Eof) if open > 0 => {
+                errors.push("not well-formed XML: an element is never closed".into());
+                return errors;
+            }
+            Ok(Event::Eof) => break,
+            Ok(_) => continue,
+            Err(e) => {
+                errors.push(format!("not well-formed XML: {e}"));
+                return errors;
+            }
+        };
+        let name = element.local_name().into_inner().to_lowercase();
+        let attributes: Vec<String> = element
+            .attributes()
+            .flatten()
+            .map(|a| a.key.local_name().into_inner().to_string())
+            .collect();
+        if root {
+            root = false;
+            if name != "svg" {
+                errors.push(format!("the root element is `<{name}>`, not `<svg>`"));
+            } else if !attributes.iter().any(|a| a == "viewBox") {
+                errors.push("the `<svg>` has no `viewBox`, so it cannot be scaled to the glyph".into());
+            }
+        }
+        if name == "script" || name == "foreignobject" {
+            errors.push(format!("has a `<{name}>` element"));
+        }
+        for attribute in attributes.iter().filter(|a| a.to_lowercase().starts_with("on")) {
+            errors.push(format!("`<{name}>` has an `{attribute}` attribute"));
+        }
+    }
+    if root {
+        errors.push("holds no element".into());
+    }
+    errors
+}
 
 /// The checks on a pack's text. `Err` when it does not load at all; otherwise
 /// its id and every rule it breaks.
@@ -392,6 +488,63 @@ mod tests {
             errors.iter().any(|e| e.contains(needle)),
             "expected `{needle}` in {errors:?}"
         );
+    }
+
+    const ICON: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M0 0h24v24H0z"/></svg>"#;
+
+    fn icon_root(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("tori-validate-icons-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("icons")).unwrap();
+        std::fs::create_dir_all(dir.join("agents")).unwrap();
+        dir
+    }
+
+    #[test]
+    fn the_bundled_icons_pass() {
+        let packs = Path::new(env!("CARGO_MANIFEST_DIR")).join("packs");
+        for entry in std::fs::read_dir(packs.join("icons")).unwrap().flatten() {
+            let checked = check_file(&entry.path(), ICONS);
+            assert!(checked.ok(), "{:?}", checked.errors);
+        }
+    }
+
+    #[test]
+    fn each_icon_rule_refuses_its_fixture() {
+        assert!(svg_errors(ICON).is_empty());
+        for (svg, needle) in [
+            (r#"<svg viewBox="0 0 24 24"><path>"#, "not well-formed XML"),
+            (r#"<html viewBox="0 0 24 24"/>"#, "not `<svg>`"),
+            (r#"<svg xmlns="http://www.w3.org/2000/svg"/>"#, "no `viewBox`"),
+            (
+                r#"<svg viewBox="0 0 24 24"><script>alert(1)</script></svg>"#,
+                "`<script>`",
+            ),
+            (
+                r#"<svg viewBox="0 0 24 24"><foreignObject/></svg>"#,
+                "`<foreignobject>`",
+            ),
+            (r#"<svg viewBox="0 0 24 24" onload="x()"/>"#, "`onload`"),
+            (r#"<svg viewBox="0 0 24 24"><path onClick="x()"/></svg>"#, "`onClick`"),
+        ] {
+            assert_refused(&svg_errors(svg), needle);
+        }
+    }
+
+    #[test]
+    fn an_icon_needs_its_agent_and_a_small_file() {
+        let dir = icon_root("rules");
+        std::fs::write(dir.join("icons/ghost.svg"), ICON).unwrap();
+        assert_refused(
+            &check_file(&dir.join("icons/ghost.svg"), ICONS).errors,
+            "no agents/ghost.toml",
+        );
+
+        std::fs::write(dir.join("agents/big.toml"), "").unwrap();
+        let big = ICON.replace("</svg>", &format!("<!-- {} --></svg>", "x".repeat(MAX_ICON_BYTES)));
+        std::fs::write(dir.join("icons/big.svg"), big).unwrap();
+        assert_refused(&check_file(&dir.join("icons/big.svg"), ICONS).errors, "over the");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

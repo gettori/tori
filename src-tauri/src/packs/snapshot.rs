@@ -55,7 +55,26 @@ mod tests {
         for (row, (kind, id, _, sha)) in rows.iter().zip(FILES) {
             assert_eq!((row["kind"].as_str(), row["id"].as_str()), (Some(*kind), Some(*id)));
             assert_eq!(row["sha256"].as_str(), Some(*sha));
-            assert!(row.get("url").is_none() && row.get("min_tori").is_none());
+            assert!(row.get("url").is_none() && row.get("min_tori").is_none() && row.get("icon_url").is_none());
+        }
+    }
+
+    #[test]
+    fn every_bundled_agent_row_carries_the_hash_of_its_icon() {
+        use sha2::{Digest, Sha256};
+        let index: serde_json::Value = serde_json::from_str(INDEX).unwrap();
+        let icons = Path::new(env!("CARGO_MANIFEST_DIR")).join("packs/icons");
+        let agents: Vec<&serde_json::Value> = index["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|r| r["kind"] == "agents")
+            .collect();
+        assert!(!agents.is_empty());
+        for row in agents {
+            let id = row["id"].as_str().unwrap();
+            let svg = std::fs::read(icons.join(format!("{id}.svg"))).unwrap_or_else(|_| panic!("no icons/{id}.svg"));
+            assert_eq!(row["icon_sha256"], format!("{:x}", Sha256::digest(&svg)), "{id}");
         }
     }
 }

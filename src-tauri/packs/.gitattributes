@@ -2,3 +2,4 @@
 # change every hash.
 *.toml text eol=lf
 *.json text eol=lf
+*.svg text eol=lf

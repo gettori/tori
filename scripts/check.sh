@@ -78,7 +78,7 @@ packs() {
     exit 1
   fi
   if ! diff <(grep -v '^#\|^commit ' "$lock" | sed 's/^[0-9a-f]*  //') \
-    <(cd src-tauri/packs && find lsp dap formatters themes agents -type f | LC_ALL=C sort); then
+    <(cd src-tauri/packs && find lsp dap formatters themes agents icons -type f | LC_ALL=C sort); then
     echo "error: src-tauri/packs and $lock list different files (< lock only, > disk only); run scripts/sync-packs.sh" >&2
     exit 1
   fi
