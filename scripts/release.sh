@@ -21,9 +21,9 @@
 #
 # `publish` must run in a checkout sitting exactly on origin/main, with the
 # release commit as its tip: it builds what is on disk, and the tag has to name
-# the commit that was built. It builds the universal DMG and the Android APK,
-# and is the real path until release.yml signs: it has the Android keystore,
-# which CI does not.
+# the commit that was built. It builds the universal DMG, the CLI tarball packs
+# CI runs, and the Android APK, and is the real path until release.yml signs:
+# it has the Android keystore, which CI does not.
 #
 # Needs `gh` logged in with write access to this repo and the tap.
 set -euo pipefail
@@ -263,6 +263,10 @@ publish() {
   asset=$(basename "$dmg")
   sha=$(shasum -a 256 "$dmg" | cut -d' ' -f1)
 
+  local cli cli_asset
+  cli=$(.github/scripts/cli-tarball.sh "$app" "$version" src-tauri/target/universal-apple-darwin/release/bundle/cli)
+  cli_asset=$(basename "$cli")
+
   # --- Build and sign the APK ----------------------------------------------
 
   rustup target add aarch64-linux-android armv7-linux-androideabi \
@@ -303,11 +307,11 @@ publish() {
     "${flags[@]}" \
     --title "Tori $tag" \
     --notes-file "$notes" \
-    "$dmg" "$apk"
+    "$dmg" "$apk" "$cli"
 
   local uploaded want
   uploaded=$(gh release view "$tag" --repo "$RELEASES_REPO" --json assets -q '.assets[].name' | sort)
-  want=$(printf '%s\n%s\n' "$asset" "$apk_asset" | sort)
+  want=$(printf '%s\n%s\n%s\n' "$asset" "$apk_asset" "$cli_asset" | sort)
   [ "$uploaded" = "$want" ] ||
     die "release draft is missing an asset (saw: ${uploaded:-nothing}); left as draft, run publish again"
   gh release edit "$tag" --repo "$RELEASES_REPO" --draft=false
