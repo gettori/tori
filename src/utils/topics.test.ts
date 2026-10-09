@@ -9,7 +9,6 @@ import {
   rootOf,
   selectionRoot,
   SHELLS_KEY,
-  workspaceFolders,
   workspaceKey,
   type Topic,
   type Member,
@@ -147,11 +146,7 @@ describe("workspaceKey and selectionRoot", () => {
     expect(isTopicKey(SHELLS_KEY)).toBe(false);
   });
 
-  it("spans the selected Topic's roots and nothing for an unselected one", () => {
-    const sel = topicSelection(TOPIC, A);
-    expect(workspaceFolders("topic:f1", sel)).toEqual([A, B]);
-    expect(workspaceFolders("topic:other", sel)).toEqual([]);
-    expect(workspaceFolders("/r/a", sel)).toEqual(["/r/a"]);
+  it("tells a Topic key from a path", () => {
     expect(isTopicKey("topic:f1")).toBe(true);
     expect(isTopicKey("/topic:f1")).toBe(false);
   });

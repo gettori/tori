@@ -676,8 +676,19 @@ pub(crate) fn activity_by_cwd(index: &SessionIndex) -> Vec<(String, u64)> {
         .collect()
 }
 
+/// A Topic's sessions, newest first: those in its home or in one of its member
+/// worktrees, by the same rule that puts a session under the Topic's row.
+fn topic_rows(all: Vec<SessionMeta>, topics: &[crate::topics::Topic], id: &str) -> Vec<SessionMeta> {
+    let mut v: Vec<SessionMeta> = all
+        .into_iter()
+        .filter(|s| crate::unit_home::topic_of(topics, &s.cwd).is_some_and(|t| t.id == id))
+        .collect();
+    v.sort_by_key(|s| std::cmp::Reverse(s.last_active));
+    v
+}
+
 /// Sessions (every registered agent) anchored at `folder` or nested under it,
-/// newest first.
+/// newest first. `folder` may also be a Topic's `topic:<id>` workspace key.
 #[tauri::command(async)]
 pub fn list_sessions(
     index: State<SessionIndex>,
@@ -686,10 +697,20 @@ pub fn list_sessions(
     inclusive: Option<bool>,
 ) -> Result<Vec<Listed>, String> {
     let accounts = crate::accounts::load();
-    let rows = filter_sort(ensure_index(&index, &accounts), &folder, inclusive.unwrap_or(false));
-    let (spaces, topics) = match rows.is_empty() {
-        true => Default::default(),
-        false => (crate::unit_home::spaces(&projects), crate::unit_home::topics()),
+    let all = ensure_index(&index, &accounts);
+    let topic = folder.strip_prefix(crate::unit_home::TOPIC_KEY);
+    let topics = match topic {
+        Some(_) => crate::unit_home::topics(),
+        None => Vec::new(),
+    };
+    let rows = match topic {
+        Some(id) => topic_rows(all, &topics, id),
+        None => filter_sort(all, &folder, inclusive.unwrap_or(false)),
+    };
+    let (spaces, topics) = match (rows.is_empty(), topic) {
+        (true, _) => Default::default(),
+        (false, Some(_)) => (crate::unit_home::spaces(&projects), topics),
+        (false, None) => (crate::unit_home::spaces(&projects), crate::unit_home::topics()),
     };
     Ok(stamp_listing(rows, &load_overlay(), &accounts)
         .into_iter()
