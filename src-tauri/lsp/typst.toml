@@ -6,6 +6,8 @@ label = "Typst (Tinymist)"
 description = "Typst, through Tinymist"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "tinymist 0.15.8"
+verified_on = "2026-10-09"
 root_markers = ["typst.toml", ".git"]
 
 # Typst compiles in a sandbox: a document cannot run a program.

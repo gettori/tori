@@ -6,13 +6,11 @@ license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
 icon = "pi"
 
-# **No `verified_against`, and that is the load-bearing part of this file.**
-#
-# The key names the CLI version an adapter's conventions were empirically
-# captured against. `pi` is not installed on the machine this was written on,
-# so nothing here has been measured. Absent rather than guessed; re-measure
-# with `node dev/acp-probe.mjs --agent pi-acp` on a machine that has it, then
-# pin both versions the way codex.toml pins its pair.
+# Measured with `node dev/acp-probe.mjs --agent pi-acp`. Two versions, as in
+# codex.toml: the PTY tab runs `pi`, the chat surface runs the pinned bridge,
+# and `pi`'s version comes first because that is what health.rs compares.
+verified_against = "pi 0.82.1 with pi-acp 0.0.33"
+verified_on = "2026-10-09"
 
 [launch]
 program = "pi"

@@ -116,8 +116,8 @@ describe("LspSection", () => {
     health = [server({ version: null, path: "/usr/bin/node" })];
     render(() => <LspSection />);
 
-    // Neither bundled config declares a `verified_against`, so this is the
-    // common case and must read neutrally rather than as a warning.
+    // Several servers report no version Tori can read (sourcekit-lsp, lemminx),
+    // so this must read neutrally rather than as a warning.
     await waitFor(() => expect(screen.getByText(/does not report a version/)).toBeTruthy());
   });
 

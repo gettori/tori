@@ -6,6 +6,8 @@ label = "Perl"
 description = "Perl, through Perl Navigator"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "perlnavigator-server 0.8.20"
+verified_on = "2026-10-09"
 root_markers = [".git"]
 
 # Checks files with `perl -c`, which runs their BEGIN blocks and `use` imports.

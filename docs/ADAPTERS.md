@@ -85,28 +85,33 @@ binary is not its launch binary: the PTY tab runs the `codex` a user installed,
 and chat runs the first-party wrapper over `npx`, which drives that same
 `codex` underneath. `codex.toml` carries the full reasoning.
 
-**gemini** ships bundled and **untested**: nothing has measured it, which is why
-it declares no `verified_against`. Treat it as a starting point rather than a
-supported agent - a distinction this file keeps and the app, by design, does
-not recite. An ACP adapter is mostly launch instructions,
-which is what makes shipping one unmeasured reasonable - not what makes it
-tested.
+**gemini** ships bundled and **unmeasured**, so it declares no
+`verified_against`. Gemini CLI 0.63.0 answers ACP `initialize`, but on
+2026-10-09 Google refused to open a session for an individual account, pointing
+at Antigravity. Whether a paid or enterprise account still gets through has not
+been measured. Treat it as a starting point rather than a supported agent: a
+distinction this file keeps and the app, by design, does not recite.
 
-**copilot** and **kimi** ship bundled and untested, on the gemini pattern: ACP
-is a first-party mode of each CLI (`copilot --acp`, `kimi acp`), so the adapter
-is launch instructions and nothing else until someone probes a real install and
-pins `verified_against`. Copilot additionally declares the two commands its CLI
-reference documents: `[install]` (`npm install -g @github/copilot`) and a
-`[accounts]` login (`copilot login`, first-party OAuth). No whoami and no
-logout, because the reference documents neither non-interactively, so its
-sign-in state stays honestly unknown.
+**kimi** ships bundled and **unmeasured** for a different reason: kimi-cli
+1.52.0 says it is no longer maintained in favour of the separate Kimi Code CLI,
+and its `kimi acp` did not answer `initialize`. An ACP adapter is mostly launch
+instructions, which is what makes shipping one unmeasured reasonable, not what
+makes it tested.
 
-**pi** ships bundled and untested, on the codex pattern: `pi` has no ACP mode
-of its own, so chat goes through the `pi-acp` bridge over `npx`. Unlike the
-Claude SDK wrappers it vendors no second agent - it spawns the *installed*
-`pi --mode rpc` and reuses pi's own sessions. The bridge is third-party, which
-is a reason to pin its version (the TOML does) and re-measure, not a reason to
-avoid it.
+**copilot** ships bundled over ACP (`copilot --acp`, first-party in the CLI),
+measured against `copilot 1.0.94` as far as the handshake: the measuring account
+had no Copilot CLI access, so opening a session was refused. It additionally
+declares the two commands its CLI reference documents: `[install]`
+(`npm install -g @github/copilot`) and a `[accounts]` login (`copilot login`,
+first-party OAuth). No whoami and no logout, because the reference documents
+neither non-interactively, so its sign-in state stays honestly unknown.
+
+**pi** ships bundled on the codex pattern, measured against `pi 0.82.1` with
+`pi-acp 0.0.33`: `pi` has no ACP mode of its own, so chat goes through the
+`pi-acp` bridge over `npx`. Unlike the Claude SDK wrappers it vendors no second
+agent. It spawns the *installed* `pi --mode rpc` and reuses pi's own sessions.
+The bridge is third-party, which is a reason to pin its version (the TOML does)
+and re-measure, not a reason to avoid it.
 
 Adding another is a file drop plus a restart, and for an agent that speaks ACP
 first-party it is *only* a file drop: no Rust at all. The things a TOML cannot

@@ -13,6 +13,7 @@ icon = "claude"
 # `--settings`, `--strict-mcp-config`) was re-measured, on 2.1.278 and 2.1.280
 # with dev/mcp-probe.mjs. The rest of this file was not.
 verified_against = "claude 2.1.231"
+verified_on = "2026-08-14"
 
 [launch]
 program = "claude"

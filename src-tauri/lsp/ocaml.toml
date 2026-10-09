@@ -7,6 +7,8 @@ label = "OCaml"
 description = "OCaml, through ocaml-lsp"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "ocaml-lsp-server 1.26.0 (OCaml 5.4.1)"
+verified_on = "2026-10-09"
 root_markers = ["dune-project", "dune-workspace", ".git"]
 
 # Reads what dune builds, and ppx rewriters run during that build.

@@ -13,6 +13,7 @@ extensions = ["py", "pyi"]
 priority = 10
 
 verified_against = "black 26.5.1"
+verified_on = "2026-09-22"
 
 # Black reads its project config from pyproject.toml only.
 [markers]

@@ -675,6 +675,17 @@ pub async fn dap_launch_env() -> BTreeMap<String, String> {
 
 // --- health ---
 
+/// How the card may speak of `verified_against`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Verified {
+    /// Compared with the version the installed adapter reports.
+    Checked,
+    /// The adapter reports no version (`dlv` has no `--version`), so the
+    /// pack's value is its word, not something Tori compared.
+    Stated,
+}
+
 /// Per-adapter install state, mirroring `lsp::LspHealth` so the Settings cards
 /// read the same way for a debug adapter as for a language server.
 #[derive(Debug, Clone, Serialize)]
@@ -693,6 +704,8 @@ pub struct DapHealth {
     pub adapter_version: Option<String>,
     pub verified_against: Option<String>,
     pub verified_on: Option<String>,
+    /// `None` when the pack states no version or the adapter is not installed.
+    pub verified: Option<Verified>,
     #[serde(flatten)]
     pub meta: crate::packs::Meta,
     /// Extensions this adapter claims, for the card's chips.
@@ -758,6 +771,12 @@ fn check(adapter: &DapAdapter, entry_missing: bool, debuggers: &Path) -> DapHeal
         _ => (None, None),
     };
 
+    let verified = match (&adapter.verified_against, &resolved, status) {
+        (None, _, _) | (_, None, _) => None,
+        (Some(_), Some(_), crate::health::BinaryStatus::VersionUnknown) => Some(Verified::Stated),
+        (Some(_), Some(_), _) => Some(Verified::Checked),
+    };
+
     DapHealth {
         id: adapter.id.clone(),
         label: adapter.label.clone(),
@@ -770,6 +789,7 @@ fn check(adapter: &DapAdapter, entry_missing: bool, debuggers: &Path) -> DapHeal
         },
         verified_against: adapter.verified_against.clone(),
         verified_on: adapter.verified_on.clone(),
+        verified,
         meta: adapter.meta.clone(),
         extensions: adapter.languages.keys().cloned().collect(),
         detail,

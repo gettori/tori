@@ -6,6 +6,8 @@ label = "LaTeX (TexLab)"
 description = "LaTeX and BibTeX, through TexLab"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "texlab 5.26.0"
+verified_on = "2026-10-09"
 root_markers = [".latexmkrc", "latexmkrc", ".texlabroot", "texlabroot", "Tectonic.toml", ".git"]
 
 # Builds only when asked to, which Tori never does.

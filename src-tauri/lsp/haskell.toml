@@ -7,6 +7,8 @@ label = "Haskell"
 description = "Haskell, through haskell-language-server"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "haskell-language-server 2.15.0.0 (GHC 9.14.1)"
+verified_on = "2026-10-09"
 root_markers = ["hie.yaml", "stack.yaml", "cabal.project", "package.yaml", ".git"]
 request_timeout_ms = 120000
 

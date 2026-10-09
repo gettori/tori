@@ -18,6 +18,7 @@ root_markers = [".git"]
 activation_markers = [".oxlintrc.json", ".oxlintrc.jsonc", "oxlint.config.ts", "oxlint.config.mts"]
 
 verified_against = "oxlint 1.85.0"
+verified_on = "2026-09-21"
 
 [languages]
 ts = "typescript"

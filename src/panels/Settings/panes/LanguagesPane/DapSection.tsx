@@ -23,6 +23,7 @@ export type DapHealth = PackMeta & {
   adapterVersion: string | null;
   verifiedAgainst: string | null;
   verifiedOn: string | null;
+  verified: "checked" | "stated" | null;
   extensions: string[];
   detail: string | null;
   disabled: boolean;
@@ -115,6 +116,10 @@ function DapCard(props: { adapter: DapHealth; onChange: () => Promise<DapHealth[
             cannot check it.
           </Match>
           <Match when={a().version}>Installed, version {a().version}.</Match>
+          <Match when={a().verified === "stated"}>
+            Installed. Verified against {a().verifiedAgainst}, stated, not checked: {a().program} does not report a
+            version.
+          </Match>
           <Match when={true}>Installed. It does not report a version, so Tori cannot check it.</Match>
         </Switch>
       </div>

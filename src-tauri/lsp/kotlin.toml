@@ -7,6 +7,8 @@ label = "Kotlin"
 description = "Kotlin, through kotlin-language-server"
 license = "Apache-2.0"
 contributor = { name = "Tori", github = "gettori" }
+verified_against = "kotlin-language-server 1.3.13"
+verified_on = "2026-10-09"
 root_markers = ["settings.gradle.kts", "settings.gradle", "build.gradle.kts", "build.gradle", "pom.xml", ".git"]
 request_timeout_ms = 120000
 
