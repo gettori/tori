@@ -267,6 +267,11 @@ publish() {
   cli=$(.github/scripts/cli-tarball.sh "$app" "$version" src-tauri/target/universal-apple-darwin/release/bundle/cli)
   cli_asset=$(basename "$cli")
 
+  # The built binary, so it is this release's trusted keys that must verify the
+  # live catalog: a release that cannot read the index would ship an empty one.
+  "$app/Contents/MacOS/tori" packs-catalog --check ||
+    die "the live catalog at gettori.app/packs does not verify with this build"
+
   # --- Build and sign the APK ----------------------------------------------
 
   rustup target add aarch64-linux-android armv7-linux-androideabi \

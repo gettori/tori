@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 
 use crate::rpc::client::{self, Client, Found};
 
-const COMMANDS: [&str; 19] = [
+const COMMANDS: [&str; 20] = [
     "sessions",
     "projects",
     "session",
@@ -28,6 +28,7 @@ const COMMANDS: [&str; 19] = [
     "mcp",
     "validate-pack",
     "packs-index",
+    "packs-catalog",
 ];
 
 const USAGE: &str = "usage:
@@ -66,7 +67,8 @@ const USAGE: &str = "usage:
   tori autopilot hold resolve <id> [--json]
   tori mcp
   tori validate-pack <file|dir>... [--assets] [--registry] [--json]
-  tori packs-index <dir> [--sign-key-env <name> --key-id <id>]";
+  tori packs-index <dir> [--sign-key-env <name> --key-id <id>]
+  tori packs-catalog --check";
 
 pub fn is_cli() -> bool {
     std::env::args()
@@ -164,6 +166,7 @@ fn dispatch(args: &[String]) -> Result<(), Failure> {
         "mcp" => Ok(crate::mcp::run()?),
         "validate-pack" => validate_pack(rest),
         "packs-index" => packs_index(rest),
+        "packs-catalog" => packs_catalog(rest),
         other => Err(usage(format!("unknown command {other}"))),
     }
 }
@@ -628,6 +631,21 @@ fn packs_index(args: &[String]) -> Result<(), Failure> {
     let rows = write(std::path::Path::new(dir), signing.as_ref()).map_err(Failure::Refused)?;
     let signed = if signing.is_some() { ", signed" } else { "" };
     Ok(writeln!(io::stdout().lock(), "wrote index.json, {rows} rows{signed}")?)
+}
+
+fn packs_catalog(args: &[String]) -> Result<(), Failure> {
+    let p = Parsed::new(args, &[], &["check"])?;
+    if !p.positional.is_empty() || !p.has("check") {
+        return Err(usage("packs-catalog takes only --check"));
+    }
+    let index = crate::packs::catalog::check().map_err(Failure::Refused)?;
+    let rows = index["rows"].as_array().map_or(0, Vec::len);
+    Ok(writeln!(
+        io::stdout().lock(),
+        "index.json verifies: {rows} rows, generated {}, expires {}",
+        index["generated_at"].as_str().unwrap_or("?"),
+        index["expires"].as_str().unwrap_or("?"),
+    )?)
 }
 
 fn whoami(args: &[String]) -> Result<(), Failure> {

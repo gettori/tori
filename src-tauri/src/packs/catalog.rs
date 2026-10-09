@@ -99,6 +99,12 @@ fn accept(
 ) -> Result<CacheFile, String> {
     let (index, sig) = verify(index, sig, keys)?;
     let generated = index["generated_at"].as_str().ok_or("index.json has no generated_at")?;
+    // A fresh install has no older index to hold it to, so expiry is what stops
+    // any index ever signed from being replayed to it.
+    let expires = index["expires"].as_str().ok_or("index.json has no expires")?;
+    if expires < rfc3339(now).as_str() {
+        return Err(format!("the index served expired at {expires}"));
+    }
     if let Some(had) = cached.and_then(|c| c.index["generated_at"].as_str()) {
         // A correctly signed old index is how a since-fixed pack comes back.
         if generated < had {
@@ -211,15 +217,27 @@ fn request(etag: Option<&str>) -> Result<Response, String> {
     Ok(Response::Body { etag, index, sig })
 }
 
+pub fn check() -> Result<Value, String> {
+    match request(None)? {
+        Response::NotModified => Err("gettori.app answered 304 to a request without an ETag".into()),
+        Response::Body { index, sig, .. } => {
+            accept(None, None, &index, &sig, unix_now(), TRUSTED_KEYS).map(|c| c.index)
+        }
+    }
+}
+
+fn unix_now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
 static FETCHING: Mutex<()> = Mutex::new(());
 
 pub fn fetch(force: bool) -> Served {
     let _held = FETCHING.lock().unwrap_or_else(PoisonError::into_inner);
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    refresh(&super::dir(), now, force, TRUSTED_KEYS, request)
+    refresh(&super::dir(), unix_now(), force, TRUSTED_KEYS, request)
 }
 
 /// The kind, id and hash of an index row this build can load, or nothing for
@@ -426,10 +444,15 @@ mod tests {
     }
 
     #[test]
-    fn an_expired_index_is_served_stale() {
+    fn an_expired_index_is_refused_but_an_expired_cache_is_served_stale() {
         let dir = dir("expired");
         let served = signed(&dir, NOW - 40 * DAY, NOW);
-        assert_eq!((served.problem, served.stale), (None, true));
+        assert!(matches!(served.problem, Some(Problem::Unverified(_))), "{served:?}");
+        assert_eq!(served.index, None);
+        signed(&dir, NOW, NOW);
+        let served = refresh(&dir, NOW + 40 * DAY, true, &keys(), |_| Ok(Response::NotModified));
+        assert_eq!((&served.problem, served.stale), (&None, true));
+        assert_eq!(generated_at(&served), rfc3339(NOW));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

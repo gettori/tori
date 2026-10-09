@@ -15,9 +15,9 @@ use super::index_rows::{self, extension, ICONS};
 
 const FILES_URL: &str = "https://gettori.app/packs/files";
 
-/// How long a signed index stays current. Re-signed weekly, so a client sees
-/// an expired one only when publishing has stopped.
-const LIFETIME_SECS: u64 = 30 * 24 * 60 * 60;
+/// How long a signed index stays current. Re-signed weekly, so one missed run
+/// still leaves it current, and an old one replays for two weeks at most.
+const LIFETIME_SECS: u64 = 14 * 24 * 60 * 60;
 
 /// The key `index.json.sig` is made with.
 pub struct Signing {

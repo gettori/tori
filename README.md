@@ -22,7 +22,8 @@ yours to answer, and the autopilot stops and asks before it opens a pull
 request or sends anything else out. Around that sit a real terminal per
 session, an editor with LSP and debuggers, and a git client that stages,
 commits and reviews pull requests. Five agents ship with adapters, Claude and
-Codex among them, and any other CLI agent is a TOML file away. No account, no
+Codex among them, and any other CLI agent is a TOML file away, or a
+[pack](https://gettori.app/packs) someone already wrote. No account, no
 telemetry.
 
 **Status: alpha.** It is used every day by the person who builds it, it ships
@@ -187,13 +188,12 @@ where the agents put them; Tori reads them and never modifies or uploads them.
 
 ## Contributing
 
-Issues are welcome: bug reports, feature requests and adapter requests. Pull
-requests are open for the adapters: the bundled TOML files, their captures and
-ADAPTERS.md, which is the part of Tori that breaks most often and the part
-someone else can own. The core stays issue-first for now, while one person
-maintains it and the design is still moving. The reasons, the build steps for
-a clean clone, how to write an adapter and how to send one are in
-[CONTRIBUTING.md](CONTRIBUTING.md).
+Issues are welcome: bug reports, feature requests and pack requests. Pull
+requests are off here for now, while one person maintains Tori and the design
+is still moving. Languages, debuggers, formatters, themes and agents are packs,
+and [gettori/packs](https://github.com/gettori/packs) takes pull requests for
+them. The reasons, the build steps for a clean clone and how to write a pack
+are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Security
 
