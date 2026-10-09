@@ -5025,6 +5025,7 @@ dependencies = [
  "objc2-foundation",
  "portable-pty",
  "qrcode",
+ "quick-xml 0.42.0",
  "regex",
  "rusqlite",
  "schemars 1.2.1",

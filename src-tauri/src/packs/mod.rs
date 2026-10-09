@@ -112,6 +112,12 @@ pub fn is_bundled(kind: Kind, id: &str) -> bool {
     bundled_sha(kind, id).is_some()
 }
 
+/// Where an agent's icon lives: `icons/<id>.svg` beside the kind folders. It
+/// belongs to the agent pack of that id, so install, update and remove carry it.
+pub fn icon_path(packs: &Path, id: &str) -> PathBuf {
+    packs.join(index_rows::ICONS).join(format!("{id}.svg"))
+}
+
 pub fn sha256(text: &str) -> String {
     use sha2::{Digest, Sha256};
     format!("{:x}", Sha256::digest(text.as_bytes()))
@@ -365,11 +371,16 @@ fn remove_at(packs: &Path, kind: Kind, id: &str) -> Result<(), String> {
             "`{id}` is not a pack Tori installed, so it is yours to delete by hand"
         ));
     }
-    let file = packs.join(kind.folder()).join(format!("{id}.{}", kind.ext()));
-    match std::fs::remove_file(&file) {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => return Err(format!("{}: {e}", file.display())),
+    let mut files = vec![packs.join(kind.folder()).join(format!("{id}.{}", kind.ext()))];
+    if kind == Kind::Agents {
+        files.push(icon_path(packs, id));
+    }
+    for file in files {
+        match std::fs::remove_file(&file) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(format!("{}: {e}", file.display())),
+        }
     }
     installed::update(&record_path, |record| {
         record.packs.retain(|r| !(r.kind == kind && r.id == id))

@@ -136,6 +136,16 @@ wants `needs_you = false`.
   file whose name and id differ is refused, naming both. An id
   is lowercase letters, digits, `.`, `_` and `-`, and starts with a letter or
   digit; any other id is refused.
+- An agent's own logo is `~/.config/tori/packs/icons/<id>.svg`, beside the
+  kind folders. Installing an agent from the catalog writes it and removing
+  the agent deletes it, so a file there belongs to the agent of that id. Tori
+  draws it only when it has no bundled mark for the agent, and only its shape:
+  it is a CSS mask filled with the theme's text colour, never inserted into
+  the page. An agent with neither gets its label's first letter.
+- In gettori/packs the icon is `icons/<id>.svg`, and `tori validate-pack`
+  requires an `agents/<id>.toml` beside it, at most 32 KB, well-formed XML
+  with an `<svg>` root carrying a `viewBox`, and no `<script>`, no
+  `<foreignObject>` and no `on*` attribute anywhere.
 
 ## Schema
 

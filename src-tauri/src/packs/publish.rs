@@ -11,7 +11,7 @@ use ed25519_dalek::pkcs8::DecodePrivateKey;
 use ed25519_dalek::{Signer, SigningKey};
 use serde_json::{json, Value};
 
-use super::index_rows::{self, extension};
+use super::index_rows::{self, extension, ICONS};
 
 const FILES_URL: &str = "https://gettori.app/packs/files";
 
@@ -50,6 +50,9 @@ pub fn build(dir: &Path, support: &Value, packs_commit: &str, now: u64) -> Resul
             extension(pack.kind)
         ));
         row["min_tori"] = json!(min_tori);
+        if row.get("icon_sha256").is_some_and(|sha| !sha.is_null()) {
+            row["icon_url"] = json!(format!("{FILES_URL}/{ICONS}/{}.svg", pack.id));
+        }
         rows.push(row);
     }
     Ok(json!({
@@ -216,10 +219,16 @@ mod tests {
                 let row_map = row.as_object_mut().unwrap();
                 row_map.remove("url");
                 row_map.remove("min_tori");
+                row_map.remove("icon_url");
                 row
             })
             .collect();
         assert_eq!(stripped, snapshot_rows());
+        let claude = rows
+            .iter()
+            .find(|r| r["kind"] == "agents" && r["id"] == "claude")
+            .unwrap();
+        assert_eq!(claude["icon_url"], format!("{FILES_URL}/{ICONS}/claude.svg"));
         assert_eq!(index["packs_commit"], "abc123");
     }
 }

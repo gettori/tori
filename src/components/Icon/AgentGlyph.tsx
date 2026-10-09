@@ -1,5 +1,6 @@
 import { Show } from "solid-js";
 import { Dynamic } from "solid-js/web";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { agents } from "../../utils/agents";
 import { agentMark } from "./agentMarks";
 import styles from "./AgentGlyph.module.css";
@@ -16,6 +17,10 @@ import styles from "./AgentGlyph.module.css";
  * takes exactly this id: it falls back to the first bundled adapter for an
  * unknown one, which would quietly put Anthropic's mark on somebody else's
  * agent. This looks the adapter up itself and takes the miss.
+ *
+ * An agent with no bundled mark but an icon from its pack wears that icon as a
+ * CSS mask over the text colour, so it tints with the theme like every mark
+ * here. A mask runs nothing and the SVG never enters the DOM.
  */
 export default function AgentGlyph(props: {
   /** Adapter id. */
@@ -33,9 +38,18 @@ export default function AgentGlyph(props: {
     const declared = agents().find((a) => a.id === props.id)?.icon;
     return agentMark(declared) ?? agentMark(props.id);
   };
+  const iconFile = () => agents().find((a) => a.id === props.id)?.icon_file;
+  const letter = () => <span class={styles.letter}>{props.label.slice(0, 1)}</span>;
   return (
     <span class={styles.glyph} style={{ "--glyph-size": `calc(${size()}px * var(--ui-scale))` }} aria-hidden="true">
-      <Show when={mark()} fallback={<span class={styles.letter}>{props.label.slice(0, 1)}</span>}>
+      <Show
+        when={mark()}
+        fallback={
+          <Show when={iconFile()} fallback={letter()}>
+            {(file) => <span class={styles.file} style={{ "--icon": `url("${convertFileSrc(file())}")` }} />}
+          </Show>
+        }
+      >
         {(Mark) => <Dynamic component={Mark()} size={`calc(${Math.round(size() * 0.7)}px * var(--ui-scale))`} />}
       </Show>
     </span>

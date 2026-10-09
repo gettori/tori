@@ -9,6 +9,10 @@ use std::path::Path;
 /// The kind folders, named as the loaders name them.
 pub const KINDS: [&str; 5] = ["lsp", "dap", "formatters", "themes", "agents"];
 
+/// Agent icons, `icons/<id>.svg` beside the kind folders. Not a kind: an icon
+/// belongs to the agent pack of the same id and rides on that pack's row.
+pub const ICONS: &str = "icons";
+
 /// A pack with no `[install.assets]` runs wherever its tool does.
 const ALL_PLATFORMS: [&str; 3] = ["linux", "macos", "windows"];
 
@@ -23,10 +27,10 @@ pub struct PackFile {
 
 /// The file extension a kind's packs carry.
 pub fn extension(kind: &str) -> &'static str {
-    if kind == "themes" {
-        "json"
-    } else {
-        "toml"
+    match kind {
+        "themes" => "json",
+        ICONS => "svg",
+        _ => "toml",
     }
 }
 
@@ -46,13 +50,13 @@ pub fn read_packs(dir: &Path) -> Result<Vec<PackFile>, String> {
         paths.sort();
         for path in paths {
             let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-            packs.push(pack_file(kind, path, text)?);
+            packs.push(pack_file(dir, kind, path, text)?);
         }
     }
     Ok(packs)
 }
 
-fn pack_file(kind: &'static str, path: std::path::PathBuf, text: String) -> Result<PackFile, String> {
+fn pack_file(root: &Path, kind: &'static str, path: std::path::PathBuf, text: String) -> Result<PackFile, String> {
     let source = path.display().to_string();
     let doc: Value = if kind == "themes" {
         serde_json::from_str(&text).map_err(|e| format!("{source}: {e}"))?
@@ -89,6 +93,9 @@ fn pack_file(kind: &'static str, path: std::path::PathBuf, text: String) -> Resu
         row.insert(field.into(), doc.get(field).cloned().unwrap_or(Value::Null));
     }
     row.insert("platforms".into(), json!(platforms(&doc)));
+    if kind == "agents" {
+        row.insert("icon_sha256".into(), icon_sha256(root, &id)?);
+    }
 
     Ok(PackFile {
         kind,
@@ -97,6 +104,15 @@ fn pack_file(kind: &'static str, path: std::path::PathBuf, text: String) -> Resu
         sha256,
         row: Value::Object(row),
     })
+}
+
+fn icon_sha256(root: &Path, id: &str) -> Result<Value, String> {
+    let path = root.join(ICONS).join(format!("{id}.svg"));
+    match std::fs::read(&path) {
+        Ok(bytes) => Ok(json!(format!("{:x}", Sha256::digest(&bytes)))),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Value::Null),
+        Err(e) => Err(format!("{}: {e}", path.display())),
+    }
 }
 
 fn platforms(doc: &Value) -> Vec<String> {

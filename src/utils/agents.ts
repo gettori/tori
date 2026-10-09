@@ -139,6 +139,9 @@ export type Adapter = {
    *  Null for one that names none: every call site falls back rather than
    *  borrowing another agent's mark. */
   icon?: string | null;
+  /** `packs/icons/<id>.svg` when the agent has one, for an agent this build
+   *  has no mark for. Drawn as a CSS mask only, never put in the DOM. */
+  icon_file?: string | null;
   program: string;
   base_args: string[];
   yolo_args: string[];
