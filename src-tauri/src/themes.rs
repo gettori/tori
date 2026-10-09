@@ -38,6 +38,7 @@ impl Default for ThemesWatch {
 pub struct LoadedTheme {
     pub palette: Palette,
     pub source: String,
+    pub provenance: crate::packs::provenance::Provenance,
 }
 
 /// Everything the directory yielded: the themes that validated, and a named
@@ -85,18 +86,20 @@ pub(crate) fn load_theme_str(text: &str, source: &str) -> Result<Palette, String
 /// Every `*.json` in `dir`, in filename order, and an error for each file
 /// refused, never silently dropped.
 fn load_themes_from(dir: &Path) -> (Vec<LoadedTheme>, Vec<LoadError>) {
-    let installed = packs::installed_beside(dir);
+    let mut user = packs::UserDir::open(Kind::Themes, dir);
     let mut themes = Vec::new();
     let mut errors = Vec::new();
     for path in packs::user_files(dir, Kind::Themes) {
-        match packs::load_user_file(Kind::Themes, &path, &installed, load_theme_str, |p| &p.id) {
-            Ok(palette) => themes.push(LoadedTheme {
+        match user.load(&path, load_theme_str, |p| &p.id) {
+            Ok((palette, provenance)) => themes.push(LoadedTheme {
                 palette,
                 source: path.to_string_lossy().into_owned(),
+                provenance,
             }),
             Err(e) => errors.push(e),
         }
     }
+    errors.extend(user.finish());
     (themes, errors)
 }
 

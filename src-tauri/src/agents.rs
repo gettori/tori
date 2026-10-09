@@ -806,6 +806,7 @@ pub struct AgentAdapter {
     pub source: String,
     /// Set when this adapter is a recorded override of the bundled one.
     pub bundled_override: Option<BundledOverride>,
+    pub provenance: crate::packs::provenance::Provenance,
 }
 
 /// A user file standing in for a bundled adapter, kept from before packs
@@ -1591,6 +1592,7 @@ pub(crate) fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter,
         install,
         source: source.to_string(),
         bundled_override: None,
+        provenance: Default::default(),
     })
 }
 
@@ -1712,11 +1714,13 @@ fn build_registry_from(user_dir: &Path) -> (Vec<AgentAdapter>, Vec<packs::LoadEr
         }
     }
 
-    let installed = packs::installed_beside(user_dir);
+    let mut user = packs::UserDir::open(packs::Kind::Agents, user_dir);
     for path in packs::user_files(user_dir, packs::Kind::Agents) {
-        match packs::load_user_file(packs::Kind::Agents, &path, &installed, load_adapter_str, |a| &a.id) {
-            Ok(mut a) => {
-                a.bundled_override = installed
+        match user.load(&path, load_adapter_str, |a| &a.id) {
+            Ok((mut a, provenance)) => {
+                a.provenance = provenance;
+                a.bundled_override = user
+                    .installed
                     .find(packs::Kind::Agents, &a.id)
                     .filter(|r| r.source == packs::installed::Source::Override)
                     .map(|r| BundledOverride {
@@ -1727,6 +1731,8 @@ fn build_registry_from(user_dir: &Path) -> (Vec<AgentAdapter>, Vec<packs::LoadEr
             Err(e) => errors.push(e),
         }
     }
+
+    errors.extend(user.finish());
 
     let mut list: Vec<AgentAdapter> = by_id.into_values().collect();
     list.sort_by(|a, b| a.id.cmp(&b.id));
@@ -2388,7 +2394,7 @@ pattern = 'claude-beta (--resume|-r) {id}'
         std::fs::write(dir.join("claude.toml"), text.replacen("Mine", "Edited", 1)).unwrap();
         let (reg, errors) = build_registry_from(&dir);
         assert_eq!(reg.iter().find(|a| a.id == "claude").unwrap().label, "Claude");
-        assert_eq!(errors[0].fix.as_deref(), Some(packs::FIX_NEW_ID));
+        assert_eq!(errors[0].fix.as_deref(), Some(packs::FIX_MODIFIED));
         std::fs::remove_dir_all(&config).ok();
     }
 

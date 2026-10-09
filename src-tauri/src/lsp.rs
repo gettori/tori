@@ -618,6 +618,7 @@ pub struct LspHealth {
     /// terminal it runs in.
     pub update: Option<String>,
     pub uninstall: Option<String>,
+    pub provenance: crate::packs::provenance::Provenance,
 }
 
 // rustup links a proxy for tools whose component is not installed, and that proxy
@@ -711,6 +712,7 @@ fn check(
         extensions: server.languages.keys().cloned().collect(),
         detail,
         override_path: server.is_override().then(|| server.source.clone()),
+        provenance: server.provenance,
         disabled: false,
         disabled_by_workspace: false,
         activation_markers: server

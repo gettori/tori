@@ -3,7 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import Toggle from "../../../../components/Switch/Switch";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { setDebuggerDisabled } from "../../settingsStore";
-import { onPacksChanged, type PackMeta } from "../../../../utils/packs";
+import { onPacksChanged, type PackMeta, type Provenance } from "../../../../utils/packs";
+import ProvenanceTag from "../../components/ProvenanceTag";
 import { createToolActions } from "./toolActions";
 import styles from "../../Settings.module.css";
 import NeedsFixing from "../../components/NeedsFixing";
@@ -15,6 +16,7 @@ import NeedsFixing from "../../components/NeedsFixing";
 type BinaryStatus = "notFound" | "versionUnknown" | "versionMatch" | "versionDrift";
 
 export type DapHealth = PackMeta & {
+  provenance: Provenance;
   id: string;
   label: string;
   program: string;
@@ -73,6 +75,7 @@ function DapCard(props: { adapter: DapHealth; onChange: () => Promise<DapHealth[
           {a().label}
         </span>
         <span class={styles.kindTag}>Debug</span>
+        <ProvenanceTag provenance={a().provenance} contributor={a().contributor} />
         <span class={styles.toolControls}>
           <Show when={off() || a().status !== "notFound"}>
             <Toggle checked={!off()} aria-label={`Use ${a().label}`} onChange={use} />

@@ -87,6 +87,18 @@ pub fn read_at(path: &Path) -> Result<Installed, String> {
     }
 }
 
+static STORE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Read, change and write the record as one step, so two writers never each
+/// save a copy missing the other's change. A record that cannot be read is
+/// never written over.
+pub fn update(path: &Path, change: impl FnOnce(&mut Installed)) -> Result<(), String> {
+    let _held = STORE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut installed = read_at(path)?;
+    change(&mut installed);
+    write_at(path, &installed)
+}
+
 pub fn write_at(path: &Path, installed: &Installed) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;

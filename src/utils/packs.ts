@@ -1,5 +1,5 @@
-// Mirrors `packs::Meta`, `packs::LoadError` and `packs::migrate::Report` in
-// src-tauri/src/packs/.
+// Mirrors `packs::Meta`, `packs::LoadError`, `packs::provenance::Provenance`
+// and `packs::migrate::Report` in src-tauri/src/packs/.
 import { createSignal, onCleanup } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -14,8 +14,33 @@ export type PackMeta = {
 
 export type PackKind = "lsp" | "dap" | "formatters" | "themes" | "agents";
 
-/** A file Tori would not load. `kind` is null for `installed.json`. */
-export type LoadError = { kind: PackKind | null; file: string; message: string; fix: string | null };
+/** A file Tori would not load. `kind` is null for `installed.json`;
+ *  `removable` is the id `packs_remove` takes, for a recorded file edited since. */
+export type LoadError = {
+  kind: PackKind | null;
+  file: string;
+  message: string;
+  fix: string | null;
+  removable: string | null;
+};
+
+export type PackSource = "bundled" | "catalog" | "override" | "custom";
+
+export type Provenance = { source: PackSource; updateAvailable: boolean; catalogConflict: boolean };
+
+/** The word a card shows for where its pack came from. */
+export function provenanceLabel(p: Provenance, contributor: Contributor | null | undefined): string {
+  switch (p.source) {
+    case "bundled":
+      return "Bundled";
+    case "catalog":
+      return contributor ? `Catalog, by ${contributor.name}` : "Catalog";
+    case "override":
+      return "Override";
+    case "custom":
+      return "Custom";
+  }
+}
 
 export type MigrationReport = {
   moved: { kind: PackKind; from: string; to: string; renamedFrom: string | null; isOverride: boolean }[];

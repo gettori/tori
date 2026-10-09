@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor, cleanup } from "@solidjs/testing-library";
+import { render, screen, waitFor, cleanup, fireEvent } from "@solidjs/testing-library";
 import type { LspHealth } from "./LspSection";
 import type { LoadError } from "../../../../utils/packs";
 
@@ -67,6 +67,7 @@ const server = (over: Partial<LspHealth> = {}): LspHealth => ({
   installedVersion: null,
   update: null,
   uninstall: null,
+  provenance: { source: "bundled", updateAvailable: false, catalogConflict: false },
   ...over,
 });
 
@@ -105,15 +106,46 @@ describe("LspSection", () => {
     await waitFor(() => expect(screen.getByText("Mine")).toBeTruthy());
   });
 
-  it("lists a language server file that did not load, and no other kind's", async () => {
-    loadErrors = [
-      { kind: "lsp", file: "/cfg/packs/lsp/typescript.toml", message: "bundled id", fix: "copy it" },
-      { kind: "dap", file: "/cfg/packs/dap/mine.toml", message: "broken", fix: null },
+  it("labels every card with where its server came from", async () => {
+    const from = (source: "bundled" | "catalog" | "override" | "custom") => ({
+      source,
+      updateAvailable: false,
+      catalogConflict: false,
+    });
+    health = [
+      server({ id: "a", label: "A", provenance: from("bundled") }),
+      server({ id: "b", label: "B", provenance: from("catalog"), contributor: { name: "Ada", github: "ada" } }),
+      server({ id: "c", label: "C", provenance: from("override") }),
+      server({ id: "d", label: "D", provenance: from("custom") }),
     ];
     render(() => <LspSection />);
 
-    await waitFor(() => expect(screen.getByText("Needs fixing")).toBeTruthy());
-    expect(screen.getByText("/cfg/packs/lsp/typescript.toml")).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("Bundled")).toBeTruthy());
+    expect(screen.getByText("Catalog, by Ada")).toBeTruthy();
+    expect(screen.getByText("Override")).toBeTruthy();
+    expect(screen.getByText("Custom")).toBeTruthy();
+  });
+
+  it("deletes a recorded file that was edited since, from the Needs fixing list", async () => {
+    loadErrors = [
+      { kind: "lsp", file: "/cfg/packs/lsp/fresh.toml", message: "changed", fix: "restore it", removable: "fresh" },
+    ];
+    render(() => <LspSection />);
+
+    const del = await waitFor(() => screen.getByLabelText("Delete /cfg/packs/lsp/fresh.toml"));
+    fireEvent.click(del);
+    await waitFor(() => expect(calls).toContainEqual(["packs_remove", { kind: "lsp", id: "fresh" }]));
+  });
+
+  it("lists a language server file that did not load, and no other kind's", async () => {
+    loadErrors = [
+      { kind: "lsp", file: "/cfg/packs/lsp/typescript.toml", message: "bundled id", fix: "copy it", removable: null },
+      { kind: "dap", file: "/cfg/packs/dap/mine.toml", message: "broken", fix: null, removable: null },
+    ];
+    render(() => <LspSection />);
+
+    await waitFor(() => expect(screen.getByText("/cfg/packs/lsp/typescript.toml")).toBeTruthy());
+    expect(screen.getByText("Needs fixing")).toBeTruthy();
     expect(screen.getByText("To fix: copy it.")).toBeTruthy();
     expect(screen.queryByText("/cfg/packs/dap/mine.toml")).toBeNull();
   });

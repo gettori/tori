@@ -724,6 +724,7 @@ pub fn run() {
             packs::packs_load_errors,
             packs::packs_migration_report,
             packs::packs_reload,
+            packs::packs_remove,
             themes::themes_watch_start,
             trace::trace_config,
             trace::trace_write,

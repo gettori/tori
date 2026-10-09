@@ -191,7 +191,12 @@
     },
     "usage_reason": null,
     "source": "bundled:claude",
-    "bundled_override": null
+    "bundled_override": null,
+    "provenance": {
+      "source": "bundled",
+      "updateAvailable": false,
+      "catalogConflict": false
+    }
   },
   {
     "id": "codex",
@@ -263,7 +268,12 @@
     },
     "usage_reason": null,
     "source": "bundled:codex",
-    "bundled_override": null
+    "bundled_override": null,
+    "provenance": {
+      "source": "bundled",
+      "updateAvailable": false,
+      "catalogConflict": false
+    }
   },
   {
     "id": "copilot",
@@ -325,7 +335,12 @@
     "usage": null,
     "usage_reason": "this adapter predates the usage table (schema 4)",
     "source": "bundled:copilot",
-    "bundled_override": null
+    "bundled_override": null,
+    "provenance": {
+      "source": "bundled",
+      "updateAvailable": false,
+      "catalogConflict": false
+    }
   },
   {
     "id": "gemini",
@@ -378,7 +393,12 @@
     "usage": null,
     "usage_reason": "this adapter predates the usage table (schema 4)",
     "source": "bundled:gemini",
-    "bundled_override": null
+    "bundled_override": null,
+    "provenance": {
+      "source": "bundled",
+      "updateAvailable": false,
+      "catalogConflict": false
+    }
   },
   {
     "id": "kimi",
@@ -429,7 +449,12 @@
     "usage": null,
     "usage_reason": "this adapter predates the usage table (schema 4)",
     "source": "bundled:kimi",
-    "bundled_override": null
+    "bundled_override": null,
+    "provenance": {
+      "source": "bundled",
+      "updateAvailable": false,
+      "catalogConflict": false
+    }
   },
   {
     "id": "opencode",
@@ -495,7 +520,12 @@
     "usage": null,
     "usage_reason": "this adapter predates the usage table (schema 4)",
     "source": "bundled:opencode",
-    "bundled_override": null
+    "bundled_override": null,
+    "provenance": {
+      "source": "bundled",
+      "updateAvailable": false,
+      "catalogConflict": false
+    }
   },
   {
     "id": "pi",
@@ -547,6 +577,11 @@
     "usage": null,
     "usage_reason": "this adapter predates the usage table (schema 4)",
     "source": "bundled:pi",
-    "bundled_override": null
+    "bundled_override": null,
+    "provenance": {
+      "source": "bundled",
+      "updateAvailable": false,
+      "catalogConflict": false
+    }
   }
 ]

@@ -727,6 +727,7 @@ pub struct DapHealth {
     /// that is found.
     pub update: Option<String>,
     pub uninstall: Option<String>,
+    pub provenance: crate::packs::provenance::Provenance,
 }
 
 /// Build one adapter's health card.
@@ -791,6 +792,7 @@ fn check(adapter: &DapAdapter, entry_missing: bool, debuggers: &Path) -> DapHeal
         verified_on: adapter.verified_on.clone(),
         verified,
         meta: adapter.meta.clone(),
+        provenance: adapter.provenance,
         extensions: adapter.languages.keys().cloned().collect(),
         detail,
         disabled: false,

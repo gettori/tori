@@ -170,6 +170,7 @@ pub struct DapAdapter {
     pub verified_on: Option<String>,
     #[serde(flatten)]
     pub meta: Meta,
+    pub provenance: crate::packs::provenance::Provenance,
 }
 
 // --- raw TOML shape, kept apart from `DapAdapter` for `lsp::registry`'s
@@ -401,6 +402,7 @@ pub fn load_adapter_str(text: &str, source: &str) -> Result<DapAdapter, String> 
         verified_against: raw.verified_against,
         verified_on: raw.verified_on,
         meta: raw.meta,
+        provenance: Default::default(),
     })
 }
 
@@ -418,9 +420,11 @@ fn load_adapter_file(text: &str, source: &str) -> Result<DapAdapter, String> {
     Ok(adapter)
 }
 
-/// Whether `id` is one of the adapters this build ships.
-pub fn is_bundled(id: &str) -> bool {
-    builtins().any(|(source, _)| source.strip_prefix("bundled:") == Some(id))
+/// The text of the adapter this build ships as `id`.
+pub fn bundled_text(id: &str) -> Option<&'static str> {
+    builtins()
+        .find(|(source, _)| source.strip_prefix("bundled:") == Some(id))
+        .map(|(_, text)| text)
 }
 
 /// Bundled built-ins, then every `*.toml` in `user_dir`, with an error for each
@@ -443,13 +447,14 @@ fn build_registry_from(user_dir: &Path) -> (Vec<DapAdapter>, Vec<LoadError>) {
         }
     }
 
-    let installed = packs::installed_beside(user_dir);
+    let mut user = packs::UserDir::open(Kind::Dap, user_dir);
     for path in packs::user_files(user_dir, Kind::Dap) {
-        match packs::load_user_file(Kind::Dap, &path, &installed, load_adapter_str, |a| &a.id) {
-            Ok(adapter) => admit(adapter),
+        match user.load(&path, load_adapter_str, |a| &a.id) {
+            Ok((adapter, provenance)) => admit(DapAdapter { provenance, ..adapter }),
             Err(e) => errors.push(e),
         }
     }
+    errors.extend(user.finish());
 
     list.sort_by(|a, b| a.id.cmp(&b.id));
     (list, errors)

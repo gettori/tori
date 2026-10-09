@@ -9,6 +9,7 @@ import AgentGlyph from "../../../../components/Icon/AgentGlyph";
 // Aliased: this module already imports Solid's control-flow `Switch`.
 import Toggle from "../../../../components/Switch/Switch";
 import { findAdapter, isLaunchOnly } from "../../../../utils/agents";
+import { provenanceLabel } from "../../../../utils/packs";
 import { agentChosen, enableBlockedReason, setAgentEnabled } from "../../../../utils/agentEnabled";
 import {
   chatTier,
@@ -765,6 +766,9 @@ export default function AgentDetail(props: {
             ? "Runs in a terminal tab, no chat pane."
             : "Terminal only. Tori has no chat transport for this agent."}
         </div>
+      </Show>
+      <Show when={findAdapter(a().id).provenance}>
+        {(p) => <div class={styles.cardMeta}>{provenanceLabel(p(), findAdapter(a().id).contributor)}</div>}
       </Show>
       <Show when={findAdapter(a().id).bundled_override}>
         {(o) => (

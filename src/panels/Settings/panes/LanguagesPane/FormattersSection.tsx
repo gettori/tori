@@ -3,12 +3,14 @@ import { invoke } from "@tauri-apps/api/core";
 import Toggle from "../../../../components/Switch/Switch";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { setFormatterDisabled } from "../../settingsStore";
-import { onPacksChanged, type PackMeta } from "../../../../utils/packs";
+import { onPacksChanged, type PackMeta, type Provenance } from "../../../../utils/packs";
+import ProvenanceTag from "../../components/ProvenanceTag";
 import { TONE, type BinaryStatus } from "./LspSection";
 import styles from "../../Settings.module.css";
 import NeedsFixing from "../../components/NeedsFixing";
 
 type FormatterHealth = PackMeta & {
+  provenance: Provenance;
   id: string;
   label: string;
   program: string;
@@ -45,6 +47,7 @@ function FormatterCard(props: { formatter: FormatterHealth }) {
           {f().label}
         </span>
         <span class={styles.kindTag}>Formatter</span>
+        <ProvenanceTag provenance={f().provenance} contributor={f().contributor} />
         <Show when={off() || f().status !== "notFound" || f().runsPerProject}>
           <Toggle class={styles.toolSwitch} checked={!off()} aria-label={`Use ${f().label}`} onChange={use} />
         </Show>
