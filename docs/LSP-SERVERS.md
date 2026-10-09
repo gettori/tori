@@ -5,7 +5,7 @@ servers. Which servers exist is **data, not code**: each one is a TOML file, so
 adding a language is a config file rather than a branch in `src-tauri/src/lsp.rs`.
 
 This is the same shape as [ADAPTERS.md](ADAPTERS.md) describes for agents, and
-deliberately so, down to the override and error-handling rules.
+deliberately so, down to the loading and error-handling rules.
 
 ## Supported servers
 
@@ -98,20 +98,27 @@ YAML files still open, edit, highlight and save.
 ## File location and loading
 
 Bundled configs live in `src-tauri/packs/lsp/*.toml` and are embedded at compile time.
-User configs live in `~/.config/tori/lsp/*.toml`.
+User configs live in `~/.config/tori/packs/lsp/*.toml`. The first launch of the
+release that introduced packs moved them there from `~/.config/tori/lsp/` and
+said what it moved.
 
 Loading is bundled-first, then every `*.toml` in the user directory:
 
-- A user file whose `id` matches a bundled one **whole-replaces** it. The entire
-  config is replaced, never merged field by field, so a partial override does
-  not inherit half of the built-in.
-- A user file that fails validation is **never silently swallowed**: the error
-  is logged naming the problem, and the id it would have overridden keeps its
-  previous entry. One broken file can't make a language lose its server.
+- A user file may not reuse a bundled `id`. It is refused, with the fix "copy it
+  under your own id and switch the bundled one off": to change how a bundled
+  server runs, copy its file under a new id and turn the bundled one off in
+  Settings, which writes `lsp.disabled`. The move above did exactly that to a
+  file that carried a bundled id, renaming it `<id>-custom`. The one exception
+  is a file Tori recorded itself in `~/.config/tori/packs/installed.json`, and
+  only while it stays unedited.
+- A user file that fails validation is **never silently swallowed**: Settings
+  lists it under "Needs fixing" with what is wrong and how to fix it, and the
+  id it would have replaced keeps its previous entry. One broken file can't
+  make a language lose its server.
 - Files are read once at startup. Editing one means restarting Tori, the same as
   every other loaded-at-startup config.
 - A file is named after its `id`: `typescript.toml` holds `id = "typescript"`. A user
-  file whose name and id differ still loads, with a warning naming both. An id
+  file whose name and id differ is refused, naming both. An id
   is lowercase letters, digits, `.`, `_` and `-`, and starts with a letter or
   digit; any other id is refused.
 
@@ -124,7 +131,7 @@ part of it, and nothing complains.
 
 ```toml
 schema_version = 1          # required; this build supports: 1
-id = "typescript"           # required; unique, and the override key
+id = "typescript"           # required; unique, and the file's name
 label = "TypeScript"        # required; shown on the Settings health card
 
 # required: filenames marking a project root. See "Root resolution" below.
@@ -429,13 +436,13 @@ Until you do, the project still highlights, edits and saves, and servers with
 
 ## Example: a from-scratch third-party server
 
-A complete config for Python via a `pyright` you installed yourself. Tori's
-catalog has a `python` server too, so this file, dropped at
-`~/.config/tori/lsp/python.toml`, whole-replaces it. Restart after adding it:
+A complete config for Python via a `pyright` you installed yourself, saved as
+`~/.config/tori/packs/lsp/pyright.toml`. Tori's catalog has a `python` server
+too, so switch that one off in Settings, then restart:
 
 ```toml
 schema_version = 1
-id = "python"
+id = "pyright"
 label = "Python (pyright)"
 root_markers = ["pyproject.toml", "setup.py", "requirements.txt", ".git"]
 request_timeout_ms = 30000
@@ -453,15 +460,15 @@ args = ["--stdio"]
 Settings > LSP will then show a card for it, reporting
 whether `pyright-langserver` resolves on your PATH.
 
-## Whole-replacing a bundled server
+## Replacing a bundled server
 
-Use the bundled server's `id`. To point Tori at your own
-`typescript-language-server` instead of the one it ships:
+Give your copy its own `id` and switch the bundled one off in Settings. To point
+Tori at your own `typescript-language-server` instead of the one it ships:
 
 ```toml
-# ~/.config/tori/lsp/typescript.toml
+# ~/.config/tori/packs/lsp/typescript-mine.toml
 schema_version = 1
-id = "typescript"
+id = "typescript-mine"
 label = "TypeScript (mine)"
 root_markers = ["tsconfig.json", "package.json", ".git"]
 
@@ -477,5 +484,6 @@ program = "typescript-language-server"
 args = ["--stdio"]
 ```
 
-Because this is a whole replacement, every extension you want served has to be
-listed. Anything you leave out is no longer claimed by any server.
+Nothing is inherited from the bundled server, so every extension you want
+served has to be listed. Anything you leave out is no longer claimed by any
+server.

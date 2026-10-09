@@ -6,6 +6,7 @@ import { setDebuggerDisabled } from "../../settingsStore";
 import type { PackMeta } from "../../../../utils/packs";
 import { createToolActions } from "./toolActions";
 import styles from "../../Settings.module.css";
+import NeedsFixing from "../../components/NeedsFixing";
 
 // One card per debug adapter. The bundled one reads ready only when `node` and
 // its bundle are both there, or every start fails while the card reads fine
@@ -144,6 +145,7 @@ export default function DapSection() {
         <span>Debuggers</span>
         <span class={styles.sectionRule} />
       </div>
+      <NeedsFixing kind="dap" />
       <Switch>
         <Match when={health.state === "pending"}>
           <div class={styles.note}>Checking which debuggers are installed…</div>
@@ -159,7 +161,7 @@ export default function DapSection() {
           </div>
           <div class={styles.note}>
             A language with no adapter still opens, edits and runs normally, it just cannot be debugged from here. Add
-            one with a TOML file in <code>~/.config/tori/dap/</code>; see DEBUGGERS.md.
+            one with a TOML file in <code>~/.config/tori/packs/dap/</code>; see DEBUGGERS.md.
           </div>
         </Match>
       </Switch>

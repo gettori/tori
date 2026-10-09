@@ -19,6 +19,14 @@ pub fn text(kind: &str, id: &str) -> Option<&'static str> {
         .map(|(_, _, text, _)| *text)
 }
 
+/// The hash of one bundled pack's bytes.
+pub fn sha256(kind: &str, id: &str) -> Option<&'static str> {
+    FILES
+        .iter()
+        .find(|(k, i, ..)| *k == kind && *i == id)
+        .map(|(_, _, _, sha)| *sha)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

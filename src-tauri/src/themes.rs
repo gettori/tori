@@ -1,4 +1,4 @@
-// User theme palettes: ~/.config/tori/themes/*.json.
+// User theme palettes: ~/.config/tori/packs/themes/*.json.
 //
 // This module does STRUCTURAL validation only - serde plus `Palette::validate`
 // (schemaVersion, required keys, every value a hex string). It deliberately
@@ -13,13 +13,14 @@
 // is no `OnceLock` registry, because themes are live-watched (`themes_watch_start`,
 // mirroring settings.rs) and every call re-reads the directory.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Mutex;
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
+use crate::packs::{self, Kind, LoadError};
 use crate::palette::Palette;
 
 pub struct ThemesWatch(pub Mutex<Option<RecommendedWatcher>>);
@@ -28,10 +29,6 @@ impl Default for ThemesWatch {
     fn default() -> Self {
         ThemesWatch(Mutex::new(None))
     }
-}
-
-fn user_themes_dir() -> PathBuf {
-    crate::owned_state::config_dir().join("themes")
 }
 
 /// A validated palette plus the file it came from. The picker shows the path so
@@ -85,65 +82,40 @@ pub(crate) fn load_theme_str(text: &str, source: &str) -> Result<Palette, String
     Ok(palette)
 }
 
-/// Every `*.json` in `dir`, in filename order. A file that fails validation is
-/// reported, never silently dropped. Two files claiming one id is an error on
-/// the second: the alternative (last wins) makes which theme you get depend on
-/// filename order, which nothing in the UI shows.
-fn load_themes_from(dir: &Path) -> UserThemes {
-    let mut out = UserThemes::default();
-
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        // A missing directory is the normal case, not an error.
-        return out;
-    };
-    let mut paths: Vec<PathBuf> = entries
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("json"))
-        .collect();
-    paths.sort();
-
-    for path in paths {
-        let source = path.to_string_lossy().into_owned();
-        let text = match std::fs::read_to_string(&path) {
-            Ok(t) => t,
-            Err(e) => {
-                out.errors.push(format!("{source}: {e}"));
-                continue;
-            }
-        };
-        match load_theme_str(&text, &source).inspect(|p| crate::packs::warn_stem(&source, &p.id)) {
-            Ok(palette) => {
-                if let Some(first) = out.themes.iter().find(|t| t.palette.id == palette.id) {
-                    out.errors.push(format!(
-                        "{source}: id `{}` is already defined by {}, ignoring this file",
-                        palette.id, first.source
-                    ));
-                    continue;
-                }
-                out.themes.push(LoadedTheme { palette, source });
-            }
-            Err(e) => out.errors.push(e),
+/// Every `*.json` in `dir`, in filename order, and an error for each file
+/// refused, never silently dropped.
+fn load_themes_from(dir: &Path) -> (Vec<LoadedTheme>, Vec<LoadError>) {
+    let installed = packs::installed_beside(dir);
+    let mut themes = Vec::new();
+    let mut errors = Vec::new();
+    for path in packs::user_files(dir, Kind::Themes) {
+        match packs::load_user_file(Kind::Themes, &path, &installed, load_theme_str, |p| &p.id) {
+            Ok(palette) => themes.push(LoadedTheme {
+                palette,
+                source: path.to_string_lossy().into_owned(),
+            }),
+            Err(e) => errors.push(e),
         }
     }
-
-    out
+    (themes, errors)
 }
 
 #[tauri::command(async)]
 pub fn list_user_themes() -> UserThemes {
-    let out = load_themes_from(&user_themes_dir());
-    for e in &out.errors {
-        eprintln!("tori: ERROR loading user theme {e}");
-    }
+    let (themes, errors) = load_themes_from(&packs::kind_dir(Kind::Themes));
+    let out = UserThemes {
+        themes,
+        errors: errors.iter().map(|e| format!("{}: {}", e.file, e.message)).collect(),
+    };
+    packs::report(Kind::Themes, errors);
     out
 }
 
-/// Watch `~/.config/tori/themes/`; emit `themes://changed` on any write to a
+/// Watch `~/.config/tori/packs/themes/`; emit `themes://changed` on any write to a
 /// `.json` file in it. Idempotent, and mirrors `settings_watch_start`.
 #[tauri::command(async)]
 pub fn themes_watch_start(app: AppHandle, state: State<ThemesWatch>) -> Result<(), String> {
-    let dir = user_themes_dir();
+    let dir = packs::kind_dir(Kind::Themes);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
     let app_handle = app.clone();
@@ -171,6 +143,7 @@ pub fn themes_watch_start(app: AppHandle, state: State<ThemesWatch>) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -183,7 +156,9 @@ mod tests {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("tori_themes_test_{n}_{seq}"));
+        let dir = std::env::temp_dir()
+            .join(format!("tori_themes_test_{n}_{seq}"))
+            .join("themes");
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -267,30 +242,30 @@ mod tests {
     #[test]
     fn a_broken_file_is_reported_and_the_others_still_load() {
         let dir = tmp_dir();
-        std::fs::write(dir.join("good.json"), TORI_DARK).unwrap();
+        std::fs::write(
+            dir.join("mine.json"),
+            TORI_DARK.replacen("\"tori-dark\"", "\"mine\"", 1),
+        )
+        .unwrap();
         std::fs::write(dir.join("bad.json"), "{").unwrap();
 
-        let out = load_themes_from(&dir);
-        assert_eq!(out.themes.len(), 1);
-        assert_eq!(out.themes[0].palette.id, "tori-dark");
-        assert_eq!(out.errors.len(), 1);
-        assert!(out.errors[0].contains("bad.json"));
+        let (themes, errors) = load_themes_from(&dir);
+        assert_eq!(themes.len(), 1);
+        assert_eq!(themes[0].palette.id, "mine");
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].file.ends_with("bad.json") && errors[0].kind == Some(Kind::Themes));
 
         std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
-    fn a_duplicate_id_is_refused_naming_both_files() {
+    fn a_bundled_id_is_refused_with_the_fix() {
         let dir = tmp_dir();
-        std::fs::write(dir.join("a.json"), TORI_DARK).unwrap();
-        std::fs::write(dir.join("b.json"), TORI_DARK).unwrap();
+        std::fs::write(dir.join("tori-dark.json"), TORI_DARK).unwrap();
 
-        let out = load_themes_from(&dir);
-        assert_eq!(out.themes.len(), 1, "the first file in name order wins");
-        assert!(out.themes[0].source.ends_with("a.json"));
-        assert_eq!(out.errors.len(), 1);
-        assert!(out.errors[0].contains("b.json"), "{}", out.errors[0]);
-        assert!(out.errors[0].contains("a.json"), "{}", out.errors[0]);
+        let (themes, errors) = load_themes_from(&dir);
+        assert!(themes.is_empty());
+        assert_eq!(errors[0].fix.as_deref(), Some(packs::FIX_NEW_ID));
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -299,9 +274,9 @@ mod tests {
     fn a_missing_directory_yields_nothing_rather_than_an_error() {
         let dir = std::env::temp_dir().join("tori-themes-does-not-exist");
         let _ = std::fs::remove_dir_all(&dir);
-        let out = load_themes_from(&dir);
-        assert!(out.themes.is_empty());
-        assert!(out.errors.is_empty());
+        let (themes, errors) = load_themes_from(&dir);
+        assert!(themes.is_empty());
+        assert!(errors.is_empty());
     }
 
     /// Only `.json` is a theme. A README or an editor swapfile in the folder is
@@ -310,9 +285,9 @@ mod tests {
     fn non_json_files_are_ignored_silently() {
         let dir = tmp_dir();
         std::fs::write(dir.join("README.md"), "not a theme").unwrap();
-        let out = load_themes_from(&dir);
-        assert!(out.themes.is_empty());
-        assert!(out.errors.is_empty());
+        let (themes, errors) = load_themes_from(&dir);
+        assert!(themes.is_empty());
+        assert!(errors.is_empty());
         std::fs::remove_dir_all(&dir).ok();
     }
 }

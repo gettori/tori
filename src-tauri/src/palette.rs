@@ -2,7 +2,7 @@
 //
 // Mirrors src/theme/schema.ts. A palette is PRIMITIVES only: flat hex strings,
 // no expressions and no references between keys, so a user-authored file in
-// ~/.config/tori/themes/ can never become an evaluator. All derivation (alpha
+// ~/.config/tori/packs/themes/ can never become an evaluator. All derivation (alpha
 // washes, shadow stacks, the semantic role names) happens in the frontend's
 // roles.ts.
 //

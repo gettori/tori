@@ -97,6 +97,7 @@ import {
   workspaceKey,
 } from "../../utils/topics";
 import { commandStatus, commandVerdict, dropCommandStatus, reportCommandExit } from "./commandStatus";
+import { packsNotice, refreshLoadErrors, type MigrationReport } from "../../utils/packs";
 import { dropInitRefusal, initRefusal, refuseInit } from "./initRefusal";
 import { createTopicMembers, memberFor, type TintedMember } from "../../utils/topicMembers";
 import {
@@ -1152,6 +1153,16 @@ export default function Terminal(props: {
         });
       })
       .catch(() => {});
+    // The packs migration ran before this webview existed, so its report is
+    // pulled the same way, and said once with the load errors beside it.
+    void Promise.all([
+      invoke<MigrationReport | null>("packs_migration_report").catch(() => null),
+      refreshLoadErrors(),
+    ]).then(([report, errors]) => {
+      const message = packsNotice(report, errors);
+      const broken = errors.some((e) => e.kind !== "themes");
+      if (message) emitWith<ToastEvent>(TOAST, { message, kind: broken ? "error" : "info" });
+    });
     // A transcript just appeared: try to attribute it to a fresh tab (see
     // `backfillFreshSessions`) so the sidebar can focus it in place.
     unlistenSessions = await listen("sessions://changed", () => {

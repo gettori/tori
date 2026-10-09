@@ -2,7 +2,7 @@
 // `typescript-language-server` in lsp.rs is now data. Every `lsp/*.toml` ships
 // bundled (embedded at compile time); a user
 // can add or whole-replace one by dropping a `schema_version = 1` TOML file
-// into `~/.config/tori/lsp/`. See LSP-SERVERS.md for the schema.
+// into `~/.config/tori/packs/lsp/`. See LSP-SERVERS.md for the schema.
 //
 // Modelled on `crate::agents`, deliberately: same bundled-then-user merge, same
 // whole-replace override semantics, same loud-log-keep-previous handling of a
@@ -12,7 +12,7 @@
 // fails to spawn looks exactly like a language with no support at all.
 
 use crate::format::registry::{DirScan, KeyMarker, KeyMarkerToml};
-use crate::packs::{self, Meta};
+use crate::packs::{self, Kind, LoadError, Meta};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -24,7 +24,7 @@ pub const SCHEMA_VERSION: u32 = 1;
 
 /// Every schema version this build still loads. Only one exists so far; when a
 /// v2 lands, the older entries stay here so someone's working config in
-/// `~/.config/tori/lsp/` keeps loading, the way `agents.rs` keeps v1.
+/// `~/.config/tori/packs/lsp/` keeps loading, the way `agents.rs` keeps v1.
 const SUPPORTED_SCHEMA_VERSIONS: [u32; 1] = [SCHEMA_VERSION];
 
 /// How a server process is started.
@@ -653,17 +653,15 @@ fn builtins() -> impl Iterator<Item = (String, &'static str)> {
     packs::snapshot::bundled("lsp")
 }
 
-fn user_lsp_dir() -> PathBuf {
-    crate::owned_state::config_dir().join("lsp")
-}
-
-/// Bundled built-ins, then every `*.toml` in `user_dir`. A user file whose id
-/// matches a built-in whole-replaces it (the entire struct, never a
-/// field-by-field merge). A user file that fails validation is logged loudly
-/// and the id it would have overridden keeps its previous entry, so one broken
-/// file can never make a language silently lose its server.
-fn build_registry_from(user_dir: &Path) -> Vec<LspServer> {
+/// Bundled built-ins, then every `*.toml` in `user_dir`, with an error for each
+/// user file refused. A user file whose id matches a built-in whole-replaces
+/// it (the entire struct, never a field-by-field merge), and may only do so as
+/// a recorded install. A refused file leaves the id it would have replaced
+/// with its previous entry, so one broken file can never make a language
+/// silently lose its server.
+fn build_registry_from(user_dir: &Path) -> (Vec<LspServer>, Vec<LoadError>) {
     let mut list: Vec<LspServer> = Vec::new();
+    let mut errors = Vec::new();
 
     for (source, text) in builtins() {
         if let Err(e) = load_server_file(text, &source).and_then(|s| admit(&mut list, s)) {
@@ -671,31 +669,19 @@ fn build_registry_from(user_dir: &Path) -> Vec<LspServer> {
         }
     }
 
-    // Sorted so that when two user files conflict, which one is refused does not
-    // depend on the order the filesystem happens to list them in.
-    let mut files: Vec<PathBuf> = std::fs::read_dir(user_dir)
-        .map(|entries| entries.flatten().map(|e| e.path()).collect())
-        .unwrap_or_default();
-    files.retain(|p| p.extension().and_then(|e| e.to_str()) == Some("toml"));
-    files.sort();
-
-    for path in files {
-        let source = path.to_string_lossy().into_owned();
-        let text = match std::fs::read_to_string(&path) {
-            Ok(t) => t,
-            Err(e) => {
-                eprintln!("tori: ERROR reading lsp server {source}: {e}");
-                continue;
-            }
-        };
-        let loaded = load_server_str(&text, &source).inspect(|s| packs::warn_stem(&source, &s.id));
-        if let Err(e) = loaded.and_then(|s| admit(&mut list, s)) {
-            eprintln!("tori: ERROR loading lsp server {e} (keeping the previous server for this id)");
+    let installed = packs::installed_beside(user_dir);
+    for path in packs::user_files(user_dir, Kind::Lsp) {
+        let loaded = packs::load_user_file(Kind::Lsp, &path, &installed, load_server_str, |s| &s.id);
+        let admitted = loaded.and_then(|s| {
+            admit(&mut list, s).map_err(|e| LoadError::new(Some(Kind::Lsp), &path.to_string_lossy(), &e, None))
+        });
+        if let Err(e) = admitted {
+            errors.push(e);
         }
     }
 
     list.sort_by(|a, b| a.id.cmp(&b.id));
-    list
+    (list, errors)
 }
 
 fn load_server_file(text: &str, source: &str) -> Result<LspServer, String> {
@@ -728,13 +714,15 @@ fn admit(list: &mut Vec<LspServer>, server: LspServer) -> Result<(), String> {
 }
 
 fn build_registry() -> Vec<LspServer> {
-    build_registry_from(&user_lsp_dir())
+    let (list, errors) = build_registry_from(&packs::kind_dir(Kind::Lsp));
+    packs::report(Kind::Lsp, errors);
+    list
 }
 
 static REGISTRY: OnceLock<Vec<LspServer>> = OnceLock::new();
 
 /// The process-wide server registry, loaded once on first use (bundled +
-/// `~/.config/tori/lsp/*.toml`; not live-watched, restart to pick up edits,
+/// `~/.config/tori/packs/lsp/*.toml`; not live-watched, restart to pick up edits,
 /// same as every other loaded-at-startup config in Tori).
 pub fn registry() -> &'static [LspServer] {
     REGISTRY.get_or_init(build_registry)
@@ -844,8 +832,9 @@ program = "demo-server"
     fn temp_dir(name: &str) -> PathBuf {
         static SEQ: AtomicUsize = AtomicUsize::new(0);
         let n = SEQ.fetch_add(1, Ordering::SeqCst);
-        let dir = std::env::temp_dir().join(format!("tori_lsp_registry_{}_{name}_{n}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        let root = std::env::temp_dir().join(format!("tori_lsp_registry_{}_{name}_{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let dir = root.join("lsp");
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -980,7 +969,7 @@ program = "demo-server"
 
     #[test]
     fn bundled_servers_load_with_no_user_dir() {
-        let list = build_registry_from(Path::new("/nonexistent/tori/lsp"));
+        let (list, _) = build_registry_from(Path::new("/nonexistent/tori/lsp"));
         // Equal lengths mean `admit` refused none of them.
         assert_eq!(list.len(), builtins().count());
         for id in [
@@ -1004,7 +993,7 @@ program = "demo-server"
 
     #[test]
     fn every_claimed_extension_has_one_primary() {
-        let list = build_registry_from(Path::new("/nonexistent/tori/lsp"));
+        let (list, _) = build_registry_from(Path::new("/nonexistent/tori/lsp"));
         let primaries: Vec<&LspServer> = list.iter().filter(|s| s.role == Role::Primary).collect();
         let extensions: HashSet<&String> = primaries.iter().flat_map(|s| s.languages.keys()).collect();
         for ext in extensions {
@@ -1169,15 +1158,53 @@ version = "1.2.3"
     }
 
     #[test]
-    fn a_user_file_whole_replaces_a_builtin_by_id() {
-        let dir = temp_dir("override");
+    fn a_hand_written_file_with_a_bundled_id_is_refused() {
+        let dir = temp_dir("bundled-id");
         std::fs::write(
             dir.join("typescript.toml"),
             VALID.replace("\"demo\"", "\"typescript\"").replace("Demo", "Mine"),
         )
         .unwrap();
 
-        let list = build_registry_from(&dir);
+        let (list, errors) = build_registry_from(&dir);
+        assert_eq!(
+            list.iter().find(|s| s.id == "typescript").unwrap().label,
+            "TypeScript / JavaScript"
+        );
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert!(errors[0].file.ends_with("typescript.toml"));
+        assert_eq!(errors[0].fix.as_deref(), Some(packs::FIX_NEW_ID));
+    }
+
+    #[test]
+    fn a_broken_file_is_one_load_error_naming_it() {
+        let dir = temp_dir("broken-toml");
+        std::fs::write(dir.join("mine.toml"), "not = [toml").unwrap();
+        let (_, errors) = build_registry_from(&dir);
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert!(errors[0].file.ends_with("mine.toml") && errors[0].kind == Some(Kind::Lsp));
+    }
+
+    #[test]
+    fn a_user_file_whose_name_is_not_its_id_is_refused() {
+        let dir = temp_dir("stem");
+        std::fs::write(dir.join("other.toml"), VALID).unwrap();
+        let (list, errors) = build_registry_from(&dir);
+        assert!(list.iter().all(|s| s.id != "demo"));
+        assert!(
+            errors[0].message.contains("`other`") && errors[0].message.contains("`demo`"),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn a_recorded_override_whole_replaces_a_builtin_by_id() {
+        let dir = temp_dir("override");
+        let text = VALID.replace("\"demo\"", "\"typescript\"").replace("Demo", "Mine");
+        std::fs::write(dir.join("typescript.toml"), &text).unwrap();
+        packs::record_override(&dir, Kind::Lsp, "typescript", &text);
+
+        let (list, _) = build_registry_from(&dir);
         let ts = list.iter().find(|s| s.id == "typescript").unwrap();
         assert_eq!(ts.label, "Mine");
         assert!(ts.is_override());
@@ -1192,7 +1219,7 @@ version = "1.2.3"
         let dir = temp_dir("broken");
         std::fs::write(dir.join("typescript.toml"), "schema_version = 1\nid = \"typescript\"\n").unwrap();
 
-        let list = build_registry_from(&dir);
+        let (list, _) = build_registry_from(&dir);
         let ts = list.iter().find(|s| s.id == "typescript").expect("must not disappear");
         assert_eq!(ts.label, "TypeScript / JavaScript");
         assert!(!ts.is_override(), "the built-in should still be the one in effect");
@@ -1223,7 +1250,7 @@ version = "1.2.3"
     fn a_non_toml_file_in_the_user_dir_is_skipped() {
         let dir = temp_dir("notoml");
         std::fs::write(dir.join("README.md"), "not a config").unwrap();
-        assert_eq!(build_registry_from(&dir).len(), builtins().count());
+        assert_eq!(build_registry_from(&dir).0.len(), builtins().count());
     }
 
     #[test]
@@ -1357,7 +1384,7 @@ version = "1.2.3"
 
         let s =
             load_server_str(rest[start..end].trim(), "LSP-SERVERS.md example").expect("the example TOML should parse");
-        assert_eq!(s.id, "python");
+        assert_eq!(s.id, "pyright");
         assert_eq!(s.language_id_for("/p/a.py"), Some("python"));
         assert_eq!(s.launch.program(), "pyright-langserver");
     }
@@ -1589,21 +1616,21 @@ version = "1.2.3"
         );
     }
 
-    /// The override example in the doc has to keep working too: it is the
+    /// The replacement example in the doc has to keep working too: it is the
     /// instruction someone follows when the bundled server is not what they want.
     #[test]
     fn lsp_servers_md_override_example_parses() {
         let doc = include_str!("../../../docs/LSP-SERVERS.md");
-        let heading = "## Whole-replacing a bundled server";
-        let after = doc.find(heading).expect("the doc must show how to override") + heading.len();
+        let heading = "## Replacing a bundled server";
+        let after = doc.find(heading).expect("the doc must show how to replace one") + heading.len();
         let rest = &doc[after..];
         let start = rest.find("```toml").unwrap() + "```toml".len();
         let end = rest[start..].find("```").unwrap() + start;
 
         let s = load_server_str(rest[start..end].trim(), "LSP-SERVERS.md override")
             .expect("the override example should parse");
-        // It must use a bundled id, or it would not override anything.
-        assert_eq!(s.id, "typescript");
+        // Its own id: a user file carrying a bundled one is refused.
+        assert!(!packs::is_bundled(Kind::Lsp, &s.id), "{}", s.id);
     }
 
     #[test]

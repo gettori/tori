@@ -7,6 +7,7 @@ import { overlayRoot, setServerDisabled } from "../../settingsStore";
 import type { PackMeta } from "../../../../utils/packs";
 import { createToolActions } from "./toolActions";
 import styles from "../../Settings.module.css";
+import NeedsFixing from "../../components/NeedsFixing";
 
 // One card per registered language server, answering the same question the
 // Agents cards answer for agent CLIs: "which languages does this thing
@@ -256,6 +257,7 @@ export default function LspSection() {
           onInput={(e) => setQuery(e.currentTarget.value)}
         />
       </div>
+      <NeedsFixing kind="lsp" />
       <Switch>
         <Match when={health.state === "pending"}>
           <div class={styles.note}>Checking which language servers are installed…</div>
@@ -280,7 +282,7 @@ export default function LspSection() {
           </Show>
           <div class={styles.note}>
             A language with no server still opens and edits normally, it just has no completion or diagnostics. Add one
-            with a TOML file in <code>~/.config/tori/lsp/</code>; see LSP-SERVERS.md.
+            with a TOML file in <code>~/.config/tori/packs/lsp/</code>; see LSP-SERVERS.md.
           </div>
         </Match>
       </Switch>
