@@ -6,6 +6,7 @@ import { setFormatterDisabled } from "../../settingsStore";
 import type { PackMeta } from "../../../../utils/packs";
 import { TONE, type BinaryStatus } from "./LspSection";
 import styles from "../../Settings.module.css";
+import NeedsFixing from "../../components/NeedsFixing";
 
 type FormatterHealth = PackMeta & {
   id: string;
@@ -102,6 +103,7 @@ export default function FormattersSection() {
         <span>Formatters</span>
         <span class={styles.sectionRule} />
       </div>
+      <NeedsFixing kind="formatters" />
       <Switch>
         <Match when={formatters.state === "pending"}>
           <div class={styles.note}>Checking which formatters are installed...</div>
@@ -116,7 +118,7 @@ export default function FormattersSection() {
           <div class={styles.note}>
             Format Document, and format on save when it is on, use the formatter the project's config or{" "}
             <code>format.byExtension</code> names. With neither, the language server formats. Add one with a TOML file
-            in <code>~/.config/tori/formatters/</code>; see FORMATTERS.md.
+            in <code>~/.config/tori/packs/formatters/</code>; see FORMATTERS.md.
           </div>
         </Match>
       </Switch>

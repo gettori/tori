@@ -162,7 +162,7 @@ describe("the settings pickers", () => {
       await screen.findByRole("listbox");
 
       expect(screen.queryByText("Bundled")).toBeNull();
-      expect(screen.queryByText("From ~/.config/tori/themes")).toBeNull();
+      expect(screen.queryByText("From ~/.config/tori/packs/themes")).toBeNull();
     });
   });
 });

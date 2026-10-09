@@ -766,6 +766,14 @@ export default function AgentDetail(props: {
             : "Terminal only. Tori has no chat transport for this agent."}
         </div>
       </Show>
+      <Show when={findAdapter(a().id).bundled_override}>
+        {(o) => (
+          <div class={styles.cardMeta}>
+            Custom override of bundled {a().id}, migrated.
+            <Show when={o().bundled_changed}> The bundled pack has changed since.</Show>
+          </div>
+        )}
+      </Show>
       {/* The reasons in full rather than behind hover text: they answer "why is
           this control missing", and a tooltip would make finding that the
           user's problem. */}

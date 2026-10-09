@@ -1,13 +1,13 @@
 // Formatter registry: the two-variant `Formatter` enum format.rs used to carry
 // is now data, one TOML per formatter. Bundled ones live in `formatters/*.toml`,
 // embedded at compile time; a user adds or whole-replaces one by dropping a
-// `schema_version = 1` file into `~/.config/tori/formatters/`. See FORMATTERS.md.
+// `schema_version = 1` file into `~/.config/tori/packs/formatters/`. See FORMATTERS.md.
 //
 // Loading follows `lsp::registry` rule for rule: bundled first, user files in
 // filename order, whole-replace by id, a broken user file logged loudly while
 // the id keeps its previous entry, and a closed `launch.kind`.
 
-use crate::packs::{self, Meta};
+use crate::packs::{self, Kind, LoadError, Meta};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
@@ -384,13 +384,11 @@ fn load_formatter_file(text: &str, source: &str) -> Result<Formatter, String> {
     Ok(formatter)
 }
 
-fn user_formatters_dir() -> PathBuf {
-    crate::owned_state::config_dir().join("formatters")
-}
-
-/// Bundled built-ins, then every `*.toml` in `user_dir`, whole-replacing by id.
-fn build_registry_from(user_dir: &Path) -> Vec<Formatter> {
+/// Bundled built-ins, then every `*.toml` in `user_dir`, whole-replacing by id,
+/// with an error for each user file refused.
+fn build_registry_from(user_dir: &Path) -> (Vec<Formatter>, Vec<LoadError>) {
     let mut by_id: BTreeMap<String, Formatter> = BTreeMap::new();
+    let mut errors = Vec::new();
 
     for (source, text) in builtins() {
         match load_formatter_file(text, &source) {
@@ -401,34 +399,28 @@ fn build_registry_from(user_dir: &Path) -> Vec<Formatter> {
         }
     }
 
-    let mut files: Vec<PathBuf> = std::fs::read_dir(user_dir)
-        .map(|entries| entries.flatten().map(|e| e.path()).collect())
-        .unwrap_or_default();
-    files.retain(|p| p.extension().and_then(|e| e.to_str()) == Some("toml"));
-    files.sort();
-
-    for path in files {
-        let source = path.to_string_lossy().into_owned();
-        let loaded = std::fs::read_to_string(&path)
-            .map_err(|e| format!("{source}: {e}"))
-            .and_then(|text| load_formatter_str(&text, &source))
-            .inspect(|f| packs::warn_stem(&source, &f.id));
-        match loaded {
+    let installed = packs::installed_beside(user_dir);
+    for path in packs::user_files(user_dir, Kind::Formatters) {
+        match packs::load_user_file(Kind::Formatters, &path, &installed, load_formatter_str, |f| &f.id) {
             Ok(f) => {
                 by_id.insert(f.id.clone(), f);
             }
-            Err(e) => eprintln!("tori: ERROR loading formatter {e} (keeping the previous formatter for this id)"),
+            Err(e) => errors.push(e),
         }
     }
 
-    by_id.into_values().collect()
+    (by_id.into_values().collect(), errors)
 }
 
 static REGISTRY: OnceLock<Vec<Formatter>> = OnceLock::new();
 
 /// Every formatter, loaded once on first use. Restart to pick up an edit.
 pub fn registry() -> &'static [Formatter] {
-    REGISTRY.get_or_init(|| build_registry_from(&user_formatters_dir()))
+    REGISTRY.get_or_init(|| {
+        let (list, errors) = build_registry_from(&packs::kind_dir(Kind::Formatters));
+        packs::report(Kind::Formatters, errors);
+        list
+    })
 }
 
 #[cfg(test)]
@@ -449,8 +441,9 @@ args = ["--stdin", "{file}"]
     fn temp_dir(name: &str) -> PathBuf {
         static SEQ: AtomicUsize = AtomicUsize::new(0);
         let n = SEQ.fetch_add(1, Ordering::SeqCst);
-        let dir = std::env::temp_dir().join(format!("tori_fmt_registry_{}_{name}_{n}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+        let root = std::env::temp_dir().join(format!("tori_fmt_registry_{}_{name}_{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let dir = root.join("formatters");
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -523,7 +516,7 @@ args = ["--stdin", "{file}"]
 
     #[test]
     fn biome_outranks_prettier() {
-        let bundled = build_registry_from(Path::new("/nonexistent"));
+        let (bundled, _) = build_registry_from(Path::new("/nonexistent"));
         let priority = |id: &str| bundled.iter().find(|f| f.id == id).unwrap().priority;
         assert!(priority("biome") > priority("prettier"));
     }
@@ -628,7 +621,11 @@ args = ["--stdin", "{file}"]
             .skip(1)
             .map(|rest| rest.split("```").next().unwrap())
             .collect();
-        assert_eq!(blocks.len(), 3, "the schema, the from-scratch example and the override");
+        assert_eq!(
+            blocks.len(),
+            3,
+            "the schema, the from-scratch example and the replacement"
+        );
         let ids: Vec<String> = blocks
             .iter()
             .map(|b| {
@@ -637,18 +634,16 @@ args = ["--stdin", "{file}"]
                     .id
             })
             .collect();
-        assert_eq!(ids, vec!["prettier", "clang-format", "prettier"]);
+        assert_eq!(ids, vec!["prettier", "clang-format", "prettier-web"]);
     }
 
     #[test]
-    fn a_user_file_whole_replaces_a_builtin_by_id() {
+    fn a_recorded_override_whole_replaces_a_builtin_by_id() {
         let dir = temp_dir("override");
-        std::fs::write(
-            dir.join("prettier.toml"),
-            VALID.replace("\"demo\"", "\"prettier\"").replace("Demo", "Mine"),
-        )
-        .unwrap();
-        let list = build_registry_from(&dir);
+        let text = VALID.replace("\"demo\"", "\"prettier\"").replace("Demo", "Mine");
+        std::fs::write(dir.join("prettier.toml"), &text).unwrap();
+        packs::record_override(&dir, Kind::Formatters, "prettier", &text);
+        let (list, _) = build_registry_from(&dir);
         let prettier = list.iter().find(|f| f.id == "prettier").unwrap();
         assert_eq!(prettier.label, "Mine");
         assert!(prettier.markers.prefixes.is_empty(), "whole-replace, not a merge");
@@ -660,9 +655,18 @@ args = ["--stdin", "{file}"]
         let dir = temp_dir("broken");
         std::fs::write(dir.join("biome.toml"), "schema_version = 1\nid = \"biome\"\n").unwrap();
         std::fs::write(dir.join("notes.md"), "not a config").unwrap();
-        let list = build_registry_from(&dir);
+        let (list, _) = build_registry_from(&dir);
         let biome = list.iter().find(|f| f.id == "biome").expect("must not disappear");
         assert_eq!(biome.label, "Biome");
         assert_eq!(list.len(), builtins().count());
+    }
+
+    #[test]
+    fn a_broken_file_is_one_load_error_naming_it() {
+        let dir = temp_dir("broken-toml");
+        std::fs::write(dir.join("mine.toml"), "not = [toml").unwrap();
+        let (_, errors) = build_registry_from(&dir);
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert!(errors[0].file.ends_with("mine.toml") && errors[0].kind == Some(Kind::Formatters));
     }
 }

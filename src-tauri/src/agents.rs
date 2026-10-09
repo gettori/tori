@@ -2,7 +2,7 @@
 // through sessions.rs is now data. One adapter ships bundled
 // (agents/claude.toml, embedded at compile time); a user can add or
 // whole-replace an adapter by dropping a
-// `schema_version = 1` through `= 6` TOML file into `~/.config/tori/agents/`.
+// `schema_version = 1` through `= 6` TOML file into `~/.config/tori/packs/agents/`.
 // See ADAPTERS.md for the schema. Every version so far is purely additive: v2
 // adds the optional `[chat]` table describing how to drive the agent as a
 // structured chat session rather than a PTY, v3 adds the optional
@@ -33,7 +33,7 @@ pub const SCHEMA_VERSION: u32 = 6;
 /// Every schema version this build still loads.
 ///
 /// Old versions stay supported deliberately: a user adapter in
-/// `~/.config/tori/agents/` is somebody's working config, and each version so
+/// `~/.config/tori/packs/agents/` is somebody's working config, and each version so
 /// far adds only an optional table, so there is nothing an older file needs to
 /// say differently. It loads exactly as before, reporting `None` for the tables
 /// it predates.
@@ -804,6 +804,16 @@ pub struct AgentAdapter {
     /// The Agents cards show the path so a user who forgot about an override
     /// can see which file is actually in effect.
     pub source: String,
+    /// Set when this adapter is a recorded override of the bundled one.
+    pub bundled_override: Option<BundledOverride>,
+}
+
+/// A user file standing in for a bundled adapter, kept from before packs
+/// existed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct BundledOverride {
+    /// The bundled adapter has changed since the override was recorded.
+    pub bundled_changed: bool,
 }
 
 // --- raw TOML shape (kept separate from `AgentAdapter`: a `Regex` isn't
@@ -1580,6 +1590,7 @@ pub(crate) fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter,
         config,
         install,
         source: source.to_string(),
+        bundled_override: None,
     })
 }
 
@@ -1678,22 +1689,19 @@ fn load_adapter_file(text: &str, source: &str) -> Result<AgentAdapter, String> {
     Ok(adapter)
 }
 
-fn user_agents_dir() -> PathBuf {
-    crate::owned_state::config_dir().join("agents")
-}
-
-/// Bundled built-ins, then every `*.toml` in `user_dir`. A user file whose id
-/// matches a built-in whole-replaces it (last insert wins - the entire
-/// struct, never a field-by-field merge). A user file that fails validation
-/// is never silently swallowed: it's logged loudly (naming the problem) and
-/// the id it would have overridden keeps its previous (built-in or
-/// earlier-loaded) entry, so one broken file can't make an agent disappear.
+/// Bundled built-ins, then every `*.toml` in `user_dir`, with an error for each
+/// user file refused. A user file whose id matches a built-in whole-replaces
+/// it (the entire struct, never a field-by-field merge), and may only do so as
+/// a recorded override. A refused file leaves the id with its previous
+/// (built-in or earlier-loaded) entry, so one broken file can't make an agent
+/// disappear.
 ///
 /// Seven built-ins ship today: one Claude-shaped file adapter and six ACP ones.
 /// The loop stays a loop: what makes this a registry is that nothing downstream
 /// knows how many adapters there are.
-fn build_registry_from(user_dir: &Path) -> Vec<AgentAdapter> {
+fn build_registry_from(user_dir: &Path) -> (Vec<AgentAdapter>, Vec<packs::LoadError>) {
     let mut by_id: HashMap<String, AgentAdapter> = HashMap::new();
+    let mut errors = Vec::new();
 
     for (source, text) in bundled() {
         match load_adapter_file(text, &source) {
@@ -1704,44 +1712,37 @@ fn build_registry_from(user_dir: &Path) -> Vec<AgentAdapter> {
         }
     }
 
-    if let Ok(entries) = std::fs::read_dir(user_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("toml") {
-                continue;
+    let installed = packs::installed_beside(user_dir);
+    for path in packs::user_files(user_dir, packs::Kind::Agents) {
+        match packs::load_user_file(packs::Kind::Agents, &path, &installed, load_adapter_str, |a| &a.id) {
+            Ok(mut a) => {
+                a.bundled_override = installed
+                    .find(packs::Kind::Agents, &a.id)
+                    .filter(|r| r.source == packs::installed::Source::Override)
+                    .map(|r| BundledOverride {
+                        bundled_changed: r.bundled_sha256.as_deref() != packs::snapshot::sha256("agents", &a.id),
+                    });
+                by_id.insert(a.id.clone(), a);
             }
-            let source = path.to_string_lossy().into_owned();
-            let text = match std::fs::read_to_string(&path) {
-                Ok(t) => t,
-                Err(e) => {
-                    eprintln!("tori: ERROR reading agent adapter {source}: {e}");
-                    continue;
-                }
-            };
-            match load_adapter_str(&text, &source).inspect(|a| packs::warn_stem(&source, &a.id)) {
-                Ok(a) => {
-                    by_id.insert(a.id.clone(), a);
-                }
-                Err(e) => eprintln!(
-                    "tori: ERROR loading agent adapter {source}: {e} (keeping the previous adapter for this id)"
-                ),
-            }
+            Err(e) => errors.push(e),
         }
     }
 
     let mut list: Vec<AgentAdapter> = by_id.into_values().collect();
     list.sort_by(|a, b| a.id.cmp(&b.id));
-    list
+    (list, errors)
 }
 
 fn build_registry() -> Vec<AgentAdapter> {
-    build_registry_from(&user_agents_dir())
+    let (list, errors) = build_registry_from(&packs::kind_dir(packs::Kind::Agents));
+    packs::report(packs::Kind::Agents, errors);
+    list
 }
 
 static REGISTRY: OnceLock<Vec<AgentAdapter>> = OnceLock::new();
 
 /// The process-wide adapter registry, loaded once on first use (bundled +
-/// `~/.config/tori/agents/*.toml`; not live-watched - restart to pick up
+/// `~/.config/tori/packs/agents/*.toml`; not live-watched - restart to pick up
 /// edits, same as any other loaded-at-startup config in Tori today).
 pub fn registry() -> &'static [AgentAdapter] {
     REGISTRY.get_or_init(build_registry)
@@ -1941,7 +1942,9 @@ mod tests {
 
     fn tmp_dir() -> PathBuf {
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("tori_agents_test_{n}"));
+        let dir = std::env::temp_dir()
+            .join(format!("tori_agents_test_{n}"))
+            .join("agents");
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -2037,7 +2040,7 @@ mod tests {
     /// fixture.
     #[test]
     fn the_bundled_adapters_cover_both_session_shapes() {
-        let reg = build_registry_from(&PathBuf::from("/nonexistent/agents"));
+        let reg = build_registry_from(&PathBuf::from("/nonexistent/agents")).0;
         let mut ids: Vec<&str> = reg.iter().map(|a| a.id.as_str()).collect();
         ids.sort();
         assert_eq!(
@@ -2077,7 +2080,7 @@ mod tests {
     /// surface reads its absence to tell a measured agent from an untested one.
     #[test]
     fn an_unmeasured_bundled_adapter_declares_no_verified_version() {
-        let reg = build_registry_from(&PathBuf::from("/nonexistent/agents"));
+        let reg = build_registry_from(&PathBuf::from("/nonexistent/agents")).0;
         let find = |id: &str| reg.iter().find(|a| a.id == id).expect("bundled adapter");
         assert_eq!(find("opencode").verified_against.as_deref(), Some("opencode 1.18.3"));
         assert_eq!(find("gemini").verified_against, None);
@@ -2098,7 +2101,7 @@ mod tests {
     /// `catalog::launch_identity` is for.
     #[test]
     fn codex_drives_chat_through_a_different_binary_than_its_pty_tab() {
-        let reg = build_registry_from(&PathBuf::from("/nonexistent/agents"));
+        let reg = build_registry_from(&PathBuf::from("/nonexistent/agents")).0;
         let codex = reg.iter().find(|a| a.id == "codex").expect("codex is bundled");
         assert_eq!(codex.program, "codex");
         let chat = codex.chat.as_ref().expect("codex ships a chat table");
@@ -2116,7 +2119,7 @@ mod tests {
     /// accepts the array and drops it, so it stays at the default.
     #[test]
     fn only_a_chat_that_gets_the_tori_server_says_so() {
-        let reg = build_registry_from(&PathBuf::from("/nonexistent/agents"));
+        let reg = build_registry_from(&PathBuf::from("/nonexistent/agents")).0;
         let tori_mcp = |id: &str| reg.iter().find(|a| a.id == id).unwrap().chat.as_ref().unwrap().tori_mcp;
         assert!(tori_mcp("claude"));
         assert!(tori_mcp("codex"));
@@ -2125,7 +2128,7 @@ mod tests {
 
     #[test]
     fn only_agents_measured_calling_an_mcp_server_are_sent_one() {
-        let reg = build_registry_from(&PathBuf::from("/nonexistent/agents"));
+        let reg = build_registry_from(&PathBuf::from("/nonexistent/agents")).0;
         let sends = |id: &str| {
             let adapter = reg
                 .iter()
@@ -2154,7 +2157,7 @@ mod tests {
     /// scaffolder writes `agents/example.md` rather than a folder.
     #[test]
     fn the_bundled_claude_adapter_declares_its_measured_config_files() {
-        let reg = build_registry_from(&PathBuf::from("/nonexistent/agents"));
+        let reg = build_registry_from(&PathBuf::from("/nonexistent/agents")).0;
         let claude = reg.iter().find(|a| a.id == "claude").expect("claude is bundled");
         let config = claude.config.as_ref().expect("claude declares [config]");
 
@@ -2324,12 +2327,16 @@ pattern = 'claude-beta (--resume|-r) {id}'
         )
         .unwrap();
 
-        let reg = build_registry_from(&dir);
+        let text = std::fs::read_to_string(dir.join("claude.toml")).unwrap();
+        packs::record_override(&dir, packs::Kind::Agents, "claude", &text);
+
+        let reg = build_registry_from(&dir).0;
         let claude = reg.iter().find(|a| a.id == "claude").expect("claude present");
         assert_eq!(claude.program, "claude-beta");
         assert_eq!(claude.label, "Claude (custom)");
         // Replaced, not duplicated: an override is one entry for that id.
         assert_eq!(reg.iter().filter(|a| a.id == "claude").count(), 1);
+        assert!(claude.bundled_override.is_some());
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -2339,9 +2346,9 @@ pattern = 'claude-beta (--resume|-r) {id}'
     #[test]
     fn a_user_toml_for_a_new_id_registers_alongside_the_builtin() {
         let dir = tmp_dir();
-        std::fs::write(dir.join("another.toml"), VALID_MINIMAL).unwrap();
+        std::fs::write(dir.join("x.toml"), VALID_MINIMAL).unwrap();
 
-        let reg = build_registry_from(&dir);
+        let reg = build_registry_from(&dir).0;
         let mut ids: Vec<&str> = reg.iter().map(|a| a.id.as_str()).collect();
         ids.sort();
         assert_eq!(
@@ -2353,12 +2360,72 @@ pattern = 'claude-beta (--resume|-r) {id}'
     }
 
     #[test]
+    fn a_migrated_claude_override_loads_under_its_own_id_until_it_is_edited() {
+        // `tmp_dir` is `<config>/agents`, the folder the migration moves from.
+        let old = tmp_dir();
+        let config = old.parent().unwrap().to_path_buf();
+        let text =
+            packs::snapshot::text("agents", "claude")
+                .unwrap()
+                .replacen("label = \"Claude\"", "label = \"Mine\"", 1);
+        std::fs::write(old.join("claude.toml"), &text).unwrap();
+        packs::migrate::migrate_at(&config, 1).unwrap();
+        let dir = config.join("packs/agents");
+
+        let (reg, errors) = build_registry_from(&dir);
+        assert!(errors.is_empty(), "{errors:?}");
+        let claude = reg.iter().find(|a| a.id == "claude").unwrap();
+        assert_eq!(claude.label, "Mine");
+        assert!(claude.accounts.is_some(), "its accounts table came with it");
+        assert_eq!(
+            claude.bundled_override,
+            Some(BundledOverride { bundled_changed: false })
+        );
+
+        std::fs::write(dir.join("claude.toml"), text.replacen("Mine", "Edited", 1)).unwrap();
+        let (reg, errors) = build_registry_from(&dir);
+        assert_eq!(reg.iter().find(|a| a.id == "claude").unwrap().label, "Claude");
+        assert_eq!(errors[0].fix.as_deref(), Some(packs::FIX_NEW_ID));
+        std::fs::remove_dir_all(&config).ok();
+    }
+
+    #[test]
+    fn a_claude_toml_dropped_in_by_hand_is_refused() {
+        let dir = tmp_dir();
+        std::fs::write(
+            dir.join("claude.toml"),
+            packs::snapshot::text("agents", "claude").unwrap(),
+        )
+        .unwrap();
+        let (reg, errors) = build_registry_from(&dir);
+        assert!(reg
+            .iter()
+            .find(|a| a.id == "claude")
+            .unwrap()
+            .source
+            .starts_with("bundled:"));
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].message.contains("bundled"), "{errors:?}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_broken_file_is_one_load_error_naming_it() {
+        let dir = tmp_dir();
+        std::fs::write(dir.join("mine.toml"), "not = [toml").unwrap();
+        let (_, errors) = build_registry_from(&dir);
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert!(errors[0].file.ends_with("mine.toml") && errors[0].kind == Some(packs::Kind::Agents));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
     fn broken_override_keeps_the_builtin_available_not_a_silent_swap() {
         let dir = tmp_dir();
         // Missing label/launch/discovery/parser/running.
         std::fs::write(dir.join("claude.toml"), "schema_version = 1\nid = \"claude\"\n").unwrap();
 
-        let reg = build_registry_from(&dir);
+        let reg = build_registry_from(&dir).0;
         let claude = reg
             .iter()
             .find(|a| a.id == "claude")
@@ -2479,7 +2546,7 @@ args = ["--effort", "low"]
         text = text.replacen("claude_stream_json", "made_up_transport", 1);
         std::fs::write(dir.join("claude.toml"), text).unwrap();
 
-        let reg = build_registry_from(&dir);
+        let reg = build_registry_from(&dir).0;
         let claude = reg
             .iter()
             .find(|a| a.id == "claude")

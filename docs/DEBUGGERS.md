@@ -4,7 +4,7 @@ F5 runs the program in front of you under a debugger: breakpoints, stepping,
 the stack, variables, watch expressions and a debug console. Tori speaks the
 Debug Adapter Protocol, and which adapters exist is **data, not code**: each one
 is a TOML file, the same shape [LSP-SERVERS.md](LSP-SERVERS.md) describes for
-language servers, down to the override and error-handling rules.
+language servers, down to the loading and error-handling rules.
 
 ## Supported debuggers
 
@@ -78,19 +78,23 @@ Two details worth knowing:
 Bundled configs live in `src-tauri/packs/dap/*.toml` and are embedded at compile
 time. js-debug is the exception: its bundle ships inside the app, so its config
 stays beside it in `src-tauri/dap/js-debug.toml`. User configs live in
-`~/.config/tori/dap/*.toml`.
+`~/.config/tori/packs/dap/*.toml`, where the first launch of the release that
+introduced packs moved them from `~/.config/tori/dap/`.
 
 The rules are the language servers':
 
-- A user file whose `id` matches a bundled one **whole-replaces** it, never
-  field by field.
-- A user file that fails validation is logged naming the problem, and the id
-  keeps its previous entry. One broken file cannot take a language's debugger
-  away.
+- A user file may not reuse a bundled `id`, and is refused if it does. A
+  bundled-id file the move found keeps its id, unlike a language server's,
+  because F5 knows each bundled debugger by its id: Tori recorded it in
+  `~/.config/tori/packs/installed.json` as an override of the bundled adapter,
+  and it loads in its place while it stays unedited.
+- A user file that fails validation is listed under "Needs fixing" in Settings,
+  and the id keeps its previous entry. One broken file cannot take a language's
+  debugger away.
 - User files load in filename order, and files are read once at startup, so an
   edit needs a restart.
 - A file is named after its `id`: `debugpy.toml` holds `id = "debugpy"`. A user
-  file whose name and id differ still loads, with a warning naming both. An id
+  file whose name and id differ is refused, naming both. An id
   is lowercase letters, digits, `.`, `_` and `-`, and starts with a letter or
   digit; any other id is refused.
 
@@ -101,7 +105,7 @@ header belongs to that table.
 
 ```toml
 schema_version = 1          # required; this build supports: 1
-id = "delve"                # required; unique, and the override key
+id = "delve"                # required; unique, and the file's name
 label = "Go (Delve)"        # required; shown on the Settings card
 
 # required: filenames marking the root a debuggee runs at, most specific
@@ -249,28 +253,9 @@ LSP-SERVERS.md, "Project trust".
 
 ## Adding a debugger
 
-A user TOML can change how a bundled adapter starts without any code: a
-different program, other arguments, another resolver. For example, when
-`go install` put Delve in `~/go/bin` and that is not on your PATH:
-
-```toml
-# ~/.config/tori/dap/delve.toml
-schema_version = 1
-id = "delve"
-label = "Go (Delve, from ~/go/bin)"
-root_markers = ["go.mod"]
-
-[languages]
-go = "go"
-
-[launch]
-kind = "tcp"
-program = "~/go/bin/dlv"
-args = ["dap", "--listen=127.0.0.1:{port}"]
-```
-
-Because it is a whole replacement, every extension the adapter should claim has
-to be listed, and anything left out is no longer claimed.
+A user TOML cannot take a bundled adapter's id, so changing how a bundled
+debugger starts is not something a file can do; put the program it runs on
+your PATH instead.
 
 A **new** id loads and gets its card, but F5 has nothing to offer for it yet:
 what a target is, and the launch config each one becomes, are per adapter in

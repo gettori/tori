@@ -31,7 +31,7 @@ change that lands is a different one.
 
 If you want Tori to drive an agent it does not know about, **you do not need to
 fork it or change any code.** Agents are data: a `schema_version = 1` TOML
-file dropped into `~/.config/tori/agents/` describes how to launch the agent,
+file dropped into `~/.config/tori/packs/agents/` describes how to launch the agent,
 where its session transcripts live, how to recognize a live process, and which
 built-in parser reads its transcripts.
 

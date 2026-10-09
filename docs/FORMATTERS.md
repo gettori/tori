@@ -5,7 +5,7 @@ buffer. Which formatters exist is **data, not code**: each one is a TOML file,
 so adding one is a config file rather than a branch in `src-tauri/src/format.rs`.
 
 This is the same shape as [LSP-SERVERS.md](LSP-SERVERS.md) describes for
-language servers, down to the loading and override rules.
+language servers, down to the loading rules.
 
 Every formatter is driven over stdin and stdout, never pointed at the file.
 Formatting on save acts on the buffer, which is not what is on disk yet; a tool
@@ -99,20 +99,27 @@ no formatter is shown the same way.
 ## File location and loading
 
 Bundled configs live in `src-tauri/packs/formatters/*.toml` and are embedded at compile
-time. User configs live in `~/.config/tori/formatters/*.toml`.
+time. User configs live in `~/.config/tori/packs/formatters/*.toml`, where the
+first launch of the release that introduced packs moved them from
+`~/.config/tori/formatters/`.
 
 Loading is bundled first, then every `*.toml` in the user directory in filename
 order:
 
-- A user file whose `id` matches a bundled one **whole-replaces** it, never
-  merged field by field.
-- A user file that fails validation is logged naming the problem, and the id it
-  would have replaced keeps its previous entry.
+- A user file may not reuse a bundled `id`. It is refused, with the fix "copy it
+  under your own id and switch the bundled one off": copy the bundled file under
+  a new id and turn the bundled one off in Settings, which writes
+  `format.disabled`. The move above did exactly that to a file that carried a
+  bundled id, renaming it `<id>-custom` and pointing `format.byExtension` at
+  the copy. The one exception is a file Tori recorded itself in
+  `~/.config/tori/packs/installed.json`, and only while it stays unedited.
+- A user file that fails validation is listed under "Needs fixing" in Settings,
+  and the id it would have replaced keeps its previous entry.
 - An unrecognized top-level field is warned about and ignored. A missing
   required field is an error naming every missing field at once.
 - Files are read once at startup. Editing one means restarting Tori.
 - A file is named after its `id`: `prettier.toml` holds `id = "prettier"`. A user
-  file whose name and id differ still loads, with a warning naming both. An id
+  file whose name and id differ is refused, naming both. An id
   is lowercase letters, digits, `.`, `_` and `-`, and starts with a letter or
   digit; any other id is refused.
 
@@ -123,7 +130,7 @@ written after a table header belongs to that table.
 
 ```toml
 schema_version = 1          # required; this build supports: 1
-id = "prettier"             # required; unique, the override key, and what format.byExtension names
+id = "prettier"             # required; unique, the file's name, and what format.byExtension names
 label = "Prettier"          # required; used in messages
 
 # optional (default 0): decides between formatters configured in one directory.
@@ -214,7 +221,7 @@ rust-analyzer's formatting, while a `.svelte` file in a repo with
 ## Example: a from-scratch formatter
 
 A complete config for `clang-format`, which Tori does not ship. Drop this at
-`~/.config/tori/formatters/clang-format.toml` and restart:
+`~/.config/tori/packs/formatters/clang-format.toml` and restart:
 
 ```toml
 schema_version = 1
@@ -231,15 +238,16 @@ program = "clang-format"
 args = ["--assume-filename={file}"]
 ```
 
-## Whole-replacing a bundled formatter
+## Replacing a bundled formatter
 
-Use the bundled formatter's `id`. To keep Prettier to web files only:
+Give your copy its own `id` and switch the bundled one off in Settings. To keep
+Prettier to web files only:
 
 ```toml
-# ~/.config/tori/formatters/prettier.toml
+# ~/.config/tori/packs/formatters/prettier-web.toml
 schema_version = 1
-id = "prettier"
-label = "Prettier"
+id = "prettier-web"
+label = "Prettier (web files)"
 extensions = ["ts", "tsx", "js", "jsx", "css", "json", "md"]
 
 [markers]
@@ -252,5 +260,6 @@ program = "prettier"
 args = ["--stdin-filepath", "{file}"]
 ```
 
-Because this is a whole replacement, every marker you still want has to be
-listed.
+Nothing is inherited from the bundled formatter, so every marker you still
+want has to be listed, and `format.byExtension` names `prettier-web` wherever
+it named `prettier`.

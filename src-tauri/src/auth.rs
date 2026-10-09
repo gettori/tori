@@ -779,7 +779,7 @@ mod tests {
     /// Built rather than taken from the bundled four, none of which lands here:
     /// all four declare `[chat]`, so the ACP rung catches gemini. The shape that
     /// does land here is the minimal adapter ADAPTERS.md documents, which is
-    /// what a user dropping a four-line TOML into `~/.config/tori/agents/`
+    /// what a user dropping a four-line TOML into `~/.config/tori/packs/agents/`
     /// writes, so the rung has a real producer even though nothing bundled is
     /// one.
     #[test]

@@ -106,7 +106,7 @@ why shipping one unmeasured is reasonable. The pinned versions are in
 [ADAPTERS.md](docs/ADAPTERS.md).
 
 Adding another agent does not require a fork. Drop a TOML file into
-`~/.config/tori/agents/` describing how to launch it. For an agent that speaks
+`~/.config/tori/packs/agents/` describing how to launch it. For an agent that speaks
 the [Agent Client Protocol](https://agentclientprotocol.com) that is the whole
 file - four lines and no Rust, because the protocol carries the models, the
 permission questions and the history itself. For one that does not, the TOML also

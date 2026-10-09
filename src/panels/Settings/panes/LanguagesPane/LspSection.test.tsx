@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor, cleanup } from "@solidjs/testing-library";
 import type { LspHealth } from "./LspSection";
+import type { LoadError } from "../../../../utils/packs";
 
 // What the language-server cards must say, driven through the real component.
 //
@@ -13,12 +14,14 @@ import type { LspHealth } from "./LspSection";
 let health: LspHealth[] = [];
 let trusted: string[] = [];
 let calls: [string, unknown][] = [];
+let loadErrors: LoadError[] = [];
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: { path?: string }) => {
     calls.push([cmd, args]);
     if (cmd === "lsp_health") return Promise.resolve(health);
     if (cmd === "trusted_projects") return Promise.resolve(trusted);
+    if (cmd === "packs_load_errors") return Promise.resolve(loadErrors);
     if (cmd === "revoke_project") trusted = trusted.filter((p) => p !== args?.path);
     return Promise.resolve(null);
   },
@@ -73,9 +76,23 @@ beforeEach(() => {
   health = [];
   trusted = [];
   calls = [];
+  loadErrors = [];
 });
 
 describe("LspSection", () => {
+  it("lists a language server file that did not load, and no other kind's", async () => {
+    loadErrors = [
+      { kind: "lsp", file: "/cfg/packs/lsp/typescript.toml", message: "bundled id", fix: "copy it" },
+      { kind: "dap", file: "/cfg/packs/dap/mine.toml", message: "broken", fix: null },
+    ];
+    render(() => <LspSection />);
+
+    await waitFor(() => expect(screen.getByText("Needs fixing")).toBeTruthy());
+    expect(screen.getByText("/cfg/packs/lsp/typescript.toml")).toBeTruthy();
+    expect(screen.getByText("To fix: copy it.")).toBeTruthy();
+    expect(screen.queryByText("/cfg/packs/dap/mine.toml")).toBeNull();
+  });
+
   it("renders one card per registered server", async () => {
     health = [server(), server({ id: "rust", label: "Rust", program: "rust-analyzer", extensions: ["rs"] })];
     render(() => <LspSection />);

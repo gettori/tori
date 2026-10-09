@@ -3,9 +3,15 @@ import { render, screen, waitFor, cleanup } from "@solidjs/testing-library";
 import type { DapHealth } from "./DapSection";
 
 let health: DapHealth[] = [];
+let askedForErrors = false;
+const lspError = { kind: "lsp", file: "/cfg/packs/lsp/typescript.toml", message: "bundled id", fix: null };
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: (cmd: string) => Promise.resolve(cmd === "dap_health" ? health : null),
+  invoke: (cmd: string) => {
+    if (cmd !== "packs_load_errors") return Promise.resolve(cmd === "dap_health" ? health : null);
+    askedForErrors = true;
+    return Promise.resolve([lspError]);
+  },
 }));
 
 const { default: DapSection } = await import("./DapSection");
@@ -55,5 +61,16 @@ describe("DapSection", () => {
 
     await waitFor(() => expect(screen.getByText(/so Tori cannot check it/)).toBeTruthy());
     expect(screen.queryByText(/stated, not checked/)).toBeNull();
+  });
+
+  it("leaves another kind's load error to its own pane", async () => {
+    health = [delve()];
+    render(() => <DapSection />);
+
+    await waitFor(() => expect(screen.getByText("Go (Delve)")).toBeTruthy());
+    await waitFor(() => expect(askedForErrors).toBe(true));
+    await Promise.resolve();
+    expect(screen.queryByText("Needs fixing")).toBeNull();
+    expect(screen.queryByText(lspError.file)).toBeNull();
   });
 });

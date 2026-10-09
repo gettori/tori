@@ -1,4 +1,4 @@
-// Themes the user dropped into ~/.config/tori/themes/.
+// Themes the user dropped into ~/.config/tori/packs/themes/.
 //
 // Rust (themes.rs) reads the directory and hands over whatever is structurally
 // valid; this module runs the same `admit()` a bundled theme runs, so the two

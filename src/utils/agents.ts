@@ -11,7 +11,7 @@ export type ParserKind = "claude_jsonl";
 /** A registered adapter's id, as `list_agents` reports it.
  *
  *  An alias over `string` rather than a union of the ids that ship, because the
- *  registry is open: a user TOML in `~/.config/tori/agents/` adds an id Tori
+ *  registry is open: a user TOML in `~/.config/tori/packs/agents/` adds an id Tori
  *  has never heard of, and this id is what selects that adapter's parser kind
  *  and pgrep pattern on the backend. A closed union here would compile fine and
  *  quietly probe every user adapter with claude's pattern. */
@@ -169,6 +169,8 @@ export type Adapter = {
   usage_reason?: string | null;
   verified_against?: string | null;
   verified_on?: string | null;
+  /** Set for a user file kept under a bundled id as a recorded override. */
+  bundled_override?: { bundled_changed: boolean } | null;
 } & Partial<PackMeta>;
 
 // Matches the bundled TOML (src-tauri/packs/agents/*.toml) so

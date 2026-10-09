@@ -184,6 +184,10 @@ pub fn run() {
     // flag, and the frontend asks for it on its first frame.
     trace::init();
 
+    // Before anything reads a pack or starts the themes watcher, which would
+    // create the new folder under a move still in progress.
+    packs::migrate::run();
+
     // The persistent domain, written before the webview exists: WebKit reads
     // these once, at its first text-checker use, and registers its own
     // defaults underneath, so a registration-domain write would lose.
@@ -717,6 +721,8 @@ pub fn run() {
             settings::settings_watch_start,
             settings::take_theme_import_notice,
             themes::list_user_themes,
+            packs::packs_load_errors,
+            packs::packs_migration_report,
             themes::themes_watch_start,
             trace::trace_config,
             trace::trace_write,
