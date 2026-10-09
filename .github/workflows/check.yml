@@ -79,6 +79,13 @@ jobs:
 
       - run: scripts/check.sh audit
 
+  packs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: scripts/check.sh packs
+
   # Sign-off on outside contributions, see CONTRIBUTING.md. Pull requests only,
   # and not the maintainer's own: a push has no range to check, and the trailer
   # certifies a right the copyright holder already has.

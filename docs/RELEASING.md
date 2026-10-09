@@ -19,6 +19,9 @@ either finishes or stops with one `error:` line that says what to fix.
 - `CHANGELOG.md` on `main` has a `## Unreleased` section describing it. That
   section becomes the release notes, word for word. If it is missing, write it
   and merge it first.
+- The pack snapshot is current. Run `scripts/sync-packs.sh` and, if it
+  changed anything, merge that in an ordinary PR. `src-tauri/packs.lock` names
+  the gettori/packs commit the release embeds.
 - To change stage (alpha to beta, beta to stable), change the suffix of
   `version` in `src-tauri/tauri.conf.json` and the four files that mirror it,
   in an ordinary PR. The script carries whatever suffix it finds.
