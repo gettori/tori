@@ -8,7 +8,7 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
-## Unreleased
+## 26.1010.0-alpha
 
 - Packs: every language server, linter, debugger, formatter, theme and agent
   is a pack, and Settings can add more from the packs catalog at
