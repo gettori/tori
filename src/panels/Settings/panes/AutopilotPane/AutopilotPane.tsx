@@ -147,8 +147,8 @@ export default function AutopilotPane(props: PaneProps) {
             when={settings.autopilot.available}
             fallback={<p class={styles.note}>Turn on autopilot to set each project's contract.</p>}
           >
-            <p class={styles.note}>Each project's contract is in its settings tab.</p>
-            <ProjectList section="autopilot" />
+            <p class={styles.note}>Each project's contract is in its project settings.</p>
+            <ProjectList section="agents" />
           </Show>
         </CardSection>
       </Group>

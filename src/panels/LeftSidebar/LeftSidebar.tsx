@@ -86,7 +86,8 @@ import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { projectUnitKind } from "../../utils/topicMembers";
 import { traceSwitchStart } from "../../utils/perfTrace";
 import { syntheticId } from "../../utils/syntheticTabs";
-import { openProjectSettings } from "../../utils/projectSettings";
+import { openProjectSettings, projectShown } from "../../utils/projectSettings";
+import { projectUntrusted } from "../../utils/projectTrust";
 import { noteCheckpointTicks } from "../../utils/checkpoints";
 import { rollupStatuses, type LiveSessionStatus, type Rollup } from "../../utils/sessionStatus";
 import { liveChatIds } from "../../utils/chatSessions";
@@ -161,6 +162,7 @@ import {
   Unlink,
   Plug,
   ShieldAlert,
+  ShieldOff,
   UserRound,
 } from "lucide-solid";
 import { BranchMark, WorktreeMark } from "../../components/Icon/gitMarks";
@@ -3351,6 +3353,7 @@ export default function LeftSidebar(props: {
                   icon={<ProjectIcon seed={p.path} icon={p.icon} iconFile={p.iconFile} favicon={p.favicon} />}
                   disclosure={!plainDir()}
                   open={popen()}
+                  editing={projectShown(p.path)}
                   menu={projectMenu(g, p)}
                   onClick={() => {
                     if (plainDir()) selectUnit(g, p, folderUnit());
@@ -3376,6 +3379,21 @@ export default function LeftSidebar(props: {
                             }}
                           />
                         )}
+                      </Show>
+                      {/* Every untrusted project, since its language servers,
+                          debuggers and formatters stay off until it is trusted. */}
+                      <Show when={projectUntrusted(p.path)}>
+                        <IconButton
+                          size="xs"
+                          class={rows.driftMark}
+                          icon={<Icon icon={ShieldOff} />}
+                          aria-label={`${p.name}: not trusted`}
+                          tooltip="Not trusted: its language servers, debuggers and formatters are off"
+                          onClick={(e: MouseEvent) => {
+                            e.stopPropagation();
+                            openProjectSettings(p.path, "tooling");
+                          }}
+                        />
                       </Show>
                       {forgeDoorNode(p)}
                       {statusBubble(() =>

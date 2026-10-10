@@ -12,9 +12,9 @@ import styles from "../../Settings.module.css";
 import own from "./ProjectList.module.css";
 
 /**
- * Every project Tori found, each a door to its own settings tab. Settings holds
- * no project setting of its own: it is one more way in, so a row opens the tab
- * (on `section` when named) and Settings closes behind it.
+ * Every project Tori found, each a door to its own settings dialog. Settings holds
+ * no project setting of its own: it is one more way in, so a row opens the dialog
+ * (on `section` when named) over this panel, which is here again when it closes.
  */
 export default function ProjectList(props: { section?: ProjectSection; trust?: boolean }) {
   const spaces = createSpaces();

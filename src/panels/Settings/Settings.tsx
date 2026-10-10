@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createSignal, on, onCleanup, onMount, For, Show, type Component } from "solid-js";
-import { Dynamic, Portal } from "solid-js/web";
+import { Dynamic } from "solid-js/web";
 import {
   Bot,
   Braces,
@@ -22,15 +22,7 @@ import { WheelGlyph } from "../../components/Autopilot/Wheel";
 import { matchingEntries } from "./utils/settingsSearch";
 import { SETTING_TABS, tabOfEntry, type SettingTab } from "../../utils/settingsCatalog";
 import { agentHealth, ensureAgentHealthLoaded } from "../../utils/agentHealth";
-import {
-  COMPOSE_DRAFT,
-  OPEN_IN_EDITOR,
-  OPEN_JOB,
-  OPEN_TERMINAL,
-  TOGGLE_SHORTCUTS,
-  emit,
-  onWith,
-} from "../../utils/events";
+import { TOGGLE_SHORTCUTS, emit } from "../../utils/events";
 import { debounce } from "../../utils/debounce";
 import { FOCUSABLE } from "../../utils/focusable";
 import Icon from "../../components/Icon/Icon";
@@ -47,6 +39,7 @@ import IntegrationsPane from "./panes/IntegrationsPane/IntegrationsPane";
 import PanesPane from "./panes/PanesPane/PanesPane";
 import { DebuggersPane, FormattersPane, LintersPane, ServersPane } from "./panes/LanguagesPane/LanguagesPane";
 import ProjectsPane from "./panes/ProjectsPane/ProjectsPane";
+import ModalShell from "./components/ModalShell";
 import { overlayRoot } from "./settingsStore";
 import { rowDomId, workspaceName, type PaneProps } from "./components/paneKit";
 import styles from "./Settings.module.css";
@@ -113,8 +106,8 @@ const paneId = (id: SettingTab) => `settings-pane-${id}`;
  *  for one line of text, and this path is fixed by `settings.rs`. */
 const SETTINGS_PATH = "~/.config/tori/settings.json";
 
-/** `[hidden]` is not excluded by the selector, so the inactive panes are
- *  filtered out by ancestor below: they are in the DOM (which is what keeps a
+/** `[hidden]` is not excluded by the selector, so `ModalShell` filters the
+ *  inactive panes out by ancestor: they are in the DOM (which is what keeps a
  *  pane's scroll position across a category switch) but must not be reachable
  *  by Tab. Re-exported so the tests assert against the trap's own list. */
 export { FOCUSABLE };
@@ -145,7 +138,6 @@ export default function Settings(props: {
   projectRoot?: string | null;
 }) {
   let firstControl: HTMLInputElement | undefined;
-  let panelEl!: HTMLDivElement;
   let railEl!: HTMLDivElement;
 
   /** The filter box. Seeded from the prop rather than bound to it, because a
@@ -251,19 +243,6 @@ export default function Settings(props: {
     }),
   );
 
-  // The panel is a modal over the workspace, and two of its buttons (Sign in,
-  // Install) start a command. Without this the dock opens *behind* the still-open
-  // overlay, which reads as the button doing nothing; the panel closes and
-  // hands the screen to the work it just started. A tab counts too: the palette
-  // reaches over this modal, so a task can be run from here.
-  onCleanup(onWith(OPEN_JOB, () => props.onClose()));
-  onCleanup(onWith(OPEN_TERMINAL, () => props.onClose()));
-  // Same rule for the Files rows: a tab opened behind this modal, or a chat
-  // draft waiting in a composer nobody can see, reads as the button doing
-  // nothing.
-  onCleanup(onWith(OPEN_IN_EDITOR, () => props.onClose()));
-  onCleanup(onWith(COMPOSE_DRAFT, () => props.onClose()));
-
   onMount(() => {
     ensureAgentHealthLoaded();
     if (props.entry) revealEntry(props.entry);
@@ -289,48 +268,13 @@ export default function Settings(props: {
     ),
   );
 
-  /**
-   * Escape, in two stages whenever there is a query to clear, and Tab kept
-   * inside the dialog - which is what `aria-modal` claims.
-   *
-   * **On the panel, not on `window`.** `ShortcutSheet` listens on the window in
-   * the capture phase because a focused terminal swallows keydown before it
-   * bubbles; this panel does not need that, because the focus trap below means
-   * every keystroke already originates inside it. Reaching for the window here
-   * would be actively wrong: ⌘K opens the palette *over* this modal, the palette
-   * closes on its own Escape handler, and a capture-phase listener up here would
-   * swallow that keystroke and clear this search box instead.
-   *
-   * `preventDefault` on the clearing press also stops WKWebView clearing the
-   * `type="search"` box natively, which would leave the panel filtered by a
-   * query the box no longer shows.
-   */
-  function onPanelKeyDown(e: KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      // Both, so `typed` never outlives the text it describes.
-      if (query() !== "") {
-        setQuery("");
-        setTyped(false);
-      } else props.onClose();
-      return;
-    }
-    if (e.key !== "Tab") return;
-    // `[hidden]` excludes the inactive panes, and `tabindex="-1"` the five rail
-    // items the roving index has parked: both are still matched by the
-    // selector's `button`/`input` clauses, and neither is a stop a real browser
-    // would make.
-    const items = [...panelEl.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
-      (el) => !el.closest("[hidden]") && el.getAttribute("tabindex") !== "-1",
-    );
-    if (items.length === 0) return;
-    const first = items[0];
-    const last = items[items.length - 1];
-    const at = document.activeElement;
-    if (e.shiftKey ? at === first : at === last) {
-      e.preventDefault();
-      (e.shiftKey ? last : first).focus();
-    }
+  /** Escape in two stages: the first press clears a query, the next closes. */
+  function clearQuery(): boolean {
+    if (query() === "") return false;
+    // Both, so `typed` never outlives the text it describes.
+    setQuery("");
+    setTyped(false);
+    return true;
   }
 
   /**
@@ -387,159 +331,147 @@ export default function Settings(props: {
   }
 
   return (
-    <Portal>
-      <div class={styles.backdrop} onMouseDown={() => props.onClose()}>
-        <div
-          ref={panelEl}
-          class={styles.panel}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Settings"
-          onMouseDown={(e) => e.stopPropagation()}
-          onKeyDown={onPanelKeyDown}
-        >
-          <div class={styles.header}>
-            <div class={styles.title}>Settings</div>
-            <div class={styles.headerActions}>
-              <IconButton
-                icon={<Icon icon={Keyboard} />}
-                size="sm"
-                aria-label="Keyboard shortcuts"
-                tooltip="Keyboard shortcuts (⌘/)"
-                onClick={() => emit(TOGGLE_SHORTCUTS)}
-              />
-              <IconButton
-                icon={<Icon icon={X} />}
-                size="sm"
-                aria-label="Close"
-                tooltip="Close"
-                onClick={() => props.onClose()}
-              />
-            </div>
-          </div>
+    <ModalShell label="Settings" onClose={props.onClose} onEscape={clearQuery}>
+      <div class={styles.header}>
+        <div class={styles.title}>Settings</div>
+        <div class={styles.headerActions}>
+          <IconButton
+            icon={<Icon icon={Keyboard} />}
+            size="sm"
+            aria-label="Keyboard shortcuts"
+            tooltip="Keyboard shortcuts (⌘/)"
+            onClick={() => emit(TOGGLE_SHORTCUTS)}
+          />
+          <IconButton
+            icon={<Icon icon={X} />}
+            size="sm"
+            aria-label="Close"
+            tooltip="Close"
+            onClick={() => props.onClose()}
+          />
+        </div>
+      </div>
 
-          <div class={styles.srOnly} role="status" aria-live="polite">
-            {announced()}
-          </div>
+      <div class={styles.srOnly} role="status" aria-live="polite">
+        {announced()}
+      </div>
 
-          <div class={styles.body}>
-            <div class={styles.railCol}>
-              {/* Above the list, where the sidebar keeps its project filter.
+      <div class={styles.body}>
+        <div class={styles.railCol}>
+          {/* Above the list, where the sidebar keeps its project filter.
                   One box for the panel, not one per category: inside a pane it
                   would read as filtering that pane alone, and it sits outside
                   the tablist because a tablist owns tabs and a field is not
                   one. */}
-              <div class={styles.railSearch}>
-                <input
-                  ref={firstControl}
-                  class={styles.searchInput}
-                  type="search"
-                  aria-label="Search settings"
-                  placeholder="Search all settings"
-                  value={query()}
-                  onInput={(e) => {
-                    setQuery(e.currentTarget.value);
-                    setTyped(true);
-                  }}
-                  onKeyDown={onSearchKeyDown}
-                />
-              </div>
-              {/* The headings are plain text, not items: they group, they do not
+          <div class={styles.railSearch}>
+            <input
+              ref={firstControl}
+              class={styles.searchInput}
+              type="search"
+              aria-label="Search settings"
+              placeholder="Search all settings"
+              value={query()}
+              onInput={(e) => {
+                setQuery(e.currentTarget.value);
+                setTyped(true);
+              }}
+              onKeyDown={onSearchKeyDown}
+            />
+          </div>
+          {/* The headings are plain text, not items: they group, they do not
                 go anywhere, so neither Tab nor an arrow key stops on one.
                 Roving tabindex and arrow wrap come from Kobalte, so the rail
                 carries no keyboard code of its own; `orientation` on the Root
                 is what makes Up and Down the keys that move it. */}
-              {/* Tori's own bar rather than the platform's, the same one the
+          {/* Tori's own bar rather than the platform's, the same one the
                   sidebar and the models list draw: it floats over the items
                   instead of taking a gutter out of a 206px column. */}
-              <OverlayScroll class={styles.railScroll}>
-                <div
-                  ref={railEl}
-                  class={styles.rail}
-                  role="tablist"
-                  aria-orientation="vertical"
-                  aria-label="Settings sections"
-                  onKeyDown={onRailKeyDown}
-                >
-                  <For each={SETTING_TABS}>
-                    {(t, i) => {
-                      const selected = () => !searching() && active() === t.id;
-                      return (
-                        <>
-                          <Show when={i() === 0 || SETTING_TABS[i() - 1].group !== t.group}>
-                            <div class={styles.railGroup}>{t.group}</div>
-                          </Show>
-                          <button
-                            type="button"
-                            role="tab"
-                            id={tabId(t.id)}
-                            class={styles.railItem}
-                            classList={{ [styles.railItemActive]: selected() }}
-                            // On the selected tab only: the attribute is what a
-                            // reader follows to jump into the panel, and while a
-                            // search is running there is no one panel to jump to.
-                            aria-controls={selected() ? paneId(t.id) : undefined}
-                            aria-selected={selected()}
-                            aria-label={tabName(t)}
-                            // Roving tabindex: one stop for the whole rail, so Tab
-                            // steps past it into the pane rather than through six.
-                            tabindex={active() === t.id ? 0 : -1}
-                            onClick={() => openTab(t.id)}
-                          >
-                            <Icon icon={TAB_ICONS[t.icon]} />
-                            <span class={styles.railLabel}>{t.label}</span>
-                            <Show when={railBadge(t.id)}>
-                              {(badge) => <span class={styles.railBadge}>{badge()}</span>}
-                            </Show>
-                          </button>
-                        </>
-                      );
-                    }}
-                  </For>
-                </div>
-              </OverlayScroll>
+          <OverlayScroll class={styles.railScroll}>
+            <div
+              ref={railEl}
+              class={styles.rail}
+              role="tablist"
+              aria-orientation="vertical"
+              aria-label="Settings sections"
+              onKeyDown={onRailKeyDown}
+            >
+              <For each={SETTING_TABS}>
+                {(t, i) => {
+                  const selected = () => !searching() && active() === t.id;
+                  return (
+                    <>
+                      <Show when={i() === 0 || SETTING_TABS[i() - 1].group !== t.group}>
+                        <div class={styles.railGroup}>{t.group}</div>
+                      </Show>
+                      <button
+                        type="button"
+                        role="tab"
+                        id={tabId(t.id)}
+                        class={styles.railItem}
+                        classList={{ [styles.railItemActive]: selected() }}
+                        // On the selected tab only: the attribute is what a
+                        // reader follows to jump into the panel, and while a
+                        // search is running there is no one panel to jump to.
+                        aria-controls={selected() ? paneId(t.id) : undefined}
+                        aria-selected={selected()}
+                        aria-label={tabName(t)}
+                        // Roving tabindex: one stop for the whole rail, so Tab
+                        // steps past it into the pane rather than through six.
+                        tabindex={active() === t.id ? 0 : -1}
+                        onClick={() => openTab(t.id)}
+                      >
+                        <Icon icon={TAB_ICONS[t.icon]} />
+                        <span class={styles.railLabel}>{t.label}</span>
+                        <Show when={railBadge(t.id)}>{(badge) => <span class={styles.railBadge}>{badge()}</span>}</Show>
+                      </button>
+                    </>
+                  );
+                }}
+              </For>
+            </div>
+          </OverlayScroll>
 
-              {/* Where a change lands, which no row on screen can say. Outside
+          {/* Where a change lands, which no row on screen can say. Outside
                   the list rather than inside it: a tablist owns tabs, and a
                   paragraph is not one. */}
-              <div class={styles.railFoot}>
-                <div class={styles.railFootTitle}>Your settings</div>
-                <div class={styles.railFootNote}>
-                  <Show
-                    when={overlayRoot()}
-                    fallback={
-                      <>
-                        Written to <code>{SETTINGS_PATH}</code>, and applied everywhere.
-                      </>
-                    }
-                  >
-                    Written to <code>{SETTINGS_PATH}</code>. Rows marked{" "}
-                    <span class={styles.originBadge}>workspace</span> come from <code>{workspaceName()}</code> instead.
-                  </Show>
-                </div>
-              </div>
+          <div class={styles.railFoot}>
+            <div class={styles.railFootTitle}>Your settings</div>
+            <div class={styles.railFootNote}>
+              <Show
+                when={overlayRoot()}
+                fallback={
+                  <>
+                    Written to <code>{SETTINGS_PATH}</code>, and applied everywhere.
+                  </>
+                }
+              >
+                Written to <code>{SETTINGS_PATH}</code>. Rows marked <span class={styles.originBadge}>workspace</span>{" "}
+                come from <code>{workspaceName()}</code> instead.
+              </Show>
             </div>
+          </div>
+        </div>
 
-            {/* The card is the frame and the padding rides the content, so the
+        {/* The card is the frame and the padding rides the content, so the
                 thumb floats over the gutter the rows already leave rather than
                 narrowing them. */}
-            <OverlayScroll class={styles.pane} contentClass={styles.paneInner}>
-              {/* One nothing, not two: the old "N elsewhere" note existed only
+        <OverlayScroll class={styles.pane} contentClass={styles.paneInner}>
+          {/* One nothing, not two: the old "N elsewhere" note existed only
                   because results used to stay inside the tab you were on. */}
-              <Show when={nothingMatched()}>
-                <div class={styles.note}>No setting matches “{query().trim()}”.</div>
-              </Show>
-              {/* Results mode only: a cross-category total over a pane showing
+          <Show when={nothingMatched()}>
+            <div class={styles.note}>No setting matches “{query().trim()}”.</div>
+          </Show>
+          {/* Results mode only: a cross-category total over a pane showing
                   one category is a number nobody can check against. */}
-              <Show when={searching() && matches()?.total}>
-                {(total) => (
-                  <div class={styles.resultCount}>
-                    {total()} {total() === 1 ? "setting" : "settings"} matching
-                  </div>
-                )}
-              </Show>
+          <Show when={searching() && matches()?.total}>
+            {(total) => (
+              <div class={styles.resultCount}>
+                {total()} {total() === 1 ? "setting" : "settings"} matching
+              </div>
+            )}
+          </Show>
 
-              {/* All six stay mounted so a switch keeps each pane's scroll and
+          {/* All six stay mounted so a switch keeps each pane's scroll and
                   in-flight edits, and `hidden` is what keeps the inactive ones
                   out of the focus trap. A search un-hides every one.
 
@@ -550,34 +482,32 @@ export default function Settings(props: {
                   Kobalte's; `src/lib/tabs` documents that a list with no
                   `Content` claiming its values simply omits `aria-controls`,
                   so the pairing here is `aria-labelledby` on the panel. */}
-              <For each={SETTING_TABS}>
-                {(t) => (
-                  <div
-                    id={paneId(t.id)}
-                    data-pane={t.id}
-                    // A tabpanel only while it is one: six open panels under a
-                    // tablist with nothing selected is not the tab pattern.
-                    role={searching() ? "group" : "tabpanel"}
-                    aria-label={searching() ? t.label : undefined}
-                    aria-labelledby={searching() ? undefined : tabId(t.id)}
-                    hidden={!searching() && active() !== t.id}
-                  >
-                    <Dynamic
-                      component={PANES[t.id]}
-                      shown={shown}
-                      query={query()}
-                      prefix={searching() ? t.label : undefined}
-                      openTab={openTab}
-                      projectRoot={props.projectRoot ?? null}
-                      onClose={props.onClose}
-                    />
-                  </div>
-                )}
-              </For>
-            </OverlayScroll>
-          </div>
-        </div>
+          <For each={SETTING_TABS}>
+            {(t) => (
+              <div
+                id={paneId(t.id)}
+                data-pane={t.id}
+                // A tabpanel only while it is one: six open panels under a
+                // tablist with nothing selected is not the tab pattern.
+                role={searching() ? "group" : "tabpanel"}
+                aria-label={searching() ? t.label : undefined}
+                aria-labelledby={searching() ? undefined : tabId(t.id)}
+                hidden={!searching() && active() !== t.id}
+              >
+                <Dynamic
+                  component={PANES[t.id]}
+                  shown={shown}
+                  query={query()}
+                  prefix={searching() ? t.label : undefined}
+                  openTab={openTab}
+                  projectRoot={props.projectRoot ?? null}
+                  onClose={props.onClose}
+                />
+              </div>
+            )}
+          </For>
+        </OverlayScroll>
       </div>
-    </Portal>
+    </ModalShell>
   );
 }

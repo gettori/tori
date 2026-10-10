@@ -74,3 +74,28 @@ export async function revokeProject(path: string): Promise<void> {
   asked.push(path);
   fire({ path, trusted: false });
 }
+
+// One read of the trusted list for every surface that marks an untrusted
+// project, refreshed on each change made here. Null until the first read lands,
+// so nothing is marked while the answer is unknown.
+const [trustedList, setTrustedList] = createSignal<string[] | null>(null);
+let watching = false;
+
+function watchTrusted() {
+  if (watching) return;
+  watching = true;
+  const read = () =>
+    void invoke<string[]>("trusted_projects")
+      .then(setTrustedList)
+      .catch(() => {});
+  onTrustChange(read);
+  read();
+}
+
+/** Whether the project at `path` is known to be untrusted. False while the list
+ *  is still loading, so a project is never marked on a guess. */
+export function projectUntrusted(path: string): boolean {
+  watchTrusted();
+  const list = trustedList();
+  return list !== null && !list.some((t) => t && isUnderPath(path, t));
+}

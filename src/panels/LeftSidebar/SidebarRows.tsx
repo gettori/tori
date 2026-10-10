@@ -46,6 +46,8 @@ export function ProjectRow(props: {
    *  with no branches under it has nothing to disclose, so it keeps its icon. */
   disclosure?: boolean;
   open?: boolean;
+  /** This project's settings are on screen in an editor pane. */
+  editing?: boolean;
   /** The trailing mark cluster: drift, forge door, rollup. */
   end?: JSX.Element;
   menu?: MenuItem[];
@@ -56,7 +58,7 @@ export function ProjectRow(props: {
   return (
     <div class={`node ${styles.projectCard}`} data-no-window-drag>
       <ContextMenu
-        class={`${styles.row} ${styles.project}`}
+        class={`${styles.row} ${styles.project} ${props.editing ? styles.editing : ""}`.trim()}
         onClick={() => props.onClick?.()}
         items={props.menu ?? []}
         draggable={true}

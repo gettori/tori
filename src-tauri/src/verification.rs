@@ -80,8 +80,14 @@ pub(crate) fn entries_in(commands: &HashMap<String, Vec<String>>, cwd: &Path) ->
     }
 }
 
+/// The built-in list, for a reset that stays a draft until it is saved.
+#[tauri::command]
+pub fn verification_defaults() -> Vec<String> {
+    DEFAULTS.iter().map(|c| c.to_string()).collect()
+}
+
 /// The commands that count as a check in `project`, as written, for the
-/// project dialog to start from.
+/// project settings tab to start from.
 #[tauri::command]
 pub async fn verification_commands(project: String) -> Vec<String> {
     crate::exec::blocking("verification_commands", move || {

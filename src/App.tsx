@@ -27,6 +27,7 @@ import ConfirmDialog, { type ConfirmReq } from "./components/Dialogs/ConfirmDial
 import ToastRegion from "./components/Toasts/Toasts";
 import type { GitReport } from "./utils/gitHealth";
 import Settings from "./panels/Settings/Settings";
+import ProjectSettingsDialog from "./panels/ProjectSettings/ProjectSettingsDialog";
 import FirstRun from "./panels/FirstRun/FirstRun";
 import { ensureFirstRunLoaded, firstRunOpen } from "./utils/firstRun";
 import UpdatePill from "./components/UpdatePill/UpdatePill";
@@ -73,6 +74,8 @@ import {
   type PrefsToggle,
   OPEN_SETTINGS,
   type OpenSettings,
+  OPEN_PROJECT_SETTINGS,
+  type OpenProjectSettings,
   type LiveTab,
   PURGE_WORKSPACE,
   type PurgeWorkspace,
@@ -422,6 +425,10 @@ function App() {
   const [settingsEntry, setSettingsEntry] = createSignal<string | undefined>(undefined, {
     equals: false,
   });
+  // The project whose settings dialog is up, or `null`. It stacks over
+  // Settings, whose Projects list is one of the ways in, so closing it lands
+  // back on that list.
+  const [projectSettings, setProjectSettings] = createSignal<OpenProjectSettings | null>(null);
   // The omnibox's opening prefix, and `null` for "not open". One signal where
   // there were two, because there is one overlay: an open flag per shortcut is
   // what let ⌘P and ⌘K be two boxes in the first place. A fresh object per open
@@ -872,6 +879,7 @@ function App() {
   let offStopChat: (() => void) | undefined;
   let offPrefsToggle: (() => void) | undefined;
   let offOpenSettings: (() => void) | undefined;
+  let offOpenProjectSettings: (() => void) | undefined;
   let offRunLastTask: (() => void) | undefined;
   let offFocusIn: (() => void) | undefined;
   onMount(() => {
@@ -934,6 +942,10 @@ function App() {
       setSettingsQuery(query ?? "");
       setSettingsEntry(entry);
       setSettingsOpen(true);
+    });
+    offOpenProjectSettings = onEventWith<OpenProjectSettings>(OPEN_PROJECT_SETTINGS, (req) => {
+      if (firstRunOpen()) return;
+      setProjectSettings(req);
     });
     // Stop, from Cmd+. or from a named palette row. Handled here rather than in
     // the chat panel because the whole point is that it works while something
@@ -1032,6 +1044,7 @@ function App() {
     offSetRightMode?.();
     offPrefsToggle?.();
     offOpenSettings?.();
+    offOpenProjectSettings?.();
     offRunLastTask?.();
     offFocusIn?.();
     document.body.classList.remove("dragging");
@@ -1151,6 +1164,14 @@ function App() {
           projectRoot={selectionRoot(selected())}
           onClose={() => (setSettingsOpen(false), setSettingsQuery(""), setSettingsEntry(undefined))}
         />
+      </Show>
+
+      {/* After Settings, so it draws over it. Keyed, so another project's
+          request while one is up starts a fresh dialog with no drafts. */}
+      <Show when={projectSettings()} keyed>
+        {(req) => (
+          <ProjectSettingsDialog path={req.path} section={req.section} onClose={() => setProjectSettings(null)} />
+        )}
       </Show>
 
       <Show when={firstRunOpen()}>

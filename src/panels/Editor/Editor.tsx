@@ -96,7 +96,6 @@ import { pendingFor, prEntry } from "../../utils/prReviewStore";
 import ConflictView from "./ConflictView";
 import DiffView from "./DiffView";
 import GraphView from "./GraphView";
-import ProjectSettingsView from "./ProjectSettings/ProjectSettingsView";
 import DebugSourceView from "./DebugSourceView";
 import LspLogView from "./LspLogView";
 import ImageView, { isImagePath } from "./ImageView";
@@ -122,7 +121,6 @@ import {
   FileHeart,
   FileStack,
   Files,
-  FolderSymlink,
   Check,
   GitCommitHorizontal,
   GitCompare,
@@ -418,7 +416,6 @@ function repoRelative(path: string, root: string): string | null {
 const SYNTHETIC_ICONS: Record<string, LucideIcon> = {
   search: Search,
   graph: GitGraph,
-  shared: FolderSymlink,
   pr: GitPullRequest,
   prall: FileStack,
   prs: GitPullRequestArrow,
@@ -3111,11 +3108,6 @@ export default function Editor(props: {
                     width, and the right panel is the narrow column. */}
                 <Show when={t().kind === "graph"}>
                   <GraphView workspace={t().workspace} />
-                </Show>
-                {/* Project configuration, not a file: every setting kept per
-                    project, keyed by the project's own path. */}
-                <Show when={t().kind === "project"}>
-                  <ProjectSettingsView workspace={t().workspace} />
                 </Show>
                 {/* Staging lives here rather than in the Changes panel: a hunk
                     needs the width of a pane, and the panel's rows stay one

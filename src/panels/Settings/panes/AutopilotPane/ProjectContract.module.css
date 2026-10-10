@@ -1,3 +1,35 @@
+/* A label over a full-width control, one per choice. */
+.stacked {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-3);
+  padding: var(--tori-space-5) var(--tori-space-1);
+  border-bottom: var(--tori-border-thin) solid var(--border-default);
+}
+
+/* `width`, not `display: flex`: SegmentedControl's own group is inline-flex at
+   the same specificity. */
+.strip {
+  width: 100%;
+}
+
+.strip button {
+  flex: 1;
+  min-width: 0;
+}
+
+.unsetRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--tori-space-4);
+}
+
+.unset {
+  font-size: var(--tori-text-md);
+  color: var(--fg-muted);
+}
+
 .sources {
   display: flex;
   flex-direction: column;
@@ -5,14 +37,52 @@
   padding: var(--tori-space-5) var(--tori-space-1);
 }
 
+.sourcesHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--tori-space-2) var(--tori-space-4);
+}
+
+.sourcesNote {
+  font-size: var(--tori-text-xs);
+  color: var(--fg-muted);
+}
+
+/* One card per source. */
 .source {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: var(--tori-space-4);
   margin: 0;
   padding: var(--tori-space-5);
+  background: var(--neutral-subtle);
   border: var(--tori-border-thin) solid var(--border-default);
-  border-radius: var(--tori-radius-md);
+  border-radius: var(--tori-radius-lg);
+}
+
+.sourceHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--tori-space-4);
+}
+
+.sourceTitle {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--fg-default);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Reflows to the width rather than pinning two columns. */
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(170px * var(--ui-scale)), 1fr));
+  gap: var(--tori-space-4);
 }
 
 .field {
@@ -23,20 +93,32 @@
   color: var(--fg-muted);
 }
 
+.fieldInput {
+  width: 100%;
+  font-family: var(--tori-font-mono);
+}
+
 .sourceActions {
-  grid-column: 1 / -1;
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
   gap: var(--tori-space-4);
+}
+
+.sourceCount {
+  display: flex;
+  gap: var(--tori-space-4);
+  margin-right: auto;
+  font-size: var(--tori-text-xs);
+  color: var(--fg-muted);
+}
+
+.unsaved {
+  color: var(--brand-default);
+  font-weight: 500;
 }
 
 .error {
   margin: 0;
   font-size: var(--tori-text-xs);
   color: var(--danger-fg);
-}
-
-.unset {
-  font-size: var(--tori-text-md);
-  color: var(--fg-muted);
 }

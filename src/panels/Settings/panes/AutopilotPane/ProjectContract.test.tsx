@@ -1,8 +1,7 @@
 import { describe, it, expect, vi } from "vite-plus/test";
-import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor, within } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
 import ProjectContract from "./ProjectContract";
-import { pointerClick } from "../../../../test/menus";
 import { DEFAULT_CONTRACT, type Contract, type ContractPatch } from "../../../../utils/autopilotContracts";
 
 const saved: Contract = {
@@ -34,10 +33,10 @@ function open(initial: Contract = DEFAULT_CONTRACT) {
   return { onSet, setContract };
 }
 
+// Each choice is a segmented strip named after its question, so a choice is
+// the button with the option's label inside that strip.
 async function pick(name: string, option: string) {
-  pointerClick(screen.getByLabelText(name));
-  await screen.findByRole("listbox");
-  pointerClick(screen.getByRole("option", { name: option }));
+  fireEvent.click(within(screen.getByLabelText(name)).getByRole("button", { name: option }));
 }
 
 const type = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
@@ -87,7 +86,11 @@ describe("ProjectContract", () => {
 
   it("shows a saved contract, and removing its source saves an empty list", async () => {
     const { onSet } = open(saved);
-    expect(screen.getByLabelText("How work ships").textContent).toContain("Local branch only");
+    expect(
+      within(screen.getByLabelText("How work ships"))
+        .getByRole("button", { name: "Local branch only" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
     expect((screen.getByLabelText("Source 1 repo") as HTMLInputElement).value).toBe("gettori/tickets");
     expect((screen.getByLabelText("Source 1 milestone") as HTMLInputElement).value).toBe("Phase 1: Mac and Android");
     fireEvent.click(screen.getByRole("button", { name: "Remove source" }));
