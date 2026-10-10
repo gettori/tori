@@ -759,8 +759,29 @@ export async function setWorkspaceOverride<K extends keyof EditorDefaults>(
  * project to have an opinion.
  */
 export function formatOnSaveFor(projectPath: string | null): boolean {
-  const own = projectPath ? settings.editor?.[projectPath]?.formatOnSave : undefined;
+  const own = projectPath ? ownFormatOnSave(projectPath) : undefined;
   return own ?? editorDefaultsFor(projectPath).formatOnSave ?? false;
+}
+
+/** The deepest project's own answer for `folder`, so the answer a project gives
+ *  reaches every worktree under it. Undefined when no project has one. */
+function ownFormatOnSave(folder: string): boolean | undefined {
+  let best: { path: string; on: boolean } | null = null;
+  for (const [path, prefs] of Object.entries(settings.editor ?? {})) {
+    const on = prefs?.formatOnSave;
+    if (on == null || !isUnderPath(folder, path)) continue;
+    if (!best || path.length > best.path.length) best = { path, on };
+  }
+  return best?.on;
+}
+
+/** Set or clear one project's format-on-save answer. Null returns it to the
+ *  default. */
+export function setProjectFormatOnSave(projectPath: string, on: boolean | null): Promise<void> {
+  const editor = { ...settings.editor };
+  if (on === null) delete editor[projectPath];
+  else editor[projectPath] = { ...editor[projectPath], formatOnSave: on };
+  return saveSettings({ ...settings, editor });
 }
 
 /** Whether a save should organize this project's imports first.

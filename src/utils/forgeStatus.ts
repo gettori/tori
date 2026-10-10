@@ -185,6 +185,17 @@ export function forgeHosts(): KnownHosts {
   return hosts;
 }
 
+/** The accounts added for `host`, every one a repo there could act as. */
+export function forgeAccountsOn(host: string): ForgeAccount[] {
+  return accounts().filter((a) => {
+    try {
+      return canonicalHost(new URL(a.baseUrl).hostname) === host;
+    } catch {
+      return false;
+    }
+  });
+}
+
 /** The `forge.enabled` kill switch, from the settings store. */
 export function noteForgeEnabled(on: boolean) {
   setEnabled(on);
