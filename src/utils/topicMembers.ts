@@ -312,6 +312,12 @@ export function createTopicMembers(topicId: () => string | null): () => TintedMe
   return createMemo(() => tintedMembers(topic() ?? null, spaces() ?? []));
 }
 
+export function createSpaces(): () => SpaceTint[] | undefined {
+  watchTopicSources();
+  const [spaces] = createResource(tick, (at: number) => readAt(at).spaces);
+  return spaces;
+}
+
 /** The live record of the project at `path`, with the Space holding it,
  *  refetched on `config://changed`. `found` is undefined both before the first
  *  read lands and for a path discovery does not report; `loaded` tells them apart. */
@@ -319,8 +325,7 @@ export function createSpaceProject(path: () => string): {
   found: () => { space: SpaceTint; project: SpaceProject } | undefined;
   loaded: () => boolean;
 } {
-  watchTopicSources();
-  const [spaces] = createResource(tick, (at: number) => readAt(at).spaces);
+  const spaces = createSpaces();
   return {
     found: createMemo(() => projectOfMember({ repoPath: path() }, spaces() ?? [])),
     loaded: () => spaces() !== undefined,

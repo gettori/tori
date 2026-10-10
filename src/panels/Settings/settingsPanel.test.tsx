@@ -63,6 +63,7 @@ const CARD_ENTRIES: Record<string, string> = {
 const ANCHORED_ENTRIES = [
   "agents",
   "autopilot-projects",
+  "projects-list",
   "base-folder",
   "crash-logs",
   "change-base-folder",

@@ -12,7 +12,7 @@ import {
   MessageSquare,
   Palette,
   Plug,
-  ShieldCheck,
+  FolderKanban,
   Smartphone,
   WandSparkles,
   X,
@@ -45,13 +45,8 @@ import ChatPane from "./panes/ChatPane/ChatPane";
 import EditorPane from "./panes/EditorPane/EditorPane";
 import IntegrationsPane from "./panes/IntegrationsPane/IntegrationsPane";
 import PanesPane from "./panes/PanesPane/PanesPane";
-import {
-  DebuggersPane,
-  FormattersPane,
-  LintersPane,
-  ProjectsPane,
-  ServersPane,
-} from "./panes/LanguagesPane/LanguagesPane";
+import { DebuggersPane, FormattersPane, LintersPane, ServersPane } from "./panes/LanguagesPane/LanguagesPane";
+import ProjectsPane from "./panes/ProjectsPane/ProjectsPane";
 import { overlayRoot } from "./settingsStore";
 import { rowDomId, workspaceName, type PaneProps } from "./components/paneKit";
 import styles from "./Settings.module.css";
@@ -77,7 +72,7 @@ const TAB_ICONS: Record<string, LucideIcon> = {
   bug: Bug,
   "list-checks": ListChecks,
   "wand-sparkles": WandSparkles,
-  "shield-check": ShieldCheck,
+  "folder-kanban": FolderKanban,
   palette: Palette,
   wheel: WheelGlyph,
   plug: Plug,

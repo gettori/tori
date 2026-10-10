@@ -42,7 +42,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 const { default: LspSection } = await import("./LspSection");
-const { default: TrustedProjects } = await import("./TrustedProjects");
+const { default: TrustedProjects } = await import("../ProjectsPane/TrustedProjects");
 
 const server = (over: Partial<LspHealth> = {}): LspHealth => ({
   id: "typescript",

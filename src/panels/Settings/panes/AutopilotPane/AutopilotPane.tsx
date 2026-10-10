@@ -1,5 +1,4 @@
-import { createMemo, createResource, createSignal, onMount, Show } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
+import { createMemo, onMount, Show } from "solid-js";
 import {
   CardSection,
   Group,
@@ -30,8 +29,7 @@ import { ensureAdaptersLoaded } from "../../../../utils/agents";
 import { enabledChatAgents } from "../../../../utils/agentEnabled";
 import { ensureModelCatalogsLoaded, isProbing, modelCatalogs } from "../../../../utils/modelCatalog";
 import { setAutopilotAvailable } from "../../../../utils/autopilotStore";
-import type { NavSpace } from "../../../../utils/mentionNavigator";
-import ProjectContractEditor from "./ProjectContractEditor";
+import ProjectList from "../ProjectsPane/ProjectList";
 
 // Whole, because Rust keeps it as a u32 and a fraction would fail the save.
 const percent = (n: number | null) => (n === null ? null : Math.min(95, Math.round(n)));
@@ -58,16 +56,6 @@ export default function AutopilotPane(props: PaneProps) {
     }),
   );
   const models = () => providers().find((p) => p.agentId === agentId() && p.profile === profile())?.models ?? [];
-
-  const [spaces] = createResource(() =>
-    invoke<{ spaces: NavSpace[] }>("get_config")
-      .then((c) => c.spaces ?? [])
-      .catch(() => [] as NavSpace[]),
-  );
-  const projects = () =>
-    (spaces() ?? []).flatMap((s) => s.projects.map((p) => ({ value: p.path, label: `${p.name} (${s.name})` })));
-  const [picked, setPicked] = createSignal<string | null>(null);
-  const project = () => picked() ?? projects()[0]?.value ?? null;
 
   return (
     <>
@@ -153,10 +141,14 @@ export default function AutopilotPane(props: PaneProps) {
           />
         </Row>
       </Group>
-      <Group {...props} title="Projects" ids={["autopilot-projects"]}>
+      <Group {...props} title="Project contracts" ids={["autopilot-projects"]}>
         <CardSection {...props} id="autopilot-projects">
-          <Show when={project()} fallback={<p class={styles.note}>No projects yet.</p>}>
-            {(path) => <ProjectContractEditor projects={projects()} project={path()} onProject={setPicked} />}
+          <Show
+            when={settings.autopilot.available}
+            fallback={<p class={styles.note}>Turn on autopilot to set each project's contract.</p>}
+          >
+            <p class={styles.note}>Each project's contract is in its settings tab.</p>
+            <ProjectList section="autopilot" />
           </Show>
         </CardSection>
       </Group>
