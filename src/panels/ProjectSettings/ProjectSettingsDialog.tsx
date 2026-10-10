@@ -223,7 +223,7 @@ export default function ProjectSettingsDialog(props: { path: string; section?: P
               <ProjectFoot project={f().project} space={f().space.name} kind={kind()} />
             </div>
 
-            <OverlayScroll class={s.pane} contentClass={`${s.paneInner} ${styles.inner}`}>
+            <OverlayScroll class={s.pane} contentClass={s.paneInner}>
               <Show when={nothingMatched()}>
                 <div class={s.note}>No setting matches "{query().trim()}".</div>
               </Show>

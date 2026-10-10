@@ -5,7 +5,7 @@
 /* The whole path, wrapping: under the heading there is room for it, and a
    cut path is the one thing nobody can copy. */
 .dir {
-  margin: var(--tori-space-2) 0 var(--tori-space-3);
+  margin: var(--tori-space-1) 0 var(--tori-space-2);
   color: var(--fg-muted);
   font-family: var(--tori-font-mono);
   font-size: var(--tori-text-xs);
@@ -29,8 +29,8 @@
   display: flex;
   flex-wrap: wrap;
   gap: 1px;
-  min-height: calc(340px * var(--ui-scale));
-  margin-top: var(--tori-space-6);
+  min-height: calc(330px * var(--ui-scale));
+  margin-top: var(--tori-space-4);
   overflow: hidden;
   background: var(--border-default);
   border: var(--tori-border-thin) solid var(--border-default);
@@ -47,7 +47,7 @@
 
 .list {
   flex: 1 1 calc(220px * var(--ui-scale));
-  padding: var(--tori-space-4) 0;
+  padding: var(--tori-space-3) 0;
 }
 
 .detail {
@@ -58,7 +58,7 @@
   display: flex;
   align-items: baseline;
   gap: var(--tori-space-3);
-  padding: var(--tori-space-4) var(--tori-space-6) var(--tori-space-5);
+  padding: var(--tori-space-3) var(--tori-space-5) var(--tori-space-4);
 }
 
 .total {
@@ -85,9 +85,9 @@
 .item {
   display: flex;
   flex-direction: column;
-  gap: var(--tori-space-2);
+  gap: calc(3px * var(--ui-scale));
   width: 100%;
-  padding: calc(10px * var(--ui-scale)) var(--tori-space-6);
+  padding: calc(7px * var(--ui-scale)) var(--tori-space-5);
   background: none;
   border: none;
   font: inherit;
@@ -153,21 +153,21 @@
 
 .blank {
   margin: 0;
-  padding: var(--tori-space-6) var(--tori-space-7);
+  padding: var(--tori-space-5) var(--tori-space-6);
   color: var(--fg-subtle);
   font-size: var(--tori-text-xs);
   line-height: 1.5;
 }
 
 .detailHead {
-  padding: var(--tori-space-6) var(--tori-space-7) var(--tori-space-5);
+  padding: var(--tori-space-5) var(--tori-space-6) var(--tori-space-4);
 }
 
 .detailTop {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--tori-space-4);
+  gap: var(--tori-space-3);
   min-width: 0;
 }
 
@@ -217,8 +217,8 @@
   grid-template-columns: minmax(0, 1fr) auto minmax(calc(60px * var(--ui-scale)), auto);
   align-items: center;
   column-gap: var(--tori-space-4);
-  min-height: calc(46px * var(--ui-scale));
-  padding: 0 var(--tori-space-7);
+  min-height: calc(40px * var(--ui-scale));
+  padding: 0 var(--tori-space-6);
   border-top: var(--tori-border-thin) solid var(--border-default);
 }
 
