@@ -8,6 +8,12 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## Unreleased
+
+- Topic chats come back after a reload, and History lists them. Both looked
+  for a Topic's sessions as if its key were a folder, so every Topic chat tab
+  was dropped as missing.
+
 ## 26.1009.0-alpha
 
 - The Monokai Pro theme is gone, since Monokai Pro is a paid theme and was
