@@ -1,7 +1,7 @@
 /* The project settings dialog, in Settings' panel: the project's name where
    Settings puts its title, Settings' rail down the left, and the section in
-   hand on the card beside it. The forms scroll on one card; Worktrees fills a
-   card of its own. Rows and section titles are Settings' own classes. */
+   hand on the card beside it. Rows and section titles are Settings' own
+   classes. */
 .missing {
   padding: calc(16px * var(--ui-scale));
   color: var(--fg-muted);
@@ -12,20 +12,6 @@
    dot's shape in the brand colour, since nothing is wrong yet. */
 .dotUnsaved {
   background: var(--brand-default);
-}
-
-/* The card's slot in the body. `display` is set here, so `[hidden]` has to
-   win back explicitly. */
-.frame {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-}
-
-.frame[hidden] {
-  display: none;
 }
 
 /* Where Settings' title sits: the same inset from the panel's edge. */

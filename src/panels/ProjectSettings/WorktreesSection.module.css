@@ -1,43 +1,14 @@
-/* The Worktrees section: the setup command, then a rail of shared entries beside the worktrees one
-   entry did and did not reach. Two panes because the two questions are
-   different, and the second only matters for the entry in hand. */
-.page {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.sharedHead {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: calc(6px * var(--ui-scale));
-  padding: calc(8px * var(--ui-scale)) calc(16px * var(--ui-scale));
-  border-bottom: 1px solid var(--border-default);
-}
-
-.sharedHead > svg {
-  flex: none;
-  width: var(--control-icon);
-  height: var(--control-icon);
-  color: var(--fg-muted);
-}
-
-.sharedTitle {
-  flex: none;
-  color: var(--fg-default);
-  font-size: var(--tori-text-md);
-  font-weight: 600;
-}
-
+/* The Worktrees section: the setup command as Settings rows, then the shared
+   entries beside the worktrees one entry did and did not reach, as one card
+   in the column. Two halves because the two questions are different, and the
+   second only matters for the entry in hand. */
 .dir {
   overflow: hidden;
-  min-width: 0;
+  max-width: calc(260px * var(--ui-scale));
   color: var(--fg-muted);
   direction: rtl;
-  font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--tori-text-xs);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-2xs);
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -47,119 +18,80 @@
   flex: 1;
 }
 
-.setup {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  gap: calc(6px * var(--ui-scale));
-  padding: calc(10px * var(--ui-scale)) calc(16px * var(--ui-scale));
-  border-bottom: 1px solid var(--border-default);
-}
-
-.setupHead {
-  color: var(--fg-default);
-  font-size: var(--tori-text-md);
-  font-weight: 600;
-}
-
-/* Settings.module.css's `.input` and `.text`, the field every setting uses. */
-.setupInput {
-  width: 100%;
-  height: var(--control-height);
-  padding: 0 var(--tori-space-4);
-  background: var(--canvas-input);
-  color: var(--fg-default);
-  border: var(--tori-border-thin) solid var(--border-default);
-  border-radius: var(--tori-radius-md);
-  font-family: var(--tori-font-mono);
-  font-size: var(--tori-text-md);
-  transition: border-color var(--tori-duration-fast) ease;
-}
-
-.setupInput:focus {
-  outline: none;
-  border-color: var(--brand-default);
-}
-
 .error {
-  flex: none;
-  padding: calc(6px * var(--ui-scale)) calc(16px * var(--ui-scale));
+  margin: 0 0 var(--tori-space-4);
   color: var(--danger-fg);
-  font-size: var(--tori-text-md);
+  font-size: var(--tori-text-xs);
 }
 
-.body {
+/* A hairline gap over a hairline background, so the halves keep a divider
+   between them whether they sit side by side or the detail wraps under the
+   list. Tall enough that a list of two does not leave the detail a sliver. */
+.split {
   display: flex;
-  flex: 1;
-  min-height: 0;
+  flex-wrap: wrap;
+  gap: 1px;
+  min-height: calc(330px * var(--ui-scale));
+  margin-top: var(--tori-space-4);
+  overflow: hidden;
+  background: var(--border-default);
+  border: var(--tori-border-thin) solid var(--border-default);
+  border-radius: var(--tori-radius-lg);
 }
 
-/* Wide enough for a name and its count, and never more than the pane can
-   spare: the detail beside it is the half with buttons in it. */
-.rail {
+.list,
+.detail {
   display: flex;
-  flex: 0 0 auto;
   flex-direction: column;
-  width: calc(300px * var(--ui-scale));
-  min-width: calc(190px * var(--ui-scale));
-  max-width: 40%;
-  min-height: 0;
-  border-right: 1px solid var(--border-default);
+  min-width: 0;
+  background: var(--canvas-card);
 }
 
-.railHead {
-  flex: none;
-  padding: calc(12px * var(--ui-scale)) calc(14px * var(--ui-scale));
-  border-bottom: 1px solid var(--border-default);
+.list {
+  flex: 1 1 calc(220px * var(--ui-scale));
+  padding: var(--tori-space-3) 0;
 }
 
-.counts {
+.detail {
+  flex: 3 1 calc(360px * var(--ui-scale));
+}
+
+.listHead {
   display: flex;
   align-items: baseline;
-  gap: calc(8px * var(--ui-scale));
+  gap: var(--tori-space-3);
+  padding: var(--tori-space-3) var(--tori-space-5) var(--tori-space-4);
 }
 
 .total {
   color: var(--fg-default);
-  font-size: var(--tori-text-md);
-  font-weight: 600;
+  font-size: var(--tori-text-xs);
+  font-weight: 500;
 }
 
-.warn {
-  color: var(--scale-orange);
-  font-size: var(--tori-text-md);
-}
-
-/* Linking runs at creation. Said once, at the top of the list it explains. */
-.lede {
-  margin: calc(6px * var(--ui-scale)) 0 0;
-  color: var(--fg-subtle);
-  font-size: var(--tori-text-md);
-  line-height: 1.45;
-}
-
-.railList {
-  flex: 1;
-  padding: calc(6px * var(--ui-scale)) 0;
+.warnCount {
+  color: var(--attention-fg);
+  font-size: var(--tori-text-xs);
 }
 
 .empty {
   margin: 0;
-  padding: calc(4px * var(--ui-scale)) calc(14px * var(--ui-scale));
+  padding: var(--tori-space-2) var(--tori-space-5);
   color: var(--fg-subtle);
-  font-size: var(--tori-text-md);
+  font-size: var(--tori-text-xs);
+  line-height: 1.5;
 }
 
+/* Settings' selected-row recipe, as the rail wears it: a brand bar down the
+   left edge over a wash, square on the bar's side. */
 .item {
   display: flex;
   flex-direction: column;
-  gap: calc(4px * var(--ui-scale));
-  width: calc(100% - 12px * var(--ui-scale));
-  margin: 0 calc(6px * var(--ui-scale)) calc(2px * var(--ui-scale));
-  padding: calc(7px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  gap: calc(3px * var(--ui-scale));
+  width: 100%;
+  padding: calc(7px * var(--ui-scale)) var(--tori-space-5);
   background: none;
   border: none;
-  border-radius: var(--tori-radius-sm);
   font: inherit;
   text-align: left;
   cursor: pointer;
@@ -167,18 +99,25 @@
 }
 
 .item:hover {
-  background: var(--tree-row-hover);
+  background: linear-gradient(to right, var(--neutral-hover), transparent);
 }
 
 .itemOn,
 .itemOn:hover {
-  background: var(--tree-row-active);
+  background:
+    linear-gradient(var(--brand-bar), var(--brand-bar)) left center / var(--tori-border-thick) 100% no-repeat,
+    linear-gradient(to right, var(--brand-subtle), transparent);
+}
+
+.item:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--brand-ring);
 }
 
 .itemTop {
   display: flex;
   align-items: center;
-  gap: calc(6px * var(--ui-scale));
+  gap: var(--tori-space-3);
   min-width: 0;
 }
 
@@ -192,8 +131,8 @@
 .itemName {
   overflow: hidden;
   color: var(--fg-default);
-  font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--tori-text-md);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -205,48 +144,32 @@
   color: var(--attention-fg);
 }
 
-.itemFoot {
-  display: flex;
-  align-items: center;
-  gap: calc(8px * var(--ui-scale));
-  padding-left: calc(22px * var(--ui-scale));
-}
-
 .tally {
   overflow: hidden;
+  padding-left: calc(var(--control-icon) + var(--tori-space-3));
   color: var(--fg-subtle);
-  font-size: var(--tori-text-xs);
+  font-size: var(--tori-text-2xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.detail {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-}
-
 .blank {
   margin: 0;
-  padding: calc(16px * var(--ui-scale)) calc(20px * var(--ui-scale));
+  padding: var(--tori-space-5) var(--tori-space-6);
   color: var(--fg-subtle);
-  font-size: var(--tori-text-md);
+  font-size: var(--tori-text-xs);
   line-height: 1.5;
 }
 
 .detailHead {
-  flex: none;
-  padding: calc(14px * var(--ui-scale)) calc(20px * var(--ui-scale)) calc(12px * var(--ui-scale));
-  border-bottom: 1px solid var(--border-default);
+  padding: var(--tori-space-5) var(--tori-space-6) var(--tori-space-4);
 }
 
 .detailTop {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: calc(8px * var(--ui-scale));
+  gap: var(--tori-space-3);
   min-width: 0;
 }
 
@@ -259,8 +182,9 @@
   flex: 0 1 auto;
   min-width: 0;
   color: var(--fg-default);
-  font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--tori-text-xl);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-md);
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -271,70 +195,40 @@
   background: var(--neutral-subtle);
   border-radius: var(--tori-radius-sm);
   color: var(--fg-subtle);
-  font-size: var(--tori-text-xs);
+  font-size: var(--tori-text-2xs);
 }
 
 .path {
-  margin: calc(6px * var(--ui-scale)) 0 0;
+  margin: var(--tori-space-2) 0 0;
   color: var(--fg-subtle);
-  font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--tori-text-xs);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-2xs);
   overflow-wrap: anywhere;
 }
 
 .note {
-  margin: calc(4px * var(--ui-scale)) 0 0;
-  color: var(--scale-orange);
-  font-size: var(--tori-text-md);
-}
-
-.rows {
-  flex: 1;
-  padding-bottom: calc(12px * var(--ui-scale));
-}
-
-.rowHead {
-  display: flex;
-  align-items: center;
-  padding: calc(10px * var(--ui-scale)) calc(20px * var(--ui-scale)) calc(6px * var(--ui-scale));
-  color: var(--fg-subtle);
+  margin: var(--tori-space-2) 0 0;
+  color: var(--attention-fg);
   font-size: var(--tori-text-xs);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
-/* A share of the row rather than a width, so the two columns keep their
-   proportion in a pane half the width and the buttons stay on screen. The
-   header's state column runs on under the buttons; both start at the same
-   x, which is all a left-aligned label needs. */
-.colWorktree,
-.wt {
-  flex: 0 1 40%;
-  min-width: 0;
-}
-
-.colState,
-.state {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
+/* One worktree per row: its branch, the state as a pill, and the one action
+   that state allows. */
 .row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(calc(60px * var(--ui-scale)), auto);
   align-items: center;
-  gap: calc(8px * var(--ui-scale));
-  padding: calc(8px * var(--ui-scale)) calc(20px * var(--ui-scale));
-  border-top: 1px solid var(--border-default);
-}
-
-.row:hover {
-  background: var(--tree-row-hover);
+  column-gap: var(--tori-space-4);
+  min-height: calc(40px * var(--ui-scale));
+  padding: 0 var(--tori-space-6);
+  border-top: var(--tori-border-thin) solid var(--border-default);
 }
 
 .wt {
   display: flex;
   align-items: center;
-  gap: calc(8px * var(--ui-scale));
+  gap: var(--tori-space-3);
+  min-width: 0;
 }
 
 .wt > svg {
@@ -347,42 +241,7 @@
 .wtName {
   overflow: hidden;
   color: var(--fg-default);
-  font-size: var(--tori-text-lg);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.state {
-  display: flex;
-  align-items: center;
-  gap: calc(8px * var(--ui-scale));
-}
-
-.state > svg {
-  flex: none;
-  width: var(--control-icon);
-  height: var(--control-icon);
-  color: var(--fg-subtle);
-}
-
-.stateText {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.stateWord {
-  overflow: hidden;
-  color: var(--fg-default);
-  font-size: var(--tori-text-md);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stateNote {
-  overflow: hidden;
-  color: var(--fg-subtle);
-  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-family: var(--tori-font-mono);
   font-size: var(--tori-text-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -391,10 +250,10 @@
 /* The state as a pill: linked is quiet, missing wears the warning, and a
    worktree with its own copy is outlined, since nothing is wrong with it. */
 .stateWord {
-  flex: none;
   padding: calc(2px * var(--ui-scale)) calc(7px * var(--ui-scale));
   border-radius: calc(5px * var(--ui-scale));
-  font-size: var(--tori-text-xs);
+  font-size: var(--tori-text-2xs);
+  white-space: nowrap;
 }
 
 .row[data-state="linked"] .stateWord {
@@ -413,46 +272,13 @@
   color: var(--fg-muted);
 }
 
-.row[data-state="missing"] .state > svg {
-  color: var(--attention-fg);
-}
-
 .rowEnd {
   display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: calc(4px * var(--ui-scale));
-}
-
-/* The two ways an entry ends, kept away from the per-worktree buttons and
-   spelled out beside them: neither is undone by clicking again. */
-.footBar {
-  display: flex;
-  flex: none;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: calc(10px * var(--ui-scale));
-  padding: calc(10px * var(--ui-scale)) calc(20px * var(--ui-scale));
-  border-top: 1px solid var(--border-default);
-}
-
-/* The note gives way, not the labels: an ellipsis in "Delete entry..." would
-   eat the very thing that says the button is a two-step. */
-.footBar > button {
-  flex: none;
-  white-space: nowrap;
+  justify-content: flex-end;
 }
 
 .destructive {
   color: var(--danger-fg);
-}
-
-.footNote {
-  flex: 1 1 calc(240px * var(--ui-scale));
-  margin: 0;
-  color: var(--fg-subtle);
-  font-size: var(--tori-text-xs);
-  line-height: 1.45;
 }
 
 /* The worktree picker inside the move-back confirmation: which one keeps the
