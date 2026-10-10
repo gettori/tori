@@ -193,3 +193,23 @@
 .textarea:focus {
   border-color: var(--brand-default);
 }
+
+.keys {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-2);
+  margin: 0;
+  padding-left: var(--tori-space-6);
+  color: var(--fg-default);
+}
+
+/* `width`, not `display: flex`: SegmentedControl's own group is inline-flex at
+   the same specificity. */
+.modes {
+  width: 100%;
+}
+
+.modes button {
+  flex: 1;
+  min-width: 0;
+}
