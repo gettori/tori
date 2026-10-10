@@ -2,7 +2,7 @@ import { CardSection, Group, type PaneProps } from "../../components/paneKit";
 import ProjectList from "./ProjectList";
 import TrustedProjects from "./TrustedProjects";
 
-/** The projects Tori found, each opening its settings tab, then the trusted
+/** The projects Tori found, each opening its settings dialog, then the trusted
  *  list, which also holds paths that are not projects Tori found. */
 export default function ProjectsPane(props: PaneProps) {
   return (

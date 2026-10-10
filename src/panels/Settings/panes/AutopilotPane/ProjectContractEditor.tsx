@@ -29,7 +29,7 @@ import ProjectContract from "./ProjectContract";
 
 /** One project's contract, read and saved through Rust, with the worker model
  *  picker wired to the agent catalogue. */
-export default function ProjectContractEditor(props: { project: string }) {
+export default function ProjectContractEditor(props: { project: string; onDirty?: (dirty: boolean) => void }) {
   onMount(() => {
     ensureAdaptersLoaded();
     ensureAgentHealthLoaded();
@@ -76,6 +76,7 @@ export default function ProjectContractEditor(props: { project: string }) {
   return (
     <ProjectContract
       project={props.project}
+      onDirty={props.onDirty}
       contract={contract()}
       onSet={setFor(props.project)}
       workersOn={(set) => (

@@ -303,7 +303,7 @@ export const SETTINGS: SettingEntry[] = [
     id: "projects-list",
     section: "projects",
     label: "Projects",
-    hint: "Every project Tori found. Each one opens its own settings tab, where everything set per project lives.",
+    hint: "Every project Tori found. Each one opens its own settings, where everything set per project lives.",
   },
   {
     id: "trusted-projects",
@@ -703,7 +703,7 @@ export const SETTINGS: SettingEntry[] = [
     id: "autopilot-projects",
     section: "autopilot",
     label: "Project contracts",
-    hint: "Per project, in each project's settings tab: how work ships, how far the autopilot goes before asking, whether it picks up work on its own, what workers run on, and the issue sources it reads.",
+    hint: "Per project, in each project's settings: how work ships, how far the autopilot goes before asking, whether it picks up work on its own, what workers run on, and the issue sources it reads.",
   },
 
   {

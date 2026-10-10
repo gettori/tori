@@ -1,0 +1,368 @@
+/* The project settings dialog, in Settings' panel: the project's name where
+   Settings puts its title, Settings' rail down the left, and the section in
+   hand on the card beside it. The forms scroll on one card; Worktrees fills a
+   card of its own. Rows and section titles are Settings' own classes. */
+.missing {
+  padding: calc(16px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--tori-text-md);
+}
+
+/* The rail's mark for a section holding a draft nobody saved: the warning
+   dot's shape in the brand colour, since nothing is wrong yet. */
+.dotUnsaved {
+  background: var(--brand-default);
+}
+
+/* The card's slot in the body. `display` is set here, so `[hidden]` has to
+   win back explicitly. */
+.frame {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.frame[hidden] {
+  display: none;
+}
+
+/* Where Settings' title sits: the same inset from the panel's edge. */
+.identity {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  gap: var(--tori-space-5);
+  min-width: 0;
+  padding: var(--tori-space-2) 0 var(--tori-space-2) var(--tori-space-2);
+}
+
+.identityTile {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: calc(40px * var(--ui-scale));
+  height: calc(40px * var(--ui-scale));
+  overflow: hidden;
+  background: var(--neutral-subtle);
+  border-radius: calc(10px * var(--ui-scale));
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  color: var(--fg-muted);
+}
+
+.identityTile svg {
+  width: calc(20px * var(--ui-scale));
+  height: calc(20px * var(--ui-scale));
+}
+
+.identityTile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Shrinks but never grows, so the copy button sits beside the path rather
+   than at the far edge next to Close. */
+.identityText {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  gap: var(--tori-space-2);
+  min-width: 0;
+}
+
+/* Wraps rather than cuts: a name is the one thing this header is for. */
+.identityName {
+  color: var(--fg-default);
+  font-size: var(--tori-text-2xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.identityMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--tori-space-2) var(--tori-space-4);
+  min-width: 0;
+  color: var(--fg-muted);
+  font-size: var(--tori-text-xs);
+}
+
+.spaceChip {
+  flex: none;
+  padding: calc(2px * var(--ui-scale)) calc(7px * var(--ui-scale));
+  background: var(--neutral-subtle);
+  border-radius: var(--tori-radius-sm);
+  color: var(--fg-default);
+  font-size: var(--tori-text-xs);
+}
+
+.metaDot {
+  width: calc(3px * var(--ui-scale));
+  height: calc(3px * var(--ui-scale));
+  border-radius: 50%;
+  background: var(--fg-subtle);
+}
+
+.identityPath {
+  min-width: 0;
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-xs);
+  overflow-wrap: anywhere;
+}
+
+.copyPath {
+  flex: none;
+  align-self: center;
+}
+
+/* A section body that is not a label and a control: the icon picker, the agent
+   list, the command list. It keeps the rows' inset so the edges line up. */
+.wide {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-5);
+  padding: var(--tori-space-5) var(--tori-space-1);
+  --control-height: calc(32px * var(--ui-scale));
+}
+
+.lede {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: var(--tori-text-xs);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.value {
+  color: var(--fg-muted);
+  font-size: var(--tori-text-md);
+  text-align: right;
+}
+
+.warn {
+  color: var(--attention-fg);
+}
+
+.mono {
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-xs);
+}
+
+/* A section's Save sits at the end of its own block, with what the draft
+   amounts to at the other end, so each section saves only itself. */
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--tori-space-4);
+}
+
+.actionHint {
+  margin-right: auto;
+  color: var(--fg-subtle);
+  font-size: var(--tori-text-sm);
+}
+
+.textarea {
+  width: 100%;
+  padding: calc(7px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  background: var(--canvas-input);
+  color: var(--fg-default);
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-md);
+  outline: none;
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-md);
+  line-height: var(--tori-line-normal);
+  resize: vertical;
+  transition: border-color var(--tori-duration-fast) ease;
+}
+
+.textarea:focus {
+  border-color: var(--brand-default);
+}
+
+/* `width`, not `display: flex`: SegmentedControl's own group is inline-flex at
+   the same specificity. */
+.modes {
+  width: 100%;
+}
+
+.modes button {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Trailing meta on a section title: the title's caps and mono are the
+   heading's, not the badge's or the button's beside it. */
+.meta {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  font-family: var(--tori-font-ui);
+  font-size: var(--tori-text-xs);
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.badge,
+.badgeOn {
+  padding: calc(2px * var(--ui-scale)) calc(7px * var(--ui-scale));
+  border-radius: var(--tori-radius-sm);
+  font-size: var(--tori-text-xs);
+}
+
+.badge {
+  background: var(--neutral-subtle);
+  color: var(--fg-muted);
+}
+
+.badgeOn {
+  background: var(--brand-subtle);
+  color: var(--brand-default);
+}
+
+.unsaved {
+  color: var(--brand-default);
+  font-weight: 500;
+}
+
+.actionHint .unsaved {
+  margin-left: var(--tori-space-4);
+}
+
+.empty {
+  margin: 0;
+  padding: var(--tori-space-5) var(--tori-space-1);
+  color: var(--fg-muted);
+  font-size: var(--tori-text-xs);
+}
+
+/* Remembered picks: one row per worktree, its picks in columns. */
+.table {
+  max-width: calc(900px * var(--ui-scale));
+  margin-top: var(--tori-space-4);
+  overflow: hidden;
+  border: var(--tori-border-thin) solid var(--border-default);
+  border-radius: var(--tori-radius-md);
+}
+
+.tableHead,
+.tableRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(4, minmax(0, 1fr));
+  column-gap: var(--tori-space-4);
+  padding: calc(9px * var(--ui-scale)) calc(12px * var(--ui-scale));
+}
+
+.tableHead {
+  background: var(--neutral-subtle);
+  color: var(--fg-muted);
+  font-size: var(--tori-text-xs);
+}
+
+.tableRow {
+  border-top: var(--tori-border-thin) solid var(--border-default);
+  color: var(--fg-default);
+  font-size: var(--tori-text-sm);
+}
+
+.tableRow > span,
+.tableHead > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A quiet card for a section that has nothing to set right now. */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-2);
+  margin-top: var(--tori-space-4);
+  padding: var(--tori-space-5) var(--tori-space-6);
+  background: var(--neutral-subtle);
+  border: var(--tori-border-thin) solid var(--border-default);
+  border-radius: var(--tori-radius-lg);
+}
+
+.cardTitle {
+  color: var(--fg-default);
+  font-size: var(--tori-text-md);
+  font-weight: 500;
+}
+
+.cardBody {
+  color: var(--fg-muted);
+  font-size: var(--tori-text-xs);
+}
+
+/* Not trusted is the one state here that keeps tools off, so it gets the
+   warning's own colours rather than a row like the rest. */
+.warnCard {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--tori-space-5);
+  margin-top: var(--tori-space-4);
+  padding: var(--tori-space-5) var(--tori-space-6);
+  background: color-mix(in srgb, var(--attention-fg) 9%, transparent);
+  border: var(--tori-border-thin) solid color-mix(in srgb, var(--attention-fg) 32%, transparent);
+  border-radius: var(--tori-radius-lg);
+}
+
+.warnCard > svg {
+  flex: none;
+  width: var(--control-icon);
+  height: var(--control-icon);
+  margin-top: calc(2px * var(--ui-scale));
+  color: var(--attention-fg);
+}
+
+.warnText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--tori-space-2);
+  min-width: 0;
+}
+
+.warnTitle {
+  color: var(--attention-fg);
+  font-size: var(--tori-text-md);
+  font-weight: 600;
+}
+
+.warnBody {
+  color: var(--fg-default);
+  font-size: var(--tori-text-xs);
+  line-height: 1.55;
+}
+
+.textareaDirty,
+.textareaDirty:focus {
+  border-color: var(--brand-default);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tori-space-3);
+  padding: 0 var(--tori-space-1) var(--tori-space-5);
+}
+
+.chip {
+  padding: calc(2px * var(--ui-scale)) calc(7px * var(--ui-scale));
+  background: var(--neutral-subtle);
+  border: var(--tori-border-thin) solid var(--border-default);
+  border-radius: calc(5px * var(--ui-scale));
+  color: var(--fg-default);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-xs);
+}

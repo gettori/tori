@@ -184,8 +184,8 @@ const KEPT = new Map<string, Kept>([
       reason: `one ${TRUNCATION}, and three of ${HEADING}. Was two truncations until the tab registry deduplicated the strip's touched-dot span into the shared fileDots helper (written once, rendered in both the tab and its overflow row). Its 9 swept controls rest on this static check alone: the pane is 2000 lines behind a CodeMirror mount and phase 3 did not budget a mounting test for it, the same limit DebugPanel records above`,
     },
   ],
-  ["panels/Editor/ProjectSettings/ProjectSettingsView.tsx", { count: 1, reason: TRUNCATION }],
-  ["panels/Editor/ProjectSettings/WorktreesSection.tsx", { count: 2, reason: `one ${TRUNCATION}, and one ${HEADING}` }],
+  ["panels/ProjectSettings/ProjectHeader.tsx", { count: 1, reason: TRUNCATION }],
+  ["panels/ProjectSettings/WorktreesSection.tsx", { count: 2, reason: `one ${TRUNCATION}, and one ${HEADING}` }],
   ["panels/Editor/ProblemsPanel.tsx", { count: 2, reason: `one ${TRUNCATION}, and one ${ROW_ONCLICK}` }],
   ["panels/Editor/TodoPanel.tsx", { count: 2, reason: `one ${TRUNCATION}, and one ${ROW_ONCLICK}` }],
   ["panels/Editor/ConflictView.tsx", { count: 2, reason: `${TRUNCATION}, plus one ${HEADING}` }],
@@ -363,7 +363,7 @@ const KEPT = new Map<string, Kept>([
  *  Its rows are buttons that describe themselves through `Tooltip`, and a
  *  file's name and folder each get a line of their own.
  *
- *  **Up one** with the project settings tab, whose bar carries the project's
+ *  **Up one** with the project settings tab, whose header carries the project's
  *  path, truncated from the left, beside the Worktrees section's own. */
 const RAW_ELEMENT_TITLES = 73;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket

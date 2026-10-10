@@ -6,7 +6,6 @@
   flex: 1;
   flex-direction: column;
   min-height: 0;
-  background: var(--canvas-default);
 }
 
 .sharedHead {
@@ -199,14 +198,11 @@
   white-space: nowrap;
 }
 
-.miss {
+.missMark {
   flex: none;
-  padding: 0 calc(6px * var(--ui-scale));
-  background: var(--neutral-subtle);
-  border-radius: var(--tori-radius-pill);
-  color: var(--scale-orange);
-  font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--tori-text-xs);
+  width: var(--control-icon);
+  height: var(--control-icon);
+  color: var(--attention-fg);
 }
 
 .itemFoot {
@@ -392,19 +388,33 @@
   white-space: nowrap;
 }
 
-.row[data-state="linked"] .stateWord,
-.row[data-state="linked"] .state > svg {
-  color: var(--scale-green);
+/* The state as a pill: linked is quiet, missing wears the warning, and a
+   worktree with its own copy is outlined, since nothing is wrong with it. */
+.stateWord {
+  flex: none;
+  padding: calc(2px * var(--ui-scale)) calc(7px * var(--ui-scale));
+  border-radius: calc(5px * var(--ui-scale));
+  font-size: var(--tori-text-xs);
 }
 
-.row[data-state="missing"] .stateWord,
+.row[data-state="linked"] .stateWord {
+  background: var(--neutral-subtle);
+  color: var(--fg-muted);
+}
+
+.row[data-state="missing"] .stateWord {
+  background: color-mix(in srgb, var(--attention-fg) 9%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--attention-fg) 32%, transparent);
+  color: var(--attention-fg);
+}
+
+.row[data-state="shadowed"] .stateWord {
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  color: var(--fg-muted);
+}
+
 .row[data-state="missing"] .state > svg {
-  color: var(--scale-orange);
-}
-
-.row[data-state="shadowed"] .stateWord,
-.row[data-state="shadowed"] .state > svg {
-  color: var(--scale-blue);
+  color: var(--attention-fg);
 }
 
 .rowEnd {

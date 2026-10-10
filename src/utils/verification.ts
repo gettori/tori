@@ -61,6 +61,9 @@ export const resetVerificationForTests = verified.reset;
 export const projectChecks = (projectPath: string) =>
   invoke<string[]>("verification_commands", { project: projectPath });
 
+/** The built-in list, which a project with no list of its own uses. */
+export const builtInChecks = () => invoke<string[]>("verification_defaults");
+
 /** Replace the commands that count as a check in one project. None returns it
  *  to the built-in list. */
 export function setProjectChecks(projectPath: string, commands: string[]): Promise<void> {

@@ -10,6 +10,7 @@
    picture of one. */
 .preview {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--tori-space-5);
   padding: var(--tori-space-5);
@@ -40,7 +41,57 @@
   object-fit: cover;
 }
 .copy {
+  flex: 1;
   min-width: 0;
+}
+
+/* The icon at the size a sidebar row wears it, beside a sample of the row. */
+.sample {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--tori-space-2);
+}
+
+.sampleCaption {
+  color: var(--fg-subtle);
+  font-size: var(--tori-text-xs);
+}
+
+.sampleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--tori-space-3);
+  width: calc(180px * var(--ui-scale));
+  height: calc(28px * var(--ui-scale));
+  padding: 0 var(--tori-space-4);
+  background: var(--canvas-default);
+  border: var(--tori-border-thin) solid var(--border-default);
+  border-radius: var(--tori-radius-md);
+}
+
+.sampleIcon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: calc(16px * var(--ui-scale));
+  height: calc(16px * var(--ui-scale));
+}
+
+.sampleIcon svg,
+.sampleIcon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.sampleName {
+  overflow: hidden;
+  color: var(--fg-default);
+  font-size: var(--tori-text-md);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .copyTitle {
   font-size: var(--tori-text-md);
