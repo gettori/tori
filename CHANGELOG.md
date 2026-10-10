@@ -10,6 +10,15 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
 ## Unreleased
 
+- Your own config files now live in one folder, `~/.config/tori/packs/<kind>/`.
+  Tori moves the old per-kind folders there on first start and says what it
+  moved. A language server, formatter or theme file that reused a bundled id
+  is renamed to `<id>-custom`, with the bundled one switched off so nothing
+  changes for you. Agent and debugger files keep their id as overrides, since
+  an agent id is tied to your accounts and sessions.
+- From now on a file of yours can't take a bundled pack's id. Settings lists
+  any file that didn't load under "Needs fixing", with what to do about it,
+  and every card says where its pack came from.
 - Topic chats come back after a reload, and History lists them. Both looked
   for a Topic's sessions as if its key were a folder, so every Topic chat tab
   was dropped as missing.
