@@ -1,7 +1,7 @@
 .list {
   display: flex;
   flex-direction: column;
-  gap: var(--tori-space-4);
+  gap: var(--tori-space-3);
 }
 /* Every mode allows all of them, so the list is drawn but out of reach of both
    the pointer and the tab order. */
@@ -12,7 +12,7 @@
 .row {
   width: 100%;
   gap: var(--tori-space-5);
-  padding: calc(10px * var(--ui-scale)) var(--tori-space-6);
+  padding: var(--tori-space-4) var(--tori-space-5);
   background: var(--canvas-input);
   border: var(--tori-border-thin) solid var(--border-default);
   border-radius: var(--tori-radius-md);
