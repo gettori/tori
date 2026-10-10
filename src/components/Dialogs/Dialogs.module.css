@@ -1297,63 +1297,6 @@ li[data-picked] .branchDelete {
   white-space: nowrap;
 }
 
-/* ---- Agents ---- */
-.agentList {
-  display: flex;
-  flex-direction: column;
-  gap: var(--tori-space-3);
-}
-/* Every mode allows all of them, so the list has nothing to answer: drawn, so
-   the rows the other mode would offer are visible before the switch, but out of
-   reach of both the pointer and the tab order. */
-.agentsIdle {
-  opacity: 0.45;
-  pointer-events: none;
-}
-.agentRow {
-  width: 100%;
-  gap: var(--tori-space-5);
-  padding: var(--tori-space-4) var(--tori-space-5);
-  background: var(--canvas-input);
-  border: var(--tori-border-thin) solid var(--border-default);
-  border-radius: var(--tori-radius-md);
-  font-size: var(--tori-text-md);
-  transition:
-    background var(--tori-duration-fast) ease,
-    border-color var(--tori-duration-fast) ease;
-}
-/* Tag selector because the label is `Checkbox`'s markup, not this module's: it
-   has to take the free space so the account can sit at the row's far edge. */
-.agentRow label {
-  flex: 1;
-  min-width: 0;
-  cursor: pointer;
-}
-.agentRowOn {
-  background: color-mix(in srgb, var(--brand-default) 10%, transparent);
-  border-color: var(--brand-default);
-}
-.agentLabel {
-  display: flex;
-  align-items: center;
-  gap: var(--tori-space-4);
-}
-.agentName {
-  color: var(--fg-default);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* The login the agent would run as, in the face the palette and the tab spell
-   accounts in. */
-.agentAccount {
-  margin-left: auto;
-  flex: none;
-  font-family: var(--tori-font-mono);
-  font-size: var(--tori-text-xs);
-  color: var(--fg-subtle);
-}
-
 /* ---- Remove folder / Remove project ---- */
 
 /* What the list is a listing of, and how much of it there is. Attached to the
@@ -1381,14 +1324,4 @@ li[data-picked] .branchDelete {
   background: var(--canvas-input);
   border: var(--tori-border-thin) solid var(--border-default);
   border-radius: var(--tori-radius-md);
-}
-
-.commandList {
-  font-family: var(--tori-font-mono);
-  font-size: var(--tori-text-md);
-  line-height: var(--tori-line-normal);
-  resize: vertical;
-}
-.leadAction {
-  margin-right: auto;
 }

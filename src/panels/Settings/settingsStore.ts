@@ -21,6 +21,7 @@ import {
   type Layer,
 } from "./utils/workspaceSettings";
 import { DEFAULT_PIN_SIDES, type PinSide } from "../../layout/pinRules";
+import { isUnderPath } from "../../utils/pathScope";
 
 /** Where the sidebar's space tiles sit. Mirrors `SpaceStrip` in
  *  src-tauri/src/settings.rs. */
@@ -652,6 +653,14 @@ export function rememberChatPrefs(projectPath: string, prefs: ChatPrefs): void {
     chat: { ...settings.chat, [projectPath]: { ...chatPrefs(projectPath), ...prefs } },
   };
   void saveSettings(next).catch(() => {});
+}
+
+/** Forget every remembered chat pick at or under `projectPath`, the worktrees
+ *  long since removed included: the picks are keyed by worktree folder, and
+ *  nothing purges one when its worktree goes. */
+export function forgetChatPrefsUnder(projectPath: string): Promise<void> {
+  const chat = Object.fromEntries(Object.entries(settings.chat ?? {}).filter(([k]) => !isUnderPath(k, projectPath)));
+  return saveSettings({ ...settings, chat });
 }
 
 // ---- The per-workspace overlay ------------------------------------------

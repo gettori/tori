@@ -11,6 +11,8 @@ import {
   takeAskedSection,
   type ProjectSection,
 } from "../../../utils/projectSettings";
+import AgentsSection from "./AgentsSection";
+import ChecksSection from "./ChecksSection";
 import GeneralSection from "./GeneralSection";
 import WorktreesSection from "./WorktreesSection";
 import styles from "./ProjectSettingsView.module.css";
@@ -81,6 +83,16 @@ export default function ProjectSettingsView(props: { workspace: string }) {
             <Switch>
               <Match when={section() === "worktrees"}>
                 <WorktreesSection workspace={props.workspace} />
+              </Match>
+              <Match when={section() === "agents"}>
+                <OverlayScroll class={styles.content}>
+                  <AgentsSection project={f().project} />
+                </OverlayScroll>
+              </Match>
+              <Match when={section() === "checks"}>
+                <OverlayScroll class={styles.content}>
+                  <ChecksSection projectPath={f().project.path} />
+                </OverlayScroll>
               </Match>
               <Match when={section() === "general"}>
                 <OverlayScroll class={styles.content}>
