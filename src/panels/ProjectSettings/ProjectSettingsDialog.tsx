@@ -169,38 +169,24 @@ export default function ProjectSettingsDialog(props: { path: string; section?: P
               </div>
             </div>
 
-            {/* The forms share one scrolling card. Worktrees is a card of its
-                own, since its two panes fill the height rather than scroll. */}
-            <div class={styles.frame} hidden={section() === "worktrees"}>
-              <OverlayScroll class={s.pane} contentClass={s.paneInner}>
-                {pane("general", <GeneralSection project={f().project} kind={kind()} />)}
-                {pane(
-                  "agents",
-                  <AgentsSection project={f().project} onDirty={(key, on) => markDirty(`agents:${key}`, on)} />,
-                )}
-                {pane(
-                  "tooling",
-                  <>
-                    <TrustSection projectPath={f().project.path} />
-                    <ChecksSection projectPath={f().project.path} onDirty={(on) => markDirty("tooling:checks", on)} />
-                    <Show when={kind() === "plain" || kind() === "plain-dir"}>
-                      <EditorSection projectPath={f().project.path} />
-                    </Show>
-                  </>,
-                )}
-              </OverlayScroll>
-            </div>
-            <Show when={sections().includes("worktrees")}>
-              <div
-                id={paneId("worktrees")}
-                class={`${styles.frame} ${s.pane}`}
-                role="tabpanel"
-                aria-labelledby={tabId("worktrees")}
-                hidden={section() !== "worktrees"}
-              >
-                <WorktreesSection workspace={f().project.path} />
-              </div>
-            </Show>
+            <OverlayScroll class={s.pane} contentClass={s.paneInner}>
+              {pane("general", <GeneralSection project={f().project} kind={kind()} />)}
+              {pane("worktrees", <WorktreesSection workspace={f().project.path} />)}
+              {pane(
+                "agents",
+                <AgentsSection project={f().project} onDirty={(key, on) => markDirty(`agents:${key}`, on)} />,
+              )}
+              {pane(
+                "tooling",
+                <>
+                  <TrustSection projectPath={f().project.path} />
+                  <ChecksSection projectPath={f().project.path} onDirty={(on) => markDirty("tooling:checks", on)} />
+                  <Show when={kind() === "plain" || kind() === "plain-dir"}>
+                    <EditorSection projectPath={f().project.path} />
+                  </Show>
+                </>,
+              )}
+            </OverlayScroll>
           </div>
         )}
       </Show>

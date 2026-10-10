@@ -1,26 +1,18 @@
 import { createEffect, createMemo, createSignal, on, For, Show, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import {
-  CircleAlert,
-  CornerDownRight,
-  Folder,
-  FolderSymlink,
-  GitBranch,
-  Link,
-  RefreshCw,
-  Trash2,
-  TriangleAlert,
-} from "lucide-solid";
+import { CornerDownRight, Folder, GitBranch, RefreshCw, Trash2, TriangleAlert } from "lucide-solid";
 
 import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
 import { rememberWorktreePrefs, worktreePrefs, type WorktreePrefs } from "../Settings/settingsStore";
 import Button from "../../components/Button/Button";
 import IconButton from "../../components/IconButton/IconButton";
 import Icon from "../../components/Icon/Icon";
-import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import Switch from "../../components/Switch/Switch";
 import ConfirmDialog from "../../components/Dialogs/ConfirmDialog";
 import FileIcon from "../../seti/FileIcon";
+import s from "../Settings/Settings.module.css";
+import own from "./ProjectSettingsDialog.module.css";
+import { Row, Section } from "./Section";
 import styles from "./WorktreesSection.module.css";
 
 /** Mirrors `LinkState` in src-tauri/src/shared.rs. */
@@ -212,201 +204,203 @@ export default function WorktreesSection(props: { workspace: string }) {
     return parts.join(", ");
   }
 
-  function stateNote(e: SharedEntry, l: WorktreeLink) {
-    if (l.state === "linked") return `${basename(l.path)}/${e.name}`;
-    if (l.state === "missing") return "no entry on disk";
-    return "a file of its own, never replaced";
-  }
+  const dir = () => data()?.dir ?? `${props.workspace}/.shared`;
 
   return (
-    <div class={styles.page}>
-      <section class={styles.setup}>
-        <span class={styles.setupHead}>Setup command</span>
-        <input
-          type="text"
-          class={styles.setupInput}
-          aria-label="Setup command"
-          value={setup().setupCommand}
-          placeholder="pnpm install --frozen-lockfile --prefer-offline"
-          onChange={(e) => saveSetup({ setupCommand: e.currentTarget.value.trim() })}
-        />
-        <Switch
-          checked={setup().setupWait}
-          onChange={(on) => saveSetup({ setupWait: on })}
-          label="Agents started over the socket wait for it"
-        />
-        <p class={styles.lede}>
-          Runs with <code>sh -c</code> in each worktree Tori creates here, with <code>TORI_PROJECT_ROOT</code> and{" "}
-          <code>TORI_WORKTREE_PATH</code> set. A fork's pull request never runs it.
+    <>
+      <Section heading="Setup">
+        <div class={`${s.row} ${s.rowStack}`}>
+          <span class={s.label}>Setup command</span>
+          <div class={s.hint}>
+            Runs with <code>sh -c</code> in each worktree Tori creates here, with <code>TORI_PROJECT_ROOT</code> and{" "}
+            <code>TORI_WORKTREE_PATH</code> set. A fork's pull request never runs it.
+          </div>
+          <div class={s.control}>
+            <input
+              type="text"
+              class={`${s.input} ${s.text}`}
+              aria-label="Setup command"
+              value={setup().setupCommand}
+              placeholder="pnpm install"
+              onChange={(e) => saveSetup({ setupCommand: e.currentTarget.value.trim() })}
+            />
+          </div>
+        </div>
+        <Row label="Agents started over the socket wait for it">
+          <Switch
+            checked={setup().setupWait}
+            onChange={(on) => saveSetup({ setupWait: on })}
+            aria-label="Agents started over the socket wait for it"
+          />
+        </Row>
+      </Section>
+
+      <Section
+        heading="Shared files"
+        meta={
+          <>
+            <span class={styles.dir} title={dir()}>
+              {"‎" + dir() + "‎"}
+            </span>
+            <IconButton
+              size="xs"
+              icon={<Icon icon={RefreshCw} />}
+              aria-label="Refresh"
+              tooltip="Refresh"
+              onClick={() => void load()}
+            />
+          </>
+        }
+      >
+        {/* The one thing nobody guesses, and the reason the detail beside the
+            list has anything to do. */}
+        <p class={own.lede}>
+          Links are made when a worktree is created, so anything shared later needs linking in by hand.
         </p>
-      </section>
+        <Show when={error()}>
+          <p class={styles.error}>{error()}</p>
+        </Show>
 
-      <div class={styles.sharedHead}>
-        <Icon icon={FolderSymlink} />
-        <span class={styles.sharedTitle}>Shared files</span>
-        <span class={styles.dir} title={data()?.dir ?? props.workspace}>
-          {"\u200e" + (data()?.dir ?? props.workspace) + "\u200e"}
-        </span>
-        <span class={styles.spacer} />
-        <IconButton size="sm" icon={<Icon icon={RefreshCw} />} tooltip="Refresh" onClick={() => void load()} />
-      </div>
-
-      <Show when={error()}>
-        <div class={styles.error}>{error()}</div>
-      </Show>
-
-      <div class={styles.body}>
-        <div class={styles.rail}>
-          <div class={styles.railHead}>
-            <div class={styles.counts}>
-              <span class={styles.total}>{entryCount(entries().length)}</span>
-              <Show when={incomplete()}>
-                <span class={styles.warn}>{incomplete()} incomplete</span>
+        <Show
+          when={data()?.worktrees.length}
+          fallback={
+            <Show when={data()}>
+              <div class={own.card}>
+                <span class={own.cardTitle}>No worktrees yet</span>
+                <span class={own.cardBody}>
+                  Add a worktree first. Then share a file by right-clicking it in the file tree, and it is linked into
+                  every worktree from then on.
+                </span>
+              </div>
+            </Show>
+          }
+        >
+          <div class={styles.split}>
+            <div class={styles.list}>
+              <div class={styles.listHead}>
+                <span class={styles.total}>{entryCount(entries().length)}</span>
+                <Show when={incomplete()}>
+                  <span class={styles.warnCount}>{incomplete()} incomplete</span>
+                </Show>
+              </div>
+              <Show
+                when={entries().length}
+                fallback={
+                  <p class={styles.empty}>Nothing is shared yet. Right-click a file in the file tree to share it.</p>
+                }
+              >
+                <For each={entries()}>
+                  {(e) => (
+                    <button
+                      type="button"
+                      class={styles.item}
+                      classList={{ [styles.itemOn]: chosen()?.name === e.name }}
+                      aria-current={chosen()?.name === e.name}
+                      onClick={() => setPick(e.name)}
+                    >
+                      <span class={styles.itemTop}>
+                        <EntryIcon name={e.name} dir={e.is_dir} />
+                        <span class={styles.itemName}>
+                          {e.name}
+                          {e.is_dir ? "/" : ""}
+                        </span>
+                        <span class={styles.spacer} />
+                        <Show when={missingIn(e)}>
+                          <Icon icon={TriangleAlert} class={styles.missMark} aria-label="Missing from a worktree" />
+                        </Show>
+                      </span>
+                      <span class={styles.tally}>{tally(e)}</span>
+                    </button>
+                  )}
+                </For>
               </Show>
             </div>
-            {/* The one thing nobody guesses, and the reason the pane beside
-                this has anything to do. */}
-            <p class={styles.lede}>
-              Links are made when a worktree is created, so anything shared later needs linking in by hand.
-            </p>
-          </div>
 
-          <OverlayScroll class={styles.railList}>
-            <Show when={entries().length} fallback={<p class={styles.empty}>Nothing is shared yet.</p>}>
-              <For each={entries()}>
+            <div class={styles.detail}>
+              <Show
+                when={chosen()}
+                fallback={<p class={styles.blank}>Pick an entry to see which worktrees have it.</p>}
+              >
                 {(e) => (
-                  <button
-                    type="button"
-                    class={styles.item}
-                    classList={{ [styles.itemOn]: chosen()?.name === e.name }}
-                    aria-current={chosen()?.name === e.name}
-                    onClick={() => setPick(e.name)}
-                  >
-                    <span class={styles.itemTop}>
-                      <EntryIcon name={e.name} dir={e.is_dir} />
-                      <span class={styles.itemName}>
-                        {e.name}
-                        {e.is_dir ? "/" : ""}
-                      </span>
-                      <span class={styles.spacer} />
-                      <Show when={missingIn(e)}>
-                        <Icon icon={TriangleAlert} class={styles.missMark} aria-label="Missing from a worktree" />
-                      </Show>
-                    </span>
-                    <span class={styles.itemFoot}>
-                      <span class={styles.tally}>{tally(e)}</span>
-                    </span>
-                  </button>
-                )}
-              </For>
-            </Show>
-          </OverlayScroll>
-        </div>
-
-        <div class={styles.detail}>
-          <Show
-            when={chosen()}
-            fallback={
-              <p class={styles.blank}>
-                Share a file by right-clicking it in the file tree. It is linked into every worktree from then on.
-              </p>
-            }
-          >
-            {(e) => (
-              <>
-                <div class={styles.detailHead}>
-                  <div class={styles.detailTop}>
-                    <span class={styles.detailName}>{e().name}</span>
-                    <span class={styles.kind}>{e().is_dir ? "folder" : "file"}</span>
-                    <span class={styles.spacer} />
-                    <Show when={missingIn(e())}>
-                      <Button size="sm" variant="primary" disabled={!!busy()} onClick={() => link(e().name)}>
-                        Link into {plural(missingIn(e()), "worktree")}
-                      </Button>
-                    </Show>
-                  </div>
-                  <p class={styles.path}>
-                    {data()?.dir}/{e().name}
-                  </p>
-                  <Show when={missingIn(e())}>
-                    <p class={styles.note}>{plural(missingIn(e()), "worktree")} never received it, or lost the link.</p>
-                  </Show>
-                </div>
-
-                <OverlayScroll class={styles.rows}>
-                  <div class={styles.rowHead}>
-                    <span class={styles.colWorktree}>Worktree</span>
-                    <span class={styles.colState}>State</span>
-                  </div>
-                  <For each={e().links}>
-                    {(l) => (
-                      <div class={styles.row} data-state={l.state}>
-                        <span class={styles.wt}>
-                          <Icon icon={GitBranch} />
-                          <span class={styles.wtName}>{basename(l.path)}</span>
-                        </span>
-                        <span class={styles.state}>
-                          <Icon icon={l.state === "missing" ? CircleAlert : Link} />
-                          <span class={styles.stateText}>
-                            <span class={styles.stateWord}>{STATE_WORD[l.state]}</span>
-                            <span class={styles.stateNote}>{stateNote(e(), l)}</span>
-                          </span>
-                        </span>
-                        <span class={styles.rowEnd}>
-                          <Show when={l.state === "missing"}>
-                            <Button
-                              size="xs"
-                              disabled={!!busy()}
-                              aria-label={`Link ${e().name} into ${basename(l.path)}`}
-                              onClick={() => link(e().name, l.path)}
-                            >
-                              Link
-                            </Button>
-                          </Show>
-                          <Show when={l.state === "linked"}>
-                            <Button
-                              size="xs"
-                              disabled={!!busy()}
-                              aria-label={`Unlink ${e().name} from ${basename(l.path)}`}
-                              onClick={() => unlink(e().name, l.path)}
-                            >
-                              Unlink
-                            </Button>
-                          </Show>
-                        </span>
+                  <>
+                    <div class={styles.detailHead}>
+                      <div class={styles.detailTop}>
+                        <span class={styles.detailName}>{e().name}</span>
+                        <span class={styles.kind}>{e().is_dir ? "folder" : "file"}</span>
+                        <span class={styles.spacer} />
+                        <Show when={missingIn(e())}>
+                          <Button size="xs" variant="primary" disabled={!!busy()} onClick={() => link(e().name)}>
+                            Link into {plural(missingIn(e()), "worktree")}
+                          </Button>
+                        </Show>
+                        <Button
+                          size="xs"
+                          icon={<Icon icon={CornerDownRight} />}
+                          disabled={!!busy()}
+                          onClick={() => keep(e())}
+                        >
+                          Stop sharing...
+                        </Button>
+                        <Button
+                          size="xs"
+                          class={styles.destructive}
+                          icon={<Icon icon={Trash2} />}
+                          disabled={!!busy()}
+                          onClick={() => remove(e())}
+                        >
+                          Delete entry...
+                        </Button>
                       </div>
-                    )}
-                  </For>
-                </OverlayScroll>
+                      <p class={styles.path}>
+                        {dir()}/{e().name}
+                      </p>
+                      <Show when={missingIn(e())}>
+                        <p class={styles.note}>
+                          {plural(missingIn(e()), "worktree")} never received it, or lost the link.
+                        </p>
+                      </Show>
+                    </div>
 
-                <div class={styles.footBar}>
-                  <Button
-                    size="sm"
-                    icon={<Icon icon={CornerDownRight} />}
-                    disabled={!!busy()}
-                    onClick={() => keep(e())}
-                  >
-                    Stop sharing...
-                  </Button>
-                  <Button
-                    size="sm"
-                    class={styles.destructive}
-                    icon={<Icon icon={Trash2} />}
-                    disabled={!!busy()}
-                    onClick={() => remove(e())}
-                  >
-                    Delete entry...
-                  </Button>
-                  <p class={styles.footNote}>
-                    Stop sharing moves the real {e().is_dir ? "folder" : "file"} into one worktree you choose, and the
-                    rest lose it. Delete removes it and every link.
-                  </p>
-                </div>
-              </>
-            )}
-          </Show>
-        </div>
-      </div>
+                    <For each={e().links}>
+                      {(l) => (
+                        <div class={styles.row} data-state={l.state}>
+                          <span class={styles.wt}>
+                            <Icon icon={GitBranch} />
+                            <span class={styles.wtName}>{basename(l.path)}</span>
+                          </span>
+                          <span class={styles.stateWord}>{STATE_WORD[l.state]}</span>
+                          <span class={styles.rowEnd}>
+                            <Show when={l.state === "missing"}>
+                              <Button
+                                size="xs"
+                                disabled={!!busy()}
+                                aria-label={`Link ${e().name} into ${basename(l.path)}`}
+                                onClick={() => link(e().name, l.path)}
+                              >
+                                Link
+                              </Button>
+                            </Show>
+                            <Show when={l.state === "linked"}>
+                              <Button
+                                size="xs"
+                                disabled={!!busy()}
+                                aria-label={`Unlink ${e().name} from ${basename(l.path)}`}
+                                onClick={() => unlink(e().name, l.path)}
+                              >
+                                Unlink
+                              </Button>
+                            </Show>
+                          </span>
+                        </div>
+                      )}
+                    </For>
+                  </>
+                )}
+              </Show>
+            </div>
+          </div>
+        </Show>
+      </Section>
 
       <Show when={ask()}>
         {(a) => (
@@ -425,6 +419,6 @@ export default function WorktreesSection(props: { workspace: string }) {
           />
         )}
       </Show>
-    </div>
+    </>
   );
 }
