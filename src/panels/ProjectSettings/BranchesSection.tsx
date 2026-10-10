@@ -2,13 +2,14 @@ import { createResource, createSignal, onCleanup, onMount, Show } from "solid-js
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
-import Button from "../../../components/Button/Button";
-import ChangeOriginDialog from "../../../components/Dialogs/ChangeOriginDialog";
-import Select from "../../../components/Select/Select";
-import { emitWith, OPEN_SETTINGS, TOAST, type OpenSettings, type ToastEvent } from "../../../utils/events";
-import { forgeAccountsOn, forgeRepo, pickForgeAccount, resolveForgeRepo } from "../../../utils/forgeStatus";
-import { forgeAccountName, forgeErrorMessage } from "../../../utils/forgeTypes";
-import styles from "./ProjectSettingsView.module.css";
+import Button from "../../components/Button/Button";
+import ChangeOriginDialog from "../../components/Dialogs/ChangeOriginDialog";
+import Select from "../../components/Select/Select";
+import { emitWith, OPEN_SETTINGS, TOAST, type OpenSettings, type ToastEvent } from "../../utils/events";
+import { forgeAccountsOn, forgeRepo, pickForgeAccount, resolveForgeRepo } from "../../utils/forgeStatus";
+import { forgeAccountName, forgeErrorMessage } from "../../utils/forgeTypes";
+import { Row, Section } from "./Section";
+import styles from "./ProjectSettingsDialog.module.css";
 
 const toast = (message: string) => emitWith<ToastEvent>(TOAST, { message, kind: "error" });
 
@@ -70,53 +71,48 @@ export default function BranchesSection(props: { projectPath: string; projectNam
   };
 
   return (
-    <div class={styles.form}>
-      <section class={styles.block}>
-        <h3 class={styles.blockHead}>Origin</h3>
-        <dl class={styles.facts}>
-          <dt>URL</dt>
-          <dd class={styles.mono}>{origin() ?? "None"}</dd>
-          <dt>Default branch</dt>
-          <dd>{base() ?? "Unknown"}</dd>
-        </dl>
-        <div class={styles.actions}>
-          <Button onClick={() => setEditing(true)}>{origin() ? "Change origin" : "Set origin"}</Button>
-        </div>
-      </section>
-
-      <section class={styles.block}>
-        <h3 class={styles.blockHead}>Account</h3>
-        <p class={styles.note}>
-          The account Tori uses for pull requests and checks on this repo. It is kept per remote, so it applies to every
-          project that shares this origin.
-        </p>
-        <Show
-          when={accountOptions().length}
-          fallback={
-            <div class={styles.actions}>
-              <span class={styles.actionHint}>
-                {host() ? `No account added for ${host()}` : "No origin a forge account can serve"}
-              </span>
-              <Show when={host()}>
-                <Button onClick={() => emitWith<OpenSettings>(OPEN_SETTINGS, { entry: "forge" })}>
-                  Add an account
-                </Button>
-              </Show>
-            </div>
-          }
-        >
-          <Select
-            aria-label={`Account for ${props.projectName}`}
-            placeholder="Pick an account"
-            options={accountOptions()}
-            value={current()}
-            onChange={(id) => void pickForgeAccount(props.projectPath, id).catch((e) => toast(forgeErrorMessage(e)))}
-          />
-          <Show when={repo()?.kind === "pick"}>
-            <p class={styles.note}>More than one account is added for {host()}. Pick the one this repo uses.</p>
-          </Show>
-        </Show>
-      </section>
+    <Section heading="Remote">
+      <Row label="Origin" hint={<span class={styles.mono}>{origin() ?? "None set"}</span>}>
+        <Button onClick={() => setEditing(true)}>{origin() ? "Change origin" : "Set origin"}</Button>
+      </Row>
+      <Row label="Default branch" hint="What origin calls its default branch.">
+        <span class={styles.value}>{base() ?? "Unknown"}</span>
+      </Row>
+      {/* Hidden on an origin no forge serves: there is no account to pick. */}
+      <Show when={host()}>
+        {(h) => (
+          <Row
+            label="Account"
+            hint={
+              repo()?.kind === "pick"
+                ? `More than one account is added for ${h()}. Pick the one this repo uses for pull requests and checks.`
+                : "Used for pull requests and checks. Kept per remote, so every project on this origin shares it."
+            }
+          >
+            <Show
+              when={accountOptions().length}
+              fallback={
+                <>
+                  <span class={styles.value}>No {h()} account</span>
+                  <Button variant="primary" onClick={() => emitWith<OpenSettings>(OPEN_SETTINGS, { entry: "forge" })}>
+                    Add an account
+                  </Button>
+                </>
+              }
+            >
+              <Select
+                aria-label={`Account for ${props.projectName}`}
+                placeholder="Pick an account"
+                options={accountOptions()}
+                value={current()}
+                onChange={(id) =>
+                  void pickForgeAccount(props.projectPath, id).catch((e) => toast(forgeErrorMessage(e)))
+                }
+              />
+            </Show>
+          </Row>
+        )}
+      </Show>
 
       <Show when={editing()}>
         <ChangeOriginDialog
@@ -127,6 +123,6 @@ export default function BranchesSection(props: { projectPath: string; projectNam
           onCancel={() => setEditing(false)}
         />
       </Show>
-    </div>
+    </Section>
   );
 }

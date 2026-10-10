@@ -1,5 +1,6 @@
 import { createEffect, createSignal, For, on, Show, type JSX } from "solid-js";
-import Select, { type SelectOption } from "../../../../components/Select/Select";
+import { type SelectOption } from "../../../../components/Select/Select";
+import SegmentedControl from "../../../../components/SegmentedControl/SegmentedControl";
 import Button from "../../../../components/Button/Button";
 import styles from "../../Settings.module.css";
 import own from "./ProjectContract.module.css";
@@ -41,6 +42,8 @@ export default function ProjectContract(props: {
    *  catalogue; it saves through `set` so a refusal shows here like any other. */
   workersOn: (set: (patch: ContractPatch) => void) => JSX.Element;
   onSet: (patch: ContractPatch) => Promise<unknown>;
+  /** Whether the issue sources hold unsaved edits. */
+  onDirty?: (dirty: boolean) => void;
 }) {
   const [draft, setDraft] = createSignal<IssueQuery[]>([]);
   const [error, setError] = createSignal<string | null>(null);
@@ -48,18 +51,22 @@ export default function ProjectContract(props: {
   const [choosing, setChoosing] = createSignal(false);
 
   // Keyed on the saved list, so saving a choice above leaves a half-typed draft alone.
+  const discard = () => {
+    setDraft(props.contract.issues.map((q) => ({ ...q })));
+    setError(null);
+  };
   createEffect(
     on(
       () => [props.project, JSON.stringify(props.contract.issues)],
       () => {
-        setDraft(props.contract.issues.map((q) => ({ ...q })));
-        setError(null);
+        discard();
         setChoosing(false);
       },
     ),
   );
 
   const dirty = () => JSON.stringify(draft()) !== JSON.stringify(props.contract.issues);
+  createEffect(() => props.onDirty?.(dirty()));
   const edit = (at: number, change: Partial<IssueQuery>) =>
     setDraft((prev) => prev.map((q, i) => (i === at ? { ...q, ...change } : q)));
 
@@ -77,53 +84,42 @@ export default function ProjectContract(props: {
       .finally(() => setSaving(false));
   };
 
-  const row = (label: string, control: JSX.Element) => (
-    <div class={styles.row}>
+  // A label over a full-width control: the choices are sentences, and a
+  // segmented strip shows both at once where a menu would hide one.
+  const stacked = (label: string, control: JSX.Element) => (
+    <div class={own.stacked}>
       <span class={styles.label}>{label}</span>
-      <div class={styles.control}>{control}</div>
+      {control}
     </div>
   );
+  const choice = <T extends string>(label: string, options: SelectOption[], value: T, pick: (v: T) => void) =>
+    stacked(
+      label,
+      <SegmentedControl
+        class={own.strip}
+        aria-label={label}
+        options={options}
+        value={value}
+        onChange={(v) => pick(v as T)}
+      />,
+    );
 
   return (
     <div>
-      {row(
-        "How work ships",
-        <Select
-          options={SHIPS}
-          value={props.contract.ships}
-          onChange={(v) => set({ ships: v as Contract["ships"] })}
-          aria-label="How work ships"
-        />,
-      )}
-      {row(
-        "How far it goes",
-        <Select
-          options={AUTONOMY}
-          value={props.contract.autonomy}
-          onChange={(v) => set({ autonomy: v as Contract["autonomy"] })}
-          aria-label="How far it goes"
-        />,
-      )}
-      {row(
-        "Picking up work",
-        <Select
-          options={PICKUP}
-          value={props.contract.pickup}
-          onChange={(v) => set({ pickup: v as Contract["pickup"] })}
-          aria-label="Picking up work"
-        />,
-      )}
-      {row(
+      {choice("How work ships", SHIPS, props.contract.ships, (ships) => set({ ships }))}
+      {choice("How far it goes", AUTONOMY, props.contract.autonomy, (autonomy) => set({ autonomy }))}
+      {choice("Picking up work", PICKUP, props.contract.pickup, (pickup) => set({ pickup }))}
+      {stacked(
         "Workers run on",
         <Show
           when={props.contract.agent || choosing()}
           fallback={
-            <>
+            <div class={own.unsetRow}>
               <span class={own.unset}>Not set</span>
               <Button size="sm" onClick={() => setChoosing(true)}>
                 Choose
               </Button>
-            </>
+            </div>
           }
         >
           {props.workersOn(set)}
@@ -131,7 +127,10 @@ export default function ProjectContract(props: {
       )}
 
       <div class={own.sources}>
-        <span class={styles.label}>Issue sources</span>
+        <div class={own.sourcesHead}>
+          <span class={styles.label}>Issue sources</span>
+          <span class={own.sourcesNote}>Where autopilot looks for work. Empty fields match anything.</span>
+        </div>
         <Show
           when={draft().length}
           fallback={<p class={styles.note}>None: the issues assigned to you in this project's repo.</p>}
@@ -142,8 +141,9 @@ export default function ProjectContract(props: {
                 <label class={own.field}>
                   <span>{label}</span>
                   <input
-                    class={styles.input}
+                    class={`${styles.input} ${own.fieldInput}`}
                     value={value()}
+                    placeholder="Any"
                     onChange={(e) => edit(at(), change(e.currentTarget.value))}
                     aria-label={`Source ${at() + 1} ${label.toLowerCase()}`}
                     spellcheck={false}
@@ -152,40 +152,43 @@ export default function ProjectContract(props: {
               );
               return (
                 <fieldset class={own.source} aria-label={`Source ${at() + 1}`}>
-                  {field(
-                    "Repo",
-                    () => query.repo,
-                    (v) => ({ repo: v.trim() }),
-                  )}
-                  {field(
-                    "Labels",
-                    () => query.labels.join(", "),
-                    (v) => ({ labels: list(v) }),
-                  )}
-                  {field(
-                    "Exclude labels",
-                    () => query.exclude_labels.join(", "),
-                    (v) => ({ exclude_labels: list(v) }),
-                  )}
-                  {field(
-                    "Milestone",
-                    () => query.milestone ?? "",
-                    (v) => ({ milestone: optional(v) }),
-                  )}
-                  {field(
-                    "Assignee",
-                    () => query.assignee ?? "",
-                    (v) => ({ assignee: optional(v) }),
-                  )}
-                  {field(
-                    "Extra",
-                    () => query.extra ?? "",
-                    (v) => ({ extra: optional(v) }),
-                  )}
-                  <div class={own.sourceActions}>
+                  <div class={own.sourceHead}>
+                    <span class={own.sourceTitle}>{query.repo || "New source"}</span>
                     <Button size="sm" onClick={() => setDraft((prev) => prev.filter((_, i) => i !== at()))}>
                       Remove source
                     </Button>
+                  </div>
+                  <div class={own.fields}>
+                    {field(
+                      "Repo",
+                      () => query.repo,
+                      (v) => ({ repo: v.trim() }),
+                    )}
+                    {field(
+                      "Labels",
+                      () => query.labels.join(", "),
+                      (v) => ({ labels: list(v) }),
+                    )}
+                    {field(
+                      "Exclude labels",
+                      () => query.exclude_labels.join(", "),
+                      (v) => ({ exclude_labels: list(v) }),
+                    )}
+                    {field(
+                      "Milestone",
+                      () => query.milestone ?? "",
+                      (v) => ({ milestone: optional(v) }),
+                    )}
+                    {field(
+                      "Assignee",
+                      () => query.assignee ?? "",
+                      (v) => ({ assignee: optional(v) }),
+                    )}
+                    {field(
+                      "Extra",
+                      () => query.extra ?? "",
+                      (v) => ({ extra: optional(v) }),
+                    )}
                   </div>
                 </fieldset>
               );
@@ -207,6 +210,17 @@ export default function ProjectContract(props: {
           <Button size="sm" onClick={() => setDraft((prev) => [...prev, emptyQuery()])}>
             Add source
           </Button>
+          <span class={own.sourceCount}>
+            {draft().length} {draft().length === 1 ? "source" : "sources"}
+            <Show when={dirty()}>
+              <span class={own.unsaved}>Unsaved changes</span>
+            </Show>
+          </span>
+          <Show when={dirty()}>
+            <Button size="sm" disabled={saving()} onClick={discard}>
+              Discard
+            </Button>
+          </Show>
           <Button size="sm" variant="primary" disabled={!dirty() || saving()} onClick={saveSources}>
             {saving() ? "Saving" : "Save sources"}
           </Button>

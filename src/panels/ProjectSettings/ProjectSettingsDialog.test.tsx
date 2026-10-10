@@ -28,14 +28,14 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}) }));
 
-const { default: ProjectSettingsView } = await import("./ProjectSettingsView");
+const { default: ProjectSettingsDialog } = await import("./ProjectSettingsDialog");
 
 afterEach(cleanup);
 
-describe("Project settings tab, Worktrees section", () => {
+describe("Project settings dialog, Worktrees section", () => {
   it("saves the setup command under the container and shows it on reopen", async () => {
-    render(() => <ProjectSettingsView workspace="/p" />);
-    fireEvent.click(await screen.findByRole("button", { name: "Worktrees" }));
+    render(() => <ProjectSettingsDialog path="/p" onClose={() => {}} />);
+    fireEvent.click(await screen.findByRole("tab", { name: "Worktrees" }));
 
     const field = screen.getByLabelText("Setup command") as HTMLInputElement;
     fireEvent.change(field, { target: { value: "  pnpm install  " } });
@@ -43,8 +43,8 @@ describe("Project settings tab, Worktrees section", () => {
     expect(saves[0].worktree["/p"]).toEqual({ setupCommand: "pnpm install", setupWait: false });
 
     cleanup();
-    render(() => <ProjectSettingsView workspace="/p" />);
-    fireEvent.click(await screen.findByRole("button", { name: "Worktrees" }));
+    render(() => <ProjectSettingsDialog path="/p" section="worktrees" onClose={() => {}} />);
+    await screen.findByRole("tab", { name: "Worktrees" });
     expect((screen.getByLabelText("Setup command") as HTMLInputElement).value).toBe("pnpm install");
   });
 });

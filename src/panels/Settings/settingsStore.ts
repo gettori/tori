@@ -775,15 +775,6 @@ function ownFormatOnSave(folder: string): boolean | undefined {
   return best?.on;
 }
 
-/** Set or clear one project's format-on-save answer. Null returns it to the
- *  default. */
-export function setProjectFormatOnSave(projectPath: string, on: boolean | null): Promise<void> {
-  const editor = { ...settings.editor };
-  if (on === null) delete editor[projectPath];
-  else editor[projectPath] = { ...editor[projectPath], formatOnSave: on };
-  return saveSettings({ ...settings, editor });
-}
-
 /** Whether a save should organize this project's imports first.
  *
  *  Reads the plain default rather than `formatOnSave`'s per-project override:

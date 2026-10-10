@@ -43,6 +43,8 @@ const sourceOf = (icon: string | null, iconFile: string | null): Source =>
 export default function ProjectIconPicker(props: {
   /** The project's absolute path: the seed the automatic glyph is derived from. */
   seed: string;
+  /** The project's name, for the sample sidebar row the preview shows. */
+  name?: string;
   /** Currently stored Lucide name, or null. */
   icon: string | null;
   /** Currently stored image (an absolute path in the icon store), or null. */
@@ -79,7 +81,6 @@ export default function ProjectIconPicker(props: {
   );
 
   const resting = () => restingShelf(shelf, icon());
-  const hidden = () => PICKER_ICONS.length - resting().length;
 
   const choose = (next: ProjectIconChoice) => {
     if (props.busy) return;
@@ -153,27 +154,40 @@ export default function ProjectIconPicker(props: {
     if (path) takeFile(path);
   }
 
+  const art = () => (
+    <Show
+      when={source() === "upload" && file()}
+      fallback={
+        <ProjectIcon
+          seed={props.seed}
+          favicon={props.favicon ?? undefined}
+          icon={source() === "pick" ? (icon() ?? undefined) : undefined}
+        />
+      }
+    >
+      {(f) => <img src={convertFileSrc(f())} alt="" draggable={false} />}
+    </Show>
+  );
+
   return (
     <div class={styles.picker}>
       <div class={styles.preview}>
-        <div class={styles.tile}>
-          <Show
-            when={source() === "upload" && file()}
-            fallback={
-              <ProjectIcon
-                seed={props.seed}
-                favicon={props.favicon ?? undefined}
-                icon={source() === "pick" ? (icon() ?? undefined) : undefined}
-              />
-            }
-          >
-            {(f) => <img src={convertFileSrc(f())} alt="" draggable={false} />}
-          </Show>
-        </div>
+        <div class={styles.tile}>{art()}</div>
         <div class={styles.copy}>
           <div class={styles.copyTitle}>{copy().title}</div>
           <div class={styles.copyBody}>{copy().body}</div>
         </div>
+        <Show when={props.name}>
+          {(name) => (
+            <div class={styles.sample}>
+              <span class={styles.sampleCaption}>In the sidebar</span>
+              <span class={styles.sampleRow} aria-hidden="true">
+                <span class={styles.sampleIcon}>{art()}</span>
+                <span class={styles.sampleName}>{name()}</span>
+              </span>
+            </div>
+          )}
+        </Show>
       </div>
 
       <SegmentedControl
@@ -246,9 +260,11 @@ export default function ProjectIconPicker(props: {
               onQuery: setQuery,
             }}
           />
-          <Show when={!query().trim() && hidden() > 0}>
-            <div class={styles.more}>+{hidden()} more, search to reach them</div>
-          </Show>
+          <div class={styles.more}>
+            {query().trim()
+              ? `${searchIcons(query()).length} matches of ${PICKER_ICONS.length}`
+              : `Showing ${resting().length} of ${PICKER_ICONS.length}, search to reach the rest`}
+          </div>
         </div>
       </Show>
     </div>

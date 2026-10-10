@@ -1,69 +1,42 @@
-// Every entry point goes through `openProjectSettings`, so the tab id is
-// spelled once and a section request reaches the tab however it opens.
+// Every entry point goes through `openProjectSettings`, so a section request
+// reaches the dialog however it opens.
 
 import { createSignal } from "solid-js";
-import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "./events";
-import { syntheticId } from "./syntheticTabs";
+import { emitWith, OPEN_PROJECT_SETTINGS, type OpenProjectSettings } from "./events";
+import { sameCwd } from "./pathScope";
 
-export type ProjectSection =
-  | "general"
-  | "worktrees"
-  | "agents"
-  | "checks"
-  | "trust"
-  | "branches"
-  | "editor"
-  | "autopilot";
+export type ProjectSection = "general" | "worktrees" | "agents" | "tooling";
 
 export const SECTION_LABEL: Record<ProjectSection, string> = {
   general: "General",
   worktrees: "Worktrees",
   agents: "Agents",
-  checks: "Checks",
-  trust: "Trust",
-  branches: "Branches",
-  editor: "Editor",
-  autopilot: "Autopilot",
+  tooling: "Tooling",
 };
 
 /** The sections a project of this layout has, in rail order. Worktrees is a
- *  bare container's, since `.shared/` and the setup command belong to it,
- *  Branches is any git kind's, and Autopilot is there while autopilot is on. */
-export function sectionsFor(kind: string | undefined, autopilot: boolean): ProjectSection[] {
+ *  bare container's, since `.shared/` and the setup command belong to it. */
+export function sectionsFor(kind: string | undefined): ProjectSection[] {
   const worktrees = kind === "worktree" || kind === "incomplete";
-  const git = worktrees || kind === "plain";
-  return [
-    "general",
-    ...(worktrees ? (["worktrees"] as const) : []),
-    "agents",
-    "checks",
-    "trust",
-    ...(git ? (["branches"] as const) : []),
-    "editor",
-    ...(autopilot ? (["autopilot"] as const) : []),
-  ];
+  return ["general", ...(worktrees ? (["worktrees"] as const) : []), "agents", "tooling"];
 }
 
-/** The tab's id for a project. The project path is the workspace, so removing
- *  the project's folder purges the tab with everything else under it. */
-export const projectSettingsId = (projectPath: string) => syntheticId("project", projectPath);
+const [shown, setShown] = createSignal<string[]>([]);
 
-// Held rather than encoded in the id: a section in the id would make each
-// section its own tab, and the tab is one per project.
-const [asked, setAsked] = createSignal<{ path: string; section: ProjectSection } | null>(null);
-
-/** The section an entry point asked for, until the tab for `path` takes it. */
-export function takeAskedSection(path: string): ProjectSection | null {
-  const a = asked();
-  if (!a || a.path !== path) return null;
-  setAsked(null);
-  return a.section;
+/** Mark `path` as having its settings on screen, until the returned call. */
+export function markProjectShown(path: string): () => void {
+  setShown((now) => [...now, path]);
+  return () =>
+    setShown((now) => {
+      const at = now.indexOf(path);
+      return at < 0 ? now : [...now.slice(0, at), ...now.slice(at + 1)];
+    });
 }
 
-export { asked as askedSection };
+/** Whether this project's settings are open, so its sidebar row can say so. */
+export const projectShown = (path: string) => shown().some((p) => sameCwd(p, path));
 
-/** Open a project's settings tab, on `section` when one is named. */
-export function openProjectSettings(projectPath: string, section?: ProjectSection): void {
-  setAsked(section ? { path: projectPath, section } : null);
-  emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: projectSettingsId(projectPath) });
+/** Open a project's settings dialog, on `section` when one is named. */
+export function openProjectSettings(path: string, section?: ProjectSection): void {
+  emitWith<OpenProjectSettings>(OPEN_PROJECT_SETTINGS, { path, section });
 }

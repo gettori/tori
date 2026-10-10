@@ -3,6 +3,7 @@ import type { ContentBlock } from "./chatTypes";
 import type { AgentId } from "./agents";
 import type { EditorToggleKey } from "./settingsCatalog";
 import type { DraftOrigin } from "./chatCompose";
+import type { ProjectSection } from "./projectSettings";
 
 // A live terminal tab, surfaced from the terminal area to the sidebar so its
 // confirms (checkout, destructive delete) can count what's actually running in a
@@ -310,6 +311,12 @@ export const OPEN_SETTINGS = "tori:open-settings";
  *  query alone would only get you to the right tab - two settings can match one
  *  label, and the box is a filter rather than an address. */
 export type OpenSettings = { query?: string; entry?: string };
+
+// Payload-carrying event: open a project's settings dialog, on `section` when
+// the entry point names one. Consumed by App.tsx, which owns the dialog's
+// open state, so the sidebar, Settings and the palette share one door.
+export const OPEN_PROJECT_SETTINGS = "tori:open-project-settings";
+export type OpenProjectSettings = { path: string; section?: ProjectSection };
 
 // The language-server commands. They exist as events, and not only as CM6 key
 // bindings, so the palette and the Cmd+/ sheet list them: a binding the library

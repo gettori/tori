@@ -1,16 +1,26 @@
 import { createEffect, createMemo, createSignal, on, For, Show, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { CircleAlert, CornerDownRight, Folder, FolderSymlink, GitBranch, Link, RefreshCw, Trash2 } from "lucide-solid";
+import {
+  CircleAlert,
+  CornerDownRight,
+  Folder,
+  FolderSymlink,
+  GitBranch,
+  Link,
+  RefreshCw,
+  Trash2,
+  TriangleAlert,
+} from "lucide-solid";
 
-import { emitWith, TOAST, type ToastEvent } from "../../../utils/events";
-import { rememberWorktreePrefs, worktreePrefs, type WorktreePrefs } from "../../Settings/settingsStore";
-import Button from "../../../components/Button/Button";
-import IconButton from "../../../components/IconButton/IconButton";
-import Icon from "../../../components/Icon/Icon";
-import OverlayScroll from "../../../components/Scrollbar/OverlayScroll";
-import Switch from "../../../components/Switch/Switch";
-import ConfirmDialog from "../../../components/Dialogs/ConfirmDialog";
-import FileIcon from "../../../seti/FileIcon";
+import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
+import { rememberWorktreePrefs, worktreePrefs, type WorktreePrefs } from "../Settings/settingsStore";
+import Button from "../../components/Button/Button";
+import IconButton from "../../components/IconButton/IconButton";
+import Icon from "../../components/Icon/Icon";
+import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
+import Switch from "../../components/Switch/Switch";
+import ConfirmDialog from "../../components/Dialogs/ConfirmDialog";
+import FileIcon from "../../seti/FileIcon";
 import styles from "./WorktreesSection.module.css";
 
 /** Mirrors `LinkState` in src-tauri/src/shared.rs. */
@@ -45,7 +55,7 @@ function EntryIcon(props: { name: string; dir: boolean }) {
 const STATE_WORD: Record<LinkState, string> = {
   linked: "Linked",
   missing: "Missing",
-  shadowed: "Has its own",
+  shadowed: "Has its own copy",
 };
 
 /**
@@ -115,7 +125,6 @@ export default function WorktreesSection(props: { workspace: string }) {
     }
   }
 
-  const worktreeCount = () => data()?.worktrees.length ?? 0;
   const missingIn = (e: SharedEntry) => e.links.filter((l) => l.state === "missing").length;
   const linkedIn = (e: SharedEntry) => e.links.filter((l) => l.state === "linked").length;
   const ownIn = (e: SharedEntry) => e.links.filter((l) => l.state === "shadowed").length;
@@ -197,8 +206,10 @@ export default function WorktreesSection(props: { workspace: string }) {
   }
 
   function tally(e: SharedEntry) {
-    const own = ownIn(e);
-    return `${linkedIn(e)} of ${worktreeCount()} linked${own ? `, ${own} own` : ""}`;
+    const parts = [`${linkedIn(e)} linked`];
+    if (missingIn(e)) parts.push(`${missingIn(e)} missing`);
+    if (ownIn(e)) parts.push(`${ownIn(e)} own`);
+    return parts.join(", ");
   }
 
   function stateNote(e: SharedEntry, l: WorktreeLink) {
@@ -234,7 +245,7 @@ export default function WorktreesSection(props: { workspace: string }) {
         <Icon icon={FolderSymlink} />
         <span class={styles.sharedTitle}>Shared files</span>
         <span class={styles.dir} title={data()?.dir ?? props.workspace}>
-          {data()?.dir ?? props.workspace}
+          {"\u200e" + (data()?.dir ?? props.workspace) + "\u200e"}
         </span>
         <span class={styles.spacer} />
         <IconButton size="sm" icon={<Icon icon={RefreshCw} />} tooltip="Refresh" onClick={() => void load()} />
@@ -279,7 +290,7 @@ export default function WorktreesSection(props: { workspace: string }) {
                       </span>
                       <span class={styles.spacer} />
                       <Show when={missingIn(e)}>
-                        <span class={styles.miss}>{missingIn(e)} missing</span>
+                        <Icon icon={TriangleAlert} class={styles.missMark} aria-label="Missing from a worktree" />
                       </Show>
                     </span>
                     <span class={styles.itemFoot}>
