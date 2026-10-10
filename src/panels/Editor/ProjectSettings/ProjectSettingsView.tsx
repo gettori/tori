@@ -11,6 +11,8 @@ import {
   takeAskedSection,
   type ProjectSection,
 } from "../../../utils/projectSettings";
+import ProjectContractEditor from "../../Settings/panes/AutopilotPane/ProjectContractEditor";
+import { settings } from "../../Settings/settingsStore";
 import AgentsSection from "./AgentsSection";
 import BranchesSection from "./BranchesSection";
 import ChecksSection from "./ChecksSection";
@@ -30,7 +32,7 @@ import styles from "./ProjectSettingsView.module.css";
 export default function ProjectSettingsView(props: { workspace: string }) {
   const { found, loaded } = createSpaceProject(() => props.workspace);
   const kind = () => projectUnitKind(found()?.project);
-  const sections = () => sectionsFor(kind());
+  const sections = () => sectionsFor(kind(), settings.autopilot.available);
 
   const [picked, setPicked] = createSignal<ProjectSection>("general");
   // The strip reuses one component across tabs of a kind, so a new workspace
@@ -110,6 +112,13 @@ export default function ProjectSettingsView(props: { workspace: string }) {
               <Match when={section() === "editor"}>
                 <OverlayScroll class={styles.content}>
                   <EditorSection projectPath={f().project.path} kind={kind()} />
+                </OverlayScroll>
+              </Match>
+              <Match when={section() === "autopilot"}>
+                <OverlayScroll class={styles.content}>
+                  <div class={styles.form}>
+                    <ProjectContractEditor project={f().project.path} />
+                  </div>
                 </OverlayScroll>
               </Match>
               <Match when={section() === "general"}>

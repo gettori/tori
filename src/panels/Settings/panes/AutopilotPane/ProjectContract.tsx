@@ -35,9 +35,9 @@ const optional = (text: string) => (text.trim() ? text.trim() : null);
  * draft as typed and shows the reason.
  */
 export default function ProjectContract(props: {
-  projects: SelectOption[];
+  projects?: SelectOption[];
   project: string;
-  onProject: (path: string) => void;
+  onProject?: (path: string) => void;
   contract: Contract;
   /** The agent, account and model picker, which the pane wires to the agent
    *  catalogue; it saves through `set` so a refusal shows here like any other. */
@@ -88,10 +88,19 @@ export default function ProjectContract(props: {
 
   return (
     <div>
-      {row(
-        "Project",
-        <Select options={props.projects} value={props.project} onChange={props.onProject} aria-label="Project" />,
-      )}
+      <Show when={props.projects}>
+        {(projects) =>
+          row(
+            "Project",
+            <Select
+              options={projects()}
+              value={props.project}
+              onChange={(path) => props.onProject?.(path)}
+              aria-label="Project"
+            />,
+          )
+        }
+      </Show>
       {row(
         "How work ships",
         <Select
