@@ -1,13 +1,3 @@
-/* `width`, not `display: flex`: SegmentedControl's own group is inline-flex at
-   the same specificity. */
-.modes {
-  width: 100%;
-}
-.modes button {
-  flex: 1;
-  min-width: 0;
-}
-
 .list {
   display: flex;
   flex-direction: column;

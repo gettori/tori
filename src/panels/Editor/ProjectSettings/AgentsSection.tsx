@@ -134,7 +134,7 @@ export default function AgentsSection(props: { project: SpaceProject }) {
       <section class={styles.block}>
         <h3 class={styles.blockHead}>Allowed agents</h3>
         <SegmentedControl
-          class={own.modes}
+          class={styles.modes}
           aria-label="Which agents are allowed"
           options={[
             { value: "every", label: "Every agent" },

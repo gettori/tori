@@ -124,6 +124,16 @@ describe("formatOnSaveFor", () => {
     expect(formatOnSaveFor("/repo/cleared")).toBe(true);
   });
 
+  it("carries a project's answer into every worktree under it, the deepest project winning", async () => {
+    await seed({
+      editorDefaults: { ...DEFAULT_SETTINGS.editorDefaults, formatOnSave: true, vimMode: false },
+      editor: { "/code/app": { formatOnSave: false }, "/code/app/vendor/lib": { formatOnSave: true } },
+    });
+    expect(formatOnSaveFor("/code/app/main")).toBe(false);
+    expect(formatOnSaveFor("/code/app/vendor/lib/src")).toBe(true);
+    expect(formatOnSaveFor("/code/application")).toBe(true);
+  });
+
   it("has only the default to go on with no project selected", async () => {
     await seed({ editorDefaults: { ...DEFAULT_SETTINGS.editorDefaults, formatOnSave: true, vimMode: false } });
     expect(formatOnSaveFor(null)).toBe(true);
