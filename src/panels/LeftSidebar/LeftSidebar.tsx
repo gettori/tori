@@ -39,10 +39,6 @@ import ChangeOriginDialog from "../../components/Dialogs/ChangeOriginDialog";
 import NewProjectDialog from "../../components/Dialogs/NewProjectDialog";
 import { claimProjectFolder, projectJob, type NewProjectMode } from "../../utils/newProject";
 import SpaceDialog, { type SpaceDialogMode } from "../../components/Dialogs/SpaceDialog";
-import ProjectAgentsDialog, { ruleRows } from "../../components/Dialogs/ProjectAgentsDialog";
-import { projectRows, setProjectRows } from "../../utils/projectAgents";
-import VerificationCommandsDialog from "../../components/Dialogs/VerificationCommandsDialog";
-import { projectChecks, setProjectChecks } from "../../utils/verification";
 import { pushToast, type ToastAction } from "../../components/Toasts/Toasts";
 import Button from "../../components/Button/Button";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
@@ -662,17 +658,6 @@ export default function LeftSidebar(props: {
     color: string | null;
     busy: boolean;
   } | null>(null);
-
-  const [agentsReq, setAgentsReq] = createSignal<Project | null>(null);
-  const [checksReq, setChecksReq] = createSignal<{ p: Project; commands: string[] } | null>(null);
-  const openChecks = (p: Project) =>
-    projectChecks(p.path)
-      .then((commands) => setChecksReq({ p, commands }))
-      .catch((e) => setError(String(e)));
-  const saveChecks = (p: Project, commands: string[]) =>
-    void setProjectChecks(p.path, commands)
-      .then(() => setChecksReq(null))
-      .catch((e) => setError(String(e)));
 
   // The origin dialog, for a repo that has one and for a repo that does not:
   // setting a first origin and replacing an existing one are the same command
@@ -2277,10 +2262,6 @@ export default function LeftSidebar(props: {
               onClick: () => void openOrigin(p),
             } as MenuItem,
           ]),
-      ...(ruleRows(projectRows(p.path)).length > 1 || projectRows(p.path).length
-        ? [{ label: "Agents", onClick: () => setAgentsReq(p) }]
-        : []),
-      { label: "Verification commands", onClick: () => void openChecks(p) },
       { label: "Project settings", onClick: () => openProjectSettings(p.path) },
       { separator: true },
       kind.remove,
@@ -3648,34 +3629,6 @@ export default function LeftSidebar(props: {
           onConfirm={(opts) => confirmNewProject(opts)}
           onCancel={() => setNewReq(null)}
         />
-      </Show>
-
-      <Show when={agentsReq()}>
-        {(p) => (
-          <ProjectAgentsDialog
-            projectName={p().name}
-            rows={ruleRows(projectRows(p().path))}
-            allowed={projectRows(p().path)}
-            onConfirm={(rows) =>
-              void setProjectRows(p().path, rows)
-                .then(() => setAgentsReq(null))
-                .catch((e) => setError(String(e)))
-            }
-            onCancel={() => setAgentsReq(null)}
-          />
-        )}
-      </Show>
-
-      <Show when={checksReq()}>
-        {(req) => (
-          <VerificationCommandsDialog
-            projectName={req().p.name}
-            commands={req().commands}
-            onSave={(commands) => saveChecks(req().p, commands)}
-            onReset={() => saveChecks(req().p, [])}
-            onCancel={() => setChecksReq(null)}
-          />
-        )}
       </Show>
 
       <Show when={spaceReq()}>

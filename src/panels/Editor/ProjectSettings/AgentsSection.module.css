@@ -1,0 +1,62 @@
+/* `width`, not `display: flex`: SegmentedControl's own group is inline-flex at
+   the same specificity. */
+.modes {
+  width: 100%;
+}
+.modes button {
+  flex: 1;
+  min-width: 0;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-3);
+}
+/* Every mode allows all of them, so the list is drawn but out of reach of both
+   the pointer and the tab order. */
+.idle {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.row {
+  width: 100%;
+  gap: var(--tori-space-5);
+  padding: var(--tori-space-4) var(--tori-space-5);
+  background: var(--canvas-input);
+  border: var(--tori-border-thin) solid var(--border-default);
+  border-radius: var(--tori-radius-md);
+  font-size: var(--tori-text-md);
+  transition:
+    background var(--tori-duration-fast) ease,
+    border-color var(--tori-duration-fast) ease;
+}
+/* Tag selector because the label is `Checkbox`'s markup, not this module's: it
+   takes the free space so the account can sit at the row's far edge. */
+.row label {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+.rowOn {
+  background: color-mix(in srgb, var(--brand-default) 10%, transparent);
+  border-color: var(--brand-default);
+}
+.label {
+  display: flex;
+  align-items: center;
+  gap: var(--tori-space-4);
+}
+.name {
+  color: var(--fg-default);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account {
+  margin-left: auto;
+  flex: none;
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-xs);
+  color: var(--fg-subtle);
+}

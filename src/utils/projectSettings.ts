@@ -5,18 +5,20 @@ import { createSignal } from "solid-js";
 import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "./events";
 import { syntheticId } from "./syntheticTabs";
 
-export type ProjectSection = "general" | "worktrees";
+export type ProjectSection = "general" | "worktrees" | "agents" | "checks";
 
 export const SECTION_LABEL: Record<ProjectSection, string> = {
   general: "General",
   worktrees: "Worktrees",
+  agents: "Agents",
+  checks: "Checks",
 };
 
 /** The sections a project of this layout has, in rail order. Worktrees is a
  *  bare container's, since `.shared/` and the setup command belong to it. */
 export function sectionsFor(kind: string | undefined): ProjectSection[] {
   const worktrees = kind === "worktree" || kind === "incomplete";
-  return ["general", ...(worktrees ? (["worktrees"] as const) : [])];
+  return ["general", ...(worktrees ? (["worktrees"] as const) : []), "agents", "checks"];
 }
 
 /** The tab's id for a project. The project path is the workspace, so removing
