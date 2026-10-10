@@ -209,23 +209,25 @@ export default function WorktreesSection(props: { workspace: string }) {
   return (
     <>
       <Section heading="Setup">
-        <div class={`${s.row} ${s.rowStack} ${own.row}`}>
-          <span class={s.label}>Setup command</span>
-          <div class={s.control}>
-            <input
-              type="text"
-              class={`${s.input} ${s.text}`}
-              aria-label="Setup command"
-              value={setup().setupCommand}
-              placeholder="pnpm install"
-              onChange={(e) => saveSetup({ setupCommand: e.currentTarget.value.trim() })}
-            />
-          </div>
-          <div class={s.hint}>
-            Runs with <code>sh -c</code> in each worktree Tori creates here, with <code>TORI_PROJECT_ROOT</code> and{" "}
-            <code>TORI_WORKTREE_PATH</code> set. A fork's pull request never runs it.
-          </div>
-        </div>
+        <Row
+          stack
+          label="Setup command"
+          hint={
+            <>
+              Runs with <code>sh -c</code> in each worktree Tori creates here, with <code>TORI_PROJECT_ROOT</code> and{" "}
+              <code>TORI_WORKTREE_PATH</code> set. A fork's pull request never runs it.
+            </>
+          }
+        >
+          <input
+            type="text"
+            class={`${s.input} ${s.text}`}
+            aria-label="Setup command"
+            value={setup().setupCommand}
+            placeholder="pnpm install"
+            onChange={(e) => saveSetup({ setupCommand: e.currentTarget.value.trim() })}
+          />
+        </Row>
         <Row label="Agents started over the socket wait for it">
           <Switch
             checked={setup().setupWait}

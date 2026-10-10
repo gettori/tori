@@ -36,97 +36,64 @@
   background: var(--brand-default);
 }
 
-/* Where Settings' title sits: the same inset from the panel's edge. */
-.identity {
+/* Settings' title, with the project's icon at the size a sidebar row wears
+   it. One line, as Settings' is, so the two headers stand the same height. */
+.title {
   display: flex;
-  flex: 1;
-  align-items: flex-start;
-  gap: var(--tori-space-5);
+  flex: 0 1 auto;
+  align-items: center;
+  gap: var(--tori-space-4);
   min-width: 0;
-  padding: var(--tori-space-2) 0 var(--tori-space-2) var(--tori-space-2);
 }
 
-.identityTile {
-  display: flex;
+.titleIcon {
+  display: inline-flex;
   flex: none;
   align-items: center;
   justify-content: center;
-  width: calc(40px * var(--ui-scale));
-  height: calc(40px * var(--ui-scale));
-  overflow: hidden;
-  background: var(--neutral-subtle);
-  border-radius: calc(10px * var(--ui-scale));
-  box-shadow: inset 0 0 0 1px var(--border-strong);
-  color: var(--fg-muted);
-}
-
-.identityTile svg {
   width: calc(20px * var(--ui-scale));
   height: calc(20px * var(--ui-scale));
 }
 
-.identityTile img {
+.titleIcon svg,
+.titleIcon img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
-/* Shrinks but never grows, so the copy button sits beside the path rather
-   than at the far edge next to Close. */
-.identityText {
-  display: flex;
-  flex: 0 1 auto;
-  flex-direction: column;
-  gap: var(--tori-space-2);
+.titleName {
+  overflow: hidden;
   min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* Wraps rather than cuts: a name is the one thing this header is for. */
-.identityName {
-  color: var(--fg-default);
-  font-size: var(--tori-text-2xl);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
-}
-
-.identityMeta {
+/* The footer card's title with the copy button at its end. */
+.footHead {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: var(--tori-space-2) var(--tori-space-4);
-  min-width: 0;
-  color: var(--fg-muted);
-  font-size: var(--tori-text-xs);
+  justify-content: space-between;
+  gap: var(--tori-space-3);
+  margin-bottom: var(--tori-space-2);
 }
 
-.spaceChip {
-  flex: none;
-  padding: calc(2px * var(--ui-scale)) calc(7px * var(--ui-scale));
-  background: var(--neutral-subtle);
-  border-radius: var(--tori-radius-sm);
-  color: var(--fg-default);
-  font-size: var(--tori-text-xs);
+.footHead > span {
+  margin-bottom: 0;
 }
 
-.metaDot {
-  width: calc(3px * var(--ui-scale));
-  height: calc(3px * var(--ui-scale));
-  border-radius: 50%;
-  background: var(--fg-subtle);
+.footPath {
+  margin-top: var(--tori-space-2);
 }
 
-.identityPath {
-  min-width: 0;
-  font-family: var(--tori-font-mono);
-  font-size: var(--tori-text-xs);
-  overflow-wrap: anywhere;
+/* A search narrowed to a section's matching rows: the rows that missed, and
+   what is not a row (a card, a list), step out. */
+.row[hidden] {
+  display: none;
 }
 
-.copyPath {
-  flex: none;
-  align-self: center;
+.section[data-narrow] > :not(.sectionTitle):not(.row) {
+  display: none;
 }
 
 /* A section body that is not a label and a control: the icon picker, the agent
