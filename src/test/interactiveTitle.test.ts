@@ -185,7 +185,7 @@ const KEPT = new Map<string, Kept>([
     },
   ],
   ["panels/ProjectSettings/ProjectHeader.tsx", { count: 1, reason: TRUNCATION }],
-  ["panels/ProjectSettings/WorktreesSection.tsx", { count: 2, reason: `one ${TRUNCATION}, and one ${HEADING}` }],
+  ["panels/ProjectSettings/WorktreesSection.tsx", { count: 1, reason: HEADING }],
   ["panels/Editor/ProblemsPanel.tsx", { count: 2, reason: `one ${TRUNCATION}, and one ${ROW_ONCLICK}` }],
   ["panels/Editor/TodoPanel.tsx", { count: 2, reason: `one ${TRUNCATION}, and one ${ROW_ONCLICK}` }],
   ["panels/Editor/ConflictView.tsx", { count: 2, reason: `${TRUNCATION}, plus one ${HEADING}` }],
@@ -365,7 +365,7 @@ const KEPT = new Map<string, Kept>([
  *
  *  **Up one** with the project settings tab, whose header carries the project's
  *  path, truncated from the left, beside the Worktrees section's own. */
-const RAW_ELEMENT_TITLES = 73;
+const RAW_ELEMENT_TITLES = 72;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. The Changes
  *  panel's stash row is one: a click expands it to its files. */
@@ -505,7 +505,7 @@ describe("the title= guard", () => {
       // Down one span: the pull request detail view went, and the branch line
       // it truncated is drawn once now, in the panel that replaced it. Up one
       // for the project settings tab's path.
-      span: 57,
+      span: 56,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });
