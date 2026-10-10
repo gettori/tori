@@ -5,7 +5,15 @@ import { createSignal } from "solid-js";
 import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "./events";
 import { syntheticId } from "./syntheticTabs";
 
-export type ProjectSection = "general" | "worktrees" | "agents" | "checks" | "trust" | "branches" | "editor";
+export type ProjectSection =
+  | "general"
+  | "worktrees"
+  | "agents"
+  | "checks"
+  | "trust"
+  | "branches"
+  | "editor"
+  | "autopilot";
 
 export const SECTION_LABEL: Record<ProjectSection, string> = {
   general: "General",
@@ -15,12 +23,13 @@ export const SECTION_LABEL: Record<ProjectSection, string> = {
   trust: "Trust",
   branches: "Branches",
   editor: "Editor",
+  autopilot: "Autopilot",
 };
 
 /** The sections a project of this layout has, in rail order. Worktrees is a
- *  bare container's, since `.shared/` and the setup command belong to it, and
- *  Branches is any git kind's. */
-export function sectionsFor(kind: string | undefined): ProjectSection[] {
+ *  bare container's, since `.shared/` and the setup command belong to it,
+ *  Branches is any git kind's, and Autopilot is there while autopilot is on. */
+export function sectionsFor(kind: string | undefined, autopilot: boolean): ProjectSection[] {
   const worktrees = kind === "worktree" || kind === "incomplete";
   const git = worktrees || kind === "plain";
   return [
@@ -31,6 +40,7 @@ export function sectionsFor(kind: string | undefined): ProjectSection[] {
     "trust",
     ...(git ? (["branches"] as const) : []),
     "editor",
+    ...(autopilot ? (["autopilot"] as const) : []),
   ];
 }
 

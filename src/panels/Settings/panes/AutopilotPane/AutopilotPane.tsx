@@ -30,15 +30,8 @@ import { ensureAdaptersLoaded } from "../../../../utils/agents";
 import { enabledChatAgents } from "../../../../utils/agentEnabled";
 import { ensureModelCatalogsLoaded, isProbing, modelCatalogs } from "../../../../utils/modelCatalog";
 import { setAutopilotAvailable } from "../../../../utils/autopilotStore";
-import {
-  contractFor,
-  loadContracts,
-  sameFolder,
-  setContract,
-  type ContractPatch,
-} from "../../../../utils/autopilotContracts";
 import type { NavSpace } from "../../../../utils/mentionNavigator";
-import ProjectContract from "./ProjectContract";
+import ProjectContractEditor from "./ProjectContractEditor";
 
 // Whole, because Rust keeps it as a u32 and a fraction would fail the save.
 const percent = (n: number | null) => (n === null ? null : Math.min(95, Math.round(n)));
@@ -75,19 +68,6 @@ export default function AutopilotPane(props: PaneProps) {
     (spaces() ?? []).flatMap((s) => s.projects.map((p) => ({ value: p.path, label: `${p.name} (${s.name})` })));
   const [picked, setPicked] = createSignal<string | null>(null);
   const project = () => picked() ?? projects()[0]?.value ?? null;
-  const [contracts, { mutate }] = createResource(() => loadContracts().catch(() => ({})));
-  const contract = () => contractFor(contracts() ?? {}, project() ?? "");
-  // Rust keys a project by the first spelling it saw, so any other spelling of this folder goes.
-  const setFor = (path: string) => (patch: ContractPatch) =>
-    setContract(path, patch).then((saved) =>
-      mutate((prev) => ({
-        ...Object.fromEntries(Object.entries(prev ?? {}).filter(([key]) => !sameFolder(key, path))),
-        [path]: saved,
-      })),
-    );
-  const workerAgent = () => contract().agent ?? agentId();
-  const workerModels = () =>
-    providers().find((p) => p.agentId === workerAgent() && p.profile === contract().account)?.models ?? [];
 
   return (
     <>
@@ -176,34 +156,7 @@ export default function AutopilotPane(props: PaneProps) {
       <Group {...props} title="Projects" ids={["autopilot-projects"]}>
         <CardSection {...props} id="autopilot-projects">
           <Show when={project()} fallback={<p class={styles.note}>No projects yet.</p>}>
-            {(path) => (
-              <ProjectContract
-                projects={projects()}
-                project={path()}
-                onProject={setPicked}
-                contract={contract()}
-                onSet={setFor(path())}
-                workersOn={(set) => (
-                  <ModelPicker
-                    models={workerModels()}
-                    providers={providers()}
-                    value={contract().model}
-                    agentId={workerAgent()}
-                    profile={contract().account}
-                    profileLabel={profileLabel(workerAgent(), contract().account)}
-                    effort={null}
-                    modelPending={false}
-                    effortPending={false}
-                    disabled={false}
-                    onSelectModel={(agent, account, model) => set({ agent, account, model: model.value })}
-                    onSelectEffort={() => {}}
-                    onHighlightAgent={(agent, account) => probeOnHighlight(agent, account)}
-                    onRecheckAgent={(agent, account) => recheckAgent(agent, account)}
-                    onFixAgent={openAgentCard}
-                  />
-                )}
-              />
-            )}
+            {(path) => <ProjectContractEditor projects={projects()} project={path()} onProject={setPicked} />}
           </Show>
         </CardSection>
       </Group>
