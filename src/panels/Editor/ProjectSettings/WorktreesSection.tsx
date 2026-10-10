@@ -2,16 +2,16 @@ import { createEffect, createMemo, createSignal, on, For, Show, type JSX } from 
 import { invoke } from "@tauri-apps/api/core";
 import { CircleAlert, CornerDownRight, Folder, FolderSymlink, GitBranch, Link, RefreshCw, Trash2 } from "lucide-solid";
 
-import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
-import { rememberWorktreePrefs, worktreePrefs, type WorktreePrefs } from "../Settings/settingsStore";
-import Button from "../../components/Button/Button";
-import IconButton from "../../components/IconButton/IconButton";
-import Icon from "../../components/Icon/Icon";
-import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
-import Switch from "../../components/Switch/Switch";
-import ConfirmDialog from "../../components/Dialogs/ConfirmDialog";
-import FileIcon from "../../seti/FileIcon";
-import styles from "./SharedFilesView.module.css";
+import { emitWith, TOAST, type ToastEvent } from "../../../utils/events";
+import { rememberWorktreePrefs, worktreePrefs, type WorktreePrefs } from "../../Settings/settingsStore";
+import Button from "../../../components/Button/Button";
+import IconButton from "../../../components/IconButton/IconButton";
+import Icon from "../../../components/Icon/Icon";
+import OverlayScroll from "../../../components/Scrollbar/OverlayScroll";
+import Switch from "../../../components/Switch/Switch";
+import ConfirmDialog from "../../../components/Dialogs/ConfirmDialog";
+import FileIcon from "../../../seti/FileIcon";
+import styles from "./WorktreesSection.module.css";
 
 /** Mirrors `LinkState` in src-tauri/src/shared.rs. */
 type LinkState = "linked" | "missing" | "shadowed";
@@ -50,7 +50,7 @@ const STATE_WORD: Record<LinkState, string> = {
 
 /**
  * What every new worktree of a container gets: the setup command it runs, and
- * the files shared into it, as a page rather than a tree.
+ * the files shared into it, as a section rather than a tree.
  *
  * The folder is a tree, but the thing worth seeing is not its contents: it is
  * where each entry did and did not land. Linking runs once, when a worktree is
@@ -58,7 +58,7 @@ const STATE_WORD: Record<LinkState, string> = {
  * and a file tree shows no sign of it. The rail says which entries have a gap,
  * and the pane beside it says which worktrees the gap is in.
  */
-export default function SharedFilesView(props: { workspace: string }) {
+export default function WorktreesSection(props: { workspace: string }) {
   const [data, setData] = createSignal<Overview | null>(null);
   const [error, setError] = createSignal("");
   const [busy, setBusy] = createSignal("");
@@ -209,16 +209,6 @@ export default function SharedFilesView(props: { workspace: string }) {
 
   return (
     <div class={styles.page}>
-      <div class={styles.topBar}>
-        <Icon icon={FolderSymlink} />
-        <span class={styles.title}>Worktree settings</span>
-        <span class={styles.dir} title={data()?.dir ?? props.workspace}>
-          {data()?.dir ?? props.workspace}
-        </span>
-        <span class={styles.spacer} />
-        <IconButton size="sm" icon={<Icon icon={RefreshCw} />} tooltip="Refresh" onClick={() => void load()} />
-      </div>
-
       <section class={styles.setup}>
         <span class={styles.setupHead}>Setup command</span>
         <input
@@ -239,6 +229,16 @@ export default function SharedFilesView(props: { workspace: string }) {
           <code>TORI_WORKTREE_PATH</code> set. A fork's pull request never runs it.
         </p>
       </section>
+
+      <div class={styles.sharedHead}>
+        <Icon icon={FolderSymlink} />
+        <span class={styles.sharedTitle}>Shared files</span>
+        <span class={styles.dir} title={data()?.dir ?? props.workspace}>
+          {data()?.dir ?? props.workspace}
+        </span>
+        <span class={styles.spacer} />
+        <IconButton size="sm" icon={<Icon icon={RefreshCw} />} tooltip="Refresh" onClick={() => void load()} />
+      </div>
 
       <Show when={error()}>
         <div class={styles.error}>{error()}</div>

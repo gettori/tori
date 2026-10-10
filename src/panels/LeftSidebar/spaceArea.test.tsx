@@ -92,7 +92,7 @@ describe("the space's empty area", () => {
     await waitFor(() => expect(screen.getByText("proj")).toBeTruthy());
 
     rightClick(screen.getByText("proj"));
-    expect(await screen.findByText("Change icon")).toBeTruthy();
+    expect(await screen.findByText("Project settings")).toBeTruthy();
     expect(screen.queryByText("Delete space")).toBeNull();
   });
 

@@ -1,0 +1,153 @@
+/* The project settings tab: a top bar naming the project, then a rail of
+   sections beside the one in hand. A section either scrolls as a form (General)
+   or fills the pane with its own panes (Worktrees). */
+.page {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--canvas-default);
+}
+
+.topBar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  /* The breadcrumb bar's band (Breadcrumbs.module.css says the sum), so this
+     tab and a file tab start their content on the same line. */
+  min-height: calc(var(--control-height-sm) + 8px * var(--ui-scale) + 1px);
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.topBar > svg {
+  flex: none;
+  width: var(--control-icon);
+  height: var(--control-icon);
+  color: var(--fg-muted);
+}
+
+.title {
+  flex: none;
+  color: var(--fg-default);
+  font-size: var(--tori-text-lg);
+  font-weight: 600;
+}
+
+.name {
+  flex: none;
+  color: var(--fg-muted);
+  font-size: var(--tori-text-md);
+}
+
+.dir {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--fg-muted);
+  direction: rtl;
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--tori-text-xs);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.missing {
+  padding: calc(16px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--tori-text-md);
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.rail {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: calc(2px * var(--ui-scale));
+  width: calc(160px * var(--ui-scale));
+  padding: calc(10px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border-right: 1px solid var(--border-default);
+}
+
+.railItem {
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  background: none;
+  color: var(--fg-muted);
+  border: none;
+  border-radius: var(--tori-radius-md);
+  font-family: inherit;
+  font-size: var(--tori-text-md);
+  text-align: left;
+  cursor: pointer;
+}
+
+.railItem:hover {
+  background: var(--tree-row-hover);
+  color: var(--fg-default);
+}
+
+.railItemOn,
+.railItemOn:hover {
+  background: var(--tree-row-active);
+  color: var(--fg-default);
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* A form column, capped so a wide pane does not stretch a field across it. */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-7);
+  max-width: calc(560px * var(--ui-scale));
+  padding: calc(16px * var(--ui-scale));
+  --control-height: calc(32px * var(--ui-scale));
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--tori-space-3) var(--tori-space-6);
+  margin: 0;
+  font-size: var(--tori-text-md);
+}
+
+.facts dt {
+  color: var(--fg-muted);
+}
+
+.facts dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--fg-default);
+  overflow-wrap: anywhere;
+}
+
+.mono {
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
+}
+
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-4);
+}
+
+.blockHead {
+  margin: 0;
+  color: var(--fg-default);
+  font-size: var(--tori-text-md);
+  font-weight: 600;
+}

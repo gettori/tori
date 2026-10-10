@@ -351,17 +351,17 @@ describe("the sidebar levels that outlive the session rows", () => {
     expect(notes.querySelector('[class*="iconChevron"]')).toBeNull();
   });
 
-  it("offers Change icon on every project, whatever its git kind", async () => {
+  it("offers Project settings on every project, whatever its git kind", async () => {
     mount();
 
     fireEvent.contextMenu(await row("repo"));
-    expect(await screen.findByText("Change icon")).toBeTruthy();
+    expect(await screen.findByText("Project settings")).toBeTruthy();
     fireEvent.keyDown(document, { key: "Escape" });
 
-    // A plain-dir folder gets it too: the icon is a property of the row, not of
-    // whatever git is (or is not) doing underneath it.
+    // A plain-dir folder gets it too: the icon, agents and checks are the
+    // row's, not whatever git is (or is not) doing underneath it.
     fireEvent.contextMenu(await row("notes"));
-    expect(await screen.findByText("Change icon")).toBeTruthy();
+    expect(await screen.findByText("Project settings")).toBeTruthy();
   });
 
   it("keeps the space, project and branch-unit context menus", async () => {

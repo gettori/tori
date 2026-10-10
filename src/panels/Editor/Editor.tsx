@@ -96,7 +96,7 @@ import { pendingFor, prEntry } from "../../utils/prReviewStore";
 import ConflictView from "./ConflictView";
 import DiffView from "./DiffView";
 import GraphView from "./GraphView";
-import SharedFilesView from "./SharedFilesView";
+import ProjectSettingsView from "./ProjectSettings/ProjectSettingsView";
 import DebugSourceView from "./DebugSourceView";
 import LspLogView from "./LspLogView";
 import ImageView, { isImagePath } from "./ImageView";
@@ -3112,10 +3112,10 @@ export default function Editor(props: {
                 <Show when={t().kind === "graph"}>
                   <GraphView workspace={t().workspace} />
                 </Show>
-                {/* Project configuration, not a file: what every worktree of
-                    this container gets, and which ones actually got it. */}
-                <Show when={t().kind === "shared"}>
-                  <SharedFilesView workspace={t().workspace} />
+                {/* Project configuration, not a file: every setting kept per
+                    project, keyed by the project's own path. */}
+                <Show when={t().kind === "project"}>
+                  <ProjectSettingsView workspace={t().workspace} />
                 </Show>
                 {/* Staging lives here rather than in the Changes panel: a hunk
                     needs the width of a pane, and the panel's rows stay one
