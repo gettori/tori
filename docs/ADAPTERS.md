@@ -766,17 +766,20 @@ whoami_signed_in_key = "signedIn"
 whoami_account_key = "user.email"
 ```
 
-## Whole-replacing a bundled adapter
+## Your own variant of a bundled adapter
 
-To point Tori's `claude` adapter at a wrapper script instead of the real
-binary, keep `id = "claude"` and change only what differs - but remember
-this is a **whole replacement**, so every required section must still be
-present in full, not just the field you're changing:
+A user file may not take a bundled adapter's `id` (see
+[File location and loading](#file-location-and-loading)), so to point Tori at
+a wrapper script instead of the real `claude` binary, copy the adapter under
+your own id and switch the bundled one off in Settings > Agents. Nothing is
+inherited from the bundled file, so every table your variant needs has to be
+in it:
 
 ```toml
+# ~/.config/tori/packs/agents/claude-wrapped.toml
 schema_version = 1
-id = "claude"
-label = "Claude"
+id = "claude-wrapped"
+label = "Claude (wrapped)"
 
 [launch]
 program = "/usr/local/bin/claude-wrapped"
@@ -794,3 +797,8 @@ kind = "claude_jsonl"
 [running]
 pattern = 'claude-wrapped (--resume|-r) {id}'
 ```
+
+A new id is a new agent: its accounts, profile homes and sessions start empty,
+and sessions recorded under `claude` stay with the bundled adapter. A file that
+already carried a bundled id when Tori moved it into `packs/agents/` keeps that
+id as a recorded override instead, as described above.
