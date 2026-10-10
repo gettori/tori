@@ -1,7 +1,7 @@
 ---
 summary: a project's setup command runs headless per new worktree in Rust, not a tab, since worktree.new must answer its status
 status: current
-updated: 2026-10-04
+updated: 2026-10-10
 source: plan "Run a setup command when a worktree is created" on branch setup-command, ticket gettori/tickets#2; src-tauri/src/setup.rs, src-tauri/src/worktree.rs:351, src-tauri/src/rpc/methods.rs:459
 ---
 
@@ -11,7 +11,7 @@ source: plan "Run a setup command when a worktree is created" on branch setup-co
 
 ## Responsibility
 
-- **Where the command comes from.** `settings.json` holds a `worktree` map keyed by project path, each entry `{ setupCommand, setupWait }` (`WorktreePrefs`). An empty command runs nothing, and that is the default. The project key is matched with `same_folder`. The Worktree settings page edits it for a bare container. A plain repo has no page, but a hand edited entry still runs.
+- **Where the command comes from.** `settings.json` holds a `worktree` map keyed by project path, each entry `{ setupCommand, setupWait }` (`WorktreePrefs`). An empty command runs nothing, and that is the default. The project key is matched with `same_folder`. The Worktrees section of the project settings dialog ([[component_project_settings_dialog]]) edits it for a bare container. A plain repo has no page, but a hand edited entry still runs.
 - **Who runs it.** `create_worktree_in` on a real creation, never on reuse ([[component_worktree_lifecycle]]). That covers the sidebar, `worktree.new`, `session.spawn` with `new_worktree` and Topic members. Attempts run it after their dependency clone, so the command only reconciles. A PR worktree runs it only when its head is on origin (`PullRequest.head_repo_is_origin`). The command is the user's, but a fork's tree is a stranger's, and auto pickup would run its install scripts with nobody watching.
 - **How it runs.** `sh -c` with cwd at the worktree, stdin closed, the login PATH, `TORI_PROJECT_ROOT` (the project path, which for a container is the folder holding the worktrees and has no checkout) and `TORI_WORKTREE_PATH`. Output goes to `<config dir>/setup/<folder>-<nanos>.log`. It spawns in its own process group, so the kill at `LIMIT` (30 minutes) and the kill on removal take its children too.
 - **What it keeps.** `Runs`, an in memory list of `Report { worktree, state: running|done|failed, code, log }`, one per folder, read through canonical paths and `same_folder` ([[gotcha_git_worktree_list_reports_canonical_paths]]). After a restart every folder reads none. Each change is published as `setup://changed`, and the webview toasts a finish or a failure with Show log (`src/utils/setupToasts.ts`).

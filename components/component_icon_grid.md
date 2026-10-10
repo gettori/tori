@@ -1,7 +1,7 @@
 ---
 summary: one toggle group backs icon and swatch pickers so a hundred glyphs collapse to one tab stop, ArrowUp/Down move a row
 status: current
-updated: 2026-08-15
+updated: 2026-10-10
 source: "plan \"Dedupe icon and swatch grids into one IconGrid\" (personal/tori, branch `109-dedupe-icon-and-swatch-grids`, issue #109, part of #93); `src/components/IconGrid/IconGrid.tsx`, `src/components/Dialogs/SpaceDialog.tsx`, `src/components/Dialogs/ProjectIconDialog.tsx`, `src/lib/toggle-group.ts`; commits cd09a5e, 8f86c77; PR #138"
 ---
 
@@ -25,7 +25,7 @@ Same keyboard model as [[component_toggle_group]]: arrows and Home/End move focu
 
 **ArrowUp/ArrowDown move a whole row.** They are dead keys otherwise, see [[gotcha_a_kobalte_toggle_groups_arrowup_and_arrowdown_do_nothing]]. The handler sits on the **item** and calls `stopPropagation`, not on the group. A group-level handler would work today only because those vertical keys resolve to nothing: the group composes a caller's `onKeyDown` with its own through `composeEventHandlers`, which ignores `defaultPrevented`, so the day the primitive's orientation mismatch is fixed a group-level handler would move a row and then one tile more. Stopping at the item makes the behaviour owned rather than borrowed. The column count lives in one `COLUMNS` constant that both the handler and the inline `grid-template-columns` read; it is not a CSS custom property, because the token guard rejects a `var()` that resolves to nothing.
 
-**The search field sits outside the group.** `IconGrid` owns it (it was duplicated verbatim in both dialogs, with a `ref` prop so `ProjectIconDialog` can still make it the dialog's `initialFocus`), but it renders as a sibling above `ToggleGroup.Root`, never inside it. Kobalte's keydown guard is containment in the group's element rather than "the target is an item", so an input inside would lose ArrowLeft/ArrowRight and Home/End to the roving focus and its caret would stop moving.
+**The search field sits outside the group.** `IconGrid` owns it (it was duplicated verbatim in both dialogs, with a `ref` prop for a caller that wants it as a dialog's `initialFocus`; `ProjectIconPicker` no longer uses it), but it renders as a sibling above `ToggleGroup.Root`, never inside it. Kobalte's keydown guard is containment in the group's element rather than "the target is an item", so an input inside would lose ArrowLeft/ArrowRight and Home/End to the roving focus and its caret would stop moving.
 
 **The group keeps a tab stop when the query eats the focused tile.** See [[gotcha_a_toggle_group_whose_focused_item_unmounts_falls_out_of_the_tab_order]]. `IconGrid` mirrors the focused value from the same events the primitive uses, and computes `tabIndex` by the primitive's own rule against the tiles actually on screen. It wins because Kobalte spreads incoming props after its own.
 
@@ -39,7 +39,7 @@ A tile is icon-only, so its name has to be supplied and its tooltip is the only 
 
 ## What stayed behind
 
-`ProjectIconDialog`'s two mode buttons (Automatic, Upload) are **not** tiles and did not move. Upload is an action that opens a native file picker, not a value, and the three shapes are one selection held by the dialog. So that picker passes no leading tile and its grid holds nothing selected whenever a mode is chosen, which is also the state where the group itself carries the tab stop. `.iconModes`/`.iconMode` and the `.iconMode.iconSelected` pairing stay in `Dialogs.module.css`; everything else the grids used was deleted from it.
+`ProjectIconPicker`'s modes (Automatic, Upload; it replaced `ProjectIconDialog` and saves on pick, inline in [[component_project_settings_dialog]]) are **not** tiles and did not move. Upload is an action that opens a native file picker, not a value, and the three shapes are one selection held by the dialog. So that picker passes no leading tile and its grid holds nothing selected whenever a mode is chosen, which is also the state where the group itself carries the tab stop. `.iconModes`/`.iconMode` and the `.iconMode.iconSelected` pairing stay in `Dialogs.module.css`; everything else the grids used was deleted from it.
 
 `SpaceDialog` still owns what goes *inside* its leading tiles (`.iconNone`, `.swatchAuto`), since that is the dialog's content rather than the grid's chrome.
 

@@ -1,7 +1,7 @@
 ---
 summary: worktree creation is a shared core taking a target dir, so a plain repo's Feature worktree lands under .tori/worktrees
 status: current
-updated: 2026-10-08
+updated: 2026-10-10
 source: Sidebar as Project Manager + Sidebar Context-Menu Redesign + Shared tab + Attach worktree + Add Branch/Worktree unify (personal/tori, branch code-mirror-6); commits 09ad986, dac1093, e704411, _shared-tab_, _attach-worktree_, _add-branch-worktree_; Features phase 0 (#152, branch feature-workspace); commit 4f9c5ab; Feature lifecycle, member management and repair (#159); commits ef3779b, ede61ff, 70756f3; gettori/tori#208 commit b25293df (create_pr_worktree_in); plan "Run a setup command when a worktree is created" on branch setup-command, ticket gettori/tickets#2
 ---
 
@@ -25,7 +25,7 @@ One dialog (the worktree analog of the plain-repo **Add Branch**) that merges th
 
 ## `.shared/` shared files (`link_shared`, `SHARED_DIR`)
 
-After a worktree is created, each top-level entry of `<container>/.shared/` is symlinked into the new worktree root, **skipping any name the worktree already has** (a tracked file is never clobbered; checked via `symlink_metadata`, which does not follow). Targets are absolute. It is a no-op when `.shared/` is absent. `.shared` never renders as a branch-unit because branch-units come from `git worktree list`, not a child-dir scan. The dir name is a single `const SHARED_DIR = ".shared"` (renamed from `.link` when the folder became editable, see [[component_cm6_editor]]). The page that manages it is called Worktree settings since the setup command joined it (it was Shared in worktrees).
+After a worktree is created, each top-level entry of `<container>/.shared/` is symlinked into the new worktree root, **skipping any name the worktree already has** (a tracked file is never clobbered; checked via `symlink_metadata`, which does not follow). Targets are absolute. It is a no-op when `.shared/` is absent. `.shared` never renders as a branch-unit because branch-units come from `git worktree list`, not a child-dir scan. The dir name is a single `const SHARED_DIR = ".shared"` (renamed from `.link` when the folder became editable, see [[component_cm6_editor]]). It is managed from the Worktrees section of the project settings dialog ([[component_project_settings_dialog]]); before that it was the Worktree settings page, and before the setup command joined it, Shared in worktrees.
 
 **Sync is creation-only.** `link_shared` runs **only** from `create_worktree`; there is no relink pass. Editing `.shared` (via the Shared tab) after worktrees already exist does **not** propagate: a new worktree symlinks the then-current `.shared`, but adding/renaming/deleting a shared file afterward leaves existing worktrees untouched, so a deleted/renamed entry leaves a **dangling symlink** in already-created worktrees (accepted, not auto-pruned). The earlier "Update .links/" relink command (`relink_worktrees` / `relink_worktrees_pure`) was **removed** with this model.
 
