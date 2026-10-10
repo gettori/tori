@@ -1,6 +1,5 @@
 import { createMemo, createResource, onCleanup, onMount } from "solid-js";
 import { listen } from "@tauri-apps/api/event";
-import type { SelectOption } from "../../../../components/Select/Select";
 import ModelPicker from "../../../Chat/ModelPicker";
 import { paletteProviders } from "../../../Chat/agentPaletteData";
 import { probeOnHighlight, recheckAgent } from "../../../Chat/draftProbe";
@@ -29,12 +28,8 @@ import {
 import ProjectContract from "./ProjectContract";
 
 /** One project's contract, read and saved through Rust, with the worker model
- *  picker wired to the agent catalogue. `projects` adds the project picker. */
-export default function ProjectContractEditor(props: {
-  project: string;
-  projects?: SelectOption[];
-  onProject?: (path: string) => void;
-}) {
+ *  picker wired to the agent catalogue. */
+export default function ProjectContractEditor(props: { project: string }) {
   onMount(() => {
     ensureAdaptersLoaded();
     ensureAgentHealthLoaded();
@@ -80,9 +75,7 @@ export default function ProjectContractEditor(props: {
 
   return (
     <ProjectContract
-      projects={props.projects}
       project={props.project}
-      onProject={props.onProject}
       contract={contract()}
       onSet={setFor(props.project)}
       workersOn={(set) => (

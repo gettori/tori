@@ -5,11 +5,6 @@ import ProjectContract from "./ProjectContract";
 import { pointerClick } from "../../../../test/menus";
 import { DEFAULT_CONTRACT, type Contract, type ContractPatch } from "../../../../utils/autopilotContracts";
 
-const PROJECTS = [
-  { value: "/s/tori", label: "tori (s)" },
-  { value: "/s/docs", label: "docs (s)" },
-];
-
 const saved: Contract = {
   ...DEFAULT_CONTRACT,
   ships: "local",
@@ -33,18 +28,10 @@ function open(initial: Contract = DEFAULT_CONTRACT) {
       throw `an issue source's repo must be owner/name, not "${patch.issues.find((q) => !q.repo.includes("/"))?.repo}"`;
     setContract((prev) => ({ ...prev, ...patch }));
   });
-  const onProject = vi.fn();
   render(() => (
-    <ProjectContract
-      projects={PROJECTS}
-      project="/s/tori"
-      onProject={onProject}
-      contract={contract()}
-      onSet={onSet}
-      workersOn={() => <span>picker</span>}
-    />
+    <ProjectContract project="/s/tori" contract={contract()} onSet={onSet} workersOn={() => <span>picker</span>} />
   ));
-  return { onSet, onProject, setContract };
+  return { onSet, setContract };
 }
 
 async function pick(name: string, option: string) {
@@ -56,8 +43,8 @@ async function pick(name: string, option: string) {
 const type = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
 describe("ProjectContract", () => {
-  it("saves each choice as its own patch, and switches project", async () => {
-    const { onSet, onProject } = open();
+  it("saves each choice as its own patch", async () => {
+    const { onSet } = open();
     await pick("How work ships", "Local branch only");
     await pick("How far it goes", "Alone until it leaves the machine");
     await pick("Picking up work", "Start on its own");
@@ -66,8 +53,6 @@ describe("ProjectContract", () => {
       { autonomy: "auto_until_outward" },
       { pickup: "auto" },
     ]);
-    await pick("Project", "docs (s)");
-    expect(onProject).toHaveBeenCalledWith("/s/docs");
   });
 
   it("adds a source, fills every field and saves the list", async () => {

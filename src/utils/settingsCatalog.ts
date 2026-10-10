@@ -33,6 +33,7 @@ export type SettingSection =
   | "dap"
   | "lint"
   | "fmt"
+  | "projects"
   | "trust"
   | "git"
   | "forge"
@@ -115,11 +116,11 @@ export const SETTING_TABS: SettingTabDef[] = [
   { id: "autopilot", label: "Autopilot", group: "Workbench", icon: "wheel", sections: ["autopilot"] },
   { id: "editor", label: "Editor", group: "Workbench", icon: "file-code", sections: ["editor", "editing"] },
   { id: "panes", label: "Panes", group: "Workbench", icon: "columns-2", sections: ["panes"] },
+  { id: "projects", label: "Projects", group: "Workbench", icon: "folder-kanban", sections: ["projects", "trust"] },
   { id: "servers", label: "LSP", group: "Languages", icon: "braces", sections: ["lsp"] },
   { id: "debuggers", label: "Debuggers", group: "Languages", icon: "bug", sections: ["dap"] },
   { id: "linters", label: "Linters", group: "Languages", icon: "list-checks", sections: ["lint"] },
   { id: "formatters", label: "Formatters", group: "Languages", icon: "wand-sparkles", sections: ["fmt"] },
-  { id: "projects", label: "Projects", group: "Languages", icon: "shield-check", sections: ["trust"] },
   {
     id: "appearance",
     label: "Appearance",
@@ -161,6 +162,7 @@ export const SECTION_TITLES: Record<SettingSection, string> = {
   dap: "Debuggers",
   lint: "Linters",
   fmt: "Formatters",
+  projects: "Projects",
   trust: "Trusted projects",
   git: "Git",
   forge: "Hosts",
@@ -296,6 +298,12 @@ export const SETTINGS: SettingEntry[] = [
     section: "fmt",
     label: "Formatters",
     hint: "Which formatters Format Document and format on save can use, and which project config turns each one on.",
+  },
+  {
+    id: "projects-list",
+    section: "projects",
+    label: "Projects",
+    hint: "Every project Tori found. Each one opens its own settings tab, where everything set per project lives.",
   },
   {
     id: "trusted-projects",
@@ -695,7 +703,7 @@ export const SETTINGS: SettingEntry[] = [
     id: "autopilot-projects",
     section: "autopilot",
     label: "Project contracts",
-    hint: "Per project: how work ships, how far the autopilot goes before asking, whether it picks up work on its own, what workers run on, and the issue sources it reads.",
+    hint: "Per project, in each project's settings tab: how work ships, how far the autopilot goes before asking, whether it picks up work on its own, what workers run on, and the issue sources it reads.",
   },
 
   {
