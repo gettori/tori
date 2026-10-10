@@ -39,7 +39,6 @@ import ChangeOriginDialog from "../../components/Dialogs/ChangeOriginDialog";
 import NewProjectDialog from "../../components/Dialogs/NewProjectDialog";
 import { claimProjectFolder, projectJob, type NewProjectMode } from "../../utils/newProject";
 import SpaceDialog, { type SpaceDialogMode } from "../../components/Dialogs/SpaceDialog";
-import ProjectIconDialog from "../../components/Dialogs/ProjectIconDialog";
 import ProjectAgentsDialog, { ruleRows } from "../../components/Dialogs/ProjectAgentsDialog";
 import { projectRows, setProjectRows } from "../../utils/projectAgents";
 import VerificationCommandsDialog from "../../components/Dialogs/VerificationCommandsDialog";
@@ -91,6 +90,7 @@ import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { projectUnitKind } from "../../utils/topicMembers";
 import { traceSwitchStart } from "../../utils/perfTrace";
 import { syntheticId } from "../../utils/syntheticTabs";
+import { openProjectSettings } from "../../utils/projectSettings";
 import { noteCheckpointTicks } from "../../utils/checkpoints";
 import { rollupStatuses, type LiveSessionStatus, type Rollup } from "../../utils/sessionStatus";
 import { liveChatIds } from "../../utils/chatSessions";
@@ -663,10 +663,6 @@ export default function LeftSidebar(props: {
     busy: boolean;
   } | null>(null);
 
-  // The project icon dialog. Holds the project itself rather than a copy of its
-  // icon fields, so a re-discovery while the dialog is open cannot leave the
-  // picker showing a state the tree has already moved past.
-  const [iconReq, setIconReq] = createSignal<{ p: Project; busy: boolean } | null>(null);
   const [agentsReq, setAgentsReq] = createSignal<Project | null>(null);
   const [checksReq, setChecksReq] = createSignal<{ p: Project; commands: string[] } | null>(null);
   const openChecks = (p: Project) =>
@@ -1463,39 +1459,6 @@ export default function LeftSidebar(props: {
     }
   }
 
-  // Confirmed: one of two commands, picked by which branch of the choice came
-  // back. An uploaded image is passed as its SOURCE path - `set_project_icon_file`
-  // copies it into the icon store and returns where it landed, so the config
-  // never points at a file the user might later move. Both commands emit
-  // `config://changed`, which drives the reload, so there is no loadConfig here.
-  async function confirmProjectIcon(choice: { icon?: string; file?: string }) {
-    const req = iconReq();
-    if (!req) return;
-    setIconReq({ ...req, busy: true });
-    try {
-      if (choice.file) {
-        await invoke("set_project_icon_file", { path: req.p.path, source: choice.file });
-      } else {
-        await invoke("set_project_icon", { path: req.p.path, icon: choice.icon ?? null });
-      }
-      setIconReq(null);
-    } catch (e) {
-      setError(String(e));
-      setIconReq({ ...req, busy: false });
-    }
-  }
-
-  // The native picker behind the dialog's upload tile. A cancel is a null, not
-  // an error, so the dialog just stays as it was.
-  async function pickIconFile(): Promise<string | null> {
-    try {
-      return (await invoke<string | null>("pick_icon_file")) ?? null;
-    } catch (e) {
-      setError(String(e));
-      return null;
-    }
-  }
-
   // Reorder drag lives alongside the tile's existing abs-path drag (which drops a
   // space's project paths into the terminal): the abs-path payload is still set,
   // and `dragSpace` gates the in-bar reorder.
@@ -1874,12 +1837,6 @@ export default function LeftSidebar(props: {
       .then((bs) => bs.map((b) => b.name))
       .catch(() => req.locals.filter((name) => name !== deleting.branch));
     setBranchReq((r) => (r ? { ...r, locals, deleting: null } : r));
-  }
-
-  /** The container's Worktree settings page, as an editor tab. The container
-   *  the tab's id, so the page reads the right one wherever the tab lands. */
-  function openSharedFiles(p: Project) {
-    emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("shared", p.path) });
   }
 
   // Confirmed. Where the branch was found is what says how to add it, and the
@@ -2291,8 +2248,8 @@ export default function LeftSidebar(props: {
   };
 
   // Three groups under the header, in the order the rows are reached for: what
-  // this kind of project can make, then what it can be pointed at and how it is
-  // presented, then the destructive row alone at the bottom.
+  // this kind of project can make, then what it can be pointed at and where its
+  // settings live, then the destructive row alone at the bottom.
   //
   // **The destructive row is last, and it is this function that puts it there.**
   // It used to sit mid-list with `Agents…` and `Change icon…` under it, so a
@@ -2324,7 +2281,7 @@ export default function LeftSidebar(props: {
         ? [{ label: "Agents", onClick: () => setAgentsReq(p) }]
         : []),
       { label: "Verification commands", onClick: () => void openChecks(p) },
-      { label: "Change icon", onClick: () => setIconReq({ p, busy: false }) },
+      { label: "Project settings", onClick: () => openProjectSettings(p.path) },
       { separator: true },
       kind.remove,
     ];
@@ -2340,9 +2297,6 @@ export default function LeftSidebar(props: {
           rows: [
             { label: "Add worktree", onClick: () => void openBranchDialog(p, "worktree") },
             { label: "Fan out", onClick: () => fanOut(p) },
-            // Beside Add worktree on purpose: the menu that makes worktrees is
-            // where you say what they are made with.
-            { label: "Worktree settings", onClick: () => openSharedFiles(p) },
             { label: "Prune worktrees", onClick: () => void pruneWorktrees(p) },
           ],
           remove: { label: "Remove project", danger: true, onClick: () => openRemoveProject(p) },
@@ -2375,7 +2329,6 @@ export default function LeftSidebar(props: {
         return {
           rows: [
             { label: "Add worktree", onClick: () => void openBranchDialog(p, "worktree") },
-            { label: "Worktree settings", onClick: () => openSharedFiles(p) },
             { label: "Prune worktrees", onClick: () => void pruneWorktrees(p) },
           ],
           remove: {
@@ -3426,8 +3379,8 @@ export default function LeftSidebar(props: {
                   end={
                     <>
                       {/* Lit only when a worktree is missing a shared file, since
-                        a healthy container has nothing to say. Doubles as the
-                        one path to the page that is not a right-click. */}
+                        a healthy container has nothing to say. Opens the
+                        project's settings on the section that has the gap. */}
                       <Show when={sharedGaps()[p.path]}>
                         {(n) => (
                           <IconButton
@@ -3438,7 +3391,7 @@ export default function LeftSidebar(props: {
                             tooltip={`${n()} shared ${n() === 1 ? "file is" : "files are"} missing from a worktree`}
                             onClick={(e: MouseEvent) => {
                               e.stopPropagation();
-                              openSharedFiles(p);
+                              openProjectSettings(p.path, "worktrees");
                             }}
                           />
                         )}
@@ -3694,20 +3647,6 @@ export default function LeftSidebar(props: {
           busy={newReq()!.busy}
           onConfirm={(opts) => confirmNewProject(opts)}
           onCancel={() => setNewReq(null)}
-        />
-      </Show>
-
-      <Show when={iconReq()}>
-        <ProjectIconDialog
-          projectName={iconReq()!.p.name}
-          seed={iconReq()!.p.path}
-          icon={iconReq()!.p.icon ?? null}
-          iconFile={iconReq()!.p.iconFile ?? null}
-          favicon={iconReq()!.p.favicon ?? null}
-          busy={iconReq()!.busy}
-          onConfirm={(choice) => confirmProjectIcon(choice)}
-          onPickFile={pickIconFile}
-          onCancel={() => setIconReq(null)}
         />
       </Show>
 

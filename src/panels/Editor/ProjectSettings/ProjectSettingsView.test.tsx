@@ -9,22 +9,33 @@ vi.mock("@tauri-apps/api/core", () => ({
       saves.push(args!.settings as { worktree: Record<string, unknown> });
       return Promise.resolve(args!.settings);
     }
+    if (cmd === "get_config") {
+      return Promise.resolve({
+        spaces: [
+          {
+            name: "work",
+            projects: [{ name: "p", path: "/p", branchUnits: [{ folderPath: "/p/main", kind: "worktree" }] }],
+          },
+        ],
+      });
+    }
     if (cmd === "shared_overview") {
       return Promise.resolve({ dir: "/p/.shared", exists: false, worktrees: [], entries: [] });
     }
     return Promise.resolve(null);
   },
+  convertFileSrc: (path: string) => `asset://${path}`,
 }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}) }));
 
-const { default: SharedFilesView } = await import("./SharedFilesView");
+const { default: ProjectSettingsView } = await import("./ProjectSettingsView");
 
 afterEach(cleanup);
 
-describe("Worktree settings page", () => {
+describe("Project settings tab, Worktrees section", () => {
   it("saves the setup command under the container and shows it on reopen", async () => {
-    render(() => <SharedFilesView workspace="/p" />);
-    expect(screen.getByText("Worktree settings")).toBeTruthy();
+    render(() => <ProjectSettingsView workspace="/p" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Worktrees" }));
 
     const field = screen.getByLabelText("Setup command") as HTMLInputElement;
     fireEvent.change(field, { target: { value: "  pnpm install  " } });
@@ -32,7 +43,8 @@ describe("Worktree settings page", () => {
     expect(saves[0].worktree["/p"]).toEqual({ setupCommand: "pnpm install", setupWait: false });
 
     cleanup();
-    render(() => <SharedFilesView workspace="/p" />);
+    render(() => <ProjectSettingsView workspace="/p" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Worktrees" }));
     expect((screen.getByLabelText("Setup command") as HTMLInputElement).value).toBe("pnpm install");
   });
 });

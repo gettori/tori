@@ -1,0 +1,130 @@
+/* The preview, the mode strip and the chosen mode's body as one column. */
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-6);
+}
+
+/* What the row will look like, beside what the chosen source means. The tile is
+   the size it is actually worn at, so the preview is the answer rather than a
+   picture of one. */
+.preview {
+  display: flex;
+  align-items: center;
+  gap: var(--tori-space-5);
+  padding: var(--tori-space-5);
+  background: var(--canvas-input);
+  border: var(--tori-border-thin) solid var(--border-default);
+  border-radius: var(--tori-radius-md);
+}
+.tile {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(48px * var(--ui-scale));
+  height: calc(48px * var(--ui-scale));
+  border-radius: var(--tori-radius-xl);
+  background: color-mix(in srgb, var(--brand-default) 15%, transparent);
+  border: var(--tori-border-thin) solid color-mix(in srgb, var(--brand-default) 35%, transparent);
+  color: var(--brand-default);
+  overflow: hidden;
+}
+.tile svg {
+  width: calc(24px * var(--ui-scale));
+  height: calc(24px * var(--ui-scale));
+}
+.tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.copy {
+  min-width: 0;
+}
+.copyTitle {
+  font-size: var(--tori-text-md);
+  color: var(--fg-default);
+}
+.copyBody {
+  margin-top: var(--tori-space-2);
+  font-size: var(--tori-text-sm);
+  line-height: var(--tori-line-normal);
+  color: var(--fg-subtle);
+  text-wrap: pretty;
+}
+
+/* `width`, not `display: flex`, for the reason Dialogs.module.css's `.modeSeg`
+   gives: the control's own group is inline-flex at the same specificity. */
+.modes {
+  width: 100%;
+}
+.modes button {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Dashed, because the border is the drop target and not a field's edge. */
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--tori-space-3);
+  width: 100%;
+  padding: var(--tori-space-7) var(--tori-space-6);
+  background: var(--canvas-input);
+  border: var(--tori-border-thin) dashed var(--border-strong);
+  border-radius: var(--tori-radius-md);
+  color: var(--fg-muted);
+  font-family: inherit;
+  font-size: var(--tori-text-md);
+  cursor: pointer;
+  transition:
+    border-color var(--tori-duration-fast) ease,
+    background var(--tori-duration-fast) ease;
+}
+.dropzone svg {
+  width: calc(24px * var(--ui-scale));
+  height: calc(24px * var(--ui-scale));
+  color: var(--fg-subtle);
+}
+.dropzone:hover,
+.dropzone:focus-visible {
+  border-color: var(--brand-default);
+  outline: none;
+}
+.dropzoneOver {
+  border-color: var(--brand-default);
+  background: var(--brand-wash);
+}
+.dropAction {
+  color: var(--brand-default);
+}
+.dropSpec {
+  font-size: var(--tori-text-sm);
+  color: var(--fg-subtle);
+}
+.dropName {
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
+  color: var(--fg-default);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-4);
+}
+.grid input {
+  -webkit-user-select: text;
+  user-select: text;
+}
+.more {
+  font-size: var(--tori-text-sm);
+  line-height: var(--tori-line-normal);
+  color: var(--fg-subtle);
+}

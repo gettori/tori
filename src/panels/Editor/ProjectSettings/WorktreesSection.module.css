@@ -1,4 +1,4 @@
-/* The Worktree settings page: the setup command, then a rail of entries beside the worktrees one
+/* The Worktrees section: the setup command, then a rail of shared entries beside the worktrees one
    entry did and did not reach. Two panes because the two questions are
    different, and the second only matters for the entry in hand. */
 .page {
@@ -9,30 +9,26 @@
   background: var(--canvas-default);
 }
 
-.topBar {
+.sharedHead {
   display: flex;
   flex: none;
   align-items: center;
   gap: calc(6px * var(--ui-scale));
-  /* The breadcrumb bar's band (Breadcrumbs.module.css says the sum), so this
-     tab and a file tab start their content on the same line. */
-  min-height: calc(var(--control-height-sm) + 8px * var(--ui-scale) + 1px);
-  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  background: var(--canvas-card);
+  padding: calc(8px * var(--ui-scale)) calc(16px * var(--ui-scale));
   border-bottom: 1px solid var(--border-default);
 }
 
-.topBar > svg {
+.sharedHead > svg {
   flex: none;
   width: var(--control-icon);
   height: var(--control-icon);
   color: var(--fg-muted);
 }
 
-.title {
+.sharedTitle {
   flex: none;
   color: var(--fg-default);
-  font-size: var(--tori-text-lg);
+  font-size: var(--tori-text-md);
   font-weight: 600;
 }
 
