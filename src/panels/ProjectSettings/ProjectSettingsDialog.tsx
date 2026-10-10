@@ -169,7 +169,7 @@ export default function ProjectSettingsDialog(props: { path: string; section?: P
               </div>
             </div>
 
-            <OverlayScroll class={s.pane} contentClass={s.paneInner}>
+            <OverlayScroll class={s.pane} contentClass={`${s.paneInner} ${styles.inner}`}>
               {pane("general", <GeneralSection project={f().project} kind={kind()} />)}
               {pane("worktrees", <WorktreesSection workspace={f().project.path} />)}
               {pane(
