@@ -51,7 +51,7 @@ export const Default: Story = {
   },
 };
 
-/** No leading tile and no search: the shape `ProjectIconDialog` reaches for when
+/** No leading tile and no search: the shape `ProjectIconPicker` reaches for when
  *  the picker's own "no icon" state lives outside the grid, on the mode buttons
  *  beside it. Nothing is selected here, so the group itself holds the tab stop.
  */

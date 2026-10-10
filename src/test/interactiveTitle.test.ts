@@ -120,7 +120,6 @@ const KEPT = new Map<string, Kept>([
   ["components/Dialogs/NewProjectDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/PickerModal.test.tsx", { count: 2, reason: FIXTURE }],
   ["components/Dialogs/ProjectAgentsDialog.tsx", { count: 1, reason: HEADING }],
-  ["components/Dialogs/ProjectIconDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/VerificationCommandsDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/ServerMessageDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/PickerModal.tsx", { count: 1, reason: HEADING }],
@@ -187,6 +186,8 @@ const KEPT = new Map<string, Kept>([
       reason: `one ${TRUNCATION}, and three of ${HEADING}. Was two truncations until the tab registry deduplicated the strip's touched-dot span into the shared fileDots helper (written once, rendered in both the tab and its overflow row). Its 9 swept controls rest on this static check alone: the pane is 2000 lines behind a CodeMirror mount and phase 3 did not budget a mounting test for it, the same limit DebugPanel records above`,
     },
   ],
+  ["panels/Editor/ProjectSettings/ProjectSettingsView.tsx", { count: 1, reason: TRUNCATION }],
+  ["panels/Editor/ProjectSettings/WorktreesSection.tsx", { count: 2, reason: `one ${TRUNCATION}, and one ${HEADING}` }],
   ["panels/Editor/ProblemsPanel.tsx", { count: 2, reason: `one ${TRUNCATION}, and one ${ROW_ONCLICK}` }],
   ["panels/Editor/TodoPanel.tsx", { count: 2, reason: `one ${TRUNCATION}, and one ${ROW_ONCLICK}` }],
   ["panels/Editor/ConflictView.tsx", { count: 2, reason: `${TRUNCATION}, plus one ${HEADING}` }],
@@ -202,7 +203,6 @@ const KEPT = new Map<string, Kept>([
     { count: 5, reason: `one ${TRUNCATION}, two of ${ROW_ONCLICK}, and two of ${HEADING}` },
   ],
   ["panels/Editor/SessionPanel.tsx", { count: 3, reason: `two ${TRUNCATION}, and one ${ROW_ONCLICK}` }],
-  ["panels/Editor/SharedFilesView.tsx", { count: 2, reason: `one ${TRUNCATION}, and one ${HEADING}` }],
   ["panels/FirstRun/FirstRun.tsx", { count: 1, reason: `${HEADING} - the setup window's` }],
   ["panels/FirstRun/FirstRun.stories.tsx", { count: 1, reason: FIXTURE }],
   ["panels/FirstRun/intro/Intro.tsx", { count: 1, reason: `${HEADING} - the intro's` }],
@@ -362,8 +362,11 @@ const KEPT = new Map<string, Kept>([
  *
  *  **Down four**: the checkpoint timeline became a list with a detail view.
  *  Its rows are buttons that describe themselves through `Tooltip`, and a
- *  file's name and folder each get a line of their own. */
-const RAW_ELEMENT_TITLES = 72;
+ *  file's name and folder each get a line of their own.
+ *
+ *  **Up one** with the project settings tab, whose bar carries the project's
+ *  path, truncated from the left, beside the Worktrees section's own. */
+const RAW_ELEMENT_TITLES = 73;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. The Changes
  *  panel's stash row is one: a click expands it to its files. */
@@ -501,8 +504,9 @@ describe("the title= guard", () => {
       li: 1,
       p: 1,
       // Down one span: the pull request detail view went, and the branch line
-      // it truncated is drawn once now, in the panel that replaced it.
-      span: 56,
+      // it truncated is drawn once now, in the panel that replaced it. Up one
+      // for the project settings tab's path.
+      span: 57,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });
