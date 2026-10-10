@@ -45,7 +45,11 @@ export default function ProjectSettingsView(props: { workspace: string }) {
     }),
   );
   // Held while the record loads, so a request for Worktrees is not lost to the
-  // moment before the layout is known.
+  // moment before the layout is known. Once it is known, a section this project
+  // does not have is dropped, so it cannot surface later when one appears.
+  createEffect(() => {
+    if (found() && !sections().includes(picked())) setPicked("general");
+  });
   const section = () => (sections().includes(picked()) ? picked() : "general");
 
   return (
