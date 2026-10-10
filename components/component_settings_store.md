@@ -1,7 +1,7 @@
 ---
 summary: Settings store resolves formatOnSave in three states (null, false, true) with ??; vimMode has no per-project form
 status: current
-updated: 2026-08-14
+updated: 2026-10-10
 source: "Central configurable UI system (personal/tori, branch code-mirror-6); Phases 3, 4; commits 94055c9, 631d16e; theme rework: Native theming system: palette + roles generator (branch `terminal-editor-design`) Phases 2, 7"
 ---
 
@@ -150,3 +150,16 @@ per-tab count badges and the rule that typing never navigates are in
 - No comment-preserving surgical JSONC writes yet (deferred).
 
 Recorded in [[adr_ui_config_system]], whose clause 3 this amends.
+
+## Per-project maps and how each is keyed (2026-10-10)
+
+The project settings dialog ([[component_project_settings_dialog]]) edits every per-project map here, and they are not keyed alike:
+
+- **`chat`** is keyed by the worktree folder a chat ran in, written by `rememberChatPrefs` and never purged when the worktree goes. `forgetChatPrefsUnder(project)` clears every key under a project, dead worktrees included. A new worktree has no key, so it starts on the defaults.
+- **`editor[path].formatOnSave`** is resolved by the deepest project prefix (`ownFormatOnSave`), so the container's answer reaches every worktree. It was an exact match before, which no worktree path ever hit. Nothing in the UI writes it: a per-project control was built and then dropped, so it is a hand-edited key.
+- **`projectAgents`** resolves by prefix in `allowedRows`; **`verification.commands`** by prefix in Rust (`verification.rs`).
+- **`worktree`** is keyed by the container itself.
+- **`forge.picks`** is keyed by remote (`Remote::key`), not project, so two checkouts of one repository share one pick.
+
+Any effect reading one of these by reference refires on every save, see [[gotcha_every_settings_save_replaces_every_per_project_map]].
+
