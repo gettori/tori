@@ -6,8 +6,8 @@ import own from "./ProjectSettingsDialog.module.css";
  *  the same kind of surface. */
 export function Section(props: { heading: string; meta?: JSX.Element; children: JSX.Element }) {
   return (
-    <section class={s.section}>
-      <div class={s.sectionTitle}>
+    <section class={`${s.section} ${own.section}`}>
+      <div class={`${s.sectionTitle} ${own.sectionTitle}`}>
         <span>{props.heading}</span>
         <span class={s.sectionRule} />
         <Show when={props.meta}>
@@ -23,7 +23,7 @@ export function Section(props: { heading: string; meta?: JSX.Element; children: 
  *  label, as Settings lays out a row. */
 export function Row(props: { label: JSX.Element; hint?: JSX.Element; children?: JSX.Element }) {
   return (
-    <div class={s.row}>
+    <div class={`${s.row} ${own.row}`}>
       <span class={s.label}>{props.label}</span>
       <div class={s.control}>{props.children}</div>
       <Show when={props.hint}>

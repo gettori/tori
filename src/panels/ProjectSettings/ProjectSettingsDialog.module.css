@@ -8,6 +8,28 @@
   font-size: var(--tori-text-md);
 }
 
+/* More air than a Settings pane: a project's sections hold cards, lists and
+   tables as well as rows, and at Settings' density they ran together. */
+.inner {
+  padding: var(--tori-space-7) calc(40px * var(--ui-scale)) calc(48px * var(--ui-scale));
+}
+
+.section {
+  margin-bottom: calc(44px * var(--ui-scale));
+}
+
+.section:last-child {
+  margin-bottom: 0;
+}
+
+.sectionTitle {
+  margin-bottom: var(--tori-space-4);
+}
+
+.row {
+  padding-block: var(--tori-space-6);
+}
+
 /* The rail's mark for a section holding a draft nobody saved: the warning
    dot's shape in the brand colour, since nothing is wrong yet. */
 .dotUnsaved {
@@ -112,8 +134,8 @@
 .wide {
   display: flex;
   flex-direction: column;
-  gap: var(--tori-space-5);
-  padding: var(--tori-space-5) var(--tori-space-1);
+  gap: var(--tori-space-6);
+  padding: var(--tori-space-6) var(--tori-space-1);
   --control-height: calc(32px * var(--ui-scale));
 }
 
@@ -226,7 +248,7 @@
 
 .empty {
   margin: 0;
-  padding: var(--tori-space-5) var(--tori-space-1);
+  padding: var(--tori-space-6) var(--tori-space-1);
   color: var(--fg-muted);
   font-size: var(--tori-text-xs);
 }
@@ -234,7 +256,7 @@
 /* Remembered picks: one row per worktree, its picks in columns. */
 .table {
   max-width: calc(900px * var(--ui-scale));
-  margin-top: var(--tori-space-4);
+  margin-top: var(--tori-space-5);
   overflow: hidden;
   border: var(--tori-border-thin) solid var(--border-default);
   border-radius: var(--tori-radius-md);
@@ -245,7 +267,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) repeat(4, minmax(0, 1fr));
   column-gap: var(--tori-space-4);
-  padding: calc(9px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  padding: calc(11px * var(--ui-scale)) var(--tori-space-6);
 }
 
 .tableHead {
@@ -271,9 +293,9 @@
 .card {
   display: flex;
   flex-direction: column;
-  gap: var(--tori-space-2);
-  margin-top: var(--tori-space-4);
-  padding: var(--tori-space-5) var(--tori-space-6);
+  gap: var(--tori-space-3);
+  margin-top: var(--tori-space-5);
+  padding: var(--tori-space-6) var(--tori-space-7);
   background: var(--neutral-subtle);
   border: var(--tori-border-thin) solid var(--border-default);
   border-radius: var(--tori-radius-lg);
@@ -296,8 +318,8 @@
   display: flex;
   align-items: flex-start;
   gap: var(--tori-space-5);
-  margin-top: var(--tori-space-4);
-  padding: var(--tori-space-5) var(--tori-space-6);
+  margin-top: var(--tori-space-5);
+  padding: var(--tori-space-6) var(--tori-space-7);
   background: color-mix(in srgb, var(--attention-fg) 9%, transparent);
   border: var(--tori-border-thin) solid color-mix(in srgb, var(--attention-fg) 32%, transparent);
   border-radius: var(--tori-radius-lg);
@@ -339,8 +361,8 @@
 .chips {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--tori-space-3);
-  padding: 0 var(--tori-space-1) var(--tori-space-5);
+  gap: var(--tori-space-4);
+  padding: var(--tori-space-2) var(--tori-space-1) var(--tori-space-6);
 }
 
 .chip {

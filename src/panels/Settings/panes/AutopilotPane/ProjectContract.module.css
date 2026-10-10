@@ -2,8 +2,8 @@
 .stacked {
   display: flex;
   flex-direction: column;
-  gap: var(--tori-space-3);
-  padding: var(--tori-space-5) var(--tori-space-1);
+  gap: var(--tori-space-4);
+  padding: var(--tori-space-6) var(--tori-space-1);
   border-bottom: var(--tori-border-thin) solid var(--border-default);
 }
 
@@ -33,8 +33,8 @@
 .sources {
   display: flex;
   flex-direction: column;
-  gap: var(--tori-space-4);
-  padding: var(--tori-space-5) var(--tori-space-1);
+  gap: var(--tori-space-5);
+  padding: var(--tori-space-7) var(--tori-space-1) var(--tori-space-5);
 }
 
 .sourcesHead {
@@ -53,9 +53,9 @@
 .source {
   display: flex;
   flex-direction: column;
-  gap: var(--tori-space-4);
+  gap: var(--tori-space-5);
   margin: 0;
-  padding: var(--tori-space-5);
+  padding: var(--tori-space-6);
   background: var(--neutral-subtle);
   border: var(--tori-border-thin) solid var(--border-default);
   border-radius: var(--tori-radius-lg);
@@ -82,13 +82,13 @@
 .fields {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(calc(170px * var(--ui-scale)), 1fr));
-  gap: var(--tori-space-4);
+  gap: var(--tori-space-5) var(--tori-space-6);
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: var(--tori-space-2);
+  gap: var(--tori-space-3);
   font-size: var(--tori-text-xs);
   color: var(--fg-muted);
 }

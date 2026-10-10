@@ -209,12 +209,8 @@ export default function WorktreesSection(props: { workspace: string }) {
   return (
     <>
       <Section heading="Setup">
-        <div class={`${s.row} ${s.rowStack}`}>
+        <div class={`${s.row} ${s.rowStack} ${own.row}`}>
           <span class={s.label}>Setup command</span>
-          <div class={s.hint}>
-            Runs with <code>sh -c</code> in each worktree Tori creates here, with <code>TORI_PROJECT_ROOT</code> and{" "}
-            <code>TORI_WORKTREE_PATH</code> set. A fork's pull request never runs it.
-          </div>
           <div class={s.control}>
             <input
               type="text"
@@ -224,6 +220,10 @@ export default function WorktreesSection(props: { workspace: string }) {
               placeholder="pnpm install"
               onChange={(e) => saveSetup({ setupCommand: e.currentTarget.value.trim() })}
             />
+          </div>
+          <div class={s.hint}>
+            Runs with <code>sh -c</code> in each worktree Tori creates here, with <code>TORI_PROJECT_ROOT</code> and{" "}
+            <code>TORI_WORKTREE_PATH</code> set. A fork's pull request never runs it.
           </div>
         </div>
         <Row label="Agents started over the socket wait for it">
@@ -238,20 +238,16 @@ export default function WorktreesSection(props: { workspace: string }) {
       <Section
         heading="Shared files"
         meta={
-          <>
-            <span class={styles.dir} title={dir()}>
-              {"‎" + dir() + "‎"}
-            </span>
-            <IconButton
-              size="xs"
-              icon={<Icon icon={RefreshCw} />}
-              aria-label="Refresh"
-              tooltip="Refresh"
-              onClick={() => void load()}
-            />
-          </>
+          <IconButton
+            size="xs"
+            icon={<Icon icon={RefreshCw} />}
+            aria-label="Refresh"
+            tooltip="Refresh"
+            onClick={() => void load()}
+          />
         }
       >
+        <p class={styles.dir}>{dir()}</p>
         {/* The one thing nobody guesses, and the reason the detail beside the
             list has anything to do. */}
         <p class={own.lede}>
