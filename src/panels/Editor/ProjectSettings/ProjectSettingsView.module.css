@@ -151,3 +151,45 @@
   font-size: var(--tori-text-md);
   font-weight: 600;
 }
+
+.note {
+  margin: 0;
+  color: var(--fg-subtle);
+  font-size: var(--tori-text-sm);
+  line-height: var(--tori-line-normal);
+  text-wrap: pretty;
+}
+
+/* A section's Save sits at the end of its own block, with what the draft
+   amounts to at the other end, so each section saves only itself. */
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--tori-space-4);
+}
+
+.actionHint {
+  margin-right: auto;
+  color: var(--fg-subtle);
+  font-size: var(--tori-text-sm);
+}
+
+.textarea {
+  width: 100%;
+  padding: calc(7px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  background: var(--canvas-input);
+  color: var(--fg-default);
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-md);
+  outline: none;
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-md);
+  line-height: var(--tori-line-normal);
+  resize: vertical;
+  transition: border-color var(--tori-duration-fast) ease;
+}
+
+.textarea:focus {
+  border-color: var(--brand-default);
+}
