@@ -63,17 +63,33 @@ describe("NewProjectDialog", () => {
       fireEvent.click(mode("Clone"));
 
       expect(url()).toBeTruthy();
-      expect(screen.getByText("Clones a git repository into a new folder inside this space.")).toBeTruthy();
     });
 
-    it("describes the bare + worktree layout", () => {
-      const { mode } = open();
+    it("clones in the worktree layout unless the box is cleared, and says which", () => {
+      const { onConfirm, mode, url } = open();
 
-      fireEvent.click(mode("Bare + worktree"));
+      fireEvent.click(mode("Clone"));
+      const box = screen.getByRole("checkbox", { name: "Worktree layout" }) as HTMLInputElement;
+      expect(box.checked).toBe(true);
+      expect(screen.getByText(/Clones into a .bare repo with the default branch as its own folder/)).toBeTruthy();
 
-      expect(
-        screen.getByText("A .bare repo plus one initial worktree. Add more branches later as their own folders."),
-      ).toBeTruthy();
+      fireEvent.input(url(), { target: { value: "https://github.com/skarif2/tori.git" } });
+      fireEvent.click(box);
+      expect(screen.getByText("Clones a git repository into a new folder inside this space.")).toBeTruthy();
+      fireEvent.click(create());
+
+      expect(onConfirm).toHaveBeenCalledWith({
+        mode: "clone",
+        name: "tori",
+        url: "https://github.com/skarif2/tori.git",
+        worktreeLayout: false,
+      });
+    });
+
+    it("has no third mode for the bare layout", () => {
+      open();
+
+      expect(screen.queryByRole("button", { name: "Bare + worktree" })).toBeNull();
     });
 
     it("creates a folder from a trimmed name", () => {
@@ -82,7 +98,7 @@ describe("NewProjectDialog", () => {
       fireEvent.input(name(), { target: { value: "  notes  " } });
       fireEvent.click(create());
 
-      expect(onConfirm).toHaveBeenCalledWith({ mode: "folder", name: "notes", url: "" });
+      expect(onConfirm).toHaveBeenCalledWith({ mode: "folder", name: "notes", url: "", worktreeLayout: false });
     });
 
     it("fills the folder name from the URL", () => {
@@ -99,6 +115,7 @@ describe("NewProjectDialog", () => {
         mode: "clone",
         name: "tori",
         url: "https://github.com/skarif2/tori.git",
+        worktreeLayout: true,
       });
     });
 
@@ -141,7 +158,7 @@ describe("NewProjectDialog", () => {
       fireEvent.input(name(), { target: { value: "notes" } });
       fireEvent.keyDown(name(), { key: "Enter" });
 
-      expect(onConfirm).toHaveBeenCalledWith({ mode: "folder", name: "notes", url: "" });
+      expect(onConfirm).toHaveBeenCalledWith({ mode: "folder", name: "notes", url: "", worktreeLayout: false });
     });
 
     it("ignores Enter while the work is already running", () => {

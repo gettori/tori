@@ -1,6 +1,7 @@
 import { For, Show, onMount, type JSX } from "solid-js";
 import Button from "../../../components/Button/Button";
 import SegmentedControl from "../../../components/SegmentedControl/SegmentedControl";
+import Checkbox from "../../../components/Checkbox/Checkbox";
 import type { FirstRunSpace } from "../../../utils/firstRun";
 import type { GitHealth, GitReport } from "../../../utils/gitHealth";
 import type { InstallRoute } from "../../../utils/install";
@@ -10,25 +11,24 @@ import { commandLine } from "./AgentsStep";
 import styles from "../FirstRun.module.css";
 
 export const PROJECT_LEAD =
-  "Projects live inside the space. Start empty, clone a repo, or set up a bare repo with one worktree per branch.";
+  "Projects live inside the space. Start empty, or clone a repo, by default as a bare repo with one worktree per branch.";
 
 export const PROJECT_LABEL: Record<NewProjectMode, string> = {
   folder: "Create project",
   clone: "Clone",
-  bare: "Set up worktrees",
 };
 
 const MODES: { value: NewProjectMode; label: string }[] = [
   { value: "folder", label: "New folder" },
   { value: "clone", label: "Clone" },
-  { value: "bare", label: "Bare + worktrees" },
 ];
 
-const MODE_HINT: Record<NewProjectMode, string> = {
-  folder: "An empty project folder in the space.",
-  clone: "Clone a repository URL into the space.",
-  bare: "One bare repo, with each branch you work on checked out as its own sibling folder. Best for running several agents on different branches at once.",
-};
+const modeHint = (mode: NewProjectMode, worktreeLayout: boolean) =>
+  mode === "folder"
+    ? "An empty project folder in the space."
+    : worktreeLayout
+      ? "One bare repo, with each branch you work on checked out as its own sibling folder. Best for running several agents on different branches at once."
+      : "Clone a repository URL into the space.";
 
 type GitMissing = Exclude<GitHealth["kind"], "ready">;
 
@@ -52,6 +52,8 @@ export default function ProjectStep(props: {
   home: string;
   mode: NewProjectMode;
   onMode: (mode: NewProjectMode) => void;
+  worktreeLayout: boolean;
+  onWorktreeLayout: (on: boolean) => void;
   name: string;
   onName: (name: string) => void;
   url: string;
@@ -72,7 +74,9 @@ export default function ProjectStep(props: {
   const needsUrl = () => props.mode !== "folder";
   const target = () => shortHome(`${props.space.path}/${props.name.trim() || "..."}`, props.home);
   const preview = () =>
-    props.mode === "bare" ? `Creates ${target()}/.bare plus a worktree for the default branch` : `Creates ${target()}`;
+    props.mode === "clone" && props.worktreeLayout
+      ? `Creates ${target()}/.bare plus a worktree for the default branch`
+      : `Creates ${target()}`;
   const nameError = () => (props.name.trim() === "" ? null : badName(props.name));
   const plural = (n: number) => `${n} project${n === 1 ? "" : "s"}`;
 
@@ -98,7 +102,10 @@ export default function ProjectStep(props: {
           value={props.mode}
           onChange={props.onMode}
         />
-        <div class={styles.note}>{MODE_HINT[props.mode]}</div>
+        <div class={styles.note}>{modeHint(props.mode, props.worktreeLayout)}</div>
+        <Show when={needsUrl()}>
+          <Checkbox checked={props.worktreeLayout} onChange={props.onWorktreeLayout} label="Worktree layout" />
+        </Show>
 
         <Show
           when={gitMissing(props.mode, props.git)}

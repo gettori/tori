@@ -949,13 +949,6 @@
   flex: 1;
   min-width: 0;
 }
-/* One strip's extra: "Bare + worktree" is the longest label in the New-in set
-   by some margin, so equal thirds would crowd it while the other two carry
-   slack. Its own class, because the two-segment strips elsewhere in this
-   cluster want the equal split the design draws. */
-.modeSegLast button:last-child {
-  flex: 1.4;
-}
 
 /* ---- The project cluster: Initialize git, Add branch / Add worktree, Agents,
    Icon, Change origin, Remove folder / Remove project.
