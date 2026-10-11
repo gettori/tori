@@ -86,6 +86,11 @@ pub struct LogMeta {
     /// rather than dating an old conversation to the moment it was reopened.
     #[serde(default)]
     pub last_prompt_ts: u64,
+    /// Every live prompt's `last_prompt_ts`, oldest first. Shorter than the
+    /// count for a conversation with turns from before it was kept or from a
+    /// replay, so it lines up with the log's last prompts, not its first.
+    #[serde(default)]
+    pub prompt_times: Vec<u64>,
     /// The model the session last reported. Observed on `SessionStarted`, which
     /// [`keep`] skips, so it cannot be recovered from the log.
     #[serde(default)]
@@ -371,7 +376,11 @@ impl Mirror {
             // Live prompts only. A replay is the agent handing back turns that
             // already happened, and stamping those would date the whole
             // conversation to the moment the tab was reopened.
-            ChatEvent::UserMessage { .. } if !state.replaying => state.meta.last_prompt_ts = now_secs(),
+            ChatEvent::UserMessage { .. } if !state.replaying => {
+                let now = now_secs();
+                state.meta.last_prompt_ts = now;
+                state.meta.prompt_times.push(now);
+            }
             _ => {}
         }
 
@@ -534,6 +543,24 @@ fn now_secs() -> u64 {
 /// to render.
 pub fn read_meta(path: &Path) -> Option<LogMeta> {
     serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
+}
+
+/// Each timed prompt in `events` as `(ts, index of its UserMessage)`, oldest
+/// first. Times pair with the log's last prompts, so a prompt older than the
+/// times kept has none and is left out.
+pub fn timed_prompts(events: &[ChatEvent], times: &[u64]) -> Vec<(u64, usize)> {
+    let at: Vec<usize> = events
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| matches!(e, ChatEvent::UserMessage { .. }))
+        .map(|(i, _)| i)
+        .collect();
+    let paired = at.len().min(times.len());
+    at[at.len() - paired..]
+        .iter()
+        .zip(&times[times.len() - paired..])
+        .map(|(&i, &ts)| (ts, i))
+        .collect()
 }
 
 /// Read a log back as the events it recorded, plus the number of lines that
@@ -1020,6 +1047,22 @@ mod tests {
         assert_eq!(
             after.last_prompt_ts, live.last_prompt_ts,
             "a replayed prompt is not a new one"
+        );
+    }
+
+    #[test]
+    fn prompt_times_pair_with_the_logs_last_prompts() {
+        let (mirror, log) = mirror();
+        mirror.note(&user("t1", "ask"));
+        mirror.note(&turn_done("t1"));
+        let meta = log.meta().expect("a live turn wrote a sidecar");
+        assert_eq!(meta.prompt_times, vec![meta.last_prompt_ts]);
+
+        let events = vec![user("old", "a"), text("old", "b"), user("t1", "c"), text("t1", "d")];
+        assert_eq!(
+            timed_prompts(&events, &[1_760_000_123]),
+            vec![(1_760_000_123, 2)],
+            "a prompt older than the kept times has none"
         );
     }
 

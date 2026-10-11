@@ -1062,6 +1062,11 @@ pub fn mark_spawned_worker(session: &str, spawner: &str) {
     }
 }
 
+/// Whether a session is mid-turn, as the webview last reported it.
+pub fn session_running(session: &str) -> bool {
+    EVENTS.get().is_some_and(|(_, states)| states.running(session))
+}
+
 pub fn current_spawner(spawner: &str) -> String {
     RUNNER
         .get()
