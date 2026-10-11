@@ -1,7 +1,7 @@
 ---
 summary: verification.rs marks each code-changing turn verified, failed or unverified from the last check after its last edit
 status: current
-updated: 2026-10-08
+updated: 2026-10-12
 source: "Verification badge plan (branch `phase-1-block-1`, gettori/tickets#26); commits 32bb7fa2, 1624030d, 140d5b82; `src-tauri/src/verification.rs` (`Tracker`, `mark_history`, `session_turns`, `entries_for`), `src-tauri/src/chat/host.rs` (`wrap`, `mark_verification`), `src-tauri/src/chat/commands.rs` (`session_verification`), `src/utils/verification.ts`, `src/components/Dialogs/VerificationCommandsDialog.tsx`"
 ---
 
@@ -20,8 +20,9 @@ source: "Verification badge plan (branch `phase-1-block-1`, gettori/tickets#26);
 ## Interface
 
 - Live: `ChatHost::wrap` keeps a `Tracker` per session in `verify`, fed only `ToolCallStarted`, `FileEdit`, `ToolCallCompleted` and `TurnCompleted`. Time is measured only when the session is not replaying (`Lifecycle::replaying`). The tracker re-reads the list on a turn's first event, so a saved list applies from the next turn.
+- ACP timing: a mirror log has no prompts, so `marked_history` pairs the log's `UserMessage`s with the sidecar's `prompt_times` (`mirror::timed_prompts`, newest first). Only there, not in `read_with_prompts`, because history paging reads a log as one page and its oldest prompts can have no time. An ACP turn now has a `promptTs` unless it predates the times kept.
 - Replay: `mark_history` (through `ChatHost::mark_verification`, in both `history_reply` and `chat_history_page`) drops logged `TurnVerification` events, recomputes them against the list as it is now and keeps only their measured durations. A mirror log groups by turn id; a Claude transcript has no `TurnCompleted` and groups by prompt, see [[gotcha_a_claude_transcript_replay_has_no_turn_completed]].
-- Per turn: `session_verification(sessionId, agentId, cwd)` runs `session_turns` over `read_with_prompts`, keyed by `promptTs` for Checkpoints and the tab. Cached on the transcript stamp plus the settings.json mtime, and it shares one parse with `session_secrets` through `marked_history`. This is the shape the risk score (#32) reads.
+- Per turn: `session_verification(sessionId, agentId, cwd)` runs `session_turns` over `read_with_prompts`, keyed by `promptTs` for Checkpoints and the tab. Cached on the transcript stamp plus the settings.json mtime, and it shares one parse with `session_secrets` through `marked_history`. The review inbox sums these, see [[component_review_inbox]].
 - Frontend: `chatStore` folds the event into `verifications`, `MessageList` draws the badge at the turn head with `verdictDetail` as its tooltip, and `turnWatch` (shared with secret reads) feeds `TabMark`, the History row and the Checkpoints row with the latest code turn's verdict.
 - Settings: `verification.enabled` (default on, the Chat pane's "Mark unverified turns") and `verification.commands`, edited from the project menu's "Verification commands" dialog, whose prefill comes from `verification_commands(project)`. Both are cached on the settings mtime.
 
