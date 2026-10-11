@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Every check CI runs, runnable here. Each job in .github/workflows/check.yml
 # calls one target of this script, so the list exists once and passing
-# `scripts/check.sh all` locally is passing CI. The one job outside it is the
-# `dco` sign-off check, which only has meaning on a pull request from outside.
+# `scripts/check.sh all` locally is passing CI. The `dco` sign-off check is not
+# here: it lives in dco.yml and only has meaning on a pull request from outside.
 #
 #   scripts/check.sh ts      lockfile, type check (desktop and mobile), format,
 #                            lint, token guard and vitest, both vite builds
