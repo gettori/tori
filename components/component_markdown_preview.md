@@ -1,8 +1,8 @@
 ---
 summary: markdown preview and image view bypass CodeEditor entirely since it reads every open file as utf8 text
 status: current
-updated: 2026-10-05
-source: "v0.1 features: status indicators, search, input layer (personal/tori, branch `topbar`); Phase 3"; plan "Move syntax highlighting off the main thread" (branch `off-the-main-thread`, gettori/tickets#7), phase large-preview; `src/panels/Editor/previewBlocks.ts`
+updated: 2026-10-11
+source: "v0.1 features: status indicators, search, input layer (personal/tori, branch `topbar`); Phase 3"; plan "Move syntax highlighting off the main thread" (branch `off-the-main-thread`, gettori/tickets#7), phase large-preview; `src/panels/Editor/previewBlocks.ts`; "Markdown preview keeps its scroll position on tab switch" (branch `phase-1-block-2`, gettori/tickets#79), commit a69937df
 ---
 
 # Markdown preview + image view
@@ -32,6 +32,14 @@ A 1 MB file used to hold one frame for over 400ms. Now:
 - Mermaid fences draw only near the screen, one per idle slot ([[gotcha_webkit_has_no_requestidlecallback]]).
 
 Measured: worst frame 46ms, whole document in 1.1s.
+
+## Coming back to a preview (2026-10-11)
+
+- **Its own memory, per path.** `notePreviewAnchor` / `previewAnchorOf` in `liveBuffer.ts` hold `{ box, offset }`: the first top-level block on screen and the pixel offset into it. Kept apart from the source/preview hand off, which only the other side may read. That is why a tab swap used to open at the top.
+- **The hand off wins.** A pending position from the source view places the preview first, so the toggle behaves as before; the stored anchor is the fallback.
+- **Blocks, not a fraction.** Under `content-visibility: auto` a remounted preview's `scrollHeight` is mostly 3em estimates for blocks not yet drawn, so a fraction taken against the old total lands well off on a long document (a short fixture fits on screen and hides it). Placed twice, the second time a frame later, since landing draws the neighbours at their real height. Same lesson as [[lesson_a_pixel_is_not_a_position]].
+- **Nothing is recorded until the path is placed.** On a swap between two previews the component is reused; the scroller clamps while the last file is still on screen, and a queued note would measure the new file's partial render. Both the scroll listener and its frame callback check `placedFor` and `props.path`.
+- **Unwrapping the prose carrier.** The boxes are the children of each `display: contents` prose carrier plus the code fences, in document order.
 
 ## Key files & entry points
 
