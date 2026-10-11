@@ -12,6 +12,7 @@ import { createSignal } from "solid-js";
 import { deferredWrite } from "../utils/deferredWrite";
 import { leaves, resolvePinPane, type PaneNode } from "./paneLayout";
 import { pinSideOf } from "./pinRules";
+import { moveDeep, type PathMove } from "../utils/moveWorkspace";
 
 type WsPlacement = {
   tabs: Record<string, string>;
@@ -319,6 +320,11 @@ export function forgetWorkspace(ws: string) {
   if (!placements()[ws]) return;
   const { [ws]: _gone, ...rest } = placements();
   setPlacements(rest);
+  placementWrite.schedule();
+}
+
+export function moveWorkspacePlacements(moves: readonly PathMove[]) {
+  setPlacements(moveDeep(placements(), moves));
   placementWrite.schedule();
 }
 

@@ -71,6 +71,8 @@ vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), stopEvicted
 const { default: Editor } = await import("./Editor");
 const { emitWith, OPEN_IN_EDITOR, FILE_RENAMED, PURGE_UNDER_PATH } = await import("../../utils/events");
 const { breakpointMarks } = await import("../../utils/debugBreakpoints");
+const { moveWorkspaces } = await import("../../utils/moveWorkspace");
+const { tabsByWs } = await import("./editorTabStore");
 
 /** A workspace of its own per test: the store is a module singleton, and a
  *  shared key would leak one test's breakpoints into the next. */
@@ -188,6 +190,23 @@ describe("when the file moves or goes", () => {
     // you are actually looking at as bare.
     await waitFor(() => expect(breakpointMarks(repo, moved)).toEqual([{ line: 12, state: "armed" }]));
     expect(breakpointMarks(repo, file)).toEqual([]);
+  });
+
+  it("follows its whole workspace into a converted checkout, open tab included", async () => {
+    const { repo, file } = workspace();
+    const checkout = `${repo}/main`;
+    const moved = `${checkout}/src/a.ts`;
+    await mountAt(repo);
+    await openFile(file);
+    code!.onToggleBreakpoint!(file, 12);
+    await waitFor(() => expect(code!.breakpoints).toHaveLength(1));
+
+    moveWorkspaces([{ from: repo, to: checkout }]);
+
+    await waitFor(() => expect(breakpointMarks(checkout, moved)).toEqual([{ line: 12, state: "armed" }]));
+    expect(breakpointMarks(repo, file)).toEqual([]);
+    expect(tabsByWs()[checkout]?.map((t) => t.path)).toEqual([moved]);
+    expect(tabsByWs()[repo]).toBeUndefined();
   });
 
   it("goes with a trashed folder", async () => {

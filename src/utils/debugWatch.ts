@@ -13,6 +13,7 @@ import { debugSession } from "./dapSessions";
 import { currentFrame, selectedFrame } from "./debugStack";
 import { sanitizeOutput } from "./debugStore";
 import { addWatch, loadWatches, moveWatch, removeWatch, saveWatches, watchesFor, type WatchStore } from "./watches";
+import { moveDeep, type PathMove } from "./moveWorkspace";
 
 /** One row of the watch list. */
 export type WatchRow = {
@@ -152,6 +153,10 @@ async function evaluate(ws: string, expression: string, at: number): Promise<voi
  * has no event to say so.
  */
 /** The workspace is gone: drop every watch filed under it. */
+export function moveWatchWorkspaces(moves: readonly PathMove[]): void {
+  write(moveDeep(store(), moves));
+}
+
 export function dropWorkspaceWatches(ws: string): void {
   if (!(ws in store())) return;
   const { [ws]: _gone, ...rest } = store();
