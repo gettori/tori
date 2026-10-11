@@ -169,6 +169,15 @@ pub struct UnitsGitParams {
     pub folders: Vec<String>,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewMarkParams {
+    /// The session to mark reviewed, an `id` from `review.list`.
+    pub id: String,
+    /// The row's `toTs`: the latest prompt the reviewer saw.
+    pub to_ts: u64,
+}
+
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LogParams {
@@ -676,6 +685,8 @@ pub trait Backend: Send + Sync {
     fn session_model(&self, principal: &Principal, params: ModelParams) -> Result<Value, RpcError>;
     fn session_mode(&self, principal: &Principal, params: ModeParams) -> Result<Value, RpcError>;
     fn units_git(&self, params: UnitsGitParams) -> Result<Value, RpcError>;
+    fn review_list(&self) -> Result<Value, RpcError>;
+    fn review_mark(&self, params: ReviewMarkParams) -> Result<Value, RpcError>;
     fn units_sync(&self, params: UnitsSyncParams) -> Result<Value, RpcError>;
     fn units_pr(&self, params: UnitsPrParams) -> Result<Value, RpcError>;
     fn worktree_new(&self, principal: &Principal, params: WorktreeParams) -> Result<Value, RpcError>;
@@ -998,6 +1009,12 @@ pub mod tests {
         }
         fn units_git(&self, p: UnitsGitParams) -> Result<Value, RpcError> {
             Ok(json!({ "folders": p.folders }))
+        }
+        fn review_list(&self) -> Result<Value, RpcError> {
+            Ok(json!([]))
+        }
+        fn review_mark(&self, p: ReviewMarkParams) -> Result<Value, RpcError> {
+            Ok(json!({ "id": p.id }))
         }
         fn units_sync(&self, p: UnitsSyncParams) -> Result<Value, RpcError> {
             Ok(json!({ "units": p.units.len() }))
@@ -1435,6 +1452,24 @@ pub mod tests {
     }
 
     #[test]
+    fn only_a_person_or_a_paired_phone_reviews_work() {
+        let server = stub_server();
+        let mark = || request("review.mark", json!({"id": "s1", "to_ts": 1_760_000_900}));
+        let device = Principal::Device("d1".into());
+        assert!(server.dispatch(0, &device, &request("review.list", json!({}))).is_ok());
+        assert!(server.dispatch(0, &device, &mark()).is_ok());
+        assert!(server.dispatch(0, &Principal::Local, &mark()).is_ok());
+        for caller in [
+            Principal::Session(Caller::Chat("s1".into())),
+            Principal::Session(Caller::Terminal("t1".into())),
+        ] {
+            let err = server.dispatch(0, &caller, &mark()).unwrap_err();
+            assert_eq!(err.code, REFUSED, "{caller:?}");
+            assert!(err.message.contains("cannot review its own work"), "{}", err.message);
+        }
+    }
+
+    #[test]
     fn session_answer_is_refused_to_a_worker_a_shell_and_a_terminal() {
         let server = stub_server();
         let answer = || {
@@ -1522,6 +1557,8 @@ pub mod tests {
                 "session.info",
                 "session.model",
                 "session.mode",
+                "review.list",
+                "review.mark",
                 "units.git",
                 "units.sync",
                 "units.pr",

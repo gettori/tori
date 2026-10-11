@@ -1678,3 +1678,57 @@ li + li > .item {
 .sync {
   flex: none;
 }
+
+.reviewHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.reviewScore {
+  flex: none;
+  min-width: 34px;
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--status-needs-you);
+}
+
+.reviewTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.reviewSummary {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  font-size: 14px;
+  color: var(--fg-muted);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.reviewSignals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.reviewSignal {
+  padding: 2px 9px;
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--fg-muted);
+  background: var(--m-chip);
+}
+
+.reviewSignal[data-kind="secretRead"],
+.reviewSignal[data-kind="failed"],
+.reviewSignal[data-kind="deletedTests"],
+.reviewSignal[data-kind="sensitivePath"] {
+  color: var(--danger-fg);
+}

@@ -192,6 +192,8 @@ export default function MobileArt() {
           showWheel
           runner={() => null}
           decisions={() => 0}
+          inboxCount={() => 0}
+          onInbox={() => {}}
           onSpace={() => {}}
           onTopics={() => {}}
           onWheel={() => {}}

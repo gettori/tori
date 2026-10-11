@@ -1,14 +1,8 @@
 import { For, Show, onCleanup, onMount } from "solid-js";
 import Button from "../../components/Button/Button";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
-import {
-  markReviewed,
-  openItem,
-  reviewItems,
-  setInboxOpen,
-  signalLabel,
-  type ReviewItem,
-} from "../../utils/reviewInbox";
+import { markReviewed, openItem, reviewItems, setInboxOpen } from "../../utils/reviewInbox";
+import { signalLabel, type ReviewItem } from "../../utils/reviewSignals";
 import styles from "./InboxView.module.css";
 
 const folderName = (path: string) => path.split("/").filter(Boolean).pop() ?? path;
