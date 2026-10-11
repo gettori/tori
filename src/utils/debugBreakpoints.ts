@@ -39,6 +39,7 @@ import {
   type BreakpointStore,
 } from "./breakpoints";
 import { debugSessions, onDebugChange, setDebugBreakpointSource, type DapSession } from "./dapSessions";
+import { moveDeep, movedPath, type PathMove } from "./moveWorkspace";
 
 /** What a marker in the gutter is saying. See the states above. */
 export type BreakpointState = "pending" | "armed" | "bound";
@@ -147,6 +148,13 @@ export function dropWorkspaceBreakpoints(ws: string): void {
   if (!(ws in store())) return;
   const { [ws]: _gone, ...rest } = store();
   write(rest);
+}
+
+export function moveBreakpointWorkspaces(moves: readonly PathMove[]): void {
+  const map = (p: string) => movedPath(p, moves) ?? p;
+  write(moveDeep(store(), moves));
+  setDirty(remap(dirty(), map));
+  setBound(remapKeys(bound(), map));
 }
 
 export function mapBreakpointFiles(map: (path: string) => string | null): void {

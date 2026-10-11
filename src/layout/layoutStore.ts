@@ -22,6 +22,7 @@ import {
   type PaneLeaf,
   type PaneNode,
 } from "./paneLayout";
+import { moveDeep, type PathMove } from "../utils/moveWorkspace";
 
 export type LayoutEnvelope = {
   version: 2;
@@ -120,6 +121,11 @@ export function forgetWorkspace(ws: string) {
   if (!envelopes()[ws]) return;
   const { [ws]: _gone, ...rest } = envelopes();
   setEnvelopes(rest);
+  persistEnvelopes();
+}
+
+export function moveWorkspaceLayouts(moves: readonly PathMove[]) {
+  setEnvelopes(moveDeep(envelopes(), moves));
   persistEnvelopes();
 }
 

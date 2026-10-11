@@ -146,6 +146,8 @@ import {
   PURGE_UNDER_PATH,
   PURGE_WORKSPACE,
   type PurgeWorkspace,
+  WORKSPACE_MOVED,
+  type WorkspaceMoved,
   DRAG_PATH_MIME,
   FOCUS_PROJECT_SEARCH,
   SET_RIGHT_MODE,
@@ -228,9 +230,11 @@ import {
 } from "../../utils/topicMembers";
 import { revealTab } from "../../utils/filesSections";
 import { dropWorkspaceKey } from "../../utils/purgeWorkspace";
-import { dropWorkspaceBreakpoints } from "../../utils/debugBreakpoints";
-import { dropWorkspaceExpanded, mapExpandedFiles } from "../../utils/treeExpanded";
-import { dropWorkspaceWatches } from "../../utils/debugWatch";
+import { dropWorkspaceBreakpoints, moveBreakpointWorkspaces } from "../../utils/debugBreakpoints";
+import { dropWorkspaceExpanded, mapExpandedFiles, moveExpandedWorkspaces } from "../../utils/treeExpanded";
+import { dropWorkspaceWatches, moveWatchWorkspaces } from "../../utils/debugWatch";
+import { moveDeep, type PathMove } from "../../utils/moveWorkspace";
+import { publishDirtyPaths } from "../../utils/unsavedPaths";
 import { blameOn, writeBlamePref } from "../../utils/blamePref";
 import { followEdits } from "../../utils/followPref";
 import { loadTabs, saveTabs, toStore, mergeStore, restoreFor } from "../../utils/editorTabPersist";
@@ -2188,6 +2192,27 @@ export default function Editor(props: {
     for (const p of removed) dropStashEntry(p);
   }
 
+  // Whole workspaces moved (a clone converted to the worktree layout): keys and
+  // paths both follow. Nothing is dirty here, the move is refused while
+  // anything under it is, so buffers simply rebuild from disk at the new path.
+  function moveWorkspaceState(moves: readonly PathMove[]) {
+    const move = <T,>(s: T) => moveDeep(s, moves);
+    setTabsByWs(move);
+    setActiveByWs(move);
+    setClosedByWs(move);
+    setJumpsByWs(move);
+    setFrecency(move);
+    setAttachPorts(move);
+    setLastTargets(move);
+    moveBreakpointWorkspaces(moves);
+    moveExpandedWorkspaces(moves);
+    moveWatchWorkspaces(moves);
+    for (const m of moves) {
+      touchedWs.add(m.from);
+      touchedWs.add(m.to);
+    }
+  }
+
   // A file or folder moved on disk: repoint every tab addressing it instead of
   // closing anything. A rename is not a removal, so a dirty buffer has to come
   // along with its unsaved text; the sweep itself is pure and lives in
@@ -2218,6 +2243,9 @@ export default function Editor(props: {
       return out;
     });
   }
+
+  createEffect(() => publishDirtyPaths(Object.keys(dirty()).filter((p) => dirty()[p])));
+  onCleanup(() => publishDirtyPaths([]));
 
   // Published for the command palette, which is this pane's sibling and can
   // reach none of the above. One effect over everything the snapshot names, so
@@ -2520,6 +2548,7 @@ export default function Editor(props: {
   let offSearchInFolder: (() => void) | undefined;
   let offFileRenamed: (() => void) | undefined;
   let offRootMoved: (() => void) | undefined;
+  let offWorkspaceMoved: (() => void) | undefined;
   let offGitWatch: (() => void) | undefined;
   let offCommands: (() => void)[] = [];
 
@@ -2665,6 +2694,7 @@ export default function Editor(props: {
       purgeWorkspaceKey(workspace);
       for (const r of roots ?? []) dropMemberDebugState(r);
     });
+    offWorkspaceMoved = onWith<WorkspaceMoved>(WORKSPACE_MOVED, ({ moves }) => moveWorkspaceState(moves));
     // Cmd+Shift+F: switch to Search mode and bump the nonce so SearchPanel
     // refocuses its input even when the mode is already active.
     offProjectSearch = onEvent(FOCUS_PROJECT_SEARCH, () => {
@@ -2787,6 +2817,7 @@ export default function Editor(props: {
     offSearchInFolder?.();
     offFileRenamed?.();
     offRootMoved?.();
+    offWorkspaceMoved?.();
     offGitWatch?.();
     for (const off of offCommands) off();
   });

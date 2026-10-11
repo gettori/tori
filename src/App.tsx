@@ -1,8 +1,8 @@
 import { createSignal, createEffect, createMemo, on, onMount, onCleanup, lazy, Suspense, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { forgetWorkspace as forgetLayout } from "./layout/layoutStore";
-import { forgetWorkspace as forgetPlacement } from "./layout/tabPlacement";
+import { forgetWorkspace as forgetLayout, moveWorkspaceLayouts } from "./layout/layoutStore";
+import { forgetWorkspace as forgetPlacement, moveWorkspacePlacements } from "./layout/tabPlacement";
 import LeftSidebar, { type Selection } from "./panels/LeftSidebar/LeftSidebar";
 import SidebarStatus from "./panels/LeftSidebar/SidebarStatus";
 import { topicSelection, selectionRoot, workspaceKey, type Topic } from "./utils/topics";
@@ -78,6 +78,8 @@ import {
   type OpenProjectSettings,
   type LiveTab,
   PURGE_WORKSPACE,
+  WORKSPACE_MOVED,
+  type WorkspaceMoved,
   type PurgeWorkspace,
 } from "./utils/events";
 import { dispatchWindowHotkey } from "./utils/hotkeys";
@@ -522,6 +524,12 @@ function App() {
       if (wsKey() === workspace) setSelected(null);
       forgetLayout(workspace);
       forgetPlacement(workspace);
+    }),
+  );
+  onCleanup(
+    onEventWith<WorkspaceMoved>(WORKSPACE_MOVED, ({ moves }) => {
+      moveWorkspaceLayouts(moves);
+      moveWorkspacePlacements(moves);
     }),
   );
 

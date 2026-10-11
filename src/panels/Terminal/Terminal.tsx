@@ -48,6 +48,8 @@ import {
   NEW_CHAT_AT,
   PURGE_UNDER_PATH,
   PURGE_WORKSPACE,
+  WORKSPACE_MOVED,
+  type WorkspaceMoved,
   type PurgeWorkspace,
   SESSION_DELETED,
   type SessionDeleted,
@@ -192,6 +194,7 @@ import { LockMark } from "../../components/Autopilot/SessionMarks";
 import styles from "./Terminal.module.css";
 import patterns from "../../styles/patterns.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
+import { moveDeep, movedPath } from "../../utils/moveWorkspace";
 
 // Mirrors src-tauri/src/sessions.rs's `TailState` (session_tail_state).
 type TailState = "working" | "done" | "blocked-candidate";
@@ -947,6 +950,26 @@ export default function Terminal(props: {
     saveTabStore(open(), activeByWorkspace());
   });
   onCleanup(offPurgeWs);
+
+  // Folders moved under their tabs (a clone converted to the worktree layout).
+  // Only inert tabs can be here, the move is refused while one is live, so a
+  // fresh object per moved tab costs nothing but a remount.
+  const offMoved = onWith<WorkspaceMoved>(WORKSPACE_MOVED, ({ moves }) => {
+    setOpen(
+      open().map((t) => {
+        const workspace = movedPath(t.workspace, moves);
+        const cwd = movedPath(t.cwd, moves);
+        return workspace || cwd ? { ...t, workspace: workspace ?? t.workspace, cwd: cwd ?? t.cwd } : t;
+      }),
+    );
+    setActiveByWorkspace(moveDeep(activeByWorkspace(), moves));
+    for (const m of moves) {
+      touched.add(m.from);
+      touched.add(m.to);
+    }
+    saveTabStore(open(), activeByWorkspace());
+  });
+  onCleanup(offMoved);
 
   // A session's transcript was deleted: close whatever tab was driving it. The
   // sidebar has already closed the child and released the claim, so this is

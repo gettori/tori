@@ -14,6 +14,7 @@
 // there is no row left to click.
 
 import { createSignal } from "solid-js";
+import { moveDeep, type PathMove } from "./moveWorkspace";
 
 /** One workspace's tree state: the directories left open, and the section
  *  headers explicitly closed. */
@@ -173,6 +174,10 @@ export function dropWorkspaceExpanded(ws: string): void {
   if (!(ws in store())) return;
   const { [ws]: _gone, ...rest } = store();
   write(rest);
+}
+
+export function moveExpandedWorkspaces(moves: readonly PathMove[]): void {
+  write(moveDeep(store(), moves));
 }
 
 export function mapExpandedFiles(map: (path: string) => string | null): void {

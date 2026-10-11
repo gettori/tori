@@ -26,6 +26,9 @@ import WorktreeRemoveDialog from "../../components/Dialogs/WorktreeRemoveDialog"
 import MoveToTopicDialog from "../../components/Dialogs/MoveToTopicDialog";
 import BranchRemoveDialog from "../../components/Dialogs/BranchRemoveDialog";
 import InitGitDialog from "../../components/Dialogs/InitGitDialog";
+import ConvertLayoutDialog, { type ConversionPreview } from "../../components/Dialogs/ConvertLayoutDialog";
+import { moveWorkspaces } from "../../utils/moveWorkspace";
+import { unsavedUnder } from "../../utils/unsavedPaths";
 import AddBranchDialog, { type BranchPick, type IssueSourceProps } from "../../components/Dialogs/AddBranchDialog";
 import {
   errorText,
@@ -206,8 +209,8 @@ import styles from "./LeftSidebar.module.css";
 function UnitIcon(props: { kind: string | undefined; active: boolean; current: boolean }) {
   return (
     <Switch fallback={<Icon icon={Folder} />}>
-      <Match when={props.kind === "worktree" || props.kind === "incomplete"}>
-        <WorktreeMark active={props.active} current={props.current} stub={props.kind === "incomplete"} />
+      <Match when={props.kind === "worktree" || props.kind === "incomplete" || props.kind === "converting"}>
+        <WorktreeMark active={props.active} current={props.current} stub={props.kind !== "worktree"} />
       </Match>
       <Match when={props.kind === "plain"}>
         <BranchMark active={props.active} current={props.current} />
@@ -224,6 +227,9 @@ function iconLabel(u: BranchUnit): string | undefined {
   if (u.isCurrent) parts.push("Current checkout");
   if (u.kind === "incomplete") {
     parts.push("A .bare with no worktrees (right-click to add one or remove it)");
+  }
+  if (u.kind === "converting") {
+    parts.push("A conversion to the worktree layout stopped partway (right-click to undo it)");
   }
   return parts.length ? parts.join(". ") : undefined;
 }
@@ -649,6 +655,13 @@ export default function LeftSidebar(props: {
   // The "Initialize git" dialog for a non-git folder (branch + optional origin +
   // layout). `busy` gates the buttons while init runs.
   const [initReq, setInitReq] = createSignal<{ p: Project; busy: boolean } | null>(null);
+  const [convertReq, setConvertReq] = createSignal<{
+    p: Project;
+    preview: ConversionPreview | null;
+    refusal: string | null;
+    blockers: string[];
+    busy: boolean;
+  } | null>(null);
 
   // The space-level "New…" dialog: create an empty folder, clone a repo, or
   // bootstrap a bare + worktree project, chosen by a segmented control.
@@ -1538,6 +1551,57 @@ export default function LeftSidebar(props: {
     }
   }
 
+  async function openConvert(p: Project) {
+    setConvertReq({ p, preview: null, refusal: null, blockers: [], busy: false });
+    const [preview, refusal] = await invoke<ConversionPreview>("conversion_preview", { projectPath: p.path }).then(
+      (v) => [v, null] as const,
+      (e) => [null, String(e)] as const,
+    );
+    const running = await countRunningAgents(p.path);
+    const unsaved = unsavedUnder(p.path).length;
+    const blockers = [
+      ...(running
+        ? [
+            `${running} terminal or agent tab${running === 1 ? " is" : "s are"} running in this project. Close ${running === 1 ? "it" : "them"} first.`,
+          ]
+        : []),
+      ...(unsaved
+        ? [
+            `${unsaved} file${unsaved === 1 ? " has" : "s have"} unsaved changes in this project. Save or discard ${unsaved === 1 ? "it" : "them"} first.`,
+          ]
+        : []),
+    ];
+    setConvertReq((r) => (r?.p === p ? { ...r, preview, refusal, blockers } : r));
+  }
+
+  // The checkout's tabs, breakpoints and tree state follow it into the new
+  // folder rather than being purged: nothing was deleted, only moved.
+  async function confirmConvert() {
+    const req = convertReq();
+    if (!req?.preview) return;
+    const { p } = req;
+    setConvertReq({ ...req, busy: true });
+    try {
+      const done = await invoke<ConversionPreview>("convert_to_worktree_layout", { projectPath: p.path });
+      moveWorkspaces([{ from: p.path, to: `${p.path}/${done.leaf}` }, ...done.tori]);
+      setConvertReq(null);
+      await loadConfig();
+      selectUnitIn(p, (u) => u.branch === done.branch);
+    } catch (e) {
+      setConvertReq(null);
+      setError(String(e));
+    }
+  }
+
+  async function undoConversion(p: Project) {
+    try {
+      await invoke("undo_conversion", { projectPath: p.path });
+      await loadConfig();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   // No confirm: prune only drops git's records of folders that are already gone.
   async function pruneWorktrees(p: Project) {
     try {
@@ -2259,7 +2323,7 @@ export default function LeftSidebar(props: {
       // question, so the label is all that differs. It keeps the warn
       // treatment it has always had: mutating, but recoverable, which is
       // neither an ordinary row nor the destructive one.
-      ...(projectUnitKind(p) === "plain-dir"
+      ...(projectUnitKind(p) === "plain-dir" || projectUnitKind(p) === "converting"
         ? []
         : [
             {
@@ -2269,15 +2333,14 @@ export default function LeftSidebar(props: {
             } as MenuItem,
           ]),
       { label: "Project settings", onClick: () => openProjectSettings(p.path) },
-      { separator: true },
-      kind.remove,
+      ...(kind.remove ? [{ separator: true } as MenuItem, kind.remove] : []),
     ];
   };
 
   // Keyed by git kind: a worktree container spawns worktrees, a plain-dir
   // initializes git, a plain repo branches. `remove` is handed back separately
   // rather than appended here, because `projectMenu` owns where it lands.
-  const kindMenu = (g: Space, p: Project): { rows: MenuItem[]; remove: MenuItem } => {
+  const kindMenu = (g: Space, p: Project): { rows: MenuItem[]; remove?: MenuItem } => {
     switch (projectUnitKind(p)) {
       case "worktree":
         return {
@@ -2306,6 +2369,7 @@ export default function LeftSidebar(props: {
           rows: [
             { label: "Add branch", onClick: () => void openBranchDialog(p, "branch") },
             { label: "Fan out", onClick: () => fanOut(p) },
+            { label: "Convert to worktree layout", onClick: () => void openConvert(p) },
           ],
           remove: { label: "Remove project", danger: true, onClick: () => openRemoveProject(p) },
         };
@@ -2324,6 +2388,10 @@ export default function LeftSidebar(props: {
             onClick: () => cleanupStub(p.branchUnits[0]),
           },
         };
+      case "converting":
+        // A conversion stopped partway. Its files sit in a staging folder and
+        // its repo may be half bare, so undo is the only safe thing to offer.
+        return { rows: [{ label: "Undo conversion", onClick: () => void undoConversion(p) }] };
       default:
         return {
           rows: [],
@@ -3615,6 +3683,21 @@ export default function LeftSidebar(props: {
           onConfirm={(opts) => confirmRemoveBranch(opts)}
           onCancel={() => setBrReq(null)}
         />
+      </Show>
+
+      <Show when={convertReq()}>
+        {(req) => (
+          <ConvertLayoutDialog
+            projectName={req().p.name}
+            projectPath={req().p.path}
+            preview={req().preview}
+            refusal={req().refusal}
+            blockers={req().blockers}
+            busy={req().busy}
+            onConfirm={() => void confirmConvert()}
+            onCancel={() => setConvertReq(null)}
+          />
+        )}
       </Show>
 
       <Show when={initReq()}>
