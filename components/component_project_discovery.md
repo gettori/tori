@@ -1,8 +1,8 @@
 ---
 summary: discovers spaces from disk and probes each repo's git kind with a cache keyed on dir and HEAD mtime, or it goes stale
 status: current
-updated: 2026-08-28
-source: "Worktree-aware tree + Sidebar as Project Manager + Sidebar Context-Menu Redesign + Delete Group + Space icons & reordering (personal/tori, branch code-mirror-6); commits 5c5177f, 3501d59, 8ceb6e2, 785b17b, e49947a, e6f929f, 17a334a, e704411, fef06e6, bcd31db, 68920f0; Feature lifecycle, member management and repair (issue #159, branch `feature-workspace`); commit ef3779b"
+updated: 2026-10-11
+source: "Worktree-aware tree + Sidebar as Project Manager + Sidebar Context-Menu Redesign + Delete Group + Space icons & reordering (personal/tori, branch code-mirror-6); commits 5c5177f, 3501d59, 8ceb6e2, 785b17b, e49947a, e6f929f, 17a334a, e704411, fef06e6, bcd31db, 68920f0; Feature lifecycle, member management and repair (issue #159, branch `feature-workspace`); commit ef3779b; gettori/tickets#74 convert to worktree layout, commit 36635567"
 ---
 
 # Project discovery & setup
@@ -75,6 +75,10 @@ Both run **in a terminal tab** (Sidebar emits `OPEN_TERMINAL` → `TerminalArea`
 - Sibling of [[component_session_scanner]] (projects vs sessions), both implement [[concept_filesystem_source_of_truth]].
 - Mutated from [[component_context_menu]] (per-node actions + gear menu); worktree ops split out to [[component_worktree_lifecycle]].
 - Governed by [[adr_sidebar_project_manager]] and [[adr_attached_branch_model]] (the attached-set discovery model); supersedes the manual-`tori.toml` half of [[adr_stack_choice]].
+
+## Interrupted conversion
+
+A conversion journal (`tori-convert.json` in `.git` or `.bare`) makes `probe_project` answer one `converting` unit before it runs git at all, so a half-built `.bare` never reads as `Incomplete`. `cleanup_incomplete` goes through `removable_stub`, which refuses it, and the sidebar offers only Undo conversion. See [[concept_worktree_layout_conversion]].
 
 ## Related
 
