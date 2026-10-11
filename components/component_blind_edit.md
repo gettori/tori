@@ -1,7 +1,7 @@
 ---
 summary: blind_edit::Tracker marks an ACP edit to a file the session never saw, per session in wrap, with the first verdict per call kept
 status: current
-updated: 2026-10-08
+updated: 2026-10-12
 source: "Blind-edit warning plan (branch `phase-1-block-1`, gettori/tickets#27); `src-tauri/src/blind_edit.rs` (`Tracker`, `enabled`), `src-tauri/src/chat/host.rs` (`wrap`, `mark_blind_edits`), `src-tauri/src/chat/commands.rs` (`history_reply`), `src/panels/Chat/chatStore.ts` (`turnBlindEdits`)"
 ---
 
@@ -15,7 +15,8 @@ source: "Blind-edit warning plan (branch `phase-1-block-1`, gettori/tickets#27);
 - **Exact paths only.** A directory never covers the files under it, or one `ls` or `find .` would silence the mark for the rest of the session. Matching is lexical, the same `normalize` and `expand` secret watch uses.
 - **Blind** means a `FileEdit` of kind `Modified` whose path was not seen when the edit arrived, on a call that then completed `Ok`. A failed or denied call is never marked and does not count as seen. A later read does not clear a mark. Deletes are ignored.
 - **ACP only, by construction.** Only `FileEdit` makes an edit, and the Claude adapter emits none. Claude needs no mark anyway: its own Edit and Write refuse a file the agent has not read. `opencode acp` sends no diff block, so it gets no `FileEdit` and no mark either.
-- **Not Checkpoints.** Checkpoint turns anchor on a Claude transcript's `promptTs`, ACP logs have none, and Claude never produces a blind edit, so a Checkpoints mark would only ever be empty.
+- **Not Checkpoints.** Checkpoints draws no blind mark. ACP turns now carry a `promptTs` from the mirror's `prompt_times`, but nothing on that surface reads the rollup below.
+- **Per turn, for the review inbox.** `blind_turns` runs a fresh tracker over the whole history and groups marks by prompt; `chat::commands::blind_turns` caches it through `marked_history` like secrets and verification. See [[component_review_inbox]].
 
 ## Interface
 

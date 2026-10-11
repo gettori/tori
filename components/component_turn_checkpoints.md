@@ -1,7 +1,7 @@
 ---
 summary: a git write tree snapshot per prompt boundary, keyed by timestamp not a counter, powers per turn diff and tree revert
 status: current
-updated: 2026-10-08
+updated: 2026-10-12
 source: "Adapter registry, pulse, presence, checkpoints (personal/tori, branch `topbar`); Phase 4; `src-tauri/src/checkpoint.rs`; Status deepening: checkpoint timeline, tree revert, touched markers, live indicator (personal/tori, branch `main`); Phase 1; `src/panels/Editor/CheckpointTimeline.tsx`, `src/utils/revertGuard.ts`; Chat surface plan, phases 1, 3, 5 (branch `chat`)"
 ---
 
@@ -20,6 +20,7 @@ A snapshot of the full working tree at each prompt boundary, so a session's turn
 - **Per-turn diff** (`checkpoint_turn_files`/`checkpoint_diff_file`): resolves "before" as the nearest checkpoint at-or-before a turn's `promptTs`, "after" as the nearest checkpoint strictly after it — or, for the latest/still-open turn (no next prompt yet), a **live, unpersisted** snapshot via the same scratch index, so an in-progress turn's diff stays current without waiting for the next prompt.
 > **2026-07-31:** `TranscriptViewer` is gone (branch `navigation`, phase 7), so the per-turn diff/revert UI described below no longer has that home. The **commands are untouched** (`checkpoint_turn_files`, `checkpoint_diff_file`, `checkpoint_revert_file`) and the Changes-panel timeline still drives them; what was lost is the turn-row surface. Re-homing it is unclaimed work.
 
+- **Session span** (`session_span`, `live_tree`): the review inbox's diff from a tree it stored to the live tree, narrowed by the same grading as `attributed_files` over every touched record since a timestamp. `write_tree_scratch` holds a lock per index path, since the inbox's live tree raced prompt snapshots, see [[gotcha_two_writes_to_one_scratch_index_collide]].
 - **Per-file revert** (`checkpoint_revert_file`): resolved from the same before/after tree pair — present only in "after" (added this turn) → delete; present in "before" (edited, or deleted this turn) → restore the pre-turn blob via `git show <before-tree>:<file>`. `TranscriptViewer`'s confirm dialog states the exact action per file (from `CheckpointFile.status`) before the user commits.
 - **UI surface**: landed in `TranscriptViewer`'s turn rows only, not duplicated in `SessionPanel` — see the "why" below. A shared-workspace label ("changes in this workspace during this turn") replaces "changes this turn" when more than one live agent tab shares the turn's `repoPath`.
 - **Timeline listing** (`checkpoint_list`): ordered turn checkpoints with prompt timestamp, per-turn file count, and approximate size (one `--raw` diff per turn for both count and blob ids, sized afterwards in a single batched `cat-file`). Returns `Vec<CheckpointEntry>`; a non-repo folder returns **empty, not an error**, so the timeline simply does not render there. `list_checkpoints` returns a `Checkpoint { ts, tree, kind }` struct (was a tuple) so the backstop kind rides along.
@@ -95,6 +96,7 @@ The touched-index also gained a **reverse** direction. `checkpoint_note_touched`
 ## Related
 
 - [[component_provenance]] - walks these trees to say who wrote a hunk or a line.
+- [[component_review_inbox]] - diffs a stored tree to the live one for unreviewed work.
 - [[component_chat_panel]] - the source of the exact per-turn file lists.
 - [[concept_worktree_backstops]] - the sibling snapshot family, keyed by worktree rather than session.
 - [[concept_line_provenance]] - the third consumer of these trees, replaying diffs between them to attribute uncommitted lines.
