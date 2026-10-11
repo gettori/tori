@@ -1,4 +1,4 @@
-import { createSignal, createEffect, on, onCleanup, For, Show } from "solid-js";
+import { createSignal, createEffect, on, onCleanup, For, Show, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { Search, TriangleAlert } from "lucide-solid";
 import styles from "./Dialogs.module.css";
@@ -39,6 +39,9 @@ export default function NewTopicDialog(props: {
   topics: Topic[];
   /** When set, the dialog adds repositories to this Topic instead. */
   topic?: Topic;
+  pinned?: { repoPath: string; worktreePath: string; branch: string | null };
+  header?: JSX.Element;
+  open?: boolean;
   onDone: (topic: Topic) => void;
   onCancel: () => void;
 }) {
@@ -56,16 +59,21 @@ export default function NewTopicDialog(props: {
   let nameInput: HTMLInputElement | undefined;
 
   const adding = () => props.topic !== undefined;
-  const branchText = () => typedBranch() ?? topicSlug(name());
+  const branchText = () => typedBranch() ?? props.pinned?.branch ?? topicSlug(name());
   const branch = () => (props.topic ? props.topic.branch : branchText().trim());
   const takenBy = () => (adding() ? undefined : props.topics.find((f) => f.branch === branch()));
-  const exclude = () => props.topic?.members.map((m) => m.repoPath) ?? [];
+  const exclude = () => [
+    ...(props.topic?.members.map((m) => m.repoPath) ?? []),
+    ...(props.pinned ? [props.pinned.repoPath] : []),
+  ];
+  const picked = () => (props.pinned ? [props.pinned.repoPath, ...checked()] : checked());
 
   const repoName = (path: string) =>
     props.spaces.flatMap((g) => g.projects).find((p) => p.path === path)?.name ?? path.split("/").pop() ?? path;
 
   const spaceOf = (path: string) => props.spaces.find((g) => g.projects.some((p) => p.path === path))?.name;
   const spanned = () => [...new Set([...exclude(), ...checked()].map(spaceOf).filter((n): n is string => !!n))];
+  const isPinned = (repoPath: string) => repoPath === props.pinned?.repoPath;
 
   // One probe per (repo, branch). Typing is debounced; a check is not,
   // since the repo is the whole question there.
@@ -87,7 +95,8 @@ export default function NewTopicDialog(props: {
       });
   }
   const withWorktree = () => checked().filter((r) => worktrees().has(r));
-  const modeOf = (repoPath: string): MemberMode => (worktrees().has(repoPath) ? "worktree" : "reference");
+  const modeOf = (repoPath: string): MemberMode =>
+    isPinned(repoPath) || worktrees().has(repoPath) ? "worktree" : "reference";
   function setWorktree(repoPath: string, on: boolean) {
     setWorktrees((prev) => {
       const next = new Set(prev);
@@ -132,15 +141,15 @@ export default function NewTopicDialog(props: {
     });
   const named = () => adding() || name().trim() !== "";
   const canConfirm = () =>
-    !busy() && named() && branch() !== "" && checked().length > 0 && !takenBy() && !invalid() && !unresolved();
+    !busy() && named() && branch() !== "" && picked().length > 0 && !takenBy() && !invalid() && !unresolved();
 
   const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
   const status = () => {
     const conflicts = withWorktree().filter((r) => row(r) === "collided").length;
     if (conflicts > 0) return `${count(conflicts, "branch conflict")} to resolve`;
     if (branch() && withWorktree().some((r) => row(r) === "pending")) return "Checking branches...";
-    const worktree = withWorktree().length;
-    const reference = checked().length - worktree;
+    const worktree = withWorktree().length + (props.pinned ? 1 : 0);
+    const reference = picked().length - worktree;
     return [reference && count(reference, "reference"), worktree && count(worktree, "worktree")]
       .filter(Boolean)
       .join(", ");
@@ -168,7 +177,11 @@ export default function NewTopicDialog(props: {
           topic = await invoke<Topic>("add_member", { topicId: props.topic.id, repoPath, mode: modeOf(repoPath) });
         }
       } else {
-        const members = checked().map((repoPath) => ({ repoPath, mode: modeOf(repoPath) }));
+        const members = picked().map((repoPath) =>
+          isPinned(repoPath)
+            ? { repoPath, mode: "worktree" as const, worktreePath: props.pinned!.worktreePath }
+            : { repoPath, mode: modeOf(repoPath) },
+        );
         topic = await invoke<Topic>("create_topic", { name: name().trim(), branch: branch(), members });
       }
       props.onDone(topic);
@@ -221,7 +234,7 @@ export default function NewTopicDialog(props: {
 
   return (
     <Dialog
-      open
+      open={props.open ?? true}
       title={props.topic ? `Add repository to ${props.topic.name}` : "New Topic"}
       size="wide"
       onClose={() => props.onCancel()}
@@ -238,6 +251,7 @@ export default function NewTopicDialog(props: {
         </>
       }
     >
+      {props.header}
       <Show when={error()}>
         {(msg) => (
           <div class={styles.warning} role="alert">
@@ -321,7 +335,7 @@ export default function NewTopicDialog(props: {
           <section class={styles.topicPicked} aria-labelledby={PICKED_LABEL}>
             <div class={styles.pickedHead}>
               <span id={PICKED_LABEL}>
-                {adding() ? "Adding" : "In this Topic"} {"\u00b7"} {checked().length}
+                {adding() ? "Adding" : "In this Topic"} {"\u00b7"} {picked().length}
               </span>
               <span>Reference is read only</span>
             </div>
@@ -334,22 +348,31 @@ export default function NewTopicDialog(props: {
               </div>
             </Show>
             <Show
-              when={checked().length > 0}
+              when={picked().length > 0}
               fallback={<div class={styles.pickedEmpty}>Pick repositories on the left.</div>}
             >
               <ul class={styles.pickedList}>
-                <For each={checked()}>
+                <For each={picked()}>
                   {(repoPath) => (
                     <li class={styles.pickedCard} data-picked={repoPath}>
                       <div class={styles.pickedRow}>
                         <span class={styles.pickedName}>{repoName(repoPath)}</span>
-                        <SegmentedControl
-                          size="sm"
-                          aria-label={`Mode for ${repoName(repoPath)}`}
-                          options={MODES}
-                          value={modeOf(repoPath)}
-                          onChange={(mode) => setWorktree(repoPath, mode === "worktree")}
-                        />
+                        <Show
+                          when={!isPinned(repoPath)}
+                          fallback={
+                            <span class={styles.hint}>
+                              {props.pinned!.branch ? `This worktree, on ${props.pinned!.branch}` : "This worktree"}
+                            </span>
+                          }
+                        >
+                          <SegmentedControl
+                            size="sm"
+                            aria-label={`Mode for ${repoName(repoPath)}`}
+                            options={MODES}
+                            value={modeOf(repoPath)}
+                            onChange={(mode) => setWorktree(repoPath, mode === "worktree")}
+                          />
+                        </Show>
                       </div>
                       {collision(repoPath)}
                     </li>
