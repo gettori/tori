@@ -13,6 +13,7 @@ import {
   hasAutoSend,
   historyFor,
   hunkCommentBlocks,
+  hunkCommentsBlocks,
   labelsSeeded,
   markAutoSend,
   nextLabel,
@@ -215,6 +216,17 @@ describe("attachment labels", () => {
     expect(composeHunkComment(TARGET, "/work/repo/src/a.ts", 3, 9, "this loop is quadratic")).toContain(
       "In @src/a.ts lines 3-9:",
     );
+  });
+
+  it("carries several hunk comments as reference then prose, in order", () => {
+    const blocks = hunkCommentsBlocks([
+      { path: "/work/repo/a.ts", startLine: 1, endLine: 2, text: "x" },
+      { path: "/work/repo/b.ts", startLine: 5, endLine: 5, text: "y" },
+    ]);
+    expect(blocks).toEqual([
+      ...hunkCommentBlocks("/work/repo/a.ts", 1, 2, "x"),
+      ...hunkCommentBlocks("/work/repo/b.ts", 5, 5, "y"),
+    ]);
   });
 
   it("flattens a diagnostic's multi-line message the way the PTY format does", () => {

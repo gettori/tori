@@ -43,6 +43,15 @@
   animation: sessionEditingPulse 1.2s ease-in-out infinite;
 }
 
+.controls {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline-end: calc(10px * var(--ui-scale));
+  border-bottom: 1px solid var(--border-default);
+}
+
 .readsToggle {
   flex: none;
   display: flex;
@@ -51,7 +60,6 @@
   padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
   font-size: var(--tori-text-md);
   color: var(--fg-muted);
-  border-bottom: 1px solid var(--border-default);
   cursor: pointer;
   user-select: none;
 }
