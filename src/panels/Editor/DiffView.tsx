@@ -657,6 +657,8 @@ export default function DiffView(props: {
                     <Show when={heldKey()}>
                       <HunkCommentInput
                         heldKey={heldKey()}
+                        target={target()}
+                        disabledReason={disabledReason()}
                         filePath={`${props.workspace}/${file()}`}
                         startLine={hunk.startLine}
                         endLine={hunk.endLine}

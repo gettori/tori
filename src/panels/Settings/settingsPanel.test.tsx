@@ -17,6 +17,7 @@ import Settings, { FOCUSABLE } from "./Settings";
 import { loadWorkspaceSettings, setZoom, zoom, zoomIn } from "./settingsStore";
 import { blameOn, reloadBlamePref, writeBlamePref } from "../../utils/blamePref";
 import { reloadSideBySide, sideBySideOn, writeSideBySide } from "../../utils/sideBySide";
+import { sendHunkCommentsNow, writeSendHunkCommentsNow } from "../../utils/hunkCommentPref";
 import { SETTINGS, SETTING_TABS } from "../../utils/settingsCatalog";
 import {
   COMPOSE_DRAFT,
@@ -522,6 +523,15 @@ describe("the rows backed by localStorage rather than by settings.json", () => {
     expect(localStorage.getItem("tori.review.sideBySide")).toBe("1");
   });
 
+  it("switches hunk comments to send right away, and remembers it", () => {
+    render(() => <Settings onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Editor" }));
+    fireEvent.click(boxFor("Send hunk comments right away"));
+    expect(sendHunkCommentsNow()).toBe(true);
+    expect(localStorage.getItem("tori.hunkComments.sendNow")).toBe("1");
+    writeSendHunkCommentsNow(false);
+  });
+
   it("follows a change made anywhere else, live", () => {
     // The reason both preferences became module-level signals: the editor's own
     // blame button and every diff surface write the same value, and a row that
@@ -543,7 +553,7 @@ describe("the rows backed by localStorage rather than by settings.json", () => {
     // query that found it matched another.
     render(() => <Settings onClose={() => {}} />);
     fireEvent.click(screen.getByRole("tab", { name: "Editor" }));
-    for (const id of ["blame", "side-by-side-diff"]) {
+    for (const id of ["blame", "side-by-side-diff", "hunk-comments-send-now"]) {
       const hint = SETTINGS.find((s) => s.id === id)!.hint!;
       expect(screen.getAllByText(hint).length, id).toBe(1);
     }
