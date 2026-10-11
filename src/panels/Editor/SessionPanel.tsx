@@ -251,6 +251,8 @@ export default function SessionPanel(props: {
                     <span class={hunkStyles.hunkHeaderText}>{hunk.header}</span>
                     <HunkCommentInput
                       heldKey={props.heldKey}
+                      target={target()}
+                      disabledReason={disabledReason()}
                       filePath={f.path}
                       startLine={hunk.startLine}
                       endLine={hunk.endLine}

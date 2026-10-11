@@ -2,11 +2,11 @@ import { describe, it, expect, vi, afterEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 
 let result: "sent" | "blocked" | "timeout" = "sent";
-const sent: { text: string; blocks?: unknown[] }[] = [];
+const sent: { text: string; blocks?: unknown[]; submit?: boolean }[] = [];
 
 vi.mock("../../utils/safeSend", async (orig) => ({
   ...(await orig<typeof import("../../utils/safeSend")>()),
-  requestSend: (req: { text: string; blocks?: unknown[] }) => {
+  requestSend: (req: { text: string; blocks?: unknown[]; submit?: boolean }) => {
     sent.push(req);
     return Promise.resolve({ kind: result });
   },
@@ -51,6 +51,7 @@ describe("HeldComments", () => {
     expect(sent).toHaveLength(1);
     expect(sent[0].text).toBe("1) In @a.ts lines 1-2: x 2) In @b.ts lines 4-4: y");
     expect(sent[0].blocks).toHaveLength(4);
+    expect(sent[0].submit).toBe(true);
   });
 
   it.each(["blocked", "timeout"] as const)("keeps the list when the send is %s", async (kind) => {

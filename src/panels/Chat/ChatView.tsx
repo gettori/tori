@@ -138,7 +138,11 @@ import {
   type EditorPromptDone,
   REVEAL_TURN,
   REWIND_CHAT,
+  CHAT_SUBMIT,
+  SEND_TO_SESSION_RESULT,
   TOAST,
+  type ChatSubmit,
+  type SendToSessionResult,
   type AgentFilesWritten,
   type EditorFileSaved,
   type EditorTabClosed,
@@ -1195,6 +1199,31 @@ export default function ChatView(props: {
       if (!target) return;
       emitWith<FocusSessionTab>(FOCUS_SESSION_TAB, { tabId: props.tabId });
       if (target.turnId) setAnchorTurn(target.turnId);
+    }),
+  );
+
+  function submitFromOutside(blocks: ContentBlock[]): string | null {
+    if (state.ended) return "This chat has ended, so nothing was sent.";
+    // The composer is hidden while autopilot drives, so nothing else may type here either.
+    if (locked()) return "Autopilot is driving this chat, so nothing was sent.";
+    if (stopped()) return "This chat is stopped at its spend limit, so nothing was sent.";
+    if (state.queueParked) return "This chat's queue is parked. Send or clear it first, then try again.";
+    if (!numberingSettled()) return "This chat is still loading, try again in a moment.";
+    // Queued either way: the flush driver sends it now when idle and after the
+    // running turn otherwise, under the same checks as anything typed.
+    cancelResume(props.sessionId);
+    edit((s) => enqueue(s, blocks));
+    return null;
+  }
+  onCleanup(
+    onWith<ChatSubmit>(CHAT_SUBMIT, (ev) => {
+      if (ev.sessionId !== props.sessionId) return;
+      const refused = submitFromOutside(ev.blocks);
+      if (refused) emitWith<ToastEvent>(TOAST, { message: refused, kind: "error" });
+      emitWith<SendToSessionResult>(SEND_TO_SESSION_RESULT, {
+        requestId: ev.requestId,
+        result: refused ? "blocked" : "sent",
+      });
     }),
   );
 

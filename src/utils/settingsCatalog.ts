@@ -521,6 +521,14 @@ export const SETTINGS: SettingEntry[] = [
     label: "Side-by-side diffs",
     hint: "Two columns instead of one for every diff Tori renders: commits, pull requests, review and chat. Narrow panes fall back to inline regardless.",
   },
+  // localStorage like the two above: how this reader reviews, not a property of
+  // any workspace.
+  {
+    id: "hunk-comments-send-now",
+    section: "editing",
+    label: "Send hunk comments right away",
+    hint: "Each hunk comment goes to the session as soon as you write it, instead of being held for one Send. A terminal session still only gets it at the prompt.",
+  },
   {
     // No `toggles`: a list of tags has no other value to flip to, so it is
     // reached by opening the panel the way a font stack is.

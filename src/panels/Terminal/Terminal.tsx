@@ -55,6 +55,8 @@ import {
   type SessionDeleted,
   SEND_TO_SESSION,
   SEND_TO_SESSION_RESULT,
+  CHAT_SUBMIT,
+  type ChatSubmit,
   TOAST,
   TAB_JUMP,
   TAB_CYCLE,
@@ -1665,6 +1667,12 @@ export default function Terminal(props: {
       // composer is filed under: the caller knows a session, and this is the one
       // place that can turn one into the other.
       const chat = liveChats().find((c) => c.sessionId === req.sessionId);
+      // The chat tab answers this request itself, once it knows the turn went.
+      if (chat && req.submit) {
+        const blocks = req.blocks ?? [{ type: "text" as const, text }];
+        emitWith<ChatSubmit>(CHAT_SUBMIT, { requestId: req.requestId, sessionId: req.sessionId, blocks });
+        return;
+      }
       if (chat) {
         offerToComposer(chat.tabId, req.blocks ?? [{ type: "text", text }]);
         focusTab(chat.folderPath, chat.tabId);
