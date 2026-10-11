@@ -19,7 +19,7 @@
 import { PURGE_WORKSPACE, emitWith, type PurgeWorkspace } from "./events";
 
 /** localStorage stores shaped `Record<workspace, ...>` at the top level. */
-const WORKSPACE_STORES = [
+export const WORKSPACE_STORES = [
   "tori.panes.v1",
   "tori.tabpanes.v1",
   "tori.editor.tabs.v1",

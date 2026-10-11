@@ -31,6 +31,8 @@ import {
   onWith,
   OPEN_IN_EDITOR,
   PURGE_WORKSPACE,
+  WORKSPACE_MOVED,
+  type WorkspaceMoved,
   SET_RIGHT_MODE,
   type FsChanged,
   type OpenInEditor,
@@ -97,6 +99,7 @@ import { grepRoot, MAX_RESULTS } from "./searchRun";
 import { Field, GlobFields, InlineToggle, MatchToggles } from "./SearchFields";
 import tree from "./FileTree/FileTree.module.css";
 import styles from "./SearchPanel.module.css";
+import { moveDeep } from "../../utils/moveWorkspace";
 
 /** What the backends can do here, kept apart from `sections` so clearing results
  *  (an empty query, a workspace switch) does not also blank the toggle states.
@@ -210,6 +213,12 @@ export default function SearchPanel(props: {
     onWith<PurgeWorkspace>(PURGE_WORKSPACE, ({ workspace }) => {
       setHistory((s) => dropWorkspaceKey(s, workspace));
       setSaved((s) => dropWorkspaceKey(s, workspace));
+    }),
+  );
+  onCleanup(
+    onWith<WorkspaceMoved>(WORKSPACE_MOVED, ({ moves }) => {
+      setHistory((s) => moveDeep(s, moves));
+      setSaved((s) => moveDeep(s, moves));
     }),
   );
   const [cursor, setCursor] = createSignal(DRAFT);

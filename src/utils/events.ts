@@ -651,6 +651,12 @@ export type NewChatAt = {
 export const PURGE_UNDER_PATH = "tori:purge-under-path";
 export type PurgeUnderPath = { path: string };
 
+// Folders moved and nothing about them closed (a plain clone converted to the
+// worktree layout): every per-workspace store rewrites its keys and paths
+// through `moves`. Emitted after the move, by `moveWorkspaces`.
+export const WORKSPACE_MOVED = "tori:workspace-moved";
+export type WorkspaceMoved = { moves: { from: string; to: string }[] };
+
 // A whole workspace key is going away (a Topic was deleted). Unlike a path
 // purge nothing on disk is touched: every per-workspace store drops the key so
 // a later Topic reusing nothing of it starts clean. Emitted after the delete.
