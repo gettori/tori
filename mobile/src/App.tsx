@@ -8,6 +8,7 @@ import { rgbTriple, spaceHue } from "../../src/utils/spaceTint";
 import AutopilotScreen, { AutopilotChat, watchRunner } from "./Autopilot";
 import BottomBar from "./BottomBar";
 import Chat from "./Chat";
+import InboxScreen, { watchInbox } from "./Inbox";
 import { setSpaceName, showWheel, spaceName } from "./prefs";
 import Root, { type RootTab } from "./Root";
 import { ProjectScreen, TopicScreen } from "./Screens";
@@ -27,6 +28,7 @@ type View =
   | { screen: "chat"; row: SessionRow }
   | { screen: "autopilot" }
   | { screen: "autopilotChat" }
+  | { screen: "inbox" }
   | { screen: "settings" };
 
 function Pair(props: {
@@ -181,6 +183,7 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
   const tree = watchTree(props.client);
   const autopilot = watchRunner(props.client);
   const { runner, decisions, crew } = autopilot;
+  const inbox = watchInbox(props.client);
   const [tab, setTab] = createSignal<RootTab>("projects");
   const [stack, setStack] = createSignal<View[]>([]);
   const space = () => tree()?.spaces.find((s) => s.name === spaceName()) ?? tree()?.spaces[0];
@@ -310,6 +313,9 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
             }
           />
         </Match>
+        <Match when={top()?.screen === "inbox"}>
+          <InboxScreen client={props.client} inbox={inbox} live={live} onReply={openSession} onBack={back} />
+        </Match>
         <Match when={top()?.screen === "autopilotChat"}>
           <AutopilotChat client={props.client} runner={runner} onBack={back} />
         </Match>
@@ -323,6 +329,8 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
           showWheel={showWheel()}
           runner={runner}
           decisions={decisions}
+          inboxCount={() => inbox.items().length}
+          onInbox={() => go({ screen: "inbox" })}
           onSpace={(picked) => {
             setSpaceName(picked.name);
             setTab("projects");

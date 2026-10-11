@@ -20,9 +20,9 @@ use super::server::{
     CheckpointsParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams,
     IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams,
     ModelParams, OpenParams, PendingParams, PrCreateParams, PrGetParams, PrMergeParams, PrWatchParams,
-    ProjectIconParams, ProjectSetParams, ProvenanceParams, ReviewSubmitParams, SessionAnswerParams, SpawnParams,
-    SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams,
-    WorktreeParams, DEFAULT_LOG_LIMIT,
+    ProjectIconParams, ProjectSetParams, ProvenanceParams, ReviewMarkParams, ReviewSubmitParams, SessionAnswerParams,
+    SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams,
+    WaitParams, WorktreeParams, DEFAULT_LOG_LIMIT,
 };
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
@@ -1157,6 +1157,16 @@ impl Backend for TauriBackend {
 
     fn units_git(&self, params: UnitsGitParams) -> Result<Value, RpcError> {
         to_json(crate::git::units_git(params.folders))
+    }
+
+    fn review_list(&self) -> Result<Value, RpcError> {
+        to_json(crate::review::inbox_now(&self.app.state::<SessionIndex>()))
+    }
+
+    fn review_mark(&self, params: ReviewMarkParams) -> Result<Value, RpcError> {
+        let unit = crate::review::ReviewUnit::Session { id: params.id };
+        crate::review::mark_now(&self.app, &self.app.state::<SessionIndex>(), unit, params.to_ts).map_err(refused)?;
+        Ok(json!({}))
     }
 
     fn units_sync(&self, params: UnitsSyncParams) -> Result<Value, RpcError> {

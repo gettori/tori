@@ -12,9 +12,9 @@ use super::server::{
     CheckpointsParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams,
     IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams,
     ModelParams, OpenParams, PendingParams, PrCreateParams, PrGetParams, PrMergeParams, PrWatchParams,
-    ProjectIconParams, ProjectSetParams, ProvenanceParams, ReviewSubmitParams, SessionAnswerParams, SpawnParams,
-    SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams,
-    WorktreeParams, UNITS_GIT_MAX,
+    ProjectIconParams, ProjectSetParams, ProvenanceParams, ReviewMarkParams, ReviewSubmitParams, SessionAnswerParams,
+    SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams,
+    WaitParams, WorktreeParams, UNITS_GIT_MAX,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -215,6 +215,24 @@ pub static METHODS: &[Method] = &[
         refusal: None,
         outward: false,
         call: |b, p, v| b.session_mode(p, params(v)?),
+    },
+    Method {
+        name: "review.list",
+        description: "Sessions with work nobody has reviewed yet, riskiest first: each with its score, the signals behind it, its last reply and whether it is still running.",
+        params: no_params,
+        callers: LOCAL_AND_DEVICES,
+        refusal: Some("an agent cannot review its own work"),
+        outward: false,
+        call: |b, _, _| b.review_list(),
+    },
+    Method {
+        name: "review.mark",
+        description: "Mark a session reviewed up to the latest prompt its row showed. Refused while it is still running or once it has a newer prompt.",
+        params: schema::<ReviewMarkParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: Some("an agent cannot review its own work"),
+        outward: false,
+        call: |b, _, v| b.review_mark(params(v)?),
     },
     Method {
         name: "units.git",
