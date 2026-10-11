@@ -3594,7 +3594,9 @@ export default function LeftSidebar(props: {
             repoPath={req().p.path}
             worktreePath={req().u.folderPath}
             label={req().u.label}
+            branch={req().u.branch}
             topics={topics()}
+            spaces={visibleSpaces()}
             onDone={(topic) => {
               applyTopic(topic);
               setMoveReq(null);
