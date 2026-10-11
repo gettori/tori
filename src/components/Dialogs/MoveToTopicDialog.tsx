@@ -128,9 +128,7 @@ export default function MoveToTopicDialog(props: {
                 {(m) => <div class={styles.hint}>Replaces the reference to {m().displayName}</div>}
               </Show>
             </div>
-            <div class={styles.msg}>
-              The worktree keeps its branch and its changes. Nothing in git changes, and it stays in Spaces.
-            </div>
+            <div class={styles.msg}>The worktree keeps its branch and its changes. Nothing in git changes.</div>
           </Show>
         </Show>
       </Dialog>
