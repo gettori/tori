@@ -593,6 +593,22 @@ pub fn relocate_member(store: &Store, topic_id: &str, repo_path: &str, new_repo_
     reconciled_topic(store, topic_id)
 }
 
+/// Point every worktree member of `repo` at where `to` says it now lives. For a
+/// repository whose layout changed under the same folder, so `repo_path` stays.
+pub fn repoint_worktrees(store: &Store, repo: &str, to: impl Fn(&str) -> Option<String>) -> Result<(), String> {
+    store.mutate(|file| {
+        for m in file.topics.iter_mut().flat_map(|t| t.members.iter_mut()) {
+            if !same_path(&m.repo_path, repo) {
+                continue;
+            }
+            if let Some(moved) = m.worktree_path.as_deref().and_then(&to) {
+                m.worktree_path = Some(moved);
+            }
+        }
+        Ok(())
+    })
+}
+
 /// The record with every member's state refreshed. What a call that changed the
 /// world on disk has to answer with: `load_topic` returns the stored state,
 /// and the stored state is the one such a call has just invalidated. Callers
