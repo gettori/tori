@@ -29,6 +29,11 @@ export type ConfirmOpts = {
   message?: string;
   confirmLabel?: string;
   danger?: boolean;
+  /** A second way forward beside the confirm. Choosing it calls `onAlt`, then
+   *  resolves the request false, so a caller that never asked for one reads it
+   *  as a cancel. */
+  altLabel?: string;
+  onAlt?: () => void;
 };
 export type ConfirmReq = ConfirmOpts & { resolve: (v: boolean) => void };
 
@@ -40,20 +45,28 @@ export default function ConfirmDialog(props: {
   /** A control the answer depends on, under the message. For a confirmation
    *  that carries an option rather than a second dialog for it. */
   extra?: JSX.Element;
+  altLabel?: string;
+  onAlt?: () => void;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
   let ok: HTMLButtonElement | undefined;
+  let cancel: HTMLButtonElement | undefined;
 
   return (
     <Dialog
       open
       title={props.title}
       onClose={() => props.onCancel()}
-      initialFocus={() => ok}
+      // With a second way forward, neither is the obvious answer, so Enter on
+      // open must not pick one of them.
+      initialFocus={() => (props.altLabel ? cancel : ok)}
       actions={
         <>
-          <Button onClick={() => props.onCancel()}>Cancel</Button>
+          <Button ref={cancel} onClick={() => props.onCancel()}>
+            Cancel
+          </Button>
+          {props.altLabel ? <Button onClick={() => props.onAlt?.()}>{props.altLabel}</Button> : undefined}
           <Button ref={ok} variant={props.danger ? "danger" : "primary"} onClick={() => props.onConfirm()}>
             {props.confirmLabel ?? "OK"}
           </Button>

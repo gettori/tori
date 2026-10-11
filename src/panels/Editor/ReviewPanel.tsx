@@ -47,8 +47,13 @@ import {
   commit as commitStaged,
   headMessage,
   push as pushToOrigin,
+  pushGuard,
+  forcePush,
+  divergedIn,
+  refuseIfDiverged,
   type FileStatus,
 } from "../../utils/gitActions";
+import { divergedWords, forcePushWords, pullRebaseWords, pullWords, pushWords } from "../../utils/pushWords";
 import { fetchRootNow } from "../../utils/remoteSync";
 import { amendRewritesPushed } from "../../utils/commitMessage";
 import { DIFF_CONTEXT } from "../../utils/diffHunks";
@@ -80,7 +85,7 @@ import MemberTabs from "../../components/MemberTabs/MemberTabs";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import OverflowTabBar from "../../components/OverflowTabBar";
 import Dropdown from "../../components/Menu/Dropdown";
-import { MenuRow, MenuSeparator, MenuSub } from "../../components/Menu/rows";
+import { DescribedRow, MenuRow, MenuSeparator, MenuSub } from "../../components/Menu/rows";
 import RebaseDialog from "../../components/Dialogs/RebaseDialog";
 import PickerModal from "../../components/Dialogs/PickerModal";
 import { OP_WORD, type ConflictOp } from "../../utils/conflict";
@@ -586,10 +591,41 @@ export default function ReviewPanel(props: {
    *  so the way forward is a reset, not a push or a merge. */
   const superseded = (root: string | null) => !!gitStateFor(root).sync?.upstream.superseded;
 
-  function pushMember(root: string | null) {
-    if (!root) return;
+  const aheadBehindIn = (root: string | null) => gitStateFor(root).aheadBehind;
+  const [gitMenuOpen, setGitMenuOpen] = createSignal(false);
+
+  /** Push through the duplicate guard. A diverged member is refused with the
+   *  reason: git would reject the push anyway, and say it less usefully. */
+  async function guardedPush(root: string): Promise<void> {
     const branchName = gitStateFor(root).branch;
-    if (branchName) void pushToOrigin(root, branchName);
+    if (!branchName || refuseIfDiverged(root)) return;
+    const verdict = await pushGuard(root, askConfirm);
+    if (verdict.go === "rebase") rewrite("Rebase", root, (r) => rebaseOnto(r, verdict.onto));
+    else if (verdict.go === "push") await pushToOrigin(root, branchName);
+  }
+
+  function pushMember(root: string | null) {
+    if (root) void guardedPush(root);
+  }
+
+  /** Force push over `origin/<branch>`, leased on the sha the confirm names.
+   *  Read fresh before asking, so the lease is what the dialog showed. */
+  async function forcePushMember(root: string | null) {
+    const branchName = gitStateFor(root).branch;
+    if (!root || !branchName) return;
+    await refreshMeta(root);
+    const target = divergedIn(root);
+    if (!target) return;
+    const ok = await askConfirm({
+      title: `Force push ${branchName}?`,
+      message: forcePushWords(target, branchName),
+      confirmLabel: "Force Push",
+      danger: true,
+    });
+    if (!ok) return;
+    const verdict = await pushGuard(root, askConfirm);
+    if (verdict.go === "rebase") rewrite("Rebase", root, (r) => rebaseOnto(r, verdict.onto));
+    else if (verdict.go === "push") await forcePush(root, branchName, target.sha);
   }
 
   // What the commit would hold: staged when anything is, else the working tree,
@@ -674,11 +710,10 @@ export default function ReviewPanel(props: {
         setAmend(false);
         setUnticked(new Set<string>());
       }
+      // In turn, never together: each may ask through the one confirm, and a
+      // second question replaces the first rather than queueing behind it.
       if (thenPush) {
-        for (const root of landed) {
-          const branchName = gitStateFor(root).branch;
-          if (branchName) void pushToOrigin(root, branchName);
-        }
+        for (const root of landed) await guardedPush(root);
       }
     } finally {
       setCommitting(false);
@@ -1351,16 +1386,40 @@ export default function ReviewPanel(props: {
         <MenuSeparator />
       </Show>
       <MenuRow onClick={() => menuRoot() && void fetchIn(menuRoot()!)}>Fetch</MenuRow>
-      <MenuRow onClick={() => menuRoot() && void pullIn(menuRoot()!, false, viewedReadOnly())}>
-        {superseded(menuRoot()) ? "Reset to Upstream" : "Pull"}
-      </MenuRow>
+      <Show
+        when={!superseded(menuRoot())}
+        fallback={
+          <MenuRow onClick={() => menuRoot() && void pullIn(menuRoot()!, false, viewedReadOnly())}>
+            Reset to Upstream
+          </MenuRow>
+        }
+      >
+        <DescribedRow
+          label="Pull"
+          note={pullWords(aheadBehindIn(menuRoot()), viewedReadOnly())}
+          onClick={() => menuRoot() && void pullIn(menuRoot()!, false, viewedReadOnly())}
+        />
+      </Show>
       <Show when={!viewedReadOnly()}>
         <Show when={!superseded(menuRoot())}>
-          <MenuRow onClick={() => menuRoot() && void pullIn(menuRoot()!, true)}>Pull (Rebase)</MenuRow>
+          <DescribedRow
+            label="Pull (Rebase)"
+            note={pullRebaseWords(aheadBehindIn(menuRoot()))}
+            onClick={() => menuRoot() && void pullIn(menuRoot()!, true)}
+          />
         </Show>
-        <MenuRow disabled={!canPushIn(menuRoot())} onClick={() => pushMember(menuRoot())}>
-          Push
-        </MenuRow>
+        <DescribedRow
+          label="Push"
+          note={pushWords(aheadBehindIn(menuRoot()), branch() ?? "", superseded(menuRoot()))}
+          disabled={!divergedIn(menuRoot()) && !canPushIn(menuRoot())}
+          refusing={!!divergedIn(menuRoot())}
+          onClick={() => pushMember(menuRoot())}
+        />
+        <Show when={divergedIn(menuRoot())}>
+          <MenuRow warn disabled={pushingIn(menuRoot())} onClick={() => void forcePushMember(menuRoot())}>
+            Force Push
+          </MenuRow>
+        </Show>
         <MenuSub label="Rebase" disabled={applying() || op() !== "none"}>
           <Show when={baseBranch() && baseBranch() !== branch()}>
             <MenuRow onClick={() => rewrite("Rebase", menuRoot(), (r) => rebaseOnto(r, `origin/${baseBranch()}`))}>
@@ -1463,7 +1522,14 @@ export default function ReviewPanel(props: {
             void refreshAll();
           }}
         />
-        <Dropdown as="span" wrapper menu={gitMenu()} placement="bottom-end">
+        <Dropdown
+          as="span"
+          wrapper
+          menu={gitMenu()}
+          placement="bottom-end"
+          open={gitMenuOpen()}
+          onOpenChange={setGitMenuOpen}
+        >
           <IconButton size="sm" tooltip="More Actions" icon={<Icon icon={Ellipsis} />} />
         </Dropdown>
       </div>
@@ -1505,22 +1571,44 @@ export default function ReviewPanel(props: {
                   </Tooltip>
                 }
               >
-                <Tooltip
-                  as="button"
-                  type="button"
-                  class={styles.aheadPill}
-                  disabled={!canPushIn(viewedRoot())}
-                  label={ab().sets_upstream ? "Push (sets upstream)" : "Push"}
-                  onClick={() => pushMember(viewedRoot())}
+                <Show
+                  when={!pushingIn(viewedRoot()) && divergedIn(viewedRoot())}
+                  fallback={
+                    <Tooltip
+                      as="button"
+                      type="button"
+                      class={styles.aheadPill}
+                      disabled={!canPushIn(viewedRoot())}
+                      label={ab().sets_upstream ? "Push (sets upstream)" : "Push"}
+                      onClick={() => pushMember(viewedRoot())}
+                    >
+                      {pushingIn(viewedRoot())
+                        ? "Pushing"
+                        : ab().has_upstream
+                          ? `${UP}${ab().ahead}${ab().behind ? ` ${DOWN}${ab().behind}` : ""}`
+                          : ab().gone
+                            ? "Deleted"
+                            : "Unpushed"}
+                    </Tooltip>
+                  }
                 >
-                  {pushingIn(viewedRoot())
-                    ? "Pushing"
-                    : ab().has_upstream
-                      ? `${UP}${ab().ahead}${ab().behind ? ` ${DOWN}${ab().behind}` : ""}`
-                      : ab().gone
-                        ? "Deleted"
-                        : "Unpushed"}
-                </Tooltip>
+                  {(target) => (
+                    <Tooltip
+                      as="button"
+                      type="button"
+                      class={styles.aheadPill}
+                      label={divergedWords(
+                        target(),
+                        branch() ?? "",
+                        !!gitStateFor(viewedRoot()).sync?.upstream.rewritten,
+                        ab().upstream ?? null,
+                      )}
+                      onClick={() => setGitMenuOpen(true)}
+                    >
+                      Diverged
+                    </Tooltip>
+                  )}
+                </Show>
               </Show>
             </Show>
           )}
@@ -2053,6 +2141,12 @@ export default function ReviewPanel(props: {
           message={confirmReq()!.message}
           confirmLabel={confirmReq()!.confirmLabel}
           danger={confirmReq()!.danger}
+          altLabel={confirmReq()!.altLabel}
+          onAlt={() => {
+            confirmReq()!.onAlt?.();
+            confirmReq()!.resolve(false);
+            setConfirmReq(null);
+          }}
           onConfirm={() => {
             confirmReq()!.resolve(true);
             setConfirmReq(null);

@@ -22,6 +22,7 @@ import { rootOf } from "./topics";
 import { adoptSync } from "./branchSync";
 import { mentionPath } from "./pathScope";
 import { askToTrust, noteRefused, onTrustChange, UNTRUSTED } from "./projectTrust";
+import { DIVERGED_REFUSAL, divergedTarget, duplicateWarning } from "./pushWords";
 
 /** One porcelain entry. `path` is repo-relative, as every git_* command wants,
  *  and since the backend moved to `--porcelain=v2 -z` it is always a real
@@ -45,7 +46,15 @@ export type AheadBehind = {
   has_upstream: boolean;
   sets_upstream: boolean;
   gone: boolean;
+  /** HEAD against `origin/<branch>`, the ref a push writes, which need not be
+   *  the upstream the counts above follow. Null when it does not exist.
+   *  Optional only so a fixture may omit it. */
+  push_target?: PushTarget | null;
+  /** The upstream the counts are against, `origin/main` style. */
+  upstream?: string | null;
 };
+/** Mirrors `PushTarget` in src-tauri/src/git.rs. */
+export type PushTarget = { ahead: number; behind: number; sha: string };
 
 /** `FetchResult` in src-tauri/src/git.rs, as it arrives on the two events. */
 type FetchEvent = { repo?: string; error?: string; quiet?: boolean; fetchedAt?: number };
@@ -699,6 +708,86 @@ export async function push(root: string, branch: string): Promise<boolean> {
   markPushing(root, false);
   if (!ok) {
     toastError(error || "Push failed");
+    return false;
+  }
+  await refreshMeta(root);
+  return true;
+}
+
+/** `origin/<branch>` when this member and it have both moved, else null. */
+export function divergedIn(root: string | null): PushTarget | null {
+  const state = gitStateFor(root);
+  return divergedTarget(state.aheadBehind, !!state.sync?.upstream.superseded);
+}
+
+/** Toast the reason and answer true when this member has diverged: a pull
+ *  would merge the stale side back in, and a plain push is rejected. */
+export function refuseIfDiverged(root: string): boolean {
+  if (!divergedIn(root)) return false;
+  emitWith<ToastEvent>(TOAST, { message: DIVERGED_REFUSAL, kind: "error" });
+  return true;
+}
+
+/** What a guarded push should do next. */
+export type PushVerdict = { go: "push" } | { go: "cancel" } | { go: "rebase"; onto: string };
+
+/** The confirm a guard asks through: the host panel's own, with a middle
+ *  button for the rebase. */
+export type GuardConfirm = (opts: {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  altLabel: string;
+  onAlt: () => void;
+}) => Promise<boolean>;
+
+/**
+ * Check what a push of HEAD would send before it goes. When most of it is
+ * already on the base under other hashes, a pull replayed the base onto this
+ * branch, and the confirm offers the rebase that drops the copies.
+ *
+ * The base is read here, from the same answer the Rebase menu's "Onto origin/x"
+ * uses, so the warning and the rebase it offers cannot name two branches. Any
+ * probe failure lets the push through: the guard warns, it never blocks.
+ */
+export async function pushGuard(root: string, confirm: GuardConfirm): Promise<PushVerdict> {
+  const base = await invoke<string | null>("git_default_base_branch", { projectPath: root }).catch(() => null);
+  if (!base) return { go: "push" };
+  const dupes = await invoke<{ pushing: number; duplicated: number } | null>("git_push_duplicates", {
+    projectPath: root,
+    base,
+  }).catch(() => null);
+  const warning = dupes && duplicateWarning(dupes.pushing, dupes.duplicated, base);
+  if (!warning) return { go: "push" };
+  let rebase = false;
+  const ok = await confirm({
+    title: "Push copies of base commits?",
+    message: warning,
+    confirmLabel: "Push anyway",
+    altLabel: `Rebase onto origin/${base}`,
+    onAlt: () => (rebase = true),
+  });
+  if (rebase) return { go: "rebase", onto: `origin/${base}` };
+  return ok ? { go: "push" } : { go: "cancel" };
+}
+
+/** Force push `branch` over `origin/<branch>`, leased on `expected`, the sha
+ *  the confirm showed. Same flag and events as `push`. */
+export async function forcePush(root: string, branch: string, expected: string): Promise<boolean> {
+  if (pushingIn(root)) return false;
+  markPushing(root, true);
+  const result = waitForPush(root);
+  try {
+    await invoke("git_force_push", { repo: root, branch, expected });
+  } catch (e) {
+    markPushing(root, false);
+    toastError(e);
+    return false;
+  }
+  const { ok, error } = await result;
+  markPushing(root, false);
+  if (!ok) {
+    toastError(error || "Force push failed");
     return false;
   }
   await refreshMeta(root);

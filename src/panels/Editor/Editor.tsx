@@ -255,6 +255,8 @@ import {
   unstage as unstageFiles,
   commit as commitStaged,
   push as pushToOrigin,
+  pushGuard,
+  refuseIfDiverged,
   changedFiles,
   refreshStatus,
   stageAll,
@@ -2418,20 +2420,27 @@ export default function Editor(props: {
     await commitStaged(r, message);
   }
 
+  /** Push through the duplicate guard, or rebase if the guard's confirm says so. */
+  async function guardedPush(r: string) {
+    const branch = gitStateFor(r).branch;
+    if (!branch || refuseIfDiverged(r)) return;
+    const verdict = await pushGuard(r, askConfirm);
+    if (verdict.go === "rebase") await rewriteHere("Rebase", (root) => rebase(root, verdict.onto), false, r);
+    else if (verdict.go === "push") await pushToOrigin(r, branch);
+  }
+
   function pushCurrentBranch() {
     const r = gitWriteRoot();
-    const branch = gitStateFor(r).branch;
-    if (r && branch) void pushToOrigin(r, branch);
+    if (r) void guardedPush(r);
   }
 
   /** Pull, then push what the pull left ahead. Sequential, not parallel: a push
    *  racing its own pull is how a non-fast-forward rejection happens. */
   async function syncCurrentBranch() {
     const r = gitWriteRoot();
-    if (!r) return;
+    if (!r || refuseIfDiverged(r)) return;
     if (!(await pullIn(r))) return;
-    const branch = gitStateFor(r).branch;
-    if (branch) await pushToOrigin(r, branch);
+    await guardedPush(r);
   }
 
   /** A branch to act on, chosen from this repo's own list. */
@@ -2450,8 +2459,12 @@ export default function Editor(props: {
 
   /** A step that rewrites the worktree, behind the same guard as Discard: an
    *  agent mid-turn here would have its files replaced under it. */
-  async function rewriteHere(verb: string, run: (root: string) => Promise<IntegrateOutcome | null>, quietDone = false) {
-    const r = gitWriteRoot();
+  async function rewriteHere(
+    verb: string,
+    run: (root: string) => Promise<IntegrateOutcome | null>,
+    quietDone = false,
+    r = gitWriteRoot(),
+  ) {
     if (!r) return;
     const allowed = await mayRewrite(verb, r, {
       confirm: askConfirm,
@@ -3575,6 +3588,11 @@ export default function Editor(props: {
           message={confirmReq()!.message}
           confirmLabel={confirmReq()!.confirmLabel}
           danger={confirmReq()!.danger}
+          altLabel={confirmReq()!.altLabel}
+          onAlt={() => {
+            confirmReq()!.onAlt?.();
+            resolveConfirm(false);
+          }}
           onConfirm={() => resolveConfirm(true)}
           onCancel={() => resolveConfirm(false)}
         />

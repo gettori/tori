@@ -2548,6 +2548,68 @@ pub fn git_push(
     Ok(())
 }
 
+/// Force push the checked-out `branch` over `origin/<branch>`, leased on
+/// `expected`: the remote ref must still be the commit the confirm showed, so a
+/// push somebody made since is rejected rather than thrown away. The bare
+/// `--force-with-lease` would lease on the tracking ref, which any background
+/// fetch moves. Refused unless the branch has really diverged from its target.
+pub fn force_push_branch(repo: &str, branch: &str, expected: &str, sock: &Path, token: &str) -> Result<(), String> {
+    let head = git_capture(repo, &["symbolic-ref", "--quiet", "--short", "HEAD"])
+        .map_err(|_| "Not on a branch.".to_string())?;
+    if head != branch {
+        return Err(format!("{branch} is not checked out here."));
+    }
+    match push_target(repo, branch) {
+        Some(t) if t.ahead > 0 && t.behind > 0 => {}
+        _ => {
+            return Err(format!(
+                "{branch} has not diverged from origin/{branch}, so it was not force pushed."
+            ))
+        }
+    }
+    let op_id = next_op_id();
+    let mut cmd = git_command(repo, &op_id, sock, token);
+    let _bridge = crate::credential::bridge(&mut cmd, repo, "origin", &op_id);
+    cmd.args([
+        "push",
+        SKIP_HOOKS,
+        &format!("--force-with-lease=refs/heads/{branch}:{expected}"),
+        "origin",
+        branch,
+    ]);
+    match crate::git_health::run(&mut cmd) {
+        Ok(o) if o.status.success() => Ok(()),
+        Ok(o) => Err(String::from_utf8_lossy(&o.stderr).trim().to_string()),
+        Err(e) => Err(e),
+    }
+}
+
+/// `git_push`'s twin for a force push, reporting on the same two events so the
+/// UI waits on it the same way.
+#[tauri::command]
+pub fn git_force_push(
+    app: AppHandle,
+    state: State<AskpassState>,
+    repo: String,
+    branch: String,
+    expected: String,
+) -> Result<(), String> {
+    let inner = state.0.clone();
+    thread::spawn(move || {
+        let (ok, error) = {
+            let lock = crate::exec::repo_lock(&repo);
+            let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            match force_push_branch(&repo, &branch, &expected, inner.sock_path(), inner.token()) {
+                Ok(()) => (true, String::new()),
+                Err(e) => (false, e),
+            }
+        };
+        let event = if ok { "git://push-done" } else { "git://push-error" };
+        let _ = app.emit(event, PushResult { repo, ok, error });
+    });
+    Ok(())
+}
+
 /// Ahead/behind counts of the current branch, for the Changes panel header.
 /// `has_upstream: false` (nothing to measure against) renders as an "unpushed
 /// branch" state rather than 0/0.
@@ -2561,6 +2623,77 @@ pub struct AheadBehind {
     /// it is a separate question from having something to count against.
     sets_upstream: bool,
     gone: bool,
+    /// Where HEAD stands against `origin/<branch>`, the ref a push writes.
+    /// Separate from the counts above, which follow the configured upstream: a
+    /// branch made from `origin/main` tracks it, and measured against it would
+    /// read diverged every time main moved, though its push goes elsewhere.
+    push_target: Option<PushTarget>,
+    /// The ref the counts above are against, `origin/main` style, which is
+    /// what a pull takes from. None without an upstream.
+    upstream: Option<String>,
+}
+
+/// HEAD against `refs/remotes/origin/<branch>`, with that ref's sha, which is
+/// what a force push leases against.
+#[derive(Serialize, Debug, PartialEq)]
+pub struct PushTarget {
+    ahead: u32,
+    behind: u32,
+    sha: String,
+}
+
+fn push_target(repo: &str, branch: &str) -> Option<PushTarget> {
+    let target = format!("refs/remotes/origin/{branch}");
+    let sha = git_capture(repo, &["rev-parse", "--verify", "--quiet", &target]).ok()?;
+    let counts = git_capture(
+        repo,
+        &["rev-list", "--left-right", "--count", &format!("HEAD...{target}"), "--"],
+    )
+    .ok()?;
+    let mut parts = counts.split_whitespace().map(|n| n.parse().unwrap_or(0));
+    Some(PushTarget {
+        ahead: parts.next().unwrap_or(0),
+        behind: parts.next().unwrap_or(0),
+        sha,
+    })
+}
+
+/// How many of the commits a push would send are already on `origin/<base>`
+/// under other hashes, by patch.
+#[derive(Serialize, Debug, PartialEq)]
+pub struct PushDuplicates {
+    pushing: u32,
+    duplicated: u32,
+}
+
+/// `git cherry` over the commits a push of HEAD would send: those past
+/// `origin/<branch>`, or everything off the base on a first push. None when
+/// HEAD is the base itself or `origin/<base>` is not here to compare with.
+#[tauri::command(async)]
+pub fn git_push_duplicates(project_path: String, base: String) -> Option<PushDuplicates> {
+    push_duplicates(&project_path, &base)
+}
+
+fn push_duplicates(repo: &str, base: &str) -> Option<PushDuplicates> {
+    let branch = git_capture(repo, &["symbolic-ref", "--quiet", "--short", "HEAD"]).ok()?;
+    if branch == base {
+        return None;
+    }
+    let upstream = format!("refs/remotes/origin/{base}");
+    if !resolves(repo, &upstream) {
+        return None;
+    }
+    let limit = format!("refs/remotes/origin/{branch}");
+    let mut args = vec!["cherry", upstream.as_str(), "HEAD"];
+    if resolves(repo, &limit) {
+        args.push(&limit);
+    }
+    let out = git_capture(repo, &args).ok()?;
+    let lines: Vec<&str> = out.lines().filter(|l| !l.is_empty()).collect();
+    Some(PushDuplicates {
+        pushing: lines.len() as u32,
+        duplicated: lines.iter().filter(|l| l.starts_with('-')).count() as u32,
+    })
 }
 
 #[tauri::command(async)]
@@ -2584,6 +2717,8 @@ pub fn git_ahead_behind(project_path: String) -> Result<AheadBehind, String> {
             has_upstream: false,
             sets_upstream,
             gone,
+            push_target: branch.as_deref().and_then(|name| push_target(&project_path, name)),
+            upstream: None,
         });
     };
     let sync = upstream_sync(&project_path, &tracked, "HEAD");
@@ -2593,6 +2728,8 @@ pub fn git_ahead_behind(project_path: String) -> Result<AheadBehind, String> {
         has_upstream: true,
         sets_upstream,
         gone: false,
+        push_target: branch.as_deref().and_then(|name| push_target(&project_path, name)),
+        upstream: Some(tracked),
     })
 }
 
@@ -4612,6 +4749,165 @@ diff --git a/f b/f
         let sync = sync_of(&local);
         assert_eq!((sync.upstream.ahead, sync.upstream.behind), (0, 0));
         scrub(&[&local, &remote, &other]);
+    }
+
+    fn ahead_behind_of(dir: &Path) -> AheadBehind {
+        git_ahead_behind(dir.to_string_lossy().into_owned()).unwrap()
+    }
+
+    #[test]
+    fn push_target_ignores_an_upstream_with_another_name() {
+        let (local, remote) = repo_on_feature();
+        git(&local, &["branch", "-q", "--set-upstream-to=origin/main", "feat"]);
+        commit_file(&local, "mine.txt", "mine");
+        move_base(&local, "base.txt", "base");
+
+        let ab = ahead_behind_of(&local);
+        assert_eq!((ab.ahead, ab.behind), (1, 1), "against origin/main it reads diverged");
+        assert_eq!(
+            ab.push_target, None,
+            "origin/feat does not exist, so nothing is diverged"
+        );
+
+        git(&local, &["push", "-q", "origin", "feat"]);
+        git(&local, &["commit", "-q", "--amend", "-m", "mine, rewritten"]);
+        let target = ahead_behind_of(&local).push_target.unwrap();
+        assert_eq!((target.ahead, target.behind), (1, 1));
+        assert_eq!(
+            target.sha,
+            git_capture(&local.to_string_lossy(), &["rev-parse", "origin/feat"]).unwrap()
+        );
+        scrub(&[&local, &remote]);
+    }
+
+    fn dupes(dir: &Path) -> Option<PushDuplicates> {
+        push_duplicates(&dir.to_string_lossy(), "main")
+    }
+
+    #[test]
+    fn push_duplicates_counts_main_replayed_onto_the_branch() {
+        let (local, remote) = repo_on_feature();
+        move_base(&local, "a.txt", "a");
+        move_base(&local, "b.txt", "b");
+        // `-x` changes the message: a pick inside the same second is otherwise
+        // byte-identical to the original, the same commit rather than a copy.
+        git(&local, &["cherry-pick", "-x", "origin/main~1", "origin/main"]);
+        assert_eq!(
+            dupes(&local),
+            Some(PushDuplicates {
+                pushing: 2,
+                duplicated: 2
+            })
+        );
+        scrub(&[&local, &remote]);
+    }
+
+    #[test]
+    fn push_duplicates_counts_none_of_a_branchs_own_work() {
+        let (local, remote) = repo_on_feature();
+        commit_file(&local, "a.txt", "a");
+        commit_file(&local, "b.txt", "b");
+        assert_eq!(
+            dupes(&local),
+            Some(PushDuplicates {
+                pushing: 2,
+                duplicated: 0
+            })
+        );
+        scrub(&[&local, &remote]);
+    }
+
+    #[test]
+    fn push_duplicates_counts_only_what_is_past_the_push_target() {
+        let (local, remote) = repo_on_feature();
+        commit_file(&local, "a.txt", "a");
+        commit_file(&local, "b.txt", "b");
+        git(&local, &["push", "-q", "-u", "origin", "feat"]);
+        commit_file(&local, "c.txt", "c");
+        assert_eq!(
+            dupes(&local),
+            Some(PushDuplicates {
+                pushing: 1,
+                duplicated: 0
+            })
+        );
+
+        // Tracking origin/main changes nothing: the push still goes to origin/feat.
+        git(&local, &["branch", "-q", "--set-upstream-to=origin/main", "feat"]);
+        assert_eq!(
+            dupes(&local),
+            Some(PushDuplicates {
+                pushing: 1,
+                duplicated: 0
+            })
+        );
+        scrub(&[&local, &remote]);
+    }
+
+    #[test]
+    fn push_duplicates_has_nothing_to_say_on_the_base_itself() {
+        let (local, remote) = repo_on_feature();
+        git(&local, &["checkout", "-q", "main"]);
+        assert_eq!(dupes(&local), None);
+        scrub(&[&local, &remote]);
+    }
+
+    /// `feat` pushed, then amended here: diverged from origin/feat by one each way.
+    fn rewritten_after_push() -> (PathBuf, PathBuf) {
+        let (local, remote) = repo_on_feature();
+        commit_file(&local, "mine.txt", "mine");
+        git(&local, &["push", "-q", "-u", "origin", "feat"]);
+        git(&local, &["commit", "-q", "--amend", "-m", "mine, rewritten"]);
+        (local, remote)
+    }
+
+    const PUSH_SOCK: &str = "/tmp/tori-force-push-test/s";
+
+    #[test]
+    fn force_push_replaces_the_remote_branch_when_the_lease_holds() {
+        let (local, remote) = rewritten_after_push();
+        let (p, r) = (
+            local.to_string_lossy().into_owned(),
+            remote.to_string_lossy().into_owned(),
+        );
+        let expected = git_capture(&p, &["rev-parse", "origin/feat"]).unwrap();
+        force_push_branch(&p, "feat", &expected, Path::new(PUSH_SOCK), "tok").unwrap();
+        assert_eq!(
+            git_capture(&r, &["rev-parse", "refs/heads/feat"]).unwrap(),
+            git_capture(&p, &["rev-parse", "HEAD"]).unwrap()
+        );
+        scrub(&[&local, &remote]);
+    }
+
+    #[test]
+    fn force_push_leaves_a_remote_that_moved_after_the_confirm_alone() {
+        let (local, remote) = rewritten_after_push();
+        let (p, r) = (
+            local.to_string_lossy().into_owned(),
+            remote.to_string_lossy().into_owned(),
+        );
+        let expected = git_capture(&p, &["rev-parse", "origin/feat"]).unwrap();
+        let other = empty_tmp();
+        git(&other, &["clone", "-q", "--branch", "feat", &r, "."]);
+        commit_file(&other, "theirs.txt", "theirs");
+        git(&other, &["push", "-q", "origin", "feat"]);
+        let theirs = git_capture(&other.to_string_lossy(), &["rev-parse", "HEAD"]).unwrap();
+
+        assert!(force_push_branch(&p, "feat", &expected, Path::new(PUSH_SOCK), "tok").is_err());
+        assert_eq!(git_capture(&r, &["rev-parse", "refs/heads/feat"]).unwrap(), theirs);
+        scrub(&[&local, &remote, &other]);
+    }
+
+    #[test]
+    fn force_push_refuses_a_branch_that_has_not_diverged() {
+        let (local, remote) = repo_on_feature();
+        commit_file(&local, "mine.txt", "mine");
+        git(&local, &["push", "-q", "-u", "origin", "feat"]);
+        commit_file(&local, "more.txt", "more");
+        let p = local.to_string_lossy().into_owned();
+        let expected = git_capture(&p, &["rev-parse", "origin/feat"]).unwrap();
+        assert!(force_push_branch(&p, "feat", &expected, Path::new(PUSH_SOCK), "tok").is_err());
+        scrub(&[&local, &remote]);
     }
 
     #[test]

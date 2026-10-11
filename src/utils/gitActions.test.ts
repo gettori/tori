@@ -10,6 +10,10 @@ const calls: { cmd: string; args: Record<string, unknown> }[] = [];
 // is visible as a store that still holds the previous answer.
 let status: unknown[] = [];
 let fail: string | null = null;
+const PLAIN_AB = { ahead: 2, behind: 0, has_upstream: true };
+let aheadBehind: unknown = PLAIN_AB;
+let dupes: { pushing: number; duplicated: number } | null = null;
+let defaultBase: string | null = "main";
 const branchSync = {
   detached: false,
   dirty: true,
@@ -28,7 +32,11 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "list_branches":
         return Promise.resolve([{ name: "feature", current: true }]);
       case "git_ahead_behind":
-        return Promise.resolve({ ahead: 2, behind: 0, has_upstream: true });
+        return Promise.resolve(aheadBehind);
+      case "git_push_duplicates":
+        return Promise.resolve(dupes);
+      case "git_default_base_branch":
+        return Promise.resolve(defaultBase);
       case "git_branch_sync":
         return Promise.resolve(branchSync);
       default:
@@ -64,6 +72,8 @@ const {
   unstage,
   commit,
   push,
+  pushGuard,
+  refuseIfDiverged,
   startGitWatch,
 } = await import("./gitActions");
 const { TOAST } = await import("./events");
@@ -102,6 +112,9 @@ beforeEach(async () => {
   calls.length = 0;
   status = [];
   fail = null;
+  aheadBehind = PLAIN_AB;
+  dupes = null;
+  defaultBase = "main";
   for (const key of Object.keys(listeners)) delete listeners[key];
 });
 
@@ -362,5 +375,67 @@ describe("the shared git store", () => {
     for (const fn of listeners["git://fetch-done"] ?? []) fn({ payload: { repo: "/a" } });
     await vi.waitFor(() => expect(changedFiles("/a")).toEqual([modified]));
     stop();
+  });
+});
+
+describe("the push guards", () => {
+  const DIVERGED = {
+    ...PLAIN_AB,
+    behind: 1,
+    push_target: { ahead: 2, behind: 1, sha: "abc" },
+    upstream: "origin/feature",
+  };
+
+  it("refuses a member diverged from origin/<branch>, with the reason", async () => {
+    aheadBehind = DIVERGED;
+    await refreshGit("/proj");
+    let refused = false;
+    expect(await toastsFrom(async () => (refused = refuseIfDiverged("/proj")))).toEqual([
+      "Diverged: pull with rebase, or force push",
+    ]);
+    expect(refused).toBe(true);
+  });
+
+  it("lets a member through whose push target has not moved, whatever its upstream says", async () => {
+    aheadBehind = { ...DIVERGED, upstream: "origin/main", push_target: null };
+    await refreshGit("/proj");
+    expect(await toastsFrom(async () => refuseIfDiverged("/proj"))).toEqual([]);
+  });
+
+  /** A confirm that answers with `pick`, recording what it was asked. */
+  function answering(pick: "confirm" | "alt" | "cancel") {
+    const asked: { message: string; altLabel: string }[] = [];
+    const confirm = (opts: { message: string; altLabel: string; onAlt: () => void }) => {
+      asked.push(opts);
+      if (pick === "alt") opts.onAlt();
+      return Promise.resolve(pick === "confirm");
+    };
+    return { asked, confirm };
+  }
+
+  it("offers the rebase onto origin/<base> when most of the push is already there", async () => {
+    dupes = { pushing: 23, duplicated: 23 };
+    const { asked, confirm } = answering("alt");
+    expect(await pushGuard("/proj", confirm)).toEqual({ go: "rebase", onto: "origin/main" });
+    expect(asked[0].message).toBe(
+      "23 of 23 commits are already on main under other hashes, a pull replayed main onto this branch.",
+    );
+    expect(asked[0].altLabel).toBe("Rebase onto origin/main");
+  });
+
+  it("pushes anyway or cancels as the confirm says", async () => {
+    dupes = { pushing: 3, duplicated: 2 };
+    expect(await pushGuard("/proj", answering("confirm").confirm)).toEqual({ go: "push" });
+    expect(await pushGuard("/proj", answering("cancel").confirm)).toEqual({ go: "cancel" });
+  });
+
+  it("asks nothing for ordinary work, or without a base to compare with", async () => {
+    dupes = { pushing: 3, duplicated: 1 };
+    const quiet = answering("cancel");
+    expect(await pushGuard("/proj", quiet.confirm)).toEqual({ go: "push" });
+    defaultBase = null;
+    dupes = { pushing: 3, duplicated: 3 };
+    expect(await pushGuard("/proj", quiet.confirm)).toEqual({ go: "push" });
+    expect(quiet.asked).toEqual([]);
   });
 });
