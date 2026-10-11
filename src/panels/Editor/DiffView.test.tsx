@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
 import type { FileStatus } from "../../utils/gitActions";
 import { tintedMember } from "../../utils/topicMembers";
@@ -90,6 +90,8 @@ import { pathCrumbs } from "./breadcrumbTrail";
 import { hunkFingerprint } from "../../utils/hunkFingerprint";
 import { enterRoots } from "../../utils/gitActions";
 import { diffTabId, parseDiffArg } from "../../utils/syntheticTabs";
+import { clearHeld, heldFor } from "../../utils/heldComments";
+import type { Selection } from "../LeftSidebar/LeftSidebar";
 
 /** One watcher burst, delivered to every registered `fs://changed` listener.
  *  The backend always names the root it happened in, and the view matches on
@@ -115,8 +117,8 @@ beforeEach(() => {
 });
 
 /** Mount on the unstaged half of `src/a.ts`, one diff fetch spent. */
-async function mountDiff(staged = false) {
-  render(() => <DiffView workspace="/proj" arg={`${staged ? "staged" : "unstaged"}:src/a.ts`} selected={null} />);
+async function mountDiff(staged = false, selected: Selection | null = null) {
+  render(() => <DiffView workspace="/proj" arg={`${staged ? "staged" : "unstaged"}:src/a.ts`} selected={selected} />);
   await waitFor(() => expect(diffCalls).toBe(1));
   await waitFor(() => expect(screen.getByText("+TWO")).toBeTruthy());
 }
@@ -381,5 +383,47 @@ describe("the editor layout's breadcrumbs", () => {
         .map((c) => c.name)
         .join(""),
     );
+  });
+});
+
+describe("held hunk comments", () => {
+  // A workspace with no session picked: holding needs the workspace, Send the session.
+  const WORKSPACE = { folderPath: "/proj" } as Selection;
+  afterEach(() => clearHeld("/proj"));
+
+  async function hold(text: string) {
+    fireEvent.click(screen.getByRole("button", { name: "Comment on this hunk" }));
+    const input = screen.getByPlaceholderText("Comment on this hunk");
+    fireEvent.input(input, { target: { value: text } });
+    fireEvent.keyDown(input, { key: "Enter" });
+  }
+
+  it("holds a comment with no session selected and counts it in the bar", async () => {
+    await mountDiff(false, WORKSPACE);
+    await hold("why this");
+    await hold("and this");
+    expect(screen.getByRole("button", { name: "2 comments" })).toBeTruthy();
+    expect(screen.queryByPlaceholderText("Comment on this hunk")).toBeNull();
+    expect(heldFor("/proj").map((c) => c.path)).toEqual(["/proj/src/a.ts", "/proj/src/a.ts"]);
+  });
+
+  it("removes one entry from the list", async () => {
+    await mountDiff(false, WORKSPACE);
+    await hold("first");
+    await hold("second");
+    fireEvent.click(screen.getByRole("button", { name: "2 comments" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Remove this comment" })[0]);
+    expect(heldFor("/proj").map((c) => c.text)).toEqual(["second"]);
+    expect(screen.getByRole("button", { name: "1 comment" })).toBeTruthy();
+  });
+
+  it("refuses to send with no session, saying why", async () => {
+    await mountDiff(false, WORKSPACE);
+    await hold("first");
+    fireEvent.click(screen.getByRole("button", { name: "1 comment" }));
+    const send = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
+    expect(send.disabled).toBe(true);
+    fireEvent.pointerEnter(send.closest("[data-tooltip-hover-surface]")!);
+    await waitFor(() => expect(screen.getByRole("tooltip").textContent).toBe("Select a session first"));
   });
 });

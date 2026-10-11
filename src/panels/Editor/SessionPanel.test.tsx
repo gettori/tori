@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 
 // Written for the control migration (#107): "Show reads" is now a `<Switch>`,
@@ -26,6 +26,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import SessionPanel from "./SessionPanel";
+import { clearHeld, holdComment } from "../../utils/heldComments";
 
 beforeEach(() => {
   touched = [
@@ -44,6 +45,7 @@ function open() {
       projectRoot="/proj"
       selfSessionId="s1"
       liveTabs={[]}
+      heldKey="/proj"
     />
   ));
 }
@@ -71,5 +73,16 @@ describe("SessionPanel: Show reads", () => {
 
     fireEvent.click(toggle);
     await waitFor(() => expect(screen.queryByText(/read-only\.ts/)).toBeNull());
+  });
+});
+
+describe("SessionPanel: held comments", () => {
+  afterEach(() => clearHeld("/proj"));
+
+  it("shows the workspace's held comments, ready to send to this session", async () => {
+    holdComment("/proj", { path: "/proj/written.ts", startLine: 1, endLine: 2, text: "why" });
+    open();
+    fireEvent.click(screen.getByRole("button", { name: "1 comment" }));
+    expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false);
   });
 });

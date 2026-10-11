@@ -4,6 +4,7 @@ import {
   bracketedPaste,
   sendWithProbeGate,
   composeHunkComment,
+  composeHunkComments,
   composeSelectionMention,
   QUEUE_TIMEOUT_MS,
   type ProbeState,
@@ -80,6 +81,31 @@ describe("composeHunkComment", () => {
   it("falls back to folderPath when sessionCwd is unset", () => {
     const noCwd: SessionTarget = { sessionId: "s1", agent: "claude", profile: null, folderPath: "/repo" };
     expect(composeHunkComment(noCwd, "/repo/a.ts", 3, 3, "note")).toBe("In @a.ts lines 3-3: note");
+  });
+});
+
+describe("composeHunkComments", () => {
+  const target: SessionTarget = {
+    sessionId: "s1",
+    agent: "claude",
+    profile: null,
+    folderPath: "/repo",
+    sessionCwd: "/repo",
+  };
+
+  it("sends one comment bare, the way a single comment always went", () => {
+    expect(composeHunkComments(target, [{ path: "/repo/a.ts", startLine: 3, endLine: 9, text: "why" }])).toBe(
+      "In @a.ts lines 3-9: why",
+    );
+  });
+
+  it("numbers several on one line, keeping each path's relativity", () => {
+    expect(
+      composeHunkComments(target, [
+        { path: "/repo/a.ts", startLine: 3, endLine: 9, text: "x" },
+        { path: "/other/b.md", startLine: 1, endLine: 2, text: "y" },
+      ]),
+    ).toBe("1) In @a.ts lines 3-9: x 2) In @/other/b.md lines 1-2: y");
   });
 });
 

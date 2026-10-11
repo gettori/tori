@@ -36,6 +36,17 @@ export function composeHunkComment(
   return `In @${mention} lines ${startLine}-${endLine}: ${comment}`;
 }
 
+// Several hunk comments as one line, numbered so the agent can tell where one
+// ends: a PTY send is collapsed to a single line, so a newline cannot separate
+// them. One comment is sent bare, exactly as it always was.
+export function composeHunkComments(
+  target: SessionTarget,
+  comments: readonly { path: string; startLine: number; endLine: number; text: string }[],
+): string {
+  const lines = comments.map((c) => composeHunkComment(target, c.path, c.startLine, c.endLine, c.text));
+  return lines.length === 1 ? lines[0] : lines.map((l, i) => `${i + 1}) ${l}`).join(" ");
+}
+
 // `@<file>#L<start>-L<end>`, the editor-selection mention wire format (plan
 // phase 1, task 4). Same relativity rule as composeHunkComment: inside the
 // target's cwd, relative; outside it (a Shared-tree buffer), absolute.

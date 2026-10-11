@@ -40,10 +40,11 @@ import { copyText } from "../../utils/clipboard";
 import { sendTargetFor } from "../../utils/sendTarget";
 import { parseDiffArg } from "../../utils/syntheticTabs";
 import type { TintedMember } from "../../utils/topicMembers";
-import { isReference } from "../../utils/topics";
+import { isReference, workspaceKey } from "../../utils/topics";
 import Breadcrumbs from "./Breadcrumbs";
 import DiffRows, { diffRowClasses } from "./DiffRows";
 import HunkCommentInput from "./HunkCommentInput";
+import HeldComments from "./HeldComments";
 import HunkProvenance, { createOpenHunks, WhyToggle } from "./HunkProvenance";
 import { diffTabClaims } from "../../utils/provenance";
 import type { RevertOutcome } from "./CheckpointTimeline";
@@ -136,6 +137,7 @@ export default function DiffView(props: {
     const g = gate();
     return "reason" in g ? g.reason : null;
   };
+  const heldKey = () => workspaceKey(props.selected);
 
   // A line selection is indices into one hunk's body, so it means nothing once
   // the hunks move.
@@ -492,6 +494,7 @@ export default function DiffView(props: {
           )}
         </Show>
         <span class={styles.spacer} />
+        <HeldComments heldKey={heldKey()} target={target()} disabledReason={disabledReason()} />
         <Show when={editorLayout()}>
           <IconButton
             size="sm"
@@ -651,13 +654,14 @@ export default function DiffView(props: {
                         />
                       </Show>
                     </Show>
-                    <HunkCommentInput
-                      target={target()}
-                      disabledReason={disabledReason()}
-                      filePath={`${props.workspace}/${file()}`}
-                      startLine={hunk.startLine}
-                      endLine={hunk.endLine}
-                    />
+                    <Show when={heldKey()}>
+                      <HunkCommentInput
+                        heldKey={heldKey()}
+                        filePath={`${props.workspace}/${file()}`}
+                        startLine={hunk.startLine}
+                        endLine={hunk.endLine}
+                      />
+                    </Show>
                     <WhyToggle open={whyOpen.has(hi())} onClick={() => whyOpen.toggle(hi())} />
                   </div>
                   <Show when={whyOpen.has(hi())}>
