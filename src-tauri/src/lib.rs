@@ -355,6 +355,7 @@ pub fn run() {
             topics::commands::set_topic_promotion,
             topics::commands::delete_topic,
             topics::commands::probe_topic_branch,
+            topics::commands::check_moved_worktree,
             chat::commands::chat_send,
             chat::commands::chat_steer,
             chat::commands::chat_queue_load,

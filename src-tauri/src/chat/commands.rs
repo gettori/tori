@@ -1847,6 +1847,7 @@ mod tests {
         let members = [NewMember {
             repo_path: root_s.clone(),
             mode: MemberMode::Reference,
+            worktree_path: None,
         }];
         let topic = create_topic_with(&store, "X", "feat/x", &members, &|_| {}).unwrap();
         let home = topic.home.clone().unwrap();

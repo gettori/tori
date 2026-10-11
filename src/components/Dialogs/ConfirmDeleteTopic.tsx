@@ -22,6 +22,10 @@ export type MemberRisk = {
   state: string;
   dirty: boolean | null;
   unpushed: boolean | null;
+  /** A worktree moved in on its own branch: its branch is never offered. */
+  keepsBranch?: boolean;
+  /** The branch the worktree is on, as the sweep names it. */
+  branch?: string | null;
 };
 
 /** The tags for one member: what is loading, what is at risk, or clean. Shared

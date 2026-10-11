@@ -263,6 +263,8 @@ pub(crate) mod tests {
             }),
             state: MemberState::Present,
             order: 0,
+            keeps_branch: false,
+            branch: None,
         };
         Topic {
             id: "auth-1".into(),
