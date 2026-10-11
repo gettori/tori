@@ -58,7 +58,7 @@ export default function TopicWorktreeSweepDialog(props: {
   const clean = (m: MemberRisk) => m.dirty === false && m.unpushed === false;
   // Untouched means "whatever the evidence says", so a status that lands after
   // the dialog opened still moves the default; an explicit tick outranks it.
-  const branchOn = (m: MemberRisk) => at(m).branch ?? clean(m);
+  const branchOn = (m: MemberRisk) => !m.keepsBranch && (at(m).branch ?? clean(m));
   const removing = () => props.members.filter((m) => at(m).remove);
 
   const apply = () =>
@@ -86,8 +86,8 @@ export default function TopicWorktreeSweepDialog(props: {
       }
     >
       <div class={styles.msg}>
-        A kept worktree stays on {props.branch} and shows up in Spaces as an ordinary branch of its repository. Nothing
-        here is undone by closing this.
+        A kept worktree stays on its branch and shows up in Spaces as an ordinary branch of its repository. Nothing here
+        is undone by closing this.
       </div>
 
       <div class={styles.delEntries}>
@@ -116,13 +116,16 @@ export default function TopicWorktreeSweepDialog(props: {
                     { value: "remove", label: "Remove" },
                   ]}
                 />
-                <Checkbox
-                  class={styles.wtCheck}
-                  checked={branchOn(m)}
-                  disabled={!at(m).remove}
-                  onChange={(v) => set(m, { branch: v })}
-                  label={`Delete ${props.branch}`}
-                />
+                {/* A worktree moved in keeps a branch Tori never made. */}
+                <Show when={!m.keepsBranch}>
+                  <Checkbox
+                    class={styles.wtCheck}
+                    checked={branchOn(m)}
+                    disabled={!at(m).remove}
+                    onChange={(v) => set(m, { branch: v })}
+                    label={`Delete ${m.branch ?? props.branch}`}
+                  />
+                </Show>
               </div>
               <Show when={props.failures?.[m.repoPath]}>{(why) => <div class={styles.sweepError}>{why()}</div>}</Show>
             </div>

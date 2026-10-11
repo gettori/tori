@@ -29,7 +29,7 @@ import {
 } from "./forgeTypes";
 import { canonicalHost, type KnownHosts } from "./prUrl";
 import { orgNotice, type OrgNotice } from "./orgNotice";
-import { isReference, type Topic } from "./topics";
+import { isReference, memberPrBranch, type Topic } from "./topics";
 import {
   askOrder,
   backoffAfter,
@@ -49,9 +49,10 @@ export type WatchedUnit = { branch: string | null; visible: boolean };
 export type WatchedProject = { path: string; units: readonly WatchedUnit[] };
 
 /** What a Topic adds to the poll: each member's repo, asked about the Topic
- *  branch. Only a member whose branch exists somewhere has a pull request to
- *  find, and a worktree member's always does; a reference is asked about only
- *  once `branchKnown` says a promotion, or someone else, made it. */
+ *  branch, or about its own for a worktree moved in. Only a member whose branch
+ *  exists somewhere has a pull request to find, and a worktree member's always
+ *  does; a reference is asked about only once `branchKnown` says a promotion,
+ *  or someone else, made it. */
 export function topicProjects(
   topics: readonly { topic: Topic; visible: boolean }[],
   branchKnown: (repo: string, branch: string) => boolean,
@@ -59,7 +60,10 @@ export function topicProjects(
   return topics.flatMap(({ topic, visible }) =>
     topic.members
       .filter((m) => !isReference(m) || branchKnown(m.repoPath, topic.branch))
-      .map((m) => ({ path: m.repoPath, units: [{ branch: topic.branch, visible }] })),
+      .flatMap((m) => {
+        const branch = memberPrBranch(m, topic.branch);
+        return branch ? [{ path: m.repoPath, units: [{ branch, visible }] }] : [];
+      }),
   );
 }
 

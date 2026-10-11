@@ -35,6 +35,11 @@ export type Member = {
   checkout?: Checkout | null;
   state: MemberState;
   order: number;
+  /** A worktree moved in on a branch of its own. Tori never made it, so none
+   *  of its branches is Tori's to delete, and it has no Recreate. */
+  keepsBranch?: boolean;
+  /** The branch a `keepsBranch` worktree is on, refreshed by every reconcile. */
+  branch?: string | null;
 };
 
 /** What a chat gets when it asks for a worktree in a member it may only read. */
@@ -52,6 +57,14 @@ export type Topic = {
   /** The folder the Topic's chats run in. Filled by the backend on every read. */
   home?: string;
 };
+
+/** The order Topics are listed in, the order `projects.list` serves them in,
+ *  so a client drawing from the socket lists them the way the sidebar does. */
+export function byName(a: Pick<Topic, "name">, b: Pick<Topic, "name">): number {
+  const x = a.name.toLowerCase();
+  const y = b.name.toLowerCase();
+  return x < y ? -1 : x > y ? 1 : a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+}
 
 /** The branch a creation dialog suggests for a Topic name: every character
  *  outside `[A-Za-z0-9._-]` becomes `-`, lowercased, runs of `-` collapsed,
@@ -87,13 +100,15 @@ export const REPAIR_LABEL: Record<RepairAction, string> = {
   checkout: "Check out",
 };
 
-/** Reads the backend's tagged state into what a badge needs to render. */
-export function memberState(state: MemberState): MemberStateSummary {
+/** Reads the backend's tagged state into what a badge needs to render. A
+ *  member that keeps its own branch is never recreated: that would land it on
+ *  the Topic branch, so Remove repository is its only way out. */
+export function memberState(state: MemberState, keepsBranch = false): MemberStateSummary {
   switch (state.kind) {
     case "present":
       return { label: "Ready", usable: true, action: null, reason: null };
     case "worktree-missing":
-      return { label: "Worktree missing", usable: false, action: "recreate", reason: null };
+      return { label: "Worktree missing", usable: false, action: keepsBranch ? null : "recreate", reason: null };
     case "repo-missing":
       return { label: "Repository unavailable", usable: false, action: "locate", reason: null };
     case "checkout-missing":
@@ -107,6 +122,10 @@ export function memberState(state: MemberState): MemberStateSummary {
       };
   }
 }
+
+/** What `topics::retry_member` and `demote_member` answer for a member that
+ *  keeps its own branch; the Rust constant `topics::KEEPS_BRANCH` is the same. */
+export const KEEPS_BRANCH = "This worktree keeps its own branch. Remove it from the Topic instead.";
 
 /** What `topics::remove_member` answers when the last member would go. The
  *  row menu draws it on a refusing Remove rather than waiting for the click to
@@ -146,9 +165,20 @@ export function memberRoot(member: Pick<Member, "mode" | "worktreePath" | "check
 }
 
 /** The branch a member's root has checked out: the Topic's for a worktree,
- *  whatever the checkout is on for a reference. */
-export function memberBranch(member: Pick<Member, "mode" | "checkout">, topicBranch: string): string | null {
-  return isReference(member) ? (member.checkout?.branch ?? null) : topicBranch;
+ *  its own for one moved in, whatever the checkout is on for a reference. */
+export function memberBranch(
+  member: Pick<Member, "mode" | "checkout" | "keepsBranch" | "branch">,
+  topicBranch: string,
+): string | null {
+  if (isReference(member)) return member.checkout?.branch ?? null;
+  return member.keepsBranch ? (member.branch ?? null) : topicBranch;
+}
+
+/** The branch whose pull request is this member's: its own for a worktree
+ *  moved in, the Topic's for everyone else, a reference included, since its
+ *  checkout's branch is the repo's and not this Topic's. */
+export function memberPrBranch(member: Pick<Member, "keepsBranch" | "branch">, topicBranch: string): string | null {
+  return member.keepsBranch ? (member.branch ?? null) : topicBranch;
 }
 
 /** The present members' roots, in member order. */

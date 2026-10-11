@@ -387,6 +387,13 @@ describe("the sidebar levels that outlive the session rows", () => {
     expect(screen.getByText("Remove worktree")).toBeTruthy();
   });
 
+  it("offers a worktree row's move into a Topic", async () => {
+    mount(["p:work/repo"]);
+    fireEvent.contextMenu(await row("feat"));
+    pointerClick(await screen.findByText("Move to topic…"));
+    expect(await screen.findByRole("dialog", { name: "Move feat to a Topic" })).toBeTruthy();
+  });
+
   // Written against the hand-rolled menu (gettori/tori#103, phase 1), now
   // running against Kobalte's (phase 3). What the three menus *contain* is
   // asserted above; this is how they open and close. Where a menu opens is
