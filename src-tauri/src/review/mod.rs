@@ -455,11 +455,15 @@ fn inbox(
 /// first.
 #[tauri::command(async)]
 pub fn review_inbox(index: State<SessionIndex>) -> Vec<ReviewItem> {
+    inbox_now(&index)
+}
+
+pub(crate) fn inbox_now(index: &SessionIndex) -> Vec<ReviewItem> {
     let store = {
         let _held = STORE_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         load_from(&store_path(), now_secs())
     };
-    let sessions = crate::sessions::listed_sessions(&index, None);
+    let sessions = crate::sessions::listed_sessions(index, None);
     inbox(sessions, &store, &SPANS, &scope::SCOPES)
 }
 
@@ -467,13 +471,18 @@ pub fn review_inbox(index: State<SessionIndex>) -> Vec<ReviewItem> {
 /// Refused while the session is mid-turn, and when a prompt arrived since.
 #[tauri::command(async)]
 pub fn review_mark(app: AppHandle, index: State<SessionIndex>, unit: ReviewUnit, to_ts: u64) -> Result<(), String> {
+    mark_now(&app, &index, unit, to_ts)
+}
+
+pub(crate) fn mark_now(app: &AppHandle, index: &SessionIndex, unit: ReviewUnit, to_ts: u64) -> Result<(), String> {
     let ReviewUnit::Session { id } = &unit;
-    let session = crate::sessions::listed_sessions(&index, None)
+    let session = crate::sessions::listed_sessions(index, None)
         .into_iter()
         .find(|s| s.id == *id)
         .ok_or_else(|| format!("no session {id}"))?;
     mark(&session, &unit, to_ts, crate::rpc::session_running(id), &store_path())?;
     let _ = app.emit(CHANGED_EVENT, ());
+    crate::rpc::publish_reviewed(id, &session.cwd);
     Ok(())
 }
 

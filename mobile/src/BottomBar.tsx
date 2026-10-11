@@ -1,5 +1,5 @@
 import { For, Show, createEffect } from "solid-js";
-import { Tag } from "lucide-solid";
+import { Inbox, Tag } from "lucide-solid";
 import Icon from "../../src/components/Icon/Icon";
 import { resolveIcon } from "../../src/components/Icon/iconRegistry";
 import { WheelGlyph } from "../../src/components/Autopilot/Wheel";
@@ -17,6 +17,8 @@ export default function BottomBar(props: {
   showWheel: boolean;
   runner: () => Runner | null;
   decisions: () => number;
+  inboxCount: () => number;
+  onInbox: () => void;
   onSpace: (space: Space) => void;
   onTopics: () => void;
   onWheel: () => void;
@@ -69,6 +71,12 @@ export default function BottomBar(props: {
           </Show>
         </button>
         <span class={styles.spacer} />
+        <button class={styles.barItem} aria-label="Inbox" onClick={() => props.onInbox()}>
+          <Icon icon={Inbox} size={19} strokeWidth={1.9} />
+          <Show when={props.inboxCount() > 0}>
+            <span class={styles.wheelBadge}>{props.inboxCount()}</span>
+          </Show>
+        </button>
         <Show when={props.showWheel}>
           <button class={styles.wheel} data-on={on()} aria-label="Autopilot" onClick={() => props.onWheel()}>
             <WheelGlyph size={24} />

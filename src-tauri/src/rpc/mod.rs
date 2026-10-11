@@ -692,6 +692,15 @@ pub fn publish_checkpoint(session_id: &str, folder: &str, turn: usize, prompt_ts
     hub.publish_session(session_id, event);
 }
 
+// The phone hears the sessions channel, not the webview's `review://changed`.
+pub fn publish_reviewed(session_id: &str, folder: &str) {
+    let Some((hub, _)) = EVENTS.get() else { return };
+    hub.publish_session(
+        session_id,
+        session_event("session.reviewed", session_id, &Place::of(folder), json!({})),
+    );
+}
+
 // Serialised only while someone reads `chat:<id>`: this runs on every delta.
 pub fn publish_chat(session_id: &str, event: &crate::chat::model::ChatEvent) {
     let Some((hub, _)) = EVENTS.get() else { return };

@@ -3,7 +3,8 @@ import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
 import { invoke } from "@tauri-apps/api/core";
 import { expectNoAxeViolations } from "../../test/axe";
 import InboxView from "./InboxView";
-import { refreshInbox, type ReviewItem } from "../../utils/reviewInbox";
+import { refreshInbox } from "../../utils/reviewInbox";
+import type { ReviewItem } from "../../utils/reviewSignals";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
