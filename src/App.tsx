@@ -149,6 +149,8 @@ import {
 import "./styles/reset.css";
 import { CockpitPopup, CockpitSwitch, CockpitView } from "./panels/Autopilot/Cockpit";
 import { popupOpen, view } from "./utils/autopilotStore";
+import InboxView from "./panels/Inbox/InboxView";
+import { inboxOpen, watchInbox } from "./utils/reviewInbox";
 import "./styles/tokens.css";
 import "./styles/base.css";
 import "./App.css";
@@ -348,6 +350,7 @@ function App() {
   let bodyEl: HTMLDivElement | undefined;
   const [bodyW, setBodyW] = createSignal(window.innerWidth);
   const [bodyH, setBodyH] = createSignal(window.innerHeight);
+  onMount(watchInbox);
   onMount(() => {
     if (!bodyEl) return;
     const ro = new ResizeObserver(([entry]) => {
@@ -1148,6 +1151,9 @@ function App() {
         </div>
         <Show when={view() === "autopilot"}>
           <CockpitView />
+        </Show>
+        <Show when={inboxOpen()}>
+          <InboxView />
         </Show>
         <Show when={view() === "workspace" && popupOpen()}>
           <CockpitPopup />

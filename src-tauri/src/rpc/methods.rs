@@ -232,7 +232,7 @@ fn history_page(
 }
 
 /// The main agent's text from the latest turn that has any, whole.
-fn last_assistant_text(events: &[ChatEvent]) -> Option<String> {
+pub(crate) fn last_assistant_text(events: &[ChatEvent]) -> Option<String> {
     let main = |event: &ChatEvent| match event {
         ChatEvent::TextDelta {
             turn_id,

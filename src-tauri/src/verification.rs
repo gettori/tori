@@ -1452,4 +1452,19 @@ mod tests {
             .unwrap();
         assert!(matches!(&events[at + 1], ChatEvent::UserMessage { turn_id, .. } if turn_id == "h7"));
     }
+
+    #[test]
+    fn an_acp_log_with_timed_prompts_gives_every_turn_its_prompt_time() {
+        let mut events = vec![user("a")];
+        events.extend(turn_events("a", ToolStatus::Ok));
+        events.push(user("b"));
+        events.extend(turn_events("b", ToolStatus::Error));
+        let prompts = crate::chat::mirror::timed_prompts(&events, &[1_760_000_000, 1_760_000_300]);
+        let turns = session_turns(&events, &prompts, &parse_entries(DEFAULTS.iter().copied()));
+        assert_eq!(turns.len(), 2);
+        assert_eq!(
+            turns.iter().map(|t| t.prompt_ts).collect::<Vec<_>>(),
+            vec![Some(1_760_000_000), Some(1_760_000_300)]
+        );
+    }
 }

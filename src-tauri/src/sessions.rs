@@ -1006,6 +1006,7 @@ pub fn delete_session(path: String, agent: String) -> Result<(), String> {
     if let (Ok(()), Some(id)) = (&deleted, id) {
         crate::rpc::pr_watch::session_deleted(&id);
         crate::chat::queue_store::forget(&id);
+        crate::review::forget_session(&id);
     }
     deleted
 }

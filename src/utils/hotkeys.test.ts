@@ -63,6 +63,7 @@ describe("the canonical binding table", () => {
         "reload",
         "reopen-closed-tab",
         "rerun-last-task",
+        "review-inbox",
         "shortcut-sheet",
         "stop-chat",
         "tab-cycle",

@@ -158,6 +158,14 @@ impl SessionStates {
         held.iter().map(|(id, h)| (id.clone(), h.state)).collect()
     }
 
+    /// Mid-turn: working, or stopped on a question or approval it will go on
+    /// from. Reported by the webview for chat and terminal sessions alike.
+    pub fn running(&self, id: &str) -> bool {
+        let held = self.states.lock().unwrap_or_else(|e| e.into_inner());
+        held.get(id)
+            .is_some_and(|h| matches!(h.state, SessionState::Working | SessionState::NeedsYou))
+    }
+
     pub fn ids_in(&self, folder: &str) -> Vec<String> {
         let held = self.states.lock().unwrap_or_else(|e| e.into_inner());
         let mut ids: Vec<String> = held
@@ -271,6 +279,30 @@ mod tests {
     }
 
     const GONE: fn(&str, &Held) -> bool = |_, _| false;
+
+    #[test]
+    fn a_mid_turn_chat_or_terminal_is_running_until_it_goes_idle() {
+        let states = SessionStates::default();
+        states.replace(
+            vec![
+                report("c", SessionState::Working, Source::Chat),
+                report("t", SessionState::NeedsYou, Source::Pty),
+            ],
+            place,
+            GONE,
+        );
+        assert!(states.running("c") && states.running("t"));
+        states.replace(
+            vec![
+                report("c", SessionState::Idle, Source::Chat),
+                report("t", SessionState::Idle, Source::Pty),
+            ],
+            place,
+            GONE,
+        );
+        assert!(!states.running("c") && !states.running("t"));
+        assert!(!states.running("unknown"));
+    }
 
     #[test]
     fn a_chat_added_then_dropped_announces_no_lifecycle() {

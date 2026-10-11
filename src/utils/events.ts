@@ -96,6 +96,8 @@ export const TOGGLE_SHORTCUTS = "tori:toggle-shortcuts";
 export const ZOOM_IN = "tori:zoom-in";
 export const TOGGLE_AUTOPILOT_VIEW = "tori:toggle-autopilot-view";
 export const TOGGLE_AUTOPILOT_POPUP = "tori:toggle-autopilot-popup";
+// Open or close the review inbox, consumed by reviewInbox.ts.
+export const TOGGLE_INBOX = "tori:toggle-inbox";
 // Take the user somewhere in Tori: a branch-unit folder, a session's tab, or
 // both, or a project or space to show. The sidebar answers, since selection is
 // its; the cockpit steps aside.
