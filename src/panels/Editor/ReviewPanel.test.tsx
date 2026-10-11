@@ -1365,7 +1365,8 @@ describe("inside a Topic", () => {
       icon: { seed: r.repoPath },
     }));
 
-  const chip = (label: string) => screen.getByRole("tab", { name: label });
+  /** By the member's label, with or without the changed file count after it. */
+  const chip = (label: string) => screen.getByRole("tab", { name: (name) => name.split(",")[0] === label });
   /** The one member's list on screen. */
   const shownRoot = () => document.querySelector("[data-root]")!.getAttribute("data-root");
 
@@ -1411,6 +1412,24 @@ describe("inside a Topic", () => {
     expect(screen.getAllByTitle("src/index.ts")).toHaveLength(1);
     expect(chip("api").getAttribute("aria-selected")).toBe("true");
     expect(chip("web").getAttribute("aria-selected")).toBe("false");
+  });
+
+  it("counts each member's changed files on its chip, and nothing on a clean one", async () => {
+    statusByRoot = {
+      [A]: [
+        { status: " M", path: "src/index.ts", staged: false, unstaged: true },
+        { status: "M ", path: "src/app.ts", staged: true, unstaged: false },
+      ],
+      [B]: [],
+    };
+    enterRoots([A, B], A);
+    render(() => (
+      <ReviewPanel root={A} roots={MEMBERS as never} members={chipsFor(MEMBERS) as never} selected={null} />
+    ));
+
+    await waitFor(() => expect(screen.getByRole("tab", { name: "api, 2 changed files" })).toBeTruthy());
+    expect(chip("web").querySelector("[data-count]")).toBeNull();
+    expect(screen.getByRole("tab", { name: "web" })).toBeTruthy();
   });
 
   it("switches the whole panel when another chip is pressed", async () => {
