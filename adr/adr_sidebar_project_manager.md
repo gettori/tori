@@ -1,7 +1,7 @@
 ---
 summary: sidebar becomes the project manager rooted at one canonical root, worktree ops native, auth ops in a terminal tab
 status: current
-updated: 2026-07-31
+updated: 2026-10-11
 source: Sidebar as Project Manager (personal/tori, branch code-mirror-6); commits 785b17b, afb4cc0, e49947a, 09ad986, e6f929f, 4f14660
 ---
 
@@ -44,6 +44,10 @@ you can no longer see.
 
 The adopted-set / recreated-folder model is unchanged, but its surface moved to
 the panel with everything else.
+
+## Amendment 2026-10-11: convert, and clone defaults to the worktree layout
+
+The deferred convert-to-bare-worktree shipped as a native op ([[concept_worktree_layout_conversion]]); session re-anchoring stayed out, the dialog says earlier sessions stay at the old path. New in "space" folded **Bare + worktree** into a **Worktree layout** box on **Clone**, on by default; the bootstrap job is unchanged. Moved editor state follows the files ([[concept_workspace_move]]).
 
 ## Consequences
 
