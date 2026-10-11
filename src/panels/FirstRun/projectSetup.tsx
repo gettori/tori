@@ -13,7 +13,7 @@ import ProjectStep, { PROJECT_LABEL, gitMissing } from "./steps/ProjectStep";
 import styles from "./FirstRun.module.css";
 
 type StepJob =
-  | { kind: "project"; job: OpenJob; mode: "clone" | "bare"; space: FirstRunSpace; name: string }
+  | { kind: "project"; job: OpenJob; worktreeLayout: boolean; space: FirstRunSpace; name: string }
   | { kind: "git"; job: OpenJob };
 
 /** A factory for the same reason as `createAgentsSetup`: the footer's primary
@@ -25,6 +25,7 @@ export function createProjectSetup(opts: {
   onDone: () => void;
 }) {
   const [mode, setMode] = createSignal<NewProjectMode>("clone");
+  const [worktreeLayout, setWorktreeLayout] = createSignal(true);
   const [name, setName] = createSignal("");
   const [url, setUrl] = createSignal("");
   // A typed name wins over the one read off the URL.
@@ -113,8 +114,9 @@ export function createProjectSetup(opts: {
       if (refused) return setError(refused);
       // Interactive, unlike the dock's clone: nothing else in the modal takes
       // keys, and a passphrase prompt needs them.
-      const job = { ...projectJob(m, space.path, n, url()), interactive: true };
-      setJob({ kind: "project", job, mode: m, space, name: n });
+      const layout = worktreeLayout();
+      const job = { ...projectJob(space.path, n, url(), layout), interactive: true };
+      setJob({ kind: "project", job, worktreeLayout: layout, space, name: n });
     } catch (e) {
       setError(String(e));
     } finally {
@@ -152,7 +154,7 @@ export function createProjectSetup(opts: {
   function okLine(j: StepJob): string {
     if (j.kind === "project") {
       const where = madePath(j.space, j.name);
-      return j.mode === "clone" ? `Cloned into ${where}` : `Bare repo and worktree set up in ${where}`;
+      return j.worktreeLayout ? `Bare repo and worktree set up in ${where}` : `Cloned into ${where}`;
     }
     const health = git()?.health;
     if (checkingGit()) return "Checking for git";
@@ -194,6 +196,8 @@ export function createProjectSetup(opts: {
           home={opts.home()}
           mode={mode()}
           onMode={onMode}
+          worktreeLayout={worktreeLayout()}
+          onWorktreeLayout={setWorktreeLayout}
           name={name()}
           onName={onName}
           url={url()}

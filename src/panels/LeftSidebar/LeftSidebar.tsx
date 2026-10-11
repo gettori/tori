@@ -1498,11 +1498,11 @@ export default function LeftSidebar(props: {
     }
   }
 
-  async function runInTab(g: Space, mode: "clone" | "bare", name: string, url: string) {
+  async function runInTab(g: Space, name: string, url: string, worktreeLayout: boolean) {
     const bad = await claimProjectFolder(g.path, name);
     if (bad) return setError(bad);
     setError("");
-    emitWith<OpenJob>(OPEN_JOB, projectJob(mode, g.path, name, url));
+    emitWith<OpenJob>(OPEN_JOB, projectJob(g.path, name, url, worktreeLayout));
   }
 
   // Open the space-level "New…" dialog.
@@ -1514,7 +1514,7 @@ export default function LeftSidebar(props: {
   // clone or bare + worktree runs in a terminal tab (native git progress +
   // ambient auth). url/name pass as positional args (never interpolated), so
   // there is no shell injection.
-  async function confirmNewProject(opts: { mode: NewProjectMode; name: string; url: string }) {
+  async function confirmNewProject(opts: { mode: NewProjectMode; name: string; url: string; worktreeLayout: boolean }) {
     const req = newReq();
     if (!req) return;
     const { g } = req;
@@ -1530,10 +1530,10 @@ export default function LeftSidebar(props: {
       }
       return;
     }
-    // clone / bare open a terminal tab; runInTab validates the name and surfaces
+    // A clone opens a terminal tab; runInTab validates the name and surfaces
     // its own errors, so close the dialog and hand off.
     setNewReq(null);
-    await runInTab(g, opts.mode, opts.name, opts.url);
+    await runInTab(g, opts.name, opts.url, opts.worktreeLayout);
   }
 
   async function cleanupStub(u: BranchUnit) {
