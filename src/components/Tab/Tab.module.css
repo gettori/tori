@@ -109,9 +109,13 @@
 
 /* The replaceable tab. Italic rather than a glyph or a dimming: the strip
    already spends its trailing space on dirty and status dots, and dimming a tab
-   is what this one says about every unselected tab beside it. */
+   is what this one says about every unselected tab beside it. The italic last
+   glyph leans past the clip box, so the box gets trailing room the negative
+   margin hands back, leaving the tab no wider than before. */
 .tab[data-transient] .label {
   font-style: italic;
+  padding-inline-end: 0.2em;
+  margin-inline-end: -0.2em;
 }
 
 /* The quiet tab: muted bold text, a flat fill only while it is the one
