@@ -1,4 +1,5 @@
 import { createSignal, createMemo, createEffect, createResource, on, onMount, onCleanup, For, Show } from "solid-js";
+import { pendingReveal } from "../../utils/checkpointReveal";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
@@ -1343,6 +1344,8 @@ export default function ReviewPanel(props: {
     setHistoryTab(tab);
     changesLayout.setOpen("history", true);
   }
+
+  createEffect(() => pendingReveal() && showHistory("checkpoints"));
 
   /** Picking a tab out of the `+N` menu reorders the strip. The order keeps
    *  the tabs the ... menu hid, so they come back where they were. */

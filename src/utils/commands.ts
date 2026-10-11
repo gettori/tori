@@ -42,6 +42,7 @@ import {
   ZOOM_OUT,
   ZOOM_RESET,
   TOGGLE_AUTOPILOT_VIEW,
+  TOGGLE_INBOX,
   TOGGLE_AUTOPILOT_POPUP,
   RELOAD_APP,
   TOGGLE_SIDEBAR,
@@ -324,6 +325,15 @@ export const COMMANDS: Command[] = [
     scope: "global",
     match: cmd("/"),
     run: () => emit(TOGGLE_SHORTCUTS),
+  },
+  {
+    id: "review-inbox",
+    keys: ["⌘", "⇧", "I"],
+    label: "Show or hide the Inbox",
+    group: "view",
+    scope: "global",
+    match: cmdShift("i"),
+    run: () => emit(TOGGLE_INBOX),
   },
   {
     id: "autopilot-view",

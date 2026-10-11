@@ -26,6 +26,7 @@ import { revertGuard, type RevertBlocker } from "../../utils/revertGuard";
 import { folderActors } from "../../utils/folderActors";
 import { chatsInFolder, liveChats } from "../../utils/chatSessions";
 import { findSession } from "../../utils/sessionStore";
+import { pendingReveal, setPendingReveal } from "../../utils/checkpointReveal";
 import type { SecretTurn } from "../../utils/secretReads";
 import { VERDICT_LABEL, type VerifiedTurn } from "../../utils/verification";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
@@ -589,6 +590,18 @@ export default function CheckpointTimeline(props: {
     ),
   );
   createEffect(on(open, () => void loadFiles()));
+  // Asked for before the list may hold the turn, and before a navigation lands,
+  // so it waits for both rather than being shown and then reset.
+  createEffect(() => {
+    const want = pendingReveal();
+    if (!want || props.sessionId !== want.sessionId) return;
+    const there = listed().some(
+      (s) => s.sessionId === want.sessionId && s.entries.some((e) => e.prompt_ts === want.promptTs),
+    );
+    if (!there) return;
+    setPendingReveal(null);
+    show({ kind: "turn", sessionId: want.sessionId, ts: want.promptTs });
+  });
   // A checkpoint pruned while its detail is open has nothing left to show or
   // to revert to.
   createEffect(() => {

@@ -436,7 +436,20 @@ pub(crate) fn git_output(repo: &str, args: &[&str]) -> Result<String, String> {
 
 /// `git add -A` + `write-tree` against a session's persistent scratch index
 /// (never the user's real index). Creates the index's parent dir on first use.
+// Two `git add -A` runs on one index file collide on its lock and one fails,
+// and a failed snapshot is a lost checkpoint. The timeline, the prompt
+// snapshot and the review inbox all write the same session's index.
+static INDEX_LOCKS: std::sync::LazyLock<std::sync::Mutex<HashMap<PathBuf, std::sync::Arc<std::sync::Mutex<()>>>>> =
+    std::sync::LazyLock::new(Default::default);
+
 pub(crate) fn write_tree_scratch(repo: &str, index_path: &Path) -> Result<String, String> {
+    let lock = INDEX_LOCKS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .entry(index_path.to_path_buf())
+        .or_default()
+        .clone();
+    let _held = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(parent) = index_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -881,6 +894,15 @@ fn attributed_files(
         })
         .collect();
 
+    narrow(changed, state, &mine, &other_sets)
+}
+
+fn narrow(
+    changed: Vec<CheckpointFile>,
+    state: AttributionState,
+    mine: &std::collections::HashSet<String>,
+    other_sets: &[(String, std::collections::HashSet<String>)],
+) -> Vec<CheckpointFile> {
     let claimed_by_another = |path: &str| other_sets.iter().any(|(_, set)| set.contains(path));
 
     changed
@@ -896,6 +918,54 @@ fn attributed_files(
             f
         })
         .collect()
+}
+
+/// The working tree as this session's scratch index sees it now, unpersisted.
+pub(crate) fn live_tree(repo: &str, session_id: &str) -> Result<String, String> {
+    write_tree_scratch(repo, &checkpoint_index_path(session_id, repo))
+}
+
+/// What `session_id` changed from `before` to `after`, narrowed to its own
+/// writes by the same grading as one turn, over every turn it recorded from
+/// `since` on.
+pub(crate) fn session_span(
+    repo: &str,
+    session_id: &str,
+    before: &str,
+    after: &str,
+    since: u64,
+    others: &[String],
+) -> Result<Vec<CheckpointFile>, String> {
+    if before == after {
+        return Ok(Vec::new());
+    }
+    let out = git_capture(repo, &["diff", "--name-status", before, after])?;
+    let records: Vec<Touched> = recorded_turns(session_id)
+        .into_iter()
+        .filter(|ts| *ts >= since)
+        .filter_map(|ts| read_touched(session_id, ts))
+        .collect();
+    let state = match records.iter().map(|r| attribution_state(Some(r))).collect::<Vec<_>>() {
+        grades if grades.is_empty() => AttributionState::Unmeasured,
+        grades if grades.contains(&AttributionState::Partial) => AttributionState::Partial,
+        _ => AttributionState::Complete,
+    };
+    let mine = records
+        .iter()
+        .flat_map(|r| r.files.iter())
+        .filter_map(|p| relative_to(repo, p))
+        .collect();
+    let other_sets: Vec<(String, std::collections::HashSet<String>)> = others
+        .iter()
+        .filter(|id| id.as_str() != session_id)
+        .filter_map(|id| touched_since(repo, id, since).map(|set| (id.clone(), set)))
+        .collect();
+    let mut files = match state {
+        AttributionState::Unmeasured => parse_name_status(&out),
+        _ => narrow(parse_name_status(&out), state, &mine, &other_sets),
+    };
+    count_lines(repo, before, after, &mut files);
+    Ok(files)
 }
 
 /// A session's recorded writes for one turn, repo-relative, or `None` when

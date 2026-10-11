@@ -1333,9 +1333,20 @@ fn marked_history(
         stamp,
         || {
             let (events, prompts) = read_with_prompts(session_id, source, agent_id);
+            let prompts = match source {
+                HistorySource::Log(log) => log_prompts(&events, log),
+                _ => prompts,
+            };
             Parsed { events, prompts }
         },
     )
+}
+
+// Not in `read_with_prompts`: history paging reads a log as one page, and a
+// log's oldest prompts can have no time to page by.
+fn log_prompts(events: &[ChatEvent], log: &std::path::Path) -> Vec<(u64, usize)> {
+    let times = super::mirror::read_meta(&super::mirror::meta_of(log)).map(|m| m.prompt_times);
+    super::mirror::timed_prompts(events, &times.unwrap_or_default())
 }
 
 static SECRET_TURNS: std::sync::LazyLock<Mutex<crate::secret_watch::TurnCache>> =
@@ -1351,27 +1362,41 @@ pub async fn session_secrets(
     cwd: Option<String>,
 ) -> Vec<crate::secret_watch::SecretTurn> {
     crate::exec::blocking("session_secrets", move || {
-        let source = history_source(&session_id, &agent_id);
-        let path = match &source {
-            HistorySource::Transcript(path) => std::path::PathBuf::from(path),
-            HistorySource::Log(path) => path.clone(),
-            HistorySource::Missing => return Vec::new(),
-        };
-        let (rules, settings_at) = crate::secret_watch::current();
-        let stamp = (crate::secret_watch::history_stamp(&path), settings_at);
-        let cache = || SECRET_TURNS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        // The cwd is part of the answer: it resolves the relative paths.
-        let key = format!("{session_id}\u{0}{}", cwd.as_deref().unwrap_or_default());
-        if let Some(turns) = cache().get(&key, stamp) {
-            return turns;
-        }
-        let parsed = marked_history(&session_id, &source, &agent_id, &path);
-        let cwd = cwd.as_deref().map(std::path::Path::new);
-        let turns = crate::secret_watch::secret_turns(&parsed.events, &parsed.prompts, cwd, &rules);
-        cache().put(&key, stamp, turns.clone());
-        turns
+        secret_turns(&session_id, &agent_id, cwd.as_deref())
     })
     .await
+}
+
+pub(crate) fn secret_turns(
+    session_id: &str,
+    agent_id: &str,
+    cwd: Option<&str>,
+) -> Vec<crate::secret_watch::SecretTurn> {
+    let source = history_source(session_id, agent_id);
+    let Some(path) = source_path(&source) else {
+        return Vec::new();
+    };
+    let (rules, settings_at) = crate::secret_watch::current();
+    let stamp = (crate::secret_watch::history_stamp(&path), settings_at);
+    let cache = || SECRET_TURNS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    // The cwd is part of the answer: it resolves the relative paths.
+    let key = format!("{session_id}\u{0}{}", cwd.unwrap_or_default());
+    if let Some(turns) = cache().get(&key, stamp) {
+        return turns;
+    }
+    let parsed = marked_history(session_id, &source, agent_id, &path);
+    let turns =
+        crate::secret_watch::secret_turns(&parsed.events, &parsed.prompts, cwd.map(std::path::Path::new), &rules);
+    cache().put(&key, stamp, turns.clone());
+    turns
+}
+
+fn source_path(source: &HistorySource) -> Option<std::path::PathBuf> {
+    match source {
+        HistorySource::Transcript(path) => Some(std::path::PathBuf::from(path)),
+        HistorySource::Log(path) => Some(path.clone()),
+        HistorySource::Missing => None,
+    }
 }
 
 static VERIFIED_TURNS: std::sync::LazyLock<Mutex<crate::secret_watch::TurnCache<crate::verification::VerifiedTurn>>> =
@@ -1387,29 +1412,67 @@ pub async fn session_verification(
     cwd: Option<String>,
 ) -> Vec<crate::verification::VerifiedTurn> {
     crate::exec::blocking("session_verification", move || {
-        if !crate::verification::enabled() {
-            return Vec::new();
-        }
-        let source = history_source(&session_id, &agent_id);
-        let path = match &source {
-            HistorySource::Transcript(path) => std::path::PathBuf::from(path),
-            HistorySource::Log(path) => path.clone(),
-            HistorySource::Missing => return Vec::new(),
-        };
-        let stamp = (crate::secret_watch::history_stamp(&path), crate::settings::modified());
-        let cache = || VERIFIED_TURNS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        // The cwd picks the check list.
-        let key = format!("{session_id}\u{0}{}", cwd.as_deref().unwrap_or_default());
-        if let Some(turns) = cache().get(&key, stamp) {
-            return turns;
-        }
-        let parsed = marked_history(&session_id, &source, &agent_id, &path);
-        let entries = crate::verification::entries_for(cwd.as_deref().map(std::path::Path::new));
-        let turns = crate::verification::session_turns(&parsed.events, &parsed.prompts, &entries);
-        cache().put(&key, stamp, turns.clone());
-        turns
+        verified_turns(&session_id, &agent_id, cwd.as_deref())
     })
     .await
+}
+
+pub(crate) fn verified_turns(
+    session_id: &str,
+    agent_id: &str,
+    cwd: Option<&str>,
+) -> Vec<crate::verification::VerifiedTurn> {
+    if !crate::verification::enabled() {
+        return Vec::new();
+    }
+    let source = history_source(session_id, agent_id);
+    let Some(path) = source_path(&source) else {
+        return Vec::new();
+    };
+    let stamp = (crate::secret_watch::history_stamp(&path), crate::settings::modified());
+    let cache = || VERIFIED_TURNS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    // The cwd picks the check list.
+    let key = format!("{session_id}\u{0}{}", cwd.unwrap_or_default());
+    if let Some(turns) = cache().get(&key, stamp) {
+        return turns;
+    }
+    let parsed = marked_history(session_id, &source, agent_id, &path);
+    let entries = crate::verification::entries_for(cwd.map(std::path::Path::new));
+    let turns = crate::verification::session_turns(&parsed.events, &parsed.prompts, &entries);
+    cache().put(&key, stamp, turns.clone());
+    turns
+}
+
+/// The main agent's last reply, for a row that summarises a session.
+pub(crate) fn last_reply(session_id: &str, agent_id: &str) -> Option<String> {
+    let source = history_source(session_id, agent_id);
+    let path = source_path(&source)?;
+    let parsed = marked_history(session_id, &source, agent_id, &path);
+    crate::rpc::methods::last_assistant_text(&parsed.events)
+}
+
+static BLIND_TURNS: std::sync::LazyLock<Mutex<crate::secret_watch::TurnCache<crate::blind_edit::BlindTurn>>> =
+    std::sync::LazyLock::new(Mutex::default);
+
+/// Each turn of a session that edited a file it never saw, for the review inbox.
+pub(crate) fn blind_turns(session_id: &str, agent_id: &str, cwd: Option<&str>) -> Vec<crate::blind_edit::BlindTurn> {
+    if !crate::blind_edit::enabled() {
+        return Vec::new();
+    }
+    let source = history_source(session_id, agent_id);
+    let Some(path) = source_path(&source) else {
+        return Vec::new();
+    };
+    let stamp = (crate::secret_watch::history_stamp(&path), crate::settings::modified());
+    let cache = || BLIND_TURNS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let key = format!("{session_id}\u{0}{}", cwd.unwrap_or_default());
+    if let Some(turns) = cache().get(&key, stamp) {
+        return turns;
+    }
+    let parsed = marked_history(session_id, &source, agent_id, &path);
+    let turns = crate::blind_edit::blind_turns(&parsed.events, &parsed.prompts, cwd.map(std::path::PathBuf::from));
+    cache().put(&key, stamp, turns.clone());
+    turns
 }
 
 /// Does this agent write a transcript Tori can find on disk?

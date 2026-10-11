@@ -194,6 +194,36 @@ fn search_hit(line: &str) -> Option<&str> {
         .then_some(head)
 }
 
+/// One turn's blind edits, for surfaces that show a session without its calls.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlindTurn {
+    pub prompt_ts: Option<u64>,
+    pub paths: Vec<String>,
+}
+
+/// A fresh tracker over the whole history, grouped by the prompt each call
+/// completed under, oldest first.
+pub fn blind_turns(events: &[ChatEvent], prompts: &[(u64, usize)], cwd: Option<PathBuf>) -> Vec<BlindTurn> {
+    let mut tracker = Tracker::new(cwd);
+    let mut out: Vec<BlindTurn> = Vec::new();
+    for (at, event) in events.iter().enumerate() {
+        let blind = tracker.observe(event);
+        if blind.is_empty() {
+            continue;
+        }
+        let prompt_ts = prompts.iter().rev().find(|(_, first)| *first <= at).map(|(ts, _)| *ts);
+        match out.last_mut().filter(|t| t.prompt_ts == prompt_ts) {
+            Some(turn) => turn.paths.extend(blind),
+            None => out.push(BlindTurn {
+                prompt_ts,
+                paths: blind,
+            }),
+        }
+    }
+    out
+}
+
 pub fn enabled() -> bool {
     static CACHE: Mutex<Option<(Option<SystemTime>, bool)>> = Mutex::new(None);
     let stamp = crate::settings::modified();
@@ -435,5 +465,35 @@ mod tests {
         assert_eq!(first[2], vec![A.to_string()]);
         assert_eq!(first, again);
         assert!(run.modify(A).is_empty(), "a live edit after the replay of a read");
+    }
+
+    #[test]
+    fn a_log_with_one_blind_edit_counts_it_on_the_turn_it_happened_in() {
+        let user = |turn: &str| ChatEvent::UserMessage {
+            session_id: "s1".into(),
+            turn_id: turn.into(),
+            blocks: Vec::new(),
+        };
+        let events = vec![
+            user("u1"),
+            started("c1", ToolKind::Read, "read", Value::Null, &[A]),
+            completed("c1", ToolStatus::Ok, ""),
+            started("c2", ToolKind::Edit, "edit", Value::Null, &[A]),
+            file_edit("c2", A, FileEditKind::Modified),
+            completed("c2", ToolStatus::Ok, ""),
+            user("u2"),
+            started("c3", ToolKind::Edit, "edit", Value::Null, &["/w/app/src/b.rs"]),
+            file_edit("c3", "/w/app/src/b.rs", FileEditKind::Modified),
+            completed("c3", ToolStatus::Ok, ""),
+        ];
+        let prompts = crate::chat::mirror::timed_prompts(&events, &[1_760_000_000, 1_760_000_420]);
+        let turns = blind_turns(&events, &prompts, Some(PathBuf::from(CWD)));
+        assert_eq!(
+            turns,
+            vec![BlindTurn {
+                prompt_ts: Some(1_760_000_420),
+                paths: vec!["/w/app/src/b.rs".into()],
+            }]
+        );
     }
 }

@@ -52,6 +52,7 @@ mod perf_budgets;
 mod presence;
 mod provenance;
 mod pty;
+mod review;
 mod rpc;
 mod scratch;
 mod search;
@@ -393,6 +394,8 @@ pub fn run() {
             chat::commands::chat_history_page,
             chat::commands::session_secrets,
             chat::commands::session_verification,
+            review::review_inbox,
+            review::review_mark,
             verification::verification_commands,
             verification::verification_defaults,
             chat::commands::chat_mark_turn,
