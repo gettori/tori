@@ -36,7 +36,22 @@ const quietFetches: { minAgeSecs: number; only: string | null }[] = [];
 // What `git_ahead_behind` reports, and what `git_commit` was called with. Both
 // drive the amend guard, which is the only thing here that asks the backend a
 // question whose answer changes what the panel does rather than what it shows.
-let aheadBehind: { ahead: number; behind: number; has_upstream: boolean; gone?: boolean } | null = null;
+let aheadBehind: {
+  ahead: number;
+  behind: number;
+  has_upstream: boolean;
+  gone?: boolean;
+  sets_upstream?: boolean;
+  push_target?: { ahead: number; behind: number; sha: string } | null;
+  upstream?: string | null;
+} | null = null;
+// The push guard's backend answers, and what the pushes and rebases it leads to
+// were asked for.
+let pushDupes: { pushing: number; duplicated: number } | null = null;
+let branchSync: unknown = null;
+let pushArgs: { repo: string }[] = [];
+let forcePushArgs: unknown[] = [];
+let rebaseArgs: unknown[] = [];
 // The state of the branch's pull request as the poll last reported it.
 let polledPrState: "open" | "closed" | "merged" | null = null;
 const [polledRelation, setPolledRelation] = createSignal<PrRelation | null>(null);
@@ -177,7 +192,18 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve((args as { settings: unknown }).settings);
       case "git_push":
         reopenCalls.push("push");
+        pushArgs.push(args as { repo: string });
         return Promise.resolve(null);
+      case "git_force_push":
+        forcePushArgs.push(args);
+        return Promise.resolve(null);
+      case "git_push_duplicates":
+        return Promise.resolve(pushDupes);
+      case "git_rebase":
+        rebaseArgs.push(args);
+        return Promise.resolve({ conflicted: false, message: "" });
+      case "git_branch_sync":
+        return Promise.resolve(branchSync);
       case "forge_reopen":
         reopenCalls.push(`reopen #${(args as { number: number }).number}`);
         return Promise.resolve(null);
@@ -334,6 +360,11 @@ beforeEach(async () => {
   authState = { kind: "signedOut" };
   createPrArgs = [];
   createPrFails = null;
+  pushDupes = null;
+  branchSync = null;
+  pushArgs = [];
+  forcePushArgs = [];
+  rebaseArgs = [];
   resetForgeStatusForTests();
   // `github` is named explicitly rather than left to the spread: the settings
   // store is created *over* DEFAULT_SETTINGS, so writing to the store mutates
@@ -1653,6 +1684,30 @@ describe("the members a Topic commits in", () => {
     expect(commitArgs.every((c) => (c as { message: string }).message === "Say what changed")).toBe(true);
   });
 
+  it("asks before each member's push in turn, never two at once", async () => {
+    branches = [{ name: "feat", current: true }];
+    defaultBase = "main";
+    pushDupes = { pushing: 2, duplicated: 2 };
+    await mountWithActive(null);
+
+    fireEvent.input(screen.getByPlaceholderText("Message"), { target: { value: "Say what changed" } });
+    pointerClick(screen.getByRole("button", { name: "More commit actions" }));
+    pointerClick(await screen.findByRole("menuitem", { name: "Commit & Push" }));
+    await waitFor(() => expect(commitArgs).toHaveLength(2));
+
+    const pushAnyway = async () =>
+      fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Push anyway" }));
+    await pushAnyway();
+    await waitFor(() => expect(pushArgs.map((p) => p.repo)).toEqual([A]));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    // B's question waits for A's push to land rather than replacing A's.
+    handlers["git://push-done"]?.forEach((fn) => fn({ payload: { repo: A } }));
+    await pushAnyway();
+    await waitFor(() => expect(pushArgs.map((p) => p.repo)).toEqual([A, B]));
+    handlers["git://push-done"]?.forEach((fn) => fn({ payload: { repo: B } }));
+  });
+
   it("says plain Commit when only one member has anything staged", async () => {
     await mountWithActive(null, null, B);
 
@@ -1703,5 +1758,156 @@ describe("the members a Topic commits in", () => {
     // while `folderPath` stayed would list A's sessions over B's checkpoints.
     await waitFor(() => expect(backstopRoots).toContain(B));
     expect(backstopRoots).not.toContain(A);
+  });
+});
+
+describe("what Pull, Pull (Rebase) and Push will do", () => {
+  const DIVERGED = {
+    ahead: 1,
+    behind: 2,
+    has_upstream: true,
+    sets_upstream: false,
+    push_target: { ahead: 1, behind: 2, sha: "abc123" },
+    upstream: "origin/feat",
+  };
+
+  async function mountOn(ab: typeof aheadBehind) {
+    branches = [{ name: "feat", current: true }];
+    defaultBase = "main";
+    aheadBehind = ab;
+    await mountPanel();
+    await waitFor(() => expect(gitStateFor("/proj").aheadBehind).toEqual(ab));
+  }
+
+  async function openMenu() {
+    pointerClick(screen.getByRole("button", { name: "More Actions" }));
+    return screen.findByRole("menuitem", { name: "Push" });
+  }
+
+  /** Answer the push in flight. The pushing flag is module state, so a push
+   *  left hanging would draw "Pushing" over every test after this one. */
+  async function finishPush() {
+    handlers["git://push-done"]?.forEach((fn) => fn({ payload: { repo: "/proj" } }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Pushing" })).toBeNull());
+  }
+
+  /** What a menu row's note says, read through the wiring a screen reader uses. */
+  function description(el: HTMLElement) {
+    return document.getElementById(el.getAttribute("aria-describedby") ?? "")?.textContent ?? "";
+  }
+
+  /** The pill's tooltip, opened the way a keyboard user opens it. */
+  function pillTooltip(pill: HTMLElement) {
+    pill.focus();
+    fireEvent.focus(pill);
+    return screen.getByRole("tooltip").textContent ?? "";
+  }
+
+  it("warns before pushing commits already on the base, and rebases when asked", async () => {
+    pushDupes = { pushing: 23, duplicated: 23 };
+    await mountOn({ ...DIVERGED, ahead: 23, behind: 0, push_target: { ahead: 23, behind: 0, sha: "abc123" } });
+
+    pointerClick(await openMenu());
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toContain("23 of 23 commits are already on main under other hashes");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Rebase onto origin/main" }));
+
+    await waitFor(() => expect(rebaseArgs).toEqual([{ projectPath: "/proj", onto: "origin/main" }]));
+    expect(pushArgs).toEqual([]);
+  });
+
+  it("pushes an ordinary branch without asking", async () => {
+    pushDupes = { pushing: 2, duplicated: 0 };
+    await mountOn({ ...DIVERGED, ahead: 2, behind: 0, push_target: { ahead: 2, behind: 0, sha: "abc123" } });
+
+    pointerClick(await openMenu());
+
+    await waitFor(() => expect(pushArgs).toEqual([expect.objectContaining({ repo: "/proj", branch: "feat" })]));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await finishPush();
+  });
+
+  it("puts the counts under each entry, with the merge commit on Pull", async () => {
+    await mountOn(DIVERGED);
+
+    await openMenu();
+    expect(description(screen.getByRole("menuitem", { name: "Pull" }))).toBe(
+      "Merge origin/feat into this branch, 2 commits, adds a merge commit",
+    );
+    expect(description(screen.getByRole("menuitem", { name: "Pull (Rebase)" }))).toBe(
+      "Replay your 1 commit on top of origin/feat, after its 2 commits",
+    );
+  });
+
+  it("calls a diverged branch Diverged, names both causes, and opens the menu", async () => {
+    await mountOn(DIVERGED);
+
+    const pill = await screen.findByRole("button", { name: "Diverged" });
+    const tip = pillTooltip(pill);
+    expect(tip).toContain("1 commit here, 2 commits on origin/feat.");
+    expect(tip).toContain(
+      "If somebody else pushed, Pull (Rebase). If you rewrote history here (rebase, amend), Force Push.",
+    );
+    expect(tip).not.toContain("looks like a rewrite");
+
+    pointerClick(pill);
+    expect(await screen.findByRole("menuitem", { name: "Force Push" })).toBeTruthy();
+    expect(pushArgs).toEqual([]);
+  });
+
+  it("adds the rewrite hint when the reflog says so", async () => {
+    branchSync = {
+      detached: false,
+      dirty: false,
+      head_committed_at: 1,
+      upstream: { ahead: 1, behind: 2, has_upstream: true, gone: false, rewritten: true, superseded: false },
+      base: null,
+    };
+    await mountOn(DIVERGED);
+    await waitFor(() => expect(gitStateFor("/proj").sync).not.toBeNull());
+
+    expect(pillTooltip(await screen.findByRole("button", { name: "Diverged" }))).toContain(
+      "This looks like a rewrite here.",
+    );
+  });
+
+  it("refuses a plain push on a diverged branch, with the reason", async () => {
+    await mountOn(DIVERGED);
+
+    const push = await openMenu();
+    expect(push.getAttribute("aria-disabled")).toBe("true");
+    expect(description(push)).toBe("Diverged: pull with rebase, or force push");
+    pointerClick(push);
+    expect(pushArgs).toEqual([]);
+  });
+
+  it("does not call a branch diverged against an upstream it does not push to", async () => {
+    await mountOn({ ...DIVERGED, upstream: "origin/main", push_target: null });
+
+    expect(await screen.findByRole("button", { name: /1/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Diverged" })).toBeNull();
+    await openMenu();
+    expect(screen.queryByRole("menuitem", { name: "Force Push" })).toBeNull();
+  });
+
+  it("force pushes on the lease the confirm showed", async () => {
+    await mountOn(DIVERGED);
+
+    await openMenu();
+    pointerClick(await screen.findByRole("menuitem", { name: "Force Push" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toContain("replaces the 2 commits on origin/feat");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Force Push" }));
+
+    await waitFor(() => expect(forcePushArgs).toEqual([{ repo: "/proj", branch: "feat", expected: "abc123" }]));
+    expect(await screen.findByRole("button", { name: "Pushing" })).toBeTruthy();
+    await finishPush();
+  });
+
+  it("shows no Force Push when nothing has diverged", async () => {
+    await mountOn({ ...DIVERGED, ahead: 1, behind: 0, push_target: { ahead: 1, behind: 0, sha: "abc123" } });
+
+    await openMenu();
+    expect(screen.queryByRole("menuitem", { name: "Force Push" })).toBeNull();
   });
 });
