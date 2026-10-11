@@ -204,6 +204,29 @@ function NoteRow(props: { item: Extract<MenuItem, { label: string }> }) {
   );
 }
 
+/** A row whose note describes it without naming it: the label alone is the
+ *  accessible name, so a note that changes with state, like a count, does not
+ *  rename the row it sits under. */
+export function DescribedRow(props: {
+  label: string;
+  note: string;
+  onClick?: () => void;
+  disabled?: boolean;
+  refusing?: boolean;
+}) {
+  const noteId = createUniqueId();
+  return (
+    <MenuRow onClick={props.onClick} disabled={props.disabled} refusing={props.refusing} describedBy={noteId}>
+      <span class={styles.noted}>
+        {props.label}
+        <span class={styles.note} id={noteId} aria-hidden="true">
+          {props.note}
+        </span>
+      </span>
+    </MenuRow>
+  );
+}
+
 /** The rows of a flat `MenuItem[]`, ungrouped. Split out so `MenuRows` can put
  *  the same list inside a group or not without writing it twice. */
 function FlatRows(props: { items: MenuItem[] }) {
