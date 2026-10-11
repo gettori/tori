@@ -54,7 +54,7 @@ export default function RepoChecklist(props: {
       <For each={groups()}>
         {({ space, options }) => (
           <CheckboxGroup
-            label={<span class={styles.spaceLabel}>{space.name}</span>}
+            label={<span class={styles.repoGroupLabel}>{space.name}</span>}
             options={options}
             value={props.value.filter((v) => space.projects.some((p) => p.path === v))}
             onChange={(picked) => changeGroup(space, picked)}
