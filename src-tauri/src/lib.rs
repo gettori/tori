@@ -18,6 +18,7 @@ mod checkpoint;
 mod cli;
 mod config;
 mod conflict;
+mod convert;
 mod crash;
 mod credential;
 mod dap;
@@ -495,6 +496,9 @@ pub fn run() {
             git::git_checkout,
             git::git_init,
             git::bare_init,
+            convert::commands::conversion_preview,
+            convert::commands::convert_to_worktree_layout,
+            convert::commands::undo_conversion,
             git::git_remote_add,
             git::git_origin,
             git::git_fetch,

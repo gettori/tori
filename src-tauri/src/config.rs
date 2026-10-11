@@ -85,6 +85,7 @@ pub enum ProjectKind {
     Plain,
     PlainDir,
     Incomplete,
+    Converting,
 }
 
 /// One selectable unit under a project: a worktree folder, a branch of a plain
@@ -332,6 +333,15 @@ fn save_attached(state: &AttachedState) -> Result<(), String> {
     std::fs::write(path, json).map_err(|e| e.to_string())
 }
 
+pub(crate) fn forget_attached(repo: &Path) {
+    let lock = crate::exec::named_lock("config");
+    let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut state = load_attached();
+    if state.0.remove(&norm(&repo.to_string_lossy())).is_some() {
+        let _ = save_attached(&state);
+    }
+}
+
 /// The branches attached for `repo` (empty when the repo has no store entry).
 fn attached_branches(state: &AttachedState, repo: &Path) -> HashSet<String> {
     state
@@ -474,6 +484,16 @@ fn probe_project(path: &Path) -> Vec<BranchUnit> {
     #[cfg(test)]
     if path.to_string_lossy().contains("probe_flight") {
         PROBE_CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+    if crate::convert::interrupted(path) {
+        return vec![BranchUnit {
+            label: basename(path),
+            folder_path: path.to_string_lossy().into_owned(),
+            branch: None,
+            kind: ProjectKind::Converting,
+            is_current: false,
+            issue: None,
+        }];
     }
     let Some(text) = run_git(path, &["worktree", "list", "--porcelain"]) else {
         // Not a git repo at all.
@@ -1596,14 +1616,21 @@ pub fn cleanup_incomplete(app: AppHandle, path: String) -> Result<(), String> {
     let store = crate::exec::named_lock("config");
     let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let p = PathBuf::from(&path);
-    let units = probe_project(&p);
-    let is_stub = units.len() == 1 && units[0].kind == ProjectKind::Incomplete;
-    if !is_stub {
-        return Err("Refusing: not an incomplete stub".into());
-    }
+    removable_stub(&p)?;
     std::fs::remove_dir_all(&p).map_err(|e| e.to_string())?;
     let _ = app.emit("config://changed", ());
     Ok(())
+}
+
+// An interrupted conversion's half-built `.bare` looks like a stub, but probes
+// as `converting`, so it never reaches the removal below.
+pub(crate) fn removable_stub(p: &Path) -> Result<(), String> {
+    let units = probe_project(p);
+    if units.len() == 1 && units[0].kind == ProjectKind::Incomplete {
+        Ok(())
+    } else {
+        Err("Refusing: not an incomplete stub".into())
+    }
 }
 
 /// Pure guard: given the single collapsed root and a candidate space path, return
