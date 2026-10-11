@@ -8,7 +8,7 @@ import ConfirmDeleteSpace from "./ConfirmDeleteSpace";
 // (#100). Contract / shape split as in `ConfirmDialog.test.tsx`.
 //
 // The gate is the whole point of this dialog: Delete stays disabled until the
-// space name is typed exactly, and Enter is answered only when it matches. Note
+// space name is typed in full (any case), and Enter is answered only when it matches. Note
 // where that Enter handler lives, because it is not where the other dialogs in
 // this set keep theirs: on the *input*, not on the panel. A migration that
 // hoisted it to the panel would widen the gate to the whole dialog, so the
@@ -154,16 +154,16 @@ describe("ConfirmDeleteSpace", () => {
       expect(screen.queryByText("uncommitted")).toBeNull();
     });
 
-    it("keeps Delete disabled until the name is typed exactly", () => {
+    it("keeps Delete disabled until the whole name is typed, in any case", () => {
       const { input } = open();
 
       expect(del().disabled).toBe(true);
 
-      fireEvent.input(input(), { target: { value: "wor" } });
+      fireEvent.input(input(), { target: { value: "WOR" } });
       expect(del().disabled).toBe(true);
 
       fireEvent.input(input(), { target: { value: "Work" } });
-      expect(del().disabled).toBe(true);
+      expect(del().disabled).toBe(false);
 
       fireEvent.input(input(), { target: { value: "work" } });
       expect(del().disabled).toBe(false);
@@ -173,6 +173,15 @@ describe("ConfirmDeleteSpace", () => {
       const { onConfirm, input } = open();
 
       fireEvent.input(input(), { target: { value: "work" } });
+      fireEvent.keyDown(input(), { key: "Enter" });
+
+      expect(onConfirm).toHaveBeenCalledTimes(1);
+    });
+
+    it("deletes on Enter when the name is typed in another case", () => {
+      const { onConfirm, input } = open();
+
+      fireEvent.input(input(), { target: { value: "WORK" } });
       fireEvent.keyDown(input(), { key: "Enter" });
 
       expect(onConfirm).toHaveBeenCalledTimes(1);

@@ -71,7 +71,7 @@ export default function ConfirmDeleteSpace(props: {
   onCancel: () => void;
 }) {
   const [value, setValue] = createSignal("");
-  const matches = () => value() === props.spaceName;
+  const matches = () => value().toLowerCase() === props.spaceName.toLowerCase();
   let input: HTMLInputElement | undefined;
 
   // At-risk first, then whatever order the preview arrived in (the backend
