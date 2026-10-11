@@ -353,7 +353,7 @@
   flex-direction: column;
   gap: var(--tori-space-5);
 }
-.spaceLabel {
+.repoGroupLabel {
   font-size: var(--tori-text-xs);
   font-weight: 600;
   letter-spacing: 0.06em;
