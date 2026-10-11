@@ -1,0 +1,39 @@
+# Checks the Signed-off-by trailer on every commit of a pull request from
+# anyone but the maintainer, see the Sign-off section of CONTRIBUTING.md.
+# Skipped on the maintainer's own: the trailer certifies a right the copyright
+# holder already has.
+#
+# pull_request_target, not pull_request, so this file and check-dco.sh run as
+# they are on main and a pull request cannot edit the check that judges it.
+# That runs as main, with the repo's secrets: nothing here may check out or
+# run the pull request's files, or name a secret or an environment.
+name: DCO
+
+on:
+  pull_request_target:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  dco:
+    if: github.event.pull_request.user.login != 'skarif2'
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: the base..head range needs every commit between them,
+      # and a shallow fetch cuts it short.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The head's commits as objects, never checked out.
+      - run: git fetch --no-tags origin "refs/pull/$NUMBER/head"
+        env:
+          NUMBER: ${{ github.event.pull_request.number }}
+
+      - run: .github/scripts/check-dco.sh "$BASE" "$TIP"
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          TIP: ${{ github.event.pull_request.head.sha }}

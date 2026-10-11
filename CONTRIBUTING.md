@@ -61,7 +61,7 @@ carries a `Signed-off-by:` trailer whose email matches the commit author's.
 wrote the change, or have the right to submit it under the project's licence.
 There is no CLA and nothing else to sign.
 
-CI checks it. The `dco` job in `.github/workflows/check.yml` walks every
+CI checks it. The `dco` job in `.github/workflows/dco.yml` walks every
 non-merge commit of the pull request and fails naming each one whose trailers
 have no `Signed-off-by` for the author's email. Two things trip it that are
 not obvious:
@@ -117,11 +117,11 @@ scripts/check.sh all   # everything CI runs; run it before opening a PR
 ```
 
 CI runs the same script, one target per job, so passing it locally is passing
-CI. The one job outside the script is `dco`, which reads the sign-off on each
-commit of a pull request from outside (see [Sign-off](#sign-off-dco)) and has
-nothing to run locally. The targets also run alone: `ts` (frozen install, type
-check for desktop and mobile, `pnpm test`, both vite builds), `rust` (desktop
-tests, mobile check) and `audit` (npm and crate advisories).
+CI. The sign-off check is a workflow of its own, `dco.yml` (see
+[Sign-off](#sign-off-dco)), with nothing to run locally. The targets also run
+alone: `ts` (frozen install, type check for desktop and mobile, `pnpm test`,
+both vite builds), `rust` (desktop tests, mobile check) and `audit` (npm and
+crate advisories).
 
 `pnpm test` runs `scripts/check-tokens.mjs` before the unit tests. That guard
 fails the build on any color literal outside `src/styles/tokens.css` and its

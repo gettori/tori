@@ -15,10 +15,6 @@
 # The `rust` job runs on macOS because Tori is macOS only: a Linux runner is
 # cheaper and would not compile the same code. It runs the tests and builds no
 # bundle; that is still release.yml's. The `audit` job only reads the lockfiles.
-#
-# The `dco` job is the one job outside check.sh: it reads the Signed-off-by
-# trailer on every commit of a pull request from anyone but the maintainer,
-# and is skipped otherwise, so there is nothing of it to run locally.
 name: Check
 
 # Every pull request, plus main after a merge. Not bare `on: push`, which would
@@ -85,21 +81,3 @@ jobs:
       - uses: actions/checkout@v4
 
       - run: scripts/check.sh packs
-
-  # Sign-off on outside contributions, see CONTRIBUTING.md. Pull requests only,
-  # and not the maintainer's own: a push has no range to check, and the trailer
-  # certifies a right the copyright holder already has.
-  dco:
-    if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'skarif2'
-    runs-on: ubuntu-latest
-    steps:
-      # Full history: the base..head range needs every commit between them,
-      # and a shallow fetch cuts it short.
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - run: .github/scripts/check-dco.sh "$BASE" "$TIP"
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-          TIP: ${{ github.event.pull_request.head.sha }}
