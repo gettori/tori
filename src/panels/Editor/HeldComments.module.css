@@ -1,0 +1,49 @@
+@layer components {
+  .panel {
+    width: calc(360px * var(--ui-scale));
+    max-height: calc(360px * var(--ui-scale));
+    display: flex;
+    flex-direction: column;
+    padding: var(--tori-space-3);
+    gap: var(--tori-space-3);
+    font-size: var(--tori-text-md);
+    color: var(--fg-default);
+  }
+
+  .list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-2);
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-3);
+  }
+
+  .where {
+    flex-shrink: 0;
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-sm);
+    color: var(--fg-muted);
+  }
+
+  .text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--tori-space-3);
+  }
+}

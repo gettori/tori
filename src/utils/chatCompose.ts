@@ -46,6 +46,13 @@ export function hunkCommentBlocks(path: string, startLine: number, endLine: numb
   ];
 }
 
+/** Several hunk comments as one message, each its reference then its prose. */
+export function hunkCommentsBlocks(
+  comments: readonly { path: string; startLine: number; endLine: number; text: string }[],
+): ContentBlock[] {
+  return comments.flatMap((c) => hunkCommentBlocks(c.path, c.startLine, c.endLine, c.text));
+}
+
 /** A diagnostic: same shape as a hunk comment, with the severity kept in front
  *  of the message the way the PTY wire format has it. */
 export function diagnosticBlocks(

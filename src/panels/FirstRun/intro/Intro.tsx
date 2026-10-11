@@ -42,7 +42,7 @@ export const SLIDES: Slide[] = [
   },
   {
     title: "Review what the agent wrote",
-    body: "An editor with LSP, and a Changes panel that stages, commits, pushes and opens the PR. Comment on a hunk and it goes straight back into the session.",
+    body: "An editor with LSP, and a Changes panel that stages, commits, pushes and opens the PR. Comment on as many hunks as you like and send them back to the session as one message.",
     art: ReviewArt,
   },
   {

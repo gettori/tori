@@ -9,6 +9,7 @@ import type { SessionTarget } from "../../utils/safeSend";
 import { findAdapter } from "../../utils/agents";
 import { editingNow } from "../../utils/editingNow";
 import HunkCommentInput from "./HunkCommentInput";
+import HeldComments from "./HeldComments";
 import hunkStyles from "./HunkCommentInput.module.css";
 import styles from "./SessionPanel.module.css";
 import Switch from "../../components/Switch/Switch";
@@ -53,6 +54,7 @@ export default function SessionPanel(props: {
   projectRoot: string | null;
   selfSessionId: string | null;
   liveTabs: LiveTab[];
+  heldKey: string;
 }) {
   const [files, setFiles] = createSignal<TouchedFile[]>([]);
   const [showReads, setShowReads] = createSignal(false);
@@ -248,8 +250,7 @@ export default function SessionPanel(props: {
                   <div class={`${styles.diffLine} ${styles.hunk} ${hunkStyles.hunkHeaderRow}`}>
                     <span class={hunkStyles.hunkHeaderText}>{hunk.header}</span>
                     <HunkCommentInput
-                      target={target()}
-                      disabledReason={disabledReason()}
+                      heldKey={props.heldKey}
                       filePath={f.path}
                       startLine={hunk.startLine}
                       endLine={hunk.endLine}
@@ -287,7 +288,10 @@ export default function SessionPanel(props: {
           </div>
         )}
       </Show>
-      <Switch class={styles.readsToggle} checked={showReads()} onChange={setShowReads} label="Show reads" />
+      <div class={styles.controls}>
+        <Switch class={styles.readsToggle} checked={showReads()} onChange={setShowReads} label="Show reads" />
+        <HeldComments heldKey={props.heldKey} target={target()} disabledReason={disabledReason()} />
+      </div>
       <div class={styles.touchList}>
         <Show
           when={visible().length}

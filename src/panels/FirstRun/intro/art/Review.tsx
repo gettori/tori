@@ -31,7 +31,7 @@ import { Tabs } from "../../../../lib/tabs";
 import FileIcon from "../../../../seti/FileIcon";
 import { parseDiffHunks } from "../../../../utils/diffHunks";
 import { buildRows } from "../../../../utils/diffView";
-import { composeHunkComment } from "../../../../utils/safeSend";
+import { composeHunkComments } from "../../../../utils/safeSend";
 import MessageList from "../../../Chat/MessageList";
 import type { ChatItem } from "../../../Chat/chatStore";
 import chat from "../../../Chat/Chat.module.css";
@@ -47,6 +47,7 @@ import styles from "./Review.module.css";
 const API = "~/Projects/work/api";
 const FILE = "src/limiter.ts";
 const COMMENT = "Use the reset timestamp, not the window length.";
+const EARLIER = "Off by one: the cap should allow exactly the limit.";
 const MESSAGE = "Send Retry-After when the limiter caps";
 
 const DIFF = [
@@ -78,14 +79,14 @@ const STATUS_CLASS: Record<string, string> = { A: review.added, M: review.modifi
 const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 const dirName = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf("/")));
 
-// Built by the same function the comment box sends through, so the turn the
+// Built by the same function the held list sends through, so the turn the
 // session receives is word for word what the app would write.
-const SENT = composeHunkComment(
+const SENT = composeHunkComments(
   { sessionId: "s1", agent: "claude", profile: null, sessionCwd: API, folderPath: API },
-  `${API}/${FILE}`,
-  HUNK.startLine,
-  HUNK.endLine,
-  COMMENT,
+  [
+    { path: `${API}/${FILE}`, startLine: HUNK.startLine, endLine: HUNK.endLine, text: EARLIER },
+    { path: `${API}/${FILE}`, startLine: HUNK.startLine, endLine: HUNK.endLine, text: COMMENT },
+  ],
 );
 
 const CHAT: ChatItem[] = [
@@ -231,8 +232,8 @@ function gap(lines: number) {
   return <div class={`${diffRowClasses.line} ${diffView.diffGap}`}>{`\u22ef ${lines} unchanged lines`}</div>;
 }
 
-/** The diff tab: DiffView's chrome around the real DiffRows, with the hunk's
- *  comment box open on the line the agent got wrong. */
+/** The diff tab: DiffView's chrome around the real DiffRows, one comment
+ *  already held and a second being written on the line the agent got wrong. */
 function DiffPane() {
   return (
     <div class={styles.center}>
@@ -256,6 +257,7 @@ function DiffPane() {
           <span class={diffView.dir}>src</span>
           <span class={diffView.mode}>Working tree</span>
           <span class={diffView.spacer} />
+          <Button size="xs">1 comment</Button>
           <IconButton size="sm" icon={<Icon icon={Plus} />} aria-label="Stage this file" />
           <IconButton size="sm" icon={<Icon icon={Undo2} />} aria-label="Discard" />
           <IconButton size="sm" icon={<Icon icon={Copy} />} aria-label="Copy diff" />
@@ -274,7 +276,7 @@ function DiffPane() {
             <IconButton size="sm" icon={<Icon icon={MessageSquare} />} active aria-label="Comment on this hunk" />
             <div class={`${hunkStyles.commentBox} ${styles.commentBox}`}>
               <input class={hunkStyles.commentInput} type="text" value={COMMENT} />
-              <Button size="xs">Send</Button>
+              <Button size="xs">Hold comment</Button>
             </div>
           </div>
           <DiffRows
@@ -289,8 +291,8 @@ function DiffPane() {
   );
 }
 
-/** Slide 05: the diff tab beside the real Changes panel, and the hunk comment
- *  landing in the session at full size. */
+/** Slide 05: the diff tab beside the real Changes panel, and the held hunk
+ *  comments landing in the session as one message at full size. */
 export default function ReviewArt() {
   return (
     <div class={styles.stage}>

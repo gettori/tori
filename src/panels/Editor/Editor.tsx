@@ -3542,6 +3542,7 @@ export default function Editor(props: {
                 projectRoot={focusRoot()}
                 selfSessionId={props.selected!.sessionId ?? null}
                 liveTabs={props.liveTabs ?? []}
+                heldKey={ws()}
               />
             </Match>
           </Switch>
