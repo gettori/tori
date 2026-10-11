@@ -16,6 +16,9 @@ import {
   scrollFraction,
   lineAtFraction,
   fractionOfLine,
+  notePreviewAnchor,
+  previewAnchorOf,
+  boxAt,
   dropLiveBuffer,
   clearLiveBuffers,
 } from "./liveBuffer";
@@ -151,5 +154,48 @@ describe("turning a position into a line", () => {
   it("describes a one-line document as the top of it", () => {
     expect(fractionOfLine(1, 1)).toBe(0);
     expect(fractionOfLine(1, 0)).toBe(0);
+  });
+});
+
+describe("remembering where the preview was read", () => {
+  it("gives back what the preview noted", () => {
+    notePreviewAnchor(MD, { box: 12, offset: 40 });
+    expect(previewAnchorOf(MD)).toEqual({ box: 12, offset: 40 });
+  });
+
+  it("is not the hand off, so the source taking its position leaves it alone", () => {
+    notePreviewAnchor(MD, { box: 3, offset: 0 });
+    handOff(MD, "preview", 0.6);
+    expect(takeHandOff(MD, "source")).toBe(0.6);
+    expect(previewAnchorOf(MD)).toEqual({ box: 3, offset: 0 });
+  });
+
+  it("goes with the tab it belonged to", () => {
+    notePreviewAnchor(MD, { box: 3, offset: 0 });
+    dropLiveBuffer(MD);
+    expect(previewAnchorOf(MD)).toBeUndefined();
+  });
+});
+
+describe("finding the block on screen", () => {
+  // Three 100px boxes stacked from zero.
+  const bottom = (i: number) => (i + 1) * 100;
+
+  it("names the first box at the very top", () => {
+    expect(boxAt(3, bottom, 0)).toBe(0);
+  });
+
+  it("names the box the line falls inside", () => {
+    expect(boxAt(3, bottom, 150)).toBe(1);
+    // A box whose bottom is exactly at the line is already above it.
+    expect(boxAt(3, bottom, 200)).toBe(2);
+  });
+
+  it("names the last box when the line is past them all", () => {
+    expect(boxAt(3, bottom, 900)).toBe(2);
+  });
+
+  it("names nothing in an empty document", () => {
+    expect(boxAt(0, bottom, 0)).toBe(-1);
   });
 });

@@ -64,7 +64,8 @@ vi.mock("./lspClient", () => ({
 
 const { default: CodeEditor } = await import("./CodeEditor");
 const { default: MarkdownPreview } = await import("./MarkdownPreview");
-const { clearLiveBuffers, bufferTextOf, handOff, takeHandOff } = await import("../../utils/liveBuffer");
+const { clearLiveBuffers, bufferTextOf, handOff, takeHandOff, publishBufferText, previewAnchorOf } =
+  await import("../../utils/liveBuffer");
 const { emitWith, AGENT_FILES_WRITTEN } = await import("../../utils/events");
 type AgentFilesWritten = { paths: string[] };
 
@@ -249,6 +250,40 @@ describe("carrying the reading position across the toggle", () => {
     await showPreviewOf(NOTES);
 
     expect(takeHandOff(NOTES, "source")).toBe(0.5);
+  });
+});
+
+describe("remembering where the preview was read", () => {
+  const OTHER = `${REPO}/other.md`;
+  const frames = async (n: number) => {
+    for (let i = 0; i < n; i++) await new Promise((r) => requestAnimationFrame(r));
+  };
+  const scrollEverything = () => {
+    for (const el of Array.from(preview!.container.querySelectorAll("div"))) el.dispatchEvent(new Event("scroll"));
+  };
+
+  it("writes nothing under the next file while the last one is still on screen", async () => {
+    // More blocks than the first slice holds, so the swap leaves a part drawn
+    // document on screen that is not yet placed: the moment the scroller
+    // clamps in the real app.
+    const long = Array.from({ length: 20 }, (_, i) => `Part ${i}\n\n\`\`\`\ncode ${i}\n\`\`\`\n`).join("\n");
+    publishBufferText(OTHER, long);
+    const [path, setPath] = createSignal(NOTES);
+    preview = render(() => <MarkdownPreview path={path()} />);
+    await waitFor(() => expect(rendered()).toContain("On disk"));
+
+    setPath(OTHER);
+    expect(rendered()).toContain("Part 0");
+    expect(rendered()).not.toContain("Part 19");
+    scrollEverything();
+    await waitFor(() => expect(rendered()).toContain("Part 19"));
+    await frames(2);
+    expect(previewAnchorOf(OTHER)).toBeUndefined();
+
+    // Placed now, so the same scroll is the reader's and is kept.
+    scrollEverything();
+    await frames(2);
+    expect(previewAnchorOf(OTHER)).toBeDefined();
   });
 });
 

@@ -89,12 +89,48 @@ export function fractionOfLine(line: number, lines: number): number {
   return Math.min(Math.max((line - 1) / (lines - 1), 0), 1);
 }
 
+// ---- preview position --------------------------------------------------
+
+/** Where the preview was being read: the first block on screen and how far
+ *  into it. Not a fraction: every block off screen is laid out at an estimated
+ *  height until it is drawn, so a fraction of the total lands somewhere else
+ *  after a remount. */
+export type PreviewAnchor = { box: number; offset: number };
+
+// The preview's own memory, for coming back to it by a tab swap. Kept apart
+// from the hand off, which only the other side may read.
+const previewAnchors = new Map<string, PreviewAnchor>();
+
+export function notePreviewAnchor(path: string, anchor: PreviewAnchor): void {
+  previewAnchors.set(path, anchor);
+}
+
+export function previewAnchorOf(path: string): PreviewAnchor | undefined {
+  return previewAnchors.get(path);
+}
+
+/** The first of `count` boxes, in document order, whose bottom is below `y`,
+ *  or the last box when `y` is past them all; -1 when there are none. Takes a
+ *  reader rather than a list so a long document measures log n boxes, not all. */
+export function boxAt(count: number, bottomOf: (i: number) => number, y: number): number {
+  if (count === 0) return -1;
+  let lo = 0;
+  let hi = count - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (bottomOf(mid) > y) hi = mid;
+    else lo = mid + 1;
+  }
+  return lo;
+}
+
 // ---- lifecycle ---------------------------------------------------------
 
 /** Forget a file entirely, called when its tab closes. Same bound as the
  *  Problems store: open tabs only, so neither grows for a session. */
 export function dropLiveBuffer(path: string): void {
   handoffs.delete(path);
+  previewAnchors.delete(path);
   setTexts((prev) => {
     if (!(path in prev)) return prev;
     const next = { ...prev };
@@ -110,5 +146,6 @@ export function dropLiveBuffer(path: string): void {
  *  tests, which need one store shared across a file to start each case empty. */
 export function clearLiveBuffers(): void {
   handoffs.clear();
+  previewAnchors.clear();
   setTexts({});
 }
