@@ -742,7 +742,15 @@ export type SendToSession = {
   // target falls back to `text` as one block, which loses the structure but
   // never the message.
   blocks?: ContentBlock[];
+  // Send as a turn rather than placing it in the composer. Chat only: a PTY
+  // route ignores it, since Tori never presses Enter in a terminal.
+  submit?: boolean;
 };
+
+// A `submit` send handed on to the chat tab hosting the session, which knows
+// whether it can take a turn and answers the original request itself.
+export const CHAT_SUBMIT = "tori:chat-submit";
+export type ChatSubmit = { requestId: string; sessionId: string; blocks: ContentBlock[] };
 
 export const SEND_TO_SESSION_RESULT = "tori:send-to-session-result";
 export type SendToSessionResult = { requestId: string; result: "sent" | "blocked" | "timeout" };

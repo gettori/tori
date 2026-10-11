@@ -15,6 +15,7 @@ import {
 import { overlayRoot } from "../../settingsStore";
 import { blameOn, writeBlamePref } from "../../../../utils/blamePref";
 import { sideBySideOn, writeSideBySide } from "../../../../utils/sideBySide";
+import { sendHunkCommentsNow, writeSendHunkCommentsNow } from "../../../../utils/hunkCommentPref";
 import styles from "../../Settings.module.css";
 import Switch from "../../../../components/Switch/Switch";
 
@@ -48,7 +49,7 @@ export default function EditorPane(props: PaneProps) {
         <For each={EDITOR_TOGGLES}>{(t) => <ToggleRow {...props} entry={t} />}</For>
         <ActiveLineRow {...props} />
         <TodoTagsRow {...props} />
-        {/* The two reader preferences that live in localStorage rather than in
+        {/* The reader preferences that live in localStorage rather than in
             `EditorDefaults`, so they get plain rows: no workspace badge and no
             "Set here", because there is no overlay layer under them to write. */}
         <Row {...props} id="blame" label="Git blame">
@@ -56,6 +57,13 @@ export default function EditorPane(props: PaneProps) {
         </Row>
         <Row {...props} id="side-by-side-diff" label="Side-by-side diffs">
           <Switch checked={sideBySideOn()} onChange={writeSideBySide} aria-label="Side-by-side diffs" />
+        </Row>
+        <Row {...props} id="hunk-comments-send-now" label="Send hunk comments right away">
+          <Switch
+            checked={sendHunkCommentsNow()}
+            onChange={writeSendHunkCommentsNow}
+            aria-label="Send hunk comments right away"
+          />
         </Row>
         <Show
           when={overlayRoot()}

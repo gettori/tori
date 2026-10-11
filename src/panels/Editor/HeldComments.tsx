@@ -32,6 +32,7 @@ export default function HeldComments(props: {
       ...target,
       text: composeHunkComments(target, comments),
       blocks: hunkCommentsBlocks(comments),
+      submit: true,
     });
     setSending(false);
     if (result.kind === "sent") {
