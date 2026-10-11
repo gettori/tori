@@ -45,6 +45,13 @@
   border-radius: calc(2px * var(--ui-scale));
 }
 
+/* After the label, which gives way first: the number is the point. */
+.count {
+  flex: none;
+  color: var(--fg-subtle);
+  font-weight: 500;
+}
+
 /* A member with nothing on disk reads as unavailable, and is still a tab. */
 .memberTab [role="tab"][data-state]:not([data-state="present"]) {
   opacity: 0.55;

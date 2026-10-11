@@ -1433,7 +1433,12 @@ export default function ReviewPanel(props: {
           is about, then the dots. Inside a Topic the chips pick one member,
           the way the file tree's do. */}
       <Show when={headed()}>
-        <MemberTabs members={props.members ?? []} activeKey={viewed()?.key ?? null} onPick={(m) => setPicked(m.key)} />
+        <MemberTabs
+          members={props.members ?? []}
+          activeKey={viewed()?.key ?? null}
+          onPick={(m) => setPicked(m.key)}
+          count={(m) => gitStateFor(m.key).files.length}
+        />
       </Show>
       <div class={styles.topBar}>
         {/* The branch is the tab's title: it is what every answer below is
