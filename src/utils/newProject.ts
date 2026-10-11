@@ -1,11 +1,11 @@
-// Creating a project under a space: an empty folder, a clone, or a bare repo
-// with a worktree. Shared by the sidebar's New dialog and first run's project
+// Creating a project under a space: an empty folder, or a clone, plain or in
+// the bare plus worktree layout. Shared by the sidebar's New dialog and first run's project
 // step, so both land the same layout on disk.
 import { invoke } from "@tauri-apps/api/core";
 import type { OpenJob } from "./events";
 import { badName } from "./names";
 
-export type NewProjectMode = "folder" | "clone" | "bare";
+export type NewProjectMode = "folder" | "clone";
 
 // Bare + worktree bootstrap, run as one `&&` chain in a terminal.
 // $1 = repo URL, $2 = project folder (passed as args, never interpolated). The
@@ -46,12 +46,12 @@ export async function claimProjectFolder(spacePath: string, name: string): Promi
   return null;
 }
 
-/** The job that clones `url` into the space as `name`, which re-discovers
- *  projects when it exits. Native git progress and ambient auth, no in-app
- *  credentials. */
-export function projectJob(mode: "clone" | "bare", spacePath: string, name: string, url: string): OpenJob {
+/** The job that clones `url` into the space as `name`, plain or in the
+ *  worktree layout, which re-discovers projects when it exits. Native git
+ *  progress and ambient auth, no in-app credentials. */
+export function projectJob(spacePath: string, name: string, url: string, worktreeLayout: boolean): OpenJob {
   const n = name.trim();
-  const kind = mode === "clone" ? "clone" : "bootstrap";
+  const kind = worktreeLayout ? "bootstrap" : "clone";
   const target = `${spacePath}/${n}`;
   return {
     // A fresh id per press, unlike an install or a login: two clones into two
@@ -59,8 +59,8 @@ export function projectJob(mode: "clone" | "bare", spacePath: string, name: stri
     id: `${kind}:${target}:${Date.now()}`,
     title: `${kind} ${n}`,
     cwd: spacePath,
-    program: mode === "clone" ? "git" : "sh",
-    args: mode === "clone" ? ["clone", "--", url.trim(), n] : ["-c", BOOTSTRAP_SCRIPT, "tori", url.trim(), n],
+    program: worktreeLayout ? "sh" : "git",
+    args: worktreeLayout ? ["-c", BOOTSTRAP_SCRIPT, "tori", url.trim(), n] : ["clone", "--", url.trim(), n],
     rediscoverOnExit: true,
   };
 }

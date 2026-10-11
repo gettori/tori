@@ -2,17 +2,16 @@ import { createSignal, Show } from "solid-js";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import SegmentedControl from "../SegmentedControl/SegmentedControl";
+import Checkbox from "../Checkbox/Checkbox";
 import Dialog from "../Dialog/Dialog";
 import { nameFromUrl, type NewProjectMode } from "../../utils/newProject";
 
-// Create something under a space, in one dialog. Replaces the separate "New
-// folder", "Clone repo…" and "Bare + worktree…" space-menu items: a segmented
-// control picks the mode, and the fields follow it.
+// Create a folder or a clone under a space. The worktree layout is a box on
+// Clone, on by default, not a third mode: both layouts ask the same fields.
 //
-// **The mode note holds its own height.** The three notes are one, two and three
-// lines of copy, so without a floor under the row the fields below it jump every
-// time the mode changes - under the cursor, in the middle of a form. The floor
-// is the tallest of the three.
+// **The mode note holds its own height.** The notes differ in length, so without
+// a floor under the row the fields below it jump every time the mode changes -
+// under the cursor, in the middle of a form. The floor is the tallest of them.
 //
 // The shell is `Dialog`, which owns the portal, the backdrop, Escape and the
 // focus trap. Enter stays here, on a wrapper around the fields, because it means
@@ -23,12 +22,13 @@ const NAME_LABEL = "new-project-name-label";
 export default function NewProjectDialog(props: {
   spaceName: string;
   busy: boolean;
-  onConfirm: (opts: { mode: NewProjectMode; name: string; url: string }) => void;
+  onConfirm: (opts: { mode: NewProjectMode; name: string; url: string; worktreeLayout: boolean }) => void;
   onCancel: () => void;
 }) {
   const [mode, setMode] = createSignal<NewProjectMode>("folder");
   const [name, setName] = createSignal("");
   const [url, setUrl] = createSignal("");
+  const [worktreeLayout, setWorktreeLayout] = createSignal(true);
   // Track manual name edits so URL auto-fill stops clobbering a hand-typed name.
   const [nameEdited, setNameEdited] = createSignal(false);
   let first: HTMLInputElement | undefined;
@@ -45,9 +45,9 @@ export default function NewProjectDialog(props: {
       case "folder":
         return "A plain folder, no git. Nothing is cloned.";
       case "clone":
-        return "Clones a git repository into a new folder inside this space.";
-      case "bare":
-        return "A .bare repo plus one initial worktree. Add more branches later as their own folders.";
+        return worktreeLayout()
+          ? "Clones into a .bare repo with the default branch as its own folder. Add more branches later as their own folders."
+          : "Clones a git repository into a new folder inside this space.";
     }
   };
 
@@ -57,7 +57,12 @@ export default function NewProjectDialog(props: {
   const canConfirm = () => (needsUrl() ? !!url().trim() : !!name().trim());
   const confirm = () => {
     if (!canConfirm()) return;
-    props.onConfirm({ mode: mode(), name: folderName(), url: url().trim() });
+    props.onConfirm({
+      mode: mode(),
+      name: folderName(),
+      url: url().trim(),
+      worktreeLayout: mode() === "clone" && worktreeLayout(),
+    });
   };
 
   function onKeyDown(e: KeyboardEvent) {
@@ -69,7 +74,6 @@ export default function NewProjectDialog(props: {
   const segs: { value: NewProjectMode; label: string }[] = [
     { value: "folder", label: "Folder" },
     { value: "clone", label: "Clone" },
-    { value: "bare", label: "Bare + worktree" },
   ];
 
   return (
@@ -90,13 +94,21 @@ export default function NewProjectDialog(props: {
       <div class={styles.spaceForm} onKeyDown={onKeyDown}>
         <div>
           <SegmentedControl
-            class={`${styles.modeSeg} ${styles.modeSegLast}`}
+            class={styles.modeSeg}
             aria-label="What to create"
             options={segs}
             value={mode()}
             onChange={setMode}
           />
           <div class={styles.modeNote}>{helper()}</div>
+          <Show when={needsUrl()}>
+            <Checkbox
+              class={styles.wtCheck}
+              checked={worktreeLayout()}
+              onChange={setWorktreeLayout}
+              label="Worktree layout"
+            />
+          </Show>
         </div>
 
         {/* Each field is named by the line above it rather than by an

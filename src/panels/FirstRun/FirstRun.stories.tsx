@@ -347,6 +347,7 @@ const GIT_MISSING: GitReport = {
 
 function ProjectStory(props: { space: FirstRunSpace; git: GitReport }) {
   const [mode, setMode] = createSignal<NewProjectMode>("clone");
+  const [worktreeLayout, setWorktreeLayout] = createSignal(true);
   const [name, setName] = createSignal("");
   const [url, setUrl] = createSignal("");
   const nothing = () => !name().trim() && !url().trim();
@@ -365,6 +366,8 @@ function ProjectStory(props: { space: FirstRunSpace; git: GitReport }) {
         home={HOME}
         mode={mode()}
         onMode={setMode}
+        worktreeLayout={worktreeLayout()}
+        onWorktreeLayout={setWorktreeLayout}
         name={name()}
         onName={setName}
         url={url()}
