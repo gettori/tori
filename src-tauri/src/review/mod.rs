@@ -18,12 +18,20 @@ use crate::chat::model::Verdict;
 use crate::checkpoint::CheckpointFile;
 use crate::sessions::{SessionIndex, SessionMeta};
 
+mod paths;
+mod scope;
+
 const CHANGED_EVENT: &str = "review://changed";
 
 const SECRET_READ_POINTS: u32 = 30;
 const FAILED_POINTS: u32 = 25;
 const BLIND_EDIT_POINTS: u32 = 10;
 const UNVERIFIED_POINTS: u32 = 10;
+const DELETED_TESTS_POINTS: u32 = 25;
+const SENSITIVE_PATH_POINTS: u32 = 20;
+const DEPENDENCY_POINTS: u32 = 15;
+const OUTSIDE_SCOPE_POINTS: u32 = 15;
+const SHARED_FILE_POINTS: u32 = 10;
 const LINES_CAP: u32 = 30;
 
 /// What a reviewer signs off on. Only a session for now; a PR or a batch of
@@ -50,6 +58,11 @@ pub enum SignalKind {
     Failed,
     BlindEdit,
     Unverified,
+    DeletedTests,
+    SensitivePath,
+    Dependencies,
+    OutsideScope,
+    SharedFile,
     NoCheckpoints,
 }
 
@@ -174,7 +187,14 @@ fn lines_points(lines: u32) -> u32 {
     ((3.0 * f64::from(lines + 1).log2()).round() as u32).min(LINES_CAP)
 }
 
-fn score(lines: Option<u32>, turns: &TurnSignals) -> (u32, Vec<Signal>) {
+#[derive(Debug, Default, Clone, PartialEq)]
+struct SpanSignals {
+    lines: u32,
+    files: paths::FileSignals,
+    outside: u32,
+}
+
+fn score(span: Option<&SpanSignals>, turns: &TurnSignals) -> (u32, Vec<Signal>) {
     let mut signals = Vec::new();
     let mut add = |kind, count: u32, points| {
         if count > 0 {
@@ -185,8 +205,15 @@ fn score(lines: Option<u32>, turns: &TurnSignals) -> (u32, Vec<Signal>) {
     add(SignalKind::Failed, turns.failed, FAILED_POINTS);
     add(SignalKind::BlindEdit, turns.blind_edits, BLIND_EDIT_POINTS);
     add(SignalKind::Unverified, turns.unverified, UNVERIFIED_POINTS);
-    match lines {
-        Some(lines) => add(SignalKind::Lines, lines, lines_points(lines)),
+    match span {
+        Some(span) => {
+            add(SignalKind::DeletedTests, span.files.deleted_tests, DELETED_TESTS_POINTS);
+            add(SignalKind::SensitivePath, span.files.sensitive, SENSITIVE_PATH_POINTS);
+            add(SignalKind::Dependencies, span.files.dependencies, DEPENDENCY_POINTS);
+            add(SignalKind::OutsideScope, span.outside, OUTSIDE_SCOPE_POINTS);
+            add(SignalKind::SharedFile, span.files.shared, SHARED_FILE_POINTS);
+            add(SignalKind::Lines, span.lines, lines_points(span.lines));
+        }
         None => add(SignalKind::NoCheckpoints, 1, 0),
     }
     (signals.iter().map(|s| s.points).sum(), signals)
@@ -278,12 +305,12 @@ impl SpanCache {
 
 static SPANS: std::sync::LazyLock<Mutex<SpanCache>> = std::sync::LazyLock::new(Mutex::default);
 
-fn own_lines(
+fn own_span(
     session: &SessionMeta,
     mark: &Mark,
     others: &[String],
-    spans: &mut SpanCache,
-) -> Option<(u32, Option<u64>)> {
+    spans: &Mutex<SpanCache>,
+) -> Option<(Vec<CheckpointFile>, Option<u64>)> {
     let repo = session.cwd.as_str();
     if !crate::checkpoint::is_git_worktree(repo) {
         return None;
@@ -294,9 +321,35 @@ fn own_lines(
         None => implicit_before(&points, mark.ts)?,
     };
     let after = crate::checkpoint::live_tree(repo, &session.id).ok()?;
-    let files = spans.span(repo, &session.id, &before, &after, since, others).ok()?;
-    let lines = files.iter().map(|f| f.added + f.removed).sum();
-    Some((lines, first_turn_after(&points, mark.ts)))
+    let files = spans
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .span(repo, &session.id, &before, &after, since, others)
+        .ok()?;
+    Some((files, first_turn_after(&points, mark.ts)))
+}
+
+fn span_signals(
+    session: &SessionMeta,
+    project: &str,
+    files: &[CheckpointFile],
+    scopes: &Mutex<scope::ScopeCache>,
+) -> SpanSignals {
+    let repo = Path::new(&session.cwd);
+    let (rules, _) = crate::secret_watch::current();
+    let in_repo = crate::checkpoint::git_capture(&session.cwd, &["rev-parse", "--show-prefix"]).unwrap_or_default();
+    let named = scopes.lock().unwrap_or_else(std::sync::PoisonError::into_inner).named(
+        &session.id,
+        repo,
+        in_repo.trim(),
+        || crate::chat::commands::first_prompt(&session.id, &session.agent),
+        || scope::linked_issue_body(project, &session.branch),
+    );
+    SpanSignals {
+        lines: files.iter().map(|f| f.added + f.removed).sum(),
+        files: paths::file_signals(files, repo, &rules),
+        outside: scope::outside(files, &named),
+    }
 }
 
 struct Transcript {
@@ -323,17 +376,21 @@ fn item(
     mark: &Mark,
     transcript: Transcript,
     others: &[String],
-    spans: &mut SpanCache,
+    spans: &Mutex<SpanCache>,
+    scopes: &Mutex<scope::ScopeCache>,
 ) -> Option<ReviewItem> {
-    let own = own_lines(session, mark, others, spans);
-    let wrote = match own {
-        Some((lines, _)) => lines > 0,
+    let own = own_span(session, mark, others, spans);
+    let span = own
+        .as_ref()
+        .map(|(files, _)| span_signals(session, project, files, scopes));
+    let wrote = match &span {
+        Some(span) => span.lines > 0,
         None => transcript.turns.code_turns > 0,
     };
     if !wrote {
         return None;
     }
-    let (score, signals) = score(own.map(|(lines, _)| lines), &transcript.turns);
+    let (score, signals) = score(span.as_ref(), &transcript.turns);
     Some(ReviewItem {
         unit: ReviewUnit::Session { id: session.id.clone() },
         project: project.to_string(),
@@ -357,7 +414,12 @@ fn order(items: &mut [ReviewItem]) {
     items.sort_by(|a, b| b.score.cmp(&a.score).then(b.to_ts.cmp(&a.to_ts)));
 }
 
-fn inbox(sessions: Vec<SessionMeta>, store: &Store, spans: &mut SpanCache) -> Vec<ReviewItem> {
+fn inbox(
+    sessions: Vec<SessionMeta>,
+    store: &Store,
+    spans: &Mutex<SpanCache>,
+    scopes: &Mutex<scope::ScopeCache>,
+) -> Vec<ReviewItem> {
     let projects = crate::config::discovered_project_dirs();
     let mut waiting: HashMap<String, bool> = HashMap::new();
     let mut items = Vec::new();
@@ -383,7 +445,7 @@ fn inbox(sessions: Vec<SessionMeta>, store: &Store, spans: &mut SpanCache) -> Ve
             .filter(|s| s.id != session.id && crate::rpc::events::same_folder(&s.cwd, &session.cwd))
             .map(|s| s.id.clone())
             .collect();
-        items.extend(item(session, &project, &mark, transcript, &others, spans));
+        items.extend(item(session, &project, &mark, transcript, &others, spans, scopes));
     }
     order(&mut items);
     items
@@ -398,8 +460,7 @@ pub fn review_inbox(index: State<SessionIndex>) -> Vec<ReviewItem> {
         load_from(&store_path(), now_secs())
     };
     let sessions = crate::sessions::listed_sessions(&index, None);
-    let mut spans = SPANS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    inbox(sessions, &store, &mut spans)
+    inbox(sessions, &store, &SPANS, &scope::SCOPES)
 }
 
 /// Mark a unit reviewed up to `to_ts`, the latest prompt the reviewer saw.
@@ -577,8 +638,12 @@ mod tests {
 
     #[test]
     fn a_secret_read_outranks_a_much_bigger_clean_change() {
+        let span = |lines| SpanSignals {
+            lines,
+            ..Default::default()
+        };
         let (risky, risky_signals) = score(
-            Some(42),
+            Some(&span(42)),
             &TurnSignals {
                 code_turns: 1,
                 secret_reads: 1,
@@ -586,7 +651,7 @@ mod tests {
             },
         );
         let (big, _) = score(
-            Some(1_850),
+            Some(&span(1_850)),
             &TurnSignals {
                 code_turns: 6,
                 ..Default::default()
@@ -607,7 +672,8 @@ mod tests {
         std::fs::write(dir.join("gen.rs"), lines(120)).unwrap();
         touched(&sid, 100, "Bash", &[]);
 
-        let mut spans = SpanCache::default();
+        let spans = Mutex::new(SpanCache::default());
+        let scopes = Mutex::new(scope::ScopeCache::default());
         let mark = Mark { ts: 50, tree: None };
         let row = item(
             &session(&sid, &dir),
@@ -615,7 +681,8 @@ mod tests {
             &mark,
             transcript(TurnSignals::default()),
             &[],
-            &mut spans,
+            &spans,
+            &scopes,
         )
         .expect("a heredoc write is still work to read");
         assert_eq!(line_count(&row), Some(120));
@@ -635,9 +702,10 @@ mod tests {
         touched(&a, 100, "Edit", &[dir.join("a.rs")]);
         touched(&b, 100, "Edit", &[dir.join("b.rs")]);
 
-        let mut spans = SpanCache::default();
+        let spans = Mutex::new(SpanCache::default());
         let mark = Mark { ts: 50, tree: None };
-        let row = |id: &str, other: &str, spans: &mut SpanCache| {
+        let row = |id: &str, other: &str, spans: &Mutex<SpanCache>| {
+            let scopes = Mutex::new(scope::ScopeCache::default());
             item(
                 &session(id, &dir),
                 "/p",
@@ -645,15 +713,20 @@ mod tests {
                 transcript(TurnSignals::default()),
                 &[other.to_string()],
                 spans,
+                &scopes,
             )
             .unwrap()
         };
-        assert_eq!(line_count(&row(&a, &b, &mut spans)), Some(30));
-        assert_eq!(line_count(&row(&b, &a, &mut spans)), Some(400));
+        assert_eq!(line_count(&row(&a, &b, &spans)), Some(30));
+        assert_eq!(line_count(&row(&b, &a, &spans)), Some(400));
 
-        let misses = spans.misses;
-        row(&a, &b, &mut spans);
-        assert_eq!(spans.misses, misses, "nothing moved, so no diff ran again");
+        let misses = spans.lock().unwrap().misses;
+        row(&a, &b, &spans);
+        assert_eq!(
+            spans.lock().unwrap().misses,
+            misses,
+            "nothing moved, so no diff ran again"
+        );
         cleanup(&dir, &[&a, &b]);
     }
 
@@ -677,15 +750,32 @@ mod tests {
         let held = load_from(&store, 0).mark_of(&unit);
         assert!(held.tree.is_some());
 
-        let mut spans = SpanCache::default();
-        let quiet = item(&me, "/p", &held, transcript(TurnSignals::default()), &[], &mut spans);
+        let spans = Mutex::new(SpanCache::default());
+        let scopes = Mutex::new(scope::ScopeCache::default());
+        let quiet = item(
+            &me,
+            "/p",
+            &held,
+            transcript(TurnSignals::default()),
+            &[],
+            &spans,
+            &scopes,
+        );
         assert!(quiet.is_none(), "nothing new since the mark");
 
         crate::checkpoint::checkpoint_snapshot_body(sid.clone(), repo_path, held.ts + 10).unwrap();
         std::fs::write(dir.join("b.rs"), lines(15)).unwrap();
         touched(&sid, held.ts + 10, "Edit", &[dir.join("b.rs")]);
-        let back = item(&me, "/p", &held, transcript(TurnSignals::default()), &[], &mut spans)
-            .expect("a new turn's write brings the row back");
+        let back = item(
+            &me,
+            "/p",
+            &held,
+            transcript(TurnSignals::default()),
+            &[],
+            &spans,
+            &scopes,
+        )
+        .expect("a new turn's write brings the row back");
         assert_eq!(line_count(&back), Some(15), "scored over the new turn only");
         std::fs::remove_dir_all(&store_dir).ok();
         cleanup(&dir, &[&sid]);
@@ -695,9 +785,19 @@ mod tests {
     fn a_session_without_checkpoints_is_judged_by_its_code_turns() {
         let dir = tmp_dir("plain");
         let me = session("plain-1", &dir);
-        let mut spans = SpanCache::default();
+        let spans = Mutex::new(SpanCache::default());
+        let scopes = Mutex::new(scope::ScopeCache::default());
         let mark = Mark { ts: 50, tree: None };
-        assert!(item(&me, "/p", &mark, transcript(TurnSignals::default()), &[], &mut spans).is_none());
+        assert!(item(
+            &me,
+            "/p",
+            &mark,
+            transcript(TurnSignals::default()),
+            &[],
+            &spans,
+            &scopes
+        )
+        .is_none());
         let row = item(
             &me,
             "/p",
@@ -708,7 +808,8 @@ mod tests {
                 ..Default::default()
             }),
             &[],
-            &mut spans,
+            &spans,
+            &scopes,
         )
         .unwrap();
         assert!(row.signals.iter().any(|s| s.kind == SignalKind::NoCheckpoints));
@@ -732,5 +833,49 @@ mod tests {
         assert!(waiting_in(&folder), "a dirty tree waits");
         std::fs::remove_dir_all(&dir).ok();
         std::fs::remove_dir_all(&remote).ok();
+    }
+
+    #[test]
+    fn a_fixture_repo_fires_each_file_signal_once() {
+        let (dir, a) = repo();
+        let b = format!("{a}-b");
+        let repo_path = dir.to_string_lossy().into_owned();
+        std::fs::create_dir_all(dir.join("tests")).unwrap();
+        std::fs::write(dir.join("tests/inbox_test.rs"), lines(40)).unwrap();
+        std::fs::write(dir.join("Cargo.toml"), "[package]\n").unwrap();
+        crate::checkpoint::checkpoint_snapshot_body(a.clone(), repo_path.clone(), 100).unwrap();
+        crate::checkpoint::checkpoint_snapshot_body(b.clone(), repo_path, 100).unwrap();
+
+        std::fs::remove_file(dir.join("tests/inbox_test.rs")).unwrap();
+        std::fs::write(dir.join("Cargo.toml"), "[package]\n[dependencies]\nserde = \"1\"\n").unwrap();
+        std::fs::create_dir_all(dir.join(".github/workflows")).unwrap();
+        std::fs::write(dir.join(".github/workflows/ci.yml"), "on: push\n").unwrap();
+        let written = [
+            dir.join("tests/inbox_test.rs"),
+            dir.join("Cargo.toml"),
+            dir.join(".github/workflows/ci.yml"),
+        ];
+        touched(&a, 100, "Edit", &written);
+        touched(&b, 100, "Edit", &[dir.join("Cargo.toml")]);
+
+        let spans = Mutex::new(SpanCache::default());
+        let scopes = Mutex::new(scope::ScopeCache::default());
+        let row = item(
+            &session(&a, &dir),
+            "/p",
+            &Mark { ts: 50, tree: None },
+            transcript(TurnSignals::default()),
+            std::slice::from_ref(&b),
+            &spans,
+            &scopes,
+        )
+        .unwrap();
+        let count = |kind| row.signals.iter().find(|s| s.kind == kind).map(|s| s.count);
+        assert_eq!(count(SignalKind::DeletedTests), Some(1));
+        assert_eq!(count(SignalKind::Dependencies), Some(1));
+        assert_eq!(count(SignalKind::SensitivePath), Some(1));
+        assert_eq!(count(SignalKind::SharedFile), Some(1));
+        assert_eq!(count(SignalKind::OutsideScope), None, "the session named nothing");
+        cleanup(&dir, &[&a, &b]);
     }
 }

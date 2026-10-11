@@ -20,7 +20,18 @@ import {
 export type ReviewUnit = { kind: "session"; id: string };
 
 /** Mirrors `SignalKind` in src-tauri/src/review.rs. */
-export type SignalKind = "lines" | "secretRead" | "failed" | "blindEdit" | "unverified" | "noCheckpoints";
+export type SignalKind =
+  | "lines"
+  | "secretRead"
+  | "failed"
+  | "blindEdit"
+  | "unverified"
+  | "deletedTests"
+  | "sensitivePath"
+  | "dependencies"
+  | "outsideScope"
+  | "sharedFile"
+  | "noCheckpoints";
 
 export type ReviewSignal = { kind: SignalKind; count: number; points: number };
 
@@ -53,6 +64,16 @@ export function signalLabel(signal: ReviewSignal): string {
       return `${plural(signal.count, "edit")} without reading`;
     case "unverified":
       return plural(signal.count, "unverified turn");
+    case "deletedTests":
+      return `${plural(signal.count, "test file")} deleted`;
+    case "sensitivePath":
+      return plural(signal.count, "CI, auth or secret file");
+    case "dependencies":
+      return `${plural(signal.count, "manifest or lockfile", "manifests or lockfiles")} changed`;
+    case "outsideScope":
+      return `${plural(signal.count, "file")} outside the named folders`;
+    case "sharedFile":
+      return `${plural(signal.count, "file")} shared with another session`;
     case "noCheckpoints":
       return "No checkpoints";
   }

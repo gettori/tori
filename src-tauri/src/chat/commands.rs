@@ -1451,6 +1451,26 @@ pub(crate) fn last_reply(session_id: &str, agent_id: &str) -> Option<String> {
     crate::rpc::methods::last_assistant_text(&parsed.events)
 }
 
+/// The text of the session's first prompt, for what the task named.
+pub(crate) fn first_prompt(session_id: &str, agent_id: &str) -> Option<String> {
+    let source = history_source(session_id, agent_id);
+    let path = source_path(&source)?;
+    let parsed = marked_history(session_id, &source, agent_id, &path);
+    parsed.events.iter().find_map(|event| match event {
+        ChatEvent::UserMessage { blocks, .. } => Some(
+            blocks
+                .iter()
+                .filter_map(|b| match b {
+                    ContentBlock::Text { text } => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        ),
+        _ => None,
+    })
+}
+
 static BLIND_TURNS: std::sync::LazyLock<Mutex<crate::secret_watch::TurnCache<crate::blind_edit::BlindTurn>>> =
     std::sync::LazyLock::new(Mutex::default);
 
