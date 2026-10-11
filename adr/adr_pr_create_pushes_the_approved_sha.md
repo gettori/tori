@@ -32,3 +32,4 @@ The `PrCreate` draft carries `head_sha`, and the approval card shows "a pull req
 - [[adr_a_background_session_needs_a_tori_gate]]: the gate the push sits behind
 - [[component_app_socket]]: the `pr.create` row
 - [[concept_askpass_bridge]]: how the push authenticates
+- [[concept_push_target_is_origin_branch_not_the_upstream]]: Force Push leases on an exact sha the same way
