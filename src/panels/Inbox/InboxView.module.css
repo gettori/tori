@@ -139,12 +139,17 @@
   }
 
   .signal[data-kind="secretRead"],
-  .signal[data-kind="failed"] {
+  .signal[data-kind="failed"],
+  .signal[data-kind="deletedTests"],
+  .signal[data-kind="sensitivePath"] {
     color: var(--danger-fg);
   }
 
   .signal[data-kind="blindEdit"],
-  .signal[data-kind="unverified"] {
+  .signal[data-kind="unverified"],
+  .signal[data-kind="dependencies"],
+  .signal[data-kind="outsideScope"],
+  .signal[data-kind="sharedFile"] {
     color: var(--attention-fg);
   }
 
