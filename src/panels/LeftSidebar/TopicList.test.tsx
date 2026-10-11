@@ -206,6 +206,7 @@ const asReference = (m: Member): Member => ({
   checkout: { path: m.repoPath, branch: "main", defaultBranch: "main" },
   state: { kind: "present" },
 });
+const keepsBranch = (m: Member, branch = "fix-x"): Member => ({ ...m, keepsBranch: true, branch });
 const { enterRoots } = await import("../../utils/gitActions");
 const { emit, NEW_TOPIC } = await import("../../utils/events");
 
@@ -661,6 +662,22 @@ describe("TopicList", () => {
       expect(removed[0].args).toMatchObject({ branch: "feat/auth", force: true });
     });
 
+    it("never offers the branch of a worktree moved in, and removes only the worktree", async () => {
+      bridge.topics = [{ ...AUTH, members: [AUTH.members[0], keepsBranch(AUTH.members[1])] }, PAY];
+      const dialog = await toSweep();
+      expect(dialog.textContent).toContain("stays on its branch");
+      expect(branchBox("/w/web")).toBeNull();
+      expect(branchBox("/w/api")).toBeTruthy();
+      choose("/w/web", "Remove");
+      fireEvent.click(screen.getByRole("button", { name: "Remove 1 worktree" }));
+
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      const removed = bridge.calls.filter((c) => c.cmd.startsWith("remove_worktree"));
+      expect(removed.map((c) => c.cmd)).toEqual(["remove_worktree"]);
+      expect(removed[0].args).toMatchObject({ worktreePath: AUTH_WEB });
+      expect(bridge.calls.some((c) => c.cmd === "delete_remote_branch")).toBe(false);
+    });
+
     it("keeps going when one row refuses, and leaves that row on screen", async () => {
       bridge.refuse = new Set([AUTH_API]);
       await toSweep();
@@ -808,6 +825,53 @@ describe("TopicList", () => {
       });
       expect(moved).toEqual([{ workspace: topicKey("auth-1"), from: "/w/web", to }]);
       expect(onSelect.mock.lastCall![1]).toEqual({ from: "/w/web", to });
+    });
+
+    it("offers no Remove worktree on a worktree moved in, and Remove repository never offers its branch", async () => {
+      bridge.topics = [{ ...AUTH, members: [AUTH.members[0], keepsBranch(AUTH.members[1])] }, PAY];
+      await openOn("Auth", "/w/web");
+      await screen.findByText("Rename…");
+      expect(screen.queryByText("Remove worktree…")).toBeNull();
+      pointerClick(screen.getByText("Remove repository"));
+
+      const dialog = await screen.findByRole("dialog", { name: /Remove worktree/ });
+      expect(dialog.textContent).not.toContain("feat/auth");
+      expect(dialog.querySelector('input[type="checkbox"]')).toBeNull();
+      fireEvent.click(within(dialog).getByRole("button", { name: "Remove worktree" }));
+      await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "remove_worktree")).toBe(true));
+      expect(bridge.calls.some((c) => c.cmd === "remove_worktree_and_branch")).toBe(false);
+      expect(bridge.calls.some((c) => c.cmd === "delete_remote_branch")).toBe(false);
+    });
+
+    it("shows the branch a worktree moved in is on, and no Recreate when it goes missing", async () => {
+      const gone = { ...keepsBranch(AUTH.members[1]), state: { kind: "worktree-missing" } as MemberState };
+      bridge.topics = [{ ...AUTH, members: [keepsBranch(AUTH.members[0]), gone] }, PAY];
+      render(() => <TopicList spaces={SPACES} query="" />);
+      await screen.findByText("Auth");
+      await expand("Auth");
+
+      expect(memberRow("/w/api").querySelector("[data-member-branch]")!.textContent).toBe("On fix-x");
+      expect(memberRow("/w/web").textContent).toContain("Worktree missing");
+      expect(within(memberRow("/w/web")).queryByRole("button", { name: /Recreate/ })).toBeNull();
+    });
+
+    it("moves the tabs when the backend says a reference was upgraded to a worktree", async () => {
+      const onSelect = vi.fn();
+      const moved: unknown[] = [];
+      const onMoved = (e: Event) => moved.push((e as CustomEvent).detail);
+      window.addEventListener(ROOT_MOVED, onMoved);
+      try {
+        render(() => <TopicList spaces={SPACES} query="" activeId="auth-1" onSelect={onSelect} />);
+        await screen.findByText("Auth");
+        await waitFor(() => expect(bridge.handlers.has("topics://promoted")).toBe(true));
+        bridge.handlers.get("topics://promoted")!({
+          payload: { topic: AUTH, from: "/w/web", to: "/w/web-fix" },
+        });
+      } finally {
+        window.removeEventListener(ROOT_MOVED, onMoved);
+      }
+      expect(moved).toEqual([{ workspace: topicKey("auth-1"), from: "/w/web", to: "/w/web-fix" }]);
+      expect(onSelect.mock.lastCall![1]).toEqual({ from: "/w/web", to: "/w/web-fix" });
     });
 
     it("Remove worktree demotes the member after the confirm, never offering to delete the branch", async () => {

@@ -197,7 +197,7 @@ export function tintedMember(member: Member, spaces: SpaceTint[]): TintedMember 
     key: memberFolder(member) ?? member.repoPath,
     root: memberRoot(member),
     label: member.displayName,
-    state: memberState(member.state),
+    state: memberState(member.state, member.keepsBranch),
     hue,
     style: space && hue ? { "--chip-hue": hue, "--chip-rgb": spaceHueRgb(space.name, space.color) } : undefined,
     icon: { seed: member.repoPath, icon: project?.icon, iconFile: project?.iconFile, favicon: project?.favicon },

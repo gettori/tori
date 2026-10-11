@@ -6,6 +6,8 @@ import {
   isShellsKey,
   tabUnderFolder,
   memberState,
+  memberBranch,
+  memberPrBranch,
   rootOf,
   selectionRoot,
   SHELLS_KEY,
@@ -42,6 +44,34 @@ describe("memberState", () => {
       action: "retry",
       reason: "index.lock exists",
     });
+  });
+
+  it("offers no Recreate to a worktree moved in, which would land on the Topic branch", () => {
+    expect(memberState({ kind: "worktree-missing" }, true)).toMatchObject({ usable: false, action: null });
+    expect(memberState({ kind: "repo-missing" }, true)).toMatchObject({ action: "locate" });
+  });
+});
+
+describe("a member's branch", () => {
+  type Branchy = Pick<Member, "mode" | "checkout" | "keepsBranch" | "branch">;
+  const worktree: Branchy = { mode: "worktree", checkout: null };
+  const moved: Branchy = { ...worktree, keepsBranch: true, branch: "fix-x" };
+  const reference: Branchy = {
+    mode: "reference",
+    checkout: { path: "/r", branch: "main", defaultBranch: "main" },
+  };
+
+  it("is the Topic's for a worktree, its own for one moved in, the checkout's for a reference", () => {
+    expect(memberBranch(worktree, "feat/t")).toBe("feat/t");
+    expect(memberBranch(moved, "feat/t")).toBe("fix-x");
+    expect(memberBranch({ ...moved, branch: null }, "feat/t")).toBeNull();
+    expect(memberBranch(reference, "feat/t")).toBe("main");
+  });
+
+  it("finds a moved-in worktree's pull request on its own branch and everyone else's on the Topic's", () => {
+    expect(memberPrBranch(worktree, "feat/t")).toBe("feat/t");
+    expect(memberPrBranch(moved, "feat/t")).toBe("fix-x");
+    expect(memberPrBranch(reference, "feat/t")).toBe("feat/t");
   });
 });
 

@@ -16,8 +16,10 @@ import { pushToast } from "../../components/Toasts/Toasts";
 import type { MenuItem } from "../../components/Menu/rows";
 import type { RepoSpace } from "../../components/Dialogs/RepoChecklist";
 import {
+  byName,
   isReference,
   memberBranch,
+  memberPrBranch,
   memberRoot,
   memberState,
   type Topic,
@@ -51,11 +53,6 @@ export type TopicSpace = SpaceTint & RepoSpace;
  *  after every step of a creation, and is applied as is, no refetch, so chips
  *  flip one by one. `config://changed` fires once at the end (and whenever
  *  the tree changes for any other reason), and that one refetches. */
-// The order `projects.list` serves topics in, so a client drawing from the
-// socket lists them the way this does.
-const lower = (t: Topic) => t.name.toLowerCase();
-const byName = (a: Topic, b: Topic) =>
-  lower(a) < lower(b) ? -1 : lower(a) > lower(b) ? 1 : a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 
 const LS_EXPANDED = "tori.topics-expanded.v1";
 
@@ -324,8 +321,9 @@ export default function TopicList(props: {
       }
       return setWtReq(null);
     }
-    const branch = req.topic.branch;
-    if (opts.deleteRemote) {
+    // A worktree moved in keeps a branch Tori never made, so it is never offered.
+    const branch = req.member.keepsBranch ? null : req.topic.branch;
+    if (branch && opts.deleteRemote) {
       try {
         await invoke("delete_remote_branch", { repo: req.member.repoPath, branch });
       } catch (e) {
@@ -399,6 +397,8 @@ export default function TopicList(props: {
         state: memberState(m.state).label,
         dirty: null,
         unpushed: null,
+        keepsBranch: m.keepsBranch,
+        branch: m.keepsBranch ? (m.branch ?? null) : topic.branch,
       }));
 
   // What git said about each member's worktree, by repo path. Kept beside the two
@@ -529,9 +529,13 @@ export default function TopicList(props: {
       const root = isReference(member) ? memberRoot(member) : null;
       return [
         ...(root ? [{ label: "Pull", onClick: () => void pull(root, false, true) }, { separator: true as const }] : []),
-        isReference(member)
-          ? { label: "Create worktree", onClick: () => void promote(topic, member) }
-          : { label: "Remove worktree…", onClick: () => demote(topic, member) },
+        // A worktree moved in has no Remove worktree: promoting it back would
+        // land on the Topic branch, not the one it came with.
+        ...(isReference(member)
+          ? [{ label: "Create worktree", onClick: () => void promote(topic, member) }]
+          : member.keepsBranch
+            ? []
+            : [{ label: "Remove worktree…", onClick: () => demote(topic, member) }]),
         { label: "Rename…", onClick: () => setMemberRenameReq({ topic, member }) },
         { label: "Move up", disabled: i <= 0, onClick: () => move(topic, member, -1) },
         { label: "Move down", disabled: i < 0 || i >= keys.length - 1, onClick: () => move(topic, member, 1) },
@@ -588,12 +592,17 @@ export default function TopicList(props: {
                 memberMenu={memberMenu(f)}
                 memberSync={(m) => syncFor(memberRoot(m), memberBranch(m, f.branch))}
                 status={() => props.topicStatus?.(f) ?? null}
-                memberPr={(m) => (forgePause(m.repoPath) ? null : unitStatus(m.repoPath, f.branch))}
-                memberFinished={(m) =>
+                memberPr={(m) => {
+                  const branch = memberPrBranch(m, f.branch);
+                  return forgePause(m.repoPath) || !branch ? null : unitStatus(m.repoPath, branch);
+                }}
+                memberFinished={(m) => {
                   // A reference sits on the repo's default branch, whose PRs are
                   // not this Topic's.
-                  isReference(m) ? null : finishedPr(memberRoot(m), f.branch, syncFor(memberRoot(m), f.branch))
-                }
+                  const branch = memberPrBranch(m, f.branch);
+                  if (isReference(m) || !branch) return null;
+                  return finishedPr(memberRoot(m), branch, syncFor(memberRoot(m), branch));
+                }}
                 onReorder={(repoPaths) => void reorder(f, repoPaths)}
                 expanded={!!expanded()[f.id]}
                 onExpand={(open) => setExpanded((prev) => ({ ...prev, [f.id]: open }))}
@@ -648,7 +657,7 @@ export default function TopicList(props: {
             path={req().worktreePath}
             // Remove worktree keeps the branch, so there is no branch to offer
             // deleting, and unpushed commits stay on it rather than being lost.
-            branch={req().demote ? null : req().topic.branch}
+            branch={req().demote || req().member.keepsBranch ? null : req().topic.branch}
             dirty={req().dirty}
             unpushed={req().demote ? false : req().unpushed}
             hasRemote={req().demote ? false : req().hasRemote}

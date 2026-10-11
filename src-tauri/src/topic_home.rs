@@ -161,6 +161,9 @@ fn body(topic: &Topic) -> String {
     for m in &members {
         let path = member_root(m).unwrap_or(&m.repo_path);
         out.push_str(&format!("- {} ({}): `{}`", m.display_name, mode_word(m), path));
+        if let (true, Some(branch)) = (m.keeps_branch, m.branch.as_deref()) {
+            out.push_str(&format!(", on its own branch `{branch}`"));
+        }
         if let Some(s) = state_word(&m.state) {
             out.push_str(&format!(", {s}"));
         }
@@ -427,5 +430,15 @@ mod tests {
         assert_eq!(refused("TOPIC.md"), None);
         assert_eq!(refused("/tmp/scratch.txt"), None);
         assert_eq!(write_refusal(&topics, "/elsewhere", "/p/web/src/app.ts"), None);
+    }
+
+    #[test]
+    fn the_note_names_the_branch_a_moved_worktree_kept() {
+        let mut topic = crate::unit_home::tests::topic();
+        topic.members[0].keeps_branch = true;
+        topic.members[0].branch = Some("fix-x".into());
+        let text = body(&topic);
+        assert!(text.contains("on its own branch `fix-x`"), "{text}");
+        assert_eq!(text.matches("on its own branch").count(), 1, "only the moved member");
     }
 }

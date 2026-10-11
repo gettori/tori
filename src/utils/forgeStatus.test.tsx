@@ -274,6 +274,13 @@ describe("a Topic's members", () => {
     order: 0,
   });
 
+  it("asks about a moved-in worktree's own branch, not the Topic's", async () => {
+    const moved = { ...member("/api", "worktree"), keepsBranch: true, branch: "fix-x" };
+    const detached = { ...member("/web", "worktree"), keepsBranch: true, branch: null };
+    const watched = topicProjects([{ topic: topic([moved, detached]), visible: true }], () => false);
+    expect(watched).toEqual([{ path: "/api", units: [{ branch: "fix-x", visible: true }] }]);
+  });
+
   it("asks about the Topic branch in a plain repo, and never for a reference that was never promoted", async () => {
     const watched = topicProjects(
       [

@@ -82,6 +82,15 @@ pub struct Member {
     pub state: MemberState,
     #[serde(default)]
     pub order: u32,
+    /// A worktree moved in on a branch of its own: the Topic never made it,
+    /// so it reconciles on any branch and none of its branches is Tori's to
+    /// delete or recreate.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub keeps_branch: bool,
+    /// The branch a `keeps_branch` worktree has checked out, refreshed by every
+    /// reconcile. `None` for every other member, whose branch is the Topic's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
 }
 
 pub fn member_root(m: &Member) -> Option<&str> {
@@ -242,6 +251,7 @@ pub fn list_and_adopt(store: &Store) -> (Vec<Topic>, Vec<Adopted>) {
 }
 
 /// A reference member taken on as a worktree member, and where its root moved.
+#[derive(Debug)]
 pub struct Adopted {
     pub topic_id: String,
     pub from: Option<String>,
@@ -257,8 +267,13 @@ fn reconcile(store: &Store, adopt: bool) -> (Vec<Topic>, Vec<Adopted>) {
     for topic in &mut file.topics {
         for member in &mut topic.members {
             let was = member.mode;
+            let was_branch = member.branch.clone();
             let (state, checkout) = match member.mode {
-                MemberMode::Worktree => (reconcile_member(member, &topic.branch), None),
+                MemberMode::Worktree => {
+                    let (state, branch) = reconcile_member(member, &topic.branch);
+                    member.branch = branch;
+                    (state, None)
+                }
                 MemberMode::Reference => {
                     let (found, listed) = reference_checkout(&member.repo_path);
                     let made = listed
@@ -281,7 +296,8 @@ fn reconcile(store: &Store, adopt: bool) -> (Vec<Topic>, Vec<Adopted>) {
                     }
                 }
             };
-            if state != member.state || checkout != member.checkout || member.mode != was {
+            if state != member.state || checkout != member.checkout || member.mode != was || member.branch != was_branch
+            {
                 member.state = state;
                 member.checkout = checkout;
                 changed = true;
@@ -302,27 +318,35 @@ fn reconcile(store: &Store, adopt: bool) -> (Vec<Topic>, Vec<Adopted>) {
 /// Three checks, in order: the repo answers git at all, the recorded worktree
 /// is on disk and listed, and the listed checkout is still on the Topic
 /// branch. A folder deleted without `git worktree prune` is still listed, which
-/// is why the disk check is separate from the list.
-fn reconcile_member(member: &Member, branch: &str) -> MemberState {
+/// is why the disk check is separate from the list. A `keeps_branch` member
+/// skips the branch check and answers the branch it is on; any other member
+/// answers `None`, its branch being the Topic's.
+fn reconcile_member(member: &Member, branch: &str) -> (MemberState, Option<String>) {
+    let kept = |b: Option<String>| if member.keeps_branch { b } else { None };
     if !crate::worktree::repo_readable(&member.repo_path) {
-        return MemberState::RepoMissing;
+        return (MemberState::RepoMissing, kept(member.branch.clone()));
     }
     let Some(wt) = member.worktree_path.as_deref() else {
-        return match &member.state {
+        let state = match &member.state {
             failed @ MemberState::Failed { .. } => failed.clone(),
             _ => MemberState::WorktreeMissing,
         };
+        return (state, kept(member.branch.clone()));
     };
     if !Path::new(wt).is_dir() {
-        return MemberState::WorktreeMissing;
+        return (MemberState::WorktreeMissing, kept(member.branch.clone()));
     }
     let target = canon(wt);
     let listed = crate::worktree::list_worktrees_body(member.repo_path.clone())
         .ok()
         .and_then(|all| all.into_iter().find(|w| canon(&w.path) == target));
     match listed {
-        Some(w) if w.branch == branch => MemberState::Present,
-        _ => MemberState::WorktreeMissing,
+        Some(w) if member.keeps_branch => (
+            MemberState::Present,
+            Some(w.branch).filter(|b| !b.is_empty() && b != "(detached)"),
+        ),
+        Some(w) if w.branch == branch => (MemberState::Present, None),
+        _ => (MemberState::WorktreeMissing, kept(member.branch.clone())),
     }
 }
 
@@ -378,6 +402,10 @@ fn member_mut<'a>(topic: &'a mut Topic, repo_path: &str) -> Result<&'a mut Membe
         .find(|m| same_path(&m.repo_path, repo_path))
         .ok_or_else(|| format!("{repo_path} is not a member of {}", topic.name))
 }
+
+/// Why a moved-in worktree has no Recreate and no Remove worktree: both land
+/// on the Topic branch, which would swap the user's branch for Tori's.
+pub const KEEPS_BRANCH: &str = "This worktree keeps its own branch. Remove it from the Topic instead.";
 
 /// What the last-member refusal says, so the row menu can draw the reason on a
 /// refusing Remove rather than waiting for the command to answer with it.
@@ -645,6 +673,8 @@ fn pending_member(repo: &str, mode: MemberMode, order: u32) -> Member {
         checkout: None,
         state: MemberState::Failed { reason: PENDING.into() },
         order,
+        keeps_branch: false,
+        branch: None,
     }
 }
 
@@ -655,13 +685,79 @@ pub struct NewMember {
     pub repo_path: String,
     #[serde(default)]
     pub mode: MemberMode,
+    /// A worktree the user already has, taken as it is rather than one made
+    /// on the Topic branch. Only read for a worktree member.
+    #[serde(default)]
+    pub worktree_path: Option<String>,
 }
 
-fn build(store: &Store, topic_id: &str, repo: &str, branch: &str, mode: MemberMode) -> Result<(), String> {
-    match mode {
-        MemberMode::Worktree => build_member(store, topic_id, repo, branch),
-        MemberMode::Reference => build_reference(store, topic_id, repo, false),
+fn build(store: &Store, topic_id: &str, repo: &str, branch: &str, m: &NewMember) -> Result<(), String> {
+    match (m.mode, m.worktree_path.as_deref()) {
+        (MemberMode::Worktree, Some(path)) => {
+            let outcome = moved_worktree(repo, path);
+            store.mutate(|file| {
+                let member = member_mut(topic_mut(file, topic_id)?, repo)?;
+                match outcome {
+                    Ok(w) => keep_branch(member, w),
+                    Err(reason) => {
+                        member.keeps_branch = true;
+                        member.state = MemberState::Failed { reason };
+                    }
+                }
+                Ok(())
+            })
+        }
+        (MemberMode::Worktree, None) => build_member(store, topic_id, repo, branch),
+        (MemberMode::Reference, _) => build_reference(store, topic_id, repo, false),
     }
+}
+
+/// Why `path` cannot join a Topic as it is, or the worktree git lists there.
+/// A plain repo's own checkout is the user's repository, not a worktree, and a
+/// default branch worktree is what every reference to the repo reads.
+pub fn moved_worktree(repo: &str, path: &str) -> Result<crate::worktree::Worktree, String> {
+    if !crate::worktree::repo_readable(repo) {
+        return Err(format!("{repo} is not a git repository"));
+    }
+    let listed = list_worktrees_body(repo.to_string())?;
+    let is_container = listed.iter().any(|w| w.is_bare);
+    let target = canon(path);
+    let Some(w) = listed
+        .into_iter()
+        .find(|w| !w.is_bare && canon(&w.path) == target && Path::new(&w.path).is_dir())
+    else {
+        return Err(format!("{path} is not a worktree of {}", repo_display_name(repo)));
+    };
+    if w.is_main && !is_container {
+        return Err(format!(
+            "{} is the repository's own checkout, not a worktree",
+            repo_display_name(repo)
+        ));
+    }
+    if w.branch.is_empty() || w.branch == "(detached)" {
+        return Err(format!("{} is not on a branch", repo_display_name(&w.path)));
+    }
+    let default = match crate::worktree::origin_default(repo) {
+        Some(d) => w.branch == d,
+        None => w.branch == "main" || w.branch == "master",
+    };
+    if default {
+        return Err(format!(
+            "{} is on {}, the repository's default branch",
+            repo_display_name(&w.path),
+            w.branch
+        ));
+    }
+    Ok(w)
+}
+
+fn keep_branch(member: &mut Member, w: crate::worktree::Worktree) {
+    member.mode = MemberMode::Worktree;
+    member.worktree_path = Some(w.path);
+    member.checkout = None;
+    member.state = MemberState::Present;
+    member.keeps_branch = true;
+    member.branch = Some(w.branch);
 }
 
 /// Attaching never writes git. Only the repair, which the user asks for by
@@ -775,6 +871,9 @@ pub fn demote_member(store: &Store, topic_id: &str, repo: &str, force: bool) -> 
     if member.mode == MemberMode::Reference {
         return Err(format!("{} has no worktree", member.display_name));
     }
+    if member.keeps_branch {
+        return Err(KEEPS_BRANCH.into());
+    }
     if let (MemberState::Present, Some(wt)) = (&member.state, member.worktree_path.as_deref()) {
         let lock = repo_lock(repo);
         let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -813,6 +912,7 @@ pub fn create_topic(
         .map(|r| NewMember {
             repo_path: r.clone(),
             mode: MemberMode::Worktree,
+            worktree_path: None,
         })
         .collect();
     create_topic_with(store, name, branch, &members, on_step)
@@ -865,7 +965,7 @@ pub fn create_topic_with(
 
     on_step(&load_topic(store, &id)?);
     for m in members {
-        build(store, &id, &m.repo_path, &branch, m.mode)?;
+        build(store, &id, &m.repo_path, &branch, m)?;
         on_step(&load_topic(store, &id)?);
     }
     load_topic(store, &id)
@@ -878,6 +978,9 @@ pub fn retry_member(store: &Store, topic_id: &str, repo: &str) -> Result<Topic, 
     let Some(member) = topic.members.iter().find(|m| same_path(&m.repo_path, repo)) else {
         return Err(format!("{repo} is not a member of {}", topic.name));
     };
+    if member.keeps_branch {
+        return Err(KEEPS_BRANCH.into());
+    }
     match member.mode {
         MemberMode::Worktree => build_member(store, topic_id, repo, &topic.branch)?,
         MemberMode::Reference => build_reference(store, topic_id, repo, true)?,
@@ -910,10 +1013,57 @@ pub fn add_member_as(
         Ok(topic.branch.clone())
     })?;
     on_step(&load_topic(store, topic_id)?);
-    build(store, topic_id, repo, &branch, mode)?;
+    let m = NewMember {
+        repo_path: repo.to_string(),
+        mode,
+        worktree_path: None,
+    };
+    build(store, topic_id, repo, &branch, &m)?;
     let topic = load_topic(store, topic_id)?;
     on_step(&topic);
     Ok(topic)
+}
+
+/// What a Topic says when a repo is already in it with a worktree.
+fn already_a_worktree(member: &Member, topic: &Topic) -> String {
+    format!("{} is already in {} with a worktree", member.display_name, topic.name)
+}
+
+/// Take a worktree the user already has into a Topic, on whatever branch it
+/// is on, touching nothing in git. A repo the Topic reads as a reference is
+/// upgraded to this worktree, and the answer names the folder it moved from;
+/// a repo already in it with a worktree is refused.
+pub fn move_worktree_in(
+    store: &Store,
+    topic_id: &str,
+    repo: &str,
+    path: &str,
+) -> Result<(Topic, Option<Adopted>), String> {
+    let w = moved_worktree(repo, path)?;
+    let adopted = store.mutate(|file| {
+        let topic = topic_mut(file, topic_id)?;
+        let existing = topic.members.iter().position(|m| same_repo(&m.repo_path, repo));
+        let Some(i) = existing else {
+            let order = topic.members.len() as u32;
+            let mut member = pending_member(repo, MemberMode::Worktree, order);
+            keep_branch(&mut member, w);
+            topic.members.push(member);
+            return Ok(None);
+        };
+        if topic.members[i].mode == MemberMode::Worktree {
+            return Err(already_a_worktree(&topic.members[i], topic));
+        }
+        let member = &mut topic.members[i];
+        let from = member.checkout.as_ref().map(|c| c.path.clone());
+        let to = w.path.clone();
+        keep_branch(member, w);
+        Ok(Some(Adopted {
+            topic_id: topic_id.to_string(),
+            from,
+            to,
+        }))
+    })?;
+    Ok((reconciled_topic(store, topic_id)?, adopted))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1066,16 +1216,40 @@ pub mod commands {
         topic_id: String,
         repo_path: String,
         mode: Option<MemberMode>,
+        worktree_path: Option<String>,
     ) -> Result<Topic, String> {
         let index = index.inner().clone();
         blocking("add_member", move || {
             let store = Store::default_location();
             let mode = mode.unwrap_or_default();
             let before = told_now(&topic_id);
-            let topic = super::add_member_as(&store, &topic_id, &repo_path, mode, &step(&app))?;
+            let topic = match worktree_path {
+                Some(path) => {
+                    let (topic, adopted) = super::move_worktree_in(&store, &topic_id, &repo_path, &path)?;
+                    if let Some(a) = adopted {
+                        let _ = app.emit(
+                            "topics://promoted",
+                            serde_json::json!({ "topic": topic, "from": a.from, "to": a.to }),
+                        );
+                    }
+                    let _ = app.emit("topics://changed", &topic);
+                    topic
+                }
+                None => super::add_member_as(&store, &topic_id, &repo_path, mode, &step(&app))?,
+            };
             settle(&app, &index, &topic);
             tell_chats(&app, &before, &topic);
             Ok(topic)
+        })
+        .await
+    }
+
+    /// Why a worktree cannot be moved into a Topic, or `None` when it can, so
+    /// the dialog says it before anything is asked of the record.
+    #[tauri::command]
+    pub async fn check_moved_worktree(repo_path: String, worktree_path: String) -> Result<Option<String>, String> {
+        blocking("check_moved_worktree", move || {
+            Ok(super::moved_worktree(&repo_path, &worktree_path).err())
         })
         .await
     }
@@ -1312,6 +1486,8 @@ mod tests {
             checkout: None,
             state,
             order: 0,
+            keeps_branch: false,
+            branch: None,
         }
     }
 
@@ -2023,6 +2199,7 @@ mod tests {
         let members = [NewMember {
             repo_path: a.clone(),
             mode: MemberMode::Reference,
+            worktree_path: None,
         }];
         let t = create_topic_with(&store, "X", "feat/x", &members, &|_| {}).unwrap();
         let m = &t.members[0];
@@ -2052,6 +2229,7 @@ mod tests {
         let members = [NewMember {
             repo_path: cont.clone(),
             mode: MemberMode::Reference,
+            worktree_path: None,
         }];
         let t = create_topic_with(&store, "X", "feat/x", &members, &|_| {}).unwrap();
         assert_eq!(t.members[0].state, MemberState::CheckoutMissing);
@@ -2087,6 +2265,7 @@ mod tests {
         let members = [NewMember {
             repo_path: repo.to_string(),
             mode: MemberMode::Reference,
+            worktree_path: None,
         }];
         create_topic_with(store, "X", "feat/x", &members, &|_| {}).unwrap()
     }
@@ -2368,6 +2547,202 @@ mod tests {
             },
         );
         assert_eq!(told.into_inner(), 0, "nothing changed, nothing told");
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    fn kept(repo_path: &str, wt: &str, branch: &str) -> Member {
+        Member {
+            keeps_branch: true,
+            branch: Some(branch.into()),
+            ..member(repo_path, Some(wt), MemberState::Present)
+        }
+    }
+
+    #[test]
+    fn a_worktree_that_keeps_its_branch_reads_present_on_whatever_it_is_on() {
+        let tmp = unique_tmp();
+        let r = tmp.join("r");
+        let repo_path = repo(&r);
+        let wt = tmp.join("wt");
+        let wt_str = wt.to_string_lossy().into_owned();
+        git(&r, &["worktree", "add", "-q", "-b", "fix-x", &wt_str]);
+        let store = store_with(&tmp, vec![topic("f", vec![kept(&repo_path, &wt_str, "fix-x")])]);
+
+        let m = &list_topics(&store)[0].members[0];
+        assert_eq!(m.state, MemberState::Present);
+        assert_eq!(m.branch.as_deref(), Some("fix-x"));
+
+        git(&wt, &["checkout", "-q", "-b", "other"]);
+        let m = &list_topics(&store)[0].members[0];
+        assert_eq!(m.state, MemberState::Present, "a switch is not a missing worktree");
+        assert_eq!(m.branch.as_deref(), Some("other"), "the live branch is recorded");
+        assert_eq!(store.load().topics[0].members[0].branch.as_deref(), Some("other"));
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn a_moved_worktree_joins_as_it_is_and_git_is_untouched() {
+        let tmp = unique_tmp();
+        let r = tmp.join("r");
+        let repo_path = repo(&r);
+        let wt = tmp.join("wt");
+        let wt_str = wt.to_string_lossy().into_owned();
+        git(&r, &["worktree", "add", "-q", "-b", "fix-x", &wt_str]);
+        std::fs::write(wt.join("b.txt"), "two\n").unwrap();
+        git(&wt, &["add", "b.txt"]);
+        git(&wt, &["commit", "-qm", "work"]);
+        std::fs::write(wt.join("a.txt"), "dirty\n").unwrap();
+        std::fs::write(wt.join("new.txt"), "untracked\n").unwrap();
+        let other = repo(&tmp.join("o"));
+        let store = Store::at(tmp.join("topics.json"));
+        let t = create_topic(&store, "T", "feat/t", &[other], &|_| {}).unwrap();
+
+        let status = git_out(&wt_str, &["status", "--porcelain"]);
+        let head = git_out(&wt_str, &["rev-parse", "HEAD"]);
+        let branches = git_out(&repo_path, &["branch", "--list"]);
+        let (t, adopted) = move_worktree_in(&store, &t.id, &repo_path, &wt_str).unwrap();
+
+        assert!(adopted.is_none());
+        let m = t.members.iter().find(|m| same_repo(&m.repo_path, &repo_path)).unwrap();
+        assert_eq!(m.state, MemberState::Present);
+        assert!(m.keeps_branch);
+        assert_eq!(m.branch.as_deref(), Some("fix-x"));
+        assert!(same_path(member_root(m).unwrap(), &wt_str));
+        assert_eq!(git_out(&wt_str, &["status", "--porcelain"]), status);
+        assert_eq!(git_out(&wt_str, &["rev-parse", "HEAD"]), head);
+        assert_eq!(git_out(&repo_path, &["branch", "--list"]), branches, "no branch made");
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn a_detached_or_default_branch_worktree_or_a_main_checkout_is_refused() {
+        let tmp = unique_tmp();
+        let cont = container(&tmp, "c");
+        let default = git_out(&cont, &["symbolic-ref", "--short", "HEAD"]).trim().to_string();
+        let on_default = format!("{cont}/{default}");
+        git(Path::new(&cont), &["worktree", "add", "-q", &on_default, &default]);
+        let detached = format!("{cont}/detached");
+        git(Path::new(&cont), &["worktree", "add", "-q", "--detach", &detached]);
+
+        let err = moved_worktree(&cont, &on_default).err().unwrap();
+        assert!(err.contains("the repository's default branch"), "{err}");
+        let err = moved_worktree(&cont, &detached).err().unwrap();
+        assert!(err.contains("is not on a branch"), "{err}");
+
+        let plain = repo(&tmp.join("p"));
+        let err = moved_worktree(&plain, &plain).err().unwrap();
+        assert!(err.contains("own checkout"), "{err}");
+
+        let (_, clone) = cloned(&tmp, "k");
+        let trunk = format!("{}-trunk", clone);
+        git(Path::new(&clone), &["checkout", "-q", "-b", "elsewhere"]);
+        let origin_default = crate::worktree::origin_default(&clone).unwrap();
+        git(Path::new(&clone), &["worktree", "add", "-q", &trunk, &origin_default]);
+        let err = moved_worktree(&clone, &trunk).err().unwrap();
+        assert!(err.contains("the repository's default branch"), "{err}");
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn a_repo_already_in_with_a_worktree_is_refused_and_a_reference_is_upgraded() {
+        let tmp = unique_tmp();
+        let r = tmp.join("r");
+        let repo_path = repo(&r);
+        let wt = tmp.join("wt");
+        let wt_str = wt.to_string_lossy().into_owned();
+        git(&r, &["worktree", "add", "-q", "-b", "fix-x", &wt_str]);
+        let store = Store::at(tmp.join("topics.json"));
+
+        let t = create_topic(&store, "Worktree", "feat/w", std::slice::from_ref(&repo_path), &|_| {}).unwrap();
+        let err = move_worktree_in(&store, &t.id, &repo_path, &wt_str).unwrap_err();
+        assert_eq!(err, "r is already in Worktree with a worktree");
+
+        let t = reference_topic(&store, &repo_path);
+        let (t, adopted) = move_worktree_in(&store, &t.id, &repo_path, &wt_str).unwrap();
+        let a = adopted.expect("a reference upgraded names where it moved from");
+        assert!(same_path(a.from.as_deref().unwrap(), &repo_path));
+        assert!(same_path(&a.to, &wt_str));
+        assert_eq!(t.members.len(), 1, "upgraded in place, not added");
+        let m = &t.members[0];
+        assert_eq!(m.mode, MemberMode::Worktree);
+        assert_eq!(m.checkout, None);
+        assert!(m.keeps_branch);
+        assert_eq!(m.state, MemberState::Present);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn a_member_that_keeps_its_branch_is_never_recreated_or_demoted() {
+        let tmp = unique_tmp();
+        let r = tmp.join("r");
+        let repo_path = repo(&r);
+        let wt = tmp.join("wt");
+        let wt_str = wt.to_string_lossy().into_owned();
+        git(&r, &["worktree", "add", "-q", "-b", "fix-x", &wt_str]);
+        let store = store_with(&tmp, vec![topic("f", vec![kept(&repo_path, &wt_str, "fix-x")])]);
+
+        assert_eq!(retry_member(&store, "f", &repo_path).unwrap_err(), KEEPS_BRANCH);
+        assert_eq!(demote_member(&store, "f", &repo_path, false).unwrap_err(), KEEPS_BRANCH);
+        assert!(wt.is_dir(), "the worktree is still there");
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn a_pinned_worktree_git_refuses_fails_and_is_never_retried_onto_the_topic_branch() {
+        let tmp = unique_tmp();
+        let r = tmp.join("r");
+        let repo_path = repo(&r);
+        let wt = tmp.join("wt");
+        let wt_str = wt.to_string_lossy().into_owned();
+        git(&r, &["worktree", "add", "-q", "--detach", &wt_str]);
+        let store = Store::at(tmp.join("topics.json"));
+        let members = [NewMember {
+            repo_path: repo_path.clone(),
+            mode: MemberMode::Worktree,
+            worktree_path: Some(wt_str),
+        }];
+        let t = create_topic_with(&store, "T", "feat/t", &members, &|_| {}).unwrap();
+
+        assert!(matches!(&t.members[0].state, MemberState::Failed { reason } if reason.contains("not on a branch")));
+        assert_eq!(retry_member(&store, &t.id, &repo_path).unwrap_err(), KEEPS_BRANCH);
+        assert_eq!(git_out(&repo_path, &["branch", "--list", "feat/t"]).trim(), "");
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn create_topic_takes_a_pinned_worktree_on_its_own_branch() {
+        let tmp = unique_tmp();
+        let r = tmp.join("r");
+        let repo_path = repo(&r);
+        let wt = tmp.join("wt");
+        let wt_str = wt.to_string_lossy().into_owned();
+        git(&r, &["worktree", "add", "-q", "-b", "fix-x", &wt_str]);
+        let other = repo(&tmp.join("o"));
+        let store = Store::at(tmp.join("topics.json"));
+        let members = [
+            NewMember {
+                repo_path: repo_path.clone(),
+                mode: MemberMode::Worktree,
+                worktree_path: Some(wt_str.clone()),
+            },
+            NewMember {
+                repo_path: other.clone(),
+                mode: MemberMode::Worktree,
+                worktree_path: None,
+            },
+        ];
+        let t = create_topic_with(&store, "T", "feat/t", &members, &|_| {}).unwrap();
+
+        assert!(t.members.iter().all(|m| m.state == MemberState::Present));
+        assert!(t.members[0].keeps_branch);
+        assert_eq!(t.members[0].branch.as_deref(), Some("fix-x"));
+        assert!(!t.members[1].keeps_branch);
+        assert!(git_out(&other, &["branch", "--list", "feat/t"]).contains("feat/t"));
+        assert_eq!(
+            git_out(&repo_path, &["branch", "--list", "feat/t"]).trim(),
+            "",
+            "no Topic branch in the moved repo"
+        );
         std::fs::remove_dir_all(&tmp).ok();
     }
 }

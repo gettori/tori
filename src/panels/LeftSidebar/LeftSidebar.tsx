@@ -23,6 +23,7 @@ import PickerModal from "../../components/Dialogs/PickerModal";
 import ConfirmDeleteSpace, { type DeleteEntry } from "../../components/Dialogs/ConfirmDeleteSpace";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
 import WorktreeRemoveDialog from "../../components/Dialogs/WorktreeRemoveDialog";
+import MoveToTopicDialog from "../../components/Dialogs/MoveToTopicDialog";
 import BranchRemoveDialog from "../../components/Dialogs/BranchRemoveDialog";
 import InitGitDialog from "../../components/Dialogs/InitGitDialog";
 import AddBranchDialog, { type BranchPick, type IssueSourceProps } from "../../components/Dialogs/AddBranchDialog";
@@ -631,6 +632,9 @@ export default function LeftSidebar(props: {
     runningCount: number;
     busy: boolean;
   } | null>(null);
+
+  // The worktree a "Move to topic" was asked for.
+  const [moveReq, setMoveReq] = createSignal<{ p: Project; u: BranchUnit } | null>(null);
 
   // The branch removal confirmation (plain-repo branch units). Mirrors wtReq:
   // unpushed/hasRemote fill in async from `branch_status`, `busy` gates the buttons.
@@ -2374,6 +2378,7 @@ export default function LeftSidebar(props: {
     items.push(...watchItems(p, u));
     if (u.kind === "worktree") {
       items.push({ separator: true });
+      items.push({ label: "Move to topic…", onClick: () => setMoveReq({ p, u }) });
       items.push({ label: "Remove worktree", warn: true, onClick: () => openRemoveWorktree(p, u) });
     }
     // Plain branch-unit: checkout always; detach/delete only off the current
@@ -3581,6 +3586,22 @@ export default function LeftSidebar(props: {
           onConfirm={(opts) => confirmRemoveWorktree(opts)}
           onCancel={() => setWtReq(null)}
         />
+      </Show>
+
+      <Show when={moveReq()}>
+        {(req) => (
+          <MoveToTopicDialog
+            repoPath={req().p.path}
+            worktreePath={req().u.folderPath}
+            label={req().u.label}
+            topics={topics()}
+            onDone={(topic) => {
+              applyTopic(topic);
+              setMoveReq(null);
+            }}
+            onCancel={() => setMoveReq(null)}
+          />
+        )}
       </Show>
 
       <Show when={brReq()}>

@@ -86,6 +86,8 @@ export default function TopicItem(props: {
     if (c?.branch && c.defaultBranch && c.branch !== c.defaultBranch) return `On ${c.branch}, not ${c.defaultBranch}`;
     return syncOf(m)?.dirty ? "Has uncommitted changes" : null;
   };
+  const ownBranch = (m: Member): string | null =>
+    m.keepsBranch && m.branch && m.branch !== props.topic.branch ? m.branch : null;
   const stateLabel = (m: Member, label: string) => (isReference(m) && m.state.kind === "present" ? "Reference" : label);
   // Over every member, not the six that fit: a Topic speaks for all of them,
   // and the conflict hiding behind `+3` is the one worth knowing about.
@@ -166,7 +168,10 @@ export default function TopicItem(props: {
                       s.reason && s.reason !== "pending"
                         ? `${m.label}: ${label} (${s.reason})`
                         : `${m.label}: ${label}, ${m.key}`;
-                    return [head, referenceWarning(m.member) ?? "", ...branch].filter(Boolean).join("\n");
+                    const own = ownBranch(m.member);
+                    return [head, own ? `On ${own}` : "", referenceWarning(m.member) ?? "", ...branch]
+                      .filter(Boolean)
+                      .join("\n");
                   };
                   return (
                     <MemberChip
@@ -281,6 +286,13 @@ export default function TopicItem(props: {
                   }
                   end={
                     <>
+                      <Show when={ownBranch(m.member)}>
+                        {(branch) => (
+                          <span class={styles.memberWarning} data-member-branch>
+                            On {branch()}
+                          </span>
+                        )}
+                      </Show>
                       <Show when={referenceWarning(m.member)}>
                         {(warning) => (
                           <span class={styles.memberWarning} data-member-warning>
