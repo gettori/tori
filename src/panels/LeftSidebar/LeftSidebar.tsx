@@ -200,6 +200,7 @@ import BranchLine from "./BranchLine";
 import { prWatchMenu, type PrWatchRow } from "../../utils/prWatchMenu";
 import StatusBubble, { CountBubble } from "./StatusBubble";
 import { inboxOpen, reviewItems } from "../../utils/reviewInbox";
+import { latestUnreviewed, runSecondOpinion, secondOpinionRunning } from "../../utils/secondOpinion";
 import SpaceTile, { ModeTile, TileProbe } from "./SpaceTile";
 import { BranchRow, EmptyRow, GroupRow, MoreRow, ProjectRow } from "./SidebarRows";
 import rows from "./SidebarRows.module.css";
@@ -2433,6 +2434,23 @@ export default function LeftSidebar(props: {
     ];
   };
 
+  const secondOpinionItem = (folder: string): MenuItem => {
+    const item = latestUnreviewed(folder);
+    if (!item)
+      return {
+        label: "Second opinion",
+        refusing: true,
+        note: "No session here has unreviewed work",
+        onClick: () => {},
+      };
+    if (item.secondOpinion?.state === "running" || secondOpinionRunning(item.unit.id))
+      return { label: "Second opinion running", disabled: true, onClick: () => {} };
+    return {
+      label: "Second opinion",
+      onClick: () => void runSecondOpinion({ id: item.unit.id, cwd: item.folder, agent: item.agent }),
+    };
+  };
+
   const unitMenu = (g: Space, p: Project, u: BranchUnit): MenuItem[] => {
     // An incomplete stub (a .bare with no worktree): it can still spawn a worktree
     // (its branches live in .bare), so offer that as well as removal.
@@ -2458,6 +2476,7 @@ export default function LeftSidebar(props: {
       });
     }
     items.push(...watchItems(p, u));
+    if (checkedOut) items.push(secondOpinionItem(u.folderPath));
     if (u.kind === "worktree") {
       items.push({ separator: true });
       items.push({ label: "Move to topic…", onClick: () => setMoveReq({ p, u }) });

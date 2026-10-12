@@ -2,12 +2,15 @@ import { For, Show, onCleanup, onMount } from "solid-js";
 import Button from "../../components/Button/Button";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import { markReviewed, openItem, reviewItems, setInboxOpen } from "../../utils/reviewInbox";
+import { opinionLabel, runSecondOpinion, secondOpinionRunning } from "../../utils/secondOpinion";
 import { signalLabel, type ReviewItem } from "../../utils/reviewSignals";
 import styles from "./InboxView.module.css";
 
 const folderName = (path: string) => path.split("/").filter(Boolean).pop() ?? path;
 
 function Row(props: { item: ReviewItem }) {
+  const opinionRunning = () =>
+    props.item.secondOpinion?.state === "running" || secondOpinionRunning(props.item.unit.id);
   return (
     <li class={styles.row}>
       <button type="button" class={styles.open} onClick={() => openItem(props.item)}>
@@ -28,9 +31,32 @@ function Row(props: { item: ReviewItem }) {
                 </span>
               )}
             </For>
+            <Show when={props.item.secondOpinion}>
+              {(opinion) => {
+                const error = () => {
+                  const o = opinion();
+                  return o.state === "failed" ? o.error : undefined;
+                };
+                return (
+                  <span class={styles.signal} data-kind={error() ? "failed" : "secondOpinion"} title={error()}>
+                    {opinionLabel(opinion())}
+                  </span>
+                );
+              }}
+            </Show>
           </span>
         </span>
       </button>
+      <Button
+        size="sm"
+        class={styles.mark}
+        disabled={opinionRunning()}
+        onClick={() =>
+          void runSecondOpinion({ id: props.item.unit.id, cwd: props.item.folder, agent: props.item.agent })
+        }
+      >
+        Second opinion
+      </Button>
       <Button
         size="sm"
         class={styles.mark}

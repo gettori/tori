@@ -11,6 +11,8 @@ import { emitWith, TOAST, type ToastEvent } from "./events";
 import type { HeldComment } from "./heldComments";
 import { isUnderPath } from "./pathScope";
 import { rowLabel, soleProfile } from "./projectAgents";
+import { reviewItems } from "./reviewInbox";
+import type { ReviewItem, SecondOpinion } from "./reviewSignals";
 import { sendTargetFor } from "./sendTarget";
 import type { SessionMeta } from "./sessionStore";
 import { saveSettings, settings, type AgentRow } from "../panels/Settings/settingsStore";
@@ -105,6 +107,30 @@ export async function runSecondOpinion(session: Pick<SessionMeta, "id" | "cwd" |
     toast(`${rowLabel(pick.agent, pick.profile)} is giving a second opinion`, "info");
   } catch (e) {
     toast(String(e));
+  }
+}
+
+/** The Inbox row a worktree's Second opinion acts on: its latest session with
+ *  unreviewed work. */
+export function latestUnreviewed(folder: string): ReviewItem | null {
+  let best: ReviewItem | null = null;
+  for (const item of reviewItems()) {
+    if (isUnderPath(item.folder, folder) && (!best || item.toTs > best.toTs)) best = item;
+  }
+  return best;
+}
+
+export function opinionLabel(opinion: SecondOpinion): string {
+  switch (opinion.state) {
+    case "running":
+      return "Second opinion running";
+    case "failed":
+      return "Second opinion failed";
+    case "done": {
+      if (!opinion.open) return "Second opinion: nothing open";
+      const count = opinion.open === 1 ? "1 second opinion comment" : `${opinion.open} second opinion comments`;
+      return opinion.stale ? `${count}, stale` : count;
+    }
   }
 }
 
