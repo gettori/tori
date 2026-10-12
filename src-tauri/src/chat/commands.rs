@@ -1438,7 +1438,8 @@ pub(crate) fn verified_turns(
     }
     let parsed = marked_history(session_id, &source, agent_id, &path);
     let entries = crate::verification::entries_for(cwd.map(std::path::Path::new));
-    let turns = crate::verification::session_turns(&parsed.events, &parsed.prompts, &entries);
+    let turns =
+        crate::verification::session_turns(&parsed.events, &parsed.prompts, &entries, cwd.map(std::path::Path::new));
     cache().put(&key, stamp, turns.clone());
     turns
 }
@@ -2382,7 +2383,10 @@ mod verification_tests {
             .unwrap()
             .flatten()
         {
-            let mut text = std::fs::read_to_string(entry.path()).unwrap();
+            // The fixture's `.txt` write is a doc, and a doc edit is not code.
+            let mut text = std::fs::read_to_string(entry.path())
+                .unwrap()
+                .replace("sub-made.txt", "sub-made.rs");
             if entry.path().extension().is_some_and(|e| e == "jsonl") {
                 for line in extra {
                     text = format!("{}\n{line}\n", text.trim_end());
@@ -2410,7 +2414,7 @@ mod verification_tests {
 
     fn turns_of(path: &str) -> Vec<crate::verification::VerifiedTurn> {
         let (events, prompts) = read_with_prompts("s1", &HistorySource::Transcript(path.into()), "claude");
-        crate::verification::session_turns(&events, &prompts, &crate::verification::entries_for(None))
+        crate::verification::session_turns(&events, &prompts, &crate::verification::entries_for(None), None)
     }
 
     #[test]
@@ -2471,7 +2475,7 @@ mod verification_tests {
             ),
             done("c2", "t2"),
         ];
-        let turns = crate::verification::session_turns(&events, &[], &crate::verification::entries_for(None));
+        let turns = crate::verification::session_turns(&events, &[], &crate::verification::entries_for(None), None);
         let verdicts: Vec<_> = turns.iter().map(|t| (t.prompt_ts, t.verdict)).collect();
         assert_eq!(verdicts, vec![(None, Verdict::Unverified), (None, Verdict::Verified)]);
     }
@@ -2484,7 +2488,7 @@ mod verification_tests {
             "claude",
         );
         let verdict =
-            |entries: &[Vec<String>]| crate::verification::session_turns(&events, &prompts, entries)[0].verdict;
+            |entries: &[Vec<String>]| crate::verification::session_turns(&events, &prompts, entries, None)[0].verdict;
         assert_eq!(verdict(&crate::verification::entries_for(None)), Verdict::Unverified);
 
         let commands = std::collections::HashMap::from([("/work/app".to_string(), vec!["just ci".to_string()])]);

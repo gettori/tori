@@ -175,7 +175,10 @@ fn fs_read_dir_compact_body(path: &str, compact: bool, hidden: &[String]) -> Res
 // `git check-ignore --stdin` from within `dir`, so the repo's full ignore rules
 // apply (already-tracked files are correctly not reported). Any failure (not a
 // repo, git missing) yields an empty set, so nothing is dimmed.
-fn gitignored_paths<'a>(dir: &str, paths: impl Iterator<Item = &'a str>) -> std::collections::HashSet<String> {
+pub(crate) fn gitignored_paths<'a>(
+    dir: &str,
+    paths: impl Iterator<Item = &'a str>,
+) -> std::collections::HashSet<String> {
     use std::io::Write;
     use std::process::Stdio;
 

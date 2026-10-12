@@ -13,7 +13,7 @@ use std::time::{Instant, SystemTime};
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::chat::model::{ChatEvent, Check, CheckResult, ToolKind, ToolStatus, ToolSummary, Verdict};
+use crate::chat::model::{ChatEvent, Check, CheckResult, ToolKind, ToolLocation, ToolStatus, ToolSummary, Verdict};
 use crate::secret_watch::command_text;
 
 /// Commands that count as a check when no project says otherwise. Each is
@@ -451,7 +451,161 @@ struct Call {
     command: Option<String>,
     background: bool,
     edits: bool,
+    paths: Vec<String>,
     started: Option<Instant>,
+}
+
+fn target_paths<'a>(input: &'a Value, locations: &'a [ToolLocation]) -> impl Iterator<Item = &'a str> {
+    ["file_path", "path", "notebook_path"]
+        .into_iter()
+        .filter_map(|k| input.get(k).and_then(Value::as_str))
+        .chain(locations.iter().map(|l| l.path.as_str()))
+}
+
+// Wider than the edits that land, which costs a line each in one git ask
+// rather than a second pass.
+fn edited_paths(events: &[ChatEvent]) -> Vec<&str> {
+    let mut out = Vec::new();
+    for event in events {
+        match event {
+            ChatEvent::ToolCallStarted {
+                kind: ToolKind::Edit | ToolKind::Delete | ToolKind::Move,
+                input,
+                locations,
+                ..
+            } => {
+                out.extend(target_paths(input, locations));
+            }
+            ChatEvent::FileEdit { path, .. } => out.push(path.as_str()),
+            ChatEvent::ToolCallCompleted { files, .. } => out.extend(files.iter().map(String::as_str)),
+            _ => {}
+        }
+    }
+    out
+}
+
+const UNCHECKED_EXTENSIONS: &[&str] = &[
+    "md", "mdx", "markdown", "txt", "rst", "png", "jpg", "jpeg", "gif", "webp", "avif", "bmp", "ico", "tiff", "svg",
+    "pdf", "woff", "woff2", "ttf", "otf", "eot",
+];
+const UNCHECKED_NAMES: &[&str] = &["license", "changelog", "notice", "authors"];
+
+fn doc_or_asset(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    let lower = name.to_ascii_lowercase();
+    let extension = path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
+    let doc_extension = extension.as_deref().is_some_and(|e| UNCHECKED_EXTENSIONS.contains(&e));
+    let stem = lower.split('.').next().unwrap_or_default();
+    let doc_name = UNCHECKED_NAMES.iter().any(|n| {
+        stem.strip_prefix(n)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with(['-', '_']))
+    });
+    doc_extension || (doc_name && extension.is_none())
+}
+
+// Canonical through the deepest part that exists, so a deleted file and a
+// symlinked `/var` still compare against git's canonical root.
+fn canonical(path: &Path) -> PathBuf {
+    let path = crate::secret_watch::normalize(path);
+    let mut head = path.as_path();
+    let mut tail = Vec::new();
+    loop {
+        if let Ok(real) = head.canonicalize() {
+            return tail.iter().rev().fold(real, |acc, part| acc.join(part));
+        }
+        match (head.parent(), head.file_name()) {
+            (Some(parent), Some(name)) => {
+                tail.push(name.to_os_string());
+                head = parent;
+            }
+            _ => return path,
+        }
+    }
+}
+
+pub struct Scope {
+    cwd: Option<PathBuf>,
+    root: std::cell::OnceCell<Option<PathBuf>>,
+    asked: std::collections::HashSet<PathBuf>,
+    ignored: std::collections::HashSet<PathBuf>,
+}
+
+impl Scope {
+    pub fn new(cwd: Option<&Path>) -> Self {
+        Self {
+            // An empty cwd would run git in Tori's own directory.
+            cwd: cwd.filter(|c| c.is_absolute()).map(Path::to_path_buf),
+            root: std::cell::OnceCell::new(),
+            asked: Default::default(),
+            ignored: Default::default(),
+        }
+    }
+
+    fn root(&self) -> Option<&Path> {
+        self.root
+            .get_or_init(|| {
+                let cwd = self.cwd.as_deref()?.to_str()?;
+                crate::checkpoint::git_capture(cwd, &["rev-parse", "--show-toplevel"])
+                    .ok()
+                    .map(|top| canonical(Path::new(&top)))
+            })
+            .as_deref()
+    }
+
+    fn place(&self, raw: &str) -> Option<PathBuf> {
+        let path = Path::new(raw);
+        if path.is_absolute() {
+            return Some(path.to_path_buf());
+        }
+        self.cwd.as_ref().map(|cwd| cwd.join(path))
+    }
+
+    pub fn learn<'a>(&mut self, raws: impl IntoIterator<Item = &'a str>) {
+        let raws: Vec<&str> = raws.into_iter().collect();
+        if raws.is_empty() {
+            return;
+        }
+        let Some(root) = self.root().map(Path::to_path_buf) else {
+            return;
+        };
+        // Outside paths stay out of the batch: git stops at the first one.
+        let mut fresh: Vec<PathBuf> = Vec::new();
+        for raw in raws {
+            let Some(path) = self.place(raw) else { continue };
+            if doc_or_asset(&path) {
+                continue;
+            }
+            let path = canonical(&path);
+            if path.starts_with(&root) && path != root && !self.asked.contains(&path) && !fresh.contains(&path) {
+                fresh.push(path);
+            }
+        }
+        let Some(dir) = root.to_str() else { return };
+        let lines: Vec<String> = fresh.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+        let hits = crate::fs::gitignored_paths(dir, lines.iter().map(String::as_str));
+        for path in fresh {
+            if hits.contains(path.to_string_lossy().as_ref()) {
+                self.ignored.insert(path.clone());
+            }
+            self.asked.insert(path);
+        }
+    }
+
+    pub fn counts(&self, raw: &str) -> bool {
+        let Some(path) = self.place(raw) else {
+            return true;
+        };
+        if doc_or_asset(&path) {
+            return false;
+        }
+        let Some(root) = self.root() else {
+            return true;
+        };
+        let path = canonical(&path);
+        path.starts_with(root) && !self.ignored.contains(&path)
+    }
 }
 
 fn checks_of(
@@ -538,11 +692,33 @@ fn checks_of(
     out
 }
 
+enum Step {
+    Edit(Vec<String>),
+    UnplacedEdit,
+    Checks(Vec<Check>),
+}
+
+impl Step {
+    fn checks(&self) -> Option<&Vec<Check>> {
+        match self {
+            Step::Checks(c) => Some(c),
+            Step::Edit(_) | Step::UnplacedEdit => None,
+        }
+    }
+
+    fn changes_code(&self, scope: &Scope) -> bool {
+        match self {
+            Step::Edit(paths) => paths.iter().any(|p| scope.counts(p)),
+            Step::UnplacedEdit => true,
+            Step::Checks(_) => false,
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct Turn {
     calls: HashMap<String, Call>,
-    // Each finished call that edited (`None`) or checked (its checks).
-    steps: Vec<Option<Vec<Check>>>,
+    steps: Vec<Step>,
 }
 
 impl Turn {
@@ -554,6 +730,7 @@ impl Turn {
                 name,
                 input,
                 kind,
+                locations,
                 ..
             } => {
                 let call = self.calls.entry(tool_use_id.clone()).or_insert_with(|| Call {
@@ -561,12 +738,16 @@ impl Turn {
                     command: None,
                     background: false,
                     edits: false,
+                    paths: Vec::new(),
                     started: now,
                 });
                 if !name.is_empty() {
                     call.name = name.clone();
                 }
-                call.edits |= matches!(kind, ToolKind::Edit | ToolKind::Delete | ToolKind::Move);
+                if matches!(kind, ToolKind::Edit | ToolKind::Delete | ToolKind::Move) {
+                    call.edits = true;
+                    call.paths.extend(target_paths(input, locations).map(str::to_string));
+                }
                 if *kind == ToolKind::Execute {
                     if let Some(command) = command_text(input) {
                         call.command = Some(command);
@@ -574,9 +755,10 @@ impl Turn {
                     call.background |= input.get("run_in_background").and_then(Value::as_bool) == Some(true);
                 }
             }
-            ChatEvent::FileEdit { tool_use_id, .. } => {
+            ChatEvent::FileEdit { tool_use_id, path, .. } => {
                 if let Some(call) = self.calls.get_mut(tool_use_id) {
                     call.edits = true;
+                    call.paths.push(path.clone());
                 }
             }
             ChatEvent::ToolCallCompleted {
@@ -587,11 +769,16 @@ impl Turn {
                 summary,
                 ..
             } => {
-                let Some(call) = self.calls.remove(tool_use_id) else {
+                let Some(mut call) = self.calls.remove(tool_use_id) else {
                     return;
                 };
                 if *status == ToolStatus::Ok && (call.edits || !files.is_empty()) {
-                    self.steps.push(None);
+                    call.paths.extend(files.iter().cloned());
+                    self.steps.push(if call.paths.is_empty() {
+                        Step::UnplacedEdit
+                    } else {
+                        Step::Edit(std::mem::take(&mut call.paths))
+                    });
                 }
                 let duration_ms = match (call.started, now) {
                     (Some(from), Some(to)) => u64::try_from(to.saturating_duration_since(from).as_millis()).ok(),
@@ -607,20 +794,30 @@ impl Turn {
                     entries,
                 );
                 if !checks.is_empty() {
-                    self.steps.push(Some(checks));
+                    self.steps.push(Step::Checks(checks));
                 }
             }
             _ => {}
         }
     }
 
+    pub fn edited_paths(&self) -> impl Iterator<Item = &str> {
+        self.steps
+            .iter()
+            .flat_map(|s| match s {
+                Step::Edit(paths) => paths.as_slice(),
+                Step::UnplacedEdit | Step::Checks(_) => &[],
+            })
+            .map(String::as_str)
+    }
+
     /// The verdict and every check the turn ran, or `None` for a turn that
-    /// changed no code. Only checks after the last edit decide it, and of
-    /// those the last call's worst result does.
-    pub fn finish(&self) -> Option<(Verdict, Vec<Check>)> {
-        let last_edit = self.steps.iter().rposition(Option::is_none)?;
-        let checks: Vec<Check> = self.steps.iter().flatten().flatten().cloned().collect();
-        let verdict = match self.steps[last_edit..].iter().rev().find_map(Option::as_ref) {
+    /// changed no code `scope` counts. Only checks after the last such edit
+    /// decide it, and of those the last call's worst result does.
+    pub fn finish(&self, scope: &Scope) -> Option<(Verdict, Vec<Check>)> {
+        let last_edit = self.steps.iter().rposition(|s| s.changes_code(scope))?;
+        let checks: Vec<Check> = self.steps.iter().filter_map(Step::checks).flatten().cloned().collect();
+        let verdict = match self.steps[last_edit..].iter().rev().find_map(Step::checks) {
             None => Verdict::Unverified,
             Some(last) if last.iter().any(|c| c.result == CheckResult::Failed) => Verdict::Failed,
             Some(last) if last.iter().any(|c| c.result == CheckResult::NotSeen) => Verdict::Unverified,
@@ -630,8 +827,8 @@ impl Turn {
     }
 }
 
-fn verification_event(session_id: &str, turn_id: &str, turn: &Turn) -> Option<ChatEvent> {
-    let (verdict, checks) = turn.finish()?;
+fn verification_event(session_id: &str, turn_id: &str, turn: &Turn, scope: &Scope) -> Option<ChatEvent> {
+    let (verdict, checks) = turn.finish(scope)?;
     Some(ChatEvent::TurnVerification {
         session_id: session_id.to_string(),
         turn_id: turn_id.to_string(),
@@ -645,6 +842,7 @@ fn verification_event(session_id: &str, turn_id: &str, turn: &Turn) -> Option<Ch
 pub struct Tracker {
     cwd: Option<PathBuf>,
     entries: Vec<Vec<String>>,
+    scope: Scope,
     turns: HashMap<String, Turn>,
     // The first answer per turn. An ACP load replays the conversation through
     // the same sink, and a replay has no timing to measure, so the second pass
@@ -657,6 +855,7 @@ impl Tracker {
         Self {
             cwd: cwd.map(Path::to_path_buf),
             entries: entries_for(cwd),
+            scope: Scope::new(cwd),
             turns: HashMap::new(),
             verdicts: HashMap::new(),
         }
@@ -682,9 +881,13 @@ impl Tracker {
                 session_id, turn_id, ..
             } => {
                 let turn = self.turns.remove(turn_id).unwrap_or_default();
+                let scope = &mut self.scope;
                 self.verdicts
                     .entry(turn_id.clone())
-                    .or_insert_with(|| verification_event(session_id, turn_id, &turn))
+                    .or_insert_with(|| {
+                        scope.learn(turn.edited_paths());
+                        verification_event(session_id, turn_id, &turn, scope)
+                    })
                     .clone()
             }
             _ => None,
@@ -704,6 +907,9 @@ pub fn mark_history(events: &mut Vec<ChatEvent>, cwd: Option<&Path>, enabled: bo
         return;
     }
     let entries = entries_for(cwd);
+    let mut scope = Scope::new(cwd);
+    scope.learn(edited_paths(events));
+    let scope = &scope;
     let with_durations = |event: Option<ChatEvent>| {
         let mut event = event?;
         if let ChatEvent::TurnVerification { checks, .. } = &mut event {
@@ -729,7 +935,7 @@ pub fn mark_history(events: &mut Vec<ChatEvent>, cwd: Option<&Path>, enabled: bo
                     session_id, turn_id, ..
                 } => {
                     let turn = turns.remove(turn_id).unwrap_or_default();
-                    out.extend(with_durations(verification_event(session_id, turn_id, &turn)));
+                    out.extend(with_durations(verification_event(session_id, turn_id, &turn, scope)));
                 }
                 _ => {}
             }
@@ -741,7 +947,7 @@ pub fn mark_history(events: &mut Vec<ChatEvent>, cwd: Option<&Path>, enabled: bo
         let mut anchor: Option<(String, String)> = None;
         let close = |turn: &mut Turn, anchor: &mut Option<(String, String)>, out: &mut Vec<ChatEvent>| {
             if let Some((session_id, turn_id)) = anchor.take() {
-                out.extend(with_durations(verification_event(&session_id, &turn_id, turn)));
+                out.extend(with_durations(verification_event(&session_id, &turn_id, turn, scope)));
             }
             *turn = Turn::default();
         };
@@ -818,8 +1024,15 @@ pub struct VerifiedTurn {
 /// Fold a conversation into one entry per turn that changed code, oldest
 /// first. `prompts` pairs each prompt's timestamp with the index of its first
 /// event; with none, calls are grouped by the turn id they carry instead.
-pub fn session_turns(events: &[ChatEvent], prompts: &[(u64, usize)], entries: &[Vec<String>]) -> Vec<VerifiedTurn> {
+pub fn session_turns(
+    events: &[ChatEvent],
+    prompts: &[(u64, usize)],
+    entries: &[Vec<String>],
+    cwd: Option<&Path>,
+) -> Vec<VerifiedTurn> {
     let measured = measured(events);
+    let mut scope = Scope::new(cwd);
+    scope.learn(edited_paths(events));
     let mut turns: Vec<(String, Option<u64>, Turn)> = Vec::new();
     for (at, event) in events.iter().enumerate() {
         let (ChatEvent::ToolCallStarted { turn_id, .. }
@@ -846,7 +1059,7 @@ pub fn session_turns(events: &[ChatEvent], prompts: &[(u64, usize)], entries: &[
     turns
         .into_iter()
         .filter_map(|(_, prompt_ts, turn)| {
-            let (verdict, mut checks) = turn.finish()?;
+            let (verdict, mut checks) = turn.finish(&scope)?;
             fill(&mut checks, &measured);
             Some(VerifiedTurn {
                 prompt_ts,
@@ -967,6 +1180,7 @@ mod tests {
             command: Some(command.into()),
             background: false,
             edits: false,
+            paths: Vec::new(),
             started: None,
         }
     }
@@ -1140,7 +1354,7 @@ mod tests {
         }
 
         fn verdict(&self) -> Option<Verdict> {
-            self.turn.finish().map(|(v, _)| v)
+            self.turn.finish(&Scope::new(None)).map(|(v, _)| v)
         }
     }
 
@@ -1191,7 +1405,7 @@ mod tests {
         run.edit();
         run.shell("cargo test", ToolStatus::Ok, "");
         assert_eq!(run.verdict(), Some(Verdict::Verified));
-        let (_, checks) = run.turn.finish().unwrap();
+        let (_, checks) = run.turn.finish(&Scope::new(None)).unwrap();
         assert_eq!(checks.len(), 2, "every check is listed, not only the deciding one");
     }
 
@@ -1293,6 +1507,162 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    fn repo_ignoring_scribe() -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "tori-verify-scope-{}-{}",
+            std::process::id(),
+            SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(dir.join("packages/app")).unwrap();
+        std::fs::create_dir_all(dir.join("shared")).unwrap();
+        std::fs::write(dir.join(".gitignore"), ".scribe\n").unwrap();
+        let ok = std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(&dir)
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok);
+        dir
+    }
+
+    fn write(id: &str, turn: &str, path: &Path) -> [ChatEvent; 2] {
+        [
+            started(id, turn, ToolKind::Edit, "Write", json!({ "file_path": path })),
+            completed(id, turn, ToolStatus::Ok, ""),
+        ]
+    }
+
+    fn check(id: &str, turn: &str) -> [ChatEvent; 2] {
+        [
+            started(id, turn, ToolKind::Execute, "Bash", json!({ "command": "cargo test" })),
+            completed(id, turn, ToolStatus::Ok, ""),
+        ]
+    }
+
+    fn verdict_in(cwd: &Path, events: &[ChatEvent]) -> Option<Verdict> {
+        let turns = session_turns(events, &[], &defaults(), Some(cwd));
+        turns.first().map(|t| t.verdict)
+    }
+
+    #[test]
+    fn an_edit_nothing_could_check_gives_no_verdict() {
+        let repo = repo_ignoring_scribe();
+        let elsewhere = std::env::temp_dir().join("tori-verify-elsewhere/x.rs");
+        let only = |paths: &[PathBuf]| {
+            let events: Vec<ChatEvent> = paths
+                .iter()
+                .enumerate()
+                .flat_map(|(i, p)| write(&format!("w{i}"), "t1", p))
+                .collect();
+            verdict_in(&repo, &events)
+        };
+        assert_eq!(only(&[repo.join(".scribe/plan.md")]), None, "gitignored");
+        assert_eq!(
+            only(&[repo.join("README.md"), repo.join("logo.png")]),
+            None,
+            "docs and assets"
+        );
+        assert_eq!(only(&[repo.join("LICENSE")]), None, "a license");
+        assert_eq!(only(&[repo.join("LICENSE-MIT")]), None, "a suffixed license");
+        assert_eq!(
+            only(&[repo.join("src/license.rs")]),
+            Some(Verdict::Unverified),
+            "code named like a doc"
+        );
+        assert_eq!(only(std::slice::from_ref(&elsewhere)), None, "outside the repo");
+        assert_eq!(
+            only(&[elsewhere, repo.join(".scribe/plan.md")]),
+            None,
+            "an outside path first does not stop git reading the rest"
+        );
+        assert_eq!(only(&[repo.join("src/a.rs")]), Some(Verdict::Unverified));
+    }
+
+    #[test]
+    fn a_session_below_the_root_counts_an_edit_beside_it() {
+        let repo = repo_ignoring_scribe();
+        let cwd = repo.join("packages/app");
+        let events: Vec<ChatEvent> = write("w1", "t1", Path::new("../../shared/x.ts")).into();
+        assert_eq!(verdict_in(&cwd, &events), Some(Verdict::Unverified));
+    }
+
+    #[test]
+    fn an_unchecked_edit_after_a_pass_keeps_it_verified() {
+        let repo = repo_ignoring_scribe();
+        let mut events = Vec::new();
+        events.extend(write("w1", "t1", &repo.join("src/a.rs")));
+        events.extend(check("c1", "t1"));
+        events.extend(write("w2", "t1", &repo.join(".scribe/plan.md")));
+        assert_eq!(verdict_in(&repo, &events), Some(Verdict::Verified));
+    }
+
+    #[test]
+    fn an_edit_with_no_path_still_counts() {
+        let repo = repo_ignoring_scribe();
+        let events = vec![
+            started("e1", "t1", ToolKind::Edit, "Edit", json!({})),
+            completed("e1", "t1", ToolStatus::Ok, ""),
+        ];
+        assert_eq!(verdict_in(&repo, &events), Some(Verdict::Unverified));
+    }
+
+    #[test]
+    fn a_long_replay_asks_git_a_fixed_number_of_times() {
+        let repo = repo_ignoring_scribe();
+        let mut events = Vec::new();
+        for n in 0..30 {
+            let turn = format!("t{n}");
+            events.push(user(&turn));
+            events.extend(write(&format!("a{n}"), &turn, &repo.join(format!("src/{n}.rs"))));
+            events.extend(write(&format!("b{n}"), &turn, &repo.join(".scribe/plan.md")));
+            events.push(turn_completed(&turn));
+        }
+        // Under both spellings: the batch runs in git's canonical root.
+        let real = repo.canonicalize().unwrap();
+        let spawns = || {
+            crate::exec::git_spawns_under(&repo)
+                + if real == repo {
+                    0
+                } else {
+                    crate::exec::git_spawns_under(&real)
+                }
+        };
+        let before = spawns();
+        mark_history(&mut events, Some(&repo), true);
+        assert_eq!(spawns() - before, 2, "one root, one ignore batch");
+        assert_eq!(verdicts(&events).len(), 30);
+    }
+
+    #[test]
+    fn live_and_a_replay_agree_on_which_edits_count() {
+        let repo = repo_ignoring_scribe();
+        let mut log = Vec::new();
+        log.push(user("docs"));
+        log.extend(write("d1", "docs", &repo.join("README.md")));
+        log.extend(write("d2", "docs", &repo.join(".scribe/plan.md")));
+        log.push(turn_completed("docs"));
+        log.push(user("mixed"));
+        log.extend(write("m1", "mixed", &repo.join("src/a.rs")));
+        log.extend(check("m2", "mixed"));
+        log.extend(write("m3", "mixed", &repo.join("docs/guide.md")));
+        log.push(turn_completed("mixed"));
+
+        let mut tracker = Tracker::new(Some(&repo));
+        let mut live = Vec::new();
+        for event in &log {
+            live.extend(tracker.observe(event, None));
+            live.push(event.clone());
+        }
+        let expected = vec![("mixed".to_string(), Verdict::Verified)];
+        assert_eq!(verdicts(&live), expected);
+        let mut replayed = live.clone();
+        mark_history(&mut replayed, Some(&repo), true);
+        assert_eq!(verdicts(&replayed), expected);
     }
 
     #[test]
@@ -1460,7 +1830,7 @@ mod tests {
         events.push(user("b"));
         events.extend(turn_events("b", ToolStatus::Error));
         let prompts = crate::chat::mirror::timed_prompts(&events, &[1_760_000_000, 1_760_000_300]);
-        let turns = session_turns(&events, &prompts, &parse_entries(DEFAULTS.iter().copied()));
+        let turns = session_turns(&events, &prompts, &parse_entries(DEFAULTS.iter().copied()), None);
         assert_eq!(turns.len(), 2);
         assert_eq!(
             turns.iter().map(|t| t.prompt_ts).collect::<Vec<_>>(),
