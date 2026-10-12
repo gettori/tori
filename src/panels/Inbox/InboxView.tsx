@@ -41,13 +41,16 @@ function Row(props: { item: ReviewItem }) {
                   return o.state === "failed" ? o.error : undefined;
                 };
                 return (
-                  <span class={styles.signal} data-kind={error() ? "failed" : "secondOpinion"} title={error()}>
+                  <span class={styles.signal} data-kind={error() ? "failed" : "secondOpinion"}>
                     {opinionLabel(opinion())}
                   </span>
                 );
               }}
             </Show>
           </span>
+          <Show when={props.item.secondOpinion?.state === "failed" && props.item.secondOpinion.error}>
+            {(error) => <span class={styles.summary}>{error()}</span>}
+          </Show>
         </span>
       </button>
       <Button
