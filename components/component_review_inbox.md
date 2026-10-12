@@ -2,7 +2,7 @@
 summary: review/ ranks sessions with unreviewed work by a fixed weighted sum in Rust; a mark is {ts, tree}, work since it is the session's own
 status: current
 updated: 2026-10-12
-source: "Review inbox plan (branch `phase-1-block-2`, gettori/tickets#32); commits fb28a0fb, 6fe8ba85, d95439d9; `src-tauri/src/review/` (`mod.rs`, `paths.rs`, `scope.rs`), `src-tauri/src/checkpoint.rs` (`session_span`, `live_tree`), `src/utils/reviewInbox.ts`, `src/utils/reviewSignals.ts`, `mobile/src/Inbox.tsx`"
+source: "Conflict radar plan (gettori/tickets#33), commit e15376c2; Review inbox plan (branch `phase-1-block-2`, gettori/tickets#32); commits fb28a0fb, 6fe8ba85, d95439d9; `src-tauri/src/review/` (`mod.rs`, `paths.rs`, `scope.rs`), `src-tauri/src/checkpoint.rs` (`session_span`, `live_tree`), `src/utils/reviewInbox.ts`, `src/utils/reviewSignals.ts`, `mobile/src/Inbox.tsx`"
 ---
 
 # Review inbox
@@ -14,14 +14,14 @@ source: "Review inbox plan (branch `phase-1-block-2`, gettori/tickets#32); commi
 - **Listed** when the session is in a project, has a prompt after its mark, sits in a dirty or unpushed worktree, and its own diff since the mark is not empty. With no checkpoints, code turns since the mark stand in for the diff.
 - **Marks** live in `~/.config/tori/reviewed.json` as `{ ts, tree }` per `ReviewUnit` key. `ReviewUnit` is an enum, so a PR can become a unit later. `installed_at` is every unmarked session's implicit mark, so an install starts empty without walking sessions. A corrupt file is set aside as `.bad` and lists everything rather than seeding.
 - **Work since a mark** is `checkpoint::session_span`: the tree at the mark (or the checkpoint at or before `installed_at`) to `live_tree`, narrowed by the same complete, partial or unmeasured grading as `attributed_files` over every touched record since the mark. Diffs are cached by tree pair.
-- **Score** is a fixed sum, each signal counted once with its count on the chip: secret read 30, failed 25, deleted tests 25, sensitive path 20, manifest 15, outside scope 15, blind edit 10, unverified 10, shared 10, lines `3*log2(n+1)` capped at 30.
+- **Score** is a fixed sum, each signal counted once with its count on the chip: secret read 30, failed 25, deleted tests 25, sensitive path 20, manifest 15, outside scope 15, blind edit 10, unverified 10, shared 10, base conflict 20, worktree overlap 15, lines `3*log2(n+1)` capped at 30. The last two come from `radar::session_signals`: conflicts from the radar's held answer for the session folder, else computed (an Inbox session may have ended, and nothing sweeps its folder), overlaps as the session's distinct files. Both are zero while the radar is off, and both score even without checkpoints.
 - `paths.rs` classifies files (test dirs and names, manifests and lockfiles, CI, auth words split on camelCase, secret watch's `Rules::matches`). `scope.rs` reads path tokens from the first prompt and the branch's issue in `unit_issues.json`, prefixed with the folder's `--show-prefix`, cached once per session per run.
 
 ## Interface
 
 - Tauri `review_inbox` and `review_mark`; RPC `review.list` and `review.mark` on `LOCAL_AND_DEVICES`, refused to every agent session. All four go through `inbox_now` and `mark_now`.
 - `mark_now` refuses while `SessionStates::running` (Working or NeedsYou, chat or PTY) and when a prompt arrived after the row's `to_ts`. It emits `review://changed` for the webview and publishes `session.reviewed` on the hub for the phone.
-- Frontend: `reviewInbox.ts` is the desktop store, `reviewSignals.ts` the pure types the phone shares. A row click sets `pendingReveal`, which the Changes panel and `CheckpointTimeline` consume once the turn is listed and the session is selected.
+- Frontend: `reviewInbox.ts` is the desktop store (it also refreshes on `radar://changed`), `reviewSignals.ts` the pure types the phone shares. A row click sets `pendingReveal`, which the Changes panel and `CheckpointTimeline` consume once the turn is listed and the session is selected.
 
 ## Why it is this way
 
@@ -32,6 +32,7 @@ source: "Review inbox plan (branch `phase-1-block-2`, gettori/tickets#32); commi
 ## Related
 
 - [[component_turn_checkpoints]] the trees and attribution it diffs
+- [[component_conflict_radar]] the base conflict and worktree overlap signals
 - [[component_verification]], [[component_secret_watch]], [[component_blind_edit]] the turn signals it sums
 - [[gotcha_two_writes_to_one_scratch_index_collide]] the race its live tree exposed
 - [[gotcha_the_webview_is_not_a_hub_subscriber]] why a mark goes out on two channels

@@ -1,7 +1,7 @@
 ---
 summary: macOS symlinks like /var vs /private/var give one directory two spellings, so string comparisons silently miss matches
 status: current
-updated: 2026-09-05
+updated: 2026-10-12
 source: Four sightings across three plans (personal/tori); `src-tauri/src/fs.rs` (`ensure_inside`), `src-tauri/src/worktree.rs`, `src-tauri/src/accounts.rs`, `src-tauri/src/chat/acp_transport.rs` (`refresh_listing`)
 ---
 
@@ -9,7 +9,7 @@ source: Four sightings across three plans (personal/tori); `src-tauri/src/fs.rs`
 
 On macOS a directory routinely has two true names. `/var` is a symlink to `/private/var`, so every temp dir has both spellings; a user's project can sit behind a symlink for the same reason. Anything that compares paths **as strings** therefore sees two directories where there is one, and the failure is almost never an error. It is an empty list, a silent miss, or a row filed under a folder nobody opened.
 
-This has now bitten Tori four times in four unrelated subsystems, which is enough to stop treating each one as a surprise.
+This has now bitten Tori five times in five unrelated subsystems, which is enough to stop treating each one as a surprise.
 
 ## The four sightings
 
@@ -19,6 +19,7 @@ This has now bitten Tori four times in four unrelated subsystems, which is enoug
 | Worktree listing | `git worktree list` output | see [[gotcha_git_worktree_list_reports_canonical_paths]] |
 | Claude account isolation | `sha256(CLAUDE_CONFIG_DIR)[:8]` over the **raw** env string | `.../home` and `.../home/` are two Keychain items for one directory, so a profile reports signed-out purely because the path was spelled differently than at login |
 | ACP `session/list` | the agent's `cwd` filter | Tori sent `/var/...`, `codex-acp` had recorded `/private/var/...`, and a directory with a live session listed zero rows |
+| Conflict radar overlaps | a recorded write against the worktree root | touched records keep the session's `/var/...` spelling while `rev-parse --show-toplevel` prints `/private/var/...`; `git::worktree_roots` returns both and `side_of` strips either ([[component_conflict_radar]]) |
 
 ## The same shape, with no path in it
 

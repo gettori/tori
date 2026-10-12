@@ -1,8 +1,8 @@
 ---
 summary: autopilot queue and contracts on disk, issue sources included; reads derive liveness, a merge is written back
 status: current
-updated: 2026-10-08
-source: gettori/tori#218 plan "Ticket refs that say where they are, and one way to navigate there", commit 380c7112; gettori/tori#204 on branch orchestrator, plan "Autopilot state on disk"; commits 424a5d26, aa67f28d, 29293fe2, 280f72e8; gettori/tori#205 commit 669596a1; src-tauri/src/autopilot.rs; src-tauri/src/rpc/{mod,methods,server,asks}.rs; gettori/tori#207 commit aca065a5; plan "Autopilot hard lock, release on stop, reconcile on start (#209)" on branch orchestrator, issue gettori/tori#209; commits 28f747ed, 32def50a, f29dfcbd; gettori/tori#210 on branch orchestrator, plan 'Assigned pickup: poll my issues and review requests, queue them, start on ask or auto (#210)'; gettori/tickets#31 on branch phase-1-block-1, plan \"Issue sources per project, and the autopilot on Tori's own repo\", commits e7d4df6f, 8646bb90
+updated: 2026-10-12
+source: Conflict radar plan (gettori/tickets#33), Phase 4; gettori/tori#218 plan "Ticket refs that say where they are, and one way to navigate there", commit 380c7112; gettori/tori#204 on branch orchestrator, plan "Autopilot state on disk"; commits 424a5d26, aa67f28d, 29293fe2, 280f72e8; gettori/tori#205 commit 669596a1; src-tauri/src/autopilot.rs; src-tauri/src/rpc/{mod,methods,server,asks}.rs; gettori/tori#207 commit aca065a5; plan "Autopilot hard lock, release on stop, reconcile on start (#209)" on branch orchestrator, issue gettori/tori#209; commits 28f747ed, 32def50a, f29dfcbd; gettori/tori#210 on branch orchestrator, plan 'Assigned pickup: poll my issues and review requests, queue them, start on ask or auto (#210)'; gettori/tickets#31 on branch phase-1-block-1, plan \"Issue sources per project, and the autopilot on Tori's own repo\", commits e7d4df6f, 8646bb90
 ---
 
 # Autopilot store
@@ -21,7 +21,7 @@ It owns `queue.json` (items), `projects.json` (one contract per project) and `lo
 
 ## How a read works
 
-`state(observe)` copies the items under the one lock, then runs `observe` with the lock released. `observe` gathers live session ids (`SessionStates` plus `ChatHost::live_sessions`), git's worktree list per project, and forge PR states. The store then re-locks. `settle` applies to the items as they are *now*, not the copy, so an update that landed during `observe` is neither lost nor waited on. Last, `reconcile` stamps each row with `session_live` and `worktree_gone`.
+`state(observe)` copies the items under the one lock, then runs `observe` with the lock released. `observe` gathers live session ids (`SessionStates` plus `ChatHost::live_sessions`), git's worktree list per project, and forge PR states. The store then re-locks. `settle` applies to the items as they are *now*, not the copy, so an update that landed during `observe` is neither lost nor waited on. Last, `reconcile` stamps each row with `session_live` and `worktree_gone`, and, from `Observed.radar` ([[component_conflict_radar]]), `overlaps` (matched by the item's session or worktree, `other_item` resolved to the open item owning the other session) and `base_conflicts` (left out when unknown). Both are absent while the radar is off. The brief tells the autopilot to hold the later of two overlapping running items, kept `running` with a note rather than `waiting_on_you`, which the Cockpit reads as a question for the user.
 
 - An unreadable repo leaves `worktree_gone` unset: `list_worktrees_body` answers an empty list for both, so `repo_readable` is asked first.
 - `settle` is the only write a read makes. A merged PR sets its item to `done`. A PR closed without merging only gets a note, because what that means is the autopilot's call.
@@ -68,4 +68,5 @@ A file that exists but doesn't parse (say, written by a newer Tori) loads as emp
 - [[adr_assigned_pickup_rides_the_forge_poll_tick]]: where pickup's ticks come from
 - [[lesson_pure_core_for_global_stores]]: the pure `apply`, `reconcile` and `settle`, tested apart from the files
 - [[adr_issue_sources_live_on_the_contract]]: why sources replace the origin and pickup never closes running work
+- [[component_conflict_radar]]: the overlaps and base conflicts a row carries
 - [[component_issue_source]]: the lists and keys pickup reads
