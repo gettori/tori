@@ -356,6 +356,7 @@ pub struct ReviewHead {
     pub number: u64,
     pub sha: String,
     pub head_ref: String,
+    pub branch: String,
     pub base_ref: String,
     pub fork: bool,
 }
@@ -366,6 +367,7 @@ pub fn review_head(project: &str, number: u64) -> Result<ReviewHead, crate::forg
         number,
         sha: pr.head_sha,
         head_ref: crate::forge::commands::pr_head_ref(project, number),
+        branch: pr.head_ref,
         base_ref: pr.base_ref,
         fork: !pr.head_repo_is_origin,
     })
@@ -375,22 +377,39 @@ fn fetch_review_head(project: &str, head: &ReviewHead, sock: &Path, token: &str)
     let lock = crate::exec::repo_lock(project);
     let _held = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     crate::git::fetch_pr_head(project, &head.head_ref, &head.sha, sock, token)?;
-    // Best effort: a stale base only widens what a reviewer reads.
+    // Best effort: a stale base only widens what a reviewer reads, and a head
+    // branch not fetched only leaves `pr-<n>` with nothing to pull from.
     let _ = crate::git::fetch_branch_quiet(project, &head.base_ref);
+    if !head.fork {
+        let _ = crate::git::fetch_branch_quiet(project, &head.branch);
+    }
     Ok(())
+}
+
+// A same-repo head branch is on origin, so `pr-<n>` tracks it: the background
+// fetch then shows the author's pushes as commits to pull. A fork's is not.
+pub(crate) fn track_review_branch(repo: &str, head: &ReviewHead) {
+    let upstream = format!("origin/{}", head.branch);
+    if head.fork || rev_parse(repo, &format!("refs/remotes/{upstream}")).is_err() {
+        return;
+    }
+    let branch = format!("pr-{}", head.number);
+    let _ = git_ok(repo, &["branch", &format!("--set-upstream-to={upstream}"), &branch]);
 }
 
 pub fn checkout_review(app: &AppHandle, project: &str, head: &ReviewHead) -> Result<String, String> {
     use tauri::Manager;
     let askpass = app.state::<crate::askpass::AskpassState>().0.clone();
     fetch_review_head(project, head, askpass.sock_path(), askpass.token())?;
-    tauri::async_runtime::block_on(create_pr_worktree(
+    let folder = tauri::async_runtime::block_on(create_pr_worktree(
         app.clone(),
         project.to_string(),
         head.number,
         head.sha.clone(),
         !head.fork,
-    ))
+    ))?;
+    track_review_branch(project, head);
+    Ok(folder)
 }
 
 #[tauri::command(async)]
@@ -1129,6 +1148,7 @@ mod tests {
             number: 9,
             sha: sha.clone(),
             head_ref: "refs/pull/9/head".into(),
+            branch: "fork".into(),
             base_ref: "main".into(),
             fork: true,
         };
@@ -1213,6 +1233,80 @@ mod tests {
             first,
             "the worktree is left where it was"
         );
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn a_same_repo_review_branch_tracks_origin_and_a_fork_does_not() {
+        let tmp = unique_tmp();
+        let src = tmp.join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        git(&src, &["init", "-q"]);
+        git(&src, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        git(&src, &["config", "user.email", "t@t.t"]);
+        git(&src, &["config", "user.name", "t"]);
+        std::fs::write(src.join("a.txt"), "hi").unwrap();
+        git(&src, &["add", "."]);
+        git(&src, &["commit", "-qm", "init"]);
+        git(&src, &["checkout", "-q", "-b", "feat"]);
+        std::fs::write(src.join("a.txt"), "feat").unwrap();
+        git(&src, &["commit", "-qam", "feat"]);
+        git(&src, &["update-ref", "refs/pull/5/head", "HEAD"]);
+        let sha = rev_parse(src.to_str().unwrap(), "HEAD").unwrap();
+
+        let cont = tmp.join("cont");
+        std::fs::create_dir_all(&cont).unwrap();
+        Command::new("git")
+            .args([
+                "clone",
+                "-q",
+                "--bare",
+                src.to_str().unwrap(),
+                cont.join(".bare").to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+        std::fs::write(cont.join(".git"), "gitdir: ./.bare\n").unwrap();
+        git(
+            &cont,
+            &["config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"],
+        );
+        let repo = cont.to_str().unwrap();
+        let head = ReviewHead {
+            number: 5,
+            sha,
+            head_ref: "refs/pull/5/head".into(),
+            branch: "feat".into(),
+            base_ref: "main".into(),
+            fork: false,
+        };
+        fetch_review_head(repo, &head, Path::new("/nonexistent/sock"), "t").unwrap();
+        let wt = create_pr_worktree_in(repo, head.number, &head.sha, &cont, false).unwrap();
+        track_review_branch(repo, &head);
+        let folder = wt.to_str().unwrap();
+        assert_eq!(rev_parse(folder, "@{upstream}").unwrap(), head.sha);
+
+        std::fs::write(src.join("a.txt"), "pushed").unwrap();
+        git(&src, &["commit", "-qam", "pushed"]);
+        crate::git::fetch_branch_quiet(repo, "feat").unwrap();
+        let behind = Command::new("git")
+            .args(["-C", folder, "rev-list", "--count", "HEAD..@{upstream}"])
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&behind.stdout).trim(), "1");
+
+        git(&src, &["update-ref", "refs/pull/6/head", "HEAD"]);
+        let fork = ReviewHead {
+            number: 6,
+            sha: rev_parse(src.to_str().unwrap(), "HEAD").unwrap(),
+            fork: true,
+            ..head
+        };
+        fetch_review_head(repo, &fork, Path::new("/nonexistent/sock"), "t").unwrap();
+        let wt = create_pr_worktree_in(repo, fork.number, &fork.sha, &cont, false).unwrap();
+        track_review_branch(repo, &fork);
+        assert!(rev_parse(wt.to_str().unwrap(), "@{upstream}").is_err());
 
         std::fs::remove_dir_all(&tmp).ok();
     }

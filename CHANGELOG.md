@@ -20,10 +20,13 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 - Project settings has an Automations section. **When your review is
   requested** can create the review worktree by itself, or create it and
   start a background chat that reviews the change and ends in a verdict for
-  you to read. After a push it moves a clean worktree to the new head and
-  tells the same chat what changed. Nothing is posted without you, and it
-  pauses past its hourly limit. With the autopilot on, the review lands in
+  you to read. With the review, a push moves a clean worktree to the new head
+  and the same chat is told what changed. Nothing is posted without you, and
+  it pauses past its hourly limit. With the autopilot on, the review lands in
   the autopilot's queue for your approval.
+- A review worktree for a pull request whose branch is in the same repo now
+  tracks that branch, so the author's pushes show as commits to pull and the
+  Changes panel's **Pull** brings them in.
 - Settings > Integrations: **Fetch every** is now **Git fetch every**, and
   says that pull request status refreshes every 2 minutes whatever it is
   set to.
