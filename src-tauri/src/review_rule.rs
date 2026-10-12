@@ -86,7 +86,13 @@ pub fn plan_review_rule(
         let pr = seen.prs.entry(number).or_default();
         if !pr.listed {
             wanted.push(Act::Entered(number));
-        } else if pr.move_held || (pr.worktree && !pr.own_work && head.is_some() && pr.head != *head) {
+        } else if pr.move_held
+            || (rule.action == ReviewAction::Review
+                && pr.worktree
+                && !pr.own_work
+                && head.is_some()
+                && pr.head != *head)
+        {
             wanted.push(Act::Moved(number));
         }
         pr.listed = true;
@@ -208,6 +214,10 @@ pub fn tick(app: &AppHandle, project: &str, list: Option<&ReviewRequests>) {
 }
 
 fn review(app: &AppHandle, project: &str, rule: &ReviewRule, list: &ReviewRequests, number: u64) -> Result<(), String> {
+    // Without a review to re-run, new pushes are the reader's to pull.
+    if rule.action != ReviewAction::Review && crate::worktree::review_worktree(project, number).is_some() {
+        return Ok(());
+    }
     let file = store_path();
     let head = crate::worktree::review_head(project, number).map_err(|e| e.to_string())?;
     let before = with_project(&file, project, |p| p.prs.get(&number).cloned().unwrap_or_default())?;
@@ -388,13 +398,22 @@ mod tests {
     #[test]
     fn a_head_change_while_listed_acts_only_over_a_rule_worktree() {
         let mut seen = SeenProject::default();
-        plan(&mut seen, Some(&list(&[(1, "a")], true)), &ON(), 0);
-        assert!(plan(&mut seen, Some(&list(&[(1, "b")], true)), &ON(), 10).is_empty());
+        let review = rule(ReviewAction::Review, 5);
+        plan(&mut seen, Some(&list(&[(1, "a")], true)), &review, 0);
+        assert!(plan(&mut seen, Some(&list(&[(1, "b")], true)), &review, 10).is_empty());
         seen.prs.get_mut(&1).unwrap().worktree = true;
         assert_eq!(
-            plan(&mut seen, Some(&list(&[(1, "c")], true)), &ON(), 20),
+            plan(&mut seen, Some(&list(&[(1, "c")], true)), &review, 20),
             [Act::Moved(1)]
         );
+    }
+
+    #[test]
+    fn create_a_worktree_leaves_a_push_to_the_reader() {
+        let mut seen = SeenProject::default();
+        plan(&mut seen, Some(&list(&[(1, "a")], true)), &ON(), 0);
+        seen.prs.get_mut(&1).unwrap().worktree = true;
+        assert!(plan(&mut seen, Some(&list(&[(1, "b")], true)), &ON(), 10).is_empty());
     }
 
     #[test]
@@ -493,14 +512,15 @@ mod tests {
     #[test]
     fn a_worktree_with_work_of_its_own_is_not_tried_again_on_each_push() {
         let mut seen = SeenProject::default();
-        plan(&mut seen, Some(&list(&[(1, "a")], true)), &ON(), 0);
+        let review = rule(ReviewAction::Review, 5);
+        plan(&mut seen, Some(&list(&[(1, "a")], true)), &review, 0);
         let pr = seen.prs.get_mut(&1).unwrap();
         pr.worktree = true;
         pr.own_work = true;
-        assert!(plan(&mut seen, Some(&list(&[(1, "b")], true)), &ON(), 10).is_empty());
-        plan(&mut seen, Some(&list(&[], true)), &ON(), 20);
+        assert!(plan(&mut seen, Some(&list(&[(1, "b")], true)), &review, 10).is_empty());
+        plan(&mut seen, Some(&list(&[], true)), &review, 20);
         assert_eq!(
-            plan(&mut seen, Some(&list(&[(1, "c")], true)), &ON(), 30),
+            plan(&mut seen, Some(&list(&[(1, "c")], true)), &review, 30),
             [Act::Entered(1)],
             "asked again, it is tried again"
         );
@@ -511,6 +531,7 @@ mod tests {
             number: 4,
             sha: sha.into(),
             head_ref: "refs/pull/4/head".into(),
+            branch: "fix".into(),
             base_ref: "main".into(),
             fork: false,
         }
