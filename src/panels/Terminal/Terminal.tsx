@@ -199,6 +199,7 @@ import styles from "./Terminal.module.css";
 import patterns from "../../styles/patterns.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import { moveDeep, movedPath } from "../../utils/moveWorkspace";
+import { spawnMode } from "../../utils/reviewRule";
 
 // Mirrors src-tauri/src/sessions.rs's `TailState` (session_tail_state).
 type TailState = "working" | "done" | "blocked-candidate";
@@ -1885,6 +1886,7 @@ export default function Terminal(props: {
     attach: string[];
     background: boolean;
     spawner: string | null;
+    readOnly?: boolean;
   }) {
     await stripReady(p.folder);
     const agentId = p.agent ?? draftAgent(p.folder, p.folder);
@@ -1892,8 +1894,9 @@ export default function Terminal(props: {
     if (!chatCapable(findAdapter(agentId))) throw new Error(`${agentId} has no chat surface`);
     const profile = p.account !== null ? asTabProfile(p.account) : draftProfile(p.folder, p.folder, agentId);
     const tabId = chatId();
-    if (p.model !== null || p.mode !== null || p.effort !== null) {
-      setDraftPick(tabId, { model: p.model, mode: p.mode, effort: p.effort });
+    const mode = spawnMode(p.mode, p.readOnly ?? false, agentId);
+    if (p.model !== null || mode !== null || p.effort !== null) {
+      setDraftPick(tabId, { model: p.model, mode, effort: p.effort });
     }
     const mentions = attachmentSources(chatTier(findAdapter(agentId).chat?.transport)).mentions;
     const kinds = p.attach.map((path, i) => {

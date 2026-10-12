@@ -547,9 +547,12 @@ pub fn plan_pickup(
     let firsts: Vec<bool> = lists
         .iter()
         .map(|list| {
-            !items
-                .iter()
-                .any(|i| here(i) && i.picked_by.is_some() && i.picked_from == list.search)
+            !items.iter().any(|i| {
+                here(i)
+                    && i.picked_by.is_some()
+                    && i.picked_from == list.search
+                    && (file_reviews || i.kind != Kind::Review)
+            })
         })
         .collect();
     let mut held = Vec::new();
@@ -614,6 +617,73 @@ pub fn plan_pickup(
         }
     }
     (changed, held)
+}
+
+pub struct RuleReview {
+    pub number: u64,
+    pub url: String,
+    pub title: String,
+    pub worktree: String,
+    pub session: Option<String>,
+}
+
+pub fn plan_rule_review(
+    items: &mut Vec<Item>,
+    project: &str,
+    repo: &str,
+    account: &str,
+    review: RuleReview,
+    now: u64,
+    mint: impl FnOnce() -> String,
+) -> Item {
+    let key = Some((repo.to_lowercase(), review.number));
+    let ours = |i: &Item| i.kind == Kind::Review && same_folder(&i.project, project) && pr_key(i) == key;
+    let at = items.iter().position(|i| ours(i) && !i.state.terminal()).or_else(|| {
+        items
+            .iter()
+            .enumerate()
+            .filter(|(_, i)| ours(i) && i.state == State::Done)
+            .max_by_key(|(_, i)| i.updated)
+            .map(|(at, _)| at)
+    });
+    let at = at.unwrap_or_else(|| {
+        items.push(Item {
+            id: mint(),
+            kind: Kind::Review,
+            source: Source::Pr {
+                number: review.number,
+                repo: repo.to_string(),
+            },
+            project: project.to_string(),
+            state: State::Running,
+            worktree: None,
+            session: None,
+            pr_url: None,
+            url: None,
+            created: now,
+            updated: now,
+            note: None,
+            title: None,
+            contract: None,
+            picked_by: None,
+            gone_upstream: false,
+            picked_from: None,
+        });
+        items.len() - 1
+    });
+    let item = &mut items[at];
+    item.state = State::Running;
+    item.worktree = Some(review.worktree);
+    if review.session.is_some() {
+        item.session = review.session;
+    }
+    item.url = Some(review.url);
+    item.title = Some(review.title);
+    item.note = None;
+    item.gone_upstream = false;
+    item.picked_by.get_or_insert_with(|| account.to_string());
+    item.updated = now;
+    item.clone()
 }
 
 /// The PR numbers of every open item, by project.
@@ -1104,6 +1174,31 @@ impl AutopilotStore {
             );
         self.note_once(project, trouble.collect());
         Ok(changed)
+    }
+
+    pub fn rule_review(
+        &self,
+        project: &str,
+        repo: &str,
+        account: &str,
+        review: RuleReview,
+    ) -> Result<Item, UpdateError> {
+        let mint = || format!("item-{}", crate::chat::approval::random_token());
+        let changed = self.write(|items| {
+            Ok(vec![plan_rule_review(
+                items,
+                project,
+                repo,
+                account,
+                review,
+                now_ms(),
+                mint,
+            )])
+        })?;
+        changed
+            .into_iter()
+            .next()
+            .ok_or_else(|| UpdateError::Write("the update changed nothing".into()))
     }
 
     // Logs each line the project's last tick did not, and forgets what cleared.
@@ -2099,6 +2194,67 @@ pub mod tests {
         );
         let rule = items.iter().find(|i| i.id == "rule").unwrap();
         assert_eq!(rule.note.as_deref(), Some(REVIEW_CLEARED));
+    }
+
+    fn rule_review(session: &str) -> RuleReview {
+        RuleReview {
+            number: 7,
+            url: "https://github.com/o/r/pull/7".into(),
+            title: "t7".into(),
+            worktree: "/p/pr-7".into(),
+            session: Some(session.into()),
+        }
+    }
+
+    #[test]
+    fn the_review_rule_files_a_running_item_and_a_re_review_reopens_it() {
+        let mut items = Vec::new();
+        let made = plan_rule_review(&mut items, "/p", "O/R", "me", rule_review("s1"), 5, || "r1".into());
+        assert_eq!((made.kind, made.state), (Kind::Review, State::Running));
+        assert_eq!(
+            (made.worktree.as_deref(), made.session.as_deref()),
+            (Some("/p/pr-7"), Some("s1"))
+        );
+        assert_eq!((made.picked_by.as_deref(), made.picked_from), (Some("me"), None));
+
+        items[0].state = State::Done;
+        let again = plan_rule_review(&mut items, "/p", "o/r", "me", rule_review("s2"), 9, || "r2".into());
+        assert_eq!(items.len(), 1, "the done item is reopened, not doubled");
+        assert_eq!(
+            (again.id.as_str(), again.state, again.session.as_deref()),
+            ("r1", State::Running, Some("s2"))
+        );
+    }
+
+    #[test]
+    fn a_rule_item_does_not_make_the_issue_lists_first_tick_a_second() {
+        let mut items = Vec::new();
+        plan_rule_review(&mut items, "/p", "o/r", "me", rule_review("s1"), 5, || "r1".into());
+        let lists = origin_lists(&[row("1", IssueKind::Issue), row("7", IssueKind::ReviewRequest)], 50);
+        let (made, _) = plan_pickup(
+            &mut items,
+            "/p",
+            "o/r",
+            "me",
+            &lists,
+            true,
+            Pickup::Auto,
+            false,
+            9,
+            || "p1".into(),
+        );
+        let ship = made.iter().find(|i| i.kind == Kind::Ship).unwrap();
+        assert_eq!(
+            ship.state,
+            State::Proposed,
+            "a first tick only proposes, under auto too"
+        );
+    }
+
+    #[test]
+    fn the_brief_says_a_review_the_rule_started_is_handled_like_its_own() {
+        let brief = include_str!("../resources/autopilot/brief.md");
+        assert!(brief.contains("`started (review rule)`"));
     }
 
     #[test]

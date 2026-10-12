@@ -399,6 +399,78 @@ pub fn create_review_worktree(app: AppHandle, project_path: String, number: u64)
     checkout_review(&app, &project_path, &head)
 }
 
+pub fn review_worktree(project: &str, number: u64) -> Option<String> {
+    let branch = format!("pr-{number}");
+    let lock = crate::exec::repo_lock(project);
+    let _held = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    prune_worktrees(project);
+    list_worktrees_body(project.to_string())
+        .ok()?
+        .into_iter()
+        .find(|w| w.branch == branch && !w.is_main)
+        .map(|w| w.path)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum ReviewMove {
+    Moved { from: String },
+    OwnWork(String),
+}
+
+pub fn move_review(
+    app: &AppHandle,
+    project: &str,
+    head: &ReviewHead,
+    folder: &str,
+    worktree_at: Option<&str>,
+) -> Result<ReviewMove, String> {
+    use tauri::Manager;
+    let askpass = app.state::<crate::askpass::AskpassState>().0.clone();
+    fetch_review_head(project, head, askpass.sock_path(), askpass.token())?;
+    let lock = crate::exec::repo_lock(project);
+    let _held = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let moved = move_review_in(folder, &head.sha, worktree_at)?;
+    let _ = app.emit("config://changed", ());
+    Ok(moved)
+}
+
+/// Moves a review worktree to `sha` only when nothing in it is the reader's
+/// own: no changes to tracked files, and no commits of their own.
+pub(crate) fn move_review_in(folder: &str, sha: &str, worktree_at: Option<&str>) -> Result<ReviewMove, String> {
+    let at = rev_parse(folder, "HEAD")?;
+    if at == sha {
+        return Ok(ReviewMove::Moved { from: at });
+    }
+    let status = crate::exec::git_in(folder)
+        .args(["status", "--porcelain", "--untracked-files=no"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !status.status.success() || !status.stdout.is_empty() {
+        return Ok(ReviewMove::OwnWork(format!(
+            "{folder} has changes of its own, so it stays at {at}"
+        )));
+    }
+    if own_commits(folder, &at, sha, worktree_at) {
+        return Ok(ReviewMove::OwnWork(format!(
+            "{folder} has commits of its own, so it stays at {at}"
+        )));
+    }
+    git_ok(folder, &["reset", "-q", "--keep", sha])?;
+    Ok(ReviewMove::Moved { from: at })
+}
+
+// Not knowing where the worktree was put, a commit the new head builds on
+// still counts as the pull request's own.
+fn own_commits(folder: &str, at: &str, sha: &str, worktree_at: Option<&str>) -> bool {
+    match worktree_at {
+        Some(put) => at != put,
+        None => !crate::exec::git_in(folder)
+            .args(["merge-base", "--is-ancestor", at, sha])
+            .status()
+            .is_ok_and(|s| s.success()),
+    }
+}
+
 /// `setup` false for a fork's head: the setup command is the user's, but that
 /// tree is a stranger's, and its install scripts would run with nobody watching.
 pub(crate) fn create_pr_worktree_in(
@@ -1141,6 +1213,57 @@ mod tests {
             first,
             "the worktree is left where it was"
         );
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn a_clean_review_worktree_moves_and_one_with_work_of_its_own_stays() {
+        let tmp = unique_tmp();
+        let repo = tmp.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        git(&repo, &["init", "-q"]);
+        git(&repo, &["config", "user.email", "t@t.t"]);
+        git(&repo, &["config", "user.name", "t"]);
+        std::fs::write(repo.join("a.txt"), "one").unwrap();
+        git(&repo, &["add", "."]);
+        git(&repo, &["commit", "-qm", "one"]);
+        let first = rev_parse(repo.to_str().unwrap(), "HEAD").unwrap();
+        std::fs::write(repo.join("a.txt"), "two").unwrap();
+        git(&repo, &["commit", "-qam", "two"]);
+        let second = rev_parse(repo.to_str().unwrap(), "HEAD").unwrap();
+        std::fs::write(repo.join("a.txt"), "three").unwrap();
+        git(&repo, &["commit", "-qam", "three"]);
+        let third = rev_parse(repo.to_str().unwrap(), "HEAD").unwrap();
+        let wt = tmp.join("pr-3");
+        git(
+            &repo,
+            &["worktree", "add", "-q", "-b", "pr-3", wt.to_str().unwrap(), &first],
+        );
+        let folder = wt.to_str().unwrap();
+
+        assert_eq!(
+            move_review_in(folder, &second, Some(&first)).unwrap(),
+            ReviewMove::Moved { from: first.clone() }
+        );
+        assert_eq!(rev_parse(folder, "HEAD").unwrap(), second);
+
+        std::fs::write(wt.join("a.txt"), "mine").unwrap();
+        let kept = move_review_in(folder, &third, Some(&second)).unwrap();
+        assert!(
+            matches!(&kept, ReviewMove::OwnWork(why) if why.contains("changes of its own")),
+            "{kept:?}"
+        );
+        assert_eq!(rev_parse(folder, "HEAD").unwrap(), second);
+
+        git(&wt, &["commit", "-qam", "mine"]);
+        for worktree_at in [Some(second.as_str()), None] {
+            let kept = move_review_in(folder, &third, worktree_at).unwrap();
+            assert!(
+                matches!(&kept, ReviewMove::OwnWork(why) if why.contains("commits of its own")),
+                "{kept:?}"
+            );
+        }
 
         std::fs::remove_dir_all(&tmp).ok();
     }
