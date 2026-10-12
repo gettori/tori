@@ -2,7 +2,7 @@
 summary: review/ ranks sessions with unreviewed work by a fixed weighted sum in Rust; a mark is {ts, tree}, work since it is the session's own
 status: current
 updated: 2026-10-12
-source: "Second opinion plan (gettori/tickets#34), commit 97a0a589; Conflict radar plan (gettori/tickets#33), commit e15376c2; Review inbox plan (branch `phase-1-block-2`, gettori/tickets#32); commits fb28a0fb, 6fe8ba85, d95439d9; `src-tauri/src/review/` (`mod.rs`, `paths.rs`, `scope.rs`), `src-tauri/src/checkpoint.rs` (`session_span`, `live_tree`), `src/utils/reviewInbox.ts`, `src/utils/reviewSignals.ts`, `mobile/src/Inbox.tsx`"
+source: "Notifications inbox plan (gettori/tickets#36), commits b05df531, 814bc21c; Second opinion plan (gettori/tickets#34), commit 97a0a589; Conflict radar plan (gettori/tickets#33), commit e15376c2; Review inbox plan (branch `phase-1-block-2`, gettori/tickets#32); commits fb28a0fb, 6fe8ba85, d95439d9; `src-tauri/src/review/` (`mod.rs`, `paths.rs`, `scope.rs`), `src-tauri/src/checkpoint.rs` (`session_span`, `live_tree`), `src/utils/reviewInbox.ts`, `src/utils/reviewSignals.ts`, `mobile/src/Inbox.tsx`"
 ---
 
 # Review inbox
@@ -22,6 +22,7 @@ source: "Second opinion plan (gettori/tickets#34), commit 97a0a589; Conflict rad
 - Tauri `review_inbox` and `review_mark`; RPC `review.list` and `review.mark` on `LOCAL_AND_DEVICES`, refused to every agent session. All four go through `inbox_now` and `mark_now`.
 - `ReviewItem.second_opinion` is `second_opinion::opinion_of`: running, done with the open count and whether any is stale, or failed with the error.
 - `mark_now` refuses while `SessionStates::running` (Working or NeedsYou, chat or PTY) and when a prompt arrived after the row's `to_ts`. It emits `review://changed` for the webview and publishes `session.reviewed` on the hub for the phone. It also calls `second_opinion::forget`, which drops the session's stored findings.
+- The Inbox overlay (⌘⇧X, moved off ⌘⇧I, which is the editor's shrink selection) and the phone's Inbox screen have two tabs, Needs you and Review; they open on Needs you while it has unanswered rows, and the count bubble and the phone's bottom bar add those rows to the review count ([[component_needs_you_log]]).
 - Frontend: `reviewInbox.ts` is the desktop store (it also refreshes on `radar://changed` and `second-opinion://changed`), `reviewSignals.ts` the pure types the phone shares. A row click sets `pendingReveal`, which the Changes panel and `CheckpointTimeline` consume once the turn is listed and the session is selected.
 
 ## Why it is this way
@@ -32,6 +33,7 @@ source: "Second opinion plan (gettori/tickets#34), commit 97a0a589; Conflict rad
 
 ## Related
 
+- [[component_needs_you_log]] the Needs you tab beside this one
 - [[component_turn_checkpoints]] the trees and attribution it diffs
 - [[component_second_opinion]] the reviewer a row can start, and whose state it shows
 - [[component_conflict_radar]] the base conflict and worktree overlap signals
