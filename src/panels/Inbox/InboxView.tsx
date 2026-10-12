@@ -3,7 +3,7 @@ import Button from "../../components/Button/Button";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import SegmentedControl from "../../components/SegmentedControl/SegmentedControl";
 import { needsYouCount, needsYouEvents, openEvent } from "../../utils/needsYouInbox";
-import { byProjectNewestFirst, kindLabel, type NeedsYouEvent } from "../../utils/needsYouSignals";
+import { byProjectNewestFirst, eventTime, kindLabel, type NeedsYouEvent } from "../../utils/needsYouSignals";
 import { markReviewed, openItem, reviewItems, setInboxOpen } from "../../utils/reviewInbox";
 import { opinionLabel, runSecondOpinion, secondOpinionRunning } from "../../utils/secondOpinion";
 import { signalLabel, type ReviewItem } from "../../utils/reviewSignals";
@@ -74,12 +74,6 @@ function Row(props: { item: ReviewItem }) {
   );
 }
 
-function time(ts: number) {
-  const at = new Date(ts);
-  const clock = at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  return at.toDateString() === new Date().toDateString() ? clock : `Yesterday ${clock}`;
-}
-
 function EventRow(props: { event: NeedsYouEvent }) {
   return (
     <li class={styles.row} classList={{ [styles.answered]: props.event.resolvedAt !== null }}>
@@ -90,7 +84,7 @@ function EventRow(props: { event: NeedsYouEvent }) {
             <span class={styles.kind} data-kind={props.event.kind}>
               {kindLabel(props.event.kind)}
             </span>{" "}
-            · {time(props.event.ts)}
+            · {eventTime(props.event.ts)}
             <Show when={props.event.resolvedAt !== null}> · answered</Show>
           </span>
         </span>

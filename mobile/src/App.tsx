@@ -8,13 +8,14 @@ import { rgbTriple, spaceHue } from "../../src/utils/spaceTint";
 import AutopilotScreen, { AutopilotChat, watchRunner } from "./Autopilot";
 import BottomBar from "./BottomBar";
 import Chat from "./Chat";
-import InboxScreen, { watchInbox } from "./Inbox";
+import InboxScreen, { watchInbox, watchNeedsYou } from "./Inbox";
 import { setSpaceName, showWheel, spaceName } from "./prefs";
 import Root, { type RootTab } from "./Root";
 import { ProjectScreen, TopicScreen } from "./Screens";
 import SettingsSheet from "./SettingsSheet";
 import UnitScreen from "./Unit";
 import { RemoteClient, forget, loadSaved, pair, parsePairLink, type Saved } from "./remote";
+import type { NeedsYouEvent } from "../../src/utils/needsYouSignals";
 import { inUnit, type Project, type SessionRow, type Topic, type Tree, type Unit } from "./tree";
 import shell from "./shell.module.css";
 
@@ -184,6 +185,7 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
   const autopilot = watchRunner(props.client);
   const { runner, decisions, crew } = autopilot;
   const inbox = watchInbox(props.client);
+  const needsYou = watchNeedsYou(props.client);
   const [tab, setTab] = createSignal<RootTab>("projects");
   const [stack, setStack] = createSignal<View[]>([]);
   const space = () => tree()?.spaces.find((s) => s.name === spaceName()) ?? tree()?.spaces[0];
@@ -211,6 +213,22 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
   const openSession = (row: SessionRow) => go({ screen: "chat", row });
   const units = () =>
     tree()?.spaces.flatMap((s) => s.projects.flatMap((p) => p.units.map((unit) => ({ unit, project: p.name })))) ?? [];
+  const markSeen = (params: { session?: string; folder?: string | null; branch?: string | null }) =>
+    void props.client.request("needs_you.seen", params).catch(() => {});
+  // A pull request row belongs to a branch, so it opens the worktree.
+  const openEvent = (e: NeedsYouEvent) => {
+    if (e.session) {
+      const home = { project: e.project, folder: e.folder, branch: e.branch };
+      openSession(live().find((row) => row.id === e.session) ?? { id: e.session, cwd: e.folder, home, last_active: 0 });
+      return;
+    }
+    const found = units().find(
+      ({ unit }) => unit.folder === e.folder && (e.branch === null || unit.branch === e.branch),
+    );
+    if (!found) return;
+    markSeen({ folder: e.folder, branch: e.branch });
+    openUnit(found.unit, found.project);
+  };
   // From a chat reached through its worktree, the worktree is one step back.
   const openHome = (row: SessionRow) => {
     const found = units().find(({ unit }) => inUnit(row.home, unit));
@@ -284,6 +302,11 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
         </Match>
         <Match when={top()?.screen === "chat" && (top() as { row: SessionRow }).row} keyed>
           {(row) => {
+            markSeen({
+              session: row.id,
+              folder: row.home?.folder ?? row.cwd ?? null,
+              branch: row.home?.branch ?? null,
+            });
             // Gone from the live list after being in it means the session ended.
             let seen = false;
             const current = () => {
@@ -314,7 +337,15 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
           />
         </Match>
         <Match when={top()?.screen === "inbox"}>
-          <InboxScreen client={props.client} inbox={inbox} live={live} onReply={openSession} onBack={back} />
+          <InboxScreen
+            client={props.client}
+            inbox={inbox}
+            needsYou={needsYou}
+            live={live}
+            onReply={openSession}
+            onEvent={openEvent}
+            onBack={back}
+          />
         </Match>
         <Match when={top()?.screen === "autopilotChat"}>
           <AutopilotChat client={props.client} runner={runner} onBack={back} />
@@ -329,7 +360,7 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
           showWheel={showWheel()}
           runner={runner}
           decisions={decisions}
-          inboxCount={() => inbox.items().length}
+          inboxCount={() => inbox.items().length + needsYou.count()}
           onInbox={() => go({ screen: "inbox" })}
           onSpace={(picked) => {
             setSpaceName(picked.name);
