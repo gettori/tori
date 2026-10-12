@@ -156,6 +156,8 @@ import {
   pollOnFocus,
   startForgePolling,
   unitStatus,
+  forgeViewer,
+  requestedReviews,
   type WatchedProject,
 } from "../../utils/forgeStatus";
 import { settings as appSettings } from "../Settings/settingsStore";
@@ -828,7 +830,8 @@ export default function LeftSidebar(props: {
               branch: u.branch,
               kind: u.kind,
               isCurrent: u.isCurrent,
-              attention: st !== null && needsAttention(st),
+              attention:
+                st !== null && needsAttention(st, { viewer: forgeViewer(p.path), requested: requestedReviews(p.path) }),
               prKnown: st !== null,
               pullRequest: st?.pullRequest
                 ? { number: st.pullRequest.number, state: st.pullRequest.state, title: st.pullRequest.title }

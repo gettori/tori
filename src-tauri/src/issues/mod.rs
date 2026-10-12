@@ -47,6 +47,12 @@ pub struct IssueRef {
     pub title: String,
     pub url: String,
     pub kind: IssueKind,
+    // A review request's own, so a row can name who asked and notice a push
+    // without a read per pull request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_sha: Option<String>,
 }
 
 /// One issue, with what a branch unit started from it needs.

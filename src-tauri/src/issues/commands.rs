@@ -17,6 +17,7 @@ use super::{
 use crate::forge::accounts;
 use crate::forge::commands::{attempt, gated_client, Client, ForgeErrorDto};
 use crate::forge::{Forge, ForgeError};
+use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 fn source_of(f: &dyn Forge) -> Result<&dyn IssueSource, ForgeError> {
@@ -174,6 +175,41 @@ pub fn link(project_path: &str, key: &str, branch: &str, base: Option<&str>) -> 
     Ok(outcome)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewRequests {
+    pub rows: Vec<IssueRef>,
+    pub complete: bool,
+}
+
+fn reviews_in(rows: Vec<IssueRef>) -> ReviewRequests {
+    let rows: Vec<IssueRef> = rows
+        .into_iter()
+        .filter(|r| r.kind == IssueKind::ReviewRequest)
+        .collect();
+    ReviewRequests {
+        // A list at the cap may have cut a request off, so it cannot say one went away.
+        complete: rows.len() < super::github::ASSIGNED_CAP as usize,
+        rows,
+    }
+}
+
+// The origin's list alone, never the contract's sources: this runs every tick
+// whether or not the autopilot does, so a source search would be new traffic.
+// `None` only for a host or token with no list, so a failure keeps the last one.
+pub fn origin_review_requests(project_path: &str) -> Result<Option<ReviewRequests>, ForgeError> {
+    let c = gated_client(project_path)?;
+    if c.forge.issues().is_none() || !offers(&c) {
+        return Ok(None);
+    }
+    fetch_assigned(&c, false).map(|rows| Some(reviews_in(rows)))
+}
+
+#[tauri::command(async)]
+pub fn review_requests(project_path: String) -> Result<Option<ReviewRequests>, ForgeErrorDto> {
+    Ok(origin_review_requests(&project_path)?)
+}
+
 #[tauri::command(async)]
 pub fn issues_source(project_path: String) -> bool {
     offered(&project_path)
@@ -224,6 +260,8 @@ mod tests {
             title: "t".into(),
             url: "u".into(),
             kind,
+            author: None,
+            head_sha: None,
         }
     }
 
@@ -258,5 +296,19 @@ mod tests {
         };
         let keys: Vec<String> = assigned.rows().into_iter().map(|r| r.key).collect();
         assert_eq!(keys, ["4", "gettori/tickets#31", "gettori/tickets#32"]);
+    }
+
+    #[test]
+    fn review_requests_keep_only_reviews_and_say_when_the_cap_cut_them() {
+        let got = reviews_in(vec![row("1", IssueKind::Issue), row("45", IssueKind::ReviewRequest)]);
+        assert_eq!(got.rows.iter().map(|r| r.key.as_str()).collect::<Vec<_>>(), ["45"]);
+        assert!(got.complete);
+        let full = (0..super::super::github::ASSIGNED_CAP)
+            .map(|n| row(&n.to_string(), IssueKind::ReviewRequest))
+            .collect();
+        assert!(
+            !reviews_in(full).complete,
+            "a list at the cap cannot prove a request left"
+        );
     }
 }

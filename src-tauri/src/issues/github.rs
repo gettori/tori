@@ -21,7 +21,7 @@ const ASSIGNED: &str = "query($issues: String!, $reviews: String!, $first: Int!)
     nodes { ... on Issue { number title url repository { nameWithOwner } } }
   }
   reviews: search(query: $reviews, type: ISSUE, first: $first) {
-    nodes { ... on PullRequest { number title url repository { nameWithOwner } } }
+    nodes { ... on PullRequest { number title url repository { nameWithOwner } author { login } headRefOid } }
   }
 }";
 
@@ -121,6 +121,8 @@ fn refs_from(data: &Value, alias: &str, kind: IssueKind, origin: &RepoRef) -> Ve
                 title: n.get("title")?.as_str()?.to_string(),
                 url: n.get("url")?.as_str()?.to_string(),
                 kind,
+                author: n.pointer("/author/login").and_then(Value::as_str).map(str::to_string),
+                head_sha: n.get("headRefOid").and_then(Value::as_str).map(str::to_string),
             })
         })
         .collect()
@@ -329,6 +331,26 @@ mod tests {
         let v = vars(&stub, 0);
         assert_eq!(v["issues"], "repo:gettori/tori is:open is:issue assignee:@me");
         assert_eq!(v["reviews"], "repo:gettori/tori is:open is:pr review-requested:@me");
+    }
+
+    #[test]
+    fn a_review_request_carries_its_author_and_head() {
+        let (f, stub) = forge(vec![StubTransport::json(
+            200,
+            r#"{"data":{
+              "issues":{"nodes":[{"number":202,"title":"Issues","url":"u"}]},
+              "reviews":{"nodes":[{"number":45,"title":"Fix","url":"u","author":{"login":"ana"},"headRefOid":"abc123"}]}
+            }}"#,
+        )]);
+        let list = f.list_assigned(&repo()).unwrap();
+        let query: Value = serde_json::from_str(&stub.bodies()[0]).unwrap();
+        let query = query["query"].as_str().unwrap();
+        assert!(query.contains("author { login } headRefOid"), "{query}");
+        assert_eq!(
+            (list[1].author.as_deref(), list[1].head_sha.as_deref()),
+            (Some("ana"), Some("abc123"))
+        );
+        assert_eq!((list[0].author.as_deref(), list[0].head_sha.as_deref()), (None, None));
     }
 
     #[test]

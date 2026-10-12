@@ -737,6 +737,7 @@ pub fn run() {
             forge::commands::forge_reopen,
             issues::commands::issues_source,
             issues::commands::issues_assigned,
+            issues::commands::review_requests,
             issues::commands::issues_get,
             issues::commands::issues_link,
             issues::commands::issues_record,

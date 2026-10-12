@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import type { AuthState, ForgeAccount, RepoAccount, StatusReport, UnitStatus } from "./forgeTypes";
 import { MIN_GAP_MS, POLL_INTERVAL_MS, PRIMARY_BACKOFF_MS } from "./forgePoll";
+import type { ReviewRequests } from "./issues";
 
 // The scheduler driven end to end, with the Tauri boundary as the meter.
 //
@@ -29,6 +30,8 @@ let repoOf: Record<string, RepoAccount> = {};
 let answers: (StatusReport | Error)[] = [];
 /** The projects each `autopilot_pickup` was asked for, in order. */
 const pickups: string[] = [];
+let reviewAnswers: Record<string, ReviewRequests | null | Error> = {};
+const reviewAsks: string[] = [];
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: Record<string, unknown>) => {
@@ -47,6 +50,12 @@ vi.mock("@tauri-apps/api/core", () => ({
       pickups.push(args?.projectPath as string);
       return Promise.resolve(null);
     }
+    if (cmd === "review_requests") {
+      const path = args?.projectPath as string;
+      reviewAsks.push(path);
+      const answer = reviewAnswers[path] ?? null;
+      return answer instanceof Error ? Promise.reject(answer) : Promise.resolve(answer);
+    }
     if (cmd === "forge_unit_statuses") {
       asks.push(args as unknown as Ask);
       const next = answers.shift();
@@ -62,7 +71,9 @@ import {
   noteForgeEnabled,
   noteWatchedProjects,
   pollNow,
+  requestedReviews,
   resetForgeStatusForTests,
+  reviewRequests,
   resolveForgeRepo,
   startForgePolling,
   unitStatus,
@@ -178,6 +189,7 @@ function signedInWith(projects: WatchedProject[], accounts = [account("personal"
 
 beforeEach(() => {
   asks.length = 0;
+  reviewAnswers = {};
   answers = [];
   accountList = [];
   accountReads = 0;
@@ -359,6 +371,22 @@ describe("the poll schedule", () => {
     noteWatchedProjects([project("/a", ["main"])]);
     await pollNow("interval", NOW);
     expect(pickups).toEqual([]);
+  });
+
+  it("keeps each project's review requests from the tick, and the last list through a failed ask", async () => {
+    reviewAsks.length = 0;
+    const row = (key: string) => ({ key, display: `#${key}`, title: "t", url: "u", kind: "reviewRequest" as const });
+    reviewAnswers = { "/a": { rows: [row("45"), row("46")], complete: true } };
+    signedInWith([project("/a", ["main"]), project("/b", ["main"])]);
+    await pollNow("interval", NOW);
+    await vi.waitFor(() => expect(requestedReviews("/a")).toEqual([45, 46]));
+    expect(reviewAsks).toEqual(["/a", "/b"]);
+    expect(reviewRequests("/b")).toBeNull();
+
+    reviewAnswers = { "/a": new Error("offline") };
+    await pollNow("interval", NOW + POLL_INTERVAL_MS);
+    await vi.waitFor(() => expect(reviewAsks).toHaveLength(4));
+    expect(requestedReviews("/a")).toEqual([45, 46]);
   });
 
   it("spends the tick on the units that are on screen", async () => {

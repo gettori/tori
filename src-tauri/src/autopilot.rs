@@ -1873,6 +1873,8 @@ pub mod tests {
             title: format!("t{key}"),
             url: format!("https://github.com/o/r/issues/{key}"),
             kind,
+            author: None,
+            head_sha: None,
         }
     }
 
