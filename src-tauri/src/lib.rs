@@ -738,6 +738,7 @@ pub fn run() {
             issues::commands::issues_source,
             issues::commands::issues_assigned,
             issues::commands::review_requests,
+            worktree::create_review_worktree,
             issues::commands::issues_get,
             issues::commands::issues_link,
             issues::commands::issues_record,
