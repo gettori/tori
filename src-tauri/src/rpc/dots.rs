@@ -175,6 +175,10 @@ pub struct ForgeUnit {
     #[serde(default)]
     pub is_current: bool,
     pub attention: bool,
+    #[serde(default)]
+    pub pr_known: bool,
+    #[serde(default)]
+    pub pull_request: Option<crate::needs_you_log::UnitPr>,
 }
 
 impl ForgeUnit {
@@ -500,6 +504,26 @@ fn forge_attention(forge: &[ForgeUnit], folder: &str, branch: Option<&str>) -> b
 mod tests {
     use super::*;
     use serde_json::Value;
+
+    #[test]
+    fn a_forge_unit_carries_its_pull_request_and_an_older_shape_still_reads() {
+        let facts: Facts = serde_json::from_value(serde_json::json!({
+            "forge": [
+                {
+                    "folderPath": "/p/a", "kind": "worktree", "branch": "fix", "isCurrent": false,
+                    "attention": false, "prKnown": true,
+                    "pullRequest": { "number": 7, "state": "merged", "title": "Fix it" }
+                },
+                { "folderPath": "/p/b", "kind": "worktree", "branch": null, "isCurrent": true, "attention": true }
+            ]
+        }))
+        .unwrap();
+        let pr = facts.forge[0].pull_request.as_ref().unwrap();
+        assert!(facts.forge[0].pr_known);
+        assert_eq!((pr.number, pr.state), (7, crate::needs_you_log::PrState::Merged));
+        assert!(!facts.forge[1].pr_known);
+        assert_eq!(facts.forge[1].pull_request, None);
+    }
 
     fn inputs(v: &Value) -> Inputs {
         let pty = match v["ptyActivity"].as_str() {

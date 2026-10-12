@@ -1142,6 +1142,23 @@ impl ChatHost {
                 }
             }
             for mut event in events {
+                if let ChatEvent::RateLimit {
+                    status,
+                    resets_at: Some(resets_at),
+                    ..
+                } = &event
+                {
+                    if status == "rejected" && !lifecycle.replaying(&id) {
+                        let folder = cwd.to_string_lossy();
+                        crate::digest::note_limit(
+                            &registry,
+                            crate::needs_you_log::Kind::LimitHit,
+                            &id,
+                            &folder,
+                            *resets_at,
+                        );
+                    }
+                }
                 if matches!(event, ChatEvent::ToolCallStarted { .. }) {
                     crate::secret_watch::annotate(&mut event, Some(&cwd), &crate::secret_watch::current().0);
                 }

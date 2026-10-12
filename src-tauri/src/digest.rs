@@ -6,8 +6,10 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
+use crate::chat::host::ChatState;
 use crate::chat::model::Verdict;
-use crate::needs_you_log::{Event, LogRead};
+use crate::chat::ownership::Registry;
+use crate::needs_you_log::{Event, Kind, LogRead};
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -42,6 +44,9 @@ pub struct Digest {
     /// Newest first.
     pub finished: Vec<Finished>,
     pub waiting: Vec<Event>,
+    /// Pull requests opened, merged or failing, and usage limits hit and
+    /// resumed, newest first.
+    pub happened: Vec<Event>,
 }
 
 /// One row per session, without lines.
@@ -84,7 +89,19 @@ pub fn read(since: Option<u64>) -> Digest {
         ready: crate::needs_you_log::composed(),
         finished,
         waiting: read.waiting,
+        happened: read.happened,
     }
+}
+
+/// A limit row for the account `session` runs as, named the way the session
+/// list names it.
+pub fn note_limit(registry: &Registry, kind: Kind, session: &str, folder: &str, resets_at: u64) -> bool {
+    let Some((agent, profile)) = registry.account_of(session) else {
+        return false;
+    };
+    let label = crate::sessions::profile_label(&crate::accounts::load(), &agent, Some(&profile));
+    let title = label.map_or_else(|| agent.clone(), |l| format!("{agent} {l}"));
+    crate::needs_you_log::note_limit(kind, &format!("{agent}/{profile}"), resets_at, session, folder, title)
 }
 
 #[tauri::command(async)]
@@ -95,6 +112,21 @@ pub fn digest_list(since: Option<u64>) -> Digest {
 #[tauri::command]
 pub fn digest_looked(at: u64) {
     crate::needs_you_log::looked(at);
+}
+
+/// Tori sent a chat its continue after the limit reset, by the setting or by
+/// the banner's button. `resets_at` is the reset it waited for, epoch seconds.
+#[tauri::command]
+pub fn digest_limit_resumed(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, ChatState>,
+    session_id: String,
+    folder: String,
+    resets_at: u64,
+) {
+    if note_limit(&state.0.registry, Kind::LimitResumed, &session_id, &folder, resets_at) {
+        crate::rpc::publish_needs_you(&app);
+    }
 }
 
 #[cfg(test)]
@@ -125,6 +157,7 @@ mod tests {
             as_of: 100,
             done: vec![done("a", 10, true), done("b", 20, false), done("a", 30, true)],
             waiting: Vec::new(),
+            happened: Vec::new(),
             verdicts: BTreeMap::from([(
                 "a".to_string(),
                 Checked {
@@ -151,6 +184,7 @@ mod tests {
             as_of: 100,
             done: vec![done("t", 10, false)],
             waiting: Vec::new(),
+            happened: Vec::new(),
             verdicts: BTreeMap::new(),
         };
         let row = &group(&read)[0];
