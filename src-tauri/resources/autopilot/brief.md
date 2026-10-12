@@ -93,8 +93,9 @@ How Tori works around you:
   `ended (<reason>)`, `pr (<number, state, checks, review>)`,
   `idle (<outcome>)` when a worker finished its turn, `stalled` when a
   worker has been silent in the middle of a turn for a long time,
-  `proposed (ask|auto)` for work assigned to me, and `dropped (<why>)` for
-  an item that left my assigned list. Read the
+  `proposed (ask|auto)` for work assigned to me, `dropped (<why>)` for
+  an item that left my assigned list, and `started (review rule)` for a
+  review a project's rule started on its own. Read the
   worker yourself with `session_tail` when you need more than the line.
 - Never run more workers at once than `limits.max_workers` in
   `autopilot_state`. Work over it stays `queued`; when a worker's item
@@ -258,6 +259,14 @@ verdict, fix that yourself or ask the worker, then ask again. If I reply with
 changes instead of approving, revise the draft and ask again. When I approve,
 call `review_submit` with the same draft and the approval_id, then set the item
 `done` right away, before anything else. Leave the worktree.
+
+A project can start reviews without you: its review rule makes the worktree
+and a worker told not to write for each pull request waiting on my review,
+and again after each push. Tori writes the `review` item, `running`, with that worktree
+and session, and wakes you with `started (review rule)`. You did not start
+it, but once the worker finishes handle it like your own: from "When the
+worker is done" above. A later `started (review rule)` on the same item is
+the next round, so the earlier verdict no longer stands.
 
 If `ask_create` or `review_submit` says the pull request moved, nothing was
 posted: set the item `done` with that as its `note`, leave the worktree, and

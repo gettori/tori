@@ -598,6 +598,75 @@ pub fn tell_session(app: &AppHandle, session: &str, kind: &str, text: &str) -> R
     Ok(())
 }
 
+pub fn spawn_review(app: &AppHandle, folder: &str, project: &str, prompt: String) -> Result<String, String> {
+    let rpc = app.state::<RpcState>();
+    let backend = methods::TauriBackend {
+        app: app.clone(),
+        states: rpc.states.clone(),
+        bridge: rpc.bridge.clone(),
+        asks: rpc.asks.clone(),
+        autopilot: rpc.autopilot.clone(),
+        runner: rpc.runner.clone(),
+        devices: rpc.devices.clone(),
+    };
+    let params = server::SpawnParams {
+        folder: Some(folder.to_string()),
+        project: Some(project.to_string()),
+        prompt: Some(prompt),
+        background: Some(true),
+        ..Default::default()
+    };
+    let spawned = backend
+        .spawn(&auth::Principal::Local, params, true)
+        .map_err(|e| e.message)?;
+    spawned["id"]
+        .as_str()
+        .map(str::to_string)
+        .ok_or_else(|| "the Tori window started no session".to_string())
+}
+
+pub fn session_mid_turn(app: &AppHandle, session: &str) -> bool {
+    matches!(
+        app.state::<RpcState>().states.snapshot().get(session),
+        Some(states::SessionState::Working | states::SessionState::NeedsYou)
+    )
+}
+
+pub fn session_live(app: &AppHandle, session: &str) -> bool {
+    app.state::<crate::chat::host::ChatState>().0.is_live(session)
+}
+
+pub fn steer_idle(app: &AppHandle, session: &str, kind: &str, text: &str) -> Result<(), String> {
+    if session_mid_turn(app, session) {
+        return Err(format!("{session} is mid-turn"));
+    }
+    let text = events::from_tori(kind, None, text);
+    app.state::<crate::chat::host::ChatState>().0.deliver(
+        session,
+        vec![crate::chat::model::ContentBlock::Text { text }],
+        false,
+        events::TurnBy::Local,
+    )
+}
+
+pub fn record_rule_review(
+    app: &AppHandle,
+    project: &str,
+    repo: &str,
+    account: &str,
+    review: crate::autopilot::RuleReview,
+) -> Result<(), String> {
+    let item = app
+        .state::<RpcState>()
+        .autopilot
+        .rule_review(project, repo, account, review)
+        .map_err(|e| e.to_string())?;
+    if let Some(watcher) = WATCHER.get() {
+        watcher.started(&item);
+    }
+    Ok(())
+}
+
 /// A Topic home chat just compacted, and the summary may have dropped what its
 /// Topic is. Told again from the record as it is now: into the running turn
 /// when the window filled mid-turn, on the next message after a `/compact`,

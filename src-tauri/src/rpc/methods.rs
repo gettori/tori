@@ -640,6 +640,81 @@ pub struct TauriBackend {
 }
 
 impl TauriBackend {
+    // `read_only` asks the webview for the agent's read-only mode, which only it
+    // knows once it has picked the agent.
+    pub fn spawn(&self, principal: &Principal, params: SpawnParams, read_only: bool) -> Result<Value, RpcError> {
+        if let Principal::Device(_) = principal {
+            device_may_spawn(&params, |agent| {
+                crate::agents::find(agent).is_some_and(|a| a.chat.is_some())
+            })?;
+        }
+        let me = self.identity(principal);
+        let attach = params.attach.unwrap_or_default();
+        if let Some(missing) = attach.iter().find(|path| !Path::new(path).is_file()) {
+            return Err(RpcError::new(INVALID_PARAMS, format!("no file {missing}")));
+        }
+        let folder = match params.new_worktree {
+            Some(branch) => self.create_worktree(
+                principal,
+                WorktreeParams {
+                    branch,
+                    project: params.project.clone(),
+                    from: params.from,
+                    issue: None,
+                    pr: None,
+                },
+            )?,
+            None => or_callers(params.folder, || me.cwd.clone(), "folder")?,
+        };
+        // Left out everywhere, the webview picks the folder's remembered agent and account.
+        let project = params
+            .project
+            .or_else(|| project_of(&folder, &crate::config::discovered_project_dirs()));
+        if let Some(project) = &project {
+            wait_for_setup(project, Path::new(&folder), crate::setup::WAIT_CAP);
+        }
+        let contract = project.and_then(|project| self.autopilot.contract(&project));
+        let caller = match principal {
+            Principal::Session(Caller::Chat(id)) => self.app.state::<ChatState>().0.levers(id),
+            _ => None,
+        };
+        let given = Picks {
+            agent: params.agent,
+            account: params.account,
+            model: params.model,
+            mode: params.mode,
+        };
+        let Picks {
+            agent,
+            account,
+            model,
+            mode,
+        } = fill_picks(given, contract.as_ref(), &me, &caller.unwrap_or_default());
+        let background = spawns_background(&self.states, principal, params.background.unwrap_or(false));
+        let request = json!({
+            "folder": folder,
+            "agent": agent,
+            "account": account,
+            "model": model,
+            "mode": mode,
+            "effort": params.effort,
+            "prompt": params.prompt,
+            "attach": attach,
+            "background": background,
+            "readOnly": read_only,
+            "spawner": match principal {
+                Principal::Session(Caller::Chat(spawner)) if background => Some(spawner.clone()),
+                _ => None,
+            },
+        });
+        let mut spawned = self.bridge.request("session.spawn", request)?;
+        if let Some(id) = spawned["id"].as_str() {
+            record_spawn(&self.states, principal, id, background);
+        }
+        spawned["background"] = json!(background);
+        Ok(spawned)
+    }
+
     fn live(&self) -> BTreeMap<String, Live> {
         let host = &self.app.state::<ChatState>().0;
         let mut live: BTreeMap<String, Live> = host
@@ -1362,75 +1437,7 @@ impl Backend for TauriBackend {
     }
 
     fn session_spawn(&self, principal: &Principal, params: SpawnParams) -> Result<Value, RpcError> {
-        if let Principal::Device(_) = principal {
-            device_may_spawn(&params, |agent| {
-                crate::agents::find(agent).is_some_and(|a| a.chat.is_some())
-            })?;
-        }
-        let me = self.identity(principal);
-        let attach = params.attach.unwrap_or_default();
-        if let Some(missing) = attach.iter().find(|path| !Path::new(path).is_file()) {
-            return Err(RpcError::new(INVALID_PARAMS, format!("no file {missing}")));
-        }
-        let folder = match params.new_worktree {
-            Some(branch) => self.create_worktree(
-                principal,
-                WorktreeParams {
-                    branch,
-                    project: params.project.clone(),
-                    from: params.from,
-                    issue: None,
-                    pr: None,
-                },
-            )?,
-            None => or_callers(params.folder, || me.cwd.clone(), "folder")?,
-        };
-        // Left out everywhere, the webview picks the folder's remembered agent and account.
-        let project = params
-            .project
-            .or_else(|| project_of(&folder, &crate::config::discovered_project_dirs()));
-        if let Some(project) = &project {
-            wait_for_setup(project, Path::new(&folder), crate::setup::WAIT_CAP);
-        }
-        let contract = project.and_then(|project| self.autopilot.contract(&project));
-        let caller = match principal {
-            Principal::Session(Caller::Chat(id)) => self.app.state::<ChatState>().0.levers(id),
-            _ => None,
-        };
-        let given = Picks {
-            agent: params.agent,
-            account: params.account,
-            model: params.model,
-            mode: params.mode,
-        };
-        let Picks {
-            agent,
-            account,
-            model,
-            mode,
-        } = fill_picks(given, contract.as_ref(), &me, &caller.unwrap_or_default());
-        let background = spawns_background(&self.states, principal, params.background.unwrap_or(false));
-        let request = json!({
-            "folder": folder,
-            "agent": agent,
-            "account": account,
-            "model": model,
-            "mode": mode,
-            "effort": params.effort,
-            "prompt": params.prompt,
-            "attach": attach,
-            "background": background,
-            "spawner": match principal {
-                Principal::Session(Caller::Chat(spawner)) if background => Some(spawner.clone()),
-                _ => None,
-            },
-        });
-        let mut spawned = self.bridge.request("session.spawn", request)?;
-        if let Some(id) = spawned["id"].as_str() {
-            record_spawn(&self.states, principal, id, background);
-        }
-        spawned["background"] = json!(background);
-        Ok(spawned)
+        self.spawn(principal, params, false)
     }
 
     fn window_open(&self, params: OpenParams) -> Result<Value, RpcError> {
