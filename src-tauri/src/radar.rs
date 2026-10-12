@@ -379,6 +379,37 @@ fn gated_session_signals(
     }
 }
 
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct View {
+    pub overlaps: Vec<Overlap>,
+    pub conflicts: HashMap<String, Option<Vec<String>>>,
+}
+
+pub fn view<'a>(worktrees: impl IntoIterator<Item = &'a str>) -> Option<View> {
+    if !enabled() {
+        return None;
+    }
+    let (overlaps, held) = {
+        let radar = radar();
+        let held: Vec<_> = worktrees
+            .into_iter()
+            .map(|wt| {
+                let answer = radar.answers.get(&Unit::checked_out(wt.to_string())).cloned();
+                (wt.to_string(), answer)
+            })
+            .collect();
+        (radar.overlaps.clone(), held)
+    };
+    let conflicts = held
+        .into_iter()
+        .map(|(wt, answer)| {
+            let answer = answer.unwrap_or_else(|| crate::git::unit_conflicts(&wt, None).conflicts);
+            (wt, answer)
+        })
+        .collect();
+    Some(View { overlaps, conflicts })
+}
+
 pub fn list() -> Listing {
     let radar = radar();
     listing(enabled(), &radar.answers, &radar.overlaps)
