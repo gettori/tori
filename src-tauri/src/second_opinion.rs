@@ -257,6 +257,9 @@ pub fn second_opinion_run(
         return Err("A second opinion is already running for this session.".into());
     }
     let span = crate::review::span_now(&index, &session)?;
+    if let Some(refusal) = over_ceiling(&span.session.cwd) {
+        return Err(refusal);
+    }
     let subject = Subject::of(&span)?;
     let task = task_of(&span);
     let brief = brief(&task, &subject);
@@ -305,6 +308,17 @@ pub fn second_opinion_run(
             format!("could not start the reviewer: {e}")
         })?;
     Ok(())
+}
+
+/// The project ceiling's refusal, on the rule a chat stops by: spend at or past
+/// the limit. Checked only before a run, so a reviewer is never cut off halfway.
+fn over_ceiling(folder: &str) -> Option<String> {
+    let limit = crate::settings::get_settings().budgets.project_usd?;
+    let spent = crate::chat::usage::project_total(&crate::chat::usage::load(&crate::chat::usage::usage_path(folder)))
+        .cost_usd?;
+    (spent >= limit).then(|| {
+        format!("This project has spent ${spent:.2} of its ${limit:.2} ceiling, so a second opinion won't start.")
+    })
 }
 
 fn failed(reviewer: String, error: &str) -> Review {
@@ -493,12 +507,19 @@ fn drive(
     if spawned.spawned.is_none() {
         return Err(format!("the reviewer's session was refused: {:?}", spawned.ownership));
     }
-    let result = review(host, &id, &rx, brief, how);
+    let result = review(host, &id, folder, &rx, brief, how);
     let _ = host.close(&id, EndReason::Closed);
     result
 }
 
-fn review(host: &ChatHost, id: &str, rx: &Receiver<ChatEvent>, brief: &str, how: ReadOnly) -> Result<Reply, String> {
+fn review(
+    host: &ChatHost,
+    id: &str,
+    folder: &str,
+    rx: &Receiver<ChatEvent>,
+    brief: &str,
+    how: ReadOnly,
+) -> Result<Reply, String> {
     let mut watch = Watch::new(how);
     if let ReadOnly::Option(value) = how {
         let deadline = Instant::now() + START_TIMEOUT;
@@ -524,7 +545,9 @@ fn review(host: &ChatHost, id: &str, rx: &Receiver<ChatEvent>, brief: &str, how:
     let deadline = Instant::now() + REVIEW_TIMEOUT;
     loop {
         let event = next(rx, deadline, "The reviewer ran past 15 minutes and was stopped.")?;
-        if matches!(event, ChatEvent::TurnCompleted { .. }) {
+        if let ChatEvent::TurnCompleted { usage, cost_usd, .. } = event {
+            let tokens = usage.input_tokens + usage.output_tokens + usage.cache_read_tokens + usage.cache_write_tokens;
+            let _ = crate::chat::usage::record_turn(&crate::chat::usage::usage_path(folder), id, tokens, cost_usd);
             return Ok(watch.reply);
         }
         watch.see(host, id, event)?;
