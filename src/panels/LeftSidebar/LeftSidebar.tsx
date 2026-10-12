@@ -3612,7 +3612,7 @@ export default function LeftSidebar(props: {
             type="button"
             class={`${styles.stripBtn} ${styles.inboxBtn}`}
             classList={{ [styles.active]: inboxOpen() }}
-            label="Inbox (⌘⇧I)"
+            label="Inbox (⌘⇧X)"
             placement={railed() ? "right" : undefined}
             aria-label="Inbox"
             aria-pressed={inboxOpen()}

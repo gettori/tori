@@ -328,11 +328,11 @@ export const COMMANDS: Command[] = [
   },
   {
     id: "review-inbox",
-    keys: ["⌘", "⇧", "I"],
+    keys: ["⌘", "⇧", "X"],
     label: "Show or hide the Inbox",
     group: "view",
     scope: "global",
-    match: cmdShift("i"),
+    match: cmdShift("x"),
     run: () => emit(TOGGLE_INBOX),
   },
   {
