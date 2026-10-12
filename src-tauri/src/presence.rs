@@ -31,6 +31,20 @@ pub struct Live {
     pub visible: bool,
     pub spawner: Option<String>,
     pub done_at: u64,
+    /// Why the dot is `NeedsYou`, `None` while it is not.
+    pub reason: Option<Reason>,
+    pub branch: Option<String>,
+}
+
+/// What a session needs you for. A PTY tab only shows it is waiting, a chat
+/// says on what, and a red pull request raises a dot the agent did not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reason {
+    Approval,
+    Question,
+    Budget,
+    Waiting,
+    Forge,
 }
 
 /// The sessions that crossed into a state on one tick.
@@ -396,6 +410,8 @@ mod tests {
             visible: false,
             spawner: None,
             done_at: 0,
+            reason: None,
+            branch: None,
         }
     }
 

@@ -180,6 +180,17 @@ pub struct ReviewMarkParams {
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct NeedsYouSeenParams {
+    /// A session whose finished turns you have now seen.
+    pub session: Option<String>,
+    /// A folder whose pull request rows you have now seen.
+    pub folder: Option<String>,
+    /// Narrows `folder` to one branch, for a plain repo whose branches share it.
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct LogParams {
     /// At most this many entries, the last ones (default 50).
     pub limit: Option<usize>,
@@ -687,6 +698,8 @@ pub trait Backend: Send + Sync {
     fn units_git(&self, params: UnitsGitParams) -> Result<Value, RpcError>;
     fn review_list(&self) -> Result<Value, RpcError>;
     fn review_mark(&self, params: ReviewMarkParams) -> Result<Value, RpcError>;
+    fn needs_you_list(&self) -> Result<Value, RpcError>;
+    fn needs_you_seen(&self, params: NeedsYouSeenParams) -> Result<Value, RpcError>;
     fn radar_list(&self) -> Result<Value, RpcError>;
     fn units_sync(&self, params: UnitsSyncParams) -> Result<Value, RpcError>;
     fn units_pr(&self, params: UnitsPrParams) -> Result<Value, RpcError>;
@@ -1016,6 +1029,12 @@ pub mod tests {
         }
         fn review_mark(&self, p: ReviewMarkParams) -> Result<Value, RpcError> {
             Ok(json!({ "id": p.id }))
+        }
+        fn needs_you_list(&self) -> Result<Value, RpcError> {
+            Ok(json!([]))
+        }
+        fn needs_you_seen(&self, p: NeedsYouSeenParams) -> Result<Value, RpcError> {
+            Ok(json!({ "session": p.session }))
         }
         fn radar_list(&self) -> Result<Value, RpcError> {
             Ok(json!({ "enabled": true, "units": [] }))
@@ -1474,6 +1493,26 @@ pub mod tests {
     }
 
     #[test]
+    fn only_a_person_or_a_paired_phone_reads_what_needs_them() {
+        let server = stub_server();
+        let list = || request("needs_you.list", json!({}));
+        let seen = || request("needs_you.seen", json!({"session": "s1", "folder": "/p/repo"}));
+        for caller in [Principal::Local, Principal::Device("d1".into())] {
+            assert!(server.dispatch(0, &caller, &list()).is_ok(), "{caller:?}");
+            assert!(server.dispatch(0, &caller, &seen()).is_ok(), "{caller:?}");
+        }
+        for caller in [
+            Principal::Session(Caller::Chat("s1".into())),
+            Principal::Session(Caller::Terminal("t1".into())),
+        ] {
+            for call in [list(), seen()] {
+                let err = server.dispatch(0, &caller, &call).unwrap_err();
+                assert_eq!(err.code, REFUSED, "{caller:?}");
+            }
+        }
+    }
+
+    #[test]
     fn session_answer_is_refused_to_a_worker_a_shell_and_a_terminal() {
         let server = stub_server();
         let answer = || {
@@ -1563,6 +1602,8 @@ pub mod tests {
                 "session.mode",
                 "review.list",
                 "review.mark",
+                "needs_you.list",
+                "needs_you.seen",
                 "radar.list",
                 "units.git",
                 "units.sync",
