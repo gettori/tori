@@ -7,7 +7,9 @@ import {
   digestCount,
   digestTime,
   finishedParts,
+  happenedParts,
   hideDigest,
+  isLimit,
   showDigest,
   type Finished,
 } from "../../utils/digest";
@@ -133,6 +135,37 @@ function FinishedRow(props: { row: Finished }) {
   );
 }
 
+// A pull request row opens its worktree, a limit row the chat that stopped.
+function HappenedRow(props: { event: NeedsYouEvent }) {
+  const target = (): NavTarget =>
+    props.event.session ? { folder: props.event.folder, session: props.event.session } : { folder: props.event.folder };
+  return (
+    <li class={styles.row}>
+      <button type="button" class={styles.open} onClick={() => emitWith<NavTarget>(NAVIGATE, target())}>
+        <span class={styles.body}>
+          <span class={styles.title}>{props.event.title || folderName(props.event.folder)}</span>
+          <span class={styles.where}>
+            {[props.event.project || folderName(props.event.folder), ...happenedParts(props.event)].join(" · ")}
+          </span>
+        </span>
+      </button>
+    </li>
+  );
+}
+
+function HappenedSection(props: { label: string; events: NeedsYouEvent[] }) {
+  return (
+    <Show when={props.events.length}>
+      <section class={styles.group} aria-label={props.label}>
+        <h3 class={styles.groupHead}>{props.label}</h3>
+        <ul class={styles.list}>
+          <For each={props.events}>{(event) => <HappenedRow event={event} />}</For>
+        </ul>
+      </section>
+    </Show>
+  );
+}
+
 function SinceList() {
   onMount(showDigest);
   onCleanup(hideDigest);
@@ -150,6 +183,8 @@ function SinceList() {
             </ul>
           </section>
         </Show>
+        <HappenedSection label="Pull requests" events={(digest()?.happened ?? []).filter((e) => !isLimit(e))} />
+        <HappenedSection label="Usage limits" events={(digest()?.happened ?? []).filter(isLimit)} />
         <Show when={digest()?.waiting.length}>
           <section class={styles.group} aria-label="Waiting on you">
             <h3 class={styles.groupHead}>Waiting on you</h3>

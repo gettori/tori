@@ -15,7 +15,7 @@ export type Arm = {
 
 // Settles once the host has taken the turn or the send was refused, which is
 // when the account's next continue may go.
-export type Fire = () => Promise<void>;
+export type Fire = (a: Arm) => Promise<void>;
 
 // Firing on the second the window reopens can be refused on clock skew, and the
 // refused turn would then report a reset no later than its own end, which
@@ -92,7 +92,7 @@ async function pump(accountKey: string) {
   setArmed(next, undefined);
   const fire = fires.get(next);
   try {
-    if (a && fire) await fire();
+    if (a && fire) await fire(a);
   } catch {
     // A refusal is the fire's to report. Either way the next one goes.
   } finally {
