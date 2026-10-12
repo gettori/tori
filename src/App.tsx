@@ -151,6 +151,7 @@ import { CockpitPopup, CockpitSwitch, CockpitView } from "./panels/Autopilot/Coc
 import { popupOpen, view } from "./utils/autopilotStore";
 import InboxView from "./panels/Inbox/InboxView";
 import { inboxOpen, watchInbox } from "./utils/reviewInbox";
+import { watchSecondOpinions } from "./utils/secondOpinion";
 import "./styles/tokens.css";
 import "./styles/base.css";
 import "./App.css";
@@ -351,6 +352,7 @@ function App() {
   const [bodyW, setBodyW] = createSignal(window.innerWidth);
   const [bodyH, setBodyH] = createSignal(window.innerHeight);
   onMount(watchInbox);
+  onMount(watchSecondOpinions);
   onMount(() => {
     if (!bodyEl) return;
     const ro = new ResizeObserver(([entry]) => {
