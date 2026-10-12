@@ -50,3 +50,21 @@ export function issueDraft(issue: Issue): string {
   const body = issue.body.trim();
   return body ? `${issue.title}\n\n${body}` : issue.title;
 }
+
+/** The review requests no branch here covers yet: none is `pr-<n>`, and none
+ *  carries pull request `n`. */
+export function pendingReviews(
+  list: ReviewRequests | null,
+  branches: readonly string[],
+  prOf: (branch: string) => number | null,
+): IssueRef[] {
+  if (!list) return [];
+  const covered = new Set<number>();
+  for (const b of branches) {
+    const own = /^pr-(\d+)$/.exec(b);
+    if (own) covered.add(Number(own[1]));
+    const n = prOf(b);
+    if (n !== null) covered.add(n);
+  }
+  return list.rows.filter((r) => !covered.has(Number(r.key)));
+}

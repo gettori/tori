@@ -406,6 +406,14 @@
   color: var(--brand-default);
 }
 
+.rowGlyph.reviewMark {
+  width: auto;
+  gap: var(--tori-space-1);
+  color: var(--attention-fg);
+  font-size: var(--tori-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Everything a row says about itself, in one cluster at its end.
    Each of these used to push itself right with its own `margin-left: auto`, so
    a row with two of them split the free space *between* them and the glyphs

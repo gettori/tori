@@ -1236,22 +1236,9 @@ impl Backend for TauriBackend {
                     format!("pr goes alone: its branch is {branch}, and it takes no from or issue"),
                 ));
             }
-            let pr = crate::forge::commands::pull_request(&project, number).map_err(forge_refused)?;
-            let sha = pr.head_sha;
-            let head_ref = crate::forge::commands::pr_head_ref(&project, number);
-            let askpass = self.app.state::<crate::askpass::AskpassState>().0.clone();
-            {
-                let lock = crate::exec::repo_lock(&project);
-                let _held = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-                crate::git::fetch_pr_head(&project, &head_ref, &sha, askpass.sock_path(), askpass.token())
-                    .map_err(refused)?;
-                // Best effort: a stale base only widens what the worker reads, and ask.create refuses any comment off the real diff.
-                let _ = crate::git::fetch_branch_quiet(&project, &pr.base_ref);
-            }
-            let fork = !pr.head_repo_is_origin;
-            let create =
-                crate::worktree::create_pr_worktree(self.app.clone(), project.clone(), number, sha.clone(), !fork);
-            let path = tauri::async_runtime::block_on(create).map_err(refused)?;
+            let head = crate::worktree::review_head(&project, number).map_err(forge_refused)?;
+            let path = crate::worktree::checkout_review(&self.app, &project, &head).map_err(refused)?;
+            let (sha, fork) = (head.sha, head.fork);
             let setup = setup_fields(&project, Path::new(&path), fork, crate::setup::WAIT_CAP);
             return Ok(with_fields(
                 json!({ "path": path, "branch": branch, "head_sha": sha }),

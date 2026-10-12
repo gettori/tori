@@ -352,6 +352,53 @@ pub async fn create_pr_worktree(
     .await
 }
 
+pub struct ReviewHead {
+    pub number: u64,
+    pub sha: String,
+    pub head_ref: String,
+    pub base_ref: String,
+    pub fork: bool,
+}
+
+pub fn review_head(project: &str, number: u64) -> Result<ReviewHead, crate::forge::ForgeError> {
+    let pr = crate::forge::commands::pull_request(project, number)?;
+    Ok(ReviewHead {
+        number,
+        sha: pr.head_sha,
+        head_ref: crate::forge::commands::pr_head_ref(project, number),
+        base_ref: pr.base_ref,
+        fork: !pr.head_repo_is_origin,
+    })
+}
+
+fn fetch_review_head(project: &str, head: &ReviewHead, sock: &Path, token: &str) -> Result<(), String> {
+    let lock = crate::exec::repo_lock(project);
+    let _held = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    crate::git::fetch_pr_head(project, &head.head_ref, &head.sha, sock, token)?;
+    // Best effort: a stale base only widens what a reviewer reads.
+    let _ = crate::git::fetch_branch_quiet(project, &head.base_ref);
+    Ok(())
+}
+
+pub fn checkout_review(app: &AppHandle, project: &str, head: &ReviewHead) -> Result<String, String> {
+    use tauri::Manager;
+    let askpass = app.state::<crate::askpass::AskpassState>().0.clone();
+    fetch_review_head(project, head, askpass.sock_path(), askpass.token())?;
+    tauri::async_runtime::block_on(create_pr_worktree(
+        app.clone(),
+        project.to_string(),
+        head.number,
+        head.sha.clone(),
+        !head.fork,
+    ))
+}
+
+#[tauri::command(async)]
+pub fn create_review_worktree(app: AppHandle, project_path: String, number: u64) -> Result<String, String> {
+    let head = review_head(&project_path, number).map_err(|e| e.to_string())?;
+    checkout_review(&app, &project_path, &head)
+}
+
 /// `setup` false for a fork's head: the setup command is the user's, but that
 /// tree is a stranger's, and its install scripts would run with nobody watching.
 pub(crate) fn create_pr_worktree_in(
@@ -968,6 +1015,56 @@ mod tests {
         git(&feat, &["add", "."]);
         git(&feat, &["commit", "-qm", "feature work"]);
         assert!(branch_unpushed(&feat), "a local-only branch is unpushed");
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn a_review_worktree_fetches_the_pull_request_head_and_sits_on_it() {
+        let tmp = unique_tmp();
+        let src = tmp.join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        git(&src, &["init", "-q"]);
+        git(&src, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        git(&src, &["config", "user.email", "t@t.t"]);
+        git(&src, &["config", "user.name", "t"]);
+        std::fs::write(src.join("a.txt"), "hi").unwrap();
+        git(&src, &["add", "."]);
+        git(&src, &["commit", "-qm", "init"]);
+        git(&src, &["checkout", "-q", "-b", "fork"]);
+        std::fs::write(src.join("a.txt"), "theirs").unwrap();
+        git(&src, &["commit", "-qam", "fork work"]);
+        git(&src, &["update-ref", "refs/pull/9/head", "HEAD"]);
+        let sha = rev_parse(src.to_str().unwrap(), "HEAD").unwrap();
+        git(&src, &["checkout", "-q", "main"]);
+        git(&src, &["branch", "-qD", "fork"]);
+
+        let cont = tmp.join("cont");
+        std::fs::create_dir_all(&cont).unwrap();
+        Command::new("git")
+            .args([
+                "clone",
+                "-q",
+                "--bare",
+                src.to_str().unwrap(),
+                cont.join(".bare").to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+        std::fs::write(cont.join(".git"), "gitdir: ./.bare\n").unwrap();
+        let repo = cont.to_str().unwrap();
+        let head = ReviewHead {
+            number: 9,
+            sha: sha.clone(),
+            head_ref: "refs/pull/9/head".into(),
+            base_ref: "main".into(),
+            fork: true,
+        };
+
+        fetch_review_head(repo, &head, Path::new("/nonexistent/sock"), "t").unwrap();
+        let wt = create_pr_worktree_in(repo, head.number, &head.sha, &cont, !head.fork).unwrap();
+        assert!(wt.ends_with("pr-9"), "{}", wt.display());
+        assert_eq!(rev_parse(wt.to_str().unwrap(), "HEAD").unwrap(), sha);
 
         std::fs::remove_dir_all(&tmp).ok();
     }

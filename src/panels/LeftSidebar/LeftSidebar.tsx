@@ -33,6 +33,7 @@ import AddBranchDialog, { type BranchPick, type IssueSourceProps } from "../../c
 import {
   errorText,
   issueDraft,
+  pendingReviews,
   unitIssueOf,
   type Issue,
   type IssueRef,
@@ -158,6 +159,7 @@ import {
   unitStatus,
   forgeViewer,
   requestedReviews,
+  reviewRequests,
   type WatchedProject,
 } from "../../utils/forgeStatus";
 import { settings as appSettings } from "../Settings/settingsStore";
@@ -183,6 +185,7 @@ import {
   ShieldAlert,
   ShieldOff,
   UserRound,
+  GitPullRequest,
 } from "lucide-solid";
 import { BranchMark, WorktreeMark } from "../../components/Icon/gitMarks";
 import { attemptFolderName, groupAttempts, samePath, type AttemptGroup, type AttemptRecord } from "./attempts";
@@ -1018,6 +1021,53 @@ export default function LeftSidebar(props: {
           </span>
         </Show>
       </>
+    );
+  }
+
+  function reviewRequestsNode(p: Project) {
+    const pending = createMemo(() =>
+      pendingReviews(
+        reviewRequests(p.path),
+        p.branchUnits.flatMap((u) => (u.branch ? [u.branch] : [])),
+        (b) => unitStatus(p.path, b)?.pullRequest?.number ?? null,
+      ),
+    );
+    const review = async (number: number) => {
+      try {
+        const folder = await invoke<string>("create_review_worktree", { projectPath: p.path, number });
+        await loadConfig();
+        selectUnitIn(p, (u) => samePath(u.folderPath, folder));
+      } catch (e) {
+        setError(errorText(e));
+      }
+    };
+    const items = (): MenuItem[] => [
+      { heading: "Review requested" },
+      ...pending().map((r) => ({
+        label: `${r.display} ${r.title}${r.author ? `, ${r.author}` : ""}`,
+        onClick: () => void review(Number(r.key)),
+      })),
+    ];
+    const label = () => `${pending().length} pull request${pending().length === 1 ? "" : "s"} waiting on your review`;
+    return (
+      <Show when={pending().length > 0}>
+        {/* The row toggles the project on click, which picking must not also do. */}
+        <span onClick={(e) => e.stopPropagation()}>
+          <Dropdown as="span" items={items()} placement="bottom-end" aria-label={`Review requests for ${p.name}`}>
+            <Tooltip
+              as="button"
+              type="button"
+              class={`${rows.rowGlyph} ${rows.reviewMark}`}
+              aria-label={`${p.name}: ${label()}`}
+              label={label()}
+              data-review-requests={pending().length}
+            >
+              <Icon icon={GitPullRequest} />
+              <Show when={pending().length > 1}>{pending().length}</Show>
+            </Tooltip>
+          </Dropdown>
+        </span>
+      </Show>
     );
   }
 
@@ -3519,6 +3569,7 @@ export default function LeftSidebar(props: {
                           }}
                         />
                       </Show>
+                      {reviewRequestsNode(p)}
                       {forgeDoorNode(p)}
                       {statusBubble(() =>
                         plainDir() ? bubbleForUnits([folderUnit()]) : !popen() ? bubbleForUnits(allUnits()) : null,
