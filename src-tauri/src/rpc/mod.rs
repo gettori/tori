@@ -452,6 +452,7 @@ impl Composer {
         let topics = crate::unit_home::topics();
         let metas = self.metas.lock().unwrap_or_else(|e| e.into_inner());
         for l in &mut live {
+            l.branch = metas.0.get(&l.id).map(|m| m.branch.clone()).filter(|b| !b.is_empty());
             if l.name.is_empty() {
                 l.name = metas
                     .0
@@ -475,16 +476,38 @@ impl Composer {
         });
         // Released before the OS calls: building the tray's menu waits on the
         // main thread, which may itself be waiting on this lock.
-        let (edges, quiet, (tray, badge)) = {
+        let (edges, relayed, watched, (tray, badge)) = {
             let mut presence = self.presence();
             let edges = presence.step(&live);
-            let quiet: HashSet<String> = live
-                .iter()
-                .filter(|l| crate::presence::relayed(l.spawner.as_deref(), &chats, pilot) || presence.suppressed(l))
-                .map(|l| l.id.clone())
-                .collect();
-            (edges, quiet, presence.surface(&live))
+            let ids = |keep: &dyn Fn(&crate::presence::Live) -> bool| -> HashSet<String> {
+                live.iter().filter(|l| keep(l)).map(|l| l.id.clone()).collect()
+            };
+            let relayed = ids(&|l| crate::presence::relayed(l.spawner.as_deref(), &chats, pilot));
+            let watched = ids(&|l| presence.suppressed(l));
+            (edges, relayed, watched, presence.surface(&live))
         };
+        let units: Vec<crate::needs_you_log::Unit> = self
+            .dots
+            .forge()
+            .into_iter()
+            .map(|u| crate::needs_you_log::Unit {
+                project: crate::unit_home::project_name(&spaces, &u.folder_path),
+                folder: u.folder_path,
+                branch: u.branch,
+                attention: u.attention,
+            })
+            .collect();
+        let logged = crate::needs_you_log::record(&crate::needs_you_log::Tick {
+            live: &live,
+            finished: &edges.finished,
+            relayed: &relayed,
+            watched: &watched,
+            units: &units,
+        });
+        if logged {
+            publish_needs_you(&self.app);
+        }
+        let quiet: HashSet<String> = relayed.union(&watched).cloned().collect();
         for id in &edges.cleared {
             crate::presence::withdraw_notification(&self.app, id);
         }
@@ -726,6 +749,13 @@ pub fn publish_reviewed(session_id: &str, folder: &str) {
         session_id,
         session_event("session.reviewed", session_id, &Place::of(folder), json!({})),
     );
+}
+
+// On `sessions`, which every phone screen already reads and ignores unknown kinds of.
+pub fn publish_needs_you(app: &AppHandle) {
+    let _ = app.emit(crate::needs_you_log::CHANGED_EVENT, ());
+    let Some((hub, _)) = EVENTS.get() else { return };
+    hub.publish(&Channel::Sessions, json!({ "kind": "needs_you.changed" }));
 }
 
 // Serialised only while someone reads `chat:<id>`: this runs on every delta.

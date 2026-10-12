@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use super::states::{Reported, SessionState, Source};
 use crate::config::{BranchUnit, ProjectKind};
-use crate::presence::Live;
+use crate::presence::{Live, Reason};
 use crate::unit_home::Home;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -99,6 +99,20 @@ pub struct Composed {
     /// The dot is `NeedsYou` because of the pull request, not the agent, so the
     /// webview can draw it as the PR rather than as a question.
     pub raised: bool,
+}
+
+/// Why a composed dot needs you, from what composed it.
+pub fn reason(dot: Dot, raised: bool, status: Option<Status>) -> Option<Reason> {
+    if dot != Dot::NeedsYou {
+        return None;
+    }
+    Some(match (raised, status) {
+        (true, _) => Reason::Forge,
+        (_, Some(Status::WaitingForApproval)) => Reason::Approval,
+        (_, Some(Status::WaitingForAnswer)) => Reason::Question,
+        (_, Some(Status::BudgetStopped)) => Reason::Budget,
+        _ => Reason::Waiting,
+    })
 }
 
 pub fn compose(input: &Inputs) -> Composed {
@@ -325,28 +339,39 @@ impl Dots {
     /// every project are the caller's to fill in.
     pub fn live(&self) -> Vec<Live> {
         let inner = self.inner();
-        let dot = |id: &str| inner.dots.get(id).map_or(Dot::None, |c| c.dot);
-        let hosted = |id: &str, folder: &str| Live {
-            id: id.to_string(),
-            dot: dot(id),
-            name: String::new(),
-            project: String::new(),
-            folder: folder.to_string(),
-            chat: false,
-            visible: false,
-            spawner: None,
-            done_at: 0,
+        let change = |id: &str| inner.dots.get(id).map_or((Dot::None, false), |c| (c.dot, c.raised));
+        let hosted = |id: &str, folder: &str, status: Option<Status>| {
+            let (dot, raised) = change(id);
+            Live {
+                id: id.to_string(),
+                dot,
+                name: String::new(),
+                project: String::new(),
+                folder: folder.to_string(),
+                chat: false,
+                visible: false,
+                spawner: None,
+                done_at: 0,
+                reason: reason(dot, raised, status),
+                branch: None,
+            }
         };
-        let tabs = inner.facts.tabs.iter().map(|t| hosted(&t.session, &t.workspace));
+        let tabs = inner.facts.tabs.iter().map(|t| hosted(&t.session, &t.workspace, None));
         let chats = inner.facts.chats.iter().map(|c| Live {
             name: c.name.clone(),
             chat: true,
             visible: c.visible,
             spawner: c.spawner.clone(),
             done_at: c.done_at,
-            ..hosted(&c.session, &c.folder)
+            ..hosted(&c.session, &c.folder, Some(c.status))
         });
         tabs.chain(chats).collect()
+    }
+
+    /// Each branch unit the forge poll reported, and whether its pull request
+    /// needs attention.
+    pub fn forge(&self) -> Vec<ForgeUnit> {
+        self.inner().facts.forge.clone()
     }
 
     pub fn all(&self) -> Vec<Change> {
@@ -528,6 +553,37 @@ mod tests {
         let c = compose(&idle);
         assert_eq!(c.dot, Dot::NeedsYou);
         assert_eq!(c.state, Some(SessionState::Idle));
+    }
+
+    #[test]
+    fn a_needs_you_dot_says_why() {
+        let reason_of = |input: Inputs| {
+            let c = compose(&input);
+            reason(c.dot, c.raised, input.chat_status)
+        };
+        let chat = |status| Inputs {
+            chat_status: Some(status),
+            ..Default::default()
+        };
+        assert_eq!(reason_of(chat(Status::WaitingForApproval)), Some(Reason::Approval));
+        assert_eq!(reason_of(chat(Status::WaitingForAnswer)), Some(Reason::Question));
+        assert_eq!(reason_of(chat(Status::BudgetStopped)), Some(Reason::Budget));
+        assert_eq!(reason_of(chat(Status::Executing)), None);
+        let blocked_tab = Inputs {
+            has_live_tab: true,
+            running: true,
+            pty: Some(Activity::Quiet),
+            tail_blocked: true,
+            ..Default::default()
+        };
+        assert_eq!(reason_of(blocked_tab), Some(Reason::Waiting));
+        let red_idle_tab = Inputs {
+            has_live_tab: true,
+            running: true,
+            forge_attention: true,
+            ..Default::default()
+        };
+        assert_eq!(reason_of(red_idle_tab), Some(Reason::Forge));
     }
 
     fn tab(id: &str, session: &str) -> TabFact {

@@ -19,10 +19,10 @@ use super::server::{
     AskAnswerParams, AskParams, AskWaitParams, Backend, Before, BudgetParams, CheckpointDiffParams, CheckpointParams,
     CheckpointsParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams,
     IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams,
-    ModelParams, OpenParams, PendingParams, PrCreateParams, PrGetParams, PrMergeParams, PrWatchParams,
-    ProjectIconParams, ProjectSetParams, ProvenanceParams, ReviewMarkParams, ReviewSubmitParams, SessionAnswerParams,
-    SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams,
-    WaitParams, WorktreeParams, DEFAULT_LOG_LIMIT,
+    ModelParams, NeedsYouSeenParams, OpenParams, PendingParams, PrCreateParams, PrGetParams, PrMergeParams,
+    PrWatchParams, ProjectIconParams, ProjectSetParams, ProvenanceParams, ReviewMarkParams, ReviewSubmitParams,
+    SessionAnswerParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams,
+    UnitsSyncParams, WaitParams, WorktreeParams, DEFAULT_LOG_LIMIT,
 };
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
@@ -1161,6 +1161,22 @@ impl Backend for TauriBackend {
 
     fn review_list(&self) -> Result<Value, RpcError> {
         to_json(crate::review::inbox_now(&self.app.state::<SessionIndex>()))
+    }
+
+    fn needs_you_list(&self) -> Result<Value, RpcError> {
+        to_json(crate::needs_you_log::list())
+    }
+
+    fn needs_you_seen(&self, params: NeedsYouSeenParams) -> Result<Value, RpcError> {
+        let (session, folder, branch) = (
+            params.session.as_deref(),
+            params.folder.as_deref(),
+            params.branch.as_deref(),
+        );
+        if crate::needs_you_log::seen(session, folder, branch) {
+            super::publish_needs_you(&self.app);
+        }
+        Ok(json!({}))
     }
 
     fn radar_list(&self) -> Result<Value, RpcError> {
