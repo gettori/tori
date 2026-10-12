@@ -22,6 +22,7 @@ mod convert;
 mod crash;
 mod credential;
 mod dap;
+mod digest;
 mod dragboard;
 mod editorconfig;
 mod env;
@@ -401,6 +402,8 @@ pub fn run() {
             review::review_mark,
             needs_you_log::needs_you_list,
             needs_you_log::needs_you_seen,
+            digest::digest_list,
+            digest::digest_looked,
             second_opinion::second_opinion_reviewers,
             second_opinion::second_opinion_running,
             second_opinion::second_opinion_list,
