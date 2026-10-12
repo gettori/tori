@@ -41,3 +41,4 @@ source: "Notifications inbox plan (gettori/tickets#36), commits b05df531, 814bc2
 - [[gotcha_two_writes_to_one_scratch_index_collide]] the race its live tree exposed
 - [[gotcha_the_webview_is_not_a_hub_subscriber]] why a mark goes out on two channels
 - [[gotcha_the_first_run_art_renders_the_phones_bottom_bar]] the prop that broke the push
+- [[component_digest]] the Since you looked tab of the same Inbox
