@@ -213,6 +213,8 @@ pub struct Snapshot {
 
 // `session_live` is left out when the item has no session, `worktree_gone`
 // when it has no worktree or git could not be read.
+// `overlaps` and `base_conflicts` are left out while the conflict radar is off,
+// and `base_conflicts` also for an item with no worktree or an unknown answer.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Row {
     #[serde(flatten)]
@@ -221,7 +223,20 @@ pub struct Row {
     pub session_live: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub worktree_gone: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub overlaps: Option<Vec<RowOverlap>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_conflicts: Option<Vec<String>>,
     pub reference: Reference,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct RowOverlap {
+    pub file: String,
+    pub other_session: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub other_item: Option<String>,
+    pub other_branch: Option<String>,
 }
 
 /// How an item is named to a person: `#212 (personal -> tori -> y-test)`, the
@@ -261,6 +276,8 @@ pub type Listed = (PathBuf, Option<String>);
 #[derive(Debug, Default)]
 pub struct Observed {
     pub live: HashSet<String>,
+    // `None` while the conflict radar is off.
+    pub radar: Option<crate::radar::View>,
     // Project -> the worktrees git lists for it; `None` where git could not be read.
     pub worktrees: HashMap<String, Option<Vec<Listed>>>,
     // Project -> the states its origin gave, by (`owner/name`, number); absent where the forge failed.
@@ -657,10 +674,13 @@ pub fn reconcile(
     live: &HashSet<String>,
     worktrees: &HashMap<String, Option<Vec<Listed>>>,
     root: Option<&Path>,
+    radar: Option<&crate::radar::View>,
 ) -> Vec<Row> {
     items
         .iter()
         .map(|item| Row {
+            overlaps: radar.map(|r| overlaps_of(item, items, &r.overlaps)),
+            base_conflicts: radar.and_then(|r| r.conflicts.get(item.worktree.as_deref()?).cloned().flatten()),
             session_live: item.session.as_ref().map(|s| live.contains(s)),
             worktree_gone: item.worktree.as_deref().and_then(|wt| {
                 let listed = worktrees.get(&item.project)?.as_ref()?;
@@ -671,6 +691,32 @@ pub fn reconcile(
             item: item.clone(),
         })
         .collect()
+}
+
+fn overlaps_of(item: &Item, items: &[Item], overlaps: &[crate::radar::Overlap]) -> Vec<RowOverlap> {
+    let mine = |o: &crate::radar::Overlap| {
+        item.session.as_deref() == Some(o.session.as_str())
+            || item
+                .worktree
+                .as_deref()
+                .is_some_and(|wt| crate::rpc::events::same_folder(wt, &o.path))
+    };
+    let mut out: Vec<RowOverlap> = overlaps
+        .iter()
+        .filter(|o| mine(o))
+        .map(|o| RowOverlap {
+            file: o.file.clone(),
+            other_session: o.other_session.clone(),
+            other_item: items
+                .iter()
+                .find(|i| !i.state.terminal() && i.session.as_deref() == Some(o.other_session.as_str()))
+                .map(|i| i.id.clone()),
+            other_branch: o.other_branch.clone(),
+        })
+        .collect();
+    out.sort();
+    out.dedup();
+    out
 }
 
 fn name_of(path: &Path) -> String {
@@ -1116,7 +1162,13 @@ impl AutopilotStore {
         }
         let held = self.lock();
         Snapshot {
-            items: reconcile(&held.items, &seen.live, &seen.worktrees, root.as_deref()),
+            items: reconcile(
+                &held.items,
+                &seen.live,
+                &seen.worktrees,
+                root.as_deref(),
+                seen.radar.as_ref(),
+            ),
             projects: held.projects.clone(),
         }
     }
@@ -1213,6 +1265,8 @@ impl AutopilotStore {
             item: item.clone(),
             session_live,
             worktree_gone: None,
+            overlaps: None,
+            base_conflicts: None,
             reference,
         };
         (self.publish)(json!({ "kind": "autopilot.changed", "item": row, "ts": now_ms() }));
@@ -1617,7 +1671,7 @@ pub mod tests {
             session: Some("gone".into()),
             ..item("a", State::Running)
         };
-        let rows = reconcile(&[running], &HashSet::new(), &HashMap::new(), None);
+        let rows = reconcile(&[running], &HashSet::new(), &HashMap::new(), None, None);
         assert_eq!(rows[0].item.state, State::Running);
         assert_eq!(rows[0].session_live, Some(false));
         assert_eq!(rows[0].worktree_gone, None, "no worktree, nothing to say");
@@ -1629,8 +1683,57 @@ pub mod tests {
             &HashSet::from(["s".to_string()]),
             &HashMap::new(),
             None,
+            None,
         );
         assert_eq!(live[0].session_live, Some(true));
+    }
+
+    #[test]
+    fn two_running_items_on_one_file_name_each_other_and_say_nothing_while_off() {
+        let running = |id: &str, session: &str, wt: &str| Item {
+            session: Some(session.into()),
+            worktree: Some(wt.into()),
+            ..item(id, State::Running)
+        };
+        let items = [running("a", "s1", "/p/one"), running("b", "s2", "/p/two")];
+        let side = |session: &str, path: &str, other: &str, other_path: &str, branch: &str| crate::radar::Overlap {
+            session: session.into(),
+            path: path.into(),
+            file: "src/a.rs".into(),
+            other_session: other.into(),
+            other_path: other_path.into(),
+            other_branch: Some(branch.into()),
+        };
+        let view = crate::radar::View {
+            overlaps: vec![
+                side("s1", "/p/one", "s2", "/p/two", "two"),
+                side("s2", "/p/two", "s1", "/p/one", "one"),
+            ],
+            conflicts: HashMap::from([
+                ("/p/one".to_string(), Some(vec!["src/b.rs".to_string()])),
+                ("/p/two".to_string(), None),
+            ]),
+        };
+        let rows = reconcile(&items, &HashSet::new(), &HashMap::new(), None, Some(&view));
+        let named = |row: &Row| {
+            row.overlaps
+                .as_ref()
+                .unwrap()
+                .iter()
+                .map(|o| (o.other_item.clone(), o.other_branch.clone()))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(named(&rows[0]), vec![(Some("b".into()), Some("two".into()))]);
+        assert_eq!(named(&rows[1]), vec![(Some("a".into()), Some("one".into()))]);
+        assert_eq!(rows[0].base_conflicts, Some(vec!["src/b.rs".to_string()]));
+        assert_eq!(rows[1].base_conflicts, None, "unknown is left out");
+
+        let off = reconcile(&items, &HashSet::new(), &HashMap::new(), None, None);
+        let json = serde_json::to_value(&off[0]).unwrap();
+        assert!(
+            json.get("overlaps").is_none() && json.get("base_conflicts").is_none(),
+            "{json}"
+        );
     }
 
     #[test]
@@ -1640,7 +1743,13 @@ pub mod tests {
             ..item("a", State::Running)
         };
         let listed = HashMap::from([("/p".to_string(), Some(vec![(PathBuf::from("/p/wt-1"), None)]))]);
-        let rows = reconcile(&[with("/p/wt-1"), with("/p/wt-2")], &HashSet::new(), &listed, None);
+        let rows = reconcile(
+            &[with("/p/wt-1"), with("/p/wt-2")],
+            &HashSet::new(),
+            &listed,
+            None,
+            None,
+        );
         assert_eq!(
             (rows[0].worktree_gone, rows[1].worktree_gone),
             (Some(false), Some(true))
@@ -1653,7 +1762,7 @@ pub mod tests {
 
         let unreadable = HashMap::from([("/p".to_string(), None)]);
         assert_eq!(
-            reconcile(&[with("/p/wt-2")], &HashSet::new(), &unreadable, None)[0].worktree_gone,
+            reconcile(&[with("/p/wt-2")], &HashSet::new(), &unreadable, None, None)[0].worktree_gone,
             None
         );
     }
