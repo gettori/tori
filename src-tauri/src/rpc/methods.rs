@@ -17,9 +17,9 @@ use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
     AskAnswerParams, AskParams, AskWaitParams, Backend, Before, BudgetParams, CheckpointDiffParams, CheckpointParams,
-    CheckpointsParams, DigestParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams,
-    IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams,
-    ModelParams, NeedsYouSeenParams, OpenParams, PendingParams, PrCreateParams, PrGetParams, PrMergeParams,
+    CheckpointsParams, DigestLookedParams, DigestParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams,
+    IssueGetParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams,
+    ModeParams, ModelParams, NeedsYouSeenParams, OpenParams, PendingParams, PrCreateParams, PrGetParams, PrMergeParams,
     PrWatchParams, ProjectIconParams, ProjectSetParams, ProvenanceParams, ReviewMarkParams, ReviewSubmitParams,
     SessionAnswerParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams,
     UnitsSyncParams, WaitParams, WorktreeParams, DEFAULT_LOG_LIMIT,
@@ -1181,6 +1181,11 @@ impl Backend for TauriBackend {
 
     fn digest_list(&self, params: DigestParams) -> Result<Value, RpcError> {
         to_json(crate::digest::read(params.since))
+    }
+
+    fn digest_looked(&self, params: DigestLookedParams) -> Result<Value, RpcError> {
+        crate::needs_you_log::looked(params.at);
+        Ok(json!({}))
     }
 
     fn radar_list(&self) -> Result<Value, RpcError> {

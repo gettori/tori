@@ -8,7 +8,7 @@ import { rgbTriple, spaceHue } from "../../src/utils/spaceTint";
 import AutopilotScreen, { AutopilotChat, watchRunner } from "./Autopilot";
 import BottomBar from "./BottomBar";
 import Chat from "./Chat";
-import InboxScreen, { watchInbox, watchNeedsYou } from "./Inbox";
+import InboxScreen, { watchDigest, watchInbox, watchNeedsYou } from "./Inbox";
 import { setSpaceName, showWheel, spaceName } from "./prefs";
 import Root, { type RootTab } from "./Root";
 import { ProjectScreen, TopicScreen } from "./Screens";
@@ -186,6 +186,7 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
   const { runner, decisions, crew } = autopilot;
   const inbox = watchInbox(props.client);
   const needsYou = watchNeedsYou(props.client);
+  const digest = watchDigest(props.client);
   const [tab, setTab] = createSignal<RootTab>("projects");
   const [stack, setStack] = createSignal<View[]>([]);
   const space = () => tree()?.spaces.find((s) => s.name === spaceName()) ?? tree()?.spaces[0];
@@ -341,6 +342,7 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
             client={props.client}
             inbox={inbox}
             needsYou={needsYou}
+            digest={digest}
             live={live}
             onReply={openSession}
             onEvent={openEvent}

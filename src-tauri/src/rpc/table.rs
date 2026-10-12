@@ -9,9 +9,9 @@ use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
     params, AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams,
-    CheckpointsParams, DigestParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams,
-    IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams,
-    ModelParams, NeedsYouSeenParams, OpenParams, PendingParams, PrCreateParams, PrGetParams, PrMergeParams,
+    CheckpointsParams, DigestLookedParams, DigestParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams,
+    IssueGetParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams,
+    ModeParams, ModelParams, NeedsYouSeenParams, OpenParams, PendingParams, PrCreateParams, PrGetParams, PrMergeParams,
     PrWatchParams, ProjectIconParams, ProjectSetParams, ProvenanceParams, ReviewMarkParams, ReviewSubmitParams,
     SessionAnswerParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams,
     UnitsSyncParams, WaitParams, WorktreeParams, UNITS_GIT_MAX,
@@ -260,6 +260,15 @@ pub static METHODS: &[Method] = &[
         refusal: Some("an agent cannot read what needs the person"),
         outward: false,
         call: |b, _, v| b.digest_list(params(v)?),
+    },
+    Method {
+        name: "digest.looked",
+        description: "The person saw the digest read at `at` (its `asOf`). Moves the last look there, never back, and is shared by every device.",
+        params: schema::<DigestLookedParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: Some("an agent cannot look for the person"),
+        outward: false,
+        call: |b, _, v| b.digest_looked(params(v)?),
     },
     Method {
         name: "radar.list",
