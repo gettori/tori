@@ -56,6 +56,7 @@ mod provenance;
 mod pty;
 mod radar;
 mod review;
+mod review_rule;
 mod rpc;
 mod scratch;
 mod search;
@@ -739,6 +740,8 @@ pub fn run() {
             issues::commands::issues_assigned,
             issues::commands::review_requests,
             worktree::create_review_worktree,
+            review_rule::review_rule_state,
+            review_rule::review_rule_resume,
             issues::commands::issues_get,
             issues::commands::issues_link,
             issues::commands::issues_record,

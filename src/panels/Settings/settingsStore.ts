@@ -351,7 +351,13 @@ export type Settings = {
   verification: { enabled: boolean; commands: Record<string, string[]> };
   /** Mirrors `ConflictRadar` in src-tauri/src/settings.rs. */
   conflictRadar: { enabled: boolean };
+  /** Mirrors `ReviewRule` in src-tauri/src/settings.rs, keyed by project path. */
+  reviewRequested?: Record<string, ReviewRule>;
 };
+
+/** What a project does when a pull request asks for your review. A null prompt
+ *  runs the built-in one. */
+export type ReviewRule = { action: "off" | "worktree" | "review"; prompt: string | null; maxPerHour: number };
 
 /** What a project runs in a worktree Tori has just created. An empty command
  *  runs nothing; `setupWait` holds `worktree.new` and `session.spawn` until it exits. */
@@ -473,6 +479,7 @@ export const DEFAULT_SETTINGS: Settings = {
   blindEdits: { enabled: true },
   verification: { enabled: true, commands: {} },
   conflictRadar: { enabled: true },
+  reviewRequested: {},
 };
 
 /**
@@ -902,6 +909,19 @@ export function rememberWorktreePrefs(projectPath: string, patch: Partial<Worktr
   return saveSettings({
     ...settings,
     worktree: { ...settings.worktree, [projectPath]: { ...worktreePrefs(projectPath), ...patch } },
+  });
+}
+
+const RULE_OFF: ReviewRule = { action: "off", prompt: null, maxPerHour: 5 };
+
+export function reviewRule(projectPath: string): ReviewRule {
+  return { ...RULE_OFF, ...settings.reviewRequested?.[projectPath] };
+}
+
+export function setReviewRule(projectPath: string, patch: Partial<ReviewRule>): Promise<void> {
+  return saveSettings({
+    ...settings,
+    reviewRequested: { ...settings.reviewRequested, [projectPath]: { ...reviewRule(projectPath), ...patch } },
   });
 }
 

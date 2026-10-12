@@ -510,6 +510,7 @@ pub fn plan_pickup(
     lists: &[SourceList],
     answered: bool,
     pickup: Pickup,
+    file_reviews: bool,
     now: u64,
     mut mint: impl FnMut() -> String,
 ) -> (Vec<Item>, Vec<(String, String)>) {
@@ -559,6 +560,9 @@ pub fn plan_pickup(
             State::Queued
         };
         for row in &list.rows {
+            if !file_reviews && row.kind == IssueKind::ReviewRequest {
+                continue;
+            }
             let known: Vec<&Item> = items.iter().filter(|i| here(i) && same_work(i, row, repo)).collect();
             if !known.is_empty() && !known.iter().all(|i| i.state.terminal() && i.gone_upstream) {
                 continue;
@@ -1070,6 +1074,9 @@ impl AutopilotStore {
         failed: &[FailedSource],
     ) -> Result<Vec<Item>, UpdateError> {
         let pickup = self.contract(project).unwrap_or_default().pickup;
+        // A project whose review rule is on starts its own reviews; pickup still
+        // closes what the rule filed once the request clears.
+        let file_reviews = crate::settings::review_rule(project).action == crate::settings::ReviewAction::Off;
         let mint = || format!("item-{}", crate::chat::approval::random_token());
         let mut held = Vec::new();
         let changed = self.write(|items| {
@@ -1081,6 +1088,7 @@ impl AutopilotStore {
                 lists,
                 failed.is_empty(),
                 pickup,
+                file_reviews,
                 now_ms(),
                 mint,
             );
@@ -1902,7 +1910,7 @@ pub mod tests {
         pickup: Pickup,
     ) -> (Vec<Item>, Vec<(String, String)>) {
         let n = std::cell::Cell::new(items.len());
-        plan_pickup(items, project, "o/r", "me", lists, answered, pickup, 9, || {
+        plan_pickup(items, project, "o/r", "me", lists, answered, pickup, true, 9, || {
             n.set(n.get() + 1);
             format!("p{}", n.get())
         })
@@ -1911,7 +1919,7 @@ pub mod tests {
     fn tick(items: &mut Vec<Item>, account: &str, rows: &[IssueRef], cap: usize, pickup: Pickup) -> Vec<Item> {
         let n = std::cell::Cell::new(items.len());
         let lists = origin_lists(rows, cap);
-        plan_pickup(items, "/p", "o/r", account, &lists, true, pickup, 9, || {
+        plan_pickup(items, "/p", "o/r", account, &lists, true, pickup, true, 9, || {
             n.set(n.get() + 1);
             format!("p{}", n.get())
         })
@@ -2030,6 +2038,67 @@ pub mod tests {
             Pickup::Auto
         )
         .is_empty());
+    }
+
+    #[test]
+    fn a_project_whose_review_rule_is_on_files_no_review_and_still_clears_the_rules_item() {
+        let mut items = vec![Item {
+            kind: Kind::Review,
+            picked_by: Some("me".into()),
+            ..item("rule", State::Running)
+        }];
+        let lists = |rows: &[IssueRef]| origin_lists(rows, 50);
+        let mint = || "new".to_string();
+        let first = lists(&[row("1", IssueKind::Issue), row("7", IssueKind::ReviewRequest)]);
+        plan_pickup(
+            &mut items,
+            "/p",
+            "o/r",
+            "me",
+            &first,
+            true,
+            Pickup::Auto,
+            false,
+            9,
+            mint,
+        );
+        let again = lists(&[
+            row("1", IssueKind::Issue),
+            row("7", IssueKind::ReviewRequest),
+            row("8", IssueKind::ReviewRequest),
+        ]);
+        plan_pickup(
+            &mut items,
+            "/p",
+            "o/r",
+            "me",
+            &again,
+            true,
+            Pickup::Auto,
+            false,
+            9,
+            mint,
+        );
+        assert!(
+            !items.iter().any(|i| i.id != "rule" && i.kind == Kind::Review),
+            "the rule starts its own reviews: {items:?}"
+        );
+        assert!(items.iter().any(|i| i.kind == Kind::Ship), "issues are still filed");
+
+        plan_pickup(
+            &mut items,
+            "/p",
+            "o/r",
+            "me",
+            &lists(&[row("1", IssueKind::Issue)]),
+            true,
+            Pickup::Auto,
+            false,
+            9,
+            mint,
+        );
+        let rule = items.iter().find(|i| i.id == "rule").unwrap();
+        assert_eq!(rule.note.as_deref(), Some(REVIEW_CLEARED));
     }
 
     #[test]

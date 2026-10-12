@@ -1,5 +1,5 @@
 import { createEffect, createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js";
-import { Bot, FolderSymlink, SlidersHorizontal, Wrench, X, type LucideIcon } from "lucide-solid";
+import { Bot, FolderSymlink, SlidersHorizontal, Wrench, X, Zap, type LucideIcon } from "lucide-solid";
 
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
@@ -11,6 +11,7 @@ import { createSpaceProject, projectUnitKind } from "../../utils/topicMembers";
 import ModalShell from "../Settings/components/ModalShell";
 import s from "../Settings/Settings.module.css";
 import AgentsSection from "./AgentsSection";
+import AutomationsSection from "./AutomationsSection";
 import ChecksSection from "./ChecksSection";
 import EditorSection from "./EditorSection";
 import GeneralSection from "./GeneralSection";
@@ -24,6 +25,7 @@ const SECTION_ICON: Record<ProjectSection, LucideIcon> = {
   general: SlidersHorizontal,
   worktrees: FolderSymlink,
   agents: Bot,
+  automations: Zap,
   tooling: Wrench,
 };
 
@@ -235,6 +237,9 @@ export default function ProjectSettingsDialog(props: { path: string; section?: P
               ))}
               {pane("agents", () => (
                 <AgentsSection project={f().project} onDirty={(key, on) => markDirty(`agents:${key}`, on)} />
+              ))}
+              {pane("automations", () => (
+                <AutomationsSection projectPath={f().project.path} />
               ))}
               {pane("tooling", () => (
                 <>

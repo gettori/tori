@@ -978,6 +978,10 @@ pub struct Settings {
     pub verification: Verification,
     #[serde(default, deserialize_with = "lenient_conflict_radar")]
     pub conflict_radar: ConflictRadar,
+    /// What each project does when your review is requested, keyed by project
+    /// path. No entry is off.
+    #[serde(default, deserialize_with = "lenient_review_rules")]
+    pub review_requested: std::collections::HashMap<String, ReviewRule>,
 }
 
 /// Whether secret reads are marked, and additions to the list. The patterns
@@ -1096,6 +1100,64 @@ fn lenient_conflict_radar<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Conf
     let raw = serde_json::Value::deserialize(d)?;
     let enabled = raw.get("enabled").and_then(|e| e.as_bool()).unwrap_or(true);
     Ok(ConflictRadar { enabled })
+}
+
+/// What a project does when a pull request asks for your review.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewRule {
+    pub action: ReviewAction,
+    /// The review session's prompt; `None` runs the built-in one.
+    #[serde(default)]
+    pub prompt: Option<String>,
+    #[serde(default = "default_max_per_hour")]
+    pub max_per_hour: u32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ReviewAction {
+    #[default]
+    Off,
+    Worktree,
+    Review,
+}
+
+fn default_max_per_hour() -> u32 {
+    5
+}
+
+impl Default for ReviewRule {
+    fn default() -> Self {
+        Self {
+            action: ReviewAction::Off,
+            prompt: None,
+            max_per_hour: default_max_per_hour(),
+        }
+    }
+}
+
+// One malformed project entry is dropped rather than failing the whole file,
+// which `load_from` would turn into every section reading its defaults.
+fn lenient_review_rules<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<std::collections::HashMap<String, ReviewRule>, D::Error> {
+    let raw = serde_json::Value::deserialize(d)?;
+    let Some(map) = raw.as_object() else {
+        return Ok(Default::default());
+    };
+    Ok(map
+        .iter()
+        .filter_map(|(k, v)| Some((k.clone(), serde_json::from_value(v.clone()).ok()?)))
+        .collect())
+}
+
+pub fn review_rule(path: &str) -> ReviewRule {
+    get_settings()
+        .review_requested
+        .get(path.trim_end_matches('/'))
+        .cloned()
+        .unwrap_or_default()
 }
 
 /// What a project does to a worktree Tori has just created for it.
@@ -1478,6 +1540,40 @@ mod tests {
         s.forge.pr_watch = true;
         save_to(&p, &s).unwrap();
         assert!(load_from(&p).forge.pr_watch);
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn a_review_rule_round_trips_and_an_older_or_broken_entry_reads_off() {
+        let p = tmp_file();
+        std::fs::write(&p, r#"{"git":{"fetchEveryMinutes":5}}"#).unwrap();
+        assert!(
+            load_from(&p).review_requested.is_empty(),
+            "a file from before the rule has none"
+        );
+
+        std::fs::write(
+            &p,
+            r#"{"git":{"fetchEveryMinutes":5},"reviewRequested":{"/r/a":{"action":"review","prompt":"look"},"/r/b":{"action":"sometimes"}}}"#,
+        )
+        .unwrap();
+        let s = load_from(&p);
+        assert_eq!(s.git.fetch_every_minutes, 5, "a broken entry costs no other section");
+        assert_eq!(
+            s.review_requested.get("/r/a"),
+            Some(&ReviewRule {
+                action: ReviewAction::Review,
+                prompt: Some("look".into()),
+                max_per_hour: 5,
+            })
+        );
+        assert!(
+            !s.review_requested.contains_key("/r/b"),
+            "an unknown action is dropped, so the rule is off"
+        );
+
+        save_to(&p, &s).unwrap();
+        assert_eq!(load_from(&p).review_requested, s.review_requested);
         let _ = std::fs::remove_file(&p);
     }
 
