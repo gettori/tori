@@ -199,6 +199,7 @@ import { dockOpen } from "../../layout/dockStore";
 import BranchLine from "./BranchLine";
 import { prWatchMenu, type PrWatchRow } from "../../utils/prWatchMenu";
 import StatusBubble, { CountBubble } from "./StatusBubble";
+import { needsYouCount } from "../../utils/needsYouInbox";
 import { inboxOpen, reviewItems } from "../../utils/reviewInbox";
 import { latestUnreviewed, runSecondOpinion, secondOpinionRunning } from "../../utils/secondOpinion";
 import SpaceTile, { ModeTile, TileProbe } from "./SpaceTile";
@@ -3618,8 +3619,8 @@ export default function LeftSidebar(props: {
             onClick={() => emit(TOGGLE_INBOX)}
           >
             <Icon icon={Inbox} />
-            <Show when={reviewItems().length > 0}>
-              <CountBubble>{reviewItems().length}</CountBubble>
+            <Show when={reviewItems().length + needsYouCount() > 0}>
+              <CountBubble>{reviewItems().length + needsYouCount()}</CountBubble>
             </Show>
           </Tooltip>
 

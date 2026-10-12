@@ -17,6 +17,7 @@ import ConfigMirror from "./ConfigMirror";
 import FollowToggle from "./FollowToggle";
 import ModelPicker from "./ModelPicker";
 import { lockedProvider } from "./agentPaletteData";
+import { pendingCard, setPendingCard } from "../../utils/pendingCard";
 import { isLocked, items as autopilotItems, refreshLocked, setView, stopAutopilot } from "../../utils/autopilotStore";
 import LockedBar from "../../components/Autopilot/LockedBar";
 import { draftPick, hasPick, pickRidesArgv, setDraftPick } from "../../utils/chatDraftPick";
@@ -170,6 +171,7 @@ import {
   modePending,
   modelPending,
   pendingApprovals,
+  pendingQuestions,
   pendingSwitchNotice,
   oldestQueued,
   pendingFlush,
@@ -1184,6 +1186,20 @@ export default function ChatView(props: {
       return;
     }
     void invoke("chat_close", { sessionId: props.sessionId }).catch(() => {});
+  });
+
+  // The Inbox opened this session at its waiting card. Held while a fresh
+  // mount is still loading, then dropped when there is none, so a stale ask
+  // cannot scroll the transcript on some later block.
+  createEffect(() => {
+    if (pendingCard() !== props.sessionId) return;
+    const waiting = pendingApprovals(state).length + pendingQuestions(state).length;
+    if (!waiting && !numberingSettled()) return;
+    setPendingCard(null);
+    if (!waiting) return;
+    queueMicrotask(() =>
+      transcriptEl?.querySelector<HTMLElement>("[data-pending-card]")?.scrollIntoView({ block: "center" }),
+    );
   });
 
   // A blame widget in the editor pointed at one of this session's turns.
