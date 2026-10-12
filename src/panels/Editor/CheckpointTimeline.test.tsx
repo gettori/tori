@@ -32,6 +32,9 @@ let live: { sessionId: string; sessionName: string; folderPath: string; status: 
 // What `session_secrets` answers for s1, which the store below knows the path of.
 let secretTurns: { promptTs: number | null; paths: string[]; strength: string }[] = [];
 let verifiedTurns: { promptTs: number | null; verdict: string; checks: unknown[] }[] = [];
+// What the radar lists as shared with another worktree.
+let overlaps: unknown[] = [];
+let revertArgs: unknown[] = [];
 
 vi.mock("../../utils/sessionStore", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../utils/sessionStore")>()),
@@ -60,6 +63,11 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve(secretTurns);
       case "session_verification":
         return Promise.resolve(verifiedTurns);
+      case "radar_list":
+        return Promise.resolve({ enabled: true, units: [], overlaps });
+      case "checkpoint_revert_tree":
+        revertArgs.push(args);
+        return Promise.resolve({ backstop_ts: 1_700_000_200, restored: [], deleted: [] });
       case "backstop_restore_tree":
         restoreArgs.push(args);
         return Promise.resolve({ restored: ["src/a.ts"], deleted: [] });
@@ -77,6 +85,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import CheckpointTimeline from "./CheckpointTimeline";
+import { resetRadarForTests } from "../../utils/radar";
 import { checkpointClock } from "../../utils/syntheticTabs";
 
 beforeEach(() => {
@@ -88,6 +97,9 @@ beforeEach(() => {
   sinceFiles = null;
   secretTurns = [];
   verifiedTurns = [];
+  overlaps = [];
+  revertArgs = [];
+  resetRadarForTests();
 });
 
 const restoreButton = () => screen.findByText(`Restore tree to ${checkpointClock(1_700_000_000)}`);
@@ -234,5 +246,42 @@ describe("a turn that changed code", () => {
     // The turn that changed no code wears nothing.
     expect(screen.getAllByRole("img", { name: /^(Verified|Checks failed|Unverified)$/ })).toHaveLength(3);
     await expectNoAxeViolations(document.body);
+  });
+});
+
+// A file a session in another worktree is changing too is a fact about the
+// pull requests, not about this worktree: a revert here leaves the other copy
+// alone, so it gets a label and never the shared-file confirm.
+describe("a file another worktree is changing too", () => {
+  const openTurn = async () => {
+    checkpoints = [{ prompt_ts: 1_700_000_100, kind: "", file_count: 1, bytes: 40 }];
+    turnFiles = [{ path: "src/a.ts", status: "modified" }];
+    overlaps = [
+      {
+        session: "s1",
+        path: "/proj",
+        file: "src/a.ts",
+        other_session: "other-session-id",
+        other_path: "/proj-two",
+        other_branch: "feat/two",
+      },
+    ];
+    render(() => <CheckpointTimeline root="/proj" sessionId="s1" folderPath="/proj" />);
+    fireEvent.click(await screen.findByText("Untitled turn", { selector: "span" }));
+    await screen.findByText("a.ts");
+  };
+
+  it("says who else has it open and on which branch", async () => {
+    await openTurn();
+    expect(await screen.findByRole("img", { name: "Also open in other-se on feat/two" })).toBeTruthy();
+  });
+
+  it("reverts without asking about it", async () => {
+    await openTurn();
+    fireEvent.click(await screen.findByText(/Revert tree to/));
+    fireEvent.click(await screen.findByText("Revert tree"));
+    await waitFor(() => expect(revertArgs.length).toBe(1));
+    expect(screen.queryByText(/also written by another chat/)).toBeNull();
+    expect((revertArgs[0] as { shared: string[] }).shared).toEqual([]);
   });
 });

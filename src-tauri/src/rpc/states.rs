@@ -177,13 +177,16 @@ impl SessionStates {
         ids
     }
 
-    /// The folders of every session not yet ended, idle ones included.
-    pub fn live_folders(&self) -> Vec<String> {
+    /// Every session not yet ended, idle ones included, with its folder.
+    pub fn live_in_folders(&self) -> Vec<(String, String)> {
         let held = self.states.lock().unwrap_or_else(|e| e.into_inner());
-        held.values()
-            .filter(|h| h.state != SessionState::Ended)
-            .filter_map(|h| h.folder.clone())
-            .collect()
+        let mut live: Vec<(String, String)> = held
+            .iter()
+            .filter(|(_, h)| h.state != SessionState::Ended)
+            .filter_map(|(id, h)| h.folder.clone().map(|f| (id.clone(), f)))
+            .collect();
+        live.sort();
+        live
     }
 
     pub fn mark_background(&self, id: &str) {
@@ -311,6 +314,23 @@ mod tests {
         );
         assert!(!states.running("c") && !states.running("t"));
         assert!(!states.running("unknown"));
+    }
+
+    #[test]
+    fn an_idle_session_is_live_and_an_ended_one_is_not() {
+        let states = SessionStates::default();
+        states.replace(
+            vec![
+                report("idle", SessionState::Idle, Source::Chat),
+                report("done", SessionState::Ended, Source::Chat),
+            ],
+            place,
+            GONE,
+        );
+        assert_eq!(
+            states.live_in_folders(),
+            vec![("idle".to_string(), "/p/wt".to_string())]
+        );
     }
 
     #[test]

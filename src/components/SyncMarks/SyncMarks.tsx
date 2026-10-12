@@ -10,7 +10,15 @@
 // here is the icon each one wears and the size it is drawn at.
 
 import { For, Show, type JSX } from "solid-js";
-import { ArrowDownToLine, ArrowUpFromLine, CircleX, FilePen, GitMergeConflict, type LucideIcon } from "lucide-solid";
+import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  CircleX,
+  FilePen,
+  Files,
+  GitMergeConflict,
+  type LucideIcon,
+} from "lucide-solid";
 import Icon from "../Icon/Icon";
 import Tooltip from "../Tooltip/Tooltip";
 import type { SyncMark } from "../../utils/branchSync";
@@ -21,6 +29,7 @@ import styles from "./SyncMarks.module.css";
 /// bare dot because a dot is what every other status in this app already is.
 const MARK_ICON: Record<SyncMark["kind"], LucideIcon> = {
   conflict: GitMergeConflict,
+  overlap: Files,
   checks: CircleX,
   push: ArrowUpFromLine,
   pull: ArrowDownToLine,

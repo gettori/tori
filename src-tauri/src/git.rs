@@ -3285,6 +3285,57 @@ fn base_sync(repo: &str, tip: &str, branch: Option<&str>, tracked: Option<&str>,
     })
 }
 
+/// The repo-relative paths a worktree changed against its base: commits since
+/// it left the base, edits on top, and new files. Against HEAD alone where
+/// there is no base, which is a worktree standing on its own base branch.
+pub(crate) fn changed_since_base(repo: &str) -> Option<std::collections::HashSet<String>> {
+    let (branch, tip, _) = tip_of(repo, None);
+    if !resolves(repo, &tip) {
+        return None;
+    }
+    let tracked = branch.as_deref().and_then(|name| sync_ref(repo, name));
+    let from = match base_target(repo, branch.as_deref(), tracked.as_deref()) {
+        Some((_, base_ref)) => git_capture(repo, &["merge-base", &base_ref, &tip]).ok()?,
+        None => tip,
+    };
+    let diff = git_capture(repo, &["--no-optional-locks", "diff", "--name-only", &from, "--"]).ok()?;
+    let mut paths: std::collections::HashSet<String> =
+        diff.lines().filter(|l| !l.is_empty()).map(str::to_string).collect();
+    if let Ok(new) = git_capture(
+        repo,
+        &[
+            "--no-optional-locks",
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+            "-z",
+        ],
+    ) {
+        paths.extend(new.split('\0').filter(|p| !p.is_empty()).map(str::to_string));
+    }
+    Some(paths)
+}
+
+/// The worktree root holding `path`, as git prints it (canonical), and the same
+/// root spelled from `path` itself, since a recorded write keeps the spelling
+/// the session used and macOS symlinks `/var` under `/private`.
+pub(crate) fn worktree_roots(path: &str) -> Option<(String, String)> {
+    let top = git_capture(path, &["rev-parse", "--show-toplevel"]).ok()?;
+    let prefix = git_capture(path, &["rev-parse", "--show-prefix"]).unwrap_or_default();
+    let trimmed = path.trim_end_matches('/');
+    let given = trimmed
+        .strip_suffix(prefix.trim_end_matches('/'))
+        .map(|p| p.trim_end_matches('/').to_string())
+        .filter(|p| !p.is_empty())
+        .unwrap_or_else(|| top.clone());
+    Some((top, given))
+}
+
+/// The branch checked out in `repo`, `None` when detached.
+pub(crate) fn current_branch(repo: &str) -> Option<String> {
+    tip_of(repo, None).0
+}
+
 /// One row's radar answer: the same `base.conflicts` `git_branch_sync` gives,
 /// without the rest of the row's standing, and whether the base is a local
 /// branch. `conflicts` is `None` where there is no base, nothing resolves, or

@@ -123,13 +123,16 @@ import {
 import { forgeChip, forgeDoor } from "../../utils/forgeChip";
 import {
   finishedLook,
+  overlapMark,
   resyncRadar,
   resyncRoot,
   syncFor,
   syncMarks,
   syncUnits,
+  withOverlap,
   type FinishedPr,
 } from "../../utils/branchSync";
+import { overlapsAt, watchRadar } from "../../utils/radar";
 import { prRelation } from "../../utils/prRelation";
 import { resetToUpstream } from "../../utils/gitActions";
 import { compactAgo } from "../../utils/compactAge";
@@ -2739,7 +2742,10 @@ export default function LeftSidebar(props: {
       const pr = showPr() ? status()?.pullRequest : null;
       return pr && pr.state !== "open" ? { state: pr.state, relation: relation() } : null;
     };
-    const marks = createMemo(() => (held() ? [] : syncMarks(sync(), finished())));
+    // Kept while an agent holds the row: a file another worktree is changing
+    // too is the one mark that matters most while the agent is still writing.
+    const overlap = () => (u.kind !== "plain" || u.isCurrent ? overlapMark(overlapsAt(u.folderPath)) : null);
+    const marks = createMemo(() => withOverlap(held() ? [] : syncMarks(sync(), finished()), overlap()));
     // One hover target for the whole run rather than one per glyph: they are
     // 13px each, none of them is focusable, and the reader wants the branch's
     // standing in one place rather than four hovers to assemble it.
@@ -2985,6 +2991,7 @@ export default function LeftSidebar(props: {
       if (!e.payload.quiet) loadConfig();
     });
     unlistenBaseChanged = await listen<{ repo: string }>("git://base-changed", (e) => void resyncRoot(e.payload.repo));
+    watchRadar();
     unlistenRadar = await listen<{ units: { path: string }[] }>(
       "radar://changed",
       (e) => void resyncRadar(e.payload.units),
