@@ -178,6 +178,8 @@ mod tests {
             title: "t".into(),
             url: "u".into(),
             kind: IssueKind::Issue,
+            author: None,
+            head_sha: None,
         };
         gate.assigned("a1", repo(), false, || Ok(vec![item.clone()])).unwrap();
         let again = gate
@@ -221,6 +223,8 @@ mod tests {
             title: "t".into(),
             url: "u".into(),
             kind: IssueKind::Issue,
+            author: None,
+            head_sha: None,
         };
         let tori = "repo:gettori/tickets is:open is:issue label:\"tori\"";
         let docs = "repo:gettori/tickets is:open is:issue label:\"docs\"";

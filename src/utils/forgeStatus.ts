@@ -28,6 +28,7 @@ import {
   type UnitStatus,
 } from "./forgeTypes";
 import { canonicalHost, type KnownHosts } from "./prUrl";
+import type { ReviewRequests } from "./issues";
 import { orgNotice, type OrgNotice } from "./orgNotice";
 import { isReference, memberPrBranch, type Topic } from "./topics";
 import {
@@ -229,6 +230,7 @@ const [lastPollAt, setLastPollAt] = createSignal<Record<string, number>>({});
  *  the `404`; nothing else in this store keeps a last error, because nothing
  *  else has an answer to offer for one. */
 const [orgBlocked, setOrgBlocked] = createSignal<Record<string, string>>({});
+const [reviewLists, setReviewLists] = createSignal<Record<string, ReviewRequests | null>>({});
 /** Whether `gh` is on this machine, read once. It decides which route an
  *  organisation notice can offer, and a path lookup does not change under us. */
 const [cliInstalled, setCliInstalled] = createSignal(false);
@@ -304,6 +306,15 @@ export function unitStatusForPr(path: string, number: number): UnitStatus | null
     if (k.startsWith(prefix) && status.pullRequest?.number === number) return status;
   }
   return null;
+}
+
+export function reviewRequests(path: string): ReviewRequests | null {
+  return reviewLists()[path] ?? null;
+}
+
+export function requestedReviews(path: string): number[] | null {
+  const list = reviewRequests(path);
+  return list ? list.rows.map((r) => Number(r.key)).filter(Number.isInteger) : null;
 }
 
 /** Units of this project the last tick did not cover. Surfaced rather than
@@ -438,6 +449,10 @@ async function pollProject(project: WatchedProject, trigger: Trigger, now: numbe
   if (!mayPoll(clockFor(project.path, repo), trigger, now, pause)) return;
   // A failure here says nothing about the status call, so it stays out of that backoff.
   void invoke("autopilot_pickup", { projectPath: project.path }).catch(() => {});
+  void invoke<ReviewRequests | null>("review_requests", { projectPath: project.path }).then(
+    (list) => setReviewLists((m) => ({ ...m, [project.path]: list })),
+    keepLastReviewList,
+  );
   const branches = askOrder(project.units);
   if (branches.length === 0) return;
   // Stamped before the await, so two triggers landing together do not both get
@@ -457,6 +472,9 @@ async function pollProject(project: WatchedProject, trigger: Trigger, now: numbe
     await noteFailure(project.path, repo, e, now);
   }
 }
+
+// A failed ask says nothing about the list, so the last answer stands.
+const keepLastReviewList = () => {};
 
 /// One tick over every watched project.
 ///
@@ -538,5 +556,6 @@ export function resetForgeStatusForTests() {
   setProjectBlocked({});
   setLastPollAt({});
   setOrgBlocked({});
+  setReviewLists({});
   setCliInstalled(false);
 }

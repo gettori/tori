@@ -13,6 +13,7 @@ import {
   mayUseForge,
   needsAttention,
   type AuthState,
+  type CheckRollup,
   type PullRequest,
   type UnitStatus,
 } from "./forgeTypes";
@@ -203,17 +204,41 @@ describe("needsAttention", () => {
     reviewDecision: "none",
     ...over,
   });
+  const red: CheckRollup = { state: "failure", total: 3, failing: 1, contexts: [] };
+  const pr = (author: string, number = 45) => ({ number, author }) as PullRequest;
+  const me = { viewer: "skarif2", requested: [] };
 
   it("flags a failing check and changes-requested, and nothing else", () => {
-    expect(needsAttention(unit({ checks: { state: "failure", total: 3, failing: 1, contexts: [] } }))).toBe(true);
-    expect(needsAttention(unit({ reviewDecision: "changesRequested" }))).toBe(true);
+    expect(needsAttention(unit({ checks: red }), me)).toBe(true);
+    expect(needsAttention(unit({ reviewDecision: "changesRequested" }), me)).toBe(true);
 
     // Pending is not a needs-you moment: CI that has not finished is not CI that
     // failed, and treating it as one would fire the tray on every push.
-    expect(needsAttention(unit({ checks: { state: "pending", total: 3, failing: 0, contexts: [] } }))).toBe(false);
+    expect(needsAttention(unit({ checks: { state: "pending", total: 3, failing: 0, contexts: [] } }), me)).toBe(false);
     // Neither is a repo with no CI at all.
-    expect(needsAttention(unit({ checks: { state: "none", total: 0, failing: 0, contexts: [] } }))).toBe(false);
-    expect(needsAttention(unit({}))).toBe(false);
-    expect(needsAttention(unit({ reviewDecision: "reviewRequired" }))).toBe(false);
+    expect(needsAttention(unit({ checks: { state: "none", total: 0, failing: 0, contexts: [] } }), me)).toBe(false);
+    expect(needsAttention(unit({}), me)).toBe(false);
+    expect(needsAttention(unit({ reviewDecision: "reviewRequired" }), me)).toBe(false);
+  });
+
+  it("lights your own pull request for a red check", () => {
+    expect(needsAttention(unit({ pullRequest: pr("SKarif2"), checks: red }), me)).toBe(true);
+  });
+
+  it("leaves someone else's red pull request to them", () => {
+    expect(needsAttention(unit({ pullRequest: pr("ana"), checks: red }), me)).toBe(false);
+    expect(needsAttention(unit({ pullRequest: pr("ana"), reviewDecision: "changesRequested" }), me)).toBe(false);
+  });
+
+  it("lights someone else's pull request while it asks for your review, and clears once it stops", () => {
+    expect(needsAttention(unit({ pullRequest: pr("ana") }), { viewer: "skarif2", requested: [45] })).toBe(true);
+    expect(needsAttention(unit({ pullRequest: pr("ana") }), { viewer: "skarif2", requested: [12] })).toBe(false);
+  });
+
+  it("keeps someone else's pull request quiet on a host with no list, and reads an unknown viewer as you", () => {
+    expect(needsAttention(unit({ pullRequest: pr("ana"), checks: red }), { viewer: "skarif2", requested: null })).toBe(
+      false,
+    );
+    expect(needsAttention(unit({ pullRequest: pr("ana"), checks: red }), { viewer: null, requested: null })).toBe(true);
   });
 });
