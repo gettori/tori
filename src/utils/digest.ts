@@ -1,7 +1,7 @@
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { NeedsYouEvent } from "./needsYouSignals";
+import { kindLabel, type NeedsYouEvent, type NeedsYouKind } from "./needsYouSignals";
 
 /** Mirrors `Verdict` in src-tauri/src/chat/model.rs. */
 export type Verdict = "verified" | "failed" | "unverified";
@@ -28,6 +28,7 @@ export type Digest = {
   ready: boolean;
   finished: Finished[];
   waiting: NeedsYouEvent[];
+  happened: NeedsYouEvent[];
 };
 
 export const AWAY_MS = 4 * 60 * 60 * 1000;
@@ -35,7 +36,10 @@ export const AWAY_MS = 4 * 60 * 60 * 1000;
 /** Back after long enough away, unfocused or idle, to open the digest unasked. */
 export const cameBack = (lastActive: number, now: number) => now - lastActive >= AWAY_MS;
 
-export const digestCount = (d: Digest | null) => (d ? d.finished.length + d.waiting.length : 0);
+export const digestCount = (d: Digest | null) => (d ? d.finished.length + d.waiting.length + d.happened.length : 0);
+
+const LIMITS: readonly NeedsYouKind[] = ["limitHit", "limitResumed"];
+export const isLimit = (e: NeedsYouEvent) => LIMITS.includes(e.kind);
 
 /** Before the first composition the blocks still standing are not back yet. */
 export const worthOpening = (d: Digest | null) => !!d?.ready && digestCount(d) > 0;
@@ -66,6 +70,9 @@ export function finishedParts(f: Finished, now = Date.now()): string[] {
   parts.push(digestTime(f.lastTs, now));
   return parts;
 }
+
+/** The facts under a pull request or limit row. */
+export const happenedParts = (e: NeedsYouEvent, now = Date.now()) => [kindLabel(e.kind), digestTime(e.ts, now)];
 
 const [digest, setDigest] = createSignal<Digest | null>(null);
 export { digest };

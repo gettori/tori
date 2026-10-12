@@ -1331,7 +1331,7 @@ export default function ChatView(props: {
   // The ceiling is checked here because `sendBlocks` does not: `onSend` and
   // `pendingFlush` are where it lives, and this send goes through neither.
   onCleanup(
-    registerResume(props.sessionId, async () => {
+    registerResume(props.sessionId, async (arm) => {
       if (state.ended) return;
       if (running()) {
         edit((s) => pushNotice(s, RESUME_BUSY, "attention"));
@@ -1345,7 +1345,13 @@ export default function ChatView(props: {
         s.continuing = true;
       });
       const sent = await sendBlocks([{ type: "text", text: toriText("limit-reset", RESUME_TEXT) }]);
-      if (!sent) {
+      if (sent) {
+        void invoke("digest_limit_resumed", {
+          sessionId: props.sessionId,
+          folder: props.cwd,
+          resetsAt: arm.resetsAt,
+        }).catch(() => {});
+      } else {
         edit((s) => {
           s.continuing = false;
         });

@@ -829,6 +829,10 @@ export default function LeftSidebar(props: {
               kind: u.kind,
               isCurrent: u.isCurrent,
               attention: st !== null && needsAttention(st),
+              prKnown: st !== null,
+              pullRequest: st?.pullRequest
+                ? { number: st.pullRequest.number, state: st.pullRequest.state, title: st.pullRequest.title }
+                : null,
             };
           }),
         ),

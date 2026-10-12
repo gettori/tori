@@ -1,5 +1,16 @@
 /** Mirrors `Kind` in src-tauri/src/needs_you_log.rs. */
-export type NeedsYouKind = "permission" | "question" | "budget" | "waiting" | "workerQuestion" | "done" | "pullRequest";
+export type NeedsYouKind =
+  | "permission"
+  | "question"
+  | "budget"
+  | "waiting"
+  | "workerQuestion"
+  | "done"
+  | "pullRequest"
+  | "prOpened"
+  | "prMerged"
+  | "limitHit"
+  | "limitResumed";
 
 /** Mirrors `Event` in src-tauri/src/needs_you_log.rs. */
 export type NeedsYouEvent = {
@@ -24,11 +35,16 @@ const LABELS: Record<NeedsYouKind, string> = {
   workerQuestion: "A worker asked a question",
   done: "Finished",
   pullRequest: "Pull request needs attention",
+  prOpened: "Pull request opened",
+  prMerged: "Pull request merged",
+  limitHit: "Hit its usage limit",
+  limitResumed: "Continued after the limit reset",
 };
 
 export const kindLabel = (kind: NeedsYouKind) => LABELS[kind];
 
-export const blocks = (kind: NeedsYouKind) => kind !== "done" && kind !== "pullRequest";
+const BLOCKS: readonly NeedsYouKind[] = ["permission", "question", "budget", "waiting", "workerQuestion"];
+export const blocks = (kind: NeedsYouKind) => BLOCKS.includes(kind);
 
 export const unanswered = (events: readonly NeedsYouEvent[]) => events.filter((e) => e.resolvedAt === null).length;
 

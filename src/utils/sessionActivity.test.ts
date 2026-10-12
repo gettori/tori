@@ -295,6 +295,22 @@ describe("a failing check on the branch a session owns", () => {
     dropLiveChat("c-idle");
   });
 
+  it("hands Rust a unit's pull request and whether the forge has answered", () => {
+    const pr = { number: 7, state: "merged" as const, title: "Fix it" };
+    noteForgeUnits([{ ...unit("main", false), prKnown: true, pullRequest: pr }]);
+    expect(sessionFacts().forge).toEqual([
+      {
+        folderPath: FOLDER,
+        kind: "worktree",
+        branch: "main",
+        isCurrent: false,
+        attention: false,
+        prKnown: true,
+        pullRequest: pr,
+      },
+    ]);
+  });
+
   // The raise runs the chat tier's status through the dot vocabulary, and that
   // trip is lossy on purpose: `budgetStopped` and `waitingForApproval` share one
   // dot. Only one of them comes back, so a chat stopped at a spend ceiling would

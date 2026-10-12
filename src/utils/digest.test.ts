@@ -1,5 +1,15 @@
 import { describe, it, expect } from "vite-plus/test";
-import { AWAY_MS, cameBack, digestTime, finishedParts, worthOpening, type Digest, type Finished } from "./digest";
+import {
+  AWAY_MS,
+  cameBack,
+  digestCount,
+  digestTime,
+  finishedParts,
+  happenedParts,
+  worthOpening,
+  type Digest,
+  type Finished,
+} from "./digest";
 
 const HOUR = 60 * 60 * 1000;
 
@@ -18,7 +28,7 @@ const row: Finished = {
 };
 
 function digest(extra: Partial<Digest> = {}): Digest {
-  return { since: 0, asOf: 1, ready: true, finished: [row], waiting: [], ...extra };
+  return { since: 0, asOf: 1, ready: true, finished: [row], waiting: [], happened: [], ...extra };
 }
 
 describe("the digest's open rule", () => {
@@ -51,6 +61,38 @@ describe("finishedParts", () => {
 
   it("leaves out what a terminal session cannot say", () => {
     expect(finishedParts({ ...row, turns: 1, lines: null, verdict: null }).length).toBe(2);
+  });
+});
+
+describe("happenedParts", () => {
+  it("names each pull request and limit kind", () => {
+    const labels = (["prOpened", "prMerged", "pullRequest", "limitHit", "limitResumed"] as const).map(
+      (kind) =>
+        happenedParts({
+          id: kind,
+          ts: 0,
+          session: null,
+          folder: "/p",
+          branch: null,
+          project: "p",
+          title: "#1",
+          kind,
+          resolvedAt: 0,
+          settled: false,
+          chat: false,
+        })[0],
+    );
+    expect(labels).toEqual([
+      "Pull request opened",
+      "Pull request merged",
+      "Pull request needs attention",
+      "Hit its usage limit",
+      "Continued after the limit reset",
+    ]);
+  });
+
+  it("counts them toward the digest", () => {
+    expect(digestCount(digest({ finished: [], happened: [] }))).toBe(0);
   });
 });
 
