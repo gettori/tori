@@ -1,4 +1,12 @@
 import { For, Show, createResource, createSignal, onCleanup } from "solid-js";
+import SegmentedControl from "../../src/components/SegmentedControl/SegmentedControl";
+import {
+  byProjectNewestFirst,
+  eventTime,
+  kindLabel,
+  unanswered,
+  type NeedsYouEvent,
+} from "../../src/utils/needsYouSignals";
 import { signalLabel, type ReviewItem } from "../../src/utils/reviewSignals";
 import type { RemoteClient } from "./remote";
 import { DOT, Offline } from "./Root";
@@ -28,7 +36,55 @@ export function watchInbox(client: RemoteClient) {
   return { items: () => items() ?? [], refetch: () => void refetch() };
 }
 
+export function watchNeedsYou(client: RemoteClient) {
+  const [events, { refetch }] = createResource<NeedsYouEvent[], number>(
+    () => client.generation() || undefined,
+    (_, info) => client.request<NeedsYouEvent[]>("needs_you.list").catch(() => info.value ?? []),
+  );
+  onCleanup(
+    client.subscribe("sessions", (data) => {
+      if ((data as { kind?: string } | null)?.kind === "needs_you.changed") void refetch();
+    }),
+  );
+  return { events: () => events() ?? [], count: () => unanswered(events() ?? []) };
+}
+
 const folderName = (path: string) => path.split("/").filter(Boolean).pop() ?? path;
+
+function NeedsYouList(props: { events: NeedsYouEvent[]; onOpen: (e: NeedsYouEvent) => void }) {
+  return (
+    <Show when={props.events.length} fallback={<p class={styles.empty}>Nothing has needed you in the last day.</p>}>
+      <For each={byProjectNewestFirst(props.events)}>
+        {(group) => (
+          <>
+            <h2 class={styles.label}>{group.project || "No project"}</h2>
+            <ul class={styles.group}>
+              <For each={group.events}>
+                {(e) => (
+                  <li>
+                    <button
+                      class={styles.item}
+                      data-answered={e.resolvedAt !== null ? "" : undefined}
+                      onClick={() => props.onOpen(e)}
+                    >
+                      <span class={styles.text}>
+                        <span class={styles.name}>{e.title || folderName(e.folder)}</span>
+                        <span class={styles.meta}>
+                          {kindLabel(e.kind)} {DOT} {eventTime(e.ts)}
+                          <Show when={e.resolvedAt !== null}> {DOT} answered</Show>
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                )}
+              </For>
+            </ul>
+          </>
+        )}
+      </For>
+    </Show>
+  );
+}
 
 function Card(props: {
   client: RemoteClient;
@@ -93,34 +149,56 @@ function Card(props: {
   );
 }
 
+type Tab = "needsYou" | "review";
+
 export default function InboxScreen(props: {
   client: RemoteClient;
   inbox: ReturnType<typeof watchInbox>;
+  needsYou: ReturnType<typeof watchNeedsYou>;
   live: () => SessionRow[];
   onReply: (row: SessionRow) => void;
+  onEvent: (e: NeedsYouEvent) => void;
   onBack: () => void;
 }) {
   props.inbox.refetch();
+  const [tab, setTab] = createSignal<Tab>(
+    props.needsYou.count() > 0 || !props.inbox.items().length ? "needsYou" : "review",
+  );
   return (
     <div class={styles.glow}>
       <PushTop back="Back" onBack={props.onBack} />
       <Offline client={props.client} />
       <div class={styles.scroll}>
         <h1 class={styles.screenTitle}>Inbox</h1>
-        <Show when={props.inbox.items().length} fallback={<p class={styles.empty}>Nothing is waiting for review.</p>}>
-          <ul class={styles.cards}>
-            <For each={props.inbox.items()}>
-              {(item) => (
-                <Card
-                  client={props.client}
-                  item={item}
-                  row={props.live().find((row) => row.id === item.unit.id)}
-                  onReply={props.onReply}
-                  onMarked={props.inbox.refetch}
-                />
-              )}
-            </For>
-          </ul>
+        <SegmentedControl<Tab>
+          aria-label="Inbox list"
+          variant="plain"
+          value={tab()}
+          onChange={setTab}
+          options={[
+            { value: "needsYou", label: `Needs you ${props.needsYou.count()}` },
+            { value: "review", label: `Review ${props.inbox.items().length}` },
+          ]}
+        />
+        <Show when={tab() === "needsYou"}>
+          <NeedsYouList events={props.needsYou.events()} onOpen={props.onEvent} />
+        </Show>
+        <Show when={tab() === "review"}>
+          <Show when={props.inbox.items().length} fallback={<p class={styles.empty}>Nothing is waiting for review.</p>}>
+            <ul class={styles.cards}>
+              <For each={props.inbox.items()}>
+                {(item) => (
+                  <Card
+                    client={props.client}
+                    item={item}
+                    row={props.live().find((row) => row.id === item.unit.id)}
+                    onReply={props.onReply}
+                    onMarked={props.inbox.refetch}
+                  />
+                )}
+              </For>
+            </ul>
+          </Show>
         </Show>
       </div>
     </div>
