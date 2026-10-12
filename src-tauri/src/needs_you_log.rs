@@ -20,6 +20,9 @@ use crate::presence::{Live, Reason};
 const KEEP_MS: u64 = 24 * 60 * 60 * 1000;
 // Rows since the last look outlive the day, so a weekend away still shows.
 const KEEP_UNSEEN_MS: u64 = 7 * KEEP_MS;
+// An open pull request's memory changes only when it does, and losing it makes
+// its merge read as a first sighting.
+const KEEP_OPEN_PR_MS: u64 = 30 * KEEP_MS;
 
 pub const CHANGED_EVENT: &str = "needs-you://changed";
 
@@ -33,11 +36,25 @@ pub enum Kind {
     WorkerQuestion,
     Done,
     PullRequest,
+    PrOpened,
+    PrMerged,
+    LimitHit,
+    LimitResumed,
 }
 
 impl Kind {
     fn blocks(self) -> bool {
-        !matches!(self, Kind::Done | Kind::PullRequest)
+        matches!(
+            self,
+            Kind::Permission | Kind::Question | Kind::Budget | Kind::Waiting | Kind::WorkerQuestion
+        )
+    }
+
+    fn digest_only(self) -> bool {
+        matches!(
+            self,
+            Kind::PrOpened | Kind::PrMerged | Kind::LimitHit | Kind::LimitResumed
+        )
     }
 
     // A worker's question is the same block whether or not its spawner is
@@ -83,6 +100,35 @@ pub struct Unit {
     pub branch: Option<String>,
     pub project: String,
     pub attention: bool,
+    /// False while the forge has not answered for this unit, so "no pull
+    /// request" is never read into a poll that has not run.
+    pub pr_known: bool,
+    pub pr: Option<UnitPr>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PrState {
+    Open,
+    Merged,
+    Closed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnitPr {
+    pub number: u64,
+    pub state: PrState,
+    #[serde(default)]
+    pub title: String,
+}
+
+/// A unit's pull request as last seen, `None` for none. Kept across restarts so
+/// a merge while Tori was shut still reads as one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PrSeen {
+    pub pr: Option<(u64, PrState)>,
+    pub ts: u64,
 }
 
 /// What one composition saw.
@@ -101,6 +147,7 @@ pub enum LogOp {
     Add(Event),
     Resolve(String),
     Settle(String),
+    Pr(String, Option<(u64, PrState)>),
 }
 
 /// A turn's verification, kept per session for the digest.
@@ -117,6 +164,8 @@ pub struct Log {
     looked_at: Option<u64>,
     #[serde(default)]
     verdicts: BTreeMap<String, Checked>,
+    #[serde(default)]
+    prs: BTreeMap<String, PrSeen>,
 }
 
 /// What the digest reads out of the log, before lines are counted.
@@ -126,6 +175,7 @@ pub struct LogRead {
     pub as_of: u64,
     pub done: Vec<Event>,
     pub waiting: Vec<Event>,
+    pub happened: Vec<Event>,
     pub verdicts: BTreeMap<String, Checked>,
 }
 
@@ -135,12 +185,20 @@ impl Log {
     }
 
     fn prune(&mut self, now: u64) -> bool {
-        let before = (self.events.len(), self.verdicts.len());
+        let before = (self.events.len(), self.verdicts.len(), self.prs.len());
         let events = std::mem::take(&mut self.events);
         self.events = events.into_iter().filter(|e| self.keeps(e.ts, now)).collect();
         let verdicts = std::mem::take(&mut self.verdicts);
         self.verdicts = verdicts.into_iter().filter(|(_, c)| self.keeps(c.ts, now)).collect();
-        (self.events.len(), self.verdicts.len()) != before
+        self.prs.retain(|_, p| {
+            let keep = if matches!(p.pr, Some((_, PrState::Open))) {
+                KEEP_OPEN_PR_MS
+            } else {
+                KEEP_UNSEEN_MS
+            };
+            p.ts + keep > now
+        });
+        (self.events.len(), self.verdicts.len(), self.prs.len()) != before
     }
 
     /// Never moves back, and never past now.
@@ -149,6 +207,24 @@ impl Log {
         let changed = self.looked_at != Some(next);
         self.looked_at = Some(next);
         changed
+    }
+
+    /// The last day, without what only the digest shows.
+    pub fn needs_you(&self, now: u64) -> Vec<Event> {
+        self.events()
+            .into_iter()
+            .filter(|e| e.ts + KEEP_MS > now && !e.kind.digest_only())
+            .collect()
+    }
+
+    /// One row per id, so every chat of one account stopping at one reset is
+    /// a single row.
+    pub fn add_once(&mut self, event: Event) -> bool {
+        if self.events.iter().any(|e| e.id == event.id) {
+            return false;
+        }
+        self.events.push(event);
+        true
     }
 
     pub fn note_verdict(&mut self, session: &str, verdict: Verdict, now: u64) {
@@ -170,6 +246,11 @@ impl Log {
             .into_iter()
             .filter(|e| e.open() && e.kind.blocks())
             .collect();
+        let happened = self
+            .events()
+            .into_iter()
+            .filter(|e| e.ts > since && (e.kind.digest_only() || e.kind == Kind::PullRequest))
+            .collect();
         let verdicts = self
             .verdicts
             .iter()
@@ -181,6 +262,7 @@ impl Log {
             as_of: now,
             done,
             waiting,
+            happened,
             verdicts,
         }
     }
@@ -209,6 +291,9 @@ impl Log {
                         e.settled = true;
                         e.resolved_at.get_or_insert(now);
                     }
+                }
+                LogOp::Pr(key, pr) => {
+                    self.prs.insert(key, PrSeen { pr, ts: now });
                 }
             }
         }
@@ -341,7 +426,52 @@ pub fn log_ops(log: &Log, tick: &Tick, now: u64) -> Vec<LogOp> {
             (false, Some(e)) => ops.push(LogOp::Settle(e.id.clone())),
             _ => {}
         }
+        ops.extend(pr_ops(log, u, now));
     }
+    ops
+}
+
+fn pr_key(folder: &str, branch: Option<&str>) -> String {
+    format!("{folder}\n{}", branch.unwrap_or_default())
+}
+
+/// A unit seen for the first time only seeds what it has, so launch and an
+/// upgrade announce nothing that was already there.
+fn pr_ops(log: &Log, u: &Unit, now: u64) -> Vec<LogOp> {
+    if !u.pr_known {
+        return Vec::new();
+    }
+    let key = pr_key(&u.folder, u.branch.as_deref());
+    let current = u.pr.as_ref().map(|p| (p.number, p.state));
+    let Some(prior) = log.prs.get(&key) else {
+        return vec![LogOp::Pr(key, current)];
+    };
+    if prior.pr == current {
+        return Vec::new();
+    }
+    let kind = match (prior.pr, current) {
+        (_, Some((_, PrState::Merged))) => Some(Kind::PrMerged),
+        (Some((was, PrState::Open)), Some((now_n, PrState::Open))) if was == now_n => None,
+        (_, Some((_, PrState::Open))) => Some(Kind::PrOpened),
+        _ => None,
+    };
+    let mut ops = Vec::new();
+    if let (Some(kind), Some(pr)) = (kind, u.pr.as_ref()) {
+        ops.push(LogOp::Add(Event {
+            id: uuid::Uuid::new_v4().to_string(),
+            ts: now,
+            session: None,
+            folder: u.folder.clone(),
+            branch: u.branch.clone(),
+            project: u.project.clone(),
+            title: format!("#{} {}", pr.number, pr.title).trim_end().to_string(),
+            kind,
+            resolved_at: Some(now),
+            settled: false,
+            chat: false,
+        }));
+    }
+    ops.push(LogOp::Pr(key, current));
     ops
 }
 
@@ -409,12 +539,8 @@ pub fn composed() -> bool {
     COMPOSED.load(Ordering::Relaxed)
 }
 
-/// The last day only: older rows are kept for the digest, not for Needs you.
 pub fn list() -> Vec<Event> {
-    with_log(|log, now| {
-        let day: Vec<Event> = log.events().into_iter().filter(|e| e.ts + KEEP_MS > now).collect();
-        (day, false)
-    })
+    with_log(|log, now| (log.needs_you(now), false))
 }
 
 pub fn since(since: Option<u64>) -> LogRead {
@@ -427,6 +553,38 @@ pub fn looked(at: u64) -> bool {
         let changed = log.looked(at, now);
         (changed, changed)
     })
+}
+
+/// A usage limit reached or resumed for `account`, answered at birth. True when
+/// it is a new row.
+pub fn note_limit(kind: Kind, account: &str, resets_at: u64, session: &str, folder: &str, title: String) -> bool {
+    with_log(|log, now| {
+        let changed = log.add_once(limit_row(kind, account, resets_at, session, folder, title, now));
+        (changed, changed)
+    })
+}
+
+fn limit_row(kind: Kind, account: &str, resets_at: u64, session: &str, folder: &str, title: String, now: u64) -> Event {
+    Event {
+        id: format!(
+            "{}:{account}:{resets_at}",
+            if kind == Kind::LimitHit {
+                "limit-hit"
+            } else {
+                "limit-resumed"
+            }
+        ),
+        ts: now,
+        session: Some(session.to_string()),
+        folder: folder.to_string(),
+        branch: None,
+        project: String::new(),
+        title,
+        kind,
+        resolved_at: Some(now),
+        settled: false,
+        chat: true,
+    }
 }
 
 pub fn note_verdict(session: &str, verdict: Verdict) {
@@ -528,6 +686,31 @@ mod tests {
             branch: Some("fix".into()),
             project: "repo".into(),
             attention,
+            pr_known: false,
+            pr: None,
+        }
+    }
+
+    fn with_pr(pr: Option<(u64, PrState)>) -> Unit {
+        Unit {
+            pr_known: true,
+            pr: pr.map(|(number, state)| UnitPr {
+                number,
+                state,
+                title: "Fix it".into(),
+            }),
+            ..unit(false)
+        }
+    }
+
+    fn rows(log: &Log) -> Vec<(Kind, String)> {
+        log.events.iter().map(|e| (e.kind, e.title.clone())).collect()
+    }
+
+    fn live_row(kind: Kind) -> Event {
+        Event {
+            resolved_at: Some(1),
+            ..row(&live("c", None), kind, 1)
         }
     }
 
@@ -805,6 +988,144 @@ mod tests {
             2,
             "an open tab keeps the since it opened with"
         );
+    }
+
+    #[test]
+    fn a_unit_seen_first_only_seeds() {
+        let mut log = Log::default();
+        let mut w = World::new(Vec::new());
+        w.units = vec![with_pr(Some((3, PrState::Open)))];
+        w.step(&mut log, 1);
+        assert!(log.events.is_empty());
+        assert_eq!(log.prs.len(), 1);
+    }
+
+    #[test]
+    fn an_unknown_unit_seeds_nothing() {
+        let mut log = Log::default();
+        let mut w = World::new(Vec::new());
+        w.units = vec![unit(false)];
+        w.step(&mut log, 1);
+        assert!(log.prs.is_empty());
+    }
+
+    #[test]
+    fn a_merge_while_tori_was_shut_is_a_row_after_launch() {
+        let path = tmp_dir().join("needs_you.json");
+        let mut log = Log::default();
+        let mut w = World::new(Vec::new());
+        w.units = vec![with_pr(Some((3, PrState::Open)))];
+        w.step(&mut log, 1);
+        save_to(&path, &log).unwrap();
+
+        let mut back = load_from(&path, 2);
+        w.units = vec![unit(false)];
+        w.step(&mut back, 3);
+        w.units = vec![with_pr(Some((3, PrState::Merged)))];
+        w.step(&mut back, 4);
+        assert_eq!(rows(&back), [(Kind::PrMerged, "#3 Fix it".to_string())]);
+        assert_eq!(back.events[0].resolved_at, Some(4));
+        w.step(&mut back, 5);
+        assert_eq!(back.events.len(), 1, "a steady state adds nothing");
+    }
+
+    #[test]
+    fn an_open_pull_request_unchanged_for_a_week_still_reads_its_merge() {
+        let mut log = Log::default();
+        let mut w = World::new(Vec::new());
+        w.units = vec![with_pr(Some((3, PrState::Open)))];
+        w.step(&mut log, 1);
+        let later = 8 * KEEP_MS;
+        log.prune(later);
+        w.units = vec![with_pr(Some((3, PrState::Merged)))];
+        w.step(&mut log, later);
+        assert_eq!(rows(&log), [(Kind::PrMerged, "#3 Fix it".to_string())]);
+    }
+
+    #[test]
+    fn a_pull_request_opening_on_a_known_branch_is_a_row() {
+        let mut log = Log::default();
+        let mut w = World::new(Vec::new());
+        w.units = vec![with_pr(None)];
+        w.step(&mut log, 1);
+        w.units = vec![with_pr(Some((4, PrState::Open)))];
+        w.step(&mut log, 2);
+        w.units = vec![with_pr(Some((4, PrState::Closed)))];
+        w.step(&mut log, 3);
+        assert_eq!(rows(&log), [(Kind::PrOpened, "#4 Fix it".to_string())]);
+    }
+
+    #[test]
+    fn three_chats_on_one_account_stopping_at_one_reset_are_one_row() {
+        let mut log = Log::default();
+        for s in ["a", "b", "c"] {
+            log.add_once(limit_row(
+                Kind::LimitHit,
+                "claude/default",
+                900,
+                s,
+                "/p",
+                "claude".into(),
+                1,
+            ));
+        }
+        log.add_once(limit_row(
+            Kind::LimitHit,
+            "claude/work",
+            900,
+            "d",
+            "/p",
+            "claude work".into(),
+            1,
+        ));
+        for s in ["a", "b"] {
+            log.add_once(limit_row(
+                Kind::LimitResumed,
+                "claude/default",
+                900,
+                s,
+                "/p",
+                "claude".into(),
+                2,
+            ));
+        }
+        let mut got: Vec<(Kind, String)> = rows(&log);
+        got.sort_by(|x, y| x.1.cmp(&y.1));
+        assert_eq!(
+            got,
+            [
+                (Kind::LimitHit, "claude".to_string()),
+                (Kind::LimitResumed, "claude".to_string()),
+                (Kind::LimitHit, "claude work".to_string()),
+            ]
+        );
+        assert_eq!(
+            log.events[0].session.as_deref(),
+            Some("a"),
+            "the first chat to stop is the one it opens"
+        );
+    }
+
+    #[test]
+    fn digest_only_rows_stay_out_of_needs_you() {
+        let mut log = Log::default();
+        let mut w = World::new(Vec::new());
+        w.units = vec![with_pr(None)];
+        w.step(&mut log, 1);
+        w.units = vec![with_pr(Some((4, PrState::Open)))];
+        w.step(&mut log, 2);
+        w.units = vec![with_pr(Some((4, PrState::Merged)))];
+        w.step(&mut log, 3);
+        for kind in [Kind::LimitHit, Kind::LimitResumed] {
+            let mut e = live_row(kind);
+            e.id = format!("{kind:?}");
+            assert!(log.add_once(e.clone()));
+            assert!(!log.add_once(e), "one row per id");
+        }
+        assert_eq!(log.events.len(), 4);
+        assert!(log.events.iter().all(|e| !e.open()));
+        assert!(log.needs_you(10).is_empty());
+        assert_eq!(log.since(Some(0), 10).happened.len(), 4);
     }
 
     #[test]
