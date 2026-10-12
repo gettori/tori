@@ -368,7 +368,7 @@ describe("what a screen reader is told about the search", () => {
 
     vi.advanceTimersByTime(600);
 
-    expect(live().textContent).toBe("7 settings match");
+    expect(live().textContent).toBe("8 settings match");
   });
 
   it("announces only the last total after a burst of keystrokes", () => {

@@ -70,6 +70,7 @@ export function syncUnits(units: readonly SyncUnit[]): Promise<void> {
   const gone = [...drawn.keys()].filter((key) => !next.has(key));
   drawn = next;
   if (gone.length) setAnswers(produce((state) => gone.forEach((key) => delete state[key])));
+  void invoke("radar_set_drawn", { units: [...next.values()] }).catch(() => {});
   return ask(added);
 }
 
@@ -78,6 +79,14 @@ export function syncUnits(units: readonly SyncUnit[]): Promise<void> {
 export function resyncRoot(root: string | null | undefined): Promise<void> {
   if (!root) return Promise.resolve();
   return ask([...drawn.values()].filter((unit) => unit.path === root));
+}
+
+/** Re-ask for every drawn row on a folder the radar named. By folder, not by
+ *  key: the radar answers a watched folder for whatever is checked out there,
+ *  while a plain repo's row names its branch. */
+export function resyncRadar(units: readonly { path: string }[]): Promise<void> {
+  const paths = new Set(units.map((u) => u.path));
+  return ask([...drawn.values()].filter((unit) => paths.has(unit.path)));
 }
 
 /** Take an answer somebody else already paid for. `refreshMeta` asks

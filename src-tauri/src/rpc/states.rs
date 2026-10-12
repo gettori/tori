@@ -177,6 +177,15 @@ impl SessionStates {
         ids
     }
 
+    /// The folders of every session not yet ended, idle ones included.
+    pub fn live_folders(&self) -> Vec<String> {
+        let held = self.states.lock().unwrap_or_else(|e| e.into_inner());
+        held.values()
+            .filter(|h| h.state != SessionState::Ended)
+            .filter_map(|h| h.folder.clone())
+            .collect()
+    }
+
     pub fn mark_background(&self, id: &str) {
         self.background
             .lock()

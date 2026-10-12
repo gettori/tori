@@ -972,6 +972,8 @@ pub struct Settings {
     pub blind_edits: BlindEdits,
     #[serde(default, deserialize_with = "lenient_verification")]
     pub verification: Verification,
+    #[serde(default, deserialize_with = "lenient_conflict_radar")]
+    pub conflict_radar: ConflictRadar,
 }
 
 /// Whether secret reads are marked, and additions to the list. The patterns
@@ -1068,6 +1070,28 @@ fn lenient_verification<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Verifi
         })
         .unwrap_or_default();
     Ok(Verification { enabled, commands })
+}
+
+/// Whether branches are checked for a conflict with their base and for files
+/// shared with live sessions in other worktrees. Off computes neither.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ConflictRadar {
+    pub enabled: bool,
+}
+
+impl Default for ConflictRadar {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+// Same reason as `lenient_secret_watch`: a malformed block must not reset the
+// rest of the file.
+fn lenient_conflict_radar<'de, D: serde::Deserializer<'de>>(d: D) -> Result<ConflictRadar, D::Error> {
+    let raw = serde_json::Value::deserialize(d)?;
+    let enabled = raw.get("enabled").and_then(|e| e.as_bool()).unwrap_or(true);
+    Ok(ConflictRadar { enabled })
 }
 
 /// What a project does to a worktree Tori has just created for it.
@@ -1224,6 +1248,7 @@ pub fn set_settings(settings: Settings, app: AppHandle) -> Result<Settings, Stri
     keep_rust_owned(&mut settings, load_from(&settings_path()));
     save_to(&settings_path(), &settings)?;
     let _ = app.emit("settings://changed", ());
+    crate::radar::settings_changed();
     Ok(settings)
 }
 
@@ -1258,6 +1283,10 @@ pub fn blind_edits() -> BlindEdits {
 
 pub fn verification() -> Verification {
     load_from(&settings_path()).verification
+}
+
+pub fn conflict_radar() -> ConflictRadar {
+    load_from(&settings_path()).conflict_radar
 }
 
 /// When settings.json last changed, `None` while it does not exist.
@@ -1383,6 +1412,7 @@ pub fn settings_watch_start(app: AppHandle, state: State<SettingsWatch>) -> Resu
         if let Ok(event) = res {
             if event.paths.iter().any(|p| p == &target) {
                 let _ = app_handle.emit("settings://changed", ());
+                crate::radar::settings_changed();
             }
         }
     })
@@ -2516,6 +2546,35 @@ mod tests {
                 assert_eq!(s.appearance.theme, "catppuccin-mocha", "the rest of the file survives");
             }
         }
+        std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn the_conflict_radar_is_on_unless_the_file_says_off() {
+        let p = tmp_file();
+        for (body, on) in [
+            ("{}", true),
+            (r#"{"conflictRadar":"x"}"#, true),
+            (r#"{"conflictRadar":{"enabled":"no"}}"#, true),
+            (
+                r#"{"conflictRadar":{"enabled":false},"appearance":{"theme":"catppuccin-mocha"}}"#,
+                false,
+            ),
+        ] {
+            std::fs::write(&p, body).unwrap();
+            let s = load_from(&p);
+            assert_eq!(s.conflict_radar.enabled, on, "{body}");
+            if !on {
+                assert_eq!(s.appearance.theme, "catppuccin-mocha", "the rest of the file survives");
+            }
+        }
+        let mut off = Settings::default();
+        off.conflict_radar.enabled = false;
+        save_to(&p, &off).unwrap();
+        assert!(
+            !load_from(&p).conflict_radar.enabled,
+            "an explicit off survives a round trip"
+        );
         std::fs::remove_file(&p).ok();
     }
 

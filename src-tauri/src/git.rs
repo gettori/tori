@@ -2223,6 +2223,9 @@ pub fn git_fetch(
                 outcome
             }
         };
+        if ok {
+            crate::radar::moved(&repo);
+        }
         let event = if ok { "git://fetch-done" } else { "git://fetch-error" };
         let _ = app.emit(
             event,
@@ -2344,6 +2347,9 @@ pub fn git_fetch_quiet(
             }
         };
         for event in quiet_sweep(&config, only.as_deref(), min_age, &mut run) {
+            if event.ok {
+                crate::radar::moved(&event.repo);
+            }
             let name = if event.ok {
                 "git://fetch-done"
             } else {
@@ -2792,6 +2798,8 @@ pub struct BaseSync {
     /// committed and pushed. `None` when git would not answer, which the row
     /// draws as nothing rather than as zero.
     stat: Option<DiffStat>,
+    #[serde(skip)]
+    local_base: bool,
 }
 
 /// One branch's whole standing, against both the thing it pushes to and the
@@ -2817,7 +2825,18 @@ pub struct BranchSync {
 /// a clean merge it did not check.
 #[tauri::command(async)]
 pub fn git_branch_sync(project_path: String, branch: Option<String>) -> Result<BranchSync, String> {
-    Ok(branch_sync(&project_path, branch.as_deref()))
+    let sync = branch_sync(&project_path, branch.as_deref());
+    let (conflicts, local_base) = sync.radar_answer();
+    crate::radar::note_read(&project_path, branch.as_deref().unwrap_or(""), conflicts, local_base);
+    Ok(sync)
+}
+
+impl BranchSync {
+    fn radar_answer(&self) -> (Option<Vec<String>>, bool) {
+        self.base
+            .as_ref()
+            .map_or((None, false), |b| (b.conflicts.clone(), b.local_base))
+    }
 }
 
 fn branch_sync(repo: &str, want: Option<&str>) -> BranchSync {
@@ -2827,7 +2846,9 @@ fn branch_sync(repo: &str, want: Option<&str>) -> BranchSync {
 /// Whether the branch names a commit, and its standing either way. The batch
 /// drops a row on that flag; the single-row command answers with the zeros
 /// regardless, because a row on screen needs a value rather than an error.
-fn branch_sync_at(repo: &str, want: Option<&str>) -> (bool, BranchSync) {
+/// The branch a row speaks for, the rev that stands for it, and whether it is
+/// the one checked out on that folder.
+fn tip_of(repo: &str, want: Option<&str>) -> (Option<String>, String, bool) {
     // `symbolic-ref` rather than `rev-parse --abbrev-ref HEAD`, which answers
     // the literal string "HEAD" when detached and dies on an unborn branch.
     // This one names a branch before its first commit, and fails only when detached.
@@ -2841,7 +2862,11 @@ fn branch_sync_at(repo: &str, want: Option<&str>) -> (bool, BranchSync) {
         Some(name) if !checked_out => name.to_string(),
         _ => "HEAD".to_string(),
     };
-    let branch = want.map(str::to_string).or(head);
+    (want.map(str::to_string).or(head), tip, checked_out)
+}
+
+fn branch_sync_at(repo: &str, want: Option<&str>) -> (bool, BranchSync) {
+    let (branch, tip, checked_out) = tip_of(repo, want);
     let sync = BranchSync {
         detached: branch.is_none(),
         // A branch nobody is standing on cannot have uncommitted work: the
@@ -2965,6 +2990,8 @@ pub fn units_git(folders: Vec<String>) -> std::collections::HashMap<String, Unit
 fn sync_entry(unit: &SyncUnit) -> Option<(String, BranchSync)> {
     let want = (!unit.branch.is_empty()).then_some(unit.branch.as_str());
     let (resolved, sync) = branch_sync_at(&unit.path, want);
+    let (conflicts, local_base) = sync.radar_answer();
+    crate::radar::note_read(&unit.path, &unit.branch, conflicts, local_base);
     resolved.then(|| (format!("{}\0{}", unit.path, unit.branch), sync))
 }
 
@@ -3207,7 +3234,9 @@ fn base_of(repo: &str, branch: Option<&str>) -> Option<(String, String)> {
     Some((base, full))
 }
 
-fn base_sync(repo: &str, tip: &str, branch: Option<&str>, tracked: Option<&str>, dirty: bool) -> Option<BaseSync> {
+/// The base's name and ref, or `None` where there is no base to measure
+/// against apart from the upstream.
+fn base_target(repo: &str, branch: Option<&str>, tracked: Option<&str>) -> Option<(String, String)> {
     let (base, base_ref) = base_of(repo, branch)?;
     // Two ways the base is already the question the upstream answers: standing
     // on it, or tracking it from somewhere else. Either way a second count of
@@ -3218,6 +3247,11 @@ fn base_sync(repo: &str, tip: &str, branch: Option<&str>, tracked: Option<&str>,
     if tracked.is_some_and(|t| format!("refs/remotes/{t}") == base_ref) {
         return None;
     }
+    Some((base, base_ref))
+}
+
+/// Commits `tip` has that the base lacks, and the reverse.
+fn base_counts(repo: &str, tip: &str, base_ref: &str) -> (u32, u32) {
     // Both directions out of one process. Unrelated histories have no merge
     // base and print nothing, which falls through to zero and zero: no work of
     // its own, nothing to catch up on, and `conflicts` left to say why.
@@ -3235,13 +3269,49 @@ fn base_sync(repo: &str, tip: &str, branch: Option<&str>, tracked: Option<&str>,
     let mut counts = counts.split_whitespace();
     let ahead = counts.next().and_then(|n| n.parse().ok()).unwrap_or(0);
     let behind = counts.next().and_then(|n| n.parse().ok()).unwrap_or(0);
+    (ahead, behind)
+}
+
+fn base_sync(repo: &str, tip: &str, branch: Option<&str>, tracked: Option<&str>, dirty: bool) -> Option<BaseSync> {
+    let (base, base_ref) = base_target(repo, branch, tracked)?;
+    let (ahead, behind) = base_counts(repo, tip, &base_ref);
     Some(BaseSync {
         name: base,
         ahead,
         conflicts: base_conflicts(repo, &base_ref, tip, behind),
         stat: base_stat(repo, &base_ref, tip, ahead, dirty),
         behind,
+        local_base: base_ref.starts_with("refs/heads/"),
     })
+}
+
+/// One row's radar answer: the same `base.conflicts` `git_branch_sync` gives,
+/// without the rest of the row's standing, and whether the base is a local
+/// branch. `conflicts` is `None` where there is no base, nothing resolves, or
+/// the radar is off.
+#[derive(Debug, Default, PartialEq)]
+pub(crate) struct UnitConflicts {
+    pub conflicts: Option<Vec<String>>,
+    pub local_base: bool,
+}
+
+pub(crate) fn unit_conflicts(repo: &str, want: Option<&str>) -> UnitConflicts {
+    if !crate::radar::enabled() {
+        return UnitConflicts::default();
+    }
+    let (branch, tip, _) = tip_of(repo, want);
+    if !resolves(repo, &tip) {
+        return UnitConflicts::default();
+    }
+    let tracked = branch.as_deref().and_then(|name| sync_ref(repo, name));
+    let Some((_, base_ref)) = base_target(repo, branch.as_deref(), tracked.as_deref()) else {
+        return UnitConflicts::default();
+    };
+    let (_, behind) = base_counts(repo, &tip, &base_ref);
+    UnitConflicts {
+        conflicts: base_conflicts(repo, &base_ref, &tip, behind),
+        local_base: base_ref.starts_with("refs/heads/"),
+    }
 }
 
 static STATS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<ConflictKey, DiffStat>>> =
@@ -3337,7 +3407,30 @@ static CONFLICTS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap
 const CONFLICT_CACHE_MAX: usize = 128;
 
 fn base_conflicts(repo: &str, base_ref: &str, tip: &str, behind: u32) -> Option<Vec<String>> {
-    conflicts_with(repo, base_ref, tip, behind, merge_tree_conflicts)
+    gated_conflicts(
+        crate::radar::enabled(),
+        repo,
+        base_ref,
+        tip,
+        behind,
+        merge_tree_conflicts,
+    )
+}
+
+/// Off answers unknown before anything runs, so a switched-off radar costs no
+/// process at all, not even the cheap refusals.
+fn gated_conflicts(
+    enabled: bool,
+    repo: &str,
+    base_ref: &str,
+    tip: &str,
+    behind: u32,
+    merge: impl FnOnce(&str, &str, &str) -> Option<Vec<String>>,
+) -> Option<Vec<String>> {
+    if !enabled {
+        return None;
+    }
+    conflicts_with(repo, base_ref, tip, behind, merge)
 }
 
 /// The cache and the two cheap refusals around it, with the merge injected so a
@@ -4649,7 +4742,8 @@ diff --git a/f b/f
                 ahead: 0,
                 behind: 0,
                 conflicts: Some(vec![]),
-                stat: Some(DiffStat::default())
+                stat: Some(DiffStat::default()),
+                local_base: false,
             })
         );
         scrub(&[&local, &remote]);
@@ -5299,6 +5393,65 @@ diff --git a/f b/f
 
         git(&local, &["worktree", "remove", "--force", &second.to_string_lossy()]);
         scrub(&[&local, &remote, &second]);
+    }
+
+    #[test]
+    fn a_unit_turns_conflicted_when_its_base_moves_with_nobody_asking_for_the_row() {
+        let (local, remote) = repo_on_feature();
+        let path = local.to_string_lossy().into_owned();
+        commit_file(&local, "f.txt", "ours");
+        assert_eq!(
+            unit_conflicts(&path, None).conflicts,
+            Some(vec![]),
+            "nothing on the base yet"
+        );
+
+        move_base(&local, "f.txt", "theirs");
+        let answer = unit_conflicts(&path, None);
+        assert_eq!(answer.conflicts, Some(vec!["f.txt".to_string()]));
+        assert!(!answer.local_base, "measured against origin/main");
+        assert_eq!(
+            unit_conflicts(&path, Some("feat")).conflicts,
+            Some(vec!["f.txt".to_string()]),
+            "the same answer for the branch by name"
+        );
+        assert_eq!(unit_conflicts(&path, Some("main")).conflicts, None, "main is the base");
+
+        scrub(&[&local, &remote]);
+    }
+
+    #[test]
+    fn a_read_after_a_commit_answers_for_the_new_head() {
+        let (local, remote) = repo_on_feature();
+        let path = local.to_string_lossy().into_owned();
+        move_base(&local, "f.txt", "theirs");
+        commit_file(&local, "g.txt", "unrelated");
+        let clean = git_branch_sync(path.clone(), None).unwrap();
+        assert_eq!(clean.base.and_then(|b| b.conflicts), Some(vec![]));
+
+        commit_file(&local, "f.txt", "ours");
+        let after = git_branch_sync(path, None).unwrap();
+        assert_eq!(
+            after.base.and_then(|b| b.conflicts),
+            Some(vec!["f.txt".to_string()]),
+            "a commit no sweep saw still gets its own answer"
+        );
+
+        scrub(&[&local, &remote]);
+    }
+
+    #[test]
+    fn a_switched_off_radar_never_runs_the_merge() {
+        let runs = std::cell::Cell::new(0u32);
+        let merge = |_: &str, _: &str, _: &str| {
+            runs.set(runs.get() + 1);
+            Some(vec!["f.txt".to_string()])
+        };
+        assert_eq!(
+            gated_conflicts(false, "/nowhere", "origin/main", "HEAD", 3, merge),
+            None
+        );
+        assert_eq!(runs.get(), 0);
     }
 
     #[test]
