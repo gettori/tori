@@ -145,6 +145,7 @@ export default function QuestionCard(props: {
         [styles.questionClosed]: state() === "unanswered",
       }}
       aria-labelledby={titleId}
+      data-pending-card={open() ? "" : undefined}
       onSubmit={submit}
     >
       <div class={styles.questionHead}>

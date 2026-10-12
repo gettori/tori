@@ -24,11 +24,6 @@
     font-weight: 600;
   }
 
-  .count {
-    color: var(--fg-muted);
-    font-size: var(--tori-text-md);
-  }
-
   .close {
     margin-left: auto;
   }
@@ -151,6 +146,39 @@
   .signal[data-kind="outsideScope"],
   .signal[data-kind="sharedFile"] {
     color: var(--attention-fg);
+  }
+
+  .group {
+    padding-top: calc(8px * var(--ui-scale));
+  }
+
+  .groupHead {
+    margin: 0;
+    padding: calc(4px * var(--ui-scale)) calc(24px * var(--ui-scale));
+    color: var(--fg-muted);
+    font-size: var(--tori-text-sm);
+    font-weight: 600;
+  }
+
+  .answered .title {
+    color: var(--fg-muted);
+    font-weight: 400;
+  }
+
+  .kind[data-kind="permission"],
+  .kind[data-kind="question"],
+  .kind[data-kind="workerQuestion"],
+  .kind[data-kind="budget"],
+  .kind[data-kind="waiting"] {
+    color: var(--attention-fg);
+  }
+
+  .kind[data-kind="pullRequest"] {
+    color: var(--danger-fg);
+  }
+
+  .answered .kind {
+    color: var(--fg-subtle);
   }
 
   .mark {
