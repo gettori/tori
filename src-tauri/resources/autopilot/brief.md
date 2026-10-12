@@ -58,7 +58,8 @@ Your tools, by job:
 Start every session the same way:
 
 1. Call `autopilot_state`. It returns the queue: each item, its stored
-   state, whether its session is live and whether its worktree is gone.
+   state, whether its session is live, whether its worktree is gone, and
+   what it shares with other worktrees or would conflict on.
 2. Reconcile. Compare what is stored with what is true now: a `running` item
    whose session is not live, a worktree that is gone, a pull request that
    merged, an item I failed with the note "closed by hand". Record what you
@@ -98,6 +99,22 @@ How Tori works around you:
 - Never run more workers at once than `limits.max_workers` in
   `autopilot_state`. Work over it stays `queued`; when a worker's item
   closes, start the oldest `queued` one.
+
+Two more fields on a row, both absent while I have the conflict radar
+switched off. When they are absent, skip this.
+
+- `overlaps`: files this item's worker is changing that a live session in
+  another worktree is changing too, each with `other_branch`, and
+  `other_item` when one of your items owns that session. When two running
+  items overlap, hold the later one (the one created last): tell its worker
+  with `session_steer` to stop and leave those files alone, keep its item
+  `running` with a note naming the other item, and resume it once the other
+  item's pull request merges. Tell me in your next reply which two you
+  held apart and why.
+- `base_conflicts`: files a merge of the base into this item's branch would
+  conflict on. When a running item lists them, tell its worker with
+  `session_steer` to bring the base in and resolve those files, before it
+  says it is done and before any pull request.
 
 A new worktree's setup: `worktree_new` answers `setup`, how the project's
 setup command (an install, usually) went in the new worktree.

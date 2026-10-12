@@ -1745,6 +1745,12 @@ impl Backend for TauriBackend {
                 live: reported.chain(chats).collect(),
                 worktrees: crate::autopilot::list_worktrees(items),
                 prs,
+                radar: crate::radar::view(
+                    items
+                        .iter()
+                        .filter(|i| !i.state.terminal())
+                        .filter_map(|i| i.worktree.as_deref()),
+                ),
             }
         })?;
         state["runner"] = json!(self.runner.status());
