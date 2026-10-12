@@ -9,7 +9,7 @@ use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
     params, AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams,
-    CheckpointsParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams,
+    CheckpointsParams, DigestParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams,
     IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams,
     ModelParams, NeedsYouSeenParams, OpenParams, PendingParams, PrCreateParams, PrGetParams, PrMergeParams,
     PrWatchParams, ProjectIconParams, ProjectSetParams, ProvenanceParams, ReviewMarkParams, ReviewSubmitParams,
@@ -251,6 +251,15 @@ pub static METHODS: &[Method] = &[
         refusal: Some("an agent cannot answer for the person"),
         outward: false,
         call: |b, _, v| b.needs_you_seen(params(v)?),
+    },
+    Method {
+        name: "digest.list",
+        description: "Since you looked: sessions that finished since `since` (default the last look) with turns, lines changed and verification verdict, every unanswered block, `since`, `asOf` to hand back once shown, and `ready` once the first composition after launch has run.",
+        params: schema::<DigestParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: Some("an agent cannot read what needs the person"),
+        outward: false,
+        call: |b, _, v| b.digest_list(params(v)?),
     },
     Method {
         name: "radar.list",

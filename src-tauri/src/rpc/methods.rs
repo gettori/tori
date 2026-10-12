@@ -17,7 +17,7 @@ use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
     AskAnswerParams, AskParams, AskWaitParams, Backend, Before, BudgetParams, CheckpointDiffParams, CheckpointParams,
-    CheckpointsParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams,
+    CheckpointsParams, DigestParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams,
     IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams,
     ModelParams, NeedsYouSeenParams, OpenParams, PendingParams, PrCreateParams, PrGetParams, PrMergeParams,
     PrWatchParams, ProjectIconParams, ProjectSetParams, ProvenanceParams, ReviewMarkParams, ReviewSubmitParams,
@@ -1177,6 +1177,10 @@ impl Backend for TauriBackend {
             super::publish_needs_you(&self.app);
         }
         Ok(json!({}))
+    }
+
+    fn digest_list(&self, params: DigestParams) -> Result<Value, RpcError> {
+        to_json(crate::digest::read(params.since))
     }
 
     fn radar_list(&self) -> Result<Value, RpcError> {

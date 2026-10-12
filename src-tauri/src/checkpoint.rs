@@ -1215,6 +1215,36 @@ fn diff_file_one(
     git_output(&repo_path, &["diff", "--no-color", &before, &after, "--", &file])
 }
 
+/// Lines added and removed by the session's turns from the one running at
+/// `at_ts` (epoch seconds) to its latest. `None` with no turn by then, or when
+/// nothing changed.
+pub fn session_lines_since(repo_path: &str, session_id: &str, at_ts: u64) -> Option<(u64, u64)> {
+    let roots = worktree_members(repo_path).unwrap_or_else(|| vec![repo_path.to_string()]);
+    let prompts: Vec<u64> = roots
+        .iter()
+        .flat_map(|r| list_checkpoints(r, session_id))
+        .filter(|c| c.kind.is_empty())
+        .map(|c| c.ts)
+        .collect();
+    let from = prompts.iter().copied().filter(|ts| *ts <= at_ts).max()?;
+    let to = prompts.iter().copied().max()?;
+    // The range's files carry no counts, so they come from its patch.
+    let (_, diff) = checkpoint_range_diff(repo_path, session_id, from, to).ok()?;
+    let (mut added, mut removed, mut in_hunk) = (0, 0, false);
+    for line in diff.lines() {
+        if line.starts_with("diff --git") {
+            in_hunk = false;
+        } else if line.starts_with("@@") {
+            in_hunk = true;
+        } else if in_hunk && line.starts_with('+') {
+            added += 1;
+        } else if in_hunk && line.starts_with('-') {
+            removed += 1;
+        }
+    }
+    ((added, removed) != (0, 0)).then_some((added, removed))
+}
+
 /// The files and unified diff from the tree before the turn at `from_ts` to
 /// the tree after the turn at `to_ts`, narrowed to the files some turn in that
 /// span attributes to this session, the same way a single turn's list is.
@@ -2627,6 +2657,24 @@ mod tests {
             one,
             checkpoint_diff_file(repo.clone(), sid.clone(), 100, "turn1.txt".into(), None).unwrap()
         );
+        cleanup(&dir, &sid);
+    }
+
+    #[test]
+    fn session_lines_count_from_the_turn_running_at_a_time_to_the_latest() {
+        let (dir, sid) = tmp_repo();
+        let repo = dir.to_string_lossy().into_owned();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
+        std::fs::write(dir.join("early.txt"), "x\ny\nz\n").unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 200).unwrap();
+        std::fs::write(dir.join("a.txt"), "one\ntwo\n").unwrap();
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 300).unwrap();
+        std::fs::write(dir.join("b.txt"), "three\n").unwrap();
+        std::fs::write(dir.join("early.txt"), "x\n--- y\n").unwrap();
+
+        assert_eq!(session_lines_since(&repo, &sid, 250), Some((4, 2)));
+        assert_eq!(session_lines_since(&repo, &sid, 50), None, "no turn had started");
+        assert_eq!(session_lines_since(&repo, "nobody", 250), None);
         cleanup(&dir, &sid);
     }
 
