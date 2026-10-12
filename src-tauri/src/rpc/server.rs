@@ -199,6 +199,13 @@ pub struct DigestParams {
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct DigestLookedParams {
+    /// The `asOf` of the digest the person saw, epoch ms.
+    pub at: u64,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct LogParams {
     /// At most this many entries, the last ones (default 50).
     pub limit: Option<usize>,
@@ -709,6 +716,7 @@ pub trait Backend: Send + Sync {
     fn needs_you_list(&self) -> Result<Value, RpcError>;
     fn needs_you_seen(&self, params: NeedsYouSeenParams) -> Result<Value, RpcError>;
     fn digest_list(&self, params: DigestParams) -> Result<Value, RpcError>;
+    fn digest_looked(&self, params: DigestLookedParams) -> Result<Value, RpcError>;
     fn radar_list(&self) -> Result<Value, RpcError>;
     fn units_sync(&self, params: UnitsSyncParams) -> Result<Value, RpcError>;
     fn units_pr(&self, params: UnitsPrParams) -> Result<Value, RpcError>;
@@ -1047,6 +1055,9 @@ pub mod tests {
         }
         fn digest_list(&self, p: DigestParams) -> Result<Value, RpcError> {
             Ok(json!({ "since": p.since }))
+        }
+        fn digest_looked(&self, p: DigestLookedParams) -> Result<Value, RpcError> {
+            Ok(json!({ "at": p.at }))
         }
         fn radar_list(&self) -> Result<Value, RpcError> {
             Ok(json!({ "enabled": true, "units": [] }))
@@ -1510,16 +1521,17 @@ pub mod tests {
         let list = || request("needs_you.list", json!({}));
         let seen = || request("needs_you.seen", json!({"session": "s1", "folder": "/p/repo"}));
         let digest = || request("digest.list", json!({"since": 5}));
+        let looked = || request("digest.looked", json!({"at": 5}));
         for caller in [Principal::Local, Principal::Device("d1".into())] {
-            assert!(server.dispatch(0, &caller, &list()).is_ok(), "{caller:?}");
-            assert!(server.dispatch(0, &caller, &seen()).is_ok(), "{caller:?}");
-            assert!(server.dispatch(0, &caller, &digest()).is_ok(), "{caller:?}");
+            for call in [list(), seen(), digest(), looked()] {
+                assert!(server.dispatch(0, &caller, &call).is_ok(), "{caller:?}");
+            }
         }
         for caller in [
             Principal::Session(Caller::Chat("s1".into())),
             Principal::Session(Caller::Terminal("t1".into())),
         ] {
-            for call in [list(), seen(), digest()] {
+            for call in [list(), seen(), digest(), looked()] {
                 let err = server.dispatch(0, &caller, &call).unwrap_err();
                 assert_eq!(err.code, REFUSED, "{caller:?}");
             }
@@ -1619,6 +1631,7 @@ pub mod tests {
                 "needs_you.list",
                 "needs_you.seen",
                 "digest.list",
+                "digest.looked",
                 "radar.list",
                 "units.git",
                 "units.sync",
