@@ -5,7 +5,6 @@ import Button from "../../components/Button/Button";
 import Select, { type SelectOption } from "../../components/Select/Select";
 import { Stepper } from "../Settings/components/paneKit";
 import { reviewRule, setReviewRule, type ReviewRule } from "../Settings/settingsStore";
-import { DEFAULT_REVIEW_PROMPT } from "../../utils/reviewRule";
 import { Row, Section } from "./Section";
 import styles from "./ProjectSettingsDialog.module.css";
 
@@ -19,10 +18,14 @@ export default function AutomationsSection(props: { projectPath: string }) {
   const rule = () => reviewRule(props.projectPath);
   const save = (patch: Partial<ReviewRule>) => void setReviewRule(props.projectPath, patch);
   const [paused, setPaused] = createSignal(false);
+  const [defaultPrompt, setDefaultPrompt] = createSignal("");
   // A failed read keeps what was last known rather than hiding a pause.
   const read = () =>
-    invoke<{ paused: boolean }>("review_rule_state", { projectPath: props.projectPath }).then(
-      (s) => setPaused(s.paused),
+    invoke<{ paused: boolean; defaultPrompt: string }>("review_rule_state", { projectPath: props.projectPath }).then(
+      (s) => {
+        setPaused(s.paused);
+        setDefaultPrompt(s.defaultPrompt);
+      },
       () => {},
     );
   onMount(() => {
@@ -56,7 +59,7 @@ export default function AutomationsSection(props: { projectPath: string }) {
             class={styles.textarea}
             aria-label="Review prompt"
             rows={8}
-            placeholder={DEFAULT_REVIEW_PROMPT}
+            placeholder={defaultPrompt()}
             value={rule().prompt ?? ""}
             onChange={(e) => save({ prompt: e.currentTarget.value.trim() || null })}
           />

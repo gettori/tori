@@ -41,6 +41,7 @@ pub enum What {
     // An item the assigned list made, `ask` or `auto`, and one it closed, with why.
     Proposed(String),
     Dropped(String),
+    Started(String),
 }
 
 impl What {
@@ -55,6 +56,7 @@ impl What {
             What::Stalled => "stalled",
             What::Proposed(_) => "proposed",
             What::Dropped(_) => "dropped",
+            What::Started(_) => "started",
         }
     }
 
@@ -68,7 +70,8 @@ impl What {
             | What::Pr(detail)
             | What::Idle(detail)
             | What::Proposed(detail)
-            | What::Dropped(detail) => {
+            | What::Dropped(detail)
+            | What::Started(detail) => {
                 format!("{} ({detail})", self.kind())
             }
             _ => self.kind().to_string(),
@@ -434,6 +437,13 @@ impl Watcher {
         self.nudge();
     }
 
+    pub fn started(&self, item: &Item) {
+        let what = What::Started("review rule".into());
+        self.core()
+            .item(item.id.clone(), item.session.clone(), what, Instant::now());
+        self.nudge();
+    }
+
     pub fn touch(&self, id: &str) {
         self.core().touch(id, Instant::now());
     }
@@ -562,6 +572,16 @@ mod tests {
             "item i3: proposed (ask)",
             "not held by a repeat window"
         );
+    }
+
+    #[test]
+    fn a_review_the_rule_started_wakes_each_round() {
+        let (mut core, now) = (idle_core(), Instant::now());
+        core.item("r1".into(), Some("s1".into()), What::Started("review rule".into()), now);
+        assert_eq!(lines(&mut core, now), "item r1: started (review rule), session s1");
+        core.sent = None;
+        core.item("r1".into(), Some("s2".into()), What::Started("review rule".into()), now);
+        assert_eq!(lines(&mut core, now), "item r1: started (review rule), session s2");
     }
 
     #[test]

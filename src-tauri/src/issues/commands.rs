@@ -180,6 +180,10 @@ pub fn link(project_path: &str, key: &str, branch: &str, base: Option<&str>) -> 
 pub struct ReviewRequests {
     pub rows: Vec<IssueRef>,
     pub complete: bool,
+    #[serde(skip)]
+    pub account: String,
+    #[serde(skip)]
+    pub full_name: String,
 }
 
 fn reviews_in(rows: Vec<IssueRef>) -> ReviewRequests {
@@ -191,6 +195,8 @@ fn reviews_in(rows: Vec<IssueRef>) -> ReviewRequests {
         // A list at the cap may have cut a request off, so it cannot say one went away.
         complete: rows.len() < super::github::ASSIGNED_CAP as usize,
         rows,
+        account: String::new(),
+        full_name: String::new(),
     }
 }
 
@@ -202,7 +208,13 @@ pub fn origin_review_requests(project_path: &str) -> Result<Option<ReviewRequest
     if c.forge.issues().is_none() || !offers(&c) {
         return Ok(None);
     }
-    fetch_assigned(&c, false).map(|rows| Some(reviews_in(rows)))
+    fetch_assigned(&c, false).map(|rows| {
+        Some(ReviewRequests {
+            account: c.account_id.clone(),
+            full_name: full_name(&c),
+            ..reviews_in(rows)
+        })
+    })
 }
 
 #[tauri::command(async)]
