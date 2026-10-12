@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { Check, CircleDashed, KeyRound, X } from "lucide-solid";
+import { Check, CircleDashed, Files, KeyRound, X } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import { providerIcon, providerMarkKey } from "../../components/Icon/ProviderIcon";
 import agentStyles from "../../components/Icon/agentMarks.module.css";
@@ -59,6 +59,9 @@ export default function TabMark(props: {
   secret?: "read" | "named" | null;
   /** The verdict of the session's latest turn that changed code. */
   verdict?: Verdict | null;
+  /** What this session is changing that a session in another worktree is
+   *  changing too, as a sentence naming the other branch. */
+  overlap?: string | null;
 }) {
   const working = () => props.status !== null && isWorking(props.status);
   // Whose logo this ended up being, for the tint. Resolved rather than assumed
@@ -83,7 +86,8 @@ export default function TabMark(props: {
   const verdictLabel = () => (props.verdict ? VERDICT_LABEL[props.verdict] : null);
   // Verified is the quiet one: a healthy session should not ask for a look.
   const verdictNews = () => props.verdict === "failed" || props.verdict === "unverified";
-  const title = () => [shown()?.title, secretLabel(), verdictLabel()].filter(Boolean).join("\n") || undefined;
+  const title = () =>
+    [shown()?.title, secretLabel(), verdictLabel(), props.overlap].filter(Boolean).join("\n") || undefined;
 
   return (
     <span
@@ -106,7 +110,7 @@ export default function TabMark(props: {
       // Only the states worth interrupting a screen reader for. Idle is the
       // absence of news, and every tab announcing "Idle" would bury the one
       // that is asking for something. A secret read is news at any status.
-      aria-label={working() || needsYou() || secretLabel() || verdictNews() ? title() : undefined}
+      aria-label={working() || needsYou() || secretLabel() || verdictNews() || props.overlap ? title() : undefined}
     >
       <Icon icon={providerIcon(null, props.agentId)} size={13} />
       <Show when={needsYou()}>
@@ -115,6 +119,11 @@ export default function TabMark(props: {
       <Show when={secretLabel()}>
         <span class={styles.secret} aria-hidden="true">
           <Icon icon={KeyRound} size={8} />
+        </span>
+      </Show>
+      <Show when={props.overlap}>
+        <span class={styles.overlap} data-overlap aria-hidden="true">
+          <Icon icon={Files} size={8} />
         </span>
       </Show>
       <Show when={props.verdict}>

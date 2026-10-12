@@ -514,6 +514,7 @@ pub fn run() {
             git::git_branch_sync,
             git::git_branch_sync_many,
             radar::radar_set_drawn,
+            radar::radar_list,
             git::git_pr_relation,
             git::git_default_base_branch,
             git::delete_remote_branch,

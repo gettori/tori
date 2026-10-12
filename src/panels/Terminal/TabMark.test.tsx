@@ -15,6 +15,16 @@ function mark(status: SessionStatus | null, certainty?: "exact" | "inferred") {
 const classes = (status: SessionStatus | null, certainty?: "exact" | "inferred") => mark(status, certainty).className;
 
 describe("a chat tab's provider mark", () => {
+  it("wears a corner mark naming the other branch when another worktree shares its files", () => {
+    const { container } = render(() => (
+      <TabMark agentId="claude" status="idle" overlap="a.rs also being changed on feat/billing" />
+    ));
+    const el = container.firstElementChild as HTMLElement;
+    expect(el.querySelector("[data-overlap]")).not.toBeNull();
+    expect(el.getAttribute("aria-label")).toContain("a.rs also being changed on feat/billing");
+    expect(mark("idle").querySelector("[data-overlap]")).toBeNull();
+  });
+
   it("keeps one glyph across idle and working, and changes only its treatment", () => {
     // The shape does not move: a tab going quiet must not look like a tab that
     // changed into something else.

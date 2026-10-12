@@ -9,6 +9,7 @@ import {
   CircleX,
   Columns2,
   FileCode,
+  Files,
   KeyRound,
 } from "lucide-solid";
 import {
@@ -32,6 +33,7 @@ import { VERDICT_LABEL, type VerifiedTurn } from "../../utils/verification";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { isWorking } from "../../utils/sessionStatus";
 import { UNATTRIBUTED_NOTICE } from "../../utils/attribution";
+import { otherBranch, overlapsOf, watchRadar } from "../../utils/radar";
 import { checkpointClock, checkpointDiffTabId, WORKTREE_SOURCE, type CheckpointScope } from "../../utils/syntheticTabs";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import { buildRows } from "../../utils/diffView";
@@ -675,6 +677,17 @@ export default function CheckpointTimeline(props: {
 
   const sharedNames = (f: CheckpointFile) => (f.shared_with ?? []).map((id) => describe(id).name).join(", ");
 
+  watchRadar();
+  // Who in another worktree is changing this file now. Apart from `shared_with`
+  // on purpose: that one is this worktree's, and it is what the revert confirm
+  // reads, while a revert here never touches another worktree's copy.
+  const elsewhere = (f: CheckpointFile): string | null => {
+    const id = open()?.sessionId;
+    const list = id ? overlapsOf(id).filter((o) => o.file === f.path) : [];
+    if (!list.length) return null;
+    return `Also open in ${list.map((o) => `${describe(o.other_session).name} on ${otherBranch(o)}`).join(", ")}`;
+  };
+
   function fileRow(f: CheckpointFile) {
     return (
       <div>
@@ -716,6 +729,13 @@ export default function CheckpointTimeline(props: {
               aria-label="Shared with another chat"
               label={`Also written by ${sharedNames(f)}. Reverting affects work that is not only this session's.`}
             />
+          </Show>
+          <Show when={elsewhere(f)}>
+            {(text) => (
+              <Tooltip as="span" class={styles.elsewhere} role="img" aria-label={text()} label={text()}>
+                <Icon icon={Files} size={12} />
+              </Tooltip>
+            )}
           </Show>
           <Show when={f.unattributed}>
             <Tooltip

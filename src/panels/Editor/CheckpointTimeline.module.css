@@ -300,6 +300,12 @@
   background: var(--scale-purple);
 }
 
+.elsewhere {
+  display: inline-flex;
+  flex: none;
+  color: var(--attention-fg);
+}
+
 .unattributed {
   display: inline-flex;
   flex: none;

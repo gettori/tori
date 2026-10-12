@@ -10,6 +10,11 @@
 //! A fetch or a re-pointed base can move any branch of the repository, so it
 //! re-asks every watched unit there. A turn's commit moves one folder's branch,
 //! which is another unit's base only when that base is a local branch.
+//!
+//! It also keeps the overlaps: a file two live sessions in different worktrees
+//! of one repository both recorded writing, while both worktrees still carry
+//! it against their base. A session in a terminal tab records no writes, so it
+//! never overlaps.
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -45,11 +50,48 @@ pub struct Answer {
     pub conflicts: Option<Vec<String>>,
 }
 
+/// One session's half of a file two worktrees fight over. Every overlap is
+/// listed from both sides, so a reader filters by its own session or folder.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct Overlap {
+    pub session: String,
+    pub path: String,
+    /// Relative to the worktree root, the same in both worktrees.
+    pub file: String,
+    pub other_session: String,
+    pub other_path: String,
+    /// What the other worktree has checked out now, `None` when detached.
+    pub other_branch: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct Listing {
     pub enabled: bool,
     pub units: Vec<Answer>,
+    pub overlaps: Vec<Overlap>,
 }
+
+/// What a sweep announces. `overlaps` is the whole new list, and absent when it
+/// did not change.
+#[derive(Debug, Serialize)]
+pub struct Changed {
+    pub units: Vec<Answer>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub overlaps: Option<Vec<Overlap>>,
+}
+
+/// What a live session wrote that its worktree still carries against the base.
+#[derive(Debug, Clone)]
+struct SessionWrites {
+    folder: String,
+    top: String,
+    common: PathBuf,
+    branch: Option<String>,
+    files: HashSet<String>,
+}
+
+/// `None` is kept too, so a session with no writes is not re-read every batch.
+type Sides = HashMap<String, Option<SessionWrites>>;
 
 #[derive(Default)]
 struct Radar {
@@ -57,6 +99,8 @@ struct Radar {
     answers: HashMap<Unit, Option<Vec<String>>>,
     /// Units measured against a local branch, the only base a commit here moves.
     local_base: HashSet<Unit>,
+    sides: Sides,
+    overlaps: Vec<Overlap>,
     was_enabled: Option<bool>,
 }
 
@@ -65,16 +109,20 @@ struct Radar {
 pub struct Hooks {
     /// Folders with a live session or an open autopilot item.
     pub watched: Box<dyn Fn() -> Vec<String> + Send>,
+    /// Every live session, idle ones included, with its folder.
+    pub live: Box<dyn Fn() -> Vec<(String, String)> + Send>,
     /// Folders worth an answer before any row is drawn: open autopilot items.
     pub at_start: Box<dyn Fn() -> Vec<String> + Send>,
     pub publish: Publish,
 }
 
-pub type Publish = Box<dyn Fn(&[Answer]) + Send + Sync>;
+pub type Publish = Box<dyn Fn(&Changed) + Send + Sync>;
 
 enum Job {
     Moved(String),
     Committed(String),
+    /// Only a session that is new to the list costs any git.
+    Sessions,
     All,
 }
 
@@ -83,6 +131,21 @@ struct Batch {
     all: bool,
     dirs: HashSet<PathBuf>,
     folders: Vec<String>,
+}
+
+impl Batch {
+    fn moves_refs(&self) -> bool {
+        self.all || !self.dirs.is_empty() || !self.folders.is_empty()
+    }
+
+    fn stales(&self, side: &SessionWrites) -> bool {
+        self.all
+            || self.dirs.contains(&side.common)
+            || self
+                .folders
+                .iter()
+                .any(|f| crate::rpc::events::same_folder(f, &side.folder))
+    }
 }
 
 static RADAR: OnceLock<Mutex<Radar>> = OnceLock::new();
@@ -120,6 +183,7 @@ pub fn start(hooks: Hooks) {
     }
     let Hooks {
         watched,
+        live,
         at_start,
         publish,
     } = hooks;
@@ -133,12 +197,15 @@ pub fn start(hooks: Hooks) {
             if !enabled() {
                 continue;
             }
-            let folders = watched();
-            let units = {
-                let radar = radar();
-                in_scope(&radar.drawn, &radar.local_base, folders, &batch)
-            };
-            sweep(units);
+            if batch.moves_refs() {
+                let folders = watched();
+                let units = {
+                    let radar = radar();
+                    in_scope(&radar.drawn, &radar.local_base, folders, &batch)
+                };
+                sweep(units);
+            }
+            refresh_overlaps(&batch, live());
         }
     });
 }
@@ -155,6 +222,7 @@ fn next_batch(rx: &Receiver<Job>) -> Option<Batch> {
                 batch.dirs.insert(crate::exec::common_dir(&path));
             }
             Job::Committed(folder) => batch.folders.push(folder),
+            Job::Sessions => {}
         }
     }
     Some(batch)
@@ -178,6 +246,14 @@ pub fn moved(path: &str) {
 pub fn committed(folder: &str) {
     if enabled() {
         send(Job::Committed(folder.to_string()));
+    }
+}
+
+/// A session started, ended or changed state, so the set of live sides may
+/// have moved.
+pub fn sessions_changed() {
+    if enabled() {
+        send(Job::Sessions);
     }
 }
 
@@ -226,15 +302,19 @@ pub fn settings_changed() {
             return;
         }
         if now {
-            Vec::new()
+            None
         } else {
-            switched_off(&mut radar.answers)
+            radar.sides.clear();
+            let had = !std::mem::take(&mut radar.overlaps).is_empty();
+            Some(Changed {
+                units: switched_off(&mut radar.answers),
+                overlaps: had.then(Vec::new),
+            })
         }
     };
-    if now {
-        send(Job::All);
-    } else {
-        announce(&cleared);
+    match cleared {
+        Some(changed) => announce(changed),
+        None => send(Job::All),
     }
 }
 
@@ -253,10 +333,17 @@ fn switched_off(answers: &mut HashMap<Unit, Option<Vec<String>>>) -> Vec<Answer>
 }
 
 pub fn list() -> Listing {
-    listing(enabled(), &radar().answers)
+    let radar = radar();
+    listing(enabled(), &radar.answers, &radar.overlaps)
 }
 
-fn listing(enabled: bool, answers: &HashMap<Unit, Option<Vec<String>>>) -> Listing {
+/// The same listing for the webview, which is not a socket client.
+#[tauri::command]
+pub fn radar_list() -> Listing {
+    list()
+}
+
+fn listing(enabled: bool, answers: &HashMap<Unit, Option<Vec<String>>>, overlaps: &[Overlap]) -> Listing {
     let mut units: Vec<Answer> = if enabled {
         answers
             .iter()
@@ -270,7 +357,12 @@ fn listing(enabled: bool, answers: &HashMap<Unit, Option<Vec<String>>>) -> Listi
         Vec::new()
     };
     units.sort_by(|a, b| (&a.path, &a.branch).cmp(&(&b.path, &b.branch)));
-    Listing { enabled, units }
+    let overlaps = if enabled { overlaps.to_vec() } else { Vec::new() };
+    Listing {
+        enabled,
+        units,
+        overlaps,
+    }
 }
 
 fn in_scope(drawn: &HashSet<Unit>, local_base: &HashSet<Unit>, watched: Vec<String>, batch: &Batch) -> Vec<Unit> {
@@ -307,6 +399,10 @@ fn sweep(units: Vec<Unit>) {
         .collect();
     let changed = {
         let mut radar = radar();
+        // Switched off while the answers were being computed: they are stale.
+        if radar.was_enabled == Some(false) {
+            return;
+        }
         for (unit, answer) in &fresh {
             if answer.local_base {
                 radar.local_base.insert(unit.clone());
@@ -320,7 +416,103 @@ fn sweep(units: Vec<Unit>) {
             .collect();
         apply(&mut radar.answers, fresh)
     };
-    announce(&changed);
+    announce(Changed {
+        units: changed,
+        overlaps: None,
+    });
+}
+
+fn refresh_overlaps(batch: &Batch, live: Vec<(String, String)>) {
+    // Taken out for the git calls, so a row's read never waits behind them.
+    let mut sides = std::mem::take(&mut radar().sides);
+    sides.retain(|_, side| side.as_ref().is_none_or(|s| !batch.stales(s)));
+    let overlaps = gated_overlaps(enabled(), &live, &mut sides, crate::checkpoint::touched_files, side_of);
+    let changed = {
+        let mut radar = radar();
+        if radar.was_enabled == Some(false) {
+            return;
+        }
+        radar.sides = sides;
+        (radar.overlaps != overlaps).then(|| {
+            radar.overlaps = overlaps.clone();
+            overlaps
+        })
+    };
+    if let Some(overlaps) = changed {
+        announce(Changed {
+            units: Vec::new(),
+            overlaps: Some(overlaps),
+        });
+    }
+}
+
+fn gated_overlaps(
+    enabled: bool,
+    live: &[(String, String)],
+    sides: &mut Sides,
+    read: impl Fn(&str) -> Vec<String>,
+    measure: impl Fn(&str, &[String]) -> Option<SessionWrites>,
+) -> Vec<Overlap> {
+    if !enabled {
+        sides.clear();
+        return Vec::new();
+    }
+    sides.retain(|id, _| live.iter().any(|(live_id, _)| live_id == id));
+    for (id, folder) in live {
+        if !sides.contains_key(id) {
+            let touched = read(id);
+            sides.insert(id.clone(), measure(folder, &touched));
+        }
+    }
+    intersect(live, sides)
+}
+
+/// A session's side, from the absolute paths it recorded writing.
+fn side_of(folder: &str, touched: &[String]) -> Option<SessionWrites> {
+    if touched.is_empty() {
+        return None;
+    }
+    let (top, given) = crate::git::worktree_roots(folder)?;
+    let changed = crate::git::changed_since_base(&top)?;
+    let files = touched
+        .iter()
+        .filter_map(|f| crate::checkpoint::relative_to(&top, f).or_else(|| crate::checkpoint::relative_to(&given, f)))
+        .filter(|f| changed.contains(f))
+        .collect();
+    Some(SessionWrites {
+        folder: folder.to_string(),
+        common: crate::exec::common_dir(&top),
+        branch: crate::git::current_branch(&top),
+        top,
+        files,
+    })
+}
+
+fn intersect(live: &[(String, String)], sides: &Sides) -> Vec<Overlap> {
+    let present: Vec<(&String, &SessionWrites)> = live
+        .iter()
+        .filter_map(|(id, _)| sides.get(id).and_then(Option::as_ref).map(|s| (id, s)))
+        .collect();
+    let mut out = Vec::new();
+    for (id, side) in &present {
+        for (other_id, other) in &present {
+            if id == other_id || side.common != other.common || side.top == other.top {
+                continue;
+            }
+            for file in side.files.intersection(&other.files) {
+                out.push(Overlap {
+                    session: (*id).clone(),
+                    path: side.folder.clone(),
+                    file: file.clone(),
+                    other_session: (*other_id).clone(),
+                    other_path: other.folder.clone(),
+                    other_branch: other.branch.clone(),
+                });
+            }
+        }
+    }
+    out.sort();
+    out
 }
 
 /// Store fresh answers and return the ones that differ from what was held.
@@ -339,12 +531,12 @@ fn apply(answers: &mut HashMap<Unit, Option<Vec<String>>>, fresh: Vec<(Unit, Opt
         .collect()
 }
 
-fn announce(changed: &[Answer]) {
-    if changed.is_empty() {
+fn announce(changed: Changed) {
+    if changed.units.is_empty() && changed.overlaps.is_none() {
         return;
     }
     if let Some(publish) = PUBLISH.get() {
-        publish(changed);
+        publish(&changed);
     }
 }
 
@@ -405,14 +597,140 @@ mod tests {
         );
     }
 
+    fn git(dir: &std::path::Path, args: &[&str]) {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@t.test")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@t.test")
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    /// A repo on `main` pushed to a bare origin, with worktrees `one` and `two`
+    /// branched off it side by side.
+    fn two_worktrees() -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "tori_radar_test_{}_{}",
+            std::process::id(),
+            SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let (remote, main) = (root.join("remote.git"), root.join("main"));
+        std::fs::create_dir_all(&remote).unwrap();
+        std::fs::create_dir_all(&main).unwrap();
+        git(&remote, &["init", "--bare", "-q"]);
+        git(&main, &["init", "-q"]);
+        git(&main, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        std::fs::write(main.join("a.rs"), "base").unwrap();
+        std::fs::write(main.join("b.rs"), "base").unwrap();
+        git(&main, &["add", "."]);
+        git(&main, &["commit", "-qm", "init"]);
+        git(&main, &["remote", "add", "origin", &remote.to_string_lossy()]);
+        git(&main, &["push", "-q", "-u", "origin", "main"]);
+        for name in ["one", "two"] {
+            git(
+                &main,
+                &["worktree", "add", "-q", "-b", name, &root.join(name).to_string_lossy()],
+            );
+        }
+        root
+    }
+
+    #[test]
+    fn two_worktrees_writing_one_file_overlap_from_both_sides_until_one_lets_go() {
+        let root = two_worktrees();
+        let (one, two) = (root.join("one"), root.join("two"));
+        std::fs::write(one.join("a.rs"), "one").unwrap();
+        std::fs::write(one.join("b.rs"), "only one").unwrap();
+        std::fs::write(two.join("a.rs"), "two").unwrap();
+        let path = |p: &std::path::Path| p.to_string_lossy().into_owned();
+        let touched: HashMap<&str, Vec<String>> = [
+            ("s1", vec![path(&one.join("a.rs")), path(&one.join("b.rs"))]),
+            ("s2", vec![path(&two.join("a.rs"))]),
+        ]
+        .into_iter()
+        .collect();
+        let reads = std::cell::Cell::new(0u32);
+        let read = |id: &str| {
+            reads.set(reads.get() + 1);
+            touched.get(id).cloned().unwrap_or_default()
+        };
+        let both = vec![("s1".to_string(), path(&one)), ("s2".to_string(), path(&two))];
+        let mut sides = Sides::new();
+
+        let found = gated_overlaps(true, &both, &mut sides, read, side_of);
+        let pair = |other_branch: &str| {
+            vec![
+                Overlap {
+                    session: "s1".into(),
+                    path: path(&one),
+                    file: "a.rs".into(),
+                    other_session: "s2".into(),
+                    other_path: path(&two),
+                    other_branch: Some(other_branch.into()),
+                },
+                Overlap {
+                    session: "s2".into(),
+                    path: path(&two),
+                    file: "a.rs".into(),
+                    other_session: "s1".into(),
+                    other_path: path(&one),
+                    other_branch: Some("one".into()),
+                },
+            ]
+        };
+        assert_eq!(found, pair("two"), "b.rs is one's alone");
+
+        git(&two, &["checkout", "-q", "-b", "three"]);
+        sides.clear();
+        assert_eq!(
+            gated_overlaps(true, &both, &mut sides, read, side_of),
+            pair("three"),
+            "the other branch is read off the worktree now"
+        );
+
+        git(&two, &["checkout", "-q", "--", "a.rs"]);
+        sides.remove("s2");
+        assert!(
+            gated_overlaps(true, &both, &mut sides, read, side_of).is_empty(),
+            "two's a.rs is back at base"
+        );
+
+        std::fs::write(two.join("a.rs"), "two again").unwrap();
+        sides.remove("s2");
+        let only_two = vec![("s2".to_string(), path(&two))];
+        assert!(
+            gated_overlaps(true, &only_two, &mut sides, read, side_of).is_empty(),
+            "s1 ended"
+        );
+
+        let before = reads.get();
+        sides.clear();
+        assert!(gated_overlaps(false, &both, &mut sides, read, side_of).is_empty());
+        assert_eq!(reads.get(), before, "off reads no touched record");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn the_listing_holds_a_swept_unit_no_row_drew_and_nothing_while_off() {
         let mut answers = HashMap::new();
         apply(&mut answers, vec![(unit("/wt"), paths(&["f.rs"]))]);
-        let on = listing(true, &answers);
+        let on = listing(true, &answers, &[]);
         assert!(on.enabled);
         assert_eq!(on.units[0].conflicts, paths(&["f.rs"]));
-        let off = listing(false, &answers);
+        let off = listing(false, &answers, &[]);
         assert!(!off.enabled);
         assert!(off.units.is_empty());
     }
