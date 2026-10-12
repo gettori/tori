@@ -10,7 +10,11 @@ export type IssueRef = {
   title: string;
   url: string;
   kind: IssueKind;
+  author?: string;
+  headSha?: string;
 };
+
+export type ReviewRequests = { rows: IssueRef[]; complete: boolean };
 
 export type Issue = {
   key: string;

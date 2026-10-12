@@ -548,6 +548,13 @@ export function mayUseForge(auth: AuthState, enabled: boolean): boolean {
 /// The one piece of judgment in this file, kept here because the sidebar chip
 /// and the needs-you attribution must agree on it: two call sites each deciding
 /// "is this bad?" is how a red chip and a silent tray end up disagreeing.
-export function needsAttention(status: UnitStatus): boolean {
+/// On someone else's pull request the red check is theirs to fix; yours is
+/// only the review they asked you for.
+export function needsAttention(status: UnitStatus, ctx: AttentionContext): boolean {
+  const pr = status.pullRequest;
+  const theirs = pr !== null && ctx.viewer !== null && pr.author.toLowerCase() !== ctx.viewer.toLowerCase();
+  if (theirs) return ctx.requested?.includes(pr.number) ?? false;
   return status.checks.state === "failure" || status.reviewDecision === "changesRequested";
 }
+
+export type AttentionContext = { viewer: string | null; requested: readonly number[] | null };
