@@ -198,6 +198,11 @@ li + li > .item {
   color: var(--fg-muted);
 }
 
+.item[data-answered] .name {
+  color: var(--fg-muted);
+  font-weight: 400;
+}
+
 .count {
   font-family: var(--tori-font-mono);
   font-size: 13px;

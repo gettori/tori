@@ -43,3 +43,9 @@ export function byProjectNewestFirst(events: readonly NeedsYouEvent[]): ProjectG
   }
   return [...groups].map(([project, events]) => ({ project, events }));
 }
+
+export function eventTime(ts: number, now = Date.now()) {
+  const at = new Date(ts);
+  const clock = at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return at.toDateString() === new Date(now).toDateString() ? clock : `Yesterday ${clock}`;
+}
