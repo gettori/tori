@@ -671,6 +671,12 @@ export const SETTINGS: SettingEntry[] = [
     hint: "A turn that changed code says if a test, type check, lint or build ran after its last edit, and how it came back. Never blocks.",
   },
   {
+    id: "conflict-radar",
+    section: "chat",
+    label: "Watch branches for conflicts",
+    hint: "A branch that would conflict with its base says so on its row before a pull request exists. Off runs no checks.",
+  },
+  {
     id: "resume-at-reset",
     section: "chat",
     label: "Resume at reset",

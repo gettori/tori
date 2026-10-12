@@ -121,7 +121,15 @@ import {
   inUnit,
 } from "../../utils/sessionActivity";
 import { forgeChip, forgeDoor } from "../../utils/forgeChip";
-import { finishedLook, resyncRoot, syncFor, syncMarks, syncUnits, type FinishedPr } from "../../utils/branchSync";
+import {
+  finishedLook,
+  resyncRadar,
+  resyncRoot,
+  syncFor,
+  syncMarks,
+  syncUnits,
+  type FinishedPr,
+} from "../../utils/branchSync";
 import { prRelation } from "../../utils/prRelation";
 import { resetToUpstream } from "../../utils/gitActions";
 import { compactAgo } from "../../utils/compactAge";
@@ -2903,6 +2911,7 @@ export default function LeftSidebar(props: {
   let unlistenPrWatches: UnlistenFn | undefined;
   let unlistenFetchDone: UnlistenFn | undefined;
   let unlistenBaseChanged: UnlistenFn | undefined;
+  let unlistenRadar: UnlistenFn | undefined;
   let unlistenFetchError: UnlistenFn | undefined;
   let offFocus: (() => void) | undefined;
   let offActivateSpace: (() => void) | undefined;
@@ -2976,6 +2985,10 @@ export default function LeftSidebar(props: {
       if (!e.payload.quiet) loadConfig();
     });
     unlistenBaseChanged = await listen<{ repo: string }>("git://base-changed", (e) => void resyncRoot(e.payload.repo));
+    unlistenRadar = await listen<{ units: { path: string }[] }>(
+      "radar://changed",
+      (e) => void resyncRadar(e.payload.units),
+    );
     unlistenFetchError = await listen<{ repo: string; error: string; quiet?: boolean }>("git://fetch-error", (e) => {
       // A sweep fails on every repo behind a password prompt it refuses to
       // show. That is the expected resting state of those repos, not an error
@@ -2994,6 +3007,7 @@ export default function LeftSidebar(props: {
     unlistenNavOpen?.();
     unlistenFetchDone?.();
     unlistenBaseChanged?.();
+    unlistenRadar?.();
     unlistenFetchError?.();
     offFocus?.();
     offActivateSpace?.();

@@ -14,7 +14,8 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
-const { adoptSync, resyncRoot, rollupSync, syncFor, syncMarks, syncState, syncUnits } = await import("./branchSync");
+const { adoptSync, resyncRadar, resyncRoot, rollupSync, syncFor, syncMarks, syncState, syncUnits } =
+  await import("./branchSync");
 
 const sync = (over: Partial<BranchSync> = {}): BranchSync => ({
   detached: false,
@@ -275,6 +276,25 @@ describe("the sync store's bookkeeping", () => {
     await resyncRoot("/a");
     expect(paths(batches[0])).toEqual(["/a:main", "/a:wip"]);
     expect(batches.length).toBe(1);
+  });
+
+  it("re-asks every drawn row on a folder the radar named, and drops the mark once it says unknown", async () => {
+    reply = { [key("/a", "main")]: base({ behind: 1, conflicts: ["f.rs"] }) };
+    await syncUnits([unit("/a", "main"), unit("/a", "wip"), unit("/b", "main")]);
+    expect(syncMarks(syncFor("/a", "main")).map((m) => m.kind)).toContain("conflict");
+    batches.length = 0;
+
+    reply = { [key("/a", "main")]: base({ behind: 1, conflicts: null }) };
+    await resyncRadar([{ path: "/a" }, { path: "/gone" }]);
+    expect(paths(batches[0])).toEqual(["/a:main", "/a:wip"]);
+    expect(batches.length).toBe(1);
+    expect(syncMarks(syncFor("/a", "main")).map((m) => m.kind)).not.toContain("conflict");
+  });
+
+  it("takes a row's conflicts from its own read, with no sweep before it", async () => {
+    reply = { [key("/fresh", "")]: base({ behind: 3, conflicts: ["a.ts"] }) };
+    await syncUnits([unit("/fresh", null, "worktree")]);
+    expect(syncState(syncFor("/fresh", null)).conflicts).toEqual(["a.ts"]);
   });
 
   it("keeps each row's own answer, under the backend's key", async () => {

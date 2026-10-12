@@ -1303,6 +1303,7 @@ pub(crate) fn adopt_pr_bases(app: &tauri::AppHandle, project_path: &str, statuse
             .find(|w| w.branch == s.head_ref)
             .map_or(project_path, |w| w.path.as_str());
         let _ = app.emit("git://base-changed", serde_json::json!({ "repo": folder }));
+        crate::radar::moved(folder);
     }
 }
 

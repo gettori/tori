@@ -1145,6 +1145,16 @@ impl AutopilotStore {
         self.write(|items| Ok(fail_closed_by_hand(items, session, held, now_ms())))
     }
 
+    /// The worktree of every item still open.
+    pub fn worktrees(&self) -> Vec<String> {
+        self.lock()
+            .items
+            .iter()
+            .filter(|i| !i.state.terminal())
+            .filter_map(|i| i.worktree.clone())
+            .collect()
+    }
+
     /// Every session an item names.
     pub fn sessions(&self) -> Vec<String> {
         self.lock().items.iter().filter_map(|i| i.session.clone()).collect()

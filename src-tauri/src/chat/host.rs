@@ -171,6 +171,9 @@ impl Lifecycle {
             }
             ChatEvent::TurnCompleted { turn_id, outcome, .. } => {
                 lock(&self.origins).remove(id);
+                if let Some(folder) = lock(&self.announced).get(id).and_then(|p| p.folder.clone()) {
+                    crate::radar::committed(&folder);
+                }
                 self.note(
                     id,
                     "session.turn_ended",

@@ -11,6 +11,7 @@ import {
   setBudgets,
   setChatDefaults,
   setCheckpoints,
+  setConflictRadar,
   setSecretWatch,
   setVerification,
   type PaneProps,
@@ -51,6 +52,7 @@ const SESSIONS = [
   "secret-watch",
   "blind-edits",
   "verification",
+  "conflict-radar",
   "resume-at-reset",
 ];
 
@@ -238,6 +240,19 @@ export default function ChatPane(props: PaneProps) {
             checked={settings.verification.enabled}
             onChange={setVerification}
             aria-label="Mark unverified turns"
+          />
+        </Row>
+
+        <Row
+          {...props}
+          id="conflict-radar"
+          label="Watch branches for conflicts"
+          hint="On, a branch that would conflict with its base says so on its sidebar row before a pull request exists. Off, Tori runs none of these checks and the row stays quiet either way."
+        >
+          <Switch
+            checked={settings.conflictRadar.enabled}
+            onChange={setConflictRadar}
+            aria-label="Watch branches for conflicts"
           />
         </Row>
 
