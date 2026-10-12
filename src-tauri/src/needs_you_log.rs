@@ -7,15 +7,19 @@
 //! Tori starts are answered at load: the presence that could clear them died
 //! with the last run, and a session still blocked raises a fresh row anyway.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
+use crate::chat::model::Verdict;
 use crate::presence::{Live, Reason};
 
 const KEEP_MS: u64 = 24 * 60 * 60 * 1000;
+// Rows since the last look outlive the day, so a weekend away still shows.
+const KEEP_UNSEEN_MS: u64 = 7 * KEEP_MS;
 
 pub const CHANGED_EVENT: &str = "needs-you://changed";
 
@@ -99,16 +103,86 @@ pub enum LogOp {
     Settle(String),
 }
 
+/// A turn's verification, kept per session for the digest.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Checked {
+    pub ts: u64,
+    pub verdict: Verdict,
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Log {
     events: Vec<Event>,
+    #[serde(default)]
+    looked_at: Option<u64>,
+    #[serde(default)]
+    verdicts: BTreeMap<String, Checked>,
+}
+
+/// What the digest reads out of the log, before lines are counted.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LogRead {
+    pub since: u64,
+    pub as_of: u64,
+    pub done: Vec<Event>,
+    pub waiting: Vec<Event>,
+    pub verdicts: BTreeMap<String, Checked>,
 }
 
 impl Log {
+    fn keeps(&self, ts: u64, now: u64) -> bool {
+        ts + KEEP_MS > now || self.looked_at.is_some_and(|m| ts >= m && ts + KEEP_UNSEEN_MS > now)
+    }
+
     fn prune(&mut self, now: u64) -> bool {
-        let before = self.events.len();
-        self.events.retain(|e| e.ts + KEEP_MS > now);
-        self.events.len() != before
+        let before = (self.events.len(), self.verdicts.len());
+        let events = std::mem::take(&mut self.events);
+        self.events = events.into_iter().filter(|e| self.keeps(e.ts, now)).collect();
+        let verdicts = std::mem::take(&mut self.verdicts);
+        self.verdicts = verdicts.into_iter().filter(|(_, c)| self.keeps(c.ts, now)).collect();
+        (self.events.len(), self.verdicts.len()) != before
+    }
+
+    /// Never moves back, and never past now.
+    pub fn looked(&mut self, at: u64, now: u64) -> bool {
+        let next = self.looked_at.map_or(at, |m| m.max(at)).min(now);
+        let changed = self.looked_at != Some(next);
+        self.looked_at = Some(next);
+        changed
+    }
+
+    pub fn note_verdict(&mut self, session: &str, verdict: Verdict, now: u64) {
+        self.verdicts.insert(session.to_string(), Checked { ts: now, verdict });
+    }
+
+    /// `since` defaults to the mark, or a day back before any look.
+    pub fn since(&self, since: Option<u64>, now: u64) -> LogRead {
+        let since = since.or(self.looked_at).unwrap_or(now.saturating_sub(KEEP_MS));
+        let mut done: Vec<Event> = self
+            .events
+            .iter()
+            .filter(|e| e.kind == Kind::Done && e.ts > since)
+            .cloned()
+            .collect();
+        done.sort_by_key(|e| e.ts);
+        let waiting = self
+            .events()
+            .into_iter()
+            .filter(|e| e.open() && e.kind.blocks())
+            .collect();
+        let verdicts = self
+            .verdicts
+            .iter()
+            .filter(|(_, c)| c.ts > since)
+            .map(|(id, c)| (id.clone(), *c))
+            .collect();
+        LogRead {
+            since,
+            as_of: now,
+            done,
+            waiting,
+            verdicts,
+        }
     }
 
     fn sweep(&mut self, now: u64) -> bool {
@@ -304,6 +378,9 @@ fn save_to(path: &Path, log: &Log) -> Result<(), String> {
 
 // Loaded once per run, so the sweep at load is the restart's and no later read.
 static LOG: Mutex<Option<Log>> = Mutex::new(None);
+// The sweep at load answers every block, and only a composition raises the
+// ones still standing, so the digest is not worth opening before it.
+static COMPOSED: AtomicBool = AtomicBool::new(false);
 
 fn with_log<R>(f: impl FnOnce(&mut Log, u64) -> (R, bool)) -> R {
     let now = crate::owned_state::now_ms();
@@ -318,17 +395,45 @@ fn with_log<R>(f: impl FnOnce(&mut Log, u64) -> (R, bool)) -> R {
     out
 }
 
-/// Fold one composition in. True when a row changed.
+/// Fold one composition in. True when a row changed, and on the first one.
 pub fn record(tick: &Tick) -> bool {
+    let first = !COMPOSED.swap(true, Ordering::Relaxed);
     with_log(|log, now| {
         let ops = log_ops(log, tick, now);
         let changed = log.apply(ops, now);
+        (changed || first, changed)
+    })
+}
+
+pub fn composed() -> bool {
+    COMPOSED.load(Ordering::Relaxed)
+}
+
+/// The last day only: older rows are kept for the digest, not for Needs you.
+pub fn list() -> Vec<Event> {
+    with_log(|log, now| {
+        let day: Vec<Event> = log.events().into_iter().filter(|e| e.ts + KEEP_MS > now).collect();
+        (day, false)
+    })
+}
+
+pub fn since(since: Option<u64>) -> LogRead {
+    with_log(|log, now| (log.since(since, now), false))
+}
+
+/// True when the mark moved.
+pub fn looked(at: u64) -> bool {
+    with_log(|log, now| {
+        let changed = log.looked(at, now);
         (changed, changed)
     })
 }
 
-pub fn list() -> Vec<Event> {
-    with_log(|log, _| (log.events(), false))
+pub fn note_verdict(session: &str, verdict: Verdict) {
+    with_log(|log, now| {
+        log.note_verdict(session, verdict, now);
+        ((), true)
+    });
 }
 
 /// True when a row changed.
@@ -641,5 +746,69 @@ mod tests {
     #[test]
     fn a_missing_log_is_empty() {
         assert!(load_from(&tmp_dir().join("needs_you.json"), 1).events.is_empty());
+    }
+
+    const HOUR: u64 = 60 * 60 * 1000;
+
+    #[test]
+    fn the_mark_survives_a_reload_and_never_moves_back() {
+        let path = tmp_dir().join("needs_you.json");
+        let mut log = Log::default();
+        assert!(log.looked(50, 100));
+        assert!(!log.looked(40, 100));
+        assert!(log.looked(500, 100), "never past now");
+        save_to(&path, &log).unwrap();
+        assert_eq!(load_from(&path, 200).looked_at, Some(100));
+    }
+
+    #[test]
+    fn rows_since_the_mark_outlive_the_day_until_the_mark_moves() {
+        let mut log = Log::default();
+        let now = 10 * KEEP_MS;
+        World::new(vec![live("c", Some(Reason::Waiting))]).step(&mut log, now - 30 * HOUR);
+        log.looked(now - 40 * HOUR, now);
+        log.prune(now);
+        assert_eq!(log.events.len(), 1);
+        log.looked(now - 20 * HOUR, now);
+        log.prune(now);
+        assert!(log.events.is_empty());
+    }
+
+    #[test]
+    fn rows_since_the_mark_still_drop_after_a_week() {
+        let mut log = Log::default();
+        let now = 10 * KEEP_MS;
+        World::new(vec![live("c", Some(Reason::Waiting))]).step(&mut log, now - 8 * KEEP_MS);
+        log.looked(now - 9 * KEEP_MS, now);
+        log.prune(now);
+        assert!(log.events.is_empty());
+    }
+
+    #[test]
+    fn since_reads_finished_turns_after_the_mark_and_every_open_block() {
+        let mut log = Log::default();
+        let mut w = World::new(vec![live("old", Some(Reason::Approval)), live("a", None)]);
+        w.finished = vec!["a".into()];
+        w.step(&mut log, 10);
+        log.looked(20, 20);
+        log.note_verdict("a", Verdict::Failed, 15);
+        w.step(&mut log, 30);
+        log.note_verdict("a", Verdict::Verified, 35);
+        let read = log.since(None, 40);
+        assert_eq!(read.since, 20);
+        assert_eq!(read.done.iter().map(|e| e.ts).collect::<Vec<_>>(), [30]);
+        assert_eq!(read.waiting.len(), 1);
+        assert_eq!(read.waiting[0].session.as_deref(), Some("old"));
+        assert_eq!(read.verdicts["a"].verdict, Verdict::Verified);
+        assert_eq!(
+            log.since(Some(5), 40).done.len(),
+            2,
+            "an open tab keeps the since it opened with"
+        );
+    }
+
+    #[test]
+    fn before_any_look_since_is_a_day_back() {
+        assert_eq!(Log::default().since(None, KEEP_MS + 7).since, 7);
     }
 }

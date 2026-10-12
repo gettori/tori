@@ -1134,6 +1134,9 @@ impl ChatHost {
                     .or_insert_with(|| crate::verification::Tracker::new(Some(&cwd)))
                     .observe(last, now)
                     .filter(|_| crate::verification::enabled());
+                if let (Some(ChatEvent::TurnVerification { verdict, .. }), Some(_)) = (&verdict, now) {
+                    crate::needs_you_log::note_verdict(&id, *verdict);
+                }
                 if let Some(verdict) = verdict {
                     events.insert(events.len() - 1, verdict);
                 }
