@@ -945,6 +945,18 @@ mod tests {
     }
 
     #[test]
+    fn answering_from_the_phone_without_the_digest_leaves_the_mark() {
+        let mut log = Log::default();
+        log.looked(5, 5);
+        let mut w = World::new(vec![live("c", None)]);
+        w.finished = vec!["c".into()];
+        w.step(&mut log, 10);
+        let ops = log.seen(Some("c"), Some("/p/repo"), None);
+        log.apply(ops, 20);
+        assert_eq!(log.looked_at, Some(5));
+    }
+
+    #[test]
     fn rows_since_the_mark_outlive_the_day_until_the_mark_moves() {
         let mut log = Log::default();
         let now = 10 * KEEP_MS;

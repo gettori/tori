@@ -1,5 +1,14 @@
-import { For, Show, createResource, createSignal, onCleanup } from "solid-js";
+import { For, Index, Show, createResource, createSignal, onCleanup, onMount } from "solid-js";
 import SegmentedControl from "../../src/components/SegmentedControl/SegmentedControl";
+import {
+  digestCount,
+  digestTime,
+  finishedParts,
+  happenedParts,
+  isLimit,
+  type Digest,
+  type Finished,
+} from "../../src/utils/digest";
 import {
   byProjectNewestFirst,
   eventTime,
@@ -49,7 +58,131 @@ export function watchNeedsYou(client: RemoteClient) {
   return { events: () => events() ?? [], count: () => unanswered(events() ?? []) };
 }
 
+// While the tab shows, its start stays where it opened, so reading it does not
+// empty it under you. It counts as seen once it stops showing or the app goes
+// to the background, on every device at once.
+export function watchDigest(client: RemoteClient) {
+  let shown = false;
+  let pinned: number | undefined;
+  const [digest, { refetch }] = createResource<Digest | null, number>(
+    () => client.generation() || undefined,
+    (_, info) =>
+      client
+        .request<Digest>("digest.list", shown && pinned !== undefined ? { since: pinned } : {}, LIST_REPLY_MS)
+        .then((d) => {
+          if (shown && pinned === undefined) pinned = d.since;
+          return d;
+        })
+        .catch(() => info.value ?? null),
+  );
+  onCleanup(
+    client.subscribe("sessions", (data) => {
+      if ((data as { kind?: string } | null)?.kind === "needs_you.changed") void refetch();
+    }),
+  );
+  const looked = () => {
+    const d = digest();
+    if (!shown || !d) return Promise.resolve();
+    return client.request("digest.looked", { at: d.asOf }).catch(() => {});
+  };
+  const away = () => {
+    if (document.visibilityState === "hidden") void looked();
+  };
+  document.addEventListener("visibilitychange", away);
+  onCleanup(() => document.removeEventListener("visibilitychange", away));
+  return {
+    digest: () => digest() ?? null,
+    count: () => digestCount(digest() ?? null),
+    show: () => {
+      shown = true;
+      pinned = undefined;
+      void refetch();
+    },
+    hide: () => {
+      void looked().then(() => void refetch());
+      shown = false;
+      pinned = undefined;
+    },
+  };
+}
+
 const folderName = (path: string) => path.split("/").filter(Boolean).pop() ?? path;
+
+const asEvent = (f: Finished): NeedsYouEvent => ({
+  id: f.session,
+  ts: f.lastTs,
+  session: f.session,
+  folder: f.folder,
+  branch: f.branch,
+  project: f.project,
+  title: f.title,
+  kind: "done",
+  resolvedAt: null,
+  settled: false,
+  chat: f.chat,
+});
+
+function Rows(props: { label: string; rows: { title: string; meta: string; open: () => void }[] }) {
+  return (
+    <Show when={props.rows.length}>
+      <h2 class={styles.label}>{props.label}</h2>
+      <ul class={styles.group}>
+        <Index each={props.rows}>
+          {(row) => (
+            <li>
+              <button class={styles.item} onClick={() => row().open()}>
+                <span class={styles.text}>
+                  <span class={styles.name}>{row().title}</span>
+                  <span class={styles.meta}>{row().meta}</span>
+                </span>
+              </button>
+            </li>
+          )}
+        </Index>
+      </ul>
+    </Show>
+  );
+}
+
+function SinceList(props: { watch: ReturnType<typeof watchDigest>; onOpen: (e: NeedsYouEvent) => void }) {
+  onMount(props.watch.show);
+  onCleanup(props.watch.hide);
+  const d = () => props.watch.digest();
+  const where = (project: string, folder: string) => project || folderName(folder);
+  const happened = (limits: boolean) =>
+    (d()?.happened ?? [])
+      .filter((e) => isLimit(e) === limits)
+      .map((e) => ({
+        title: e.title || folderName(e.folder),
+        meta: [where(e.project, e.folder), ...happenedParts(e)].join(` ${DOT} `),
+        open: () => props.onOpen(e),
+      }));
+  return (
+    <Show
+      when={props.watch.count()}
+      fallback={<p class={styles.empty}>Nothing finished since you last looked, and nothing is waiting on you.</p>}
+    >
+      <Rows
+        label={`Finished since ${digestTime(d()?.since ?? 0)}`}
+        rows={(d()?.finished ?? []).map((f) => ({
+          title: f.title || folderName(f.folder),
+          meta: [where(f.project, f.folder), ...finishedParts(f)].join(` ${DOT} `),
+          open: () => props.onOpen(asEvent(f)),
+        }))}
+      />
+      <Rows label="Pull requests" rows={happened(false)} />
+      <Rows label="Usage limits" rows={happened(true)} />
+      <Rows
+        label="Waiting on you"
+        rows={(d()?.waiting ?? []).map((e) => ({
+          title: e.title || folderName(e.folder),
+          meta: `${where(e.project, e.folder)} ${DOT} ${kindLabel(e.kind)} ${DOT} ${eventTime(e.ts)}`,
+          open: () => props.onOpen(e),
+        }))}
+      />
+    </Show>
+  );
+}
 
 function NeedsYouList(props: { events: NeedsYouEvent[]; onOpen: (e: NeedsYouEvent) => void }) {
   return (
@@ -149,12 +282,13 @@ function Card(props: {
   );
 }
 
-type Tab = "needsYou" | "review";
+type Tab = "since" | "needsYou" | "review";
 
 export default function InboxScreen(props: {
   client: RemoteClient;
   inbox: ReturnType<typeof watchInbox>;
   needsYou: ReturnType<typeof watchNeedsYou>;
+  digest: ReturnType<typeof watchDigest>;
   live: () => SessionRow[];
   onReply: (row: SessionRow) => void;
   onEvent: (e: NeedsYouEvent) => void;
@@ -162,7 +296,11 @@ export default function InboxScreen(props: {
 }) {
   props.inbox.refetch();
   const [tab, setTab] = createSignal<Tab>(
-    props.needsYou.count() > 0 || !props.inbox.items().length ? "needsYou" : "review",
+    props.digest.count() > 0
+      ? "since"
+      : props.needsYou.count() > 0 || !props.inbox.items().length
+        ? "needsYou"
+        : "review",
   );
   return (
     <div class={styles.glow}>
@@ -176,10 +314,14 @@ export default function InboxScreen(props: {
           value={tab()}
           onChange={setTab}
           options={[
+            { value: "since", label: `Since you looked ${props.digest.count()}` },
             { value: "needsYou", label: `Needs you ${props.needsYou.count()}` },
             { value: "review", label: `Review ${props.inbox.items().length}` },
           ]}
         />
+        <Show when={tab() === "since"}>
+          <SinceList watch={props.digest} onOpen={props.onEvent} />
+        </Show>
         <Show when={tab() === "needsYou"}>
           <NeedsYouList events={props.needsYou.events()} onOpen={props.onEvent} />
         </Show>
