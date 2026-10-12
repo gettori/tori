@@ -42,6 +42,7 @@ mod local_history;
 mod lsp;
 mod mcp;
 mod model;
+mod needs_you_log;
 mod onboarding;
 mod owned_state;
 pub mod packs;
@@ -398,6 +399,8 @@ pub fn run() {
             chat::commands::session_verification,
             review::review_inbox,
             review::review_mark,
+            needs_you_log::needs_you_list,
+            needs_you_log::needs_you_seen,
             second_opinion::second_opinion_reviewers,
             second_opinion::second_opinion_running,
             second_opinion::second_opinion_list,

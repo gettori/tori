@@ -11,10 +11,10 @@ use super::server::{
     params, AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams,
     CheckpointsParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams,
     IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams,
-    ModelParams, OpenParams, PendingParams, PrCreateParams, PrGetParams, PrMergeParams, PrWatchParams,
-    ProjectIconParams, ProjectSetParams, ProvenanceParams, ReviewMarkParams, ReviewSubmitParams, SessionAnswerParams,
-    SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams,
-    WaitParams, WorktreeParams, UNITS_GIT_MAX,
+    ModelParams, NeedsYouSeenParams, OpenParams, PendingParams, PrCreateParams, PrGetParams, PrMergeParams,
+    PrWatchParams, ProjectIconParams, ProjectSetParams, ProvenanceParams, ReviewMarkParams, ReviewSubmitParams,
+    SessionAnswerParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams,
+    UnitsSyncParams, WaitParams, WorktreeParams, UNITS_GIT_MAX,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -233,6 +233,24 @@ pub static METHODS: &[Method] = &[
         refusal: Some("an agent cannot review its own work"),
         outward: false,
         call: |b, _, v| b.review_mark(params(v)?),
+    },
+    Method {
+        name: "needs_you.list",
+        description: "The last day of what needed you, newest first: blocks, worker questions, finished turns and pull requests needing attention, each with `resolvedAt` once answered.",
+        params: no_params,
+        callers: LOCAL_AND_DEVICES,
+        refusal: Some("an agent cannot read what needs the person"),
+        outward: false,
+        call: |b, _, _| b.needs_you_list(),
+    },
+    Method {
+        name: "needs_you.seen",
+        description: "Answer a session's finished-turn rows and a folder's pull request rows, once the person has looked.",
+        params: schema::<NeedsYouSeenParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: Some("an agent cannot answer for the person"),
+        outward: false,
+        call: |b, _, v| b.needs_you_seen(params(v)?),
     },
     Method {
         name: "radar.list",
