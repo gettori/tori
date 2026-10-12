@@ -151,7 +151,8 @@ import { CockpitPopup, CockpitSwitch, CockpitView } from "./panels/Autopilot/Coc
 import { popupOpen, view } from "./utils/autopilotStore";
 import InboxView from "./panels/Inbox/InboxView";
 import { watchNeedsYou } from "./utils/needsYouInbox";
-import { inboxOpen, watchInbox } from "./utils/reviewInbox";
+import { inboxOpen, openInbox, watchInbox } from "./utils/reviewInbox";
+import { watchDigest } from "./utils/digest";
 import { watchSecondOpinions } from "./utils/secondOpinion";
 import "./styles/tokens.css";
 import "./styles/base.css";
@@ -354,6 +355,7 @@ function App() {
   const [bodyH, setBodyH] = createSignal(window.innerHeight);
   onMount(watchInbox);
   onMount(watchNeedsYou);
+  onMount(() => watchDigest(() => openInbox("since")));
   onMount(watchSecondOpinions);
   onMount(() => {
     if (!bodyEl) return;

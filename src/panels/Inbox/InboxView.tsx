@@ -1,10 +1,28 @@
-import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import Button from "../../components/Button/Button";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import SegmentedControl from "../../components/SegmentedControl/SegmentedControl";
+import {
+  digest,
+  digestCount,
+  digestTime,
+  finishedParts,
+  hideDigest,
+  showDigest,
+  type Finished,
+} from "../../utils/digest";
+import { emitWith, NAVIGATE, type NavTarget } from "../../utils/events";
 import { needsYouCount, needsYouEvents, openEvent } from "../../utils/needsYouInbox";
 import { byProjectNewestFirst, eventTime, kindLabel, type NeedsYouEvent } from "../../utils/needsYouSignals";
-import { markReviewed, openItem, reviewItems, setInboxOpen } from "../../utils/reviewInbox";
+import {
+  askedTab,
+  markReviewed,
+  openItem,
+  reviewItems,
+  setAskedTab,
+  setInboxOpen,
+  type InboxTab,
+} from "../../utils/reviewInbox";
 import { opinionLabel, runSecondOpinion, secondOpinionRunning } from "../../utils/secondOpinion";
 import { signalLabel, type ReviewItem } from "../../utils/reviewSignals";
 import styles from "./InboxView.module.css";
@@ -96,10 +114,68 @@ function EventRow(props: { event: NeedsYouEvent }) {
   );
 }
 
-type Tab = "needsYou" | "review";
+function FinishedRow(props: { row: Finished }) {
+  return (
+    <li class={styles.row}>
+      <button
+        type="button"
+        class={styles.open}
+        onClick={() => emitWith<NavTarget>(NAVIGATE, { folder: props.row.folder, session: props.row.session })}
+      >
+        <span class={styles.body}>
+          <span class={styles.title}>{props.row.title || folderName(props.row.folder)}</span>
+          <span class={styles.where}>
+            {props.row.project || folderName(props.row.folder)} · {finishedParts(props.row).join(" · ")}
+          </span>
+        </span>
+      </button>
+    </li>
+  );
+}
+
+function SinceList() {
+  onMount(showDigest);
+  onCleanup(hideDigest);
+  return (
+    <Show
+      when={digestCount(digest())}
+      fallback={<p class={styles.empty}>Nothing finished since you last looked, and nothing is waiting on you.</p>}
+    >
+      <OverlayScroll class={styles.scroll}>
+        <Show when={digest()?.finished.length}>
+          <section class={styles.group} aria-label="Finished">
+            <h3 class={styles.groupHead}>Finished since {digestTime(digest()!.since)}</h3>
+            <ul class={styles.list}>
+              <For each={digest()!.finished}>{(row) => <FinishedRow row={row} />}</For>
+            </ul>
+          </section>
+        </Show>
+        <Show when={digest()?.waiting.length}>
+          <section class={styles.group} aria-label="Waiting on you">
+            <h3 class={styles.groupHead}>Waiting on you</h3>
+            <ul class={styles.list}>
+              <For each={digest()!.waiting}>{(event) => <EventRow event={event} />}</For>
+            </ul>
+          </section>
+        </Show>
+      </OverlayScroll>
+    </Show>
+  );
+}
+
+const firstTab = (): InboxTab => {
+  if (digestCount(digest()) > 0) return "since";
+  return needsYouCount() > 0 || !reviewItems().length ? "needsYou" : "review";
+};
 
 export default function InboxView() {
-  const [tab, setTab] = createSignal<Tab>(needsYouCount() > 0 || !reviewItems().length ? "needsYou" : "review");
+  const [tab, setTab] = createSignal<InboxTab>(askedTab() ?? firstTab());
+  createEffect(() => {
+    const asked = askedTab();
+    if (!asked) return;
+    setTab(asked);
+    setAskedTab(null);
+  });
   const onKey = (e: KeyboardEvent) => e.key === "Escape" && setInboxOpen(false);
   onMount(() => window.addEventListener("keydown", onKey));
   onCleanup(() => window.removeEventListener("keydown", onKey));
@@ -107,13 +183,14 @@ export default function InboxView() {
     <section class={styles.overlay} aria-label="Inbox">
       <header class={styles.head}>
         <h2 class={styles.heading}>Inbox</h2>
-        <SegmentedControl<Tab>
+        <SegmentedControl<InboxTab>
           aria-label="Inbox list"
           size="sm"
           variant="plain"
           value={tab()}
           onChange={setTab}
           options={[
+            { value: "since", label: `Since you looked ${digestCount(digest())}` },
             { value: "needsYou", label: `Needs you ${needsYouCount()}` },
             { value: "review", label: `Review ${reviewItems().length}` },
           ]}
@@ -122,6 +199,9 @@ export default function InboxView() {
           Close
         </Button>
       </header>
+      <Show when={tab() === "since"}>
+        <SinceList />
+      </Show>
       <Show when={tab() === "needsYou"}>
         <Show
           when={needsYouEvents().length}
