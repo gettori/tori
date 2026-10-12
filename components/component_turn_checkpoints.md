@@ -105,3 +105,5 @@ The touched-index also gained a **reverse** direction. `checkpoint_note_touched`
 - [[concept_evidence_tiered_attribution]] — the revert guard's two-tier liveness model, shared with the live editing indicator.
 - [[component_session_worklog]] — the transcript viewer this builds on.
 - [[concept_needs_you_floor]] — a sibling agent-agnostic mechanism built on the same registry foundation.
+- [[component_digest]] counts a session's lines since the last look from these trees.
+- [[gotcha_checkpoint_range_diff_files_carry_no_line_counts]] the range's file list has no counts.
