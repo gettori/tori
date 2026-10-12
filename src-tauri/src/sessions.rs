@@ -762,7 +762,11 @@ fn stamp_listing(
 /// Both user-authored halves of a listing are applied here rather than in the
 /// index: a rename and an account label are things the user typed, and the
 /// index holds no user-authored field (see this file's header).
-fn profile_label(file: &crate::accounts::AccountsFile, agent: &str, profile: Option<&str>) -> Option<String> {
+pub(crate) fn profile_label(
+    file: &crate::accounts::AccountsFile,
+    agent: &str,
+    profile: Option<&str>,
+) -> Option<String> {
     let profile = profile?;
     let profiles = crate::accounts::profiles_for(file, agent);
     // One account is every machine that never added a second, and it is the

@@ -495,6 +495,8 @@ impl Composer {
                 folder: u.folder_path,
                 branch: u.branch,
                 attention: u.attention,
+                pr_known: u.pr_known,
+                pr: u.pull_request,
             })
             .collect();
         let logged = crate::needs_you_log::record(&crate::needs_you_log::Tick {

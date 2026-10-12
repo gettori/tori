@@ -404,6 +404,7 @@ pub fn run() {
             needs_you_log::needs_you_seen,
             digest::digest_list,
             digest::digest_looked,
+            digest::digest_limit_resumed,
             second_opinion::second_opinion_reviewers,
             second_opinion::second_opinion_running,
             second_opinion::second_opinion_list,

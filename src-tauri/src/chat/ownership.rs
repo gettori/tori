@@ -528,6 +528,15 @@ impl Registry {
         guard.get(session_id).map(|c| c.profile.clone())
     }
 
+    /// The agent and profile a session runs as.
+    pub fn account_of(&self, session_id: &str) -> Option<(String, String)> {
+        let guard = match self.claims.lock() {
+            Ok(g) => g,
+            Err(e) => e.into_inner(),
+        };
+        guard.get(session_id).map(|c| (c.agent.clone(), c.profile.clone()))
+    }
+
     pub fn agent_of(&self, session_id: &str) -> Option<String> {
         let guard = match self.claims.lock() {
             Ok(g) => g,
