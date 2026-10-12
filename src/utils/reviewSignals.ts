@@ -13,6 +13,8 @@ export type SignalKind =
   | "dependencies"
   | "outsideScope"
   | "sharedFile"
+  | "baseConflict"
+  | "worktreeOverlap"
   | "noCheckpoints";
 
 export type ReviewSignal = { kind: SignalKind; count: number; points: number };
@@ -56,6 +58,10 @@ export function signalLabel(signal: ReviewSignal): string {
       return `${plural(signal.count, "file")} outside the named folders`;
     case "sharedFile":
       return `${plural(signal.count, "file")} shared with another session`;
+    case "baseConflict":
+      return `${plural(signal.count, "file")} would conflict with the base`;
+    case "worktreeOverlap":
+      return `${plural(signal.count, "file")} also being changed in another worktree`;
     case "noCheckpoints":
       return "No checkpoints";
   }

@@ -32,6 +32,8 @@ const SENSITIVE_PATH_POINTS: u32 = 20;
 const DEPENDENCY_POINTS: u32 = 15;
 const OUTSIDE_SCOPE_POINTS: u32 = 15;
 const SHARED_FILE_POINTS: u32 = 10;
+const BASE_CONFLICT_POINTS: u32 = 20;
+const WORKTREE_OVERLAP_POINTS: u32 = 15;
 const LINES_CAP: u32 = 30;
 
 /// What a reviewer signs off on. Only a session for now; a PR or a batch of
@@ -63,6 +65,8 @@ pub enum SignalKind {
     Dependencies,
     OutsideScope,
     SharedFile,
+    BaseConflict,
+    WorktreeOverlap,
     NoCheckpoints,
 }
 
@@ -194,7 +198,7 @@ struct SpanSignals {
     outside: u32,
 }
 
-fn score(span: Option<&SpanSignals>, turns: &TurnSignals) -> (u32, Vec<Signal>) {
+fn score(span: Option<&SpanSignals>, turns: &TurnSignals, radar: crate::radar::SessionSignals) -> (u32, Vec<Signal>) {
     let mut signals = Vec::new();
     let mut add = |kind, count: u32, points| {
         if count > 0 {
@@ -205,6 +209,8 @@ fn score(span: Option<&SpanSignals>, turns: &TurnSignals) -> (u32, Vec<Signal>) 
     add(SignalKind::Failed, turns.failed, FAILED_POINTS);
     add(SignalKind::BlindEdit, turns.blind_edits, BLIND_EDIT_POINTS);
     add(SignalKind::Unverified, turns.unverified, UNVERIFIED_POINTS);
+    add(SignalKind::BaseConflict, radar.conflicts, BASE_CONFLICT_POINTS);
+    add(SignalKind::WorktreeOverlap, radar.overlaps, WORKTREE_OVERLAP_POINTS);
     match span {
         Some(span) => {
             add(SignalKind::DeletedTests, span.files.deleted_tests, DELETED_TESTS_POINTS);
@@ -390,7 +396,8 @@ fn item(
     if !wrote {
         return None;
     }
-    let (score, signals) = score(span.as_ref(), &transcript.turns);
+    let radar = crate::radar::session_signals(&session.id, &session.cwd);
+    let (score, signals) = score(span.as_ref(), &transcript.turns, radar);
     Some(ReviewItem {
         unit: ReviewUnit::Session { id: session.id.clone() },
         project: project.to_string(),
@@ -658,6 +665,7 @@ mod tests {
                 secret_reads: 1,
                 ..Default::default()
             },
+            Default::default(),
         );
         let (big, _) = score(
             Some(&span(1_850)),
@@ -665,12 +673,37 @@ mod tests {
                 code_turns: 6,
                 ..Default::default()
             },
+            Default::default(),
         );
         assert!(risky > big, "{risky} vs {big}");
         assert_eq!(lines_points(1_850), LINES_CAP, "lines alone stop at the cap");
         assert_eq!(
             risky_signals.iter().map(|s| s.kind).collect::<Vec<_>>(),
             vec![SignalKind::SecretRead, SignalKind::Lines]
+        );
+    }
+
+    #[test]
+    fn base_conflicts_and_worktree_overlaps_each_score_once_with_their_count() {
+        let turns = TurnSignals {
+            code_turns: 1,
+            ..Default::default()
+        };
+        let radar = crate::radar::SessionSignals {
+            conflicts: 3,
+            overlaps: 2,
+        };
+        let (total, signals) = score(None, &turns, radar);
+        let of = |kind| signals.iter().find(|s| s.kind == kind).map(|s| (s.count, s.points));
+        assert_eq!(of(SignalKind::BaseConflict), Some((3, BASE_CONFLICT_POINTS)));
+        assert_eq!(of(SignalKind::WorktreeOverlap), Some((2, WORKTREE_OVERLAP_POINTS)));
+        assert_eq!(total, BASE_CONFLICT_POINTS + WORKTREE_OVERLAP_POINTS);
+
+        let (_, off) = score(None, &turns, Default::default());
+        assert!(
+            off.iter()
+                .all(|s| !matches!(s.kind, SignalKind::BaseConflict | SignalKind::WorktreeOverlap)),
+            "a switched-off radar reports zeros, and zeros draw no chip: {off:?}"
         );
     }
 
