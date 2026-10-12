@@ -206,8 +206,10 @@ pub fn origin_review_requests(project_path: &str) -> Result<Option<ReviewRequest
 }
 
 #[tauri::command(async)]
-pub fn review_requests(project_path: String) -> Result<Option<ReviewRequests>, ForgeErrorDto> {
-    Ok(origin_review_requests(&project_path)?)
+pub fn review_requests(app: AppHandle, project_path: String) -> Result<Option<ReviewRequests>, ForgeErrorDto> {
+    let list = origin_review_requests(&project_path)?;
+    crate::review_rule::tick(&app, &project_path, list.as_ref());
+    Ok(list)
 }
 
 #[tauri::command(async)]

@@ -18,10 +18,27 @@ const bridge = vi.hoisted(() => ({
   units: [] as unknown[],
 }));
 
+const HOME = "/root/home/side";
+
 const config = () => ({
   path: "/cfg/tori.toml",
   roots: ["/root"],
-  spaces: [{ name: "work", path: "/root/work", projects: [{ name: "gh", path: GH, branchUnits: bridge.units }] }],
+  spaces: [
+    { name: "work", path: "/root/work", projects: [{ name: "gh", path: GH, branchUnits: bridge.units }] },
+    {
+      name: "home",
+      path: "/root/home",
+      projects: [
+        {
+          name: "side",
+          path: HOME,
+          branchUnits: [
+            { label: "main", folderPath: `${HOME}/main`, branch: "main", kind: "worktree", isCurrent: false },
+          ],
+        },
+      ],
+    },
+  ],
 });
 
 const request = (n: number, author: string) => ({
@@ -51,6 +68,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
     if (cmd === "get_config") return Promise.resolve(config());
+    if (cmd === "set_settings") return Promise.resolve(args.settings);
     if (cmd === "list_sessions") return Promise.resolve([]);
     if (cmd === "list_project_attempts") return Promise.resolve([]);
     if (cmd === "folder_historical") return Promise.resolve(false);
@@ -117,6 +135,7 @@ const { default: LeftSidebar } = await import("./LeftSidebar");
 const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
 const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
 const { resetForgeStatusForTests } = await import("../../utils/forgeStatus");
+const { setReviewRule } = await import("../Settings/settingsStore");
 
 describe("review requests on the project row", () => {
   beforeEach(() => {
@@ -156,5 +175,16 @@ describe("review requests on the project row", () => {
     await waitFor(() =>
       expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ folderPath: `${GH}/pr-47`, branch: "pr-47" })),
     );
+  });
+
+  it("asks a rule-on project in another space for its review requests, and nothing else", async () => {
+    await setReviewRule(HOME, { action: "worktree" });
+    render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={[]} />);
+
+    await waitFor(() =>
+      expect(bridge.calls.some((c) => c.cmd === "review_requests" && c.args.projectPath === HOME)).toBe(true),
+    );
+    expect(bridge.calls.some((c) => c.cmd === "forge_unit_statuses" && c.args.projectPath === HOME)).toBe(false);
+    await setReviewRule(HOME, { action: "off" });
   });
 });

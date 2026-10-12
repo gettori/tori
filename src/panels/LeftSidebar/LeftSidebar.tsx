@@ -162,7 +162,7 @@ import {
   reviewRequests,
   type WatchedProject,
 } from "../../utils/forgeStatus";
-import { settings as appSettings } from "../Settings/settingsStore";
+import { reviewRule, settings as appSettings } from "../Settings/settingsStore";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
 import ProjectIcon from "../../components/Icon/ProjectIcon";
@@ -3180,8 +3180,15 @@ export default function LeftSidebar(props: {
           units: p.branchUnits.filter((u) => u.branch).map((u) => ({ branch: u.branch, visible: open })),
         };
       });
+    // A project whose review rule is on is asked about from any space, for its
+    // review requests only: no units, so no branch statuses.
+    const ruled: WatchedProject[] = (config()?.spaces ?? [])
+      .flatMap((s) => s.projects)
+      .filter((p) => reviewRule(p.path).action !== "off" && apiCanServe(seen[p.path] ?? null, hosts))
+      .map((p) => ({ path: p.path, units: [] }));
     const watched = mergeWatched([
       spaces,
+      ruled,
       topicProjects(watchedTopics(), (repo, branch) => !!topicBranches()[`${repo}\n${branch}`]).filter((p) =>
         apiCanServe(seen[p.path] ?? null, hosts),
       ),
