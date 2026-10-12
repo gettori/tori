@@ -38,6 +38,7 @@ import {
   OPEN_OMNIBOX,
   type OpenOmnibox,
   TOGGLE_SHORTCUTS,
+  OPEN_DIGEST,
   ZOOM_IN,
   ZOOM_OUT,
   ZOOM_RESET,
@@ -334,6 +335,13 @@ export const COMMANDS: Command[] = [
     scope: "global",
     match: cmdShift("x"),
     run: () => emit(TOGGLE_INBOX),
+  },
+  {
+    id: "since-you-looked",
+    label: "Show what happened since you last looked",
+    group: "view",
+    scope: "global",
+    run: () => emit(OPEN_DIGEST),
   },
   {
     id: "autopilot-view",

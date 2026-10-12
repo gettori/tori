@@ -3,10 +3,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { setView } from "./autopilotStore";
 import { setPendingReveal } from "./checkpointReveal";
+import { refreshDigest } from "./digest";
 import {
   emitWith,
   NAVIGATE,
   on,
+  OPEN_DIGEST,
   SET_RIGHT_MODE,
   TOAST,
   TOGGLE_AUTOPILOT_VIEW,
@@ -17,9 +19,21 @@ import {
 } from "./events";
 import type { ReviewItem } from "./reviewSignals";
 
+export type InboxTab = "since" | "needsYou" | "review";
+
 const [inboxOpen, setInboxOpen] = createSignal(false);
 const [reviewItems, setReviewItems] = createSignal<ReviewItem[]>([]);
-export { inboxOpen, setInboxOpen, reviewItems };
+// The tab the next opening asks for, read once by the Inbox as it mounts.
+const [askedTab, setAskedTab] = createSignal<InboxTab | null>(null);
+export { inboxOpen, setInboxOpen, reviewItems, askedTab, setAskedTab };
+
+export function openInbox(tab: InboxTab | null = null) {
+  setAskedTab(tab);
+  setView("workspace");
+  setInboxOpen(true);
+  void refreshInbox();
+  void refreshDigest();
+}
 
 // Refreshes overlap while an agent writes, and an older answer must not land
 // over a newer one.
@@ -61,13 +75,10 @@ export function watchInbox() {
   if (started) return;
   started = true;
   on(TOGGLE_INBOX, () => {
-    const opening = !inboxOpen();
-    setInboxOpen(opening);
-    if (opening) {
-      setView("workspace");
-      void refreshInbox();
-    }
+    if (inboxOpen()) setInboxOpen(false);
+    else openInbox();
   });
+  on(OPEN_DIGEST, () => openInbox("since"));
   on(TOGGLE_AUTOPILOT_VIEW, () => setInboxOpen(false));
   on(NAVIGATE, () => setInboxOpen(false));
   // fs://changed covers a commit or push in a watched worktree, which can take

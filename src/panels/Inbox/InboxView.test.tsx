@@ -9,6 +9,7 @@ import type { NeedsYouEvent } from "../../utils/needsYouSignals";
 import { pendingCard, setPendingCard } from "../../utils/pendingCard";
 import { NAVIGATE, onWith, type NavTarget } from "../../utils/events";
 import type { ReviewItem } from "../../utils/reviewSignals";
+import { refreshDigest, type Digest, type Finished } from "../../utils/digest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
@@ -47,15 +48,35 @@ function event(id: string, project: string, ts: number, extra: Partial<NeedsYouE
   };
 }
 
+function finished(session: string, extra: Partial<Finished> = {}): Finished {
+  return {
+    session,
+    folder: `/work/app/${session}`,
+    branch: null,
+    project: "app",
+    title: `run ${session}`,
+    chat: true,
+    turns: 2,
+    firstTs: 1_000,
+    lastTs: 2_000,
+    lines: { added: 120, removed: 30 },
+    verdict: "verified",
+    ...extra,
+  };
+}
+
 let listed: ReviewItem[] = [];
 let events: NeedsYouEvent[] = [];
+let since: Digest | null = null;
 
 beforeEach(async () => {
   listed = [item("calm", 12), item("risky", 64), item("busy", 30, true)];
   events = [];
+  since = null;
   setPendingCard(null);
   vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
     if (cmd === "needs_you_list") return events;
+    if (cmd === "digest_list") return since;
     if (cmd === "review_inbox") return listed;
     if (cmd === "review_mark") {
       const id = (args as { unit: { id: string } }).unit.id;
@@ -64,6 +85,7 @@ beforeEach(async () => {
     return undefined;
   });
   await refreshNeedsYou();
+  await refreshDigest();
 });
 
 describe("InboxView", () => {
@@ -142,5 +164,43 @@ describe("InboxView", () => {
     off();
     expect(targets).toEqual([{ folder: "/work/api" }]);
     expect(pendingCard()).toBeNull();
+  });
+
+  it("opens on Since you looked with each finished session's lines and verdict, and a row opens it", async () => {
+    since = {
+      since: 500,
+      asOf: 3_000,
+      ready: true,
+      finished: [finished("a"), finished("b", { chat: false, turns: 1, lines: null, verdict: null })],
+      waiting: [event("q", "api", 300, { kind: "question" })],
+    };
+    await refreshDigest();
+    const targets: NavTarget[] = [];
+    const off = onWith<NavTarget>(NAVIGATE, (t) => targets.push(t));
+    const { container } = render(() => <InboxView />);
+    expect(screen.getByRole("button", { name: "Since you looked 3" }).getAttribute("aria-pressed")).toBe("true");
+    const a = screen.getByText("run a").closest("li")!.textContent!;
+    expect(a).toContain("2 turns");
+    expect(a).toContain("+120 -30");
+    expect(a).toContain("Verified");
+    const b = screen.getByText("run b").closest("li")!.textContent!;
+    expect(b).toContain("1 turn");
+    expect(b).not.toContain("Verified");
+    expect(screen.getByText("chat q")).toBeTruthy();
+    await expectNoAxeViolations(container);
+    fireEvent.click(screen.getByText("run a"));
+    off();
+    expect(targets).toEqual([{ folder: "/work/app/a", session: "a" }]);
+  });
+
+  it("marks the digest seen at the time it read, once it stops showing", async () => {
+    since = { since: 500, asOf: 3_000, ready: true, finished: [finished("a")], waiting: [] };
+    await refreshDigest();
+    const { unmount } = render(() => <InboxView />);
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("digest_list", { since: undefined }));
+    expect(invoke).not.toHaveBeenCalledWith("digest_looked", expect.anything());
+    fireEvent.click(screen.getByRole("button", { name: /^Needs you/ }));
+    expect(invoke).toHaveBeenCalledWith("digest_looked", { at: 3_000 });
+    unmount();
   });
 });
