@@ -14,6 +14,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { BranchSync } from "./gitActions";
 import type { PrRelation } from "./prRelation";
 import type { UnitStatus } from "./forgeTypes";
+import { otherBranch, type Overlap } from "./radar";
 
 // Escaped rather than literal so the source stays ASCII, as the Changes panel's
 // own pills are.
@@ -154,7 +155,7 @@ const NOTHING: SyncState = { level: "none", tone: "muted", label: "", detail: ""
 /** One glyph a surface draws for one fact. `count` is null where the fact has
  *  no number: uncommitted work, a branch that has never been pushed. */
 export type SyncMark = {
-  kind: "conflict" | "checks" | "push" | "pull" | "dirty";
+  kind: "conflict" | "overlap" | "checks" | "push" | "pull" | "dirty";
   count: number | null;
   tone: SyncTone;
   /** This mark's own clause of the sentence a tooltip assembles. */
@@ -252,6 +253,35 @@ export function syncMarks(sync: BranchSync | null | undefined, finished?: Finish
     marks.push({ kind: "dirty", count: null, tone: "muted", title: "Uncommitted changes" });
   }
   return marks;
+}
+
+/** Up to this many files are named in an overlap's title; past it, counted. */
+const OVERLAP_NAMED = 3;
+
+/**
+ * The mark for files a session here and a session in another worktree are both
+ * changing, or null when there are none. Amber rather than red: nothing
+ * conflicts yet, but one of the two pull requests is going to be the second.
+ */
+export function overlapMark(overlaps: readonly Overlap[]): SyncMark | null {
+  if (!overlaps.length) return null;
+  const files = [...new Set(overlaps.map((o) => o.file))].sort();
+  const branches = [...new Set(overlaps.map(otherBranch))].sort();
+  const what = files.length <= OVERLAP_NAMED ? files.join(", ") : plural(files.length, "file");
+  return {
+    kind: "overlap",
+    count: files.length,
+    tone: "warn",
+    title: `${what} also being changed on ${branches.join(", ")}`,
+  };
+}
+
+/** Where an overlap mark sits in a row's run: after a conflict, which is the
+ *  louder fact, and ahead of everything else. */
+export function withOverlap(marks: readonly SyncMark[], overlap: SyncMark | null): SyncMark[] {
+  if (!overlap) return [...marks];
+  const at = marks[0]?.kind === "conflict" ? 1 : 0;
+  return [...marks.slice(0, at), overlap, ...marks.slice(at)];
 }
 
 /** The sentence a mark run's single tooltip carries. One hover target per row,

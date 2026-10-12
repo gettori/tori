@@ -63,6 +63,17 @@
   position: absolute;
 }
 
+/* The fourth corner, so a session can wear every mark at once. */
+.overlap {
+  background: var(--canvas-card);
+  border-radius: 50%;
+  color: var(--attention-fg);
+  display: inline-flex;
+  left: calc(-3px * var(--ui-scale));
+  position: absolute;
+  top: calc(-3px * var(--ui-scale));
+}
+
 .verdict[data-verdict="failed"] {
   color: var(--danger-fg);
 }

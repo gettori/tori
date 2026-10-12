@@ -14,8 +14,18 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
-const { adoptSync, resyncRadar, resyncRoot, rollupSync, syncFor, syncMarks, syncState, syncUnits } =
-  await import("./branchSync");
+const {
+  adoptSync,
+  overlapMark,
+  resyncRadar,
+  resyncRoot,
+  rollupSync,
+  syncFor,
+  syncMarks,
+  syncState,
+  syncUnits,
+  withOverlap,
+} = await import("./branchSync");
 
 const sync = (over: Partial<BranchSync> = {}): BranchSync => ({
   detached: false,
@@ -391,5 +401,48 @@ describe("what a Topic says for its members", () => {
     const rolled = rollupSync([at("api", sync({ dirty: true })), at("web", sync({ dirty: true }))]);
     expect(rolled.state.level).toBe("none");
     expect(rolled.state.label).toBe("");
+  });
+});
+
+describe("files another worktree is changing too", () => {
+  const overlap = (file: string, other_branch: string | null = "two") => ({
+    session: "s1",
+    path: "/r/one",
+    file,
+    other_session: "s2",
+    other_path: "/r/two",
+    other_branch,
+  });
+
+  it("names a few files and the branches they are also changing on", () => {
+    const mark = overlapMark([overlap("a.rs"), overlap("a.rs", "three"), overlap("b.rs")]);
+    expect(mark).toEqual({
+      kind: "overlap",
+      count: 2,
+      tone: "warn",
+      title: "a.rs, b.rs also being changed on three, two",
+    });
+  });
+
+  it("counts them past three, and names a detached worktree for what it is", () => {
+    const mark = overlapMark(["a", "b", "c", "d"].map((f) => overlap(f, null)));
+    expect(mark?.title).toBe("4 files also being changed on a detached worktree");
+  });
+
+  it("is no mark at all with nothing shared", () => {
+    expect(overlapMark([])).toBe(null);
+  });
+
+  it("sits after a conflict and ahead of everything else", () => {
+    const mark = overlapMark([overlap("a.rs")]);
+    const conflicted = syncMarks(
+      sync({
+        upstream: { ahead: 0, behind: 2, has_upstream: true, gone: false, rewritten: false, superseded: false },
+        base: { name: "main", ahead: 0, behind: 1, conflicts: ["x.rs"] },
+      }),
+    );
+    expect(withOverlap(conflicted, mark).map((m) => m.kind)).toEqual(["conflict", "overlap", "pull"]);
+    expect(withOverlap(syncMarks(upstream({ ahead: 1 })), mark).map((m) => m.kind)).toEqual(["overlap", "push"]);
+    expect(withOverlap([], mark).map((m) => m.kind)).toEqual(["overlap"]);
   });
 });

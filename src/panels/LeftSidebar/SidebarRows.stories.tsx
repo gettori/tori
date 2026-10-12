@@ -48,6 +48,10 @@ const MARKS: Record<string, SyncMark[]> = {
     { kind: "conflict", count: null, tone: "danger", title: "main has moved on, and 4 files would conflict" },
     { kind: "pull", count: 11, tone: "muted", title: "11 commits to pull" },
   ],
+  overlap: [
+    { kind: "overlap", count: 2, tone: "warn", title: "a.rs, b.rs also being changed on feat/billing" },
+    { kind: "dirty", count: null, tone: "muted", title: "Uncommitted changes" },
+  ],
 };
 
 /** The tree's own column. `.rowScope` is where the row geometry lives - the
@@ -204,6 +208,29 @@ export const TheEndCluster: Story = {
                 tooltip="Billing"
               />
               {bubble({ waitingForAnswer: 1, executing: 2 })}
+            </>
+          }
+        />
+      </Tree>
+    ),
+  ],
+};
+
+/** A session here and one in another worktree are both changing the same
+ *  files. The mark stays while the row's agent is working, when the other
+ *  marks step aside. */
+export const Overlap: Story = {
+  decorators: [
+    () => (
+      <Tree>
+        <BranchRow
+          label="feat/invoices"
+          icon={<WorktreeMark active />}
+          menu={MENU}
+          end={
+            <>
+              <SyncMarks marks={MARKS.overlap} label="a.rs, b.rs also being changed on feat/billing" />
+              {bubble({ executing: 1 })}
             </>
           }
         />

@@ -16,6 +16,7 @@ export default function HistoryRow(props: {
   certainty?: StatusCertainty;
   secret?: "read" | "named" | null;
   verdict?: Verdict | null;
+  overlap?: string | null;
   /** Which account, only when there is a second one to tell it from. */
   profile?: string | null;
   /** Relative last activity, e.g. "3m". */
@@ -56,6 +57,7 @@ export default function HistoryRow(props: {
         certainty={props.certainty}
         secret={props.secret}
         verdict={props.verdict}
+        overlap={props.overlap}
       />
       {props.lead}
       <span class={styles.rowLabel}>{props.label}</span>

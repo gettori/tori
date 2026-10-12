@@ -11,6 +11,8 @@ import { LockMark } from "../../components/Autopilot/SessionMarks";
 import { isLocked } from "../../utils/autopilotStore";
 import { sessionSecret } from "../../utils/secretReads";
 import { sessionVerdict } from "../../utils/verification";
+import { overlapMark } from "../../utils/branchSync";
+import { overlapsOf } from "../../utils/radar";
 import { emitWith, SESSION_ACTION, type SessionAction } from "../../utils/events";
 import { sessions, historical, checkHistorical, markAdopted, type SessionMeta } from "../../utils/sessionStore";
 import { sessionStatus, sessionCertainty } from "../../utils/sessionActivity";
@@ -187,6 +189,7 @@ export default function HistoryPanel(props: {
         certainty={sessionCertainty(s.id)}
         secret={sessionSecret(s.id)}
         verdict={sessionVerdict(s.id)}
+        overlap={overlapMark(overlapsOf(s.id))?.title ?? null}
         profile={s.profile_label}
         when={ago(s.last_active)}
         active={isActive(s)}

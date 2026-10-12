@@ -4,6 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { sessionSecret, watchSecrets } from "../../utils/secretReads";
 import { sessionVerdict, watchVerification } from "../../utils/verification";
+import { overlapMark } from "../../utils/branchSync";
+import { overlapsOf, watchRadar } from "../../utils/radar";
 import TerminalView, { type PtyExit } from "./TerminalView";
 import ChatView from "../Chat/ChatView";
 import ChatDraft from "../Chat/ChatDraft";
@@ -2410,6 +2412,7 @@ export default function Terminal(props: {
     return [...tabbed, ...detached];
   });
   watchSecrets(liveSessions);
+  watchRadar();
   watchVerification(liveSessions);
 
   /** On which tier. A chat's own event stream states its status outright; a PTY
@@ -2801,6 +2804,7 @@ export default function Terminal(props: {
           background={chatBackground(t)}
           secret={t.sessionId ? sessionSecret(t.sessionId) : null}
           verdict={t.sessionId ? sessionVerdict(t.sessionId) : null}
+          overlap={t.sessionId ? (overlapMark(overlapsOf(t.sessionId))?.title ?? null) : null}
         />
       ) : (
         <Icon icon={KIND_GLYPHS[t.kind]} />

@@ -107,16 +107,20 @@ fn autopilot_publisher(hub: &Arc<Hub>, app: &AppHandle) -> Box<dyn Fn(Value) + S
 fn start_radar(app: &AppHandle, hub: &Arc<Hub>, states: &Arc<SessionStates>, autopilot: &Arc<AutopilotStore>) {
     let (app, hub) = (app.clone(), hub.clone());
     let (states, items, at_start) = (states.clone(), autopilot.clone(), autopilot.clone());
+    let live = states.clone();
     crate::radar::start(crate::radar::Hooks {
         watched: Box::new(move || {
-            let mut folders = states.live_folders();
+            let mut folders: Vec<String> = states.live_in_folders().into_iter().map(|(_, f)| f).collect();
             folders.extend(items.worktrees());
             folders
         }),
+        live: Box::new(move || live.live_in_folders()),
         at_start: Box::new(move || at_start.worktrees()),
-        publish: Box::new(move |units| {
-            let _ = app.emit(crate::radar::CHANGED_EVENT, json!({ "units": units }));
-            hub.publish(&Channel::Sessions, json!({ "kind": "radar.changed", "units": units }));
+        publish: Box::new(move |changed| {
+            let _ = app.emit(crate::radar::CHANGED_EVENT, changed);
+            let mut event = json!(changed);
+            event["kind"] = json!("radar.changed");
+            hub.publish(&Channel::Sessions, event);
         }),
     });
 }
@@ -412,7 +416,11 @@ impl Composer {
             Source::Chat => chats.contains(id),
             Source::Pty => held.tab.as_ref().is_some_and(|tab| tabs.contains(tab)),
         };
-        for event in self.states.replace(reports, place_of, alive) {
+        let moved = self.states.replace(reports, place_of, alive);
+        if !moved.is_empty() {
+            crate::radar::sessions_changed();
+        }
+        for event in moved {
             let id = event["id"].as_str().unwrap_or_default().to_string();
             publish_session(&self.hub, &self.autopilot, &id, event);
         }

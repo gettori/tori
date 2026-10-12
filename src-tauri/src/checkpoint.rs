@@ -342,6 +342,15 @@ pub(crate) fn recorded_turns(session_id: &str) -> Vec<u64> {
     turns
 }
 
+/// Every path the session recorded writing, over all its turns, as the events
+/// carried them (absolute).
+pub(crate) fn touched_files(session_id: &str) -> Vec<String> {
+    rebuild_touched_index(session_id);
+    read_touched_index(session_id)
+        .map(|i| i.files.into_keys().collect())
+        .unwrap_or_default()
+}
+
 /// One turn's recorded tools and written paths, or `None` when nothing was
 /// recorded for it.
 pub(crate) fn turn_record(session_id: &str, prompt_ts: u64) -> Option<(Vec<String>, Vec<String>)> {
