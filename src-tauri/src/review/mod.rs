@@ -335,6 +335,57 @@ fn own_span(
     Some((files, first_turn_after(&points, mark.ts)))
 }
 
+/// A session's unreviewed work as the inbox measures it: the two trees, when
+/// the mark was set, and the files the session itself changed between them.
+pub(crate) struct Span {
+    pub session: SessionMeta,
+    pub since: u64,
+    pub after: String,
+    pub before: String,
+    pub files: Vec<CheckpointFile>,
+}
+
+pub(crate) fn span_now(index: &SessionIndex, id: &str) -> Result<Span, String> {
+    let store = {
+        let _held = STORE_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        load_from(&store_path(), now_secs())
+    };
+    let sessions = crate::sessions::listed_sessions(index, None);
+    let session = sessions
+        .iter()
+        .find(|s| s.id == id)
+        .cloned()
+        .ok_or_else(|| format!("no session {id}"))?;
+    let repo = session.cwd.as_str();
+    if !crate::checkpoint::is_git_worktree(repo) {
+        return Err("This session is not in a git worktree, so there is no diff to review.".into());
+    }
+    let mark = store.mark_of(&ReviewUnit::Session { id: id.to_string() });
+    let points = crate::checkpoint::checkpoint_points(repo, id);
+    let (before, since) = match &mark.tree {
+        Some(tree) => (tree.clone(), mark.ts),
+        None => implicit_before(&points, mark.ts)
+            .ok_or_else(|| "This session has no checkpoint to review from.".to_string())?,
+    };
+    let after = crate::checkpoint::live_tree(repo, id)?;
+    let others: Vec<String> = sessions
+        .iter()
+        .filter(|s| s.id != id && crate::rpc::events::same_folder(&s.cwd, repo))
+        .map(|s| s.id.clone())
+        .collect();
+    let files = SPANS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .span(repo, id, &before, &after, since, &others)?;
+    Ok(Span {
+        session,
+        since,
+        after,
+        before,
+        files,
+    })
+}
+
 fn span_signals(
     session: &SessionMeta,
     project: &str,

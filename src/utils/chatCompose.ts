@@ -17,6 +17,7 @@
 import { createSignal } from "solid-js";
 import type { ContentBlock } from "./chatTypes";
 import { isPdfPath } from "./pathScope";
+import { attributed, type HunkNote } from "./safeSend";
 
 /** Where a composed message for `sessionId` should go. */
 export function routeFor(sessionId: string, chatIds: ReadonlySet<string>): "chat" | "pty" {
@@ -47,10 +48,8 @@ export function hunkCommentBlocks(path: string, startLine: number, endLine: numb
 }
 
 /** Several hunk comments as one message, each its reference then its prose. */
-export function hunkCommentsBlocks(
-  comments: readonly { path: string; startLine: number; endLine: number; text: string }[],
-): ContentBlock[] {
-  return comments.flatMap((c) => hunkCommentBlocks(c.path, c.startLine, c.endLine, c.text));
+export function hunkCommentsBlocks(comments: readonly HunkNote[]): ContentBlock[] {
+  return comments.flatMap((c) => hunkCommentBlocks(c.path, c.startLine, c.endLine, attributed(c)));
 }
 
 /** A diagnostic: same shape as a hunk comment, with the severity kept in front

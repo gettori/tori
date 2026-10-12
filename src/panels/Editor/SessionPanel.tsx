@@ -292,7 +292,12 @@ export default function SessionPanel(props: {
       </Show>
       <div class={styles.controls}>
         <Switch class={styles.readsToggle} checked={showReads()} onChange={setShowReads} label="Show reads" />
-        <HeldComments heldKey={props.heldKey} target={target()} disabledReason={disabledReason()} />
+        <HeldComments
+          heldKey={props.heldKey}
+          folder={props.cwd ?? ""}
+          target={target()}
+          disabledReason={disabledReason()}
+        />
       </div>
       <div class={styles.touchList}>
         <Show

@@ -325,6 +325,9 @@ export type Settings = {
   /** The palette rows each project allows, keyed by project path: see
    *  `utils/projectAgents`. */
   projectAgents?: Record<string, AgentRow[]>;
+  /** The agent and account each project's second opinion runs on, keyed by
+   *  project path: see `utils/secondOpinion`. */
+  secondOpinion?: Record<string, AgentRow>;
   /** Mirrors `Lsp` in src-tauri/src/settings.rs. */
   lsp: { disabled: string[]; neverOffer: string[] };
   /** Mirrors `Dap` in src-tauri/src/settings.rs. */
@@ -449,6 +452,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chat: {},
   editor: {},
   projectAgents: {},
+  secondOpinion: {},
   lsp: { disabled: [], neverOffer: [] },
   dap: { disabled: [] },
   format: { byExtension: {}, disabled: [] },

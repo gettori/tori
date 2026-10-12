@@ -1,7 +1,8 @@
 // A review is several comments and one send each costs a trip per hunk, so they
-// wait here and go as one message. Memory only: a range goes stale once the
-// agent edits, so a list kept across a relaunch would point at moved code.
+// wait here and go as one message. Memory only: a range goes stale once the agent
+// edits. A reviewer's live in Rust, which checks staleness per file.
 import { createSignal } from "solid-js";
+import type { SessionTarget } from "./safeSend";
 
 export type HeldComment = {
   id: string;
@@ -10,6 +11,16 @@ export type HeldComment = {
   startLine: number;
   endLine: number;
   text: string;
+  /** The agent that gave a second opinion; absent on the user's own comments. */
+  author?: string;
+  /** The session a reviewer's comment is about. */
+  session?: string;
+  /** Where a reviewer's comment goes, whichever session is selected. */
+  target?: SessionTarget;
+  /** Why a reviewer's comment cannot be sent, when it cannot. */
+  blocked?: string;
+  /** The file changed since the reviewer read it. */
+  stale?: boolean;
 };
 
 const [held, setHeld] = createSignal<Record<string, readonly HeldComment[]>>({});
@@ -23,6 +34,18 @@ export function holdComment(key: string, comment: Omit<HeldComment, "id">): Held
   const entry = { ...comment, id: `held-${++nextId}` };
   setHeld((prev) => ({ ...prev, [key]: [...(prev[key] ?? []), entry] }));
   return entry;
+}
+
+/** Replaces the reviewers' comments for `key` with `reviewed`, keeping the
+ *  user's own as they are. Ids are the findings' own, so a reload never doubles one. */
+export function syncReviewed(key: string, reviewed: readonly HeldComment[]) {
+  setHeld((prev) => {
+    const kept = [...(prev[key] ?? []).filter((c) => !c.author), ...reviewed];
+    const next = { ...prev };
+    if (kept.length) next[key] = kept;
+    else delete next[key];
+    return next;
+  });
 }
 
 /** Drops the named entries and keeps the rest, so a comment held while a send
