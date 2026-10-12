@@ -5,20 +5,29 @@ import { createSignal } from "solid-js";
 import { emitWith, OPEN_PROJECT_SETTINGS, type OpenProjectSettings } from "./events";
 import { sameCwd } from "./pathScope";
 
-export type ProjectSection = "general" | "worktrees" | "agents" | "tooling";
+export type ProjectSection = "general" | "worktrees" | "agents" | "automations" | "tooling";
 
 export const SECTION_LABEL: Record<ProjectSection, string> = {
   general: "General",
   worktrees: "Worktrees",
   agents: "Agents",
+  automations: "Automations",
   tooling: "Tooling",
 };
 
 /** The sections a project of this layout has, in rail order. Worktrees is a
- *  bare container's, since `.shared/` and the setup command belong to it. */
+ *  bare container's, since `.shared/` and the setup command belong to it, and
+ *  Automations is every git project's, since a pull request needs a repo. */
 export function sectionsFor(kind: string | undefined): ProjectSection[] {
   const worktrees = kind === "worktree" || kind === "incomplete";
-  return ["general", ...(worktrees ? (["worktrees"] as const) : []), "agents", "tooling"];
+  const git = kind !== undefined && kind !== "plain-dir";
+  return [
+    "general",
+    ...(worktrees ? (["worktrees"] as const) : []),
+    "agents",
+    ...(git ? (["automations"] as const) : []),
+    "tooling",
+  ];
 }
 
 const [shown, setShown] = createSignal<string[]>([]);

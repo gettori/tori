@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
+import { pointerClick } from "../../test/menus";
 
-const saves: { worktree: Record<string, unknown> }[] = [];
+const saves: { worktree: Record<string, unknown>; reviewRequested?: Record<string, unknown> }[] = [];
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: Record<string, unknown>) => {
     if (cmd === "set_settings") {
-      saves.push(args!.settings as { worktree: Record<string, unknown> });
+      saves.push(args!.settings as (typeof saves)[number]);
       return Promise.resolve(args!.settings);
     }
     if (cmd === "get_config") {
@@ -46,5 +47,32 @@ describe("Project settings dialog, Worktrees section", () => {
     render(() => <ProjectSettingsDialog path="/p" section="worktrees" onClose={() => {}} />);
     await screen.findByRole("tab", { name: "Worktrees" });
     expect((screen.getByLabelText("Setup command") as HTMLInputElement).value).toBe("pnpm install");
+  });
+});
+
+describe("Project settings dialog, Automations section", () => {
+  it("saves the review rule and its prompt, and search finds it by review", async () => {
+    saves.length = 0;
+    render(() => <ProjectSettingsDialog path="/p" onClose={() => {}} />);
+    fireEvent.click(await screen.findByRole("tab", { name: "Automations" }));
+
+    pointerClick(screen.getByRole("button", { name: /When your review is requested/ }));
+    pointerClick(await screen.findByRole("option", { name: "Create a worktree and review it" }));
+    await waitFor(() => expect(saves[saves.length - 1]?.reviewRequested?.["/p"]).toMatchObject({ action: "review" }));
+
+    const prompt = (await screen.findByLabelText("Review prompt")) as HTMLTextAreaElement;
+    fireEvent.change(prompt, { target: { value: "  Check the migrations.  " } });
+    await waitFor(() =>
+      expect(saves[saves.length - 1]?.reviewRequested?.["/p"]).toEqual({
+        action: "review",
+        prompt: "Check the migrations.",
+        maxPerHour: 5,
+      }),
+    );
+
+    fireEvent.input(screen.getByLabelText("Search project settings"), { target: { value: "review" } });
+    await waitFor(() =>
+      expect(screen.getByText("When your review is requested").closest("section")?.hidden).toBe(false),
+    );
   });
 });
