@@ -332,6 +332,53 @@ fn switched_off(answers: &mut HashMap<Unit, Option<Vec<String>>>) -> Vec<Answer>
     gone
 }
 
+/// What the radar holds against one session, for the Inbox score.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct SessionSignals {
+    /// Files a merge of the base into the session's folder would conflict on.
+    pub conflicts: u32,
+    /// Files a live session in another worktree is changing too.
+    pub overlaps: u32,
+}
+
+pub fn session_signals(session: &str, folder: &str) -> SessionSignals {
+    let (held, overlaps) = {
+        let radar = radar();
+        let held = radar.answers.get(&Unit::checked_out(folder.to_string())).cloned();
+        (held, overlap_files(&radar.overlaps, session))
+    };
+    gated_session_signals(
+        enabled(),
+        || overlaps,
+        || held.unwrap_or_else(|| crate::git::unit_conflicts(folder, None).conflicts),
+    )
+}
+
+fn overlap_files(overlaps: &[Overlap], session: &str) -> u32 {
+    let files: HashSet<&str> = overlaps
+        .iter()
+        .filter(|o| o.session == session)
+        .map(|o| o.file.as_str())
+        .collect();
+    files.len() as u32
+}
+
+/// The conflicts are asked for on a miss, not only read from a sweep: a session
+/// the Inbox lists may have ended, and nothing sweeps an ended session's folder.
+fn gated_session_signals(
+    enabled: bool,
+    overlaps: impl FnOnce() -> u32,
+    conflicts: impl FnOnce() -> Option<Vec<String>>,
+) -> SessionSignals {
+    if !enabled {
+        return SessionSignals::default();
+    }
+    SessionSignals {
+        conflicts: conflicts().map_or(0, |c| c.len() as u32),
+        overlaps: overlaps(),
+    }
+}
+
 pub fn list() -> Listing {
     let radar = radar();
     listing(enabled(), &radar.answers, &radar.overlaps)
@@ -721,6 +768,43 @@ mod tests {
         assert_eq!(reads.get(), before, "off reads no touched record");
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_session_counts_its_own_overlapping_files_once_and_nothing_while_off() {
+        let overlap = |session: &str, file: &str, other: &str| Overlap {
+            session: session.into(),
+            path: "/r".into(),
+            file: file.into(),
+            other_session: other.into(),
+            other_path: "/o".into(),
+            other_branch: None,
+        };
+        let overlaps = vec![
+            overlap("s1", "a.rs", "s2"),
+            overlap("s1", "a.rs", "s3"),
+            overlap("s1", "b.rs", "s2"),
+            overlap("s2", "a.rs", "s1"),
+        ];
+        assert_eq!(overlap_files(&overlaps, "s1"), 2);
+        assert_eq!(
+            gated_session_signals(true, || 2, || Some(vec!["x".into(), "y".into()])),
+            SessionSignals {
+                conflicts: 2,
+                overlaps: 2
+            }
+        );
+        let asked = std::cell::Cell::new(false);
+        let off = gated_session_signals(
+            false,
+            || 2,
+            || {
+                asked.set(true);
+                Some(vec!["x".into()])
+            },
+        );
+        assert_eq!(off, SessionSignals::default());
+        assert!(!asked.get(), "off runs no merge");
     }
 
     #[test]

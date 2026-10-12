@@ -71,8 +71,15 @@ export function watchInbox() {
   on(TOGGLE_AUTOPILOT_VIEW, () => setInboxOpen(false));
   on(NAVIGATE, () => setInboxOpen(false));
   // fs://changed covers a commit or push in a watched worktree, which can take
-  // a row off the list without any session moving.
-  for (const name of ["sessions://changed", "settings://changed", "review://changed", "fs://changed"]) {
+  // a row off the list without any session moving. radar://changed is a base
+  // or another worktree moving, which re-ranks rows nobody here touched.
+  for (const name of [
+    "sessions://changed",
+    "settings://changed",
+    "review://changed",
+    "fs://changed",
+    "radar://changed",
+  ]) {
     void listen(name, refreshSoon);
   }
   void refreshInbox();
