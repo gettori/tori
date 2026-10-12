@@ -173,6 +173,7 @@ describe("InboxView", () => {
       ready: true,
       finished: [finished("a"), finished("b", { chat: false, turns: 1, lines: null, verdict: null })],
       waiting: [event("q", "api", 300, { kind: "question" })],
+      happened: [],
     };
     await refreshDigest();
     const targets: NavTarget[] = [];
@@ -194,7 +195,7 @@ describe("InboxView", () => {
   });
 
   it("marks the digest seen at the time it read, once it stops showing", async () => {
-    since = { since: 500, asOf: 3_000, ready: true, finished: [finished("a")], waiting: [] };
+    since = { since: 500, asOf: 3_000, ready: true, finished: [finished("a")], waiting: [], happened: [] };
     await refreshDigest();
     const { unmount } = render(() => <InboxView />);
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("digest_list", { since: undefined }));
@@ -202,5 +203,36 @@ describe("InboxView", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Needs you/ }));
     expect(invoke).toHaveBeenCalledWith("digest_looked", { at: 3_000 });
     unmount();
+  });
+
+  it("lists pull requests and limits since you looked, a pull request opening its worktree and a limit its chat", async () => {
+    since = {
+      since: 500,
+      asOf: 3_000,
+      ready: true,
+      finished: [],
+      waiting: [],
+      happened: [
+        event("m", "api", 2_000, {
+          kind: "prMerged",
+          session: null,
+          branch: "fix",
+          title: "#7 Fix it",
+          resolvedAt: 2_000,
+        }),
+        event("l", "", 1_000, { kind: "limitHit", title: "claude work", resolvedAt: 1_000 }),
+      ],
+    };
+    await refreshDigest();
+    const targets: NavTarget[] = [];
+    const off = onWith<NavTarget>(NAVIGATE, (t) => targets.push(t));
+    const { container } = render(() => <InboxView />);
+    expect(screen.getByRole("region", { name: "Pull requests" }).textContent).toContain("Pull request merged");
+    expect(screen.getByRole("region", { name: "Usage limits" }).textContent).toContain("Hit its usage limit");
+    await expectNoAxeViolations(container);
+    fireEvent.click(screen.getByText("#7 Fix it"));
+    fireEvent.click(screen.getByText("claude work"));
+    off();
+    expect(targets).toEqual([{ folder: "/work/api" }, { folder: "/work/", session: "s-l" }]);
   });
 });

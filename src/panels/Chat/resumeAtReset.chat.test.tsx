@@ -228,6 +228,28 @@ describe("at the reset", () => {
     expect(screen.queryByText(/Continue where you left off/)).toBeNull();
   });
 
+  it("tells Rust the chat continued, armed by the button or by the setting", async () => {
+    const resumed = () => invokes.filter((i) => i.cmd === "digest_limit_resumed").map((i) => i.args);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mount("s-a");
+    await waitFor(() => expect(channels.length).toBeGreaterThanOrEqual(1));
+    for (const ev of limited("s-a")) channels[0].onmessage!(ev);
+    fireEvent.click(await screen.findByRole("button", { name: "Resume at reset" }));
+    await pastReset();
+    await waitFor(() => expect(resumed()).toEqual([{ sessionId: "s-a", folder: "/work/repo", resetsAt }]));
+
+    budgetSettings = settingsWith({ resumeAtReset: true });
+    await loadSettings();
+    resetsAt += HOURS * 60 * 60;
+    mount("s-b");
+    await waitFor(() => expect(channels.length).toBeGreaterThanOrEqual(2));
+    for (const ev of limited("s-b")) channels[channels.length - 1].onmessage!(ev);
+    await screen.findByText(new RegExp(RESUME_ARMED));
+    await vi.advanceTimersByTimeAsync(2 * HOURS * 60 * 60 * 1000 + FIRE_GRACE_MS);
+    await waitFor(() => expect(resumed()).toHaveLength(2));
+    expect(resumed()[1]).toEqual({ sessionId: "s-b", folder: "/work/repo", resetsAt });
+  });
+
   it("does not send into a chat over its spend ceiling, and says so", async () => {
     budgetSettings = settingsWith({ sessionUsd: 1 });
     await loadSettings();

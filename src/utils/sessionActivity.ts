@@ -9,6 +9,7 @@
 // there) from the facts this module reports and what Rust measures itself, and
 // hands the result back on `sessions://dots`. A chat's own status is still read
 // here, raw, because the revert guard has to see a turn start on the same tick.
+import type { PrState } from "./forgeTypes";
 import { createSignal, createMemo, createEffect, createRoot } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -46,6 +47,10 @@ export type ForgeUnit = {
    *  branch a pull request names is only unique within one project. */
   projectPath: string;
   attention: boolean;
+  /** False until the forge has answered for this unit, so "no pull request"
+   *  is never read into a poll that has not run. */
+  prKnown?: boolean;
+  pullRequest?: { number: number; state: PrState; title: string } | null;
 };
 
 // --- fed inputs -------------------------------------------------------------
@@ -292,12 +297,14 @@ export function sessionFacts() {
       doneAt: c.doneAt ?? 0,
     }))
     .sort((a, b) => a.session.localeCompare(b.session));
-  const forge = forgeUnits().map(({ folderPath, kind, branch, isCurrent, attention }) => ({
+  const forge = forgeUnits().map(({ folderPath, kind, branch, isCurrent, attention, prKnown, pullRequest }) => ({
     folderPath,
     kind,
     branch,
     isCurrent,
     attention,
+    prKnown,
+    pullRequest,
   }));
   return { tabs, chats, forge };
 }
