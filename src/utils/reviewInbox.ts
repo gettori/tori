@@ -79,6 +79,7 @@ export function watchInbox() {
     "review://changed",
     "fs://changed",
     "radar://changed",
+    "second-opinion://changed",
   ]) {
     void listen(name, refreshSoon);
   }

@@ -32,7 +32,14 @@ export type ReviewItem = {
   fromTs: number | null;
   toTs: number;
   running: boolean;
+  secondOpinion: SecondOpinion | null;
 };
+
+/** Mirrors `Opinion` in src-tauri/src/second_opinion.rs. */
+export type SecondOpinion =
+  | { state: "running" }
+  | { state: "done"; open: number; stale: boolean }
+  | { state: "failed"; error: string };
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 

@@ -103,6 +103,9 @@ type Store = BTreeMap<String, Review>;
 
 static STORE_LOCK: Mutex<()> = Mutex::new(());
 static RUNNING: std::sync::LazyLock<Mutex<HashSet<String>>> = std::sync::LazyLock::new(Mutex::default);
+/// Running sessions marked reviewed mid-run, whose findings are dropped on
+/// arrival. Guarded by `RUNNING`'s lock, taken before `STORE_LOCK`.
+static MARKED: std::sync::LazyLock<Mutex<HashSet<String>>> = std::sync::LazyLock::new(Mutex::default);
 
 // Keyed by the worktree's top level, so a session's cwd and a diff tab's
 // folder find one file however each spells the path.
@@ -242,6 +245,54 @@ pub fn second_opinion_set_status(
     Ok(())
 }
 
+/// Where a session's second opinion stands, for its Inbox row.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", tag = "state")]
+pub enum Opinion {
+    Running,
+    Done { open: u32, stale: bool },
+    Failed { error: String },
+}
+
+pub(crate) fn opinion_of(folder: &str, session: &str) -> Option<Opinion> {
+    if running(session) {
+        return Some(Opinion::Running);
+    }
+    let review = {
+        let _held = STORE_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        load(&store_path(folder)).remove(session)?
+    };
+    if let Some(error) = review.error {
+        return Some(Opinion::Failed { error });
+    }
+    let open: Vec<&Finding> = review.findings.iter().filter(|f| f.status == Status::Open).collect();
+    Some(Opinion::Done {
+        open: open.len() as u32,
+        stale: open.iter().any(|f| live_blob(folder, &f.path) != f.blob),
+    })
+}
+
+/// Drops a session's stored review once its work is marked reviewed, since
+/// the findings were about the span the mark just closed.
+pub(crate) fn forget(app: &AppHandle, folder: &str, session: &str) {
+    {
+        let running = RUNNING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if running.contains(session) {
+            MARKED
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .insert(session.to_string());
+        }
+        let _held = STORE_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let path = store_path(folder);
+        let mut store = load(&path);
+        if store.remove(session).is_none() || save(&path, &store).is_err() {
+            return;
+        }
+    }
+    let _ = app.emit(CHANGED_EVENT, session);
+}
+
 /// Start a second opinion on a session's work since its review mark. Returns
 /// once the reviewer is on its way; the findings arrive on `CHANGED_EVENT`.
 #[tauri::command(async)]
@@ -290,13 +341,19 @@ pub fn second_opinion_run(
                     },
                     Err(e) => failed(agent, &e),
                 };
-                let _ = update(&folder, |store| {
-                    store.insert(session.clone(), review);
-                });
-                RUNNING
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .remove(&session);
+                {
+                    let mut running = RUNNING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                    let marked = MARKED
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .remove(&session);
+                    if !marked {
+                        let _ = update(&folder, |store| {
+                            store.insert(session.clone(), review);
+                        });
+                    }
+                    running.remove(&session);
+                }
                 let _ = app.emit(CHANGED_EVENT, &session);
             }
         })
