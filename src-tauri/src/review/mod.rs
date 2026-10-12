@@ -94,6 +94,7 @@ pub struct ReviewItem {
     /// The latest prompt seen, which a mark must not be older than.
     pub to_ts: u64,
     pub running: bool,
+    pub second_opinion: Option<crate::second_opinion::Opinion>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -461,6 +462,7 @@ fn item(
         from_ts: own.and_then(|(_, from)| from),
         to_ts: transcript.last_ts,
         running: crate::rpc::session_running(&session.id),
+        second_opinion: crate::second_opinion::opinion_of(&session.cwd, &session.id),
     })
 }
 
@@ -540,6 +542,7 @@ pub(crate) fn mark_now(app: &AppHandle, index: &SessionIndex, unit: ReviewUnit, 
         .ok_or_else(|| format!("no session {id}"))?;
     mark(&session, &unit, to_ts, crate::rpc::session_running(id), &store_path())?;
     let _ = app.emit(CHANGED_EVENT, ());
+    crate::second_opinion::forget(app, &session.cwd, id);
     crate::rpc::publish_reviewed(id, &session.cwd);
     Ok(())
 }

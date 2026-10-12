@@ -22,6 +22,7 @@ function item(id: string, score: number, running = false): ReviewItem {
     fromTs: 1_760_000_100,
     toTs: 1_760_000_900,
     running,
+    secondOpinion: null,
   };
 }
 
