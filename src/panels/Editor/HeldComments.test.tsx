@@ -28,7 +28,7 @@ const TARGET: SessionTarget = {
 function mountWithTwo() {
   holdComment(KEY, { path: "/proj/a.ts", startLine: 1, endLine: 2, text: "x" });
   holdComment(KEY, { path: "/proj/b.ts", startLine: 4, endLine: 4, text: "y" });
-  render(() => <HeldComments heldKey={KEY} target={TARGET} />);
+  render(() => <HeldComments heldKey={KEY} folder="/proj" target={TARGET} />);
   fireEvent.click(screen.getByRole("button", { name: "2 comments" }));
 }
 
@@ -40,7 +40,7 @@ describe("HeldComments", () => {
   });
 
   it("renders nothing while the list is empty", () => {
-    render(() => <HeldComments heldKey={KEY} target={TARGET} />);
+    render(() => <HeldComments heldKey={KEY} folder="/proj" target={TARGET} />);
     expect(screen.queryByRole("button")).toBeNull();
   });
 

@@ -41,6 +41,8 @@ import { sendTargetFor } from "../../utils/sendTarget";
 import { parseDiffArg } from "../../utils/syntheticTabs";
 import type { TintedMember } from "../../utils/topicMembers";
 import { isReference, workspaceKey } from "../../utils/topics";
+import { syncReviewed } from "../../utils/heldComments";
+import { heldFromReviews, listReviews, reviewsVersion } from "../../utils/secondOpinion";
 import Breadcrumbs from "./Breadcrumbs";
 import DiffRows, { diffRowClasses } from "./DiffRows";
 import HunkCommentInput from "./HunkCommentInput";
@@ -138,6 +140,18 @@ export default function DiffView(props: {
     return "reason" in g ? g.reason : null;
   };
   const heldKey = () => workspaceKey(props.selected);
+
+  // A reload that lands after a newer one would put back findings already sent.
+  let reviewsAsked = 0;
+  createEffect(
+    on([heldKey, () => props.workspace, reviewsVersion], ([key, folder]) => {
+      if (!key || !folder) return;
+      const mine = ++reviewsAsked;
+      void listReviews(folder).then((reviews) => {
+        if (mine === reviewsAsked) syncReviewed(key, heldFromReviews(reviews));
+      });
+    }),
+  );
 
   // A line selection is indices into one hunk's body, so it means nothing once
   // the hunks move.
@@ -494,7 +508,12 @@ export default function DiffView(props: {
           )}
         </Show>
         <span class={styles.spacer} />
-        <HeldComments heldKey={heldKey()} target={target()} disabledReason={disabledReason()} />
+        <HeldComments
+          heldKey={heldKey()}
+          folder={props.workspace}
+          target={target()}
+          disabledReason={disabledReason()}
+        />
         <Show when={editorLayout()}>
           <IconButton
             size="sm"

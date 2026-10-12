@@ -244,14 +244,14 @@ describe("what a History row can do", () => {
     expect(actions).toEqual([{ sessionId: "alpha", action: "open" }]);
   });
 
-  it("offers rename and delete, and nothing else", async () => {
+  it("offers rename, a second opinion and delete, and nothing else", async () => {
     await open();
     fireEvent.contextMenu(screen.getAllByRole("option")[0]);
     const menu = await screen.findByRole("menu");
     const items = Array.from(menu.querySelectorAll('[role="menuitem"]'))
       .map((d) => d.textContent ?? "")
       .filter(Boolean);
-    expect(items).toEqual(["Rename…", "Delete"]);
+    expect(items).toEqual(["Rename…", "Second opinion", "Delete"]);
 
     pointerClick(screen.getByText("Delete"));
     expect(actions).toEqual([{ sessionId: "s1", action: "delete" }]);

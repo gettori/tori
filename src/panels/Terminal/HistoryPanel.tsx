@@ -13,6 +13,7 @@ import { sessionSecret } from "../../utils/secretReads";
 import { sessionVerdict } from "../../utils/verification";
 import { overlapMark } from "../../utils/branchSync";
 import { overlapsOf } from "../../utils/radar";
+import { runSecondOpinion, secondOpinionRunning } from "../../utils/secondOpinion";
 import { emitWith, SESSION_ACTION, type SessionAction } from "../../utils/events";
 import { sessions, historical, checkHistorical, markAdopted, type SessionMeta } from "../../utils/sessionStore";
 import { sessionStatus, sessionCertainty } from "../../utils/sessionActivity";
@@ -167,12 +168,21 @@ export default function HistoryPanel(props: {
     props.onClose();
   }
 
-  // Rename and delete only. Everything else the sidebar's row offers is either
-  // about the tree (New session, Checkout) or is a copy affordance the palette
-  // already covers, and a dropdown that lists ten actions per row is a menu you
-  // read rather than a list you scan.
+  // Rename, delete and a second opinion only. Everything else the sidebar's row
+  // offers is either about the tree (New session, Checkout) or is a copy
+  // affordance the palette already covers, and a dropdown that lists ten actions
+  // per row is a menu you read rather than a list you scan.
   const rowMenu = (s: SessionMeta): MenuItem[] => [
     { label: "Rename…", onClick: () => act(s, "rename") },
+    secondOpinionRunning(s.id)
+      ? { label: "Second opinion running", disabled: true, onClick: () => {} }
+      : {
+          label: "Second opinion",
+          onClick: () => {
+            void runSecondOpinion(s);
+            props.onClose();
+          },
+        },
     ...(isLocked(s.id)
       ? []
       : [{ separator: true } as const, { label: "Delete", danger: true, onClick: () => act(s, "delete") }]),

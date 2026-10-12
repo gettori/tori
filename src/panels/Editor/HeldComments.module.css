@@ -33,6 +33,15 @@
     color: var(--fg-muted);
   }
 
+  .tag {
+    flex-shrink: 0;
+    padding: 0 var(--tori-space-2);
+    border-radius: var(--tori-radius-pill);
+    background: var(--accent-subtle);
+    color: var(--accent-fg);
+    font-size: var(--tori-text-xs);
+  }
+
   .text {
     flex: 1;
     min-width: 0;

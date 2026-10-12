@@ -1,14 +1,16 @@
-import { createEffect, createMemo, createSignal, For, on, Show, untrack } from "solid-js";
+import { createEffect, createMemo, createResource, createSignal, For, on, Show, untrack } from "solid-js";
 
 import Button from "../../components/Button/Button";
 import Checkbox from "../../components/Checkbox/Checkbox";
 import SegmentedControl from "../../components/SegmentedControl/SegmentedControl";
+import Select from "../../components/Select/Select";
 import { enabledChatAgents } from "../../utils/agentEnabled";
 import { namedProfiles, profileLabel } from "../../utils/agentHealth";
 import { findAdapter } from "../../utils/agents";
 import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { projectRows, rowLabel, setProjectRows, soleProfile } from "../../utils/projectAgents";
+import { reviewerChoices, setStoredReviewer } from "../../utils/secondOpinion";
 import type { SpaceProject } from "../../utils/topicMembers";
 import { forgetChatPrefsUnder, settings, type AgentRow, type ChatPrefs } from "../Settings/settingsStore";
 import ProjectContractEditor from "../Settings/panes/AutopilotPane/ProjectContractEditor";
@@ -19,6 +21,48 @@ import own from "./AgentsSection.module.css";
 type RuleRow = AgentRow & { key: string; label: string; name: string; account: string };
 
 const rowKey = (r: AgentRow) => `${r.agent}:${r.profile}`;
+
+const ANY_OTHER = "";
+
+/** Who gives this project's second opinions: one agent and account, or by
+ *  default the first enabled reviewer that is not the session's own agent. */
+function SecondOpinionPick(props: { projectPath: string }) {
+  const [choices] = createResource(reviewerChoices);
+  const stored = () => settings.secondOpinion?.[props.projectPath] ?? null;
+  const options = () => {
+    const rows = (choices() ?? []).flatMap((id) => {
+      const named = namedProfiles(id);
+      return named.length
+        ? named.map((p) => ({ agent: id, profile: p.id }))
+        : [{ agent: id, profile: soleProfile(id) }];
+    });
+    const s = stored();
+    if (s && !rows.some((r) => rowKey(r) === rowKey(s))) rows.push(s);
+    return [
+      { value: ANY_OTHER, label: "A different agent from the session's" },
+      ...rows.map((r) => ({ value: rowKey(r), label: rowLabel(r.agent, r.profile) })),
+    ];
+  };
+  const pick = (value: string) => {
+    const [agent, ...rest] = value.split(":");
+    const row = value === ANY_OTHER ? null : { agent, profile: rest.join(":") };
+    void setStoredReviewer(props.projectPath, row).catch((e) => toast(String(e)));
+  };
+  return (
+    <div class={styles.wide}>
+      <p class={styles.lede}>
+        Second opinion asks another agent to review a session's work, read-only. Only agents with a read-only mode can
+        review.
+      </p>
+      <Select
+        aria-label="Agent for second opinions"
+        options={options()}
+        value={stored() ? rowKey(stored()!) : ANY_OTHER}
+        onChange={pick}
+      />
+    </div>
+  );
+}
 
 function ruleRows(allowed: AgentRow[]): RuleRow[] {
   const offered: RuleRow[] = enabledChatAgents().flatMap((a) => {
@@ -189,6 +233,10 @@ export default function AgentsSection(props: {
             </Button>
           </div>
         </div>
+      </Section>
+
+      <Section heading="Second opinion">
+        <SecondOpinionPick projectPath={props.project.path} />
       </Section>
 
       <Section

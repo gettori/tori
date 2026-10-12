@@ -36,14 +36,19 @@ export function composeHunkComment(
   return `In @${mention} lines ${startLine}-${endLine}: ${comment}`;
 }
 
+export type HunkNote = { path: string; startLine: number; endLine: number; text: string; author?: string };
+
+// A reviewer's comment says whose it is, so the author does not read another
+// agent's opinion as the user's own instruction.
+export function attributed(c: HunkNote): string {
+  return c.author ? `${c.author} (second opinion): ${c.text}` : c.text;
+}
+
 // Several hunk comments as one line, numbered so the agent can tell where one
 // ends: a PTY send is collapsed to a single line, so a newline cannot separate
 // them. One comment is sent bare, exactly as it always was.
-export function composeHunkComments(
-  target: SessionTarget,
-  comments: readonly { path: string; startLine: number; endLine: number; text: string }[],
-): string {
-  const lines = comments.map((c) => composeHunkComment(target, c.path, c.startLine, c.endLine, c.text));
+export function composeHunkComments(target: SessionTarget, comments: readonly HunkNote[]): string {
+  const lines = comments.map((c) => composeHunkComment(target, c.path, c.startLine, c.endLine, attributed(c)));
   return lines.length === 1 ? lines[0] : lines.map((l, i) => `${i + 1}) ${l}`).join(" ");
 }
 

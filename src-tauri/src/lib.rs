@@ -57,6 +57,7 @@ mod review;
 mod rpc;
 mod scratch;
 mod search;
+mod second_opinion;
 mod secret_watch;
 mod sessions;
 mod settings;
@@ -397,6 +398,11 @@ pub fn run() {
             chat::commands::session_verification,
             review::review_inbox,
             review::review_mark,
+            second_opinion::second_opinion_reviewers,
+            second_opinion::second_opinion_running,
+            second_opinion::second_opinion_list,
+            second_opinion::second_opinion_set_status,
+            second_opinion::second_opinion_run,
             verification::verification_commands,
             verification::verification_defaults,
             chat::commands::chat_mark_turn,

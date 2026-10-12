@@ -953,6 +953,10 @@ pub struct Settings {
     /// project that allowed only that one refuses rather than opens up.
     #[serde(default)]
     pub project_agents: std::collections::HashMap<String, Vec<AgentRow>>,
+    /// The agent and account each project's second opinion runs on, keyed by
+    /// project path. No entry picks one at run time.
+    #[serde(default)]
+    pub second_opinion: std::collections::HashMap<String, AgentRow>,
     #[serde(default)]
     pub lsp: Lsp,
     #[serde(default)]
