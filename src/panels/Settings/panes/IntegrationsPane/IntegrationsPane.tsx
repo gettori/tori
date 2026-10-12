@@ -35,7 +35,7 @@ export default function IntegrationsPane(props: PaneProps) {
         <GitSection />
       </CardSection>
       <Group {...props} title="Remote" ids={["fetch-every"]}>
-        <Row {...props} id="fetch-every" label="Fetch every">
+        <Row {...props} id="fetch-every" label="Git fetch every">
           <Select
             options={FETCH_OPTIONS}
             value={String(settings.git.fetchEveryMinutes)}

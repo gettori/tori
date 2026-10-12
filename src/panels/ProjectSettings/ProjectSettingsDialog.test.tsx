@@ -23,6 +23,9 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "shared_overview") {
       return Promise.resolve({ dir: "/p/.shared", exists: false, worktrees: [], entries: [] });
     }
+    if (cmd === "review_rule_state") {
+      return Promise.resolve({ paused: false, defaultPrompt: "Review this pull request." });
+    }
     return Promise.resolve(null);
   },
   convertFileSrc: (path: string) => `asset://${path}`,
