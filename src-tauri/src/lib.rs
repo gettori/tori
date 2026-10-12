@@ -52,6 +52,7 @@ mod perf_budgets;
 mod presence;
 mod provenance;
 mod pty;
+mod radar;
 mod review;
 mod rpc;
 mod scratch;
@@ -512,6 +513,7 @@ pub fn run() {
             git::git_ahead_behind,
             git::git_branch_sync,
             git::git_branch_sync_many,
+            radar::radar_set_drawn,
             git::git_pr_relation,
             git::git_default_base_branch,
             git::delete_remote_branch,

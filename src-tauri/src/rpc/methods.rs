@@ -1163,6 +1163,10 @@ impl Backend for TauriBackend {
         to_json(crate::review::inbox_now(&self.app.state::<SessionIndex>()))
     }
 
+    fn radar_list(&self) -> Result<Value, RpcError> {
+        to_json(crate::radar::list())
+    }
+
     fn review_mark(&self, params: ReviewMarkParams) -> Result<Value, RpcError> {
         let unit = crate::review::ReviewUnit::Session { id: params.id };
         crate::review::mark_now(&self.app, &self.app.state::<SessionIndex>(), unit, params.to_ts).map_err(refused)?;

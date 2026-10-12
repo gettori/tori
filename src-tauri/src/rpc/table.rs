@@ -235,6 +235,15 @@ pub static METHODS: &[Method] = &[
         call: |b, _, v| b.review_mark(params(v)?),
     },
     Method {
+        name: "radar.list",
+        description: "Each watched branch unit's base conflicts: the paths a merge of its base would conflict on, empty when it merges clean, null when unknown. `enabled` is false, with no units, while the radar is switched off.",
+        params: no_params,
+        callers: LOCAL_AND_DEVICES,
+        refusal: None,
+        outward: false,
+        call: |b, _, _| b.radar_list(),
+    },
+    Method {
         name: "units.git",
         description: "For each worktree folder: lines added and deleted since HEAD, and commits ahead and behind the branch it syncs with (null when it has none). A folder that is not a repo is left out.",
         params: schema::<UnitsGitParams>,

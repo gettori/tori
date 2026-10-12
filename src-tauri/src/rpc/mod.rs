@@ -103,6 +103,24 @@ fn autopilot_publisher(hub: &Arc<Hub>, app: &AppHandle) -> Box<dyn Fn(Value) + S
     })
 }
 
+// On `sessions`, which every phone screen already reads and ignores unknown kinds of.
+fn start_radar(app: &AppHandle, hub: &Arc<Hub>, states: &Arc<SessionStates>, autopilot: &Arc<AutopilotStore>) {
+    let (app, hub) = (app.clone(), hub.clone());
+    let (states, items, at_start) = (states.clone(), autopilot.clone(), autopilot.clone());
+    crate::radar::start(crate::radar::Hooks {
+        watched: Box::new(move || {
+            let mut folders = states.live_folders();
+            folders.extend(items.worktrees());
+            folders
+        }),
+        at_start: Box::new(move || at_start.worktrees()),
+        publish: Box::new(move |units| {
+            let _ = app.emit(crate::radar::CHANGED_EVENT, json!({ "units": units }));
+            hub.publish(&Channel::Sessions, json!({ "kind": "radar.changed", "units": units }));
+        }),
+    });
+}
+
 // The Settings pane is not a socket subscriber, so it hears about devices here.
 const DEVICES_EVENT: &str = "remote://devices";
 
@@ -149,6 +167,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
         crate::autopilot::dir(),
     ));
     start_watcher(&app, &states, &autopilot, &runner);
+    start_radar(&app, &hub, &states, &autopilot);
     let tell = app.clone();
     pr_watch::on_polled_moved(Box::new(move || {
         let _ = tell.emit("pr_watch://changed", ());

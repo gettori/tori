@@ -687,6 +687,7 @@ pub trait Backend: Send + Sync {
     fn units_git(&self, params: UnitsGitParams) -> Result<Value, RpcError>;
     fn review_list(&self) -> Result<Value, RpcError>;
     fn review_mark(&self, params: ReviewMarkParams) -> Result<Value, RpcError>;
+    fn radar_list(&self) -> Result<Value, RpcError>;
     fn units_sync(&self, params: UnitsSyncParams) -> Result<Value, RpcError>;
     fn units_pr(&self, params: UnitsPrParams) -> Result<Value, RpcError>;
     fn worktree_new(&self, principal: &Principal, params: WorktreeParams) -> Result<Value, RpcError>;
@@ -1015,6 +1016,9 @@ pub mod tests {
         }
         fn review_mark(&self, p: ReviewMarkParams) -> Result<Value, RpcError> {
             Ok(json!({ "id": p.id }))
+        }
+        fn radar_list(&self) -> Result<Value, RpcError> {
+            Ok(json!({ "enabled": true, "units": [] }))
         }
         fn units_sync(&self, p: UnitsSyncParams) -> Result<Value, RpcError> {
             Ok(json!({ "units": p.units.len() }))
@@ -1559,6 +1563,7 @@ pub mod tests {
                 "session.mode",
                 "review.list",
                 "review.mark",
+                "radar.list",
                 "units.git",
                 "units.sync",
                 "units.pr",
