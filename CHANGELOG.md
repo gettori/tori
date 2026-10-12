@@ -8,6 +8,26 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## Unreleased
+
+- The orange pull request mark on a branch now means it is your move. Your
+  own pull request lights for a failing check or changes requested, as
+  before. Someone else's lights only while it asks for your review, so a
+  pull request you already reviewed goes quiet until the author asks again.
+- A project row shows an orange pull request mark when pull requests are
+  waiting on your review with no worktree yet. Click it to pick one and
+  Tori makes its `pr-<number>` worktree.
+- Project settings has an Automations section. **When your review is
+  requested** can create the review worktree by itself, or create it and
+  start a background chat that reviews the change and ends in a verdict for
+  you to read. After a push it moves a clean worktree to the new head and
+  tells the same chat what changed. Nothing is posted without you, and it
+  pauses past its hourly limit. With the autopilot on, the review lands in
+  the autopilot's queue for your approval.
+- Settings > Integrations: **Fetch every** is now **Git fetch every**, and
+  says that pull request status refreshes every 2 minutes whatever it is
+  set to.
+
 ## 26.1010.0-alpha
 
 - Packs: every language server, linter, debugger, formatter, theme and agent
