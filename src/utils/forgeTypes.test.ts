@@ -204,12 +204,12 @@ describe("needsAttention", () => {
     reviewDecision: "none",
     ...over,
   });
-  const red: CheckRollup = { state: "failure", total: 3, failing: 1, contexts: [] };
+  const failed: CheckRollup = { state: "failure", total: 3, failing: 1, contexts: [] };
   const pr = (author: string, number = 45) => ({ number, author }) as PullRequest;
   const me = { viewer: "skarif2", requested: [] };
 
   it("flags a failing check and changes-requested, and nothing else", () => {
-    expect(needsAttention(unit({ checks: red }), me)).toBe(true);
+    expect(needsAttention(unit({ checks: failed }), me)).toBe(true);
     expect(needsAttention(unit({ reviewDecision: "changesRequested" }), me)).toBe(true);
 
     // Pending is not a needs-you moment: CI that has not finished is not CI that
@@ -221,12 +221,12 @@ describe("needsAttention", () => {
     expect(needsAttention(unit({ reviewDecision: "reviewRequired" }), me)).toBe(false);
   });
 
-  it("lights your own pull request for a red check", () => {
-    expect(needsAttention(unit({ pullRequest: pr("SKarif2"), checks: red }), me)).toBe(true);
+  it("lights your own pull request for a failing check", () => {
+    expect(needsAttention(unit({ pullRequest: pr("SKarif2"), checks: failed }), me)).toBe(true);
   });
 
-  it("leaves someone else's red pull request to them", () => {
-    expect(needsAttention(unit({ pullRequest: pr("ana"), checks: red }), me)).toBe(false);
+  it("leaves someone else's failing pull request to them", () => {
+    expect(needsAttention(unit({ pullRequest: pr("ana"), checks: failed }), me)).toBe(false);
     expect(needsAttention(unit({ pullRequest: pr("ana"), reviewDecision: "changesRequested" }), me)).toBe(false);
   });
 
@@ -236,9 +236,11 @@ describe("needsAttention", () => {
   });
 
   it("keeps someone else's pull request quiet on a host with no list, and reads an unknown viewer as you", () => {
-    expect(needsAttention(unit({ pullRequest: pr("ana"), checks: red }), { viewer: "skarif2", requested: null })).toBe(
-      false,
+    expect(
+      needsAttention(unit({ pullRequest: pr("ana"), checks: failed }), { viewer: "skarif2", requested: null }),
+    ).toBe(false);
+    expect(needsAttention(unit({ pullRequest: pr("ana"), checks: failed }), { viewer: null, requested: null })).toBe(
+      true,
     );
-    expect(needsAttention(unit({ pullRequest: pr("ana"), checks: red }), { viewer: null, requested: null })).toBe(true);
   });
 });

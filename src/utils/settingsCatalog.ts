@@ -320,8 +320,8 @@ export const SETTINGS: SettingEntry[] = [
   {
     id: "fetch-every",
     section: "git",
-    label: "Fetch every",
-    hint: "How often Tori fetches every repository in the background, so a branch can say it is behind before you ask. Never asks for a password: a repo whose remote needs one is simply left alone. Off stops the timer and the fetch on window focus.",
+    label: "Git fetch every",
+    hint: "How often Tori runs git fetch on every repository in the background, so a branch can say it is behind before you ask. Never asks for a password: a repo whose remote needs one is simply left alone. Off stops the timer and the fetch on window focus. Pull request status and review requests come from GitHub every 2 minutes, whatever this is set to.",
   },
   {
     id: "topic-worktrees-in-spaces",
