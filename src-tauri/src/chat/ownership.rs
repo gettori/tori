@@ -96,7 +96,7 @@ fn default_profile() -> String {
 }
 
 /// What a claim attempt resolved to.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum ClaimOutcome {
     /// The claim is yours. `contested` marks a session we found running outside
@@ -202,7 +202,7 @@ pub fn release(claims: &mut HashMap<String, Claim>, session_id: &str, tab_id: &s
 }
 
 /// What a persisted claim turned out to be at startup.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum Reaped {
     /// A crashed Tori's child is still running this session. Carries the agent

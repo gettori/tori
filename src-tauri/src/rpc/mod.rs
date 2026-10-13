@@ -109,9 +109,71 @@ fn daemon_status_emitter(app: &AppHandle) -> Box<dyn Fn(&Status) + Send + Sync> 
     })
 }
 
-fn pty_events(app: &AppHandle) -> window::OnEvent {
-    let app = app.clone();
-    Box::new(move |event, payload| crate::pty::heard(&app, event, payload))
+// What the daemon tells the window: tab and chat events, and the calls its host
+// makes into state that still lives here.
+fn daemon_events(app: &AppHandle, hub: &Arc<Hub>, autopilot: &Arc<AutopilotStore>) -> window::OnEvent {
+    let (app, hub, autopilot) = (app.clone(), hub.clone(), autopilot.clone());
+    Box::new(move |event, p| {
+        let text = |key: &str| p[key].as_str().unwrap_or_default().to_string();
+        match event {
+            "chat.event" => app.state::<crate::chat::host::ChatState>().0.route(p),
+            "chat.lifecycle" => {
+                let (id, data) = (text("id"), p["data"].clone());
+                let compacted = (data["kind"] == "session.compacted").then(|| data["trigger"] == "auto");
+                publish_session(&hub, &autopilot, &id, data);
+                if let Some(mid_turn) = compacted {
+                    retell_topic(&app, &id, mid_turn);
+                }
+            }
+            "revoke" => {
+                if let Ok(caller) = serde_json::from_value::<Caller>(p["caller"].clone()) {
+                    forget_caller(&caller);
+                }
+            }
+            "watcher_touch" => watcher_touch(&text("session")),
+            "mark_background" => mark_background(&text("session")),
+            "mark_spawned_worker" => mark_spawned_worker(&text("session"), &text("spawner")),
+            "radar_committed" => crate::radar::committed(&text("folder")),
+            "pr_watch.moved" => {
+                let _ = app.emit("pr_watch://changed", ());
+            }
+            _ => crate::pty::heard(&app, event, p),
+        }
+    })
+}
+
+// Set by `daemon::run` alone, so a test that starts a daemon in process keeps
+// the app's behaviour.
+pub(crate) struct InDaemon {
+    pub hub: Arc<Hub>,
+    pub children: Arc<auth::Children>,
+    pub sock: String,
+    pub tell: Box<dyn Fn(&'static str, Value) + Send + Sync>,
+}
+
+static IN_DAEMON: OnceLock<InDaemon> = OnceLock::new();
+
+pub(crate) fn run_as_daemon(role: InDaemon, cli_dir: PathBuf) {
+    let _ = CLI_DIR.set(cli_dir);
+    let _ = IN_DAEMON.set(role);
+}
+
+pub(crate) fn tell_window(method: &'static str, params: Value) -> bool {
+    match IN_DAEMON.get() {
+        Some(role) => {
+            (role.tell)(method, params);
+            true
+        }
+        None => false,
+    }
+}
+
+const CHAT_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
+
+pub fn daemon_chat(method: &str, args: Value) -> Result<Value, String> {
+    let link = LINK.get().ok_or("the daemon link is not up")?;
+    link.request("chat", json!({ "method": method, "args": args }), CHAT_WAIT)
+        .map_err(|e| e.message)
 }
 
 #[tauri::command]
@@ -199,10 +261,9 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     pr_watch::on_polled_moved(Box::new(move || {
         let _ = tell.emit("pr_watch://changed", ());
     }));
-    start_pr_wake(&app, &states);
     start_composer(&app, &hub, &states, &autopilot);
     let on_status = daemon_status_emitter(&app);
-    let on_event = pty_events(&app);
+    let on_event = daemon_events(&app, &hub, &autopilot);
     let server = Arc::new(Server {
         hub: hub.clone(),
         backend: Box::new(methods::TauriBackend {
@@ -713,27 +774,6 @@ pub fn retell_topic(app: &AppHandle, session: &str, mid_turn: bool) {
 }
 
 // A chat stopped by its spend ceiling reports needs_you, so it is held here too.
-fn start_pr_wake(app: &AppHandle, states: &Arc<SessionStates>) {
-    let (app, states) = (app.clone(), states.clone());
-    let host = app.clone();
-    let ready = move |session: &str| {
-        crate::settings::pr_watch()
-            && states.snapshot().get(session) == Some(&states::SessionState::Idle)
-            && host.state::<crate::chat::host::ChatState>().0.is_live(session)
-    };
-    let deliver = move |session: &str, text: String| {
-        let host = &app.state::<crate::chat::host::ChatState>().0;
-        let text = events::from_tori("pr_watch", None, &text);
-        host.deliver(
-            session,
-            vec![crate::chat::model::ContentBlock::Text { text }],
-            false,
-            events::TurnBy::Watcher,
-        )
-    };
-    pr_wake::start(ready, deliver);
-}
-
 fn start_watcher(app: &AppHandle, states: &Arc<SessionStates>, autopilot: &Arc<AutopilotStore>, runner: &Arc<Runner>) {
     let status = runner.clone();
     let (watcher, nudges) = Watcher::new(states.clone(), autopilot.clone(), Box::new(move || status.status()));
@@ -796,6 +836,9 @@ pub fn nudge_watcher() {
 
 // Work in a session's stream, which is what a stall is the absence of.
 pub fn watcher_touch(session: &str) {
+    if tell_window("watcher_touch", json!({ "session": session })) {
+        return;
+    }
     if let Some(watcher) = WATCHER.get() {
         watcher.touch(session);
     }
@@ -817,7 +860,7 @@ pub fn rpc_ask_answer(rpc: tauri::State<RpcState>, id: String, answer: String) -
 }
 
 pub fn publish_checkpoint(session_id: &str, folder: &str, turn: usize, prompt_ts: u64) {
-    let Some((hub, _)) = EVENTS.get() else { return };
+    let Some(hub) = events_hub() else { return };
     let event = session_event(
         "session.checkpoint",
         session_id,
@@ -843,9 +886,16 @@ pub fn publish_needs_you(app: &AppHandle) {
     hub.publish(&Channel::Sessions, json!({ "kind": "needs_you.changed" }));
 }
 
+fn events_hub() -> Option<&'static Arc<Hub>> {
+    IN_DAEMON
+        .get()
+        .map(|role| &role.hub)
+        .or_else(|| EVENTS.get().map(|(hub, _)| hub))
+}
+
 // Serialised only while someone reads `chat:<id>`: this runs on every delta.
 pub fn publish_chat(session_id: &str, event: &crate::chat::model::ChatEvent) {
-    let Some((hub, _)) = EVENTS.get() else { return };
+    let Some(hub) = events_hub() else { return };
     if !hub.watches_chat(session_id) {
         return;
     }
@@ -1176,6 +1226,13 @@ pub fn attach_pty(
 /// Env for a process Tori spawns, with a token the daemon minted for `caller`.
 /// Empty when the daemon is not attached to vouch for it.
 pub fn child_env(caller: Caller) -> Vec<(String, String)> {
+    if let Some(role) = IN_DAEMON.get() {
+        let token = role.children.mint(caller);
+        return vec![
+            (ENV_SOCK.to_string(), role.sock.clone()),
+            (ENV_CALLER.to_string(), token),
+        ];
+    }
     let (Some(sock), Some(link)) = (SOCKET.get(), LINK.get()) else {
         return Vec::new();
     };
@@ -1186,9 +1243,18 @@ pub fn child_env(caller: Caller) -> Vec<(String, String)> {
 
 // A chat that ended can no longer show its asks, so they go with its token.
 pub fn revoke(caller: &Caller) {
+    if let Some(role) = IN_DAEMON.get() {
+        role.children.revoke(caller);
+        (role.tell)("revoke", json!({ "caller": caller }));
+        return;
+    }
     if let Some(link) = LINK.get() {
         link.revoke(caller);
     }
+    forget_caller(caller);
+}
+
+fn forget_caller(caller: &Caller) {
     if let (Caller::Chat(session), Some(asks)) = (caller, ASKS.get()) {
         asks.forget_session(session);
     }
@@ -1223,6 +1289,9 @@ pub fn mcp_allow(background: bool) -> Vec<String> {
 // one lost its spawner link with the old process, and a retired autopilot id
 // stands for the current autopilot.
 pub fn mark_spawned_worker(session: &str, spawner: &str) {
+    if tell_window("mark_spawned_worker", json!({ "session": session, "spawner": spawner })) {
+        return;
+    }
     let spawner = current_spawner(spawner);
     if let Some((_, states)) = EVENTS.get() {
         states.mark_worker(session, &spawner);
@@ -1242,6 +1311,9 @@ pub fn current_spawner(spawner: &str) -> String {
 
 // Called by `chat_spawn` before the child starts, so its first outward call already meets the gate.
 pub fn mark_background(session: &str) {
+    if tell_window("mark_background", json!({ "session": session })) {
+        return;
+    }
     if let Some((_, states)) = EVENTS.get() {
         states.mark_background(session);
     }

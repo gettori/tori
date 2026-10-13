@@ -31,7 +31,7 @@ use crate::rpc::events::{session_event, EndReason, Place, TurnBy};
 
 /// What a spawn call actually did, so a caller can tell a fresh session from a
 /// re-subscribe without inspecting the map itself.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Spawned {
     Started,
@@ -246,7 +246,7 @@ fn permission_detail(input: &serde_json::Value) -> Option<String> {
 
 /// A native question or permission prompt a session is blocked on, keyed by
 /// its `tool_use_id`, so `session.answer` can reach it without the tab.
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Waiting {
     Question {
@@ -368,7 +368,7 @@ struct Identity {
 
 /// What a live session runs on and could switch to. An empty catalogue means
 /// the handshake carried none, and the adapter's table stands in.
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Levers {
     pub model: Option<String>,
     pub mode: Option<PermissionMode>,
@@ -590,9 +590,7 @@ pub struct ChatHost {
     verify: Arc<Mutex<HashMap<String, crate::verification::Tracker>>>,
 }
 
-/// Tauri state wrapper, matching `PtyState`'s shape.
-#[derive(Default)]
-pub struct ChatState(pub ChatHost);
+pub use super::client::ChatState;
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     match m.lock() {
@@ -1174,7 +1172,7 @@ impl ChatHost {
                     if status == "rejected" && !lifecycle.replaying(&id) {
                         let folder = cwd.to_string_lossy();
                         crate::digest::note_limit(
-                            &registry,
+                            &*registry,
                             crate::needs_you_log::Kind::LimitHit,
                             &id,
                             &folder,

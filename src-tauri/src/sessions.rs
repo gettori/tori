@@ -1064,6 +1064,7 @@ pub fn session_running(
     agent: String,
 ) -> Result<bool, String> {
     if !found_by_pattern(&agent) {
+        use crate::chat::client::Claimed;
         return Ok(!state.0.registry.sessions_with_live_child(&[id]).is_empty());
     }
     Ok(running_by_pattern(&agent, &id))
@@ -1227,7 +1228,7 @@ pub fn sessions_running(
     Ok(running)
 }
 
-pub(crate) fn running_now(registry: &crate::chat::ownership::Registry, sessions: Vec<SessionRef>) -> Vec<String> {
+pub(crate) fn running_now(registry: &impl crate::chat::client::Claimed, sessions: Vec<SessionRef>) -> Vec<String> {
     resolve_running(sessions, found_by_pattern, agent_command_lines, |ids| {
         registry.sessions_with_live_child(ids)
     })

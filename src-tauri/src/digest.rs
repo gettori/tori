@@ -8,7 +8,6 @@ use serde::Serialize;
 
 use crate::chat::host::ChatState;
 use crate::chat::model::Verdict;
-use crate::chat::ownership::Registry;
 use crate::needs_you_log::{Event, Kind, LogRead};
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -95,7 +94,13 @@ pub fn read(since: Option<u64>) -> Digest {
 
 /// A limit row for the account `session` runs as, named the way the session
 /// list names it.
-pub fn note_limit(registry: &Registry, kind: Kind, session: &str, folder: &str, resets_at: u64) -> bool {
+pub fn note_limit(
+    registry: &impl crate::chat::client::Claimed,
+    kind: Kind,
+    session: &str,
+    folder: &str,
+    resets_at: u64,
+) -> bool {
     let Some((agent, profile)) = registry.account_of(session) else {
         return false;
     };

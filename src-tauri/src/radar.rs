@@ -244,6 +244,9 @@ pub fn moved(path: &str) {
 
 /// A turn ended in `folder`, so its branch may have a new commit.
 pub fn committed(folder: &str) {
+    if crate::rpc::tell_window("radar_committed", serde_json::json!({ "folder": folder })) {
+        return;
+    }
     if enabled() {
         send(Job::Committed(folder.to_string()));
     }
