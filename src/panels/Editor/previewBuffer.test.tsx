@@ -273,6 +273,9 @@ describe("remembering where the preview was read", () => {
     await waitFor(() => expect(rendered()).toContain("On disk"));
 
     setPath(OTHER);
+    // Lexing is time boxed, so a slow runner draws the first slice a frame or
+    // more later. One frame at a time, so no later slice lands before we look.
+    for (let i = 0; i < 60 && !rendered().includes("Part 0"); i++) await frames(1);
     expect(rendered()).toContain("Part 0");
     expect(rendered()).not.toContain("Part 19");
     scrollEverything();
