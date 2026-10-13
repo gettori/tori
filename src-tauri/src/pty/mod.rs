@@ -486,8 +486,9 @@ pub fn pty_kill(state: State<PtyState>, chat: State<crate::chat::host::ChatState
     if let Some(tab) = state.tabs().remove(&id) {
         // Give the session id back, or closing an agent tab would leave it
         // permanently unopenable until Tori restarts.
-        if let Some(session_id) = &tab.claimed_session {
-            chat.0.registry.release(session_id, &id);
+        if let Some(session_id) = tab.claimed_session {
+            let (registry, tab) = (chat.0.registry.clone(), id.clone());
+            thread::spawn(move || registry.release(&session_id, &tab));
         }
     }
     crate::rpc::daemon_tell("pty.kill", json!({ "tab": id }));

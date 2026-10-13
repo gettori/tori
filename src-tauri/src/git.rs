@@ -2416,7 +2416,7 @@ fn quiet_sweep(
         // `try_lock`, never `lock`: a held lock is a manual op mid-flight on
         // this repo, and a read nobody asked for must not queue in front of it.
         let lock = crate::exec::repo_lock(&folders[0]);
-        let Ok(_guard) = lock.try_lock() else {
+        let Some(_guard) = lock.try_lock() else {
             continue;
         };
         if !claim_fetch(&common, min_age) {

@@ -31,6 +31,7 @@ use super::outbox::{Outbox, OUTBOX_BYTES};
 use super::server::{handle_first, subscribe, unsubscribe, Dispatch, AUTH_TIMEOUT};
 use super::table::CallerKind;
 use super::transport::{Stream, Transport, UnixTransport};
+use crate::chat::serve::Served;
 use crate::pty::host::{Events, Host};
 use crate::pty::wire::{AttachParams, Spawn, ATTACH_METHOD};
 
@@ -209,6 +210,8 @@ pub struct Daemon {
     paths: Paths,
     window: Mutex<Option<Arc<Window>>>,
     ptys: Arc<Host>,
+    // Set by `run` alone: the host reads and reaps the real claims file.
+    chats: OnceLock<Arc<Served>>,
     // The app process last attached, so a new one starts with no stale child tokens.
     instance: Mutex<Option<String>>,
 }
@@ -272,6 +275,9 @@ impl Daemon {
 
     // The link too, so the window hears it at once rather than at process exit.
     pub fn stop(&self) {
+        if let Some(chats) = self.chats.get() {
+            chats.shutdown();
+        }
         self.transport.shutdown();
         if let Some(window) = self.window() {
             window.out.close();
@@ -430,6 +436,22 @@ impl Daemon {
         let Ok(req) = serde_json::from_value::<Request>(value) else {
             return;
         };
+        if req.method == "chat" {
+            // Off the link's reader: a spawn or a history read takes a while.
+            let (chats, out) = (self.chats.get().cloned(), window.out.clone());
+            thread::spawn(move || {
+                let outcome = match chats {
+                    Some(chats) => chats
+                        .call(req.params["method"].as_str().unwrap_or_default(), &req.params["args"])
+                        .map_err(|e| RpcError::new(REFUSED, e)),
+                    None => Err(RpcError::new(REFUSED, "this daemon runs no chats")),
+                };
+                if let Some(id) = req.id {
+                    out.push(to_line(&Response::reply(id, outcome)));
+                }
+            });
+            return;
+        }
         let outcome = self.window_request(&req);
         if let Some(id) = req.id {
             window.out.push(to_line(&Response::reply(id, outcome)));
@@ -536,7 +558,6 @@ pub fn read_line(reader: &mut impl BufRead, cap: usize) -> io::Result<Option<Str
 
 pub struct Started {
     accept: JoinHandle<()>,
-    #[cfg(test)]
     daemon: Arc<Daemon>,
     _lock: File,
 }
@@ -583,6 +604,7 @@ pub fn start(paths: Paths) -> Result<Start, String> {
         Daemon {
             hub: Arc::new(Hub::default()),
             ptys: Host::new(events, children.clone(), paths.sock.clone(), paths.cli_link_dir.clone()),
+            chats: OnceLock::new(),
             credential,
             children,
             transport: transport.clone(),
@@ -613,10 +635,33 @@ pub fn start(paths: Paths) -> Result<Start, String> {
     });
     Ok(Start::Started(Started {
         accept,
-        #[cfg(test)]
         daemon: daemon.clone(),
         _lock: lock,
     }))
+}
+
+fn host_chats(daemon: &Arc<Daemon>) {
+    let tell = |weak: Weak<Daemon>| {
+        move |method: &'static str, params: Value| {
+            if let Some(daemon) = weak.upgrade() {
+                daemon.notify_window(method, params);
+            }
+        }
+    };
+    crate::rpc::run_as_daemon(
+        crate::rpc::InDaemon {
+            hub: daemon.hub.clone(),
+            children: daemon.children.clone(),
+            sock: daemon.paths.sock.to_string_lossy().into_owned(),
+            tell: Box::new(tell(Arc::downgrade(daemon))),
+        },
+        daemon.paths.cli_link_dir.clone(),
+    );
+    let chats = Served::new(Arc::new(tell(Arc::downgrade(daemon))));
+    crate::chat::serve::pr_wake(&chats);
+    let moved = tell(Arc::downgrade(daemon));
+    crate::rpc::pr_watch::on_polled_moved(Box::new(move || moved("pr_watch.moved", json!({}))));
+    let _ = daemon.chats.set(chats);
 }
 
 pub fn run() -> i32 {
@@ -626,6 +671,7 @@ pub fn run() -> i32 {
             0
         }
         Ok(Start::Started(started)) => {
+            host_chats(&started.daemon);
             // After the socket answers, so a window never waits on a slow
             // login shell. Every spawn waits on this capture instead.
             thread::spawn(|| {

@@ -30,7 +30,6 @@ use crate::autopilot::{AutopilotStore, Contract, Observed};
 use crate::chat::commands::{history_source, read_history, read_with_prompts, HistorySource};
 use crate::chat::host::{ChatState, Levers, Waiting};
 use crate::chat::model::{cap_output, ChatEvent, ContentBlock, PermissionMode};
-use crate::chat::ownership::Registry;
 use crate::issues::Issue;
 use crate::sessions::{cwd_matches, listed_sessions, SessionIndex, SessionMeta};
 
@@ -261,7 +260,7 @@ pub struct Identity {
     pub cwd: Option<String>,
 }
 
-fn chat_identity(registry: &Registry, live: &[(String, String)], id: &str) -> Identity {
+fn chat_identity(registry: &impl crate::chat::client::Claimed, live: &[(String, String)], id: &str) -> Identity {
     Identity {
         agent: registry.agent_of(id),
         account: registry.profile_of(id),
@@ -929,7 +928,7 @@ impl TauriBackend {
         Ok((project, number))
     }
 
-    fn live_chat(&self, principal: &Principal, id: &str) -> Result<&crate::chat::host::ChatHost, RpcError> {
+    fn live_chat(&self, principal: &Principal, id: &str) -> Result<&crate::chat::client::Chats, RpcError> {
         let host = &self.app.state::<ChatState>().inner().0;
         if !host.is_live(id) {
             return Err(RpcError::new(INVALID_PARAMS, format!("no live chat session {id}")));
@@ -1465,7 +1464,7 @@ impl Backend for TauriBackend {
         let (agent, account) = match &id {
             Some(id) => (
                 self.agent_of(id),
-                self.app.state::<ChatState>().0.registry.profile_of(id),
+                crate::chat::client::Claimed::profile_of(&self.app.state::<ChatState>().0.registry, id),
             ),
             None => (me.agent, me.account),
         };
@@ -2309,7 +2308,7 @@ mod tests {
     #[test]
     fn a_chat_caller_resolves_to_its_claimed_agent_account_and_live_folder() {
         let dir = std::env::temp_dir().join(format!("tori-rpc-identity-{}", std::process::id()));
-        let registry = Registry::at(dir.join("claims.json"));
+        let registry = crate::chat::ownership::Registry::at(dir.join("claims.json"));
         registry.claim("s1", claim("codex", "work"));
         let live = vec![("s1".to_string(), "/p/wt".to_string())];
         assert_eq!(

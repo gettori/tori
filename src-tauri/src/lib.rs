@@ -91,7 +91,7 @@ use presence::TrayState;
 use pty::PtyState;
 use sessions::{SessionIndex, SessionWatch, TouchedIndex};
 use settings::SettingsWatch;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use tauri::menu::Menu;
 use tauri::tray::{TrayIcon, TrayIconBuilder};
 use tauri::{Emitter, Manager};
@@ -238,15 +238,6 @@ pub fn run() {
             // the askpass bridge: without it Tori runs, nothing outside can ask.
             match rpc::start(app.handle().clone()) {
                 Ok(state) => {
-                    let (hub, autopilot) = (state.hub.clone(), state.autopilot.clone());
-                    let handle = app.handle().clone();
-                    app.state::<ChatState>().0.set_publisher(Arc::new(move |id, data| {
-                        let compacted = (data["kind"] == "session.compacted").then(|| data["trigger"] == "auto");
-                        rpc::publish_session(&hub, &autopilot, id, data);
-                        if let Some(mid_turn) = compacted {
-                            rpc::retell_topic(&handle, id, mid_turn);
-                        }
-                    }));
                     let runner = state.runner.clone();
                     app.manage(state);
                     runner.autostart();
@@ -279,19 +270,6 @@ pub fn run() {
             // two would otherwise be swept into the seed and start trusted.
             trust::seed();
 
-            // Chat claims left by a previous run. A record whose Tori is gone is
-            // either litter (dropped here) or an orphan: a `claude` child that
-            // outlived the app and is still writing to a transcript. Orphans are
-            // announced rather than killed, because ending someone's running
-            // session without asking is not ours to decide - and their records
-            // are kept, so the session stays unclaimable until they do.
-            // Parked, not emitted: this runs before the webview has loaded, so
-            // an event here would reach no listener and the orphan would block
-            // its session id with nothing on screen saying why. The frontend
-            // pulls them with `chat_orphans` once it is ready.
-            app.state::<chat::ownership::Orphans>()
-                .set(chat::ownership::reap_on_startup());
-
             // A command tab takes its PATH from this without waiting, so the
             // probe has to have started before the first one opens.
             std::thread::spawn(|| {
@@ -315,7 +293,6 @@ pub fn run() {
         .manage(forge::commands::DeviceFlowState::default())
         .manage(PtyState::default())
         .manage(ChatState::default())
-        .manage(chat::ownership::Orphans::default())
         .manage(ConfigWatch::default())
         .manage(ProjectIndex::default())
         .manage(RootWatch::default())
@@ -780,7 +757,6 @@ pub fn run() {
             }
             if let tauri::RunEvent::Exit = event {
                 credential::unpublish();
-                app.state::<ChatState>().0.shutdown();
                 // And every debug adapter. A language server is a plain child
                 // and goes with the process; an adapter is deliberately put in
                 // its own process group so that killing it takes the debuggee

@@ -23,7 +23,7 @@ use super::hub::{Channel, Hub};
 use super::states::SessionStates;
 use crate::agents::ChatTransport;
 use crate::autopilot::State as ItemState;
-use crate::chat::commands::{spawn_session, SpawnRequest};
+use crate::chat::commands::SpawnRequest;
 use crate::chat::host::ChatState;
 use crate::chat::model::{ChatEvent, ContentBlock, Extra, SlashCommand};
 use crate::owned_state::write_atomically;
@@ -554,8 +554,7 @@ impl Runner {
         *self.gauge() = Gauge::default();
         let gauge = self.gauge.clone();
         let host = &self.app.state::<ChatState>().0;
-        let spawned = spawn_session(
-            host,
+        let spawned = host.spawn_session(
             SpawnRequest {
                 session_id: id.to_string(),
                 tab_id: format!("autopilot-{id}"),
@@ -588,6 +587,10 @@ impl Runner {
         // Stopped while it was starting: `stop` found nothing to close yet.
         if !self.is_current(id) {
             return host.close(id, EndReason::Closed);
+        }
+        // Still running in the daemon from before this window, brief and all.
+        if spawned.spawned == Some(crate::chat::host::Spawned::Rewired) {
+            return Ok(());
         }
         if acp {
             started_rx

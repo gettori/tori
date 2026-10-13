@@ -24,7 +24,7 @@ use super::mirror::Mirror;
 use super::model::{
     ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode, PermissionScope, QuestionAnswer,
 };
-use super::ownership::{Claim, ClaimOutcome, Orphans, Reaped, Surface};
+use super::ownership::{Claim, ClaimOutcome, Reaped, Surface};
 use super::snapshot::{self, SnapshotCache, CACHE_CAP};
 use super::tail::{page_before, HistoryCursor, HistoryPage, HistoryTail, PageCache, Parsed};
 use super::transport::{AgentTransport, Emit, StartSpec};
@@ -165,7 +165,7 @@ pub(crate) fn resolve_profile(asked: Option<&str>, found: Option<&str>) -> Resul
 }
 
 /// The result of asking to open a chat session.
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpawnResult {
     /// How the claim resolved. A refusal is a normal answer here, not an error:
@@ -224,34 +224,31 @@ pub async fn chat_spawn(
     // The session that spawned this worker, carried by the tab so a resume
     // after a relaunch can link it back.
     spawner: Option<String>,
-    on_event: Channel<ChatEvent>,
+    on_event: Channel<serde_json::Value>,
 ) -> Result<SpawnResult, String> {
-    spawn_session(
-        &state.0,
-        SpawnRequest {
-            session_id,
-            tab_id,
-            agent_id,
-            cwd,
-            resume,
-            fork_from,
-            profile,
-            model,
-            mode,
-            effort,
-            extra_dirs,
-            visible,
-            background: background.unwrap_or(false),
-            spawner,
-        },
-        Box::new(move |event| {
-            let _ = on_event.send(event);
-        }),
-    )
+    let chats = state.inner().0.clone();
+    let req = SpawnRequest {
+        session_id,
+        tab_id,
+        agent_id,
+        cwd,
+        resume,
+        fork_from,
+        profile,
+        model,
+        mode,
+        effort,
+        extra_dirs,
+        visible,
+        background: background.unwrap_or(false),
+        spawner,
+    };
+    crate::exec::blocking("chat_spawn", move || chats.spawn_webview(req, on_event)).await
 }
 
 /// What `chat_spawn` takes, for a caller that has no webview to hand a
 /// `Channel` from.
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct SpawnRequest {
     pub session_id: String,
     pub tab_id: String,
@@ -674,7 +671,7 @@ pub async fn chat_answer_question(
         .answer_question(&session_id, &tool_use_id, &request_id, &answers)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn chat_waiting(state: State<'_, ChatState>, session_id: String) -> Vec<ChatEvent> {
     state.0.waiting_events(&session_id)
 }
@@ -894,15 +891,27 @@ pub async fn chat_tool_before_state(
     session_id: String,
     tool_use_id: String,
     cwd: String,
+) -> Result<serde_json::Value, String> {
+    state.0.call(
+        "tool_before_state",
+        serde_json::json!({ "session_id": session_id, "tool_use_id": tool_use_id, "cwd": cwd }),
+    )
+}
+
+pub(crate) fn tool_before_state(
+    host: &ChatHost,
+    session_id: &str,
+    tool_use_id: &str,
+    cwd: &str,
 ) -> Result<Option<Vec<BeforeContent>>, String> {
-    let Some(cache) = state.0.snapshots(&session_id) else {
+    let Some(cache) = host.snapshots(session_id) else {
         return Ok(None);
     };
     let captured = {
         let guard = cache.lock().map_err(|e| e.to_string())?;
-        guard.get(&tool_use_id).cloned()
+        guard.get(tool_use_id).cloned()
     };
-    let repo = PathBuf::from(&cwd);
+    let repo = PathBuf::from(cwd);
     Ok(captured.map(|entries| {
         entries
             .into_iter()
@@ -943,15 +952,27 @@ pub async fn chat_tool_diff(
     session_id: String,
     tool_use_id: String,
     cwd: String,
+) -> Result<serde_json::Value, String> {
+    state.0.call(
+        "tool_diff",
+        serde_json::json!({ "session_id": session_id, "tool_use_id": tool_use_id, "cwd": cwd }),
+    )
+}
+
+pub(crate) fn tool_diff(
+    host: &ChatHost,
+    session_id: &str,
+    tool_use_id: &str,
+    cwd: &str,
 ) -> Result<Vec<ToolDiff>, String> {
-    let Some(cache) = state.0.snapshots(&session_id) else {
+    let Some(cache) = host.snapshots(session_id) else {
         return Ok(Vec::new());
     };
     let captured = {
         let guard = cache.lock().map_err(|e| e.to_string())?;
-        guard.get(&tool_use_id).cloned()
+        guard.get(tool_use_id).cloned()
     };
-    let repo = PathBuf::from(&cwd);
+    let repo = PathBuf::from(cwd);
     Ok(captured
         .unwrap_or_default()
         .into_iter()
@@ -1004,8 +1025,15 @@ pub async fn chat_session_diff(
     state: State<'_, ChatState>,
     session_id: String,
     cwd: String,
-) -> Result<Vec<SessionFileDiff>, String> {
-    let Some(cache) = state.0.snapshots(&session_id) else {
+) -> Result<serde_json::Value, String> {
+    state.0.call(
+        "session_diff",
+        serde_json::json!({ "session_id": session_id, "cwd": cwd }),
+    )
+}
+
+pub(crate) fn session_diff(host: &ChatHost, session_id: &str, cwd: &str) -> Result<Vec<SessionFileDiff>, String> {
+    let Some(cache) = host.snapshots(session_id) else {
         return Ok(Vec::new());
     };
     let captures = {
@@ -1023,7 +1051,7 @@ pub async fn chat_session_diff(
         by_path.entry(c.path).or_default().push((id, c.before));
     }
 
-    let repo = PathBuf::from(&cwd);
+    let repo = PathBuf::from(cwd);
     Ok(order
         .into_iter()
         .filter_map(|path| {
@@ -1053,13 +1081,34 @@ pub async fn chat_revert_tool_hunk(
     hunk_index: usize,
     fingerprint: String,
 ) -> Result<String, String> {
-    let cache = state
-        .0
-        .snapshots(&session_id)
+    state.0.call_as(
+        "revert_tool_hunk",
+        serde_json::json!({
+            "session_id": session_id,
+            "tool_use_id": tool_use_id,
+            "cwd": cwd,
+            "path": path,
+            "hunk_index": hunk_index,
+            "fingerprint": fingerprint,
+        }),
+    )
+}
+
+pub(crate) fn revert_tool_hunk(
+    host: &ChatHost,
+    session_id: &str,
+    tool_use_id: &str,
+    cwd: &str,
+    path: &str,
+    hunk_index: usize,
+    fingerprint: &str,
+) -> Result<String, String> {
+    let cache = host
+        .snapshots(session_id)
         .ok_or_else(|| "This chat is no longer running, so its captured before-states are gone.".to_string())?;
     let captured = {
         let guard = cache.lock().map_err(|e| e.to_string())?;
-        guard.get(&tool_use_id).cloned()
+        guard.get(tool_use_id).cloned()
     };
     let before = captured
         .unwrap_or_default()
@@ -1067,7 +1116,7 @@ pub async fn chat_revert_tool_hunk(
         .find(|c| c.path == path)
         .map(|c| c.before)
         .ok_or_else(|| "No before-state was captured for this call, so there is nothing to revert to.".to_string())?;
-    snapshot::revert_hunk(&PathBuf::from(&cwd), &before, &path, hunk_index, &fingerprint).map(str::to_string)
+    snapshot::revert_hunk(&PathBuf::from(cwd), &before, path, hunk_index, fingerprint).map(str::to_string)
 }
 
 /// One file's before-state, resolved to content where there is content to
@@ -1133,11 +1182,16 @@ pub async fn chat_history(
     agent_id: String,
     up_to_prompt_ts: Option<u64>,
     cwd: Option<String>,
-) -> Result<HistoryTail, String> {
-    let source = from_session_id.unwrap_or_else(|| session_id.clone());
-    let agent = agent_id.clone();
-    let from = move || history_source(&source, &agent);
-    Ok(history_reply(&state.0, session_id, from, agent_id, up_to_prompt_ts, cwd).await)
+) -> Result<serde_json::Value, String> {
+    let chats = state.inner().0.clone();
+    let args = serde_json::json!({
+        "session_id": session_id,
+        "from_session_id": from_session_id,
+        "agent_id": agent_id,
+        "up_to_prompt_ts": up_to_prompt_ts,
+        "cwd": cwd,
+    });
+    crate::exec::blocking("chat_history", move || chats.call("history", args)).await
 }
 
 /// What `chat_history` sends back, apart from Tauri state so the perf budgets
@@ -1185,21 +1239,40 @@ pub async fn chat_history_page(
     agent_id: String,
     cursor: HistoryCursor,
     cwd: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let chats = state.inner().0.clone();
+    let args = serde_json::json!({
+        "session_id": session_id,
+        "from_session_id": from_session_id,
+        "agent_id": agent_id,
+        "cursor": cursor,
+        "cwd": cwd,
+    });
+    crate::exec::blocking("chat_history_page", move || chats.call("history_page", args)).await
+}
+
+pub(crate) fn history_page(
+    host: &ChatHost,
+    session_id: String,
+    from_session_id: Option<String>,
+    agent_id: String,
+    cursor: HistoryCursor,
+    cwd: Option<String>,
 ) -> Result<HistoryPage, String> {
     let source = from_session_id.unwrap_or_else(|| session_id.clone());
-    let id = session_id.clone();
-    let mut page = crate::exec::blocking("chat_history_page", move || {
-        read_page(&id, &history_source(&source, &agent_id), &agent_id, &cursor, &PAGES)
-    })
-    .await
+    let mut page = read_page(
+        &session_id,
+        &history_source(&source, &agent_id),
+        &agent_id,
+        &cursor,
+        &PAGES,
+    )
     .ok_or("this session's earlier history moved; reopen the chat to read it")?;
-    state.0.cut_outputs(&session_id, &mut page.events);
-    state.0.mark_secrets(&session_id, cwd.clone(), &mut page.events);
+    host.cut_outputs(&session_id, &mut page.events);
+    host.mark_secrets(&session_id, cwd.clone(), &mut page.events);
     let whole = page.whole.take();
     let whole = whole.as_deref().map_or(&[][..], |w| w.events.as_slice());
-    state
-        .0
-        .mark_verification_page(&session_id, cwd, &mut page.events, whole);
+    host.mark_verification_page(&session_id, cwd, &mut page.events, whole);
     Ok(page)
 }
 
@@ -1568,7 +1641,7 @@ pub async fn chat_mark_turn(session_id: String, turn_id: Option<String>) -> Resu
 
 /// The file half of `chat_mark_turn`, split out so it is testable without a
 /// Tauri app or an async runtime.
-fn mark_turn(session_id: &str, turn_id: Option<String>) -> Result<(), String> {
+pub(crate) fn mark_turn(session_id: &str, turn_id: Option<String>) -> Result<(), String> {
     let path = open_turn_path(session_id);
     let Some(turn_id) = turn_id else {
         // Completion. A missing file is the normal case on a second clear, so
@@ -1597,7 +1670,17 @@ fn mark_turn(session_id: &str, turn_id: Option<String>) -> Result<(), String> {
 /// interruption is announced exactly once. Left in place it would re-announce
 /// on every reopen, long after the user had dealt with it.
 #[tauri::command]
-pub async fn chat_take_interrupted_turn(session_id: String) -> Result<Option<OpenTurn>, String> {
+pub async fn chat_take_interrupted_turn(
+    state: State<'_, ChatState>,
+    session_id: String,
+) -> Result<Option<OpenTurn>, String> {
+    // Still running in the daemon, so the mark is a turn in flight, not one cut off.
+    if state
+        .0
+        .call_as::<bool>("is_live", serde_json::json!({ "session_id": session_id }))?
+    {
+        return Ok(None);
+    }
     Ok(take_interrupted_turn(&session_id))
 }
 
@@ -1627,8 +1710,8 @@ pub async fn chat_live_sessions(state: State<'_, ChatState>) -> Result<Vec<Strin
 /// webview exists, so anything emitted there is emitted to nobody and the orphan
 /// blocks its session id silently.
 #[tauri::command]
-pub async fn chat_orphans(orphans: State<'_, Orphans>) -> Result<Vec<Reaped>, String> {
-    Ok(orphans.take())
+pub async fn chat_orphans(state: State<'_, ChatState>) -> Result<Vec<Reaped>, String> {
+    state.0.call_as("orphans", serde_json::json!({}))
 }
 
 /// Clear the rule store the retired gate left behind, and say what went.
@@ -1655,7 +1738,10 @@ pub async fn chat_terminate_orphan(
     child_pid: u32,
     agent_id: String,
 ) -> Result<(), String> {
-    super::ownership::terminate_orphan(&state.0.registry, &session_id, child_pid, &agent_id)
+    state.0.call_as(
+        "terminate_orphan",
+        serde_json::json!({ "session_id": session_id, "child_pid": child_pid, "agent_id": agent_id }),
+    )
 }
 
 #[cfg(test)]

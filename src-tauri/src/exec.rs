@@ -138,11 +138,79 @@ static COMMON_DIRS: OnceLock<Mutex<HashMap<String, PathBuf>>> = OnceLock::new();
 /// `.git` already implies. Also used directly by commands that finish on their
 /// own thread (`git_fetch`, `git_push`): they take the lock inside that thread
 /// rather than through `git_write`.
-pub fn repo_lock(path: &str) -> Arc<Mutex<()>> {
+pub fn repo_lock(path: &str) -> RepoLock {
     let key = common_dir(path);
     let locks = REPO_LOCKS.get_or_init(Default::default);
     let mut map = locks.lock().unwrap_or_else(PoisonError::into_inner);
-    map.entry(key).or_default().clone()
+    RepoLock {
+        mutex: map.entry(key.clone()).or_default().clone(),
+        file: key.join("HEAD").exists().then(|| key.join("tori.lock")),
+    }
+}
+
+/// The app and the daemon both write to a repository, so the mutex that orders
+/// one process's writes is backed by a `flock` that orders the two.
+pub struct RepoLock {
+    mutex: Arc<Mutex<()>>,
+    file: Option<PathBuf>,
+}
+
+pub struct RepoGuard<'a> {
+    _held: std::sync::MutexGuard<'a, ()>,
+    _file: Option<std::fs::File>,
+}
+
+impl RepoLock {
+    pub fn lock(&self) -> std::sync::LockResult<RepoGuard<'_>> {
+        let (held, poisoned) = match self.mutex.lock() {
+            Ok(held) => (held, false),
+            Err(e) => (e.into_inner(), true),
+        };
+        let guard = RepoGuard {
+            _held: held,
+            _file: self.file.as_deref().and_then(|f| flock(f, true)),
+        };
+        if poisoned {
+            Err(PoisonError::new(guard))
+        } else {
+            Ok(guard)
+        }
+    }
+
+    pub fn try_lock(&self) -> Option<RepoGuard<'_>> {
+        let held = self.mutex.try_lock().ok()?;
+        let file = match self.file.as_deref() {
+            Some(path) => Some(flock(path, false)?),
+            None => None,
+        };
+        Some(RepoGuard {
+            _held: held,
+            _file: file,
+        })
+    }
+
+    #[cfg(test)]
+    fn same(&self, other: &RepoLock) -> bool {
+        Arc::ptr_eq(&self.mutex, &other.mutex)
+    }
+}
+
+// An unwritable `.git` goes unlocked, as it was.
+fn flock(path: &std::path::Path, wait: bool) -> Option<std::fs::File> {
+    use std::os::fd::AsRawFd;
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(path)
+        .ok()?;
+    let how = if wait {
+        libc::LOCK_EX
+    } else {
+        libc::LOCK_EX | libc::LOCK_NB
+    };
+    // SAFETY: the fd is open for as long as `file` lives, which outlives the call.
+    (unsafe { libc::flock(file.as_raw_fd(), how) } == 0).then_some(file)
 }
 
 /// Resolved once per path and cached: the switch path calls into here often,
@@ -310,11 +378,22 @@ mod tests {
 
         let a = repo_lock(main.to_str().unwrap());
         let b = repo_lock(wt.to_str().unwrap());
-        assert!(Arc::ptr_eq(&a, &b), "worktrees resolved to different locks");
+        assert!(a.same(&b), "worktrees resolved to different locks");
 
         let other = temp_repo("share-other");
         let c = repo_lock(other.to_str().unwrap());
-        assert!(!Arc::ptr_eq(&a, &c), "unrelated repos must not share a lock");
+        assert!(!a.same(&c), "unrelated repos must not share a lock");
+    }
+
+    #[test]
+    fn the_repo_lock_shuts_out_another_opener() {
+        let repo = temp_repo("flock");
+        let lock = repo_lock(repo.to_str().unwrap());
+        let held = lock.lock().unwrap();
+        let file = repo.join(".git").join("tori.lock");
+        assert!(flock(&file, false).is_none(), "a second opener got the lock");
+        drop(held);
+        assert!(flock(&file, false).is_some(), "the lock outlived its guard");
     }
 
     /// Stage, commit and ref writes fired concurrently on one repo (the commit

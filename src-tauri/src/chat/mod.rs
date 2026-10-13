@@ -17,6 +17,8 @@
 //! | [`mirror`] | the model, plus the pacer's stream identity |
 //! | [`pacing`] | the model, plus the seam's sink |
 //! | [`host`] | the seam, plus ownership and pacing |
+//! | [`serve`] | the host, as `tori daemon` runs it |
+//! | [`client`] | the daemon's host, from the window |
 //! | [`commands`] | all of it, plus Tauri |
 //!
 //! Nothing below `commands` mentions Tauri, which is what lets the whole session
@@ -32,6 +34,7 @@ pub mod acp_transport;
 pub mod approval;
 pub mod claude;
 pub mod claude_transport;
+pub mod client;
 pub mod commands;
 pub mod history;
 pub mod host;
@@ -42,6 +45,7 @@ pub mod ownership;
 pub mod pacing;
 pub mod queue_store;
 pub mod retired;
+pub mod serve;
 pub mod snapshot;
 pub mod stash_store;
 pub mod tail;

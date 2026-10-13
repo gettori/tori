@@ -378,7 +378,7 @@ fn discard_attempt(
     root: &str,
     path: &str,
     session_ids: &[String],
-    registry: Option<&crate::chat::ownership::Registry>,
+    registry: Option<&dyn crate::chat::client::Claimed>,
 ) -> Result<(), String> {
     // Everything below writes to the shared repo (refs, the worktree list, a
     // branch delete), so it all queues behind the repository write lock.
