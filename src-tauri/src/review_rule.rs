@@ -281,7 +281,12 @@ fn worktree_for(
             let moved = crate::worktree::move_review(app, project, head, &folder, worktree_at)?;
             Ok((folder, Some(moved)))
         }
-        None => Ok((crate::worktree::checkout_review(app, project, head)?, None)),
+        // Legal here and nowhere on a tokio worker: `tick` runs this on its own
+        // std thread, so there is no runtime underneath to refuse the block.
+        None => Ok((
+            tauri::async_runtime::block_on(crate::worktree::checkout_review(app, project, head))?,
+            None,
+        )),
     }
 }
 

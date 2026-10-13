@@ -397,25 +397,26 @@ pub(crate) fn track_review_branch(repo: &str, head: &ReviewHead) {
     let _ = git_ok(repo, &["branch", &format!("--set-upstream-to={upstream}"), &branch]);
 }
 
-pub fn checkout_review(app: &AppHandle, project: &str, head: &ReviewHead) -> Result<String, String> {
+pub async fn checkout_review(app: &AppHandle, project: &str, head: &ReviewHead) -> Result<String, String> {
     use tauri::Manager;
     let askpass = app.state::<crate::askpass::AskpassState>().0.clone();
     fetch_review_head(project, head, askpass.sock_path(), askpass.token())?;
-    let folder = tauri::async_runtime::block_on(create_pr_worktree(
+    let folder = create_pr_worktree(
         app.clone(),
         project.to_string(),
         head.number,
         head.sha.clone(),
         !head.fork,
-    ))?;
+    )
+    .await?;
     track_review_branch(project, head);
     Ok(folder)
 }
 
-#[tauri::command(async)]
-pub fn create_review_worktree(app: AppHandle, project_path: String, number: u64) -> Result<String, String> {
+#[tauri::command]
+pub async fn create_review_worktree(app: AppHandle, project_path: String, number: u64) -> Result<String, String> {
     let head = review_head(&project_path, number).map_err(|e| e.to_string())?;
-    checkout_review(&app, &project_path, &head)
+    checkout_review(&app, &project_path, &head).await
 }
 
 pub fn review_worktree(project: &str, number: u64) -> Option<String> {
