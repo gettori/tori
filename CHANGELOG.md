@@ -46,6 +46,54 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 - The secret file mark names the file, as in **Read .env** or **Command named
   server.key**. Click it to see each file, open it, see what read it or the
   command that named it, and jump to that call with **Show call**.
+- An Inbox, on Cmd+Shift+X or the strip button, with three tabs. **Since you
+  looked** lists what finished while you were away (turns, lines changed and
+  the verdict), pull requests opened, merged or failing, and usage limits hit
+  and resumed. When it has something, it opens by itself at launch and when
+  you come back after four hours. **Needs you** keeps the day's approvals,
+  questions and finished turns, answered ones dimmed. **Review** lists
+  sessions with unreviewed work, riskiest first, scored on secret reads,
+  failed or missing checks, blind edits, deleted tests, risky paths,
+  dependency changes, scope drift and conflicts. **Mark reviewed** clears a
+  row until new work lands.
+- The phone has the same Inbox, with Approve and Reply on review cards.
+- **Second opinion**: another agent reads a session's work since its review
+  mark, read-only, and its findings land as held comments in the diff. Start
+  it from the worktree menu or an Inbox row. Its spend counts toward the
+  project, and it won't start past the project's ceiling.
+- Hunk comments are held and sent together. A comment from the diff tab or
+  the session panel joins a list with a count, and one Send delivers them all
+  to the chat as a turn, or after the current one. **Send hunk comments right
+  away** in Settings > Editor brings back one at a time.
+- The conflict radar. The mark for a branch that would conflict with its base
+  now refreshes by itself after a fetch, a base change or a turn end. Files
+  that live sessions in two worktrees are both changing get an amber mark on
+  the branch row, the tab and History, and Checkpoints names the other
+  branch. The autopilot
+  sees both and holds the later of two overlapping items. **Watch branches
+  for conflicts** in Settings > Chat turns it all off.
+- **Project settings** in a project's menu opens one dialog for everything
+  about it: name, space, icon and layout, worktree setup and shared files,
+  agents, verification commands, trust, origin and default branch, format on
+  save, and the autopilot contract. Settings has a Projects pane that lists
+  them all.
+- A plain clone can be converted to the worktree layout from its menu
+  (**Convert to worktree layout**). The dialog lists what moves before
+  anything runs, open tabs and terminals follow the files, and a conversion
+  stopped halfway can be undone. New clones use the worktree layout by
+  default, with a box to turn it off.
+- **Move to topic** on a worktree row adds it to a Topic as it is, on its own
+  branch, or starts a new Topic from it. Tori never deletes a branch it
+  didn't create.
+- Pull, Pull (Rebase) and Push say what they will do to the branch, with real
+  counts. A push of commits that are already on the base under other hashes
+  asks first and offers the rebase. A diverged branch refuses plain Push and
+  gets a leased **Force Push** instead.
+- A Topic's Changes tab shows each member's changed file count on its tab.
+- The markdown preview keeps its place across a tab switch.
+- The sidebar shows the right branch after a `git switch` inside a linked
+  worktree. It used to keep the old one until a relaunch.
+- Deleting a space accepts its name in any case.
 
 ## 26.1010.0-alpha
 
