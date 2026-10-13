@@ -8,7 +8,7 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
-## Unreleased
+## 26.1013.0-alpha
 
 - The orange pull request mark on a branch now means it is your move. Your
   own pull request lights for a failing check or changes requested, as
