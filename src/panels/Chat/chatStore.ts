@@ -801,6 +801,29 @@ export function turnBlindEdits(items: readonly ChatItem[]): Map<string, string[]
   return out;
 }
 
+export type SecretRow = {
+  path: string;
+  toolUseId: string;
+  strength: SecretHit["strength"];
+  tool: string;
+  command: string | null;
+};
+
+export function turnSecretRows(items: readonly ChatItem[]): Map<string, SecretRow[]> {
+  const out = new Map<string, SecretRow[]>();
+  for (const it of items) {
+    if (it.kind !== "tool" || !it.secret || !it.turnId) continue;
+    const raw = (it.input as { command?: unknown } | null)?.command;
+    const command = typeof raw === "string" ? raw : Array.isArray(raw) ? raw.join(" ") : null;
+    const rows = out.get(it.turnId) ?? [];
+    for (const path of it.secret.paths) {
+      rows.push({ path, toolUseId: it.toolUseId, strength: it.secret.strength, tool: it.name ?? "Tool", command });
+    }
+    out.set(it.turnId, rows);
+  }
+  return out;
+}
+
 /** Each turn's secret reads, folded from its tool cards. */
 export function turnSecrets(items: readonly ChatItem[]): Map<string, SecretHit> {
   const out = new Map<string, SecretHit>();

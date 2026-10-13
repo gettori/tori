@@ -400,6 +400,84 @@ button.promptChip {
   font-size: calc(var(--chat-font-size) - 2px);
 }
 
+.turnSecret {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.turnSecret:hover {
+  text-decoration: underline;
+}
+
+.secretPopover {
+  display: flex;
+  flex-direction: column;
+  gap: calc(8px * var(--ui-scale));
+  max-width: calc(420px * var(--ui-scale));
+  padding: calc(10px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  font-size: var(--tori-text-sm);
+}
+
+.secretRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: calc(2px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  align-items: baseline;
+}
+
+.secretPath {
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg-default);
+  font: inherit;
+  font-family: var(--tori-font-mono);
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.secretPath {
+  color: var(--accent-fg);
+  cursor: pointer;
+}
+
+button.secretPath:hover {
+  text-decoration: underline;
+}
+
+.secretReason {
+  grid-column: 1;
+  overflow: hidden;
+  color: var(--fg-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+code.secretReason {
+  font-family: var(--tori-font-mono);
+}
+
+.secretShow {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-self: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.secretShow:hover {
+  text-decoration: underline;
+}
+
 .turnVerification[data-verdict="verified"] {
   color: var(--success-fg);
 }

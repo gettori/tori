@@ -53,12 +53,12 @@ describe("a live session's secret mark", () => {
       { id: "pty", agent: "claude", cwd: "/repo", status: "executing" },
       { id: "acp", agent: "codex", cwd: "/repo", status: "idle" },
     ]);
-    await waitFor(() => expect(sessionSecret("acp")).toBe("read"));
-    expect(sessionSecret("chat")).toBe("read");
-    expect(sessionSecret("pty")).toBe("named");
+    await waitFor(() => expect(sessionSecret("acp")?.strength).toBe("read"));
+    expect(sessionSecret("chat")).toEqual({ paths: ["/repo/.env"], strength: "read" });
+    expect(sessionSecret("pty")).toEqual({ paths: [".env"], strength: "named" });
 
     render(() => <TabMark agentId="claude" status="idle" secret={sessionSecret("pty")} />);
-    expect(screen.getByLabelText(/Idle\s+A command named a secret file/)).toBeTruthy();
+    expect(screen.getByLabelText(/Idle\s+Command named \.env/)).toBeTruthy();
   });
 
   it("asks again when the status moves or a transcript changes, and not otherwise", async () => {
@@ -69,7 +69,7 @@ describe("a live session's secret mark", () => {
 
     answers["s"] = [read];
     setTargets([{ id: "s", agent: "claude", cwd: "/repo", status: "idle" }]);
-    await waitFor(() => expect(sessionSecret("s")).toBe("read"));
+    await waitFor(() => expect(sessionSecret("s")?.strength).toBe("read"));
 
     listeners["sessions://changed"]?.forEach((f) => f({ payload: { folders: null } }));
     listeners["settings://changed"]?.forEach((f) => f({ payload: null }));
@@ -90,7 +90,7 @@ describe("a live session's secret mark", () => {
   it("drops the mark when the session stops being live", async () => {
     answers["s"] = [read];
     const { setTargets } = watch([{ id: "s", agent: "claude", cwd: "/repo", status: "idle" }]);
-    await waitFor(() => expect(sessionSecret("s")).toBe("read"));
+    await waitFor(() => expect(sessionSecret("s")?.strength).toBe("read"));
     setTargets([]);
     expect(sessionSecret("s")).toBeNull();
   });
