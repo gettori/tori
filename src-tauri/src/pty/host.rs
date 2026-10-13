@@ -1,22 +1,23 @@
-// PTY host. Multiple concurrent sessions keyed by a string id (the Claude
-// session id, or a generated id for a fresh session). Each session streams
-// raw bytes to the frontend tagged with its id, so one xterm instance per
-// session receives only its own output.
+//! Run by `tori daemon`, so a shell outlives the window.
 
-use std::collections::HashMap;
-use std::io::{Read, Write};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::io::{BufReader, Read, Write};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
-use tauri::ipc::{Channel, InvokeResponseBody};
-use tauri::{AppHandle, Emitter, Manager, State};
+use serde_json::{json, Value};
 
+use super::wire::{self, AttachParams, Listed, Spawn, DATA, EXIT, RESIZE};
 use crate::env::{augmented_path, login_path_if_captured, login_shell};
+use crate::rpc::auth::{Caller, Children};
+use crate::rpc::frame::{to_line, write_line, Response, RpcError, INVALID_PARAMS};
+use crate::rpc::transport::Stream;
 
 // How long a shell that prints nothing is given before its `init` is judged.
 // One that prints is judged once it has been quiet for `INIT_QUIET_MS`.
@@ -62,66 +63,7 @@ const COALESCE_MAX_BYTES: usize = 64 * 1024;
 const EXIT_WAIT: Duration = Duration::from_millis(2000);
 const EXIT_POLL: Duration = Duration::from_millis(10);
 
-#[derive(Default)]
-pub struct PtyState(pub Mutex<HashMap<String, Session>>);
-
-impl PtyState {
-    /// Every live tab id, sorted. Keyed by **frontend tab id**, unlike
-    /// `ChatHost::live_ids`, which answers in session ids.
-    pub fn live_ids(&self) -> Result<Vec<String>, String> {
-        let guard = self.0.lock().map_err(|e| e.to_string())?;
-        let mut ids: Vec<String> = guard.keys().cloned().collect();
-        ids.sort();
-        Ok(ids)
-    }
-
-    /// Tab ids of every live agent tab running one `(agent, profile)` pair.
-    ///
-    /// The second table the removal guard asks, and it cannot be replaced by the
-    /// claim registry: a **fresh** agent tab holds no claim until its session id
-    /// exists (see `pty_spawn`), so a guard built on claims alone would delete
-    /// the home of an account with an agent running in it.
-    pub fn live_agent_tabs(&self, agent: &str, profile: &str) -> Vec<String> {
-        let guard = match self.0.lock() {
-            Ok(g) => g,
-            Err(e) => e.into_inner(),
-        };
-        let mut ids: Vec<String> = guard
-            .iter()
-            .filter(|(_, s)| {
-                s.agent.as_deref() == Some(agent)
-                    && s.profile.as_deref().unwrap_or(crate::accounts::DEFAULT_PROFILE_ID) == profile
-            })
-            .map(|(id, _)| id.clone())
-            .collect();
-        // A `HashMap` has no order, and a message naming tabs must not shuffle
-        // between two readings of the same state.
-        ids.sort();
-        ids
-    }
-
-    /// What a live tab runs: its agent and account when it is an agent tab, and
-    /// the folder it was opened in.
-    pub fn identity(&self, tab: &str) -> Option<crate::rpc::methods::Identity> {
-        let guard = self.0.lock().unwrap_or_else(|e| e.into_inner());
-        let session = guard.get(tab)?;
-        Some(crate::rpc::methods::Identity {
-            account: session.agent.as_ref().map(|_| {
-                session
-                    .profile
-                    .clone()
-                    .unwrap_or_else(|| crate::accounts::DEFAULT_PROFILE_ID.to_string())
-            }),
-            agent: session.agent.clone(),
-            cwd: Some(session.cwd.clone()).filter(|cwd| !cwd.is_empty()),
-        })
-    }
-}
-
-/// Where a session's raw PTY output is streamed. Swappable so a remount/
-/// re-subscribe (an idempotent pty_spawn) can rewire output to a fresh channel
-/// without restarting the process.
-type Sink = Arc<Mutex<Option<Channel<InvokeResponseBody>>>>;
+const RING_BYTES: usize = 2 * 1024 * 1024;
 
 /// The PTY writer, shared between `pty_write` and the init-delivery threads.
 type SharedWriter = Arc<Mutex<Box<dyn Write + Send>>>;
@@ -135,28 +77,91 @@ type SharedChild = Arc<Mutex<Box<dyn portable_pty::Child + Send + Sync>>>;
 /// ENOTTY, and any slave fd Tori holds keeps the reader from seeing EOF.
 type SharedMaster = Arc<Mutex<Box<dyn MasterPty + Send>>>;
 
-pub struct Session {
+// Chunks of up to 8 KB read ahead of a stalled stream.
+const READ_AHEAD: usize = 32;
+
+pub type Events = Box<dyn Fn(&'static str, Value) + Send + Sync>;
+
+struct Ring {
+    bytes: VecDeque<u8>,
+    cap: usize,
+}
+
+impl Ring {
+    fn new(cap: usize) -> Self {
+        Self {
+            bytes: VecDeque::new(),
+            cap,
+        }
+    }
+
+    fn push(&mut self, chunk: &[u8]) {
+        let chunk = &chunk[chunk.len().saturating_sub(self.cap)..];
+        let over = (self.bytes.len() + chunk.len()).saturating_sub(self.cap);
+        self.bytes.drain(..over);
+        self.bytes.extend(chunk);
+    }
+
+    fn contents(&self) -> Vec<u8> {
+        self.bytes.iter().copied().collect()
+    }
+}
+
+struct Output {
+    ring: Ring,
+    streams: Vec<(u64, Box<dyn Stream>)>,
+    /// Kept after the child goes, so a stream attaching late still hears the end.
+    exited: Option<Option<u32>>,
+}
+
+impl Output {
+    // A blocking write: a reader that falls behind slows the tab, as a slow
+    // terminal would, rather than losing bytes or its stream.
+    fn send(&mut self, kind: u8, payload: &[u8]) {
+        self.streams.retain_mut(|(_, stream)| {
+            let sent = wire::write_frame(stream, kind, payload).is_ok();
+            if !sent {
+                stream.close();
+            }
+            sent
+        });
+    }
+}
+
+type SharedOutput = Arc<Mutex<Output>>;
+
+struct Pty {
     master: SharedMaster,
     writer: SharedWriter,
     child: SharedChild,
-    sink: Sink,
-    /// The agent session id this tab claimed, so `pty_kill` can release it.
-    /// `None` for a shell/command tab, and for a fresh agent tab whose session
-    /// id does not exist yet (see `pty_spawn`).
-    claimed_session: Option<String>,
-    /// Which agent, and which of its accounts, this tab is running.
-    ///
-    /// Recorded for **every** agent tab, claimed or not, and that is the whole
-    /// reason it is here rather than read off the claim: a fresh agent tab
-    /// holds no claim until its session id exists, so a removal guard that
-    /// asked the claim registry alone would delete the home of an account with
-    /// a live agent in it.
+    out: SharedOutput,
     agent: Option<String>,
     profile: Option<String>,
     cwd: String,
     /// A task tab whose command still holds the terminal. Always false for
     /// every other kind.
     busy: Arc<AtomicBool>,
+    token: String,
+}
+
+impl Pty {
+    fn resize(&self, cols: u16, rows: u16) {
+        if let Ok(master) = self.master.lock() {
+            let _ = master.resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            });
+        }
+    }
+
+    fn write(&self, data: &[u8]) {
+        if let Ok(mut writer) = self.writer.lock() {
+            let _ = writer.write_all(data);
+            let _ = writer.flush();
+        }
+    }
 }
 
 /// Last-output tracking for the working/needs-you pulse (Finding A, Tier 2):
@@ -434,444 +439,364 @@ fn command_tab(program: &str, args: &[String], login_path: Option<&str>) -> Comm
     cmd
 }
 
-/// The result of asking to open a PTY tab.
-///
-/// `ownership` is `None` for every tab that never took a claim - a shell tab, a
-/// command tab, a fresh agent tab whose session id does not exist yet, and a
-/// remount of a tab we already hold - and `Some(refusal)` when the claim was
-/// declined and nothing was spawned. A granted claim also reports `None`: there
-/// is nothing for the caller to do about it.
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PtySpawnResult {
-    pub ownership: Option<crate::chat::ownership::ClaimOutcome>,
+pub struct Host {
+    ptys: Mutex<HashMap<String, Arc<Pty>>>,
+    // The check and the insert in `spawn` have to be one step, or two spawns
+    // of one tab both start a shell.
+    spawning: Mutex<()>,
+    events: Events,
+    children: Arc<Children>,
+    sock: PathBuf,
+    cli_dir: PathBuf,
+    next_stream: AtomicU64,
 }
 
-// Sync like the rest of the pty family: the IPC thread is what serializes a
-// remount's re-subscribe against a concurrent spawn of the same id (the
-// check-then-insert below is only safe single-threaded), and the body is an
-// openpty plus a posix_spawn, a few milliseconds at worst.
-#[tauri::command]
-#[allow(
-    clippy::too_many_arguments,
-    reason = "a Tauri command: the arguments are the fields of the IPC payload"
-)]
-pub fn pty_spawn(
-    app: AppHandle,
-    state: State<PtyState>,
-    id: String,
-    program: String,
-    args: Vec<String>,
-    cwd: String,
-    cols: u16,
-    rows: u16,
-    // "shell" | "agent" | "command" | "task". A command tab is `program args`
-    // itself; every other kind is a login shell, and an agent/task is seeded
-    // through `init`.
-    kind: String,
-    // Agent/task tabs: the command line to type into the shell once, after it is
-    // ready (e.g. "claude --resume <id>\n"). Delivered backend-once. Ignored
-    // for a command tab, which has no shell to type into.
-    init: Option<String>,
-    // Quiet threshold (ms) for this session's pty://activity transitions; an
-    // agent tab passes its adapter's own `pty_quiet_ms`, a shell/command tab
-    // omits it and gets `DEFAULT_QUIET_MS`.
-    quiet_ms: Option<u64>,
-    // Extra environment for this tab's process, on top of whatever it inherits.
-    // Empty for every ordinary tab; a sign-in tab carries the profile's home
-    // variable, which is the whole mechanism of signing in to a second account:
-    // the agent writes its credentials wherever this points, so a login tab
-    // spawned without it would sign the user in to the account they already had.
-    env: Option<Vec<(String, String)>>,
-    // The agent session this tab is resuming, and which adapter it belongs to.
-    // Both `None` for a shell/command tab, and for a *fresh* agent tab: its
-    // session id does not exist until the agent writes a transcript, so there is
-    // nothing to claim and nothing that could conflict. A resume is the case
-    // that can corrupt, and it is the case that carries these.
-    session_id: Option<String>,
-    agent_id: Option<String>,
-    // Which account of `agent_id` this tab runs as, `None` for the default
-    // profile. Recorded rather than acted on: the env that makes it true was
-    // resolved by the caller and arrives above.
-    profile: Option<String>,
-    on_output: Channel<InvokeResponseBody>,
-    chat: State<crate::chat::host::ChatState>,
-) -> Result<PtySpawnResult, String> {
-    // If a session with this id already exists, rewire its output to the new
-    // channel (a remount/re-subscribe) and leave the process running.
-    {
-        let guard = state.0.lock().map_err(|e| e.to_string())?;
-        if let Some(session) = guard.get(&id) {
-            *session.sink.lock().map_err(|e| e.to_string())? = Some(on_output);
-            return Ok(PtySpawnResult { ownership: None });
-        }
-    }
-
-    // Ownership, enforced here rather than by a separate command a caller could
-    // forget: an agent session driven by two processes at once appends both
-    // sides of a diverging conversation to one transcript, measured, with no
-    // lock and no error from the CLI. Deliberately *after* the re-subscribe
-    // return above, so a tab remount is not mistaken for a second opener.
-    let mut claimed_session = None;
-    if let (Some(session_id), Some(agent_id)) = (&session_id, &agent_id) {
-        use crate::chat::ownership::{Claim, ClaimOutcome, Surface};
-        let outcome = chat.0.registry.claim(
-            session_id,
-            Claim {
-                surface: Surface::PtyAgent,
-                tab_id: id.clone(),
-                agent: agent_id.clone(),
-                profile: profile
-                    .clone()
-                    .unwrap_or_else(|| crate::accounts::DEFAULT_PROFILE_ID.to_string()),
-                // A PTY agent tab's child is a login shell, not the agent, so
-                // its pid would never match the adapter's running pattern.
-                // Recording it would make the orphan check answer "gone" for a
-                // session that is in fact running.
-                child_pid: None,
-                tori_pid: std::process::id(),
-            },
-        );
-        match outcome {
-            ClaimOutcome::Granted { .. } => claimed_session = Some(session_id.clone()),
-            // A refusal is a value, not an error string, exactly as `chat_spawn`
-            // reports one: the frontend can only offer "go to the tab holding
-            // it" or "end the leftover process" if it is told which tab and
-            // which pid, and it cannot parse either back out of a message.
-            // Nothing is spawned either way, so the corruption stays blocked.
-            refused => {
-                return Ok(PtySpawnResult {
-                    ownership: Some(refused),
-                })
-            }
-        }
-    }
-
-    let pty_system = native_pty_system();
-    let pair = pty_system
-        .openpty(PtySize {
-            rows,
-            cols,
-            pixel_width: 0,
-            pixel_height: 0,
+impl Host {
+    pub fn new(events: Events, children: Arc<Children>, sock: PathBuf, cli_dir: PathBuf) -> Arc<Self> {
+        Arc::new(Self {
+            ptys: Mutex::default(),
+            spawning: Mutex::default(),
+            events,
+            children,
+            sock,
+            cli_dir,
+            next_stream: AtomicU64::new(0),
         })
-        .map_err(|e| e.to_string())?;
-
-    // A command tab never meets the user's rc, so one that attaches tmux or
-    // execs another shell cannot swallow it, and `pty://exit` is its own status.
-    let is_command = kind == "command";
-    let init = if is_command { None } else { init };
-    let mut cmd = if is_command {
-        // Not `login_path()`: this is the IPC thread, and the probe can take 5 s.
-        command_tab(&program, &args, login_path_if_captured())
-    } else {
-        // A login + interactive shell. `-l` re-sources the user's profile so the
-        // shell owns PATH, and exiting a seeded agent drops back to this prompt.
-        let mut cmd = CommandBuilder::new(login_shell());
-        cmd.arg("-l");
-        cmd.arg("-i");
-        cmd
-    };
-    cmd.cwd(&cwd);
-    cmd.env("TERM", "xterm-256color");
-    cmd.env("TERM_PROGRAM", "Tori");
-    cmd.env("TERM_PROGRAM_VERSION", app.package_info().version.to_string());
-    let rpc_env = crate::rpc::child_env(crate::rpc::auth::Caller::Terminal(id.clone()));
-    for (key, value) in crate::credential::spawn_env().into_iter().chain(rpc_env.clone()) {
-        cmd.env(key, value);
-    }
-    let path = cmd
-        .get_env("PATH")
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    cmd.env("PATH", crate::rpc::path_with_cli(&path));
-
-    // Applied last, so a caller pointing an agent at a different home wins over
-    // anything set above.
-    for (key, value) in env.into_iter().flatten() {
-        cmd.env(key, value);
     }
 
-    let spawned = pair.slave.spawn_command(cmd).map_err(|e| e.to_string());
-    if spawned.is_err() {
-        crate::rpc::revoke_env(&rpc_env);
-    }
-    if is_command && spawned.is_err() {
-        // A command that never started has still ended, and `pty://exit` is the
-        // only place its verdict is read; 127 is what a shell reports here.
-        let _ = app.emit(
-            "pty://exit",
-            ExitEvent {
-                id: id.clone(),
-                code: Some(127),
-            },
-        );
-    }
-    let child: SharedChild = Arc::new(Mutex::new(spawned?));
-    drop(pair.slave);
-
-    let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
-    let writer: SharedWriter = Arc::new(Mutex::new(pair.master.take_writer().map_err(|e| e.to_string())?));
-    let master: SharedMaster = Arc::new(Mutex::new(pair.master));
-
-    // An rc that attaches tmux or execs another program takes the terminal from
-    // the shell, and a line typed then lands in whatever took it.
-    let track_busy = kind == "task";
-    let busy = Arc::new(AtomicBool::new(track_busy));
-    let last_output = init.as_ref().map(|_| Arc::new(Mutex::new(None::<Instant>)));
-    if let (Some(init), Some(last_output)) = (init.clone(), last_output.clone()) {
-        let seeder = Seeder {
-            writer: writer.clone(),
-            initialized: Arc::new(Mutex::new(false)),
-            init,
-            master: master.clone(),
-            shell_pid: child.lock().ok().and_then(|c| c.process_id()),
-            last_output,
-        };
-        let seed_app = app.clone();
-        let seed_id = id.clone();
-        let seed_busy = busy.clone();
-        thread::spawn(move || {
-            let live = || {
-                seed_app
-                    .state::<PtyState>()
-                    .0
-                    .lock()
-                    .map(|g| g.contains_key(&seed_id))
-                    .unwrap_or(false)
-            };
-            match seeder.run(live, &SEED_TIMINGS) {
-                Seeded::Refused(foreground) => {
-                    seed_busy.store(false, Ordering::Relaxed);
-                    let _ = seed_app.emit(
-                        "pty://init-refused",
-                        InitRefused {
-                            id: seed_id.clone(),
-                            foreground,
-                        },
-                    );
-                }
-                Seeded::Typed if track_busy => seeder.watch_busy(live, &seed_busy, |busy| {
-                    let _ = seed_app.emit(
-                        "pty://busy",
-                        BusyEvent {
-                            id: seed_id.clone(),
-                            busy,
-                        },
-                    );
-                }),
-                _ => {}
-            }
-        });
+    fn ptys(&self) -> MutexGuard<'_, HashMap<String, Arc<Pty>>> {
+        self.ptys.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    let sink: Sink = Arc::new(Mutex::new(Some(on_output)));
-    let reader_last_output = last_output;
-    let app_handle = app.clone();
-    let emit_id = id.clone();
-    let reader_child = child.clone();
+    fn get(&self, tab: &str) -> Option<Arc<Pty>> {
+        self.ptys().get(tab).cloned()
+    }
 
-    let activity: SharedActivity = Arc::new(Mutex::new(Activity {
-        last_output_at: Instant::now(),
-        active: false,
-    }));
-    let reader_activity = activity.clone();
-    let reader_activity_app = app.clone();
-    let reader_activity_id = id.clone();
+    fn live(&self, tab: &str) -> bool {
+        self.ptys().contains_key(tab)
+    }
 
-    // The reader hands bytes to a coalescer rather than to the channel, so the
-    // rate of IPC sends is the window's rather than the producer's. The reader
-    // itself keeps the init and activity work: both are about *when* a byte
-    // arrived, and holding them for a window would delay the needs-you pulse.
-    let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
-    let coalesce_sink = sink.clone();
-    let coalescer = thread::spawn(move || {
-        coalesce(
-            rx,
-            |bytes| {
-                // Stream raw bytes over the current channel (no base64, no
-                // global broadcast). A swapped-out channel just drops output
-                // until the next subscriber arrives.
-                if let Ok(guard) = coalesce_sink.lock() {
-                    if let Some(ch) = guard.as_ref() {
-                        let _ = ch.send(InvokeResponseBody::Raw(bytes));
-                    }
-                }
-            },
-            COALESCE_WINDOW,
-            COALESCE_MAX_BYTES,
-        );
-    });
+    fn emit(&self, event: &'static str, payload: impl Serialize) {
+        (self.events)(event, json!(payload));
+    }
 
-    thread::spawn(move || {
-        let mut buf = [0u8; 8192];
-        loop {
-            match reader.read(&mut buf) {
-                Ok(0) => break,
-                Ok(n) => {
-                    if tx.send(buf[..n].to_vec()).is_err() {
-                        break;
-                    }
-                    if let Some(last) = &reader_last_output {
-                        if let Ok(mut at) = last.lock() {
-                            *at = Some(Instant::now());
-                        }
-                    }
-                    if let Ok(mut act) = reader_activity.lock() {
-                        if let Some(state) = note_output(&mut act) {
-                            let _ = reader_activity_app.emit(
-                                "pty://activity",
-                                ActivityEvent {
-                                    id: reader_activity_id.clone(),
-                                    state,
-                                },
-                            );
-                            crate::rpc::note_pty_activity(&reader_activity_id, state);
-                        }
-                    }
-                }
-                Err(_) => break,
+    pub fn list(&self) -> Vec<Listed> {
+        let mut tabs: Vec<Listed> = self
+            .ptys()
+            .iter()
+            .map(|(tab, pty)| Listed {
+                tab: tab.clone(),
+                agent: pty.agent.clone(),
+                profile: pty.profile.clone(),
+                cwd: pty.cwd.clone(),
+                busy: pty.busy.load(Ordering::Relaxed),
+            })
+            .collect();
+        tabs.sort_by(|a, b| a.tab.cmp(&b.tab));
+        tabs
+    }
+
+    pub fn tokens(&self) -> HashSet<String> {
+        self.ptys().values().map(|pty| pty.token.clone()).collect()
+    }
+
+    pub fn write(&self, tab: &str, data: &[u8]) {
+        if let Some(pty) = self.get(tab) {
+            pty.write(data);
+        }
+    }
+
+    pub fn resize(&self, tab: &str, cols: u16, rows: u16) {
+        if let Some(pty) = self.get(tab) {
+            pty.resize(cols, rows);
+        }
+    }
+
+    pub fn kill(&self, tab: &str) {
+        let removed = self.ptys().remove(tab);
+        if let Some(pty) = removed {
+            if let Ok(mut child) = pty.child.lock() {
+                let _ = child.kill();
             }
         }
-        // Land the tail before the exit event, so nothing a listener does on
-        // `pty://exit` can overtake the last bytes the process wrote.
-        drop(tx);
-        let _ = coalescer.join();
-        // EOF means nothing holds the slave open any more, so the child is
-        // almost always already reaped; the poll covers the race where it is
-        // not, and gives up rather than hanging on a process that outlives it.
-        let code = poll_exit_code(&reader_child, EXIT_WAIT, EXIT_POLL);
-        // A tab restarted under the same id may already hold a fresh token, so
-        // only this spawn's one goes.
-        crate::rpc::revoke_env(&rpc_env);
-        let _ = app_handle.emit("pty://exit", ExitEvent { id: emit_id, code });
-    });
-
-    // Watcher: no read-timeout exists on a blocking PTY reader, so a separate
-    // thread polls `last_output_at` to detect the active->quiet transition
-    // even when no further byte ever arrives (exactly the needs-you case).
-    // Stops once the session is gone from PtyState (killed, or the reader
-    // above already exited and the session was removed).
-    {
-        let watch_activity = activity.clone();
-        let watch_app = app.clone();
-        let watch_id = id.clone();
-        let threshold = Duration::from_millis(quiet_ms.unwrap_or(DEFAULT_QUIET_MS));
-        thread::spawn(move || loop {
-            thread::sleep(Duration::from_millis(ACTIVITY_POLL_MS));
-            let still_live = watch_app
-                .state::<PtyState>()
-                .0
-                .lock()
-                .map(|g| g.contains_key(&watch_id))
-                .unwrap_or(false);
-            if !still_live {
-                break;
-            }
-            if let Ok(mut act) = watch_activity.lock() {
-                if let Some(state) = check_quiet(&mut act, threshold) {
-                    let _ = watch_app.emit(
-                        "pty://activity",
-                        ActivityEvent {
-                            id: watch_id.clone(),
-                            state,
-                        },
-                    );
-                    crate::rpc::note_pty_activity(&watch_id, state);
-                }
-            }
-        });
     }
 
-    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-    guard.insert(
-        id,
-        Session {
-            master,
-            writer,
-            child,
-            sink,
-            claimed_session,
-            agent: agent_id,
-            profile,
-            cwd,
-            busy,
-        },
-    );
-    Ok(PtySpawnResult { ownership: None })
-}
-
-/// Sync by design, and it must stay that way: keystrokes are fire-and-forget,
-/// so their byte order is exactly IPC arrival order run inline. Moving this to
-/// the blocking pool would let two chunks of one paste race (see exec.rs).
-#[tauri::command]
-pub fn pty_write(state: State<PtyState>, id: String, data: String) -> Result<(), String> {
-    let guard = state.0.lock().map_err(|e| e.to_string())?;
-    if let Some(session) = guard.get(&id) {
-        let mut writer = session.writer.lock().map_err(|e| e.to_string())?;
-        writer.write_all(data.as_bytes()).map_err(|e| e.to_string())?;
-        writer.flush().map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
-
-#[tauri::command]
-pub fn pty_resize(state: State<PtyState>, id: String, cols: u16, rows: u16) -> Result<(), String> {
-    let guard = state.0.lock().map_err(|e| e.to_string())?;
-    if let Some(session) = guard.get(&id) {
-        session
-            .master
-            .lock()
-            .map_err(|e| e.to_string())?
-            .resize(PtySize {
-                rows,
-                cols,
+    pub fn spawn(self: &Arc<Self>, p: Spawn) -> Result<bool, String> {
+        let _one = self.spawning.lock().unwrap_or_else(|e| e.into_inner());
+        if self.live(&p.tab) {
+            return Ok(true);
+        }
+        let pair = native_pty_system()
+            .openpty(PtySize {
+                rows: p.rows,
+                cols: p.cols,
                 pixel_width: 0,
                 pixel_height: 0,
             })
             .map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
 
-#[tauri::command]
-pub fn pty_kill(state: State<PtyState>, chat: State<crate::chat::host::ChatState>, id: String) -> Result<(), String> {
-    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-    if let Some(session) = guard.remove(&id) {
-        if let Ok(mut child) = session.child.lock() {
-            let _ = child.kill();
+        // A command tab never meets the user's rc, so one that attaches tmux or
+        // execs another shell cannot swallow it, and `pty://exit` is its own status.
+        let is_command = p.kind == "command";
+        let init = if is_command { None } else { p.init.clone() };
+        let mut cmd = if is_command {
+            // Not `login_path()`: the probe can take 5 s, and a spawn answers the window.
+            command_tab(&p.program, &p.args, login_path_if_captured())
+        } else {
+            // A login + interactive shell. `-l` re-sources the user's profile so the
+            // shell owns PATH, and exiting a seeded agent drops back to this prompt.
+            let mut cmd = CommandBuilder::new(login_shell());
+            cmd.arg("-l");
+            cmd.arg("-i");
+            cmd
+        };
+        cmd.cwd(&p.cwd);
+        cmd.env("TERM", "xterm-256color");
+        cmd.env("TERM_PROGRAM", "Tori");
+        cmd.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
+        let token = self.children.mint(Caller::Terminal(p.tab.clone()));
+        cmd.env(crate::rpc::ENV_SOCK, &self.sock);
+        cmd.env(crate::rpc::ENV_CALLER, &token);
+        let path = cmd
+            .get_env("PATH")
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        cmd.env("PATH", crate::rpc::path_with_dir(&self.cli_dir, &path));
+        for (key, value) in &p.env {
+            cmd.env(key, value);
         }
-        // Give the session id back, or closing an agent tab would leave it
-        // permanently unopenable until Tori restarts.
-        if let Some(session_id) = &session.claimed_session {
-            chat.0.registry.release(session_id, &id);
+
+        let child = match pair.slave.spawn_command(cmd) {
+            Ok(child) => child,
+            Err(e) => {
+                self.children.revoke_token(&token);
+                return Err(e.to_string());
+            }
+        };
+        let child: SharedChild = Arc::new(Mutex::new(child));
+        drop(pair.slave);
+
+        let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
+        let writer: SharedWriter = Arc::new(Mutex::new(pair.master.take_writer().map_err(|e| e.to_string())?));
+        let master: SharedMaster = Arc::new(Mutex::new(pair.master));
+        let tab = p.tab.clone();
+
+        // An rc that attaches tmux or execs another program takes the terminal from
+        // the shell, and a line typed then lands in whatever took it.
+        let track_busy = p.kind == "task";
+        let busy = Arc::new(AtomicBool::new(track_busy));
+        let last_output = init.as_ref().map(|_| Arc::new(Mutex::new(None::<Instant>)));
+        if let (Some(init), Some(last_output)) = (init, last_output.clone()) {
+            let seeder = Seeder {
+                writer: writer.clone(),
+                initialized: Arc::new(Mutex::new(false)),
+                init,
+                master: master.clone(),
+                shell_pid: child.lock().ok().and_then(|c| c.process_id()),
+                last_output,
+            };
+            let (host, tab, busy) = (self.clone(), tab.clone(), busy.clone());
+            thread::spawn(move || {
+                let live = || host.live(&tab);
+                match seeder.run(live, &SEED_TIMINGS) {
+                    Seeded::Refused(foreground) => {
+                        busy.store(false, Ordering::Relaxed);
+                        host.emit(
+                            "pty://init-refused",
+                            InitRefused {
+                                id: tab.clone(),
+                                foreground,
+                            },
+                        );
+                    }
+                    Seeded::Typed if track_busy => seeder.watch_busy(live, &busy, |busy| {
+                        host.emit("pty://busy", BusyEvent { id: tab.clone(), busy });
+                    }),
+                    _ => {}
+                }
+            });
         }
+
+        let out: SharedOutput = Arc::new(Mutex::new(Output {
+            ring: Ring::new(RING_BYTES),
+            streams: Vec::new(),
+            exited: None,
+        }));
+        let activity: SharedActivity = Arc::new(Mutex::new(Activity {
+            last_output_at: Instant::now(),
+            active: false,
+        }));
+
+        // Init and activity stay on the reader, not the coalescer: both are about
+        // *when* a byte arrived, and a window's delay would hold the needs-you pulse.
+        // Bounded, so a stream that falls behind makes the program wait on its
+        // write, as a slow terminal would, rather than queueing without limit.
+        let (tx, rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(READ_AHEAD);
+        let coalesced = out.clone();
+        let coalescer = thread::spawn(move || {
+            coalesce(
+                rx,
+                |bytes| {
+                    let mut out = coalesced.lock().unwrap_or_else(|e| e.into_inner());
+                    out.ring.push(&bytes);
+                    out.send(DATA, &bytes);
+                },
+                COALESCE_WINDOW,
+                COALESCE_MAX_BYTES,
+            );
+        });
+
+        {
+            let (host, tab, out, child, activity) =
+                (self.clone(), tab.clone(), out.clone(), child.clone(), activity.clone());
+            let token = token.clone();
+            thread::spawn(move || {
+                let mut buf = [0u8; 8192];
+                loop {
+                    match reader.read(&mut buf) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            if tx.send(buf[..n].to_vec()).is_err() {
+                                break;
+                            }
+                            if let Some(last) = &last_output {
+                                if let Ok(mut at) = last.lock() {
+                                    *at = Some(Instant::now());
+                                }
+                            }
+                            if let Ok(mut act) = activity.lock() {
+                                if let Some(state) = note_output(&mut act) {
+                                    host.emit("pty://activity", ActivityEvent { id: tab.clone(), state });
+                                }
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+                // Land the tail before the exit, so nothing a listener does on
+                // `pty://exit` can overtake the last bytes the process wrote.
+                drop(tx);
+                let _ = coalescer.join();
+                // EOF means nothing holds the slave open any more, so the child is
+                // almost always already reaped; the poll covers the race where it is
+                // not, and gives up rather than hanging on a process that outlives it.
+                let code = poll_exit_code(&child, EXIT_WAIT, EXIT_POLL);
+                host.children.revoke_token(&token);
+                {
+                    let mut out = out.lock().unwrap_or_else(|e| e.into_inner());
+                    out.exited = Some(code);
+                    out.send(EXIT, &wire::exit(code));
+                    for (_, stream) in out.streams.drain(..) {
+                        stream.close();
+                    }
+                }
+                host.emit("pty://exit", ExitEvent { id: tab, code });
+            });
+        }
+
+        // Watcher: no read-timeout exists on a blocking PTY reader, so a separate
+        // thread polls `last_output_at` to detect the active->quiet transition
+        // even when no further byte ever arrives (exactly the needs-you case).
+        {
+            let (host, tab) = (self.clone(), tab.clone());
+            let threshold = Duration::from_millis(p.quiet_ms.unwrap_or(DEFAULT_QUIET_MS));
+            thread::spawn(move || loop {
+                thread::sleep(Duration::from_millis(ACTIVITY_POLL_MS));
+                if !host.live(&tab) {
+                    break;
+                }
+                if let Ok(mut act) = activity.lock() {
+                    if let Some(state) = check_quiet(&mut act, threshold) {
+                        host.emit("pty://activity", ActivityEvent { id: tab.clone(), state });
+                    }
+                }
+            });
+        }
+
+        self.ptys().insert(
+            tab,
+            Arc::new(Pty {
+                master,
+                writer,
+                child,
+                out,
+                agent: p.agent,
+                profile: p.profile,
+                cwd: p.cwd,
+                busy,
+                token,
+            }),
+        );
+        Ok(false)
     }
-    Ok(())
-}
 
-/// Every PTY session this process still holds, by **frontend tab id**, sorted.
-///
-/// The counterpart to `chat_live_sessions`, which answers in session ids. A
-/// reload loses the tabs but not the processes, so a restore matches its stored
-/// tab ids against this to know which ones only need rewiring.
-#[tauri::command]
-pub fn pty_live_ids(state: State<PtyState>) -> Result<Vec<String>, String> {
-    state.live_ids()
-}
-
-/// Task tabs whose command still holds the terminal, by **frontend tab id**,
-/// sorted. `pty://busy` carries every change after this.
-#[tauri::command]
-pub fn pty_busy_ids(state: State<PtyState>) -> Result<Vec<String>, String> {
-    let guard = state.0.lock().map_err(|e| e.to_string())?;
-    let mut ids: Vec<String> = guard
-        .iter()
-        .filter(|(_, s)| s.busy.load(Ordering::Relaxed))
-        .map(|(id, _)| id.clone())
-        .collect();
-    ids.sort();
-    Ok(ids)
+    pub fn attach(
+        &self,
+        id: Value,
+        p: &AttachParams,
+        mut stream: Box<dyn Stream>,
+        mut reader: BufReader<Box<dyn Stream>>,
+    ) {
+        let Some(pty) = self.get(&p.tab) else {
+            let refused = Response::err(id, RpcError::new(INVALID_PARAMS, format!("no tab {}", p.tab)));
+            let _ = write_line(&mut stream, &to_line(&refused));
+            stream.close();
+            return;
+        };
+        let write_half = match stream.try_clone_box() {
+            Ok(half) => half,
+            Err(e) => {
+                let refused = Response::err(id, RpcError::new(INVALID_PARAMS, e.to_string()));
+                let _ = write_line(&mut stream, &to_line(&refused));
+                stream.close();
+                return;
+            }
+        };
+        let key = self.next_stream.fetch_add(1, Ordering::Relaxed);
+        let replayed;
+        {
+            // Under the output lock, so no live byte lands between the ring and the stream.
+            let mut out = pty.out.lock().unwrap_or_else(|e| e.into_inner());
+            if write_line(&mut stream, &to_line(&Response::ok(id, json!({})))).is_err() {
+                return;
+            }
+            let ring = if p.replay { out.ring.contents() } else { Vec::new() };
+            replayed = !ring.is_empty();
+            if replayed && wire::write_frame(&mut stream, DATA, &ring).is_err() {
+                return;
+            }
+            if let Some(code) = out.exited {
+                let _ = wire::write_frame(&mut stream, EXIT, &wire::exit(code));
+                stream.close();
+                return;
+            }
+            out.streams.push((key, write_half));
+        }
+        if replayed {
+            // A size change is what makes a TUI repaint over the replayed bytes.
+            pty.resize(p.cols, p.rows.saturating_sub(1).max(1));
+        }
+        pty.resize(p.cols, p.rows);
+        while let Ok(Some((kind, payload))) = wire::read_frame(&mut reader) {
+            match kind {
+                DATA => pty.write(&payload),
+                RESIZE => {
+                    if let Some((cols, rows)) = wire::parse_resize(&payload) {
+                        pty.resize(cols, rows);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut out = pty.out.lock().unwrap_or_else(|e| e.into_inner());
+        out.streams.retain(|(at, stream)| {
+            let other = *at != key;
+            if !other {
+                stream.close();
+            }
+            other
+        });
+    }
 }
 
 #[cfg(test)]
@@ -904,15 +829,8 @@ mod tests {
         (writer, seen)
     }
 
-    /// A real PTY running `sleep`, so the state holds a session shaped exactly
-    /// like a spawned one. `pty_spawn` itself needs an `AppHandle` and a
-    /// `Channel`, neither of which exists in a unit test.
-    fn live_session(claimed_session: Option<&str>) -> Session {
-        agent_session(claimed_session, None, None)
-    }
-
-    /// A live tab, optionally on a named agent and account.
-    fn agent_session(claimed_session: Option<&str>, agent: Option<&str>, profile: Option<&str>) -> Session {
+    /// A real child on a PTY, running `sleep`, and the master that keeps it from a hangup.
+    fn sleeping() -> (SharedChild, Box<dyn MasterPty + Send>) {
         let pair = native_pty_system()
             .openpty(PtySize {
                 rows: 24,
@@ -923,19 +841,20 @@ mod tests {
             .expect("openpty");
         let mut cmd = CommandBuilder::new("sleep");
         cmd.arg("30");
-        let child = pair.slave.spawn_command(cmd).expect("spawn");
-        let writer: Box<dyn Write + Send> = pair.master.take_writer().expect("writer");
-        Session {
-            master: Arc::new(Mutex::new(pair.master)),
-            writer: Arc::new(Mutex::new(writer)),
-            child: Arc::new(Mutex::new(child)),
-            sink: Arc::new(Mutex::new(None)),
-            claimed_session: claimed_session.map(str::to_string),
-            agent: agent.map(str::to_string),
-            profile: profile.map(str::to_string),
-            cwd: String::new(),
-            busy: Arc::new(AtomicBool::new(false)),
-        }
+        let child = Arc::new(Mutex::new(pair.slave.spawn_command(cmd).expect("spawn")));
+        (child, pair.master)
+    }
+
+    #[test]
+    fn the_ring_keeps_the_last_bytes_it_was_given() {
+        let mut ring = Ring::new(8);
+        ring.push(b"abc");
+        ring.push(b"defgh");
+        assert_eq!(ring.contents(), b"abcdefgh");
+        ring.push(b"ij");
+        assert_eq!(ring.contents(), b"cdefghij");
+        ring.push(b"0123456789");
+        assert_eq!(ring.contents(), b"23456789", "a chunk past the cap keeps its own tail");
     }
 
     /// One shell line on a real PTY, read to EOF and then polled, which is the
@@ -959,113 +878,6 @@ mod tests {
         let mut buf = [0u8; 1024];
         while matches!(reader.read(&mut buf), Ok(n) if n > 0) {}
         poll_exit_code(&child, EXIT_WAIT, EXIT_POLL)
-    }
-
-    /// The listing a restore matches terminal tabs against answers in **tab
-    /// ids**, never the session id a tab happens to have claimed. Chat answers
-    /// the other half in session ids (`ChatHost::live_ids`), so the two sets
-    /// stay disjoint and a restore can match each surface by its own key.
-    #[test]
-    fn live_ids_are_tab_ids_not_the_sessions_those_tabs_claimed() {
-        let state = PtyState::default();
-        {
-            let mut guard = state.0.lock().unwrap();
-            guard.insert("tab-shell".into(), live_session(None));
-            guard.insert("tab-agent".into(), live_session(Some("s-claimed")));
-        }
-
-        let ids = state.live_ids().unwrap();
-        // Killed before the asserts, so a failing one does not leave the
-        // children running for the rest of the suite.
-        for session in state.0.lock().unwrap().drain().map(|(_, s)| s) {
-            let _ = session.child.lock().unwrap().kill();
-        }
-
-        assert_eq!(ids, vec!["tab-agent", "tab-shell"], "sorted tab ids");
-        assert!(
-            !ids.iter().any(|id| id == "s-claimed"),
-            "a claimed session id must not appear in the tab listing"
-        );
-    }
-
-    /// The removal guard's second table. A **fresh** agent tab holds no claim
-    /// until its session id exists, so this listing is the only thing that can
-    /// stop an account's home being deleted out from under one.
-    #[test]
-    fn a_tab_identity_is_its_folder_and_for_an_agent_tab_its_account() {
-        use crate::rpc::methods::Identity;
-        let state = PtyState::default();
-        {
-            let mut guard = state.0.lock().unwrap();
-            guard.insert(
-                "shell".into(),
-                Session {
-                    cwd: "/p".into(),
-                    ..live_session(None)
-                },
-            );
-            guard.insert(
-                "agent".into(),
-                Session {
-                    cwd: "/p/wt".into(),
-                    ..agent_session(None, Some("claude"), None)
-                },
-            );
-        }
-        assert_eq!(
-            state.identity("shell"),
-            Some(Identity {
-                agent: None,
-                account: None,
-                cwd: Some("/p".into())
-            })
-        );
-        assert_eq!(
-            state.identity("agent"),
-            Some(Identity {
-                agent: Some("claude".into()),
-                account: Some(crate::accounts::DEFAULT_PROFILE_ID.into()),
-                cwd: Some("/p/wt".into()),
-            })
-        );
-        assert_eq!(state.identity("closed"), None);
-    }
-
-    #[test]
-    fn live_agent_tabs_names_only_the_agent_and_account_asked_about() {
-        let state = PtyState::default();
-        {
-            let mut guard = state.0.lock().unwrap();
-            // A fresh globex agent tab: no claimed session, and the case this
-            // whole accessor exists for.
-            guard.insert(
-                "tab-fresh-globex".into(),
-                agent_session(None, Some("claude"), Some("globex")),
-            );
-            guard.insert(
-                "tab-resumed-globex".into(),
-                agent_session(Some("s-1"), Some("claude"), Some("globex")),
-            );
-            guard.insert("tab-default".into(), agent_session(None, Some("claude"), None));
-            guard.insert(
-                "tab-other-agent".into(),
-                agent_session(None, Some("codex"), Some("globex")),
-            );
-            guard.insert("tab-shell".into(), live_session(None));
-        }
-
-        let globex = state.live_agent_tabs("claude", "globex");
-        let default = state.live_agent_tabs("claude", "default");
-        for session in state.0.lock().unwrap().drain().map(|(_, s)| s) {
-            let _ = session.child.lock().unwrap().kill();
-        }
-
-        assert_eq!(globex, vec!["tab-fresh-globex", "tab-resumed-globex"]);
-        // A tab that recorded no profile ran on the login the user already had.
-        assert_eq!(default, vec!["tab-default"]);
-        // Another agent's tab is not this account's, and a bare shell runs no
-        // agent at all, so neither can block a removal.
-        assert!(!globex.iter().any(|id| id == "tab-other-agent" || id == "tab-shell"));
     }
 
     /// "remounting a running task's tab re-subscribes without re-typing the
@@ -1422,9 +1234,9 @@ mod tests {
     /// a surface over the output somebody needed.
     #[test]
     fn a_child_outliving_the_poll_reports_no_code() {
-        let session = live_session(None);
-        let code = poll_exit_code(&session.child, Duration::from_millis(50), Duration::from_millis(10));
-        let _ = session.child.lock().unwrap().kill();
+        let (child, _master) = sleeping();
+        let code = poll_exit_code(&child, Duration::from_millis(50), Duration::from_millis(10));
+        let _ = child.lock().unwrap().kill();
         assert_eq!(code, None);
     }
 
@@ -1433,13 +1245,13 @@ mod tests {
     /// would freeze every terminal in the app until the child chose to exit.
     #[test]
     fn the_exit_poll_never_blocks_a_kill() {
-        let session = live_session(None);
-        let polling = session.child.clone();
+        let (child, _master) = sleeping();
+        let polling = child.clone();
         let poll = thread::spawn(move || poll_exit_code(&polling, EXIT_WAIT, EXIT_POLL));
 
         thread::sleep(Duration::from_millis(30));
         let start = Instant::now();
-        let _ = session.child.lock().unwrap().kill();
+        let _ = child.lock().unwrap().kill();
         let waited = start.elapsed();
         let code = poll.join().unwrap();
 
