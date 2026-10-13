@@ -669,6 +669,7 @@ pub fn run() {
             rpc::pr_watch_start,
             rpc::pr_watch_stop,
             rpc::rpc_reply,
+            rpc::daemon_status,
             rpc::rpc_asks_pending,
             rpc::rpc_ask_answer,
             rpc::autopilot_start,
