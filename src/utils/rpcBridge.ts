@@ -3,6 +3,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { asTabProfile } from "./agentHealth";
+import { watchDaemon } from "./daemonStatus";
 import { quotaBand, quotaState } from "./chatRateLimit";
 import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "./events";
 import { closeAsk, loadPendingAsks, showAsk, type SocketAsk } from "./socketAsks";
@@ -35,7 +36,11 @@ export async function serveRpcBridge(): Promise<UnlistenFn> {
     }
   });
   void loadPendingAsks();
-  return unlisten;
+  const unwatch = await watchDaemon();
+  return () => {
+    unlisten();
+    unwatch();
+  };
 }
 
 handleRpc("window.open", ({ path, line }: { path: string; line: number | null }) => {

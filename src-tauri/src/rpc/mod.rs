@@ -3,8 +3,7 @@
 //! [[adr_one_protocol_several_fronts]].
 //!
 //! Found two ways. A process Tori spawns gets `TORI_SOCK` and `TORI_CALLER` in
-//! its env; anything else reads the `rpc.json` bridge file, the same shape and
-//! the same lifetime rule as the askpass one in `crate::credential`.
+//! its env; anything else reads the `rpc.json` bridge file the daemon writes.
 
 pub mod approvals;
 pub mod asks;
@@ -12,12 +11,14 @@ pub mod auth;
 pub mod awake;
 pub mod bridge;
 pub mod client;
+pub mod daemon;
 pub mod devices;
 pub mod dots;
 pub mod events;
 pub mod frame;
 pub mod hub;
 pub mod methods;
+pub mod outbox;
 pub mod pairing;
 pub mod pr_wake;
 pub mod pr_watch;
@@ -29,6 +30,7 @@ pub mod states;
 pub mod table;
 pub mod transport;
 pub mod watcher;
+pub mod window;
 pub mod ws;
 
 use std::cell::OnceCell;
@@ -40,7 +42,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::autopilot::AutopilotStore;
 use asks::{Ask, Asks};
-use auth::{Caller, Children, Credential};
+use auth::Caller;
 use bridge::{Bridge, REPLY_TIMEOUT, REQUEST_EVENT};
 use events::{session_event, Place};
 use hub::{Channel, Hub};
@@ -50,15 +52,16 @@ use runner::Runner;
 use serde_json::{json, Value};
 use server::{Server, AUTH_TIMEOUT};
 use states::{Held, SessionStates, Source};
-use transport::{Transport, UnixTransport};
 use watcher::Watcher;
+use window::{Link, Status};
 
 pub const ENV_SOCK: &str = "TORI_SOCK";
 // Not `TORI_TOKEN`: codex's shell tool carries default excludes for names like
 // `*TOKEN*`, `*KEY*` and `*SECRET*`, and an agent's shell has to see this one.
 pub const ENV_CALLER: &str = "TORI_CALLER";
 
-static SOCKET: OnceLock<(String, Arc<Children>)> = OnceLock::new();
+static SOCKET: OnceLock<String> = OnceLock::new();
+static LINK: OnceLock<Arc<Link>> = OnceLock::new();
 static CLI_DIR: OnceLock<PathBuf> = OnceLock::new();
 static ASKS: OnceLock<Arc<Asks>> = OnceLock::new();
 static RUNNER: OnceLock<Arc<Runner>> = OnceLock::new();
@@ -68,7 +71,7 @@ static WATCHER: OnceLock<Arc<Watcher>> = OnceLock::new();
 static EVENTS: OnceLock<(Arc<Hub>, Arc<SessionStates>)> = OnceLock::new();
 
 pub struct RpcState {
-    transport: Arc<UnixTransport>,
+    link: Arc<Link>,
     remote: Arc<Remote>,
     pub hub: Arc<Hub>,
     states: Arc<SessionStates>,
@@ -81,17 +84,29 @@ pub struct RpcState {
 }
 
 impl RpcState {
-    /// Called at exit. The bridge file goes only if it still names this
-    /// instance, so quitting one of two running copies leaves the other findable.
+    /// Called at exit. The daemon, its socket and the bridge file stay.
     pub fn shutdown(&self) {
-        let path = bridge_path();
-        let ours = self.transport.sock_path().to_string_lossy();
-        if crate::credential::socket_in_file(&path).is_some_and(|(sock, _)| sock == ours) {
-            let _ = std::fs::remove_file(path);
-        }
         self.remote.stop();
-        self.transport.shutdown();
+        self.link.close();
     }
+}
+
+// What the window shows when the daemon cannot be reached, kept for a webview
+// that loads after the event went out.
+const DAEMON_EVENT: &str = "daemon://status";
+static DAEMON_STATUS: std::sync::Mutex<Option<Status>> = std::sync::Mutex::new(None);
+
+fn daemon_status_emitter(app: &AppHandle) -> Box<dyn Fn(&Status) + Send + Sync> {
+    let app = app.clone();
+    Box::new(move |status| {
+        *DAEMON_STATUS.lock().unwrap_or_else(|e| e.into_inner()) = Some(status.clone());
+        let _ = app.emit(DAEMON_EVENT, status);
+    })
+}
+
+#[tauri::command]
+pub fn daemon_status() -> Option<Status> {
+    DAEMON_STATUS.lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
 // The webview is not a socket subscriber, so the channel is mirrored to it.
@@ -133,14 +148,12 @@ fn devices_changed(app: &AppHandle, ended: Option<pairing::Ended>) {
 }
 
 pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
-    let transport = Arc::new(UnixTransport::bind()?);
-    let token = crate::chat::approval::random_token();
+    let paths = daemon::paths();
     let hub = Arc::new(Hub::default());
     {
         let app = app.clone();
         hub.watch_devices(Box::new(move || devices_changed(&app, None)));
     }
-    let children = Arc::new(Children::default());
     let states = Arc::new(SessionStates::default());
     let devices = Arc::new(devices::Devices::open(devices_path()));
     let pairing = {
@@ -178,6 +191,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     }));
     start_pr_wake(&app, &states);
     start_composer(&app, &hub, &states, &autopilot);
+    let on_status = daemon_status_emitter(&app);
     let server = Arc::new(Server {
         hub: hub.clone(),
         backend: Box::new(methods::TauriBackend {
@@ -191,30 +205,19 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
         }),
         auth_timeout: AUTH_TIMEOUT,
     });
-    let local = Arc::new(Credential::Local {
-        process: token.clone(),
-        children: children.clone(),
-    });
-    server::serve(transport.clone() as Arc<dyn Transport>, local, server.clone());
-    let remote = Arc::new(Remote::new(server, devices.clone(), pairing));
+    let remote = Arc::new(Remote::new(server.clone(), devices.clone(), pairing));
     remote.apply(&crate::settings::remote());
 
-    let sock = transport.sock_path().to_string_lossy().into_owned();
-    if let Err(e) = crate::credential::write_bridge(&bridge_path(), &sock, &token) {
-        eprintln!("tori: rpc bridge file not written: {e}");
-    }
-    let _ = SOCKET.set((sock, children));
+    // Derived, not asked for, so a spawn has its env before the link is up.
+    let _ = SOCKET.set(paths.sock.to_string_lossy().into_owned());
+    let _ = CLI_DIR.set(paths.cli_link_dir.clone());
+    let link = Link::start(server, paths, true, on_status);
+    let _ = LINK.set(link.clone());
     let _ = ASKS.set(asks.clone());
     let _ = RUNNER.set(runner.clone());
     let _ = EVENTS.set((hub.clone(), states.clone()));
-    match link_cli(transport.sock_path()) {
-        Ok(dir) => {
-            let _ = CLI_DIR.set(dir);
-        }
-        Err(e) => eprintln!("tori: cli not linked onto PATH: {e}"),
-    }
     Ok(RpcState {
-        transport,
+        link,
         remote,
         hub,
         states,
@@ -1112,15 +1115,6 @@ pub fn rpc_quota(rpc: tauri::State<RpcState>, agent: String, profile: Option<Str
     }
 }
 
-/// A `bin/tori` link beside the socket, so it goes with the socket's private
-/// dir at exit and two running copies each put their own binary first.
-fn link_cli(sock: &std::path::Path) -> std::io::Result<PathBuf> {
-    let dir = sock.parent().unwrap_or(sock).join("bin");
-    std::fs::create_dir_all(&dir)?;
-    std::os::unix::fs::symlink(std::env::current_exe()?, dir.join("tori"))?;
-    Ok(dir)
-}
-
 /// `path` with the directory holding the `tori` link in front. Unchanged when
 /// the socket never came up, since a `tori` that cannot reach anything is worse
 /// than none.
@@ -1132,32 +1126,29 @@ pub fn path_with_cli(path: &str) -> String {
     }
 }
 
-/// Env for a process Tori spawns, with a token minted for `caller`. Empty when
-/// the socket never came up.
+/// Env for a process Tori spawns, with a token the daemon minted for `caller`.
+/// Empty when the daemon is not attached to vouch for it.
 pub fn child_env(caller: Caller) -> Vec<(String, String)> {
-    SOCKET
-        .get()
-        .map(|(sock, children)| {
-            vec![
-                (ENV_SOCK.to_string(), sock.clone()),
-                (ENV_CALLER.to_string(), children.mint(caller)),
-            ]
-        })
+    let (Some(sock), Some(link)) = (SOCKET.get(), LINK.get()) else {
+        return Vec::new();
+    };
+    link.mint(caller)
+        .map(|token| vec![(ENV_SOCK.to_string(), sock.clone()), (ENV_CALLER.to_string(), token)])
         .unwrap_or_default()
 }
 
 pub fn revoke_env(env: &[(String, String)]) {
-    if let Some((_, children)) = SOCKET.get() {
+    if let Some(link) = LINK.get() {
         env.iter()
             .filter(|(key, _)| key == ENV_CALLER)
-            .for_each(|(_, token)| children.revoke_token(token));
+            .for_each(|(_, token)| link.revoke_token(token));
     }
 }
 
 // A chat that ended can no longer show its asks, so they go with its token.
 pub fn revoke(caller: &Caller) {
-    if let Some((_, children)) = SOCKET.get() {
-        children.revoke(caller);
+    if let Some(link) = LINK.get() {
+        link.revoke(caller);
     }
     if let (Caller::Chat(session), Some(asks)) = (caller, ASKS.get()) {
         asks.forget_session(session);
