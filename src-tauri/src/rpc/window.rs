@@ -38,6 +38,8 @@ pub enum Status {
 
 type Pending = Mutex<HashMap<u64, SyncSender<Result<Value, RpcError>>>>;
 
+pub type OnEvent = Box<dyn Fn(&str, &Value) + Send + Sync>;
+
 struct Conn {
     out: Arc<Outbox>,
     pending: Pending,
@@ -63,6 +65,7 @@ pub struct Link {
     unreachable: AtomicBool,
     closing: AtomicBool,
     on_status: Box<dyn Fn(&Status) + Send + Sync>,
+    on_event: OnEvent,
 }
 
 impl Link {
@@ -71,6 +74,7 @@ impl Link {
         paths: Paths,
         spawn: bool,
         on_status: Box<dyn Fn(&Status) + Send + Sync>,
+        on_event: OnEvent,
     ) -> Arc<Self> {
         let link = Arc::new(Self {
             server,
@@ -82,6 +86,7 @@ impl Link {
             unreachable: AtomicBool::new(false),
             closing: AtomicBool::new(false),
             on_status,
+            on_event,
         });
         let upstream = Arc::downgrade(&link);
         link.server.hub.set_upstream(Arc::new(move |channel, data| {
@@ -272,7 +277,7 @@ impl Link {
                     let ids: HashSet<String> = serde_json::from_value(value["params"].clone()).unwrap_or_default();
                     self.server.hub.set_remote_chats(ids);
                 }
-                Some(_) => {}
+                Some(event) => (self.on_event)(event, &value["params"]),
                 None => {
                     let Some(id) = value["id"].as_u64() else { continue };
                     let outcome = match value.get("error") {
@@ -311,7 +316,7 @@ impl Link {
         }
     }
 
-    fn request(&self, method: &str, params: Value, wait: Duration) -> Result<Value, RpcError> {
+    pub fn request(&self, method: &str, params: Value, wait: Duration) -> Result<Value, RpcError> {
         let conn = self
             .wait_for_conn(wait)
             .ok_or_else(|| RpcError::new(REFUSED, "the daemon is not attached"))?;
@@ -327,7 +332,7 @@ impl Link {
             .unwrap_or_else(|_| Err(RpcError::new(REFUSED, "the daemon did not answer")))
     }
 
-    fn notify(&self, method: &'static str, params: Value) {
+    pub fn notify(&self, method: &'static str, params: Value) {
         if let Some(conn) = self.current() {
             conn.out.push(to_line(&Notification::new(method, params)));
         }
@@ -342,10 +347,6 @@ impl Link {
             .map(str::to_string)
     }
 
-    pub fn revoke_token(&self, token: &str) {
-        self.notify("revoke_token", json!({ "token": token }));
-    }
-
     pub fn revoke(&self, caller: &Caller) {
         self.notify("revoke", json!({ "caller": caller }));
     }
@@ -353,6 +354,41 @@ impl Link {
     /// Never blocks: a publish runs on whatever thread noticed the event.
     fn publish(&self, channel: &Channel, data: &Value) {
         self.notify("publish", json!({ "topic": channel.to_string(), "data": data }));
+    }
+
+    // With the ring: a surface attaching is a fresh xterm, since one that
+    // unmounts kills its tab.
+    pub fn attach_pty(&self, tab: &str, cols: u16, rows: u16) -> Result<(UnixStream, BufReader<UnixStream>), String> {
+        let sock = self.paths.sock.to_string_lossy();
+        let token = crate::credential::socket_in_file(&self.paths.rpc_json)
+            .filter(|(at, _)| *at == sock)
+            .map(|(_, token)| token)
+            .ok_or_else(|| format!("{} names another socket", self.paths.rpc_json.display()))?;
+        let params = crate::pty::wire::AttachParams {
+            token,
+            tab: tab.to_string(),
+            replay: true,
+            cols,
+            rows,
+        };
+        let frame = json!({ "jsonrpc": "2.0", "id": 0, "method": crate::pty::wire::ATTACH_METHOD, "params": params });
+        let mut stream = UnixStream::connect(&self.paths.sock).map_err(|e| e.to_string())?;
+        stream
+            .write_all(to_line(&frame).as_bytes())
+            .map_err(|e| e.to_string())?;
+        stream
+            .set_read_timeout(Some(HANDSHAKE_WAIT))
+            .map_err(|e| e.to_string())?;
+        let mut reader = BufReader::new(stream.try_clone().map_err(|e| e.to_string())?);
+        let reply = read_line(&mut reader, MAX_LINK_LINE)
+            .map_err(|e| e.to_string())?
+            .ok_or("the daemon closed the attach stream")?;
+        stream.set_read_timeout(None).map_err(|e| e.to_string())?;
+        let reply: Value = serde_json::from_str(&reply).map_err(|e| e.to_string())?;
+        if let Some(message) = reply["error"]["message"].as_str() {
+            return Err(message.to_string());
+        }
+        Ok((stream, reader))
     }
 
     /// At app exit. Leaves the daemon running.

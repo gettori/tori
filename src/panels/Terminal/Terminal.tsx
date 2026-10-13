@@ -161,6 +161,8 @@ import {
   advanceTabState,
   canRevertToDraft,
   dropTabState,
+  isHeld,
+  markHeld,
   isChatDraft,
   open,
   seedInert,
@@ -495,11 +497,8 @@ export default function Terminal(props: {
     // a surface or spawns a process, not even for the frame between opening it
     // and recording what it is.
     //
-    // Unless the backend is still holding this one, which is a webview reload
-    // rather than a relaunch. Then the seed is skipped and `defaultState` reads
-    // the tab as `live`, so its surface mounts at once and re-subscribes: a
-    // detached PTY's output is dropped rather than buffered, so a tab that
-    // waited to be clicked would come back missing whatever ran meanwhile.
+    // Unless the backend is still holding this one: then it is `live`, and a
+    // terminal waits to be on screen to mount, since the ring keeps its output.
     //
     // `hosts` is asked in the surface's own key. A chat ignores the id it comes
     // back under, because the host is keyed by session and rewires whichever tab
@@ -630,6 +629,7 @@ export default function Terminal(props: {
         // focusOrResume already focuses an existing tab rather than spawning a
         // second one, so an already-live session never double-spawns.
         const id = restoredId(d.id, shellId, (id) => live.pty.has(id));
+        if (live.pty.has(id)) markHeld(id);
         await focusOrResume(
           {
             sessionId: s.id,
@@ -674,6 +674,7 @@ export default function Terminal(props: {
         }
       }
       const id = restoredId(d.id, shellId, (id) => live.pty.has(id));
+      if (live.pty.has(id)) markHeld(id);
       openOrActivate(
         {
           id,
@@ -2518,7 +2519,10 @@ export default function Terminal(props: {
   const ptyStage = (u: UnifiedTab) => {
     const term = asTerm(u) as PtyTab;
     const active = createMemo(() => onScreen(term));
-    const woken = wokenMemo(term);
+    const woken = createMemo<boolean>(
+      (was) => was || (tabState(term) !== "inert" && (!isHeld(term.id) || active())),
+      false,
+    );
     wakeOnScreen(term, active);
     // No fallback: an inert tab is a strip entry and nothing else, so there is
     // no PTY to spawn and nothing to draw. A terminal kind has no readable

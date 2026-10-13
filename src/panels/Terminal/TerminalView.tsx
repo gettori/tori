@@ -39,6 +39,7 @@ export type PtyExit = { id: string; code: number | null };
 
 // File paths in terminal output, with optional :line:col. Requires an extension
 // so it doesn't match arbitrary words; existence is validated before linking.
+const ACK_BYTES = 100 * 1024;
 const PATH_RE = /[\w.\-~/]+\.\w+(?::\d+(?::\d+)?)?/g;
 
 // PTY output arrives over a Tauri Channel as raw bytes (an ArrayBuffer), or as a
@@ -321,7 +322,18 @@ export default function TerminalView(props: {
     // Per-session output channel (replaces the global base64 pty://output event).
     // A fresh channel each mount; the Rust side rewires it to the live session.
     const output = new Channel<ArrayBuffer | Uint8Array | number[]>();
-    output.onmessage = (msg) => term?.write(toBytes(msg));
+    // Acked once drawn, so the backend stops reading while xterm is behind and
+    // a Ctrl-C is not buried under output nobody has seen yet.
+    let drawn = 0;
+    output.onmessage = (msg) => {
+      const bytes = toBytes(msg);
+      term?.write(bytes, () => {
+        drawn += bytes.length;
+        if (drawn < ACK_BYTES) return;
+        invoke("pty_ack", { id: props.id, bytes: drawn }).catch(() => {});
+        drawn = 0;
+      });
+    };
 
     // Agent tabs use their adapter's own (empirically measured) quiet
     // threshold for the pty://activity working/needs-you pulse; shell/command

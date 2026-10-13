@@ -188,9 +188,24 @@ export function seedInert(id: string): void {
 export const stateOnActivate = (t: OpenTerm): TabState =>
   tabState(t) === "inert" ? statesFor(t.kind)[1] : tabState(t);
 
+// Restored terminals the daemon still runs. Mounting them all at once would
+// replay every ring at launch.
+const [held, setHeld] = createSignal<Set<string>>(new Set());
+
+export function markHeld(id: string): void {
+  setHeld(new Set(held()).add(id));
+}
+
+export const isHeld = (id: string) => held().has(id);
+
 /** A closed tab leaves no state behind, or a future tab reusing the id would
  *  inherit it (restore reuses stored ids since Phase 1). */
 export function dropTabState(id: string): void {
+  if (held().has(id)) {
+    const next = new Set(held());
+    next.delete(id);
+    setHeld(next);
+  }
   if (!(id in tabStates())) return;
   const next = { ...tabStates() };
   delete next[id];
@@ -265,6 +280,7 @@ export function resetTerminalTabModel() {
   setOpen([]);
   setTabTitles({});
   setTabStates({});
+  setHeld(new Set<string>());
   setActiveWorkspace(null);
   setActiveByWorkspace({});
 }

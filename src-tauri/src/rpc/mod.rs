@@ -101,7 +101,17 @@ fn daemon_status_emitter(app: &AppHandle) -> Box<dyn Fn(&Status) + Send + Sync> 
     Box::new(move |status| {
         *DAEMON_STATUS.lock().unwrap_or_else(|e| e.into_inner()) = Some(status.clone());
         let _ = app.emit(DAEMON_EVENT, status);
+        if *status == Status::Connected {
+            // Off the link's thread, which is the one that reads the answer.
+            let app = app.clone();
+            std::thread::spawn(move || crate::pty::resync(&app));
+        }
     })
+}
+
+fn pty_events(app: &AppHandle) -> window::OnEvent {
+    let app = app.clone();
+    Box::new(move |event, payload| crate::pty::heard(&app, event, payload))
 }
 
 #[tauri::command]
@@ -192,6 +202,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     start_pr_wake(&app, &states);
     start_composer(&app, &hub, &states, &autopilot);
     let on_status = daemon_status_emitter(&app);
+    let on_event = pty_events(&app);
     let server = Arc::new(Server {
         hub: hub.clone(),
         backend: Box::new(methods::TauriBackend {
@@ -211,7 +222,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     // Derived, not asked for, so a spawn has its env before the link is up.
     let _ = SOCKET.set(paths.sock.to_string_lossy().into_owned());
     let _ = CLI_DIR.set(paths.cli_link_dir.clone());
-    let link = Link::start(server, paths, true, on_status);
+    let link = Link::start(server, paths, true, on_status, on_event);
     let _ = LINK.set(link.clone());
     let _ = ASKS.set(asks.clone());
     let _ = RUNNER.set(runner.clone());
@@ -1120,10 +1131,46 @@ pub fn rpc_quota(rpc: tauri::State<RpcState>, agent: String, profile: Option<Str
 /// than none.
 pub fn path_with_cli(path: &str) -> String {
     match CLI_DIR.get() {
-        Some(dir) if path.is_empty() => dir.to_string_lossy().into_owned(),
-        Some(dir) => format!("{}:{path}", dir.to_string_lossy()),
+        Some(dir) => path_with_dir(dir, path),
         None => path.to_string(),
     }
+}
+
+pub fn path_with_dir(dir: &std::path::Path, path: &str) -> String {
+    if path.is_empty() {
+        dir.to_string_lossy().into_owned()
+    } else {
+        format!("{}:{path}", dir.to_string_lossy())
+    }
+}
+
+const DAEMON_WAIT: std::time::Duration = std::time::Duration::from_secs(3);
+
+pub fn daemon_request(method: &str, params: Value) -> Result<Value, String> {
+    let link = LINK.get().ok_or("the daemon link is not up")?;
+    link.request(method, params, DAEMON_WAIT).map_err(|e| e.message)
+}
+
+pub fn daemon_tell(method: &'static str, params: Value) {
+    if let Some(link) = LINK.get() {
+        link.notify(method, params);
+    }
+}
+
+pub fn attach_pty(
+    tab: &str,
+    cols: u16,
+    rows: u16,
+) -> Result<
+    (
+        std::os::unix::net::UnixStream,
+        std::io::BufReader<std::os::unix::net::UnixStream>,
+    ),
+    String,
+> {
+    LINK.get()
+        .ok_or("the daemon link is not up")?
+        .attach_pty(tab, cols, rows)
 }
 
 /// Env for a process Tori spawns, with a token the daemon minted for `caller`.
@@ -1135,14 +1182,6 @@ pub fn child_env(caller: Caller) -> Vec<(String, String)> {
     link.mint(caller)
         .map(|token| vec![(ENV_SOCK.to_string(), sock.clone()), (ENV_CALLER.to_string(), token)])
         .unwrap_or_default()
-}
-
-pub fn revoke_env(env: &[(String, String)]) {
-    if let Some(link) = LINK.get() {
-        env.iter()
-            .filter(|(key, _)| key == ENV_CALLER)
-            .for_each(|(_, token)| link.revoke_token(token));
-    }
 }
 
 // A chat that ended can no longer show its asks, so they go with its token.
