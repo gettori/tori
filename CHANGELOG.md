@@ -8,7 +8,7 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
-## Unreleased
+## 26.1013.1-alpha
 
 - Picking a pull request from the orange mark on a project row makes its
   review worktree again. The click failed without a word and no worktree was
