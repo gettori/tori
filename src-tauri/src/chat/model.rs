@@ -1604,6 +1604,8 @@ pub enum ChatEvent {
         verdict: Verdict,
         #[serde(default)]
         checks: Vec<Check>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        settled_later: bool,
     },
 
     TurnCompleted {
@@ -2268,6 +2270,7 @@ mod tests {
                     exit_code: Some(101),
                     duration_ms: Some(14_200),
                 }],
+                settled_later: true,
             },
             ChatEvent::TurnCompleted {
                 session_id: "s1".into(),

@@ -821,7 +821,11 @@ export default function CheckpointTimeline(props: {
                                   class={styles.rowVerdict}
                                   data-verdict={turn().verdict}
                                   role="img"
-                                  aria-label={VERDICT_LABEL[turn().verdict]}
+                                  aria-label={
+                                    turn().settledLater
+                                      ? `${VERDICT_LABEL[turn().verdict]}, checked in a later turn`
+                                      : VERDICT_LABEL[turn().verdict]
+                                  }
                                 >
                                   <Icon icon={VERDICT_GLYPH[turn().verdict]} size={12} />
                                 </span>

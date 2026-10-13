@@ -789,7 +789,7 @@ export function mergeSecret(a: SecretHit | null, b: SecretHit): SecretHit {
 }
 
 /** A turn's verification verdict and the checks behind it. */
-export type TurnCheck = { verdict: Verdict; checks: Check[] };
+export type TurnCheck = { verdict: Verdict; checks: Check[]; settledLater?: boolean };
 
 /** Each turn's blind edits, folded from its tool cards. */
 export function turnBlindEdits(items: readonly ChatItem[]): Map<string, string[]> {
@@ -1619,7 +1619,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       s.rateLimit = rateLimitFrom(ev);
       return;
     case "turnVerification":
-      s.verifications[ev.turnId] = { verdict: ev.verdict, checks: ev.checks };
+      s.verifications[ev.turnId] = { verdict: ev.verdict, checks: ev.checks, settledLater: ev.settledLater };
       return;
     case "turnCompleted": {
       const known = s.turns[ev.turnId];
