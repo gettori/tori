@@ -217,9 +217,9 @@ describe("a turn that read a secret", () => {
     secretTurns = [{ promptTs: 1_700_000_110, paths: [".env"], strength: "named" }];
     render(() => <CheckpointTimeline root="/proj" sessionId="s1" folderPath="/proj" />);
 
-    const key = await screen.findByRole("img", { name: "A command named a secret file" });
+    const key = await screen.findByRole("img", { name: "Command named .env" });
     expect(key.closest("button")?.textContent).toContain(checkpointClock(1_700_000_100));
-    expect(screen.getAllByRole("img", { name: /secret file/ })).toHaveLength(1);
+    expect(screen.getAllByRole("img", { name: /^Command named/ })).toHaveLength(1);
     await expectNoAxeViolations(document.body);
   });
 });

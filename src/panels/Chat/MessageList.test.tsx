@@ -8,7 +8,15 @@ import { applyEvent, initialChat, prependHistory, pushUserTurn } from "./chatSto
 import type { ChatItem, QuestionItem, ToolItem, TurnCheck } from "./chatStore";
 import type { Check, ContentBlock, QuestionAnswer, Verdict } from "../../utils/chatTypes";
 import { invoke } from "@tauri-apps/api/core";
-import { NAVIGATE, onWith, SESSION_ACTION, type NavTarget, type SessionAction } from "../../utils/events";
+import {
+  NAVIGATE,
+  OPEN_IN_EDITOR,
+  onWith,
+  SESSION_ACTION,
+  type NavTarget,
+  type OpenInEditor,
+  type SessionAction,
+} from "../../utils/events";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async () => []),
@@ -991,7 +999,7 @@ describe("agent work collapsed into a card", () => {
   it("says at the head of the turn that a folded call read a secret", async () => {
     const secret = { paths: ["/repo/.env"], strength: "read" as const };
     const { container } = mount([PROMPT, call("a", { secret }), REPLY]);
-    expect(screen.getByText("Read a secret file")).toBeTruthy();
+    expect(screen.getByText("Read .env")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "1 tool call" }));
     expect(screen.getByRole("img", { name: "Secret file" })).toBeTruthy();
     await expectNoAxeViolations(container);
@@ -1000,14 +1008,55 @@ describe("agent work collapsed into a card", () => {
   it("shows no mark at all with secret watch switched off", () => {
     const secret = { paths: ["/repo/.env"], strength: "read" as const };
     render(() => list({ items: [PROMPT, call("a", { secret }), REPLY], collapseWork: false, showSecrets: false }));
-    expect(screen.queryByText("Read a secret file")).toBeNull();
+    expect(screen.queryByText("Read .env")).toBeNull();
     expect(screen.queryByRole("img", { name: "Secret file" })).toBeNull();
   });
 
   it("makes the weaker claim when a command only named a secret", () => {
     mount([PROMPT, call("a", { secret: { paths: [".env"], strength: "named" } }), REPLY]);
-    expect(screen.getByText("A command named a secret file")).toBeTruthy();
-    expect(screen.queryByText("Read a secret file")).toBeNull();
+    expect(screen.getByText("Command named .env")).toBeTruthy();
+    expect(screen.queryByText("Read .env")).toBeNull();
+  });
+
+  it("opens on each file, why it was touched, and the call that did it", async () => {
+    const read = call("a", {
+      name: "Read",
+      toolKind: "read",
+      input: { file_path: "/tmp/app/.env" },
+      secret: { paths: ["/tmp/app/.env"], strength: "read" },
+    });
+    const command = `cd backend && cat ~/.aws/credentials | grep -i token | head -n 5 && echo the rest of a long line`;
+    const named = call("b", { input: { command }, secret: { paths: ["~/.aws/credentials"], strength: "named" } });
+    const { container } = mount([PROMPT, read, named, REPLY]);
+    const opened: string[] = [];
+    const stop = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => opened.push(d.path));
+
+    fireEvent.click(screen.getByRole("button", { name: "2 secret files" }));
+    const panel = screen.getByRole("dialog", { name: "Secret files" });
+    expect(panel.textContent).toContain("Read with Read");
+    const shown = panel.querySelector("code")?.textContent ?? "";
+    expect(shown).toContain("~/.aws/credentials");
+    expect(shown.length).toBeLessThanOrEqual(66);
+    expect(screen.queryByRole("button", { name: "~/.aws/credentials" })).toBeNull();
+    await expectNoAxeViolations(container);
+
+    fireEvent.click(screen.getByRole("button", { name: "app/.env" }));
+    expect(opened).toEqual(["/tmp/app/.env"]);
+    stop();
+
+    const scrolled: string[] = [];
+    const scrollIntoView = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this.getAttribute("data-tool-use-id") ?? "");
+    };
+    try {
+      fireEvent.click(screen.getAllByRole("button", { name: "Show call" })[1]);
+      await new Promise((r) => requestAnimationFrame(r));
+    } finally {
+      Element.prototype.scrollIntoView = scrollIntoView;
+    }
+    expect(scrolled).toEqual(["b"]);
+    expect(container.querySelector('[data-tool-use-id="b"] button[aria-expanded="true"]')).toBeTruthy();
   });
 
   it("says at the head of the turn that a folded call edited a file it never read", async () => {

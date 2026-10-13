@@ -3,7 +3,7 @@ import ContextMenu from "../../components/Menu/ContextMenu";
 import { type MenuItem } from "../../components/Menu/rows";
 import type { SessionStatus } from "../../utils/sessionStatus";
 import type { StatusCertainty } from "../../utils/sessionStatus";
-import type { Verdict } from "../../utils/chatTypes";
+import type { SecretHit, Verdict } from "../../utils/chatTypes";
 import TabMark from "./TabMark";
 import styles from "./HistoryPanel.module.css";
 
@@ -14,7 +14,7 @@ export default function HistoryRow(props: {
   agentId: string;
   status: SessionStatus | null;
   certainty?: StatusCertainty;
-  secret?: "read" | "named" | null;
+  secret?: SecretHit | null;
   verdict?: Verdict | null;
   overlap?: string | null;
   /** Which account, only when there is a second one to tell it from. */

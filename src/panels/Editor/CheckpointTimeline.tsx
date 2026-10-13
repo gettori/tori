@@ -28,7 +28,7 @@ import { folderActors } from "../../utils/folderActors";
 import { chatsInFolder, liveChats } from "../../utils/chatSessions";
 import { findSession } from "../../utils/sessionStore";
 import { pendingReveal, setPendingReveal } from "../../utils/checkpointReveal";
-import type { SecretTurn } from "../../utils/secretReads";
+import { secretLabel, type SecretTurn } from "../../utils/secretReads";
 import { VERDICT_LABEL, type VerifiedTurn } from "../../utils/verification";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { isWorking } from "../../utils/sessionStatus";
@@ -804,13 +804,7 @@ export default function CheckpointTimeline(props: {
                             <span class={styles.rowTitle}>{titleOf(g.sessionId, e.prompt_ts)}</span>
                             <Show when={turnAt(secrets()[g.sessionId], e.prompt_ts)}>
                               {(hit) => (
-                                <span
-                                  class={styles.rowSecret}
-                                  role="img"
-                                  aria-label={
-                                    hit().strength === "read" ? "Read a secret file" : "A command named a secret file"
-                                  }
-                                >
+                                <span class={styles.rowSecret} role="img" aria-label={secretLabel(hit())}>
                                   <Icon icon={KeyRound} size={12} />
                                 </span>
                               )}

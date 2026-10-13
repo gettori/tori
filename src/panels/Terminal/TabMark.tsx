@@ -11,7 +11,8 @@ import {
   type SessionStatus,
 } from "../../utils/sessionStatus";
 import type { StatusCertainty } from "../../utils/sessionStatus";
-import type { Verdict } from "../../utils/chatTypes";
+import type { SecretHit, Verdict } from "../../utils/chatTypes";
+import { secretLabel } from "../../utils/secretReads";
 import { VERDICT_LABEL } from "../../utils/verification";
 import styles from "./TabMark.module.css";
 
@@ -55,8 +56,8 @@ export default function TabMark(props: {
   /** What a `waitingOnBackground` session is waiting on, which words the
    *  tooltip. Absent falls back to the status's own name. */
   background?: { agents: number; tasks: number };
-  /** Whether the session read a secret file, or a command named one. */
-  secret?: "read" | "named" | null;
+  /** The secret files the session read, or a command named. */
+  secret?: SecretHit | null;
   /** The verdict of the session's latest turn that changed code. */
   verdict?: Verdict | null;
   /** What this session is changing that a session in another worktree is
@@ -81,13 +82,12 @@ export default function TabMark(props: {
         )
       : null;
 
-  const secretLabel = () =>
-    props.secret === "read" ? "Read a secret file" : props.secret === "named" ? "A command named a secret file" : null;
+  const secretText = () => (props.secret ? secretLabel(props.secret) : null);
   const verdictLabel = () => (props.verdict ? VERDICT_LABEL[props.verdict] : null);
   // Verified is the quiet one: a healthy session should not ask for a look.
   const verdictNews = () => props.verdict === "failed" || props.verdict === "unverified";
   const title = () =>
-    [shown()?.title, secretLabel(), verdictLabel(), props.overlap].filter(Boolean).join("\n") || undefined;
+    [shown()?.title, secretText(), verdictLabel(), props.overlap].filter(Boolean).join("\n") || undefined;
 
   return (
     <span
@@ -110,13 +110,13 @@ export default function TabMark(props: {
       // Only the states worth interrupting a screen reader for. Idle is the
       // absence of news, and every tab announcing "Idle" would bury the one
       // that is asking for something. A secret read is news at any status.
-      aria-label={working() || needsYou() || secretLabel() || verdictNews() || props.overlap ? title() : undefined}
+      aria-label={working() || needsYou() || secretText() || verdictNews() || props.overlap ? title() : undefined}
     >
       <Icon icon={providerIcon(null, props.agentId)} size={13} />
       <Show when={needsYou()}>
         <span class={styles.badge} aria-hidden="true" />
       </Show>
-      <Show when={secretLabel()}>
+      <Show when={secretText()}>
         <span class={styles.secret} aria-hidden="true">
           <Icon icon={KeyRound} size={8} />
         </span>
