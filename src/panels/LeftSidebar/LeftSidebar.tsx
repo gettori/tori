@@ -1992,8 +1992,7 @@ export default function LeftSidebar(props: {
         });
         setBranchReq(null);
         await loadConfig();
-        const unit = selectUnitIn(p, (u) => samePath(u.folderPath, folder));
-        if (unit) emitWith<NewChatAt>(NEW_CHAT_AT, { folderPath: unit.folderPath, projectName: p.name });
+        selectUnitIn(p, (u) => samePath(u.folderPath, folder));
         return;
       }
       if (pick.kind === "remote") {

@@ -1120,22 +1120,21 @@ export default function Terminal(props: {
       spawnSession(s.agent ?? "claude", s.folderPath, s.projectName, false);
     });
     offNewChatAt = onWith<NewChatAt>(NEW_CHAT_AT, async ({ folderPath, projectName, prompt, origin }) => {
-      // A reused worktree folder can have stored tabs coming back, and those
-      // win: a draft is only for a strip that would otherwise sit empty.
-      const empty = await stripEmpty(folderPath);
+      // Selecting the new unit may have drafted into its empty strip once the
+      // restores are back, and the prompt takes that draft over.
+      await Promise.all([stripReady(folderPath), fileStripReady(folderPath)]);
       const auto = untouchedAutoDraft(folderPath);
-      if (prompt && auto) {
+      if (auto) {
         setDraft(auto, prompt);
         if (origin) setDraftOrigin(auto, origin);
         autoDrafts.delete(folderPath);
         bringToFront(folderPath, auto);
         return;
       }
-      if (!prompt && !empty) return;
       const agent = draftAgent(folderPath, folderPath);
       if (!agent) return;
       const id = openChatDraft(folderPath, folderPath, projectName, agent, draftProfile(folderPath, folderPath, agent));
-      if (prompt) setDraft(id, prompt);
+      setDraft(id, prompt);
       if (origin) setDraftOrigin(id, origin);
     });
     offSpawnForSocket = handleRpc("session.spawn", spawnForSocket);
