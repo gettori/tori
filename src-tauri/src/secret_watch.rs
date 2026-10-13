@@ -104,6 +104,44 @@ impl Rules {
         }
         self.prefixes.iter().any(|p| path.starts_with(p))
     }
+
+    fn exists(&self, raw: &str, cwd: Option<&Path>) -> bool {
+        let path = expand(raw.trim(), &self.home);
+        match cwd {
+            Some(cwd) if path.is_relative() => cwd.join(path).exists(),
+            _ => path.exists(),
+        }
+    }
+}
+
+// Code in a heredoc says `r.key` and `e.key` without meaning any file.
+fn names_an_existing_secret(rules: &Rules, word: &str, bases: &[PathBuf]) -> bool {
+    if bases.is_empty() {
+        return rules.matches(word, None) && rules.exists(word, None);
+    }
+    bases
+        .iter()
+        .any(|base| rules.matches(word, Some(base)) && rules.exists(word, Some(base)))
+}
+
+fn cd_bases(command: &str, cwd: Option<&Path>, home: &Path) -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = cwd.map(Path::to_path_buf).into_iter().collect();
+    let mut words = shell_words(command);
+    while let Some(word) = words.next() {
+        if !matches!(word, "cd" | "pushd") {
+            continue;
+        }
+        let Some(target) = words.next().filter(|t| !t.starts_with('-')) else {
+            continue;
+        };
+        let target = expand(target, home);
+        let dir = match dirs.last() {
+            Some(base) if target.is_relative() => normalize(&base.join(target)),
+            _ => target,
+        };
+        dirs.push(dir);
+    }
+    dirs
 }
 
 fn default_name(name: &str) -> bool {
@@ -197,8 +235,9 @@ pub fn classify(
         }
         ToolKind::Execute => {
             let command = command_text(input)?;
+            let bases = cd_bases(&command, cwd, &rules.home);
             for word in shell_words(&command) {
-                if rules.matches(word, cwd) {
+                if names_an_existing_secret(rules, word, &bases) {
                     paths.push(word.to_string());
                 }
             }
@@ -547,24 +586,47 @@ mod tests {
     }
 
     #[test]
-    fn a_shell_command_names_any_secret_among_its_words() {
-        let bash = |c: &str| started("Bash", ToolKind::Execute, json!({ "command": c }), &[]);
+    fn a_shell_command_names_a_secret_file_that_is_there() {
+        let root = std::env::temp_dir().join(format!("tori-secret-named-{}", std::process::id()));
+        let home = root.join("home");
+        let app = home.join("app");
+        for dir in [app.join("backend"), home.join(".aws")] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        for file in [
+            app.join(".env"),
+            app.join("server.key"),
+            app.join("backend/.env"),
+            home.join(".aws/credentials"),
+            home.join(".aws/env"),
+            home.join(".netrc"),
+        ] {
+            std::fs::write(file, "x").unwrap();
+        }
+        let rules = Rules::new(home.clone(), &[]);
+        let run = |command: Value| classify("Bash", ToolKind::Execute, &command, &[], Some(&app), &rules);
+        let bash = |c: &str| run(json!({ "command": c }));
+        let netrc = home.join(".netrc").to_string_lossy().into_owned();
+
         assert_eq!(bash("cat .env"), named(&[".env"]));
         assert_eq!(bash("cat .env; echo done"), named(&[".env"]));
         assert_eq!(bash("docker run --env-file=.env app"), named(&[".env"]));
         assert_eq!(bash("echo $(cat .env)"), named(&[".env"]));
+        assert_eq!(bash("cat server.key"), named(&["server.key"]));
         assert_eq!(bash("cp ~/.aws/credentials /tmp"), named(&["~/.aws/credentials"]));
         assert_eq!(bash("python -c \"open('.env').read()\""), named(&[".env"]));
         assert_eq!(bash("source $HOME/.aws/env"), named(&["$HOME/.aws/env"]));
-        assert_eq!(bash("grep -r TOKEN src"), None);
+        assert_eq!(run(json!({ "command": ["cat", netrc] })), named(&[netrc.as_str()]));
         assert_eq!(
-            started(
-                "execute",
-                ToolKind::Execute,
-                json!({ "command": ["cat", "/Users/me/.netrc"] }),
-                &[]
-            ),
-            named(&["/Users/me/.netrc"])
+            bash("cd backend && cat .env"),
+            named(&[".env"]),
+            "read from the cd target"
         );
+        assert_eq!(bash("grep -r TOKEN src"), None);
+
+        let code = "cat > src/a.ts <<'EOF'\nconst k = rows.map((r) => r.key);\nwindow.onkeydown = (e) => e.key;\nconst credentials = load();\nEOF";
+        assert_eq!(bash(code), None, "code that only looks like a key file");
+        assert_eq!(bash("cat client.key"), None, "a key file that is not there");
+        std::fs::remove_dir_all(root).ok();
     }
 }
