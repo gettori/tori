@@ -641,10 +641,18 @@ fn tree_after(repo: &str, session_id: &str, checkpoints: &[Checkpoint], ts: u64)
 /// Returns whether a new ref was created.
 #[tauri::command]
 pub async fn checkpoint_snapshot(session_id: String, repo_path: String, prompt_ts: u64) -> Result<bool, String> {
-    crate::exec::git_write("checkpoint_snapshot", repo_path.clone(), move || {
-        checkpoint_snapshot_body(session_id, repo_path, prompt_ts)
+    let args = serde_json::json!({ "session_id": session_id, "repo_path": repo_path, "prompt_ts": prompt_ts });
+    let taken = crate::exec::blocking("checkpoint_snapshot", move || {
+        crate::rpc::daemon_chat("checkpoint_snapshot", args)
     })
-    .await
+    .await?;
+    serde_json::from_value(taken).map_err(|e| e.to_string())
+}
+
+pub(crate) fn snapshot_locked(session_id: String, repo_path: String, prompt_ts: u64) -> Result<bool, String> {
+    let lock = crate::exec::repo_lock(&repo_path);
+    let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    checkpoint_snapshot_body(session_id, repo_path, prompt_ts)
 }
 
 pub(crate) fn checkpoint_snapshot_body(session_id: String, repo_path: String, prompt_ts: u64) -> Result<bool, String> {
@@ -1828,6 +1836,39 @@ mod tests {
             }
         }
         out
+    }
+
+    #[test]
+    fn a_snapshot_racing_status_meets_no_git_lock() {
+        let (dir, sid) = tmp_repo();
+        let repo = dir.to_string_lossy().into_owned();
+        std::fs::write(dir.join("a.txt"), "a").unwrap();
+        let reader = {
+            let dir = dir.clone();
+            std::thread::spawn(move || {
+                (0..40)
+                    .map(|_| {
+                        Command::new("git")
+                            .arg("-C")
+                            .arg(&dir)
+                            .args(["--no-optional-locks", "status", "--porcelain"])
+                            .output()
+                            .unwrap()
+                    })
+                    .filter(|o| !o.status.success())
+                    .map(|o| String::from_utf8_lossy(&o.stderr).into_owned())
+                    .collect::<Vec<_>>()
+            })
+        };
+        let mut snapshots = Vec::new();
+        for ts in 1..=20u64 {
+            std::fs::write(dir.join("a.txt"), ts.to_string()).unwrap();
+            snapshots.push(snapshot_locked(sid.clone(), repo.clone(), ts * 100));
+        }
+        let failed = reader.join().unwrap();
+        cleanup(&dir, &sid);
+        assert!(failed.is_empty(), "status failed: {failed:?}");
+        assert!(snapshots.iter().all(Result::is_ok), "{snapshots:?}");
     }
 
     // --- per-turn attribution, the concurrent-worktree case ----------------

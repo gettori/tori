@@ -12,8 +12,9 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::chat::commands::{spawn_session, SpawnRequest};
-use crate::chat::host::{ChatHost, ChatState};
+use crate::chat::client::Chats;
+use crate::chat::commands::SpawnRequest;
+use crate::chat::host::ChatState;
 use crate::chat::model::{
     ChatConfigKind, ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionScope,
 };
@@ -524,7 +525,7 @@ struct Reply {
 }
 
 fn drive(
-    host: &ChatHost,
+    host: &Chats,
     agent: &str,
     profile: Option<String>,
     folder: &str,
@@ -534,8 +535,7 @@ fn drive(
     let id = crate::rpc::runner::new_session_id();
     let (tx, rx) = mpsc::channel::<ChatEvent>();
     let tx = Mutex::new(tx);
-    let spawned = spawn_session(
-        host,
+    let spawned = host.spawn_session(
         SpawnRequest {
             session_id: id.clone(),
             tab_id: format!("second-opinion-{id}"),
@@ -570,7 +570,7 @@ fn drive(
 }
 
 fn review(
-    host: &ChatHost,
+    host: &Chats,
     id: &str,
     folder: &str,
     rx: &Receiver<ChatEvent>,
@@ -638,7 +638,7 @@ impl Watch {
         }
     }
 
-    fn see(&mut self, host: &ChatHost, id: &str, event: ChatEvent) -> Result<(), String> {
+    fn see(&mut self, host: &Chats, id: &str, event: ChatEvent) -> Result<(), String> {
         match event {
             ChatEvent::SessionStarted { permission_mode, .. } => {
                 self.started = true;

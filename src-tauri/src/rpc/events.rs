@@ -39,7 +39,7 @@ pub enum EndReason {
 // On the wire: "user", {"session": id}, {"tab": id}, "local" for a caller Tori
 // did not spawn, "agent" for a turn the agent opened itself, "watcher" for a
 // wake the autopilot's watcher sent.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TurnBy {
     User,
