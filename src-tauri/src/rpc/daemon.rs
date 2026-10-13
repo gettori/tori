@@ -31,6 +31,8 @@ use super::outbox::{Outbox, OUTBOX_BYTES};
 use super::server::{handle_first, subscribe, unsubscribe, Dispatch, AUTH_TIMEOUT};
 use super::table::CallerKind;
 use super::transport::{Stream, Transport, UnixTransport};
+use crate::pty::host::{Events, Host};
+use crate::pty::wire::{AttachParams, Spawn, ATTACH_METHOD};
 
 pub const WINDOW_METHOD: &str = "window";
 /// The shape of the window link. A window and a daemon that disagree on it
@@ -206,6 +208,7 @@ pub struct Daemon {
     transport: Arc<UnixTransport>,
     paths: Paths,
     window: Mutex<Option<Arc<Window>>>,
+    ptys: Arc<Host>,
     // The app process last attached, so a new one starts with no stale child tokens.
     instance: Mutex<Option<String>>,
 }
@@ -226,8 +229,23 @@ struct MintParams {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct TokenParams {
-    token: String,
+struct TabParams {
+    tab: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WriteParams {
+    tab: String,
+    data: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ResizeParams {
+    tab: String,
+    cols: u16,
+    rows: u16,
 }
 
 #[derive(Deserialize)]
@@ -272,6 +290,12 @@ impl Daemon {
                 self.serve_window(req, stream, reader);
                 return;
             }
+            if req.method == ATTACH_METHOD {
+                let _ = stream.set_read_timeout(None);
+                let req = req.clone();
+                self.serve_attach(req, stream, reader);
+                return;
+            }
         }
         handle_first(self.as_ref(), &self.credential, stream, reader, first);
     }
@@ -281,17 +305,7 @@ impl Daemon {
     fn admit(&self, first: &Request) -> Result<(WindowParams, Arc<Window>), RpcError> {
         let params: WindowParams =
             serde_json::from_value(first.params.clone()).map_err(|e| RpcError::new(INVALID_PARAMS, e.to_string()))?;
-        let auth = Request {
-            jsonrpc: "2.0".into(),
-            id: None,
-            method: AUTH_METHOD.into(),
-            params: json!({ "token": params.token }),
-        };
-        match authenticate(&auth, &self.credential) {
-            Ok(Principal::Local) => {}
-            Ok(_) => return Err(RpcError::new(REFUSED, "only a local client may be the window")),
-            Err(e) => return Err(e.rpc()),
-        }
+        self.local_only(&params.token, "be the window")?;
         let mut slot = self.window.lock().unwrap_or_else(|e| e.into_inner());
         if slot.as_ref().is_some_and(|w| !w.out.is_closed()) {
             eprintln!("tori daemon: refused a second window while one is attached");
@@ -299,7 +313,8 @@ impl Daemon {
         }
         let mut instance = self.instance.lock().unwrap_or_else(|e| e.into_inner());
         if instance.as_deref() != Some(params.instance.as_str()) {
-            self.children.clear();
+            // The daemon's own shells outlive the window; what it spawned did not.
+            self.children.keep_only(&self.ptys.tokens());
             *instance = Some(params.instance.clone());
         }
         drop(instance);
@@ -316,6 +331,36 @@ impl Daemon {
         });
         *slot = Some(window.clone());
         Ok((params, window))
+    }
+
+    fn local_only(&self, token: &str, what: &str) -> Result<(), RpcError> {
+        let auth = Request {
+            jsonrpc: "2.0".into(),
+            id: None,
+            method: AUTH_METHOD.into(),
+            params: json!({ "token": token }),
+        };
+        match authenticate(&auth, &self.credential) {
+            Ok(Principal::Local) => Ok(()),
+            Ok(_) => Err(RpcError::new(REFUSED, format!("only a local client may {what}"))),
+            Err(e) => Err(e.rpc()),
+        }
+    }
+
+    // Only the process token: a child's would let an agent type into every
+    // shell the person has open.
+    fn serve_attach(&self, first: Request, mut stream: Box<dyn Stream>, reader: BufReader<Box<dyn Stream>>) {
+        let id = first.id.clone().unwrap_or(Value::Null);
+        let admitted = serde_json::from_value::<AttachParams>(first.params)
+            .map_err(|e| RpcError::new(INVALID_PARAMS, e.to_string()))
+            .and_then(|params| self.local_only(&params.token, "attach to a tab").map(|()| params));
+        match admitted {
+            Ok(params) => self.ptys.attach(id, &params, stream, reader),
+            Err(e) => {
+                let _ = super::frame::write_line(&mut stream, &to_line(&Response::err(id, e)));
+                stream.close();
+            }
+        }
     }
 
     fn serve_window(
@@ -400,11 +445,6 @@ impl Daemon {
                 let p: MintParams = serde_json::from_value(req.params.clone()).map_err(|_| parse("mint"))?;
                 Ok(json!(self.children.mint(p.caller)))
             }
-            "revoke_token" => {
-                let p: TokenParams = serde_json::from_value(req.params.clone()).map_err(|_| parse("revoke_token"))?;
-                self.children.revoke_token(&p.token);
-                Ok(json!({}))
-            }
             "revoke" => {
                 let p: MintParams = serde_json::from_value(req.params.clone()).map_err(|_| parse("revoke"))?;
                 self.children.revoke(&p.caller);
@@ -417,6 +457,27 @@ impl Daemon {
                 self.hub.publish(&channel, p.data);
                 Ok(json!({}))
             }
+            "pty.spawn" => {
+                let p: Spawn = serde_json::from_value(req.params.clone()).map_err(|_| parse("pty.spawn"))?;
+                let existed = self.ptys.spawn(p).map_err(|e| RpcError::new(REFUSED, e))?;
+                Ok(json!({ "existed": existed }))
+            }
+            "pty.write" => {
+                let p: WriteParams = serde_json::from_value(req.params.clone()).map_err(|_| parse("pty.write"))?;
+                self.ptys.write(&p.tab, p.data.as_bytes());
+                Ok(json!({}))
+            }
+            "pty.resize" => {
+                let p: ResizeParams = serde_json::from_value(req.params.clone()).map_err(|_| parse("pty.resize"))?;
+                self.ptys.resize(&p.tab, p.cols, p.rows);
+                Ok(json!({}))
+            }
+            "pty.kill" => {
+                let p: TabParams = serde_json::from_value(req.params.clone()).map_err(|_| parse("pty.kill"))?;
+                self.ptys.kill(&p.tab);
+                Ok(json!({}))
+            }
+            "pty.list" => Ok(json!(self.ptys.list())),
             "shutdown" => {
                 eprintln!("tori daemon: stopping, asked by the window");
                 self.stop();
@@ -424,7 +485,7 @@ impl Daemon {
             }
             name => Err(RpcError::new(
                 METHOD_NOT_FOUND,
-                format!("the window link carries mint, revoke, publish and shutdown, not {name}"),
+                format!("the window link carries mint, revoke, publish, pty and shutdown, not {name}"),
             )),
         }
     }
@@ -512,14 +573,23 @@ pub fn start(paths: Paths) -> Result<Start, String> {
     if let Err(e) = link_cli(&paths.cli_link_dir) {
         eprintln!("tori daemon: cli not linked: {e}");
     }
-    let daemon = Arc::new(Daemon {
-        hub: Arc::new(Hub::default()),
-        credential,
-        children,
-        transport: transport.clone(),
-        paths,
-        window: Mutex::default(),
-        instance: Mutex::default(),
+    let daemon = Arc::new_cyclic(|weak: &Weak<Daemon>| {
+        let weak = weak.clone();
+        let events: Events = Box::new(move |event, payload| {
+            if let Some(daemon) = weak.upgrade() {
+                daemon.notify_window(event, payload);
+            }
+        });
+        Daemon {
+            hub: Arc::new(Hub::default()),
+            ptys: Host::new(events, children.clone(), paths.sock.clone(), paths.cli_link_dir.clone()),
+            credential,
+            children,
+            transport: transport.clone(),
+            paths,
+            window: Mutex::default(),
+            instance: Mutex::default(),
+        }
     });
     let weak: Weak<Daemon> = Arc::downgrade(&daemon);
     daemon.hub.watch_chats(Box::new(move |ids: HashSet<String>| {
@@ -600,7 +670,13 @@ mod tests {
             backend: Box::<StubBackend>::default(),
             auth_timeout: AUTH_TIMEOUT,
         });
-        let link = Link::start(server.clone(), paths.clone(), false, Box::new(|_| {}));
+        let link = Link::start(
+            server.clone(),
+            paths.clone(),
+            false,
+            Box::new(|_| {}),
+            Box::new(|_, _| {}),
+        );
         assert!(link.attached(Duration::from_secs(5)), "the window attaches");
         (server, link)
     }
@@ -787,6 +863,157 @@ mod tests {
         assert!(server.hub.watches_chat("s1"), "the app hears who reads a chat");
         link.close();
         stop(daemon);
+    }
+
+    fn window(paths: &Paths) -> Raw {
+        let mut window = Raw::connect(paths);
+        let reply = window.call(
+            0,
+            WINDOW_METHOD,
+            json!({ "token": token(paths), "build": build_id(), "instance": "a" }),
+        );
+        assert!(reply["error"].is_null(), "{reply}");
+        window
+    }
+
+    fn spawn_command(window: &mut Raw, tab: &str, program: &str, args: &[&str]) {
+        let spawn = Spawn {
+            tab: tab.into(),
+            program: program.into(),
+            args: args.iter().map(|a| a.to_string()).collect(),
+            cwd: "/".into(),
+            cols: 80,
+            rows: 24,
+            kind: "command".into(),
+            init: None,
+            quiet_ms: None,
+            env: Vec::new(),
+            agent: None,
+            profile: None,
+        };
+        let reply = window.call(1, "pty.spawn", json!(spawn));
+        assert_eq!(reply["result"]["existed"], false, "{reply}");
+    }
+
+    fn attach(paths: &Paths, token: &str, tab: &str, replay: bool) -> (UnixStream, BufReader<UnixStream>, Value) {
+        let mut stream = UnixStream::connect(&paths.sock).unwrap();
+        stream.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+        let params = AttachParams {
+            token: token.into(),
+            tab: tab.into(),
+            replay,
+            cols: 80,
+            rows: 24,
+        };
+        let frame = json!({ "jsonrpc": "2.0", "id": 0, "method": ATTACH_METHOD, "params": params });
+        stream.write_all(to_line(&frame).as_bytes()).unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        let reply = serde_json::from_str(&read_line(&mut reader, MAX_LINK_LINE).unwrap().unwrap()).unwrap();
+        (stream, reader, reply)
+    }
+
+    fn drain(reader: &mut BufReader<UnixStream>, until: impl Fn(&[u8]) -> bool) -> (Vec<u8>, Option<Option<u32>>) {
+        let mut seen = Vec::new();
+        while let Some((kind, payload)) = crate::pty::wire::read_frame(reader).unwrap() {
+            match kind {
+                crate::pty::wire::DATA => seen.extend_from_slice(&payload),
+                crate::pty::wire::EXIT => return (seen, Some(crate::pty::wire::parse_exit(&payload))),
+                _ => {}
+            }
+            if until(&seen) {
+                break;
+            }
+        }
+        (seen, None)
+    }
+
+    fn contains(haystack: &[u8], needle: &str) -> bool {
+        String::from_utf8_lossy(haystack).contains(needle)
+    }
+
+    #[test]
+    fn an_attach_gets_the_ring_then_live_bytes_and_types_into_the_tab() {
+        let paths = Paths::under(&config("attach"));
+        let daemon = started(&paths);
+        let mut window = window(&paths);
+        spawn_command(
+            &mut window,
+            "t1",
+            "/bin/sh",
+            &["-c", "printf early; read x; printf \"late:$x\""],
+        );
+        thread::sleep(Duration::from_millis(300));
+        let (mut stream, mut reader, reply) = attach(&paths, &token(&paths), "t1", true);
+        assert!(reply["error"].is_null(), "{reply}");
+        let (replayed, _) = drain(&mut reader, |seen| contains(seen, "early"));
+        assert!(contains(&replayed, "early"), "{:?}", String::from_utf8_lossy(&replayed));
+        crate::pty::wire::write_frame(&mut stream, crate::pty::wire::DATA, b"go\n").unwrap();
+        let (live, exit) = drain(&mut reader, |_| false);
+        assert!(contains(&live, "late:go"), "{:?}", String::from_utf8_lossy(&live));
+        assert_eq!(exit, Some(Some(0)));
+        window.send(json!({ "jsonrpc": "2.0", "id": 9, "method": "shutdown" }));
+        daemon.wait();
+    }
+
+    #[test]
+    fn a_child_token_cannot_attach_to_a_tab() {
+        let paths = Paths::under(&config("attach-child"));
+        let daemon = started(&paths);
+        let mut window = window(&paths);
+        spawn_command(&mut window, "t1", "sleep", &["5"]);
+        let child = window.call(2, "mint", json!({ "caller": Caller::Terminal("t2".into()) }));
+        let child = child["result"].as_str().unwrap();
+        let (_stream, _reader, reply) = attach(&paths, child, "t1", true);
+        assert_eq!(reply["error"]["message"], "only a local client may attach to a tab");
+        window.call(3, "pty.kill", json!({ "tab": "t1" }));
+        window.send(json!({ "jsonrpc": "2.0", "id": 9, "method": "shutdown" }));
+        daemon.wait();
+    }
+
+    #[test]
+    fn a_flood_of_output_arrives_whole_and_the_window_keeps_answering() {
+        let paths = Paths::under(&config("flood"));
+        let daemon = started(&paths);
+        let mut window = window(&paths);
+        spawn_command(&mut window, "t1", "/bin/sh", &["-c", "sleep 0.2; seq 1 200000"]);
+        let (_stream, mut reader, _) = attach(&paths, &token(&paths), "t1", true);
+        let listed = window.call(4, "pty.list", json!({}));
+        assert_eq!(listed["result"][0]["tab"], "t1", "{listed}");
+        let (seen, exit) = drain(&mut reader, |_| false);
+        assert_eq!(exit, Some(Some(0)));
+        let expected: String = (1..=200_000).map(|i| format!("{i}\n")).collect();
+        assert!(
+            String::from_utf8_lossy(&seen).replace('\r', "") == expected,
+            "{} bytes arrived of {}",
+            seen.len(),
+            expected.len()
+        );
+        window.send(json!({ "jsonrpc": "2.0", "id": 9, "method": "shutdown" }));
+        daemon.wait();
+    }
+
+    #[test]
+    fn a_keystroke_echoes_back_through_the_daemon() {
+        let paths = Paths::under(&config("echo"));
+        let daemon = started(&paths);
+        let mut window = window(&paths);
+        spawn_command(&mut window, "t1", "cat", &[]);
+        let (mut stream, mut reader, _) = attach(&paths, &token(&paths), "t1", false);
+        let mut took = Vec::new();
+        for _ in 0..50 {
+            // Spaced like typing: back to back, each echo would wait out the coalescing window.
+            thread::sleep(Duration::from_millis(30));
+            let begun = Instant::now();
+            crate::pty::wire::write_frame(&mut stream, crate::pty::wire::DATA, b"a").unwrap();
+            drain(&mut reader, |seen| contains(seen, "a"));
+            took.push(begun.elapsed());
+        }
+        took.sort();
+        eprintln!("echo through the daemon: median {:?}, worst {:?}", took[25], took[49]);
+        assert!(took[25] < Duration::from_millis(5), "median echo {:?}", took[25]);
+        window.call(3, "pty.kill", json!({ "tab": "t1" }));
+        window.send(json!({ "jsonrpc": "2.0", "id": 9, "method": "shutdown" }));
+        daemon.wait();
     }
 
     #[test]

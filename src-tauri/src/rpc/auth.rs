@@ -1,7 +1,7 @@
 //! The one place a connection proves who it is. The unix socket takes the
 //! process token or a child's; a network front takes only a device credential.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
@@ -109,8 +109,8 @@ impl Children {
         self.lock().retain(|_, held| held != caller);
     }
 
-    pub fn clear(&self) {
-        self.lock().clear();
+    pub fn keep_only(&self, tokens: &HashSet<String>) {
+        self.lock().retain(|token, _| tokens.contains(token));
     }
 
     fn get(&self, token: &str) -> Option<Caller> {

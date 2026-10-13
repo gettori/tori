@@ -334,6 +334,7 @@ pub fn run() {
             pty::pty_kill,
             pty::pty_live_ids,
             pty::pty_busy_ids,
+            pty::pty_ack,
             chat::commands::chat_spawn,
             chat::commands::chat_live_sessions,
             attachments::store_attachment,
