@@ -759,12 +759,35 @@ impl ChatHost {
     /// code it changed, the way `wrap` marks a live one's, against the check
     /// list and the setting as they are now.
     pub fn mark_verification(&self, session_id: &str, cwd: Option<String>, events: &mut Vec<ChatEvent>) {
+        let live = lock(&self.sessions).get(session_id).map(|e| e.cwd.clone());
+        let resumed = live.is_some();
+        let cwd = live.or(cwd).map(std::path::PathBuf::from);
+        let open = crate::verification::mark_history(events, cwd.as_deref(), crate::verification::enabled());
+        // A resumed claude session does not replay through `wrap`, so its
+        // tracker would not know the turns a later check can settle.
+        if resumed {
+            lock(&self.verify)
+                .entry(session_id.to_string())
+                .or_insert_with(|| crate::verification::Tracker::new(cwd.as_deref()))
+                .seed(open);
+        }
+    }
+
+    /// Mark one page of a history read whole, so its turns carry what a check
+    /// on a later page settled them to.
+    pub fn mark_verification_page(
+        &self,
+        session_id: &str,
+        cwd: Option<String>,
+        page: &mut Vec<ChatEvent>,
+        whole: &[ChatEvent],
+    ) {
         let cwd = lock(&self.sessions)
             .get(session_id)
             .map(|e| e.cwd.clone())
             .or(cwd)
             .map(std::path::PathBuf::from);
-        crate::verification::mark_history(events, cwd.as_deref(), crate::verification::enabled());
+        crate::verification::mark_page(page, whole, cwd.as_deref(), crate::verification::enabled());
     }
 
     /// This session's snapshot cache, for a card the user expanded.
@@ -1129,16 +1152,16 @@ impl ChatHost {
             {
                 // A replay has no timing to measure, so durations are live only.
                 let now = (!lifecycle.replaying(&id)).then(std::time::Instant::now);
-                let verdict = lock(&verify)
+                let marks = lock(&verify)
                     .entry(id.clone())
                     .or_insert_with(|| crate::verification::Tracker::new(Some(&cwd)))
-                    .observe(last, now)
-                    .filter(|_| crate::verification::enabled());
-                if let (Some(ChatEvent::TurnVerification { verdict, .. }), Some(_)) = (&verdict, now) {
-                    crate::needs_you_log::note_verdict(&id, *verdict);
-                }
-                if let Some(verdict) = verdict {
-                    events.insert(events.len() - 1, verdict);
+                    .observe(last, now);
+                if crate::verification::enabled() {
+                    if let (Some(verdict), Some(_)) = (marks.session_verdict(), now) {
+                        crate::needs_you_log::note_verdict(&id, verdict);
+                    }
+                    let at = events.len() - 1;
+                    events.splice(at..at, marks.into_events());
                 }
             }
             for mut event in events {
@@ -2356,6 +2379,92 @@ mod tests {
         let mut replayed = live[..marks[0].0 + 2].to_vec();
         host.mark_verification("gone", Some("/repo".into()), &mut replayed);
         assert_eq!(verdicts(&replayed), vec![marks[0]], "replayed from the log, once");
+    }
+
+    #[test]
+    fn a_later_turns_check_settles_the_earlier_turn_live_once() {
+        use crate::chat::model::Verdict::{Unverified, Verified};
+        let host = ChatHost::at(temp_store());
+        let seen = Collector::default();
+        let sink_out: Arc<Mutex<Option<Sink>>> = Arc::new(Mutex::new(None));
+        let out = sink_out.clone();
+        host.spawn_plain("s-settle", "tab-a", seen.emit(), spec("s-settle"), move || {
+            Box::new(Puppet {
+                sink_out: Some(out),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+        let sink = lock(&sink_out).clone().expect("the puppet published its sink");
+
+        let full = checked_turn("s-settle");
+        let as_turn = |event: &ChatEvent, to: &str| {
+            let mut event = event.clone();
+            if let ChatEvent::ToolCallStarted { turn_id, .. }
+            | ChatEvent::ToolCallCompleted { turn_id, .. }
+            | ChatEvent::TurnCompleted { turn_id, .. } = &mut event
+            {
+                *turn_id = to.into();
+            }
+            event
+        };
+        let edit_only: Vec<ChatEvent> = [&full[0], &full[1], &full[4]]
+            .iter()
+            .map(|e| as_turn(e, "t1"))
+            .collect();
+        let check_only: Vec<ChatEvent> = full[2..].iter().map(|e| as_turn(e, "t2")).collect();
+        for event in edit_only.iter().chain(&check_only) {
+            crate::chat::transport::emit(&sink, event.clone());
+        }
+        let live = seen.events();
+        let marks: Vec<(String, crate::chat::model::Verdict)> = live
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::TurnVerification { turn_id, verdict, .. } => Some((turn_id.clone(), *verdict)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            marks,
+            vec![("t1".to_string(), Unverified), ("t1".to_string(), Verified)]
+        );
+        let settle = live
+            .iter()
+            .position(|e| {
+                matches!(
+                    e,
+                    ChatEvent::TurnVerification {
+                        settled_later: true,
+                        ..
+                    }
+                )
+            })
+            .unwrap();
+        assert!(
+            matches!(&live[settle + 1], ChatEvent::TurnCompleted { turn_id, .. } if turn_id == "t2"),
+            "sent ahead of the checking turn's end"
+        );
+
+        for event in edit_only.iter().chain(&check_only) {
+            crate::chat::transport::emit(&sink, event.clone());
+        }
+        let settles = seen
+            .events()
+            .iter()
+            .filter(|e| {
+                matches!(
+                    e,
+                    ChatEvent::TurnVerification {
+                        settled_later: true,
+                        ..
+                    }
+                )
+            })
+            .count();
+        assert_eq!(
+            settles, 2,
+            "a reload's pass resends the settled answer at t1's end, and no second settle"
+        );
     }
 
     /// History can be read for a session that is never spawned. Those outputs

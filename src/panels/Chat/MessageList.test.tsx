@@ -1046,9 +1046,9 @@ describe("a turn that changed code says what checked it", () => {
   });
 
   // Through the store, so the event's fold is covered too.
-  function verified(verdict: Verdict, checks: Check[]) {
+  function verified(verdict: Verdict, checks: Check[], settledLater?: boolean) {
     const s = initialChat("s1");
-    applyEvent(s, { type: "turnVerification", sessionId: "s1", turnId: "turn-1", verdict, checks });
+    applyEvent(s, { type: "turnVerification", sessionId: "s1", turnId: "turn-1", verdict, checks, settledLater });
     return s.verifications;
   }
 
@@ -1079,6 +1079,29 @@ describe("a turn that changed code says what checked it", () => {
     const checks = [check({ command: "cargo test 2>&1", result: "notSeen", exitCode: null, durationMs: null })];
     render(() => list({ items, verifications: verified("unverified", checks) }));
     expect(tooltipOf("Unverified")).toContain("cargo test 2>&1: ran, exit not seen");
+  });
+
+  it("says a later turn's check settled it, and a later answer replaces the first", () => {
+    const s = initialChat("s1");
+    applyEvent(s, { type: "turnVerification", sessionId: "s1", turnId: "turn-1", verdict: "unverified", checks: [] });
+    applyEvent(s, {
+      type: "turnVerification",
+      sessionId: "s1",
+      turnId: "turn-1",
+      verdict: "verified",
+      checks: [check({})],
+      settledLater: true,
+    });
+    render(() => list({ items, verifications: s.verifications }));
+    expect(screen.queryByText("Unverified")).toBeNull();
+    const tooltip = tooltipOf("Verified");
+    expect(tooltip.startsWith("Checked in a later turn.")).toBe(true);
+    expect(tooltip).toContain("cargo test: passed in 14.2s");
+  });
+
+  it("reads an older event with no settle flag as before", () => {
+    render(() => list({ items, verifications: verified("verified", [check({})], undefined) }));
+    expect(tooltipOf("Verified").startsWith("The last check after the last edit passed.")).toBe(true);
   });
 
   it("shows no mark with the setting switched off", () => {

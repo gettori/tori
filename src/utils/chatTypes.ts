@@ -675,6 +675,7 @@ export type ChatEvent =
       turnId: string;
       verdict: Verdict;
       checks: Check[];
+      settledLater?: boolean;
     }
   | {
       type: "turnCompleted";
@@ -907,7 +908,7 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
   rateLimit: {
     required: ["sessionId", "status", "resetsAt", "limitType", "utilization", "windows", "overageStatus"],
   },
-  turnVerification: { required: ["sessionId", "turnId", "verdict", "checks"] },
+  turnVerification: { required: ["sessionId", "turnId", "verdict", "checks"], optional: ["settledLater"] },
   turnCompleted: {
     required: ["sessionId", "turnId", "outcome", "stopReason", "usage", "costUsd", "permissionDenials"],
     optional: ["extra"],

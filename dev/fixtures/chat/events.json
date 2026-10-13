@@ -500,7 +500,8 @@
         "exitCode": 101,
         "durationMs": 14200
       }
-    ]
+    ],
+    "settledLater": true
   },
   {
     "type": "turnCompleted",

@@ -482,7 +482,7 @@ export default function MessageList(props: {
                 tabIndex={0}
                 class={styles.turnVerification}
                 data-verdict={v().verdict}
-                label={verdictDetail(v().verdict, v().checks)}
+                label={verdictDetail(v().verdict, v().checks, v().settledLater)}
               >
                 <Icon icon={VERDICT_ICON[v().verdict]} size={12} />
                 {VERDICT_LABEL[v().verdict]}
