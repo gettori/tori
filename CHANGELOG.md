@@ -30,6 +30,22 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 - Settings > Integrations: **Fetch every** is now **Git fetch every**, and
   says that pull request status refreshes every 2 minutes whatever it is
   set to.
+- A turn that only touched files no check reads, like a gitignored
+  `.scribe/plan.md`, markdown, images, fonts or a `LICENSE`, no longer reads
+  **Unverified** forever. It gets no badge, and a turn that also changed code
+  is judged by its code edits alone.
+- A check in a later turn now settles the turns before it. Ask for
+  `cargo test` in its own prompt and the turn that changed the code turns
+  **Verified** or **Checks failed**, with a tooltip that says it was checked
+  in a later turn. This holds live, in a reopened chat, on older history and
+  after a restart.
+- The secret file mark no longer fires on code. A command names a secret only
+  when that file exists, looked up from the session folder and any `cd`
+  before it, so `r.key` in code an agent writes through the shell is left
+  alone.
+- The secret file mark names the file, as in **Read .env** or **Command named
+  server.key**. Click it to see each file, open it, see what read it or the
+  command that named it, and jump to that call with **Show call**.
 
 ## 26.1010.0-alpha
 
