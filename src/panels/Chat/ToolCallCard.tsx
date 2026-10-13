@@ -1,11 +1,10 @@
-import { For, Show, Switch, Match, createMemo, createSignal, createResource } from "solid-js";
+import { For, Show, Switch, Match, createEffect, createMemo, createSignal, createResource } from "solid-js";
 import { ChevronRight, EyeOff, KeyRound } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import { invoke } from "@tauri-apps/api/core";
 import { parseDiffHunks } from "../../utils/diffHunks";
-import { emitWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "../../utils/events";
 import { hunkFingerprint } from "../../utils/hunkFingerprint";
-import { isUnderPath, mentionPath } from "../../utils/pathScope";
+import { mentionPath } from "../../utils/pathScope";
 import PermissionPrompt, { type Answer } from "./PermissionPrompt";
 import { DiffView, ToolDiff, ToolInput, ToolOutput } from "./ToolBody";
 import { toolDiffBody, unifiedHunks } from "./toolDiff";
@@ -13,6 +12,7 @@ import { langOfPath } from "./highlight";
 import { formatDuration, isEditCall, toolDigest, toolPaths, toolRenderer, toolSummaryText } from "./toolRenderers";
 import type { ToolItem } from "./chatStore";
 import type { PermissionMode } from "../../utils/chatTypes";
+import { openWorkspacePath } from "./openPath";
 import styles from "./Chat.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
 
@@ -58,6 +58,7 @@ export default function ToolCallCard(props: {
   sessionId: string;
   showSecret?: boolean;
   showBlindEdit?: boolean;
+  revealed?: boolean;
   cwd: string;
   onAnswer?: (card: ToolItem, answer: Answer) => void;
   onSetMode: (mode: PermissionMode) => void;
@@ -82,6 +83,9 @@ export default function ToolCallCard(props: {
         : null;
 
   const [open, setOpen] = createSignal(false);
+  createEffect(() => {
+    if (props.revealed) setOpen(true);
+  });
   // Whether the user asked to see what is different on disk *now*, which is the
   // question the revert control answers and the only one worth a `git diff` per
   // file. The card's own diff is drawn from the call itself and costs nothing.
@@ -151,16 +155,7 @@ export default function ToolCallCard(props: {
     setOpen(next);
   }
 
-  function openPath(path: string, line?: number) {
-    // A path outside the workspace is a real case, not a bug: a tool can read a
-    // system header or a file in another project. Saying so beats opening an
-    // editor tab on something the user did not expect.
-    if (!isUnderPath(path, props.cwd)) {
-      emitWith<ToastEvent>(TOAST, { message: `${path} is outside this workspace.`, kind: "info" });
-      return;
-    }
-    emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path, line });
-  }
+  const openPath = (path: string, line?: number) => openWorkspacePath(path, props.cwd, line);
 
   // Re-read after a successful revert rather than patched locally: the diff the
   // next click is checked against is the one the backend recomputes, so a card
@@ -190,6 +185,7 @@ export default function ToolCallCard(props: {
       class={`${styles.tool} ${props.card.state === "awaitingApproval" ? styles.toolBlocked : ""}`}
       classList={{ [styles.toolSecret]: secretShown() }}
       data-pending-card={props.card.state === "awaitingApproval" ? "" : undefined}
+      data-tool-use-id={props.card.toolUseId}
     >
       <button type="button" class={styles.toolRow} onClick={toggleOpen} aria-expanded={open()}>
         <span class={styles.toolCaret} classList={{ [styles.toolCaretOpen]: open() }} aria-hidden="true">

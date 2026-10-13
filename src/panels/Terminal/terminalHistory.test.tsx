@@ -190,7 +190,7 @@ describe("the History button on the tab bar", () => {
     bridge.secrets = { outsider: [{ promptTs: 1, paths: [".env"], strength: "read" }] };
     noteDots([{ id: "outsider", dot: "working", certainty: "inferred", home: null }]);
     fireEvent.click(historyBtn());
-    expect(await screen.findByTitle(/Read a secret file/)).toBeTruthy();
+    expect(await screen.findByTitle(/Read \.env/)).toBeTruthy();
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
 
     // It exited: Rust's next dot says so, and the badge goes.
@@ -289,7 +289,7 @@ describe("the mark a PTY agent tab wears", () => {
     await waitFor(() => expect(screen.getByTestId("pty")).toBeTruthy());
     noteDots([{ id: "s1", dot: "solid", certainty: "inferred", home: null }]);
 
-    const mark = await screen.findByLabelText(/Idle\s+Read a secret file/);
+    const mark = await screen.findByLabelText(/Idle\s+Read \.env/);
     expect(mark.childElementCount).toBe(2);
   });
 });

@@ -30,17 +30,23 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   hasEarlier,
   turnBlindEdits,
+  turnSecretRows,
   turnSecrets,
   windowed,
   WINDOW_STEP,
   type ChatItem,
   type QuestionItem,
+  type SecretRow,
   type ToolItem,
   type TurnCheck,
 } from "./chatStore";
 import { attachmentKind } from "../../utils/chatCompose";
 import { VERDICT_LABEL, verdictDetail } from "../../utils/verification";
-import type { ContentBlock, PermissionMode, QuestionAnswer, RefTarget } from "../../utils/chatTypes";
+import type { ContentBlock, PermissionMode, QuestionAnswer, RefTarget, SecretHit } from "../../utils/chatTypes";
+import { commandAround, secretLabel } from "../../utils/secretReads";
+import { mentionPath } from "../../utils/pathScope";
+import Popover from "../../components/Popover/Popover";
+import { openWorkspacePath, workspacePath } from "./openPath";
 import { openPrByNumber } from "../../utils/openPrTab";
 import { emitWith, NAVIGATE, SESSION_ACTION, type NavTarget, type SessionAction } from "../../utils/events";
 import Button from "../../components/Button/Button";
@@ -449,6 +455,86 @@ export default function MessageList(props: {
   // Said at the head of the turn, not only on the card that made the read: a
   // card can sit folded inside a run of calls nobody opens.
   const secrets = createMemo(() => (props.showSecrets === false ? new Map() : turnSecrets(props.items)));
+  const secretRows = createMemo(() => (props.showSecrets === false ? new Map() : turnSecretRows(props.items)));
+
+  // The call "Show call" asked for. Its card opens, and so does a shut run
+  // holding it, since a card inside one is not drawn.
+  const [revealed, setRevealed] = createSignal<string | null>(null);
+  function showCall(toolUseId: string) {
+    setRevealed(null);
+    setRevealed(toolUseId);
+    requestAnimationFrame(() =>
+      scroller
+        ?.querySelector<HTMLElement>(`[data-tool-use-id="${CSS.escape(toolUseId)}"]`)
+        ?.scrollIntoView({ block: "center" }),
+    );
+  }
+
+  const SecretMark = (p: { hit: SecretHit; rows: SecretRow[] }) => {
+    const [open, setOpen] = createSignal(false);
+    let anchor: HTMLButtonElement | undefined;
+    return (
+      <>
+        <button
+          type="button"
+          ref={anchor}
+          class={styles.turnSecret}
+          aria-expanded={open()}
+          aria-haspopup="dialog"
+          onClick={() => setOpen(!open())}
+        >
+          <Icon icon={KeyRound} size={12} />
+          {secretLabel(p.hit)}
+        </button>
+        <Show when={open()}>
+          <Popover
+            anchorEl={anchor}
+            placement="bottom-start"
+            onClose={() => setOpen(false)}
+            class={styles.secretPopover}
+            aria-label="Secret files"
+          >
+            <For each={p.rows}>
+              {(row) => (
+                <div class={styles.secretRow}>
+                  <Show
+                    when={workspacePath(row.path, props.cwd)}
+                    fallback={<span class={styles.secretPath}>{row.path}</span>}
+                  >
+                    {(path) => (
+                      <button
+                        type="button"
+                        class={styles.secretPath}
+                        onClick={() => openWorkspacePath(path(), props.cwd)}
+                      >
+                        {mentionPath(path(), props.cwd)}
+                      </button>
+                    )}
+                  </Show>
+                  <Show
+                    when={row.strength === "named" && row.command}
+                    fallback={<span class={styles.secretReason}>{`Read with ${row.tool}`}</span>}
+                  >
+                    {(command) => <code class={styles.secretReason}>{commandAround(command(), row.path)}</code>}
+                  </Show>
+                  <button
+                    type="button"
+                    class={styles.secretShow}
+                    onClick={() => {
+                      setOpen(false);
+                      showCall(row.toolUseId);
+                    }}
+                  >
+                    Show call
+                  </button>
+                </div>
+              )}
+            </For>
+          </Popover>
+        </Show>
+      </>
+    );
+  };
   const blindEdits = createMemo(() => (props.showBlindEdits === false ? new Map() : turnBlindEdits(props.items)));
 
   // Zero height: it exists to carry the turn id, not to take up room. The
@@ -460,12 +546,7 @@ export default function MessageList(props: {
           <div class={styles.turnAnchor} data-turn-id={id()} />
           <Show when={modelLines().get(p.itemId)}>{(label) => <div class={styles.turnModel}>{label()}</div>}</Show>
           <Show when={secrets().get(id())}>
-            {(hit) => (
-              <Tooltip<HTMLSpanElement> as="span" tabIndex={0} class={styles.turnSecret} label={hit().paths.join("\n")}>
-                <Icon icon={KeyRound} size={12} />
-                {hit().strength === "read" ? "Read a secret file" : "A command named a secret file"}
-              </Tooltip>
-            )}
+            {(hit) => <SecretMark hit={hit()} rows={secretRows().get(id()) ?? []} />}
           </Show>
           <Show when={blindEdits().get(id())}>
             {(paths) => (
@@ -803,6 +884,7 @@ export default function MessageList(props: {
               card={it()}
               showSecret={props.showSecrets !== false}
               showBlindEdit={props.showBlindEdits !== false}
+              revealed={revealed() === it().toolUseId}
               also={folded().followers.get(it().id) ?? []}
               sessionId={props.sessionId}
               cwd={props.cwd}
@@ -822,6 +904,10 @@ export default function MessageList(props: {
   const WorkCard = (p: { run: WorkRun }) => {
     const [open, setOpen] = createSignal(false);
     const held = () => grouped()?.members.get(p.run) ?? [];
+    createEffect(() => {
+      const id = revealed();
+      if (id && held().some((m) => m.kind === "tool" && m.toolUseId === id)) setOpen(true);
+    });
     const label = createMemo(() => runLabel(held(), props.streaming && held()[held().length - 1]?.id === tailId()));
     return (
       <>
