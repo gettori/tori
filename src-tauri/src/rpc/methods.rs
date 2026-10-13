@@ -1312,7 +1312,8 @@ impl Backend for TauriBackend {
                 ));
             }
             let head = crate::worktree::review_head(&project, number).map_err(forge_refused)?;
-            let path = crate::worktree::checkout_review(&self.app, &project, &head).map_err(refused)?;
+            let checkout = crate::worktree::checkout_review(&self.app, &project, &head);
+            let path = tauri::async_runtime::block_on(checkout).map_err(refused)?;
             let (sha, fork) = (head.sha, head.fork);
             let setup = setup_fields(&project, Path::new(&path), fork, crate::setup::WAIT_CAP);
             return Ok(with_fields(
