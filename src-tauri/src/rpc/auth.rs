@@ -20,7 +20,7 @@ const MAX_INSTALL_CHARS: usize = 64;
 pub enum Credential {
     Local {
         // Only in the bridge file, for a process Tori did not start.
-        process: String,
+        process: ProcessToken,
         children: Arc<Children>,
     },
     // Never the process token: a device reaches this over the network.
@@ -31,6 +31,14 @@ pub enum Credential {
 }
 
 impl Credential {
+    /// A new process token, `None` for a front that has none.
+    pub fn rotate(&self) -> Option<String> {
+        match self {
+            Credential::Local { process, .. } => Some(process.rotate()),
+            Credential::Remote { .. } => None,
+        }
+    }
+
     /// Whether `principal` still holds what it authenticated with, for a
     /// connection that may have been revoked while it was being set up.
     pub fn holds(&self, principal: &Principal) -> bool {
@@ -41,7 +49,38 @@ impl Credential {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+/// The token in the bridge file. Rotatable, since the daemon outlives every
+/// window and a token that never changes is one leak away from forever.
+pub struct ProcessToken(Mutex<String>);
+
+impl ProcessToken {
+    pub fn rotate(&self) -> String {
+        let token = crate::chat::approval::random_token();
+        *self.0.lock().unwrap_or_else(|e| e.into_inner()) = token.clone();
+        token
+    }
+
+    fn matches(&self, token: &str) -> bool {
+        constant_time_eq(
+            token.as_bytes(),
+            self.0.lock().unwrap_or_else(|e| e.into_inner()).as_bytes(),
+        )
+    }
+}
+
+impl From<&str> for ProcessToken {
+    fn from(token: &str) -> Self {
+        Self(Mutex::new(token.to_string()))
+    }
+}
+
+impl From<String> for ProcessToken {
+    fn from(token: String) -> Self {
+        Self(Mutex::new(token))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "id", rename_all = "lowercase")]
 pub enum Caller {
     // By frontend tab id.
@@ -70,6 +109,10 @@ impl Children {
         self.lock().retain(|_, held| held != caller);
     }
 
+    pub fn clear(&self) {
+        self.lock().clear();
+    }
+
     fn get(&self, token: &str) -> Option<Caller> {
         self.lock().get(token).cloned()
     }
@@ -79,8 +122,10 @@ impl Children {
     }
 }
 
-/// Who is on the other end once `authenticate` has passed.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Who is on the other end once `authenticate` has passed. Serialisable
+/// because the daemon authenticates and the window answers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "id", rename_all = "lowercase")]
 pub enum Principal {
     /// Holds the process token from the bridge file: Tori did not start it.
     Local,
@@ -127,7 +172,7 @@ pub fn authenticate(first: &Request, credential: &Credential) -> Result<Principa
         .ok_or(AuthError::MissingToken)?;
     match credential {
         Credential::Local { process, children } => {
-            if constant_time_eq(token.as_bytes(), process.as_bytes()) {
+            if process.matches(&token) {
                 return Ok(Principal::Local);
             }
             children

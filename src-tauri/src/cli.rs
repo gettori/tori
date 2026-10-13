@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 
 use crate::rpc::client::{self, Client, Found};
 
-const COMMANDS: [&str; 20] = [
+const COMMANDS: [&str; 21] = [
     "sessions",
     "projects",
     "session",
@@ -29,6 +29,7 @@ const COMMANDS: [&str; 20] = [
     "validate-pack",
     "packs-index",
     "packs-catalog",
+    "daemon",
 ];
 
 const USAGE: &str = "usage:
@@ -68,7 +69,8 @@ const USAGE: &str = "usage:
   tori mcp
   tori validate-pack <file|dir>... [--assets] [--registry] [--json]
   tori packs-index <dir> [--sign-key-env <name> --key-id <id>]
-  tori packs-catalog --check";
+  tori packs-catalog --check
+  tori daemon";
 
 pub fn is_cli() -> bool {
     std::env::args()
@@ -78,6 +80,9 @@ pub fn is_cli() -> bool {
 
 pub fn run() -> i32 {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args[0] == "daemon" {
+        return crate::rpc::daemon::run();
+    }
     match dispatch(&args) {
         Ok(()) => 0,
         // A reader that went away (`tori events | head`) is a normal end.

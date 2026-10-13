@@ -137,10 +137,16 @@ fn event_line(channel: &Channel, data: Value) -> String {
     ))
 }
 
+type Upstream = Arc<dyn Fn(&Channel, &Value) + Send + Sync>;
+type ChatsWatcher = Box<dyn Fn(HashSet<String>) + Send>;
+
 #[derive(Default)]
 pub struct Hub {
     inner: Mutex<Inner>,
     on_devices: Mutex<Option<Box<dyn Fn() + Send>>>,
+    on_chats: Mutex<Option<ChatsWatcher>>,
+    upstream: Mutex<Option<Upstream>>,
+    remote_chats: Mutex<HashSet<String>>,
 }
 
 #[derive(Default)]
@@ -151,6 +157,18 @@ struct Inner {
 
 fn devices_of(inner: &Inner) -> HashSet<String> {
     inner.conns.values().filter_map(|c| c.device.clone()).collect()
+}
+
+fn chats_of(inner: &Inner) -> HashSet<String> {
+    inner
+        .conns
+        .values()
+        .flat_map(|c| &c.channels)
+        .filter_map(|channel| match channel {
+            Channel::Chat(id) => Some(id.clone()),
+            _ => None,
+        })
+        .collect()
 }
 
 impl Hub {
@@ -170,16 +188,39 @@ impl Hub {
         devices_of(&self.lock())
     }
 
+    /// Called, outside the lock, with every watched chat whenever that set moves.
+    pub fn watch_chats(&self, watcher: ChatsWatcher) {
+        *self.on_chats.lock().unwrap_or_else(|e| e.into_inner()) = Some(watcher);
+    }
+
+    pub fn set_upstream(&self, upstream: Upstream) {
+        *self.upstream.lock().unwrap_or_else(|e| e.into_inner()) = Some(upstream);
+    }
+
+    pub fn chats(&self) -> HashSet<String> {
+        chats_of(&self.lock())
+    }
+
+    pub fn set_remote_chats(&self, ids: HashSet<String>) {
+        *self.remote_chats.lock().unwrap_or_else(|e| e.into_inner()) = ids;
+    }
+
     fn with_devices<T>(&self, change: impl FnOnce(&mut Inner) -> T) -> T {
-        let (out, moved) = {
+        let (out, devices, chats) = {
             let mut inner = self.lock();
-            let before = devices_of(&inner);
+            let (devices, chats) = (devices_of(&inner), chats_of(&inner));
             let out = change(&mut inner);
-            (out, devices_of(&inner) != before)
+            let chats = Some(chats_of(&inner)).filter(|now| *now != chats);
+            (out, devices_of(&inner) != devices, chats)
         };
-        if moved {
+        if devices {
             if let Some(watcher) = &*self.on_devices.lock().unwrap_or_else(|e| e.into_inner()) {
                 watcher();
+            }
+        }
+        if let Some(chats) = chats {
+            if let Some(watcher) = &*self.on_chats.lock().unwrap_or_else(|e| e.into_inner()) {
+                watcher(chats);
             }
         }
         out
@@ -207,10 +248,12 @@ impl Hub {
         self.lock().conns.get(&conn).map(|c| c.chat.clone())
     }
 
-    /// Whether anyone reads `chat:<id>`, so the stream is not serialised for nobody.
+    /// Whether anyone reads `chat:<id>`, here or on the daemon, so the stream
+    /// is not serialised for nobody.
     pub fn watches_chat(&self, id: &str) -> bool {
         let channel = Channel::Chat(id.to_string());
         self.lock().conns.values().any(|c| c.channels.contains(&channel))
+            || self.remote_chats.lock().unwrap_or_else(|e| e.into_inner()).contains(id)
     }
 
     pub fn tag_device(&self, conn: ConnId, device: &str) {
@@ -240,20 +283,22 @@ impl Hub {
 
     /// `false` when the connection is already gone.
     pub fn subscribe(&self, conn: ConnId, channel: Channel) -> bool {
-        self.lock()
-            .conns
-            .get_mut(&conn)
-            .map(|c| c.channels.insert(channel))
-            .is_some()
+        self.with_devices(|inner| inner.conns.get_mut(&conn).map(|c| c.channels.insert(channel)).is_some())
     }
 
     pub fn unsubscribe(&self, conn: ConnId, channel: &Channel) {
-        if let Some(c) = self.lock().conns.get_mut(&conn) {
-            c.channels.remove(channel);
-        }
+        self.with_devices(|inner| {
+            if let Some(c) = inner.conns.get_mut(&conn) {
+                c.channels.remove(channel);
+            }
+        });
     }
 
     pub fn publish(&self, channel: &Channel, data: Value) {
+        let upstream = self.upstream.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        if let Some(upstream) = upstream {
+            upstream(channel, &data);
+        }
         let line = event_line(channel, data);
         let inner = self.lock();
         if let Channel::Chat(session) = channel {

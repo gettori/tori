@@ -4,10 +4,12 @@
 
 use std::io::{self, Read, Write};
 use std::net::Shutdown;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+#[cfg(test)]
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 pub trait Stream: Read + Write + Send {
@@ -38,7 +40,11 @@ impl Stream for UnixStream {
 pub struct UnixTransport {
     listener: UnixListener,
     sock_path: PathBuf,
-    dir: PathBuf,
+    // Removed with the socket only when this transport made it for itself.
+    dir: Option<PathBuf>,
+    // The socket file this bind made: a fixed path can be bound again by the
+    // next daemon before this one is dropped, and that file is not ours.
+    inode: u64,
     stopping: AtomicBool,
 }
 
@@ -46,6 +52,7 @@ impl UnixTransport {
     /// Binds `$TMPDIR/tori-rpc-<pid>-<seq>/s`. The counter keeps two servers in
     /// one process (parallel tests) off each other's socket, and the path stays
     /// short because Darwin caps `sun_path` at 104 bytes.
+    #[cfg(test)]
     pub fn bind() -> io::Result<Self> {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
@@ -59,17 +66,33 @@ impl UnixTransport {
         }
         std::fs::create_dir_all(&dir)?;
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
-        let _ = std::fs::remove_file(&sock_path);
-        let listener = UnixListener::bind(&sock_path)?;
-        std::fs::set_permissions(&sock_path, std::fs::Permissions::from_mode(0o700))?;
+        let mut transport = Self::bind_at(&sock_path)?;
+        transport.dir = Some(dir);
+        Ok(transport)
+    }
+
+    /// Whatever is at the path is unlinked first, so only call it holding the
+    /// lock that says no one else is serving there.
+    pub fn bind_at(sock_path: &Path) -> io::Result<Self> {
+        if sock_path.as_os_str().len() >= 104 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("rpc socket path too long for sun_path: {}", sock_path.display()),
+            ));
+        }
+        let _ = std::fs::remove_file(sock_path);
+        let listener = UnixListener::bind(sock_path)?;
+        std::fs::set_permissions(sock_path, std::fs::Permissions::from_mode(0o700))?;
         Ok(Self {
             listener,
-            sock_path,
-            dir,
+            sock_path: sock_path.to_path_buf(),
+            dir: None,
+            inode: std::fs::symlink_metadata(sock_path)?.ino(),
             stopping: AtomicBool::new(false),
         })
     }
 
+    #[cfg(test)]
     pub fn sock_path(&self) -> &Path {
         &self.sock_path
     }
@@ -92,15 +115,24 @@ impl Transport for UnixTransport {
             return;
         }
         let _ = UnixStream::connect(&self.sock_path);
-        let _ = std::fs::remove_file(&self.sock_path);
-        let _ = std::fs::remove_dir_all(&self.dir);
+        self.remove();
+    }
+}
+
+impl UnixTransport {
+    fn remove(&self) {
+        if std::fs::symlink_metadata(&self.sock_path).is_ok_and(|m| m.ino() == self.inode) {
+            let _ = std::fs::remove_file(&self.sock_path);
+        }
+        if let Some(dir) = &self.dir {
+            let _ = std::fs::remove_dir_all(dir);
+        }
     }
 }
 
 impl Drop for UnixTransport {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.sock_path);
-        let _ = std::fs::remove_dir_all(&self.dir);
+        self.remove();
     }
 }
 

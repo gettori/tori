@@ -773,66 +773,99 @@ fn channel(value: &Value) -> Result<Channel, RpcError> {
     Channel::parse(&topic).ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("unknown topic {topic}")))
 }
 
+/// The refusals are by caller kind, so the daemon, which holds the
+/// subscriptions but not the worker set, applies the same ones.
+pub(super) fn subscribe(
+    hub: &Hub,
+    kind: CallerKind,
+    conn: ConnId,
+    params: &Value,
+    watching_sessions: impl FnOnce(),
+) -> Result<Value, RpcError> {
+    let channel = channel(params)?;
+    if channel == Channel::Accounts && kind == CallerKind::Device {
+        return Err(RpcError::new(
+            REFUSED,
+            "a device subscribes to sessions, session:<id>, chat:<id> and autopilot only",
+        ));
+    }
+    // The stream is for a person watching a chat; an agent reads a session with session.tail.
+    if matches!(channel, Channel::Chat(_)) && !matches!(kind, CallerKind::Device | CallerKind::Local) {
+        return Err(RpcError::new(
+            REFUSED,
+            "chat:<id> is open to a device or a local client only",
+        ));
+    }
+    if matches!(channel, Channel::Sessions | Channel::Session(_)) {
+        watching_sessions();
+    }
+    hub.subscribe(conn, channel);
+    Ok(json!({}))
+}
+
+pub(super) fn unsubscribe(hub: &Hub, conn: ConnId, params: &Value) -> Result<Value, RpcError> {
+    hub.unsubscribe(conn, &channel(params)?);
+    Ok(json!({}))
+}
+
 impl Server {
     pub fn dispatch(&self, conn: ConnId, principal: &Principal, req: &Request) -> Result<Value, RpcError> {
         match req.method.as_str() {
-            "subscribe" => {
-                let channel = channel(&req.params)?;
-                let sessions = matches!(channel, Channel::Sessions | Channel::Session(_));
-                let kind = self.backend.kind(principal);
-                if channel == Channel::Accounts && kind == CallerKind::Device {
-                    return Err(RpcError::new(
-                        REFUSED,
-                        "a device subscribes to sessions, session:<id>, chat:<id> and autopilot only",
-                    ));
-                }
-                // The stream is for a person watching a chat; an agent reads a session with session.tail.
-                if matches!(channel, Channel::Chat(_)) && !matches!(kind, CallerKind::Device | CallerKind::Local) {
-                    return Err(RpcError::new(
-                        REFUSED,
-                        "chat:<id> is open to a device or a local client only",
-                    ));
-                }
-                if sessions {
-                    self.backend.watching_sessions();
-                }
-                self.hub.subscribe(conn, channel);
-                Ok(json!({}))
-            }
-            "unsubscribe" => {
-                self.hub.unsubscribe(conn, &channel(&req.params)?);
-                Ok(json!({}))
-            }
+            "subscribe" => subscribe(&self.hub, self.backend.kind(principal), conn, &req.params, || {
+                self.backend.watching_sessions()
+            }),
+            "unsubscribe" => unsubscribe(&self.hub, conn, &req.params),
             "auth" => Err(RpcError::new(INVALID_REQUEST, "already authenticated")),
-            name => {
-                let method =
-                    table::find(name).ok_or_else(|| RpcError::new(METHOD_NOT_FOUND, format!("no method {name}")))?;
-                let kind = self.backend.kind(principal);
-                if !method.callers.contains(&kind) {
-                    let why = match kind {
-                        CallerKind::Worker => method.refusal.or(Some(table::WORKER_REFUSAL)),
-                        _ => method.refusal,
-                    };
-                    let why = why.map(|r| format!(": {r}")).unwrap_or_default();
-                    return Err(RpcError::new(
-                        REFUSED,
-                        format!("{name} is not open to a {} caller{why}", kind.name()),
-                    ));
-                }
-                (method.call)(self.backend.as_ref(), principal, &req.params)
-            }
+            _ => self.call(principal, req),
         }
+    }
+
+    /// One row of the method table, for a caller the transport already proved.
+    pub fn call(&self, principal: &Principal, req: &Request) -> Result<Value, RpcError> {
+        let name = req.method.as_str();
+        let method = table::find(name).ok_or_else(|| RpcError::new(METHOD_NOT_FOUND, format!("no method {name}")))?;
+        let kind = self.backend.kind(principal);
+        if !method.callers.contains(&kind) {
+            let why = match kind {
+                CallerKind::Worker => method.refusal.or(Some(table::WORKER_REFUSAL)),
+                _ => method.refusal,
+            };
+            let why = why.map(|r| format!(": {r}")).unwrap_or_default();
+            return Err(RpcError::new(
+                REFUSED,
+                format!("{name} is not open to a {} caller{why}", kind.name()),
+            ));
+        }
+        (method.call)(self.backend.as_ref(), principal, &req.params)
+    }
+}
+
+pub trait Dispatch: Send + Sync {
+    fn hub(&self) -> &Hub;
+    fn auth_timeout(&self) -> Duration;
+    fn dispatch(&self, conn: ConnId, principal: &Principal, req: &Request) -> Result<Value, RpcError>;
+}
+
+impl Dispatch for Server {
+    fn hub(&self) -> &Hub {
+        &self.hub
+    }
+    fn auth_timeout(&self) -> Duration {
+        self.auth_timeout
+    }
+    fn dispatch(&self, conn: ConnId, principal: &Principal, req: &Request) -> Result<Value, RpcError> {
+        Server::dispatch(self, conn, principal, req)
     }
 }
 
 /// Accept on its own thread until the transport shuts down. A front is a
 /// transport and the credential it accepts; every front shares one server.
-pub fn serve(transport: Arc<dyn Transport>, credential: Arc<Credential>, server: Arc<Server>) {
+pub fn serve(transport: Arc<dyn Transport>, credential: Arc<Credential>, server: Arc<dyn Dispatch>) {
     thread::spawn(move || loop {
         match transport.accept() {
             Ok(Some(stream)) => {
                 let (server, credential) = (server.clone(), credential.clone());
-                thread::spawn(move || handle(&server, &credential, stream));
+                thread::spawn(move || handle(server.as_ref(), &credential, stream));
             }
             Ok(None) => break,
             // A failed accept (a client that hung up mid handshake) is that
@@ -866,14 +899,25 @@ fn drain(rx: &Receiver<String>, chat: &ChatOutbox, mut write: impl FnMut(&str) -
     }
 }
 
-fn handle(server: &Server, credential: &Credential, mut stream: Box<dyn Stream>) {
+fn handle(server: &dyn Dispatch, credential: &Credential, stream: Box<dyn Stream>) {
     let Ok(read_half) = stream.try_clone_box() else { return };
     let mut reader = BufReader::new(read_half);
 
     // Bounded, so a client that connects and says nothing does not hold a
     // thread forever.
-    let _ = stream.set_read_timeout(Some(server.auth_timeout));
-    let authed = match read_request(&mut reader) {
+    let _ = stream.set_read_timeout(Some(server.auth_timeout()));
+    let first = read_request(&mut reader);
+    handle_first(server, credential, stream, reader, first);
+}
+
+pub fn handle_first(
+    server: &dyn Dispatch,
+    credential: &Credential,
+    mut stream: Box<dyn Stream>,
+    mut reader: BufReader<Box<dyn Stream>>,
+    first: Result<Option<Request>, ReadError>,
+) {
+    let authed = match first {
         // Pairing ends the connection either way: the device comes back with
         // `auth`, so every connection that is served starts with a credential.
         Ok(Some(first)) if first.method == PAIR_METHOD => {
@@ -881,7 +925,7 @@ fn handle(server: &Server, credential: &Credential, mut stream: Box<dyn Stream>)
             let reply = match pair(&first, credential) {
                 Ok(paired) => {
                     for old in &paired.replaced {
-                        server.hub.close_device(old);
+                        server.hub().close_device(old);
                     }
                     Response::ok(id, json!(paired))
                 }
@@ -920,19 +964,19 @@ fn handle(server: &Server, credential: &Credential, mut stream: Box<dyn Stream>)
 
     let (tx, rx) = sync_channel::<String>(QUEUE_CAP);
     let Ok(closer) = stream.try_clone_box() else { return };
-    let conn = server.hub.register(tx.clone(), Box::new(move || closer.close()));
+    let conn = server.hub().register(tx.clone(), Box::new(move || closer.close()));
     // Tagged before the check, so a revoke either sees this connection or
     // removed the device before the check reads it.
     if let Principal::Device(id) = &principal {
-        server.hub.tag_device(conn, id);
+        server.hub().tag_device(conn, id);
     }
     if !credential.holds(&principal) {
-        server.hub.remove(conn);
+        server.hub().remove(conn);
         drop(tx);
         stream.close();
         return;
     }
-    let Some(chat) = server.hub.chat_outbox(conn) else {
+    let Some(chat) = server.hub().chat_outbox(conn) else {
         stream.close();
         return;
     };
@@ -962,7 +1006,7 @@ fn handle(server: &Server, credential: &Credential, mut stream: Box<dyn Stream>)
             break;
         }
     }
-    server.hub.remove(conn);
+    server.hub().remove(conn);
     drop(tx);
     let _ = writer.join();
 }
@@ -984,6 +1028,7 @@ pub mod tests {
 
     // A chat session with this id is treated as a worker.
     pub const WORKER: &str = "worker";
+    pub const SLOW: &str = "slow";
 
     impl Backend for StubBackend {
         fn kind(&self, principal: &Principal) -> CallerKind {
@@ -1021,6 +1066,9 @@ pub mod tests {
             Ok(json!({ "id": p.id }))
         }
         fn session_wait(&self, p: WaitParams) -> Result<Value, RpcError> {
+            if p.id == SLOW {
+                thread::sleep(Duration::from_millis(800));
+            }
             Ok(json!({ "id": p.id, "state": "idle", "question": null, "last": null }))
         }
         fn session_pending(&self, p: PendingParams) -> Result<Value, RpcError> {
