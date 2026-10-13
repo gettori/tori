@@ -6,7 +6,7 @@ import { turnWatch } from "./turnWatch";
 
 /** One turn that changed code. `promptTs` is null for a history with no
  *  prompts to anchor on, which is an ACP log. */
-export type VerifiedTurn = { promptTs: number | null; verdict: Verdict; checks: Check[] };
+export type VerifiedTurn = { promptTs: number | null; verdict: Verdict; checks: Check[]; settledLater?: boolean };
 
 export const VERDICT_LABEL: Record<Verdict, string> = {
   verified: "Verified",
@@ -28,9 +28,10 @@ export function checkLine(c: Check): string {
 }
 
 /** The whole answer for a tooltip: what decided it, then every check. */
-export function verdictDetail(verdict: Verdict, checks: readonly Check[]): string {
-  const head =
-    verdict === "unverified" && !checks.length
+export function verdictDetail(verdict: Verdict, checks: readonly Check[], settledLater = false): string {
+  const head = settledLater
+    ? "Checked in a later turn."
+    : verdict === "unverified" && !checks.length
       ? "Changed code and ran no check."
       : verdict === "unverified"
         ? "No check after the last edit, or its exit was not seen."

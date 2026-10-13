@@ -260,9 +260,12 @@ pub fn resolve(cursor: &HistoryCursor, prompts: &[(u64, usize)]) -> Option<usize
 pub struct HistoryPage {
     pub events: Vec<ChatEvent>,
     pub cursor: Option<HistoryCursor>,
+    #[serde(skip)]
+    pub whole: Option<Arc<Parsed>>,
 }
 
 /// A whole parse, kept so paging back through a session reads its file once.
+#[derive(Debug, PartialEq)]
 pub struct Parsed {
     pub events: Vec<ChatEvent>,
     pub prompts: Vec<(u64, usize)>,
@@ -276,6 +279,7 @@ pub fn page_before(parsed: &Parsed, cursor: &HistoryCursor) -> Option<HistoryPag
     Some(HistoryPage {
         events: tail.events,
         cursor: tail.cursor,
+        whole: None,
     })
 }
 

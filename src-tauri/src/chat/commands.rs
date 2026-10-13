@@ -1195,7 +1195,11 @@ pub async fn chat_history_page(
     .ok_or("this session's earlier history moved; reopen the chat to read it")?;
     state.0.cut_outputs(&session_id, &mut page.events);
     state.0.mark_secrets(&session_id, cwd.clone(), &mut page.events);
-    state.0.mark_verification(&session_id, cwd, &mut page.events);
+    let whole = page.whole.take();
+    let whole = whole.as_deref().map_or(&[][..], |w| w.events.as_slice());
+    state
+        .0
+        .mark_verification_page(&session_id, cwd, &mut page.events, whole);
     Ok(page)
 }
 
@@ -1222,7 +1226,9 @@ pub(crate) fn read_page(
         let (events, prompts) = super::history::events_and_prompts(session_id, &turns, &subagents);
         Parsed { events, prompts }
     });
-    page_before(&parsed, cursor)
+    let mut page = page_before(&parsed, cursor)?;
+    page.whole = Some(parsed);
+    Some(page)
 }
 
 /// Where a session's conversation lives, resolved apart from the read so a test
@@ -2268,6 +2274,123 @@ mod tail_tests {
         std::fs::remove_file(path).ok();
     }
 
+    fn edited_then_checked(name: &str, between: usize) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("tori-tail-{}-{name}.jsonl", std::process::id()));
+        let mut at = 0;
+        let mut line = |out: &mut String, value: serde_json::Value| {
+            let mut value = value;
+            value["timestamp"] = format!("2026-01-01T{:02}:{:02}:{:02}.000Z", at / 3600, at / 60 % 60, at % 60).into();
+            at += 1;
+            *out += &value.to_string();
+            out.push('\n');
+        };
+        let tool = |out: &mut String,
+                    line: &mut dyn FnMut(&mut String, serde_json::Value),
+                    id: &str,
+                    name: &str,
+                    input: serde_json::Value| {
+            line(
+                out,
+                serde_json::json!({ "type": "assistant", "message": { "content": [{ "type": "tool_use", "id": id, "name": name, "input": input }] } }),
+            );
+            line(
+                out,
+                serde_json::json!({ "type": "user", "message": { "role": "user", "content": [{ "type": "tool_result", "tool_use_id": id, "content": "ok" }] } }),
+            );
+        };
+        let mut out = String::new();
+        line(
+            &mut out,
+            serde_json::json!({ "type": "user", "message": { "role": "user", "content": "write it" } }),
+        );
+        tool(
+            &mut out,
+            &mut line,
+            "toolu_w",
+            "Write",
+            serde_json::json!({ "file_path": "/w/a.rs", "content": "x" }),
+        );
+        for i in 0..between {
+            line(
+                &mut out,
+                serde_json::json!({ "type": "user", "message": { "role": "user", "content": format!("p {i}") } }),
+            );
+            line(
+                &mut out,
+                serde_json::json!({ "type": "assistant", "message": { "content": [{ "type": "text", "text": format!("r {i}") }] } }),
+            );
+        }
+        line(
+            &mut out,
+            serde_json::json!({ "type": "user", "message": { "role": "user", "content": "test it" } }),
+        );
+        tool(
+            &mut out,
+            &mut line,
+            "toolu_t",
+            "Bash",
+            serde_json::json!({ "command": "cargo test" }),
+        );
+        std::fs::write(&path, out).unwrap();
+        path
+    }
+
+    fn first_verdict(events: &[ChatEvent]) -> Option<(crate::chat::model::Verdict, bool)> {
+        events.iter().find_map(|e| match e {
+            ChatEvent::TurnVerification {
+                verdict, settled_later, ..
+            } => Some((*verdict, *settled_later)),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn a_forks_earliest_page_carries_the_settle_from_its_tail() {
+        let path = edited_then_checked("fork-settle", 100);
+        let from = HistorySource::Transcript(path.to_str().unwrap().to_string());
+        let cache = Mutex::new(PageCache::new(3));
+        let mut cursor = read_tail("fork", &from, "claude", None).cursor;
+        let mut earliest = None;
+        while let Some(c) = cursor {
+            let mut page = read_page("fork", &from, "claude", &c, &cache).expect("a page");
+            let whole = page.whole.take().expect("the parse it was cut from");
+            crate::verification::mark_page(&mut page.events, &whole.events, None, true);
+            cursor = page.cursor;
+            earliest = Some(page.events);
+        }
+        let earliest = earliest.expect("the history pages");
+        assert!(earliest
+            .iter()
+            .all(|e| serde_json::to_value(e).unwrap()["sessionId"] == "fork"));
+        assert_eq!(
+            first_verdict(&earliest),
+            Some((crate::chat::model::Verdict::Verified, true))
+        );
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn a_rewound_tail_ignores_a_check_after_the_cut() {
+        let path = edited_then_checked("rewound-settle", 2);
+        let from = HistorySource::Transcript(path.to_str().unwrap().to_string());
+        let turns = crate::sessions::transcript_turns(path.to_str().unwrap(), "claude");
+        let last_prompt = turns.iter().rev().find(|t| t.role == "user").map(|t| t.ts);
+        let mut tail = read_tail("s", &from, "claude", last_prompt);
+        crate::verification::mark_history(&mut tail.events, None, true);
+        assert_eq!(
+            first_verdict(&tail.events),
+            Some((crate::chat::model::Verdict::Unverified, false))
+        );
+
+        let mut whole = read_tail("s", &from, "claude", None);
+        crate::verification::mark_history(&mut whole.events, None, true);
+        assert_eq!(
+            first_verdict(&whole.events),
+            Some((crate::chat::model::Verdict::Verified, true))
+        );
+        std::fs::remove_file(path).ok();
+    }
+
     #[test]
     fn opening_a_chat_caches_nothing() {
         let path = transcript("open", 100);
@@ -2476,8 +2599,15 @@ mod verification_tests {
             done("c2", "t2"),
         ];
         let turns = crate::verification::session_turns(&events, &[], &crate::verification::entries_for(None), None);
-        let verdicts: Vec<_> = turns.iter().map(|t| (t.prompt_ts, t.verdict)).collect();
-        assert_eq!(verdicts, vec![(None, Verdict::Unverified), (None, Verdict::Verified)]);
+        let verdicts: Vec<_> = turns
+            .iter()
+            .map(|t| (t.prompt_ts, t.verdict, t.settled_later))
+            .collect();
+        assert_eq!(
+            verdicts,
+            vec![(None, Verdict::Verified, true), (None, Verdict::Verified, false)],
+            "t2's check settles t1"
+        );
     }
 
     #[test]

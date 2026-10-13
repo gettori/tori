@@ -811,6 +811,16 @@ impl Turn {
             .map(String::as_str)
     }
 
+    // The last check call whose every exit was seen.
+    fn last_trusted(&self) -> Option<&[Check]> {
+        self.steps
+            .iter()
+            .rev()
+            .filter_map(Step::checks)
+            .find(|c| c.iter().all(|c| c.result != CheckResult::NotSeen))
+            .map(Vec::as_slice)
+    }
+
     /// The verdict and every check the turn ran, or `None` for a turn that
     /// changed no code `scope` counts. Only checks after the last such edit
     /// decide it, and of those the last call's worst result does.
@@ -834,11 +844,86 @@ fn verification_event(session_id: &str, turn_id: &str, turn: &Turn, scope: &Scop
         turn_id: turn_id.to_string(),
         verdict,
         checks,
+        settled_later: false,
     })
 }
 
-/// One live session's turns, fed every event in order. Returns the
-/// `TurnVerification` to send ahead of a `TurnCompleted`.
+fn settled_event(session_id: &str, turn_id: &str, verdict: Verdict, checks: &[Check]) -> ChatEvent {
+    ChatEvent::TurnVerification {
+        session_id: session_id.to_string(),
+        turn_id: turn_id.to_string(),
+        verdict,
+        checks: checks.to_vec(),
+        settled_later: true,
+    }
+}
+
+struct Open<K> {
+    key: K,
+    verdict: Verdict,
+}
+
+/// Turns not verified yet, oldest first. A later check covers the whole tree,
+/// so it settles them whatever its own turn edited.
+pub struct Settler<K> {
+    open: Vec<Open<K>>,
+}
+
+impl<K> Default for Settler<K> {
+    fn default() -> Self {
+        Self { open: Vec::new() }
+    }
+}
+
+impl<K: Clone + PartialEq> Settler<K> {
+    fn is_empty(&self) -> bool {
+        self.open.is_empty()
+    }
+
+    fn turn(&mut self, key: K, own: Option<Verdict>, trusted: Option<&[Check]>) -> Vec<(K, Verdict)> {
+        let mut changed = Vec::new();
+        if let Some(checks) = trusted {
+            let verdict = if checks.iter().any(|c| c.result == CheckResult::Failed) {
+                Verdict::Failed
+            } else {
+                Verdict::Verified
+            };
+            for open in &mut self.open {
+                if open.verdict != verdict {
+                    open.verdict = verdict;
+                    changed.push((open.key.clone(), verdict));
+                }
+            }
+            self.open.retain(|o| o.verdict != Verdict::Verified);
+        }
+        if let Some(verdict) = own.filter(|v| *v != Verdict::Verified) {
+            if !self.open.iter().any(|o| o.key == key) {
+                self.open.push(Open { key, verdict });
+            }
+        }
+        changed
+    }
+}
+
+/// What a finished turn sends ahead of its `TurnCompleted`.
+#[derive(Debug, Default)]
+pub struct Marks {
+    pub settled: Vec<ChatEvent>,
+    pub own: Option<ChatEvent>,
+}
+
+impl Marks {
+    /// The session's verdict after this turn: its newest code turn's.
+    pub fn session_verdict(&self) -> Option<Verdict> {
+        verdict_of(self.own.as_ref()).or_else(|| verdict_of(self.settled.last()))
+    }
+
+    pub fn into_events(self) -> Vec<ChatEvent> {
+        self.settled.into_iter().chain(self.own).collect()
+    }
+}
+
+/// One live session's turns, fed every event in order.
 pub struct Tracker {
     cwd: Option<PathBuf>,
     entries: Vec<Vec<String>>,
@@ -848,6 +933,7 @@ pub struct Tracker {
     // the same sink, and a replay has no timing to measure, so the second pass
     // reuses what the live one measured.
     verdicts: HashMap<String, Option<ChatEvent>>,
+    settler: Settler<(String, String)>,
 }
 
 impl Tracker {
@@ -858,10 +944,24 @@ impl Tracker {
             scope: Scope::new(cwd),
             turns: HashMap::new(),
             verdicts: HashMap::new(),
+            settler: Settler::default(),
         }
     }
 
-    pub fn observe(&mut self, event: &ChatEvent, now: Option<Instant>) -> Option<ChatEvent> {
+    pub fn seed(&mut self, open: Vec<OpenTurn>) {
+        if !self.verdicts.is_empty() || !self.turns.is_empty() || !self.settler.is_empty() {
+            return;
+        }
+        self.settler.open = open
+            .into_iter()
+            .map(|o| Open {
+                key: (o.session_id, o.turn_id),
+                verdict: o.verdict,
+            })
+            .collect();
+    }
+
+    pub fn observe(&mut self, event: &ChatEvent, now: Option<Instant>) -> Marks {
         match event {
             ChatEvent::ToolCallStarted { turn_id, .. }
             | ChatEvent::FileEdit { turn_id, .. }
@@ -875,112 +975,254 @@ impl Tracker {
                     .entry(turn_id.clone())
                     .or_default()
                     .observe(event, now, &self.entries);
-                None
+                Marks::default()
             }
             ChatEvent::TurnCompleted {
                 session_id, turn_id, ..
             } => {
+                if let Some(first) = self.verdicts.get(turn_id) {
+                    return Marks {
+                        settled: Vec::new(),
+                        own: first.clone(),
+                    };
+                }
                 let turn = self.turns.remove(turn_id).unwrap_or_default();
-                let scope = &mut self.scope;
-                self.verdicts
-                    .entry(turn_id.clone())
-                    .or_insert_with(|| {
-                        scope.learn(turn.edited_paths());
-                        verification_event(session_id, turn_id, &turn, scope)
-                    })
-                    .clone()
+                self.scope.learn(turn.edited_paths());
+                let own = verification_event(session_id, turn_id, &turn, &self.scope);
+                let trusted = turn.last_trusted();
+                let mut settled = Vec::new();
+                for ((sid, tid), verdict) in
+                    self.settler
+                        .turn((session_id.clone(), turn_id.clone()), verdict_of(own.as_ref()), trusted)
+                {
+                    let event = settled_event(&sid, &tid, verdict, trusted.unwrap_or_default());
+                    self.verdicts.insert(tid, Some(event.clone()));
+                    settled.push(event);
+                }
+                self.verdicts.insert(turn_id.clone(), own.clone());
+                Marks { settled, own }
             }
-            _ => None,
+            _ => Marks::default(),
         }
     }
 }
 
-/// Mark a replayed conversation's turns the way `Tracker` marks a live one's,
-/// against the check list as it is now. A logged `TurnVerification` is dropped
-/// and recomputed, keeping only the durations it measured. A history with
-/// `TurnCompleted`s (a mirror log) groups by turn id; a transcript has none and
-/// groups by prompt, marking the first reply turn after each.
-pub fn mark_history(events: &mut Vec<ChatEvent>, cwd: Option<&Path>, enabled: bool) {
-    let measured = measured(events);
-    events.retain(|e| !matches!(e, ChatEvent::TurnVerification { .. }));
-    if !enabled {
-        return;
+fn verdict_of(event: Option<&ChatEvent>) -> Option<Verdict> {
+    match event {
+        Some(ChatEvent::TurnVerification { verdict, .. }) => Some(*verdict),
+        _ => None,
     }
-    let entries = entries_for(cwd);
-    let mut scope = Scope::new(cwd);
-    scope.learn(edited_paths(events));
-    let scope = &scope;
-    let with_durations = |event: Option<ChatEvent>| {
-        let mut event = event?;
-        if let ChatEvent::TurnVerification { checks, .. } = &mut event {
-            fill(checks, &measured);
-        }
-        Some(event)
-    };
+}
 
-    let mut out: Vec<ChatEvent> = Vec::with_capacity(events.len() + 8);
+#[derive(Debug, Clone, PartialEq)]
+pub struct OpenTurn {
+    pub session_id: String,
+    pub turn_id: String,
+    pub verdict: Verdict,
+}
+
+struct Group {
+    verdict_before: usize,
+    session_id: String,
+    turn_id: String,
+    turn_ids: Vec<String>,
+    tool_events: Vec<usize>,
+}
+
+// A transcript has no `TurnCompleted`, so it groups by prompt instead.
+fn groups(events: &[ChatEvent]) -> Vec<Group> {
+    let mut out = Vec::new();
     if events.iter().any(|e| matches!(e, ChatEvent::TurnCompleted { .. })) {
-        let mut turns: HashMap<String, Turn> = HashMap::new();
-        for event in events.drain(..) {
-            match &event {
+        let mut members: HashMap<&str, Vec<usize>> = HashMap::new();
+        for (at, event) in events.iter().enumerate() {
+            match event {
                 ChatEvent::ToolCallStarted { turn_id, .. }
                 | ChatEvent::FileEdit { turn_id, .. }
                 | ChatEvent::ToolCallCompleted { turn_id, .. } => {
-                    turns
-                        .entry(turn_id.clone())
-                        .or_default()
-                        .observe(&event, None, &entries);
+                    members.entry(turn_id.as_str()).or_default().push(at);
                 }
                 ChatEvent::TurnCompleted {
                     session_id, turn_id, ..
-                } => {
-                    let turn = turns.remove(turn_id).unwrap_or_default();
-                    out.extend(with_durations(verification_event(session_id, turn_id, &turn, scope)));
-                }
+                } => out.push(Group {
+                    verdict_before: at,
+                    session_id: session_id.clone(),
+                    turn_id: turn_id.clone(),
+                    turn_ids: vec![turn_id.clone()],
+                    tool_events: members.remove(turn_id.as_str()).unwrap_or_default(),
+                }),
                 _ => {}
             }
-            out.push(event);
         }
-    } else {
-        let mut turn = Turn::default();
-        let mut prompt: Option<String> = None;
-        let mut anchor: Option<(String, String)> = None;
-        let close = |turn: &mut Turn, anchor: &mut Option<(String, String)>, out: &mut Vec<ChatEvent>| {
-            if let Some((session_id, turn_id)) = anchor.take() {
-                out.extend(with_durations(verification_event(&session_id, &turn_id, turn, scope)));
-            }
-            *turn = Turn::default();
-        };
-        for event in events.drain(..) {
-            match &event {
-                ChatEvent::UserMessage { turn_id, .. } if prompt.as_deref() != Some(turn_id.as_str()) => {
-                    close(&mut turn, &mut anchor, &mut out);
-                    prompt = Some(turn_id.clone());
-                }
-                ChatEvent::TextDelta {
-                    session_id, turn_id, ..
-                }
-                | ChatEvent::ThinkingDelta {
-                    session_id, turn_id, ..
-                } => {
-                    anchor.get_or_insert_with(|| (session_id.clone(), turn_id.clone()));
-                }
-                ChatEvent::ToolCallStarted {
-                    session_id, turn_id, ..
-                } => {
-                    anchor.get_or_insert_with(|| (session_id.clone(), turn_id.clone()));
-                    turn.observe(&event, None, &entries);
-                }
-                ChatEvent::FileEdit { .. } | ChatEvent::ToolCallCompleted { .. } => {
-                    turn.observe(&event, None, &entries);
-                }
-                _ => {}
-            }
-            out.push(event);
-        }
-        close(&mut turn, &mut anchor, &mut out);
+        return out;
     }
-    *events = out;
+    let mut prompt: Option<&str> = None;
+    let mut current: Option<Group> = None;
+    let mut members: Vec<usize> = Vec::new();
+    let mut ids: Vec<String> = Vec::new();
+    let close = |at: usize,
+                 current: &mut Option<Group>,
+                 members: &mut Vec<usize>,
+                 ids: &mut Vec<String>,
+                 out: &mut Vec<Group>| {
+        if let Some(mut group) = current.take() {
+            group.verdict_before = at;
+            group.tool_events = std::mem::take(members);
+            group.turn_ids = std::mem::take(ids);
+            out.push(group);
+        }
+        members.clear();
+        ids.clear();
+    };
+    for (at, event) in events.iter().enumerate() {
+        match event {
+            ChatEvent::UserMessage { turn_id, .. } if prompt != Some(turn_id.as_str()) => {
+                close(at, &mut current, &mut members, &mut ids, &mut out);
+                prompt = Some(turn_id.as_str());
+            }
+            ChatEvent::TextDelta {
+                session_id, turn_id, ..
+            }
+            | ChatEvent::ThinkingDelta {
+                session_id, turn_id, ..
+            }
+            | ChatEvent::ToolCallStarted {
+                session_id, turn_id, ..
+            } => {
+                current.get_or_insert_with(|| Group {
+                    verdict_before: 0,
+                    session_id: session_id.clone(),
+                    turn_id: turn_id.clone(),
+                    turn_ids: Vec::new(),
+                    tool_events: Vec::new(),
+                });
+                if !ids.contains(turn_id) {
+                    ids.push(turn_id.clone());
+                }
+                if matches!(event, ChatEvent::ToolCallStarted { .. }) {
+                    members.push(at);
+                }
+            }
+            ChatEvent::FileEdit { .. } | ChatEvent::ToolCallCompleted { .. } => members.push(at),
+            _ => {}
+        }
+    }
+    close(events.len(), &mut current, &mut members, &mut ids, &mut out);
+    out
+}
+
+fn fold(events: &[ChatEvent], groups: &[Group], cwd: Option<&Path>, measured: &Measured) -> Vec<Option<ChatEvent>> {
+    let entries = entries_for(cwd);
+    let mut scope = Scope::new(cwd);
+    scope.learn(edited_paths(events));
+    let mut settler: Settler<usize> = Settler::default();
+    let mut out: Vec<Option<ChatEvent>> = Vec::with_capacity(groups.len());
+    for (at, group) in groups.iter().enumerate() {
+        let mut turn = Turn::default();
+        for &i in &group.tool_events {
+            turn.observe(&events[i], None, &entries);
+        }
+        let mut own = verification_event(&group.session_id, &group.turn_id, &turn, &scope);
+        if let Some(ChatEvent::TurnVerification { checks, .. }) = &mut own {
+            fill(checks, measured);
+        }
+        let mut trusted = turn.last_trusted().map(<[Check]>::to_vec);
+        if let Some(checks) = &mut trusted {
+            fill(checks, measured);
+        }
+        for (earlier, verdict) in settler.turn(at, verdict_of(own.as_ref()), trusted.as_deref()) {
+            let g = &groups[earlier];
+            out[earlier] = Some(settled_event(
+                &g.session_id,
+                &g.turn_id,
+                verdict,
+                trusted.as_deref().unwrap_or_default(),
+            ));
+        }
+        out.push(own);
+    }
+    out
+}
+
+fn place(events: Vec<ChatEvent>, groups: &[Group], verdicts: Vec<Option<ChatEvent>>) -> Vec<ChatEvent> {
+    let mut marks: Vec<(usize, ChatEvent)> = groups
+        .iter()
+        .zip(verdicts)
+        .filter_map(|(g, v)| Some((g.verdict_before, v?)))
+        .collect();
+    marks.sort_by_key(|(at, _)| *at);
+    let mut marks = marks.into_iter().peekable();
+    let mut out: Vec<ChatEvent> = Vec::with_capacity(events.len() + groups.len());
+    for (at, event) in events.into_iter().enumerate() {
+        while let Some((_, mark)) = marks.next_if(|(m, _)| *m == at) {
+            out.push(mark);
+        }
+        out.push(event);
+    }
+    out.extend(marks.map(|(_, mark)| mark));
+    out
+}
+
+/// Mark a replayed conversation's turns the way `Tracker` marks a live one's,
+/// against the check list as it is now. A logged `TurnVerification` is dropped
+/// and recomputed, keeping only the durations it measured. Answers the turns
+/// left unverified, oldest first.
+pub fn mark_history(events: &mut Vec<ChatEvent>, cwd: Option<&Path>, enabled: bool) -> Vec<OpenTurn> {
+    let measured = measured(events);
+    events.retain(|e| !matches!(e, ChatEvent::TurnVerification { .. }));
+    if !enabled {
+        return Vec::new();
+    }
+    let groups = groups(events);
+    let verdicts = fold(events, &groups, cwd, &measured);
+    let open = groups
+        .iter()
+        .zip(&verdicts)
+        .filter_map(|(g, v)| match v {
+            Some(ChatEvent::TurnVerification { verdict, .. }) if *verdict != Verdict::Verified => Some(OpenTurn {
+                session_id: g.session_id.clone(),
+                turn_id: g.turn_id.clone(),
+                verdict: *verdict,
+            }),
+            _ => None,
+        })
+        .collect();
+    *events = place(std::mem::take(events), &groups, verdicts);
+    open
+}
+
+/// Mark one page of a history read whole as `whole`, so a turn on it takes the
+/// verdict a later page's check settled it to.
+pub fn mark_page(page: &mut Vec<ChatEvent>, whole: &[ChatEvent], cwd: Option<&Path>, enabled: bool) {
+    if whole.is_empty() {
+        mark_history(page, cwd, enabled);
+        return;
+    }
+    page.retain(|e| !matches!(e, ChatEvent::TurnVerification { .. }));
+    if !enabled {
+        return;
+    }
+    let whole_groups = groups(whole);
+    let verdicts = fold(whole, &whole_groups, cwd, &measured(whole));
+    let mut by_id: HashMap<&str, &ChatEvent> = HashMap::new();
+    for (group, verdict) in whole_groups.iter().zip(&verdicts) {
+        if let Some(verdict) = verdict {
+            for id in &group.turn_ids {
+                by_id.insert(id.as_str(), verdict);
+            }
+        }
+    }
+    let page_groups = groups(page);
+    let shown = page_groups
+        .iter()
+        .map(|g| {
+            let mut event = (*by_id.get(g.turn_id.as_str())?).clone();
+            if let ChatEvent::TurnVerification { turn_id, .. } = &mut event {
+                turn_id.clone_from(&g.turn_id);
+            }
+            Some(event)
+        })
+        .collect();
+    *page = place(std::mem::take(page), &page_groups, shown);
 }
 
 // What a logged `TurnVerification` measured live, keyed by call and command,
@@ -1019,6 +1261,8 @@ pub struct VerifiedTurn {
     pub prompt_ts: Option<u64>,
     pub verdict: Verdict,
     pub checks: Vec<Check>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub settled_later: bool,
 }
 
 /// Fold a conversation into one entry per turn that changed code, oldest
@@ -1056,18 +1300,32 @@ pub fn session_turns(
         };
         turns[at].2.observe(event, None, entries);
     }
-    turns
-        .into_iter()
-        .filter_map(|(_, prompt_ts, turn)| {
-            let (verdict, mut checks) = turn.finish(&scope)?;
+    let mut settler: Settler<usize> = Settler::default();
+    let mut out: Vec<Option<VerifiedTurn>> = Vec::with_capacity(turns.len());
+    for (at, (_, prompt_ts, turn)) in turns.into_iter().enumerate() {
+        let own = turn.finish(&scope).map(|(verdict, mut checks)| {
             fill(&mut checks, &measured);
-            Some(VerifiedTurn {
+            VerifiedTurn {
                 prompt_ts,
                 verdict,
                 checks,
-            })
-        })
-        .collect()
+                settled_later: false,
+            }
+        });
+        let mut trusted = turn.last_trusted().map(<[Check]>::to_vec);
+        if let Some(checks) = &mut trusted {
+            fill(checks, &measured);
+        }
+        for (earlier, verdict) in settler.turn(at, own.as_ref().map(|t| t.verdict), trusted.as_deref()) {
+            if let Some(settled) = &mut out[earlier] {
+                settled.verdict = verdict;
+                settled.checks = trusted.clone().unwrap_or_default();
+                settled.settled_later = true;
+            }
+        }
+        out.push(own);
+    }
+    out.into_iter().flatten().collect()
 }
 
 #[cfg(test)]
@@ -1655,7 +1913,7 @@ mod tests {
         let mut tracker = Tracker::new(Some(&repo));
         let mut live = Vec::new();
         for event in &log {
-            live.extend(tracker.observe(event, None));
+            live.extend(tracker.observe(event, None).into_events());
             live.push(event.clone());
         }
         let expected = vec![("mixed".to_string(), Verdict::Verified)];
@@ -1663,6 +1921,229 @@ mod tests {
         let mut replayed = live.clone();
         mark_history(&mut replayed, Some(&repo), true);
         assert_eq!(verdicts(&replayed), expected);
+    }
+
+    fn logged_turn(turn: &str, edit: bool, checks: &[(&str, ToolStatus, &str)]) -> Vec<ChatEvent> {
+        let mut out = vec![user(turn)];
+        if edit {
+            out.push(started(
+                &format!("{turn}-e"),
+                turn,
+                ToolKind::Edit,
+                "Edit",
+                json!({ "file_path": "/w/a.rs" }),
+            ));
+            out.push(completed(&format!("{turn}-e"), turn, ToolStatus::Ok, ""));
+        }
+        for (n, (command, status, output)) in checks.iter().enumerate() {
+            let id = format!("{turn}-c{n}");
+            out.push(started(
+                &id,
+                turn,
+                ToolKind::Execute,
+                "Bash",
+                json!({ "command": command }),
+            ));
+            out.push(completed(&id, turn, *status, output));
+        }
+        out.push(turn_completed(turn));
+        out
+    }
+
+    fn settled(events: &[ChatEvent]) -> Vec<(String, Verdict, bool)> {
+        events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::TurnVerification {
+                    turn_id,
+                    verdict,
+                    settled_later,
+                    ..
+                } => Some((turn_id.clone(), *verdict, *settled_later)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn replay(turns: &[Vec<ChatEvent>]) -> Vec<(String, Verdict, bool)> {
+        let mut events: Vec<ChatEvent> = turns.concat();
+        mark_history(&mut events, None, true);
+        settled(&events)
+    }
+
+    const PASS: (&str, ToolStatus, &str) = ("cargo test", ToolStatus::Ok, "");
+    const FAIL: (&str, ToolStatus, &str) = ("cargo test", ToolStatus::Error, "Exit code 101");
+    const MASKED: (&str, ToolStatus, &str) = ("cargo test | tail", ToolStatus::Ok, "");
+
+    fn v(turn: &str, verdict: Verdict, later: bool) -> (String, Verdict, bool) {
+        (turn.to_string(), verdict, later)
+    }
+
+    #[test]
+    fn a_later_check_settles_the_turns_before_it() {
+        use Verdict::{Failed, Unverified, Verified};
+        let edit = logged_turn("t1", true, &[]);
+        assert_eq!(
+            replay(&[edit.clone(), logged_turn("t2", false, &[PASS])]),
+            vec![v("t1", Verified, true)]
+        );
+        assert_eq!(
+            replay(&[edit.clone(), logged_turn("t2", false, &[FAIL])]),
+            vec![v("t1", Failed, true)]
+        );
+        assert_eq!(
+            replay(&[edit.clone(), logged_turn("t2", true, &[PASS])]),
+            vec![v("t1", Verified, true), v("t2", Verified, false)],
+            "a turn that edits and checks settles the one before"
+        );
+        assert_eq!(
+            replay(&[logged_turn("t1", true, &[FAIL]), logged_turn("t2", true, &[PASS])]),
+            vec![v("t1", Verified, true), v("t2", Verified, false)],
+            "a fix in a later turn clears an earlier failure"
+        );
+        assert_eq!(
+            replay(&[edit.clone(), logged_turn("t2", true, &[MASKED])]),
+            vec![v("t1", Unverified, false), v("t2", Unverified, false)],
+            "an exit not seen settles nothing"
+        );
+        assert_eq!(
+            replay(&[
+                edit.clone(),
+                edit.iter().map(|e| retag(e, "t2")).collect(),
+                logged_turn("t3", false, &[PASS])
+            ]),
+            vec![v("t1", Verified, true), v("t2", Verified, true)],
+            "every open turn settles"
+        );
+        assert_eq!(
+            replay(&[
+                edit.clone(),
+                logged_turn("t2", false, &[PASS]),
+                logged_turn("t3", true, &[])
+            ]),
+            vec![v("t1", Verified, true), v("t3", Unverified, false)],
+            "an edit after the check opens only its own turn"
+        );
+    }
+
+    fn retag(event: &ChatEvent, to: &str) -> ChatEvent {
+        let mut event = event.clone();
+        match &mut event {
+            ChatEvent::UserMessage { turn_id, .. }
+            | ChatEvent::ToolCallStarted { turn_id, .. }
+            | ChatEvent::ToolCallCompleted { turn_id, .. }
+            | ChatEvent::TurnCompleted { turn_id, .. } => *turn_id = to.to_string(),
+            _ => {}
+        }
+        if let ChatEvent::ToolCallStarted { tool_use_id, .. } | ChatEvent::ToolCallCompleted { tool_use_id, .. } =
+            &mut event
+        {
+            *tool_use_id = format!("{to}-{tool_use_id}");
+        }
+        event
+    }
+
+    #[test]
+    fn live_and_a_replay_agree_on_a_settle() {
+        let log: Vec<ChatEvent> = [logged_turn("t1", true, &[]), logged_turn("t2", false, &[PASS])].concat();
+        let mut tracker = Tracker::new(None);
+        let mut live = Vec::new();
+        for event in &log {
+            live.extend(tracker.observe(event, None).into_events());
+            live.push(event.clone());
+        }
+        assert_eq!(
+            settled(&live),
+            vec![v("t1", Verdict::Unverified, false), v("t1", Verdict::Verified, true)],
+            "live sends the settle when the checking turn ends"
+        );
+        let mut replayed = live.clone();
+        mark_history(&mut replayed, None, true);
+        assert_eq!(settled(&replayed), vec![v("t1", Verdict::Verified, true)]);
+
+        let mut again = Vec::new();
+        for event in &log {
+            again.extend(tracker.observe(event, None).into_events());
+        }
+        assert_eq!(
+            settled(&again),
+            vec![v("t1", Verdict::Verified, true)],
+            "a second pass sends each turn's settled answer once"
+        );
+    }
+
+    #[test]
+    fn a_resumed_tracker_settles_turns_read_from_history() {
+        let mut history = logged_turn("t1", true, &[]);
+        let open = mark_history(&mut history, None, true);
+        assert_eq!(open.len(), 1);
+        let mut tracker = Tracker::new(None);
+        tracker.seed(open);
+        let mut live = Vec::new();
+        for event in logged_turn("t2", false, &[PASS]) {
+            live.extend(tracker.observe(&event, None).into_events());
+        }
+        assert_eq!(settled(&live), vec![v("t1", Verdict::Verified, true)]);
+    }
+
+    fn transcript_turn(n: usize, edit: bool, check: bool) -> Vec<ChatEvent> {
+        let turn = format!("p{n}");
+        let reply = format!("r{n}");
+        let mut out = vec![
+            user(&turn),
+            ChatEvent::TextDelta {
+                session_id: "s1".into(),
+                turn_id: reply.clone(),
+                text: "ok".into(),
+                agent_id: None,
+            },
+        ];
+        if edit {
+            out.push(started(
+                &format!("{reply}-e"),
+                &reply,
+                ToolKind::Edit,
+                "Edit",
+                json!({ "file_path": "/w/a.rs" }),
+            ));
+            out.push(completed(&format!("{reply}-e"), &reply, ToolStatus::Ok, ""));
+        }
+        if check {
+            out.push(started(
+                &format!("{reply}-c"),
+                &reply,
+                ToolKind::Execute,
+                "Bash",
+                json!({ "command": "cargo test" }),
+            ));
+            out.push(completed(&format!("{reply}-c"), &reply, ToolStatus::Ok, ""));
+        }
+        out
+    }
+
+    #[test]
+    fn a_page_takes_the_settle_a_later_page_holds() {
+        let mut whole = transcript_turn(0, true, false);
+        for n in 1..5 {
+            whole.extend(transcript_turn(n, false, false));
+        }
+        whole.extend(transcript_turn(5, false, true));
+        let first_page_end = whole
+            .iter()
+            .position(|e| matches!(e, ChatEvent::UserMessage { turn_id, .. } if turn_id == "p2"))
+            .unwrap();
+
+        let mut alone = whole[..first_page_end].to_vec();
+        mark_history(&mut alone, None, true);
+        assert_eq!(
+            settled(&alone),
+            vec![v("r0", Verdict::Unverified, false)],
+            "the page alone cannot see it"
+        );
+
+        let mut page = whole[..first_page_end].to_vec();
+        mark_page(&mut page, &whole, None, true);
+        assert_eq!(settled(&page), vec![v("r0", Verdict::Verified, true)]);
     }
 
     #[test]
@@ -1677,9 +2158,7 @@ mod tests {
         let mut live = Vec::new();
         let at = Instant::now();
         for event in &log {
-            if let Some(v) = tracker.observe(event, Some(at)) {
-                live.push(v);
-            }
+            live.extend(tracker.observe(event, Some(at)).into_events());
             live.push(event.clone());
         }
         let expected = vec![
@@ -1721,11 +2200,11 @@ mod tests {
         let at = Instant::now();
         let mut first = None;
         for event in turn_events("t1", ToolStatus::Ok).iter().chain([&turn_completed("t1")]) {
-            first = tracker.observe(event, Some(at)).or(first);
+            first = tracker.observe(event, Some(at)).own.or(first);
         }
         let mut second = None;
         for event in turn_events("t1", ToolStatus::Ok).iter().chain([&turn_completed("t1")]) {
-            second = tracker.observe(event, None).or(second);
+            second = tracker.observe(event, None).own.or(second);
         }
         assert_eq!(first, second);
     }
@@ -1777,7 +2256,7 @@ mod tests {
         assert_eq!(
             marks,
             vec![
-                (Verdict::Unverified, vec![(CheckResult::NotSeen, None)]),
+                (Verdict::Failed, vec![(CheckResult::Failed, Some(101))]),
                 (Verdict::Failed, vec![(CheckResult::Failed, Some(101))]),
             ]
         );
