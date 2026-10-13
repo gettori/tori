@@ -121,8 +121,10 @@ export default function Select(props: {
       onChange={(option) => {
         // Null is Kobalte clearing the selection, a state Tori's selects do not
         // have (disallowEmptySelection below); dropping it keeps the caller's
-        // signal always naming a real option.
-        if (option) props.onChange(option.value);
+        // signal always naming a real option. Kobalte also re-commits the held
+        // option whenever the options array changes; passing that echo on loops
+        // a caller whose save rebuilds its own options (SecondOpinionPick).
+        if (option && option.value !== props.value) props.onChange(option.value);
       }}
       disallowEmptySelection
       placeholder={props.placeholder}

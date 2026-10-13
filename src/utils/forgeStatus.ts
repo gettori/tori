@@ -447,6 +447,11 @@ async function pollProject(project: WatchedProject, trigger: Trigger, now: numbe
   if (!repo) return;
   const pause = projectPause(repo, accountAuth, enabled());
   if (!mayPoll(clockFor(project.path, repo), trigger, now, pause)) return;
+  // Stamped before the await, so two triggers landing together do not both get
+  // past the gap check. Rust coalesces the duplicate anyway; this stops it from
+  // reaching Rust at all. Before the branch check too, since a project watched
+  // only for its review rule has no branches and still asks below.
+  setLastPollAt((m) => ({ ...m, [project.path]: now }));
   // A failure here says nothing about the status call, so it stays out of that backoff.
   void invoke("autopilot_pickup", { projectPath: project.path }).catch(() => {});
   void invoke<ReviewRequests | null>("review_requests", { projectPath: project.path }).then(
@@ -455,10 +460,6 @@ async function pollProject(project: WatchedProject, trigger: Trigger, now: numbe
   );
   const branches = askOrder(project.units);
   if (branches.length === 0) return;
-  // Stamped before the await, so two triggers landing together do not both get
-  // past the gap check. Rust coalesces the duplicate anyway; this stops it from
-  // reaching Rust at all.
-  setLastPollAt((m) => ({ ...m, [project.path]: now }));
   try {
     const report = await invoke<StatusReport>("forge_unit_statuses", {
       projectPath: project.path,

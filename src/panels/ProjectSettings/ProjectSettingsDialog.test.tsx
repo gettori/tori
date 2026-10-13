@@ -53,6 +53,16 @@ describe("Project settings dialog, Worktrees section", () => {
   });
 });
 
+describe("Project settings dialog, left alone", () => {
+  it("saves nothing", async () => {
+    saves.length = 0;
+    render(() => <ProjectSettingsDialog path="/p" onClose={() => {}} />);
+    await screen.findByRole("tab", { name: "Automations" });
+    await new Promise((r) => setTimeout(r, 200));
+    expect(saves).toHaveLength(0);
+  });
+});
+
 describe("Project settings dialog, Automations section", () => {
   it("saves the review rule and its prompt, and search finds it by review", async () => {
     saves.length = 0;
