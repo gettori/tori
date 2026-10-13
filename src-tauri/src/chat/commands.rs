@@ -2459,15 +2459,19 @@ mod secret_tests {
 
     #[test]
     fn a_terminal_sessions_cat_of_a_secret_is_its_turns() {
+        let dir = std::env::temp_dir().join(format!("tori-secret-cat-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let env = dir.join(".env").to_string_lossy().into_owned();
+        std::fs::write(&env, "x").unwrap();
         let path = session(
             "main",
-            Some(("Bash", serde_json::json!({ "command": "cat .env" }))),
+            Some(("Bash", serde_json::json!({ "command": format!("cat {env}") }))),
             None,
         );
         let turns = turns_of(&path);
         assert_eq!(turns.len(), 1, "{turns:?}");
         assert!(turns[0].prompt_ts.is_some(), "anchored on its prompt");
-        assert_eq!(turns[0].paths, vec![".env".to_string()]);
+        assert_eq!(turns[0].paths, vec![env]);
         assert_eq!(turns[0].strength, SecretStrength::Named);
     }
 
