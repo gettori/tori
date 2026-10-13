@@ -636,15 +636,14 @@ export const NEW_SESSION = "tori:new-session";
 // full registry, e.g. a user-added adapter.
 export type NewSession = { folderPath: string; projectName: string; agent?: string };
 
-// Payload-carrying event: open a chat draft in a branch-unit folder the sidebar
-// just created, so a new worktree does not land on an empty strip. With a
-// `prompt` (a unit started from an issue) the draft opens even beside tabs the
-// folder already has.
+// Payload-carrying event: open a chat draft holding `prompt` in a branch-unit
+// folder the sidebar just started from an issue, even beside tabs the folder
+// already has.
 export const NEW_CHAT_AT = "tori:new-chat-at";
 export type NewChatAt = {
   folderPath: string;
   projectName: string;
-  prompt?: string;
+  prompt: string;
   origin?: DraftOrigin;
 };
 
