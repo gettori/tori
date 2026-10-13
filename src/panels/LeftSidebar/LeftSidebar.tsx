@@ -134,7 +134,7 @@ import {
   type FinishedPr,
 } from "../../utils/branchSync";
 import { overlapsAt, watchRadar } from "../../utils/radar";
-import { prRelation } from "../../utils/prRelation";
+import { finishedPr, prRelation } from "../../utils/prRelation";
 import { resetToUpstream } from "../../utils/gitActions";
 import { compactAgo } from "../../utils/compactAge";
 import SyncMarks from "../../components/SyncMarks/SyncMarks";
@@ -1702,13 +1702,19 @@ export default function LeftSidebar(props: {
     countRunningAgents(u.folderPath).then((n) =>
       setWtReq((r) => (r && r.u.folderPath === u.folderPath ? { ...r, runningCount: n } : r)),
     );
+    // Git alone calls a squash-merged branch unpushed once its remote is
+    // deleted: no upstream, and its commits are on no remote ref. The merged
+    // pull request's head is the proof they were pushed.
+    const finished = finishedPr(u.folderPath, u.branch, syncFor(u.folderPath, u.branch));
+    const landed =
+      finished?.state === "merged" && (finished.relation?.kind === "at" || finished.relation?.kind === "behind");
     invoke<{ dirty: boolean; unpushed: boolean; hasRemote: boolean }>("worktree_status", {
       path: u.folderPath,
     })
       .then((s) =>
         setWtReq((r) =>
           r && r.u.folderPath === u.folderPath
-            ? { ...r, dirty: s.dirty, unpushed: s.unpushed, hasRemote: s.hasRemote }
+            ? { ...r, dirty: s.dirty, unpushed: s.unpushed && !landed, hasRemote: s.hasRemote }
             : r,
         ),
       )
