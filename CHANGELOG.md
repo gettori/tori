@@ -8,6 +8,15 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## Unreleased
+
+- Picking a pull request from the orange mark on a project row makes its
+  review worktree again. The click failed without a word and no worktree was
+  made.
+- Tori no longer slows to a crawl with Project settings open. The second
+  opinion picker saved settings in a loop, and each save also asked GitHub
+  about any project watched only for its review rule.
+
 ## 26.1013.0-alpha
 
 - The orange pull request mark on a branch now means it is your move. Your
