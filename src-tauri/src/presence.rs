@@ -20,7 +20,7 @@ static NEEDS_YOU_NOTES: Mutex<Option<HashMap<String, [u8; 16]>>> = Mutex::new(No
 pub struct TrayState(pub Mutex<TrayIcon>);
 
 /// One session a tab or a chat hosts, as the surfaces list it.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Live {
     pub id: String,
     pub dot: Dot,
@@ -38,7 +38,7 @@ pub struct Live {
 
 /// What a session needs you for. A PTY tab only shows it is waiting, a chat
 /// says on what, and a red pull request raises a dot the agent did not.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Reason {
     Approval,
     Question,
@@ -65,7 +65,7 @@ pub struct Alerts {
     pub finished_sound: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TrayEntry {
     pub id: String,
     pub label: String,
@@ -98,6 +98,14 @@ impl Default for Presence {
 }
 
 impl Presence {
+    /// Before any window says what it shows.
+    pub fn unwatched() -> Self {
+        Self {
+            focused: false,
+            ..Self::default()
+        }
+    }
+
     /// Fold one tick of dots in. Returns the sessions that just crossed into
     /// needs-you: the rising edge, so one still blocked from the last tick does
     /// not fire again, and one that moved in between does. And the chats whose
@@ -161,6 +169,11 @@ impl Presence {
 
     pub fn suppressed(&self, live: &Live) -> bool {
         should_suppress(&live.id, live.visible, self.selected.as_deref(), self.focused)
+    }
+
+    /// A window just attached and shows neither yet.
+    pub fn redraw(&mut self) {
+        (self.tray, self.badge) = (None, None);
     }
 
     /// What the tray and the dock badge should change to for `live`, `None`

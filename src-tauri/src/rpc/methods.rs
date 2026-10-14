@@ -107,6 +107,86 @@ fn list(
         .collect()
 }
 
+pub struct Joined<'a> {
+    pub live: &'a BTreeMap<String, Live>,
+    pub states: &'a SessionStates,
+    pub levers: &'a dyn Fn(&str) -> Option<Levers>,
+    pub dot: &'a dyn Fn(&str) -> (super::dots::Dot, super::dots::Certainty, bool),
+    pub spaces: &'a dyn Fn() -> (Arc<Vec<crate::config::Space>>, Vec<crate::topics::Topic>),
+}
+
+pub fn sessions_rows(indexed: Vec<SessionMeta>, params: &ListParams, from: Joined) -> Vec<Value> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let mut rows = list(indexed, from.live, &from.states.snapshot(), params, now);
+    let background = from.states.background();
+    for row in rows
+        .iter_mut()
+        .filter(|row| row["id"].as_str().is_some_and(|id| background.contains(id)))
+    {
+        row["background"] = json!(true);
+    }
+    let (spaces, topics) = match rows.is_empty() {
+        true => Default::default(),
+        false => (from.spaces)(),
+    };
+    for row in &mut rows {
+        if let Some(levers) = row["id"].as_str().and_then(from.levers) {
+            row["model"] = json!(levers.model);
+            row["permission_mode"] = json!(levers.mode);
+        }
+        let id = row["id"].as_str().unwrap_or_default();
+        let (dot, certainty, attended) = (from.dot)(id);
+        row["attended"] = json!(attended);
+        row["dot"] = json!(dot);
+        row["certainty"] = json!(certainty);
+        let cwd = row["cwd"].as_str().unwrap_or_default();
+        let branch = row["branch"].as_str().filter(|b| !b.is_empty());
+        if let Some(home) = crate::unit_home::home_of(&spaces, &topics, cwd, branch) {
+            row["home"] = json!(home);
+        }
+    }
+    rows
+}
+
+pub fn agent_in(id: &str, live: &BTreeMap<String, Live>, index: &SessionIndex) -> Option<String> {
+    if let Some(live) = live.get(id).filter(|l| !l.agent.is_empty()) {
+        return Some(live.agent.clone());
+    }
+    listed_sessions(index, None)
+        .into_iter()
+        .find(|m| m.id == id)
+        .map(|m| m.agent)
+}
+
+pub fn wait_for(
+    params: WaitParams,
+    states: &SessionStates,
+    is_live: impl Fn() -> bool,
+    agent: impl FnOnce() -> Option<String>,
+    question: impl FnOnce() -> Value,
+) -> Result<Value, RpcError> {
+    let deadline =
+        std::time::Instant::now() + std::time::Duration::from_secs(params.timeout.unwrap_or(DEFAULT_SESSION_WAIT));
+    let state = loop {
+        let left = deadline.saturating_duration_since(std::time::Instant::now());
+        match states.wait_settled(&params.id, left) {
+            Some(state) => break state,
+            // Live but not yet in a composition since its spawn.
+            None if is_live() && !left.is_zero() => std::thread::sleep(std::time::Duration::from_millis(200)),
+            None if is_live() => break SessionState::Working,
+            None => return Err(RpcError::new(INVALID_PARAMS, format!("no live session {}", params.id))),
+        }
+    };
+    let last = agent().and_then(|agent| {
+        let from = history_source(&params.id, &agent);
+        last_assistant_text(&read_history(&params.id, &from, &agent, None))
+    });
+    Ok(json!({ "id": params.id, "state": state, "question": question(), "last": last }))
+}
+
 /// The last `limit` events with every tool output capped. Capped here rather
 /// than through `ChatHost::cut_outputs`, which would store the full outputs in
 /// a live session's small cache and evict the ones the panel is holding.
@@ -1007,45 +1087,7 @@ impl Backend for TauriBackend {
     }
 
     fn sessions_list(&self, params: ListParams) -> Result<Value, RpcError> {
-        let indexed = listed_sessions(&self.app.state::<SessionIndex>(), params.cwd.as_deref());
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        let mut rows = list(indexed, &self.live(), &self.states.snapshot(), &params, now);
-        let background = self.states.background();
-        for row in rows
-            .iter_mut()
-            .filter(|row| row["id"].as_str().is_some_and(|id| background.contains(id)))
-        {
-            row["background"] = json!(true);
-        }
-        let (spaces, topics) = match rows.is_empty() {
-            true => Default::default(),
-            false => (
-                crate::unit_home::spaces(&self.app.state::<crate::config::ProjectIndex>()),
-                crate::unit_home::topics(),
-            ),
-        };
-        super::refresh_dots_if_stale();
-        let host = &self.app.state::<ChatState>().0;
-        for row in &mut rows {
-            if let Some(levers) = row["id"].as_str().and_then(|id| host.levers(id)) {
-                row["model"] = json!(levers.model);
-                row["permission_mode"] = json!(levers.mode);
-            }
-            let id = row["id"].as_str().unwrap_or_default();
-            let (dot, certainty) = super::session_dot(id);
-            row["attended"] = json!(super::session_attended(id, dot));
-            row["dot"] = json!(dot);
-            row["certainty"] = json!(certainty);
-            let cwd = row["cwd"].as_str().unwrap_or_default();
-            let branch = row["branch"].as_str().filter(|b| !b.is_empty());
-            if let Some(home) = crate::unit_home::home_of(&spaces, &topics, cwd, branch) {
-                row["home"] = json!(home);
-            }
-        }
-        Ok(Value::Array(rows))
+        super::daemon_request("sessions.list", json!(params)).map_err(refused)
     }
 
     fn projects_list(&self) -> Result<Value, RpcError> {
@@ -1144,26 +1186,8 @@ impl Backend for TauriBackend {
     }
 
     fn session_wait(&self, params: WaitParams) -> Result<Value, RpcError> {
-        let host = &self.app.state::<ChatState>().0;
-        let deadline =
-            std::time::Instant::now() + std::time::Duration::from_secs(params.timeout.unwrap_or(DEFAULT_SESSION_WAIT));
-        let state = loop {
-            let left = deadline.saturating_duration_since(std::time::Instant::now());
-            match self.states.wait_settled(&params.id, left) {
-                Some(state) => break state,
-                // Live but not yet in the webview's first report after its spawn.
-                None if host.is_live(&params.id) && !left.is_zero() => {
-                    std::thread::sleep(std::time::Duration::from_millis(200))
-                }
-                None if host.is_live(&params.id) => break SessionState::Working,
-                None => return Err(RpcError::new(INVALID_PARAMS, format!("no live session {}", params.id))),
-            }
-        };
-        let last = self.agent_of(&params.id).and_then(|agent| {
-            let from = history_source(&params.id, &agent);
-            last_assistant_text(&read_history(&params.id, &from, &agent, None))
-        });
-        Ok(json!({ "id": params.id, "state": state, "question": self.asks.pending_for(&params.id), "last": last }))
+        let wait = std::time::Duration::from_secs(params.timeout.unwrap_or(DEFAULT_SESSION_WAIT) + 5);
+        super::daemon_wait("session.wait", json!(params), wait).map_err(refused)
     }
 
     fn session_pending(&self, params: PendingParams) -> Result<Value, RpcError> {

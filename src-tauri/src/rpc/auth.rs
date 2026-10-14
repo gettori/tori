@@ -113,6 +113,13 @@ impl Children {
         self.lock().retain(|token, _| tokens.contains(token));
     }
 
+    pub fn tab_of(&self, head: &str) -> Option<String> {
+        self.lock().iter().find_map(|(token, caller)| match caller {
+            Caller::Terminal(tab) if token.starts_with(head) => Some(tab.clone()),
+            _ => None,
+        })
+    }
+
     fn get(&self, token: &str) -> Option<Caller> {
         self.lock().get(token).cloned()
     }

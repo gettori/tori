@@ -193,7 +193,7 @@ pub fn heard(app: &AppHandle, event: &str, payload: &Value) {
     match event {
         // An attached tab hears its exit on the stream, after its last bytes.
         "pty://exit" if state.attached().contains_key(id) || !state.tabs().contains_key(id) => return,
-        "pty://activity" => crate::rpc::note_pty_activity(id, payload["state"].as_str().unwrap_or_default()),
+        "pty://activity" => {}
         "pty://busy" => {
             if let Some(tab) = state.tabs().get_mut(id) {
                 tab.busy = payload["busy"].as_bool().unwrap_or_default();
