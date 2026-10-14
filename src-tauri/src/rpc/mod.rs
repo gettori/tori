@@ -1,6 +1,6 @@
-//! The app level socket: one JSON-RPC protocol per Tori process, which the CLI,
-//! the MCP server and later a WebSocket are all fronts on. See
-//! [[adr_one_protocol_several_fronts]].
+//! The socket `tori daemon` serves: one JSON-RPC protocol, which the CLI, the
+//! MCP server and the WebSocket are all fronts on, and the window's link to it.
+//! See [[adr_one_protocol_several_fronts]].
 //!
 //! Found two ways. A process Tori spawns gets `TORI_SOCK` and `TORI_CALLER` in
 //! its env; anything else reads the `rpc.json` bridge file the daemon writes.
@@ -9,7 +9,6 @@ pub mod approvals;
 pub mod asks;
 pub mod auth;
 pub mod awake;
-pub mod bridge;
 pub mod client;
 pub mod composer;
 pub mod daemon;
@@ -44,7 +43,6 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::autopilot::AutopilotStore;
 use asks::Asks;
 use auth::Caller;
-use bridge::{Bridge, REPLY_TIMEOUT, REQUEST_EVENT};
 use events::{session_event, Place};
 use hub::{Channel, Hub};
 use runner::Runner;
@@ -127,7 +125,6 @@ pub(crate) fn office_tell(op: &str, args: Value) {
 pub struct RpcState {
     link: Arc<Link>,
     pub states: Arc<SessionStates>,
-    bridge: Arc<Bridge>,
 }
 
 impl RpcState {
@@ -236,30 +233,40 @@ pub fn daemon_status() -> Option<Status> {
     DAEMON_STATUS.lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
-// The webview is not a socket subscriber, so the channel is mirrored to it.
-fn screen(bridge: &Arc<Bridge>) -> window::Answers {
-    let bridge = bridge.clone();
+const OPEN_EVENT: &str = "window://open";
+static OPENS_HEARD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+// An event nobody listens for is dropped without a word, so `window.open`
+// refuses until the webview says it is listening.
+#[tauri::command]
+pub fn window_listening() {
+    OPENS_HEARD.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+fn screen(app: &AppHandle) -> window::Answers {
+    let app = app.clone();
     window::Answers {
         hub: Arc::new(Hub::default()),
-        call: Arc::new(|_, req| {
-            Err(frame::RpcError::new(
+        screen: Arc::new(move |method, params| match method {
+            "window.open" if !OPENS_HEARD.load(std::sync::atomic::Ordering::SeqCst) => {
+                Err(frame::RpcError::new(frame::REFUSED, "the Tori window is still loading"))
+            }
+            "window.open" => app
+                .emit(OPEN_EVENT, params)
+                .map(|_| json!({}))
+                .map_err(|e| frame::RpcError::new(frame::INTERNAL_ERROR, e.to_string())),
+            _ => Err(frame::RpcError::new(
                 frame::REFUSED,
-                format!("the window answers no {}", req.method),
-            ))
+                format!("the window answers no {method}"),
+            )),
         }),
-        screen: Arc::new(move |method, params| bridge.request(method, params)),
     }
 }
 
-pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
+pub fn start(app: AppHandle) -> RpcState {
     let paths = daemon::paths();
     let states = Arc::new(SessionStates::default());
-    let emitter = app.clone();
-    let bridge = Arc::new(Bridge::new(
-        Box::new(move |request| emitter.emit(REQUEST_EVENT, request).map_err(|e| e.to_string())),
-        REPLY_TIMEOUT,
-    ));
-    let answers = screen(&bridge);
+    let answers = screen(&app);
     let hub = answers.hub.clone();
     let on_status = daemon_status_emitter(&app);
     let on_event = daemon_events(&app, &states);
@@ -270,7 +277,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     let link = Link::start(answers, paths, true, on_status, on_event);
     let _ = LINK.set(link.clone());
     let _ = EVENTS.set((hub.clone(), states.clone()));
-    Ok(RpcState { link, states, bridge })
+    RpcState { link, states }
 }
 
 // What only the webview knows about its tabs, chats and forge poll, and what
@@ -516,11 +523,6 @@ pub fn watcher_touch(session: &str) {
     if let Some(watcher) = WATCHER.get() {
         watcher.touch(session);
     }
-}
-
-#[tauri::command]
-pub fn rpc_reply(rpc: tauri::State<RpcState>, rid: u64, result: Option<serde_json::Value>, error: Option<String>) {
-    rpc.bridge.reply(rid, error.map_or(Ok(result.unwrap_or_default()), Err));
 }
 
 #[tauri::command(async)]

@@ -29,7 +29,7 @@ use super::frame::{
 };
 use super::hub::{Channel, ConnId, Hub};
 use super::outbox::{Outbox, OUTBOX_BYTES};
-use super::server::{handle_first, params, permit, subscribe, unsubscribe, Dispatch, AUTH_TIMEOUT};
+use super::server::{handle_first, params, permit, subscribe, unsubscribe, Dispatch, Server, AUTH_TIMEOUT};
 use super::table::CallerKind;
 use super::transport::{Stream, Transport, UnixTransport};
 use crate::chat::serve::Served;
@@ -48,6 +48,7 @@ pub const MAX_LINK_LINE: usize = 1024 * 1024 * 1024;
 pub const SLOW_ON_LINK: std::time::Duration = std::time::Duration::from_secs(1);
 
 const NO_WINDOW: &str = "no Tori window is open to answer this";
+const STARTING: &str = "the daemon is still starting";
 
 /// Where one config dir's daemon lives. Everything is derived, so the app, the
 /// daemon and a test agree on it without asking each other.
@@ -171,25 +172,6 @@ impl Window {
         self.pending.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Blocks this client's reader only: every other client, and the window's
-    /// own traffic, goes on while the window answers.
-    fn await_reply(&self, principal: &Principal, req: &Request) -> Result<Value, RpcError> {
-        let id = self.next.fetch_add(1, Ordering::Relaxed) + 1;
-        let (tx, rx) = sync_channel(1);
-        self.pending().insert(id, tx);
-        let line = to_line(&json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "method": "call",
-            "params": { "principal": principal, "method": req.method, "params": req.params },
-        }));
-        if !self.out.push(line) {
-            self.pending().remove(&id);
-            return Err(RpcError::new(REFUSED, NO_WINDOW));
-        }
-        rx.recv().unwrap_or_else(|_| Err(RpcError::new(REFUSED, NO_WINDOW)))
-    }
-
     fn notify(&self, method: &'static str, params: Value) {
         self.out.push(to_line(&Notification::new(method, params)));
     }
@@ -234,6 +216,7 @@ pub struct Daemon {
     chats: OnceLock<Arc<Served>>,
     // Set by `run` alone, after the chats: the stores behind every method.
     office: OnceLock<Arc<super::office::Office>>,
+    table: OnceLock<Arc<Server>>,
     restarting: AtomicBool,
     composer: Arc<Composer>,
     // The app process last attached, so a new one starts with no stale child tokens.
@@ -525,7 +508,7 @@ impl Daemon {
             });
             return;
         }
-        if matches!(req.method.as_str(), "office" | "relay") {
+        if req.method == "office" {
             let (office, out) = (self.office.get().cloned(), window.out.clone());
             thread::spawn(move || {
                 let outcome = match office {
@@ -756,21 +739,10 @@ impl Sources for ComposerSources {
 }
 
 fn office_request(office: &super::office::Office, req: &Request) -> Result<Value, RpcError> {
-    if req.method == "office" {
-        let op = req.params["op"].as_str().unwrap_or_default();
-        return office
-            .call(op, &req.params["args"])
-            .map_err(|e| RpcError::new(REFUSED, e));
-    }
-    let principal: Principal = serde_json::from_value(req.params["principal"].clone())
-        .map_err(|e| RpcError::new(INVALID_PARAMS, format!("principal: {e}")))?;
-    let relayed = Request {
-        jsonrpc: "2.0".into(),
-        id: None,
-        method: req.params["method"].as_str().unwrap_or_default().to_string(),
-        params: req.params["params"].clone(),
-    };
-    office.server.call(&principal, &relayed)
+    let op = req.params["op"].as_str().unwrap_or_default();
+    office
+        .call(op, &req.params["args"])
+        .map_err(|e| RpcError::new(REFUSED, e))
 }
 
 struct DaemonScreen(Weak<Daemon>);
@@ -830,6 +802,7 @@ fn host_office(daemon: &Arc<Daemon>) {
     };
     let office = super::office::start(parts);
     super::set_office(office.clone());
+    let _ = daemon.table.set(office.server.clone());
     let _ = daemon.office.set(office);
 }
 
@@ -849,9 +822,9 @@ impl Dispatch for Daemon {
             }),
             "unsubscribe" => unsubscribe(&self.hub, conn, &req.params),
             "auth" => Err(RpcError::new(INVALID_REQUEST, "already authenticated")),
-            _ if self.office.get().is_some() => match self.office.get() {
-                Some(office) => office.server.call(principal, req),
-                None => Err(RpcError::new(REFUSED, NO_WINDOW)),
+            _ if self.table.get().is_some() => match self.table.get() {
+                Some(table) => table.call(principal, req),
+                None => Err(RpcError::new(REFUSED, STARTING)),
             },
             "sessions.list" => {
                 permit(&req.method, self.kind(principal))?;
@@ -861,10 +834,7 @@ impl Dispatch for Daemon {
                 permit(&req.method, self.kind(principal))?;
                 self.composer.session_wait(params(&req.params)?)
             }
-            _ => match self.window() {
-                Some(window) => window.await_reply(principal, req),
-                None => Err(RpcError::new(REFUSED, NO_WINDOW)),
-            },
+            _ => Err(RpcError::new(REFUSED, STARTING)),
         }
     }
 }
@@ -946,6 +916,7 @@ pub fn start(paths: Paths) -> Result<Start, String> {
             ptys: Host::new(events, children.clone(), paths.sock.clone(), paths.cli_link_dir.clone()),
             chats: OnceLock::new(),
             office: OnceLock::new(),
+            table: OnceLock::new(),
             restarting: AtomicBool::new(false),
             credential,
             children,
@@ -1081,7 +1052,6 @@ pub fn run() -> i32 {
 mod tests {
     use super::*;
     use crate::rpc::server::tests::{StubBackend, SLOW};
-    use crate::rpc::server::Server;
     use crate::rpc::window::Link;
     use std::io::Write;
     use std::os::unix::net::UnixStream;
@@ -1106,21 +1076,22 @@ mod tests {
         }
     }
 
-    fn app(paths: &Paths) -> (Arc<Server>, Arc<Link>) {
-        let server = Arc::new(Server {
+    // The office's method table, which only `run` starts.
+    fn serve(started: &Started) {
+        let table = Arc::new(Server {
             hub: Arc::default(),
             backend: Box::<StubBackend>::default(),
             auth_timeout: AUTH_TIMEOUT,
         });
-        let link = Link::start(
-            server.clone(),
-            paths.clone(),
-            false,
-            Box::new(|_| {}),
-            Box::new(|_, _| {}),
-        );
+        let _ = started.daemon.table.set(table);
+    }
+
+    fn app(paths: &Paths) -> (Arc<Hub>, Arc<Link>) {
+        let answers = crate::rpc::window::Answers::default();
+        let hub = answers.hub.clone();
+        let link = Link::start(answers, paths.clone(), false, Box::new(|_| {}), Box::new(|_, _| {}));
         assert!(link.attached(Duration::from_secs(5)), "the window attaches");
-        (server, link)
+        (hub, link)
     }
 
     struct Raw {
@@ -1211,7 +1182,7 @@ mod tests {
         let paths = Paths::under(&config("rotate"));
         let daemon = started(&paths);
         let before = token(&paths);
-        let (_server, link) = app(&paths);
+        let (_hub, link) = app(&paths);
         let after = token(&paths);
         assert_ne!(before, after);
         let mut stale = Raw::connect(&paths);
@@ -1225,7 +1196,8 @@ mod tests {
     fn only_one_local_window_is_admitted() {
         let paths = Paths::under(&config("window"));
         let daemon = started(&paths);
-        let (_server, link) = app(&paths);
+        serve(&daemon);
+        let (_hub, link) = app(&paths);
         let child = link.mint(Caller::Terminal("t1".into())).unwrap();
         let mut agent = Raw::connect(&paths);
         let refused = agent.call(
@@ -1251,7 +1223,8 @@ mod tests {
     fn a_slow_call_holds_up_no_other_client() {
         let paths = Paths::under(&config("order"));
         let daemon = started(&paths);
-        let (_server, link) = app(&paths);
+        serve(&daemon);
+        let (_hub, link) = app(&paths);
         let local = token(&paths);
         let slow = {
             let (paths, local) = (paths.clone(), local.clone());
@@ -1289,12 +1262,10 @@ mod tests {
     fn the_apps_events_reach_the_daemons_subscribers() {
         let paths = Paths::under(&config("events"));
         let daemon = started(&paths);
-        let (server, link) = app(&paths);
+        let (hub, link) = app(&paths);
         let mut client = Raw::authed(&paths, &token(&paths));
         client.call(2, "subscribe", json!({ "topic": "sessions" }));
-        server
-            .hub
-            .publish(&Channel::Sessions, json!({ "kind": "session.started", "id": "s1" }));
+        hub.publish(&Channel::Sessions, json!({ "kind": "session.started", "id": "s1" }));
         let event = client.recv();
         assert_eq!(event["params"]["data"]["kind"], "session.started");
         link.close();
@@ -1483,7 +1454,8 @@ mod tests {
     fn a_window_whose_daemon_restarts_attaches_again() {
         let paths = Paths::under(&config("again"));
         let daemon = started(&paths);
-        let (_server, link) = app(&paths);
+        serve(&daemon);
+        let (_hub, link) = app(&paths);
         let mut window_side = Raw::authed(&paths, &token(&paths));
         assert!(window_side.call(2, "caller", json!({}))["error"].is_null());
         drop(window_side);
@@ -1491,13 +1463,15 @@ mod tests {
         // A child the composer forked holds the lock until it execs, as the app finds too.
         assert!(wait_released(&paths.lock, Duration::from_secs(2)));
         let daemon = started(&paths);
+        serve(&daemon);
         let deadline = Instant::now() + Duration::from_secs(5);
         let mut answered = false;
         // The window attaching rotates the token, so a read just before it is stale.
         while Instant::now() < deadline && !answered {
             let mut client = Raw::connect(&paths);
             answered = client.call(1, "auth", json!({ "token": token(&paths) }))["error"].is_null()
-                && client.call(2, "caller", json!({}))["error"].is_null();
+                && client.call(2, "caller", json!({}))["error"].is_null()
+                && daemon.daemon.window().is_some();
             thread::sleep(Duration::from_millis(50));
         }
         assert!(answered, "the relaunched daemon reaches the same window");

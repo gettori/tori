@@ -237,14 +237,7 @@ pub fn run() {
 
             setup::set_publisher(app.handle().clone());
 
-            // The app level socket the CLI and MCP fronts talk to. Fail-soft like
-            // the askpass bridge: without it Tori runs, nothing outside can ask.
-            match rpc::start(app.handle().clone()) {
-                Ok(state) => {
-                    app.manage(state);
-                }
-                Err(e) => eprintln!("tori: rpc socket failed to start: {e}"),
-            }
+            app.manage(rpc::start(app.handle().clone()));
 
             // Menu-bar tray (Finding F3/presence): starts empty (no sessions
             // yet at launch) - the frontend calls `update_tray` once presence
@@ -652,9 +645,9 @@ pub fn run() {
             rpc::pr_watch_list,
             rpc::pr_watch_start,
             rpc::pr_watch_stop,
-            rpc::rpc_reply,
             rpc::daemon_status,
             rpc::rpc_asks_pending,
+            rpc::window_listening,
             rpc::rpc_ask_answer,
             rpc::autopilot_start,
             rpc::remote_set,
