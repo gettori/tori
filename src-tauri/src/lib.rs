@@ -67,6 +67,7 @@ mod sessions;
 mod settings;
 mod setup;
 mod shared;
+mod shell_path;
 mod sound;
 mod themes;
 mod topic_home;
@@ -644,6 +645,9 @@ pub fn run() {
             rpc::session_dots,
             rpc::rpc_quota,
             rpc::sessions_adoptable,
+            rpc::daemon_restart_now,
+            shell_path::shell_path_status,
+            shell_path::shell_path_set,
             rpc::session_adopted,
             rpc::pr_watch_list,
             rpc::pr_watch_start,

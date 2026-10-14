@@ -67,6 +67,7 @@ const ANCHORED_ENTRIES = [
   "projects-list",
   "base-folder",
   "crash-logs",
+  "tori-on-path",
   "change-base-folder",
   "forget-base-folder",
 ];

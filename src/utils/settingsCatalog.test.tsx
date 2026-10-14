@@ -118,7 +118,7 @@ describe("the tab grouping", () => {
       ["appearance", "typography"],
       ["git", "forge"],
       ["remote"],
-      ["root", "crashes", "danger"],
+      ["root", "crashes", "shell", "danger"],
     ]);
   });
 

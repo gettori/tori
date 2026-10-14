@@ -34,6 +34,11 @@ pub enum Status {
     Connecting,
     Connected,
     Unreachable(String),
+    #[serde(rename = "restartNeeded")]
+    RestartNeeded(String),
+    Off,
+    #[serde(rename = "gaveUp")]
+    GaveUp(u32),
 }
 
 enum Waiter {
@@ -105,6 +110,7 @@ pub struct Link {
     // Set once an attach has failed, so a spawn stops waiting on a link that is not coming.
     unreachable: AtomicBool,
     closing: AtomicBool,
+    outdated: AtomicBool,
     on_status: Box<dyn Fn(&Status) + Send + Sync>,
     on_event: OnEvent,
 }
@@ -126,6 +132,7 @@ impl Link {
             attached: Condvar::new(),
             unreachable: AtomicBool::new(false),
             closing: AtomicBool::new(false),
+            outdated: AtomicBool::new(false),
             on_status,
             on_event,
         });
@@ -160,6 +167,10 @@ impl Link {
                     *self.slot() = Some(conn.clone());
                     self.attached.notify_all();
                     (self.on_status)(&Status::Connected);
+                    if self.outdated.swap(false, Ordering::SeqCst) {
+                        let link = self.clone();
+                        thread::spawn(move || link.replace_when_idle());
+                    }
                     self.read(&conn, reader);
                     *self.slot() = None;
                     if self.closing.load(Ordering::SeqCst) {
@@ -168,16 +179,40 @@ impl Link {
                     (self.on_status)(&Status::Connecting);
                 }
                 Err(Attach::Restarting) => continue,
+                Err(Attach::Outdated(e)) => {
+                    failures += 1;
+                    self.unreachable.store(true, Ordering::SeqCst);
+                    self.attached.notify_all();
+                    (self.on_status)(&Status::RestartNeeded(e));
+                }
                 Err(Attach::Failed(e)) => {
                     failures += 1;
                     self.unreachable.store(true, Ordering::SeqCst);
                     self.attached.notify_all();
                     eprintln!("tori: daemon unreachable: {e}");
-                    (self.on_status)(&Status::Unreachable(e));
+                    let failed = super::daemon::failed_starts();
+                    match (
+                        super::launchd::managed() && super::launchd::is_off(),
+                        failed >= super::daemon::GIVE_UP_AFTER,
+                    ) {
+                        (true, _) => (self.on_status)(&Status::Off),
+                        (_, true) => (self.on_status)(&Status::GaveUp(failed)),
+                        _ => (self.on_status)(&Status::Unreachable(e)),
+                    }
                 }
             }
             let wait = Duration::from_millis(250 * 2u64.pow(failures.min(5))).min(BACKOFF_MAX);
             thread::sleep(wait);
+        }
+    }
+
+    // A daemon from before restarting when idle existed goes at once, as it
+    // always did.
+    fn replace_when_idle(&self) {
+        match self.request("restart_when_idle", json!({}), HANDSHAKE_WAIT) {
+            Ok(_) => {}
+            Err(e) if e.code == super::frame::METHOD_NOT_FOUND => self.notify("shutdown", json!({})),
+            Err(e) => eprintln!("tori: the outdated daemon stays until restarted: {}", e.message),
         }
     }
 
@@ -204,6 +239,9 @@ impl Link {
     }
 
     fn spawn_daemon(&self) -> Result<(), String> {
+        if super::launchd::managed() {
+            return super::launchd::start(&self.paths.log);
+        }
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         std::fs::create_dir_all(&self.paths.dir).map_err(|e| e.to_string())?;
         let log = std::fs::OpenOptions::new()
@@ -261,8 +299,15 @@ impl Link {
             return Err(Attach::Failed(message.to_string()));
         }
         let protocol = reply["result"]["protocol"].as_u64();
-        let current = protocol == Some(u64::from(PROTOCOL)) && reply["result"]["build"] == build_id();
-        if !current && self.spawn && !*restarted {
+        let spoken = protocol == Some(u64::from(PROTOCOL));
+        let replaced = reply["result"]["build"] != build_id() && self.spawn;
+        if replaced && super::launchd::managed() && !spoken {
+            return Err(Attach::Outdated(format!(
+                "the running daemon speaks link protocol {}, this window {PROTOCOL}",
+                protocol.unwrap_or_default()
+            )));
+        }
+        if replaced && !super::launchd::managed() && !*restarted {
             // Once: a restarted daemon that still differs is this app being
             // the stale one, and it keeps going rather than loop.
             *restarted = true;
@@ -286,6 +331,9 @@ impl Link {
             next: AtomicU64::new(0),
             stream: stream.try_clone().map_err(failed)?,
         });
+        if replaced && super::launchd::managed() {
+            self.outdated.store(true, Ordering::SeqCst);
+        }
         let out = conn.out.clone();
         thread::spawn(move || {
             out.drain(&mut stream);
@@ -478,6 +526,7 @@ impl Link {
 
 enum Attach {
     Restarting,
+    Outdated(String),
     Failed(String),
 }
 

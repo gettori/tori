@@ -18,6 +18,7 @@ pub mod dots;
 pub mod events;
 pub mod frame;
 pub mod hub;
+pub mod launchd;
 pub mod methods;
 pub mod office;
 pub mod outbox;
@@ -216,6 +217,18 @@ pub fn daemon_chat(method: &str, args: Value) -> Result<Value, String> {
     let link = LINK.get().ok_or("the daemon link is not up")?;
     link.request("chat", json!({ "method": method, "args": args }), CHAT_WAIT)
         .map_err(|e| e.message)
+}
+
+#[tauri::command(async)]
+pub fn daemon_restart_now() -> Result<(), String> {
+    daemon::set_failed_starts(0).map_err(|e| e.to_string())?;
+    launchd::turn_on();
+    if launchd::managed() {
+        launchd::start(&daemon::paths().log)?;
+        return launchd::restart_now();
+    }
+    daemon_tell("restart", json!({}));
+    Ok(())
 }
 
 #[tauri::command]

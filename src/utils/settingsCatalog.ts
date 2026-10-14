@@ -48,6 +48,7 @@ export type SettingSection =
   | "remote"
   | "root"
   | "crashes"
+  | "shell"
   | "danger";
 
 /**
@@ -138,7 +139,7 @@ export const SETTING_TABS: SettingTabDef[] = [
     label: "Advanced",
     group: "Application",
     icon: "folder-cog",
-    sections: ["root", "crashes", "danger"],
+    sections: ["root", "crashes", "shell", "danger"],
   },
 ];
 
@@ -177,6 +178,7 @@ export const SECTION_TITLES: Record<SettingSection, string> = {
   remote: "Remote access",
   root: "Base folder",
   crashes: "Crash logs",
+  shell: "Terminal command",
   danger: "Danger zone",
 };
 
@@ -772,6 +774,12 @@ export const SETTINGS: SettingEntry[] = [
     section: "crashes",
     label: "Crash logs",
     hint: "The files Tori writes when it closes on its own, and the version you are running. Nothing is sent anywhere until you report it.",
+  },
+  {
+    id: "tori-on-path",
+    section: "shell",
+    label: "tori in your shell",
+    hint: "Adds one line to your shell profile so a terminal outside Tori can run tori, for tori attach or tori sessions. Turning it off removes that line and nothing else.",
   },
   {
     id: "change-base-folder",

@@ -31,6 +31,7 @@ import ProjectSettingsDialog from "./panels/ProjectSettings/ProjectSettingsDialo
 import FirstRun from "./panels/FirstRun/FirstRun";
 import { ensureFirstRunLoaded, firstRunOpen } from "./utils/firstRun";
 import UpdatePill from "./components/UpdatePill/UpdatePill";
+import DaemonPill from "./components/DaemonPill/DaemonPill";
 import { announceCrash } from "./utils/crashReport";
 import { watchSetup } from "./utils/setupToasts";
 import UsageStrip from "./components/UsageStrip/UsageStrip";
@@ -1085,6 +1086,7 @@ function App() {
         <DevBadge />
         <PhoneIndicator />
         <UsageStrip />
+        <DaemonPill />
         <UpdatePill suppressed={firstRunOpen()} />
         <Button
           class="topbar-gear"

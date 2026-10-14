@@ -13,7 +13,7 @@ use std::io::{self, BufRead, BufReader, Read, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{sync_channel, SyncSender};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::thread::{self, JoinHandle};
@@ -234,6 +234,7 @@ pub struct Daemon {
     chats: OnceLock<Arc<Served>>,
     // Set by `run` alone, after the chats: the stores behind every method.
     office: OnceLock<Arc<super::office::Office>>,
+    restarting: AtomicBool,
     composer: Arc<Composer>,
     // The app process last attached, so a new one starts with no stale child tokens.
     instance: Mutex<Option<String>>,
@@ -315,6 +316,11 @@ impl Daemon {
         if let Some(window) = self.window() {
             window.notify(method, params);
         }
+    }
+
+    pub fn restart(&self) {
+        self.restarting.store(true, Ordering::SeqCst);
+        self.stop();
     }
 
     // The link too, so the window hears it at once rather than at process exit.
@@ -641,6 +647,17 @@ impl Daemon {
                 self.stop();
                 Ok(json!({}))
             }
+            "restart" => {
+                eprintln!("tori daemon: restarting, asked by the window");
+                self.restart();
+                Ok(json!({}))
+            }
+            "restart_when_idle" => {
+                if let Some(office) = self.office.get() {
+                    office.restart_when_idle();
+                }
+                Ok(json!({}))
+            }
             name => Err(RpcError::new(
                 METHOD_NOT_FOUND,
                 format!("the window link carries mint, revoke, publish, pty, session facts and shutdown, not {name}"),
@@ -789,6 +806,7 @@ fn host_office(daemon: &Arc<Daemon>) {
         states: daemon.composer.states.clone(),
     };
     let prompted = Arc::downgrade(daemon);
+    let restarted = Arc::downgrade(daemon);
     let parts = super::office::Parts {
         hub: daemon.hub.clone(),
         desk,
@@ -802,6 +820,12 @@ fn host_office(daemon: &Arc<Daemon>) {
             };
             window.notify("askpass.prompt", json!(event));
             true
+        }),
+        restart: Box::new(move || {
+            if let Some(daemon) = restarted.upgrade() {
+                eprintln!("tori daemon: restarting for the update, no session is working");
+                daemon.restart();
+            }
         }),
     };
     let office = super::office::start(parts);
@@ -922,6 +946,7 @@ pub fn start(paths: Paths) -> Result<Start, String> {
             ptys: Host::new(events, children.clone(), paths.sock.clone(), paths.cli_link_dir.clone()),
             chats: OnceLock::new(),
             office: OnceLock::new(),
+            restarting: AtomicBool::new(false),
             credential,
             children,
             transport: transport.clone(),
@@ -987,9 +1012,41 @@ fn host_chats(daemon: &Arc<Daemon>) {
     let _ = daemon.chats.set(chats);
 }
 
+/// Starts that never got this far in a row, so launchd's relaunches stop
+/// rather than retry every ten seconds for ever. A window starting it again
+/// clears the count.
+pub const GIVE_UP_AFTER: u32 = 5;
+const SETTLED: std::time::Duration = std::time::Duration::from_secs(20);
+
+fn starts_path() -> PathBuf {
+    crate::owned_state::config_dir().join("daemon-starts")
+}
+
+pub fn failed_starts() -> u32 {
+    std::fs::read_to_string(starts_path())
+        .ok()
+        .and_then(|t| t.trim().parse().ok())
+        .unwrap_or(0)
+}
+
+pub fn set_failed_starts(n: u32) -> io::Result<()> {
+    std::fs::write(starts_path(), format!("{n}\n"))
+}
+
 pub fn run() -> i32 {
+    let failed = failed_starts();
+    if failed >= GIVE_UP_AFTER {
+        eprintln!("tori daemon: not starting after {failed} failed starts; the Tori window can try again");
+        return 0;
+    }
+    // Uncounted, a start that keeps failing would be retried for ever.
+    if let Err(e) = set_failed_starts(failed + 1) {
+        eprintln!("tori daemon: not starting, its starts cannot be counted: {e}");
+        return 0;
+    }
     match start(paths()) {
         Ok(Start::Running) => {
+            let _ = set_failed_starts(failed);
             eprintln!("tori daemon: already running");
             0
         }
@@ -1001,9 +1058,17 @@ pub fn run() -> i32 {
             thread::spawn(|| {
                 crate::env::login_path();
             });
+            thread::spawn(|| {
+                thread::sleep(SETTLED);
+                let _ = set_failed_starts(0);
+            });
+            let daemon = started.daemon.clone();
             started.wait();
             crate::credential::unpublish();
-            0
+            match daemon.restarting.load(Ordering::SeqCst) {
+                true => super::launchd::RESTART,
+                false => 0,
+            }
         }
         Err(e) => {
             eprintln!("tori daemon: {e}");

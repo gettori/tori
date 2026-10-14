@@ -165,6 +165,7 @@ import {
   seedInert,
   setOpen,
   setTabTitles,
+  tabTitles,
   stateOnActivate,
   tabState,
   tabTitle,
@@ -1154,7 +1155,10 @@ export default function Terminal(props: {
         .then((all) => all.forEach((a) => void adopt(a)))
         .catch(() => {});
     unlistenDaemon = await listen<DaemonStatus>("daemon://status", (e) => {
-      if (e.payload.state === "connected") adoptAll();
+      if (e.payload.state === "connecting") noteDrop();
+      if (e.payload.state !== "connected") return;
+      void reopenDropped();
+      adoptAll();
     });
     adoptAll();
     unlistenRpc = await serveRpcBridge();
@@ -1890,6 +1894,51 @@ export default function Terminal(props: {
     profile: string | null = null,
   ): string {
     return openChatTab(workspace, cwd, baseName, agentId, profile);
+  }
+
+  let chatsAtDrop = new Set<string>();
+  function noteDrop() {
+    if (chatsAtDrop.size) return;
+    const live = open().filter((t) => t.kind === "chat" && t.sessionId && tabState(t) === "live");
+    chatsAtDrop = new Set(live.map((t) => t.id));
+  }
+
+  // A chat the daemon no longer holds once the link is back died with it, in a
+  // crash or an update.
+  async function reopenDropped() {
+    const was = chatsAtDrop;
+    chatsAtDrop = new Set();
+    if (!was.size) return;
+    const live = await invoke<string[]>("chat_live_sessions").catch((e) => {
+      console.error("chats that died with the daemon stay as they were:", e);
+      return null;
+    });
+    if (!live) return;
+    const held = new Set(live);
+    remountAsOpen(open().filter((t) => was.has(t.id) && t.sessionId && !held.has(t.sessionId)));
+  }
+
+  // Readable again and resumed on the next send, as a restored tab is. A new
+  // id, since a tab's state never walks back.
+  function remountAsOpen(dead: OpenTerm[]) {
+    if (!dead.length) return;
+    const moved = new Map(dead.map((t) => [t.id, chatId()]));
+    const titles = { ...tabTitles() };
+    for (const [from, to] of moved) {
+      seedInert(to);
+      if (titles[from]) titles[to] = titles[from];
+    }
+    setTabTitles(titles);
+    setOpen(open().map((t) => (moved.has(t.id) ? { ...t, id: moved.get(t.id)!, resume: true } : t)));
+    for (const t of dead) {
+      advanceTabState({ ...t, id: moved.get(t.id)!, resume: true }, "open");
+      dropTabState(t.id);
+    }
+    const active = { ...activeByWorkspace() };
+    for (const [ws, id] of Object.entries(active)) {
+      if (moved.has(id)) active[ws] = moved.get(id)!;
+    }
+    setActiveByWorkspace(active);
   }
 
   // Not focused and not a draft: a tab with a session id mounts started, so it
