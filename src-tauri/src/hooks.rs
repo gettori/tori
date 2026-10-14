@@ -43,6 +43,61 @@ fn status_path(session_id: &str) -> PathBuf {
 struct StatusFile {
     event: String,
     at: u64,
+    // The head of the tab's `TORI_CALLER`: enough to find the tab, not enough
+    // to call the socket as it.
+    #[serde(default)]
+    caller: String,
+}
+
+pub const CALLER_PREFIX: usize = 16;
+
+#[derive(Default)]
+pub struct Callers(HashMap<PathBuf, (std::time::SystemTime, Option<(String, u64)>)>);
+
+impl Callers {
+    pub fn scan(&mut self) -> Vec<(String, String, u64)> {
+        let Ok(entries) = std::fs::read_dir(hooks_status_dir()) else {
+            self.0.clear();
+            return Vec::new();
+        };
+        let mut seen = HashMap::new();
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Some(mtime) = entry.metadata().and_then(|m| m.modified()).ok() else {
+                continue;
+            };
+            let read = match self.0.remove(&path) {
+                Some((at, read)) if at == mtime => read,
+                _ => std::fs::read_to_string(&path)
+                    .ok()
+                    .and_then(|t| serde_json::from_str::<StatusFile>(&t).ok())
+                    .filter(|f| f.caller.len() == CALLER_PREFIX)
+                    .map(|f| (f.caller, f.at)),
+            };
+            seen.insert(path, (mtime, read));
+        }
+        self.0 = seen;
+        self.0
+            .iter()
+            .filter_map(|(path, (_, read))| {
+                let (caller, at) = read.clone()?;
+                let session = path.file_stem()?.to_str()?.to_string();
+                Some((session, caller, at))
+            })
+            .collect()
+    }
+}
+
+pub fn bound_tabs(fired: &[(String, String, u64)], tab_of: impl Fn(&str) -> Option<String>) -> HashMap<String, String> {
+    let mut newest: HashMap<String, (u64, &str)> = HashMap::new();
+    for (session, caller, at) in fired {
+        let Some(tab) = tab_of(caller) else { continue };
+        let slot = newest.entry(tab).or_insert((*at, session));
+        if (*at, session.as_str()) > (slot.0, slot.1) {
+            *slot = (*at, session);
+        }
+    }
+    newest.into_iter().map(|(tab, (_, s))| (tab, s.to_string())).collect()
 }
 
 fn read_status(session_id: &str) -> Option<StatusFile> {
@@ -132,8 +187,9 @@ pub fn prune_stale(sessions: impl Fn() -> Vec<SessionMeta>) {
 /// so this should never actually trip).
 fn status_writer_command() -> String {
     let dir = hooks_status_dir().to_string_lossy().into_owned();
+    const CALLER_GLOB: &str = "????????????????";
     format!(
-        r#"in=$(cat); sid=$(printf '%s' "$in" | grep -o '"session_id" *: *"[^"]*"' | head -1 | sed -E 's/.*"([^"]+)"$/\1/'); ev=$(printf '%s' "$in" | grep -o '"hook_event_name" *: *"[^"]*"' | head -1 | sed -E 's/.*"([^"]+)"$/\1/'); case "$sid" in */*|"") sid="" ;; esac; if [ -n "$sid" ] && [ -n "$ev" ]; then mkdir -p '{dir}'; printf '{{"event":"%s","at":%s}}' "$ev" "$(date +%s)" > '{dir}/'"$sid"'.json'; fi"#
+        r#"in=$(cat); sid=$(printf '%s' "$in" | grep -o '"session_id" *: *"[^"]*"' | head -1 | sed -E 's/.*"([^"]+)"$/\1/'); ev=$(printf '%s' "$in" | grep -o '"hook_event_name" *: *"[^"]*"' | head -1 | sed -E 's/.*"([^"]+)"$/\1/'); case "$sid" in */*|"") sid="" ;; esac; cal="${{TORI_CALLER%"${{TORI_CALLER#{CALLER_GLOB}}}"}}"; case "$cal" in *[!0-9a-f]*) cal="" ;; esac; if [ -n "$sid" ] && [ -n "$ev" ]; then mkdir -p '{dir}'; printf '{{"event":"%s","at":%s,"caller":"%s"}}' "$ev" "$(date +%s)" "$cal" > '{dir}/'"$sid"'.json'; fi"#
     )
 }
 
@@ -247,6 +303,39 @@ mod tests {
     fn write_status(session_id: &str, event: &str, at: u64) {
         std::fs::create_dir_all(hooks_status_dir()).unwrap();
         std::fs::write(status_path(session_id), json!({ "event": event, "at": at }).to_string()).unwrap();
+    }
+
+    #[test]
+    fn a_clear_in_one_claude_tab_moves_that_tab_alone_to_its_new_session() {
+        use crate::rpc::auth::{Caller, Children};
+        use std::io::Write;
+        let _guard = lock_dir();
+        let children = Children::default();
+        let a = children.mint(Caller::Terminal("tab-a".into()));
+        let b = children.mint(Caller::Terminal("tab-b".into()));
+        let session = format!("test-clear-{}-{}", std::process::id(), now_secs());
+        let payload = json!({ "session_id": session, "hook_event_name": "UserPromptSubmit" }).to_string();
+        let mut child = std::process::Command::new("/bin/sh")
+            .args(["-c", &status_writer_command()])
+            .env(crate::rpc::ENV_CALLER, &a)
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        child.stdin.take().unwrap().write_all(payload.as_bytes()).unwrap();
+        assert!(child.wait().unwrap().success());
+        let written = Callers::default().scan().into_iter().find(|(s, _, _)| *s == session);
+        let _ = std::fs::remove_file(status_path(&session));
+        let (_, head, _) = written.expect("the hook wrote the tab's caller");
+        assert_eq!(head, a[..CALLER_PREFIX]);
+
+        let fired = |session: &str, token: &str, at: u64| (session.to_string(), token[..CALLER_PREFIX].to_string(), at);
+        let bound = bound_tabs(
+            &[fired("old-a", &a, 10), fired("old-b", &b, 10), fired("new-a", &a, 11)],
+            |head| children.tab_of(head),
+        );
+        assert_eq!(bound.get("tab-a").map(String::as_str), Some("new-a"));
+        assert_eq!(bound.get("tab-b").map(String::as_str), Some("old-b"));
+        assert_eq!(bound.len(), 2);
     }
 
     #[test]

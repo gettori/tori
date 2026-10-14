@@ -576,7 +576,7 @@ pub fn run() {
             crash::record_webview_error,
             crash::crash_logs,
             crash::open_crash_issue,
-            sessions::list_sessions,
+            rpc::list_sessions,
             sessions::sessions_watch_start,
             sessions::set_session_name,
             sessions::delete_session,

@@ -1,8 +1,7 @@
 //! Run by `tori daemon`, so a chat outlives the window.
 
-use std::collections::HashSet;
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -26,7 +25,6 @@ pub struct Served {
     pub host: ChatHost,
     orphans: Orphans,
     events: Events,
-    turning: Mutex<HashSet<String>>,
 }
 
 fn arg<T: DeserializeOwned>(p: &Value, key: &str) -> Result<T, String> {
@@ -43,7 +41,6 @@ impl Served {
             host: ChatHost::default(),
             orphans: Orphans::default(),
             events,
-            turning: Mutex::default(),
         });
         served.orphans.set(super::ownership::reap_on_startup());
         let tap = Arc::downgrade(&served);
@@ -55,21 +52,15 @@ impl Served {
         served
     }
 
-    fn turning(&self) -> MutexGuard<'_, HashSet<String>> {
-        self.turning.lock().unwrap_or_else(|e| e.into_inner())
-    }
-
     // The window marks open turns too, but a turn that ends with no window would
     // read as interrupted on the next launch.
     fn lifecycle(&self, id: &str, data: Value) {
         match data["kind"].as_str() {
             Some("session.turn_started") => {
-                self.turning().insert(id.to_string());
                 let turn = data["turn_id"].as_str().map(str::to_string);
                 note_mark(id, commands::mark_turn(id, turn));
             }
             Some("session.turn_ended" | "session.ended") => {
-                self.turning().remove(id);
                 note_mark(id, commands::mark_turn(id, None));
             }
             _ => {}
@@ -94,10 +85,6 @@ impl Served {
 
     pub fn shutdown(&self) {
         self.host.shutdown();
-    }
-
-    pub fn idle(&self, id: &str) -> bool {
-        self.host.is_live(id) && !self.turning().contains(id)
     }
 
     pub fn deliver(&self, id: &str, text: String, by: TurnBy) -> Result<(), String> {
@@ -331,10 +318,18 @@ fn coalesce(rx: Receiver<ChatEvent>, mut out: impl FnMut(ChatEvent), window: Dur
     }
 }
 
-pub fn pr_wake(served: &Arc<Served>) {
-    let (ready, deliver) = (Arc::downgrade(served), Arc::downgrade(served));
+// A chat idle as composed: live, no turn running, and not stopped at a spend ceiling.
+pub fn pr_wake(served: &Arc<Served>, states: Arc<crate::rpc::states::SessionStates>) {
+    let deliver = Arc::downgrade(served);
     crate::rpc::pr_wake::start(
-        move |session| crate::settings::pr_watch() && ready.upgrade().is_some_and(|s| s.idle(session)),
+        move |session| {
+            use crate::rpc::states::{SessionState, Source};
+            crate::settings::pr_watch()
+                && states
+                    .shown()
+                    .get(session)
+                    .is_some_and(|s| s.state == SessionState::Idle && s.source == Source::Chat)
+        },
         move |session, text| {
             let served = deliver.upgrade().ok_or("the daemon is stopping")?;
             served.deliver(
@@ -349,6 +344,7 @@ pub fn pr_wake(served: &Arc<Served>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
 
     fn text(turn: &str, t: &str) -> ChatEvent {
         ChatEvent::TextDelta {

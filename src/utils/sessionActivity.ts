@@ -8,7 +8,8 @@
 // **Rust composes every dot** (`rpc/dots.rs`, pinned by the golden fixtures
 // there) from the facts this module reports and what Rust measures itself, and
 // hands the result back on `sessions://dots`. A chat's own status is still read
-// here, raw, because the revert guard has to see a turn start on the same tick.
+// here, raw, because the revert guard has to see a turn start on the same tick;
+// Rust takes only a spend ceiling stop from it.
 import type { PrState } from "./forgeTypes";
 import { createSignal, createMemo, createEffect, createRoot } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";

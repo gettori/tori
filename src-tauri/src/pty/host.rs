@@ -47,6 +47,7 @@ const DEFAULT_QUIET_MS: u64 = 2000;
 // against its quiet threshold. Small relative to any real threshold (2s+),
 // so the active->quiet transition is detected promptly without busy-looping.
 const ACTIVITY_POLL_MS: u64 = 200;
+const UNWATCHED_POLL: Duration = Duration::from_secs(1);
 
 // Output coalescing window, roughly a frame. A reader that keeps producing
 // costs one IPC send per window instead of one per 8KB read, which is what a
@@ -449,6 +450,7 @@ pub struct Host {
     sock: PathBuf,
     cli_dir: PathBuf,
     next_stream: AtomicU64,
+    watched: AtomicBool,
 }
 
 impl Host {
@@ -461,7 +463,20 @@ impl Host {
             sock,
             cli_dir,
             next_stream: AtomicU64::new(0),
+            watched: AtomicBool::new(false),
         })
+    }
+
+    /// Whether a window is attached to see a dot turn.
+    pub fn set_watched(&self, watched: bool) {
+        self.watched.store(watched, Ordering::Relaxed);
+    }
+
+    fn activity_poll(&self) -> Duration {
+        match self.watched.load(Ordering::Relaxed) {
+            true => Duration::from_millis(ACTIVITY_POLL_MS),
+            false => UNWATCHED_POLL,
+        }
     }
 
     fn ptys(&self) -> MutexGuard<'_, HashMap<String, Arc<Pty>>> {
@@ -701,7 +716,7 @@ impl Host {
             let (host, tab) = (self.clone(), tab.clone());
             let threshold = Duration::from_millis(p.quiet_ms.unwrap_or(DEFAULT_QUIET_MS));
             thread::spawn(move || loop {
-                thread::sleep(Duration::from_millis(ACTIVITY_POLL_MS));
+                thread::sleep(host.activity_poll());
                 if !host.live(&tab) {
                     break;
                 }

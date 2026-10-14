@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use super::approvals::Draft;
@@ -34,7 +34,7 @@ pub const AUTH_TIMEOUT: Duration = Duration::from_secs(5);
 pub const DEFAULT_LOG_LIMIT: usize = 50;
 pub const UNITS_GIT_MAX: usize = 64;
 
-#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[derive(Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ListParams {
     /// Only sessions whose folder is this one or inside it.
@@ -211,7 +211,7 @@ pub struct LogParams {
     pub limit: Option<usize>,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WaitParams {
     /// The session to wait on.
@@ -822,22 +822,25 @@ impl Server {
 
     /// One row of the method table, for a caller the transport already proved.
     pub fn call(&self, principal: &Principal, req: &Request) -> Result<Value, RpcError> {
-        let name = req.method.as_str();
-        let method = table::find(name).ok_or_else(|| RpcError::new(METHOD_NOT_FOUND, format!("no method {name}")))?;
-        let kind = self.backend.kind(principal);
-        if !method.callers.contains(&kind) {
-            let why = match kind {
-                CallerKind::Worker => method.refusal.or(Some(table::WORKER_REFUSAL)),
-                _ => method.refusal,
-            };
-            let why = why.map(|r| format!(": {r}")).unwrap_or_default();
-            return Err(RpcError::new(
-                REFUSED,
-                format!("{name} is not open to a {} caller{why}", kind.name()),
-            ));
-        }
+        let method = permit(&req.method, self.backend.kind(principal))?;
         (method.call)(self.backend.as_ref(), principal, &req.params)
     }
+}
+
+pub(super) fn permit(name: &str, kind: CallerKind) -> Result<&'static table::Method, RpcError> {
+    let method = table::find(name).ok_or_else(|| RpcError::new(METHOD_NOT_FOUND, format!("no method {name}")))?;
+    if !method.callers.contains(&kind) {
+        let why = match kind {
+            CallerKind::Worker => method.refusal.or(Some(table::WORKER_REFUSAL)),
+            _ => method.refusal,
+        };
+        let why = why.map(|r| format!(": {r}")).unwrap_or_default();
+        return Err(RpcError::new(
+            REFUSED,
+            format!("{name} is not open to a {} caller{why}", kind.name()),
+        ));
+    }
+    Ok(method)
 }
 
 pub trait Dispatch: Send + Sync {
@@ -1072,6 +1075,9 @@ pub mod tests {
             Ok(json!({ "id": p.id, "state": "idle", "question": null, "last": null }))
         }
         fn session_pending(&self, p: PendingParams) -> Result<Value, RpcError> {
+            if p.id == SLOW {
+                thread::sleep(Duration::from_millis(800));
+            }
             Ok(json!([{ "kind": "ask", "id": p.id }]))
         }
         fn session_answer(&self, _: &Principal, p: SessionAnswerParams) -> Result<Value, RpcError> {

@@ -1,6 +1,5 @@
-//! What each live session is doing, as the webview last reported it. The
-//! webview computes the dot and owns it; this is a copy so `sessions.list` and
-//! the `sessions` topic can answer without a round trip into it.
+//! What each live session is doing. The window keeps a mirror for the gates
+//! and the autopilot that still run there.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Condvar, Mutex};
@@ -22,7 +21,7 @@ pub enum SessionState {
 
 // A chat's start and end are announced by `ChatHost`, which knows the reason;
 // a PTY agent's only by this cache.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Source {
     Chat,
@@ -39,6 +38,14 @@ pub struct Reported {
     // The PTY tab running it, which is how a PTY is known to be alive.
     #[serde(default)]
     pub tab: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Shown {
+    pub state: SessionState,
+    pub source: Source,
+    pub tab: Option<String>,
+    pub folder: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -124,6 +131,12 @@ impl SessionStates {
             ended.push(id);
         }
         *held = next.into_iter().collect();
+        drop(held);
+        self.forget_ended(ended);
+        events
+    }
+
+    fn forget_ended(&self, ended: Vec<String>) {
         let mut background = self.background.lock().unwrap_or_else(|e| e.into_inner());
         let mut workers = self.workers.lock().unwrap_or_else(|e| e.into_inner());
         let mut spawned_by = self.spawned_by.lock().unwrap_or_else(|e| e.into_inner());
@@ -133,7 +146,41 @@ impl SessionStates {
             spawned_by.remove(&id);
         }
         self.settled.notify_all();
-        events
+    }
+
+    pub fn shown(&self) -> HashMap<String, Shown> {
+        let held = self.states.lock().unwrap_or_else(|e| e.into_inner());
+        held.iter()
+            .map(|(id, h)| {
+                let shown = Shown {
+                    state: h.state,
+                    source: h.source,
+                    tab: h.tab.clone(),
+                    folder: h.folder.clone(),
+                };
+                (id.clone(), shown)
+            })
+            .collect()
+    }
+
+    pub fn mirror(&self, next: HashMap<String, Shown>) {
+        let mut held = self.states.lock().unwrap_or_else(|e| e.into_inner());
+        let ended: Vec<String> = held.keys().filter(|id| !next.contains_key(*id)).cloned().collect();
+        *held = next
+            .into_iter()
+            .map(|(id, s)| {
+                let held = Held {
+                    state: s.state,
+                    source: s.source,
+                    tab: s.tab,
+                    folder: s.folder,
+                    place: Place::default(),
+                };
+                (id, held)
+            })
+            .collect();
+        drop(held);
+        self.forget_ended(ended);
     }
 
     pub fn wait_settled(&self, id: &str, timeout: Duration) -> Option<SessionState> {

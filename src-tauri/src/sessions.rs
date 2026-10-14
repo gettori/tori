@@ -690,15 +690,14 @@ fn topic_rows(all: Vec<SessionMeta>, topics: &[crate::topics::Topic], id: &str) 
 
 /// Sessions (every registered agent) anchored at `folder` or nested under it,
 /// newest first. `folder` may also be a Topic's `topic:<id>` workspace key.
-#[tauri::command(async)]
 pub fn list_sessions(
-    index: State<SessionIndex>,
-    projects: State<crate::config::ProjectIndex>,
+    index: &SessionIndex,
+    projects: &crate::config::ProjectIndex,
     folder: String,
     inclusive: Option<bool>,
 ) -> Result<Vec<Listed>, String> {
     let accounts = crate::accounts::load();
-    let all = ensure_index(&index, &accounts);
+    let all = ensure_index(index, &accounts);
     let topic = folder.strip_prefix(crate::unit_home::TOPIC_KEY);
     let topics = match topic {
         Some(_) => crate::unit_home::topics(),
@@ -710,8 +709,8 @@ pub fn list_sessions(
     };
     let (spaces, topics) = match (rows.is_empty(), topic) {
         (true, _) => Default::default(),
-        (false, Some(_)) => (crate::unit_home::spaces(&projects), topics),
-        (false, None) => (crate::unit_home::spaces(&projects), crate::unit_home::topics()),
+        (false, Some(_)) => (crate::unit_home::spaces(projects), topics),
+        (false, None) => (crate::unit_home::spaces(projects), crate::unit_home::topics()),
     };
     Ok(stamp_listing(rows, &load_overlay(), &accounts)
         .into_iter()
@@ -1224,7 +1223,7 @@ pub fn sessions_running(
 ) -> Result<Vec<String>, String> {
     let asked: Vec<(String, String)> = sessions.iter().map(|s| (s.id.clone(), s.agent.clone())).collect();
     let running = running_now(&state.0.registry, sessions);
-    crate::rpc::note_running(&asked, &running);
+    crate::rpc::daemon_tell("running", serde_json::json!({ "asked": asked, "running": running }));
     Ok(running)
 }
 
