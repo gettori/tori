@@ -11,6 +11,7 @@ pub mod auth;
 pub mod awake;
 pub mod bridge;
 pub mod client;
+pub mod composer;
 pub mod daemon;
 pub mod devices;
 pub mod dots;
@@ -33,8 +34,7 @@ pub mod watcher;
 pub mod window;
 pub mod ws;
 
-use std::cell::OnceCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
@@ -51,7 +51,7 @@ use remote::Remote;
 use runner::Runner;
 use serde_json::{json, Value};
 use server::{Server, AUTH_TIMEOUT};
-use states::{Held, SessionStates, Source};
+use states::SessionStates;
 use watcher::Watcher;
 use window::{Link, Status};
 
@@ -105,25 +105,39 @@ fn daemon_status_emitter(app: &AppHandle) -> Box<dyn Fn(&Status) + Send + Sync> 
             // Off the link's thread, which is the one that reads the answer.
             let app = app.clone();
             std::thread::spawn(move || crate::pty::resync(&app));
+            retell_facts();
         }
     })
 }
 
 // What the daemon tells the window: tab and chat events, and the calls its host
 // makes into state that still lives here.
-fn daemon_events(app: &AppHandle, hub: &Arc<Hub>, autopilot: &Arc<AutopilotStore>) -> window::OnEvent {
-    let (app, hub, autopilot) = (app.clone(), hub.clone(), autopilot.clone());
+fn daemon_events(app: &AppHandle, states: &Arc<SessionStates>, autopilot: &Arc<AutopilotStore>) -> window::OnEvent {
+    let (app, states, autopilot) = (app.clone(), states.clone(), autopilot.clone());
     Box::new(move |event, p| {
         let text = |key: &str| p[key].as_str().unwrap_or_default().to_string();
         match event {
             "chat.event" => app.state::<crate::chat::host::ChatState>().0.route(p),
-            "chat.lifecycle" => {
-                let (id, data) = (text("id"), p["data"].clone());
+            "session.event" => {
+                let (id, data) = (text("id"), p["event"].clone());
                 let compacted = (data["kind"] == "session.compacted").then(|| data["trigger"] == "auto");
-                publish_session(&hub, &autopilot, &id, data);
+                heard_session(&autopilot, &id, &data);
                 if let Some(mid_turn) = compacted {
                     retell_topic(&app, &id, mid_turn);
                 }
+            }
+            "states" => {
+                if let Ok(next) = serde_json::from_value(p.clone()) {
+                    states.mirror(next);
+                    crate::radar::sessions_changed();
+                }
+            }
+            "dots" => {
+                let _ = app.emit("sessions://dots", p);
+            }
+            "present" => present_later(&app, p.clone()),
+            "needs_you.changed" => {
+                let _ = app.emit(crate::needs_you_log::CHANGED_EVENT, ());
             }
             "revoke" => {
                 if let Ok(caller) = serde_json::from_value::<Caller>(p["caller"].clone()) {
@@ -147,6 +161,7 @@ fn daemon_events(app: &AppHandle, hub: &Arc<Hub>, autopilot: &Arc<AutopilotStore
 pub(crate) struct InDaemon {
     pub hub: Arc<Hub>,
     pub children: Arc<auth::Children>,
+    pub states: Arc<SessionStates>,
     pub sock: String,
     pub tell: Box<dyn Fn(&'static str, Value) + Send + Sync>,
 }
@@ -261,9 +276,8 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     pr_watch::on_polled_moved(Box::new(move || {
         let _ = tell.emit("pr_watch://changed", ());
     }));
-    start_composer(&app, &hub, &states, &autopilot);
     let on_status = daemon_status_emitter(&app);
-    let on_event = daemon_events(&app, &hub, &autopilot);
+    let on_event = daemon_events(&app, &states, &autopilot);
     let server = Arc::new(Server {
         hub: hub.clone(),
         backend: Box::new(methods::TauriBackend {
@@ -302,344 +316,126 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     })
 }
 
-// What only the webview knows about its tabs, chats and forge poll; every
-// composition after this reads it.
-#[tauri::command(async)]
-pub fn rpc_session_facts(
-    chat: tauri::State<crate::chat::host::ChatState>,
-    pty: tauri::State<crate::pty::PtyState>,
-    facts: dots::Facts,
-) {
-    let Some(composer) = COMPOSER.get() else { return };
-    let chats: HashSet<String> = chat.0.live_sessions().into_iter().map(|(id, _)| id).collect();
-    let tabs: HashSet<String> = pty.live_ids().unwrap_or_default().into_iter().collect();
-    composer
-        .dots
-        .replace(facts, |tab| tabs.contains(tab), |id| chats.contains(id));
-    nudge(Nudge::Compose);
+// What only the webview knows about its tabs, chats and forge poll, and what
+// it is looking at. Kept, so a daemon that restarts under the window hears it again.
+static TOLD: std::sync::Mutex<Option<(Value, Value, bool)>> = std::sync::Mutex::new(None);
+
+fn told(change: impl FnOnce(&mut (Value, Value, bool))) {
+    let mut told = TOLD.lock().unwrap_or_else(|e| e.into_inner());
+    change(told.get_or_insert_with(|| (json!({}), json!({ "session": null, "focused": true }), false)));
 }
 
-pub fn note_pty_activity(tab: &str, state: &str) {
-    let activity = match state {
-        "active" => dots::Activity::Active,
-        _ => dots::Activity::Quiet,
+fn retell_facts() {
+    let Some((facts, attention, pilot)) = TOLD.lock().unwrap_or_else(|e| e.into_inner()).clone() else {
+        return;
     };
-    if COMPOSER.get().is_some_and(|c| c.dots.note_activity(tab, activity)) {
-        nudge(Nudge::Compose);
-    }
+    daemon_tell("facts", facts);
+    daemon_tell("attention", attention);
+    daemon_tell("pilot", json!({ "on": pilot }));
 }
 
-pub fn note_running(asked: &[(String, String)], running: &[String]) {
-    let Some(composer) = COMPOSER.get() else { return };
-    composer.dots.note_running(asked, &running.iter().cloned().collect());
-    nudge(Nudge::Compose);
+#[tauri::command]
+pub fn rpc_session_facts(facts: Value) {
+    told(|t| t.0 = facts.clone());
+    daemon_tell("facts", facts);
 }
 
-// A transcript moved: its tail may have, and a session may have exited.
+// The selected row and whether the window has focus, which only the webview knows.
+#[tauri::command]
+pub fn rpc_attention(session: Option<String>, focused: bool) {
+    let attention = json!({ "session": session, "focused": focused });
+    told(|t| t.1 = attention.clone());
+    daemon_tell("attention", attention);
+}
+
+pub fn note_pilot(on: bool) {
+    told(|t| t.2 = on);
+    daemon_tell("pilot", json!({ "on": on }));
+}
+
 pub fn sessions_changed() {
-    nudge(Nudge::Changed);
+    daemon_tell("sessions_changed", json!({}));
 }
 
 pub fn nudge_probe() {
-    nudge(Nudge::Probe);
+    daemon_tell("probe", json!({}));
 }
 
-// The whole set, for a webview that has just loaded and missed every change.
-#[tauri::command]
-pub fn session_dots() -> Vec<dots::Change> {
-    COMPOSER.get().map(|c| c.dots.all()).unwrap_or_default()
-}
-
-pub fn session_dot(id: &str) -> (dots::Dot, dots::Certainty) {
-    COMPOSER
-        .get()
-        .map_or((dots::Dot::None, dots::Certainty::Inferred), |c| c.dots.dot(id))
-}
-
-pub fn session_attended(id: &str, dot: dots::Dot) -> bool {
-    COMPOSER.get().is_none_or(|c| !c.presence().unattended(id, dot))
-}
-
-// What the user is looking at: the selected row and whether the window has
-// focus, which only the webview knows.
 #[tauri::command(async)]
-pub fn rpc_attention(session: Option<String>, focused: bool) {
-    let Some(composer) = COMPOSER.get() else { return };
-    composer.presence().attend(session, focused);
-    nudge(Nudge::Present);
+pub fn session_dots() -> Value {
+    daemon_request("dots", json!({})).unwrap_or_else(|_| json!([]))
 }
 
-// So a socket caller never waits on the webview to notice a session exited.
-// Queued rather than run inline, which would put a pgrep on the caller's call.
-pub fn refresh_dots_if_stale() {
-    if COMPOSER
-        .get()
-        .is_some_and(|c| c.dots.probed_at().is_none_or(|at| at.elapsed() >= STALE_PROBE))
-    {
-        nudge(Nudge::Probe);
-    }
+// The daemon's reply as it came, so a long list is never parsed here and
+// written out again.
+#[tauri::command(async)]
+pub fn list_sessions(folder: String, inclusive: Option<bool>) -> Result<tauri::ipc::Response, String> {
+    let link = LINK.get().ok_or("the daemon link is not up")?;
+    link.request_raw(
+        "list_sessions",
+        json!({ "folder": folder, "inclusive": inclusive }),
+        DAEMON_WAIT,
+    )
+    .map(tauri::ipc::Response::new)
+    .map_err(|e| e.message)
 }
 
-const STALE_PROBE: std::time::Duration = std::time::Duration::from_secs(5);
-
-#[derive(PartialEq)]
-enum Nudge {
-    Compose,
-    Probe,
-    Changed,
-    Present,
+#[derive(serde::Deserialize)]
+struct Shown {
+    withdraw: Vec<String>,
+    needs_you: Vec<crate::presence::Live>,
+    finished: Vec<crate::presence::Live>,
+    needs_you_sound: bool,
+    finished_sound: bool,
+    tray: Option<(String, Vec<crate::presence::TrayEntry>)>,
+    badge: Option<usize>,
 }
 
-static COMPOSER: OnceLock<Arc<Composer>> = OnceLock::new();
-static NUDGE: OnceLock<std::sync::Mutex<std::sync::mpsc::Sender<Nudge>>> = OnceLock::new();
+static PRESENTER: OnceLock<std::sync::Mutex<std::sync::mpsc::Sender<Value>>> = OnceLock::new();
 
-fn nudge(what: Nudge) {
-    if let Some(tx) = NUDGE.get() {
-        let _ = tx.lock().unwrap_or_else(|e| e.into_inner()).send(what);
-    }
-}
-
-struct Composer {
-    app: AppHandle,
-    hub: Arc<Hub>,
-    states: Arc<SessionStates>,
-    autopilot: Arc<AutopilotStore>,
-    dots: dots::Dots,
-    // Index rows per session, and every id already looked up, so a session with
-    // no transcript yet does not re-walk the index on every composition.
-    metas: std::sync::Mutex<(HashMap<String, dots::Meta>, HashSet<String>)>,
-    presence: std::sync::Mutex<crate::presence::Presence>,
-}
-
-impl Composer {
-    fn presence(&self) -> std::sync::MutexGuard<'_, crate::presence::Presence> {
-        self.presence.lock().unwrap_or_else(|e| e.into_inner())
-    }
-
-    fn probe(&self) {
-        let want = self.dots.to_probe();
-        let refs = want
-            .iter()
-            .map(|(id, agent)| crate::sessions::SessionRef {
-                id: id.clone(),
-                agent: agent.clone(),
-            })
-            .collect();
-        let running = crate::sessions::running_now(&self.app.state::<crate::chat::host::ChatState>().0.registry, refs);
-        self.dots.note_running(&want, &running.into_iter().collect());
-    }
-
-    // One at a time, so the events two compositions publish never interleave.
-    fn compose(&self, reindex: bool) {
-        let mut metas = self.metas.lock().unwrap_or_else(|e| e.into_inner());
-        let wanted = self.dots.wants_meta();
-        if reindex || wanted.iter().any(|id| !metas.1.contains(id)) {
-            let all = crate::sessions::all_sessions(&self.app.state::<crate::sessions::SessionIndex>());
-            let rows = all
-                .into_iter()
-                .filter(|m| wanted.contains(&m.id))
-                .map(|m| {
-                    let name = m.name.filter(|n| !n.is_empty()).unwrap_or(m.title);
-                    (
-                        m.id.clone(),
-                        dots::Meta {
-                            agent: m.agent,
-                            path: m.path,
-                            branch: m.branch,
-                            cwd: m.cwd,
-                            name,
-                        },
-                    )
-                })
-                .collect();
-            *metas = (rows, wanted.into_iter().collect());
-        }
-        let spaces = OnceCell::new();
-        let topics = OnceCell::new();
-        let home_of = |at: &str, branch: Option<&str>| {
-            let spaces =
-                spaces.get_or_init(|| crate::unit_home::spaces(&self.app.state::<crate::config::ProjectIndex>()));
-            crate::unit_home::home_of(spaces, topics.get_or_init(crate::unit_home::topics), at, branch)
-        };
-        let tail_blocked = |id: &str, meta: &dots::Meta| {
-            crate::sessions::session_tail_state_body(id.to_string(), meta.path.clone(), meta.agent.clone())
-                .is_ok_and(|t| t == crate::sessions::TailState::BlockedCandidate)
-        };
-        let (reports, changes) = self.dots.compose_all(&metas.0, home_of, tail_blocked);
-
-        let chats: HashSet<String> = self
-            .app
-            .state::<crate::chat::host::ChatState>()
-            .0
-            .live_sessions()
-            .into_iter()
-            .map(|(id, _)| id)
-            .collect();
-        let tabs: HashSet<String> = self
-            .app
-            .state::<crate::pty::PtyState>()
-            .live_ids()
-            .unwrap_or_default()
-            .into_iter()
-            .collect();
-        let projects = OnceCell::new();
-        let place_of = |folder: &str| Place {
-            project: events::project_of(folder, projects.get_or_init(crate::config::discovered_project_dirs)),
-            folder: Some(folder.to_string()),
-        };
-        let alive = |id: &str, held: &Held| match held.source {
-            Source::Chat => chats.contains(id),
-            Source::Pty => held.tab.as_ref().is_some_and(|tab| tabs.contains(tab)),
-        };
-        let moved = self.states.replace(reports, place_of, alive);
-        if !moved.is_empty() {
-            crate::radar::sessions_changed();
-        }
-        for event in moved {
-            let id = event["id"].as_str().unwrap_or_default().to_string();
-            publish_session(&self.hub, &self.autopilot, &id, event);
-        }
-        // Straight to the hub: a dot is not something the runner or the
-        // watcher acts on, and a red check reaches them as `session.pr`.
-        for change in &changes {
-            let place = if change.folder.is_empty() {
-                Place::default()
-            } else {
-                place_of(&change.folder)
-            };
-            let event = session_event(
-                "session.dot",
-                &change.id,
-                &place,
-                json!({ "dot": change.dot, "certainty": change.certainty }),
-            );
-            self.hub.publish_session(&change.id, event);
-        }
-        if !changes.is_empty() {
-            let _ = self.app.emit("sessions://dots", &changes);
-        }
-    }
-
-    // After every composition, so an edge is only ever a dot that changed.
-    fn present(&self) {
-        let mut live = self.dots.live();
-        let spaces = crate::unit_home::spaces(&self.app.state::<crate::config::ProjectIndex>());
-        let topics = crate::unit_home::topics();
-        let metas = self.metas.lock().unwrap_or_else(|e| e.into_inner());
-        for l in &mut live {
-            l.branch = metas.0.get(&l.id).map(|m| m.branch.clone()).filter(|b| !b.is_empty());
-            if l.name.is_empty() {
-                l.name = metas
-                    .0
-                    .get(&l.id)
-                    .map(|m| m.name.clone())
-                    .filter(|n| !n.is_empty())
-                    .unwrap_or_else(|| l.id.clone());
+// Off the link's reader, in order: building the tray's menu waits on the main
+// thread, which may itself be waiting on a reply this reader has to deliver.
+fn present_later(app: &AppHandle, shown: Value) {
+    let tx = PRESENTER.get_or_init(|| {
+        let (tx, rx) = std::sync::mpsc::channel::<Value>();
+        let app = app.clone();
+        std::thread::spawn(move || {
+            while let Ok(shown) = rx.recv() {
+                present(&app, &shown);
             }
-            l.project = crate::unit_home::project_name(&spaces, &l.folder);
-            if let (true, Some(t)) = (l.project.is_empty(), crate::unit_home::topic_of(&topics, &l.folder)) {
-                l.project = t.name.clone();
-            }
-        }
-        drop(metas);
-        let chats: HashSet<String> = live.iter().filter(|l| l.chat).map(|l| l.id.clone()).collect();
-        let pilot = RUNNER.get().is_some_and(|r| {
-            matches!(
-                r.status().state,
-                runner::RunnerState::Starting | runner::RunnerState::Idle | runner::RunnerState::Working
-            )
         });
-        // Released before the OS calls: building the tray's menu waits on the
-        // main thread, which may itself be waiting on this lock.
-        let (edges, relayed, watched, (tray, badge)) = {
-            let mut presence = self.presence();
-            let edges = presence.step(&live);
-            let ids = |keep: &dyn Fn(&crate::presence::Live) -> bool| -> HashSet<String> {
-                live.iter().filter(|l| keep(l)).map(|l| l.id.clone()).collect()
-            };
-            let relayed = ids(&|l| crate::presence::relayed(l.spawner.as_deref(), &chats, pilot));
-            let watched = ids(&|l| presence.suppressed(l));
-            (edges, relayed, watched, presence.surface(&live))
-        };
-        let units: Vec<crate::needs_you_log::Unit> = self
-            .dots
-            .forge()
-            .into_iter()
-            .map(|u| crate::needs_you_log::Unit {
-                project: crate::unit_home::project_name(&spaces, &u.folder_path),
-                folder: u.folder_path,
-                branch: u.branch,
-                attention: u.attention,
-                pr_known: u.pr_known,
-                pr: u.pull_request,
-            })
-            .collect();
-        let logged = crate::needs_you_log::record(&crate::needs_you_log::Tick {
-            live: &live,
-            finished: &edges.finished,
-            relayed: &relayed,
-            watched: &watched,
-            units: &units,
-        });
-        if logged {
-            publish_needs_you(&self.app);
-        }
-        let quiet: HashSet<String> = relayed.union(&watched).cloned().collect();
-        for id in &edges.cleared {
-            crate::presence::withdraw_notification(&self.app, id);
-        }
-        if !edges.rose.is_empty() || !edges.finished.is_empty() {
-            let alerts = crate::presence::decide(edges, &quiet, &crate::settings::get_settings().notifications);
-            for l in live.iter().filter(|l| alerts.needs_you.contains(&l.id)) {
-                crate::presence::notify_session(self.app.clone(), l, crate::presence::needs_you_body(l), true);
-            }
-            // No click wait: a turn finishes far more often than one blocks,
-            // and a wait parks a thread for as long as the notification stays.
-            for l in live.iter().filter(|l| alerts.finished.contains(&l.id)) {
-                crate::presence::notify_session(self.app.clone(), l, crate::presence::finished_body(l), false);
-            }
-            if alerts.needs_you_sound {
-                crate::sound::play(&self.app, crate::sound::Sound::NeedsYou);
-            }
-            if alerts.finished_sound {
-                crate::sound::play(&self.app, crate::sound::Sound::TurnFinished);
-            }
-        }
-        if let Some((tooltip, entries)) = tray {
-            let _ = crate::presence::set_tray(&self.app, &tooltip, &entries);
-        }
-        if let Some(count) = badge {
-            let _ = crate::presence::set_badge_count(&self.app, count);
-        }
-    }
+        std::sync::Mutex::new(tx)
+    });
+    let _ = tx.lock().unwrap_or_else(|e| e.into_inner()).send(shown);
 }
 
-fn start_composer(app: &AppHandle, hub: &Arc<Hub>, states: &Arc<SessionStates>, autopilot: &Arc<AutopilotStore>) {
-    let composer = Arc::new(Composer {
-        app: app.clone(),
-        hub: hub.clone(),
-        states: states.clone(),
-        autopilot: autopilot.clone(),
-        dots: dots::Dots::default(),
-        metas: std::sync::Mutex::default(),
-        presence: std::sync::Mutex::default(),
-    });
-    let (tx, rx) = std::sync::mpsc::channel::<Nudge>();
-    let _ = NUDGE.set(std::sync::Mutex::new(tx));
-    let _ = COMPOSER.set(composer.clone());
-    std::thread::spawn(move || {
-        while let Ok(first) = rx.recv() {
-            let mut all = vec![first];
-            all.extend(rx.try_iter());
-            if all.iter().any(|n| matches!(n, Nudge::Probe | Nudge::Changed)) {
-                composer.probe();
-            }
-            if all.iter().any(|n| *n != Nudge::Present) {
-                composer.compose(all.contains(&Nudge::Changed));
-            }
-            composer.present();
-        }
-    });
+fn present(app: &AppHandle, shown: &Value) {
+    let Ok(shown) = serde_json::from_value::<Shown>(shown.clone()) else {
+        return;
+    };
+    for id in &shown.withdraw {
+        crate::presence::withdraw_notification(app, id);
+    }
+    for l in &shown.needs_you {
+        crate::presence::notify_session(app.clone(), l, crate::presence::needs_you_body(l), true);
+    }
+    // No click wait: a turn finishes far more often than one blocks, and a
+    // wait parks a thread for as long as the notification stays.
+    for l in &shown.finished {
+        crate::presence::notify_session(app.clone(), l, crate::presence::finished_body(l), false);
+    }
+    if shown.needs_you_sound {
+        crate::sound::play(app, crate::sound::Sound::NeedsYou);
+    }
+    if shown.finished_sound {
+        crate::sound::play(app, crate::sound::Sound::TurnFinished);
+    }
+    if let Some((tooltip, entries)) = shown.tray {
+        let _ = crate::presence::set_tray(app, &tooltip, &entries);
+    }
+    if let Some(count) = shown.badge {
+        let _ = crate::presence::set_badge_count(app, count);
+    }
 }
 
 /// Tori telling one live chat something it should know: steered into the
@@ -812,18 +608,16 @@ fn withdraw_holds(asks: Arc<Asks>, bridge: Arc<Bridge>) -> Box<dyn Fn(&str) + Se
     })
 }
 
-// An item whose session ended keeps its stored state, but what the autopilot sees of it changed.
-pub fn publish_session(hub: &Hub, autopilot: &AutopilotStore, id: &str, event: Value) {
-    let ended = event["kind"] == "session.ended";
+// An item whose session ended keeps its stored state, but what the autopilot
+// sees of it changed.
+pub fn heard_session(autopilot: &AutopilotStore, id: &str, event: &Value) {
     if let Some(runner) = RUNNER.get() {
-        runner.observe(id, &event);
+        runner.observe(id, event);
     }
     if let Some(watcher) = WATCHER.get() {
-        watcher.session_event(id, &event);
+        watcher.session_event(id, event);
     }
-    pr_wake::session_event(id, &event);
-    hub.publish_session(id, event);
-    if ended {
+    if event["kind"] == "session.ended" {
         autopilot.session_ended(id);
     }
 }
@@ -1201,6 +995,17 @@ pub fn daemon_request(method: &str, params: Value) -> Result<Value, String> {
     link.request(method, params, DAEMON_WAIT).map_err(|e| e.message)
 }
 
+pub fn daemon_wait(method: &str, params: Value, wait: std::time::Duration) -> Result<Value, String> {
+    let link = LINK.get().ok_or("the daemon link is not up")?;
+    link.request(method, params, wait).map_err(|e| e.message)
+}
+
+pub(crate) fn pending_ask(session: &str) -> Value {
+    ASKS.get()
+        .and_then(|asks| asks.pending_for(session))
+        .map_or(Value::Null, |ask| json!(ask))
+}
+
 pub fn daemon_tell(method: &'static str, params: Value) {
     if let Some(link) = LINK.get() {
         link.notify(method, params);
@@ -1245,6 +1050,9 @@ pub fn child_env(caller: Caller) -> Vec<(String, String)> {
 pub fn revoke(caller: &Caller) {
     if let Some(role) = IN_DAEMON.get() {
         role.children.revoke(caller);
+        if let Caller::Chat(session) = caller {
+            role.states.forget_worker(session);
+        }
         (role.tell)("revoke", json!({ "caller": caller }));
         return;
     }
@@ -1289,7 +1097,9 @@ pub fn mcp_allow(background: bool) -> Vec<String> {
 // one lost its spawner link with the old process, and a retired autopilot id
 // stands for the current autopilot.
 pub fn mark_spawned_worker(session: &str, spawner: &str) {
-    if tell_window("mark_spawned_worker", json!({ "session": session, "spawner": spawner })) {
+    if let Some(role) = IN_DAEMON.get() {
+        role.states.mark_worker(session, spawner);
+        (role.tell)("mark_spawned_worker", json!({ "session": session, "spawner": spawner }));
         return;
     }
     let spawner = current_spawner(spawner);
@@ -1298,7 +1108,6 @@ pub fn mark_spawned_worker(session: &str, spawner: &str) {
     }
 }
 
-/// Whether a session is mid-turn, as the webview last reported it.
 pub fn session_running(session: &str) -> bool {
     EVENTS.get().is_some_and(|(_, states)| states.running(session))
 }
@@ -1311,7 +1120,9 @@ pub fn current_spawner(spawner: &str) -> String {
 
 // Called by `chat_spawn` before the child starts, so its first outward call already meets the gate.
 pub fn mark_background(session: &str) {
-    if tell_window("mark_background", json!({ "session": session })) {
+    if let Some(role) = IN_DAEMON.get() {
+        role.states.mark_background(session);
+        (role.tell)("mark_background", json!({ "session": session }));
         return;
     }
     if let Some((_, states)) = EVENTS.get() {
@@ -1396,11 +1207,10 @@ mod tests {
             .unwrap();
         rx.try_recv().unwrap();
 
-        publish_session(
-            &hub,
+        heard_session(
             &store,
             "s1",
-            session_event("session.ended", "s1", &Place::default(), json!({ "reason": "died" })),
+            &session_event("session.ended", "s1", &Place::default(), json!({ "reason": "died" })),
         );
         let event: Value = serde_json::from_str(&rx.try_recv().unwrap()).unwrap();
         assert_eq!(event["params"]["topic"], "autopilot");

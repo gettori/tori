@@ -25,6 +25,7 @@ use super::model::{
 };
 use super::ownership::Registry;
 use super::pacing::{monotonic_clock, Pacer, HIDDEN_RELEASE_MS};
+use super::pulse::{changes_status, Pulses};
 use super::snapshot::SnapshotCache;
 use super::transport::{emit, new_sink, AgentTransport, Emit, Sink, StartSpec};
 use crate::rpc::events::{session_event, EndReason, Place, TurnBy};
@@ -69,6 +70,8 @@ type Sessions = Arc<Mutex<HashMap<String, Entry>>>;
 /// Where session events go: the app socket's hub once it is up.
 pub type Publish = Arc<dyn Fn(&str, serde_json::Value) + Send + Sync>;
 
+pub type OnBeat = Arc<dyn Fn() + Send + Sync>;
+
 // A question or permission waits on the user, so its silence is not a stall.
 fn is_progress(event: &ChatEvent) -> bool {
     matches!(
@@ -104,6 +107,8 @@ struct Lifecycle {
     // Until its `SessionStarted`, what a session emits is its conversation
     // handed back (an ACP load or reload), not new work, so it is not announced.
     replaying: Arc<Mutex<HashSet<String>>>,
+    pulses: Arc<Mutex<Pulses>>,
+    on_beat: Arc<std::sync::OnceLock<OnBeat>>,
 }
 
 impl Lifecycle {
@@ -113,6 +118,7 @@ impl Lifecycle {
             std::collections::hash_map::Entry::Vacant(slot) => slot.insert(Place::default()),
         };
         self.expect_replay(id);
+        lock(&self.pulses).get(id);
         let Some(publish) = self.publish.get() else { return };
         let place = Place::of(cwd);
         if let Some(held) = lock(&self.announced).get_mut(id) {
@@ -140,7 +146,19 @@ impl Lifecycle {
         lock(&self.replaying).contains(id)
     }
 
+    fn beat(&self) {
+        if let Some(beat) = self.on_beat.get() {
+            beat();
+        }
+    }
+
     fn observe(&self, id: &str, event: &ChatEvent) {
+        if !self.replaying(id) || matches!(event, ChatEvent::SessionReady { .. } | ChatEvent::SessionStarted { .. }) {
+            lock(&self.pulses).get(id).fold(event);
+        }
+        if changes_status(event) {
+            self.beat();
+        }
         if matches!(event, ChatEvent::SessionStarted { .. }) {
             lock(&self.replaying).remove(id);
             return;
@@ -222,6 +240,8 @@ impl Lifecycle {
         crate::rpc::revoke(&crate::rpc::auth::Caller::Chat(id.to_string()));
         lock(&self.origins).remove(id);
         lock(&self.replaying).remove(id);
+        lock(&self.pulses).forget(id);
+        self.beat();
         let Some(place) = lock(&self.announced).remove(id) else {
             return;
         };
@@ -926,6 +946,34 @@ impl ChatHost {
         if let Some(list) = lock(&self.waiting).get_mut(session_id) {
             list.retain(|(w, _)| w.id() != id);
         }
+        self.lifecycle.beat();
+    }
+
+    pub fn set_on_beat(&self, beat: OnBeat) {
+        let _ = self.lifecycle.on_beat.set(beat);
+    }
+
+    /// Every live chat as the daemon composes its dot.
+    pub fn beats(&self) -> Vec<super::pulse::Beat> {
+        let live = self.live_sessions();
+        let waiting = lock(&self.waiting);
+        let pulses = lock(&self.lifecycle.pulses);
+        live.into_iter()
+            .map(|(session, cwd)| {
+                let asked = waiting.get(&session).map(Vec::as_slice).unwrap_or_default();
+                let pulse = pulses.peek(&session);
+                super::pulse::Beat {
+                    approval: asked.iter().any(|(w, _)| matches!(w, Waiting::Permission { .. })),
+                    question: asked.iter().any(|(w, _)| matches!(w, Waiting::Question { .. })),
+                    running: pulse.is_some_and(|p| p.running()),
+                    background: pulse.is_some_and(|p| p.background()),
+                    connected: pulse.is_some_and(|p| p.is_connected()),
+                    done_at: pulse.map_or(0, |p| p.done_at()),
+                    session,
+                    cwd,
+                }
+            })
+            .collect()
     }
 
     /// Answer what a session is waiting on from outside its tab: `allow` or
@@ -1340,10 +1388,19 @@ impl ChatHost {
         } else {
             notes.iter().cloned().chain(blocks).collect()
         };
+        if let Some(pulse) = lock(&self.lifecycle.pulses).existing(session_id) {
+            pulse.sending(true);
+        }
         let sent = self.dispatch(&ChatCommand::SendTurn {
             session_id: session_id.to_string(),
             blocks,
         });
+        if sent.is_err() {
+            if let Some(pulse) = lock(&self.lifecycle.pulses).existing(session_id) {
+                pulse.sending(false);
+            }
+        }
+        self.lifecycle.beat();
         if sent.is_err() && !notes.is_empty() {
             lock(&self.notes)
                 .entry(session_id.to_string())

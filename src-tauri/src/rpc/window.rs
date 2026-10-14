@@ -36,7 +36,28 @@ pub enum Status {
     Unreachable(String),
 }
 
-type Pending = Mutex<HashMap<u64, SyncSender<Result<Value, RpcError>>>>;
+enum Waiter {
+    Value(SyncSender<Result<Value, RpcError>>),
+    Raw(SyncSender<Result<String, RpcError>>),
+}
+
+type Pending = Mutex<HashMap<u64, Waiter>>;
+
+// Only the head of a line is read here; a reply's result is parsed only by a
+// caller that wants it as a value.
+#[derive(serde::Deserialize)]
+struct Envelope<'a> {
+    #[serde(default)]
+    id: Option<Value>,
+    #[serde(default, borrow)]
+    method: Option<std::borrow::Cow<'a, str>>,
+    #[serde(default, borrow)]
+    params: Option<&'a serde_json::value::RawValue>,
+    #[serde(default, borrow)]
+    result: Option<&'a serde_json::value::RawValue>,
+    #[serde(default)]
+    error: Option<Value>,
+}
 
 pub type OnEvent = Box<dyn Fn(&str, &Value) + Send + Sync>;
 
@@ -48,7 +69,7 @@ struct Conn {
 }
 
 impl Conn {
-    fn pending(&self) -> std::sync::MutexGuard<'_, HashMap<u64, SyncSender<Result<Value, RpcError>>>> {
+    fn pending(&self) -> std::sync::MutexGuard<'_, HashMap<u64, Waiter>> {
         self.pending.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
@@ -255,38 +276,64 @@ impl Link {
 
     fn read(&self, conn: &Arc<Conn>, mut reader: BufReader<UnixStream>) {
         while let Ok(Some(line)) = read_line(&mut reader, MAX_LINK_LINE) {
-            let Ok(value) = serde_json::from_str::<Value>(&line) else {
+            let Ok(head) = serde_json::from_str::<Envelope>(&line) else {
                 eprintln!("tori: a malformed frame on the daemon link, dropped");
                 continue;
             };
-            match value["method"].as_str() {
+            let params = || -> Value {
+                head.params
+                    .and_then(|p| serde_json::from_str(p.get()).ok())
+                    .unwrap_or_default()
+            };
+            let id = head.id.clone().unwrap_or(Value::Null);
+            match head.method.as_deref() {
                 Some("call") => {
-                    let (server, conn) = (self.server.clone(), conn.clone());
+                    let (server, conn, params) = (self.server.clone(), conn.clone(), params());
                     thread::spawn(move || {
                         // Answered either way: the caller waits on this reply,
                         // not on the thread, and would wait until the link drops.
-                        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            answer(&server, &value["params"])
-                        }))
-                        .unwrap_or_else(|_| Err(RpcError::new(INTERNAL_ERROR, "the window failed this call")));
-                        conn.out.push(to_line(&Response::reply(value["id"].clone(), outcome)));
+                        let outcome =
+                            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| answer(&server, &params)))
+                                .unwrap_or_else(|_| Err(RpcError::new(INTERNAL_ERROR, "the window failed this call")));
+                        conn.out.push(to_line(&Response::reply(id, outcome)));
                     });
                 }
-                Some("watching") => self.server.backend.watching_sessions(),
+                Some("window.ask") => {
+                    let session = params()["session"].as_str().unwrap_or_default().to_string();
+                    conn.out.push(to_line(&Response::ok(id, super::pending_ask(&session))));
+                }
                 Some("chats") => {
-                    let ids: HashSet<String> = serde_json::from_value(value["params"].clone()).unwrap_or_default();
+                    let ids: HashSet<String> = serde_json::from_value(params()).unwrap_or_default();
                     self.server.hub.set_remote_chats(ids);
                 }
-                Some(event) => (self.on_event)(event, &value["params"]),
+                Some(event) => (self.on_event)(event, &params()),
                 None => {
-                    let Some(id) = value["id"].as_u64() else { continue };
-                    let outcome = match value.get("error") {
-                        Some(error) => Err(serde_json::from_value(error.clone())
-                            .unwrap_or_else(|_| RpcError::new(REFUSED, "the daemon failed this call"))),
-                        None => Ok(value.get("result").cloned().unwrap_or(Value::Null)),
+                    let Some(id) = head.id.as_ref().and_then(Value::as_u64) else {
+                        continue;
                     };
-                    if let Some(tx) = conn.pending().remove(&id) {
-                        let _ = tx.send(outcome);
+                    let Some(waiter) = conn.pending().remove(&id) else {
+                        continue;
+                    };
+                    let failed = |error: Value| {
+                        serde_json::from_value(error)
+                            .unwrap_or_else(|_| RpcError::new(REFUSED, "the daemon failed this call"))
+                    };
+                    let raw = head.result.map_or("null", |r| r.get());
+                    match waiter {
+                        Waiter::Value(tx) => {
+                            let outcome = match head.error {
+                                Some(error) => Err(failed(error)),
+                                None => Ok(serde_json::from_str(raw).unwrap_or(Value::Null)),
+                            };
+                            let _ = tx.send(outcome);
+                        }
+                        Waiter::Raw(tx) => {
+                            let outcome = match head.error {
+                                Some(error) => Err(failed(error)),
+                                None => Ok(raw.to_string()),
+                            };
+                            let _ = tx.send(outcome);
+                        }
                     }
                 }
             }
@@ -317,19 +364,31 @@ impl Link {
     }
 
     pub fn request(&self, method: &str, params: Value, wait: Duration) -> Result<Value, RpcError> {
+        let (tx, rx) = sync_channel(1);
+        self.send(method, params, wait, Waiter::Value(tx))?;
+        rx.recv_timeout(wait)
+            .unwrap_or_else(|_| Err(RpcError::new(REFUSED, "the daemon did not answer")))
+    }
+
+    pub fn request_raw(&self, method: &str, params: Value, wait: Duration) -> Result<String, RpcError> {
+        let (tx, rx) = sync_channel(1);
+        self.send(method, params, wait, Waiter::Raw(tx))?;
+        rx.recv_timeout(wait)
+            .unwrap_or_else(|_| Err(RpcError::new(REFUSED, "the daemon did not answer")))
+    }
+
+    fn send(&self, method: &str, params: Value, wait: Duration, waiter: Waiter) -> Result<(), RpcError> {
         let conn = self
             .wait_for_conn(wait)
             .ok_or_else(|| RpcError::new(REFUSED, "the daemon is not attached"))?;
         let id = conn.next.fetch_add(1, Ordering::Relaxed) + 1;
-        let (tx, rx) = sync_channel(1);
-        conn.pending().insert(id, tx);
+        conn.pending().insert(id, waiter);
         let line = to_line(&json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }));
         if !conn.out.push(line) {
             conn.pending().remove(&id);
             return Err(RpcError::new(REFUSED, "the daemon link closed"));
         }
-        rx.recv_timeout(wait)
-            .unwrap_or_else(|_| Err(RpcError::new(REFUSED, "the daemon did not answer")))
+        Ok(())
     }
 
     pub fn notify(&self, method: &'static str, params: Value) {

@@ -312,6 +312,10 @@ impl Runner {
             json!({ "kind": "autopilot.status", "runner": status, "ts": now_ms() }),
         );
         let _ = self.app.emit("autopilot://status", &status);
+        super::note_pilot(matches!(
+            status.state,
+            RunnerState::Starting | RunnerState::Idle | RunnerState::Working
+        ));
         super::nudge_watcher();
     }
 

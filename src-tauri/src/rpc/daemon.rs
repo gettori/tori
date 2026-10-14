@@ -22,13 +22,14 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::auth::{authenticate, Caller, Children, Credential, Principal, AUTH_METHOD};
+use super::composer::{Composer, Sources};
 use super::frame::{
     read_request, to_line, Notification, Request, Response, RpcError, INVALID_PARAMS, INVALID_REQUEST,
     METHOD_NOT_FOUND, REFUSED,
 };
 use super::hub::{Channel, ConnId, Hub};
 use super::outbox::{Outbox, OUTBOX_BYTES};
-use super::server::{handle_first, subscribe, unsubscribe, Dispatch, AUTH_TIMEOUT};
+use super::server::{handle_first, params, permit, subscribe, unsubscribe, Dispatch, AUTH_TIMEOUT};
 use super::table::CallerKind;
 use super::transport::{Stream, Transport, UnixTransport};
 use crate::chat::serve::Served;
@@ -190,6 +191,20 @@ impl Window {
         self.out.push(to_line(&Notification::new(method, params)));
     }
 
+    fn ask(&self, method: &str, params: Value, wait: std::time::Duration) -> Option<Value> {
+        let id = self.next.fetch_add(1, Ordering::Relaxed) + 1;
+        let (tx, rx) = sync_channel(1);
+        self.pending().insert(id, tx);
+        let line = to_line(&json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }));
+        if !self.out.push(line) {
+            self.pending().remove(&id);
+            return None;
+        }
+        let answer = rx.recv_timeout(wait).ok().and_then(Result::ok);
+        self.pending().remove(&id);
+        answer
+    }
+
     fn settle(&self, id: u64, outcome: Result<Value, RpcError>) {
         if let Some(tx) = self.pending().remove(&id) {
             let _ = tx.send(outcome);
@@ -212,6 +227,7 @@ pub struct Daemon {
     ptys: Arc<Host>,
     // Set by `run` alone: the host reads and reaps the real claims file.
     chats: OnceLock<Arc<Served>>,
+    composer: Arc<Composer>,
     // The app process last attached, so a new one starts with no stale child tokens.
     instance: Mutex<Option<String>>,
 }
@@ -249,6 +265,27 @@ struct ResizeParams {
     tab: String,
     cols: u16,
     rows: u16,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AttentionParams {
+    session: Option<String>,
+    focused: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RunningParams {
+    asked: Vec<(String, String)>,
+    running: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ListSessionsParams {
+    folder: String,
+    inclusive: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -397,6 +434,8 @@ impl Daemon {
             }),
         )));
         window.notify("chats", json!(self.hub.chats()));
+        self.ptys.set_watched(true);
+        self.composer.window(true);
         let Ok(mut write_half) = stream.try_clone_box() else {
             return;
         };
@@ -415,6 +454,9 @@ impl Daemon {
         let mut slot = self.window.lock().unwrap_or_else(|e| e.into_inner());
         if slot.as_ref().is_some_and(|w| Arc::ptr_eq(w, &window)) {
             *slot = None;
+            drop(slot);
+            self.ptys.set_watched(false);
+            self.composer.window(false);
         }
     }
 
@@ -436,6 +478,28 @@ impl Daemon {
         let Ok(req) = serde_json::from_value::<Request>(value) else {
             return;
         };
+        if matches!(req.method.as_str(), "sessions.list" | "session.wait" | "list_sessions") {
+            let (composer, out) = (self.composer.clone(), window.out.clone());
+            thread::spawn(move || {
+                let Some(id) = req.id.clone() else { return };
+                let line = match req.method.as_str() {
+                    "list_sessions" => match listed(&composer, &req.params) {
+                        Ok(raw) => format!(r#"{{"jsonrpc":"2.0","id":{id},"result":{raw}}}"#),
+                        Err(e) => to_line(&Response::err(id, e)),
+                    },
+                    "sessions.list" => {
+                        let outcome = params(&req.params).map(|p| composer.sessions_list(&p));
+                        to_line(&Response::reply(id, outcome))
+                    }
+                    _ => to_line(&Response::reply(
+                        id,
+                        params(&req.params).and_then(|p| composer.session_wait(p)),
+                    )),
+                };
+                out.push(line);
+            });
+            return;
+        }
         if req.method == "chat" {
             // Off the link's reader: a spawn or a history read takes a while.
             let (chats, out) = (self.chats.get().cloned(), window.out.clone());
@@ -500,6 +564,34 @@ impl Daemon {
                 Ok(json!({}))
             }
             "pty.list" => Ok(json!(self.ptys.list())),
+            "facts" => {
+                let facts = serde_json::from_value(req.params.clone()).map_err(|_| parse("facts"))?;
+                self.composer.facts(facts);
+                Ok(json!({}))
+            }
+            "attention" => {
+                let p: AttentionParams = serde_json::from_value(req.params.clone()).map_err(|_| parse("attention"))?;
+                self.composer.attention(p.session, p.focused);
+                Ok(json!({}))
+            }
+            "running" => {
+                let p: RunningParams = serde_json::from_value(req.params.clone()).map_err(|_| parse("running"))?;
+                self.composer.running(&p.asked, &p.running);
+                Ok(json!({}))
+            }
+            "pilot" => {
+                self.composer.pilot(req.params["on"].as_bool().unwrap_or_default());
+                Ok(json!({}))
+            }
+            "sessions_changed" => {
+                self.composer.changed();
+                Ok(json!({}))
+            }
+            "probe" => {
+                self.composer.probe_soon();
+                Ok(json!({}))
+            }
+            "dots" => Ok(json!(self.composer.dots_all())),
             "shutdown" => {
                 eprintln!("tori daemon: stopping, asked by the window");
                 self.stop();
@@ -507,8 +599,100 @@ impl Daemon {
             }
             name => Err(RpcError::new(
                 METHOD_NOT_FOUND,
-                format!("the window link carries mint, revoke, publish, pty and shutdown, not {name}"),
+                format!("the window link carries mint, revoke, publish, pty, session facts and shutdown, not {name}"),
             )),
+        }
+    }
+}
+
+impl Daemon {
+    fn kind(&self, principal: &Principal) -> CallerKind {
+        match principal {
+            Principal::Session(Caller::Chat(id)) if self.composer.states.is_worker(id) => CallerKind::Worker,
+            other => CallerKind::of(other),
+        }
+    }
+}
+
+fn listed(composer: &Composer, params: &Value) -> Result<String, RpcError> {
+    let p: ListSessionsParams =
+        serde_json::from_value(params.clone()).map_err(|e| RpcError::new(INVALID_PARAMS, e.to_string()))?;
+    let rows = crate::sessions::list_sessions(&composer.index, &composer.projects, p.folder, p.inclusive)
+        .map_err(|e| RpcError::new(REFUSED, e))?;
+    serde_json::to_string(&rows).map_err(|e| RpcError::new(REFUSED, e.to_string()))
+}
+
+struct ComposerSources(Weak<Daemon>);
+
+impl ComposerSources {
+    fn chats(&self) -> Option<Arc<Served>> {
+        self.0.upgrade()?.chats.get().cloned()
+    }
+}
+
+impl Sources for ComposerSources {
+    fn beats(&self) -> Vec<crate::chat::pulse::Beat> {
+        self.chats().map(|c| c.host.beats()).unwrap_or_default()
+    }
+
+    fn tabs(&self) -> Vec<crate::pty::wire::Listed> {
+        self.0.upgrade().map(|d| d.ptys.list()).unwrap_or_default()
+    }
+
+    fn tab_of(&self, head: &str) -> Option<String> {
+        self.0.upgrade()?.children.tab_of(head)
+    }
+
+    fn running(&self, refs: Vec<crate::sessions::SessionRef>) -> Vec<String> {
+        match self.chats() {
+            Some(chats) => crate::sessions::running_now(&*chats.host.registry, refs),
+            None => Vec::new(),
+        }
+    }
+
+    fn live(&self) -> std::collections::BTreeMap<String, super::methods::Live> {
+        let Some(chats) = self.chats() else {
+            return Default::default();
+        };
+        let mut live: std::collections::BTreeMap<String, super::methods::Live> = chats
+            .host
+            .registry
+            .held_here()
+            .into_iter()
+            .map(|(id, agent)| {
+                let row = super::methods::Live {
+                    agent,
+                    cwd: String::new(),
+                };
+                (id, row)
+            })
+            .collect();
+        for (id, cwd) in chats.host.live_sessions() {
+            live.entry(id).or_default().cwd = cwd;
+        }
+        live
+    }
+
+    fn levers(&self, id: &str) -> Option<crate::chat::host::Levers> {
+        self.chats()?.host.levers(id)
+    }
+
+    fn question(&self, id: &str) -> Value {
+        let window = self.0.upgrade().and_then(|d| d.window());
+        window
+            .and_then(|w| {
+                w.ask(
+                    "window.ask",
+                    json!({ "session": id }),
+                    std::time::Duration::from_secs(2),
+                )
+            })
+            .unwrap_or(Value::Null)
+    }
+
+    fn tell(&self, method: &'static str, params: Value) {
+        if let Some(daemon) = self.0.upgrade() {
+            daemon.notify_window(method, params);
         }
     }
 }
@@ -524,11 +708,19 @@ impl Dispatch for Daemon {
 
     fn dispatch(&self, conn: ConnId, principal: &Principal, req: &Request) -> Result<Value, RpcError> {
         match req.method.as_str() {
-            "subscribe" => subscribe(&self.hub, CallerKind::of(principal), conn, &req.params, || {
-                self.notify_window("watching", json!({}))
+            "subscribe" => subscribe(&self.hub, self.kind(principal), conn, &req.params, || {
+                self.composer.probe_soon()
             }),
             "unsubscribe" => unsubscribe(&self.hub, conn, &req.params),
             "auth" => Err(RpcError::new(INVALID_REQUEST, "already authenticated")),
+            "sessions.list" => {
+                permit(&req.method, self.kind(principal))?;
+                Ok(self.composer.sessions_list(&params(&req.params)?))
+            }
+            "session.wait" => {
+                permit(&req.method, self.kind(principal))?;
+                self.composer.session_wait(params(&req.params)?)
+            }
             _ => match self.window() {
                 Some(window) => window.await_reply(principal, req),
                 None => Err(RpcError::new(REFUSED, NO_WINDOW)),
@@ -595,14 +787,22 @@ pub fn start(paths: Paths) -> Result<Start, String> {
         eprintln!("tori daemon: cli not linked: {e}");
     }
     let daemon = Arc::new_cyclic(|weak: &Weak<Daemon>| {
+        let hub = Arc::new(Hub::default());
+        let composer = Composer::start(Box::new(ComposerSources(weak.clone())), hub.clone());
         let weak = weak.clone();
         let events: Events = Box::new(move |event, payload| {
-            if let Some(daemon) = weak.upgrade() {
-                daemon.notify_window(event, payload);
+            let Some(daemon) = weak.upgrade() else { return };
+            if event == "pty://activity" {
+                let tab = payload["id"].as_str().unwrap_or_default();
+                daemon
+                    .composer
+                    .activity(tab, payload["state"].as_str().unwrap_or_default());
             }
+            daemon.notify_window(event, payload);
         });
         Daemon {
-            hub: Arc::new(Hub::default()),
+            hub,
+            composer,
             ptys: Host::new(events, children.clone(), paths.sock.clone(), paths.cli_link_dir.clone()),
             chats: OnceLock::new(),
             credential,
@@ -652,13 +852,28 @@ fn host_chats(daemon: &Arc<Daemon>) {
         crate::rpc::InDaemon {
             hub: daemon.hub.clone(),
             children: daemon.children.clone(),
+            states: daemon.composer.states.clone(),
             sock: daemon.paths.sock.to_string_lossy().into_owned(),
             tell: Box::new(tell(Arc::downgrade(daemon))),
         },
         daemon.paths.cli_link_dir.clone(),
     );
-    let chats = Served::new(Arc::new(tell(Arc::downgrade(daemon))));
-    crate::chat::serve::pr_wake(&chats);
+    let (window, composer) = (tell(Arc::downgrade(daemon)), Arc::downgrade(&daemon.composer));
+    let chats = Served::new(Arc::new(move |method, params: Value| {
+        if method != "chat.lifecycle" {
+            return window(method, params);
+        }
+        if let Some(composer) = composer.upgrade() {
+            composer.lifecycle(params["id"].as_str().unwrap_or_default(), params["data"].clone());
+        }
+    }));
+    let beat = Arc::downgrade(&daemon.composer);
+    chats.host.set_on_beat(Arc::new(move || {
+        if let Some(composer) = beat.upgrade() {
+            composer.beat();
+        }
+    }));
+    crate::chat::serve::pr_wake(&chats, daemon.composer.states.clone());
     let moved = tell(Arc::downgrade(daemon));
     crate::rpc::pr_watch::on_polled_moved(Box::new(move || moved("pr_watch.moved", json!({}))));
     let _ = daemon.chats.set(chats);
@@ -859,20 +1074,20 @@ mod tests {
         let local = token(&paths);
         let slow = {
             let (paths, local) = (paths.clone(), local.clone());
-            thread::spawn(move || Raw::authed(&paths, &local).call(2, "session.wait", json!({ "id": SLOW })))
+            thread::spawn(move || Raw::authed(&paths, &local).call(2, "session.pending", json!({ "id": SLOW })))
         };
         thread::sleep(Duration::from_millis(100));
         let begun = Instant::now();
         let quick = Raw::authed(&paths, &local).call(2, "caller", json!({}));
         assert!(quick["error"].is_null(), "{quick}");
         assert!(begun.elapsed() < Duration::from_millis(400), "{:?}", begun.elapsed());
-        assert_eq!(slow.join().unwrap()["result"]["id"], SLOW);
+        assert_eq!(slow.join().unwrap()["result"][0]["id"], SLOW);
         link.close();
         stop(daemon);
     }
 
     #[test]
-    fn the_window_link_refuses_the_waits() {
+    fn the_window_link_refuses_ask_wait_and_answers_session_wait_off_its_reader() {
         let paths = Paths::under(&config("waits"));
         let daemon = started(&paths);
         let mut window = Raw::connect(&paths);
@@ -881,10 +1096,10 @@ mod tests {
             WINDOW_METHOD,
             json!({ "token": token(&paths), "build": build_id(), "instance": "a" }),
         );
-        for method in ["session.wait", "ask.wait"] {
-            let refused = window.call(5, method, json!({ "id": "s1" }));
-            assert_eq!(refused["error"]["code"], json!(METHOD_NOT_FOUND), "{method}");
-        }
+        let refused = window.call(5, "ask.wait", json!({ "id": "s1" }));
+        assert_eq!(refused["error"]["code"], json!(METHOD_NOT_FOUND));
+        let answered = window.call(6, "session.wait", json!({ "id": "s1", "timeout": 0 }));
+        assert_eq!(answered["error"]["message"], "no live session s1");
         window.send(json!({ "jsonrpc": "2.0", "id": 9, "method": "shutdown" }));
         daemon.wait();
     }
@@ -1071,6 +1286,8 @@ mod tests {
         assert!(window_side.call(2, "caller", json!({}))["error"].is_null());
         drop(window_side);
         stop(daemon);
+        // A child the composer forked holds the lock until it execs, as the app finds too.
+        assert!(wait_released(&paths.lock, Duration::from_secs(2)));
         let daemon = started(&paths);
         let deadline = Instant::now() + Duration::from_secs(5);
         let mut answered = false;

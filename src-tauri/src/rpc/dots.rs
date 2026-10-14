@@ -9,6 +9,7 @@ use std::time::Instant;
 use serde::{Deserialize, Serialize};
 
 use super::states::{Reported, SessionState, Source};
+use crate::chat::pulse::Beat;
 use crate::config::{BranchUnit, ProjectKind};
 use crate::presence::{Live, Reason};
 use crate::unit_home::Home;
@@ -113,6 +114,32 @@ pub fn reason(dot: Dot, raised: bool, status: Option<Status>) -> Option<Reason> 
         (_, Some(Status::BudgetStopped)) => Reason::Budget,
         _ => Reason::Waiting,
     })
+}
+
+pub fn chat_status(beat: &Beat, budget_stopped: bool) -> Status {
+    if beat.approval {
+        Status::WaitingForApproval
+    } else if beat.question {
+        Status::WaitingForAnswer
+    } else if budget_stopped {
+        Status::BudgetStopped
+    } else if beat.running {
+        Status::Executing
+    } else if beat.background {
+        Status::WaitingOnBackground
+    } else if beat.connected {
+        Status::Idle
+    } else {
+        Status::Running
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Bound {
+    pub tab: String,
+    pub session: String,
+    pub cwd: String,
+    pub agent: Option<String>,
 }
 
 pub fn compose(input: &Inputs) -> Composed {
@@ -223,6 +250,8 @@ struct Probe {
 #[derive(Default)]
 struct Inner {
     facts: Facts,
+    composed_tabs: Vec<TabFact>,
+    composed_chats: Vec<ChatFact>,
     activity: HashMap<String, Activity>,
     probes: HashMap<String, Probe>,
     probed_at: Option<Instant>,
@@ -278,6 +307,48 @@ impl Dots {
         inner.facts = facts;
     }
 
+    pub fn unseen(&self) {
+        self.inner().facts.chats.iter_mut().for_each(|c| c.visible = false);
+    }
+
+    // A chat's status is the host's; only what the panel alone knows (its
+    // name, its tab on screen, a spend ceiling, when its last turn finished)
+    // is the window's.
+    pub fn settle(&self, beats: &[Beat], bound: &[Bound]) {
+        let mut inner = self.inner();
+        let mut tabs = inner.facts.tabs.clone();
+        for b in bound {
+            match tabs.iter_mut().find(|t| t.id == b.tab) {
+                Some(t) => t.session = b.session.clone(),
+                None => tabs.push(TabFact {
+                    id: b.tab.clone(),
+                    session: b.session.clone(),
+                    live: true,
+                    workspace: b.cwd.clone(),
+                    agent: b.agent.clone(),
+                }),
+            }
+        }
+        let chats = beats
+            .iter()
+            .map(|beat| {
+                let told = inner.facts.chats.iter().find(|c| c.session == beat.session);
+                let stopped = told.is_some_and(|c| c.status == Status::BudgetStopped);
+                ChatFact {
+                    session: beat.session.clone(),
+                    status: chat_status(beat, stopped),
+                    folder: told.map_or_else(|| beat.cwd.clone(), |c| c.folder.clone()),
+                    visible: told.is_some_and(|c| c.visible),
+                    spawner: told.and_then(|c| c.spawner.clone()),
+                    name: told.map(|c| c.name.clone()).unwrap_or_default(),
+                    done_at: told.map_or(beat.done_at, |c| c.done_at),
+                }
+            })
+            .collect();
+        inner.composed_tabs = tabs;
+        inner.composed_chats = chats;
+    }
+
     pub fn note_activity(&self, tab: &str, activity: Activity) -> bool {
         self.inner().activity.insert(tab.to_string(), activity) != Some(activity)
     }
@@ -294,8 +365,12 @@ impl Dots {
             );
         }
         // A stopped session with no tab is `none` either way, so it is not kept.
-        let Inner { facts, probes, .. } = &mut *inner;
-        probes.retain(|id, p| p.running || facts.tabs.iter().any(|t| &t.session == id));
+        let Inner {
+            composed_tabs: tabs,
+            probes,
+            ..
+        } = &mut *inner;
+        probes.retain(|id, p| p.running || tabs.iter().any(|t| &t.session == id));
         inner.probed_at = Some(Instant::now());
     }
 
@@ -308,7 +383,7 @@ impl Dots {
     pub fn to_probe(&self) -> Vec<(String, String)> {
         let inner = self.inner();
         let mut want: BTreeMap<String, String> = BTreeMap::new();
-        for t in &inner.facts.tabs {
+        for t in &inner.composed_tabs {
             let agent = t
                 .agent
                 .clone()
@@ -324,8 +399,8 @@ impl Dots {
 
     pub fn wants_meta(&self) -> Vec<String> {
         let inner = self.inner();
-        let mut ids: Vec<String> = inner.facts.tabs.iter().map(|t| t.session.clone()).collect();
-        ids.extend(inner.facts.chats.iter().map(|c| c.session.clone()));
+        let mut ids: Vec<String> = inner.composed_tabs.iter().map(|t| t.session.clone()).collect();
+        ids.extend(inner.composed_chats.iter().map(|c| c.session.clone()));
         ids.extend(inner.probes.iter().filter(|(_, p)| p.running).map(|(id, _)| id.clone()));
         ids.sort();
         ids.dedup();
@@ -360,8 +435,11 @@ impl Dots {
                 branch: None,
             }
         };
-        let tabs = inner.facts.tabs.iter().map(|t| hosted(&t.session, &t.workspace, None));
-        let chats = inner.facts.chats.iter().map(|c| Live {
+        let tabs = inner
+            .composed_tabs
+            .iter()
+            .map(|t| hosted(&t.session, &t.workspace, None));
+        let chats = inner.composed_chats.iter().map(|c| Live {
             name: c.name.clone(),
             chat: true,
             visible: c.visible,
@@ -391,9 +469,9 @@ impl Dots {
         tail_blocked: impl Fn(&str, &Meta) -> bool,
     ) -> (Vec<Reported>, Vec<Change>) {
         let mut inner = self.inner();
-        let facts = &inner.facts;
-        let mut ids: Vec<&str> = facts.tabs.iter().map(|t| t.session.as_str()).collect();
-        ids.extend(facts.chats.iter().map(|c| c.session.as_str()));
+        let (tabs, chats, forge) = (&inner.composed_tabs, &inner.composed_chats, &inner.facts.forge);
+        let mut ids: Vec<&str> = tabs.iter().map(|t| t.session.as_str()).collect();
+        ids.extend(chats.iter().map(|c| c.session.as_str()));
         ids.extend(inner.probes.keys().map(String::as_str));
         ids.sort();
         ids.dedup();
@@ -401,8 +479,8 @@ impl Dots {
         let mut reports = Vec::new();
         let mut dots = BTreeMap::new();
         for id in ids {
-            let tab = facts.tabs.iter().find(|t| t.session == id && t.live);
-            let chat = facts.chats.iter().find(|c| c.session == id);
+            let tab = tabs.iter().find(|t| t.session == id && t.live);
+            let chat = chats.iter().find(|c| c.session == id);
             let running = inner.probes.get(id).is_some_and(|p| p.running);
             let pty = tab.and_then(|t| inner.activity.get(&t.id).copied());
             let session = meta.get(id);
@@ -427,7 +505,7 @@ impl Dots {
                 running,
                 pty,
                 tail_blocked: blocked,
-                forge_attention: forge_attention(&facts.forge, &folder, branch),
+                forge_attention: forge_attention(forge, &folder, branch),
             };
             let composed = compose(&input);
             let change = Change {
@@ -451,7 +529,7 @@ impl Dots {
                 continue;
             }
             // A socket state for a PTY session only while its agent tab is there.
-            if let Some(t) = facts.tabs.iter().find(|t| t.session == id) {
+            if let Some(t) = tabs.iter().find(|t| t.session == id) {
                 reports.push(Reported {
                     id: id.into(),
                     state,
@@ -680,6 +758,12 @@ mod tests {
             |_| false,
             |_| false,
         );
+        let asking = Beat {
+            session: "home".into(),
+            approval: true,
+            ..Beat::default()
+        };
+        dots.settle(&[asking], &[]);
         dots.note_running(&[("old".into(), "claude".into())], &HashSet::from(["old".to_string()]));
         let old = Meta {
             agent: "claude".into(),
