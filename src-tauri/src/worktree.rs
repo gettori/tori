@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
+use crate::ui::Ui;
+
 /// Directory under a bare container holding files shared into every worktree
 /// (symlinked at creation, managed from the Worktree settings page). A
 /// bare-container convention; absent until the first shared file is added.
@@ -296,14 +298,23 @@ pub async fn create_worktree(
     branch: String,
     base: Option<String>,
 ) -> Result<String, String> {
+    create_worktree_for(Ui::from(&app), repo_path, branch, base).await
+}
+
+pub async fn create_worktree_for(
+    ui: Ui,
+    repo_path: String,
+    branch: String,
+    base: Option<String>,
+) -> Result<String, String> {
     crate::exec::git_write("create_worktree", repo_path.clone(), move || {
-        create_worktree_body(app, repo_path, branch, base)
+        create_worktree_body(&ui, repo_path, branch, base)
     })
     .await
 }
 
 pub(crate) fn create_worktree_body(
-    app: AppHandle,
+    ui: &Ui,
     repo_path: String,
     branch: String,
     base: Option<String>,
@@ -326,7 +337,7 @@ pub(crate) fn create_worktree_body(
     // Tori created this folder: adopt it so reusing a path that held old sessions
     // does not surface them as historical.
     let _ = crate::sessions::adopt(&target_str);
-    let _ = app.emit("config://changed", ());
+    ui.emit("config://changed", ());
     Ok(target_str)
 }
 
@@ -336,7 +347,7 @@ pub(crate) fn create_worktree_body(
 /// or branch already at another commit is refused rather than reset, since
 /// resetting would discard whatever was done in it.
 pub async fn create_pr_worktree(
-    app: AppHandle,
+    ui: Ui,
     repo_path: String,
     number: u64,
     sha: String,
@@ -346,7 +357,7 @@ pub async fn create_pr_worktree(
         let target = create_pr_worktree_in(&repo_path, number, &sha, Path::new(&repo_path), setup)?;
         let target = target.to_string_lossy().into_owned();
         let _ = crate::sessions::adopt(&target);
-        let _ = app.emit("config://changed", ());
+        ui.emit("config://changed", ());
         Ok(target)
     })
     .await
@@ -397,12 +408,15 @@ pub(crate) fn track_review_branch(repo: &str, head: &ReviewHead) {
     let _ = git_ok(repo, &["branch", &format!("--set-upstream-to={upstream}"), &branch]);
 }
 
-pub async fn checkout_review(app: &AppHandle, project: &str, head: &ReviewHead) -> Result<String, String> {
-    use tauri::Manager;
-    let askpass = app.state::<crate::askpass::AskpassState>().0.clone();
+pub async fn checkout_review(
+    ui: &Ui,
+    askpass: &crate::askpass::AskpassInner,
+    project: &str,
+    head: &ReviewHead,
+) -> Result<String, String> {
     fetch_review_head(project, head, askpass.sock_path(), askpass.token())?;
     let folder = create_pr_worktree(
-        app.clone(),
+        ui.clone(),
         project.to_string(),
         head.number,
         head.sha.clone(),
@@ -415,8 +429,10 @@ pub async fn checkout_review(app: &AppHandle, project: &str, head: &ReviewHead) 
 
 #[tauri::command]
 pub async fn create_review_worktree(app: AppHandle, project_path: String, number: u64) -> Result<String, String> {
+    use tauri::Manager;
     let head = review_head(&project_path, number).map_err(|e| e.to_string())?;
-    checkout_review(&app, &project_path, &head).await
+    let askpass = app.state::<crate::askpass::AskpassState>().0.clone();
+    checkout_review(&Ui::from(&app), &askpass, &project_path, &head).await
 }
 
 pub fn review_worktree(project: &str, number: u64) -> Option<String> {

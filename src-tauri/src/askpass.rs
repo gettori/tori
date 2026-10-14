@@ -411,6 +411,10 @@ pub fn resolve(inner: &Arc<AskpassInner>, id: u64, value: Option<String>) {
 /// prompts auto-return empty (git then aborts, fail-closed).
 #[tauri::command]
 pub fn askpass_respond(state: tauri::State<AskpassState>, id: u64, value: Option<String>) {
+    if id & crate::rpc::office::DAEMON_PROMPT != 0 {
+        crate::rpc::daemon_tell("askpass.resolve", serde_json::json!({ "id": id, "value": value }));
+        return;
+    }
     resolve(&state.0, id, value);
 }
 

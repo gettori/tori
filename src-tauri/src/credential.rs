@@ -125,11 +125,16 @@ fn serves(repo: &str, remote: &str) -> bool {
 /// Called once the askpass socket is up, so spawned processes have one to ask,
 /// and git run from outside Tori finds it in the bridge file.
 pub fn publish(sock: &Path, spawned_token: &str, file_token: &str) {
-    let sock = sock.to_string_lossy().into_owned();
-    if let Err(e) = write_bridge(&bridge_path(), &sock, file_token) {
+    if let Err(e) = write_bridge(&bridge_path(), &sock.to_string_lossy(), file_token) {
         eprintln!("tori: credential bridge file not written: {e}");
     }
-    let _ = SOCKET.set((sock, spawned_token.to_string()));
+    adopt(sock, spawned_token);
+}
+
+/// For processes this one spawns only. The bridge file is the daemon's, which
+/// outlives the window.
+pub fn adopt(sock: &Path, spawned_token: &str) {
+    let _ = SOCKET.set((sock.to_string_lossy().into_owned(), spawned_token.to_string()));
 }
 
 /// Called at exit. Only a file naming this instance's socket is removed, so

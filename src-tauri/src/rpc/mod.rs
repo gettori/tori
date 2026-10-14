@@ -19,6 +19,7 @@ pub mod events;
 pub mod frame;
 pub mod hub;
 pub mod methods;
+pub mod office;
 pub mod outbox;
 pub mod pairing;
 pub mod pr_wake;
@@ -34,23 +35,21 @@ pub mod watcher;
 pub mod window;
 pub mod ws;
 
-use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::autopilot::AutopilotStore;
-use asks::{Ask, Asks};
+use asks::Asks;
 use auth::Caller;
 use bridge::{Bridge, REPLY_TIMEOUT, REQUEST_EVENT};
 use events::{session_event, Place};
 use hub::{Channel, Hub};
-use quotas::Quotas;
 use remote::Remote;
 use runner::Runner;
 use serde_json::{json, Value};
-use server::{Server, AUTH_TIMEOUT};
+use server::AUTH_TIMEOUT;
 use states::SessionStates;
 use watcher::Watcher;
 use window::{Link, Status};
@@ -63,24 +62,76 @@ pub const ENV_CALLER: &str = "TORI_CALLER";
 static SOCKET: OnceLock<String> = OnceLock::new();
 static LINK: OnceLock<Arc<Link>> = OnceLock::new();
 static CLI_DIR: OnceLock<PathBuf> = OnceLock::new();
+// Set in the daemon alone, which owns what they hold.
 static ASKS: OnceLock<Arc<Asks>> = OnceLock::new();
 static RUNNER: OnceLock<Arc<Runner>> = OnceLock::new();
 static WATCHER: OnceLock<Arc<Watcher>> = OnceLock::new();
+static OFFICE: OnceLock<Arc<office::Office>> = OnceLock::new();
 // For modules with no Tauri state in reach: the checkpoint writer, the forge
 // poll, the quota push.
 static EVENTS: OnceLock<(Arc<Hub>, Arc<SessionStates>)> = OnceLock::new();
+
+pub(crate) fn set_stores(asks: Arc<Asks>, runner: Arc<Runner>, hub: Arc<Hub>, states: Arc<SessionStates>) {
+    let _ = ASKS.set(asks);
+    let _ = RUNNER.set(runner);
+    let _ = EVENTS.set((hub, states));
+}
+
+pub(crate) fn set_watcher(watcher: Arc<Watcher>) {
+    let _ = WATCHER.set(watcher);
+}
+
+pub(crate) fn set_office(office: Arc<office::Office>) {
+    let _ = OFFICE.set(office);
+}
+
+pub(crate) fn office() -> Option<&'static Arc<office::Office>> {
+    OFFICE.get()
+}
+
+pub(crate) fn rate_limit_heard(session: &str, event: &crate::chat::model::ChatEvent) {
+    if let Some(office) = OFFICE.get() {
+        office.rate_limit(session, event);
+    }
+}
+
+pub(crate) fn watcher_started(item: &crate::autopilot::Item) {
+    if let Some(watcher) = WATCHER.get() {
+        watcher.started(item);
+    }
+}
+
+pub(crate) fn watcher_picked(picked: &[crate::autopilot::Item]) {
+    if let Some(watcher) = WATCHER.get() {
+        watcher.picked(picked);
+    }
+}
+
+const OFFICE_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
+
+pub fn office_call(op: &str, args: Value) -> Result<Value, String> {
+    daemon_wait("office", json!({ "op": op, "args": args }), OFFICE_WAIT)
+}
+
+pub fn office_call_as<T: serde::de::DeserializeOwned>(op: &str, args: Value) -> Result<T, String> {
+    serde_json::from_value(office_call(op, args)?).map_err(|e| e.to_string())
+}
+
+pub(crate) fn in_daemon() -> bool {
+    IN_DAEMON.get().is_some()
+}
+
+pub(crate) fn office_tell(op: &str, args: Value) {
+    daemon_tell("office", json!({ "op": op, "args": args }));
+}
 
 pub struct RpcState {
     link: Arc<Link>,
     remote: Arc<Remote>,
     pub hub: Arc<Hub>,
-    states: Arc<SessionStates>,
+    pub states: Arc<SessionStates>,
     bridge: Arc<Bridge>,
-    asks: Arc<Asks>,
-    pub autopilot: Arc<AutopilotStore>,
-    pub runner: Arc<Runner>,
     devices: Arc<devices::Devices>,
-    quotas: Quotas,
 }
 
 impl RpcState {
@@ -112,24 +163,29 @@ fn daemon_status_emitter(app: &AppHandle) -> Box<dyn Fn(&Status) + Send + Sync> 
 
 // What the daemon tells the window: tab and chat events, and the calls its host
 // makes into state that still lives here.
-fn daemon_events(app: &AppHandle, states: &Arc<SessionStates>, autopilot: &Arc<AutopilotStore>) -> window::OnEvent {
-    let (app, states, autopilot) = (app.clone(), states.clone(), autopilot.clone());
+fn daemon_events(app: &AppHandle, states: &Arc<SessionStates>) -> window::OnEvent {
+    let (app, states) = (app.clone(), states.clone());
     Box::new(move |event, p| {
         let text = |key: &str| p[key].as_str().unwrap_or_default().to_string();
         match event {
             "chat.event" => app.state::<crate::chat::host::ChatState>().0.route(p),
-            "session.event" => {
-                let (id, data) = (text("id"), p["event"].clone());
-                let compacted = (data["kind"] == "session.compacted").then(|| data["trigger"] == "auto");
-                heard_session(&autopilot, &id, &data);
-                if let Some(mid_turn) = compacted {
-                    retell_topic(&app, &id, mid_turn);
+            "emit" if text("event") == crate::topics::EVICT_EVENT => {
+                let index = app.state::<crate::config::ProjectIndex>();
+                for repo in p["payload"].as_array().into_iter().flatten().filter_map(Value::as_str) {
+                    index.evict(std::path::Path::new(repo));
                 }
+            }
+            "emit" => {
+                let _ = app.emit(&text("event"), p["payload"].clone());
+            }
+            "askpass.prompt" => {
+                let mut prompt = p.clone();
+                prompt["id"] = json!(p["id"].as_u64().unwrap_or_default() | office::DAEMON_PROMPT);
+                let _ = app.emit("askpass://prompt", prompt);
             }
             "states" => {
                 if let Ok(next) = serde_json::from_value(p.clone()) {
                     states.mirror(next);
-                    crate::radar::sessions_changed();
                 }
             }
             "dots" => {
@@ -138,18 +194,6 @@ fn daemon_events(app: &AppHandle, states: &Arc<SessionStates>, autopilot: &Arc<A
             "present" => present_later(&app, p.clone()),
             "needs_you.changed" => {
                 let _ = app.emit(crate::needs_you_log::CHANGED_EVENT, ());
-            }
-            "revoke" => {
-                if let Ok(caller) = serde_json::from_value::<Caller>(p["caller"].clone()) {
-                    forget_caller(&caller);
-                }
-            }
-            "watcher_touch" => watcher_touch(&text("session")),
-            "mark_background" => mark_background(&text("session")),
-            "mark_spawned_worker" => mark_spawned_worker(&text("session"), &text("spawner")),
-            "radar_committed" => crate::radar::committed(&text("folder")),
-            "pr_watch.moved" => {
-                let _ = app.emit("pr_watch://changed", ());
             }
             _ => crate::pty::heard(&app, event, p),
         }
@@ -163,7 +207,6 @@ pub(crate) struct InDaemon {
     pub children: Arc<auth::Children>,
     pub states: Arc<SessionStates>,
     pub sock: String,
-    pub tell: Box<dyn Fn(&'static str, Value) + Send + Sync>,
 }
 
 static IN_DAEMON: OnceLock<InDaemon> = OnceLock::new();
@@ -171,16 +214,6 @@ static IN_DAEMON: OnceLock<InDaemon> = OnceLock::new();
 pub(crate) fn run_as_daemon(role: InDaemon, cli_dir: PathBuf) {
     let _ = CLI_DIR.set(cli_dir);
     let _ = IN_DAEMON.set(role);
-}
-
-pub(crate) fn tell_window(method: &'static str, params: Value) -> bool {
-    match IN_DAEMON.get() {
-        Some(role) => {
-            (role.tell)(method, params);
-            true
-        }
-        None => false,
-    }
 }
 
 const CHAT_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
@@ -197,36 +230,6 @@ pub fn daemon_status() -> Option<Status> {
 }
 
 // The webview is not a socket subscriber, so the channel is mirrored to it.
-fn autopilot_publisher(hub: &Arc<Hub>, app: &AppHandle) -> Box<dyn Fn(Value) + Send + Sync> {
-    let (hub, app) = (hub.clone(), app.clone());
-    Box::new(move |event| {
-        let _ = app.emit("autopilot://changed", &event);
-        hub.publish(&Channel::Autopilot, event);
-    })
-}
-
-// On `sessions`, which every phone screen already reads and ignores unknown kinds of.
-fn start_radar(app: &AppHandle, hub: &Arc<Hub>, states: &Arc<SessionStates>, autopilot: &Arc<AutopilotStore>) {
-    let (app, hub) = (app.clone(), hub.clone());
-    let (states, items, at_start) = (states.clone(), autopilot.clone(), autopilot.clone());
-    let live = states.clone();
-    crate::radar::start(crate::radar::Hooks {
-        watched: Box::new(move || {
-            let mut folders: Vec<String> = states.live_in_folders().into_iter().map(|(_, f)| f).collect();
-            folders.extend(items.worktrees());
-            folders
-        }),
-        live: Box::new(move || live.live_in_folders()),
-        at_start: Box::new(move || at_start.worktrees()),
-        publish: Box::new(move |changed| {
-            let _ = app.emit(crate::radar::CHANGED_EVENT, changed);
-            let mut event = json!(changed);
-            event["kind"] = json!("radar.changed");
-            hub.publish(&Channel::Sessions, event);
-        }),
-    });
-}
-
 // The Settings pane is not a socket subscriber, so it hears about devices here.
 const DEVICES_EVENT: &str = "remote://devices";
 
@@ -234,13 +237,76 @@ fn devices_changed(app: &AppHandle, ended: Option<pairing::Ended>) {
     let _ = app.emit(DEVICES_EVENT, json!({ "ended": ended }));
 }
 
-pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
-    let paths = daemon::paths();
+struct Relay {
+    hub: Arc<Hub>,
+}
+
+const RELAY_WAIT: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+
+impl server::Dispatch for Relay {
+    fn hub(&self) -> &Hub {
+        &self.hub
+    }
+
+    fn auth_timeout(&self) -> std::time::Duration {
+        AUTH_TIMEOUT
+    }
+
+    fn dispatch(
+        &self,
+        conn: hub::ConnId,
+        principal: &auth::Principal,
+        req: &frame::Request,
+    ) -> Result<Value, frame::RpcError> {
+        match req.method.as_str() {
+            "subscribe" => server::subscribe(&self.hub, table::CallerKind::of(principal), conn, &req.params, || {
+                daemon_tell("probe", json!({}))
+            }),
+            "unsubscribe" => server::unsubscribe(&self.hub, conn, &req.params),
+            "auth" => Err(frame::RpcError::new(frame::INVALID_REQUEST, "already authenticated")),
+            _ => {
+                let link = LINK
+                    .get()
+                    .ok_or_else(|| frame::RpcError::new(frame::REFUSED, "the daemon link is not up"))?;
+                let relayed = json!({ "principal": principal, "method": req.method, "params": req.params });
+                link.request("relay", relayed, RELAY_WAIT)
+            }
+        }
+    }
+}
+
+fn screen(app: &AppHandle, bridge: &Arc<Bridge>, devices: &Arc<devices::Devices>) -> window::Answers {
+    let (bridge, devices) = (bridge.clone(), devices.clone());
+    let app = app.clone();
     let hub = Arc::new(Hub::default());
     {
         let app = app.clone();
         hub.watch_devices(Box::new(move || devices_changed(&app, None)));
     }
+    window::Answers {
+        hub,
+        call: Arc::new(|_, req| {
+            Err(frame::RpcError::new(
+                frame::REFUSED,
+                format!("the window answers no {}", req.method),
+            ))
+        }),
+        screen: Arc::new(move |method, params| match method {
+            "device.mint" => {
+                let name = params["name"].as_str().unwrap_or_default();
+                let (device, credential) = devices
+                    .mint(name)
+                    .map_err(|e| frame::RpcError::new(frame::INTERNAL_ERROR, e))?;
+                devices_changed(&app, None);
+                Ok(json!({ "id": device.id, "name": device.name, "credential": credential }))
+            }
+            _ => bridge.request(method, params),
+        }),
+    }
+}
+
+pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
+    let paths = daemon::paths();
     let states = Arc::new(SessionStates::default());
     let devices = Arc::new(devices::Devices::open(devices_path()));
     let pairing = {
@@ -254,53 +320,19 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
         Box::new(move |request| emitter.emit(REQUEST_EVENT, request).map_err(|e| e.to_string())),
         REPLY_TIMEOUT,
     ));
-    let asks = Arc::new(Asks::with_holds(
-        crate::autopilot::dir().join("holds.json"),
-        autopilot_publisher(&hub, &app),
-    ));
-    let autopilot = Arc::new(
-        AutopilotStore::open(crate::autopilot::dir(), autopilot_publisher(&hub, &app))
-            .on_closed(withdraw_holds(asks.clone(), bridge.clone())),
-    );
-    let runner = Arc::new(Runner::new(
-        app.clone(),
-        hub.clone(),
-        states.clone(),
-        asks.clone(),
-        bridge.clone(),
-        crate::autopilot::dir(),
-    ));
-    start_watcher(&app, &states, &autopilot, &runner);
-    start_radar(&app, &hub, &states, &autopilot);
-    let tell = app.clone();
-    pr_watch::on_polled_moved(Box::new(move || {
-        let _ = tell.emit("pr_watch://changed", ());
-    }));
+    let answers = screen(&app, &bridge, &devices);
+    let hub = answers.hub.clone();
     let on_status = daemon_status_emitter(&app);
-    let on_event = daemon_events(&app, &states, &autopilot);
-    let server = Arc::new(Server {
-        hub: hub.clone(),
-        backend: Box::new(methods::TauriBackend {
-            app,
-            states: states.clone(),
-            bridge: bridge.clone(),
-            asks: asks.clone(),
-            autopilot: autopilot.clone(),
-            runner: runner.clone(),
-            devices: devices.clone(),
-        }),
-        auth_timeout: AUTH_TIMEOUT,
-    });
-    let remote = Arc::new(Remote::new(server.clone(), devices.clone(), pairing));
+    let on_event = daemon_events(&app, &states);
+    let relay = Arc::new(Relay { hub: hub.clone() });
+    let remote = Arc::new(Remote::new(relay, devices.clone(), pairing));
     remote.apply(&crate::settings::remote());
 
     // Derived, not asked for, so a spawn has its env before the link is up.
     let _ = SOCKET.set(paths.sock.to_string_lossy().into_owned());
     let _ = CLI_DIR.set(paths.cli_link_dir.clone());
-    let link = Link::start(server, paths, true, on_status, on_event);
+    let link = Link::start(answers, paths, true, on_status, on_event);
     let _ = LINK.set(link.clone());
-    let _ = ASKS.set(asks.clone());
-    let _ = RUNNER.set(runner.clone());
     let _ = EVENTS.set((hub.clone(), states.clone()));
     Ok(RpcState {
         link,
@@ -308,30 +340,25 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
         hub,
         states,
         bridge,
-        asks,
-        autopilot,
-        runner,
         devices,
-        quotas: Quotas::default(),
     })
 }
 
 // What only the webview knows about its tabs, chats and forge poll, and what
 // it is looking at. Kept, so a daemon that restarts under the window hears it again.
-static TOLD: std::sync::Mutex<Option<(Value, Value, bool)>> = std::sync::Mutex::new(None);
+static TOLD: std::sync::Mutex<Option<(Value, Value)>> = std::sync::Mutex::new(None);
 
-fn told(change: impl FnOnce(&mut (Value, Value, bool))) {
+fn told(change: impl FnOnce(&mut (Value, Value))) {
     let mut told = TOLD.lock().unwrap_or_else(|e| e.into_inner());
-    change(told.get_or_insert_with(|| (json!({}), json!({ "session": null, "focused": true }), false)));
+    change(told.get_or_insert_with(|| (json!({}), json!({ "session": null, "focused": true }))));
 }
 
 fn retell_facts() {
-    let Some((facts, attention, pilot)) = TOLD.lock().unwrap_or_else(|e| e.into_inner()).clone() else {
+    let Some((facts, attention)) = TOLD.lock().unwrap_or_else(|e| e.into_inner()).clone() else {
         return;
     };
     daemon_tell("facts", facts);
     daemon_tell("attention", attention);
-    daemon_tell("pilot", json!({ "on": pilot }));
 }
 
 #[tauri::command]
@@ -348,17 +375,8 @@ pub fn rpc_attention(session: Option<String>, focused: bool) {
     daemon_tell("attention", attention);
 }
 
-pub fn note_pilot(on: bool) {
-    told(|t| t.2 = on);
-    daemon_tell("pilot", json!({ "on": on }));
-}
-
 pub fn sessions_changed() {
     daemon_tell("sessions_changed", json!({}));
-}
-
-pub fn nudge_probe() {
-    daemon_tell("probe", json!({}));
 }
 
 #[tauri::command(async)]
@@ -441,14 +459,13 @@ fn present(app: &AppHandle, shown: &Value) {
 /// Tori telling one live chat something it should know: steered into the
 /// running turn, or held for the user's next one when the session is idle, so
 /// the note never starts a turn of its own.
-pub fn tell_session(app: &AppHandle, session: &str, kind: &str, text: &str) -> Result<(), String> {
-    let states = &app.state::<RpcState>().states;
+pub fn tell_session(desk: &crate::desk::Desk, session: &str, kind: &str, text: &str) -> Result<(), String> {
     let mid_turn = matches!(
-        states.snapshot().get(session),
+        desk.states.snapshot().get(session),
         Some(states::SessionState::Working | states::SessionState::NeedsYou)
     );
     let text = events::from_tori(kind, None, text);
-    let host = &app.state::<crate::chat::host::ChatState>().0;
+    let host = &desk.chats.host;
     if !mid_turn {
         host.note_for_next_turn(session, text);
         return Ok(());
@@ -469,31 +486,15 @@ pub fn tell_session(app: &AppHandle, session: &str, kind: &str, text: &str) -> R
     Ok(())
 }
 
-pub fn spawn_review(app: &AppHandle, folder: &str, project: &str, prompt: String) -> Result<String, String> {
-    let rpc = app.state::<RpcState>();
-    let backend = methods::TauriBackend {
-        app: app.clone(),
-        states: rpc.states.clone(),
-        bridge: rpc.bridge.clone(),
-        asks: rpc.asks.clone(),
-        autopilot: rpc.autopilot.clone(),
-        runner: rpc.runner.clone(),
-        devices: rpc.devices.clone(),
-    };
-    let params = server::SpawnParams {
-        folder: Some(folder.to_string()),
-        project: Some(project.to_string()),
-        prompt: Some(prompt),
-        background: Some(true),
-        ..Default::default()
-    };
-    let spawned = backend
-        .spawn(&auth::Principal::Local, params, true)
-        .map_err(|e| e.message)?;
-    spawned["id"]
+pub fn spawn_review(folder: &str, project: &str, prompt: String) -> Result<String, String> {
+    let spawned = office_call(
+        "spawn_review",
+        json!({ "folder": folder, "project": project, "prompt": prompt }),
+    )?;
+    spawned
         .as_str()
         .map(str::to_string)
-        .ok_or_else(|| "the Tori window started no session".to_string())
+        .ok_or_else(|| "the daemon started no session".to_string())
 }
 
 pub fn session_mid_turn(app: &AppHandle, session: &str) -> bool {
@@ -521,29 +522,21 @@ pub fn steer_idle(app: &AppHandle, session: &str, kind: &str, text: &str) -> Res
 }
 
 pub fn record_rule_review(
-    app: &AppHandle,
     project: &str,
     repo: &str,
     account: &str,
     review: crate::autopilot::RuleReview,
 ) -> Result<(), String> {
-    let item = app
-        .state::<RpcState>()
-        .autopilot
-        .rule_review(project, repo, account, review)
-        .map_err(|e| e.to_string())?;
-    if let Some(watcher) = WATCHER.get() {
-        watcher.started(&item);
-    }
-    Ok(())
+    let args = json!({ "project": project, "repo": repo, "account": account, "review": review });
+    office_call("rule_review", args).map(|_| ())
 }
 
 /// A Topic home chat just compacted, and the summary may have dropped what its
 /// Topic is. Told again from the record as it is now: into the running turn
 /// when the window filled mid-turn, on the next message after a `/compact`,
 /// whose turn ends at once and would take a steer as a turn of its own.
-pub fn retell_topic(app: &AppHandle, session: &str, mid_turn: bool) {
-    let host = &app.state::<crate::chat::host::ChatState>().0;
+pub fn retell_topic(desk: &crate::desk::Desk, session: &str, mid_turn: bool) {
+    let host = &desk.chats.host;
     let Some((_, cwd)) = host.live_sessions().into_iter().find(|(id, _)| id == session) else {
         return;
     };
@@ -563,49 +556,10 @@ pub fn retell_topic(app: &AppHandle, session: &str, mid_turn: bool) {
         return;
     }
     // Off the publishing thread, which is the session's own event thread.
-    let (app, session) = (app.clone(), session.to_string());
+    let (desk, session) = (desk.clone(), session.to_string());
     std::thread::spawn(move || {
-        let _ = tell_session(&app, &session, "topic", &note);
+        let _ = tell_session(&desk, &session, "topic", &note);
     });
-}
-
-// A chat stopped by its spend ceiling reports needs_you, so it is held here too.
-fn start_watcher(app: &AppHandle, states: &Arc<SessionStates>, autopilot: &Arc<AutopilotStore>, runner: &Arc<Runner>) {
-    let status = runner.clone();
-    let (watcher, nudges) = Watcher::new(states.clone(), autopilot.clone(), Box::new(move || status.status()));
-    let _ = WATCHER.set(watcher.clone());
-    let app = app.clone();
-    std::thread::spawn(move || {
-        let deliver = |session: &str, text: String| {
-            let host = &app.state::<crate::chat::host::ChatState>().0;
-            let text = events::from_tori("wake", None, &text);
-            host.deliver(
-                session,
-                vec![crate::chat::model::ContentBlock::Text { text }],
-                false,
-                events::TurnBy::Watcher,
-            )
-        };
-        let stall = || std::time::Duration::from_secs(u64::from(crate::settings::autopilot().stall_minutes) * 60);
-        watcher.run(nudges, deliver, stall);
-    });
-}
-
-// The cards close on a thread of their own: the webview's reply can take up to
-// `REPLY_TIMEOUT`, and the item update that closed the item should not wait on it.
-fn withdraw_holds(asks: Arc<Asks>, bridge: Arc<Bridge>) -> Box<dyn Fn(&str) + Send + Sync> {
-    Box::new(move |item| {
-        let ids = asks.withdraw_item(item);
-        if ids.is_empty() {
-            return;
-        }
-        let bridge = bridge.clone();
-        std::thread::spawn(move || {
-            for id in ids {
-                let _ = bridge.request("ask.close", json!({ "id": id }));
-            }
-        });
-    })
 }
 
 // An item whose session ended keeps its stored state, but what the autopilot
@@ -630,9 +584,6 @@ pub fn nudge_watcher() {
 
 // Work in a session's stream, which is what a stall is the absence of.
 pub fn watcher_touch(session: &str) {
-    if tell_window("watcher_touch", json!({ "session": session })) {
-        return;
-    }
     if let Some(watcher) = WATCHER.get() {
         watcher.touch(session);
     }
@@ -643,14 +594,14 @@ pub fn rpc_reply(rpc: tauri::State<RpcState>, rid: u64, result: Option<serde_jso
     rpc.bridge.reply(rid, error.map_or(Ok(result.unwrap_or_default()), Err));
 }
 
-#[tauri::command]
-pub fn rpc_asks_pending(rpc: tauri::State<RpcState>) -> Vec<Ask> {
-    rpc.asks.pending()
+#[tauri::command(async)]
+pub fn rpc_asks_pending() -> Result<Vec<Value>, String> {
+    office_call_as("asks.pending", json!({}))
 }
 
-#[tauri::command]
-pub fn rpc_ask_answer(rpc: tauri::State<RpcState>, id: String, answer: String) -> bool {
-    rpc.asks.answer(&id, answer, asks::By::User).is_ok()
+#[tauri::command(async)]
+pub fn rpc_ask_answer(id: String, answer: String) -> Result<bool, String> {
+    office_call_as("asks.answer", json!({ "id": id, "answer": answer }))
 }
 
 pub fn publish_checkpoint(session_id: &str, folder: &str, turn: usize, prompt_ts: u64) {
@@ -674,8 +625,8 @@ pub fn publish_reviewed(session_id: &str, folder: &str) {
 }
 
 // On `sessions`, which every phone screen already reads and ignores unknown kinds of.
-pub fn publish_needs_you(app: &AppHandle) {
-    let _ = app.emit(crate::needs_you_log::CHANGED_EVENT, ());
+pub fn publish_needs_you(ui: &crate::ui::Ui) {
+    ui.emit(crate::needs_you_log::CHANGED_EVENT, ());
     let Some((hub, _)) = EVENTS.get() else { return };
     hub.publish(&Channel::Sessions, json!({ "kind": "needs_you.changed" }));
 }
@@ -702,6 +653,10 @@ pub fn publish_chat(session_id: &str, event: &crate::chat::model::ChatEvent) {
 // after the worker that opened the PR has ended. A branch checked out nowhere
 // has none, since the sessions in its project's folder are on another branch.
 pub fn publish_pr(project: &str, folder: &str, branch: &str, checked_out: bool, fields: Value) {
+    if IN_DAEMON.get().is_none() {
+        let args = json!({ "project": project, "folder": folder, "branch": branch, "checked_out": checked_out, "fields": fields });
+        return office_tell("publish_pr", args);
+    }
     let Some((hub, states)) = EVENTS.get() else { return };
     let ids = if checked_out { states.ids_in(folder) } else { Vec::new() };
     let mut event = json!({
@@ -798,101 +753,62 @@ pub fn device_revoke(app: AppHandle, rpc: tauri::State<RpcState>, id: String) ->
 
 // The webview's own switch: not a socket caller, so it goes around the
 // `NOT_SESSIONS` rows to the same runner.
-#[tauri::command]
-pub fn autopilot_start(rpc: tauri::State<RpcState>) -> Result<runner::Status, String> {
-    rpc.runner.start()
+#[tauri::command(async)]
+pub fn autopilot_start() -> Result<Value, String> {
+    office_call("autopilot.start", json!({}))
 }
 
-#[tauri::command]
-pub fn autopilot_stop(rpc: tauri::State<RpcState>) -> Result<runner::Status, String> {
-    rpc.runner.stop()
+#[tauri::command(async)]
+pub fn autopilot_stop() -> Result<Value, String> {
+    office_call("autopilot.stop", json!({}))
 }
 
 // Async: reading it asks the forge for open pull requests.
 #[tauri::command(async)]
-pub fn autopilot_state(app: AppHandle, rpc: tauri::State<RpcState>) -> Result<Value, String> {
-    use server::Backend;
-    let backend = methods::TauriBackend {
-        app,
-        states: rpc.states.clone(),
-        bridge: rpc.bridge.clone(),
-        asks: rpc.asks.clone(),
-        autopilot: rpc.autopilot.clone(),
-        runner: rpc.runner.clone(),
-        devices: rpc.devices.clone(),
-    };
-    backend.autopilot_state().map_err(|e| e.message)
+pub fn autopilot_state() -> Result<Value, String> {
+    office_call("autopilot.state", json!({}))
 }
 
 // The contracts alone, without the forge reads a full `autopilot_state` makes.
-#[tauri::command]
-pub fn autopilot_contracts(
-    rpc: tauri::State<RpcState>,
-) -> std::collections::BTreeMap<String, crate::autopilot::Contract> {
-    rpc.autopilot.projects()
+#[tauri::command(async)]
+pub fn autopilot_contracts() -> Result<std::collections::BTreeMap<String, crate::autopilot::Contract>, String> {
+    office_call_as("autopilot.contracts", json!({}))
 }
 
 // Through the socket's own params, so the editor gets the same refusals a tool does.
-#[tauri::command]
-pub fn autopilot_project_set(rpc: tauri::State<RpcState>, project_path: String, patch: Value) -> Result<Value, String> {
-    let params: server::ProjectSetParams = serde_json::from_value(patch).map_err(|e| e.to_string())?;
-    params.apply(&rpc.autopilot, project_path).map_err(|e| e.message)
+#[tauri::command(async)]
+pub fn autopilot_project_set(project_path: String, patch: Value) -> Result<Value, String> {
+    office_call(
+        "autopilot.project_set",
+        json!({ "project_path": project_path, "patch": patch }),
+    )
 }
 
 // Called from the webview's forge poll tick, so it rides that cadence and its
 // pause and backoff rather than a clock of its own.
 #[tauri::command(async)]
-pub fn autopilot_pickup(rpc: tauri::State<RpcState>, project_path: String) -> Result<(), String> {
-    if !crate::settings::autopilot().available {
-        return Ok(());
-    }
-    let sources = rpc.autopilot.contract(&project_path).unwrap_or_default().issues;
-    let Some(list) =
-        crate::issues::commands::assigned_if_offered(&project_path, &sources).map_err(|e| e.to_string())?
-    else {
-        return Ok(());
-    };
-    let picked = rpc
-        .autopilot
-        .pickup(&project_path, &list.repo, &list.account, &list.lists, &list.failed)
-        .map_err(|e| e.to_string())?;
-    if let Some(watcher) = WATCHER.get() {
-        watcher.picked(&picked);
-    }
-    Ok(())
+pub fn autopilot_pickup(project_path: String) -> Result<(), String> {
+    office_call("autopilot.pickup", json!({ "project_path": project_path })).map(|_| ())
 }
 
-#[tauri::command]
-pub fn autopilot_log(rpc: tauri::State<RpcState>, limit: usize) -> Vec<Value> {
-    rpc.autopilot.recent_log(limit)
+#[tauri::command(async)]
+pub fn autopilot_log(limit: usize) -> Result<Vec<Value>, String> {
+    office_call_as("autopilot.log", json!({ "limit": limit }))
 }
 
-#[tauri::command]
-pub fn autopilot_status(rpc: tauri::State<RpcState>) -> runner::Status {
-    rpc.runner.status()
+#[tauri::command(async)]
+pub fn autopilot_status() -> Result<Value, String> {
+    office_call("autopilot.status", json!({}))
 }
 
-#[tauri::command]
-pub fn autopilot_closed_by_hand(rpc: tauri::State<RpcState>, session: String) -> Result<(), String> {
-    let held: HashSet<String> = rpc.asks.holds().into_iter().map(|h| h.item).collect();
-    rpc.autopilot
-        .closed_by_hand(&session, &held)
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+#[tauri::command(async)]
+pub fn autopilot_closed_by_hand(session: String) -> Result<(), String> {
+    office_call("autopilot.closed_by_hand", json!({ "session": session })).map(|_| ())
 }
 
-#[tauri::command]
-pub fn autopilot_locked(rpc: tauri::State<RpcState>) -> Vec<String> {
-    let mut sessions: Vec<String> = rpc
-        .autopilot
-        .sessions()
-        .into_iter()
-        .chain(rpc.states.spawned())
-        .collect();
-    sessions.sort();
-    sessions.dedup();
-    sessions.retain(|id| is_locked(&rpc.states, &rpc.autopilot, &rpc.runner, id));
-    sessions
+#[tauri::command(async)]
+pub fn autopilot_locked() -> Result<Vec<String>, String> {
+    office_call_as("autopilot.locked", json!({}))
 }
 
 pub const LOCKED: &str = "locked while the autopilot drives it; stop the autopilot to type";
@@ -906,68 +822,49 @@ pub fn is_locked(states: &SessionStates, autopilot: &AutopilotStore, runner: &Ru
     )
 }
 
-// No socket means no autopilot, so nothing is locked.
-pub fn refuse_locked(app: &AppHandle, session: &str) -> Result<(), String> {
-    let Some(rpc) = app.try_state::<RpcState>() else {
-        return Ok(());
-    };
-    match is_locked(&rpc.states, &rpc.autopilot, &rpc.runner, session) {
+// Refused when the lock cannot be read either: the chat is the daemon's, so a
+// daemon that does not answer could not take the message anyway.
+pub fn refuse_locked(session: &str) -> Result<(), String> {
+    match office_call_as::<bool>("locked", json!({ "session": session }))? {
         true => Err(LOCKED.to_string()),
         false => Ok(()),
     }
 }
 
-#[derive(serde::Serialize)]
-pub struct WatchRow {
-    session: String,
-    url: String,
-    project: String,
-    branch: String,
-}
-
-#[tauri::command]
-pub fn pr_watch_list() -> Vec<WatchRow> {
-    pr_watch::store()
-        .list()
-        .into_iter()
-        .filter(|w| !w.ended)
-        .map(|w| WatchRow {
-            session: w.session,
-            url: w.url,
-            project: w.project,
-            branch: w.branch,
-        })
-        .collect()
+#[tauri::command(async)]
+pub fn pr_watch_list() -> Result<Value, String> {
+    office_call("pr_watch.list", json!({}))
 }
 
 #[tauri::command(async)]
-pub fn pr_watch_start(
-    rpc: tauri::State<RpcState>,
-    session: String,
-    project: String,
-    number: u64,
-) -> Result<String, String> {
-    let item = rpc.autopilot.item_for_session(&session).is_some();
-    pr_watch::watch(&session, &project, number, item).map(|w| w.url)
+pub fn pr_watch_start(session: String, project: String, number: u64) -> Result<String, String> {
+    office_call_as(
+        "pr_watch.start",
+        json!({ "session": session, "project": project, "number": number }),
+    )
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn pr_watch_stop(session: String, url: String) -> Result<bool, String> {
-    pr_watch::stop(&session, &url)
+    office_call_as("pr_watch.stop", json!({ "session": session, "url": url }))
+}
+
+#[tauri::command(async)]
+pub fn sessions_adoptable() -> Result<Vec<Value>, String> {
+    office_call_as("sessions.adoptable", json!({}))
 }
 
 #[tauri::command]
-pub fn rpc_quota(rpc: tauri::State<RpcState>, agent: String, profile: Option<String>, readings: Vec<quotas::Reading>) {
-    if let Some(windows) = rpc.quotas.record(&agent, profile.as_deref(), readings) {
-        let event = json!({
-            "kind": "account.quota",
-            "agent": agent,
-            "account": profile,
-            "windows": windows,
-            "ts": events::now_ms(),
-        });
-        rpc.hub.publish(&Channel::Accounts, event);
-    }
+pub fn session_adopted(session: String) {
+    office_tell("sessions.adopted", json!({ "session": session }));
+}
+
+#[tauri::command]
+pub fn rpc_quota(agent: String, profile: Option<String>, readings: Vec<quotas::Reading>) {
+    office_tell(
+        "quota",
+        json!({ "agent": agent, "profile": profile, "readings": readings }),
+    );
 }
 
 /// `path` with the directory holding the `tori` link in front. Unchanged when
@@ -998,12 +895,6 @@ pub fn daemon_request(method: &str, params: Value) -> Result<Value, String> {
 pub fn daemon_wait(method: &str, params: Value, wait: std::time::Duration) -> Result<Value, String> {
     let link = LINK.get().ok_or("the daemon link is not up")?;
     link.request(method, params, wait).map_err(|e| e.message)
-}
-
-pub(crate) fn pending_ask(session: &str) -> Value {
-    ASKS.get()
-        .and_then(|asks| asks.pending_for(session))
-        .map_or(Value::Null, |ask| json!(ask))
 }
 
 pub fn daemon_tell(method: &'static str, params: Value) {
@@ -1050,10 +941,7 @@ pub fn child_env(caller: Caller) -> Vec<(String, String)> {
 pub fn revoke(caller: &Caller) {
     if let Some(role) = IN_DAEMON.get() {
         role.children.revoke(caller);
-        if let Caller::Chat(session) = caller {
-            role.states.forget_worker(session);
-        }
-        (role.tell)("revoke", json!({ "caller": caller }));
+        forget_caller(caller);
         return;
     }
     if let Some(link) = LINK.get() {
@@ -1098,8 +986,7 @@ pub fn mcp_allow(background: bool) -> Vec<String> {
 // stands for the current autopilot.
 pub fn mark_spawned_worker(session: &str, spawner: &str) {
     if let Some(role) = IN_DAEMON.get() {
-        role.states.mark_worker(session, spawner);
-        (role.tell)("mark_spawned_worker", json!({ "session": session, "spawner": spawner }));
+        role.states.mark_worker(session, &current_spawner(spawner));
         return;
     }
     let spawner = current_spawner(spawner);
@@ -1122,7 +1009,6 @@ pub fn current_spawner(spawner: &str) -> String {
 pub fn mark_background(session: &str) {
     if let Some(role) = IN_DAEMON.get() {
         role.states.mark_background(session);
-        (role.tell)("mark_background", json!({ "session": session }));
         return;
     }
     if let Some((_, states)) = EVENTS.get() {
@@ -1255,77 +1141,6 @@ mod tests {
         asks.withdraw(&ask.id);
         let event: Value = serde_json::from_str(&rx.try_recv().unwrap()).unwrap();
         assert_eq!(event["params"]["data"]["cleared"], true);
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn an_item_closing_while_its_hold_is_answered_blocks_neither() {
-        let dir = crate::autopilot::tests::temp_dir("close-race");
-        let asks = Arc::new(Asks::with_holds(dir.join("holds.json"), Box::new(|_| {})));
-        let bridge = Arc::new(Bridge::new(
-            Box::new(|_| Err("no webview".into())),
-            std::time::Duration::from_millis(10),
-        ));
-        let store = Arc::new(
-            AutopilotStore::open(dir.clone(), Box::new(|_| {})).on_closed(withdraw_holds(asks.clone(), bridge)),
-        );
-        let source = Source::Pr {
-            number: 7,
-            repo: "o/r".into(),
-        };
-        let item = store
-            .update(
-                Target::Key {
-                    kind: Kind::Review,
-                    source,
-                    project: "/p".into(),
-                    origin: "o/r".into(),
-                },
-                Patch::default(),
-            )
-            .unwrap()
-            .id;
-        let ask = asks
-            .create(
-                "s1".into(),
-                "merge?".into(),
-                vec![],
-                merge_approval(),
-                None,
-                Some(item.clone()),
-            )
-            .id;
-
-        let (done_tx, done) = std::sync::mpsc::channel();
-        let (closing, answering) = (store.clone(), asks.clone());
-        let (item_id, ask_id) = (item.clone(), ask.clone());
-        let tx = done_tx.clone();
-        std::thread::spawn(move || {
-            let state = Patch {
-                state: Some(crate::autopilot::State::Done),
-                ..Patch::default()
-            };
-            closing.update(Target::Id(item_id), state).unwrap();
-            tx.send(()).unwrap();
-        });
-        std::thread::spawn(move || {
-            let _ = answering.answer(&ask_id, approvals::APPROVE.into(), asks::By::User);
-            done_tx.send(()).unwrap();
-        });
-        for _ in 0..2 {
-            done.recv_timeout(std::time::Duration::from_secs(5))
-                .expect("neither side blocks");
-        }
-        assert!(asks.holds().is_empty(), "a done item holds nothing up");
-        let read = asks.wait(&ask, std::time::Duration::ZERO);
-        assert_eq!(
-            read,
-            asks::Waited::Answered {
-                answer: asks::WITHDRAWN.into(),
-                approval_id: None
-            },
-            "whichever landed first"
-        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

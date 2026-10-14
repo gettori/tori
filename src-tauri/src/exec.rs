@@ -393,7 +393,12 @@ mod tests {
         let file = repo.join(".git").join("tori.lock");
         assert!(flock(&file, false).is_none(), "a second opener got the lock");
         drop(held);
-        assert!(flock(&file, false).is_some(), "the lock outlived its guard");
+        // A child another test forks holds the fd until it execs.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while flock(&file, false).is_none() {
+            assert!(std::time::Instant::now() < deadline, "the lock outlived its guard");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
     }
 
     /// Stage, commit and ref writes fired concurrently on one repo (the commit

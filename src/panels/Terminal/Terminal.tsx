@@ -1,4 +1,5 @@
 import { createSignal, createEffect, createMemo, on, onCleanup, onMount, untrack, For, Show } from "solid-js";
+import type { DaemonStatus } from "../../utils/daemonStatus";
 import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -139,19 +140,15 @@ import { debounce } from "../../utils/debounce";
 import { chatTabLabel } from "../../utils/chatConcurrency";
 import { liveChatIds, liveChats } from "../../utils/chatSessions";
 import {
-  checkAttachment,
   clearComposer,
   draftFor,
-  fileMentionBlocks,
   markAutoSend,
-  nextLabel,
   offerToComposer,
   routeFor,
   setDraft,
   setDraftOrigin,
 } from "../../utils/chatCompose";
-import { handleRpc, serveRpcBridge } from "../../utils/rpcBridge";
-import { attachmentSources, chatTier } from "../../utils/chatCapabilities";
+import { serveRpcBridge } from "../../utils/rpcBridge";
 import { clearDraftPick, draftPick, pickRidesArgv, setDraftPick } from "../../utils/chatDraftPick";
 import { resumedPicks } from "../../utils/chatModels";
 import { holdingTab, refusalMessage, type Refusal } from "../../utils/chatOwnership";
@@ -201,7 +198,6 @@ import styles from "./Terminal.module.css";
 import patterns from "../../styles/patterns.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import { moveDeep, movedPath } from "../../utils/moveWorkspace";
-import { spawnMode } from "../../utils/reviewRule";
 
 // Mirrors src-tauri/src/sessions.rs's `TailState` (session_tail_state).
 type TailState = "working" | "done" | "blocked-candidate";
@@ -258,6 +254,17 @@ const KIND_GLYPHS: Record<TabKind, LucideIcon> = {
 function shellId(): string {
   return `sh:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
 }
+
+type Adoptable = {
+  session: string;
+  tab: string;
+  folder: string;
+  agent: string;
+  profile: string | null;
+  background: boolean;
+  spawner: string | null;
+  name: string;
+};
 
 // The same for a chat tab, which hosts no shell and so has no PTY to name it.
 function chatId(): string {
@@ -1065,7 +1072,8 @@ export default function Terminal(props: {
   let offOpenTerminal: (() => void) | undefined;
   let offNewSession: (() => void) | undefined;
   let offNewChatAt: (() => void) | undefined;
-  let offSpawnForSocket: (() => void) | undefined;
+  let unlistenAdopt: UnlistenFn | undefined;
+  let unlistenDaemon: UnlistenFn | undefined;
   let unlistenRpc: UnlistenFn | undefined;
   let offOpenJob: (() => void) | undefined;
   let offRevealDock: (() => void) | undefined;
@@ -1138,7 +1146,17 @@ export default function Terminal(props: {
       setDraft(id, prompt);
       if (origin) setDraftOrigin(id, origin);
     });
-    offSpawnForSocket = handleRpc("session.spawn", spawnForSocket);
+    unlistenAdopt = await listen<Adoptable>("sessions://adopt", (e) => void adopt(e.payload));
+    // Chats the daemon started while this window was not listening: before it
+    // loaded, or while its link was down.
+    const adoptAll = () =>
+      invoke<Adoptable[]>("sessions_adoptable")
+        .then((all) => all.forEach((a) => void adopt(a)))
+        .catch(() => {});
+    unlistenDaemon = await listen<DaemonStatus>("daemon://status", (e) => {
+      if (e.payload.state === "connected") adoptAll();
+    });
+    adoptAll();
     unlistenRpc = await serveRpcBridge();
     // A tab whose process ends (the user typed `exit`, a task finished) is
     // closed. Agent-exit within a live shell fires no event. A command tab's
@@ -1208,7 +1226,8 @@ export default function Terminal(props: {
     offOpenTerminal?.();
     offNewSession?.();
     offNewChatAt?.();
-    offSpawnForSocket?.();
+    unlistenAdopt?.();
+    unlistenDaemon?.();
     unlistenRpc?.();
     offOpenJob?.();
     offRevealDock?.();
@@ -1875,49 +1894,15 @@ export default function Terminal(props: {
 
   // Not focused and not a draft: a tab with a session id mounts started, so it
   // runs its first turn without anyone looking at it.
-  async function spawnForSocket(p: {
-    folder: string;
-    agent: string | null;
-    account: string | null;
-    model: string | null;
-    mode: string | null;
-    effort: string | null;
-    prompt: string | null;
-    attach: string[];
-    background: boolean;
-    spawner: string | null;
-    readOnly?: boolean;
-  }) {
-    await stripReady(p.folder);
-    const agentId = p.agent ?? draftAgent(p.folder, p.folder);
-    if (!agentId) throw new Error("no agent enabled: turn one on in Settings");
-    if (!chatCapable(findAdapter(agentId))) throw new Error(`${agentId} has no chat surface`);
-    const profile = p.account !== null ? asTabProfile(p.account) : draftProfile(p.folder, p.folder, agentId);
-    const tabId = chatId();
-    const mode = spawnMode(p.mode, p.readOnly ?? false, agentId);
-    if (p.model !== null || mode !== null || p.effort !== null) {
-      setDraftPick(tabId, { model: p.model, mode, effort: p.effort });
+  async function adopt(a: Adoptable) {
+    await stripReady(a.folder);
+    if (!open().some((t) => t.sessionId === a.session)) {
+      const session = a.background
+        ? { sessionId: a.session, background: true, ...(a.spawner ? { spawner: a.spawner } : {}) }
+        : { sessionId: a.session };
+      openChatTab(a.folder, a.folder, a.name, a.agent, a.profile, session, a.tab, false);
     }
-    const mentions = attachmentSources(chatTier(findAdapter(agentId).chat?.transport)).mentions;
-    const kinds = p.attach.map((path, i) => {
-      const verdict = checkAttachment({ name: path.split("/").pop() || path, mediaType: "", bytes: null }, i, mentions);
-      if (!verdict.ok) throw new Error(verdict.reason);
-      return verdict.kind;
-    });
-    const labels = p.attach.map((path, i) => {
-      const label = nextLabel(tabId, kinds[i]);
-      offerToComposer(tabId, fileMentionBlocks(path, label));
-      return label;
-    });
-    const text = [p.prompt ?? "", ...labels].filter(Boolean).join(" ");
-    if (text) markAutoSend(tabId, text);
-    const sessionId = crypto.randomUUID();
-    const name = p.folder.split("/").pop() || "chat";
-    const session = p.background
-      ? { sessionId, background: true, ...(p.spawner ? { spawner: p.spawner } : {}) }
-      : { sessionId };
-    openChatTab(p.folder, p.folder, name, agentId, profile, session, tabId, false);
-    return { id: sessionId, tab: tabId, folder: p.folder, agent: agentId };
+    void invoke("session_adopted", { session: a.session }).catch(() => {});
   }
 
   /**

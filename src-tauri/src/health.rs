@@ -341,6 +341,10 @@ fn sweep() -> Vec<AgentHealth> {
     agents::registry().iter().map(check).collect()
 }
 
+pub fn now() -> Vec<AgentHealth> {
+    HEALTH.get_or_sweep(sweep)
+}
+
 /// Health for every registered adapter, probed once and then cached until
 /// something invalidates it.
 #[tauri::command]

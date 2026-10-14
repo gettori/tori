@@ -1275,7 +1275,7 @@ pub fn forge_unit_statuses(
     refresh: bool,
 ) -> Result<StatusReport, ForgeErrorDto> {
     let out = unit_statuses(project_path.clone(), branches, refresh)?;
-    adopt_pr_bases(&app, &project_path, &out.statuses);
+    adopt_pr_bases(&(&app).into(), &project_path, &out.statuses);
     Ok(out)
 }
 
@@ -1283,8 +1283,7 @@ pub fn forge_unit_statuses(
 /// against, and tell the sidebar to re-ask the rows whose base moved. A PR
 /// opened against something other than the default, or retargeted later, would
 /// otherwise keep counting against the default.
-pub(crate) fn adopt_pr_bases(app: &tauri::AppHandle, project_path: &str, statuses: &[UnitStatus]) {
-    use tauri::Emitter;
+pub(crate) fn adopt_pr_bases(ui: &crate::ui::Ui, project_path: &str, statuses: &[UnitStatus]) {
     let moved: Vec<&UnitStatus> = statuses
         .iter()
         .filter(|s| {
@@ -1302,7 +1301,7 @@ pub(crate) fn adopt_pr_bases(app: &tauri::AppHandle, project_path: &str, statuse
             .iter()
             .find(|w| w.branch == s.head_ref)
             .map_or(project_path, |w| w.path.as_str());
-        let _ = app.emit("git://base-changed", serde_json::json!({ "repo": folder }));
+        ui.emit("git://base-changed", serde_json::json!({ "repo": folder }));
         crate::radar::moved(folder);
     }
 }

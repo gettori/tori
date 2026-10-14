@@ -12,7 +12,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, State};
 
 use crate::chat::model::Verdict;
 use crate::checkpoint::CheckpointFile;
@@ -163,6 +162,9 @@ fn now_secs() -> u64 {
 
 /// Drop a deleted session's mark, so the store does not grow forever.
 pub(crate) fn forget_session(id: &str) {
+    if !crate::rpc::in_daemon() {
+        return crate::rpc::office_tell("review.forget", serde_json::json!({ "id": id }));
+    }
     forget_in(&store_path(), id);
 }
 
@@ -514,8 +516,8 @@ fn inbox(
 /// Every session with unreviewed work in a dirty or unpushed worktree, riskiest
 /// first.
 #[tauri::command(async)]
-pub fn review_inbox(index: State<SessionIndex>) -> Vec<ReviewItem> {
-    inbox_now(&index)
+pub fn review_inbox() -> Result<serde_json::Value, String> {
+    crate::rpc::office_call("review.inbox", serde_json::json!({}))
 }
 
 pub(crate) fn inbox_now(index: &SessionIndex) -> Vec<ReviewItem> {
@@ -530,19 +532,19 @@ pub(crate) fn inbox_now(index: &SessionIndex) -> Vec<ReviewItem> {
 /// Mark a unit reviewed up to `to_ts`, the latest prompt the reviewer saw.
 /// Refused while the session is mid-turn, and when a prompt arrived since.
 #[tauri::command(async)]
-pub fn review_mark(app: AppHandle, index: State<SessionIndex>, unit: ReviewUnit, to_ts: u64) -> Result<(), String> {
-    mark_now(&app, &index, unit, to_ts)
+pub fn review_mark(unit: ReviewUnit, to_ts: u64) -> Result<(), String> {
+    crate::rpc::office_call("review.mark", serde_json::json!({ "unit": unit, "to_ts": to_ts })).map(|_| ())
 }
 
-pub(crate) fn mark_now(app: &AppHandle, index: &SessionIndex, unit: ReviewUnit, to_ts: u64) -> Result<(), String> {
+pub(crate) fn mark_now(ui: &crate::ui::Ui, index: &SessionIndex, unit: ReviewUnit, to_ts: u64) -> Result<(), String> {
     let ReviewUnit::Session { id } = &unit;
     let session = crate::sessions::listed_sessions(index, None)
         .into_iter()
         .find(|s| s.id == *id)
         .ok_or_else(|| format!("no session {id}"))?;
     mark(&session, &unit, to_ts, crate::rpc::session_running(id), &store_path())?;
-    let _ = app.emit(CHANGED_EVENT, ());
-    crate::second_opinion::forget(app, &session.cwd, id);
+    ui.emit(CHANGED_EVENT, ());
+    crate::second_opinion::forget(ui, &session.cwd, id);
     crate::rpc::publish_reviewed(id, &session.cwd);
     Ok(())
 }

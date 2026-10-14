@@ -61,6 +61,26 @@ struct Envelope<'a> {
 
 pub type OnEvent = Box<dyn Fn(&str, &Value) + Send + Sync>;
 
+type Answer = Arc<dyn Fn(&Principal, &Request) -> Result<Value, RpcError> + Send + Sync>;
+type Screened = Arc<dyn Fn(&str, Value) -> Result<Value, RpcError> + Send + Sync>;
+
+pub struct Answers {
+    pub hub: Arc<super::hub::Hub>,
+    pub call: Answer,
+    pub screen: Screened,
+}
+
+impl From<Arc<Server>> for Answers {
+    fn from(server: Arc<Server>) -> Self {
+        let hub = server.hub.clone();
+        Self {
+            hub,
+            call: Arc::new(move |principal, req| server.call(principal, req)),
+            screen: Arc::new(|method, _| Err(RpcError::new(REFUSED, format!("no screen for {method}")))),
+        }
+    }
+}
+
 struct Conn {
     out: Arc<Outbox>,
     pending: Pending,
@@ -75,7 +95,7 @@ impl Conn {
 }
 
 pub struct Link {
-    server: Arc<Server>,
+    answers: Answers,
     paths: Paths,
     // Off in tests, which start their own daemon.
     spawn: bool,
@@ -91,14 +111,14 @@ pub struct Link {
 
 impl Link {
     pub fn start(
-        server: Arc<Server>,
+        answers: impl Into<Answers>,
         paths: Paths,
         spawn: bool,
         on_status: Box<dyn Fn(&Status) + Send + Sync>,
         on_event: OnEvent,
     ) -> Arc<Self> {
         let link = Arc::new(Self {
-            server,
+            answers: answers.into(),
             paths,
             spawn,
             instance: format!("{}-{}", std::process::id(), crate::chat::approval::random_token()),
@@ -110,7 +130,7 @@ impl Link {
             on_event,
         });
         let upstream = Arc::downgrade(&link);
-        link.server.hub.set_upstream(Arc::new(move |channel, data| {
+        link.answers.hub.set_upstream(Arc::new(move |channel, data| {
             if let Some(link) = upstream.upgrade() {
                 link.publish(channel, data);
             }
@@ -287,24 +307,29 @@ impl Link {
             };
             let id = head.id.clone().unwrap_or(Value::Null);
             match head.method.as_deref() {
-                Some("call") => {
-                    let (server, conn, params) = (self.server.clone(), conn.clone(), params());
+                Some(method @ ("call" | "screen")) => {
+                    let (call, screen, conn, params) = (
+                        self.answers.call.clone(),
+                        self.answers.screen.clone(),
+                        conn.clone(),
+                        params(),
+                    );
+                    let screened = method == "screen";
                     thread::spawn(move || {
                         // Answered either way: the caller waits on this reply,
                         // not on the thread, and would wait until the link drops.
-                        let outcome =
-                            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| answer(&server, &params)))
-                                .unwrap_or_else(|_| Err(RpcError::new(INTERNAL_ERROR, "the window failed this call")));
+                        let run = || match screened {
+                            true => screen(params["method"].as_str().unwrap_or_default(), params["params"].clone()),
+                            false => answer(call.as_ref(), &params),
+                        };
+                        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(run))
+                            .unwrap_or_else(|_| Err(RpcError::new(INTERNAL_ERROR, "the window failed this call")));
                         conn.out.push(to_line(&Response::reply(id, outcome)));
                     });
                 }
-                Some("window.ask") => {
-                    let session = params()["session"].as_str().unwrap_or_default().to_string();
-                    conn.out.push(to_line(&Response::ok(id, super::pending_ask(&session))));
-                }
                 Some("chats") => {
                     let ids: HashSet<String> = serde_json::from_value(params()).unwrap_or_default();
-                    self.server.hub.set_remote_chats(ids);
+                    self.answers.hub.set_remote_chats(ids);
                 }
                 Some(event) => {
                     let began = Instant::now();
@@ -350,7 +375,7 @@ impl Link {
         conn.out.close();
         conn.pending().clear();
         let _ = conn.stream.shutdown(Shutdown::Both);
-        self.server.hub.set_remote_chats(HashSet::new());
+        self.answers.hub.set_remote_chats(HashSet::new());
     }
 
     fn wait_for_conn(&self, wait: Duration) -> Option<Arc<Conn>> {
@@ -493,7 +518,10 @@ pub fn open_attach(
     Ok((stream, reader))
 }
 
-fn answer(server: &Server, params: &Value) -> Result<Value, RpcError> {
+fn answer(
+    call: &(dyn Fn(&Principal, &Request) -> Result<Value, RpcError> + Send + Sync),
+    params: &Value,
+) -> Result<Value, RpcError> {
     let principal: Principal = serde_json::from_value(params["principal"].clone())
         .map_err(|e| RpcError::new(INVALID_PARAMS, format!("principal: {e}")))?;
     let req = Request {
@@ -502,5 +530,5 @@ fn answer(server: &Server, params: &Value) -> Result<Value, RpcError> {
         method: params["method"].as_str().unwrap_or_default().to_string(),
         params: params["params"].clone(),
     };
-    server.call(&principal, &req)
+    call(&principal, &req)
 }

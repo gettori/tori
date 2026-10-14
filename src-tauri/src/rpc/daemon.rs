@@ -194,16 +194,18 @@ impl Window {
         self.out.push(to_line(&Notification::new(method, params)));
     }
 
-    fn ask(&self, method: &str, params: Value, wait: std::time::Duration) -> Option<Value> {
+    fn call(&self, method: &str, params: Value, wait: std::time::Duration) -> Result<Value, RpcError> {
         let id = self.next.fetch_add(1, Ordering::Relaxed) + 1;
         let (tx, rx) = sync_channel(1);
         self.pending().insert(id, tx);
         let line = to_line(&json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }));
         if !self.out.push(line) {
             self.pending().remove(&id);
-            return None;
+            return Err(RpcError::new(REFUSED, NO_WINDOW));
         }
-        let answer = rx.recv_timeout(wait).ok().and_then(Result::ok);
+        let answer = rx
+            .recv_timeout(wait)
+            .unwrap_or_else(|_| Err(RpcError::new(REFUSED, "the Tori window did not answer")));
         self.pending().remove(&id);
         answer
     }
@@ -230,6 +232,8 @@ pub struct Daemon {
     ptys: Arc<Host>,
     // Set by `run` alone: the host reads and reaps the real claims file.
     chats: OnceLock<Arc<Served>>,
+    // Set by `run` alone, after the chats: the stores behind every method.
+    office: OnceLock<Arc<super::office::Office>>,
     composer: Arc<Composer>,
     // The app process last attached, so a new one starts with no stale child tokens.
     instance: Mutex<Option<String>>,
@@ -516,6 +520,19 @@ impl Daemon {
             });
             return;
         }
+        if matches!(req.method.as_str(), "office" | "relay") {
+            let (office, out) = (self.office.get().cloned(), window.out.clone());
+            thread::spawn(move || {
+                let outcome = match office {
+                    Some(office) => office_request(&office, &req),
+                    None => Err(RpcError::new(REFUSED, "this daemon runs no office")),
+                };
+                if let Some(id) = req.id {
+                    out.push(to_line(&Response::reply(id, outcome)));
+                }
+            });
+            return;
+        }
         if req.method == "chat" {
             // Off the link's reader: a spawn or a history read takes a while.
             let (chats, out) = (self.chats.get().cloned(), window.out.clone());
@@ -588,6 +605,14 @@ impl Daemon {
                 Ok(json!({}))
             }
             "pty.list" => Ok(json!(self.ptys.list())),
+            "askpass.resolve" => {
+                let id = req.params["id"].as_u64().unwrap_or_default() & !super::office::DAEMON_PROMPT;
+                let value = req.params["value"].as_str().map(str::to_string);
+                if let Some(office) = self.office.get() {
+                    office.resolve_prompt(id, value);
+                }
+                Ok(json!({}))
+            }
             "facts" => {
                 let facts = serde_json::from_value(req.params.clone()).map_err(|_| parse("facts"))?;
                 self.composer.facts(facts);
@@ -601,10 +626,6 @@ impl Daemon {
             "running" => {
                 let p: RunningParams = serde_json::from_value(req.params.clone()).map_err(|_| parse("running"))?;
                 self.composer.running(&p.asked, &p.running);
-                Ok(json!({}))
-            }
-            "pilot" => {
-                self.composer.pilot(req.params["on"].as_bool().unwrap_or_default());
                 Ok(json!({}))
             }
             "sessions_changed" => {
@@ -702,16 +723,13 @@ impl Sources for ComposerSources {
     }
 
     fn question(&self, id: &str) -> Value {
-        let window = self.0.upgrade().and_then(|d| d.window());
-        window
-            .and_then(|w| {
-                w.ask(
-                    "window.ask",
-                    json!({ "session": id }),
-                    std::time::Duration::from_secs(2),
-                )
-            })
-            .unwrap_or(Value::Null)
+        super::office().map_or(Value::Null, |office| office.session_question(id))
+    }
+
+    fn heard(&self, id: &str, event: &Value) {
+        if let Some(office) = super::office() {
+            office.heard_session(id, event);
+        }
     }
 
     fn tell(&self, method: &'static str, params: Value) {
@@ -719,6 +737,77 @@ impl Sources for ComposerSources {
             daemon.notify_window(method, params);
         }
     }
+}
+
+fn office_request(office: &super::office::Office, req: &Request) -> Result<Value, RpcError> {
+    if req.method == "office" {
+        let op = req.params["op"].as_str().unwrap_or_default();
+        return office
+            .call(op, &req.params["args"])
+            .map_err(|e| RpcError::new(REFUSED, e));
+    }
+    let principal: Principal = serde_json::from_value(req.params["principal"].clone())
+        .map_err(|e| RpcError::new(INVALID_PARAMS, format!("principal: {e}")))?;
+    let relayed = Request {
+        jsonrpc: "2.0".into(),
+        id: None,
+        method: req.params["method"].as_str().unwrap_or_default().to_string(),
+        params: req.params["params"].clone(),
+    };
+    office.server.call(&principal, &relayed)
+}
+
+struct DaemonScreen(Weak<Daemon>);
+
+// `window.open` waits on the webview, which may still be loading.
+const SCREEN_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+impl super::methods::Screen for DaemonScreen {
+    fn request(&self, method: &str, params: Value) -> Result<Value, RpcError> {
+        let window = self.0.upgrade().and_then(|d| d.window());
+        let window = window.ok_or_else(|| RpcError::new(REFUSED, NO_WINDOW))?;
+        window.call("screen", json!({ "method": method, "params": params }), SCREEN_WAIT)
+    }
+
+    fn attached(&self) -> bool {
+        self.0.upgrade().and_then(|d| d.window()).is_some()
+    }
+}
+
+fn host_office(daemon: &Arc<Daemon>) {
+    let Some(chats) = daemon.chats.get().cloned() else {
+        return;
+    };
+    let weak = Arc::downgrade(daemon);
+    let ui = crate::ui::Ui::new(move |event, payload| {
+        if let Some(daemon) = weak.upgrade() {
+            daemon.notify_window("emit", json!({ "event": event, "payload": payload }));
+        }
+    });
+    let desk = crate::desk::Desk {
+        ui,
+        chats: chats.clone(),
+        states: daemon.composer.states.clone(),
+    };
+    let prompted = Arc::downgrade(daemon);
+    let parts = super::office::Parts {
+        hub: daemon.hub.clone(),
+        desk,
+        chats,
+        composer: daemon.composer.clone(),
+        ptys: daemon.ptys.clone(),
+        screen: Arc::new(DaemonScreen(Arc::downgrade(daemon))),
+        prompt: Box::new(move |event| {
+            let Some(window) = prompted.upgrade().and_then(|d| d.window()) else {
+                return false;
+            };
+            window.notify("askpass.prompt", json!(event));
+            true
+        }),
+    };
+    let office = super::office::start(parts);
+    super::set_office(office.clone());
+    let _ = daemon.office.set(office);
 }
 
 impl Dispatch for Daemon {
@@ -737,6 +826,10 @@ impl Dispatch for Daemon {
             }),
             "unsubscribe" => unsubscribe(&self.hub, conn, &req.params),
             "auth" => Err(RpcError::new(INVALID_REQUEST, "already authenticated")),
+            _ if self.office.get().is_some() => match self.office.get() {
+                Some(office) => office.server.call(principal, req),
+                None => Err(RpcError::new(REFUSED, NO_WINDOW)),
+            },
             "sessions.list" => {
                 permit(&req.method, self.kind(principal))?;
                 Ok(self.composer.sessions_list(&params(&req.params)?))
@@ -829,6 +922,7 @@ pub fn start(paths: Paths) -> Result<Start, String> {
             composer,
             ptys: Host::new(events, children.clone(), paths.sock.clone(), paths.cli_link_dir.clone()),
             chats: OnceLock::new(),
+            office: OnceLock::new(),
             credential,
             children,
             transport: transport.clone(),
@@ -878,7 +972,6 @@ fn host_chats(daemon: &Arc<Daemon>) {
             children: daemon.children.clone(),
             states: daemon.composer.states.clone(),
             sock: daemon.paths.sock.to_string_lossy().into_owned(),
-            tell: Box::new(tell(Arc::downgrade(daemon))),
         },
         daemon.paths.cli_link_dir.clone(),
     );
@@ -898,8 +991,6 @@ fn host_chats(daemon: &Arc<Daemon>) {
         }
     }));
     crate::chat::serve::pr_wake(&chats, daemon.composer.states.clone());
-    let moved = tell(Arc::downgrade(daemon));
-    crate::rpc::pr_watch::on_polled_moved(Box::new(move || moved("pr_watch.moved", json!({}))));
     let _ = daemon.chats.set(chats);
 }
 
@@ -911,12 +1002,14 @@ pub fn run() -> i32 {
         }
         Ok(Start::Started(started)) => {
             host_chats(&started.daemon);
+            host_office(&started.daemon);
             // After the socket answers, so a window never waits on a slow
             // login shell. Every spawn waits on this capture instead.
             thread::spawn(|| {
                 crate::env::login_path();
             });
             started.wait();
+            crate::credential::unpublish();
             0
         }
         Err(e) => {

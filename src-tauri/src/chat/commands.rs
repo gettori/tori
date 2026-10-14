@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use tauri::ipc::Channel;
-use tauri::{AppHandle, State};
+use tauri::State;
 
 use crate::agents::{self, ChatConfig, ChatEffortExtra, ChatTransport};
 
@@ -525,11 +525,10 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
 #[tauri::command]
 pub async fn chat_send(
     state: State<'_, ChatState>,
-    app: AppHandle,
     session_id: String,
     blocks: Vec<ContentBlock>,
 ) -> Result<(), String> {
-    crate::rpc::refuse_locked(&app, &session_id)?;
+    crate::rpc::refuse_locked(&session_id)?;
     state.0.send(&session_id, blocks)
 }
 
@@ -553,11 +552,10 @@ pub async fn chat_send_held(
 #[tauri::command]
 pub async fn chat_steer(
     state: State<'_, ChatState>,
-    app: AppHandle,
     session_id: String,
     blocks: Vec<ContentBlock>,
 ) -> Result<(), String> {
-    crate::rpc::refuse_locked(&app, &session_id)?;
+    crate::rpc::refuse_locked(&session_id)?;
     state.0.steer(&session_id, blocks)
 }
 
@@ -596,19 +594,14 @@ pub fn stash_discard(id: String) -> Result<Vec<serde_json::Value>, String> {
 
 /// A Topic member came or moved while this chat runs.
 #[tauri::command]
-pub async fn chat_grant_dirs(
-    state: State<'_, ChatState>,
-    app: AppHandle,
-    session_id: String,
-    dirs: Vec<String>,
-) -> Result<(), String> {
-    crate::rpc::refuse_locked(&app, &session_id)?;
+pub async fn chat_grant_dirs(state: State<'_, ChatState>, session_id: String, dirs: Vec<String>) -> Result<(), String> {
+    crate::rpc::refuse_locked(&session_id)?;
     state.0.grant_dirs(&session_id, &dirs)
 }
 
 #[tauri::command]
-pub async fn chat_interrupt(state: State<'_, ChatState>, app: AppHandle, session_id: String) -> Result<(), String> {
-    crate::rpc::refuse_locked(&app, &session_id)?;
+pub async fn chat_interrupt(state: State<'_, ChatState>, session_id: String) -> Result<(), String> {
+    crate::rpc::refuse_locked(&session_id)?;
     state.0.interrupt(&session_id)
 }
 

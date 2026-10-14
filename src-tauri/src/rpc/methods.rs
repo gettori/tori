@@ -7,12 +7,10 @@ use std::sync::Arc;
 
 use serde::Serialize;
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter, Manager};
 
 use super::approvals::{Approval, Approvals, Draft};
 use super::asks::{Ask, Asks, By, NotAnswered, Waited};
 use super::auth::{Caller, Principal};
-use super::bridge::Bridge;
 use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
@@ -26,9 +24,10 @@ use super::server::{
 };
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
+use crate::accounts::DEFAULT_PROFILE_ID;
 use crate::autopilot::{AutopilotStore, Contract, Observed};
 use crate::chat::commands::{history_source, read_history, read_with_prompts, HistorySource};
-use crate::chat::host::{ChatState, Levers, Waiting};
+use crate::chat::host::{Levers, Waiting};
 use crate::chat::model::{cap_output, ChatEvent, ContentBlock, PermissionMode};
 use crate::issues::Issue;
 use crate::sessions::{cwd_matches, listed_sessions, SessionIndex, SessionMeta};
@@ -340,6 +339,18 @@ pub struct Identity {
     pub cwd: Option<String>,
 }
 
+impl Identity {
+    pub fn of_tab(agent: Option<String>, profile: Option<String>, cwd: String) -> Self {
+        Self {
+            account: agent
+                .as_ref()
+                .map(|_| profile.unwrap_or_else(|| crate::accounts::DEFAULT_PROFILE_ID.to_string())),
+            agent,
+            cwd: Some(cwd).filter(|cwd| !cwd.is_empty()),
+        }
+    }
+}
+
 fn chat_identity(registry: &impl crate::chat::client::Claimed, live: &[(String, String)], id: &str) -> Identity {
     Identity {
         agent: registry.agent_of(id),
@@ -367,6 +378,13 @@ pub fn or_callers(
 
 fn spawns_background(states: &SessionStates, principal: &Principal, asked: bool) -> bool {
     asked || matches!(principal, Principal::Session(Caller::Chat(spawner)) if states.is_background(spawner))
+}
+
+pub const ADOPT_EVENT: &str = "sessions://adopt";
+
+// What a review spawn runs in, so the reviewer cannot change the code it reads.
+fn read_only_mode(agent: &str) -> Option<String> {
+    (agent == "claude").then(|| "plan".to_string())
 }
 
 fn record_spawn(states: &SessionStates, principal: &Principal, id: &str, background: bool) {
@@ -708,19 +726,28 @@ fn to_json<T: Serialize>(value: T) -> Result<Value, RpcError> {
     serde_json::to_value(value).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))
 }
 
-pub struct TauriBackend {
-    pub app: AppHandle,
-    pub states: Arc<SessionStates>,
-    pub bridge: Arc<Bridge>,
+pub trait Screen: Send + Sync {
+    fn request(&self, method: &str, params: Value) -> Result<Value, RpcError>;
+    fn attached(&self) -> bool;
+}
+
+#[derive(Clone)]
+pub struct DaemonBackend {
+    pub desk: crate::desk::Desk,
+    pub screen: Arc<dyn Screen>,
+    pub chats: Arc<crate::chat::serve::Served>,
+    pub composer: Arc<super::composer::Composer>,
+    pub ptys: Arc<crate::pty::host::Host>,
+    // `None` when its socket did not bind: git then has nobody to ask.
+    pub askpass: Option<Arc<crate::askpass::AskpassInner>>,
     pub asks: Arc<Asks>,
     pub autopilot: Arc<AutopilotStore>,
     pub runner: Arc<super::runner::Runner>,
-    pub devices: Arc<super::devices::Devices>,
+    pub adoptable: Arc<std::sync::Mutex<Vec<Value>>>,
+    pub quotas: Arc<super::quotas::Quotas>,
 }
 
-impl TauriBackend {
-    // `read_only` asks the webview for the agent's read-only mode, which only it
-    // knows once it has picked the agent.
+impl DaemonBackend {
     pub fn spawn(&self, principal: &Principal, params: SpawnParams, read_only: bool) -> Result<Value, RpcError> {
         if let Principal::Device(_) = principal {
             device_may_spawn(&params, |agent| {
@@ -754,7 +781,7 @@ impl TauriBackend {
         }
         let contract = project.and_then(|project| self.autopilot.contract(&project));
         let caller = match principal {
-            Principal::Session(Caller::Chat(id)) => self.app.state::<ChatState>().0.levers(id),
+            Principal::Session(Caller::Chat(id)) => self.chats.host.levers(id),
             _ => None,
         };
         let given = Picks {
@@ -769,33 +796,135 @@ impl TauriBackend {
             model,
             mode,
         } = fill_picks(given, contract.as_ref(), &me, &caller.unwrap_or_default());
-        let background = spawns_background(&self.states, principal, params.background.unwrap_or(false));
-        let request = json!({
-            "folder": folder,
-            "agent": agent,
-            "account": account,
-            "model": model,
-            "mode": mode,
-            "effort": params.effort,
-            "prompt": params.prompt,
-            "attach": attach,
-            "background": background,
-            "readOnly": read_only,
-            "spawner": match principal {
-                Principal::Session(Caller::Chat(spawner)) if background => Some(spawner.clone()),
-                _ => None,
-            },
-        });
-        let mut spawned = self.bridge.request("session.spawn", request)?;
-        if let Some(id) = spawned["id"].as_str() {
-            record_spawn(&self.states, principal, id, background);
+        let background = spawns_background(&self.desk.states, principal, params.background.unwrap_or(false));
+        let spawner = match principal {
+            Principal::Session(Caller::Chat(spawner)) if background => Some(spawner.clone()),
+            _ => None,
+        };
+        let picked = crate::chat::pick::pick(&folder, agent.as_deref(), account.as_deref()).map_err(refused)?;
+        let first =
+            crate::chat::pick::first_message(&picked.agent, params.prompt.as_deref(), &attach).map_err(refused)?;
+        let mode = mode.or_else(|| read_only.then(|| read_only_mode(&picked.agent)).flatten());
+        let id = super::runner::new_session_id();
+        let tab = format!("chat:{}", super::runner::new_session_id());
+        record_spawn(&self.desk.states, principal, &id, background);
+        let request = crate::chat::commands::SpawnRequest {
+            session_id: id.clone(),
+            tab_id: tab.clone(),
+            agent_id: picked.agent.clone(),
+            cwd: folder.clone(),
+            resume: false,
+            fork_from: None,
+            profile: crate::chat::pick::tab_profile(&picked.profile),
+            model,
+            mode,
+            effort: params.effort,
+            extra_dirs: Vec::new(),
+            visible: false,
+            background,
+            spawner: spawner.clone(),
+        };
+        let host = &self.chats.host;
+        let spawned = crate::chat::commands::spawn_session(host, request, Box::new(|_| {})).map_err(refused)?;
+        if spawned.spawned.is_none() {
+            return Err(refused(format!("the session id was refused: {:?}", spawned.ownership)));
         }
-        spawned["background"] = json!(background);
-        Ok(spawned)
+        if !first.is_empty() {
+            host.deliver(&id, first, false, TurnBy::Local).map_err(refused)?;
+        }
+        let name = Path::new(&folder)
+            .file_name()
+            .map_or_else(|| "chat".to_string(), |n| n.to_string_lossy().into_owned());
+        let adopt = json!({
+            "session": id,
+            "tab": tab,
+            "folder": folder,
+            "agent": picked.agent,
+            "profile": crate::chat::pick::tab_profile(&picked.profile),
+            "background": background,
+            "spawner": spawner,
+            "name": name,
+        });
+        self.offer(adopt);
+        Ok(json!({ "id": id, "tab": tab, "folder": folder, "agent": picked.agent, "background": background }))
+    }
+
+    fn offer(&self, adopt: Value) {
+        self.adoptable
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(adopt.clone());
+        self.desk.ui.emit(ADOPT_EVENT, &adopt);
+    }
+
+    fn revive(&self, id: &str) -> Result<(), RpcError> {
+        let meta = listed_sessions(&self.composer.index, None)
+            .into_iter()
+            .find(|m| m.id == id)
+            .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no live session {id}")))?;
+        if !crate::agents::find(&meta.agent).is_some_and(|a| a.chat.is_some()) {
+            return Err(refused(format!(
+                "{id} is a {} session, which has no chat to revive",
+                meta.agent
+            )));
+        }
+        let profile = meta.profile.clone().filter(|p| p != DEFAULT_PROFILE_ID);
+        let tab = format!("chat:{}", super::runner::new_session_id());
+        let request = crate::chat::commands::SpawnRequest {
+            session_id: id.to_string(),
+            tab_id: tab.clone(),
+            agent_id: meta.agent.clone(),
+            cwd: meta.cwd.clone(),
+            resume: true,
+            fork_from: None,
+            profile: profile.clone(),
+            model: None,
+            mode: None,
+            effort: None,
+            extra_dirs: Vec::new(),
+            visible: false,
+            background: false,
+            spawner: None,
+        };
+        let spawned =
+            crate::chat::commands::spawn_session(&self.chats.host, request, Box::new(|_| {})).map_err(refused)?;
+        if spawned.spawned.is_none() {
+            return Err(refused(format!("{id} could not be resumed: {:?}", spawned.ownership)));
+        }
+        let name = meta.name.clone().unwrap_or_else(|| {
+            Path::new(&meta.cwd)
+                .file_name()
+                .map_or_else(|| "chat".to_string(), |n| n.to_string_lossy().into_owned())
+        });
+        self.offer(json!({
+            "session": id,
+            "tab": tab,
+            "folder": meta.cwd,
+            "agent": meta.agent,
+            "profile": profile,
+            "background": false,
+            "spawner": null,
+            "name": name,
+        }));
+        Ok(())
+    }
+
+    pub fn adoptable(&self) -> Vec<Value> {
+        let host = &self.chats.host;
+        let mut held = self.adoptable.lock().unwrap_or_else(|e| e.into_inner());
+        held.retain(|a| a["session"].as_str().is_some_and(|id| host.is_live(id)));
+        held.clone()
+    }
+
+    pub fn adopted(&self, session: &str) {
+        self.adoptable
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .retain(|a| a["session"] != session);
     }
 
     fn live(&self) -> BTreeMap<String, Live> {
-        let host = &self.app.state::<ChatState>().0;
+        let host = &self.chats.host;
         let mut live: BTreeMap<String, Live> = host
             .registry
             .held_here()
@@ -820,25 +949,27 @@ impl TauriBackend {
         match principal {
             Principal::Local | Principal::Device(_) => Identity::default(),
             Principal::Session(Caller::Terminal(tab)) => self
-                .app
-                .state::<crate::pty::PtyState>()
-                .identity(tab)
+                .ptys
+                .list()
+                .into_iter()
+                .find(|t| &t.tab == tab)
+                .map(|t| Identity::of_tab(t.agent, t.profile, t.cwd))
                 .unwrap_or_default(),
             Principal::Session(Caller::Chat(id)) => {
-                let host = &self.app.state::<ChatState>().0;
-                chat_identity(&host.registry, &host.live_sessions(), id)
+                let host = &self.chats.host;
+                chat_identity(&*host.registry, &host.live_sessions(), id)
             }
         }
     }
 
     fn session_cwd(&self, id: &str) -> Result<String, RpcError> {
-        let host = &self.app.state::<ChatState>().0;
+        let host = &self.chats.host;
         host.live_sessions()
             .into_iter()
             .find(|(live, _)| live == id)
             .map(|(_, cwd)| cwd)
             .or_else(|| {
-                listed_sessions(&self.app.state::<SessionIndex>(), None)
+                listed_sessions(&self.composer.index, None)
                     .into_iter()
                     .find(|m| m.id == id)
                     .map(|m| m.cwd)
@@ -862,24 +993,21 @@ impl TauriBackend {
     // Other live sessions writing in `cwd`, which a revert would pull the floor
     // out from under.
     fn others_in(&self, cwd: &str, id: &str, principal: &Principal) -> Vec<String> {
-        let host = &self.app.state::<ChatState>().0;
+        let host = &self.chats.host;
         let mut others: Vec<String> = host
             .live_sessions()
             .into_iter()
             .filter(|(live, at)| live != id && same_folder(at, cwd))
             .map(|(live, _)| live)
             .collect();
-        let ptys = self.app.state::<crate::pty::PtyState>();
         let own_tab = match principal {
             Principal::Session(Caller::Terminal(tab)) => Some(tab.as_str()),
             _ => None,
         };
-        for tab in ptys.live_ids().unwrap_or_default() {
-            let here = ptys
-                .identity(&tab)
-                .is_some_and(|i| i.agent.is_some() && i.cwd.is_some_and(|at| same_folder(&at, cwd)));
-            if here && Some(tab.as_str()) != own_tab {
-                others.push(format!("terminal tab {tab}"));
+        for t in self.ptys.list() {
+            let here = t.agent.is_some() && !t.cwd.is_empty() && same_folder(&t.cwd, cwd);
+            if here && Some(t.tab.as_str()) != own_tab {
+                others.push(format!("terminal tab {}", t.tab));
             }
         }
         others
@@ -896,7 +1024,7 @@ impl TauriBackend {
 
     fn create_worktree(&self, principal: &Principal, params: WorktreeParams) -> Result<String, RpcError> {
         let project = self.project(principal, params.project)?;
-        let create = crate::worktree::create_worktree(self.app.clone(), project, params.branch, params.from);
+        let create = crate::worktree::create_worktree_for(self.desk.ui.clone(), project, params.branch, params.from);
         tauri::async_runtime::block_on(create).map_err(refused)
     }
 
@@ -906,7 +1034,7 @@ impl TauriBackend {
                 "the worktree is at {path}, but remembering its issue failed: {e}"
             ))
         })?;
-        let _ = self.app.emit("config://changed", ());
+        self.desk.ui.emit("config://changed", ());
         Ok(())
     }
 
@@ -949,7 +1077,7 @@ impl TauriBackend {
             None => {
                 let id = answered["id"].as_str().unwrap_or_default();
                 self.asks.forget(id);
-                let _ = self.bridge.request("ask.close", json!({ "id": id }));
+                self.desk.ui.emit(super::asks::CLOSE_EVENT, json!({ "id": id }));
                 Err("The user has not answered yet. Carry on without changing that member, and ask again later.".into())
             }
         }
@@ -957,7 +1085,7 @@ impl TauriBackend {
 
     fn background_session<'a>(&self, principal: &'a Principal) -> Option<&'a str> {
         match principal {
-            Principal::Session(Caller::Chat(id)) if self.states.is_background(id) => Some(id),
+            Principal::Session(Caller::Chat(id)) if self.desk.states.is_background(id) => Some(id),
             _ => None,
         }
     }
@@ -974,6 +1102,11 @@ impl TauriBackend {
             project: self.project(principal, project)?,
             draft,
         };
+        // A dev build's Keychain grant is bound to a binary every rebuild
+        // replaces, so its prompt waits for someone at the window.
+        if cfg!(debug_assertions) && !self.screen.attached() {
+            return Err(self.hold_for_window(principal, wanted));
+        }
         gated_by_approval(
             &self.asks.approvals,
             self.background_session(principal),
@@ -981,6 +1114,33 @@ impl TauriBackend {
             approval_id,
             || call(&wanted.project),
         )
+    }
+
+    fn git_askpass(&self) -> Result<Arc<crate::askpass::AskpassInner>, RpcError> {
+        self.askpass
+            .clone()
+            .ok_or_else(|| refused("git has no way to ask for a credential: the askpass socket did not start".into()))
+    }
+
+    fn hold_for_window(&self, principal: &Principal, wanted: Approval) -> RpcError {
+        let action = wanted.draft.action();
+        let Principal::Session(Caller::Chat(session)) = principal else {
+            return refused(format!(
+                "{action} reads the forge token from the Keychain, which a dev build asks only with the Tori window \
+                 open. Open Tori and run it again"
+            ));
+        };
+        let question = format!("{action} {} in {}", wanted.draft.target(), wanted.project);
+        let mirror = self.desk.states.root_background(session);
+        let ask = self
+            .asks
+            .create(session.clone(), question, Vec::new(), Some(wanted), mirror, None);
+        self.desk.ui.emit(super::asks::SHOW_EVENT, &ask);
+        refused(format!(
+            "held for the Tori window: a dev build asks the Keychain only with it open. Wait on ask {} (ask_wait), \
+             then call again",
+            ask.id
+        ))
     }
 
     fn pr_target(
@@ -1008,12 +1168,12 @@ impl TauriBackend {
         Ok((project, number))
     }
 
-    fn live_chat(&self, principal: &Principal, id: &str) -> Result<&crate::chat::client::Chats, RpcError> {
-        let host = &self.app.state::<ChatState>().inner().0;
+    fn live_chat(&self, principal: &Principal, id: &str) -> Result<&crate::chat::host::ChatHost, RpcError> {
+        let host = &self.chats.host;
         if !host.is_live(id) {
             return Err(RpcError::new(INVALID_PARAMS, format!("no live chat session {id}")));
         }
-        let locked = super::is_locked(&self.states, &self.autopilot, &self.runner, id);
+        let locked = super::is_locked(&self.desk.states, &self.autopilot, &self.runner, id);
         may_steer(principal, locked, self.runner.status().session.as_deref())?;
         Ok(host)
     }
@@ -1022,7 +1182,7 @@ impl TauriBackend {
         if let Some(live) = self.live().remove(id).filter(|l| !l.agent.is_empty()) {
             return Some(live.agent);
         }
-        listed_sessions(&self.app.state::<SessionIndex>(), None)
+        listed_sessions(&self.composer.index, None)
             .into_iter()
             .find(|m| m.id == id)
             .map(|m| m.agent)
@@ -1074,31 +1234,31 @@ fn projects_tree(spaces: &[crate::config::Space], mut topics: Vec<crate::topics:
     json!({ "spaces": spaces, "topics": topics })
 }
 
-impl Backend for TauriBackend {
+impl Backend for DaemonBackend {
     fn watching_sessions(&self) {
-        super::nudge_probe();
+        self.composer.probe_soon();
     }
 
     fn kind(&self, principal: &Principal) -> CallerKind {
         match principal {
-            Principal::Session(Caller::Chat(id)) if self.states.is_worker(id) => CallerKind::Worker,
+            Principal::Session(Caller::Chat(id)) if self.desk.states.is_worker(id) => CallerKind::Worker,
             other => CallerKind::of(other),
         }
     }
 
     fn sessions_list(&self, params: ListParams) -> Result<Value, RpcError> {
-        super::daemon_request("sessions.list", json!(params)).map_err(refused)
+        Ok(self.composer.sessions_list(&params))
     }
 
     fn projects_list(&self) -> Result<Value, RpcError> {
-        let config = crate::config::get_config_body(&self.app.state::<crate::config::ProjectIndex>())
-            .map_err(|e| RpcError::new(INTERNAL_ERROR, e))?;
+        let config =
+            crate::config::get_config_body(&self.composer.projects).map_err(|e| RpcError::new(INTERNAL_ERROR, e))?;
         let topics = crate::topics::list_topics(&crate::topics::Store::default_location());
         Ok(projects_tree(&config.spaces, topics))
     }
 
     fn project_icon(&self, params: ProjectIconParams) -> Result<Value, RpcError> {
-        let spaces = crate::unit_home::spaces(&self.app.state::<crate::config::ProjectIndex>());
+        let spaces = crate::unit_home::spaces(&self.composer.projects);
         let image = spaces
             .iter()
             .flat_map(|s| &s.projects)
@@ -1125,14 +1285,14 @@ impl Backend for TauriBackend {
     }
 
     fn session_interrupt(&self, principal: &Principal, params: InterruptParams) -> Result<Value, RpcError> {
-        let host = &self.app.state::<ChatState>().0;
+        let host = &self.chats.host;
         if !host.is_live(&params.id) {
             return Err(RpcError::new(
                 INVALID_PARAMS,
                 format!("no live chat session {}", params.id),
             ));
         }
-        let locked = super::is_locked(&self.states, &self.autopilot, &self.runner, &params.id);
+        let locked = super::is_locked(&self.desk.states, &self.autopilot, &self.runner, &params.id);
         may_steer(principal, locked, self.runner.status().session.as_deref())?;
         host.interrupt(&params.id).map_err(refused)?;
         Ok(json!({ "interrupted": params.id }))
@@ -1163,20 +1323,20 @@ impl Backend for TauriBackend {
     }
 
     fn session_steer(&self, principal: &Principal, params: SteerParams) -> Result<Value, RpcError> {
-        let host = &self.app.state::<ChatState>().0;
-        if !host.is_live(&params.id) {
-            let terminal = self.states.snapshot().contains_key(&params.id) || self.live().contains_key(&params.id);
-            let message = match terminal {
-                true => format!("{} is a terminal session: steer reaches chat sessions only", params.id),
-                false => format!("no live session {}", params.id),
-            };
+        let host = &self.chats.host;
+        let terminal = self.desk.states.snapshot().contains_key(&params.id) || self.live().contains_key(&params.id);
+        if !host.is_live(&params.id) && terminal {
+            let message = format!("{} is a terminal session: steer reaches chat sessions only", params.id);
             return Err(RpcError::new(INVALID_PARAMS, message));
         }
-        let locked = super::is_locked(&self.states, &self.autopilot, &self.runner, &params.id);
+        let locked = super::is_locked(&self.desk.states, &self.autopilot, &self.runner, &params.id);
         may_steer(principal, locked, self.runner.status().session.as_deref())?;
+        if !host.is_live(&params.id) {
+            self.revive(&params.id)?;
+        }
         // A session waiting on a prompt is still inside its turn.
         let mid_turn = matches!(
-            self.states.snapshot().get(&params.id),
+            self.desk.states.snapshot().get(&params.id),
             Some(SessionState::Working | SessionState::NeedsYou)
         );
         let (by, text) = steered(principal, params.text);
@@ -1186,29 +1346,29 @@ impl Backend for TauriBackend {
     }
 
     fn session_wait(&self, params: WaitParams) -> Result<Value, RpcError> {
-        let wait = std::time::Duration::from_secs(params.timeout.unwrap_or(DEFAULT_SESSION_WAIT) + 5);
-        super::daemon_wait("session.wait", json!(params), wait).map_err(refused)
+        self.composer.session_wait(params)
     }
 
     fn session_pending(&self, params: PendingParams) -> Result<Value, RpcError> {
-        let native = self.app.state::<ChatState>().0.waiting(&params.id);
+        let native = self.chats.host.waiting(&params.id);
         Ok(Value::Array(pending_rows(&params.id, self.asks.pending(), native)))
     }
 
     fn session_answer(&self, principal: &Principal, params: SessionAnswerParams) -> Result<Value, RpcError> {
         // A retired autopilot id stands for the current one.
         let spawner = self
+            .desk
             .states
             .spawner_of(&params.session)
             .map(|s| super::current_spawner(&s));
         answers_for(principal, spawner, &params.session)?;
-        let host = &self.app.state::<ChatState>().0;
+        let host = &self.chats.host;
         let waits_on_a_permission = host
             .waiting(&params.session)
             .iter()
             .any(|w| w.id() == params.id && matches!(w, crate::chat::host::Waiting::Permission { .. }));
         if waits_on_a_permission {
-            permission_needs_a_person(principal, |caller| self.states.is_background(caller), &params.id)?;
+            permission_needs_a_person(principal, |caller| self.desk.states.is_background(caller), &params.id)?;
         }
         host.settle(&params.session, &params.id, &params.answer.into_list())
             .map_err(|e| RpcError::new(INVALID_PARAMS, e))?;
@@ -1216,7 +1376,7 @@ impl Backend for TauriBackend {
     }
 
     fn session_info(&self, params: InfoParams) -> Result<Value, RpcError> {
-        let host = &self.app.state::<ChatState>().0;
+        let host = &self.chats.host;
         let levers = host
             .levers(&params.id)
             .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no live chat session {}", params.id)))?;
@@ -1258,7 +1418,7 @@ impl Backend for TauriBackend {
     }
 
     fn review_list(&self) -> Result<Value, RpcError> {
-        to_json(crate::review::inbox_now(&self.app.state::<SessionIndex>()))
+        to_json(crate::review::inbox_now(&self.composer.index))
     }
 
     fn needs_you_list(&self) -> Result<Value, RpcError> {
@@ -1272,7 +1432,7 @@ impl Backend for TauriBackend {
             params.branch.as_deref(),
         );
         if crate::needs_you_log::seen(session, folder, branch) {
-            super::publish_needs_you(&self.app);
+            super::publish_needs_you(&self.desk.ui);
         }
         Ok(json!({}))
     }
@@ -1292,7 +1452,7 @@ impl Backend for TauriBackend {
 
     fn review_mark(&self, params: ReviewMarkParams) -> Result<Value, RpcError> {
         let unit = crate::review::ReviewUnit::Session { id: params.id };
-        crate::review::mark_now(&self.app, &self.app.state::<SessionIndex>(), unit, params.to_ts).map_err(refused)?;
+        crate::review::mark_now(&self.desk.ui, &self.composer.index, unit, params.to_ts).map_err(refused)?;
         Ok(json!({}))
     }
 
@@ -1314,7 +1474,7 @@ impl Backend for TauriBackend {
     fn units_pr(&self, params: UnitsPrParams) -> Result<Value, RpcError> {
         let mut report = crate::forge::commands::unit_statuses(params.project.clone(), params.branches, false)
             .map_err(|e| refused(e.message))?;
-        crate::forge::commands::adopt_pr_bases(&self.app, &params.project, &report.statuses);
+        crate::forge::commands::adopt_pr_bases(&self.desk.ui, &params.project, &report.statuses);
         for status in &mut report.statuses {
             if let Some(pr) = status.pull_request.as_mut() {
                 pr.body = None;
@@ -1335,7 +1495,8 @@ impl Backend for TauriBackend {
                 ));
             }
             let head = crate::worktree::review_head(&project, number).map_err(forge_refused)?;
-            let checkout = crate::worktree::checkout_review(&self.app, &project, &head);
+            let askpass = self.git_askpass()?;
+            let checkout = crate::worktree::checkout_review(&self.desk.ui, &askpass, &project, &head);
             let path = tauri::async_runtime::block_on(checkout).map_err(refused)?;
             let (sha, fork) = (head.sha, head.fork);
             let setup = setup_fields(&project, Path::new(&path), fork, crate::setup::WAIT_CAP);
@@ -1416,7 +1577,7 @@ impl Backend for TauriBackend {
             return Ok(json!({ "files": files, "diff": diff }));
         }
         let end = crate::provenance::checkpoint_end(&cwd, &params.id, last_ts).map_err(refused)?;
-        let sessions = crate::provenance::worktree_sessions(&self.app.state::<SessionIndex>(), &cwd);
+        let sessions = crate::provenance::worktree_sessions(&self.composer.index, &cwd);
         let histories = crate::provenance::Histories::default();
         let why: Vec<Value> = crate::provenance::spans_of(&diff)
             .into_iter()
@@ -1433,7 +1594,7 @@ impl Backend for TauriBackend {
             return Err(refused(format!("{} is not a git worktree", params.folder)));
         }
         let end = crate::provenance::live_end(&params.folder).map_err(refused)?;
-        let sessions = crate::provenance::worktree_sessions(&self.app.state::<SessionIndex>(), &params.folder);
+        let sessions = crate::provenance::worktree_sessions(&self.composer.index, &params.folder);
         let hunks = crate::provenance::hunk_provenance(
             &params.folder,
             &params.file,
@@ -1468,7 +1629,7 @@ impl Backend for TauriBackend {
         if !Path::new(&params.path).is_file() {
             return Err(RpcError::new(INVALID_PARAMS, format!("no file {}", params.path)));
         }
-        self.bridge
+        self.screen
             .request("window.open", json!({ "path": params.path, "line": params.line }))
     }
 
@@ -1488,14 +1649,14 @@ impl Backend for TauriBackend {
         let (agent, account) = match &id {
             Some(id) => (
                 self.agent_of(id),
-                crate::chat::client::Claimed::profile_of(&self.app.state::<ChatState>().0.registry, id),
+                crate::chat::client::Claimed::profile_of(&*self.chats.host.registry, id),
             ),
             None => (me.agent, me.account),
         };
         let quota = match &agent {
-            Some(agent) => self
-                .bridge
-                .request("usage.windows", json!({ "agent": agent, "account": account }))?,
+            Some(agent) => json!(self
+                .quotas
+                .shown(agent, account.as_deref().filter(|a| *a != DEFAULT_PROFILE_ID))),
             None => Value::Null,
         };
         Ok(json!({
@@ -1533,7 +1694,7 @@ impl Backend for TauriBackend {
                 return Err(RpcError::new(INVALID_PARAMS, format!("no autopilot item {item}")));
             }
         }
-        let mirror = self.states.root_background(session);
+        let mirror = self.desk.states.root_background(session);
         let ask = self.asks.create(
             session.to_string(),
             params.question,
@@ -1542,11 +1703,8 @@ impl Backend for TauriBackend {
             mirror,
             params.item,
         );
-        if let Err(e) = self.bridge.request("ask.show", json!(ask)) {
-            self.asks.forget(&ask.id);
-            return Err(e);
-        }
-        self.app.state::<ChatState>().0.publish(
+        self.desk.ui.emit(super::asks::SHOW_EVENT, &ask);
+        self.chats.host.publish(
             session,
             "session.question",
             json!({
@@ -1580,7 +1738,7 @@ impl Backend for TauriBackend {
                 )))
             }
         }
-        let _ = self.bridge.request("ask.close", json!({ "id": params.id }));
+        self.desk.ui.emit(super::asks::CLOSE_EVENT, json!({ "id": params.id }));
         Ok(json!({}))
     }
 
@@ -1591,12 +1749,12 @@ impl Backend for TauriBackend {
             .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("{session} is not a Topic chat")))?;
         let member =
             crate::topics::member_named(topic, &params.member).map_err(|e| RpcError::new(INVALID_PARAMS, e))?;
-        let index = self.app.state::<crate::config::ProjectIndex>().inner().clone();
+        let index = self.composer.projects.clone();
         let promoted = crate::topics::promote_for_chat(
             topic,
             member,
             |question| self.ask_for_worktree(session, question, params.timeout),
-            || crate::topics::commands::promote_settled(&self.app, &index, &topic.id, &member.repo_path),
+            || crate::topics::commands::promote_settled(&self.desk, &index, &topic.id, &member.repo_path),
         )
         .map_err(refused)?;
         let root = promoted
@@ -1607,7 +1765,7 @@ impl Backend for TauriBackend {
         // The sidebar's own promote moves the Topic's tabs itself; this one
         // happened behind its back.
         let from = crate::topics::member_root(member);
-        let _ = self.app.emit(
+        self.desk.ui.emit(
             "topics://promoted",
             json!({ "topic": promoted, "from": from, "to": root }),
         );
@@ -1696,7 +1854,7 @@ impl Backend for TauriBackend {
             base: params.base,
             draft: params.draft.unwrap_or(false),
         };
-        let askpass = self.app.state::<crate::askpass::AskpassState>().0.clone();
+        let askpass = self.git_askpass()?;
         self.gated_outward(
             principal,
             params.project,
@@ -1764,18 +1922,13 @@ impl Backend for TauriBackend {
     fn autopilot_state(&self) -> Result<Value, RpcError> {
         let mut state = super::server::autopilot_state(&self.autopilot, self.asks.holds(), |items| {
             let reported = self
+                .desk
                 .states
                 .snapshot()
                 .into_iter()
                 .filter(|(_, state)| *state != SessionState::Ended)
                 .map(|(id, _)| id);
-            let chats = self
-                .app
-                .state::<ChatState>()
-                .0
-                .live_sessions()
-                .into_iter()
-                .map(|(id, _)| id);
+            let chats = self.chats.host.live_sessions().into_iter().map(|(id, _)| id);
             let prs = crate::autopilot::open_prs(items)
                 .into_iter()
                 .filter_map(|(project, numbers)| {
@@ -1823,7 +1976,7 @@ impl Backend for TauriBackend {
 
     fn autopilot_hold_resolve(&self, params: HoldResolveParams) -> Result<Value, RpcError> {
         let resolved = super::server::hold_resolve(&self.asks, &params.id)?;
-        let _ = self.bridge.request("ask.close", json!({ "id": params.id }));
+        self.desk.ui.emit(super::asks::CLOSE_EVENT, json!({ "id": params.id }));
         Ok(resolved)
     }
 
@@ -1838,11 +1991,7 @@ impl Backend for TauriBackend {
     }
 
     fn device_mint(&self, params: MintParams) -> Result<Value, RpcError> {
-        let (device, credential) = self
-            .devices
-            .mint(&params.name)
-            .map_err(|e| RpcError::new(INTERNAL_ERROR, e))?;
-        Ok(json!({ "id": device.id, "name": device.name, "credential": credential }))
+        self.screen.request("device.mint", json!({ "name": params.name }))
     }
 }
 

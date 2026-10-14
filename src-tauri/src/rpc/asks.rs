@@ -16,6 +16,11 @@ use crate::owned_state::{now_ms, write_atomically};
 
 pub const WITHDRAWN: &str = "Withdrawn";
 
+/// An ask's card, drawn by whichever window is attached; one raised while none
+/// is, it loads with the pending list.
+pub const SHOW_EVENT: &str = "asks://show";
+pub const CLOSE_EVENT: &str = "asks://close";
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Ask {
     pub id: String,

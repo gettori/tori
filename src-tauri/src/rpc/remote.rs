@@ -11,7 +11,7 @@ use super::auth::Credential;
 use super::awake::Awake;
 use super::devices::Devices;
 use super::pairing::{Offer, Pairing};
-use super::server::{serve, Server};
+use super::server::{serve, Dispatch};
 use super::transport::Transport;
 use super::ws::WsTransport;
 use crate::settings::Remote as Config;
@@ -30,14 +30,14 @@ struct Running {
 }
 
 pub struct Remote {
-    server: Arc<Server>,
+    server: Arc<dyn Dispatch>,
     devices: Arc<Devices>,
     pairing: Arc<Pairing>,
     state: Mutex<(Option<Running>, Status)>,
 }
 
 impl Remote {
-    pub fn new(server: Arc<Server>, devices: Arc<Devices>, pairing: Arc<Pairing>) -> Self {
+    pub fn new(server: Arc<dyn Dispatch>, devices: Arc<Devices>, pairing: Arc<Pairing>) -> Self {
         Self {
             server,
             devices,
@@ -283,6 +283,7 @@ mod tests {
     #[test]
     fn off_drops_every_remote_client_and_leaves_the_unix_socket_alone() {
         use crate::rpc::server::tests::StubBackend;
+        use crate::rpc::server::Server;
         use crate::rpc::transport::UnixTransport;
         use serde_json::{json, Value};
         use std::io::{BufRead, BufReader, Write};

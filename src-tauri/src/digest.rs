@@ -6,7 +6,6 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
-use crate::chat::host::ChatState;
 use crate::chat::model::Verdict;
 use crate::needs_you_log::{Event, Kind, LogRead};
 
@@ -110,28 +109,21 @@ pub fn note_limit(
 }
 
 #[tauri::command(async)]
-pub fn digest_list(since: Option<u64>) -> Digest {
-    read(since)
+pub fn digest_list(since: Option<u64>) -> Result<serde_json::Value, String> {
+    crate::rpc::office_call("digest.list", serde_json::json!({ "since": since }))
 }
 
 #[tauri::command]
 pub fn digest_looked(at: u64) {
-    crate::needs_you_log::looked(at);
+    crate::rpc::office_tell("digest.looked", serde_json::json!({ "at": at }));
 }
 
 /// Tori sent a chat its continue after the limit reset, by the setting or by
 /// the banner's button. `resets_at` is the reset it waited for, epoch seconds.
 #[tauri::command]
-pub fn digest_limit_resumed(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, ChatState>,
-    session_id: String,
-    folder: String,
-    resets_at: u64,
-) {
-    if note_limit(&state.0.registry, Kind::LimitResumed, &session_id, &folder, resets_at) {
-        crate::rpc::publish_needs_you(&app);
-    }
+pub fn digest_limit_resumed(session_id: String, folder: String, resets_at: u64) {
+    let resumed = serde_json::json!({ "session_id": session_id, "folder": folder, "resets_at": resets_at });
+    crate::rpc::office_tell("digest.limit_resumed", resumed);
 }
 
 #[cfg(test)]

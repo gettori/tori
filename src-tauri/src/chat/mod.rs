@@ -43,6 +43,7 @@ pub mod mirror;
 pub mod model;
 pub mod ownership;
 pub mod pacing;
+pub mod pick;
 pub mod pulse;
 pub mod queue_store;
 pub mod retired;
