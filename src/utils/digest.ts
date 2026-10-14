@@ -31,18 +31,10 @@ export type Digest = {
   happened: NeedsYouEvent[];
 };
 
-export const AWAY_MS = 4 * 60 * 60 * 1000;
-
-/** Back after long enough away, unfocused or idle, to open the digest unasked. */
-export const cameBack = (lastActive: number, now: number) => now - lastActive >= AWAY_MS;
-
 export const digestCount = (d: Digest | null) => (d ? d.finished.length + d.waiting.length + d.happened.length : 0);
 
 const LIMITS: readonly NeedsYouKind[] = ["limitHit", "limitResumed"];
 export const isLimit = (e: NeedsYouEvent) => LIMITS.includes(e.kind);
-
-/** Before the first composition the blocks still standing are not back yet. */
-export const worthOpening = (d: Digest | null) => !!d?.ready && digestCount(d) > 0;
 
 const VERDICTS: Record<Verdict, string> = {
   verified: "Verified",
@@ -119,35 +111,12 @@ export function hideDigest() {
 
 let started = false;
 
-/** Opens the digest on launch and on coming back, through `open`. */
-export function watchDigest(open: () => void) {
+export function watchDigest() {
   if (started) return;
   started = true;
-  let launching = true;
-  const launched = (d: Digest | null) => {
-    if (!launching || !d?.ready) return;
-    launching = false;
-    if (worthOpening(d)) open();
-  };
-  const openIfWorth = async () => {
-    if (worthOpening(await refreshDigest())) open();
-  };
   void listen("needs-you://changed", () => {
-    if (shown || launching) void refreshDigest().then(launched);
+    if (shown) void refreshDigest();
   });
-  void refreshDigest().then(launched);
-
-  let lastActive = Date.now();
-  const active = () => {
-    const now = Date.now();
-    if (!launching && cameBack(lastActive, now)) void openIfWorth();
-    lastActive = now;
-  };
-  for (const name of ["focus", "pointerdown", "pointermove", "keydown"]) {
-    window.addEventListener(name, active, { capture: true, passive: true });
-  }
-  window.addEventListener("blur", () => {
-    lastActive = Date.now();
-    looked();
-  });
+  void refreshDigest();
+  window.addEventListener("blur", looked);
 }

@@ -1,17 +1,5 @@
 import { describe, it, expect } from "vite-plus/test";
-import {
-  AWAY_MS,
-  cameBack,
-  digestCount,
-  digestTime,
-  finishedParts,
-  happenedParts,
-  worthOpening,
-  type Digest,
-  type Finished,
-} from "./digest";
-
-const HOUR = 60 * 60 * 1000;
+import { digestCount, digestTime, finishedParts, happenedParts, type Digest, type Finished } from "./digest";
 
 const row: Finished = {
   session: "s",
@@ -30,27 +18,6 @@ const row: Finished = {
 function digest(extra: Partial<Digest> = {}): Digest {
   return { since: 0, asOf: 1, ready: true, finished: [row], waiting: [], happened: [], ...extra };
 }
-
-describe("the digest's open rule", () => {
-  it("does not open before the first composition", () => {
-    expect(worthOpening(digest({ ready: false }))).toBe(false);
-  });
-
-  it("does not open when empty", () => {
-    expect(worthOpening(digest({ finished: [] }))).toBe(false);
-    expect(worthOpening(null)).toBe(false);
-  });
-
-  it("opens with rows once ready", () => {
-    expect(worthOpening(digest())).toBe(true);
-  });
-
-  it("counts four hours unfocused or idle as away, and three as not", () => {
-    expect(cameBack(0, 3 * HOUR)).toBe(false);
-    expect(cameBack(0, 5 * HOUR)).toBe(true);
-    expect(cameBack(0, AWAY_MS)).toBe(true);
-  });
-});
 
 describe("finishedParts", () => {
   it("names turns, lines, the verdict and when", () => {

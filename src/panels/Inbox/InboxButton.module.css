@@ -30,6 +30,6 @@
     display: flex;
     flex-direction: column;
     width: min(calc(760px * var(--ui-scale)), calc(100vw - 32px));
-    height: min(calc(620px * var(--ui-scale)), calc(100vh - 80px));
+    height: min(calc(760px * var(--ui-scale)), calc(100vh - 64px));
   }
 }
