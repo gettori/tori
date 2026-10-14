@@ -10,11 +10,9 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::chat::client::Chats;
 use crate::chat::commands::SpawnRequest;
-use crate::chat::host::ChatState;
+use crate::chat::host::ChatHost;
 use crate::chat::model::{
     ChatConfigKind, ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionScope,
 };
@@ -154,8 +152,12 @@ pub fn second_opinion_reviewers() -> Vec<String> {
 }
 
 /// The sessions with a second opinion running now.
-#[tauri::command]
-pub fn second_opinion_running() -> Vec<String> {
+#[tauri::command(async)]
+pub fn second_opinion_running() -> Result<serde_json::Value, String> {
+    crate::rpc::office_call("second_opinion.running", serde_json::json!({}))
+}
+
+pub(crate) fn running_now() -> Vec<String> {
     RUNNING
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -188,7 +190,11 @@ pub struct ReviewView {
 /// Every stored review for sessions in `folder`, each finding marked stale
 /// when its file no longer holds the blob it was reviewed at.
 #[tauri::command(async)]
-pub fn second_opinion_list(index: State<SessionIndex>, folder: String) -> Vec<ReviewView> {
+pub fn second_opinion_list(folder: String) -> Result<serde_json::Value, String> {
+    crate::rpc::office_call("second_opinion.list", serde_json::json!({ "folder": folder }))
+}
+
+pub(crate) fn list_in(index: &SessionIndex, folder: String) -> Vec<ReviewView> {
     let store = {
         let _held = STORE_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         load(&store_path(&folder))
@@ -196,7 +202,7 @@ pub fn second_opinion_list(index: State<SessionIndex>, folder: String) -> Vec<Re
     if store.is_empty() {
         return Vec::new();
     }
-    let sessions = crate::sessions::listed_sessions(&index, Some(&folder));
+    let sessions = crate::sessions::listed_sessions(index, Some(&folder));
     store
         .into_iter()
         .map(|(session, review)| ReviewView {
@@ -229,7 +235,17 @@ fn live_blob(folder: &str, path: &str) -> Option<String> {
 /// Record what happened to findings: sent to the author, or dropped.
 #[tauri::command(async)]
 pub fn second_opinion_set_status(
-    app: AppHandle,
+    folder: String,
+    session: String,
+    ids: Vec<String>,
+    status: Status,
+) -> Result<(), String> {
+    let set = serde_json::json!({ "folder": folder, "session": session, "ids": ids, "status": status });
+    crate::rpc::office_call("second_opinion.set_status", set).map(|_| ())
+}
+
+pub(crate) fn set_status_in(
+    ui: &crate::ui::Ui,
     folder: String,
     session: String,
     ids: Vec<String>,
@@ -242,7 +258,7 @@ pub fn second_opinion_set_status(
             }
         }
     })?;
-    let _ = app.emit(CHANGED_EVENT, &session);
+    ui.emit(CHANGED_EVENT, &session);
     Ok(())
 }
 
@@ -275,7 +291,7 @@ pub(crate) fn opinion_of(folder: &str, session: &str) -> Option<Opinion> {
 
 /// Drops a session's stored review once its work is marked reviewed, since
 /// the findings were about the span the mark just closed.
-pub(crate) fn forget(app: &AppHandle, folder: &str, session: &str) {
+pub(crate) fn forget(ui: &crate::ui::Ui, folder: &str, session: &str) {
     {
         let running = RUNNING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if running.contains(session) {
@@ -291,15 +307,21 @@ pub(crate) fn forget(app: &AppHandle, folder: &str, session: &str) {
             return;
         }
     }
-    let _ = app.emit(CHANGED_EVENT, session);
+    ui.emit(CHANGED_EVENT, session);
 }
 
 /// Start a second opinion on a session's work since its review mark. Returns
 /// once the reviewer is on its way; the findings arrive on `CHANGED_EVENT`.
 #[tauri::command(async)]
-pub fn second_opinion_run(
-    app: AppHandle,
-    index: State<SessionIndex>,
+pub fn second_opinion_run(session: String, agent: String, profile: Option<String>) -> Result<(), String> {
+    let run = serde_json::json!({ "session": session, "agent": agent, "profile": profile });
+    crate::rpc::office_call("second_opinion.run", run).map(|_| ())
+}
+
+pub(crate) fn run_in(
+    ui: &crate::ui::Ui,
+    chats: &std::sync::Arc<crate::chat::serve::Served>,
+    index: &SessionIndex,
     session: String,
     agent: String,
     profile: Option<String>,
@@ -308,7 +330,7 @@ pub fn second_opinion_run(
     if running(&session) {
         return Err("A second opinion is already running for this session.".into());
     }
-    let span = crate::review::span_now(&index, &session)?;
+    let span = crate::review::span_now(index, &session)?;
     if let Some(refusal) = over_ceiling(&span.session.cwd) {
         return Err(refusal);
     }
@@ -323,13 +345,14 @@ pub fn second_opinion_run(
     {
         return Err("A second opinion is already running for this session.".into());
     }
-    let _ = app.emit(CHANGED_EVENT, &session);
+    ui.emit(CHANGED_EVENT, &session);
+    let (ui, chats) = (ui.clone(), chats.clone());
     std::thread::Builder::new()
         .name(format!("second-opinion-{session}"))
         .spawn({
             let session = session.clone();
             move || {
-                let host = &app.state::<ChatState>().0;
+                let host = &chats.host;
                 let review = match drive(host, &agent, profile, &folder, &brief, how) {
                     Ok(reply) => match findings_of(&reply, &subject) {
                         Some(findings) => Review {
@@ -355,7 +378,7 @@ pub fn second_opinion_run(
                     }
                     running.remove(&session);
                 }
-                let _ = app.emit(CHANGED_EVENT, &session);
+                ui.emit(CHANGED_EVENT, &session);
             }
         })
         .map_err(|e| {
@@ -525,7 +548,7 @@ struct Reply {
 }
 
 fn drive(
-    host: &Chats,
+    host: &ChatHost,
     agent: &str,
     profile: Option<String>,
     folder: &str,
@@ -535,7 +558,8 @@ fn drive(
     let id = crate::rpc::runner::new_session_id();
     let (tx, rx) = mpsc::channel::<ChatEvent>();
     let tx = Mutex::new(tx);
-    let spawned = host.spawn_session(
+    let spawned = crate::chat::commands::spawn_session(
+        host,
         SpawnRequest {
             session_id: id.clone(),
             tab_id: format!("second-opinion-{id}"),
@@ -570,7 +594,7 @@ fn drive(
 }
 
 fn review(
-    host: &Chats,
+    host: &ChatHost,
     id: &str,
     folder: &str,
     rx: &Receiver<ChatEvent>,
@@ -638,7 +662,7 @@ impl Watch {
         }
     }
 
-    fn see(&mut self, host: &Chats, id: &str, event: ChatEvent) -> Result<(), String> {
+    fn see(&mut self, host: &ChatHost, id: &str, event: ChatEvent) -> Result<(), String> {
         match event {
             ChatEvent::SessionStarted { permission_mode, .. } => {
                 self.started = true;

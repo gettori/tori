@@ -22,6 +22,7 @@ mod convert;
 mod crash;
 mod credential;
 mod dap;
+mod desk;
 mod digest;
 mod dragboard;
 mod editorconfig;
@@ -72,6 +73,7 @@ mod topic_home;
 mod topics;
 mod trace;
 mod trust;
+mod ui;
 mod unit_home;
 mod update;
 mod usage_probe;
@@ -226,7 +228,7 @@ pub fn run() {
                 let _ = emit_handle.emit("askpass://prompt", ev);
             })) {
                 Ok(inner) => {
-                    credential::publish(inner.sock_path(), inner.credential_token(), inner.everywhere_token());
+                    credential::adopt(inner.sock_path(), inner.credential_token());
                     app.manage(askpass::AskpassState(inner));
                 }
                 Err(e) => eprintln!("tori: askpass bridge failed to start: {e}"),
@@ -238,9 +240,7 @@ pub fn run() {
             // the askpass bridge: without it Tori runs, nothing outside can ask.
             match rpc::start(app.handle().clone()) {
                 Ok(state) => {
-                    let runner = state.runner.clone();
                     app.manage(state);
-                    runner.autostart();
                 }
                 Err(e) => eprintln!("tori: rpc socket failed to start: {e}"),
             }
@@ -643,6 +643,8 @@ pub fn run() {
             rpc::rpc_attention,
             rpc::session_dots,
             rpc::rpc_quota,
+            rpc::sessions_adoptable,
+            rpc::session_adopted,
             rpc::pr_watch_list,
             rpc::pr_watch_start,
             rpc::pr_watch_stop,

@@ -97,6 +97,14 @@ fn capture_login_path() -> Option<String> {
     extract_sentinel(&String::from_utf8_lossy(&out.stdout))
 }
 
+/// A file the bundle ships, as Tauri resolves its resource dir on macOS:
+/// `Contents/Resources` beside the binary's `Contents/MacOS`. `None` outside a bundle.
+pub fn bundled(relative: &str) -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let contents = exe.parent()?.parent()?;
+    Some(contents.join("Resources").join(relative))
+}
+
 static LOGIN_PATH: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
 
 /// The user's login-shell PATH, captured once on first use. `None` when the

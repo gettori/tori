@@ -230,12 +230,11 @@ pub fn issues_source(project_path: String) -> bool {
 }
 
 #[tauri::command(async)]
-pub fn issues_assigned(
-    rpc: tauri::State<crate::rpc::RpcState>,
-    project_path: String,
-    refresh: Option<bool>,
-) -> Result<Vec<IssueRef>, ForgeErrorDto> {
-    let sources = rpc.autopilot.contract(&project_path).unwrap_or_default().issues;
+pub fn issues_assigned(project_path: String, refresh: Option<bool>) -> Result<Vec<IssueRef>, ForgeErrorDto> {
+    let contracts: std::collections::BTreeMap<String, crate::autopilot::Contract> =
+        crate::rpc::office_call_as("autopilot.contracts", serde_json::json!({}))
+            .map_err(|message| crate::forge::ForgeError::Transport { message })?;
+    let sources = contracts.get(&project_path).cloned().unwrap_or_default().issues;
     Ok(assigned(&project_path, &sources, refresh.unwrap_or(false))?)
 }
 

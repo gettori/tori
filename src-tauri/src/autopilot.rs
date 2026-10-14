@@ -619,6 +619,7 @@ pub fn plan_pickup(
     (changed, held)
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct RuleReview {
     pub number: u64,
     pub url: String,

@@ -22,7 +22,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Mutex, OnceLock, PoisonError};
 use std::time::SystemTime;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub const CHANGED_EVENT: &str = "radar://changed";
 
@@ -43,7 +43,7 @@ impl Unit {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Answer {
     pub path: String,
     pub branch: String,
@@ -52,7 +52,7 @@ pub struct Answer {
 
 /// One session's half of a file two worktrees fight over. Every overlap is
 /// listed from both sides, so a reader filters by its own session or folder.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Overlap {
     pub session: String,
     pub path: String,
@@ -64,7 +64,7 @@ pub struct Overlap {
     pub other_branch: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Listing {
     pub enabled: bool,
     pub units: Vec<Answer>,
@@ -159,6 +159,12 @@ fn radar() -> std::sync::MutexGuard<'static, Radar> {
         .unwrap_or_else(PoisonError::into_inner)
 }
 
+// The radar runs in the daemon, and the window's reads and switches reach it
+// over the link.
+fn in_window() -> bool {
+    !crate::rpc::in_daemon()
+}
+
 /// Whether the radar is on, re-read only when settings.json moves: every
 /// branch row's sync asks this.
 pub fn enabled() -> bool {
@@ -237,6 +243,9 @@ fn send(job: Job) {
 /// Something moved refs across `path`'s repository: a fetch, a base
 /// re-pointed. Every watched unit sharing its common dir is re-asked.
 pub fn moved(path: &str) {
+    if in_window() {
+        return crate::rpc::office_tell("radar.moved", serde_json::json!({ "path": path }));
+    }
     if enabled() {
         send(Job::Moved(path.to_string()));
     }
@@ -244,9 +253,6 @@ pub fn moved(path: &str) {
 
 /// A turn ended in `folder`, so its branch may have a new commit.
 pub fn committed(folder: &str) {
-    if crate::rpc::tell_window("radar_committed", serde_json::json!({ "folder": folder })) {
-        return;
-    }
     if enabled() {
         send(Job::Committed(folder.to_string()));
     }
@@ -255,7 +261,7 @@ pub fn committed(folder: &str) {
 /// A session started, ended or changed state, so the set of live sides may
 /// have moved.
 pub fn sessions_changed() {
-    if enabled() {
+    if !in_window() && enabled() {
         send(Job::Sessions);
     }
 }
@@ -263,6 +269,11 @@ pub fn sessions_changed() {
 /// A row's answer, computed by the read that drew it. Kept so the next sweep
 /// can tell a change from a repeat, and never announced: the reader has it.
 pub fn note_read(path: &str, branch: &str, conflicts: Option<Vec<String>>, local_base: bool) {
+    if in_window() {
+        let read =
+            serde_json::json!({ "path": path, "branch": branch, "conflicts": conflicts, "local_base": local_base });
+        return crate::rpc::office_tell("radar.note_read", read);
+    }
     let unit = Unit {
         path: path.to_string(),
         branch: branch.to_string(),
@@ -279,6 +290,10 @@ pub fn note_read(path: &str, branch: &str, conflicts: Option<Vec<String>>, local
 /// The rows the sidebar draws now, whole, so a row that left stops being swept.
 #[tauri::command]
 pub fn radar_set_drawn(units: Vec<crate::git::SyncUnit>) {
+    crate::rpc::office_tell("radar.set_drawn", serde_json::json!({ "units": units }));
+}
+
+pub fn set_drawn(units: Vec<crate::git::SyncUnit>) {
     let next: HashSet<Unit> = units
         .into_iter()
         .map(|u| Unit {
@@ -298,6 +313,9 @@ pub fn radar_set_drawn(units: Vec<crate::git::SyncUnit>) {
 /// The switch moved, by the panel or by hand. Off forgets every answer and
 /// tells the readers so; on sweeps everything watched.
 pub fn settings_changed() {
+    if in_window() {
+        return crate::rpc::office_tell("radar.settings_changed", serde_json::json!({}));
+    }
     let now = enabled();
     let cleared = {
         let mut radar = radar();
@@ -336,7 +354,7 @@ fn switched_off(answers: &mut HashMap<Unit, Option<Vec<String>>>) -> Vec<Answer>
 }
 
 /// What the radar holds against one session, for the Inbox score.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionSignals {
     /// Files a merge of the base into the session's folder would conflict on.
     pub conflicts: u32,
@@ -345,6 +363,10 @@ pub struct SessionSignals {
 }
 
 pub fn session_signals(session: &str, folder: &str) -> SessionSignals {
+    if in_window() {
+        let asked = serde_json::json!({ "session": session, "folder": folder });
+        return crate::rpc::office_call_as("radar.signals", asked).unwrap_or_default();
+    }
     let (held, overlaps) = {
         let radar = radar();
         let held = radar.answers.get(&Unit::checked_out(folder.to_string())).cloned();
@@ -419,9 +441,9 @@ pub fn list() -> Listing {
 }
 
 /// The same listing for the webview, which is not a socket client.
-#[tauri::command]
-pub fn radar_list() -> Listing {
-    list()
+#[tauri::command(async)]
+pub fn radar_list() -> Result<Listing, String> {
+    crate::rpc::office_call_as("radar.list", serde_json::json!({}))
 }
 
 fn listing(enabled: bool, answers: &HashMap<Unit, Option<Vec<String>>>, overlaps: &[Overlap]) -> Listing {

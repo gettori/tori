@@ -29,6 +29,7 @@ pub trait Sources: Send + Sync {
     fn levers(&self, id: &str) -> Option<Levers>;
     fn question(&self, id: &str) -> Value;
     fn tell(&self, method: &'static str, params: Value);
+    fn heard(&self, id: &str, event: &Value);
 }
 
 const STALE_PROBE: Duration = Duration::from_secs(5);
@@ -185,8 +186,7 @@ impl Composer {
 
     fn publish_session(&self, id: &str, event: Value) {
         super::pr_wake::session_event(id, &event);
-        self.sources
-            .tell("session.event", json!({ "id": id, "event": event.clone() }));
+        self.sources.heard(id, &event);
         self.hub.publish_session(id, event);
     }
 
@@ -318,6 +318,7 @@ impl Composer {
         let moved = self.states.replace(reports, place_of, alive);
         if !moved.is_empty() {
             self.sources.tell("states", json!(self.states.shown()));
+            crate::radar::sessions_changed();
         }
         for event in moved {
             let id = event["id"].as_str().unwrap_or_default().to_string();
