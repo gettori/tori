@@ -16,12 +16,11 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
-use super::auth::{Caller, Principal};
+use super::auth::Caller;
 use super::daemon::{build_id, read_line, wait_released, Paths, MAX_LINK_LINE, PROTOCOL, SLOW_ON_LINK, WINDOW_METHOD};
-use super::frame::{to_line, Notification, Request, Response, RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
+use super::frame::{to_line, Notification, Response, RpcError, INTERNAL_ERROR, REFUSED};
 use super::hub::Channel;
 use super::outbox::{Outbox, OUTBOX_BYTES};
-use super::server::Server;
 
 const MINT_WAIT: Duration = Duration::from_secs(3);
 const HANDSHAKE_WAIT: Duration = Duration::from_secs(5);
@@ -66,21 +65,17 @@ struct Envelope<'a> {
 
 pub type OnEvent = Box<dyn Fn(&str, &Value) + Send + Sync>;
 
-type Answer = Arc<dyn Fn(&Principal, &Request) -> Result<Value, RpcError> + Send + Sync>;
 type Screened = Arc<dyn Fn(&str, Value) -> Result<Value, RpcError> + Send + Sync>;
 
 pub struct Answers {
     pub hub: Arc<super::hub::Hub>,
-    pub call: Answer,
     pub screen: Screened,
 }
 
-impl From<Arc<Server>> for Answers {
-    fn from(server: Arc<Server>) -> Self {
-        let hub = server.hub.clone();
+impl Default for Answers {
+    fn default() -> Self {
         Self {
-            hub,
-            call: Arc::new(move |principal, req| server.call(principal, req)),
+            hub: Arc::default(),
             screen: Arc::new(|method, _| Err(RpcError::new(REFUSED, format!("no screen for {method}")))),
         }
     }
@@ -117,14 +112,14 @@ pub struct Link {
 
 impl Link {
     pub fn start(
-        answers: impl Into<Answers>,
+        answers: Answers,
         paths: Paths,
         spawn: bool,
         on_status: Box<dyn Fn(&Status) + Send + Sync>,
         on_event: OnEvent,
     ) -> Arc<Self> {
         let link = Arc::new(Self {
-            answers: answers.into(),
+            answers,
             paths,
             spawn,
             instance: format!("{}-{}", std::process::id(), crate::chat::approval::random_token()),
@@ -355,21 +350,12 @@ impl Link {
             };
             let id = head.id.clone().unwrap_or(Value::Null);
             match head.method.as_deref() {
-                Some(method @ ("call" | "screen")) => {
-                    let (call, screen, conn, params) = (
-                        self.answers.call.clone(),
-                        self.answers.screen.clone(),
-                        conn.clone(),
-                        params(),
-                    );
-                    let screened = method == "screen";
+                Some("screen") => {
+                    let (screen, conn, params) = (self.answers.screen.clone(), conn.clone(), params());
                     thread::spawn(move || {
                         // Answered either way: the caller waits on this reply,
                         // not on the thread, and would wait until the link drops.
-                        let run = || match screened {
-                            true => screen(params["method"].as_str().unwrap_or_default(), params["params"].clone()),
-                            false => answer(call.as_ref(), &params),
-                        };
+                        let run = || screen(params["method"].as_str().unwrap_or_default(), params["params"].clone());
                         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(run))
                             .unwrap_or_else(|_| Err(RpcError::new(INTERNAL_ERROR, "the window failed this call")));
                         conn.out.push(to_line(&Response::reply(id, outcome)));
@@ -560,19 +546,4 @@ pub fn open_attach(
     }
     stream.set_read_timeout(None).map_err(|e| e.to_string())?;
     Ok((stream, reader))
-}
-
-fn answer(
-    call: &(dyn Fn(&Principal, &Request) -> Result<Value, RpcError> + Send + Sync),
-    params: &Value,
-) -> Result<Value, RpcError> {
-    let principal: Principal = serde_json::from_value(params["principal"].clone())
-        .map_err(|e| RpcError::new(INVALID_PARAMS, format!("principal: {e}")))?;
-    let req = Request {
-        jsonrpc: "2.0".into(),
-        id: None,
-        method: params["method"].as_str().unwrap_or_default().to_string(),
-        params: params["params"].clone(),
-    };
-    call(&principal, &req)
 }
