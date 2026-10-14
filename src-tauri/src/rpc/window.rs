@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 
 use super::auth::{Caller, Principal};
-use super::daemon::{build_id, read_line, wait_released, Paths, MAX_LINK_LINE, PROTOCOL, WINDOW_METHOD};
+use super::daemon::{build_id, read_line, wait_released, Paths, MAX_LINK_LINE, PROTOCOL, SLOW_ON_LINK, WINDOW_METHOD};
 use super::frame::{to_line, Notification, Request, Response, RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::hub::Channel;
 use super::outbox::{Outbox, OUTBOX_BYTES};
@@ -306,7 +306,16 @@ impl Link {
                     let ids: HashSet<String> = serde_json::from_value(params()).unwrap_or_default();
                     self.server.hub.set_remote_chats(ids);
                 }
-                Some(event) => (self.on_event)(event, &params()),
+                Some(event) => {
+                    let began = Instant::now();
+                    (self.on_event)(event, &params());
+                    if began.elapsed() >= SLOW_ON_LINK {
+                        eprintln!(
+                            "tori: the daemon's {event} held the link for {} ms",
+                            began.elapsed().as_millis()
+                        );
+                    }
+                }
                 None => {
                     let Some(id) = head.id.as_ref().and_then(Value::as_u64) else {
                         continue;
@@ -366,15 +375,13 @@ impl Link {
     pub fn request(&self, method: &str, params: Value, wait: Duration) -> Result<Value, RpcError> {
         let (tx, rx) = sync_channel(1);
         self.send(method, params, wait, Waiter::Value(tx))?;
-        rx.recv_timeout(wait)
-            .unwrap_or_else(|_| Err(RpcError::new(REFUSED, "the daemon did not answer")))
+        rx.recv_timeout(wait).unwrap_or_else(|_| Err(unanswered(method, wait)))
     }
 
     pub fn request_raw(&self, method: &str, params: Value, wait: Duration) -> Result<String, RpcError> {
         let (tx, rx) = sync_channel(1);
         self.send(method, params, wait, Waiter::Raw(tx))?;
-        rx.recv_timeout(wait)
-            .unwrap_or_else(|_| Err(RpcError::new(REFUSED, "the daemon did not answer")))
+        rx.recv_timeout(wait).unwrap_or_else(|_| Err(unanswered(method, wait)))
     }
 
     fn send(&self, method: &str, params: Value, wait: Duration, waiter: Waiter) -> Result<(), RpcError> {
@@ -430,24 +437,7 @@ impl Link {
             cols,
             rows,
         };
-        let frame = json!({ "jsonrpc": "2.0", "id": 0, "method": crate::pty::wire::ATTACH_METHOD, "params": params });
-        let mut stream = UnixStream::connect(&self.paths.sock).map_err(|e| e.to_string())?;
-        stream
-            .write_all(to_line(&frame).as_bytes())
-            .map_err(|e| e.to_string())?;
-        stream
-            .set_read_timeout(Some(HANDSHAKE_WAIT))
-            .map_err(|e| e.to_string())?;
-        let mut reader = BufReader::new(stream.try_clone().map_err(|e| e.to_string())?);
-        let reply = read_line(&mut reader, MAX_LINK_LINE)
-            .map_err(|e| e.to_string())?
-            .ok_or("the daemon closed the attach stream")?;
-        stream.set_read_timeout(None).map_err(|e| e.to_string())?;
-        let reply: Value = serde_json::from_str(&reply).map_err(|e| e.to_string())?;
-        if let Some(message) = reply["error"]["message"].as_str() {
-            return Err(message.to_string());
-        }
-        Ok((stream, reader))
+        open_attach(&sock, &params)
     }
 
     /// At app exit. Leaves the daemon running.
@@ -469,6 +459,38 @@ impl Link {
 enum Attach {
     Restarting,
     Failed(String),
+}
+
+fn unanswered(method: &str, wait: Duration) -> RpcError {
+    eprintln!(
+        "tori: the daemon did not answer {method} within {} ms",
+        wait.as_millis()
+    );
+    RpcError::new(REFUSED, "the daemon did not answer")
+}
+
+pub fn open_attach(
+    sock: &str,
+    params: &crate::pty::wire::AttachParams,
+) -> Result<(UnixStream, BufReader<UnixStream>), String> {
+    let frame = json!({ "jsonrpc": "2.0", "id": 0, "method": crate::pty::wire::ATTACH_METHOD, "params": params });
+    let mut stream = UnixStream::connect(sock).map_err(|e| e.to_string())?;
+    stream
+        .write_all(to_line(&frame).as_bytes())
+        .map_err(|e| e.to_string())?;
+    stream
+        .set_read_timeout(Some(HANDSHAKE_WAIT))
+        .map_err(|e| e.to_string())?;
+    let mut reader = BufReader::new(stream.try_clone().map_err(|e| e.to_string())?);
+    let reply = read_line(&mut reader, MAX_LINK_LINE)
+        .map_err(|e| e.to_string())?
+        .ok_or("the daemon closed the attach stream")?;
+    let reply: Value = serde_json::from_str(&reply).map_err(|e| e.to_string())?;
+    if let Some(message) = reply["error"]["message"].as_str() {
+        return Err(message.to_string());
+    }
+    stream.set_read_timeout(None).map_err(|e| e.to_string())?;
+    Ok((stream, reader))
 }
 
 fn answer(server: &Server, params: &Value) -> Result<Value, RpcError> {

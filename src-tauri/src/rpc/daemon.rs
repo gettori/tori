@@ -44,6 +44,9 @@ pub const PROTOCOL: u32 = 1;
 /// one peer here that is already trusted with everything.
 pub const MAX_LINK_LINE: usize = 1024 * 1024 * 1024;
 
+/// A link call past this is logged: everything behind it on the link waits.
+pub const SLOW_ON_LINK: std::time::Duration = std::time::Duration::from_secs(1);
+
 const NO_WINDOW: &str = "no Tori window is open to answer this";
 
 /// Where one config dir's daemon lives. Everything is derived, so the app, the
@@ -396,7 +399,11 @@ impl Daemon {
         let id = first.id.clone().unwrap_or(Value::Null);
         let admitted = serde_json::from_value::<AttachParams>(first.params)
             .map_err(|e| RpcError::new(INVALID_PARAMS, e.to_string()))
-            .and_then(|params| self.local_only(&params.token, "attach to a tab").map(|()| params));
+            .and_then(|params| self.local_only(&params.token, "attach to a tab").map(|()| params))
+            .and_then(|mut params| {
+                params.tab = self.attach_target(&params.tab)?;
+                Ok(params)
+            });
         match admitted {
             Ok(params) => self.ptys.attach(id, &params, stream, reader),
             Err(e) => {
@@ -404,6 +411,15 @@ impl Daemon {
                 stream.close();
             }
         }
+    }
+
+    fn attach_target(&self, named: &str) -> Result<String, RpcError> {
+        if self.ptys.list().iter().any(|t| t.tab == named) {
+            return Ok(named.to_string());
+        }
+        self.composer
+            .tab_of(named)
+            .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no terminal tab or terminal session {named}")))
     }
 
     fn serve_window(
@@ -516,7 +532,15 @@ impl Daemon {
             });
             return;
         }
+        let began = std::time::Instant::now();
         let outcome = self.window_request(&req);
+        if began.elapsed() >= SLOW_ON_LINK {
+            eprintln!(
+                "tori daemon: {} held the window link for {} ms",
+                req.method,
+                began.elapsed().as_millis()
+            );
+        }
         if let Some(id) = req.id {
             window.out.push(to_line(&Response::reply(id, outcome)));
         }
@@ -1211,6 +1235,33 @@ mod tests {
         crate::pty::wire::write_frame(&mut stream, crate::pty::wire::DATA, b"go\n").unwrap();
         let (live, exit) = drain(&mut reader, |_| false);
         assert!(contains(&live, "late:go"), "{:?}", String::from_utf8_lossy(&live));
+        assert_eq!(exit, Some(Some(0)));
+        window.send(json!({ "jsonrpc": "2.0", "id": 9, "method": "shutdown" }));
+        daemon.wait();
+    }
+
+    #[test]
+    fn an_attach_by_session_id_reaches_the_tab_running_it() {
+        let paths = Paths::under(&config("attach-session"));
+        let daemon = started(&paths);
+        let mut window = window(&paths);
+        spawn_command(&mut window, "t1", "/bin/sh", &["-c", "read x; printf \"got:$x\""]);
+        let (_, _, unknown) = attach(&paths, &token(&paths), "s1", false);
+        assert_eq!(unknown["error"]["message"], "no terminal tab or terminal session s1");
+        let tab = json!({ "id": "t1", "session": "s1", "live": true, "workspace": "/tmp", "agent": "claude" });
+        window.call(5, "facts", json!({ "tabs": [tab] }));
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let (mut stream, mut reader) = loop {
+            let (stream, reader, reply) = attach(&paths, &token(&paths), "s1", false);
+            if reply["error"].is_null() {
+                break (stream, reader);
+            }
+            assert!(Instant::now() < deadline, "{reply}");
+            thread::sleep(Duration::from_millis(50));
+        };
+        crate::pty::wire::write_frame(&mut stream, crate::pty::wire::DATA, b"go\n").unwrap();
+        let (live, exit) = drain(&mut reader, |_| false);
+        assert!(contains(&live, "got:go"), "{:?}", String::from_utf8_lossy(&live));
         assert_eq!(exit, Some(Some(0)));
         window.send(json!({ "jsonrpc": "2.0", "id": 9, "method": "shutdown" }));
         daemon.wait();
