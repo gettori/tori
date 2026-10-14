@@ -237,7 +237,7 @@
      the right one. They were centred while the gear held the left track; with
      nothing there to balance, centring would leave the first space floating in
      a gap. A squeeze comes out of the tiles, which scroll. */
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: calc(6px * var(--ui-scale));
   /* Right on `--tree-gutter`, like the head and the tree above it, so the dock
@@ -379,7 +379,7 @@
   border-color: var(--border-default);
 }
 
-.spaceBar.rail .inboxBtn {
+.spaceBar.rail .dockBtn {
   margin-top: auto;
 }
 

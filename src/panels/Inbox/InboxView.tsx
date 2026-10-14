@@ -1,199 +1,431 @@
-import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
-import Button from "../../components/Button/Button";
+import { For, Show, createEffect, createSignal, onCleanup, onMount, type JSX } from "solid-js";
+import {
+  ArrowRight,
+  Check,
+  CircleAlert,
+  CircleCheck,
+  CirclePlay,
+  CircleX,
+  ClipboardCheck,
+  Clock,
+  GitMerge,
+  GitPullRequest,
+  Hand,
+  Hourglass,
+  LoaderCircle,
+  MessageSquareText,
+  PiggyBank,
+  SquareTerminal,
+  UserRoundSearch,
+  type LucideIcon,
+} from "lucide-solid";
+import Icon from "../../components/Icon/Icon";
+import IconButton from "../../components/IconButton/IconButton";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
-import SegmentedControl from "../../components/SegmentedControl/SegmentedControl";
 import {
   digest,
   digestCount,
   digestTime,
-  finishedParts,
-  happenedParts,
   hideDigest,
   isLimit,
   showDigest,
+  verdictLabel,
   type Finished,
 } from "../../utils/digest";
 import { emitWith, NAVIGATE, type NavTarget } from "../../utils/events";
 import { needsYouCount, needsYouEvents, openEvent } from "../../utils/needsYouInbox";
-import { byProjectNewestFirst, eventTime, kindLabel, type NeedsYouEvent } from "../../utils/needsYouSignals";
 import {
-  askedTab,
-  markReviewed,
-  openItem,
-  reviewItems,
-  setAskedTab,
-  setInboxOpen,
-  type InboxTab,
-} from "../../utils/reviewInbox";
+  byProjectNewestFirst,
+  eventTime,
+  kindLabel,
+  type NeedsYouEvent,
+  type NeedsYouKind,
+} from "../../utils/needsYouSignals";
+import { askedTab, markReviewed, openItem, reviewItems, setAskedTab, type InboxTab } from "../../utils/reviewInbox";
 import { opinionLabel, runSecondOpinion, secondOpinionRunning } from "../../utils/secondOpinion";
-import { signalLabel, type ReviewItem } from "../../utils/reviewSignals";
+import { signalLabel, type ReviewItem, type SecondOpinion, type SignalKind } from "../../utils/reviewSignals";
+import s from "../Settings/Settings.module.css";
 import styles from "./InboxView.module.css";
+
+type Tone = "attention" | "danger" | "success" | "progress" | "muted";
 
 const folderName = (path: string) => path.split("/").filter(Boolean).pop() ?? path;
 
-function Row(props: { item: ReviewItem }) {
-  const opinionRunning = () =>
-    props.item.secondOpinion?.state === "running" || secondOpinionRunning(props.item.unit.id);
+const KINDS: Record<NeedsYouKind, { icon: LucideIcon; tone: Tone }> = {
+  permission: { icon: Hand, tone: "attention" },
+  question: { icon: Hand, tone: "attention" },
+  workerQuestion: { icon: Hand, tone: "attention" },
+  budget: { icon: PiggyBank, tone: "attention" },
+  waiting: { icon: SquareTerminal, tone: "attention" },
+  done: { icon: CircleCheck, tone: "muted" },
+  pullRequest: { icon: GitPullRequest, tone: "danger" },
+  prOpened: { icon: GitPullRequest, tone: "muted" },
+  prMerged: { icon: GitMerge, tone: "progress" },
+  limitHit: { icon: Hourglass, tone: "attention" },
+  limitResumed: { icon: CirclePlay, tone: "muted" },
+};
+
+const TIERS = [
+  { label: "High risk", range: "60 and up", min: 60, tone: "danger" },
+  { label: "Worth a look", range: "25 to 59", min: 25, tone: "attention" },
+  { label: "Small and clean", range: "under 25", min: -Infinity, tone: "muted" },
+] as const;
+
+const tierOf = (score: number) => TIERS.find((t) => score >= t.min)!;
+
+const DANGERS: readonly SignalKind[] = ["secretRead", "failed", "deletedTests", "sensitivePath"];
+const ATTENTION: readonly SignalKind[] = ["blindEdit", "unverified", "dependencies", "outsideScope", "sharedFile"];
+
+function Meta(props: { parts: JSX.Element[] }) {
   return (
-    <li class={styles.row}>
-      <button type="button" class={styles.open} onClick={() => openItem(props.item)}>
-        <span class={styles.score} aria-label={`Risk ${props.item.score}`}>
-          {props.item.score}
-        </span>
-        <span class={styles.body}>
-          <span class={styles.title}>{props.item.title || props.item.unit.id.slice(0, 8)}</span>
-          <span class={styles.where}>
-            {folderName(props.item.folder)} · {props.item.agent}
-          </span>
-          <Show when={props.item.summary}>{(summary) => <span class={styles.summary}>{summary()}</span>}</Show>
-          <span class={styles.signals}>
-            <For each={props.item.signals}>
-              {(signal) => (
-                <span class={styles.signal} data-kind={signal.kind}>
-                  {signalLabel(signal)}
-                </span>
-              )}
-            </For>
-            <Show when={props.item.secondOpinion}>
-              {(opinion) => {
-                const error = () => {
-                  const o = opinion();
-                  return o.state === "failed" ? o.error : undefined;
-                };
-                return (
-                  <span class={styles.signal} data-kind={error() ? "failed" : "secondOpinion"}>
-                    {opinionLabel(opinion())}
-                  </span>
-                );
-              }}
+    <span class={styles.meta}>
+      <For each={props.parts}>
+        {(part, i) => (
+          <>
+            <Show when={i() > 0}>
+              <span class={styles.sep}> · </span>
             </Show>
-          </span>
-          <Show when={props.item.secondOpinion?.state === "failed" && props.item.secondOpinion.error}>
-            {(error) => <span class={styles.summary}>{error()}</span>}
-          </Show>
-        </span>
-      </button>
-      <Button
-        size="sm"
-        class={styles.mark}
-        disabled={opinionRunning()}
-        onClick={() =>
-          void runSecondOpinion({ id: props.item.unit.id, cwd: props.item.folder, agent: props.item.agent })
-        }
-      >
-        Second opinion
-      </Button>
-      <Button
-        size="sm"
-        class={styles.mark}
-        disabled={props.item.running}
-        tooltip={props.item.running ? "Still working. Mark it once its turn ends." : undefined}
-        tooltipWhenDisabled
-        onClick={() => void markReviewed(props.item)}
-      >
-        Mark reviewed
-      </Button>
-    </li>
+            {part}
+          </>
+        )}
+      </For>
+    </span>
   );
 }
 
-function EventRow(props: { event: NeedsYouEvent }) {
+// A tier is marked by a square in its tone and keeps a quiet label; any other
+// tone colours the label itself.
+function GroupHead(props: { label: string; count: number; range?: string; tone?: Tone; mark?: boolean }) {
   return (
-    <li class={styles.row} classList={{ [styles.answered]: props.event.resolvedAt !== null }}>
-      <button type="button" class={styles.open} onClick={() => openEvent(props.event)}>
-        <span class={styles.body}>
-          <span class={styles.title}>{props.event.title || folderName(props.event.folder)}</span>
-          <span class={styles.where}>
-            <span class={styles.kind} data-kind={props.event.kind}>
-              {kindLabel(props.event.kind)}
-            </span>{" "}
-            · {eventTime(props.event.ts)}
-            <Show when={props.event.resolvedAt !== null}> · answered</Show>
-          </span>
-        </span>
-      </button>
+    <h3 class={`${s.sectionTitle} ${styles.groupHead}`} data-tone={props.mark ? undefined : props.tone}>
+      <Show when={props.mark}>
+        <span class={styles.tierMark} data-tone={props.tone} />
+      </Show>
+      <span>{props.label}</span>
+      <span class={styles.groupCount}>{props.count}</span>
+      <Show when={props.range}>
+        <span class={styles.groupCount}>{props.range}</span>
+      </Show>
+      <span class={s.sectionRule} />
+    </h3>
+  );
+}
+
+function Group(props: {
+  label: string;
+  heading?: string;
+  count: number;
+  tone?: Tone;
+  range?: string;
+  mark?: boolean;
+  waiting?: boolean;
+  children: JSX.Element;
+}) {
+  return (
+    <section class={styles.group} aria-label={props.label} data-waiting={props.waiting || undefined}>
+      <GroupHead
+        label={props.heading ?? props.label}
+        count={props.count}
+        range={props.range}
+        tone={props.tone}
+        mark={props.mark}
+      />
+      <ul class={styles.list}>{props.children}</ul>
+    </section>
+  );
+}
+
+function EventLine(props: {
+  icon: LucideIcon;
+  tone: Tone;
+  name: string;
+  meta: JSX.Element[];
+  time: string;
+  onOpen: () => void;
+}) {
+  return (
+    <button type="button" class={styles.event} onClick={() => props.onOpen()}>
+      <span class={styles.kindIcon} data-tone={props.tone}>
+        <Icon icon={props.icon} />
+      </span>
+      <span class={styles.text}>
+        <span class={styles.title}>{props.name}</span>
+        <Meta parts={props.meta} />
+      </span>
+      <span class={styles.time}>{props.time}</span>
+    </button>
+  );
+}
+
+function EventRow(props: { event: NeedsYouEvent; withProject?: boolean; time?: string }) {
+  const answered = () => props.event.resolvedAt !== null;
+  const kind = () => KINDS[props.event.kind];
+  return (
+    <li classList={{ [styles.answered]: answered() }}>
+      <EventLine
+        icon={answered() ? Check : kind().icon}
+        tone={answered() ? "muted" : kind().tone}
+        name={props.event.title || folderName(props.event.folder)}
+        meta={[
+          ...(props.withProject ? [props.event.project || folderName(props.event.folder)] : []),
+          <span data-tone={answered() ? undefined : kind().tone}>{kindLabel(props.event.kind)}</span>,
+          ...(answered() ? ["answered"] : []),
+        ]}
+        time={props.time ?? eventTime(props.event.ts)}
+        onOpen={() => openEvent(props.event)}
+      />
     </li>
   );
 }
 
 function FinishedRow(props: { row: Finished }) {
+  const verdict = () => props.row.verdict;
+  const look = (): { icon: LucideIcon; tone: Tone } =>
+    verdict() === "verified"
+      ? { icon: CircleCheck, tone: "success" }
+      : verdict() === "failed"
+        ? { icon: CircleX, tone: "danger" }
+        : { icon: CircleCheck, tone: "muted" };
   return (
-    <li class={styles.row}>
-      <button
-        type="button"
-        class={styles.open}
-        onClick={() => emitWith<NavTarget>(NAVIGATE, { folder: props.row.folder, session: props.row.session })}
-      >
-        <span class={styles.body}>
-          <span class={styles.title}>{props.row.title || folderName(props.row.folder)}</span>
-          <span class={styles.where}>
-            {props.row.project || folderName(props.row.folder)} · {finishedParts(props.row).join(" · ")}
-          </span>
-        </span>
-      </button>
+    <li>
+      <EventLine
+        icon={look().icon}
+        tone={look().tone}
+        name={props.row.title || folderName(props.row.folder)}
+        meta={[
+          props.row.project || folderName(props.row.folder),
+          props.row.turns === 1 ? "1 turn" : `${props.row.turns} turns`,
+          ...(props.row.lines
+            ? [
+                <span>
+                  <span data-tone="success">+{props.row.lines.added}</span>{" "}
+                  <span data-tone="danger">-{props.row.lines.removed}</span>
+                </span>,
+              ]
+            : []),
+          ...(verdict() ? [<span data-tone={look().tone}>{verdictLabel(verdict()!)}</span>] : []),
+        ]}
+        time={digestTime(props.row.lastTs)}
+        onOpen={() => emitWith<NavTarget>(NAVIGATE, { folder: props.row.folder, session: props.row.session })}
+      />
     </li>
   );
 }
 
 // A pull request row opens its worktree, a limit row the chat that stopped.
 function HappenedRow(props: { event: NeedsYouEvent }) {
+  const kind = () => KINDS[props.event.kind];
   const target = (): NavTarget =>
     props.event.session ? { folder: props.event.folder, session: props.event.session } : { folder: props.event.folder };
   return (
-    <li class={styles.row}>
-      <button type="button" class={styles.open} onClick={() => emitWith<NavTarget>(NAVIGATE, target())}>
-        <span class={styles.body}>
-          <span class={styles.title}>{props.event.title || folderName(props.event.folder)}</span>
-          <span class={styles.where}>
-            {[props.event.project || folderName(props.event.folder), ...happenedParts(props.event)].join(" · ")}
-          </span>
-        </span>
-      </button>
+    <li>
+      <EventLine
+        icon={kind().icon}
+        tone={kind().tone}
+        name={props.event.title || folderName(props.event.folder)}
+        meta={[
+          props.event.project || folderName(props.event.folder),
+          <span data-tone={kind().tone}>{kindLabel(props.event.kind)}</span>,
+        ]}
+        time={digestTime(props.event.ts)}
+        onOpen={() => emitWith<NavTarget>(NAVIGATE, target())}
+      />
     </li>
   );
 }
 
-function HappenedSection(props: { label: string; events: NeedsYouEvent[] }) {
+function Empty(props: { text: string; onReview?: () => void }) {
   return (
-    <Show when={props.events.length}>
-      <section class={styles.group} aria-label={props.label}>
-        <h3 class={styles.groupHead}>{props.label}</h3>
-        <ul class={styles.list}>
-          <For each={props.events}>{(event) => <HappenedRow event={event} />}</For>
-        </ul>
-      </section>
+    <div class={styles.empty}>
+      <p>{props.text}</p>
+      <Show when={props.onReview && reviewItems().length > 0}>
+        <button type="button" class={styles.link} onClick={() => props.onReview?.()}>
+          Open Review
+          <Icon icon={ArrowRight} />
+        </button>
+      </Show>
+    </div>
+  );
+}
+
+function SinceList(props: { onReview: () => void }) {
+  onMount(showDigest);
+  onCleanup(hideDigest);
+  const happened = () => digest()?.happened ?? [];
+  return (
+    <Show
+      when={digestCount(digest())}
+      fallback={
+        <Empty
+          text="Nothing finished since you last looked, and nothing is waiting on you."
+          onReview={props.onReview}
+        />
+      }
+    >
+      <Show when={digest()?.waiting.length}>
+        <Group label="Waiting on you" count={digest()!.waiting.length} tone="attention" waiting>
+          <For each={digest()!.waiting}>
+            {(event) => <EventRow event={event} withProject time={digestTime(event.ts)} />}
+          </For>
+        </Group>
+      </Show>
+      <Show when={digest()?.finished.length}>
+        <Group
+          label="Finished"
+          heading={`Finished since ${digestTime(digest()!.since)}`}
+          count={digest()!.finished.length}
+        >
+          <For each={digest()!.finished}>{(row) => <FinishedRow row={row} />}</For>
+        </Group>
+      </Show>
+      <Show when={happened().filter((e) => !isLimit(e)).length}>
+        <Group label="Pull requests" count={happened().filter((e) => !isLimit(e)).length}>
+          <For each={happened().filter((e) => !isLimit(e))}>{(event) => <HappenedRow event={event} />}</For>
+        </Group>
+      </Show>
+      <Show when={happened().filter(isLimit).length}>
+        <Group label="Usage limits" count={happened().filter(isLimit).length}>
+          <For each={happened().filter(isLimit)}>{(event) => <HappenedRow event={event} />}</For>
+        </Group>
+      </Show>
     </Show>
   );
 }
 
-function SinceList() {
-  onMount(showDigest);
-  onCleanup(hideDigest);
+function NeedsYouList(props: { onReview: () => void }) {
   return (
     <Show
-      when={digestCount(digest())}
-      fallback={<p class={styles.empty}>Nothing finished since you last looked, and nothing is waiting on you.</p>}
+      when={needsYouEvents().length}
+      fallback={<Empty text="Nothing has needed you in the last day." onReview={props.onReview} />}
     >
-      <OverlayScroll class={styles.scroll}>
-        <Show when={digest()?.finished.length}>
-          <section class={styles.group} aria-label="Finished">
-            <h3 class={styles.groupHead}>Finished since {digestTime(digest()!.since)}</h3>
-            <ul class={styles.list}>
-              <For each={digest()!.finished}>{(row) => <FinishedRow row={row} />}</For>
-            </ul>
-          </section>
-        </Show>
-        <HappenedSection label="Pull requests" events={(digest()?.happened ?? []).filter((e) => !isLimit(e))} />
-        <HappenedSection label="Usage limits" events={(digest()?.happened ?? []).filter(isLimit)} />
-        <Show when={digest()?.waiting.length}>
-          <section class={styles.group} aria-label="Waiting on you">
-            <h3 class={styles.groupHead}>Waiting on you</h3>
-            <ul class={styles.list}>
-              <For each={digest()!.waiting}>{(event) => <EventRow event={event} />}</For>
-            </ul>
-          </section>
-        </Show>
-      </OverlayScroll>
+      <For each={byProjectNewestFirst(needsYouEvents())}>
+        {(group) => (
+          <Group label={group.project || "No project"} count={group.events.length}>
+            <For each={group.events}>{(event) => <EventRow event={event} />}</For>
+          </Group>
+        )}
+      </For>
+    </Show>
+  );
+}
+
+function opinionLook(o: SecondOpinion): { icon: LucideIcon; tone: Tone | "brand" } {
+  if (o.state === "running") return { icon: LoaderCircle, tone: "progress" };
+  if (o.state === "failed") return { icon: CircleAlert, tone: "danger" };
+  return o.open ? { icon: MessageSquareText, tone: "brand" } : { icon: CircleCheck, tone: "muted" };
+}
+
+function ReviewRow(props: { item: ReviewItem }) {
+  const tier = () => tierOf(props.item.score);
+  const title = () => props.item.title || props.item.unit.id.slice(0, 8);
+  const lines = () => props.item.signals.find((sig) => sig.kind === "lines");
+  const dangers = () => props.item.signals.filter((sig) => DANGERS.includes(sig.kind));
+  const others = () => props.item.signals.filter((sig) => sig.kind !== "lines" && !DANGERS.includes(sig.kind));
+  const opinionRunning = () =>
+    props.item.secondOpinion?.state === "running" || secondOpinionRunning(props.item.unit.id);
+  return (
+    <li class={styles.review} data-tier={tier().tone}>
+      <button
+        type="button"
+        class={styles.reviewOpen}
+        aria-label={`Risk ${props.item.score}, ${tier().label}. ${title()}`}
+        onClick={() => openItem(props.item)}
+      >
+        <span class={styles.score}>
+          <span class={styles.scoreNum}>{props.item.score}</span>
+          <span class={styles.bar}>
+            <span style={{ width: `${Math.min(props.item.score, 100)}%` }} />
+          </span>
+        </span>
+        <span class={styles.text}>
+          <span class={styles.titleLine}>
+            <span class={styles.reviewTitle}>{title()}</span>
+            <Show when={props.item.running}>
+              <span class={styles.working}>
+                <span class={styles.pulse} />
+                Working
+              </span>
+            </Show>
+          </span>
+          <Meta
+            parts={[folderName(props.item.folder), props.item.agent, ...(lines() ? [signalLabel(lines()!)] : [])]}
+          />
+          <Show when={props.item.summary}>{(summary) => <span class={styles.summary}>{summary()}</span>}</Show>
+          <Show when={dangers().length}>
+            <span class={styles.pills}>
+              <For each={dangers()}>{(sig) => <span class={styles.pill}>{signalLabel(sig)}</span>}</For>
+            </span>
+          </Show>
+          <Show when={others().length}>
+            <Meta
+              parts={others().map((sig) => (
+                <span data-tone={ATTENTION.includes(sig.kind) ? "attention" : undefined}>{signalLabel(sig)}</span>
+              ))}
+            />
+          </Show>
+          <Show when={props.item.secondOpinion}>
+            {(opinion) => (
+              <>
+                <span class={styles.opinion} data-tone={opinionLook(opinion()).tone}>
+                  <Icon icon={opinionLook(opinion()).icon} />
+                  {opinionLabel(opinion())}
+                </span>
+                <Show
+                  when={(() => {
+                    const o = opinion();
+                    return o.state === "failed" ? o.error : undefined;
+                  })()}
+                >
+                  {(error) => <span class={styles.opinionError}>{error()}</span>}
+                </Show>
+              </>
+            )}
+          </Show>
+        </span>
+      </button>
+      <div class={styles.actions}>
+        <IconButton
+          size="sm"
+          icon={<Icon icon={UserRoundSearch} />}
+          aria-label="Second opinion"
+          tooltip={opinionRunning() ? "Second opinion running" : "Second opinion"}
+          tooltipPlacement="top"
+          tooltipWhenDisabled
+          disabled={opinionRunning()}
+          onClick={() =>
+            void runSecondOpinion({ id: props.item.unit.id, cwd: props.item.folder, agent: props.item.agent })
+          }
+        />
+        <IconButton
+          size="sm"
+          icon={<Icon icon={Check} />}
+          aria-label="Mark reviewed"
+          tooltip={props.item.running ? "Still working. Mark it once its turn ends." : "Mark reviewed"}
+          tooltipPlacement="top"
+          tooltipWhenDisabled
+          disabled={props.item.running}
+          onClick={() => void markReviewed(props.item)}
+        />
+      </div>
+    </li>
+  );
+}
+
+function ReviewList() {
+  return (
+    <Show when={reviewItems().length} fallback={<Empty text="Nothing is waiting for review." />}>
+      <For each={TIERS}>
+        {(tier) => {
+          const rows = () => reviewItems().filter((item) => tierOf(item.score) === tier);
+          return (
+            <Show when={rows().length}>
+              <Group label={tier.label} count={rows().length} range={tier.range} tone={tier.tone} mark>
+                <For each={rows()}>{(item) => <ReviewRow item={item} />}</For>
+              </Group>
+            </Show>
+          );
+        }}
+      </For>
     </Show>
   );
 }
@@ -203,7 +435,7 @@ const firstTab = (): InboxTab => {
   return needsYouCount() > 0 || !reviewItems().length ? "needsYou" : "review";
 };
 
-export default function InboxView() {
+export default function InboxView(props: { landing?: (el: HTMLElement) => void }) {
   const [tab, setTab] = createSignal<InboxTab>(askedTab() ?? firstTab());
   createEffect(() => {
     const asked = askedTab();
@@ -211,60 +443,55 @@ export default function InboxView() {
     setTab(asked);
     setAskedTab(null);
   });
-  const onKey = (e: KeyboardEvent) => e.key === "Escape" && setInboxOpen(false);
-  onMount(() => window.addEventListener("keydown", onKey));
-  onCleanup(() => window.removeEventListener("keydown", onKey));
+  const views: { id: InboxTab; label: string; icon: LucideIcon; count: () => number }[] = [
+    { id: "since", label: "Since you looked", icon: Clock, count: () => digestCount(digest()) },
+    { id: "needsYou", label: "Needs you", icon: Hand, count: needsYouCount },
+    { id: "review", label: "Review", icon: ClipboardCheck, count: () => reviewItems().length },
+  ];
+  const toReview = () => setTab("review");
   return (
-    <section class={styles.overlay} aria-label="Inbox">
+    <div class={styles.panel}>
       <header class={styles.head}>
         <h2 class={styles.heading}>Inbox</h2>
-        <SegmentedControl<InboxTab>
-          aria-label="Inbox list"
-          size="sm"
-          variant="plain"
-          value={tab()}
-          onChange={setTab}
-          options={[
-            { value: "since", label: `Since you looked ${digestCount(digest())}` },
-            { value: "needsYou", label: `Needs you ${needsYouCount()}` },
-            { value: "review", label: `Review ${reviewItems().length}` },
-          ]}
-        />
-        <Button variant="ghost" size="sm" class={styles.close} onClick={() => setInboxOpen(false)}>
-          Close
-        </Button>
+        <Show when={digest()}>{(d) => <span class={styles.chip}>Since {digestTime(d().since)}</span>}</Show>
       </header>
-      <Show when={tab() === "since"}>
-        <SinceList />
-      </Show>
-      <Show when={tab() === "needsYou"}>
-        <Show
-          when={needsYouEvents().length}
-          fallback={<p class={styles.empty}>Nothing has needed you in the last day.</p>}
-        >
-          <OverlayScroll class={styles.scroll}>
-            <For each={byProjectNewestFirst(needsYouEvents())}>
-              {(group) => (
-                <section class={styles.group} aria-label={group.project || "No project"}>
-                  <h3 class={styles.groupHead}>{group.project || "No project"}</h3>
-                  <ul class={styles.list}>
-                    <For each={group.events}>{(event) => <EventRow event={event} />}</For>
-                  </ul>
-                </section>
-              )}
-            </For>
-          </OverlayScroll>
-        </Show>
-      </Show>
-      <Show when={tab() === "review"}>
-        <Show when={reviewItems().length} fallback={<p class={styles.empty}>Nothing is waiting for review.</p>}>
-          <OverlayScroll class={styles.scroll}>
-            <ul class={styles.list}>
-              <For each={reviewItems()}>{(item) => <Row item={item} />}</For>
-            </ul>
-          </OverlayScroll>
-        </Show>
-      </Show>
-    </section>
+      <div class={styles.body}>
+        <nav class={styles.rail} aria-label="Inbox views">
+          <For each={views}>
+            {(view) => (
+              <button
+                type="button"
+                ref={(el) => view.id === tab() && props.landing?.(el)}
+                class={`${s.railItem} ${styles.railItem}`}
+                classList={{ [s.railItemActive]: tab() === view.id }}
+                aria-current={tab() === view.id ? "page" : undefined}
+                onClick={() => setTab(view.id)}
+              >
+                <Icon icon={view.icon} />
+                <span class={s.railLabel}>{view.label}</span>{" "}
+                <Show when={view.count() > 0}>
+                  <span class={styles.count} data-warn={view.id === "needsYou"}>
+                    {view.count()}
+                  </span>
+                </Show>
+              </button>
+            )}
+          </For>
+        </nav>
+        <OverlayScroll class={styles.scroll}>
+          <div class={styles.content}>
+            <Show when={tab() === "since"}>
+              <SinceList onReview={toReview} />
+            </Show>
+            <Show when={tab() === "needsYou"}>
+              <NeedsYouList onReview={toReview} />
+            </Show>
+            <Show when={tab() === "review"}>
+              <ReviewList />
+            </Show>
+          </div>
+        </OverlayScroll>
+      </div>
+    </div>
   );
 }

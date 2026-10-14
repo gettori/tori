@@ -150,9 +150,9 @@ import {
 import "./styles/reset.css";
 import { CockpitPopup, CockpitSwitch, CockpitView } from "./panels/Autopilot/Cockpit";
 import { popupOpen, view } from "./utils/autopilotStore";
-import InboxView from "./panels/Inbox/InboxView";
+import InboxButton from "./panels/Inbox/InboxButton";
 import { watchNeedsYou } from "./utils/needsYouInbox";
-import { inboxOpen, openInbox, watchInbox } from "./utils/reviewInbox";
+import { openInbox, watchInbox } from "./utils/reviewInbox";
 import { watchDigest } from "./utils/digest";
 import { watchSecondOpinions } from "./utils/secondOpinion";
 import "./styles/tokens.css";
@@ -1084,6 +1084,7 @@ function App() {
           </div>
         </Show>
         <DevBadge />
+        <InboxButton />
         <PhoneIndicator />
         <UsageStrip />
         <DaemonPill />
@@ -1159,9 +1160,6 @@ function App() {
         </div>
         <Show when={view() === "autopilot"}>
           <CockpitView />
-        </Show>
-        <Show when={inboxOpen()}>
-          <InboxView />
         </Show>
         <Show when={view() === "workspace" && popupOpen()}>
           <CockpitPopup />

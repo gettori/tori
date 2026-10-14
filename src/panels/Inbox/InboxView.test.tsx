@@ -110,7 +110,7 @@ describe("InboxView", () => {
     render(() => <InboxView />);
     const row = screen.getByText("task busy").closest("li")!;
     const mark = row.querySelector("button:disabled");
-    expect(mark?.textContent).toBe("Mark reviewed");
+    expect(mark?.getAttribute("aria-label")).toBe("Mark reviewed");
   });
 
   it("opens on Needs you, grouped by project with the newest group first and answered rows dimmed", async () => {
@@ -121,8 +121,8 @@ describe("InboxView", () => {
     ];
     await Promise.all([refreshInbox(), refreshNeedsYou()]);
     const { container } = render(() => <InboxView />);
-    expect(screen.getByRole("button", { name: "Needs you 2" }).getAttribute("aria-pressed")).toBe("true");
-    const groups = [...container.querySelectorAll("section section")];
+    expect(screen.getByRole("button", { name: "Needs you 2" }).getAttribute("aria-current")).toBe("page");
+    const groups = [...container.querySelectorAll("section")];
     expect(groups.map((g) => g.getAttribute("aria-label"))).toEqual(["api", "web"]);
     const titles = [...groups[0].querySelectorAll("li")].map((li) => li.textContent);
     expect(titles[0]).toContain("chat new");
@@ -137,7 +137,7 @@ describe("InboxView", () => {
     events = [event("old", "api", 100, { resolvedAt: 150 })];
     await Promise.all([refreshInbox(), refreshNeedsYou()]);
     render(() => <InboxView />);
-    expect(screen.getByRole("button", { name: "Review 3" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Review 3" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByText("task risky")).toBeTruthy();
   });
 
@@ -179,7 +179,7 @@ describe("InboxView", () => {
     const targets: NavTarget[] = [];
     const off = onWith<NavTarget>(NAVIGATE, (t) => targets.push(t));
     const { container } = render(() => <InboxView />);
-    expect(screen.getByRole("button", { name: "Since you looked 3" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Since you looked 3" }).getAttribute("aria-current")).toBe("page");
     const a = screen.getByText("run a").closest("li")!.textContent!;
     expect(a).toContain("2 turns");
     expect(a).toContain("+120 -30");
