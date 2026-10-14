@@ -422,11 +422,23 @@ pub fn tell_session(desk: &crate::desk::Desk, session: &str, kind: &str, text: &
     Ok(())
 }
 
-pub fn spawn_review(folder: &str, project: &str, prompt: String) -> Result<String, String> {
-    let spawned = office_call(
-        "spawn_review",
-        json!({ "folder": folder, "project": project, "prompt": prompt }),
-    )?;
+pub fn spawn_review(
+    folder: &str,
+    project: &str,
+    prompt: String,
+    rule: &crate::settings::ReviewRule,
+) -> Result<String, String> {
+    let args = json!({
+        "folder": folder,
+        "project": project,
+        "prompt": prompt,
+        "agent": rule.agent,
+        "account": rule.account,
+        "model": rule.model,
+        "effort": rule.effort,
+        "mode": rule.mode,
+    });
+    let spawned = office_call("spawn_review", args)?;
     spawned
         .as_str()
         .map(str::to_string)

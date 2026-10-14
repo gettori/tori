@@ -248,7 +248,7 @@ fn review(app: &AppHandle, project: &str, rule: &ReviewRule, list: &ReviewReques
         _ => {
             let row = list.rows.iter().find(|r| r.key == number.to_string());
             let prompt = first(rule, &head, row.map_or("", |r| r.title.as_str()), from.as_deref());
-            let session = crate::rpc::spawn_review(&folder, project, prompt)?;
+            let session = crate::rpc::spawn_review(&folder, project, prompt, rule)?;
             with_project(&file, project, |p| {
                 p.prs.entry(number).or_default().session = Some(session.clone())
             })?;
@@ -352,8 +352,8 @@ mod tests {
     fn rule(action: ReviewAction, max: u32) -> ReviewRule {
         ReviewRule {
             action,
-            prompt: None,
             max_per_hour: max,
+            ..ReviewRule::default()
         }
     }
 
