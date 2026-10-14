@@ -2910,7 +2910,7 @@ fn resolves(repo: &str, tip: &str) -> bool {
 /// One row the sidebar draws: the folder it lives on and the branch it speaks
 /// for. An empty `branch` asks for whichever branch is checked out there,
 /// which is what a worktree row wants.
-#[derive(Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct SyncUnit {
     pub(crate) path: String,
     pub(crate) branch: String,

@@ -8,18 +8,13 @@ use serde_json::{json, Value};
 use tauri::ipc::Channel;
 
 use super::commands::{SpawnRequest, SpawnResult};
-use super::host::{Levers, Waiting};
 use super::model::{
     ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode, PermissionScope, QuestionAnswer,
 };
 use super::ownership::{Claim, ClaimOutcome, Registry};
-use super::transport::Emit;
 use crate::rpc::events::{EndReason, TurnBy};
 
-enum Sink {
-    Webview(Channel<Value>),
-    Rust(Emit),
-}
+type Sink = Channel<Value>;
 
 pub trait Claimed {
     fn agent_of(&self, session_id: &str) -> Option<String>;
@@ -67,10 +62,6 @@ impl Claims {
 
     pub fn release(&self, session_id: &str, tab_id: &str) -> bool {
         read_or_default("claims.release", json!({ "session_id": session_id, "tab_id": tab_id }))
-    }
-
-    pub fn held_here(&self) -> Vec<(String, String)> {
-        read_or_default("claims.held_here", json!({}))
     }
 
     pub fn held_by(&self, agent: &str, profile: &str) -> Vec<String> {
@@ -130,16 +121,8 @@ impl Chats {
         } else {
             self.sinks().get(id).cloned()
         };
-        match sink.as_deref() {
-            Some(Sink::Webview(channel)) => {
-                let _ = channel.send(params["event"].clone());
-            }
-            Some(Sink::Rust(emit)) => {
-                if let Ok(event) = serde_json::from_value::<ChatEvent>(params["event"].clone()) {
-                    emit(event);
-                }
-            }
-            None => {}
+        if let Some(channel) = sink {
+            let _ = channel.send(params["event"].clone());
         }
     }
 
@@ -163,19 +146,11 @@ impl Chats {
     }
 
     pub fn spawn_webview(&self, req: SpawnRequest, channel: Channel<Value>) -> Result<SpawnResult, String> {
-        self.spawn(req, Sink::Webview(channel))
-    }
-
-    pub fn spawn_session(&self, req: SpawnRequest, emit: Emit) -> Result<SpawnResult, String> {
-        self.spawn(req, Sink::Rust(emit))
+        self.spawn(req, channel)
     }
 
     pub fn is_live(&self, session_id: &str) -> bool {
         read_or_default("is_live", json!({ "session_id": session_id }))
-    }
-
-    pub fn live_sessions(&self) -> Vec<(String, String)> {
-        read_or_default("live_sessions", json!({}))
     }
 
     pub fn live_ids(&self) -> Vec<String> {
@@ -195,23 +170,12 @@ impl Chats {
         )
     }
 
-    pub fn note_for_next_turn(&self, session_id: &str, text: String) {
-        let _ = call::<Value>("note_for_next_turn", json!({ "session_id": session_id, "text": text }));
-    }
-
     pub fn send(&self, session_id: &str, blocks: Vec<ContentBlock>) -> Result<(), String> {
         call("send", json!({ "session_id": session_id, "blocks": blocks }))
     }
 
     pub fn steer(&self, session_id: &str, blocks: Vec<ContentBlock>) -> Result<(), String> {
         call("steer", json!({ "session_id": session_id, "blocks": blocks }))
-    }
-
-    pub fn settle(&self, session_id: &str, id: &str, answers: &[String]) -> Result<(), String> {
-        call(
-            "settle",
-            json!({ "session_id": session_id, "id": id, "answers": answers }),
-        )
     }
 
     pub fn set_visible(&self, session_id: &str, visible: bool) -> bool {
@@ -222,16 +186,8 @@ impl Chats {
         call("close", json!({ "session_id": session_id, "reason": reason }))
     }
 
-    pub fn waiting(&self, session_id: &str) -> Vec<Waiting> {
-        read_or_default("waiting", json!({ "session_id": session_id }))
-    }
-
     pub fn waiting_events(&self, session_id: &str) -> Vec<ChatEvent> {
         read_or_default("waiting_events", json!({ "session_id": session_id }))
-    }
-
-    pub fn levers(&self, session_id: &str) -> Option<Levers> {
-        read_or_default("levers", json!({ "session_id": session_id }))
     }
 
     pub fn interrupt(&self, session_id: &str) -> Result<(), String> {
@@ -302,13 +258,6 @@ impl Chats {
 
     pub fn detach(&self, session_id: &str, tab_id: &str) {
         let _ = call::<Value>("detach", json!({ "session_id": session_id, "tab_id": tab_id }));
-    }
-
-    pub fn publish(&self, session_id: &str, kind: &str, fields: Value) {
-        let _ = call::<Value>(
-            "publish",
-            json!({ "session_id": session_id, "kind": kind, "fields": fields }),
-        );
     }
 
     pub fn tool_output(&self, session_id: &str, tool_use_id: &str) -> Option<String> {

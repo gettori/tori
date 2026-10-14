@@ -170,6 +170,7 @@ impl Lifecycle {
             crate::rpc::watcher_touch(id);
         }
         match event {
+            ChatEvent::RateLimit { .. } => crate::rpc::rate_limit_heard(id, event),
             ChatEvent::TurnStarted {
                 turn_id,
                 agent_initiated,

@@ -603,16 +603,15 @@ pub fn seen(session: Option<&str>, folder: Option<&str>, branch: Option<&str>) -
     })
 }
 
-#[tauri::command]
-pub fn needs_you_list() -> Vec<Event> {
-    list()
+#[tauri::command(async)]
+pub fn needs_you_list() -> Result<serde_json::Value, String> {
+    crate::rpc::office_call("needs_you.list", serde_json::json!({}))
 }
 
 #[tauri::command]
-pub fn needs_you_seen(app: tauri::AppHandle, session: Option<String>, folder: Option<String>, branch: Option<String>) {
-    if seen(session.as_deref(), folder.as_deref(), branch.as_deref()) {
-        crate::rpc::publish_needs_you(&app);
-    }
+pub fn needs_you_seen(session: Option<String>, folder: Option<String>, branch: Option<String>) {
+    let seen = serde_json::json!({ "session": session, "folder": folder, "branch": branch });
+    crate::rpc::office_tell("needs_you.seen", seen);
 }
 
 #[cfg(test)]

@@ -132,22 +132,6 @@ impl PtyState {
         ids
     }
 
-    /// What a live tab runs: its agent and account when it is an agent tab, and
-    /// the folder it was opened in.
-    pub fn identity(&self, tab: &str) -> Option<crate::rpc::methods::Identity> {
-        let tabs = self.tabs();
-        let t = tabs.get(tab)?;
-        Some(crate::rpc::methods::Identity {
-            account: t.agent.as_ref().map(|_| {
-                t.profile
-                    .clone()
-                    .unwrap_or_else(|| crate::accounts::DEFAULT_PROFILE_ID.to_string())
-            }),
-            agent: t.agent.clone(),
-            cwd: Some(t.cwd.clone()).filter(|cwd| !cwd.is_empty()),
-        })
-    }
-
     fn replace(&self, listed: Vec<Listed>) {
         let attached: Vec<String> = self.attached().keys().cloned().collect();
         let mut tabs = self.tabs();
@@ -580,27 +564,22 @@ mod tests {
     #[test]
     fn a_tab_identity_is_its_folder_and_for_an_agent_tab_its_account() {
         use crate::rpc::methods::Identity;
-        let state = holding(vec![
-            ("shell", tab(None, None, "/p")),
-            ("agent", tab(Some("claude"), None, "/p/wt")),
-        ]);
         assert_eq!(
-            state.identity("shell"),
-            Some(Identity {
+            Identity::of_tab(None, None, "/p".into()),
+            Identity {
                 agent: None,
                 account: None,
                 cwd: Some("/p".into())
-            })
+            }
         );
         assert_eq!(
-            state.identity("agent"),
-            Some(Identity {
+            Identity::of_tab(Some("claude".into()), None, "/p/wt".into()),
+            Identity {
                 agent: Some("claude".into()),
                 account: Some(crate::accounts::DEFAULT_PROFILE_ID.into()),
                 cwd: Some("/p/wt".into()),
-            })
+            }
         );
-        assert_eq!(state.identity("closed"), None);
     }
 
     #[test]

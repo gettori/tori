@@ -14,17 +14,14 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter, Manager};
 
 use super::asks::Asks;
-use super::bridge::Bridge;
 use super::events::{now_ms, EndReason, TurnBy};
 use super::hub::{Channel, Hub};
 use super::states::SessionStates;
 use crate::agents::ChatTransport;
 use crate::autopilot::State as ItemState;
 use crate::chat::commands::SpawnRequest;
-use crate::chat::host::ChatState;
 use crate::chat::model::{ChatEvent, ContentBlock, Extra, SlashCommand};
 use crate::owned_state::write_atomically;
 
@@ -251,31 +248,45 @@ struct Inner {
 }
 
 pub struct Runner {
-    app: AppHandle,
+    ui: crate::ui::Ui,
+    chats: Arc<crate::chat::serve::Served>,
     hub: Arc<Hub>,
     states: Arc<SessionStates>,
     asks: Arc<Asks>,
-    bridge: Arc<Bridge>,
+    pilot: Box<dyn Fn(bool) + Send + Sync>,
     dir: PathBuf,
     inner: Mutex<Inner>,
     gauge: Arc<Mutex<Gauge>>,
 }
 
+pub struct Wiring {
+    pub ui: crate::ui::Ui,
+    pub chats: Arc<crate::chat::serve::Served>,
+    pub hub: Arc<Hub>,
+    pub states: Arc<SessionStates>,
+    pub asks: Arc<Asks>,
+    pub pilot: Box<dyn Fn(bool) + Send + Sync>,
+    pub dir: PathBuf,
+}
+
 impl Runner {
-    pub fn new(
-        app: AppHandle,
-        hub: Arc<Hub>,
-        states: Arc<SessionStates>,
-        asks: Arc<Asks>,
-        bridge: Arc<Bridge>,
-        dir: PathBuf,
-    ) -> Self {
-        Self {
-            app,
+    pub fn new(wiring: Wiring) -> Self {
+        let Wiring {
+            ui,
+            chats,
             hub,
             states,
             asks,
-            bridge,
+            pilot,
+            dir,
+        } = wiring;
+        Self {
+            ui,
+            chats,
+            hub,
+            states,
+            asks,
+            pilot,
             dir,
             inner: Mutex::new(Inner {
                 status: Status::off(),
@@ -311,8 +322,8 @@ impl Runner {
             &Channel::Autopilot,
             json!({ "kind": "autopilot.status", "runner": status, "ts": now_ms() }),
         );
-        let _ = self.app.emit("autopilot://status", &status);
-        super::note_pilot(matches!(
+        self.ui.emit("autopilot://status", &status);
+        (self.pilot)(matches!(
             status.state,
             RunnerState::Starting | RunnerState::Idle | RunnerState::Working
         ));
@@ -342,7 +353,7 @@ impl Runner {
         let session = self.inner().status.session.clone();
         self.set(Status::off());
         if let Some(id) = session {
-            self.app.state::<ChatState>().0.close(&id, EndReason::Closed)?;
+            self.chats.host.close(&id, EndReason::Closed)?;
         }
         Ok(self.status())
     }
@@ -416,13 +427,7 @@ impl Runner {
         let id = id.to_string();
         std::thread::spawn(move || {
             let text = vec![ContentBlock::Text { text }];
-            if runner
-                .app
-                .state::<ChatState>()
-                .0
-                .deliver(&id, text, false, TurnBy::Local)
-                .is_err()
-            {
+            if runner.chats.host.deliver(&id, text, false, TurnBy::Local).is_err() {
                 on_error(&mut runner.gauge());
                 if runner.is_current(&id) {
                     runner.set_turn(&id, RunnerState::Idle);
@@ -508,7 +513,7 @@ impl Runner {
             session: Some(fresh.clone()),
             ..self.status()
         });
-        let _ = self.app.state::<ChatState>().0.close(old, EndReason::Closed);
+        let _ = self.chats.host.close(old, EndReason::Closed);
         fresh
     }
 
@@ -557,8 +562,9 @@ impl Runner {
         let started_tx = Mutex::new(Some(started_tx));
         *self.gauge() = Gauge::default();
         let gauge = self.gauge.clone();
-        let host = &self.app.state::<ChatState>().0;
-        let spawned = host.spawn_session(
+        let host = &self.chats.host;
+        let spawned = crate::chat::commands::spawn_session(
+            host,
             SpawnRequest {
                 session_id: id.to_string(),
                 tab_id: format!("autopilot-{id}"),
@@ -613,12 +619,7 @@ impl Runner {
     }
 
     fn brief(&self) -> Result<String, String> {
-        let from_bundle = self
-            .app
-            .path()
-            .resolve(BRIEF, tauri::path::BaseDirectory::Resource)
-            .ok()
-            .filter(|p| p.exists());
+        let from_bundle = crate::env::bundled(BRIEF).filter(|p| p.exists());
         let path = from_bundle.unwrap_or_else(|| PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/")).join(BRIEF));
         std::fs::read_to_string(&path).map_err(|e| format!("could not read the brief at {}: {e}", path.display()))
     }
@@ -627,7 +628,7 @@ impl Runner {
     // so each moved card is shown again with its new panels.
     fn rebind(&self, from: &str, to: &str) {
         for ask in rebind(&self.states, &self.asks, from, to) {
-            let _ = self.bridge.request("ask.show", json!(ask));
+            self.ui.emit(super::asks::SHOW_EVENT, &ask);
         }
     }
 }

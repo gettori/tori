@@ -19,14 +19,14 @@ pub const UNSEEN_TICKS: u32 = 8;
 const WAKE_ITEMS: usize = 10;
 const SNIPPET_CHARS: usize = 200;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PrState {
     Open,
     Merged,
     Closed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[allow(
     clippy::enum_variant_names,
     reason = "mirrors GitHub's MERGEABLE state; Clean would read as its CLEAN merge status"
@@ -38,7 +38,7 @@ pub enum Mergeable {
     Unknown,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Check {
     // The run's own id, so a rerun is a new check.
     pub run_id: String,
@@ -49,7 +49,7 @@ pub struct Check {
     pub url: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Remark {
     pub id: String,
     pub author: String,
@@ -61,7 +61,7 @@ pub struct Remark {
 
 // `None` means the read carried no detail for that part, which keeps the last
 // state rather than reading as empty.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Snapshot {
     pub state: PrState,
     pub head_sha: String,
@@ -447,6 +447,7 @@ impl PrWatches {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub enum Read {
     // By number; `None` for a number the host did not answer for.
     Fetched(Vec<(u64, Option<Snapshot>)>),
@@ -502,7 +503,17 @@ pub fn store() -> &'static PrWatches {
     STORE.get_or_init(|| PrWatches::open(&crate::owned_state::config_dir()))
 }
 
+// The store is the daemon's, which polls and wakes on it; the window's forge
+// poll and commands reach it over the link.
+fn in_window() -> bool {
+    !crate::rpc::in_daemon()
+}
+
 pub fn watched_numbers(owner: &str, repo: &str) -> Vec<u64> {
+    if in_window() {
+        let asked = serde_json::json!({ "owner": owner, "repo": repo });
+        return crate::rpc::office_call_as("pr_watch.watched", asked).unwrap_or_default();
+    }
     if !crate::settings::pr_watch() {
         return Vec::new();
     }
@@ -510,6 +521,10 @@ pub fn watched_numbers(owner: &str, repo: &str) -> Vec<u64> {
 }
 
 pub fn fold(owner: &str, repo: &str, read: Read) {
+    if in_window() {
+        let read = serde_json::json!({ "owner": owner, "repo": repo, "read": read });
+        return crate::rpc::office_tell("pr_watch.fold", read);
+    }
     let before = polled();
     let now = crate::owned_state::now_ms();
     if let Err(e) = store().update(|watches| fold_into(watches, owner, repo, &read, now)) {
@@ -579,6 +594,9 @@ pub fn stop(session: &str, url: &str) -> Result<bool, String> {
 }
 
 pub fn session_deleted(session: &str) {
+    if in_window() {
+        return crate::rpc::office_tell("pr_watch.session_deleted", serde_json::json!({ "session": session }));
+    }
     match store().remove_session(session) {
         Ok(true) => polled_moved(),
         Ok(false) => {}
@@ -628,13 +646,16 @@ pub fn polled_moved() {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Polled {
     pub project: String,
     pub branch: String,
 }
 
 pub fn polled() -> Vec<Polled> {
+    if in_window() {
+        return crate::rpc::office_call_as("pr_watch.polled", serde_json::json!({})).unwrap_or_default();
+    }
     if !crate::settings::pr_watch() {
         return Vec::new();
     }

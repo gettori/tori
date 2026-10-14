@@ -248,7 +248,7 @@ fn review(app: &AppHandle, project: &str, rule: &ReviewRule, list: &ReviewReques
         _ => {
             let row = list.rows.iter().find(|r| r.key == number.to_string());
             let prompt = first(rule, &head, row.map_or("", |r| r.title.as_str()), from.as_deref());
-            let session = crate::rpc::spawn_review(app, &folder, project, prompt)?;
+            let session = crate::rpc::spawn_review(&folder, project, prompt)?;
             with_project(&file, project, |p| {
                 p.prs.entry(number).or_default().session = Some(session.clone())
             })?;
@@ -266,7 +266,7 @@ fn review(app: &AppHandle, project: &str, rule: &ReviewRule, list: &ReviewReques
         worktree: folder,
         session: Some(session),
     };
-    crate::rpc::record_rule_review(app, project, &list.full_name, &list.account, review)
+    crate::rpc::record_rule_review(project, &list.full_name, &list.account, review)
 }
 
 // `None` for a worktree made just now; a worktree already there is a re-review.
@@ -281,12 +281,15 @@ fn worktree_for(
             let moved = crate::worktree::move_review(app, project, head, &folder, worktree_at)?;
             Ok((folder, Some(moved)))
         }
-        // Legal here and nowhere on a tokio worker: `tick` runs this on its own
-        // std thread, so there is no runtime underneath to refuse the block.
-        None => Ok((
-            tauri::async_runtime::block_on(crate::worktree::checkout_review(app, project, head))?,
-            None,
-        )),
+        None => {
+            use tauri::Manager;
+            let askpass = app.state::<crate::askpass::AskpassState>().0.clone();
+            // Legal here and nowhere on a tokio worker: `tick` runs this on its own
+            // std thread, so there is no runtime underneath to refuse the block.
+            let ui = app.into();
+            let checkout = crate::worktree::checkout_review(&ui, &askpass, project, head);
+            Ok((tauri::async_runtime::block_on(checkout)?, None))
+        }
     }
 }
 

@@ -2,13 +2,9 @@
 // caller hears why rather than waiting out the Rust side's timeout.
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { asTabProfile } from "./agentHealth";
-import { watchDaemon } from "./daemonStatus";
-import { quotaBand, quotaState } from "./chatRateLimit";
+import { watchDaemon, type DaemonStatus } from "./daemonStatus";
 import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "./events";
 import { closeAsk, loadPendingAsks, showAsk, type SocketAsk } from "./socketAsks";
-import { usageWarnAt } from "./usageSettings";
-import { windowsFor } from "./usageStore";
 
 type Request = { rid: number; method: string; params: Record<string, unknown> };
 type Handler = (params: unknown) => unknown;
@@ -35,35 +31,25 @@ export async function serveRpcBridge(): Promise<UnlistenFn> {
       await invoke("rpc_reply", { rid, error }).catch((failed) => console.error(`rpc_reply for ${method}:`, failed));
     }
   });
+  // The daemon holds the asks; a card raised while this window was not
+  // listening is in the pending list, read again whenever the link comes back.
+  const shown = await listen<SocketAsk>("asks://show", ({ payload }) => showAsk(payload));
+  const closed = await listen<{ id: string }>("asks://close", ({ payload }) => closeAsk(payload.id));
+  const relinked = await listen<DaemonStatus>("daemon://status", ({ payload }) => {
+    if (payload.state === "connected") void loadPendingAsks();
+  });
   void loadPendingAsks();
   const unwatch = await watchDaemon();
   return () => {
     unlisten();
+    shown();
+    closed();
+    relinked();
     unwatch();
   };
 }
 
 handleRpc("window.open", ({ path, line }: { path: string; line: number | null }) => {
   emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path, ...(line ? { line } : {}) });
-  return {};
-});
-
-handleRpc("usage.windows", ({ agent, account }: { agent: string; account: string | null }) => {
-  const profile = asTabProfile(account);
-  const warnAt = usageWarnAt(agent, profile);
-  const now = Date.now();
-  return windowsFor(agent, profile).map((w) => {
-    const state = quotaState(w, warnAt, now);
-    return { kind: w.kind, utilization: w.utilization, resetsAt: w.resetsAt, state, band: quotaBand(w, state) };
-  });
-});
-
-handleRpc("ask.show", (ask: SocketAsk) => {
-  showAsk(ask);
-  return {};
-});
-
-handleRpc("ask.close", ({ id }: { id: string }) => {
-  closeAsk(id);
   return {};
 });
