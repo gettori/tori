@@ -148,7 +148,7 @@ import {
   setDraft,
   setDraftOrigin,
 } from "../../utils/chatCompose";
-import { serveRpcBridge } from "../../utils/rpcBridge";
+import { serveDaemonEvents } from "../../utils/daemonEvents";
 import { clearDraftPick, draftPick, pickRidesArgv, setDraftPick } from "../../utils/chatDraftPick";
 import { resumedPicks } from "../../utils/chatModels";
 import { holdingTab, refusalMessage, type Refusal } from "../../utils/chatOwnership";
@@ -1075,7 +1075,7 @@ export default function Terminal(props: {
   let offNewChatAt: (() => void) | undefined;
   let unlistenAdopt: UnlistenFn | undefined;
   let unlistenDaemon: UnlistenFn | undefined;
-  let unlistenRpc: UnlistenFn | undefined;
+  let unlistenEvents: UnlistenFn | undefined;
   let offOpenJob: (() => void) | undefined;
   let offRevealDock: (() => void) | undefined;
   let offNewDockShell: (() => void) | undefined;
@@ -1161,7 +1161,7 @@ export default function Terminal(props: {
       adoptAll();
     });
     adoptAll();
-    unlistenRpc = await serveRpcBridge();
+    unlistenEvents = await serveDaemonEvents();
     // A tab whose process ends (the user typed `exit`, a task finished) is
     // closed. Agent-exit within a live shell fires no event. A command tab's
     // process is the command, so its exit is the verdict instead.
@@ -1232,7 +1232,7 @@ export default function Terminal(props: {
     offNewChatAt?.();
     unlistenAdopt?.();
     unlistenDaemon?.();
-    unlistenRpc?.();
+    unlistenEvents?.();
     offOpenJob?.();
     offRevealDock?.();
     offNewDockShell?.();
