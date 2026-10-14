@@ -2,7 +2,7 @@
 //! own and replies when done, so a slow read never holds up a quick one
 //! behind it. See `daemon.rs` for the other end.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io::{BufReader, Write};
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
@@ -327,10 +327,6 @@ impl Link {
                         conn.out.push(to_line(&Response::reply(id, outcome)));
                     });
                 }
-                Some("chats") => {
-                    let ids: HashSet<String> = serde_json::from_value(params()).unwrap_or_default();
-                    self.answers.hub.set_remote_chats(ids);
-                }
                 Some(event) => {
                     let began = Instant::now();
                     (self.on_event)(event, &params());
@@ -375,7 +371,6 @@ impl Link {
         conn.out.close();
         conn.pending().clear();
         let _ = conn.stream.shutdown(Shutdown::Both);
-        self.answers.hub.set_remote_chats(HashSet::new());
     }
 
     fn wait_for_conn(&self, wait: Duration) -> Option<Arc<Conn>> {

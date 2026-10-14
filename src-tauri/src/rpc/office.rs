@@ -27,6 +27,9 @@ pub const DAEMON_PROMPT: u64 = 1 << 48;
 
 pub struct Office {
     pub server: Arc<Server>,
+    remote: Arc<super::remote::Remote>,
+    devices: Arc<super::devices::Devices>,
+    awake: std::sync::Mutex<Option<super::awake::Awake>>,
     desk: Desk,
     backend: DaemonBackend,
     asks: Arc<Asks>,
@@ -176,6 +179,11 @@ pub fn start(parts: Parts) -> Arc<Office> {
     start_watcher(&desk, &autopilot, &runner);
     let moved = desk.ui.clone();
     super::pr_watch::on_polled_moved(Box::new(move || moved.emit("pr_watch://changed", ())));
+    let devices = Arc::new(super::devices::Devices::open(super::devices_path()));
+    let paired = desk.ui.clone();
+    let pairing = Arc::new(super::pairing::Pairing::new(Box::new(move |ended| {
+        paired.emit(DEVICES_EVENT, json!({ "ended": ended }));
+    })));
     let backend = DaemonBackend {
         desk: desk.clone(),
         screen,
@@ -188,13 +196,18 @@ pub fn start(parts: Parts) -> Arc<Office> {
         runner: runner.clone(),
         adoptable: Arc::default(),
         quotas: Arc::default(),
+        devices: devices.clone(),
     };
     let server = Arc::new(Server {
         hub: hub.clone(),
         backend: Box::new(backend.clone()),
         auth_timeout: AUTH_TIMEOUT,
     });
+    let remote = Arc::new(super::remote::Remote::new(server.clone(), devices.clone(), pairing));
     let office = Arc::new(Office {
+        remote,
+        devices,
+        awake: std::sync::Mutex::new(None),
         server,
         desk: desk.clone(),
         backend,
@@ -205,15 +218,50 @@ pub fn start(parts: Parts) -> Arc<Office> {
         states: desk.states,
         askpass,
     });
+    let watched = Arc::downgrade(&office);
+    office.hub.watch_devices(Box::new(move || {
+        if let Some(office) = watched.upgrade() {
+            office.desk.ui.emit(DEVICES_EVENT, json!({ "ended": null }));
+            office.keep_awake();
+        }
+    }));
+    office.remote.apply(&crate::settings::remote());
+    office.keep_awake();
     runner.autostart();
     office
 }
+
+// The Settings pane is not a socket subscriber, so it hears about devices here.
+const DEVICES_EVENT: &str = "remote://devices";
 
 fn arg<T: for<'de> Deserialize<'de>>(args: &Value, key: &str) -> Result<T, String> {
     serde_json::from_value(args.get(key).cloned().unwrap_or(Value::Null)).map_err(|e| format!("{key}: {e}"))
 }
 
 impl Office {
+    // A phone would lose something to a sleeping Mac: it is connected, or a
+    // session it can watch is working.
+    fn awake_wanted(&self) -> bool {
+        let listening = matches!(self.remote.status(), super::remote::Status::Listening { .. });
+        let working = || {
+            self.states
+                .snapshot()
+                .values()
+                .any(|s| *s == super::states::SessionState::Working)
+        };
+        listening && (!self.hub.connected_devices().is_empty() || working())
+    }
+
+    pub fn keep_awake(&self) {
+        let wanted = self.awake_wanted();
+        let mut held = self.awake.lock().unwrap_or_else(|e| e.into_inner());
+        if wanted && held.is_none() {
+            *held = super::awake::Awake::hold("Tori is serving a remote device");
+        } else if !wanted {
+            *held = None;
+        }
+    }
+
     pub fn resolve_prompt(&self, id: u64, value: Option<String>) {
         if let Some(askpass) = &self.askpass {
             crate::askpass::resolve(askpass, id, value);
@@ -466,6 +514,38 @@ impl Office {
                 arg(args, "profile")?,
             )
             .map(|()| json!({})),
+            "remote.set" => {
+                let remote: crate::settings::Remote = arg(args, "remote")?;
+                crate::settings::set_remote(remote.clone())?;
+                let status = self.remote.apply(&remote);
+                self.keep_awake();
+                Ok(json!(status))
+            }
+            "remote.status" => Ok(json!(self.remote.status())),
+            "pairing.start" => self.remote.start_pairing().map(|offer| json!(offer)),
+            "pairing.cancel" => {
+                self.remote.cancel_pairing();
+                Ok(json!({}))
+            }
+            "devices.list" => {
+                let connected = self.hub.connected_devices();
+                let rows: Vec<Value> = self
+                    .devices
+                    .list()
+                    .into_iter()
+                    .map(|d| json!({ "id": d.id, "name": d.name, "created_ms": d.created_ms, "connected": connected.contains(&d.id) }))
+                    .collect();
+                Ok(json!(rows))
+            }
+            // Revoked in the file first: a connection still being set up checks
+            // the file after registering, so it cannot slip between the two.
+            "device.revoke" => {
+                let id: String = arg(args, "id")?;
+                self.devices.revoke(&id)?;
+                self.hub.close_device(&id);
+                self.desk.ui.emit(DEVICES_EVENT, json!({ "ended": null }));
+                Ok(json!({}))
+            }
             other => Err(format!("no office call {other}")),
         }
     }

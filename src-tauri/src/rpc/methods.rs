@@ -745,6 +745,7 @@ pub struct DaemonBackend {
     pub runner: Arc<super::runner::Runner>,
     pub adoptable: Arc<std::sync::Mutex<Vec<Value>>>,
     pub quotas: Arc<super::quotas::Quotas>,
+    pub devices: Arc<super::devices::Devices>,
 }
 
 impl DaemonBackend {
@@ -1991,7 +1992,11 @@ impl Backend for DaemonBackend {
     }
 
     fn device_mint(&self, params: MintParams) -> Result<Value, RpcError> {
-        self.screen.request("device.mint", json!({ "name": params.name }))
+        let (device, credential) = self
+            .devices
+            .mint(&params.name)
+            .map_err(|e| RpcError::new(INTERNAL_ERROR, e))?;
+        Ok(json!({ "id": device.id, "name": device.name, "credential": credential }))
     }
 }
 
