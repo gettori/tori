@@ -346,23 +346,51 @@ pub(crate) fn create_worktree_body(
 /// it comes from the forge's PR ref, never from `origin/<head_ref>`. A worktree
 /// or branch already at another commit is refused rather than reset, since
 /// resetting would discard whatever was done in it.
-pub async fn create_pr_worktree(
-    ui: Ui,
-    repo_path: String,
-    number: u64,
-    sha: String,
-    setup: bool,
-) -> Result<String, String> {
+async fn create_pr_worktree(ui: Ui, repo_path: String, head: ReviewHead) -> Result<(String, String), String> {
     crate::exec::git_write("create_pr_worktree", repo_path.clone(), move || {
-        let target = create_pr_worktree_in(&repo_path, number, &sha, Path::new(&repo_path), setup)?;
+        let branch = review_branch(&repo_path, &head);
+        let target = create_pr_worktree_in(&repo_path, &branch, &head.sha, Path::new(&repo_path), !head.fork)?;
         let target = target.to_string_lossy().into_owned();
         let _ = crate::sessions::adopt(&target);
         ui.emit("config://changed", ());
-        Ok(target)
+        Ok((target, branch))
     })
     .await
 }
 
+/// The branch a review checks out: the pull request's own name, so it reads
+/// like any other worktree, or `pr-<n>` for a fork's head, whose name means
+/// nothing here, and for a name this repo already uses for something else.
+pub(crate) fn review_branch(repo: &str, head: &ReviewHead) -> String {
+    let fallback = format!("pr-{}", head.number);
+    let own = head.branch.trim();
+    if head.fork || own.is_empty() || crate::git::not_an_option(own).is_err() {
+        return fallback;
+    }
+    if !branch_exists(repo, own) {
+        return own.to_string();
+    }
+    let checked_out = list_worktrees_body(repo.to_string())
+        .map(|list| list.iter().any(|w| w.branch == own))
+        .unwrap_or(true);
+    let at = rev_parse(repo, &format!("refs/heads/{own}")).unwrap_or_default();
+    // A stale copy of the same branch, as a bare clone leaves behind, moves up
+    // to the head; a branch with commits the head lacks is someone's work.
+    let behind = at == head.sha || is_ancestor(repo, &at, &head.sha);
+    if checked_out || !behind || git_ok(repo, &["branch", "-f", own, &head.sha]).is_err() {
+        return fallback;
+    }
+    own.to_string()
+}
+
+fn is_ancestor(repo: &str, at: &str, sha: &str) -> bool {
+    crate::exec::git_in(repo)
+        .args(["merge-base", "--is-ancestor", at, sha])
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+#[derive(Clone)]
 pub struct ReviewHead {
     pub number: u64,
     pub sha: String,
@@ -397,34 +425,30 @@ fn fetch_review_head(project: &str, head: &ReviewHead, sock: &Path, token: &str)
     Ok(())
 }
 
-// A same-repo head branch is on origin, so `pr-<n>` tracks it: the background
-// fetch then shows the author's pushes as commits to pull. A fork's is not.
-pub(crate) fn track_review_branch(repo: &str, head: &ReviewHead) {
+// A same-repo head branch is on origin, so the review's branch tracks it: the
+// background fetch then shows the author's pushes as commits to pull. A fork's is not.
+pub(crate) fn track_review_branch(repo: &str, head: &ReviewHead, branch: &str) {
     let upstream = format!("origin/{}", head.branch);
     if head.fork || rev_parse(repo, &format!("refs/remotes/{upstream}")).is_err() {
         return;
     }
-    let branch = format!("pr-{}", head.number);
-    let _ = git_ok(repo, &["branch", &format!("--set-upstream-to={upstream}"), &branch]);
+    let _ = git_ok(repo, &["branch", &format!("--set-upstream-to={upstream}"), branch]);
 }
 
+/// The review's worktree and its branch, the one already there when there is one.
 pub async fn checkout_review(
     ui: &Ui,
     askpass: &crate::askpass::AskpassInner,
     project: &str,
     head: &ReviewHead,
-) -> Result<String, String> {
+) -> Result<(String, String), String> {
+    if let Some(found) = review_worktree(project, head) {
+        return Ok(found);
+    }
     fetch_review_head(project, head, askpass.sock_path(), askpass.token())?;
-    let folder = create_pr_worktree(
-        ui.clone(),
-        project.to_string(),
-        head.number,
-        head.sha.clone(),
-        !head.fork,
-    )
-    .await?;
-    track_review_branch(project, head);
-    Ok(folder)
+    let (folder, branch) = create_pr_worktree(ui.clone(), project.to_string(), head.clone()).await?;
+    track_review_branch(project, head, &branch);
+    Ok((folder, branch))
 }
 
 #[tauri::command]
@@ -432,19 +456,23 @@ pub async fn create_review_worktree(app: AppHandle, project_path: String, number
     use tauri::Manager;
     let head = review_head(&project_path, number).map_err(|e| e.to_string())?;
     let askpass = app.state::<crate::askpass::AskpassState>().0.clone();
-    checkout_review(&Ui::from(&app), &askpass, &project_path, &head).await
+    checkout_review(&Ui::from(&app), &askpass, &project_path, &head)
+        .await
+        .map(|(folder, _)| folder)
 }
 
-pub fn review_worktree(project: &str, number: u64) -> Option<String> {
-    let branch = format!("pr-{number}");
+/// A worktree on `pr-<n>`, or on the pull request's own branch, whoever made it.
+pub fn review_worktree(project: &str, head: &ReviewHead) -> Option<(String, String)> {
+    let numbered = format!("pr-{}", head.number);
+    let named = |b: &str| b == numbered || (!head.fork && b == head.branch);
     let lock = crate::exec::repo_lock(project);
     let _held = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     prune_worktrees(project);
     list_worktrees_body(project.to_string())
         .ok()?
         .into_iter()
-        .find(|w| w.branch == branch && !w.is_main)
-        .map(|w| w.path)
+        .find(|w| named(&w.branch) && !w.is_main)
+        .map(|w| (w.path, w.branch))
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -500,10 +528,7 @@ pub(crate) fn move_review_in(folder: &str, sha: &str, worktree_at: Option<&str>)
 fn own_commits(folder: &str, at: &str, sha: &str, worktree_at: Option<&str>) -> bool {
     match worktree_at {
         Some(put) => at != put,
-        None => !crate::exec::git_in(folder)
-            .args(["merge-base", "--is-ancestor", at, sha])
-            .status()
-            .is_ok_and(|s| s.success()),
+        None => !is_ancestor(folder, at, sha),
     }
 }
 
@@ -511,13 +536,12 @@ fn own_commits(folder: &str, at: &str, sha: &str, worktree_at: Option<&str>) -> 
 /// tree is a stranger's, and its install scripts would run with nobody watching.
 pub(crate) fn create_pr_worktree_in(
     repo: &str,
-    number: u64,
+    branch: &str,
     sha: &str,
     container: &Path,
     setup: bool,
 ) -> Result<PathBuf, String> {
-    let branch = format!("pr-{number}");
-    if branch_exists(repo, &branch) {
+    if branch_exists(repo, branch) {
         let at = rev_parse(repo, &format!("refs/heads/{branch}"))?;
         if at != sha {
             return Err(format!(
@@ -525,7 +549,7 @@ pub(crate) fn create_pr_worktree_in(
             ));
         }
     }
-    let (path, created) = add_worktree_in(repo, &branch, container, Some(sha))?;
+    let (path, created) = add_worktree_in(repo, branch, container, Some(sha))?;
     let at = rev_parse(&path.to_string_lossy(), "HEAD")?;
     if at != sha {
         return Err(format!(
@@ -1171,7 +1195,9 @@ mod tests {
         };
 
         fetch_review_head(repo, &head, Path::new("/nonexistent/sock"), "t").unwrap();
-        let wt = create_pr_worktree_in(repo, head.number, &head.sha, &cont, !head.fork).unwrap();
+        let branch = review_branch(repo, &head);
+        assert_eq!(branch, "pr-9", "a fork's branch name means nothing here");
+        let wt = create_pr_worktree_in(repo, &branch, &head.sha, &cont, !head.fork).unwrap();
         assert!(wt.ends_with("pr-9"), "{}", wt.display());
         assert_eq!(rev_parse(wt.to_str().unwrap(), "HEAD").unwrap(), sha);
 
@@ -1228,10 +1254,10 @@ mod tests {
             },
         );
         crate::setup::seam(prefs, tmp.join("logs"));
-        let wt = create_pr_worktree_in(repo, 7, &first, &cont, false).unwrap();
+        let wt = create_pr_worktree_in(repo, "pr-7", &first, &cont, false).unwrap();
         assert!(crate::setup::status(&wt).is_none(), "a fork's head runs no setup");
         assert_eq!(rev_parse(wt.to_str().unwrap(), "HEAD").unwrap(), first);
-        let again = create_pr_worktree_in(repo, 7, &first, &cont, true).unwrap();
+        let again = create_pr_worktree_in(repo, "pr-7", &first, &cont, true).unwrap();
         assert_eq!(
             again.canonicalize().unwrap(),
             wt.canonicalize().unwrap(),
@@ -1243,7 +1269,7 @@ mod tests {
         git(&src, &["commit", "-qam", "more"]);
         git(&src, &["update-ref", "refs/pull/7/head", "HEAD"]);
         let moved = fetch();
-        let err = create_pr_worktree_in(repo, 7, &moved, &cont, true).unwrap_err();
+        let err = create_pr_worktree_in(repo, "pr-7", &moved, &cont, true).unwrap_err();
         assert!(err.contains("pr-7 is at"), "{err}");
         assert_eq!(
             rev_parse(wt.to_str().unwrap(), "HEAD").unwrap(),
@@ -1299,8 +1325,10 @@ mod tests {
             fork: false,
         };
         fetch_review_head(repo, &head, Path::new("/nonexistent/sock"), "t").unwrap();
-        let wt = create_pr_worktree_in(repo, head.number, &head.sha, &cont, false).unwrap();
-        track_review_branch(repo, &head);
+        let branch = review_branch(repo, &head);
+        assert_eq!(branch, "feat", "a same-repo review takes the pull request's own name");
+        let wt = create_pr_worktree_in(repo, &branch, &head.sha, &cont, false).unwrap();
+        track_review_branch(repo, &head, &branch);
         let folder = wt.to_str().unwrap();
         assert_eq!(rev_parse(folder, "@{upstream}").unwrap(), head.sha);
 
@@ -1321,8 +1349,9 @@ mod tests {
             ..head
         };
         fetch_review_head(repo, &fork, Path::new("/nonexistent/sock"), "t").unwrap();
-        let wt = create_pr_worktree_in(repo, fork.number, &fork.sha, &cont, false).unwrap();
-        track_review_branch(repo, &fork);
+        let branch = review_branch(repo, &fork);
+        let wt = create_pr_worktree_in(repo, &branch, &fork.sha, &cont, false).unwrap();
+        track_review_branch(repo, &fork, &branch);
         assert!(rev_parse(wt.to_str().unwrap(), "@{upstream}").is_err());
 
         std::fs::remove_dir_all(&tmp).ok();
