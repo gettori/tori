@@ -125,7 +125,7 @@ const { draftFor } = await import("../utils/chatCompose");
 const { draftPick } = await import("../utils/chatDraftPick");
 const { envelopeFor, resetPaneLayoutModel, seedTwoPane } = await import("../layout/layoutStore");
 const { paneOfTab, resetTabPlacement, flushTabPlacement } = await import("../layout/tabPlacement");
-const { visibleId, focusTab, setTabTitles } = await import("../panels/Terminal/terminalTabStore");
+const { visibleId, focusTab, setTabTitles, isHeld, tabState } = await import("../panels/Terminal/terminalTabStore");
 const { closeOf } = await import("../test/tabs");
 const { forgetProfileEnvs } = await import("../utils/profileEnv");
 
@@ -666,10 +666,9 @@ describe("reload reattach", () => {
       .filter((el) => el.dataset.started === "true")
       .map((el) => el.dataset.tab);
 
-  // A detached PTY's output is dropped rather than buffered, so a tab that
-  // waited to be clicked would come back missing whatever ran meanwhile. The
-  // shell here is not the active tab, and it comes up anyway.
-  it("mounts every tab the backend still holds, clicked or not", async () => {
+  // A held shell's ring keeps whatever ran meanwhile, so it stays live but
+  // mounts only when shown: mounting every one would replay every ring at launch.
+  it("starts every chat the backend still holds and keeps a held shell for its first showing", async () => {
     storeTabs([chatTab(1), chatTab(2), shell({ id: "sh:1" })], { activeId: "chat:1" });
     liveChats = ["s-1", "s-2"];
     livePtys = ["sh:1"];
@@ -680,7 +679,9 @@ describe("reload reattach", () => {
     // Three surfaces for one tab on screen. Both chats are started, so each
     // asks for its own session rather than opening to read.
     await waitFor(() => expect(startedChats().sort()).toEqual(["chat:1", "chat:2"]));
-    expect(mountedPtys()).toEqual(["sh:1"]);
+    expect(mountedPtys()).toEqual([]);
+    const sh = open().find((t) => t.id === "sh:1")!;
+    expect([isHeld("sh:1"), tabState(sh)]).toEqual([true, "live"]);
   });
 
   // The control: same store, backend holding nothing. This is the cold relaunch
@@ -728,9 +729,8 @@ describe("reload reattach", () => {
     await restore();
 
     await waitFor(() => expect(open()).toHaveLength(3));
-    // `sh:active` mounts because it is the tab on screen taking its one step,
-    // `sh:kept` because the backend named it. `sh:gone` is neither.
-    await waitFor(() => expect(mountedPtys().sort()).toEqual(["sh:active", "sh:kept"]));
+    await waitFor(() => expect(mountedPtys()).toEqual(["sh:active"]));
+    expect(["sh:kept", "sh:gone"].map(isHeld)).toEqual([true, false]);
   });
 });
 

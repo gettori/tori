@@ -76,9 +76,9 @@ const ALLOWED = new Map<string, Allowed>([
   [
     "panels/Terminal/Terminal.tsx",
     {
-      count: 6,
+      count: 9,
       reason:
-        "the panel owns every transition a person can cause: a restore seeds a tab inert, and drops that seed again when the tab it was for was never taken up; a tab that comes on screen wakes one step; a first send starts a chat, whether it was a draft or a restored transcript; and a closed tab leaves no record behind",
+        "the panel owns every transition a person can cause: a restore seeds a tab inert, and drops that seed again when the tab it was for was never taken up; a tab that comes on screen wakes one step; a first send starts a chat, whether it was a draft or a restored transcript; a closed tab leaves no record behind; and a chat that died with the daemon comes back open under a new id, its old record dropped",
     },
   ],
   [
