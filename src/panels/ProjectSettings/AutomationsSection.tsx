@@ -1,8 +1,28 @@
-import { createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { TriangleAlert } from "lucide-solid";
 import Button from "../../components/Button/Button";
+import Icon from "../../components/Icon/Icon";
 import Select, { type SelectOption } from "../../components/Select/Select";
+import { enabledChatAgents } from "../../utils/agentEnabled";
+import {
+  agentReady,
+  agentVersion,
+  chatRuntimeMissing,
+  ensureAgentHealthLoaded,
+  namedProfiles,
+  profileLabel,
+  profileSignedOut,
+} from "../../utils/agentHealth";
+import { openAgentCard } from "../../utils/agentCard";
+import { ensureAdaptersLoaded, findAdapter } from "../../utils/agents";
+import { cachedModes, capabilitiesFor } from "../../utils/chatModels";
+import { catalogFor, ensureModelCatalogsLoaded, isProbing, modelCatalogs } from "../../utils/modelCatalog";
+import ModeSelector from "../Chat/ModeSelector";
+import ModelPicker from "../Chat/ModelPicker";
+import { paletteProviders } from "../Chat/agentPaletteData";
+import { probeOnHighlight, recheckAgent } from "../Chat/draftProbe";
 import { Stepper } from "../Settings/components/paneKit";
 import { reviewRule, setReviewRule, type ReviewRule } from "../Settings/settingsStore";
 import { Row, Section } from "./Section";
@@ -13,6 +33,98 @@ const ACTIONS: SelectOption[] = [
   { value: "worktree", label: "Create a worktree" },
   { value: "review", label: "Create a worktree and review it" },
 ];
+
+const UNPICKED: Partial<ReviewRule> = { agent: null, account: null, model: null, effort: null, mode: null };
+
+function ReviewRunsOn(props: { rule: ReviewRule; save: (patch: Partial<ReviewRule>) => void }) {
+  onMount(() => {
+    ensureAdaptersLoaded();
+    ensureAgentHealthLoaded();
+    void ensureModelCatalogsLoaded();
+  });
+
+  const providers = createMemo(() =>
+    paletteProviders({
+      adapters: enabledChatAgents(),
+      catalogs: modelCatalogs(),
+      profilesFor: namedProfiles,
+      ready: agentReady,
+      signedOut: profileSignedOut,
+      probing: isProbing,
+      chatRuntime: chatRuntimeMissing,
+      version: agentVersion,
+    }),
+  );
+  const agent = () => props.rule.agent ?? enabledChatAgents()[0]?.id ?? "";
+  const models = () => providers().find((p) => p.agentId === agent() && p.profile === props.rule.account)?.models ?? [];
+  const model = () => models().find((m) => m.value === props.rule.model) ?? null;
+  const chat = () => findAdapter(agent()).chat ?? null;
+  const modes = () =>
+    capabilitiesFor(model(), chat(), cachedModes(catalogFor(agent(), props.rule.account), chat()).modes).modes;
+  const permissive = () => !!modes().find((m) => m.id === props.rule.mode)?.permissive;
+  const picked = () => Object.keys(UNPICKED).some((k) => props.rule[k as keyof ReviewRule] !== null);
+
+  return (
+    <>
+      <Row
+        label="Runs on"
+        hint="Unset uses the project's usual agent and model, in the agent's read-only mode where it has one. A review already running keeps what it started on."
+      >
+        <ModelPicker
+          models={models()}
+          providers={providers()}
+          value={props.rule.model}
+          agentId={agent()}
+          profile={props.rule.account}
+          profileLabel={profileLabel(agent(), props.rule.account)}
+          effort={props.rule.effort}
+          modelPending={false}
+          effortPending={false}
+          disabled={false}
+          onSelectModel={(id, account, picked) =>
+            props.save({
+              agent: id,
+              account,
+              model: picked.value,
+              effort: picked.effortLevels.some((l) => l.level === props.rule.effort) ? props.rule.effort : null,
+              mode: id === props.rule.agent ? props.rule.mode : null,
+            })
+          }
+          onSelectEffort={(effort) => props.save({ effort })}
+          onHighlightAgent={(id, account) => probeOnHighlight(id, account)}
+          onRecheckAgent={(id, account) => recheckAgent(id, account)}
+          onFixAgent={openAgentCard}
+        />
+        <Show when={modes().length > 0}>
+          <ModeSelector
+            mode={props.rule.mode}
+            modes={modes()}
+            pending={false}
+            disabled={false}
+            onSelect={(mode) => props.save({ agent: agent(), mode })}
+          />
+        </Show>
+        <Show when={picked()}>
+          <Button size="sm" onClick={() => props.save(UNPICKED)}>
+            Reset
+          </Button>
+        </Show>
+      </Row>
+      <Show when={permissive()}>
+        <div class={styles.warnCard} role="group" aria-label="Runs without asking">
+          <Icon icon={TriangleAlert} />
+          <div class={styles.warnText}>
+            <span class={styles.warnTitle}>Runs without asking</span>
+            <span class={styles.warnBody}>
+              The review runs commands on the pull request's branch with nobody approving them, including its build
+              scripts and tests. Text in the pull request can steer it. Pick this only for authors you trust.
+            </span>
+          </div>
+        </div>
+      </Show>
+    </>
+  );
+}
 
 export default function AutomationsSection(props: { projectPath: string }) {
   const rule = () => reviewRule(props.projectPath);
@@ -64,6 +176,7 @@ export default function AutomationsSection(props: { projectPath: string }) {
             onChange={(e) => save({ prompt: e.currentTarget.value.trim() || null })}
           />
         </Row>
+        <ReviewRunsOn rule={rule()} save={save} />
       </Show>
       <Show when={rule().action !== "off"}>
         <Row label="At most per hour" hint="Past this the rule pauses until you resume it.">

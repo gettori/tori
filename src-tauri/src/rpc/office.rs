@@ -445,6 +445,11 @@ impl Office {
                     project: Some(arg(args, "project")?),
                     prompt: Some(arg(args, "prompt")?),
                     background: Some(true),
+                    agent: arg(args, "agent")?,
+                    account: arg(args, "account")?,
+                    model: arg(args, "model")?,
+                    effort: arg(args, "effort")?,
+                    mode: arg(args, "mode")?,
                     ..Default::default()
                 };
                 let spawned = self

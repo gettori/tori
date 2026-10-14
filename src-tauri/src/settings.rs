@@ -1112,6 +1112,19 @@ pub struct ReviewRule {
     pub prompt: Option<String>,
     #[serde(default = "default_max_per_hour")]
     pub max_per_hour: u32,
+    /// What the review session runs on; each `None` falls back the way any
+    /// spawn does: the autopilot contract, then the folder's remembered pick.
+    #[serde(default)]
+    pub agent: Option<String>,
+    #[serde(default)]
+    pub account: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub effort: Option<String>,
+    /// `None` opens the agent's read-only mode where it has one.
+    #[serde(default)]
+    pub mode: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -1133,6 +1146,11 @@ impl Default for ReviewRule {
             action: ReviewAction::Off,
             prompt: None,
             max_per_hour: default_max_per_hour(),
+            agent: None,
+            account: None,
+            model: None,
+            effort: None,
+            mode: None,
         }
     }
 }
@@ -1564,7 +1582,7 @@ mod tests {
             Some(&ReviewRule {
                 action: ReviewAction::Review,
                 prompt: Some("look".into()),
-                max_per_hour: 5,
+                ..ReviewRule::default()
             })
         );
         assert!(
