@@ -1,7 +1,7 @@
 import { createResource, createSignal, onMount, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
-import { FileWarning, Folder } from "lucide-solid";
+import { FileWarning, Folder, SquareTerminal } from "lucide-solid";
 import Button from "../../../../components/Button/Button";
 import ConfirmDialog from "../../../../components/Dialogs/ConfirmDialog";
 import Icon from "../../../../components/Icon/Icon";
@@ -17,6 +17,8 @@ import styles from "../../Settings.module.css";
  *  picked, so the dialog can name both ends of the swap rather than asking the
  *  user to remember what they just clicked. */
 type Pending = { kind: "change"; path: string } | { kind: "forget" };
+
+type ShellPath = { on: boolean; profile: string; dir: string };
 
 /**
  * The base folder, and the two actions that replace or forget it.
@@ -60,6 +62,16 @@ export default function AdvancedPane(props: PaneProps) {
     return typeof v === "string" ? v : null;
   };
   const newestCrash = () => crashFiles()[0] ?? null;
+
+  const [shellPathError, setShellPathError] = createSignal<string | null>(null);
+  const [shellPath, { mutate: setShellPath }] = createResource(() =>
+    invoke<ShellPath>("shell_path_status").catch((e) => {
+      setShellPathError(String(e));
+      return null;
+    }),
+  );
+  const toggleShellPath = () =>
+    invoke<ShellPath>("shell_path_set", { on: !shellPath()?.on }).then(setShellPath).catch(fail);
 
   function fail(e: unknown) {
     emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
@@ -176,6 +188,39 @@ export default function AdvancedPane(props: PaneProps) {
             Reveal
           </Button>
           <Button onClick={() => void invoke("open_crash_issue").catch(fail)}>Report a bug</Button>
+        </div>
+      </Group>
+
+      <Group {...props} title="Terminal command" ids={idsIn("shell")}>
+        <div id={rowDomId("tori-on-path")} class={styles.connect}>
+          <div class={styles.connectGlyph} aria-hidden="true">
+            <Icon icon={SquareTerminal} size="calc(28px * var(--ui-scale))" />
+          </div>
+          <div class={styles.connectMain}>
+            <div class={styles.connectTitle}>
+              <code>tori</code> in your shell
+            </div>
+            <div class={styles.cardStatus}>
+              <Show
+                when={shellPath()?.on}
+                fallback={
+                  shellPathError() ??
+                  "A terminal outside Tori cannot run tori yet. Adding it writes one line to your shell profile; new terminals pick it up."
+                }
+              >
+                {(_) => (
+                  <>
+                    New terminals run tori from <code>{shortHome(shellPath()!.dir, home())}</code>, by a line in{" "}
+                    <code>{shortHome(shellPath()!.profile, home())}</code>. Removing it takes that line out and nothing
+                    else.
+                  </>
+                )}
+              </Show>
+            </div>
+          </div>
+          <Button disabled={!shellPath()} onClick={() => void toggleShellPath()}>
+            {shellPath()?.on ? "Remove" : "Add"}
+          </Button>
         </div>
       </Group>
 

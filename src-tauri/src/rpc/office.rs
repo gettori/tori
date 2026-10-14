@@ -30,6 +30,8 @@ pub struct Office {
     remote: Arc<super::remote::Remote>,
     devices: Arc<super::devices::Devices>,
     awake: std::sync::Mutex<Option<super::awake::Awake>>,
+    idle_restart: std::sync::atomic::AtomicBool,
+    restart: Box<dyn Fn() + Send + Sync>,
     desk: Desk,
     backend: DaemonBackend,
     asks: Arc<Asks>,
@@ -49,6 +51,7 @@ pub struct Parts {
     pub screen: Arc<dyn Screen>,
     // Whether a window took it: a prompt nobody can see fails at once.
     pub prompt: Box<dyn Fn(crate::askpass::PromptEvent) -> bool + Send + Sync>,
+    pub restart: Box<dyn Fn() + Send + Sync>,
 }
 
 fn autopilot_publisher(hub: &Arc<Hub>, ui: &Ui) -> Box<dyn Fn(Value) + Send + Sync> {
@@ -149,6 +152,7 @@ pub fn start(parts: Parts) -> Arc<Office> {
         ptys,
         screen,
         prompt,
+        restart,
     } = parts;
     let askpass = start_askpass(prompt);
     let dir = crate::autopilot::dir();
@@ -208,6 +212,8 @@ pub fn start(parts: Parts) -> Arc<Office> {
         remote,
         devices,
         awake: std::sync::Mutex::new(None),
+        idle_restart: std::sync::atomic::AtomicBool::new(false),
+        restart,
         server,
         desk: desk.clone(),
         backend,
@@ -233,6 +239,7 @@ pub fn start(parts: Parts) -> Arc<Office> {
 
 // The Settings pane is not a socket subscriber, so it hears about devices here.
 const DEVICES_EVENT: &str = "remote://devices";
+const UPDATE_EVENT: &str = "daemon://update-waiting";
 
 fn arg<T: for<'de> Deserialize<'de>>(args: &Value, key: &str) -> Result<T, String> {
     serde_json::from_value(args.get(key).cloned().unwrap_or(Value::Null)).map_err(|e| format!("{key}: {e}"))
@@ -243,13 +250,32 @@ impl Office {
     // session it can watch is working.
     fn awake_wanted(&self) -> bool {
         let listening = matches!(self.remote.status(), super::remote::Status::Listening { .. });
-        let working = || {
-            self.states
-                .snapshot()
-                .values()
-                .any(|s| *s == super::states::SessionState::Working)
-        };
-        listening && (!self.hub.connected_devices().is_empty() || working())
+        listening && (!self.hub.connected_devices().is_empty() || self.working() > 0)
+    }
+
+    fn working(&self) -> usize {
+        let states = self.states.snapshot();
+        states
+            .values()
+            .filter(|s| **s == super::states::SessionState::Working)
+            .count()
+    }
+
+    pub fn restart_when_idle(&self) {
+        self.idle_restart.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.sessions_moved();
+    }
+
+    pub fn sessions_moved(&self) {
+        self.keep_awake();
+        if !self.idle_restart.load(std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
+        let working = self.working();
+        self.desk.ui.emit(UPDATE_EVENT, json!({ "sessions": working }));
+        if working == 0 {
+            (self.restart)();
+        }
     }
 
     pub fn keep_awake(&self) {

@@ -72,7 +72,7 @@ const USAGE: &str = "usage:
   tori validate-pack <file|dir>... [--assets] [--registry] [--json]
   tori packs-index <dir> [--sign-key-env <name> --key-id <id>]
   tori packs-catalog --check
-  tori daemon
+  tori daemon [--uninstall]
   tori attach <session|tab>";
 
 pub fn is_cli() -> bool {
@@ -84,7 +84,17 @@ pub fn is_cli() -> bool {
 pub fn run() -> i32 {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args[0] == "daemon" {
-        return crate::rpc::daemon::run();
+        return match args.get(1).map(String::as_str) {
+            None => crate::rpc::daemon::run(),
+            Some("--uninstall") => uninstall_daemon(),
+            Some(other) => {
+                eprintln!(
+                    "tori: {}",
+                    usage(format!("daemon takes --uninstall or nothing, not {other}"))
+                );
+                1
+            }
+        };
     }
     match dispatch(&args) {
         Ok(()) => 0,
@@ -101,6 +111,32 @@ pub fn run() -> i32 {
             1
         }
     }
+}
+
+// The token in the bridge file goes too, so a process that read it can reach
+// nothing until a daemon starts with a new one.
+fn uninstall_daemon() -> i32 {
+    if !crate::rpc::launchd::managed() {
+        eprintln!("tori: a dev build runs no LaunchAgent; its daemon stops with `pkill -f 'tori daemon'`");
+        return 1;
+    }
+    if let Err(e) = crate::rpc::launchd::uninstall() {
+        eprintln!("tori: {e}");
+        return 1;
+    }
+    let rpc_json = crate::rpc::daemon::paths().rpc_json;
+    match std::fs::remove_file(&rpc_json) {
+        Err(e) if e.kind() != io::ErrorKind::NotFound => {
+            eprintln!(
+                "tori: the daemon is stopped, but {} is still there: {e}",
+                rpc_json.display()
+            );
+            return 1;
+        }
+        _ => {}
+    }
+    println!("The Tori daemon is stopped and will not start at login. Tori's window offers to start it again.");
+    0
 }
 
 enum Failure {

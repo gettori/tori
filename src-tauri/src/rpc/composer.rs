@@ -320,7 +320,7 @@ impl Composer {
             self.sources.tell("states", json!(self.states.shown()));
             crate::radar::sessions_changed();
             if let Some(office) = super::office() {
-                office.keep_awake();
+                office.sessions_moved();
             }
         }
         for event in moved {
