@@ -8,7 +8,6 @@ use std::sync::{Arc, Mutex};
 use serde::Serialize;
 
 use super::auth::Credential;
-use super::awake::Awake;
 use super::devices::Devices;
 use super::pairing::{Offer, Pairing};
 use super::server::{serve, Dispatch};
@@ -24,16 +23,11 @@ pub enum Status {
     Failed { error: String },
 }
 
-struct Running {
-    transport: Arc<WsTransport>,
-    _awake: Option<Awake>,
-}
-
 pub struct Remote {
     server: Arc<dyn Dispatch>,
     devices: Arc<Devices>,
     pairing: Arc<Pairing>,
-    state: Mutex<(Option<Running>, Status)>,
+    state: Mutex<(Option<Arc<WsTransport>>, Status)>,
 }
 
 impl Remote {
@@ -54,13 +48,13 @@ impl Remote {
             None
         };
         if let (Some(Ok(addr)), Some(running)) = (&wanted, &state.0) {
-            if running.transport.addr() == *addr {
+            if running.addr() == *addr {
                 return state.1.clone();
             }
         }
         // A live code names the old address, so it goes with the listener.
         if let Some(running) = state.0.take() {
-            running.transport.shutdown();
+            running.shutdown();
             self.pairing.cancel();
         }
         state.1 = match wanted {
@@ -78,19 +72,12 @@ impl Remote {
                         pairing: self.pairing.clone(),
                     });
                     serve(transport.clone() as Arc<dyn Transport>, credential, self.server.clone());
-                    state.0 = Some(Running {
-                        transport,
-                        _awake: Awake::hold("Tori remote front is listening"),
-                    });
+                    state.0 = Some(transport);
                     Status::Listening { url }
                 }
             },
         };
         state.1.clone()
-    }
-
-    pub fn stop(&self) {
-        self.apply(&Config::default());
     }
 
     pub fn status(&self) -> Status {

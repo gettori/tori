@@ -7,7 +7,7 @@
 //! sends `call` requests down and reads their replies, the window sends
 //! `mint`, `revoke` and `publish` up. Replies come back in any order.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::os::fd::AsRawFd;
@@ -453,7 +453,6 @@ impl Daemon {
                 "bin": self.paths.cli_link_dir,
             }),
         )));
-        window.notify("chats", json!(self.hub.chats()));
         self.ptys.set_watched(true);
         self.composer.window(true);
         let Ok(mut write_half) = stream.try_clone_box() else {
@@ -931,12 +930,6 @@ pub fn start(paths: Paths) -> Result<Start, String> {
             instance: Mutex::default(),
         }
     });
-    let weak: Weak<Daemon> = Arc::downgrade(&daemon);
-    daemon.hub.watch_chats(Box::new(move |ids: HashSet<String>| {
-        if let Some(daemon) = weak.upgrade() {
-            daemon.notify_window("chats", json!(ids));
-        }
-    }));
     let accepting = daemon.clone();
     let accept = thread::spawn(move || loop {
         match accepting.transport.accept() {
@@ -1035,10 +1028,16 @@ mod tests {
         dir
     }
 
+    // A child another test forks holds any fd open across its fork until it
+    // execs, the lock included, so a held lock is retried for a moment.
     fn started(paths: &Paths) -> Started {
-        match start(paths.clone()).unwrap() {
-            Start::Started(s) => s,
-            Start::Running => panic!("a daemon already holds {}", paths.lock.display()),
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            match start(paths.clone()).unwrap() {
+                Start::Started(s) => return s,
+                Start::Running if Instant::now() < deadline => thread::sleep(Duration::from_millis(20)),
+                Start::Running => panic!("a daemon already holds {}", paths.lock.display()),
+            }
         }
     }
 
@@ -1228,17 +1227,11 @@ mod tests {
         let (server, link) = app(&paths);
         let mut client = Raw::authed(&paths, &token(&paths));
         client.call(2, "subscribe", json!({ "topic": "sessions" }));
-        client.call(3, "subscribe", json!({ "topic": "chat:s1" }));
         server
             .hub
             .publish(&Channel::Sessions, json!({ "kind": "session.started", "id": "s1" }));
         let event = client.recv();
         assert_eq!(event["params"]["data"]["kind"], "session.started");
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while !server.hub.watches_chat("s1") && Instant::now() < deadline {
-            thread::sleep(Duration::from_millis(10));
-        }
-        assert!(server.hub.watches_chat("s1"), "the app hears who reads a chat");
         link.close();
         stop(daemon);
     }

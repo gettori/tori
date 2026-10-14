@@ -1,5 +1,4 @@
-//! Keeps the Mac from idle sleeping while the remote front listens, since a
-//! sleeping Mac drops every phone. A closed lid on battery still sleeps.
+//! A closed lid on battery still sleeps.
 
 use std::ffi::{c_char, c_void, CString};
 
