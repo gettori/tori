@@ -323,6 +323,15 @@ function ReviewRow(props: { item: ReviewItem }) {
   const others = () => props.item.signals.filter((sig) => sig.kind !== "lines" && !DANGERS.includes(sig.kind));
   const opinionRunning = () =>
     props.item.secondOpinion?.state === "running" || secondOpinionRunning(props.item.unit.id);
+  const [marking, setMarking] = createSignal(false);
+  const mark = async () => {
+    setMarking(true);
+    try {
+      await markReviewed(props.item);
+    } finally {
+      setMarking(false);
+    }
+  };
   return (
     <li class={styles.review} data-tier={tier().tone}>
       <button
@@ -398,13 +407,28 @@ function ReviewRow(props: { item: ReviewItem }) {
         />
         <IconButton
           size="sm"
-          icon={<Icon icon={Check} />}
+          icon={
+            marking() ? (
+              <span class={styles.spin}>
+                <Icon icon={LoaderCircle} />
+              </span>
+            ) : (
+              <Icon icon={Check} />
+            )
+          }
           aria-label="Mark reviewed"
-          tooltip={props.item.running ? "Still working. Mark it once its turn ends." : "Mark reviewed"}
+          aria-busy={marking()}
+          tooltip={
+            props.item.running
+              ? "Still working. Mark it once its turn ends."
+              : marking()
+                ? "Marking reviewed"
+                : "Mark reviewed"
+          }
           tooltipPlacement="top"
           tooltipWhenDisabled
-          disabled={props.item.running}
-          onClick={() => void markReviewed(props.item)}
+          disabled={props.item.running || marking()}
+          onClick={() => void mark()}
         />
       </div>
     </li>

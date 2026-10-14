@@ -45,13 +45,20 @@ export async function refreshInbox() {
   if (items && mine === request) setReviewItems(items);
 }
 
+// Resolves once the mark is stored, not once the list is rebuilt: a rebuild
+// can take seconds, and the row is gone either way.
 export async function markReviewed(item: ReviewItem) {
   try {
     await invoke("review_mark", { unit: item.unit, toTs: item.toTs });
   } catch (e) {
     emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
+    void refreshInbox();
+    return;
   }
-  await refreshInbox();
+  // Outdates any list already in flight, which would bring the row back.
+  request++;
+  setReviewItems((items) => items.filter((i) => i.unit.id !== item.unit.id));
+  void refreshInbox();
 }
 
 /** Go to the session and open its first unreviewed turn in Checkpoints. */
