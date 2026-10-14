@@ -80,6 +80,11 @@ describe("Project settings dialog, Automations section", () => {
         action: "review",
         prompt: "Check the migrations.",
         maxPerHour: 5,
+        agent: null,
+        account: null,
+        model: null,
+        effort: null,
+        mode: null,
       }),
     );
 

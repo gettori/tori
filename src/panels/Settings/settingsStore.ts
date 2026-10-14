@@ -356,8 +356,18 @@ export type Settings = {
 };
 
 /** What a project does when a pull request asks for your review. A null prompt
- *  runs the built-in one. */
-export type ReviewRule = { action: "off" | "worktree" | "review"; prompt: string | null; maxPerHour: number };
+ *  runs the built-in one; a null pick falls back the way any spawn does, and a
+ *  null mode opens the agent's read-only one. */
+export type ReviewRule = {
+  action: "off" | "worktree" | "review";
+  prompt: string | null;
+  maxPerHour: number;
+  agent: string | null;
+  account: string | null;
+  model: string | null;
+  effort: string | null;
+  mode: string | null;
+};
 
 /** What a project runs in a worktree Tori has just created. An empty command
  *  runs nothing; `setupWait` holds `worktree.new` and `session.spawn` until it exits. */
@@ -912,7 +922,16 @@ export function rememberWorktreePrefs(projectPath: string, patch: Partial<Worktr
   });
 }
 
-const RULE_OFF: ReviewRule = { action: "off", prompt: null, maxPerHour: 5 };
+const RULE_OFF: ReviewRule = {
+  action: "off",
+  prompt: null,
+  maxPerHour: 5,
+  agent: null,
+  account: null,
+  model: null,
+  effort: null,
+  mode: null,
+};
 
 export function reviewRule(projectPath: string): ReviewRule {
   return { ...RULE_OFF, ...settings.reviewRequested?.[projectPath] };
