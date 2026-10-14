@@ -6,9 +6,10 @@ use std::io::{self, Write};
 
 use serde_json::{json, Value};
 
+use crate::pty::attach::Ended;
 use crate::rpc::client::{self, Client, Found};
 
-const COMMANDS: [&str; 21] = [
+const COMMANDS: [&str; 22] = [
     "sessions",
     "projects",
     "session",
@@ -30,6 +31,7 @@ const COMMANDS: [&str; 21] = [
     "packs-index",
     "packs-catalog",
     "daemon",
+    "attach",
 ];
 
 const USAGE: &str = "usage:
@@ -70,7 +72,8 @@ const USAGE: &str = "usage:
   tori validate-pack <file|dir>... [--assets] [--registry] [--json]
   tori packs-index <dir> [--sign-key-env <name> --key-id <id>]
   tori packs-catalog --check
-  tori daemon";
+  tori daemon
+  tori attach <session|tab>";
 
 pub fn is_cli() -> bool {
     std::env::args()
@@ -168,6 +171,7 @@ fn dispatch(args: &[String]) -> Result<(), Failure> {
         "ask" => ask(rest),
         "pr" => pr(rest),
         "autopilot" => autopilot(rest),
+        "attach" => attach(rest),
         "mcp" => Ok(crate::mcp::run()?),
         "validate-pack" => validate_pack(rest),
         "packs-index" => packs_index(rest),
@@ -241,6 +245,32 @@ fn connect() -> Result<Client, Failure> {
         }
         connected => Ok(connected?),
     }
+}
+
+fn attach(args: &[String]) -> Result<(), Failure> {
+    let p = Parsed::new(args, &[], &[])?;
+    let [target] = p.positional.as_slice() else {
+        return Err(usage("attach takes one session or tab id"));
+    };
+    if !crate::pty::attach::is_terminal() {
+        return Err(usage("attach needs a terminal on stdin and stdout"));
+    }
+    if std::env::var_os(crate::rpc::ENV_CALLER).is_some_and(|v| !v.is_empty()) {
+        return Err(Failure::Refused("attach from a terminal outside Tori".into()));
+    }
+    let (sock, token) = crate::credential::socket_in_file(&crate::rpc::bridge_path()).ok_or_else(|| {
+        let message = "Tori is not running: no ~/.config/tori/rpc.json";
+        Failure::Io(io::Error::new(io::ErrorKind::NotFound, message))
+    })?;
+    eprintln!("tori: attaching to {target}, Ctrl-\\ detaches");
+    let ended = crate::pty::attach::run(&sock, &token, target).map_err(Failure::Refused)?;
+    match ended {
+        Ended::Detached => eprintln!("\ntori: detached, {target} keeps running"),
+        Ended::Exited(Some(code)) => eprintln!("\ntori: {target} exited with {code}"),
+        Ended::Exited(None) => eprintln!("\ntori: {target} exited"),
+        Ended::Closed => eprintln!("\ntori: Tori closed the stream"),
+    }
+    Ok(())
 }
 
 fn sessions(args: &[String]) -> Result<(), Failure> {
