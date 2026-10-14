@@ -46,6 +46,9 @@ pub struct Listed {
     pub profile: Option<String>,
     pub cwd: String,
     pub busy: bool,
+    // The shell has handed the terminal to a program, an agent it started.
+    #[serde(default)]
+    pub handed_on: bool,
 }
 
 pub fn write_frame(out: &mut impl Write, kind: u8, payload: &[u8]) -> io::Result<()> {

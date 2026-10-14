@@ -167,6 +167,10 @@ impl Composer {
         self.dots.all()
     }
 
+    pub fn tab_of(&self, session: &str) -> Option<String> {
+        self.dots.tab_of(session)
+    }
+
     // So a socket caller never waits on a window to notice a session exited.
     // Queued rather than run inline, which would put a pgrep on the caller's call.
     fn refresh_if_stale(&self) {
@@ -252,6 +256,7 @@ impl Composer {
                     session,
                     cwd: listed.cwd.clone(),
                     agent: listed.agent.clone(),
+                    held: listed.handed_on,
                 })
             })
             .collect()
@@ -299,7 +304,8 @@ impl Composer {
         drop(metas);
 
         let chats: HashSet<String> = beats.into_iter().map(|b| b.session).collect();
-        let tabs: HashSet<String> = tabs.into_iter().map(|t| t.tab).collect();
+        // A shell back at its prompt has no agent session left in it.
+        let tabs: HashSet<String> = tabs.into_iter().filter(|t| t.handed_on).map(|t| t.tab).collect();
         let projects = OnceCell::new();
         let place_of = |folder: &str| Place {
             project: events::project_of(folder, projects.get_or_init(crate::config::discovered_project_dirs)),

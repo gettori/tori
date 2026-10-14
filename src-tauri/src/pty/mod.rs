@@ -1,3 +1,4 @@
+pub mod attach;
 pub mod host;
 pub mod wire;
 

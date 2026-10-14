@@ -140,6 +140,7 @@ pub struct Bound {
     pub session: String,
     pub cwd: String,
     pub agent: Option<String>,
+    pub held: bool,
 }
 
 pub fn compose(input: &Inputs) -> Composed {
@@ -170,6 +171,10 @@ pub fn compose(input: &Inputs) -> Composed {
 pub struct TabFact {
     pub id: String,
     pub session: String,
+    // Bound by the hooks and its agent still holding the terminal, which the
+    // probe cannot see for an agent started without a session id.
+    #[serde(skip)]
+    pub held: bool,
     pub live: bool,
     pub workspace: String,
     #[serde(default)]
@@ -319,10 +324,14 @@ impl Dots {
         let mut tabs = inner.facts.tabs.clone();
         for b in bound {
             match tabs.iter_mut().find(|t| t.id == b.tab) {
-                Some(t) => t.session = b.session.clone(),
+                Some(t) => {
+                    t.session = b.session.clone();
+                    t.held = b.held;
+                }
                 None => tabs.push(TabFact {
                     id: b.tab.clone(),
                     session: b.session.clone(),
+                    held: b.held,
                     live: true,
                     workspace: b.cwd.clone(),
                     agent: b.agent.clone(),
@@ -456,6 +465,12 @@ impl Dots {
         self.inner().facts.forge.clone()
     }
 
+    pub fn tab_of(&self, session: &str) -> Option<String> {
+        let inner = self.inner();
+        let tab = inner.composed_tabs.iter().find(|t| t.session == session && t.live);
+        tab.map(|t| t.id.clone())
+    }
+
     pub fn all(&self) -> Vec<Change> {
         self.inner().dots.values().cloned().collect()
     }
@@ -481,7 +496,7 @@ impl Dots {
         for id in ids {
             let tab = tabs.iter().find(|t| t.session == id && t.live);
             let chat = chats.iter().find(|c| c.session == id);
-            let running = inner.probes.get(id).is_some_and(|p| p.running);
+            let running = inner.probes.get(id).is_some_and(|p| p.running) || tab.is_some_and(|t| t.held);
             let pty = tab.and_then(|t| inner.activity.get(&t.id).copied());
             let session = meta.get(id);
             let blocked = tab.is_some()
@@ -692,6 +707,7 @@ mod tests {
         TabFact {
             id: id.into(),
             session: session.into(),
+            held: false,
             live: true,
             workspace: "/p/repo".into(),
             agent: Some("claude".into()),

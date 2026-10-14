@@ -146,6 +146,12 @@ struct Pty {
 }
 
 impl Pty {
+    fn handed_on(&self) -> bool {
+        let shell = self.child.lock().ok().and_then(|c| c.process_id());
+        let foreground = self.master.lock().ok().and_then(|m| m.process_group_leader());
+        matches!((shell, foreground), (Some(shell), Some(fg)) if i64::from(fg) != i64::from(shell))
+    }
+
     fn resize(&self, cols: u16, rows: u16) {
         if let Ok(master) = self.master.lock() {
             let _ = master.resize(PtySize {
@@ -505,6 +511,7 @@ impl Host {
                 profile: pty.profile.clone(),
                 cwd: pty.cwd.clone(),
                 busy: pty.busy.load(Ordering::Relaxed),
+                handed_on: pty.handed_on(),
             })
             .collect();
         tabs.sort_by(|a, b| a.tab.cmp(&b.tab));
