@@ -81,7 +81,6 @@ import {
   OPEN_IN_EDITOR,
   type OpenInEditor,
   TOGGLE_DOCK,
-  TOGGLE_INBOX,
   OPEN_SETTINGS,
   type OpenSettings,
   ACTIVATE_SPACE,
@@ -179,7 +178,6 @@ import {
   type LucideIcon,
   Plus,
   SquareTerminal,
-  Inbox,
   Unlink,
   Plug,
   ShieldAlert,
@@ -204,8 +202,6 @@ import { dockOpen } from "../../layout/dockStore";
 import BranchLine from "./BranchLine";
 import { prWatchMenu, type PrWatchRow } from "../../utils/prWatchMenu";
 import StatusBubble, { CountBubble } from "./StatusBubble";
-import { needsYouCount } from "../../utils/needsYouInbox";
-import { inboxOpen, reviewItems } from "../../utils/reviewInbox";
 import { latestUnreviewed, runSecondOpinion, secondOpinionRunning } from "../../utils/secondOpinion";
 import SpaceTile, { ModeTile, TileProbe } from "./SpaceTile";
 import { BranchRow, EmptyRow, GroupRow, MoreRow, ProjectRow } from "./SidebarRows";
@@ -3676,23 +3672,6 @@ export default function LeftSidebar(props: {
               {modeTile("topics", "Topics", Tags)}
             </Show>
           </div>
-
-          <Tooltip
-            as="button"
-            type="button"
-            class={`${styles.stripBtn} ${styles.inboxBtn}`}
-            classList={{ [styles.active]: inboxOpen() }}
-            label="Inbox (⌘⇧X)"
-            placement={railed() ? "right" : undefined}
-            aria-label="Inbox"
-            aria-pressed={inboxOpen()}
-            onClick={() => emit(TOGGLE_INBOX)}
-          >
-            <Icon icon={Inbox} />
-            <Show when={reviewItems().length + needsYouCount() > 0}>
-              <CountBubble>{reviewItems().length + needsYouCount()}</CountBubble>
-            </Show>
-          </Tooltip>
 
           <Tooltip
             as="button"

@@ -1,0 +1,35 @@
+@layer components {
+  .anchor {
+    position: relative;
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-self: center;
+  }
+
+  .bubble {
+    position: absolute;
+    top: calc(-4px * var(--ui-scale));
+    right: calc(-6px * var(--ui-scale));
+    min-width: calc(15px * var(--ui-scale));
+    height: calc(15px * var(--ui-scale));
+    padding: 0 calc(4px * var(--ui-scale));
+    border-radius: var(--tori-radius-pill);
+    background: var(--brand-default);
+    color: var(--brand-on);
+    font-size: var(--tori-text-2xs);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    line-height: calc(15px * var(--ui-scale));
+    text-align: center;
+    pointer-events: none;
+  }
+
+  /* A fixed height, so switching views does not resize the panel under the
+     pointer. */
+  .surface {
+    display: flex;
+    flex-direction: column;
+    width: min(calc(760px * var(--ui-scale)), calc(100vw - 32px));
+    height: min(calc(620px * var(--ui-scale)), calc(100vh - 80px));
+  }
+}

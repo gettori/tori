@@ -50,6 +50,8 @@ const VERDICTS: Record<Verdict, string> = {
   unverified: "Not verified",
 };
 
+export const verdictLabel = (v: Verdict) => VERDICTS[v];
+
 export function digestTime(ts: number, now = Date.now()) {
   const at = new Date(ts);
   const clock = at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });

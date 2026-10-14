@@ -1,95 +1,186 @@
 @layer components {
-  /* Over the workspace rather than in its place, like the cockpit: unmounting
-     the workspace would close every chat tab under it. */
-  .overlay {
-    position: absolute;
-    inset: 0;
-    z-index: 100;
+  .panel {
     display: flex;
+    flex: 1;
     flex-direction: column;
-    background: var(--canvas-default);
+    min-height: 0;
+    color: var(--fg-default);
+  }
+
+  .panel [data-tone="attention"] {
+    color: var(--attention-fg);
+  }
+  .panel [data-tone="danger"] {
+    color: var(--danger-fg);
+  }
+  .panel [data-tone="success"] {
+    color: var(--success-fg);
+  }
+  .panel [data-tone="progress"] {
+    color: var(--status-progress);
+  }
+  .panel [data-tone="brand"] {
+    color: var(--brand-strong);
+  }
+  .panel [data-tone="muted"] {
+    color: var(--fg-muted);
   }
 
   .head {
     display: flex;
-    align-items: baseline;
-    gap: calc(8px * var(--ui-scale));
-    padding: calc(16px * var(--ui-scale)) calc(24px * var(--ui-scale)) calc(8px * var(--ui-scale));
+    align-items: center;
+    gap: var(--tori-space-4);
+    padding: var(--tori-space-5) var(--tori-space-6);
+    border-bottom: var(--tori-border-thin) solid var(--border-default);
   }
 
   .heading {
     margin: 0;
-    color: var(--fg-default);
-    font-size: var(--tori-text-lg);
+    font-size: var(--tori-text-xl);
     font-weight: 600;
+    letter-spacing: -0.01em;
   }
 
-  .close {
-    margin-left: auto;
+  .chip {
+    padding: var(--tori-space-1) var(--tori-space-3);
+    border-radius: var(--tori-radius-sm);
+    background: var(--neutral-subtle);
+    font-size: var(--tori-text-sm);
   }
 
-  .empty {
-    margin: calc(24px * var(--ui-scale));
-    color: var(--fg-muted);
-    font-size: var(--tori-text-md);
-  }
-
-  .scroll {
+  .body {
+    display: flex;
     flex: 1;
     min-height: 0;
   }
 
-  .list {
-    margin: 0;
-    padding: 0 calc(16px * var(--ui-scale)) calc(16px * var(--ui-scale));
-    list-style: none;
+  .rail {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    width: calc(184px * var(--ui-scale));
+    padding: var(--tori-space-5) var(--tori-space-5) var(--tori-space-5) 0;
+    border-right: var(--tori-border-thin) solid var(--border-default);
   }
 
-  .row {
-    display: flex;
-    align-items: flex-start;
-    gap: calc(8px * var(--ui-scale));
-    border-bottom: 1px solid var(--border-default);
+  .railItem svg {
+    width: calc(15px * var(--ui-scale));
+    height: calc(15px * var(--ui-scale));
+  }
+
+  .count {
+    flex: none;
+    min-width: calc(18px * var(--ui-scale));
+    height: calc(18px * var(--ui-scale));
+    padding: 0 calc(5px * var(--ui-scale));
+    border-radius: calc(5px * var(--ui-scale));
+    background: var(--neutral-subtle);
+    color: var(--fg-muted);
+    font-size: var(--tori-text-xs);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    line-height: calc(18px * var(--ui-scale));
+    text-align: center;
+  }
+  .count[data-warn="true"] {
+    background: color-mix(in srgb, var(--attention-fg) 16%, transparent);
+    color: var(--attention-fg);
+  }
+
+  .scroll {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .content {
+    padding: var(--tori-space-6) var(--tori-space-6) var(--tori-space-7);
+  }
+
+  .group + .group {
+    margin-top: var(--tori-space-7);
+  }
+
+  .groupHead {
+    margin: 0 0 var(--tori-space-2);
+    padding: 0 var(--tori-space-3);
+  }
+
+  .groupCount {
+    font-family: var(--tori-font-ui);
+    font-size: var(--tori-text-sm);
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--fg-muted);
+  }
+
+  .tierMark {
+    flex: none;
+    margin-right: calc(-4px * var(--ui-scale));
+    width: calc(8px * var(--ui-scale));
+    height: calc(8px * var(--ui-scale));
+    border-radius: 2px;
+    background: currentColor;
+  }
+
+  .list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
   }
 
   /* A row is a <button> so it is reachable by keyboard, which costs the
      browser's own button chrome back. */
-  .open {
-    display: flex;
-    flex: 1;
-    gap: calc(12px * var(--ui-scale));
+  .event,
+  .reviewOpen {
     min-width: 0;
-    padding: calc(10px * var(--ui-scale)) calc(8px * var(--ui-scale));
     border: 0;
-    border-radius: var(--tori-radius-sm);
     background: none;
     color: var(--fg-default);
     font: inherit;
     text-align: left;
     cursor: pointer;
-    transition: background var(--tori-duration-fast) ease;
   }
-
-  .open:hover {
-    background: var(--tree-row-hover);
-  }
-
-  .open:focus-visible {
+  .event:focus-visible,
+  .reviewOpen:focus-visible,
+  .link:focus-visible {
     outline: 2px solid var(--brand-ring);
     outline-offset: -2px;
   }
 
-  .score {
-    flex: none;
-    min-width: calc(28px * var(--ui-scale));
-    color: var(--attention-fg);
-    font-size: var(--tori-text-lg);
-    font-variant-numeric: tabular-nums;
-    font-weight: 600;
-    text-align: right;
+  .event {
+    display: grid;
+    grid-template-columns: calc(20px * var(--ui-scale)) minmax(0, 1fr) auto;
+    gap: var(--tori-space-5);
+    width: 100%;
+    padding: var(--tori-space-4) var(--tori-space-3);
+    border-radius: var(--tori-radius-md);
+    transition: background var(--tori-duration-fast) ease;
+  }
+  .event:hover {
+    background: var(--neutral-hover);
   }
 
-  .body {
+  .group[data-waiting] .event {
+    background: color-mix(in srgb, var(--attention-fg) 8%, transparent);
+  }
+  .group[data-waiting] .event:hover {
+    background: color-mix(in srgb, var(--attention-fg) 14%, transparent);
+  }
+  .group[data-waiting] li + li {
+    margin-top: var(--tori-space-1);
+  }
+
+  .kindIcon {
+    display: flex;
+    padding-top: calc(2px * var(--ui-scale));
+  }
+  .kindIcon svg {
+    width: calc(17px * var(--ui-scale));
+    height: calc(17px * var(--ui-scale));
+  }
+
+  .text {
     display: flex;
     flex-direction: column;
     gap: calc(2px * var(--ui-scale));
@@ -99,65 +190,25 @@
   .title {
     overflow: hidden;
     font-size: var(--tori-text-md);
-    font-weight: 600;
+    font-weight: 500;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .where {
+  .meta {
+    color: var(--fg-muted);
+    font-size: var(--tori-text-sm);
+  }
+
+  .sep {
     color: var(--fg-subtle);
-    font-size: var(--tori-text-xs);
   }
 
-  .summary {
-    display: -webkit-box;
-    overflow: hidden;
+  .time {
     color: var(--fg-muted);
     font-size: var(--tori-text-sm);
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-  }
-
-  .signals {
-    display: flex;
-    flex-wrap: wrap;
-    gap: calc(4px * var(--ui-scale));
-    margin-top: calc(4px * var(--ui-scale));
-  }
-
-  .signal {
-    padding: 0 calc(6px * var(--ui-scale));
-    border: 1px solid var(--border-default);
-    border-radius: var(--tori-radius-sm);
-    color: var(--fg-muted);
-    font-size: var(--tori-text-xs);
-  }
-
-  .signal[data-kind="secretRead"],
-  .signal[data-kind="failed"],
-  .signal[data-kind="deletedTests"],
-  .signal[data-kind="sensitivePath"] {
-    color: var(--danger-fg);
-  }
-
-  .signal[data-kind="blindEdit"],
-  .signal[data-kind="unverified"],
-  .signal[data-kind="dependencies"],
-  .signal[data-kind="outsideScope"],
-  .signal[data-kind="sharedFile"] {
-    color: var(--attention-fg);
-  }
-
-  .group {
-    padding-top: calc(8px * var(--ui-scale));
-  }
-
-  .groupHead {
-    margin: 0;
-    padding: calc(4px * var(--ui-scale)) calc(24px * var(--ui-scale));
-    color: var(--fg-muted);
-    font-size: var(--tori-text-sm);
-    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
 
   .answered .title {
@@ -165,24 +216,189 @@
     font-weight: 400;
   }
 
-  .kind[data-kind="permission"],
-  .kind[data-kind="question"],
-  .kind[data-kind="workerQuestion"],
-  .kind[data-kind="budget"],
-  .kind[data-kind="waiting"] {
-    color: var(--attention-fg);
+  .review {
+    --tier: var(--fg-subtle);
+    position: relative;
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
+    transition: background var(--tori-duration-fast) ease;
+  }
+  .review:hover {
+    background: var(--neutral-hover);
+  }
+  .review + .review {
+    margin-top: var(--tori-space-4);
   }
 
-  .kind[data-kind="pullRequest"] {
-    color: var(--danger-fg);
+  .reviewOpen {
+    display: grid;
+    width: 100%;
+    grid-template-columns: calc(56px * var(--ui-scale)) minmax(0, 1fr);
+    padding: var(--tori-space-5) var(--tori-space-5) var(--tori-space-5) 0;
+    border-radius: var(--tori-radius-md);
   }
 
-  .answered .kind {
-    color: var(--fg-subtle);
+  .score {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--tori-space-3);
+    padding-top: calc(1px * var(--ui-scale));
+  }
+  .scoreNum {
+    color: var(--tier);
+    font-size: var(--tori-text-lg);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+  .bar {
+    width: calc(28px * var(--ui-scale));
+    height: 3px;
+    border-radius: 2px;
+    background: var(--border-default);
+    overflow: hidden;
+  }
+  .bar > span {
+    display: block;
+    height: 100%;
+    background: var(--tier);
   }
 
-  .mark {
+  .review[data-tier="danger"] {
+    --tier: var(--danger-fg);
+  }
+  .review[data-tier="attention"] {
+    --tier: var(--attention-fg);
+  }
+
+  .review .text {
+    gap: var(--tori-space-3);
+  }
+
+  /* The actions are the row button's siblings, since buttons cannot nest, so
+     they are laid over the title line and it keeps their room clear. */
+  .titleLine {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-4);
+    min-width: 0;
+    min-height: var(--control-height-sm);
+    padding-right: calc(2 * var(--control-height-sm) + var(--tori-space-1) + var(--tori-space-4));
+  }
+
+  .reviewTitle {
+    overflow: hidden;
+    font-size: var(--tori-text-lg);
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .working {
+    display: inline-flex;
     flex: none;
-    margin-top: calc(10px * var(--ui-scale));
+    align-items: center;
+    gap: var(--tori-space-2);
+    color: var(--status-progress);
+    font-size: var(--tori-text-xs);
+    font-weight: 500;
+  }
+  .pulse {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.35;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pulse {
+      animation: none;
+    }
+  }
+
+  .summary {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--fg-muted);
+    font-size: var(--tori-text-md);
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--tori-space-3);
+  }
+  .pill {
+    padding: 0 var(--tori-space-4);
+    border-radius: calc(5px * var(--ui-scale));
+    box-shadow: inset 0 0 0 1px var(--danger-border);
+    background: var(--danger-subtle);
+    color: var(--danger-fg);
+    font-size: var(--tori-text-sm);
+    font-weight: 500;
+    line-height: calc(20px * var(--ui-scale));
+  }
+
+  .opinion {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-3);
+    font-size: var(--tori-text-sm);
+  }
+  .opinion svg {
+    width: calc(15px * var(--ui-scale));
+    height: calc(15px * var(--ui-scale));
+  }
+  .opinionError {
+    padding-left: calc(21px * var(--ui-scale));
+    color: var(--fg-muted);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-sm);
+  }
+
+  /* Always shown, never on hover: a reviewer working down the list should not
+     have to find the buttons. */
+  .actions {
+    position: absolute;
+    top: var(--tori-space-5);
+    right: var(--tori-space-5);
+    display: flex;
+    gap: var(--tori-space-1);
+  }
+
+  .empty {
+    padding: var(--tori-space-7) var(--tori-space-5);
+    color: var(--fg-muted);
+    font-size: var(--tori-text-md);
+  }
+  .empty p {
+    margin: 0 0 var(--tori-space-4);
+  }
+
+  .link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--tori-space-2);
+    padding: 0;
+    border: 0;
+    border-radius: var(--tori-radius-sm);
+    background: none;
+    color: var(--brand-strong);
+    font: inherit;
+    cursor: pointer;
+  }
+  .link:hover {
+    text-decoration: underline;
+  }
+  .link svg {
+    width: calc(15px * var(--ui-scale));
+    height: calc(15px * var(--ui-scale));
   }
 }

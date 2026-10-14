@@ -161,6 +161,7 @@ html {
    matches the toolbar's action buttons instead of spanning the full bar height.
    The .topbar prefix lifts specificity above the Button's .iconOnly padding. */
 .topbar .topbar-phone,
+.topbar .topbar-inbox > button,
 .topbar .topbar-gear {
   flex: 0 0 auto;
   align-self: center;
@@ -172,13 +173,24 @@ html {
   margin-right: calc(12px * var(--ui-scale));
   color: var(--fg-subtle);
 }
+/* The wrapper carries the bar's spacing so the count bubble can sit on the
+   button's own corner. */
+.topbar .topbar-inbox {
+  margin-right: calc(12px * var(--ui-scale));
+}
+.topbar .topbar-inbox > button {
+  margin-right: 0;
+}
 .topbar .topbar-phone[data-lit="true"] {
   color: var(--status-idle);
 }
+.topbar .topbar-inbox > button:hover,
+.topbar .topbar-inbox > button[aria-expanded="true"],
 .topbar .topbar-gear:hover {
   color: var(--fg-default);
 }
 .topbar .topbar-phone svg,
+.topbar .topbar-inbox svg,
 .topbar .topbar-gear svg {
   width: calc(17px * var(--ui-scale));
   height: calc(17px * var(--ui-scale));
