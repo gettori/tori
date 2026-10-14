@@ -373,6 +373,21 @@
     gap: var(--tori-space-1);
   }
 
+  .spin {
+    display: inline-flex;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .spin {
+      animation-duration: 2.4s;
+    }
+  }
+
   .empty {
     padding: var(--tori-space-7) var(--tori-space-5);
     color: var(--fg-muted);
