@@ -120,7 +120,8 @@ export default function RemotePane(props: PaneProps) {
       window.removeEventListener("focus", loadNetwork);
       void unlisten.then((f) => f());
       // A code left live after the pane closes is one nobody is watching.
-      if (offer()) void invoke("pairing_cancel");
+      if (offer())
+        void invoke("pairing_cancel").catch((e) => pushToast(`The pairing code was not cancelled: ${String(e)}`));
     });
   });
 
@@ -214,7 +215,12 @@ export default function RemotePane(props: PaneProps) {
             </Button>
           }
         >
-          <Button size="sm" onClick={() => void invoke("pairing_cancel")}>
+          <Button
+            size="sm"
+            onClick={() =>
+              void invoke("pairing_cancel").catch((e) => pushToast(`The pairing code was not cancelled: ${String(e)}`))
+            }
+          >
             Cancel
           </Button>
         </Show>

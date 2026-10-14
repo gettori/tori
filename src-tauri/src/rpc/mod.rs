@@ -46,10 +46,8 @@ use auth::Caller;
 use bridge::{Bridge, REPLY_TIMEOUT, REQUEST_EVENT};
 use events::{session_event, Place};
 use hub::{Channel, Hub};
-use remote::Remote;
 use runner::Runner;
 use serde_json::{json, Value};
-use server::AUTH_TIMEOUT;
 use states::SessionStates;
 use watcher::Watcher;
 use window::{Link, Status};
@@ -127,17 +125,13 @@ pub(crate) fn office_tell(op: &str, args: Value) {
 
 pub struct RpcState {
     link: Arc<Link>,
-    remote: Arc<Remote>,
-    pub hub: Arc<Hub>,
     pub states: Arc<SessionStates>,
     bridge: Arc<Bridge>,
-    devices: Arc<devices::Devices>,
 }
 
 impl RpcState {
     /// Called at exit. The daemon, its socket and the bridge file stay.
     pub fn shutdown(&self) {
-        self.remote.stop();
         self.link.close();
     }
 }
@@ -230,103 +224,32 @@ pub fn daemon_status() -> Option<Status> {
 }
 
 // The webview is not a socket subscriber, so the channel is mirrored to it.
-// The Settings pane is not a socket subscriber, so it hears about devices here.
-const DEVICES_EVENT: &str = "remote://devices";
-
-fn devices_changed(app: &AppHandle, ended: Option<pairing::Ended>) {
-    let _ = app.emit(DEVICES_EVENT, json!({ "ended": ended }));
-}
-
-struct Relay {
-    hub: Arc<Hub>,
-}
-
-const RELAY_WAIT: std::time::Duration = std::time::Duration::from_secs(15 * 60);
-
-impl server::Dispatch for Relay {
-    fn hub(&self) -> &Hub {
-        &self.hub
-    }
-
-    fn auth_timeout(&self) -> std::time::Duration {
-        AUTH_TIMEOUT
-    }
-
-    fn dispatch(
-        &self,
-        conn: hub::ConnId,
-        principal: &auth::Principal,
-        req: &frame::Request,
-    ) -> Result<Value, frame::RpcError> {
-        match req.method.as_str() {
-            "subscribe" => server::subscribe(&self.hub, table::CallerKind::of(principal), conn, &req.params, || {
-                daemon_tell("probe", json!({}))
-            }),
-            "unsubscribe" => server::unsubscribe(&self.hub, conn, &req.params),
-            "auth" => Err(frame::RpcError::new(frame::INVALID_REQUEST, "already authenticated")),
-            _ => {
-                let link = LINK
-                    .get()
-                    .ok_or_else(|| frame::RpcError::new(frame::REFUSED, "the daemon link is not up"))?;
-                let relayed = json!({ "principal": principal, "method": req.method, "params": req.params });
-                link.request("relay", relayed, RELAY_WAIT)
-            }
-        }
-    }
-}
-
-fn screen(app: &AppHandle, bridge: &Arc<Bridge>, devices: &Arc<devices::Devices>) -> window::Answers {
-    let (bridge, devices) = (bridge.clone(), devices.clone());
-    let app = app.clone();
-    let hub = Arc::new(Hub::default());
-    {
-        let app = app.clone();
-        hub.watch_devices(Box::new(move || devices_changed(&app, None)));
-    }
+fn screen(bridge: &Arc<Bridge>) -> window::Answers {
+    let bridge = bridge.clone();
     window::Answers {
-        hub,
+        hub: Arc::new(Hub::default()),
         call: Arc::new(|_, req| {
             Err(frame::RpcError::new(
                 frame::REFUSED,
                 format!("the window answers no {}", req.method),
             ))
         }),
-        screen: Arc::new(move |method, params| match method {
-            "device.mint" => {
-                let name = params["name"].as_str().unwrap_or_default();
-                let (device, credential) = devices
-                    .mint(name)
-                    .map_err(|e| frame::RpcError::new(frame::INTERNAL_ERROR, e))?;
-                devices_changed(&app, None);
-                Ok(json!({ "id": device.id, "name": device.name, "credential": credential }))
-            }
-            _ => bridge.request(method, params),
-        }),
+        screen: Arc::new(move |method, params| bridge.request(method, params)),
     }
 }
 
 pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     let paths = daemon::paths();
     let states = Arc::new(SessionStates::default());
-    let devices = Arc::new(devices::Devices::open(devices_path()));
-    let pairing = {
-        let app = app.clone();
-        Arc::new(pairing::Pairing::new(Box::new(move |ended| {
-            devices_changed(&app, Some(ended))
-        })))
-    };
     let emitter = app.clone();
     let bridge = Arc::new(Bridge::new(
         Box::new(move |request| emitter.emit(REQUEST_EVENT, request).map_err(|e| e.to_string())),
         REPLY_TIMEOUT,
     ));
-    let answers = screen(&app, &bridge, &devices);
+    let answers = screen(&bridge);
     let hub = answers.hub.clone();
     let on_status = daemon_status_emitter(&app);
     let on_event = daemon_events(&app, &states);
-    let relay = Arc::new(Relay { hub: hub.clone() });
-    let remote = Arc::new(Remote::new(relay, devices.clone(), pairing));
-    remote.apply(&crate::settings::remote());
 
     // Derived, not asked for, so a spawn has its env before the link is up.
     let _ = SOCKET.set(paths.sock.to_string_lossy().into_owned());
@@ -334,14 +257,7 @@ pub fn start(app: AppHandle) -> std::io::Result<RpcState> {
     let link = Link::start(answers, paths, true, on_status, on_event);
     let _ = LINK.set(link.clone());
     let _ = EVENTS.set((hub.clone(), states.clone()));
-    Ok(RpcState {
-        link,
-        remote,
-        hub,
-        states,
-        bridge,
-        devices,
-    })
+    Ok(RpcState { link, states, bridge })
 }
 
 // What only the webview knows about its tabs, chats and forge poll, and what
@@ -683,14 +599,13 @@ pub fn publish_pr(project: &str, folder: &str, branch: &str, checked_out: bool, 
 // The remote front's switch, address and port. Only this writes them, so a
 // stale settings save cannot turn a network listener on.
 #[tauri::command(async)]
-pub fn remote_set(rpc: tauri::State<RpcState>, remote: crate::settings::Remote) -> Result<remote::Status, String> {
-    crate::settings::set_remote(remote.clone())?;
-    Ok(rpc.remote.apply(&remote))
+pub fn remote_set(remote: crate::settings::Remote) -> Result<Value, String> {
+    office_call("remote.set", json!({ "remote": remote }))
 }
 
-#[tauri::command]
-pub fn remote_status(rpc: tauri::State<RpcState>) -> remote::Status {
-    rpc.remote.status()
+#[tauri::command(async)]
+pub fn remote_status() -> Result<Value, String> {
+    office_call("remote.status", json!({}))
 }
 
 #[tauri::command(async)]
@@ -708,47 +623,32 @@ pub fn tailscale_open() -> Result<(), String> {
     remote::open_tailscale()
 }
 
-#[derive(serde::Serialize)]
-pub struct PairingOffer {
-    #[serde(flatten)]
-    offer: pairing::Offer,
-    svg: String,
-}
-
 #[tauri::command(async)]
-pub fn pairing_start(rpc: tauri::State<RpcState>) -> Result<PairingOffer, String> {
-    let offer = rpc.remote.start_pairing()?;
-    let svg = qrcode::QrCode::new(offer.uri.as_bytes())
+pub fn pairing_start() -> Result<Value, String> {
+    let mut offer = office_call("pairing.start", json!({}))?;
+    let uri = offer["uri"].as_str().unwrap_or_default();
+    let svg = qrcode::QrCode::new(uri.as_bytes())
         .map_err(|e| e.to_string())?
         .render::<qrcode::render::svg::Color>()
         .quiet_zone(true)
         .build();
-    Ok(PairingOffer { offer, svg })
+    offer["svg"] = json!(svg);
+    Ok(offer)
 }
 
-#[tauri::command]
-pub fn pairing_cancel(rpc: tauri::State<RpcState>) {
-    rpc.remote.cancel_pairing();
-}
-
-#[tauri::command]
-pub fn devices_list(rpc: tauri::State<RpcState>) -> Vec<Value> {
-    let connected = rpc.hub.connected_devices();
-    rpc.devices
-        .list()
-        .into_iter()
-        .map(|d| json!({ "id": d.id, "name": d.name, "created_ms": d.created_ms, "connected": connected.contains(&d.id) }))
-        .collect()
-}
-
-// Revoked in the file first: a connection still being set up checks the file
-// after registering, so it cannot slip between the two.
 #[tauri::command(async)]
-pub fn device_revoke(app: AppHandle, rpc: tauri::State<RpcState>, id: String) -> Result<(), String> {
-    rpc.devices.revoke(&id)?;
-    rpc.hub.close_device(&id);
-    devices_changed(&app, None);
-    Ok(())
+pub fn pairing_cancel() -> Result<(), String> {
+    office_call("pairing.cancel", json!({})).map(|_| ())
+}
+
+#[tauri::command(async)]
+pub fn devices_list() -> Result<Value, String> {
+    office_call("devices.list", json!({}))
+}
+
+#[tauri::command(async)]
+pub fn device_revoke(id: String) -> Result<(), String> {
+    office_call("device.revoke", json!({ "id": id })).map(|_| ())
 }
 
 // The webview's own switch: not a socket caller, so it goes around the
@@ -1051,7 +951,7 @@ pub(crate) fn bridge_path() -> PathBuf {
     crate::owned_state::config_dir().join("rpc.json")
 }
 
-fn devices_path() -> PathBuf {
+pub(crate) fn devices_path() -> PathBuf {
     crate::owned_state::config_dir().join("devices.json")
 }
 

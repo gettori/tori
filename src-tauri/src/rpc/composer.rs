@@ -319,6 +319,9 @@ impl Composer {
         if !moved.is_empty() {
             self.sources.tell("states", json!(self.states.shown()));
             crate::radar::sessions_changed();
+            if let Some(office) = super::office() {
+                office.keep_awake();
+            }
         }
         for event in moved {
             let id = event["id"].as_str().unwrap_or_default().to_string();
