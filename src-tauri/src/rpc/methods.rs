@@ -1487,18 +1487,19 @@ impl Backend for DaemonBackend {
     fn worktree_new(&self, principal: &Principal, params: WorktreeParams) -> Result<Value, RpcError> {
         let project = self.project(principal, params.project)?;
         if let Some(number) = params.pr {
-            let branch = format!("pr-{number}");
             let named = params.branch.trim();
-            if params.issue.is_some() || params.from.is_some() || !(named.is_empty() || named == branch) {
+            // `pr-<n>` was the only branch a pr ever got, so a caller written then may still name it.
+            if params.issue.is_some() || params.from.is_some() || !(named.is_empty() || named == format!("pr-{number}"))
+            {
                 return Err(RpcError::new(
                     INVALID_PARAMS,
-                    format!("pr goes alone: its branch is {branch}, and it takes no from or issue"),
+                    "pr goes alone: its branch is the pull request's own, and it takes no branch, from or issue",
                 ));
             }
             let head = crate::worktree::review_head(&project, number).map_err(forge_refused)?;
             let askpass = self.git_askpass()?;
             let checkout = crate::worktree::checkout_review(&self.desk.ui, &askpass, &project, &head);
-            let path = tauri::async_runtime::block_on(checkout).map_err(refused)?;
+            let (path, branch) = tauri::async_runtime::block_on(checkout).map_err(refused)?;
             let (sha, fork) = (head.sha, head.fork);
             let setup = setup_fields(&project, Path::new(&path), fork, crate::setup::WAIT_CAP);
             return Ok(with_fields(

@@ -258,7 +258,7 @@ pub struct SessionAnswerParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WorktreeParams {
-    /// The new branch, created in a new worktree. Left out with `pr`, which names it `pr-<number>`.
+    /// The new branch, created in a new worktree. Left out with `pr`, which names it after the pull request.
     #[serde(default)]
     pub branch: String,
     /// The project folder, the caller's own project when left out.
@@ -268,7 +268,8 @@ pub struct WorktreeParams {
     /// The issue the branch is for, remembered on the unit it makes.
     pub issue: Option<String>,
     /// A pull request to review: its head is fetched from the forge's PR ref, forks included, onto a local
-    /// `pr-<number>` branch. A worktree already at another commit is refused, never reset.
+    /// branch named like the pull request's own, or `pr-<number>` for a fork or a name already in use here.
+    /// A worktree already at another commit is refused, never reset.
     pub pr: Option<u64>,
 }
 

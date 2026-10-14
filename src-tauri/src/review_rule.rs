@@ -214,12 +214,12 @@ pub fn tick(app: &AppHandle, project: &str, list: Option<&ReviewRequests>) {
 }
 
 fn review(app: &AppHandle, project: &str, rule: &ReviewRule, list: &ReviewRequests, number: u64) -> Result<(), String> {
+    let head = crate::worktree::review_head(project, number).map_err(|e| e.to_string())?;
     // Without a review to re-run, new pushes are the reader's to pull.
-    if rule.action != ReviewAction::Review && crate::worktree::review_worktree(project, number).is_some() {
+    if rule.action != ReviewAction::Review && crate::worktree::review_worktree(project, &head).is_some() {
         return Ok(());
     }
     let file = store_path();
-    let head = crate::worktree::review_head(project, number).map_err(|e| e.to_string())?;
     let before = with_project(&file, project, |p| p.prs.get(&number).cloned().unwrap_or_default())?;
     let placed = worktree_for(app, project, &head, before.worktree_at.as_deref());
     let own_work = matches!(placed, Ok((_, Some(ReviewMove::OwnWork(_)))));
@@ -276,8 +276,8 @@ fn worktree_for(
     head: &ReviewHead,
     worktree_at: Option<&str>,
 ) -> Result<(String, Option<ReviewMove>), String> {
-    match crate::worktree::review_worktree(project, head.number) {
-        Some(folder) => {
+    match crate::worktree::review_worktree(project, head) {
+        Some((folder, _)) => {
             let moved = crate::worktree::move_review(app, project, head, &folder, worktree_at)?;
             Ok((folder, Some(moved)))
         }
@@ -288,7 +288,7 @@ fn worktree_for(
             // std thread, so there is no runtime underneath to refuse the block.
             let ui = app.into();
             let checkout = crate::worktree::checkout_review(&ui, &askpass, project, head);
-            Ok((tauri::async_runtime::block_on(checkout)?, None))
+            Ok((tauri::async_runtime::block_on(checkout)?.0, None))
         }
     }
 }
