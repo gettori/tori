@@ -229,16 +229,50 @@ pub async fn check_for_update(app: tauri::AppHandle) -> Option<UpdateInfo> {
     // request on every launch. A success upgrades it to the full day below.
     write_deadline(&path, RETRY_INTERVAL_SECS);
 
-    let current = app.package_info().version.to_string();
-    let releases = fetch_releases()?;
-    write_deadline(&path, CHECK_INTERVAL_SECS);
+    match lookup(&app) {
+        ManualCheck::Failed => None,
+        found => {
+            write_deadline(&path, CHECK_INTERVAL_SECS);
+            match found {
+                ManualCheck::Newer(info) => Some(info),
+                _ => None,
+            }
+        }
+    }
+}
 
-    let tag = pick_update(&releases, &current)?;
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(tag = "state", rename_all = "camelCase")]
+pub enum ManualCheck {
+    Newer(UpdateInfo),
+    Current,
+    Failed,
+}
+
+/// Check now, past the daily throttle. A check that reaches GitHub still
+/// pushes the background one a day out, since it has nothing left to tell.
+#[tauri::command]
+pub async fn check_for_update_now(app: tauri::AppHandle) -> ManualCheck {
+    let found = lookup(&app);
+    if found != ManualCheck::Failed {
+        write_deadline(&throttle_path(), CHECK_INTERVAL_SECS);
+    }
+    found
+}
+
+fn lookup(app: &tauri::AppHandle) -> ManualCheck {
+    let current = app.package_info().version.to_string();
+    let Some(releases) = fetch_releases() else {
+        return ManualCheck::Failed;
+    };
+    let Some(tag) = pick_update(&releases, &current) else {
+        return ManualCheck::Current;
+    };
     let version = tag.trim_start_matches('v').to_string();
     if let Ok(mut found) = FOUND_TAG.lock() {
         *found = Some(tag);
     }
-    Some(UpdateInfo {
+    ManualCheck::Newer(UpdateInfo {
         version,
         brew: brew_owns_install(),
     })

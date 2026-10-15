@@ -91,6 +91,10 @@ export type OpenOmnibox = { prefix: string };
 // an open, so the same key that summons it dismisses it.
 export const TOGGLE_SHORTCUTS = "tori:toggle-shortcuts";
 
+// Check for a newer release now, past the daily throttle, and say what came
+// back. Consumed by UpdatePill, which owns the notice a newer one shows.
+export const CHECK_UPDATES = "tori:check-updates";
+
 // Global UI zoom (Cmd+ / Cmd- / Cmd0), consumed by App.tsx, which drives the
 // zoom multiplier in settingsStore. Scales chrome, editor, and terminal together.
 export const ZOOM_IN = "tori:zoom-in";

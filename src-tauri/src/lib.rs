@@ -4,6 +4,7 @@ mod agent_config;
 mod agent_lines;
 mod agent_plugins;
 mod agents;
+mod app_menu;
 mod askpass;
 mod attachments;
 mod attempts;
@@ -115,40 +116,6 @@ fn build_tray(app: &tauri::App) -> Result<TrayIcon, Box<dyn std::error::Error>> 
         .tooltip("Tori")
         .build(app)?;
     Ok(tray)
-}
-
-const QUIT_MENU_ID: &str = "app-quit";
-
-// Registered once: Tauri calls every menu handler, the tray's included, for
-// every menu event, so a second handler would see each click twice.
-fn route_menu_event(app: &tauri::AppHandle, id: &str) {
-    if id == QUIT_MENU_ID {
-        match app.get_webview_window("main") {
-            Some(window) => {
-                let _ = window.close();
-            }
-            None => app.exit(0),
-        }
-    } else if let Some(session) = id.strip_prefix(presence::SESSION_MENU_PREFIX) {
-        presence::focus_session(app, session);
-    }
-}
-
-// The system Quit item terminates the app outright, past the window's close
-// question, so Cmd+Q is swapped for one that closes the window instead.
-#[cfg(target_os = "macos")]
-fn install_quit_item(app: &tauri::AppHandle) -> tauri::Result<()> {
-    use tauri::menu::{MenuItem, MenuItemKind};
-    let menu = Menu::default(app)?;
-    if let Some(MenuItemKind::Submenu(app_menu)) = menu.items()?.into_iter().next() {
-        if let Some(quit) = app_menu.items()?.into_iter().last() {
-            app_menu.remove(&quit)?;
-        }
-        let label = format!("Quit {}", app.package_info().name);
-        app_menu.append(&MenuItem::with_id(app, QUIT_MENU_ID, label, true, Some("CmdOrCtrl+Q"))?)?;
-    }
-    app.set_menu(menu)?;
-    Ok(())
 }
 
 /// WebKit's text checking is a user default, not a menu item or an element
@@ -276,11 +243,11 @@ pub fn run() {
             // nice-to-have, not something a startup failure should take the
             // whole app down over.
             #[cfg(target_os = "macos")]
-            if let Err(e) = install_quit_item(app.handle()) {
+            if let Err(e) = app_menu::install(app.handle()) {
                 eprintln!("tori: Cmd+Q quits without asking: {e}");
             }
 
-            app.on_menu_event(|app, event| route_menu_event(app, event.id().as_ref()));
+            app.on_menu_event(|app, event| app_menu::route(app, event.id().as_ref()));
 
             match build_tray(app) {
                 Ok(tray) => {
@@ -601,6 +568,7 @@ pub fn run() {
             scratch::scratch_new,
             scratch::scratch_remove,
             update::check_for_update,
+            update::check_for_update_now,
             update::open_releases_page,
             update::relaunch,
             crash::record_webview_error,

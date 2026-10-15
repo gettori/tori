@@ -18,6 +18,7 @@ import { SECTION_TITLES, SETTINGS } from "./settingsCatalog";
 import {
   emit,
   emitWith,
+  CHECK_UPDATES,
   FOCUS_SEARCH,
   FOCUS_TERMINAL,
   FOCUS_TOASTS,
@@ -326,6 +327,21 @@ export const COMMANDS: Command[] = [
     scope: "global",
     match: cmd("/"),
     run: () => emit(TOGGLE_SHORTCUTS),
+  },
+  {
+    id: "open-settings",
+    keys: ["⌘", ","],
+    label: "Open Settings",
+    group: "settings",
+    scope: "global",
+    match: cmd(","),
+    run: () => emitWith<OpenSettings>(OPEN_SETTINGS, {}),
+  },
+  {
+    id: "check-updates",
+    label: "Check for updates",
+    group: "help",
+    run: () => emit(CHECK_UPDATES),
   },
   {
     id: "review-inbox",
