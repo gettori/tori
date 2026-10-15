@@ -101,7 +101,6 @@ from. A workflow run from a PR branch never sees them.
 |---|---|---|
 | `APPLE_CERTIFICATE` | the Developer ID Application certificate, as a base64 `.p12` | Keychain Access, export the certificate with its private key; `base64 -i cert.p12 \| pbcopy` |
 | `APPLE_CERTIFICATE_PASSWORD` | the password set on that export | you chose it |
-| `APPLE_SIGNING_IDENTITY` | `Developer ID Application: <name> (<team id>)` | `security find-identity -v -p codesigning` |
 | `APPLE_API_KEY` | the App Store Connect API key's ID | App Store Connect, Users and Access, Integrations, Team Keys; role Developer |
 | `APPLE_API_ISSUER` | that key's Issuer ID | same page |
 | `APPLE_API_KEY_CONTENT` | the `.p8` file's text | downloaded once when the key is made |
@@ -110,7 +109,10 @@ from. A workflow run from a PR branch never sees them.
 | `TAP_TOKEN` | fine-grained PAT, Contents read and write on `gettori/homebrew-tap` only | GitHub, Settings, Developer settings |
 
 The API key is only the notary service's login; nothing goes to the App
-Store. Notarization itself has no fee beyond the developer membership.
+Store. Notarization itself has no fee beyond the developer membership. The
+signing identity is not a secret: the workflow imports the certificate into
+its own keychain and reads the identity's hash from there, so the name never
+has to match anything.
 
 A ruleset on tags `v*` that blocks deletion and non-fast-forward updates is
 worth adding. It must not block creation, since the workflow creates the tag
