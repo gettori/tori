@@ -8,6 +8,16 @@ const QUIT_ID: &str = "app-quit";
 
 const MENU_PREFIX: &str = "menu:";
 
+pub const TRAY_PREFIX: &str = "tray:";
+
+pub const TRAY_FOOTER: [(&str, &str); 3] = [
+    ("open", "Open Tori"),
+    ("next-waiting", "Next Waiting Session"),
+    ("open-inbox", "Show Inbox"),
+];
+
+pub const TRAY_QUIT: &str = "quit";
+
 // Opened from here rather than through a command the frontend calls with a
 // URL, so the webview can never be talked into opening an arbitrary one.
 const HELP_LINKS: [(&str, &str); 3] = [
@@ -18,11 +28,15 @@ const HELP_LINKS: [(&str, &str); 3] = [
 
 pub fn route(app: &AppHandle, id: &str) {
     if id == QUIT_ID {
-        match app.get_webview_window("main") {
-            Some(window) => {
-                let _ = window.close();
+        quit(app);
+    } else if let Some(item) = id.strip_prefix(TRAY_PREFIX) {
+        crate::presence::raise_window(app);
+        match item {
+            "open" => {}
+            TRAY_QUIT => quit(app),
+            command => {
+                let _ = app.emit("menu://command", command.to_string());
             }
-            None => app.exit(0),
         }
     } else if let Some(session) = id.strip_prefix(crate::presence::SESSION_MENU_PREFIX) {
         crate::presence::focus_session(app, session);
@@ -38,6 +52,15 @@ pub fn route(app: &AppHandle, id: &str) {
                 let _ = app.emit("menu://command", item.to_string());
             }
         }
+    }
+}
+
+fn quit(app: &AppHandle) {
+    match app.get_webview_window("main") {
+        Some(window) => {
+            let _ = window.close();
+        }
+        None => app.exit(0),
     }
 }
 

@@ -10,6 +10,7 @@ import {
   setBlindEdits,
   setBudgets,
   setChatDefaults,
+  setNotifications,
   setCheckpoints,
   setConflictRadar,
   setSecretWatch,
@@ -68,7 +69,13 @@ const DENSITIES: SelectOption[] = [
   { value: "compact", label: "Compact" },
 ];
 
-const NOTIFICATIONS = ["notify-needs-you", "sound-needs-you", "notify-turn-finished", "sound-turn-finished"];
+const NOTIFICATIONS = [
+  "notify-needs-you",
+  "sound-needs-you",
+  "notify-turn-finished",
+  "sound-turn-finished",
+  "tray-count",
+];
 const SAFETY = ["checkpoints"];
 const SPENDING = ["max-concurrent-chats", "session-budget", "project-budget", "context-budget", "warn-at"];
 
@@ -302,6 +309,14 @@ export default function ChatPane(props: PaneProps) {
             checked={settings.notifications.turnFinished.sound}
             onChange={(sound) => setAlert("turnFinished", { sound })}
             aria-label="Play a sound when a chat finishes its turn"
+          />
+        </Row>
+
+        <Row {...props} id="tray-count" label="Show the needs you count in the menu bar">
+          <Switch
+            checked={settings.notifications.trayCount}
+            onChange={(trayCount) => setNotifications({ trayCount })}
+            aria-label="Show the needs you count in the menu bar"
           />
         </Row>
       </Group>

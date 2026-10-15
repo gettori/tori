@@ -5,7 +5,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
-use tauri::menu::{IsMenuItem, Menu, MenuItem};
+use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIcon;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -21,6 +21,10 @@ static NEEDS_YOU_NOTES: Mutex<Option<HashMap<String, [u8; 16]>>> = Mutex::new(No
 // item's id, and the sidebar needs the folder to land on the right space,
 // project and worktree, as a notification click does.
 static TRAY_FOLDERS: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
+
+// The last unattended count, so turning the setting back on can redraw it
+// without waiting for a session to change.
+static TRAY_COUNT: Mutex<usize> = Mutex::new(0);
 
 pub struct TrayState(pub Mutex<TrayIcon>);
 
@@ -76,6 +80,34 @@ pub struct TrayEntry {
     pub label: String,
     #[serde(default)]
     pub folder: String,
+    #[serde(default)]
+    pub section: Section,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+pub enum Section {
+    NeedsYou,
+    Working,
+    #[default]
+    Idle,
+}
+
+impl Section {
+    fn of(dot: Dot) -> Self {
+        match dot {
+            Dot::NeedsYou => Self::NeedsYou,
+            Dot::Working => Self::Working,
+            _ => Self::Idle,
+        }
+    }
+
+    fn title(self) -> &'static str {
+        match self {
+            Self::NeedsYou => "Needs you",
+            Self::Working => "Working",
+            Self::Idle => "Idle",
+        }
+    }
 }
 
 pub struct Presence {
@@ -241,27 +273,41 @@ fn tooltip(live: &[Live]) -> String {
 }
 
 /// The tray's menu, from the same list the counts come from, so everything the
-/// badge counts has a row to click. What needs you sorts first, and the sort is
-/// stable so the menu does not reshuffle on an unrelated change.
+/// badge counts has a row to click. The sort by section is stable so the menu
+/// does not reshuffle on an unrelated change.
 fn tray_entries(live: &[Live]) -> Vec<TrayEntry> {
     let mut shown: Vec<&Live> = live.iter().filter(|l| l.dot != Dot::None).collect();
-    shown.sort_by_key(|l| l.dot != Dot::NeedsYou);
+    shown.sort_by_key(|l| Section::of(l.dot));
     shown
         .into_iter()
         .map(|l| {
-            let mark = if l.dot == Dot::NeedsYou { "\u{26a0} " } else { "" };
             let project = if l.project.is_empty() {
                 String::new()
             } else {
                 format!(" ({})", l.project)
             };
+            let why = match l.reason.filter(|_| l.dot == Dot::NeedsYou) {
+                Some(reason) => format!(": {}", reason_note(reason)),
+                None => String::new(),
+            };
             TrayEntry {
                 id: l.id.clone(),
-                label: format!("{mark}{}{project}", l.name),
+                label: format!("{}{project}{why}", l.name),
                 folder: l.folder.clone(),
+                section: Section::of(l.dot),
             }
         })
         .collect()
+}
+
+fn reason_note(reason: Reason) -> &'static str {
+    match reason {
+        Reason::Approval => "needs approval",
+        Reason::Question => "has a question",
+        Reason::Budget => "hit its budget",
+        Reason::Waiting => "is waiting",
+        Reason::Forge => "PR needs a look",
+    }
 }
 
 pub fn set_tray(app: &AppHandle, tooltip: &str, entries: &[TrayEntry]) -> Result<(), String> {
@@ -272,27 +318,38 @@ pub fn set_tray(app: &AppHandle, tooltip: &str, entries: &[TrayEntry]) -> Result
     let tray = state.0.lock().map_err(|e| e.to_string())?;
     tray.set_tooltip(Some(tooltip)).map_err(|e| e.to_string())?;
 
-    let menu = if entries.is_empty() {
-        let placeholder = MenuItem::with_id(app, "no-sessions", "No active sessions", false, None::<&str>)
-            .map_err(|e| e.to_string())?;
-        Menu::with_items(app, &[&placeholder]).map_err(|e| e.to_string())?
-    } else {
-        let items: Vec<MenuItem<tauri::Wry>> = entries
-            .iter()
-            .map(|e| {
-                MenuItem::with_id(
-                    app,
-                    format!("{SESSION_MENU_PREFIX}{}", e.id),
-                    &e.label,
-                    true,
-                    None::<&str>,
-                )
-            })
-            .collect::<Result<_, _>>()
-            .map_err(|e| e.to_string())?;
-        let refs: Vec<&dyn IsMenuItem<tauri::Wry>> = items.iter().map(|i| i as &dyn IsMenuItem<tauri::Wry>).collect();
-        Menu::with_items(app, &refs).map_err(|e| e.to_string())?
-    };
+    let err = |e: tauri::Error| e.to_string();
+    let row = |id: String, label: &str, enabled: bool| MenuItem::with_id(app, id, label, enabled, None::<&str>);
+    let mut items: Vec<Box<dyn IsMenuItem<tauri::Wry>>> = Vec::new();
+    if entries.is_empty() {
+        items.push(Box::new(
+            row("no-sessions".into(), "No active sessions", false).map_err(err)?,
+        ));
+    }
+    let mut section = None;
+    for e in entries {
+        if section != Some(e.section) {
+            if section.is_some() {
+                items.push(Box::new(PredefinedMenuItem::separator(app).map_err(err)?));
+            }
+            section = Some(e.section);
+            let id = format!("tray-section:{:?}", e.section);
+            items.push(Box::new(row(id, e.section.title(), false).map_err(err)?));
+        }
+        let id = format!("{SESSION_MENU_PREFIX}{}", e.id);
+        items.push(Box::new(row(id, &e.label, true).map_err(err)?));
+    }
+    items.push(Box::new(PredefinedMenuItem::separator(app).map_err(err)?));
+    let footer_row = |id: &str, label: &str| row(format!("{}{id}", crate::app_menu::TRAY_PREFIX), label, true);
+    for (id, label) in crate::app_menu::TRAY_FOOTER {
+        items.push(Box::new(footer_row(id, label).map_err(err)?));
+    }
+    items.push(Box::new(PredefinedMenuItem::separator(app).map_err(err)?));
+    items.push(Box::new(
+        footer_row(crate::app_menu::TRAY_QUIT, "Quit Tori").map_err(err)?,
+    ));
+    let refs: Vec<&dyn IsMenuItem<tauri::Wry>> = items.iter().map(|i| i.as_ref()).collect();
+    let menu = Menu::with_items(app, &refs).map_err(err)?;
     tray.set_menu(Some(menu)).map_err(|e| e.to_string())?;
 
     Ok(())
@@ -434,6 +491,20 @@ pub fn withdraw_notification(app: &AppHandle, session: &str) {
     let _ = (app, session);
 }
 
+pub fn set_tray_count(app: &AppHandle, count: usize) -> Result<(), String> {
+    *TRAY_COUNT.lock().unwrap_or_else(|e| e.into_inner()) = count;
+    redraw_tray_count(app)
+}
+
+pub fn redraw_tray_count(app: &AppHandle) -> Result<(), String> {
+    let count = *TRAY_COUNT.lock().unwrap_or_else(|e| e.into_inner());
+    let on = crate::settings::get_settings().notifications.tray_count;
+    let title = (on && count > 0).then(|| count.to_string());
+    let state = app.try_state::<TrayState>().ok_or("no tray")?;
+    let tray = state.0.lock().map_err(|e| e.to_string())?;
+    tray.set_title(title.as_deref()).map_err(|e| e.to_string())
+}
+
 pub fn set_badge_count(app: &AppHandle, count: usize) -> Result<(), String> {
     let window = app.get_webview_window("main").ok_or("no main window")?;
     window
@@ -548,6 +619,7 @@ mod tests {
                 notify: finished.0,
                 sound: finished.1,
             },
+            tray_count: true,
         }
     }
 
@@ -712,14 +784,14 @@ mod tests {
     }
 
     #[test]
-    fn lists_what_needs_you_first_and_marked_and_leaves_out_what_has_no_dot() {
+    fn lists_what_needs_you_first_and_leaves_out_what_has_no_dot() {
         let all = [
             named("pty-1", Dot::Working, "agent", "repo"),
             named("chat-1", Dot::NeedsYou, "chat A", "repo"),
             named("gone", Dot::None, "ended chat", "repo"),
         ];
         let labels: Vec<String> = tray_entries(&all).into_iter().map(|e| e.label).collect();
-        assert_eq!(labels, ["\u{26a0} chat A (repo)", "agent (repo)"]);
+        assert_eq!(labels, ["chat A (repo)", "agent (repo)"]);
     }
 
     #[test]
@@ -733,7 +805,7 @@ mod tests {
     fn omits_the_project_suffix_when_there_is_no_project() {
         assert_eq!(
             tray_entries(&[named("chat-1", Dot::NeedsYou, "chat A", "")])[0].label,
-            "\u{26a0} chat A"
+            "chat A"
         );
     }
 }
