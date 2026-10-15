@@ -1072,7 +1072,7 @@ export default function LeftSidebar(props: {
   // click handler and the tray's per-session menu entries both focus this way.
   async function selectSessionById(sessionId: string): Promise<boolean> {
     if (selectFromStore(sessionId)) return true;
-    // A tray or notification click carries an id and nothing else, and must
+    // A tray or notification click can carry an id and nothing else, and must
     // work whether or not the sidebar ever opened that folder. The live tab
     // hosting the session is what knows where it lives, so on a miss list that
     // one folder and try again rather than sweeping every space.
@@ -2989,7 +2989,6 @@ export default function LeftSidebar(props: {
 
   let unlistenConfig: UnlistenFn | undefined;
   let unlistenSessions: UnlistenFn | undefined;
-  let unlistenTrayFocus: UnlistenFn | undefined;
   let unlistenNavOpen: UnlistenFn | undefined;
   let unlistenTopics: UnlistenFn | undefined;
   let unlistenPrWatches: UnlistenFn | undefined;
@@ -3026,7 +3025,6 @@ export default function LeftSidebar(props: {
     });
     // Presence surfaces (phase 3): the tray's per-session menu entries and a
     // needs-you notification both focus the same way a sidebar row click does.
-    unlistenTrayFocus = await listen<string>("tray://focus-session", (e) => void selectSessionById(e.payload));
     unlistenNavOpen = await listen<NavTarget>("nav://open", (e) => void navigateTo(e.payload));
     // Window refocus re-probes so a dot clears promptly after e.g. a Ctrl+C
     // exit-to-shell that happened while the window was unfocused (its own
@@ -3088,7 +3086,6 @@ export default function LeftSidebar(props: {
     unlistenTopics?.();
     unlistenPrWatches?.();
     unlistenSessions?.();
-    unlistenTrayFocus?.();
     unlistenNavOpen?.();
     unlistenFetchDone?.();
     unlistenBaseChanged?.();

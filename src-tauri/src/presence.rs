@@ -17,6 +17,11 @@ use crate::rpc::dots::Dot;
 #[cfg(target_os = "macos")]
 static NEEDS_YOU_NOTES: Mutex<Option<HashMap<String, [u8; 16]>>> = Mutex::new(None);
 
+// The folder of each tray row by session id. A menu event carries only the
+// item's id, and the sidebar needs the folder to land on the right space,
+// project and worktree, as a notification click does.
+static TRAY_FOLDERS: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
+
 pub struct TrayState(pub Mutex<TrayIcon>);
 
 /// One session a tab or a chat hosts, as the surfaces list it.
@@ -69,6 +74,8 @@ pub struct Alerts {
 pub struct TrayEntry {
     pub id: String,
     pub label: String,
+    #[serde(default)]
+    pub folder: String,
 }
 
 pub struct Presence {
@@ -251,12 +258,16 @@ fn tray_entries(live: &[Live]) -> Vec<TrayEntry> {
             TrayEntry {
                 id: l.id.clone(),
                 label: format!("{mark}{}{project}", l.name),
+                folder: l.folder.clone(),
             }
         })
         .collect()
 }
 
 pub fn set_tray(app: &AppHandle, tooltip: &str, entries: &[TrayEntry]) -> Result<(), String> {
+    let folders = entries.iter().map(|e| (e.id.clone(), e.folder.clone())).collect();
+    *TRAY_FOLDERS.lock().unwrap_or_else(|e| e.into_inner()) = Some(folders);
+
     let state = app.try_state::<TrayState>().ok_or("no tray")?;
     let tray = state.0.lock().map_err(|e| e.to_string())?;
     tray.set_tooltip(Some(tooltip)).map_err(|e| e.to_string())?;
@@ -292,8 +303,17 @@ pub const SESSION_MENU_PREFIX: &str = "session:";
 /// A tray row click: the window comes forward first, since the session is
 /// selected in a window that may be hidden or behind another app.
 pub fn focus_session(app: &AppHandle, session: &str) {
+    let folder = TRAY_FOLDERS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .and_then(|f| f.get(session).cloned());
     raise_window(app);
-    let _ = app.emit("tray://focus-session", session.to_string());
+    let target = crate::autopilot::NavTarget {
+        folder,
+        session: Some(session.to_string()),
+    };
+    let _ = app.emit("nav://open", target);
 }
 
 pub fn raise_window(app: &AppHandle) {
