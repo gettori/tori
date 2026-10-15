@@ -16,9 +16,13 @@ either finishes or stops with one `error:` line that says what to fix.
 ## Before you start
 
 - Everything that should ship is merged into `main`.
-- `CHANGELOG.md` on `main` has a `## Unreleased` section describing it. That
-  section becomes the release notes, word for word. If it is missing, write it
-  and merge it first.
+- Every merged PR has a `## Changelog` section in its body: the bullets a
+  user should read, or `none`. The `Changelog` check holds every PR to that,
+  so this is normally already true. `prepare` collects those sections, oldest
+  first, and they become the release notes word for word. A PR that slipped
+  through can be fixed after the fact with `gh pr edit <number>`; nothing
+  needs to merge. A note no single PR owns goes under `## Unreleased` in
+  `CHANGELOG.md`, in an ordinary PR, and lands above the collected bullets.
 - The pack snapshot is current. Run `scripts/sync-packs.sh` and, if it
   changed anything, merge that in an ordinary PR. `src-tauri/packs.lock` names
   the gettori/packs commit the release embeds.
@@ -37,7 +41,9 @@ worktree of `origin/main` and leaves yours alone. It:
 
 1. picks the version, `YY.MDD.patch` from today's UTC date plus the current
    suffix (the second release of a day gets patch 1),
-2. renames `## Unreleased` to `## <version>` in the changelog,
+2. collects the `## Changelog` section of every PR merged into `main` since
+   the last tag and writes them as `## <version>` in the changelog, under
+   whatever `## Unreleased` held,
 3. writes the version into the five files that carry it and both lockfiles,
 4. commits that as `Tori <version>` on a branch `release/<version>`, pushes it,
    and opens the pull request with the notes as its body.
@@ -45,7 +51,8 @@ worktree of `origin/main` and leaves yours alone. It:
 It shows the version and the notes and asks before it pushes anything.
 
 It refuses when a release PR is already open, when the branch already exists,
-or when the changelog has no section to release.
+when a merged PR has no usable `## Changelog` section (it names the PR and the
+`gh pr edit` that fixes it), or when there is nothing to release.
 
 ## 2. Merge
 

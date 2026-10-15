@@ -1,0 +1,35 @@
+# Every pull request carries its own release notes: the `## Changelog` section
+# of its body, bullets written for someone using Tori, or the word `none`.
+# `scripts/release.sh prepare` collects those sections from the PRs merged
+# since the last tag, so CHANGELOG.md is never edited between releases and a
+# release is one PR. This check is what makes the collection safe to trust:
+# a PR that would fail it at release time fails here first, while its author
+# is still looking at it.
+#
+# `edited` is in the trigger because the fix is an edit to the body, and the
+# default types would leave the check red until the next push. Its own
+# workflow rather than a job in check.yml, so that trigger does not re-run the
+# whole suite on every body edit.
+name: Changelog
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  changelog:
+    # A release PR's body is the notes of the release itself, not a section.
+    if: ${{ !startsWith(github.head_ref, 'release/') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Through the environment, never interpolated into the script: a PR body
+      # is attacker-controlled text.
+      - name: Check the Changelog section
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s\n' "$BODY" | .github/scripts/pr-changelog.sh
