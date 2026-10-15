@@ -1,8 +1,8 @@
 ---
 summary: tabs restore inert with no process until reached for, but a reload reattaches every tab, beating a restore banner
 status: needs-verification
-updated: 2026-08-21
-source: not recorded; imported from grimoire docs/personal/tori; `src-tauri/src/pty.rs`
+updated: 2026-10-15
+source: not recorded; imported from grimoire docs/personal/tori; `src-tauri/src/pty.rs`; amended by gettori/tickets#24 phase pty-in-daemon, commit a0eecd56, src/panels/Terminal/terminalTabStore.ts (markHeld)
 ---
 
 # Tabs restore inert: lazy when attaching would spawn, eager when it only rewires
@@ -58,6 +58,11 @@ and spawns on the first send.
   remainder, so an inert tab holding a session id **suppresses the probe** for a
   session that really is running, and a destructive worktree confirm undercounts
   what it is about to disturb.
+
+## Amended by #24: held shells wait for their first showing
+
+The daemon now keeps each PTY's last 2 MB of output ([[component_pty_host]]), so the reason "uniformly lazy" was rejected for shells, output dropped while no sink listens, is gone. A restored terminal the daemon still holds stays `live` (so closing it kills the process) but its surface mounts only when it is first shown (`markHeld`, `isHeld`), and the attach replays the ring. Ten held tabs no longer replay ten rings at launch. Chats the daemon holds still start at once on a reload, since a chat has no ring and its child must stay addressable. See [[adr_a_daemon_holds_the_sessions_and_the_window_attaches]].
+Two restore tests kept asserting the old eager mount for seven phases ([[lesson_phase_scoped_checks_let_a_contradicted_test_survive]]).
 
 ## Related
 

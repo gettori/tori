@@ -1,8 +1,8 @@
 ---
 summary: Rust's Presence owns the needs-you rising edge and attended, and drives the OS notification, tray and dock badge itself
 status: current
-updated: 2026-10-12
-source: Notifications inbox plan (gettori/tickets#36), commit 27dc9364; Adapter registry, pulse, presence, checkpoints (personal/tori, branch `topbar`); Phase 3; plan "Autopilot hard lock, release on stop, reconcile on start (#209)", commits 28f747ed, 32def50a, f29dfcbd; gettori/tori#218 phase notification-click; moved into Rust by gettori/tori#212, commit 21533ec4; `src-tauri/src/presence.rs`, `src-tauri/src/rpc/mod.rs` (Composer::present)
+updated: 2026-10-15
+source: Notifications inbox plan (gettori/tickets#36), commit 27dc9364; Adapter registry, pulse, presence, checkpoints (personal/tori, branch `topbar`); Phase 3; plan "Autopilot hard lock, release on stop, reconcile on start (#209)", commits 28f747ed, 32def50a, f29dfcbd; gettori/tori#218 phase notification-click; moved into Rust by gettori/tori#212, commit 21533ec4; `src-tauri/src/presence.rs`, `src-tauri/src/rpc/mod.rs` (Composer::present); gettori/tickets#24 phase state-in-daemon, commit db3da511, src-tauri/src/rpc/composer.rs
 ---
 
 # Presence (OS notification, tray, dock badge)
@@ -31,6 +31,10 @@ source: Notifications inbox plan (gettori/tickets#36), commit 27dc9364; Adapter 
 - `rpc_attention(session, focused)`: the webview's selection and focus.
 - `sessions.list` rows carry `attended`.
 - `tray://focus-session`, `nav://open`: the events the webview answers.
+
+## In the daemon (#24)
+
+The Composer, and `Presence` with it, runs in `tori daemon` (`rpc/composer.rs`), so the needs-you edge is tracked with the app quit. The OS calls still need Tauri, so the daemon sends `present` to the attached window, which applies the notification, tray and badge on a worker thread off the link reader. With no window attached nothing is drawn: a needs-you while quit shows as the dot, badge and log on relaunch, and the phone and `session.wait` carry it meanwhile. Tray and badge redraw when a window attaches.
 
 ## Related
 

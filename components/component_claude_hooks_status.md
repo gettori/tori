@@ -1,8 +1,8 @@
 ---
 summary: claude hooks under settings give ground truth status for claude sessions, overriding the quiet PTY plus tail guess
 status: current
-updated: 2026-08-14
-source: "Prove the adapter: opencode + claude hooks (personal/tori, branch `topbar`); Phases 1, 3; `src-tauri/src/hooks.rs`"
+updated: 2026-10-15
+source: "Prove the adapter: opencode + claude hooks (personal/tori, branch `topbar`); Phases 1, 3; `src-tauri/src/hooks.rs`"; gettori/tickets#24 phases state-in-daemon and tori-attach, commits db3da511, 244f5b94
 ---
 
 # Claude hooks status
@@ -47,6 +47,10 @@ permission story in `hooks.rs`, where there has never been one.
 - Gated by [[component_agent_adapter_registry]]'s `AgentAdapter.hooks` capability — `agent_hook_launch_args` and `session_tail_state` both check it before doing anything. Of the four bundled adapters, **claude is still the only `hooks = true`**; codex, gemini and opencode all declare false, and pi is no longer bundled.
 - Overrides [[concept_needs_you_floor]]'s tail join for claude specifically. Every other bundled adapter stays on the tail join, and the three ACP ones also cap at working — see that page's `needs_you` note.
 - `Terminal.tsx`'s `spawnSession`/`focusOrResume` became `async` (previously `spawnSession` was sync) to await the injected args before building `init`.
+
+## Binding a tab to its session (#24)
+
+The status writer also records the first 16 hex of `TORI_CALLER`, which names the terminal tab (it cannot call the socket, but the prefix finds the tab). `hooks::Callers` rescans only changed files and `bound_tabs` picks each tab's newest session, so a `/clear` moves the tab's dot to the new session. Only tabs whose agent declares hooks are bound. The composition counts a bound tab's session as running while the tab is handed on ([[gotcha_a_fresh_claude_has_no_session_id_on_its_command_line]]), which is also what `tori attach <session>` resolves through.
 
 ## Related
 

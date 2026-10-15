@@ -1,8 +1,8 @@
 ---
 summary: `tori <cmd>` is the app binary in CLI mode: argv dispatch, a bin/tori link on child PATH, `tori mcp` as MCP front
 status: current
-updated: 2026-10-08
-source: gettori/tori#198 on branch orchestrator; commits 2800ee38 through 85430c9e; src-tauri/src/cli.rs; src-tauri/src/rpc/client.rs; src-tauri/src/lib.rs (run); gettori/tori#199 commits 25551855, 3a04d580, 52615c71; plan "tori mcp" commits 1fbc5991, 12bcab53, a375fb7a; plan "Approval gate for background sessions" (gettori/tori#203) on branch orchestrator, commits 277c772e, 66dbe76d and 4f3069ce; gettori/tori#204 commits 424a5d26, aa67f28d, 29293fe2, 280f72e8; gettori/tori#207 commits 1b7e479d, 09ed97fa, aca065a5, 41e063de; gettori/tori#208 commit b25293df
+updated: 2026-10-15
+source: gettori/tori#198 on branch orchestrator; commits 2800ee38 through 85430c9e; src-tauri/src/cli.rs; src-tauri/src/rpc/client.rs; src-tauri/src/lib.rs (run); gettori/tori#199 commits 25551855, 3a04d580, 52615c71; plan "tori mcp" commits 1fbc5991, 12bcab53, a375fb7a; plan "Approval gate for background sessions" (gettori/tori#203) on branch orchestrator, commits 277c772e, 66dbe76d and 4f3069ce; gettori/tori#204 commits 424a5d26, aa67f28d, 29293fe2, 280f72e8; gettori/tori#207 commits 1b7e479d, 09ed97fa, aca065a5, 41e063de; gettori/tori#208 commit b25293df; gettori/tickets#24 phases tori-attach and launchd-install, commits 244f5b94, cdb81fa3; src-tauri/src/{cli,shell_path}.rs, src-tauri/src/pty/attach.rs
 ---
 
 # tori CLI
@@ -23,6 +23,13 @@ It turns argv into one socket call (or a subscription, for `events`) and prints 
 - **Exit codes.** 0 on success, and on a broken pipe (`tori events | head`); 1 on an error; 2 when `tori ask` ran out of time, with the id on stdout to pass to `tori ask --wait`.
 
 `checkpoint diff --why` prints `# why` lines above each hunk, matched to the server's `why` list by file and hunk order, and only treats `+++ ` as a file header between `diff --git` and the first `@@`, since an added `++ ` line looks the same. The wording is in `claim_text` (`cli.rs:796`); `--json` prints the RPC result as is. The socket also has `provenance.hunks` for any file in a worktree. See [[component_provenance]].
+
+## Attach, daemon and PATH (#24)
+
+- `tori attach <session|tab>` (`pty/attach.rs`): raw mode with a restoring guard, a stdin thread, a resize thread, frames to stdout. It resolves a live PTY tab id, else a session through the composed tab list, in the daemon (`attach_target`). `Ctrl-\` detaches and is never sent; any end writes a mode reset (alt screen, cursor, mouse, bracketed paste) so the shell beneath is usable. It refuses with `TORI_CALLER` set ("attach from a terminal outside Tori"), so an agent is not handed a way to type into other tabs.
+- `tori daemon` runs the daemon; `--uninstall` stops it and keeps it off ([[component_tori_daemon]]). A dev build refuses `--uninstall` and says how to stop its daemon.
+- `tori` talks to the daemon, so it works with the window closed.
+- Outside Tori, `tori` is on PATH only through Settings > Advanced > Terminal command (`shell_path.rs`): one line, marked `# added by Tori: the tori command`, in `~/.zprofile` (`~/.bash_profile` for a bash login shell) putting `<config>/run/bin` first. Remove takes out only marked lines.
 
 ## Related
 

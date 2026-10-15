@@ -1,13 +1,13 @@
 ---
-summary: one Rust PTY per session streams raw bytes over a swappable per session Channel, and pty commands stay sync by design
+summary: PTYs run in `tori daemon` with a 2 MB ring each; the window mirrors them and reads bytes over a framed attach stream
 status: current
-updated: 2026-08-20
-source: Tori build plan, commits 3c2cde1 (spike), ed8d189 (multi-session); CM6 migration, commits 0221967 (addons/WebGL), 7dad6fa (Channel transport), 5c8c6d7 (clickable paths), 3813946 (drag-to-`@path`); Per-workspace terminal sessions, shell-hosted agents, and plain shell tabs (branch `topbar`), commits fe02de4 (shell hosting), 3e8acd6 (live-tab surface); Worktree and tab switching at native speed (branch `unified-tab-bar`), phase 5 chunk coalescing (commit 565dbf9), phase 2 concurrency class (commit d8714d0)
+updated: 2026-10-15
+source: Tori build plan, commits 3c2cde1 (spike), ed8d189 (multi-session); CM6 migration, commits 0221967 (addons/WebGL), 7dad6fa (Channel transport), 5c8c6d7 (clickable paths), 3813946 (drag-to-`@path`); Per-workspace terminal sessions, shell-hosted agents, and plain shell tabs (branch `topbar`), commits fe02de4 (shell hosting), 3e8acd6 (live-tab surface); Worktree and tab switching at native speed (branch `unified-tab-bar`), phase 5 chunk coalescing (commit 565dbf9), phase 2 concurrency class (commit d8714d0); gettori/tickets#24 phases pty-in-daemon and tori-attach, commits a0eecd56, 244f5b94; src-tauri/src/pty/{host,wire,mod,attach}.rs
 ---
 
 # PTY host
 
-**Location:** `src-tauri/src/pty.rs` (frontend: `src/panels/Terminal/TerminalView.tsx`, `src/panels/Terminal/Terminal.tsx`)
+**Location:** `src-tauri/src/pty/host.rs` (the engine, in the daemon), `pty/wire.rs`, `pty/mod.rs` (the window side), `pty/attach.rs` (`tori attach`) (frontend: `src/panels/Terminal/TerminalView.tsx`, `src/panels/Terminal/Terminal.tsx`)
 
 The Rust PTY host runs a login shell (and, inside it, the Claude/pi TUI) in a pseudo-terminal and streams its raw bytes to xterm.js in the frontend. It supports multiple concurrent sessions keyed by a string id, so several shells/agents can be open at once and switched instantly as tabs. See [[concept_shell_hosted_tabs]] for *why* every tab is a shell and [[concept_workspace_tab_grouping]] for how tabs are grouped and shown.
 
@@ -38,6 +38,18 @@ The Rust PTY host runs a login shell (and, inside it, the Claude/pi TUI) in a ps
 - Command tabs spawn with `env::augmented_path` (shared with [[component_lsp_host]]); shell/agent tabs let the login shell own PATH.
 - Terminal tabs are rendered by the shared [[component_overflow_tab_bar]]; its identity-preserving reorder keeps running PTYs from being torn down.
 - Governed by [[adr_stack_choice]] (Tauri + `portable-pty`) and [[adr_cm6_editor]] (same-origin glue + Channel transport).
+
+## In the daemon (#24)
+
+Everything above still describes the engine, which moved from `pty.rs` to `pty/host.rs` and runs in `tori daemon` ([[component_tori_daemon]]), so a shell outlives the window.
+
+- **Attach stream.** A surface opens a socket connection whose first line is `pty.attach {token, tab, replay, cols, rows}` (Local only), then frames: a kind byte, a u32 BE length, a payload (`DATA`, `RESIZE`, `EXIT`; `pty/wire.rs`). Several attaches share one PTY: each gets every output byte, input comes from all of them, and the last resize wins. `EXIT` follows the tail, so `pty://exit` still comes after the last bytes.
+- **Ring.** Each PTY keeps its last 2 MB of output (`RING_BYTES`, `host.rs:67`), replayed under the output lock on attach so no live byte slips between. The swappable `Channel` sink is gone from the daemon; the window's `pty/mod.rs` keeps one attach per mounted surface and re-emits the events.
+- **Flow control.** The reader hands the coalescer a bounded queue (32 chunks) and output writes block per stream, so a stalled stream makes the program wait. xterm acks drawn bytes (`pty_ack`, every 100 KB) and the window stops reading past 1 MB unacked.
+- **Held tabs.** A restored tab the daemon still holds stays `live` but mounts only when shown (`markHeld`, `isHeld`), so ten held tabs replay nothing at launch ([[adr_lazy_tab_attachment]]).
+- **Liveness.** `Pty::handed_on` (`host.rs:149`) is the foreground process group not being the shell; it is how a hand-typed agent counts as running ([[gotcha_a_fresh_claude_has_no_session_id_on_its_command_line]]).
+- **What dies with the daemon.** Shells do not survive a daemon restart; the window emits `pty://exit` with no code for each attached tab, and a shell tab closes.
+- `tori attach <session|tab>` is the same attach from any terminal; `Ctrl-\` detaches ([[component_tori_cli]], [[gotcha_macos_drops_a_blocked_sigwinch_left_at_default_disposition]]).
 
 ## Related
 

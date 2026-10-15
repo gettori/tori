@@ -1,8 +1,8 @@
 ---
-summary: the WebSocket front: one picked IP, device credentials only, pairing by one time code, revoke drops live connections
+summary: the WebSocket front, run by the daemon so it listens with the app quit: one picked IP, device credentials, awake only when used
 status: current
-updated: 2026-09-26
-source: gettori/tori#213 on branch orchestrator; commits 5ea1f124, 06a2bf55 and the Phase 3 commit; gettori/tori#214 pairing plan on branch orchestrator; src-tauri/src/rpc/{ws,remote,devices,pairing,awake}.rs; src/panels/Settings/panes/RemotePane/RemotePane.tsx; dev/remote-probe.html
+updated: 2026-10-15
+source: gettori/tori#213 on branch orchestrator; commits 5ea1f124, 06a2bf55 and the Phase 3 commit; gettori/tori#214 pairing plan on branch orchestrator; src-tauri/src/rpc/{ws,remote,devices,pairing,awake}.rs; src/panels/Settings/panes/RemotePane/RemotePane.tsx; dev/remote-probe.html; gettori/tickets#24 phase remote-in-daemon, commit fe065148, src-tauri/src/rpc/office.rs
 ---
 
 # Remote front (Rust + Settings)
@@ -20,15 +20,19 @@ It owns listening on one address, proving a connection is a paired device, pairi
 - `devices.rs`: `Devices` in `~/.config/tori/devices.json`, `0600` via `owned_state::write_private`, holding `{id, name, created_ms, hash}` with the sha256 of a 32 byte credential. `mint`, `revoke`, `list`, `contains`. A file that exists but does not parse is never written over: `writable()` refuses minting, revoking and starting a pairing until it is fixed.
 - `pairing.rs`: `Pairing` holds the one live pairing code and `redeem`s it; see [[concept_device_pairing]]. `Remote::apply` cancels the live code whenever the listener goes, since the code names its address.
 - The hub tags a device's connection with its id, and `Hub::close_device(id)` closes every one of them. `handle` tags, then checks `Credential::holds`, so a revoke cannot slip in before registration ([[gotcha_a_revoke_between_auth_and_registration_has_nothing_to_close]]).
-- `awake.rs`: `Awake` holds an IOKit `PreventUserIdleSystemSleep` assertion while the listener is up. A closed lid on battery still sleeps.
+- `awake.rs`: `Awake` holds an IOKit `PreventUserIdleSystemSleep` assertion. Since #24 the listener does not hold it: `Office::keep_awake` does, while Remote listens **and** a device is connected or a session is working (`awake_wanted`, `office.rs:251`). A closed lid on battery still sleeps.
 
 ## Interface
 
 - `auth.rs`'s `Credential::Remote { devices, pairing }` is what the front accepts. A first frame `pair {code, name}` answers `{id, name, credential}` and closes; `auth` is the only way into a served connection. Otherwise: a device credential authenticates as `Principal::Device(id)`, and the process token and child tokens are refused by construction. `CallerKind::Device` is admitted on the reads, `projects.list`, `caller`, `session.steer`, `session.interrupt`, `session.pending` and `ask.answer`, subscribes to `sessions` and `session:<id>` only, and steers as `TurnBy::Local`, as typed. `device.mint {name}` is Local only.
-- Tauri commands `remote_set`, `remote_status`, `remote_interfaces`, and for pairing `pairing_start` (QR SVG from the `qrcode` crate), `pairing_cancel`, `devices_list`, `device_revoke`. `remote://devices` carries `{ended: used | burned | cancelled | null}` to the pane on a pair, a burn, a cancel or a revoke. `remote_set` is the only writer of `settings.remote` (`set_settings` carries it over from disk, like `autopilot.enabled`) and applies it; `rpc::start` applies it at launch and `RpcState::shutdown` stops it.
+- Tauri commands `remote_set`, `remote_status`, `remote_interfaces`, and for pairing `pairing_start` (QR SVG from the `qrcode` crate), `pairing_cancel`, `devices_list`, `device_revoke`. `remote://devices` carries `{ended: used | burned | cancelled | null}` to the pane on a pair, a burn, a cancel or a revoke. `remote_set` is the only writer of `settings.remote` (`set_settings` carries it over from disk, like `autopilot.enabled`) and applies it; The daemon applies it at start, so Remote on listens with the app quit; quitting the app no longer stops it.
 - `RemotePane` serialises its `remote_set` calls, reloads the store after each, and drops a change equal to what is stored ([[gotcha_a_switch_fires_onchange_when_a_reload_moves_checked]]).
 - `RemotePane` has a Pair a device row (the QR, the code, the URL, a countdown) and a Paired devices list with Revoke. Leaving the pane cancels a live code.
 - `dev/remote-probe.html` is served over `http://` from the Mac on the picked address, not opened as a file ([[gotcha_android_chrome_blocks_a_page_opened_from_a_file_from_reaching_the_lan]]). It pairs from a pasted `tori://pair` link or a typed URL and code, and keeps the credential in `localStorage`. `node dev/rpc-probe.mjs --no-wait --mint <name>` still mints one directly.
+
+## In the daemon (#24)
+
+The office in `tori daemon` builds `Remote`, the device store and pairing, and serves phones from its own `Server`, so a phone reads the daemon's hub and method table directly ([[component_tori_daemon]]). The Settings commands above are `office` calls from the window; the QR is still drawn in the app, and `remote_interfaces` and Tailscale stay there (stateless). The app's own relay and chat-watch plumbing are gone. The daemon reads `settings.remote` once at start, so a hand edit of settings.json needs `remote_set` or a restart.
 
 ## Related
 
