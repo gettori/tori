@@ -98,12 +98,9 @@ jobs:
     env:
       VERSION: ${{ needs.gate.outputs.version }}
       BUNDLE: src-tauri/target/${{ matrix.target }}/release/bundle
-      # Tauri's bundler reads these: imports the certificate into a temporary
-      # keychain, signs with the hardened runtime, notarizes and staples the
-      # app. notarize.sh reads the same ones for the DMG and the CLI.
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      # Tauri's bundler reads these, plus the APPLE_SIGNING_IDENTITY the import
+      # step below sets: signs with the hardened runtime, notarizes and staples
+      # the app. notarize.sh reads the same ones for the DMG and the CLI.
       APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
       APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
       APPLE_API_KEY_PATH: /tmp/tori-notary-key.p8
@@ -119,6 +116,14 @@ jobs:
         run: printf '%s' "$APPLE_API_KEY_CONTENT" > "$APPLE_API_KEY_PATH"
         env:
           APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+
+      # Not left to Tauri's bundler, which imports into a keychain it hides
+      # and reports only "failed to resolve signing identity" on any trouble.
+      - name: Import the signing identity
+        run: .github/scripts/import-signing-identity.sh
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
 
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -204,7 +209,13 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - uses: android-actions/setup-android@v3
+      # The runner image ships the SDK with ANDROID_HOME set; only the platform
+      # Gradle compiles against has to be pinned, since the image's set drifts.
+      - name: Install the Android platform
+        run: |
+          sdkmanager=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)
+          yes | "$sdkmanager" --install "platforms;android-36" >/dev/null
+
       - uses: nttld/setup-ndk@v1
         id: ndk
         with:
