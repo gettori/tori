@@ -137,16 +137,16 @@ describe("what the sidebar can see without being expanded", () => {
   });
   afterEach(() => resetSessionStoreForTests());
 
-  // Both presence surfaces hand over a bare session id and nothing else, and
-  // neither can wait for the user to have opened the right node first.
+  // A presence click can arrive with a bare session id and no folder, and
+  // cannot wait for the user to have opened the right node first.
   it("focuses a session by bare id in a folder the tree never opened", async () => {
     const picked: (unknown | null)[] = [];
     render(() => <LeftSidebar selected={null} onSelect={(s) => picked.push(s)} liveTabs={liveTabs} />);
-    await waitFor(() => expect(bridge.handlers["tray://focus-session"]).toBeTruthy());
+    await waitFor(() => expect(bridge.handlers["nav://open"]).toBeTruthy());
     await waitFor(() => expect(sessions()[MAIN]).toBeTruthy());
     const pickedIds = () => picked.map((s) => (s as { sessionId?: string } | null)?.sessionId).filter(Boolean);
 
-    bridge.handlers["tray://focus-session"]({ payload: "detached-1" });
+    bridge.handlers["nav://open"]({ payload: { session: "detached-1" } });
     await waitFor(() => expect(pickedIds()).toContain("detached-1"));
 
     bridge.handlers["nav://open"]({ payload: { session: "live-1" } });
