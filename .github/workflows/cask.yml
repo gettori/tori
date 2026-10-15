@@ -1,106 +1,31 @@
-# Point the Homebrew tap at a *published* release on this repo.
-# Dispatched by hand after publishing the draft, never automatically: a draft's
-# asset URLs are not publicly downloadable, so a cask written against one would
-# 404 for every tester.
+# Point the Homebrew tap at a *published* release on this repo, by hand. The
+# release workflow does this itself as its last step; this is for the day
+# that step fails after the release is already public, or for a cask edit the
+# template in update-cask.sh needs re-rolled onto the current release.
 #
 # The tap is gettori/tap to brew and the gettori/homebrew-tap repo to git; the
 # prefix is what lets `brew install --cask gettori/tap/tori` tap it on its own.
-#
-# Rewrites Casks/tori.rb whole from a template rather than sed-patching fields,
-# so the same run also creates the file the first time. Needs TAP_TOKEN, a
-# fine-grained PAT with Contents read/write on the tap repo: github.token reads
-# the release here and cannot push anywhere else.
 name: Update cask
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Published release version, without the v prefix (e.g. 0.1.0-alpha.1)"
+        description: "Published release version, without the v prefix (e.g. 26.1016.0-alpha)"
         required: true
 
 permissions:
   contents: read
 
-env:
-  GH_TOKEN: ${{ github.token }}
-  RELEASES_REPO: gettori/tori
-  TAP_REPO: gettori/homebrew-tap
-
 jobs:
   cask:
     runs-on: ubuntu-latest
+    environment: release
     steps:
-      - name: Fetch the release DMG
-        id: rel
-        run: |
-          version="${{ inputs.version }}"
-          tag="v$version"
+      - uses: actions/checkout@v4
 
-          if [ "$(gh release view "$tag" --repo "$RELEASES_REPO" --json isDraft -q .isDraft)" = true ]; then
-            echo "$tag is still a draft - publish it first, brew cannot download draft assets" >&2
-            exit 1
-          fi
-
-          gh release download "$tag" --repo "$RELEASES_REPO" --pattern '*.dmg' --dir dist
-          shopt -s nullglob
-          dmgs=(dist/*.dmg)
-          if [ ${#dmgs[@]} -ne 1 ]; then
-            echo "expected one DMG asset on $tag, found ${#dmgs[@]}" >&2
-            exit 1
-          fi
-
-          asset=$(basename "${dmgs[0]}")
-          sha=$(shasum -a 256 "${dmgs[0]}" | cut -d' ' -f1)
-          # The literal version becomes Ruby's #{version} so the URL stanza
-          # interpolates, keeping future manual bumps to two lines.
-          pattern=$(printf '%s' "$asset" | sed "s/$version/#{version}/")
-
-          {
-            echo "version=$version"
-            echo "sha=$sha"
-            echo "pattern=$pattern"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Write and push the cask
+      - name: Rewrite and push the cask
         env:
+          GH_TOKEN: ${{ github.token }}
           TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
-        run: |
-          git clone "https://x-access-token:${TAP_TOKEN}@github.com/${TAP_REPO}.git" tap
-          mkdir -p tap/Casks
-          cat > tap/Casks/tori.rb <<EOF
-          cask "tori" do
-            version "${{ steps.rel.outputs.version }}"
-            sha256 "${{ steps.rel.outputs.sha }}"
-
-            url "https://github.com/${RELEASES_REPO}/releases/download/v#{version}/${{ steps.rel.outputs.pattern }}"
-            name "Tori"
-            desc "Cockpit for the coding agents you already run"
-            homepage "https://gettori.app"
-
-            # No version bound: the bundle sets no minimum, so older macOS is untested
-            # rather than blocked, and this says only what the app really requires.
-            depends_on :macos
-
-            app "Tori.app"
-
-            # Homebrew 6 removed --no-quarantine, and the app is unsigned, so without
-            # this Gatekeeper reports it as damaged. postflight_steps rather than the
-            # postflight block it replaces, which Homebrew 7 deprecates and warns about
-            # on every read. Drop the whole stanza once builds are signed and notarized.
-            postflight_steps do
-              run "/usr/bin/xattr", args: ["-cr", "{{appdir}}/Tori.app"]
-            end
-          end
-          EOF
-
-          cd tap
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Casks/tori.rb
-          if git diff --cached --quiet; then
-            echo "cask already at ${{ steps.rel.outputs.version }}, nothing to push"
-            exit 0
-          fi
-          git commit -m "tori ${{ steps.rel.outputs.version }}"
-          git push
+        run: .github/scripts/update-cask.sh "${{ inputs.version }}"
