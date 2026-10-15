@@ -165,7 +165,7 @@ describe("the prefix router", () => {
 
     open(">");
     expect(screen.getByText("Commands")).toBeTruthy();
-    expect(rowLabels()).toContain("Show or hide the sidebar");
+    expect(rowLabels()).toContain("Toggle Sidebar");
   });
 
   // The whole reason for one box rather than two: a mode is a keystroke inside
@@ -174,7 +174,7 @@ describe("the prefix router", () => {
     open("");
     typeInto(">side");
     expect(screen.getByText("Commands")).toBeTruthy();
-    expect(rowLabels()).toContain("Show or hide the sidebar");
+    expect(rowLabels()).toContain("Toggle Sidebar");
 
     typeInto("side");
     expect(screen.getByText("Files")).toBeTruthy();
@@ -220,7 +220,7 @@ describe("? - what the prefixes do", () => {
 
     expect(onClose).not.toHaveBeenCalled();
     expect((input() as HTMLInputElement).value).toBe(">");
-    expect(rowLabels()).toContain("Show or hide the sidebar");
+    expect(rowLabels()).toContain("Toggle Sidebar");
   });
 
   // A signpost is the one row the box is picked from more than once without
@@ -237,7 +237,7 @@ describe("? - what the prefixes do", () => {
     fireEvent.click(screen.getByText(/^>\s+Commands$/));
 
     expect((input() as HTMLInputElement).value).toBe(">");
-    expect(rowLabels()).toContain("Show or hide the sidebar");
+    expect(rowLabels()).toContain("Toggle Sidebar");
     expect(onClose).not.toHaveBeenCalled();
   });
 });
@@ -437,7 +437,7 @@ describe("> - actions", () => {
     ["Show Changes", SET_RIGHT_MODE, { mode: "changes" }],
     // Labelled from the canonical table, which is the same string the ⌘/ sheet
     // shows: one command cannot be called two things.
-    ["Show or hide the terminal", TOGGLE_TERMINAL, FIRED],
+    ["Toggle Terminal", TOGGLE_TERMINAL, FIRED],
   ])("%s still runs", (label, event, want) => {
     open(">");
     expect(fire(label, event)).toEqual(want);
@@ -445,23 +445,23 @@ describe("> - actions", () => {
 
   it("shows the key chips of a command that also carries a binding", () => {
     open(">");
-    const row = screen.getByText("Show or hide the terminal").parentElement!;
+    const row = screen.getByText("Toggle Terminal").parentElement!;
     expect([...row.querySelectorAll("kbd")].map((k) => k.textContent)).toEqual(["⌘", "⌥", "J"]);
   });
 
   it("lists an unavailable command with its reason, and refuses to run it", () => {
-    // Nothing published means no file is open, so "Save file" has to say why
+    // Nothing published means no file is open, so "Save" has to say why
     // rather than either vanishing (you would never learn it exists) or running
     // and saving nothing.
     open(">");
-    const row = screen.getByText("Save file").closest('[role="option"]')!;
+    const row = screen.getByText("Save").closest('[role="option"]')!;
     expect(row.textContent).toContain("No file open");
     expect(row.getAttribute("aria-disabled")).toBe("true");
 
     let fired = false;
     const on = () => (fired = true);
     window.addEventListener(EDITOR_SAVE, on);
-    fireEvent.click(screen.getByText("Save file"));
+    fireEvent.click(screen.getByText("Save"));
     window.removeEventListener(EDITOR_SAVE, on);
     expect(fired).toBe(false);
   });
@@ -474,18 +474,18 @@ describe("> - actions", () => {
     open(">");
     // Filtered down first, so the row at the top is unambiguously the refused
     // one rather than whatever happened to head the full list.
-    typeInto(">Save file");
-    expect(rowLabels()[0]).toBe("Save file");
+    typeInto(">Save");
+    expect(rowLabels()[0]).toBe("Save");
 
-    const row = screen.getByText("Save file").closest('[role="option"]')!;
+    const row = screen.getByText("Save").closest('[role="option"]')!;
     expect(input().getAttribute("aria-activedescendant")).not.toBe(row.id);
   });
 
   it("runs a command once its requirement is met", () => {
     publishEditorState({ activePath: PATH, dirty: true, tabCount: 1, projectRoot: REPO, recentJumps: [] });
     open(">");
-    expect(screen.getByText("Save file").parentElement!.textContent).not.toContain("No file open");
-    expect(fire("Save file", EDITOR_SAVE)).toEqual(FIRED);
+    expect(screen.getByText("Save").parentElement!.textContent).not.toContain("No file open");
+    expect(fire("Save", EDITOR_SAVE)).toEqual(FIRED);
   });
 
   it("closes before the command runs", () => {
@@ -573,7 +573,7 @@ describe("> - actions", () => {
     // fuzzyScore matches subsequences, so the narrowed list is not only exact
     // substring hits; what it must do is narrow, and rank both sidebar rows in.
     expect(rowLabels().length).toBeLessThan(all);
-    expect(rowLabels()).toContain("Show or hide the sidebar");
+    expect(rowLabels()).toContain("Toggle Sidebar");
     expect(rowLabels()).toContain("Filter the sidebar");
   });
 });

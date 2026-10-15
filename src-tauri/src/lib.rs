@@ -567,6 +567,7 @@ pub fn run() {
             scratch::scratch_dir,
             scratch::scratch_new,
             scratch::scratch_remove,
+            app_menu::set_app_menu,
             update::check_for_update,
             update::check_for_update_now,
             update::open_releases_page,

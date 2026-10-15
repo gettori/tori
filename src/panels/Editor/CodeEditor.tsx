@@ -2392,7 +2392,7 @@ export default function CodeEditor(props: {
     });
   });
 
-  // The palette's "Save file". It lands here rather than in Editor because the
+  // The palette's "Save". It lands here rather than in Editor because the
   // buffer is here: `saveActive` writes what the view actually holds, which is
   // the same text Mod-s writes, rather than a copy something else was passing
   // around. The key binding is still CM6's own, and stays the only key: a

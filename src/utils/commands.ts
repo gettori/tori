@@ -141,8 +141,11 @@ export type CommandGroup =
  * - `terminal`: owned by the focused terminal itself and has no table-level
  *   action, because it acts on one xterm instance rather than emitting a
  *   global event. Listed here so the sheet stays complete.
+ * - `editor`: owned by CodeMirror's keymap, so no dispatcher here fires it, and
+ *   it never becomes a menu accelerator, which would take the key from the
+ *   composer and the terminal too. Listed so the sheet and the menu show it.
  */
-export type CommandScope = "global" | "window" | "terminal";
+export type CommandScope = "global" | "window" | "terminal" | "editor";
 
 /**
  * What has to be true for a command to do anything, as a tag rather than a
@@ -238,7 +241,7 @@ export const COMMANDS: Command[] = [
   {
     id: "omnibox",
     keys: ["⌘", "P"],
-    label: "Go to a file, action, symbol or line",
+    label: "Go to File...",
     group: "navigate",
     scope: "window",
     match: cmd("p"),
@@ -253,7 +256,7 @@ export const COMMANDS: Command[] = [
     // other worth a detour through it.
     id: "command-palette",
     keys: ["⌘", "K"],
-    label: "Run an action",
+    label: "Command Palette",
     group: "navigate",
     scope: "global",
     match: cmd("k"),
@@ -263,7 +266,7 @@ export const COMMANDS: Command[] = [
   {
     id: "nav-back",
     keys: ["⌃", "−"],
-    label: "Go back to where you were",
+    label: "Back",
     group: "navigate",
     // `window`, not `global`, for the omnibox's reason: these act on the editor's
     // jump list, and a program running in the terminal should keep its own
@@ -275,7 +278,7 @@ export const COMMANDS: Command[] = [
   {
     id: "nav-forward",
     keys: ["⌃", "⇧", "−"],
-    label: "Go forward again",
+    label: "Forward",
     group: "navigate",
     scope: "window",
     match: ctrlShift("Minus"),
@@ -284,7 +287,7 @@ export const COMMANDS: Command[] = [
   {
     id: "reopen-closed-tab",
     keys: ["⌘", "⇧", "T"],
-    label: "Reopen the tab you just closed",
+    label: "Reopen Closed Tab",
     group: "navigate",
     // `window` for the same reason as its neighbours: this acts on the editor's
     // tab strip, and a terminal has its own claim on Cmd+Shift+T.
@@ -337,6 +340,8 @@ export const COMMANDS: Command[] = [
     scope: "global",
     match: cmd(","),
     run: () => emitWith<OpenSettings>(OPEN_SETTINGS, {}),
+    // The palette lists its own Open Settings row.
+    hidden: true,
   },
   {
     id: "check-updates",
@@ -347,7 +352,7 @@ export const COMMANDS: Command[] = [
   {
     id: "review-inbox",
     keys: ["⌘", "⇧", "X"],
-    label: "Show or hide the Inbox",
+    label: "Inbox",
     group: "view",
     scope: "global",
     match: cmdShift("x"),
@@ -363,7 +368,7 @@ export const COMMANDS: Command[] = [
   },
   {
     id: "since-you-looked",
-    label: "Show what happened since you last looked",
+    label: "Since You Last Looked",
     group: "view",
     scope: "global",
     run: () => emit(OPEN_DIGEST),
@@ -371,7 +376,7 @@ export const COMMANDS: Command[] = [
   {
     id: "autopilot-view",
     keys: ["⌘", "⇧", "J"],
-    label: "Switch between Autopilot and Workspace",
+    label: "Autopilot / Workspace",
     group: "view",
     scope: "global",
     match: cmdShift("j"),
@@ -380,7 +385,7 @@ export const COMMANDS: Command[] = [
   {
     id: "autopilot-popup",
     keys: ["⌘", "L"],
-    label: "Show or hide the autopilot over Workspace",
+    label: "Autopilot Overlay",
     group: "view",
     scope: "window",
     match: cmd("l"),
@@ -388,8 +393,8 @@ export const COMMANDS: Command[] = [
   },
   {
     id: "zoom-in",
-    keys: ["⌘", "+"],
-    label: "Increase font size",
+    keys: ["⌘", "="],
+    label: "Zoom In",
     group: "view",
     scope: "global",
     // Accept both ⌘= and ⌘⇧+ (same physical key): e.key is "=" unshifted, "+"
@@ -400,7 +405,7 @@ export const COMMANDS: Command[] = [
   {
     id: "zoom-out",
     keys: ["⌘", "−"],
-    label: "Decrease font size",
+    label: "Zoom Out",
     group: "view",
     scope: "global",
     match: (e) => e.metaKey && !e.ctrlKey && !e.altKey && (e.key === "-" || e.key === "_"),
@@ -409,7 +414,7 @@ export const COMMANDS: Command[] = [
   {
     id: "zoom-reset",
     keys: ["⌘", "0"],
-    label: "Reset font size",
+    label: "Actual Size",
     group: "view",
     scope: "global",
     match: (e) => e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && e.key === "0",
@@ -427,7 +432,7 @@ export const COMMANDS: Command[] = [
   {
     id: "toggle-sidebar",
     keys: ["⌘", "B"],
-    label: "Show or hide the sidebar",
+    label: "Toggle Sidebar",
     group: "view",
     scope: "global",
     match: cmd("b"),
@@ -436,7 +441,7 @@ export const COMMANDS: Command[] = [
   {
     id: "toggle-terminal",
     keys: ["⌘", "⌥", "J"],
-    label: "Show or hide the terminal",
+    label: "Toggle Terminal",
     group: "view",
     scope: "global",
     match: cmdOpt("KeyJ"),
@@ -446,7 +451,7 @@ export const COMMANDS: Command[] = [
     id: "toggle-dock",
     // Not ⌘⇧J: the editor joins lines on it.
     keys: ["⌘", "⌃", "J"],
-    label: "Show or hide the dock",
+    label: "Toggle Dock",
     group: "view",
     scope: "global",
     match: cmdCtrl("KeyJ"),
@@ -455,7 +460,7 @@ export const COMMANDS: Command[] = [
   {
     id: "toggle-editor",
     keys: ["⌘", "⌥", "E"],
-    label: "Show or hide the editor",
+    label: "Toggle Editor",
     group: "view",
     scope: "global",
     match: cmdOpt("KeyE"),
@@ -464,7 +469,7 @@ export const COMMANDS: Command[] = [
   {
     id: "toggle-filetree",
     keys: ["⌘", "⌥", "B"],
-    label: "Show or hide the file tree",
+    label: "Toggle File Tree",
     group: "view",
     scope: "global",
     match: cmdOpt("KeyB"),
@@ -486,7 +491,7 @@ export const COMMANDS: Command[] = [
   {
     id: "project-search",
     keys: ["⌘", "⇧", "F"],
-    label: "Search across the project",
+    label: "Search in Project",
     group: "search",
     scope: "global",
     match: cmdShift("f"),
@@ -553,7 +558,7 @@ export const COMMANDS: Command[] = [
   {
     id: "close-tab",
     keys: ["⌘", "W"],
-    label: "Close the focused pane's tab",
+    label: "Close Tab",
     group: "terminal",
     scope: "global",
     match: cmd("w"),
@@ -562,7 +567,7 @@ export const COMMANDS: Command[] = [
   {
     id: "next-waiting",
     keys: ["⌘", "⇧", "A"],
-    label: "Jump to the next session waiting for approval",
+    label: "Next Waiting Session",
     group: "session",
     scope: "global",
     match: cmdShift("a"),
@@ -571,7 +576,7 @@ export const COMMANDS: Command[] = [
   {
     id: "stop-chat",
     keys: ["⌘", "."],
-    label: "Stop the running turn",
+    label: "Stop Turn",
     group: "session",
     // Global, not window: stopping a runaway turn is the thing you most want to
     // do while looking at something else, and a `window` binding would be
@@ -586,15 +591,15 @@ export const COMMANDS: Command[] = [
 
   // --- Editor -------------------------------------------------------------
   //
-  // Almost no keys. CM6's own `Mod-s` stays the sole save key: a table-level
-  // binding would fire while a terminal had focus, saving a file nobody was
-  // looking at. The one exception is Cmd+N below, which is not a CM6 binding at
-  // all - it has to work with no buffer open, which is exactly when there is no
-  // keymap to hold it.
+  // Almost no keys. CM6's own `Mod-s` stays the sole save key, which is why
+  // Save is `editor` scope: a table-level binding would fire while a terminal
+  // had focus, saving a file nobody was looking at. The one exception is Cmd+N
+  // below, which is not a CM6 binding at all - it has to work with no buffer
+  // open, which is exactly when there is no keymap to hold it.
   {
     id: "editor-new-scratch",
     keys: ["⌘", "N"],
-    label: "New scratch buffer",
+    label: "New Scratch Buffer",
     sub: "An untitled file, kept until you save it somewhere.",
     group: "editor",
     // `window` for the tab strip's reason: this opens an editor tab, and a
@@ -605,14 +610,17 @@ export const COMMANDS: Command[] = [
   },
   {
     id: "editor-save",
-    label: "Save file",
+    keys: ["\u2318", "S"],
+    label: "Save",
     group: "editor",
+    scope: "editor",
+    match: cmd("s"),
     run: () => emit(EDITOR_SAVE),
     requires: ["editorFile"],
   },
   {
     id: "editor-save-as",
-    label: "Save as a new file",
+    label: "Save As...",
     // Says what happens to the tab, because that is the part a person cannot
     // guess: it follows the file rather than staying on the old one.
     sub: "The tab follows it. A scratch buffer's own file is removed.",
@@ -703,7 +711,7 @@ export const COMMANDS: Command[] = [
   {
     id: "lsp-definition",
     keys: ["⌘", "⌥", "D"],
-    label: "Go to definition",
+    label: "Go to Definition",
     sub: "F12",
     group: "editor",
     scope: "window",
@@ -714,7 +722,7 @@ export const COMMANDS: Command[] = [
   {
     id: "lsp-references",
     keys: ["⌘", "⌥", "R"],
-    label: "Find references",
+    label: "Find References",
     sub: "⇧F12",
     group: "editor",
     scope: "window",
@@ -900,13 +908,13 @@ export const COMMANDS: Command[] = [
   // in this range already belongs to something a terminal program can claim.
   {
     id: "split-pane-right",
-    label: "Split the pane to the right",
+    label: "Split Right",
     group: "view",
     run: () => emitWith<SplitPane>(SPLIT_PANE, { dir: "row" }),
   },
   {
     id: "split-pane-down",
-    label: "Split the pane below",
+    label: "Split Down",
     group: "view",
     run: () => emitWith<SplitPane>(SPLIT_PANE, { dir: "column" }),
   },
@@ -918,7 +926,7 @@ export const COMMANDS: Command[] = [
   },
   {
     id: "close-pane",
-    label: "Close this pane",
+    label: "Close Pane",
     sub: "Its tabs move to the pane beside it",
     group: "view",
     run: () => emit(CLOSE_PANE),
