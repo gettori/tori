@@ -126,21 +126,16 @@ in its environment, and how to keep a tmux auto-attach out of the tab, is in
 
 ## Install
 
-The brew line at the top installs the cask. It clears the quarantine flag as it
-installs, and `brew upgrade --cask tori` keeps it current. Otherwise download
-the latest `Tori_<version>_universal.dmg` from the
-[Releases page](https://github.com/gettori/tori/releases), drag it into
-Applications, then follow **[docs/INSTALL.md](docs/INSTALL.md)** for the first
-launch.
+The brew line at the top installs the cask, and `brew upgrade --cask tori`
+keeps it current. Otherwise download the DMG for your Mac from the
+[Releases page](https://github.com/gettori/tori/releases)
+(`Tori_<version>_aarch64.dmg` on Apple Silicon, `Tori_<version>_x64.dmg` on
+Intel) and drag it into Applications. The app is signed and notarized, so it
+opens without a warning. **[docs/INSTALL.md](docs/INSTALL.md)** covers the
+phone app, updating and uninstalling.
 
-Tori is **unsigned** for now, so macOS will refuse to open it the first time. That
-is expected. The fix is System Settings > Privacy & Security > **Open Anyway**,
-or `xattr -cr /Applications/Tori.app` from a terminal. Both are written out
-step by step in [docs/INSTALL.md](docs/INSTALL.md), along with updating and
-uninstalling.
-
-**Requirements:** macOS, on Apple Silicon or Intel (the DMG carries a universal
-binary). Tori is developed and tested on macOS 15; the bundle sets no minimum
+**Requirements:** macOS, on Apple Silicon or Intel (one DMG each). Tori is
+developed and tested on macOS 15; the bundle sets no minimum
 version, so older releases are untested rather than blocked. At least one agent
 CLI installed. Node.js if you want the bundled TypeScript language server to
 run.

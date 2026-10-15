@@ -1,76 +1,124 @@
-# Draft a GitHub Release from a `v*` tag: build the universal macOS bundle,
-# prove it really is universal, and attach the DMG and the CLI tarball.
+# Build, sign, notarize and publish a release when the release commit lands on
+# main. The trigger is the merge of the PR `scripts/release.sh prepare` opened:
+# the `gate` job reads the version from tauri.conf.json and goes ahead only
+# when CHANGELOG.md has that version's section and no tag names it yet. A
+# stage-suffix bump in an ordinary PR has no section, so it never fires; a fix
+# merged after a failed run fires again, since the tag is still missing.
 #
 # Version scheme: YY.MDD.patch with a stage suffix while unstable, e.g.
 # 26.824.0-alpha is the Aug 24 2026 alpha, 26.1205.0 a Dec 5 stable. The
 # middle field is month*100+day (last two digits are always the day), so
 # versions sort by date; the patch field is for a second cut of the same day.
 #
-# The release is drafted on this repo, beside the tag it was built from, so
-# github.token is all it needs. Not the real path yet: scripts/release.sh is,
-# because it also builds the Android APK and holds its keystore. This takes
-# over once it signs. No signing secrets today. The release is left as a
-# *draft* on purpose: an unsigned build needs the Gatekeeper note in
-# docs/INSTALL.md alongside it, and that is a human's call to publish. After
-# publishing, the cask workflow (cask.yml) points the Homebrew tap at it.
+# One DMG per Mac architecture rather than a universal binary: each bundle then
+# comes out natively right down to the last resource, and the download is half
+# the size. Android is arm64 only, which is every phone that can pair with a
+# Mac; armv7 and x86 would quadruple that job for nobody.
+#
+# The tag is made last, after every build has passed, so a failed build leaves
+# nothing behind and the next push to main simply tries again. A tag pushed
+# with github.token starts no workflow, which is why this one is not `on: tags`.
+#
+# Secrets live on the `release` environment, limited to main, so a workflow on
+# a PR branch never sees them. docs/RELEASING.md lists them and where each
+# comes from. The manual trigger is a rehearsal: it builds everything the same
+# way, uploads the artifacts, and publishes nothing.
 name: Release
 
 on:
   push:
-    tags: ["v*"]
-  # Rehearsal trigger. A tag is immutable in practice once the repo is public,
-  # so the first real tag should not also be the first time this workflow runs.
-  # Dispatched from a branch it does everything a tag run does - build, arch
-  # sweep, DMG - but uploads the DMG as an artifact instead of drafting a
-  # release, so nothing is published and no throwaway tag is left behind.
+    branches: [main]
   workflow_dispatch:
 
-# Only to create the release; nothing here pushes commits.
+# Two release commits merged back to back would otherwise race for the tag.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: macos-14
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.decide.outputs.release }}
+      version: ${{ steps.decide.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
-      # On a tag run the tag is the source of truth, and the next step proves
-      # the app agrees with it. A rehearsal has no tag to read, so it takes the
-      # app's own version instead - which is the value the eventual tag has to
-      # match anyway, so the rehearsal exercises the real release notes.
-      - name: Derive the version
-        id: version
+      - name: Decide whether this commit is a release
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "$GITHUB_REF_TYPE" = tag ]; then
-            version="${GITHUB_REF_NAME#v}"
-          else
-            version=$(node -p "require('./src-tauri/tauri.conf.json').version")
-            echo "rehearsal run: using the app's own version, $version"
-          fi
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            echo "rehearsal: building $version from $GITHUB_REF_NAME, publishing nothing"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! grep -qx "## $version" CHANGELOG.md; then
+            echo "CHANGELOG.md has no '## $version' section: not a release commit"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git ls-remote --exit-code --tags origin "v$version" >/dev/null; then
+            echo "v$version is already tagged: nothing to do"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "release commit for $version: building"
+          echo "release=true" >> "$GITHUB_OUTPUT"
 
-      # A tag that disagrees with the app's own version would ship a build
-      # that reports the wrong version in its update check, and would look for
-      # a changelog section that describes something else.
-      - name: Check the tag matches the app version
-        if: github.ref_type == 'tag'
+      # The body comes from here, so a missing section fails in seconds, not
+      # after a full compile.
+      - name: Extract the release notes
+        if: steps.decide.outputs.release == 'true' && github.event_name == 'push'
+        run: .github/scripts/changelog-section.sh "${{ steps.decide.outputs.version }}"
+
+  macos:
+    needs: gate
+    if: needs.gate.outputs.release == 'true'
+    runs-on: macos-14
+    environment: release
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            arch: arm64
+            dmg_arch: aarch64
+            cli_arch: arm64
+          - target: x86_64-apple-darwin
+            arch: x86_64
+            dmg_arch: x64
+            cli_arch: x64
+    env:
+      VERSION: ${{ needs.gate.outputs.version }}
+      BUNDLE: src-tauri/target/${{ matrix.target }}/release/bundle
+      # Tauri's bundler reads these: imports the certificate into a temporary
+      # keychain, signs with the hardened runtime, notarizes and staples the
+      # app. notarize.sh reads the same ones for the DMG and the CLI.
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      APPLE_API_KEY_PATH: /tmp/tori-notary-key.p8
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the version agrees with the app
         run: |
           conf=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          want="${{ steps.version.outputs.version }}"
-          if [ "$conf" != "$want" ]; then
-            echo "tag $GITHUB_REF_NAME implies version $want, but tauri.conf.json says $conf" >&2
-            exit 1
-          fi
+          [ "$conf" = "$VERSION" ] || { echo "gate says $VERSION, tauri.conf.json says $conf" >&2; exit 1; }
 
-      # Done before the long build: a missing changelog section should fail in
-      # seconds, not after a full universal compile.
-      - name: Extract the release notes
-        run: |
-          .github/scripts/changelog-section.sh "${{ steps.version.outputs.version }}" \
-            > release-notes.md
-          echo "--- release body ---"
-          cat release-notes.md
+      - name: Write the notary key
+        run: printf '%s' "$APPLE_API_KEY_CONTENT" > "$APPLE_API_KEY_PATH"
+        env:
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
 
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -78,44 +126,38 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
 
-      # The pinned version from rust-toolchain.toml, with both halves of the
-      # universal binary among its targets.
+      # The pinned version from rust-toolchain.toml, plus the one target this
+      # job builds; the Intel one is a cross-compile on the arm64 runner.
       - run: rustup toolchain install
+      - run: rustup target add ${{ matrix.target }}
 
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          key: ${{ matrix.target }}
 
       - run: pnpm install --frozen-lockfile
 
       # Runs beforeBuildCommand, which installs the bundled LSP resources.
-      - name: Build the universal bundle
-        run: pnpm tauri build --target universal-apple-darwin
+      - name: Build, sign and notarize the bundle
+        run: pnpm tauri build --target ${{ matrix.target }}
 
-      - name: Report the main binary's architectures
-        run: lipo -archs "src-tauri/target/universal-apple-darwin/release/bundle/macos/Tori.app/Contents/MacOS/Tori"
-
-      - name: Verify every bundled Mach-O is universal
-        run: |
-          .github/scripts/check-universal.sh \
-            "src-tauri/target/universal-apple-darwin/release/bundle/macos/Tori.app"
+      - name: Check every Mach-O is ${{ matrix.arch }} and the signature verifies
+        run: .github/scripts/check-bundle.sh "$BUNDLE/macos/Tori.app" ${{ matrix.arch }}
 
       # Resolved explicitly rather than passing a glob to `gh`: an unmatched
       # glob reaches it as a literal path and the failure reads as a mangled
       # filename instead of "the build produced no DMG".
-      - name: Locate the DMG
+      - name: Sign, notarize and staple the DMG
         id: dmg
         run: |
           shopt -s nullglob
-          dmgs=(src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg)
-          if [ ${#dmgs[@]} -eq 0 ]; then
-            echo "no DMG in src-tauri/target/universal-apple-darwin/release/bundle/dmg/" >&2
+          dmgs=("$BUNDLE"/dmg/Tori_"$VERSION"_${{ matrix.dmg_arch }}.dmg)
+          if [ ${#dmgs[@]} -ne 1 ]; then
+            echo "expected $BUNDLE/dmg/Tori_${VERSION}_${{ matrix.dmg_arch }}.dmg, found: ${dmgs[*]-none}" >&2
             exit 1
           fi
-          if [ ${#dmgs[@]} -gt 1 ]; then
-            echo "expected one DMG, found ${#dmgs[@]}: ${dmgs[*]}" >&2
-            exit 1
-          fi
+          .github/scripts/notarize.sh "${dmgs[0]}"
           echo "path=${dmgs[0]}" >> "$GITHUB_OUTPUT"
 
       # gettori/packs CI runs validate-pack and packs-index from this, pinned by
@@ -123,52 +165,157 @@ jobs:
       - name: Pack the CLI
         id: cli
         run: |
-          path=$(.github/scripts/cli-tarball.sh \
-            "src-tauri/target/universal-apple-darwin/release/bundle/macos/Tori.app" \
-            "${{ steps.version.outputs.version }}" \
-            src-tauri/target/universal-apple-darwin/release/bundle/cli)
+          path=$(.github/scripts/cli-tarball.sh "$BUNDLE/macos/Tori.app" "$VERSION" ${{ matrix.cli_arch }} "$BUNDLE/cli")
           echo "path=$path" >> "$GITHUB_OUTPUT"
 
-      # The cask needs this checksum; printing it here lets a manual cask edit
-      # copy it straight from the build that produced the DMG.
-      - name: Report the DMG checksum
-        run: shasum -a 256 "${{ steps.dmg.outputs.path }}"
+      # The built binary, so it is this release's trusted keys that must verify
+      # the live catalog: a release that cannot read the index would ship an
+      # empty one. Only the runner's own arch can run.
+      - name: Check the live packs catalog verifies with this build
+        if: matrix.arch == 'arm64'
+        run: '"$BUNDLE/macos/Tori.app/Contents/MacOS/tori" packs-catalog --check'
 
-      # --verify-tag: the tag that triggered this run is the one released, and
-      # gh must not invent another on the default branch if it is missing.
-      - name: Draft the release
-        if: github.ref_type == 'tag'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: |
+            ${{ steps.dmg.outputs.path }}
+            ${{ steps.cli.outputs.path }}
+          if-no-files-found: error
+
+  android:
+    needs: gate
+    if: needs.gate.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    env:
+      VERSION: ${{ needs.gate.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+      - uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r27c
+
+      - run: rustup toolchain install
+      - run: rustup target add aarch64-linux-android
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: mobile/src-tauri
+          key: aarch64-linux-android
+
+      - run: pnpm install --frozen-lockfile
+
+      # Android refuses to install an unsigned APK, and the Gradle signing
+      # config falls back to unsigned when this file is missing rather than
+      # failing, so the file is written first and the build checked after.
+      - name: Write the keystore
         env:
-          GH_TOKEN: ${{ github.token }}
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          flags=(--draft)
-          case "${{ steps.version.outputs.version }}" in
-            *-*) flags+=(--prerelease) ;;
-          esac
-          gh release create "$GITHUB_REF_NAME" \
+          [ -n "$ANDROID_KEYSTORE" ] || { echo "ANDROID_KEYSTORE secret is empty" >&2; exit 1; }
+          printf '%s' "$ANDROID_KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.jks"
+          cat > mobile/src-tauri/gen/android/keystore.properties <<EOF
+          storeFile=$RUNNER_TEMP/release.jks
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+
+      - name: Build and sign the APK
+        env:
+          NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: cd mobile && pnpm tauri android build --apk --target aarch64
+
+      # One flavor, so one APK; anything else means the target list changed
+      # without this step. Renamed to the asset name the docs give.
+      - name: Check the APK is signed and name it
+        id: apk
+        run: |
+          shopt -s nullglob
+          apks=(mobile/src-tauri/gen/android/app/build/outputs/apk/*/release/app-*-release.apk)
+          if [ ${#apks[@]} -ne 1 ]; then
+            echo "expected one release APK, found ${#apks[@]}: ${apks[*]-none}" >&2
+            exit 1
+          fi
+          apksigner=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$apksigner" verify --print-certs "${apks[0]}"
+          mv "${apks[0]}" "mobile/Tori_$VERSION.apk"
+          echo "path=mobile/Tori_$VERSION.apk" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+
+  publish:
+    needs: [gate, macos, android]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: release
+    env:
+      VERSION: ${{ needs.gate.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+
+      - name: Extract the release notes
+        run: .github/scripts/changelog-section.sh "$VERSION" > release-notes.md
+
+      # Only now, with every artifact in hand. A ruleset on v* may block
+      # deleting or moving a tag; it must not block creating one.
+      - name: Tag the release commit
+        run: |
+          git tag "v$VERSION" "$GITHUB_SHA"
+          git push origin "v$VERSION"
+
+      # Drafted first so a failed upload never leaves a live release without
+      # its assets; published only after all five are confirmed present.
+      # --verify-tag: gh must not invent a tag on the default branch if the
+      # push above somehow did not land.
+      - name: Create the release
+        run: |
+          flags=(--draft --verify-tag)
+          case "$VERSION" in *-*) flags+=(--prerelease) ;; esac
+          gh release create "v$VERSION" \
             --repo "$GITHUB_REPOSITORY" \
-            --verify-tag \
             "${flags[@]}" \
-            --title "Tori $GITHUB_REF_NAME" \
+            --title "Tori v$VERSION" \
             --notes-file release-notes.md \
-            "${{ steps.dmg.outputs.path }}" \
-            "${{ steps.cli.outputs.path }}"
+            assets/*
+          want=$(ls assets | sort)
+          have=$(gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' | sort)
+          if [ "$want" != "$have" ]; then
+            echo "the draft is missing an asset; have:" >&2
+            echo "$have" >&2
+            exit 1
+          fi
+          gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
 
-      # The rehearsal's payoff: a real DMG to install and check by hand before
-      # any tag exists, so the Gatekeeper steps in docs/INSTALL.md are verified
-      # against an actual artifact rather than assumed.
-      - name: Upload the rehearsal DMG
-        if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@v4
-        with:
-          name: tori-rehearsal-dmg
-          path: ${{ steps.dmg.outputs.path }}
-          if-no-files-found: error
-
-      - name: Upload the rehearsal CLI
-        if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@v4
-        with:
-          name: tori-rehearsal-cli
-          path: ${{ steps.cli.outputs.path }}
-          if-no-files-found: error
+      - name: Point the Homebrew cask at it
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: .github/scripts/update-cask.sh "$VERSION"
