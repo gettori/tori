@@ -492,7 +492,7 @@ impl Daemon {
                 let Some(id) = req.id.clone() else { return };
                 let line = match req.method.as_str() {
                     "list_sessions" => match listed(&composer, &req.params) {
-                        Ok(raw) => format!(r#"{{"jsonrpc":"2.0","id":{id},"result":{raw}}}"#),
+                        Ok(raw) => format!("{{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":{raw}}}\n"),
                         Err(e) => to_line(&Response::err(id, e)),
                     },
                     "sessions.list" => {
