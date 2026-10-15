@@ -104,7 +104,7 @@ describe("the canonical command table", () => {
     ]) {
       const c = COMMANDS.find((c) => c.id === id);
       if (!c) continue; // named by id so a rename shows up as a miss, not a pass
-      expect(c.keys, `${id} carries a key CodeMirror already owns`).toBeUndefined();
+      if (c.scope !== "editor") expect(c.keys, `${id} carries a key CodeMirror already owns`).toBeUndefined();
     }
   });
 

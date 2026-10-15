@@ -45,6 +45,7 @@ describe("the canonical binding table", () => {
         "debug-stop",
         "debug-toggle-breakpoint",
         "editor-new-scratch",
+        "editor-save",
         "filter-sidebar",
         "focus-pr-review",
         "focus-terminal",
@@ -102,6 +103,7 @@ describe("the canonical binding table", () => {
     const editor = bindingsByGroup().find((g) => g.group === "editor");
     expect(editor?.bindings.map((b) => b.id)).toEqual([
       "editor-new-scratch",
+      "editor-save",
       "lsp-definition",
       "lsp-references",
       "lsp-rename",
@@ -195,7 +197,7 @@ describe("dispatchHotkey (terminal-safe subset)", () => {
   });
 
   it("does not claim Cmd+S, which the focused editor owns", () => {
-    // "Save file" is a palette command with no key: CodeMirror's own Mod-s is
+    // "Save" shows Cmd+S but is `editor` scope: CodeMirror's own Mod-s is
     // the only save key. A table-level binding would fire while a terminal had
     // focus and save a file nobody was looking at.
     expect(dispatchHotkey(key("s", { meta: true }))).toBe(false);

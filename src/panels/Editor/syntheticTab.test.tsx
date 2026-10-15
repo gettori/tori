@@ -307,7 +307,7 @@ describe("a tori:// tab in the editor pane", () => {
 
       expect(rightClick(tab("Graph"))).toBe(true);
       expect(await screen.findByRole("menu")).toBeTruthy();
-      expect(screen.getByText("Split the pane to the right")).toBeTruthy();
+      expect(screen.getByText("Split Right")).toBeTruthy();
       expect(screen.queryByText("File history")).toBeNull();
     });
 

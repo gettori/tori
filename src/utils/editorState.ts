@@ -3,7 +3,7 @@
 //
 // The same shape of thing as `chatSessions.ts`, and for the same reason: the
 // command palette has to know whether there is a file to save before it offers
-// "Save file", and it is a sibling of the editor, not a child. Passing this down
+// "Save", and it is a sibling of the editor, not a child. Passing this down
 // as props would mean threading it through App and every pane between them, and
 // the palette is not the last consumer that will want it.
 //
