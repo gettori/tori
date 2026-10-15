@@ -45,6 +45,7 @@ import {
   ZOOM_RESET,
   TOGGLE_AUTOPILOT_VIEW,
   TOGGLE_INBOX,
+  OPEN_INBOX,
   TOGGLE_AUTOPILOT_POPUP,
   RELOAD_APP,
   TOGGLE_SIDEBAR,
@@ -351,6 +352,14 @@ export const COMMANDS: Command[] = [
     scope: "global",
     match: cmdShift("x"),
     run: () => emit(TOGGLE_INBOX),
+  },
+  {
+    id: "open-inbox",
+    label: "Show the Inbox",
+    group: "view",
+    run: () => emit(OPEN_INBOX),
+    // The palette already has the toggle above.
+    hidden: true,
   },
   {
     id: "since-you-looked",

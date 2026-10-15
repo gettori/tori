@@ -591,6 +591,12 @@ export const SETTINGS: SettingEntry[] = [
     label: "Play a sound when a chat finishes its turn",
     hint: "Played by Tori, whatever macOS does with the notification. Silent for the chat on screen.",
   },
+  {
+    id: "tray-count",
+    section: "chat",
+    label: "Show the needs you count in the menu bar",
+    hint: "The number of sessions waiting on you that you have not looked at yet, beside Tori's menu bar icon. The same number as the Dock badge.",
+  },
 
   {
     id: "default-surface",

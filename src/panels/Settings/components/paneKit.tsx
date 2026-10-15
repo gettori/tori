@@ -88,11 +88,13 @@ export const setAppearance = (a: Partial<Appearance>) =>
 export const setTypography = (t: Partial<Typography>) =>
   saveSettings({ ...settings, typography: { ...settings.typography, ...t } });
 export const setGit = (g: Partial<GitSettings>) => saveSettings({ ...settings, git: { ...settings.git, ...g } });
-export const setAlert = (state: keyof NotificationSettings, a: Partial<Alert>) =>
+export const setAlert = (state: "needsYou" | "turnFinished", a: Partial<Alert>) =>
   saveSettings({
     ...settings,
     notifications: { ...settings.notifications, [state]: { ...settings.notifications[state], ...a } },
   });
+export const setNotifications = (n: Partial<NotificationSettings>) =>
+  saveSettings({ ...settings, notifications: { ...settings.notifications, ...n } });
 export const setCheckpoints = (c: Partial<Checkpoints>) =>
   saveSettings({ ...settings, checkpoints: { ...settings.checkpoints, ...c } });
 export const setChatDefaults = (c: Partial<ChatDefaults>) =>

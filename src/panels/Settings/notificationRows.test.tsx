@@ -31,19 +31,19 @@ const saved = (): NotificationSettings[] =>
 const ROWS: [string, NotificationSettings][] = [
   [
     "Notify when a session needs you",
-    { needsYou: { notify: false, sound: false }, turnFinished: { notify: false, sound: false } },
+    { needsYou: { notify: false, sound: false }, turnFinished: { notify: false, sound: false }, trayCount: true },
   ],
   [
     "Play a sound when a session needs you",
-    { needsYou: { notify: true, sound: true }, turnFinished: { notify: false, sound: false } },
+    { needsYou: { notify: true, sound: true }, turnFinished: { notify: false, sound: false }, trayCount: true },
   ],
   [
     "Notify when a chat finishes its turn",
-    { needsYou: { notify: true, sound: false }, turnFinished: { notify: true, sound: false } },
+    { needsYou: { notify: true, sound: false }, turnFinished: { notify: true, sound: false }, trayCount: true },
   ],
   [
     "Play a sound when a chat finishes its turn",
-    { needsYou: { notify: true, sound: false }, turnFinished: { notify: false, sound: true } },
+    { needsYou: { notify: true, sound: false }, turnFinished: { notify: false, sound: true }, trayCount: true },
   ],
 ];
 

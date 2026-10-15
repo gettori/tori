@@ -767,6 +767,8 @@ pub struct Notifications {
     pub needs_you: Alert,
     #[serde(default)]
     pub turn_finished: Alert,
+    #[serde(default = "default_true")]
+    pub tray_count: bool,
 }
 
 impl Default for Notifications {
@@ -774,6 +776,7 @@ impl Default for Notifications {
         Self {
             needs_you: default_needs_you_alert(),
             turn_finished: Alert::default(),
+            tray_count: true,
         }
     }
 }
@@ -1333,6 +1336,7 @@ pub fn set_settings(settings: Settings, app: AppHandle) -> Result<Settings, Stri
     save_to(&settings_path(), &settings)?;
     let _ = app.emit("settings://changed", ());
     crate::radar::settings_changed();
+    let _ = crate::presence::redraw_tray_count(&app);
     Ok(settings)
 }
 
@@ -1497,6 +1501,7 @@ pub fn settings_watch_start(app: AppHandle, state: State<SettingsWatch>) -> Resu
             if event.paths.iter().any(|p| p == &target) {
                 let _ = app_handle.emit("settings://changed", ());
                 crate::radar::settings_changed();
+                let _ = crate::presence::redraw_tray_count(&app_handle);
             }
         }
     })
@@ -1762,6 +1767,7 @@ mod tests {
                 notify: true,
                 sound: false,
             },
+            tray_count: false,
         };
         save_to(&p, &s).unwrap();
         assert_eq!(load_from(&p), s);

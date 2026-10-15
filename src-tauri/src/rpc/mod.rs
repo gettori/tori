@@ -396,6 +396,7 @@ fn present(app: &AppHandle, shown: &Value) {
     }
     if let Some(count) = shown.badge {
         let _ = crate::presence::set_badge_count(app, count);
+        let _ = crate::presence::set_tray_count(app, count);
     }
 }
 
