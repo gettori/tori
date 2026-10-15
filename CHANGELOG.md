@@ -8,6 +8,44 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## Unreleased
+
+- Sessions and terminals now run in `tori daemon`, a background process that
+  outlives the window. Quitting Tori leaves shells and chat turns running,
+  and a relaunch reattaches them with their screen. The socket, the
+  autopilot, needs-you and Remote live there too, so `tori` commands and a
+  paired phone keep working with the app quit.
+- On a release build the daemon runs under launchd, so it starts at login
+  and comes back after a crash. An update waits until no session is working
+  before it replaces the daemon, with a button to restart now.
+  `tori daemon --uninstall` removes it and keeps it off.
+- Quitting asks first, Cmd+Q included, and says sessions keep running.
+  **Also stop running sessions** stops the daemon as well. A quit with
+  nothing unsaved no longer waits five seconds first.
+- `tori attach <session|tab>` opens a tab the daemon holds in any terminal,
+  and `Ctrl-\` detaches. Settings can put the `tori` command on your PATH for
+  terminals outside Tori.
+- Ctrl-C on a command that floods its terminal lands right away instead of
+  behind minutes of output.
+- The Mac stays awake only while a phone is connected or a session is
+  working, not for as long as Remote is on.
+- The Inbox opens from the top bar as a panel, and only when you open it. It
+  no longer opens by itself at launch or after you have been away.
+  **Mark reviewed** shows a spinner and drops the row once the mark is
+  stored.
+- The review rule in Project settings > Automations can pick the agent,
+  model, effort and mode its review runs on.
+- A review worktree is named after its pull request's branch instead of
+  `pr-<number>`.
+- Files the editor can't show open in their default app: **Open in Default
+  App** in the file tree and on the editor's banner, and an Open in browser
+  button on an HTML tab. Only documents and media open this way, never a
+  program.
+- A merged worktree branch is no longer called unpushed once its remote
+  branch is deleted.
+- Adding a worktree opens one chat draft, not two.
+- rustls is updated to 0.23.46 for RUSTSEC-2026-0346 to 0349.
+
 ## 26.1013.1-alpha
 
 - Picking a pull request from the orange mark on a project row makes its
