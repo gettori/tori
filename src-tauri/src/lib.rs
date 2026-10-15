@@ -115,10 +115,41 @@ fn build_tray(app: &tauri::App) -> Result<TrayIcon, Box<dyn std::error::Error>> 
         .menu(&empty_menu)
         .tooltip("Tori")
         .on_menu_event(move |_tray, event| {
-            presence::handle_tray_menu_event(&tray_app, event.id.as_ref());
+            if event.id.as_ref() != QUIT_MENU_ID {
+                presence::handle_tray_menu_event(&tray_app, event.id.as_ref());
+            }
         })
         .build(app)?;
     Ok(tray)
+}
+
+const QUIT_MENU_ID: &str = "app-quit";
+
+// The system Quit item terminates the app outright, past the window's close
+// question, so Cmd+Q is swapped for one that closes the window instead.
+#[cfg(target_os = "macos")]
+fn install_quit_item(app: &tauri::AppHandle) -> tauri::Result<()> {
+    use tauri::menu::{MenuItem, MenuItemKind};
+    let menu = Menu::default(app)?;
+    if let Some(MenuItemKind::Submenu(app_menu)) = menu.items()?.into_iter().next() {
+        if let Some(quit) = app_menu.items()?.into_iter().last() {
+            app_menu.remove(&quit)?;
+        }
+        let label = format!("Quit {}", app.package_info().name);
+        app_menu.append(&MenuItem::with_id(app, QUIT_MENU_ID, label, true, Some("CmdOrCtrl+Q"))?)?;
+    }
+    app.set_menu(menu)?;
+    app.on_menu_event(|app, event| {
+        if event.id().as_ref() == QUIT_MENU_ID {
+            match app.get_webview_window("main") {
+                Some(window) => {
+                    let _ = window.close();
+                }
+                None => app.exit(0),
+            }
+        }
+    });
+    Ok(())
 }
 
 /// WebKit's text checking is a user default, not a menu item or an element
@@ -246,6 +277,11 @@ pub fn run() {
             // Non-fatal like the askpass bridge above: a tray is a presence
             // nice-to-have, not something a startup failure should take the
             // whole app down over.
+            #[cfg(target_os = "macos")]
+            if let Err(e) = install_quit_item(app.handle()) {
+                eprintln!("tori: Cmd+Q quits without asking: {e}");
+            }
+
             match build_tray(app) {
                 Ok(tray) => {
                     app.manage(TrayState(Mutex::new(tray)));
@@ -648,6 +684,7 @@ pub fn run() {
             rpc::daemon_status,
             rpc::rpc_asks_pending,
             rpc::window_listening,
+            rpc::daemon_stop,
             rpc::rpc_ask_answer,
             rpc::autopilot_start,
             rpc::remote_set,

@@ -228,6 +228,13 @@ pub fn daemon_restart_now() -> Result<(), String> {
     Ok(())
 }
 
+// From the quit dialog, so the window's link is closed first and does not
+// start the daemon again.
+#[tauri::command(async)]
+pub fn daemon_stop(rpc: tauri::State<RpcState>) -> Result<(), String> {
+    rpc.link.stop_daemon()
+}
+
 #[tauri::command]
 pub fn daemon_status() -> Option<Status> {
     DAEMON_STATUS.lock().unwrap_or_else(|e| e.into_inner()).clone()
