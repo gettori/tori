@@ -268,7 +268,15 @@ pub fn set_tray(app: &AppHandle, tooltip: &str, entries: &[TrayEntry]) -> Result
     } else {
         let items: Vec<MenuItem<tauri::Wry>> = entries
             .iter()
-            .map(|e| MenuItem::with_id(app, &e.id, &e.label, true, None::<&str>))
+            .map(|e| {
+                MenuItem::with_id(
+                    app,
+                    format!("{SESSION_MENU_PREFIX}{}", e.id),
+                    &e.label,
+                    true,
+                    None::<&str>,
+                )
+            })
             .collect::<Result<_, _>>()
             .map_err(|e| e.to_string())?;
         let refs: Vec<&dyn IsMenuItem<tauri::Wry>> = items.iter().map(|i| i as &dyn IsMenuItem<tauri::Wry>).collect();
@@ -279,12 +287,21 @@ pub fn set_tray(app: &AppHandle, tooltip: &str, entries: &[TrayEntry]) -> Result
     Ok(())
 }
 
-/// Menu-item click handler, wired once at tray creation (lib.rs's `setup`):
-/// a session entry's id is the session id itself, so this is a direct
-/// passthrough. The placeholder "no-sessions" item is disabled and never
-/// reaches here.
-pub fn handle_tray_menu_event(app: &AppHandle, id: &str) {
-    let _ = app.emit("tray://focus-session", id.to_string());
+pub const SESSION_MENU_PREFIX: &str = "session:";
+
+/// A tray row click: the window comes forward first, since the session is
+/// selected in a window that may be hidden or behind another app.
+pub fn focus_session(app: &AppHandle, session: &str) {
+    raise_window(app);
+    let _ = app.emit("tray://focus-session", session.to_string());
+}
+
+pub fn raise_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
 }
 
 pub fn needs_you_body(live: &Live) -> String {
@@ -348,11 +365,7 @@ pub fn notify_session(app: AppHandle, live: &Live, body: String, click: bool) {
             if !click || !matches!(answer, Ok(mac_notification_sys::NotificationResponse::Click)) {
                 return;
             }
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
+            raise_window(&app);
             let _ = app.emit("nav://open", target);
         });
     }

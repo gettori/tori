@@ -108,22 +108,31 @@ fn build_tray(app: &tauri::App) -> Result<TrayIcon, Box<dyn std::error::Error>> 
     // inactive, which the coloured mark would never do.
     let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?;
     let empty_menu = Menu::new(app)?;
-    let tray_app = app.handle().clone();
     let tray = TrayIconBuilder::new()
         .icon(icon)
         .icon_as_template(true)
         .menu(&empty_menu)
         .tooltip("Tori")
-        .on_menu_event(move |_tray, event| {
-            if event.id.as_ref() != QUIT_MENU_ID {
-                presence::handle_tray_menu_event(&tray_app, event.id.as_ref());
-            }
-        })
         .build(app)?;
     Ok(tray)
 }
 
 const QUIT_MENU_ID: &str = "app-quit";
+
+// Registered once: Tauri calls every menu handler, the tray's included, for
+// every menu event, so a second handler would see each click twice.
+fn route_menu_event(app: &tauri::AppHandle, id: &str) {
+    if id == QUIT_MENU_ID {
+        match app.get_webview_window("main") {
+            Some(window) => {
+                let _ = window.close();
+            }
+            None => app.exit(0),
+        }
+    } else if let Some(session) = id.strip_prefix(presence::SESSION_MENU_PREFIX) {
+        presence::focus_session(app, session);
+    }
+}
 
 // The system Quit item terminates the app outright, past the window's close
 // question, so Cmd+Q is swapped for one that closes the window instead.
@@ -139,16 +148,6 @@ fn install_quit_item(app: &tauri::AppHandle) -> tauri::Result<()> {
         app_menu.append(&MenuItem::with_id(app, QUIT_MENU_ID, label, true, Some("CmdOrCtrl+Q"))?)?;
     }
     app.set_menu(menu)?;
-    app.on_menu_event(|app, event| {
-        if event.id().as_ref() == QUIT_MENU_ID {
-            match app.get_webview_window("main") {
-                Some(window) => {
-                    let _ = window.close();
-                }
-                None => app.exit(0),
-            }
-        }
-    });
     Ok(())
 }
 
@@ -272,8 +271,7 @@ pub fn run() {
 
             // Menu-bar tray (Finding F3/presence): starts empty (no sessions
             // yet at launch) - the frontend calls `update_tray` once presence
-            // state exists. Menu-item clicks (a session's own id) fan out as
-            // `tray://focus-session` for the frontend to focus that tab.
+            // state exists.
             // Non-fatal like the askpass bridge above: a tray is a presence
             // nice-to-have, not something a startup failure should take the
             // whole app down over.
@@ -281,6 +279,8 @@ pub fn run() {
             if let Err(e) = install_quit_item(app.handle()) {
                 eprintln!("tori: Cmd+Q quits without asking: {e}");
             }
+
+            app.on_menu_event(|app, event| route_menu_event(app, event.id().as_ref()));
 
             match build_tray(app) {
                 Ok(tray) => {
