@@ -2,7 +2,7 @@
 summary: Rust's Presence owns the needs-you rising edge and attended, and drives the OS notification, tray and dock badge itself
 status: current
 updated: 2026-10-15
-source: Notifications inbox plan (gettori/tickets#36), commit 27dc9364; Adapter registry, pulse, presence, checkpoints (personal/tori, branch `topbar`); Phase 3; plan "Autopilot hard lock, release on stop, reconcile on start (#209)", commits 28f747ed, 32def50a, f29dfcbd; gettori/tori#218 phase notification-click; moved into Rust by gettori/tori#212, commit 21533ec4; `src-tauri/src/presence.rs`, `src-tauri/src/rpc/mod.rs` (Composer::present); gettori/tickets#24 phase state-in-daemon, commit db3da511, src-tauri/src/rpc/composer.rs
+source: plan "Tray and menu bar improvements" (branch `menu-options`), commits 2a2d8182, 6e230afc; Notifications inbox plan (gettori/tickets#36), commit 27dc9364; Adapter registry, pulse, presence, checkpoints (personal/tori, branch `topbar`); Phase 3; plan "Autopilot hard lock, release on stop, reconcile on start (#209)", commits 28f747ed, 32def50a, f29dfcbd; gettori/tori#218 phase notification-click; moved into Rust by gettori/tori#212, commit 21533ec4; `src-tauri/src/presence.rs`, `src-tauri/src/rpc/mod.rs` (Composer::present); gettori/tickets#24 phase state-in-daemon, commit db3da511, src-tauri/src/rpc/composer.rs
 ---
 
 # Presence (OS notification, tray, dock badge)
@@ -21,7 +21,8 @@ source: Notifications inbox plan (gettori/tickets#36), commit 27dc9364; Adapter 
 - **The OS calls run outside the lock.** Building the tray's menu waits on the main thread, so the tray, badge and notification are applied after the presence lock is released ([[gotcha_a_sync_tauri_command_runs_on_the_main_thread_so_it_must_not_wait_on_a_lock_held_across_a_tray_call]]).
 - **Notification.** It is suppressed while the window is focused and the session is the selected row, or is a chat whose tab is on screen. A chat mints its session id before any transcript exists, so selecting its tab usually resolves only as far as its branch, which is why the chat fact carries `visible`. It is also skipped for a worker whose spawner can relay the question: the spawning chat is live, or the autopilot is on (`relayed`, which reads the runner's state directly). The title is the chat fact's name, else the index's name or title, else the id, so a fresh chat with no transcript notifies with its name. The body names the project (`unit_home::project_name`).
 - **The click.** `notify_needs_you` sends through `mac_notification_sys` rather than the plugin, whose desktop send never reports a click ([[gotcha_the_notification_plugins_desktop_send_never_reports_a_click]]). A click brings the window forward and emits `nav://open` ([[concept_in_app_navigation]]).
-- **Tray.** The tooltip counts running and needs-you, and the menu lists every session with a dot, needs-you first with a stable sort. A menu click emits `tray://focus-session`. `build_tray` in `lib.rs`'s `.setup()` fails soft like [[component_askpass]]: log and carry on, no tray rather than no app.
+- **Tray.** The tooltip counts running and needs-you. The menu groups every session with a dot under Needs you, Working and Idle headers (stable sort), a needs-you row naming its reason, then a footer: Open Tori, Next Waiting Session, Show Inbox, Quit Tori. Beside the icon the title shows the unattended count, the dock badge's number, unless `notifications.tray_count` is off; `set_tray_count` keeps the last count so flipping the setting redraws at once. `build_tray` in `lib.rs`'s `.setup()` fails soft like [[component_askpass]]: log and carry on, no tray rather than no app.
+- **A session click** goes through [[component_app_menu]]'s router to `focus_session`, which raises the window and emits `nav://open` with the session's folder, so the sidebar lands on its space, project and worktree. A menu event carries only the id, so `set_tray` keeps an id to folder map for it.
 - **`Live`** carries `reason` (approval, question, budget, waiting, forge, from `dots::reason`) and `branch` (from the index meta) besides the dot.
 - **The needs-you log.** `present` splits `quiet` into `relayed` and `watched` (`suppressed`) and hands both, the live list, the `finished` edges and the forge units to `needs_you_log::record` before alerting ([[component_needs_you_log]]).
 - **The webview.** `src/utils/presence.ts` keeps only `notifyQuota`: a quota notification names an account, so there is no one place a click could land. The sidebar reports attention through `noteAttention`.
@@ -30,7 +31,7 @@ source: Notifications inbox plan (gettori/tickets#36), commit 27dc9364; Adapter 
 
 - `rpc_attention(session, focused)`: the webview's selection and focus.
 - `sessions.list` rows carry `attended`.
-- `tray://focus-session`, `nav://open`: the events the webview answers.
+- `nav://open`, `menu://command`: the events the webview answers for a tray click.
 
 ## In the daemon (#24)
 
@@ -43,5 +44,6 @@ The Composer, and `Presence` with it, runs in `tori daemon` (`rpc/composer.rs`),
 - [[component_chat_panel]]: the chat-side facts
 - [[component_autopilot_runner]]: the autopilot whose workers stay quiet while it runs
 - [[component_needs_you_log]]: the day's list built from the same tick
+- [[component_app_menu]]: the router a tray click goes through
 - [[gotcha_a_forge_raised_dot_rises_again_after_every_turn]]: why the log does not count red checks off the dot
 - [[gotcha_a_dev_builds_notifications_are_terminals]]: why a notification can show in dev and not in a bundle
