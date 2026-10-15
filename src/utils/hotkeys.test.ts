@@ -60,6 +60,7 @@ describe("the canonical binding table", () => {
         "peek-definition",
         "project-search",
         "omnibox",
+        "open-settings",
         "reload",
         "reopen-closed-tab",
         "rerun-last-task",

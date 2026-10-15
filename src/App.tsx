@@ -85,6 +85,7 @@ import {
   type PurgeWorkspace,
 } from "./utils/events";
 import { dispatchWindowHotkey } from "./utils/hotkeys";
+import { COMMANDS } from "./utils/commands";
 import { registerCloseGuard } from "./utils/closeGuard";
 import { windowDragStart } from "./utils/windowDrag";
 import {
@@ -520,6 +521,7 @@ function App() {
     setSelected(topic ? topicSelection(topic, sel.activeRoot) : null);
   }
   let unlistenConfig: UnlistenFn | undefined;
+  let unlistenMenu: UnlistenFn | undefined;
   let unlistenSetup: UnlistenFn | undefined;
   onMount(async () => {
     void resolveTopicSelection();
@@ -531,10 +533,12 @@ function App() {
     watchUsageProbe();
     void announceCrash();
     unlistenConfig = await listen("config://changed", () => void resolveTopicSelection());
+    unlistenMenu = await listen<string>("menu://command", (e) => COMMANDS.find((c) => c.id === e.payload)?.run?.());
     unlistenSetup = await watchSetup();
   });
   onCleanup(() => {
     unlistenConfig?.();
+    unlistenMenu?.();
     unlistenSetup?.();
   });
 
