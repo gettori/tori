@@ -18,6 +18,7 @@ const FILE = `${REPO}/a.txt`;
 let hotExit = true;
 /** Whether the stubbed editor pane manages to stash. */
 let stashLands = true;
+let saved: unknown[] = [];
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
@@ -28,6 +29,9 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve(String(args.path) === FILE);
       case "hot_exit_load":
         return Promise.resolve({});
+      case "hot_exit_save":
+        saved.push(args.stash);
+        return Promise.resolve(null);
       case "git_status":
       case "list_branches":
       case "fs_read_dir":
@@ -139,6 +143,7 @@ beforeEach(async () => {
   hotExit = true;
   stashLands = true;
   destroyed = 0;
+  saved = [];
   onClose = null;
   await loadSettings();
 });
@@ -211,8 +216,8 @@ describe("closing the window with unsaved edits", () => {
     // without even a conflict banner, because `savedText` still matched disk.
     //
     // So a clean quit is not a quit with nothing to do. It has to write, and
-    // then close without asking about edits that do not exist.
-    answerStashWith(true);
+    // then close without asking about edits that do not exist. It writes
+    // without asking the pane, which is not mounted with no file open.
     const asked: string[] = [];
     offStash = onWith<{ requestId: string }>(EDITOR_STASH_DIRTY, ({ requestId }) => asked.push(requestId));
     mounted = render(() => (
@@ -226,7 +231,8 @@ describe("closing the window with unsaved edits", () => {
     const closing = requestClose();
     await closing.done;
 
-    expect(asked, "the stash was rewritten even though nothing was dirty").toHaveLength(1);
+    expect(saved, "the stash was rewritten even though nothing was dirty").toEqual([{}]);
+    expect(asked, "nothing waited on a pane").toEqual([]);
     expect(closing.wasPrevented()).toBe(true);
     // Closed on its own, with no "unsaved edits will be lost" prompt in the way.
     await waitFor(() => expect(destroyed).toBe(1));
