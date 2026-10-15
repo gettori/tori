@@ -64,11 +64,77 @@ fn quit(app: &AppHandle) {
     }
 }
 
+#[derive(serde::Deserialize)]
+pub struct MenuSpec {
+    title: String,
+    items: Vec<MenuEntry>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum MenuEntry {
+    Command {
+        id: String,
+        label: String,
+        accelerator: Option<String>,
+    },
+    System {
+        item: SystemItem,
+    },
+    Separator,
+}
+
+#[derive(serde::Deserialize, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+pub enum SystemItem {
+    Undo,
+    Redo,
+    Cut,
+    Copy,
+    Paste,
+    SelectAll,
+    Fullscreen,
+    Minimize,
+    Maximize,
+}
+
+// What stands in until the frontend sends its menus: the system items alone,
+// since the webview's copy and paste only work through an Edit menu.
+#[cfg(target_os = "macos")]
+fn startup_spec() -> Vec<MenuSpec> {
+    let system = |title: &str, items: &[SystemItem]| MenuSpec {
+        title: title.to_string(),
+        items: items.iter().map(|&item| MenuEntry::System { item }).collect(),
+    };
+    use SystemItem::*;
+    vec![
+        system("Edit", &[Undo, Redo, Cut, Copy, Paste, SelectAll]),
+        system("View", &[Fullscreen]),
+        system("Window", &[Minimize, Maximize]),
+    ]
+}
+
+#[tauri::command]
+pub async fn set_app_menu(app: AppHandle, spec: Vec<MenuSpec>) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    build(&app, &spec).map_err(|e| e.to_string())?;
+    #[cfg(not(target_os = "macos"))]
+    let _ = (app, spec);
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+pub fn install(app: &AppHandle) -> tauri::Result<()> {
+    build(app, &startup_spec())
+}
+
 // The system Quit item terminates the app outright, past the window's close
 // question, so Cmd+Q is swapped for one that closes the window instead.
 #[cfg(target_os = "macos")]
-pub fn install(app: &AppHandle) -> tauri::Result<()> {
-    use tauri::menu::{AboutMetadata, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID};
+fn build(app: &AppHandle, spec: &[MenuSpec]) -> tauri::Result<()> {
+    use tauri::menu::{
+        AboutMetadata, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID, WINDOW_SUBMENU_ID,
+    };
 
     let item = |id: &str, label: &str, accelerator: Option<&str>| {
         MenuItem::with_id(app, format!("{MENU_PREFIX}{id}"), label, true, accelerator)
@@ -82,36 +148,67 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
         authors: app.config().bundle.publisher.clone().map(|p| vec![p]),
         ..Default::default()
     };
-    let app_menu = Submenu::with_items(
+    let menu = Menu::with_items(
         app,
-        &name,
+        &[&Submenu::with_items(
+            app,
+            &name,
+            true,
+            &[
+                &PredefinedMenuItem::about(app, None, Some(about))?,
+                &separator()?,
+                &item("open-settings", "Settings...", None)?,
+                &item("check-updates", "Check for Updates...", None)?,
+                &separator()?,
+                &PredefinedMenuItem::services(app, None)?,
+                &separator()?,
+                &PredefinedMenuItem::hide(app, None)?,
+                &PredefinedMenuItem::hide_others(app, None)?,
+                &separator()?,
+                &MenuItem::with_id(app, QUIT_ID, format!("Quit {name}"), true, Some("CmdOrCtrl+Q"))?,
+            ],
+        )?],
+    )?;
+    for section in spec {
+        let mut items: Vec<Box<dyn IsMenuItem<tauri::Wry>>> = Vec::new();
+        for entry in &section.items {
+            items.push(match entry {
+                MenuEntry::Command { id, label, accelerator } => Box::new(item(id, label, accelerator.as_deref())?),
+                MenuEntry::Separator => Box::new(separator()?),
+                MenuEntry::System { item } => Box::new(match item {
+                    SystemItem::Undo => PredefinedMenuItem::undo(app, None)?,
+                    SystemItem::Redo => PredefinedMenuItem::redo(app, None)?,
+                    SystemItem::Cut => PredefinedMenuItem::cut(app, None)?,
+                    SystemItem::Copy => PredefinedMenuItem::copy(app, None)?,
+                    SystemItem::Paste => PredefinedMenuItem::paste(app, None)?,
+                    SystemItem::SelectAll => PredefinedMenuItem::select_all(app, None)?,
+                    SystemItem::Fullscreen => PredefinedMenuItem::fullscreen(app, None)?,
+                    SystemItem::Minimize => PredefinedMenuItem::minimize(app, None)?,
+                    SystemItem::Maximize => PredefinedMenuItem::maximize(app, None)?,
+                }),
+            });
+        }
+        let refs: Vec<&dyn IsMenuItem<tauri::Wry>> = items.iter().map(|i| i.as_ref()).collect();
+        // The Window menu's id is what macOS lists open windows under.
+        let submenu = match section.title.as_str() {
+            "Window" => Submenu::with_id_and_items(app, WINDOW_SUBMENU_ID, &section.title, true, &refs)?,
+            _ => Submenu::with_items(app, &section.title, true, &refs)?,
+        };
+        menu.append(&submenu)?;
+    }
+    menu.append(&Submenu::with_id_and_items(
+        app,
+        HELP_SUBMENU_ID,
+        "Help",
         true,
         &[
-            &PredefinedMenuItem::about(app, None, Some(about))?,
-            &separator()?,
-            &item("open-settings", "Settings...", Some("CmdOrCtrl+,"))?,
-            &item("check-updates", "Check for Updates...", None)?,
-            &separator()?,
-            &PredefinedMenuItem::services(app, None)?,
-            &separator()?,
-            &PredefinedMenuItem::hide(app, None)?,
-            &PredefinedMenuItem::hide_others(app, None)?,
-            &separator()?,
-            &MenuItem::with_id(app, QUIT_ID, format!("Quit {name}"), true, Some("CmdOrCtrl+Q"))?,
-        ],
-    )?;
-    let menu = Menu::default(app)?;
-    menu.remove_at(0)?;
-    menu.prepend(&app_menu)?;
-    if let Some(MenuItemKind::Submenu(help)) = menu.get(HELP_SUBMENU_ID) {
-        help.append_items(&[
             &item("help-docs", "Tori Documentation", None)?,
             &item("shortcut-sheet", "Keyboard Shortcuts", None)?,
-            &PredefinedMenuItem::separator(app)?,
+            &separator()?,
             &item("help-changelog", "Release Notes", None)?,
             &item("help-issue", "Report an Issue", None)?,
-        ])?;
-    }
+        ],
+    )?)?;
     app.set_menu(menu)?;
     Ok(())
 }

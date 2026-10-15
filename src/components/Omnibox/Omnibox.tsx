@@ -130,7 +130,7 @@ function suppressed(c: Command): boolean {
 }
 
 /** The first unmet requirement's reason, in the order the command listed them. */
-function refusal(c: Command): string | null {
+export function refusal(c: Command): string | null {
   for (const req of c.requires ?? []) {
     const why = unmetReason(req);
     if (why) return why;

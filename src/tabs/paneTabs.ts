@@ -223,10 +223,10 @@ export function paneMenuItems(ws: string, tab: TabRef): MenuItem[] {
         ]
       : []),
     {
-      label: "Split the pane to the right",
+      label: "Split Right",
       onClick: () => emitWith<SplitPane>(SPLIT_PANE, { dir: "row" }),
     },
-    { label: "Split the pane below", onClick: () => emitWith<SplitPane>(SPLIT_PANE, { dir: "column" }) },
+    { label: "Split Down", onClick: () => emitWith<SplitPane>(SPLIT_PANE, { dir: "column" }) },
   ];
 }
 

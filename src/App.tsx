@@ -86,6 +86,7 @@ import {
 } from "./utils/events";
 import { dispatchWindowHotkey } from "./utils/hotkeys";
 import { COMMANDS } from "./utils/commands";
+import { menuSpec } from "./utils/appMenu";
 import { registerCloseGuard } from "./utils/closeGuard";
 import { windowDragStart } from "./utils/windowDrag";
 import {
@@ -137,7 +138,7 @@ import { rerunLast } from "./utils/runTask";
 import { loadUsageStore } from "./utils/usageStore";
 import { watchQuotaNotifications } from "./utils/usageNotify";
 import { watchUsageProbe } from "./utils/usageProbe";
-import Omnibox from "./components/Omnibox/Omnibox";
+import Omnibox, { refusal } from "./components/Omnibox/Omnibox";
 import ShortcutSheet from "./components/ShortcutSheet/ShortcutSheet";
 import { setPinSides } from "./layout/pinRules";
 import {
@@ -523,6 +524,14 @@ function App() {
   let unlistenConfig: UnlistenFn | undefined;
   let unlistenMenu: UnlistenFn | undefined;
   let unlistenSetup: UnlistenFn | undefined;
+  // A menu item stays enabled whatever the state, so a click the command cannot
+  // act on says why, the way the palette greys the row out.
+  const runFromMenu = (id: string) => {
+    const c = COMMANDS.find((c) => c.id === id);
+    const why = c && refusal(c);
+    if (why) emitWith<ToastEvent>(TOAST, { message: `${c.label}: ${why}`, kind: "info" });
+    else c?.run?.();
+  };
   onMount(async () => {
     void resolveTopicSelection();
     // The quota windows the last run knew, so the strip opens with them rather
@@ -533,7 +542,8 @@ function App() {
     watchUsageProbe();
     void announceCrash();
     unlistenConfig = await listen("config://changed", () => void resolveTopicSelection());
-    unlistenMenu = await listen<string>("menu://command", (e) => COMMANDS.find((c) => c.id === e.payload)?.run?.());
+    unlistenMenu = await listen<string>("menu://command", (e) => runFromMenu(e.payload));
+    invoke("set_app_menu", { spec: menuSpec() }).catch((e) => console.error("menu bar not set:", e));
     unlistenSetup = await watchSetup();
   });
   onCleanup(() => {
