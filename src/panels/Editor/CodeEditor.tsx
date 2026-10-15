@@ -36,6 +36,7 @@ import { findWidget } from "./FindWidget";
 import { langForPath } from "./languages";
 import { debounce } from "../../utils/debounce";
 import { markSelfWrite, isSelfWrite } from "../../utils/selfWrites";
+import { openInDefaultApp } from "../../utils/pathActions";
 import { repoint } from "./renameTabs";
 import { diffGutterExtension, diffLineNumbers, setDiffMarkers, type Hunk } from "./diffGutter";
 import { blameExtension, setAgentMarkers, setBlameMarkers, type TurnLink } from "./blameGutter";
@@ -1878,7 +1879,9 @@ export default function CodeEditor(props: {
       try {
         raw = await invoke<string>("fs_read_file", { path });
       } catch (e) {
-        unreadable = `This file could not be opened: ${String(e)}`;
+        unreadable = String(e).includes("valid UTF-8")
+          ? "Tori can't show this file here: it isn't text."
+          : `This file could not be opened: ${String(e)}`;
       }
     }
     // The first open of a language awaits its pack's chunk import.
@@ -2858,7 +2861,16 @@ export default function CodeEditor(props: {
           )}
         </Show>
         <InstallBanner path={pathOf(p.id)} />
-        <Show when={unopenable()}>{(reason) => <div class={styles.unopenable}>{reason()}</div>}</Show>
+        <Show when={unopenable()}>
+          {(reason) => (
+            <div class={styles.unopenable}>
+              <span>{reason()}</span>
+              <Button size="sm" onClick={() => void openInDefaultApp(pathOf(p.id)!)}>
+                Open in default app
+              </Button>
+            </div>
+          )}
+        </Show>
         <div
           class={styles.codeEditor}
           style={{ display: unopenable() ? "none" : undefined }}

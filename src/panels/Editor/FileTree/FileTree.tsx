@@ -32,7 +32,7 @@ import { debounce } from "../../../utils/debounce";
 import { isEditingNow } from "../../../utils/editingNow";
 import { fuzzyScore } from "../../../utils/fuzzy";
 import { traceWork } from "../../../utils/perfTrace";
-import { copyPaths, revealPaths } from "../../../utils/pathActions";
+import { copyPaths, openInDefaultApp, revealPaths } from "../../../utils/pathActions";
 import { syntheticId } from "../../../utils/syntheticTabs";
 import { collapseDirs, isDirOpen, nextSessionKey, setDirOpen } from "../../../utils/treeExpanded";
 import { editorDefaults } from "../../Settings/settingsStore";
@@ -644,6 +644,7 @@ function TreeNode(props: {
       [
         !e.is_dir && { label: "Open to the Side", onClick: open({ side: true }) },
         !e.is_dir && PREVIEWABLE.test(e.name) && { label: "Open Preview", onClick: open({ rendered: true }) },
+        !e.is_dir && { label: "Open in Default App", onClick: () => void openInDefaultApp(e.path) },
         { label: "Reveal in Finder", onClick: () => revealPaths(targetsOf(e, ctx)) },
         {
           label: "Open in Integrated Terminal",

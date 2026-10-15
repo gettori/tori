@@ -136,6 +136,7 @@ import {
   PanelRight,
   History,
   UserRound,
+  Globe,
   type LucideIcon,
 } from "lucide-solid";
 import {
@@ -218,7 +219,7 @@ import {
   MOVE_TAB_TO_PANE,
   type MoveTabToPane,
 } from "../../utils/events";
-import { copyPaths, revealPaths } from "../../utils/pathActions";
+import { copyPaths, openInDefaultApp, revealPaths } from "../../utils/pathActions";
 import { isUnderPath, mentionPath } from "../../utils/pathScope";
 import { isReference, rootOf, selectionRoot, workspaceKey } from "../../utils/topics";
 import {
@@ -3018,6 +3019,10 @@ export default function Editor(props: {
       const id = fileId();
       return id && pdfOf(id) ? id : null;
     };
+    const htmlPath = () => {
+      const path = fileTabOf(fileId())?.path;
+      return path && /\.html?$/i.test(path) ? path : null;
+    };
     return (
       <div
         class={styles.editorMain}
@@ -3060,6 +3065,16 @@ export default function Editor(props: {
                   tabs has to rebuild it rather than leave it on the first. */}
               <Show when={pdfId()} keyed>
                 {(id) => <PdfToolbar path={id} />}
+              </Show>
+              <Show when={htmlPath()} keyed>
+                {(path) => (
+                  <IconButton
+                    size="sm"
+                    icon={<Icon icon={Globe} />}
+                    onClick={() => void openInDefaultApp(path)}
+                    tooltip="Open in browser: run this page in your default browser."
+                  />
+                )}
               </Show>
               {/* Not for a `tori://` view: a graph has no working copy for
                   git to blame. Not for a PDF either: blame is per line, and a

@@ -711,6 +711,7 @@ pub fn run() {
             agent_config::agent_config_delete,
             agent_plugins::agent_plugins,
             launch::reveal_in_finder,
+            launch::open_in_default_app,
             worktree::list_worktrees,
             worktree::create_worktree,
             worktree::worktree_dirty,
