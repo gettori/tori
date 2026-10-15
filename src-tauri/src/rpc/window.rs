@@ -24,6 +24,8 @@ use super::outbox::{Outbox, OUTBOX_BYTES};
 
 const MINT_WAIT: Duration = Duration::from_secs(3);
 const HANDSHAKE_WAIT: Duration = Duration::from_secs(5);
+// Ending every chat child can take a moment.
+const STOP_WAIT: Duration = Duration::from_secs(10);
 const DAEMON_START_WAIT: Duration = Duration::from_secs(3);
 const BACKOFF_MAX: Duration = Duration::from_secs(5);
 
@@ -495,6 +497,22 @@ impl Link {
     }
 
     /// At app exit. Leaves the daemon running.
+    // The daemon closes this link before it could reply, so its lock going is
+    // the answer.
+    pub fn stop_daemon(&self) -> Result<(), String> {
+        self.closing.store(true, Ordering::SeqCst);
+        let Some(conn) = self.current() else {
+            return Err("the daemon is not attached".into());
+        };
+        conn.out.push(to_line(&Notification::new("shutdown", json!({}))));
+        let stopped = wait_released(&self.paths.lock, STOP_WAIT);
+        self.close();
+        match stopped {
+            true => Ok(()),
+            false => Err(format!("the daemon did not stop within {}s", STOP_WAIT.as_secs())),
+        }
+    }
+
     pub fn close(&self) {
         self.closing.store(true, Ordering::SeqCst);
         if let Some(conn) = self.slot().take() {

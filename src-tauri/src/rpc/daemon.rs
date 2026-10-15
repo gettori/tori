@@ -1035,6 +1035,8 @@ pub fn run() -> i32 {
             });
             let daemon = started.daemon.clone();
             started.wait();
+            // Stopped or restarted on purpose, which is not a failed start.
+            let _ = set_failed_starts(0);
             crate::credential::unpublish();
             match daemon.restarting.load(Ordering::SeqCst) {
                 true => super::launchd::RESTART,

@@ -24,6 +24,7 @@ import Resizer from "./components/Resizer/Resizer";
 import AskpassDialog from "./components/Dialogs/AskpassDialog";
 import ServerMessageDialog from "./components/Dialogs/ServerMessageDialog";
 import ConfirmDialog, { type ConfirmReq } from "./components/Dialogs/ConfirmDialog";
+import Checkbox from "./components/Checkbox/Checkbox";
 import ToastRegion from "./components/Toasts/Toasts";
 import type { GitReport } from "./utils/gitHealth";
 import Settings from "./panels/Settings/Settings";
@@ -455,9 +456,19 @@ function App() {
   // utils/closeGuard), and the editor's unsaved-buffer prompt is already it.
   // This runs ahead of that one, so a cancelled quit never reaches the buffers.
   const [quitReq, setQuitReq] = createSignal<ConfirmReq | null>(null);
-  function resolveQuit(v: boolean) {
+  const [stopSessions, setStopSessions] = createSignal(false);
+  async function resolveQuit(v: boolean) {
     const req = quitReq();
     setQuitReq(null);
+    if (v && stopSessions()) {
+      try {
+        await invoke("daemon_stop");
+      } catch (e) {
+        emitWith<ToastEvent>(TOAST, { message: `Tori did not quit: ${String(e)}`, kind: "error" });
+        v = false;
+      }
+    }
+    setStopSessions(false);
     req?.resolve(v);
   }
   onCleanup(
@@ -466,7 +477,7 @@ function App() {
         new Promise<boolean>((resolve) =>
           setQuitReq({
             title: "Quit Tori?",
-            message: "Running sessions and terminals will be stopped.",
+            message: "Sessions and terminals keep running in the background.",
             confirmLabel: "Quit",
             resolve,
           }),
@@ -1207,9 +1218,10 @@ function App() {
           title={quitReq()!.title}
           message={quitReq()!.message}
           confirmLabel={quitReq()!.confirmLabel}
-          danger
-          onConfirm={() => resolveQuit(true)}
-          onCancel={() => resolveQuit(false)}
+          danger={stopSessions()}
+          extra={<Checkbox checked={stopSessions()} onChange={setStopSessions} label="Also stop running sessions" />}
+          onConfirm={() => void resolveQuit(true)}
+          onCancel={() => void resolveQuit(false)}
         />
       </Show>
 
