@@ -1,13 +1,7 @@
 # Installing Tori
 
-Tori is macOS only, and ships as an unsigned universal app (Apple Silicon and
-Intel). Unsigned means macOS will refuse to open it on the first try. That is
-expected, and getting past it takes about ten seconds.
-
-> Tori is unsigned because it has no Apple Developer certificate yet. Signing
-> and notarization are planned; until then the steps below are the cost of
-> installing it. If that trade is not one you want to make, building from
-> source is always an option (see [CONTRIBUTING.md](../CONTRIBUTING.md)).
+Tori is macOS only. It is signed with a Developer ID and notarized by Apple,
+so it opens like any other app: no warning, no Settings detour.
 
 ## Install with Homebrew
 
@@ -15,48 +9,23 @@ expected, and getting past it takes about ten seconds.
 brew install --cask gettori/tap/tori
 ```
 
-The cask clears the quarantine flag for you, so the Gatekeeper steps below are
-only for a DMG you downloaded yourself. The rest of this page is that route.
+`brew upgrade --cask tori` keeps it current. The rest of this page is the DMG
+route.
 
-## 1. Install
+## From the DMG
 
-1. Download `Tori_<version>_universal.dmg` from the
-   [Releases page](https://github.com/gettori/tori/releases).
+1. Download the DMG for your Mac from the
+   [Releases page](https://github.com/gettori/tori/releases):
+   `Tori_<version>_aarch64.dmg` on Apple Silicon (M1 and later),
+   `Tori_<version>_x64.dmg` on Intel. Not sure which you have? Apple menu >
+   About This Mac says either *Chip: Apple M1* (or M2, M3, M4) or
+   *Processor: Intel*.
 2. Open the DMG and drag **Tori** into **Applications**.
-3. Eject the DMG.
+3. Eject the DMG and open Tori.
 
-## 2. Open it the first time
-
-Double-click Tori in Applications. macOS will block it with a message like
-*"Apple could not verify 'Tori' is free of malware."* Dismiss that dialog, then:
-
-1. Open **System Settings**.
-2. Go to **Privacy & Security**.
-3. Scroll down to the **Security** section. You will see a line naming Tori,
-   with an **Open Anyway** button next to it.
-4. Click **Open Anyway**, then confirm (Touch ID or your password).
-
-Tori opens, and every later launch is a normal double-click.
-
-> **The "right-click and choose Open" trick no longer works.** It was the
-> standard advice for years, and it was removed in macOS 15 (Sequoia). If you
-> find that suggestion elsewhere, it is out of date - use **Open Anyway**
-> above.
->
-> The **Open Anyway** button only appears *after* you have tried to open the
-> app at least once. If you do not see it, go back and double-click Tori
-> first.
-
-## 3. Or, from the terminal
-
-Removing the quarantine attribute does the same thing in one command:
-
-```sh
-xattr -cr /Applications/Tori.app
-```
-
-Then open Tori normally. This clears the flag macOS attaches to downloaded
-files; it is what the **Open Anyway** button does under the hood.
+If macOS still says the app is damaged or from an unidentified developer, the
+download did not complete or you have a build from before signing (anything up
+to 26.1015). Download the current release again.
 
 ## The phone app
 
@@ -68,17 +37,15 @@ both, across networks), then scan the QR the Remote pane shows.
 
 The APK is signed with Tori's own key rather than distributed through Play, so
 Android asks once whether to allow the install. Later releases carry the same
-key and install over the top.
+key and install over the top. It is built for 64-bit ARM, which is every phone
+sold since about 2016.
 
 ## Requirements
 
 - **macOS.** Tori is developed and tested on macOS 15, and the bundle sets no
-  minimum version, so older releases are untested rather than blocked. The
-  Gatekeeper steps above are written for macOS 15 and later; on older versions
-  the **Open Anyway** button lives in System Settings (or System Preferences)
-  under Privacy & Security too, and the right-click-Open trick still works
-  there.
-- **Apple Silicon or Intel.** The DMG carries a universal binary.
+  minimum version, so older releases are untested rather than blocked.
+- **Apple Silicon or Intel**, each with its own DMG. Homebrew picks the right
+  one.
 - **At least one agent CLI installed.** Claude Code ships supported; see ADAPTERS.md to add another.
   Tori drives the agents you already have; it does not bundle one. After first
   launch, Settings > Agents shows which ones it found.
@@ -91,9 +58,7 @@ dismissible notice in the title bar when one exists. An alpha build hears of
 alphas, a stable build only of stable releases. It never downloads or installs
 anything by itself: on a Homebrew install the notice offers **Install**, which
 runs `brew upgrade --cask tori` in a terminal tab and offers to relaunch when it
-finishes; otherwise click through to the release and repeat the steps above. Replacing an unsigned app
-re-triggers quarantine anyway, so an in-place auto-update would not save you
-the **Open Anyway** step.
+finishes; otherwise click through to the release and repeat the steps above.
 
 To stop the check entirely, use the app offline; a failed check is silent.
 
@@ -102,7 +67,10 @@ To stop the check entirely, use the app offline; a failed check is silent.
 Alpha builds up to 26.1002 were published in a separate repository, which is
 archived and still downloadable:
 [gettori/releases](https://github.com/gettori/releases/releases). The first
-twelve are from before the rename and are called Sway.
+twelve are from before the rename and are called Sway. Those and every build up
+to 26.1015 are unsigned: macOS blocks them on first open, and the way past that
+is System Settings > Privacy & Security > **Open Anyway**, or
+`xattr -cr /Applications/Tori.app` from a terminal.
 
 ## Uninstalling
 

@@ -1,13 +1,13 @@
 # Releasing Tori
 
 `main` takes no direct push, so a release is a pull request like any other
-change, and the build happens after it merges. One script does both halves:
+change, and the build happens after it merges, on GitHub Actions. One script
+opens that PR; merging it is the last human step.
 
 ```sh
-scripts/release.sh status     # which step is next
+scripts/release.sh status     # where the release stands
 scripts/release.sh prepare    # open the release PR
-# merge the PR on GitHub
-scripts/release.sh publish    # build, tag, publish, bump the cask
+# merge the PR on GitHub; the Release workflow builds, signs, tags and publishes
 ```
 
 This page is written for a person and for a coding agent alike. Every step
@@ -57,53 +57,88 @@ when a merged PR has no usable `## Changelog` section (it names the PR and the
 ## 2. Merge
 
 Merge the release PR on GitHub once its checks pass. Merge nothing else until
-the release is published: `publish` insists that the release commit is the tip
-of `main`, because anything merged after it would ship under that version
-without being in its notes.
+the release is published: anything merged after it would ship under that
+version without being in its notes, because the workflow builds whatever
+commit it runs on.
 
-## 3. Publish
+## 3. The Release workflow
 
-```sh
-cd <a checkout of main>
-git pull
-scripts/release.sh publish
-```
+Merging pushes the release commit to `main`, and `.github/workflows/release.yml`
+runs on every push to `main`. Its first job decides whether this push is a
+release: the version in `tauri.conf.json` has a `## <version>` section in the
+changelog and no `v<version>` tag yet. An ordinary merge fails that test in a
+few seconds and the run ends there. A release commit goes on to, in parallel:
 
-This one must run in a checkout that sits exactly on `origin/main` with a clean
-tree. It builds what is on disk, and the tag has to name the commit that was
-built. It:
+- **macOS, twice**, one job per architecture (`aarch64-apple-darwin` on the
+  runner's own arch, `x86_64-apple-darwin` cross-compiled on the same runner).
+  Each builds the app, signs it with the Developer ID under the hardened
+  runtime, notarizes and staples it, checks every Mach-O inside is for that
+  arch alone and that the signature verifies all the way down, then signs,
+  notarizes and staples the DMG. It packs the binary as
+  `tori-cli-<version>-macos-<arm64|x64>.tar.gz`, notarized as a zip, after
+  checking it answers as the CLI. The arm64 job also runs the binary's
+  `tori packs-catalog --check`, which fetches the live index from gettori.app
+  and verifies it with the keys this build trusts.
+- **Android**, arm64 only, on Linux. It writes the keystore from secrets,
+  builds, checks the APK is signed, and names it `Tori_<version>.apk`.
 
-1. checks the Android toolchain, the signing keystore, and that the repo is
-   public, before any long build,
-2. builds the universal macOS app and checks every binary in it is universal,
-3. packs the app's binary as `tori-cli-<version>-macos-universal.tar.gz`,
-   after checking it answers as the CLI,
-4. runs that binary's `tori packs-catalog --check`, which fetches the live
-   index from gettori.app and verifies it with the keys this build trusts,
-5. builds and signs the Android APK,
-6. tags the commit `v<version>` and pushes the tag,
-7. creates the GitHub release as a draft, confirms all three files are
-   attached, then publishes it,
-8. points the Homebrew cask at the new DMG.
+Only when all three have passed does the `publish` job tag the commit
+`v<version>`, create the GitHub release as a draft with all five files,
+confirm each is attached, publish it, and point the Homebrew cask at the two
+DMGs. A failed build therefore leaves nothing behind: no tag, no draft.
 
-It needs, on this Mac: Rust with `rustup`, Node 22 and pnpm, a JDK 17, the
-Android SDK and NDK, `mobile/src-tauri/gen/android/keystore.properties` with
-the release keystore, and `gh` logged in with write access to `gettori/tori`
-and `gettori/homebrew-tap`. Expect twenty minutes or more.
+Expect 25 minutes with warm caches, up to 45 after a quiet week.
+
+`scripts/release.sh status` shows the run and says what, if anything, is next.
+
+## Secrets
+
+The `release` environment on the repo (Settings, Environments) holds them,
+with its deployment branches limited to `main` plus any branch you rehearse
+from. A workflow run from a PR branch never sees them.
+
+| Secret | What it is | Where it comes from |
+|---|---|---|
+| `APPLE_CERTIFICATE` | the Developer ID Application certificate, as a base64 `.p12` | Keychain Access, export the certificate with its private key; `base64 -i cert.p12 \| pbcopy` |
+| `APPLE_CERTIFICATE_PASSWORD` | the password set on that export | you chose it |
+| `APPLE_SIGNING_IDENTITY` | `Developer ID Application: <name> (<team id>)` | `security find-identity -v -p codesigning` |
+| `APPLE_API_KEY` | the App Store Connect API key's ID | App Store Connect, Users and Access, Integrations, Team Keys; role Developer |
+| `APPLE_API_ISSUER` | that key's Issuer ID | same page |
+| `APPLE_API_KEY_CONTENT` | the `.p8` file's text | downloaded once when the key is made |
+| `ANDROID_KEYSTORE` | the release keystore, base64 | `base64 -i release.jks \| pbcopy` |
+| `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` | what `keystore.properties` held locally | same file |
+| `TAP_TOKEN` | fine-grained PAT, Contents read and write on `gettori/homebrew-tap` only | GitHub, Settings, Developer settings |
+
+The API key is only the notary service's login; nothing goes to the App
+Store. Notarization itself has no fee beyond the developer membership.
+
+A ruleset on tags `v*` that blocks deletion and non-fast-forward updates is
+worth adding. It must not block creation, since the workflow creates the tag
+with `github.token`.
+
+## Rehearsing
+
+The workflow can be dispatched by hand from any branch the environment allows.
+A dispatched run builds everything a real one does, uploads the DMGs, the
+tarballs and the APK as run artifacts, and publishes nothing: no tag, no
+release, no cask. Download the DMG onto a Mac that has never seen Tori and
+check `spctl -a -vv /Applications/Tori.app` says
+`accepted, source=Notarized Developer ID`; the app then opens without a
+dialog. Do this before the first real release after any change to signing,
+the bundle's contents, or the workflow.
 
 ## Running it without a prompt
 
-`prepare` and `publish` ask one yes or no question. With `--yes` they do not:
+`prepare` asks one yes or no question. With `--yes` it does not:
 
 ```sh
 scripts/release.sh prepare --yes
-scripts/release.sh publish --yes
 ```
 
 Without a terminal the flag is required, and the script stops rather than
-guess. An agent asked to cut a release should run `status` first, then the step
-it names, with `--yes`, and should not merge the release PR itself unless told
-to.
+guess. An agent asked to cut a release should run `status` first, then
+`prepare` if that is what it names, with `--yes`, and should not merge the
+release PR itself unless told to.
 
 ## When a step stops halfway
 
@@ -112,13 +147,14 @@ Run `scripts/release.sh status`. Then:
 | What happened | What is left behind | What to do |
 |---|---|---|
 | `prepare` failed before the PR | nothing, or a `release/<version>` branch on GitHub | delete that branch if it exists, run `prepare` again |
+| `prepare` names a merged PR with no `## Changelog` | nothing | `gh pr edit <number> --body-file <file>` with the section added, run `prepare` again |
 | The release PR is wrong | an open PR | close it, delete its branch, fix `main`, run `prepare` again |
-| `publish` failed during a build | nothing: the tag is made only after both builds | fix the cause, run `publish` again |
-| `packs-catalog --check` failed | nothing | the index on gettori.app is missing, expired, or signed with a key this build does not trust: run gettori/packs' Publish workflow, or ship the key first (gettori/packs MAINTAINING.md), then run `publish` again |
-| The APK build says `Unresolved reference: TauriActivity` | nothing | the identifier changed since the last Android build on this machine, and Tauri's build script did not notice: `cargo clean -p tauri --release --target <triple>` for the four Android triples, delete the stale `gen/android/app/src/main/java/<old package path>`, run `publish` again |
-| `publish` failed during upload | the tag and a draft release | run `publish` again, it replaces the draft |
-| `publish` failed at the cask | a published release, the old cask | `publish` will not run again on a published release, so dispatch the `Update cask` workflow or edit the cask by hand |
-| Something merged after the release PR | `publish` refuses | run `prepare` again for a new version that includes it |
+| A build job failed | nothing: the tag is made only after every build | fix the cause in an ordinary PR; merging it runs the release again, from the fix commit, under the same version |
+| `packs-catalog --check` failed | nothing | the index on gettori.app is missing, expired, or signed with a key this build does not trust: run gettori/packs' Publish workflow, or ship the key first (gettori/packs MAINTAINING.md), then re-run the failed jobs |
+| Notarization was refused | nothing | the run prints Apple's log, which names the file; fix and re-run |
+| `publish` failed after tagging | the tag and maybe a draft release | re-run the failed jobs from the run page; the draft is replaced |
+| `publish` failed at the cask | a published release, the old cask | dispatch the `Update cask` workflow with the version |
+| Something merged after the release PR, before its run finished | nothing yet | once the tag exists the gate ignores every later push, so a release that succeeded is unaffected; if its run had failed, the next merge ships under that version with the extra change unlisted, so either accept that or run `prepare` again for a new version |
 
 A tag that has been pushed is never moved. If a published release is bad, cut
 the next one.
@@ -127,10 +163,11 @@ the next one.
 
 Every release carries `tori validate-pack` and `tori packs-index`, and
 gettori/packs runs them in CI from the release's
-`tori-cli-<version>-macos-universal.tar.gz`, a tarball holding the app's own
-binary as `tori`. Packs CI pins that asset by tag in its `tori-support.json`,
-so a missing asset breaks packs CI for that release. A release that changes
-what a loader accepts is also a change to what packs CI accepts:
+`tori-cli-<version>-macos-<arm64|x64>.tar.gz`, a tarball holding the app's
+own binary as `tori`. Packs CI pins that asset by tag in its
+`tori-support.json`, so a missing asset breaks packs CI for that release. A
+release that changes what a loader accepts is also a change to what packs CI
+accepts:
 
 - Run `tori validate-pack src-tauri/packs` before tagging. It checks every
   bundled pack the way a contribution is checked, offline; add `--assets
@@ -142,10 +179,3 @@ what a loader accepts is also a change to what packs CI accepts:
 - `packs-index` signs with an Ed25519 key in PKCS#8 PEM. macOS's own `openssl`
   (LibreSSL) cannot make one; use Homebrew's: `$(brew --prefix
   openssl@3)/bin/openssl genpkey -algorithm ed25519`.
-
-## The workflows
-
-`.github/workflows/release.yml` builds a DMG and the CLI tarball from a pushed
-tag. It is not the release path yet, since it cannot sign the APK, and it must
-stay disabled while this script is: both would try to create the same release.
-Enable it only to rehearse by manual dispatch, and disable it again afterwards.
