@@ -1,10 +1,10 @@
-import { Show, createSignal, createResource } from "solid-js";
+import { Show, createSignal, createResource, onCleanup } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
 import { X } from "lucide-solid";
 import Icon from "../Icon/Icon";
 import Tooltip from "../Tooltip/Tooltip";
-import { OPEN_JOB, emitWith, type OpenJob } from "../../utils/events";
+import { CHECK_UPDATES, OPEN_JOB, TOAST, emitWith, on, type OpenJob, type ToastEvent } from "../../utils/events";
 import styles from "./UpdatePill.module.css";
 
 // A dismissible "new version" notice in the topbar. Deliberately the smallest
@@ -18,6 +18,7 @@ import styles from "./UpdatePill.module.css";
 // a null answer here means exactly one thing: render nothing.
 
 type UpdateInfo = { version: string; brew: boolean };
+type ManualCheck = ({ state: "newer" } & UpdateInfo) | { state: "current" } | { state: "failed" };
 
 async function brewUpgrade() {
   const cwd = await homeDir().catch(() => "/");
@@ -35,7 +36,20 @@ async function brewUpgrade() {
 
 export default function UpdatePill(props: { suppressed?: boolean }) {
   const [dismissed, setDismissed] = createSignal(false);
-  const [update] = createResource(() => invoke<UpdateInfo | null>("check_for_update").catch(() => null));
+  const [update, { mutate }] = createResource(() => invoke<UpdateInfo | null>("check_for_update").catch(() => null));
+
+  // Asked for, so it answers even when there is nothing newer.
+  const checkNow = async () => {
+    const found = await invoke<ManualCheck>("check_for_update_now").catch((): ManualCheck => ({ state: "failed" }));
+    if (found.state === "newer") {
+      mutate({ version: found.version, brew: found.brew });
+      setDismissed(false);
+    } else {
+      const message = found.state === "current" ? "Tori is up to date." : "Couldn't reach GitHub to check for updates.";
+      emitWith<ToastEvent>(TOAST, { message, kind: found.state === "current" ? "info" : "error" });
+    }
+  };
+  onCleanup(on(CHECK_UPDATES, () => void checkNow()));
 
   // Suppressed rather than unmounted while onboarding is open: a first-run user
   // meeting Tori for the first time should not be handed a version notice about
