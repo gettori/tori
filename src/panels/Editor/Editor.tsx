@@ -238,7 +238,14 @@ import { publishDirtyPaths } from "../../utils/unsavedPaths";
 import { blameOn, writeBlamePref } from "../../utils/blamePref";
 import { followEdits } from "../../utils/followPref";
 import { loadTabs, saveTabs, toStore, mergeStore, restoreFor } from "../../utils/editorTabPersist";
-import { dropStashEntry, loadPendingStash, pendingStashPaths, requestStash } from "../../utils/hotExit";
+import {
+  dropStashEntry,
+  loadPendingStash,
+  pendingStashPaths,
+  requestStash,
+  saveStash,
+  stashToWrite,
+} from "../../utils/hotExit";
 import { closeAllowed } from "../../utils/closeGuard";
 import { mayRewrite } from "../../utils/gitGuard";
 import { flushDeferredWrites } from "../../utils/deferredWrite";
@@ -2795,7 +2802,12 @@ export default function Editor(props: {
       // milliseconds; `stashToWrite` then yields whatever is still genuinely
       // pending (a stashed tab nobody clicked keeps its entry, a claimed or
       // saved one does not).
-      if (!anyDirty && !editorDefaults().hotExit) {
+      // With nothing dirty the pane has nothing to add, and asking it would wait
+      // out the timeout when no file is open, since then it is not mounted.
+      if (!anyDirty) {
+        if (editorDefaults().hotExit && !(await saveStash(stashToWrite({})))) {
+          console.error("the hot-exit stash was not rewritten on quit");
+        }
         await getCurrentWindow().destroy();
         return;
       }
