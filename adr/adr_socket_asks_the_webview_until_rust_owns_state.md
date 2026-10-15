@@ -1,8 +1,8 @@
 ---
-summary: socket actions go to the webview as request/reply; session state was pushed until #212 made Rust compose it, with no wire change
+summary: socket actions went to the webview as request/reply until #24 moved the last into Rust and deleted the bridge, wire unchanged
 status: current
-updated: 2026-09-26
-source: gettori/tori#198 on branch orchestrator; commits 15f6b615 (state push), 9c01ba2a (bridge), 85430c9e (asks); src-tauri/src/rpc/{states,bridge,asks}.rs; src/utils/rpcBridge.ts; amended by gettori/tori#212, commits a6de3348, f08f46c9, 21533ec4
+updated: 2026-10-15
+source: gettori/tori#198 on branch orchestrator; commits 15f6b615 (state push), 9c01ba2a (bridge), 85430c9e (asks); src-tauri/src/rpc/{states,bridge,asks}.rs; src/utils/rpcBridge.ts; amended by gettori/tori#212, commits a6de3348, f08f46c9, 21533ec4; superseded by gettori/tickets#24, commits 48ef8516, 3eace468
 ---
 
 # The socket asks the webview until Rust owns the state
@@ -30,6 +30,10 @@ The prediction held. Rust now composes every session's state, and the socket's m
 - **A fact missing from a push is held while its tab or chat is alive**, the same rule `SessionStates` applied to states ([[lesson_absence_from_a_whole_list_push_is_not_an_end]]).
 - **Actions are still asked.** Spawn, open, quota windows and the ask cards go through `Bridge` as before. Moving them into Rust is its own ticket.
 - **Forge chips stay in the webview.** Forge attention reaches Rust only as a per-unit fact, so the forge poll is the one input a socket client still depends on the desktop for.
+
+## Superseded by #24: the bridge is gone
+
+The prediction held a second time. #24 moved spawning (headless in the daemon, adopted by the window), quota windows (the chats' rate limit frames) and ask cards (events from the daemon's `Asks`) into Rust, and `window.open` became a `screen` request the window answers with an event. `rpc/bridge.rs`, `rpc_reply` and the webview's `rpc://request` listener are deleted, and no method changed shape. See [[adr_a_daemon_holds_the_sessions_and_the_window_attaches]].
 
 ## Related
 

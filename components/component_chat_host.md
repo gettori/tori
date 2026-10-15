@@ -1,8 +1,8 @@
 ---
 summary: spawns one long lived harness child per session and renders its own permission and question prompts, deciding nothing
 status: current
-updated: 2026-09-25
-source: src-tauri/src/chat/{mod,model,transport,claude,claude_transport,acp_transport,acp,acp_sessions,ownership,host,commands,approval,snapshot,pacing,history,mcp}.rs; gettori/tori#199 commits 25551855, 3a04d580, 52615c71; gettori/tori#205 commits eff34ef6, 4b309f03; waiting registry from gettori/tori#207, commits 1b7e479d, 4cd91a8f
+updated: 2026-10-15
+source: src-tauri/src/chat/{mod,model,transport,claude,claude_transport,acp_transport,acp,acp_sessions,ownership,host,commands,approval,snapshot,pacing,history,mcp}.rs; gettori/tori#199 commits 25551855, 3a04d580, 52615c71; gettori/tori#205 commits eff34ef6, 4b309f03; waiting registry from gettori/tori#207, commits 1b7e479d, 4cd91a8f; gettori/tickets#24 phases chat-in-daemon and bridge-into-rust, commits a18800f5, 48ef8516; src-tauri/src/chat/{serve,client,pick}.rs
 ---
 
 # Chat host (Rust)
@@ -123,6 +123,16 @@ Not built: gettori/tori#203 plans a Tori level refusal for outward actions from 
 - **`spawn_session(host, SpawnRequest, emit)`** is `chat_spawn`'s body, taking any `Emit`; `chat_spawn` is a thin wrapper. [[component_autopilot_runner]] calls it with its own sink. `SpawnRequest` gained `spawner`: on a resume of a background session it re-marks the worker under its spawner, resolved through the runner's alias.
 - **`chat_detach(session, tab)`** swaps the sink to a no-op and hides the session, instead of closing it, but only when that tab still drives the session: a keyed remount has already rewired it. The `wrap` stays, so a death still ends the session and publishes. `ChatView` takes a `detach` prop to call it on unmount ([[component_autopilot_cockpit]]).
 - A view must not attach while Rust is still spawning: [[gotcha_a_chat_view_on_a_rust_spawned_session_must_wait_for_its_first_turn]].
+
+## In the daemon (2026-10-14, #24)
+
+The real `ChatHost` runs in `tori daemon` (`chat/serve.rs`, `Served`), built only by `daemon::run` because it reads and reaps the real `chat-claims.json`; a turn finishes with the app quit ([[component_tori_daemon]]).
+
+- The window holds `chat/client.rs`: `Chats`, with the host's method names, each a `chat` request on the link, so the app's call sites stayed as they were. Commands that touch host internals (snapshot caches, the output cache, history paging, orphans, checkpoint snapshot) run whole in the daemon and return JSON.
+- Events go out per spawn on a forwarder thread that coalesces text and thinking deltas of one turn within 16 ms, as `chat.event` notifications the window routes to the panel's `Channel`.
+- A spawn with no window runs headless: `chat/pick.rs` ports the draft's agent and account pick, the daemon delivers the first message and offers the chat for adoption (`sessions://adopt`).
+- `session.steer` on a chat that is not live resumes it from its transcript (`DaemonBackend::revive`) behind the same lock and caller gates.
+- The daemon marks open turns itself, so a turn that ends with the app quit is not announced as interrupted.
 
 ## Related
 

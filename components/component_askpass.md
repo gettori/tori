@@ -1,8 +1,8 @@
 ---
 summary: implements the askpass credential bridge, a re-exec'd helper over a Unix socket, so backgrounded git can prompt in app
 status: current
-updated: 2026-07-10
-source: Askpass credential bridge for backgrounded git (personal/tori, branch code-mirror-6); commit 3fff674
+updated: 2026-10-15
+source: Askpass credential bridge for backgrounded git (personal/tori, branch code-mirror-6); commit 3fff674; gettori/tickets#24 phase bridge-into-rust, commit 48ef8516, src-tauri/src/rpc/office.rs (DAEMON_PROMPT)
 ---
 
 # Askpass bridge
@@ -33,6 +33,10 @@ The module that lets a backgrounded git op prompt for credentials in-app. It imp
 - Implements [[concept_askpass_bridge]]; extends the `git.rs` hub of [[component_project_discovery]].
 - `git_fetch` no longer backs a user-facing "Fetch All" button. It is the **background fetch behind Add Branch / Add Worktree**: opening that picker (on a repo with an origin) kicks `git_fetch`, and its `git://fetch-done`/`git://fetch-error` events drive a guarded live-fold of remote branches into the same picker (see [[gotcha_a_fire_and_forget_backend_event_feeding_a_modal_must_be_identity_and_open_guarded]] and [[gotcha_dont_encode_a_picker_items_kind_in_its_display_string]]).
 - Shares `env::augmented_path` with [[component_pty_host]] / [[component_lsp_host]].
+
+## A second askpass in the daemon (#24)
+
+`tori daemon` starts its own askpass for the git it runs (chat checkpoints, `pr.create` pushes, review checkouts) and writes the credential bridge file; the app adopts its own askpass only for its own children. A daemon prompt goes to the window as `askpass.prompt`, its id tagged with `office::DAEMON_PROMPT` so `askpass_respond` routes the answer back as `askpass.resolve`. With no window attached it fails closed at once. If the daemon's askpass fails to start, the office starts without it, and push and review checkout refuse by name.
 
 ## Related
 
