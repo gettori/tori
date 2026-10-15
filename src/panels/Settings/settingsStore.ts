@@ -63,7 +63,7 @@ export type GitSettings = {
  *  notification, and the sound Tori plays itself. Mirrors `Alert` in
  *  src-tauri/src/settings.rs, which is where both are acted on. */
 export type Alert = { notify: boolean; sound: boolean };
-export type NotificationSettings = { needsYou: Alert; turnFinished: Alert };
+export type NotificationSettings = { needsYou: Alert; turnFinished: Alert; trayCount: boolean };
 /** What a chat reopens with, remembered per project because the right harness,
  *  model and effort are a property of the work rather than of the user. `model`
  *  is the `--model` **value**, never the resolved id the session reports back:
@@ -398,7 +398,11 @@ export const DEFAULT_SETTINGS: Settings = {
   appearance: { theme: "tori-dark", spaceStrip: "bottom" },
   forge: { enabled: true, picks: {}, prWatch: false },
   git: { fetchEveryMinutes: 10, showTopicWorktrees: false, cleanupAfterMerge: false, cleanupAfterIdleDays: 0 },
-  notifications: { needsYou: { notify: true, sound: false }, turnFinished: { notify: false, sound: false } },
+  notifications: {
+    needsYou: { notify: true, sound: false },
+    turnFinished: { notify: false, sound: false },
+    trayCount: true,
+  },
   typography: {
     uiFontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif',
     uiFontSize: 15,

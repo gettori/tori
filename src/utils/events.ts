@@ -102,6 +102,8 @@ export const TOGGLE_AUTOPILOT_VIEW = "tori:toggle-autopilot-view";
 export const TOGGLE_AUTOPILOT_POPUP = "tori:toggle-autopilot-popup";
 // Open or close the review inbox, consumed by reviewInbox.ts.
 export const TOGGLE_INBOX = "tori:toggle-inbox";
+// Open it and leave it open, for the tray, where a toggle could close it.
+export const OPEN_INBOX = "tori:open-inbox";
 // Open the Inbox on Since you looked, consumed by reviewInbox.ts.
 export const OPEN_DIGEST = "tori:open-digest";
 // Take the user somewhere in Tori: a branch-unit folder, a session's tab, or
