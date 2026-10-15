@@ -134,15 +134,32 @@ prepare() {
   fi
   git -C "$work" switch -q -c "$branch"
 
-  # The notes are whatever was collected under Unreleased, unless somebody
+  # The notes are the `## Changelog` sections of the PRs merged since the last
+  # tag, under anything written by hand under `## Unreleased`, unless somebody
   # already wrote the section under its version.
-  if ! grep -qx "## $version" "$work/CHANGELOG.md"; then
-    grep -qx "## Unreleased" "$work/CHANGELOG.md" ||
-      die "CHANGELOG.md on $BASE has neither '## Unreleased' nor '## $version'; the release body comes from it"
-    sed -i '' "s/^## Unreleased$/## $version/" "$work/CHANGELOG.md"
-  fi
   local notes
   notes=$(mktemp)
+  if ! grep -qx "## $version" "$work/CHANGELOG.md"; then
+    local last manual collected
+    last=$(git describe --tags --abbrev=0 "origin/$BASE" 2>/dev/null) ||
+      die "no tag reachable from origin/$BASE; the notes are collected from the PRs merged since the last one"
+    manual=$(.github/scripts/changelog-section.sh Unreleased "$work/CHANGELOG.md" 2>/dev/null || true)
+    collected=$(RELEASES_REPO=$RELEASES_REPO .github/scripts/changelog-from-prs.sh "$last" "origin/$BASE")
+    [ -n "$manual$collected" ] ||
+      die "nothing to release: no PR merged since $last has a '## Changelog' section with bullets, and '## Unreleased' is empty"
+    printf '%s\n' "$manual" "$collected" | awk 'NF || started { print; started = 1 }' >"$notes"
+    # Replaces the Unreleased section, or goes in before the first release
+    # when there is none.
+    awk -v ver="$version" -v notesfile="$notes" '
+      function emit() { print "## " ver; print ""; while ((getline l < notesfile) > 0) print l; print ""; emitted = 1 }
+      $0 == "## Unreleased" { skipping = 1; if (!emitted) emit(); next }
+      skipping && /^## / { skipping = 0 }
+      skipping { next }
+      /^## / && !emitted { emit() }
+      { print }
+    ' "$work/CHANGELOG.md" >"$work/CHANGELOG.md.new"
+    mv "$work/CHANGELOG.md.new" "$work/CHANGELOG.md"
+  fi
   (cd "$work" && .github/scripts/changelog-section.sh "$version" >"$notes")
 
   echo "Tori $version (tag $tag, was $current)"

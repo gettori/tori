@@ -5,6 +5,15 @@
 
 <!-- One or two sentences. What behaves differently after this than before? -->
 
+## Changelog
+
+<!-- The bullets that go into CHANGELOG.md and the release notes, as they
+     should read there: for someone using Tori, not someone reading the code.
+     Name the setting or the button the way the UI does. Write `none` when
+     nothing a user would notice changed (a refactor, CI, docs). The release
+     script collects this section from every merged PR, so a line missing
+     here is missing from the release. -->
+
 ## Why
 
 <!-- The problem, not the patch. Link an issue if there is one. -->
