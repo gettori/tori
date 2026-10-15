@@ -1,8 +1,8 @@
 ---
-summary: one COMMANDS table behind the palette and sheet may only import events, keeping everything out of the terminal's chunk
+summary: one COMMANDS table behind the palette, sheet and menu bar may only import events, keeping everything out of the terminal's chunk
 status: current
-updated: 2026-08-05
-source: "Editor wave 1: close out the fundamentals (personal/tori, branch `wave-1-4`); Phase 3, issue #15; commit bd9567c; `src/utils/commands.ts`, `src/utils/hotkeys.ts:44`"
+updated: 2026-10-15
+source: "Editor wave 1: close out the fundamentals (personal/tori, branch `wave-1-4`); Phase 3, issue #15; commit bd9567c; menu bar and `editor` scope from plan \"Tray and menu bar improvements\" (branch `menu-options`), commit 10660fb1; `src/utils/commands.ts`, `src/utils/hotkeys.ts:44`"
 ---
 
 # One command registry behind the palette, the sheet and the dispatcher
@@ -25,12 +25,13 @@ Everything runnable by name lives in one table, `COMMANDS` in `src/utils/command
 
 **A mode or panel registered in one table and not its siblings is unreachable.** `RIGHT_MODE_TABS` gained `todos` while `modeOrder` did not, and `rightTabs()` is `modeOrder().filter(...)`, so a finished panel shipped with no way to open it for a whole phase. A right-panel mode needs four entries (`RIGHT_MODE_TABS`, `modeOrder`, `SetRightMode`, this table's `RIGHT_MODES`); see [[lesson_a_registered_command_with_no_caller_is_not_shipped]].
 
-**One table means one label.** The palette now shows the sheet's wording for a shared command. Two registers ("View: Toggle Sidebar" vs "Show or hide the sidebar") is exactly the drift the merge exists to remove.
+**One table means one label.** The palette shows the sheet's wording for a shared command. Two registers is exactly the drift the merge exists to remove. Since the menu bar became a fourth reader (2026-10-15, [[component_app_menu]]), the commands it lists carry short title case labels ("Toggle Sidebar", "Close Tab", "Stop Turn") on every surface, rather than a menu-only title that could drift.
 
-**Save deliberately has no key.** CodeMirror's own `Mod-s` stays the only save key; a table-level binding would be `global` or `window` scoped and would fire while a terminal had focus, saving a file nobody was looking at. `hotkeys.test.ts` pins that Cmd+S is claimed by neither dispatcher.
+**Save's key is shown, never dispatched.** CodeMirror's own `Mod-s` stays the only save key; a `global` or `window` binding would fire while a terminal had focus, saving a file nobody was looking at. Save is `editor` scope instead: the sheet and the menu list Cmd+S, but neither dispatcher includes that scope, and it never becomes a menu accelerator. `hotkeys.test.ts` pins that Cmd+S is claimed by neither dispatcher.
 
 ## Related
 
+- [[component_app_menu]] — the menu bar built from this table.
 - [[component_command_palette]] — the surface that renders the table and resolves its tags.
 - [[component_editor_stores]] — what the `requires` tags are resolved against.
 - [[concept_capability_resolution]] — the same "a gate is declared, never keyed on an id" rule, applied to session controls rather than commands.
