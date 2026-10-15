@@ -1,6 +1,6 @@
 {
   "name": "tori",
-  "version": "26.1013.1-alpha",
+  "version": "26.1015.0-alpha",
   "description": "Dev workflow manager: session tree + Claude terminal + editor",
   "license": "Apache-2.0",
   "type": "module",
