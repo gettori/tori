@@ -1,9 +1,11 @@
 # Changelog
 
-Hand-written, one section per release. The release workflow extracts the
-section matching the tag it was triggered by and uses it as the GitHub Release
-body, so a tag with no matching section here fails the release rather than
-publishing an empty one.
+One section per release, assembled by `scripts/release.sh prepare` from the
+`## Changelog` section of every pull request merged since the last tag. Nothing
+here is edited between releases, except a `## Unreleased` section for a note no
+single PR owns. The release workflow extracts the section matching the tag it
+was triggered by and uses it as the GitHub Release body, so a tag with no
+matching section here fails the release rather than publishing an empty one.
 
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
