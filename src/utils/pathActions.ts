@@ -1,7 +1,7 @@
-// The two things every surface offers for a path it is already showing: put it
-// on the clipboard, and show it in Finder. Shared, because the tree and the tab
-// strip mean exactly the same thing by both, down to the toast they raise when
-// it fails.
+// What every surface offers for a path it is already showing: put it on the
+// clipboard, show it in Finder, or open it in its own app. Shared, because the
+// tree and the tab strip mean exactly the same thing by each, down to the toast
+// they raise when it fails.
 import { invoke } from "@tauri-apps/api/core";
 import { copyText } from "./clipboard";
 import { emitWith, TOAST, type ToastEvent } from "./events";
@@ -20,6 +20,16 @@ export async function revealPaths(paths: string[]) {
     // Singular name, plural argument: the plugin kept the old command name when
     // it grew multi-select, and renames it only in its next major.
     await invoke("plugin:opener|reveal_item_in_dir", { paths });
+  } catch (e) {
+    emitWith<ToastEvent>(TOAST, { message: String(e) });
+  }
+}
+
+/** Hand a document or media file to the app the system picks for it. The
+ *  backend refuses anything that would run rather than show, and says so. */
+export async function openInDefaultApp(path: string) {
+  try {
+    await invoke("open_in_default_app", { path });
   } catch (e) {
     emitWith<ToastEvent>(TOAST, { message: String(e) });
   }

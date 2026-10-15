@@ -22,6 +22,59 @@ pub fn reveal_in_finder(path: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Kinds a click may hand to their default app: documents and media, whose
+/// default app shows them. An allowlist, because a denylist only knows the
+/// launchers someone thought of, and agents write files.
+const OPENABLE_EXTENSIONS: &[&str] = &[
+    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf", "pages", "numbers", "key", "epub",
+    "csv", "tsv", "html", "htm", "svg", "png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "heic", "heif",
+    "avif", "ico", "psd", "mp3", "wav", "m4a", "aac", "flac", "ogg", "opus", "mp4", "m4v", "mov", "webm", "mkv", "avi",
+];
+
+/// Resolve `path` and say whether its default app may be asked to open it.
+///
+/// Checked on the link's target, not the link: `notes.pdf` pointing at a
+/// `.command` would otherwise pass on its name and run on its target.
+fn check_open_target(path: &str) -> Result<std::path::PathBuf, String> {
+    use std::os::unix::fs::PermissionsExt;
+    let real = std::fs::canonicalize(path).map_err(|e| format!("cannot open {path}: {e}"))?;
+    let meta = std::fs::metadata(&real).map_err(|e| format!("cannot open {path}: {e}"))?;
+    if !meta.is_file() {
+        return Err(format!("{path} is not a file"));
+    }
+    if meta.permissions().mode() & 0o111 != 0 {
+        return Err(format!(
+            "Tori does not open executable files outside the editor: {path}"
+        ));
+    }
+    let ext = real
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if !OPENABLE_EXTENSIONS.contains(&ext.as_str()) {
+        let kind = if ext.is_empty() {
+            "files without an extension".to_string()
+        } else {
+            format!(".{ext} files")
+        };
+        return Err(format!(
+            "Tori opens documents and media in their default app, not {kind}."
+        ));
+    }
+    Ok(real)
+}
+
+/// Open a document or media file in the app the system picks for it.
+#[tauri::command(async)]
+pub fn open_in_default_app(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let real = check_open_target(&path)?;
+    app.opener()
+        .open_path(real.to_string_lossy(), None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
