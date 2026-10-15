@@ -8,7 +8,7 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
-## Unreleased
+## 26.1015.0-alpha
 
 - Sessions and terminals now run in `tori daemon`, a background process that
   outlives the window. Quitting Tori leaves shells and chat turns running,
