@@ -274,6 +274,7 @@ pub fn run() {
             });
 
             std::thread::spawn(account_commands::sync_quietly);
+            std::thread::spawn(worktree::sweep_trash);
 
             // Install the keychain store and restore the forge credential.
             // Non-fatal like the askpass bridge and the tray above: a keychain
