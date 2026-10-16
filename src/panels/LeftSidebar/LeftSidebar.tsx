@@ -1374,6 +1374,22 @@ export default function LeftSidebar(props: {
     if (gone(sel.folderPath)) props.onSelect(null);
   }
 
+  // Runs before the removal, so no pane is left on a folder that is about to
+  // vanish. A plain unit off the current branch is skipped: picking it checks out.
+  function selectNeighbourOf(p: Project, u: BranchUnit) {
+    const sel = props.selected;
+    const gone = (f: string) => isUnderPath(f, u.folderPath);
+    if (!sel || sel.kind === "topic" || !gone(sel.folderPath)) return dropSelectionUnder(gone);
+    const g = config()?.spaces.find((g) => g.projects.includes(p));
+    const at = p.branchUnits.indexOf(u);
+    const usable = (x: BranchUnit) =>
+      x !== u && !gone(x.folderPath) && (x.kind === "worktree" || (x.kind === "plain" && x.isCurrent));
+    const next =
+      p.branchUnits.slice(at + 1).find(usable) ?? p.branchUnits.slice(0, Math.max(at, 0)).reverse().find(usable);
+    if (g && next) void selectUnit(g, p, next);
+    else props.onSelect(null);
+  }
+
   // Confirmed: tear down PTYs + editor tabs under the target BEFORE the native
   // delete (so no agent writes into a vanishing cwd), then remove the folder and
   // clear the selection if it pointed inside. Routes by mode: a space calls
@@ -1738,6 +1754,7 @@ export default function LeftSidebar(props: {
     if (!req) return;
     const { p, u } = req;
     setWtReq({ ...req, busy: true });
+    selectNeighbourOf(p, u);
     emitWith<PurgeUnderPath>(PURGE_UNDER_PATH, { path: u.folderPath });
     try {
       if (opts.deleteRemote && u.branch) {
@@ -1757,7 +1774,6 @@ export default function LeftSidebar(props: {
       } else {
         await invoke("remove_worktree", { repoPath: p.path, worktreePath: u.folderPath, force: true });
       }
-      dropSelectionUnder((f) => isUnderPath(f, u.folderPath));
       setWtReq(null);
       await loadConfig();
     } catch (e) {
