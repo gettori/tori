@@ -25,6 +25,7 @@ const status = (over: Partial<PullRequest>): UnitStatus => ({
     headRepoIsOrigin: true,
     url: "https://github.com/skarif2/tori/pull/12",
     mergeableState: "clean",
+    stack: null,
     ...over,
   },
   checks: { state: "none", total: 0, failing: 0, skipped: 0, contexts: [] },
@@ -46,5 +47,16 @@ describe("a pull request's line", () => {
   it("says closed for one that closed without merging", () => {
     render(() => <BranchLine status={status({ state: "closed", closedAt: iso(5) })} />);
     expect(screen.getByText("closed 5h")).toBeTruthy();
+  });
+
+  it("shows a stacked pull request's layer and leaves a plain one unmarked", () => {
+    const { container, unmount } = render(() => (
+      <BranchLine status={status({ stack: { number: 9, size: 3, position: 2, baseRef: "main" } })} />
+    ));
+    expect(container.querySelector("[data-pr-stack]")?.textContent).toBe("2/3");
+    unmount();
+
+    const plain = render(() => <BranchLine status={status({})} />);
+    expect(plain.container.querySelector("[data-pr-stack]")).toBeNull();
   });
 });

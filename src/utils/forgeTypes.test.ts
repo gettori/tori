@@ -32,7 +32,7 @@ const keysOf = (v: unknown) => Object.keys(v as object).sort();
 
 /// Reached through `reviewThread` rather than emitted on its own, so the
 /// top-level loop skips it and the nested test below covers it instead.
-const NESTED_ONLY = ["reviewComment", "prCounts", "prReviewCounts", "checkContext"];
+const NESTED_ONLY = ["reviewComment", "prCounts", "prReviewCounts", "checkContext", "prStack"];
 /// Bare values, not objects, so there are no field names to compare. Their
 /// contents are checked by the enum and auth-state tests below.
 const NOT_OBJECTS = ["reviewDecision", "authStates", "servedProviders"];
@@ -88,6 +88,7 @@ describe("forgeTypes mirrors the Rust forge model", () => {
     const counts = golden.prSummary.counts;
     expect(keysOf(counts)).toEqual([...FORGE_KEYS.prCounts].sort());
     expect(keysOf(counts.reviews)).toEqual([...FORGE_KEYS.prReviewCounts].sort());
+    expect(keysOf(golden.pullRequest.stack)).toEqual([...FORGE_KEYS.prStack].sort());
   });
 
   it("agrees on every value of every closed enum", () => {

@@ -20,6 +20,7 @@ function pr(number: number, title = `pr ${number}`): PullRequest {
     headRepoIsOrigin: true,
     url: `https://github.com/o/r/pull/${number}`,
     mergeableState: "clean",
+    stack: null,
   };
 }
 

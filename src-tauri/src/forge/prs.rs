@@ -223,6 +223,7 @@ mod tests {
             head_repo_is_origin: true,
             url: "https://github.com/skarif2/tori/pull/1".into(),
             mergeable_state: MergeableState::Unknown,
+            stack: None,
         }
     }
 

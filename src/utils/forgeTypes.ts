@@ -58,6 +58,18 @@ export type PullRequest = {
   headRepoIsOrigin: boolean;
   url: string;
   mergeableState: MergeableState;
+  stack: PrStack | null;
+};
+
+/// Where a pull request sits in its GitHub stack. `size` counts merged layers
+/// too, because GitHub keeps them in the stack.
+export type PrStack = {
+  /// Drawn from the same counter as pull request numbers, so it is a key,
+  /// never a label.
+  number: number;
+  size: number;
+  position: number;
+  baseRef: string;
 };
 
 /// How many people are currently signing off, and how many are blocking.
@@ -455,10 +467,12 @@ export const FORGE_KEYS = {
     "mergeableState",
     "mergedAt",
     "number",
+    "stack",
     "state",
     "title",
     "url",
   ],
+  prStack: ["baseRef", "number", "position", "size"],
   checkRollup: ["contexts", "failing", "skipped", "state", "total"],
   checkContext: ["name", "state", "url"],
   prSummary: ["counts", "mergeableState", "updatedAt"],

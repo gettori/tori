@@ -159,6 +159,7 @@ mod tests {
             head_repo_is_origin: true,
             url: String::new(),
             mergeable_state: MergeableState::Unknown,
+            stack: None,
         }
     }
 
