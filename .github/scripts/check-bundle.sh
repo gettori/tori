@@ -11,6 +11,10 @@
 # notarization rejects a bundle with one unsigned Mach-O in it, after a full
 # upload, so this fails first and names the file.
 #
+# The main binary must also be linked against SDK 26 or later. Below that,
+# macOS runs the app in compatibility mode, with the old traffic lights and
+# legacy scrollbars, and nothing short of installing the release shows it.
+#
 #   .github/scripts/check-bundle.sh path/to/Tori.app arm64|x86_64
 set -euo pipefail
 
@@ -46,6 +50,14 @@ if [ "$checked" -eq 0 ]; then
   exit 1
 fi
 
+MIN_SDK=26
+main="$APP/Contents/MacOS/tori"
+sdk=$(otool -l "$main" | awk '/LC_BUILD_VERSION/ { found = 1 } found && $1 == "sdk" { print $2; exit }')
+if [ -z "$sdk" ] || [ "${sdk%%.*}" -lt "$MIN_SDK" ]; then
+  echo "  OLD SDK: ${main#"$APP"/} links against SDK ${sdk:-unknown}, want $MIN_SDK or later" >&2
+  fail=1
+fi
+
 if ! codesign --verify --deep --strict --verbose=2 "$APP" 2>&1 | sed 's/^/  /'; then
   echo "error: the signature on $APP does not verify" >&2
   fail=1
@@ -55,4 +67,4 @@ if [ "$fail" -ne 0 ]; then
   exit 1
 fi
 
-echo "ok: $checked Mach-O file(s) in $APP are $ARCH and the bundle signature verifies"
+echo "ok: $checked Mach-O file(s) in $APP are $ARCH, the binary links against SDK $sdk, and the bundle signature verifies"
