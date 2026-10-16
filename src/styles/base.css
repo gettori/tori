@@ -243,12 +243,17 @@
    they are touched. This layer is the floor every unconverted surface stands
    on, and the track margin below gives those the same stay-off-the-ends
    behaviour the drawn bar has. */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-}
-*:hover {
-  scrollbar-color: var(--scrollbar-thumb) transparent;
+/* Firefox only: a WebKit or Chromium that supports the standard pair lets
+   them switch off every ::-webkit-scrollbar rule, and macOS then draws its
+   own light bar on a dark theme. */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  *:hover {
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
 }
 ::-webkit-scrollbar {
   width: calc(9px * var(--ui-scale));
