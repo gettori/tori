@@ -1345,7 +1345,8 @@ export default function ReviewPanel(props: {
     changesLayout.setOpen("history", true);
   }
 
-  createEffect(() => pendingReveal() && showHistory("checkpoints"));
+  // showHistory reads the layout it writes, so tracking it would loop.
+  createEffect(on(pendingReveal, (want) => want && showHistory("checkpoints")));
 
   /** Picking a tab out of the `+N` menu reorders the strip. The order keeps
    *  the tabs the ... menu hid, so they come back where they were. */
