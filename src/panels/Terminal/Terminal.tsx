@@ -54,6 +54,8 @@ import {
   PURGE_WORKSPACE,
   WORKSPACE_MOVED,
   type WorkspaceMoved,
+  TABS_JOINED,
+  type TabsJoined,
   type PurgeWorkspace,
   SESSION_DELETED,
   type SessionDeleted,
@@ -987,6 +989,39 @@ export default function Terminal(props: {
   });
   onCleanup(offMoved);
 
+  // A worktree joined a Topic. A started tab moves in place, never as a fresh
+  // record: the strip keys tabs by identity, and a remounted chat's teardown
+  // ends its session. Its view keeps the old workspace until the next launch.
+  // Both restores land first, or the stored tabs of either would be skipped.
+  const joins = new Map<string, Promise<void>>();
+  const offJoined = onWith<TabsJoined>(TABS_JOINED, (j) => {
+    const running = joinTabs(j);
+    joins.set(j.to, running);
+    void running.finally(() => {
+      if (joins.get(j.to) === running) joins.delete(j.to);
+    });
+  });
+  onCleanup(offJoined);
+  async function joinTabs({ from, to, home }: TabsJoined) {
+    await Promise.all([stripReady(from), stripReady(to), fileStripReady(from), fileStripReady(to)]);
+    let moved = false;
+    const next = open().map((t) => {
+      if (t.workspace !== from) return t;
+      moved = true;
+      if (isChatDraft(t)) return { ...t, workspace: to, cwd: home ?? t.cwd };
+      t.workspace = to;
+      return t;
+    });
+    if (!moved) return;
+    autoDrafts.delete(from);
+    setOpen(next);
+    const { [from]: was, ...active } = activeByWorkspace();
+    setActiveByWorkspace(was && !active[to] ? { ...active, [to]: was } : active);
+    touched.add(from);
+    touched.add(to);
+    saveTabStore(open(), activeByWorkspace());
+  }
+
   // A session's transcript was deleted: close whatever tab was driving it. The
   // sidebar has already closed the child and released the claim, so this is
   // only the tab. Left open, a chat tab would keep showing history that no
@@ -1142,8 +1177,8 @@ export default function Terminal(props: {
       setDraft(id, prompt);
       if (origin) setDraftOrigin(id, origin);
     });
-    offDraftIntoNew = onWith<DraftIntoNew>(DRAFT_INTO_NEW, ({ folderPath, projectName }) => {
-      void draftIntoEmpty(folderPath, folderPath, projectName);
+    offDraftIntoNew = onWith<DraftIntoNew>(DRAFT_INTO_NEW, ({ workspace, root, projectName }) => {
+      void draftIntoEmpty(workspace, root, projectName);
     });
     unlistenAdopt = await listen<Adoptable>("sessions://adopt", (e) => void adopt(e.payload));
     // Chats the daemon started while this window was not listening: before it
@@ -1467,15 +1502,15 @@ export default function Terminal(props: {
     ),
   );
 
-  // Only once both restores are back: a strip still being filled is early,
-  // not empty.
+  // Only once both restores and any tabs joining are back: a strip still being
+  // filled is early, not empty.
   async function stripEmpty(ws: string): Promise<boolean> {
-    await Promise.all([stripReady(ws), fileStripReady(ws)]);
+    await Promise.all([stripReady(ws), fileStripReady(ws), joins.get(ws)]);
     return !tabsIn(ws).length && !(tabsByWs()[ws] ?? []).length;
   }
 
-  // The draft a new worktree was given, until the user writes in it. The next
-  // explicit open takes it over, so creating a worktree and starting something
+  // The draft a new worktree or Topic was given, until the user writes in it.
+  // The next explicit open takes it over, so creating one and starting something
   // in it at once never leaves two tabs.
   const autoDrafts = new Map<string, string>();
   function untouchedAutoDraft(ws: string): string | null {

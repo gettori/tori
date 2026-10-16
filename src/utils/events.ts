@@ -656,11 +656,12 @@ export type NewChatAt = {
   origin?: DraftOrigin;
 };
 
-// Payload-carrying event: open an empty chat draft in a worktree the sidebar
-// just created, if nothing comes back into its strip. Selecting an existing
-// worktree never drafts.
+// Payload-carrying event: open an empty chat draft in a worktree or Topic the
+// sidebar just created, if nothing comes back into its strip. Selecting an
+// existing one never drafts. `root` is where the chat starts, which for a Topic
+// is its home rather than the workspace key.
 export const DRAFT_INTO_NEW = "tori:draft-into-new";
-export type DraftIntoNew = { folderPath: string; projectName: string };
+export type DraftIntoNew = { workspace: string; root: string; projectName: string };
 
 // Payload-carrying event: tear down everything rooted under a path (used when a
 // space is deleted). The terminal area kills + closes PTY tabs whose cwd is under
@@ -674,6 +675,13 @@ export type PurgeUnderPath = { path: string };
 // through `moves`. Emitted after the move, by `moveWorkspaces`.
 export const WORKSPACE_MOVED = "tori:workspace-moved";
 export type WorkspaceMoved = { moves: { from: string; to: string }[] };
+
+// Payload-carrying event: a worktree joined a Topic, so the tabs open under its
+// key move to the Topic's. Unlike WORKSPACE_MOVED no folder moved: every path,
+// process and session stays as it was. `home` is where an unsent draft restarts,
+// so its first send reaches every member.
+export const TABS_JOINED = "tori:tabs-joined";
+export type TabsJoined = { from: string; to: string; home: string | null };
 
 // A whole workspace key is going away (a Topic was deleted). Unlike a path
 // purge nothing on disk is touched: every per-workspace store drops the key so
