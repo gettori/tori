@@ -155,12 +155,16 @@ pub struct PrSummary {
 /// `None` is "this head has no checks configured", which is not the same as
 /// `Pending` ("checks exist and have not finished"). Collapsing them would make
 /// a repo with no CI look permanently in-flight.
+///
+/// `Skipped` is only ever a single check's state: a run that finished without
+/// running, which a host's rollup counts as passing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum CheckState {
     Success,
     Failure,
     Pending,
+    Skipped,
     None,
 }
 
@@ -186,6 +190,7 @@ pub struct CheckRollup {
     pub state: CheckState,
     pub total: u32,
     pub failing: u32,
+    pub skipped: u32,
     /// The checks behind the rollup, as far as one read describes them.
     ///
     /// Capped by the query, so this can be shorter than `total`. `state` and
@@ -204,6 +209,7 @@ impl CheckRollup {
             state: CheckState::None,
             total: 0,
             failing: 0,
+            skipped: 0,
             contexts: Vec::new(),
         }
     }
@@ -526,6 +532,7 @@ mod tests {
             state: CheckState::Failure,
             total: 12,
             failing: 1,
+            skipped: 1,
             contexts: vec![
                 CheckContext {
                     name: "build".into(),
@@ -535,6 +542,11 @@ mod tests {
                 CheckContext {
                     name: "lint".into(),
                     state: CheckState::Success,
+                    url: None,
+                },
+                CheckContext {
+                    name: "docs".into(),
+                    state: CheckState::Skipped,
                     url: None,
                 },
             ],

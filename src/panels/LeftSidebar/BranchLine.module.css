@@ -93,6 +93,9 @@
 .busy {
   color: var(--attention-fg);
 }
+.skipped {
+  color: var(--fg-muted);
+}
 .pr_open {
   color: var(--success-fg);
 }

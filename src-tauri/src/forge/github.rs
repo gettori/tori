@@ -351,6 +351,7 @@ fn context_from(node: &Value) -> CheckContext {
                 | Some("CANCELLED")
                 | Some("ACTION_REQUIRED")
                 | Some("STARTUP_FAILURE") => CheckState::Failure,
+                Some("SKIPPED") | Some("NEUTRAL") => CheckState::Skipped,
                 _ => CheckState::Success,
             },
             url: url_at(node, "detailsUrl"),
@@ -403,11 +404,14 @@ fn checks_from_rollup(rollup: Option<&Value>) -> CheckRollup {
     // Counted off the list rather than off a second predicate over the same
     // nodes: a row the panel prints in red and a count that disagrees with it
     // are one read answered twice.
-    let failing = contexts.iter().filter(|c| c.state == CheckState::Failure).count() as u32;
+    let count = |state: CheckState| contexts.iter().filter(|c| c.state == state).count() as u32;
+    let failing = count(CheckState::Failure);
+    let skipped = count(CheckState::Skipped);
     CheckRollup {
         state,
         total,
         failing,
+        skipped,
         contexts,
     }
 }

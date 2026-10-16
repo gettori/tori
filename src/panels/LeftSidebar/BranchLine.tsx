@@ -6,6 +6,7 @@ import {
   GitPullRequestDraft,
   CircleCheck,
   CircleDotDashed,
+  CircleSlash,
   CircleX,
   FileDiff,
   MessageSquare,
@@ -18,7 +19,7 @@ import Icon from "../../components/Icon/Icon";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import TooltipLines from "../../components/Tooltip/TooltipLines";
 import { compactAge, compactAgo } from "../../utils/compactAge";
-import { forgeBadges, type BadgeTone, type PrChipState } from "../../utils/forgeChip";
+import { forgeBadges, ranChecks, type BadgeTone, type PrChipState } from "../../utils/forgeChip";
 import type { UnitStatus } from "../../utils/forgeTypes";
 import type { BaseSync } from "../../utils/gitActions";
 import styles from "./BranchLine.module.css";
@@ -113,7 +114,8 @@ export default function BranchLine(props: {
     return p.state === "open" ? (p.isDraft ? "draft" : "open") : p.state;
   };
   const checks = () => props.status!.checks;
-  const passed = () => checks().total - checks().failing;
+  const ran = () => ranChecks(checks());
+  const passed = () => ran() - checks().failing;
 
   // One hover target for the whole line rather than one per fact, the same
   // call `SyncMarks` makes about its run and for the same reasons: these are
@@ -177,9 +179,16 @@ export default function BranchLine(props: {
             <Icon icon={CHECK_ICON[c().tone]} />
             {/* Running checks have no score yet, so the glyph stands alone
                 rather than claiming a total that is still moving. */}
-            <Show when={c().tone !== "busy"}>{`${passed()}/${checks().total}`}</Show>
+            <Show when={c().tone !== "busy" && ran() > 0}>{`${passed()}/${ran()}`}</Show>
           </span>
         )}
+      </Show>
+
+      <Show when={badges().checks?.tone === "good" || badges().checks?.tone === "bad" ? checks().skipped : 0}>
+        <span class={`${styles.item} ${styles.skipped}`} data-pr-skipped={checks().skipped}>
+          <Icon icon={CircleSlash} />
+          {checks().skipped}
+        </span>
       </Show>
     </>
   );

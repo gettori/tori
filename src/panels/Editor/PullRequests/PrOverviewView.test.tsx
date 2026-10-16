@@ -142,7 +142,7 @@ async function pollWith(over: Partial<PullRequest> = {}) {
       {
         headRef: BRANCH,
         pullRequest: pr(over),
-        checks: { state: "success", total: 1, failing: 0, contexts: [] },
+        checks: { state: "success", total: 1, failing: 0, skipped: 0, contexts: [] },
         reviewDecision: "none",
       },
     ],

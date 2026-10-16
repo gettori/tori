@@ -56,7 +56,7 @@ const REPORT: StatusReport = {
     {
       headRef: "feature",
       pullRequest: { number: 46, author: "ana", state: "open" } as UnitStatus["pullRequest"],
-      checks: { state: "none", total: 0, failing: 0, contexts: [] },
+      checks: { state: "none", total: 0, failing: 0, skipped: 0, contexts: [] },
       reviewDecision: "none",
     },
   ],

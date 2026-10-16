@@ -327,12 +327,14 @@ fn checks_from_pipeline(pipeline: Option<&Value>) -> CheckRollup {
             state,
             total: 1,
             failing: 1,
+            skipped: 0,
             contexts: Vec::new(),
         },
         _ => CheckRollup {
             state,
             total: 1,
             failing: 0,
+            skipped: 0,
             contexts: Vec::new(),
         },
     }

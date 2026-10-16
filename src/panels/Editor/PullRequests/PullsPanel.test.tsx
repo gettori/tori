@@ -275,7 +275,7 @@ async function open(over: Partial<typeof bridge> = {}) {
 const unit = (over: Record<string, unknown> = {}) => ({
   headRef: BRANCH,
   pullRequest: pr(),
-  checks: { state: "none", total: 0, failing: 0, contexts: [] },
+  checks: { state: "none", total: 0, failing: 0, skipped: 0, contexts: [] },
   reviewDecision: "none",
   ...over,
 });
@@ -377,6 +377,7 @@ describe("the three verdict rows", () => {
             state: "failure",
             total: 3,
             failing: 1,
+            skipped: 0,
             contexts: [
               { name: "build", state: "failure", url: "https://ci.test/1" },
               { name: "lint", state: "success", url: null },
@@ -800,6 +801,7 @@ describe("landing it, once it has landed", () => {
             state: "failure",
             total: 1,
             failing: 1,
+            skipped: 0,
             contexts: [{ name: "build", state: "failure", url: "https://ci.test/1" }],
           },
         }),
@@ -1250,6 +1252,7 @@ describe("accessibility", () => {
             state: "failure",
             total: 2,
             failing: 1,
+            skipped: 0,
             contexts: [{ name: "build", state: "failure", url: "https://ci.test/1" }],
           },
         }),

@@ -228,7 +228,7 @@ describe("the pull request list", () => {
       {
         headRef: "wave-3",
         pullRequest: pr(7, { headRef: "wave-3" }),
-        checks: { state: "failure", total: 4, failing: 1, contexts: [] },
+        checks: { state: "failure", total: 4, failing: 1, skipped: 0, contexts: [] },
         reviewDecision: "changesRequested",
       },
     ];

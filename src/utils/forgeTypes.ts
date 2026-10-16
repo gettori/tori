@@ -105,8 +105,9 @@ export type PrSummary = {
 
 /// `none` is "no checks configured", which is not `pending` ("checks exist and
 /// have not finished"). Collapsing them makes a repo with no CI look
-/// permanently in flight.
-export type CheckState = "success" | "failure" | "pending" | "none";
+/// permanently in flight. `skipped` is only ever one check's state, never the
+/// rollup's.
+export type CheckState = "success" | "failure" | "pending" | "skipped" | "none";
 
 /// One check on the head commit, so the panel's checks row can expand into the
 /// checks behind it. `url` is null where the host sent no target: a link to
@@ -121,6 +122,7 @@ export type CheckRollup = {
   state: CheckState;
   total: number;
   failing: number;
+  skipped: number;
   /// The checks behind the rollup, as far as one read describes them. Capped by
   /// the query, so it can be shorter than `total`; `state` and `failing` are not
   /// derived from it for that reason.
@@ -457,7 +459,7 @@ export const FORGE_KEYS = {
     "title",
     "url",
   ],
-  checkRollup: ["contexts", "failing", "state", "total"],
+  checkRollup: ["contexts", "failing", "skipped", "state", "total"],
   checkContext: ["name", "state", "url"],
   prSummary: ["counts", "mergeableState", "updatedAt"],
   prCounts: ["additions", "changedFiles", "commits", "deletions", "reviews"],
@@ -504,7 +506,7 @@ export const FORGE_KEYS = {
 /// Every value each closed enum can take, so a variant added in Rust and not
 /// here (or vice versa) fails rather than degrading to a silent default.
 export const PR_STATES: readonly PrState[] = ["open", "closed", "merged"];
-export const CHECK_STATES: readonly CheckState[] = ["success", "failure", "pending", "none"];
+export const CHECK_STATES: readonly CheckState[] = ["success", "failure", "pending", "skipped", "none"];
 export const MERGEABLE_STATES: readonly MergeableState[] = [
   "clean",
   "blocked",

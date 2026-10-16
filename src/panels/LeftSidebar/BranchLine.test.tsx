@@ -27,7 +27,7 @@ const status = (over: Partial<PullRequest>): UnitStatus => ({
     mergeableState: "clean",
     ...over,
   },
-  checks: { state: "none", total: 0, failing: 0, contexts: [] },
+  checks: { state: "none", total: 0, failing: 0, skipped: 0, contexts: [] },
   reviewDecision: "none",
 });
 

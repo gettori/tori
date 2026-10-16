@@ -191,19 +191,30 @@ function prWord(state: PrChipState): string {
   }
 }
 
+const checkWord = (n: number) => `${n} check${n === 1 ? "" : "s"}`;
+
+/// A skipped check never ran, so it sits on neither side of the score.
+export const ranChecks = (checks: CheckRollup) => checks.total - checks.skipped;
+
+/// How the rollup came out, in words. Shared by the chip and the panel's row.
+export function checksSentence(checks: CheckRollup): string {
+  const ran = ranChecks(checks);
+  const skipped = checks.skipped ? `, ${checks.skipped} skipped` : "";
+  if (checks.state === "failure") return `${checks.failing} of ${checkWord(ran)} failing${skipped}`;
+  if (ran === 0) return `${checkWord(checks.skipped)} skipped`;
+  return `${checkWord(ran)} passed${skipped}`;
+}
+
 /// `none` renders nothing: a repo with no CI is not a repo with pending CI, and
 /// a permanent grey dot on every row of a CI-less repo is noise, not status.
 function checksBadge(checks: CheckRollup): ForgeChip["checks"] {
   switch (checks.state) {
     case "failure":
-      return {
-        tone: "bad",
-        title: `${checks.failing} of ${checks.total} check${checks.total === 1 ? "" : "s"} failing`,
-      };
+      return { tone: "bad", title: checksSentence(checks) };
     case "pending":
       return { tone: "busy", title: "Checks running" };
     case "success":
-      return { tone: "good", title: `${checks.total} check${checks.total === 1 ? "" : "s"} passed` };
+      return { tone: "good", title: checksSentence(checks) };
     default:
       return null;
   }

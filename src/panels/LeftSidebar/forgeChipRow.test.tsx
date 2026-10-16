@@ -72,7 +72,7 @@ const ORIGINS: Record<string, string | null> = {
 
 const unit = (over: Partial<UnitStatus> & { headRef: string }): UnitStatus => ({
   pullRequest: null,
-  checks: { state: "none", total: 0, failing: 0, contexts: [] },
+  checks: { state: "none", total: 0, failing: 0, skipped: 0, contexts: [] },
   reviewDecision: "none",
   ...over,
 });
@@ -97,18 +97,18 @@ const REPORT: StatusReport = {
     unit({
       headRef: "shipped",
       pullRequest: pull(11) as UnitStatus["pullRequest"],
-      checks: { state: "success", total: 3, failing: 0, contexts: [] },
+      checks: { state: "success", total: 3, failing: 0, skipped: 0, contexts: [] },
       reviewDecision: "approved",
     }),
     unit({
       headRef: "drafting",
       pullRequest: pull(12, { isDraft: true }) as UnitStatus["pullRequest"],
-      checks: { state: "pending", total: 3, failing: 0, contexts: [] },
+      checks: { state: "pending", total: 3, failing: 0, skipped: 0, contexts: [] },
     }),
     unit({
       headRef: "broken",
       pullRequest: pull(13) as UnitStatus["pullRequest"],
-      checks: { state: "failure", total: 5, failing: 2, contexts: [] },
+      checks: { state: "failure", total: 5, failing: 2, skipped: 0, contexts: [] },
       reviewDecision: "changesRequested",
     }),
     // Answered for, and the answer is that there is no PR.
