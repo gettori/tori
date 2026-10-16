@@ -3,6 +3,7 @@
 // (see [[concept_folder_anchored_sessions]] / [[component_project_discovery]]).
 
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
@@ -893,9 +894,49 @@ pub(crate) fn do_remove_worktree(repo_path: &str, worktree_path: &str, force: bo
         return Err("This worktree has uncommitted changes; commit or discard them first.".into());
     }
     crate::setup::kill(Path::new(worktree_path));
-    git_ok(repo_path, &["worktree", "remove", "--force", worktree_path])?;
+    match move_to_trash(repo_path, Path::new(worktree_path)) {
+        Some(trashed) => {
+            std::thread::spawn(move || std::fs::remove_dir_all(trashed));
+        }
+        None => git_ok(repo_path, &["worktree", "remove", "--force", worktree_path])?,
+    }
     prune_worktrees(repo_path);
     Ok(())
+}
+
+fn trash_dir() -> PathBuf {
+    crate::owned_state::config_dir().join("trash")
+}
+
+/// Rename a linked worktree into the trash so watchers see it vanish at once,
+/// not one file at a time as git deletes in place. None leaves it to git: not a
+/// linked worktree of `repo`, locked, or a trash on another volume.
+fn move_to_trash(repo: &str, worktree: &Path) -> Option<PathBuf> {
+    let dot_git = std::fs::read_to_string(worktree.join(".git")).ok()?;
+    let admin = worktree
+        .join(dot_git.strip_prefix("gitdir:")?.trim())
+        .canonicalize()
+        .ok()?;
+    if admin.parent()? != crate::exec::common_dir(repo).join("worktrees") || admin.join("locked").exists() {
+        return None;
+    }
+    let trash = trash_dir();
+    std::fs::create_dir_all(&trash).ok()?;
+    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_nanos();
+    let name = worktree.file_name()?.to_string_lossy();
+    let target = trash.join(format!("{name}-{stamp}"));
+    std::fs::rename(worktree, &target).ok()?;
+    Some(target)
+}
+
+/// Finish deletions a quit or a crash cut short.
+pub fn sweep_trash() {
+    let Ok(entries) = std::fs::read_dir(trash_dir()) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let _ = std::fs::remove_dir_all(entry.path());
+    }
 }
 
 /// Remove a worktree, keeping its branch. The live-use teardown (PTYs, editor tabs)

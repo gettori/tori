@@ -1,6 +1,6 @@
 // Removing a Topic member's worktree from Spaces (#154 phase 1) moves the
 // Topic's active root to its next present member; only losing the last one
-// clears the selection. A unit selection under the folder clears as before.
+// clears the selection. A unit selection under the folder moves to a sibling.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor } from "@solidjs/testing-library";
 import { pointerClick } from "../../test/menus";
@@ -124,7 +124,7 @@ describe("removing a Topic member's worktree", () => {
     expect(onActiveRoot).not.toHaveBeenCalled();
   });
 
-  it("still clears a unit selection under the removed folder", async () => {
+  it("moves a unit selection under the removed folder to its sibling", async () => {
     const unit = {
       kind: "unit",
       spaceName: "work",
@@ -135,6 +135,9 @@ describe("removing a Topic member's worktree", () => {
       projectKind: "worktree",
     };
     const { onSelect } = await removeWave3(unit);
-    await waitFor(() => expect(onSelect).toHaveBeenCalledWith(null));
+    await waitFor(() =>
+      expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ folderPath: `${CONTAINER}/main` })),
+    );
+    expect(onSelect).not.toHaveBeenCalledWith(null);
   });
 });
