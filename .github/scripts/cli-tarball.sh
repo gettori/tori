@@ -25,9 +25,18 @@ stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 cp "$bin" "$stage/tori"
 
+# Signed again as a bare binary: inside the bundle it was signed as the main
+# executable, and that signature hashes the bundle's Info.plist and resources
+# too, so on its own the notary service calls it invalid.
+if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
+  codesign --force --sign "$APPLE_SIGNING_IDENTITY" --options runtime --timestamp "$stage/tori"
+  codesign --verify --strict "$stage/tori"
+fi
+
 # Only the runner's own arch can answer; the other is packed on trust, since
 # it is the same source at the same commit.
-if [ "$(uname -m)" = "$(case "$ARCH" in x64) echo x86_64 ;; *) echo "$ARCH" ;; esac)" ]; then
+case "$ARCH" in x64) native=x86_64 ;; *) native=$ARCH ;; esac
+if [ "$(uname -m)" = "$native" ]; then
   # Asked once before it ships: packs CI depends on this binary answering as
   # the CLI outside its bundle. A binary that does not know the command starts
   # the app instead, so the question has a deadline (perl, since macOS has no
