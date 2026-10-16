@@ -294,6 +294,7 @@ describe("a member's pull request", () => {
       headRepoIsOrigin: true,
       url: "https://github.com/o/api/pull/41",
       mergeableState: "clean",
+      stack: null,
     },
     checks: { state: failing ? "failure" : "success", total: 3, failing, skipped: 0, contexts: [] },
     reviewDecision: "none",

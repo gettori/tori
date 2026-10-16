@@ -361,6 +361,7 @@ function pr(number: number, title: string): PullRequest {
     headRepoIsOrigin: true,
     url: `https://github.com/o/r/pull/${number}`,
     mergeableState: "clean",
+    stack: null,
   };
 }
 

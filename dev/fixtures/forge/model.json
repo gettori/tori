@@ -130,6 +130,12 @@
     "mergeableState": "clean",
     "mergedAt": null,
     "number": 42,
+    "stack": {
+      "baseRef": "main",
+      "number": 40,
+      "position": 2,
+      "size": 3
+    },
     "state": "open",
     "title": "Let a conflict be handed to the agent",
     "url": "https://github.com/skarif2/tori/pull/42"
@@ -222,6 +228,12 @@
           "mergeableState": "clean",
           "mergedAt": null,
           "number": 42,
+          "stack": {
+            "baseRef": "main",
+            "number": 40,
+            "position": 2,
+            "size": 3
+          },
           "state": "open",
           "title": "Let a conflict be handed to the agent",
           "url": "https://github.com/skarif2/tori/pull/42"
@@ -270,6 +282,12 @@
       "mergeableState": "clean",
       "mergedAt": null,
       "number": 42,
+      "stack": {
+        "baseRef": "main",
+        "number": 40,
+        "position": 2,
+        "size": 3
+      },
       "state": "open",
       "title": "Let a conflict be handed to the agent",
       "url": "https://github.com/skarif2/tori/pull/42"
