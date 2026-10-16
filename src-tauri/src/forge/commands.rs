@@ -1786,6 +1786,7 @@ mod tests {
             head_repo_is_origin: true,
             url: "u".into(),
             mergeable_state: super::super::model::MergeableState::Clean,
+            stack: None,
         }
     }
 

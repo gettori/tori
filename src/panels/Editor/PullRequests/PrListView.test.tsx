@@ -75,6 +75,7 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
   headRepoIsOrigin: true,
   url: "https://github.com/skarif2/tori/pull/31",
   mergeableState: "clean",
+  stack: null,
   ...over,
 });
 

@@ -91,6 +91,22 @@ pub struct PullRequest {
     pub head_repo_is_origin: bool,
     pub url: String,
     pub mergeable_state: MergeableState,
+    pub stack: Option<PrStack>,
+}
+
+/// Where a pull request sits in its GitHub stack.
+///
+/// `size` counts merged layers too, because GitHub keeps them in the stack, so
+/// a stack whose bottom two merged still reads `3/5` on its third layer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrStack {
+    /// Drawn from the same counter as pull request numbers, so it is a key,
+    /// never a label.
+    pub number: u64,
+    pub size: u32,
+    pub position: u32,
+    pub base_ref: String,
 }
 
 /// How many people have signed off, and how many are blocking.
@@ -584,6 +600,12 @@ mod tests {
             head_repo_is_origin: true,
             url: "https://github.com/skarif2/tori/pull/42".into(),
             mergeable_state: MergeableState::Clean,
+            stack: Some(PrStack {
+                number: 40,
+                size: 3,
+                position: 2,
+                base_ref: "main".into(),
+            }),
         };
 
         let unit = UnitStatus {

@@ -297,6 +297,7 @@ fn pr_from(v: &Value) -> Result<PullRequest, ForgeError> {
         head_repo_is_origin: v.get("source_project_id") == v.get("target_project_id"),
         url: str_at(v, "web_url"),
         mergeable_state: mergeable_from(v),
+        stack: None,
     })
 }
 

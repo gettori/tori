@@ -3,7 +3,7 @@ import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { WorktreeMark } from "../../components/Icon/gitMarks";
 import SyncMarks from "../../components/SyncMarks/SyncMarks";
 import type { MenuItem } from "../../components/Menu/rows";
-import type { CheckState, PrState, ReviewDecision, UnitStatus } from "../../utils/forgeTypes";
+import type { CheckState, PrStack, PrState, ReviewDecision, UnitStatus } from "../../utils/forgeTypes";
 import BranchLine from "./BranchLine";
 import { BranchRow, ProjectRow } from "./SidebarRows";
 import rows from "./SidebarRows.module.css";
@@ -30,6 +30,7 @@ function status(o: {
   failing?: number;
   skipped?: number;
   review?: ReviewDecision;
+  stack?: PrStack;
 }): UnitStatus {
   return {
     headRef: "feat/thing",
@@ -50,6 +51,7 @@ function status(o: {
       headRepoIsOrigin: true,
       url: `https://github.com/gettori/tori/pull/${o.number}`,
       mergeableState: "clean",
+      stack: o.stack ?? null,
     },
     checks: {
       state: o.checks ?? "success",
@@ -139,6 +141,14 @@ export const States: Story = {
       </Tree>
     ),
   ],
+};
+
+/** A layer of a GitHub stack wears its place right after the number, so a
+ *  lone layer still says it has neighbours. */
+export const Stacked: Story = {
+  args: {
+    status: status({ number: 7875, comments: 2, stack: { number: 7870, size: 3, position: 2, baseRef: "main" } }),
+  },
 };
 
 /** What this is actually for: the column. Two branches have a pull request and

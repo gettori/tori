@@ -13,6 +13,7 @@ import {
   MessageSquareCheck,
   MessageSquareWarning,
   Eye,
+  SquareStack,
   type LucideIcon,
 } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
@@ -142,6 +143,7 @@ export default function BranchLine(props: {
       stat() ? diffLine() : "",
       openedAt() !== null ? `${p.author} opened ${compactAgo(openedAt()!)}` : `Opened by ${p.author}`,
       endedAt() !== null ? `${pr()!.state === "merged" ? "Merged" : "Closed"} ${compactAgo(endedAt()!)}` : "",
+      p.stack ? `Layer ${p.stack.position} of ${p.stack.size} in a stack, targets ${p.stack.baseRef}` : "",
       b.review?.title,
       b.checks?.title,
       p.comments ? `${p.comments} comment${p.comments === 1 ? "" : "s"}` : "",
@@ -158,6 +160,15 @@ export default function BranchLine(props: {
         <Icon icon={prIcon(state())} />
         {`#${p().number}`}
       </span>
+
+      <Show when={p().stack}>
+        {(st) => (
+          <span class={styles.item} data-pr-stack={`${st().position}/${st().size}`}>
+            <Icon icon={SquareStack} />
+            {`${st().position}/${st().size}`}
+          </span>
+        )}
+      </Show>
 
       <Show when={props.watched}>
         <span class={styles.item} data-pr-watched>

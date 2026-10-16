@@ -47,6 +47,7 @@ const WEBHOOKS_PR: UnitStatus = {
     headRepoIsOrigin: true,
     url: "https://github.com/work/api/pull/216",
     mergeableState: "clean",
+    stack: null,
   },
   checks: { state: "success", total: 4, failing: 0, skipped: 0, contexts: [] },
   reviewDecision: "reviewRequired",

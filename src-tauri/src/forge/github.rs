@@ -30,8 +30,8 @@ use super::http::{
 };
 use super::model::{
     AuthState, Capabilities, CheckContext, CheckRollup, CheckState, DiffSide, DraftComment, FileStatus, Grant,
-    MergeableState, OrgAccess, Paged, PrCounts, PrFile, PrReviewCounts, PrState, PrSummary, PullRequest, RateSnapshot,
-    RepoRef, ReviewComment, ReviewDecision, ReviewEvent, ReviewThread, UnitStatus, Viewer,
+    MergeableState, OrgAccess, Paged, PrCounts, PrFile, PrReviewCounts, PrStack, PrState, PrSummary, PullRequest,
+    RateSnapshot, RepoRef, ReviewComment, ReviewDecision, ReviewEvent, ReviewThread, UnitStatus, Viewer,
 };
 use super::{CreatePr, Forge, ForgeError, MergeMethod};
 use serde_json::Value;
@@ -219,6 +219,7 @@ fn pr_from_rest(v: &Value) -> Result<PullRequest, ForgeError> {
         },
         url: str_at(v, "html_url"),
         mergeable_state: mergeable_from_rest(v),
+        stack: None,
     })
 }
 
@@ -469,7 +470,19 @@ fn pr_from_graphql(v: &Value) -> PullRequest {
             Some("CONFLICTING") => MergeableState::Dirty,
             _ => MergeableState::Unknown,
         },
+        stack: stack_from_graphql(v),
     }
+}
+
+fn stack_from_graphql(v: &Value) -> Option<PrStack> {
+    let stack = v.get("stack").filter(|s| !s.is_null())?;
+    let position = v.get("stackEntry")?.get("position")?.as_u64()?;
+    Some(PrStack {
+        number: stack.get("number")?.as_u64()?,
+        size: stack.get("size")?.as_u64()? as u32,
+        position: position as u32,
+        base_ref: str_at(stack, "baseRefName"),
+    })
 }
 
 fn thread_from_graphql(v: &Value) -> ReviewThread {
@@ -551,6 +564,8 @@ const PR_FIELDS: &str = concat!(
   } } }
 "#
 );
+
+const STACK_FIELDS: &str = "  stack { number size baseRefName }\n  stackEntry { position }\n";
 
 // `isRequired` takes the pull request's number.
 fn watched_fields(number: u64) -> String {
@@ -865,6 +880,8 @@ impl Forge for GitHubForge {
         if branches.is_empty() && watched.is_empty() {
             return Ok((vec![], vec![]));
         }
+        // GHES has no stacks, and an unknown field fails the whole batch.
+        let stack = if self.versioned { STACK_FIELDS } else { "" };
         // One aliased selection per branch, all in a single request. The whole
         // point: the rate budget scales with unit count, so per-unit requests
         // are what exhausts it on idle polling.
@@ -874,9 +891,9 @@ impl Forge for GitHubForge {
             .map(|(i, b)| {
                 let name = serde_json::Value::String(b.clone());
                 format!(
-                    "u{i}: pullRequests(headRefName:{name}, states:[OPEN], first:1) {{ nodes {{ {PR_FIELDS} }} }}\n\
+                    "u{i}: pullRequests(headRefName:{name}, states:[OPEN], first:1) {{ nodes {{ {PR_FIELDS}{stack} }} }}\n\
                      e{i}: pullRequests(headRefName:{name}, states:[MERGED, CLOSED], \
-                     orderBy:{{field:CREATED_AT, direction:DESC}}, first:5) {{ nodes {{ {ENDED_PR_FIELDS} }} }}"
+                     orderBy:{{field:CREATED_AT, direction:DESC}}, first:5) {{ nodes {{ {ENDED_PR_FIELDS}{stack} }} }}"
                 )
             })
             .chain(
@@ -1328,6 +1345,54 @@ mod tests {
         // The same token, retried, with nothing re-authenticated.
         assert_eq!(f.viewer().unwrap().login, "skarif2");
         assert_eq!(f.auth_state(), AuthState::SignedIn { login: String::new() });
+    }
+
+    #[test]
+    fn a_stacked_pr_carries_its_layer_and_a_plain_one_carries_none() {
+        let (f, _stub) = forge(vec![StubTransport::json(
+            200,
+            r#"{"data":{"repository":{
+                "u0":{"nodes":[{"number":7,"state":"OPEN","headRefName":"a","author":{"login":"me"},
+                    "stack":{"number":5,"size":3,"baseRefName":"main"},"stackEntry":{"position":2},
+                    "commits":{"nodes":[{"commit":{"oid":"s"}}]}}]},
+                "u1":{"nodes":[{"number":8,"state":"OPEN","headRefName":"b","author":{"login":"me"},
+                    "stack":null,"stackEntry":null,
+                    "commits":{"nodes":[{"commit":{"oid":"t"}}]}}]}}}}"#,
+        )]);
+        let statuses = f.unit_statuses(&repo(), &["a".to_string(), "b".to_string()]).unwrap();
+        assert_eq!(
+            statuses[0].pull_request.as_ref().unwrap().stack,
+            Some(PrStack {
+                number: 5,
+                size: 3,
+                position: 2,
+                base_ref: "main".into(),
+            })
+        );
+        assert_eq!(statuses[1].pull_request.as_ref().unwrap().stack, None);
+    }
+
+    #[test]
+    fn only_github_com_is_asked_about_stacks() {
+        let empty = || StubTransport::json(200, r#"{"data":{"repository":{"u0":{"nodes":[]}}}}"#);
+        let (f, stub) = forge(vec![empty()]);
+        f.unit_statuses(&repo(), &["a".to_string()]).unwrap();
+        let body = stub.requests()[0].body.clone().unwrap();
+        assert!(body.contains("stackEntry"), "github.com should ask for the stack");
+
+        let stub = std::sync::Arc::new(StubTransport::new(vec![empty()]));
+        let ghes = GitHubForge::new(
+            Box::new(stub.clone()),
+            "https://ghe.acme.test",
+            Some("ghp".into()),
+            None,
+        );
+        ghes.unit_statuses(&repo(), &["a".to_string()]).unwrap();
+        let body = stub.requests()[0].body.clone().unwrap();
+        assert!(
+            !body.contains("stack"),
+            "GHES has no stack field and would fail the batch"
+        );
     }
 
     #[test]

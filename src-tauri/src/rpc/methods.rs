@@ -2368,6 +2368,7 @@ mod tests {
             head_repo_is_origin: true,
             url: "https://github.com/o/r/pull/12".into(),
             mergeable_state: crate::forge::model::MergeableState::Unknown,
+            stack: None,
         }
     }
 
