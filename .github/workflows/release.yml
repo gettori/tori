@@ -81,7 +81,10 @@ jobs:
   macos:
     needs: gate
     if: needs.gate.outputs.release == 'true'
-    runs-on: macos-14
+    # The runner's Xcode decides the SDK the app links against, and macOS
+    # draws an app linked before SDK 26 with the old window chrome and
+    # scrollbars. check-bundle.sh fails the build if that slips.
+    runs-on: macos-26
     environment: release
     # Not fail-fast: a flake on one arch must not throw away the other's
     # notarization wait, and a re-run of the failed jobs then rebuilds one.
