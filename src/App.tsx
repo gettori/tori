@@ -53,6 +53,7 @@ import {
   OPEN_OMNIBOX,
   type OpenOmnibox,
   TOGGLE_SHORTCUTS,
+  OPEN_ABOUT,
   ZOOM_IN,
   ZOOM_OUT,
   ZOOM_RESET,
@@ -140,6 +141,7 @@ import { watchQuotaNotifications } from "./utils/usageNotify";
 import { watchUsageProbe } from "./utils/usageProbe";
 import Omnibox, { refusal } from "./components/Omnibox/Omnibox";
 import ShortcutSheet from "./components/ShortcutSheet/ShortcutSheet";
+import AboutDialog from "./components/AboutDialog/AboutDialog";
 import { setPinSides } from "./layout/pinRules";
 import {
   chromeScale,
@@ -451,6 +453,7 @@ function App() {
   // open box put it in `>` mode instead of leaving it wherever it was.
   const [omnibox, setOmnibox] = createSignal<{ prefix: string } | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = createSignal(false);
+  const [aboutOpen, setAboutOpen] = createSignal(false);
 
   // Quitting has no undo, and the red traffic light sits a few pixels from the
   // sidebar toggle, so the app asks first. A close *guard* rather than a second
@@ -904,6 +907,7 @@ function App() {
 
   let offOmnibox: (() => void) | undefined;
   let offShortcuts: (() => void) | undefined;
+  let offAbout: (() => void) | undefined;
   let offZoomIn: (() => void) | undefined;
   let offZoomOut: (() => void) | undefined;
   let offZoomReset: (() => void) | undefined;
@@ -947,6 +951,9 @@ function App() {
     });
     offShortcuts = onEvent(TOGGLE_SHORTCUTS, () => {
       if (!firstRunOpen()) setShortcutsOpen((open) => !open);
+    });
+    offAbout = onEvent(OPEN_ABOUT, () => {
+      if (!firstRunOpen()) setAboutOpen(true);
     });
     offZoomIn = onEvent(ZOOM_IN, zoomIn);
     offZoomOut = onEvent(ZOOM_OUT, zoomOut);
@@ -1069,6 +1076,7 @@ function App() {
     window.removeEventListener("keydown", onKeyDown);
     offOmnibox?.();
     offShortcuts?.();
+    offAbout?.();
     offZoomIn?.();
     offZoomOut?.();
     offZoomReset?.();
@@ -1225,6 +1233,10 @@ function App() {
 
       <Show when={shortcutsOpen()}>
         <ShortcutSheet onClose={() => setShortcutsOpen(false)} />
+      </Show>
+
+      <Show when={aboutOpen()}>
+        <AboutDialog onClose={() => setAboutOpen(false)} />
       </Show>
 
       <Show when={quitReq()}>

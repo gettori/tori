@@ -94,6 +94,7 @@ const ROW_ONCLICK =
 
 const KEPT = new Map<string, Kept>([
   ["App.tsx", { count: 1, reason: `${HEADING} - the quit confirmation` }],
+  ["components/AboutDialog/AboutDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialog/Dialog.test.tsx", { count: 1, reason: FIXTURE }],
   ["components/Dialogs/AddAccountDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/RenameAccountDialog.tsx", { count: 1, reason: HEADING }],
