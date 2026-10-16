@@ -10,6 +10,35 @@ matching section here fails the release rather than publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.1016.0-alpha
+
+- The tray groups sessions under **Needs you**, **Working** and **Idle**,
+  says why a session is waiting, and ends with **Open Tori**, **Next Waiting
+  Session**, **Show Inbox** and **Quit**. Clicking a session brings Tori
+  forward on that session's space, project and worktree.
+- The number of sessions waiting on you shows beside the tray icon. Settings
+  > Notifications > **Show the needs you count in the menu bar** turns it
+  off.
+- The menu bar is Tori's own. **Tori** gains **Settings...** and **Check for
+  Updates...**, **Help** links to the docs, the shortcut sheet, the changelog
+  and a new issue, and **File**, **Edit**, **View**, **Go**, **Session** and
+  **Window** list the commands under the names the palette and the Cmd+/
+  sheet use. A menu item shows its shortcut only when that key works
+  everywhere; keys that belong to one place (Cmd+S in the editor, Cmd+, in
+  the agent picker) still work there.
+- Some command names are shorter: **Toggle Sidebar**, **Close Tab**, **Stop
+  Turn**.
+- Tori is signed with a Developer ID and notarized by Apple, so it opens like any other app. No more **Open Anyway** or `xattr -cr`.
+- One DMG per Mac: `Tori_<version>_aarch64.dmg` for Apple Silicon, `Tori_<version>_x64.dmg` for Intel. Homebrew picks the right one.
+- The Android APK is built for 64-bit ARM only.
+- **About Tori** opens a new dialog with the version and the build it came from. Click the version to copy it, handy for bug reports. It also links to the website, docs, release notes and GitHub, and can check for updates.
+- Clicking a worktree no longer opens a new chat every time. A chat opens only when you create a worktree.
+- A new topic is selected right after you create it, with a chat ready to type in.
+- **Move to topic...** switches to Topics and selects the topic you moved the worktree into.
+- Tabs open in a worktree move with it into the topic. Chats already running keep working in that repo, and the move dialog tells you when that's the case.
+- Removing a worktree selects a nearby worktree instead of leaving nothing selected, and the Changes panel no longer fills up with deleted files while it goes.
+- Skipped checks show as a grey count next to the checks score on the branch line, and get their own group in the pull request's Checks tab. The score only counts checks that actually ran.
+
 ## 26.1015.0-alpha
 
 - Sessions and terminals now run in `tori daemon`, a background process that
