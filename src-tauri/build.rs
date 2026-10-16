@@ -2,11 +2,39 @@
 mod index_rows;
 
 use std::fmt::Write as _;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 fn main() {
     embed_packs();
+    embed_commit();
     tauri_build::build()
+}
+
+/// Sets `TORI_COMMIT` to the short SHA of HEAD, or to nothing outside a git
+/// checkout (a source tarball), which the About dialog then leaves out.
+fn embed_commit() {
+    let git = |args: &[&str]| {
+        Command::new("git")
+            .args(args)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    };
+    // A path that does not exist (a packed ref) would rerun the script on every
+    // build, so only the files that are there are watched.
+    let mut watched = vec![git(&["rev-parse", "--git-path", "HEAD"])];
+    if let Some(branch) = git(&["symbolic-ref", "-q", "HEAD"]) {
+        watched.push(git(&["rev-parse", "--git-path", &branch]));
+    }
+    for path in watched.into_iter().flatten() {
+        if Path::new(&path).exists() {
+            println!("cargo:rerun-if-changed={path}");
+        }
+    }
+    let sha = git(&["rev-parse", "--short=7", "HEAD"]).unwrap_or_default();
+    println!("cargo:rustc-env=TORI_COMMIT={sha}");
 }
 
 /// Writes `$OUT_DIR/packs_snapshot.rs`: every file under `packs/` as

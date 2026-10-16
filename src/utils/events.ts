@@ -95,6 +95,9 @@ export const TOGGLE_SHORTCUTS = "tori:toggle-shortcuts";
 // back. Consumed by UpdatePill, which owns the notice a newer one shows.
 export const CHECK_UPDATES = "tori:check-updates";
 
+// Opens the About dialog, from the app menu or the palette. Consumed by App.tsx.
+export const OPEN_ABOUT = "tori:open-about";
+
 // Global UI zoom (Cmd+ / Cmd- / Cmd0), consumed by App.tsx, which drives the
 // zoom multiplier in settingsStore. Scales chrome, editor, and terminal together.
 export const ZOOM_IN = "tori:zoom-in";
