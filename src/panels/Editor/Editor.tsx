@@ -149,6 +149,8 @@ import {
   type PurgeWorkspace,
   WORKSPACE_MOVED,
   type WorkspaceMoved,
+  TABS_JOINED,
+  type TabsJoined,
   DRAG_PATH_MIME,
   FOCUS_PROJECT_SEARCH,
   SET_RIGHT_MODE,
@@ -2570,6 +2572,7 @@ export default function Editor(props: {
   let offFileRenamed: (() => void) | undefined;
   let offRootMoved: (() => void) | undefined;
   let offWorkspaceMoved: (() => void) | undefined;
+  let offTabsJoined: (() => void) | undefined;
   let offGitWatch: (() => void) | undefined;
   let offCommands: (() => void)[] = [];
 
@@ -2733,6 +2736,22 @@ export default function Editor(props: {
     offFileRenamed = onWith<FileRenamed>(FILE_RENAMED, (d) => {
       if (d?.from && d.to) followRename(d.from, d.to);
     });
+    offTabsJoined = onWith<TabsJoined>(TABS_JOINED, async ({ from, to }) => {
+      await Promise.all([fileRestore(from), fileRestore(to)]);
+      const { [from]: moving = [], ...tabs } = tabsByWs();
+      if (!moving.length) return;
+      const have = tabs[to] ?? [];
+      // One replaceable tab per strip: a second one coming in is kept instead.
+      const transient = have.some((t) => t.transient);
+      const add = moving
+        .filter((m) => !have.some((h) => h.path === m.path))
+        .map((m) => (transient && m.transient ? { path: m.path, name: m.name } : m));
+      setTabsByWs({ ...tabs, [to]: [...have, ...add] });
+      const { [from]: was = null, ...active } = activeByWs();
+      setActiveByWs(was && !active[to] ? { ...active, [to]: was } : active);
+      touchedWs.add(from);
+      touchedWs.add(to);
+    });
     offRootMoved = onWith<RootMoved>(ROOT_MOVED, ({ workspace, from, to }) => {
       const next = retargetCleanTabs(
         { tabs: tabsByWs(), active: activeByWs() },
@@ -2844,6 +2863,7 @@ export default function Editor(props: {
     offFileRenamed?.();
     offRootMoved?.();
     offWorkspaceMoved?.();
+    offTabsJoined?.();
     offGitWatch?.();
     for (const off of offCommands) off();
   });

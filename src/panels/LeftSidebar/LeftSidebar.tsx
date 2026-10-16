@@ -63,6 +63,7 @@ import {
   NEW_SESSION,
   NEW_CHAT_AT,
   DRAFT_INTO_NEW,
+  TABS_JOINED,
   PURGE_UNDER_PATH,
   TERMINAL_TAB_FOCUSED,
   ADD_BRANCH_UNIT,
@@ -73,6 +74,7 @@ import {
   type NewSession,
   type NewChatAt,
   type DraftIntoNew,
+  type TabsJoined,
   type PurgeUnderPath,
   type LiveTab,
   type TerminalTabFocused,
@@ -195,6 +197,8 @@ import {
   noteTopics,
   topicKey,
   topicSelection,
+  chatRoot,
+  newTopicDraft,
   isShellsKey,
   isReference,
   tabUnderFolder,
@@ -1997,7 +2001,8 @@ export default function LeftSidebar(props: {
         setBranchReq(null);
         await loadConfig();
         const unit = selectUnitIn(p, (u) => samePath(u.folderPath, folder));
-        emitWith<DraftIntoNew>(DRAFT_INTO_NEW, { folderPath: unit?.folderPath ?? folder, projectName: p.name });
+        const at = unit?.folderPath ?? folder;
+        emitWith<DraftIntoNew>(DRAFT_INTO_NEW, { workspace: at, root: at, projectName: p.name });
         return;
       }
       if (pick.kind === "remote") {
@@ -3776,8 +3781,19 @@ export default function LeftSidebar(props: {
             topics={topics()}
             spaces={visibleSpaces()}
             onDone={(topic) => {
+              const root = req().u.folderPath;
+              const created = !topics().some((f) => f.id === topic.id);
               applyTopic(topic);
               setMoveReq(null);
+              emitWith<TabsJoined>(TABS_JOINED, {
+                from: root,
+                to: topicKey(topic.id),
+                home: chatRoot(topicSelection(topic)),
+              });
+              selectTopic(topic, root);
+              setMode("topics");
+              const draft = created ? newTopicDraft(topic) : null;
+              if (draft) emitWith<DraftIntoNew>(DRAFT_INTO_NEW, draft);
             }}
             onCancel={() => setMoveReq(null)}
           />

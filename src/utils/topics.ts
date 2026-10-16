@@ -224,6 +224,13 @@ export function chatRoot(
   return selectionRoot(sel);
 }
 
+/** Where a just-created Topic's first draft goes, or null when it has nowhere
+ *  to start. */
+export function newTopicDraft(topic: Topic): { workspace: string; root: string; projectName: string } | null {
+  const root = chatRoot(topicSelection(topic));
+  return root ? { workspace: topicKey(topic.id), root, projectName: topic.name } : null;
+}
+
 // Every Topic by its home folder, so a check handed only a chat's cwd can tell
 // it is a Topic chat and answer for the members.
 const byHome = new Map<string, Topic>();
