@@ -72,13 +72,15 @@ few seconds and the run ends there. A release commit goes on to, in parallel:
 - **macOS, twice**, one job per architecture (`aarch64-apple-darwin` on the
   runner's own arch, `x86_64-apple-darwin` cross-compiled on the same runner).
   Each builds the app, signs it with the Developer ID under the hardened
-  runtime, notarizes and staples it, checks every Mach-O inside is for that
-  arch alone and that the signature verifies all the way down, then signs,
-  notarizes and staples the DMG. It packs the binary as
-  `tori-cli-<version>-macos-<arm64|x64>.tar.gz`, notarized as a zip, after
-  checking it answers as the CLI. The arm64 job also runs the binary's
-  `tori packs-catalog --check`, which fetches the live index from gettori.app
-  and verifies it with the keys this build trusts.
+  runtime, checks every Mach-O inside is for that arch alone and that the
+  signature verifies all the way down, then notarizes the DMG (one
+  submission covers the app inside it) and staples the ticket to it. It packs
+  the binary as `tori-cli-<version>-macos-<arm64|x64>.tar.gz`, notarized as
+  a zip, after checking it answers as the CLI. The arm64 job also runs the
+  binary's `tori packs-catalog --check`, which fetches the live index from
+  gettori.app and verifies it with the keys this build trusts. Apple's queue
+  decides most of the job's length: minutes on a good day, hours on a bad
+  one; the wait gives up after four.
 - **Android**, arm64 only, on Linux. It writes the keystore from secrets,
   builds, checks the APK is signed, and names it `Tori_<version>.apk`.
 
