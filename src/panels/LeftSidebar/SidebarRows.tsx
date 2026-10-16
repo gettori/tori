@@ -1,5 +1,14 @@
 import { Show, type JSX } from "solid-js";
-import { ChevronDown, ChevronRight, ChevronUp, Ellipsis, Layers } from "lucide-solid";
+import {
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Ellipsis,
+  GitBranch,
+  Layers,
+  SquareStack,
+  type LucideIcon,
+} from "lucide-solid";
 import ContextMenu from "../../components/Menu/ContextMenu";
 import Dropdown from "../../components/Menu/Dropdown";
 import IconButton from "../../components/IconButton/IconButton";
@@ -207,12 +216,16 @@ export function MoreRow(props: {
   );
 }
 
-/** One fan-out group: the goal as the header, its attempts nested beneath.
- *  Grouping is the whole point - three attempts at one question are one thing
- *  in the tree, not three unrelated worktrees sitting next to `main`. */
+/** A header that gathers related branch rows one indent deeper: a fan-out's
+ *  attempts at one goal, or the local layers of one stack. Grouping is the
+ *  whole point - three attempts at one question are one thing in the tree, not
+ *  three unrelated worktrees sitting next to `main`. */
 export function GroupRow(props: {
-  goal: string;
-  count: number;
+  label: string;
+  /** Carried at all so every branch-level row lines its label up on the same x. */
+  icon: LucideIcon;
+  badge: string;
+  hint: string;
   open: boolean;
   end?: JSX.Element;
   onClick?: () => void;
@@ -220,24 +233,56 @@ export function GroupRow(props: {
 }) {
   return (
     <div class={`node ${styles.branchNode}`}>
-      <div class={`${styles.row} ${styles.branch} ${styles.sub1}`} onClick={() => props.onClick?.()} title={props.goal}>
-        {/* Layers, not a fork: the row names the shared goal, and the forks are
-            the attempt rows nested under it. It carries an icon at all so every
-            branch-level row lines its label up on the same x. */}
+      <div
+        class={`${styles.row} ${styles.branch} ${styles.sub1}`}
+        onClick={() => props.onClick?.()}
+        title={props.label}
+      >
         <span class={styles.rowIcon}>
-          <Icon icon={Layers} />
+          <Icon icon={props.icon} />
         </span>
-        <span class={styles.label}>{props.goal}</span>
-        <span
-          class={`${styles.badge} ${styles.hint}`}
-          title="Independent attempts at one task. Promote one and the rest are discarded."
-        >
-          {props.count === 1 ? "1 attempt" : `${props.count} attempts`}
+        <span class={styles.label}>{props.label}</span>
+        <span class={`${styles.badge} ${styles.hint}`} title={props.hint}>
+          {props.badge}
         </span>
         {props.end}
         <RowChevron open={props.open} />
       </div>
       {props.children}
+    </div>
+  );
+}
+
+/** A fan-out group's header. Layers, not a fork: the row names the shared
+ *  goal, and the forks are the attempt rows nested under it. */
+export const attemptGroup = (goal: string, count: number) => ({
+  label: goal,
+  icon: Layers,
+  badge: count === 1 ? "1 attempt" : `${count} attempts`,
+  hint: "Independent attempts at one task. Promote one and the rest are discarded.",
+});
+
+/** A stack's header. The stack's own number is left off: GitHub draws it from
+ *  the pull request counter, so beside the layers' `#475` it reads as one more
+ *  pull request. `size` counts every layer, local or not. */
+export const stackGroup = (size: number, baseRef: string) => ({
+  label: "Stack",
+  icon: SquareStack,
+  badge: `${size} PRs -> ${baseRef}`,
+  hint: "Pull requests stacked on GitHub, top layer first. Only the layers you have locally are listed.",
+});
+
+/** The branch a stack lands on, at the foot of its layers the way GitHub's
+ *  stack map draws it. Inert: the branch has its own row in the list. */
+export function TrunkRow(props: { name: string }) {
+  return (
+    <div class={`node ${styles.branchNode} ${styles.attemptNode}`}>
+      <div class={`${styles.row} ${styles.sub1} ${styles.trunkRow}`}>
+        <span class={styles.rowIcon}>
+          <Icon icon={GitBranch} />
+        </span>
+        <span class={styles.label}>{props.name}</span>
+      </div>
     </div>
   );
 }

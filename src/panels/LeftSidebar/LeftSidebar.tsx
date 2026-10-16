@@ -191,6 +191,7 @@ import {
 } from "lucide-solid";
 import { BranchMark, WorktreeMark } from "../../components/Icon/gitMarks";
 import { attemptFolderName, groupAttempts, samePath, type AttemptGroup, type AttemptRecord } from "./attempts";
+import { groupStacks, type StackEntry } from "./stacks";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import TopicList from "./TopicList";
 import {
@@ -210,7 +211,7 @@ import { prWatchMenu, type PrWatchRow } from "../../utils/prWatchMenu";
 import StatusBubble, { CountBubble } from "./StatusBubble";
 import { latestUnreviewed, runSecondOpinion, secondOpinionRunning } from "../../utils/secondOpinion";
 import SpaceTile, { ModeTile, TileProbe } from "./SpaceTile";
-import { BranchRow, EmptyRow, GroupRow, MoreRow, ProjectRow } from "./SidebarRows";
+import { BranchRow, EmptyRow, GroupRow, MoreRow, ProjectRow, TrunkRow, attemptGroup, stackGroup } from "./SidebarRows";
 import rows from "./SidebarRows.module.css";
 import styles from "./LeftSidebar.module.css";
 
@@ -332,6 +333,8 @@ export type Selection = {
   sessionTitle?: string;
   sessionName?: string | null;
 };
+
+type StackGroup = Extract<StackEntry<BranchUnit>, { kind: "stack" }>;
 
 // How many branch-units a project card shows before it truncates. Six is about
 // what a card can hold without becoming a wall, and it covers a repo's usual
@@ -1188,7 +1191,10 @@ export default function LeftSidebar(props: {
     }
     setMode("spaces");
     setActiveSpaceName(at.g.name);
-    setExpanded(new Set([...expanded(), pkey(at.g, at.p)]));
+    const next = new Set([...expanded(), pkey(at.g, at.p)]);
+    const stack = shownPr(at.p, at.u)?.stack;
+    if (stack) next.delete(skey(at.g, at.p, stack.number));
+    setExpanded(next);
     if (hit) void selectSession(at.g, at.p, at.u, hit.session);
     else void selectUnit(at.g, at.p, at.u);
   }
@@ -2788,13 +2794,39 @@ export default function LeftSidebar(props: {
   }
 
   const gkey = (g: Space, p: Project, groupId: string) => `a:${g.name}/${p.name}/${groupId}`;
+  // Collapsed, not open: a stack starts open, and the set keeps its one meaning
+  // of "the user changed this from its default".
+  const skey = (g: Space, p: Project, stack: number) => `s:${g.name}/${p.name}/${stack}`;
+
+  function unitChip(p: Project, u: BranchUnit) {
+    const sync = syncFor(u.folderPath, u.branch);
+    const status = unitStatus(p.path, u.branch);
+    return forgeChip({
+      origin: origins()[p.path],
+      hosts: forgeHosts(),
+      branch: u.branch,
+      paused: forgePause(p.path),
+      status,
+
+      // Zero once answered, undefined until then: a row cannot be told apart
+      // from "the base itself" any other way, and guessing zero would put a
+      // "ready" mark on every branch for the instant before the batch lands.
+      offBase: sync ? (sync.base?.ahead ?? 0) : undefined,
+      hasUpstream: sync?.upstream.has_upstream,
+      relation: prRelation(u.folderPath, u.branch, status?.pullRequest, sync),
+    });
+  }
+
+  function shownPr(p: Project, u: BranchUnit) {
+    return unitChip(p, u).kind === "pr" ? (unitStatus(p.path, u.branch)?.pullRequest ?? null) : null;
+  }
 
   // One branch-unit node. A leaf since the session rows went: sessions are
   // reached from the terminal pane's History dropdown now, so a branch has
   // nothing left to expand and clicking it means one thing - select this unit.
   // Shared by the flat worktree/branch list and by the attempts inside a group,
   // which are the same node one indent deeper.
-  function unitNode(g: Space, p: Project, u: BranchUnit, attempt?: AttemptRecord) {
+  function unitNode(g: Space, p: Project, u: BranchUnit, attempt?: AttemptRecord, layer = false) {
     // One rollup for the row: the glyph's pulse and the status chip are two
     // readings of the same fact, and computing it twice is how they drift.
     const rollup = () => bubbleForUnits([u]);
@@ -2824,22 +2856,7 @@ export default function LeftSidebar(props: {
     const relation = () => prRelation(u.folderPath, u.branch, status()?.pullRequest, sync());
     // Memoized, not a bare accessor: the row reads it several times and each
     // read would otherwise re-parse the origin URL.
-    const chip = createMemo(() =>
-      forgeChip({
-        origin: origins()[p.path],
-        hosts: forgeHosts(),
-        branch: u.branch,
-        paused: forgePause(p.path),
-        status: status(),
-
-        // Zero once answered, undefined until then: a row cannot be told apart
-        // from "the base itself" any other way, and guessing zero would put a
-        // "ready" mark on every branch for the instant before the batch lands.
-        offBase: sync() ? (sync()!.base?.ahead ?? 0) : undefined,
-        hasUpstream: sync()?.upstream.has_upstream,
-        relation: relation(),
-      }),
-    );
+    const chip = createMemo(() => unitChip(p, u));
     const finished = (): FinishedPr | null => {
       const pr = showPr() ? status()?.pullRequest : null;
       return pr && pr.state !== "open" ? { state: pr.state, relation: relation() } : null;
@@ -2868,7 +2885,7 @@ export default function LeftSidebar(props: {
         icon={<UnitIcon kind={u.kind} active={rollup().executing > 0} current={u.isCurrent} />}
         iconLabel={iconLabel(u)}
         selected={unitSelected(u)}
-        nested={attempt != null}
+        nested={attempt != null || layer}
         look={finishedLook(finished())}
         menu={attempt ? attemptMenu(g, p, u, attempt) : unitMenu(g, p, u)}
         onClick={() => selectUnit(g, p, u)}
@@ -2983,8 +3000,7 @@ export default function LeftSidebar(props: {
     // nothing under an open one, whose attempt rows each carry their own.
     return (
       <GroupRow
-        goal={grp.goal}
-        count={grp.members.length}
+        {...attemptGroup(grp.goal, grp.members.length)}
         open={open()}
         onClick={() => {
           toggle(key);
@@ -2998,6 +3014,32 @@ export default function LeftSidebar(props: {
           <For each={grp.members}>{(m) => unitNode(g, p, attemptUnit(m), m.attempt)}</For>
         </Show>
       </GroupRow>
+    );
+  }
+
+  // Looked up by number on every read, because the poll answers anew each tick
+  // and a group object kept here would go stale.
+  function stackGroupNode(g: Space, p: Project, grp: () => StackGroup | undefined) {
+    return (
+      <Show when={grp()}>
+        {(s) => {
+          const key = () => skey(g, p, s().stack.number);
+          const open = () => !expanded().has(key());
+          return (
+            <GroupRow
+              {...stackGroup(s().stack.size, s().stack.baseRef)}
+              open={open()}
+              onClick={() => toggle(key())}
+              end={statusBubble(() => (open() ? null : bubbleForUnits(s().members)))}
+            >
+              <Show when={open()}>
+                <For each={s().members}>{(u) => unitNode(g, p, u, undefined, true)}</For>
+                <TrunkRow name={s().stack.baseRef} />
+              </Show>
+            </GroupRow>
+          );
+        }}
+      </Show>
     );
   }
 
@@ -3519,27 +3561,36 @@ export default function LeftSidebar(props: {
               // container arrives as an ordinary worktree unit, so it is lifted
               // out here rather than rendered twice.
               const split = () => groupAttempts(inSpaces(p.branchUnits), attempts()[p.path] ?? []);
+              // A stack stands in the list as its number, which `For` keeps by
+              // value, so a poll tick that rebuilds the groups does not rebuild
+              // every row in the card with them.
+              const stacked = createMemo(() => groupStacks(split().units, (u) => shownPr(p, u)?.stack ?? null));
+              const entries = () => stacked().map((e) => (e.kind === "unit" ? e.unit : e.stack.number));
+              const stackOf = (n: number) =>
+                stacked().find((e): e is StackGroup => e.kind === "stack" && e.stack.number === n);
+              const unitsOf = (e: BranchUnit | number) => (typeof e === "number" ? (stackOf(e)?.members ?? []) : [e]);
               // A long branch list is cut to BRANCH_CAP with the rest behind a
               // "N more branches" row. The selected unit is always kept, IN ITS
               // OWN PLACE in the order: a highlight you cannot see is worse than
               // a longer list, and lifting it to the top would reorder the tree
               // under the user. Partitioned in one pass so the shown and hidden
-              // halves are always two views of the same `split()`.
+              // halves are always two views of the same `entries()`.
               const showAll = () => expanded().has(mkey(g, p));
               const shown = () => {
-                const all = split().units;
+                const all = entries();
                 if (showAll() || all.length <= BRANCH_CAP) return { units: all, hidden: [] as BranchUnit[] };
-                const units: BranchUnit[] = [];
+                const units: (BranchUnit | number)[] = [];
                 const hidden: BranchUnit[] = [];
-                for (const [i, u] of all.entries()) {
-                  (i < BRANCH_CAP || unitSelected(u) ? units : hidden).push(u);
+                for (const [i, e] of all.entries()) {
+                  if (i < BRANCH_CAP || unitsOf(e).some(unitSelected)) units.push(e);
+                  else hidden.push(...unitsOf(e));
                 }
                 return { units, hidden };
               };
               // Show the control only when it has something to say. Open, that is
               // "the list is longer than the cap"; closed, "something is actually
               // hidden" - which a cap+1 list whose last unit is selected is not.
-              const truncated = () => (showAll() ? split().units.length > BRANCH_CAP : shown().hidden.length > 0);
+              const truncated = () => (showAll() ? entries().length > BRANCH_CAP : shown().hidden.length > 0);
               // Everything under this project, groups included, for the rollup a
               // collapsed project row shows: on a plain repo an attempt is not a
               // branch-unit at all, so its running session would bubble nowhere.
@@ -3615,7 +3666,7 @@ export default function LeftSidebar(props: {
                         </Show>
                       }
                     >
-                      {(u) => unitNode(g, p, u)}
+                      {(e) => (typeof e === "number" ? stackGroupNode(g, p, () => stackOf(e)) : unitNode(g, p, e))}
                     </For>
                     <Show when={truncated()}>{moreNode(g, p, () => shown().hidden)}</Show>
                     <For each={split().groups}>{(grp) => attemptGroupNode(g, p, grp)}</For>
