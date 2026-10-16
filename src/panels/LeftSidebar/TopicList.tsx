@@ -27,6 +27,7 @@ import {
   type Promotion,
   type RepairAction,
   topicKey,
+  newTopicDraft,
   LAST_MEMBER,
 } from "../../utils/topics";
 import type { Rollup } from "../../utils/sessionStatus";
@@ -35,7 +36,15 @@ import { syncFor } from "../../utils/branchSync";
 import { pull } from "../../utils/gitActions";
 import { finishedPr } from "../../utils/prRelation";
 import { forgePause, unitStatus } from "../../utils/forgeStatus";
-import { on as onEvent, emitWith, NEW_TOPIC, ROOT_MOVED, type RootMoved } from "../../utils/events";
+import {
+  on as onEvent,
+  emitWith,
+  NEW_TOPIC,
+  ROOT_MOVED,
+  DRAFT_INTO_NEW,
+  type RootMoved,
+  type DraftIntoNew,
+} from "../../utils/events";
 import { demoteMemberWorktree, removeMemberWorktree } from "../../utils/memberWorktree";
 import { purgeWorkspace } from "../../utils/purgeWorkspace";
 import styles from "./TopicList.module.css";
@@ -223,9 +232,15 @@ export default function TopicList(props: {
   // not build stays on the chip as a badge and gets one toast naming it, with
   // Retry running every failed member again.
   function settled(topic: Topic) {
-    if (!dialog()?.topic) setExpanded((prev) => ({ ...prev, [topic.id]: true }));
+    const created = !dialog()?.topic;
+    if (created) setExpanded((prev) => ({ ...prev, [topic.id]: true }));
     setDialog(null);
     apply(topic);
+    if (created) {
+      props.onSelect?.(topic);
+      const draft = newTopicDraft(topic);
+      if (draft) emitWith<DraftIntoNew>(DRAFT_INTO_NEW, draft);
+    }
     const failed = topic.members.filter((m) => memberState(m.state).action === "retry");
     if (failed.length === 0) return;
     const names = failed.map((m) => m.displayName).join(", ");

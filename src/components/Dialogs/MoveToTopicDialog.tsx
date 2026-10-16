@@ -8,6 +8,7 @@ import SegmentedControl from "../SegmentedControl/SegmentedControl";
 import NewTopicDialog from "./NewTopicDialog";
 import type { RepoSpace } from "./RepoChecklist";
 import { samePath } from "../../panels/LeftSidebar/attempts";
+import { chatsInFolder } from "../../utils/chatSessions";
 import { byName, isReference, type Topic } from "../../utils/topics";
 
 const TOPIC_LABEL = "move-topic-label";
@@ -82,6 +83,17 @@ export default function MoveToTopicDialog(props: {
 
   const tabs = () => <SegmentedControl aria-label="Move to" options={TABS} value={tab()} onChange={setTab} />;
 
+  // A started chat keeps the roots it launched with, so it never sees the
+  // Topic's other members.
+  const chatNote = () => {
+    const n = chatsInFolder(props.worktreePath).length;
+    if (!n) return null;
+    return n === 1
+      ? "1 chat here moves with it and keeps working in this repo only. New chats in the Topic see every repo."
+      : `${n} chats here move with it and keep working in this repo only. New chats in the Topic see every repo.`;
+  };
+  const chatHint = () => <Show when={chatNote()}>{(note) => <div class={styles.hint}>{note()}</div>}</Show>;
+
   // Both stay mounted and only one is open, so a tab switch keeps what was
   // typed on New: its state lives in the component, not in the dialog's content.
   const onNew = () => checked() && !refusal() && tab() === "new";
@@ -129,6 +141,7 @@ export default function MoveToTopicDialog(props: {
               </Show>
             </div>
             <div class={styles.msg}>The worktree keeps its branch and its changes. Nothing in git changes.</div>
+            {chatHint()}
           </Show>
         </Show>
       </Dialog>
@@ -137,7 +150,12 @@ export default function MoveToTopicDialog(props: {
         spaces={props.spaces}
         topics={props.topics}
         pinned={{ repoPath: props.repoPath, worktreePath: props.worktreePath, branch: props.branch }}
-        header={tabs()}
+        header={
+          <>
+            {tabs()}
+            {chatHint()}
+          </>
+        }
         onDone={props.onDone}
         onCancel={props.onCancel}
       />
