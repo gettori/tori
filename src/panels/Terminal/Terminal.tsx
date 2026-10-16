@@ -49,6 +49,7 @@ import {
   type OpenShellAt,
   NEW_SESSION,
   NEW_CHAT_AT,
+  DRAFT_INTO_NEW,
   PURGE_UNDER_PATH,
   PURGE_WORKSPACE,
   WORKSPACE_MOVED,
@@ -71,6 +72,7 @@ import {
   type OpenTerminal,
   type NewSession,
   type NewChatAt,
+  type DraftIntoNew,
   type PurgeUnderPath,
   type LiveTab,
   type SendToSession,
@@ -1073,6 +1075,7 @@ export default function Terminal(props: {
   let offOpenTerminal: (() => void) | undefined;
   let offNewSession: (() => void) | undefined;
   let offNewChatAt: (() => void) | undefined;
+  let offDraftIntoNew: (() => void) | undefined;
   let unlistenAdopt: UnlistenFn | undefined;
   let unlistenDaemon: UnlistenFn | undefined;
   let unlistenEvents: UnlistenFn | undefined;
@@ -1130,22 +1133,17 @@ export default function Terminal(props: {
       spawnSession(s.agent ?? "claude", s.folderPath, s.projectName, false);
     });
     offNewChatAt = onWith<NewChatAt>(NEW_CHAT_AT, async ({ folderPath, projectName, prompt, origin }) => {
-      // Selecting the new unit may have drafted into its empty strip once the
-      // restores are back, and the prompt takes that draft over.
+      // A reused worktree folder can have stored tabs coming back, and the
+      // draft lands after them.
       await Promise.all([stripReady(folderPath), fileStripReady(folderPath)]);
-      const auto = untouchedAutoDraft(folderPath);
-      if (auto) {
-        setDraft(auto, prompt);
-        if (origin) setDraftOrigin(auto, origin);
-        autoDrafts.delete(folderPath);
-        bringToFront(folderPath, auto);
-        return;
-      }
       const agent = draftAgent(folderPath, folderPath);
       if (!agent) return;
       const id = openChatDraft(folderPath, folderPath, projectName, agent, draftProfile(folderPath, folderPath, agent));
       setDraft(id, prompt);
       if (origin) setDraftOrigin(id, origin);
+    });
+    offDraftIntoNew = onWith<DraftIntoNew>(DRAFT_INTO_NEW, ({ folderPath, projectName }) => {
+      void draftIntoEmpty(folderPath, folderPath, projectName);
     });
     unlistenAdopt = await listen<Adoptable>("sessions://adopt", (e) => void adopt(e.payload));
     // Chats the daemon started while this window was not listening: before it
@@ -1230,6 +1228,7 @@ export default function Terminal(props: {
     offOpenTerminal?.();
     offNewSession?.();
     offNewChatAt?.();
+    offDraftIntoNew?.();
     unlistenAdopt?.();
     unlistenDaemon?.();
     unlistenEvents?.();
@@ -1463,8 +1462,6 @@ export default function Terminal(props: {
           // pane focus (phase 5) with nobody having clicked anything.
           if (prev !== undefined) revealKindPane(ws, "shell");
           void openSelectedSession(sel);
-        } else if (sel.kind !== "topic") {
-          void draftIntoEmpty(sel);
         }
       },
     ),
@@ -1477,8 +1474,8 @@ export default function Terminal(props: {
     return !tabsIn(ws).length && !(tabsByWs()[ws] ?? []).length;
   }
 
-  // The draft an empty strip was given, until the user writes in it. The next
-  // explicit open takes it over, so selecting a worktree and starting something
+  // The draft a new worktree was given, until the user writes in it. The next
+  // explicit open takes it over, so creating a worktree and starting something
   // in it at once never leaves two tabs.
   const autoDrafts = new Map<string, string>();
   function untouchedAutoDraft(ws: string): string | null {
@@ -1497,10 +1494,8 @@ export default function Terminal(props: {
     closeId(id);
   }
 
-  async function draftIntoEmpty(sel: Selection) {
-    const ws = workspaceKey(sel);
-    const root = chatRoot(sel);
-    if (!ws || !root || !(await stripEmpty(ws))) return;
+  async function draftIntoEmpty(ws: string, root: string, projectName: string) {
+    if (!(await stripEmpty(ws))) return;
     // The draft focuses its workspace, so one that resolved after the user moved
     // on would pull them back.
     if (workspaceKey(props.selected) !== ws) return;
@@ -1508,7 +1503,7 @@ export default function Terminal(props: {
     if (!agent) return;
     const profile = draftProfile(ws, root, agent);
     if (profileSignedOut(agent, profile)) return;
-    autoDrafts.set(ws, openChatDraft(ws, root, sel.projectName, agent, profile));
+    autoDrafts.set(ws, openChatDraft(ws, root, projectName, agent, profile));
   }
 
   // Extra launch args a Tori-launched session gets that an externally-typed
