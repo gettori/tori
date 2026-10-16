@@ -295,7 +295,7 @@ describe("a member's pull request", () => {
       url: "https://github.com/o/api/pull/41",
       mergeableState: "clean",
     },
-    checks: { state: failing ? "failure" : "success", total: 3, failing, contexts: [] },
+    checks: { state: failing ? "failure" : "success", total: 3, failing, skipped: 0, contexts: [] },
     reviewDecision: "none",
   });
 

@@ -28,6 +28,7 @@ function status(o: {
   checks?: CheckState;
   total?: number;
   failing?: number;
+  skipped?: number;
   review?: ReviewDecision;
 }): UnitStatus {
   return {
@@ -54,6 +55,7 @@ function status(o: {
       state: o.checks ?? "success",
       total: o.total ?? 4,
       failing: o.failing ?? 0,
+      skipped: o.skipped ?? 0,
       contexts: [],
     },
     reviewDecision: o.review ?? "reviewRequired",
@@ -63,7 +65,7 @@ function status(o: {
 const NO_PR: UnitStatus = {
   headRef: "main",
   pullRequest: null,
-  checks: { state: "none", total: 0, failing: 0, contexts: [] },
+  checks: { state: "none", total: 0, failing: 0, skipped: 0, contexts: [] },
   reviewDecision: "none",
 };
 
@@ -116,6 +118,7 @@ export const States: Story = {
             status={status({ number: 7865, checks: "failure", total: 5, failing: 1, comments: 3, openedHoursAgo: 48 })}
           />
           <BranchLine status={status({ number: 7864, checks: "pending", total: 4, openedHoursAgo: 48 })} />
+          <BranchLine status={status({ number: 7863, total: 6, skipped: 2, openedHoursAgo: 48 })} />
           <BranchLine
             status={status({
               number: 7862,

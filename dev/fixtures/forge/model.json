@@ -34,9 +34,15 @@
         "name": "lint",
         "state": "success",
         "url": null
+      },
+      {
+        "name": "docs",
+        "state": "skipped",
+        "url": null
       }
     ],
     "failing": 1,
+    "skipped": 1,
     "state": "failure",
     "total": 12
   },
@@ -189,9 +195,15 @@
               "name": "lint",
               "state": "success",
               "url": null
+            },
+            {
+              "name": "docs",
+              "state": "skipped",
+              "url": null
             }
           ],
           "failing": 1,
+          "skipped": 1,
           "state": "failure",
           "total": 12
         },
@@ -231,9 +243,15 @@
           "name": "lint",
           "state": "success",
           "url": null
+        },
+        {
+          "name": "docs",
+          "state": "skipped",
+          "url": null
         }
       ],
       "failing": 1,
+      "skipped": 1,
       "state": "failure",
       "total": 12
     },

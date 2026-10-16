@@ -43,7 +43,7 @@ const pull = (over: Partial<PullRequest> = {}): PullRequest => ({
 const status = (over: Partial<UnitStatus> = {}): UnitStatus => ({
   headRef: "wave-3",
   pullRequest: pull(),
-  checks: { state: "none", total: 0, failing: 0, contexts: [] },
+  checks: { state: "none", total: 0, failing: 0, skipped: 0, contexts: [] },
   reviewDecision: "none",
   ...over,
 });
