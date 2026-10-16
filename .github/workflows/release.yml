@@ -98,11 +98,10 @@ jobs:
     env:
       VERSION: ${{ needs.gate.outputs.version }}
       BUNDLE: src-tauri/target/${{ matrix.target }}/release/bundle
-      # Tauri's bundler reads these, plus the APPLE_SIGNING_IDENTITY the import
-      # step below sets: signs with the hardened runtime, notarizes and staples
-      # the app. notarize.sh reads the same ones for the DMG and the CLI.
-      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      # Only the key's path is job-wide. The notary credentials are given to the
+      # notarize steps alone, deliberately kept from `tauri build`: with them in
+      # its environment Tauri notarizes the .app itself, a second submission
+      # the DMG's makes redundant, with a wait that one dropped poll kills.
       APPLE_API_KEY_PATH: /tmp/tori-notary-key.p8
     steps:
       - uses: actions/checkout@v4
@@ -144,7 +143,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # Runs beforeBuildCommand, which installs the bundled LSP resources.
-      - name: Build, sign and notarize the bundle
+      - name: Build and sign the bundle
         run: pnpm tauri build --target ${{ matrix.target }}
 
       - name: Check every Mach-O is ${{ matrix.arch }} and the signature verifies
@@ -155,6 +154,9 @@ jobs:
       # filename instead of "the build produced no DMG".
       - name: Sign, notarize and staple the DMG
         id: dmg
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
           shopt -s nullglob
           dmgs=("$BUNDLE"/dmg/Tori_"$VERSION"_${{ matrix.dmg_arch }}.dmg)
@@ -169,6 +171,9 @@ jobs:
       # tag, so it ships with every release.
       - name: Pack the CLI
         id: cli
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
           path=$(.github/scripts/cli-tarball.sh "$BUNDLE/macos/Tori.app" "$VERSION" ${{ matrix.cli_arch }} "$BUNDLE/cli")
           echo "path=$path" >> "$GITHUB_OUTPUT"
