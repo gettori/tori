@@ -2,9 +2,15 @@
 // included: Tauri calls every menu handler for every menu event, so a second
 // handler would see each click twice.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use tauri::{AppHandle, Emitter, Manager};
 
 const QUIT_ID: &str = "app-quit";
+
+const QUIT_EVENT: &str = "app://quit";
+
+static QUIT_HEARD: AtomicBool = AtomicBool::new(false);
 
 const MENU_PREFIX: &str = "menu:";
 
@@ -55,13 +61,29 @@ pub fn route(app: &AppHandle, id: &str) {
     }
 }
 
+// Not `window.close()`, which only hides the window, so a quit has to say it
+// is one. A webview that never answers would otherwise make Quit do nothing.
 fn quit(app: &AppHandle) {
     match app.get_webview_window("main") {
-        Some(window) => {
-            let _ = window.close();
+        Some(_) => {
+            crate::presence::raise_window(app);
+            QUIT_HEARD.store(false, Ordering::SeqCst);
+            let _ = app.emit(QUIT_EVENT, ());
+            let app = app.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(3));
+                if !QUIT_HEARD.load(Ordering::SeqCst) {
+                    app.exit(0);
+                }
+            });
         }
         None => app.exit(0),
     }
+}
+
+#[tauri::command]
+pub fn quit_heard() {
+    QUIT_HEARD.store(true, Ordering::SeqCst);
 }
 
 #[derive(serde::Deserialize)]
