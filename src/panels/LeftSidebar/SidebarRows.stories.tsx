@@ -10,7 +10,9 @@ import type { MenuItem } from "../../components/Menu/rows";
 import type { Rollup } from "../../utils/sessionStatus";
 import type { SyncMark } from "../../utils/branchSync";
 import StatusBubble from "./StatusBubble";
-import { BranchRow, EmptyRow, GroupRow, MoreRow, ProjectRow } from "./SidebarRows";
+import type { UnitStatus } from "../../utils/forgeTypes";
+import BranchLine from "./BranchLine";
+import { BranchRow, EmptyRow, GroupRow, MoreRow, ProjectRow, TrunkRow, attemptGroup, stackGroup } from "./SidebarRows";
 import rows from "./SidebarRows.module.css";
 
 const MENU: MenuItem[] = [
@@ -405,8 +407,7 @@ export const AttemptGroupClosed: Story = {
         <ProjectRow name="api" icon={<ProjectIcon seed="/w/api" />} disclosure open menu={MENU}>
           <BranchRow label="main" icon={<BranchMark active={false} />} menu={MENU} />
           <GroupRow
-            goal="Make the importer idempotent"
-            count={3}
+            {...attemptGroup("Make the importer idempotent", 3)}
             open={false}
             end={bubble({ executing: 2, idle: 1 })}
           />
@@ -425,7 +426,7 @@ export const AttemptGroupOpen: Story = {
       <Tree>
         <ProjectRow name="api" icon={<ProjectIcon seed="/w/api" />} disclosure open menu={MENU}>
           <BranchRow label="main" icon={<BranchMark active={false} />} menu={MENU} />
-          <GroupRow goal="Make the importer idempotent" count={3} open>
+          <GroupRow {...attemptGroup("Make the importer idempotent", 3)} open>
             <BranchRow
               nested
               label="importer-1"
@@ -449,6 +450,90 @@ export const AttemptGroupOpen: Story = {
               end={bubble({ idle: 1 })}
             />
           </GroupRow>
+        </ProjectRow>
+      </Tree>
+    ),
+  ],
+};
+
+function layer(number: number, position: number): UnitStatus {
+  return {
+    headRef: `stack/${position}`,
+    pullRequest: {
+      number,
+      title: `Layer ${position}`,
+      body: null,
+      state: "open",
+      isDraft: false,
+      createdAt: new Date(Date.now() - 20 * 3600_000).toISOString(),
+      mergedAt: null,
+      closedAt: null,
+      comments: 0,
+      author: "skarif",
+      headRef: `stack/${position}`,
+      baseRef: "main",
+      headSha: "abc1234",
+      headRepoIsOrigin: true,
+      url: `https://github.com/gettori/tori/pull/${number}`,
+      mergeableState: "clean",
+      stack: { number: 470, size: 3, position, baseRef: "main" },
+    },
+    checks: { state: "success", total: 4, failing: 0, skipped: 0, contexts: [] },
+    reviewDecision: "reviewRequired",
+  };
+}
+
+/** A stack, open: its layers top first one indent in, then the branch it lands
+ *  on, the way GitHub's stack map draws it. The rail runs down the layers and
+ *  stops on the trunk row; the branch after the group keeps the outer rail. */
+export const StackGroupOpen: Story = {
+  decorators: [
+    () => (
+      <Tree>
+        <ProjectRow name="api" icon={<ProjectIcon seed="/w/api" />} disclosure open menu={MENU}>
+          <BranchRow label="main" icon={<BranchMark active={false} />} menu={MENU} />
+          <GroupRow {...stackGroup(3, "main")} open>
+            <BranchRow
+              nested
+              label="feat/ui"
+              icon={<WorktreeMark active={false} />}
+              menu={MENU}
+              meta={<BranchLine status={layer(475, 3)} />}
+            />
+            <BranchRow
+              nested
+              label="feat/api"
+              icon={<WorktreeMark active />}
+              selected
+              menu={MENU}
+              meta={<BranchLine status={layer(472, 2)} />}
+              end={bubble({ executing: 1 })}
+            />
+            <BranchRow
+              nested
+              label="feat/schema"
+              icon={<WorktreeMark active={false} />}
+              menu={MENU}
+              meta={<BranchLine status={layer(471, 1)} />}
+            />
+            <TrunkRow name="main" />
+          </GroupRow>
+          <BranchRow label="chore/bump-deps" icon={<WorktreeMark active={false} />} menu={MENU} />
+        </ProjectRow>
+      </Tree>
+    ),
+  ],
+};
+
+/** Closed, the header carries the rollup for every layer under it. */
+export const StackGroupClosed: Story = {
+  decorators: [
+    () => (
+      <Tree>
+        <ProjectRow name="api" icon={<ProjectIcon seed="/w/api" />} disclosure open menu={MENU}>
+          <BranchRow label="main" icon={<BranchMark active={false} />} menu={MENU} />
+          <GroupRow {...stackGroup(3, "main")} open={false} end={bubble({ executing: 1, idle: 2 })} />
+          <BranchRow label="chore/bump-deps" icon={<WorktreeMark active={false} />} menu={MENU} />
         </ProjectRow>
       </Tree>
     ),

@@ -275,6 +275,15 @@
   background: transparent;
 }
 
+.row.trunkRow,
+.row.trunkRow .rowIcon {
+  color: var(--fg-subtle);
+  cursor: default;
+}
+.row.trunkRow:hover {
+  background: transparent;
+}
+
 .row .label {
   flex: 1 1 auto;
   min-width: 0;
