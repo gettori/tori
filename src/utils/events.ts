@@ -656,6 +656,12 @@ export type NewChatAt = {
   origin?: DraftOrigin;
 };
 
+// Payload-carrying event: open an empty chat draft in a worktree the sidebar
+// just created, if nothing comes back into its strip. Selecting an existing
+// worktree never drafts.
+export const DRAFT_INTO_NEW = "tori:draft-into-new";
+export type DraftIntoNew = { folderPath: string; projectName: string };
+
 // Payload-carrying event: tear down everything rooted under a path (used when a
 // space is deleted). The terminal area kills + closes PTY tabs whose cwd is under
 // it; the editor pane closes buffers under it. Emitted before the native delete so

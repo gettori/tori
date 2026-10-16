@@ -62,6 +62,7 @@ import {
   OPEN_JOB,
   NEW_SESSION,
   NEW_CHAT_AT,
+  DRAFT_INTO_NEW,
   PURGE_UNDER_PATH,
   TERMINAL_TAB_FOCUSED,
   ADD_BRANCH_UNIT,
@@ -71,6 +72,7 @@ import {
   type OpenJob,
   type NewSession,
   type NewChatAt,
+  type DraftIntoNew,
   type PurgeUnderPath,
   type LiveTab,
   type TerminalTabFocused,
@@ -1994,7 +1996,8 @@ export default function LeftSidebar(props: {
         });
         setBranchReq(null);
         await loadConfig();
-        selectUnitIn(p, (u) => samePath(u.folderPath, folder));
+        const unit = selectUnitIn(p, (u) => samePath(u.folderPath, folder));
+        emitWith<DraftIntoNew>(DRAFT_INTO_NEW, { folderPath: unit?.folderPath ?? folder, projectName: p.name });
         return;
       }
       if (pick.kind === "remote") {
