@@ -19,6 +19,7 @@ import {
   emit,
   emitWith,
   CHECK_UPDATES,
+  OPEN_ABOUT,
   FOCUS_SEARCH,
   FOCUS_TERMINAL,
   FOCUS_TOASTS,
@@ -348,6 +349,12 @@ export const COMMANDS: Command[] = [
     label: "Check for updates",
     group: "help",
     run: () => emit(CHECK_UPDATES),
+  },
+  {
+    id: "about",
+    label: "About Tori",
+    group: "help",
+    run: () => emit(OPEN_ABOUT),
   },
   {
     id: "review-inbox",

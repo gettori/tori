@@ -114,6 +114,20 @@ fn startup_spec() -> Vec<MenuSpec> {
     ]
 }
 
+#[derive(serde::Serialize)]
+pub struct AboutInfo {
+    version: String,
+    commit: Option<&'static str>,
+}
+
+#[tauri::command]
+pub fn about_info(app: AppHandle) -> AboutInfo {
+    AboutInfo {
+        version: app.package_info().version.to_string(),
+        commit: Some(env!("TORI_COMMIT")).filter(|c| !c.is_empty()),
+    }
+}
+
 #[tauri::command]
 pub async fn set_app_menu(app: AppHandle, spec: Vec<MenuSpec>) -> Result<(), String> {
     #[cfg(target_os = "macos")]
@@ -132,22 +146,13 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
 // question, so Cmd+Q is swapped for one that closes the window instead.
 #[cfg(target_os = "macos")]
 fn build(app: &AppHandle, spec: &[MenuSpec]) -> tauri::Result<()> {
-    use tauri::menu::{
-        AboutMetadata, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID, WINDOW_SUBMENU_ID,
-    };
+    use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID, WINDOW_SUBMENU_ID};
 
     let item = |id: &str, label: &str, accelerator: Option<&str>| {
         MenuItem::with_id(app, format!("{MENU_PREFIX}{id}"), label, true, accelerator)
     };
     let separator = || PredefinedMenuItem::separator(app);
     let name = app.package_info().name.clone();
-    let about = AboutMetadata {
-        name: Some(name.clone()),
-        version: Some(app.package_info().version.to_string()),
-        copyright: app.config().bundle.copyright.clone(),
-        authors: app.config().bundle.publisher.clone().map(|p| vec![p]),
-        ..Default::default()
-    };
     let menu = Menu::with_items(
         app,
         &[&Submenu::with_items(
@@ -155,7 +160,7 @@ fn build(app: &AppHandle, spec: &[MenuSpec]) -> tauri::Result<()> {
             &name,
             true,
             &[
-                &PredefinedMenuItem::about(app, None, Some(about))?,
+                &item("about", &format!("About {name}"), None)?,
                 &separator()?,
                 &item("open-settings", "Settings...", None)?,
                 &item("check-updates", "Check for Updates...", None)?,
