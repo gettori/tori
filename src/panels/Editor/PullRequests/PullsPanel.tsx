@@ -37,6 +37,7 @@ import {
   ChevronUp,
   CircleCheck,
   CircleDot,
+  CircleSlash,
   CircleX,
   FileStack,
   FileText,
@@ -60,7 +61,7 @@ import {
   type PrOpened,
   type RemoveBranchUnit,
 } from "../../../utils/events";
-import { forgeChip, forgeDoor } from "../../../utils/forgeChip";
+import { checksSentence, forgeChip, forgeDoor } from "../../../utils/forgeChip";
 import { gitStateFor } from "../../../utils/gitActions";
 import { createPrFlow } from "../../../utils/prCreateFlow";
 import { stepKeys } from "../../../utils/keyNav";
@@ -132,15 +133,11 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 function checksLine(checks: CheckRollup): { tone: "good" | "bad" | "busy"; text: string; icon: LucideIcon } | null {
   switch (checks.state) {
     case "failure":
-      return {
-        tone: "bad",
-        icon: CircleX,
-        text: `${checks.failing} of ${plural(checks.total, "check")} failing`,
-      };
+      return { tone: "bad", icon: CircleX, text: checksSentence(checks) };
     case "pending":
       return { tone: "busy", icon: Loader, text: "Checks running" };
     case "success":
-      return { tone: "good", icon: CircleCheck, text: `${plural(checks.total, "check")} passed` };
+      return { tone: "good", icon: CircleCheck, text: checksSentence(checks) };
     default:
       return null;
   }
@@ -1234,6 +1231,7 @@ const CHECK_GROUPS: {
 }[] = [
   { state: "failure", icon: CircleX, title: (n) => `${plural(n, "failing check")}` },
   { state: "pending", icon: Loader, title: (n) => `${plural(n, "check")} running` },
+  { state: "skipped", icon: CircleSlash, title: (n) => `${plural(n, "check")} skipped` },
   { state: "success", icon: CircleCheck, title: (n) => `${plural(n, "successful check")}` },
   { state: "none", icon: CircleDot, title: (n) => `${plural(n, "check")} with no result` },
 ];

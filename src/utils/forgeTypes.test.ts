@@ -200,11 +200,11 @@ describe("needsAttention", () => {
   const unit = (over: Partial<UnitStatus>): UnitStatus => ({
     headRef: "wave-3",
     pullRequest: null,
-    checks: { state: "success", total: 3, failing: 0, contexts: [] },
+    checks: { state: "success", total: 3, failing: 0, skipped: 0, contexts: [] },
     reviewDecision: "none",
     ...over,
   });
-  const failed: CheckRollup = { state: "failure", total: 3, failing: 1, contexts: [] };
+  const failed: CheckRollup = { state: "failure", total: 3, failing: 1, skipped: 0, contexts: [] };
   const pr = (author: string, number = 45) => ({ number, author }) as PullRequest;
   const me = { viewer: "skarif2", requested: [] };
 
@@ -214,9 +214,13 @@ describe("needsAttention", () => {
 
     // Pending is not a needs-you moment: CI that has not finished is not CI that
     // failed, and treating it as one would fire the tray on every push.
-    expect(needsAttention(unit({ checks: { state: "pending", total: 3, failing: 0, contexts: [] } }), me)).toBe(false);
+    expect(
+      needsAttention(unit({ checks: { state: "pending", total: 3, failing: 0, skipped: 0, contexts: [] } }), me),
+    ).toBe(false);
     // Neither is a repo with no CI at all.
-    expect(needsAttention(unit({ checks: { state: "none", total: 0, failing: 0, contexts: [] } }), me)).toBe(false);
+    expect(
+      needsAttention(unit({ checks: { state: "none", total: 0, failing: 0, skipped: 0, contexts: [] } }), me),
+    ).toBe(false);
     expect(needsAttention(unit({}), me)).toBe(false);
     expect(needsAttention(unit({ reviewDecision: "reviewRequired" }), me)).toBe(false);
   });
