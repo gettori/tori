@@ -26,7 +26,9 @@ FILE="${1:?usage: notarize.sh <dmg or zip>}"
 
 case "$FILE" in
   *.dmg)
-    codesign --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$FILE"
+    # --force: Tauri's bundler already signs the DMG, and codesign refuses to
+    # sign over an existing signature without it.
+    codesign --force --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$FILE"
     ;;
   *.zip) ;;
   *)
