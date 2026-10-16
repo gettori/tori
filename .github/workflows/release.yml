@@ -83,8 +83,10 @@ jobs:
     if: needs.gate.outputs.release == 'true'
     runs-on: macos-14
     environment: release
+    # Not fail-fast: a flake on one arch must not throw away the other's
+    # notarization wait, and a re-run of the failed jobs then rebuilds one.
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         include:
           - target: aarch64-apple-darwin
@@ -143,8 +145,18 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # Runs beforeBuildCommand, which installs the bundled LSP resources.
+      # Retried because Tauri's bundle_dmg.sh lays the DMG window out through
+      # Finder with AppleScript, and Finder on a GitHub runner fails that now
+      # and then with no output; a second pass costs seconds, since the Rust
+      # build is already done.
       - name: Build and sign the bundle
-        run: pnpm tauri build --target ${{ matrix.target }}
+        run: |
+          for attempt in 1 2 3; do
+            pnpm tauri build --verbose --target ${{ matrix.target }} && exit 0
+            echo "::warning::tauri build attempt $attempt failed, retrying"
+            sleep 15
+          done
+          exit 1
 
       - name: Check every Mach-O is ${{ matrix.arch }} and the signature verifies
         run: .github/scripts/check-bundle.sh "$BUNDLE/macos/Tori.app" ${{ matrix.arch }}
