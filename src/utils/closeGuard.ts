@@ -1,12 +1,8 @@
 // What a quit has to get past before the window goes away.
 //
-// There is exactly one `onCloseRequested` listener in the app, and it lives in
-// the editor: it is the panel with unsaved buffers to lose, and its `onMount` is
-// where the window listeners already are. Two listeners cannot share a window,
-// which is the reason this registry exists rather than a second handler. Tauri
-// hands each listener its own event object and destroys the window after any
-// handler that did not call `preventDefault` - so a panel with nothing to say
-// about the quit would close it out from under the one still asking.
+// A registry rather than a second `app://quit` listener: two listeners would
+// each run their own prompts and destroy the window on their own answer. The
+// one listener is the editor's, the panel with unsaved buffers to lose.
 export type CloseGuard = () => boolean | Promise<boolean>;
 
 const guards = new Set<CloseGuard>();

@@ -570,6 +570,7 @@ pub fn run() {
             scratch::scratch_remove,
             app_menu::set_app_menu,
             app_menu::about_info,
+            app_menu::quit_heard,
             update::check_for_update,
             update::check_for_update_now,
             update::open_releases_page,
@@ -762,6 +763,10 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Ready = event {
                 set_dock_icon();
+            }
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                presence::raise_window(app);
             }
             if let tauri::RunEvent::Exit = event {
                 credential::unpublish();

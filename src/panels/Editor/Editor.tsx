@@ -2565,6 +2565,7 @@ export default function Editor(props: {
   let offPurge: (() => void) | undefined;
   let offPurgeWs: (() => void) | undefined;
   let offClose: (() => void) | undefined;
+  let offQuit: UnlistenFn | undefined;
   let offFollow: UnlistenFn | undefined;
   let offProjectSearch: (() => void) | undefined;
   let offSetRightMode: (() => void) | undefined;
@@ -2792,20 +2793,28 @@ export default function Editor(props: {
       if (!followEdits()) return;
       if (external.length) openFile(external[external.length - 1]);
     });
-    // Unsaved-buffer guard on app close. window.confirm can't run here, so always
-    // block the close first, then destroy the window ourselves if the user confirms
-    // (destroy bypasses this handler, so there is no re-prompt loop).
+    // The red button only hides the window: sessions live in the daemon and the
+    // tray stays, so closing is not leaving. Hot exit writes on the way out of
+    // sight, because a hidden window can sit for days and then die unasked.
     offClose = await getCurrentWindow().onCloseRequested(async (event) => {
+      event.preventDefault();
+      flushDeferredWrites();
+      await getCurrentWindow().hide();
+      if (!editorDefaults().hotExit) return;
+      const anyDirty = Object.values(dirty()).some(Boolean);
+      const kept = anyDirty ? await requestStash() : await saveStash(stashToWrite({}));
+      if (!kept) console.error("the hot-exit stash was not written on hide");
+    });
+    // window.confirm can't run here, so the window is destroyed by hand once
+    // the user confirms.
+    offQuit = await listen("app://quit", async () => {
+      void invoke("quit_heard");
       // Before any branch: every exit below is `destroy()`, which skips
       // `beforeunload`, and the layout stores write on a debounce now.
       flushDeferredWrites();
-      // Block first, unconditionally. Everything under this line is async, and
-      // a handler that returns before it has decided has already let the window
-      // go: Tauri destroys as soon as the handler settles without a prevent.
-      event.preventDefault();
       // The app's own quit question comes before the editor's: a refused quit
       // must not have stashed buffers or asked about them on the way out. The
-      // guards are registered elsewhere (App.tsx); this is the only close
+      // guards are registered elsewhere (App.tsx); this is the only quit
       // listener in the app, see utils/closeGuard.
       if (!(await closeAllowed())) return;
       const anyDirty = Object.values(dirty()).some(Boolean);
@@ -2856,6 +2865,7 @@ export default function Editor(props: {
     offPurge?.();
     offPurgeWs?.();
     offClose?.();
+    offQuit?.();
     offFollow?.();
     offProjectSearch?.();
     offSetRightMode?.();

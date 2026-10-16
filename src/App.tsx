@@ -455,10 +455,9 @@ function App() {
   const [shortcutsOpen, setShortcutsOpen] = createSignal(false);
   const [aboutOpen, setAboutOpen] = createSignal(false);
 
-  // Quitting has no undo, and the red traffic light sits a few pixels from the
-  // sidebar toggle, so the app asks first. A close *guard* rather than a second
-  // `onCloseRequested`: only one listener can own the window's close (see
-  // utils/closeGuard), and the editor's unsaved-buffer prompt is already it.
+  // Quitting has no undo, so the app asks first. A close *guard* rather than a
+  // second quit listener: only one can own the quit (see utils/closeGuard), and
+  // the editor's unsaved-buffer prompt is already it.
   // This runs ahead of that one, so a cancelled quit never reaches the buffers.
   const [quitReq, setQuitReq] = createSignal<ConfirmReq | null>(null);
   const [stopSessions, setStopSessions] = createSignal(false);

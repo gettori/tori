@@ -1,4 +1,4 @@
-// What the window's close handler does with unsaved buffers.
+// What the quit handler does with unsaved buffers.
 //
 // One decision, three outcomes, and only the middle one is obvious: skip the
 // "unsaved edits will be lost" confirm when hot exit kept the work, show it
@@ -43,19 +43,19 @@ vi.mock("@tauri-apps/api/core", () => ({
     }
   },
 }));
-vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}) }));
-
-// The close handler the app registers, plus whether it went through with the
-// quit. `destroy` is the only observable "the window actually closed", since
-// the handler always preventDefaults first.
-let onClose: ((e: { preventDefault: () => void }) => unknown) | null = null;
+// The quit handler the app registers, plus whether it went through with the
+// quit. `destroy` is the only observable "the window actually closed".
+let onQuit: (() => unknown) | null = null;
 let destroyed = 0;
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: (name: string, fn: () => unknown) => {
+    if (name === "app://quit") onQuit = fn;
+    return Promise.resolve(() => {});
+  },
+}));
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({
-    onCloseRequested: (fn: (e: { preventDefault: () => void }) => unknown) => {
-      onClose = fn;
-      return Promise.resolve(() => {});
-    },
+    onCloseRequested: () => Promise.resolve(() => {}),
     destroy: () => {
       destroyed++;
       return Promise.resolve();
@@ -109,7 +109,7 @@ async function mountWithDirtyFile() {
       <PaneView pinKind="file" />
     </>
   ));
-  await waitFor(() => expect(onClose).not.toBeNull());
+  await waitFor(() => expect(onQuit).not.toBeNull());
   emitWith(OPEN_IN_EDITOR, { path: FILE });
   await waitFor(() => expect(screen.queryByText(EMPTY_PANE)).toBeNull());
   // Wait for the app's own dirty mark, not merely for the tab. The stubbed pane
@@ -119,7 +119,7 @@ async function mountWithDirtyFile() {
 }
 
 /**
- * Ask the window to close, the way the titlebar button does.
+ * Ask the app to quit, the way Cmd+Q and the tray's Quit do.
  *
  * Returns without awaiting the handler, and that is not laziness: on every path
  * that reaches the confirm dialog the handler is parked on a promise nobody
@@ -127,10 +127,8 @@ async function mountWithDirtyFile() {
  * Tests that expect the dialog wait for the dialog; the one that expects a
  * clean close awaits `done`.
  */
-function requestClose() {
-  let prevented = false;
-  const done = onClose!({ preventDefault: () => (prevented = true) });
-  return { done, wasPrevented: () => prevented };
+function requestQuit() {
+  return { done: onQuit!() };
 }
 
 beforeEach(async () => {
@@ -144,7 +142,7 @@ beforeEach(async () => {
   stashLands = true;
   destroyed = 0;
   saved = [];
-  onClose = null;
+  onQuit = null;
   await loadSettings();
 });
 afterEach(() => {
@@ -154,15 +152,14 @@ afterEach(() => {
   mounted = null;
 });
 
-describe("closing the window with unsaved edits", () => {
+describe("quitting with unsaved edits", () => {
   it("goes straight through once hot exit has kept the work", async () => {
     answerStashWith(true);
     await mountWithDirtyFile();
 
-    const closing = requestClose();
+    const closing = requestQuit();
     await closing.done;
 
-    expect(closing.wasPrevented(), "the handler took over the close").toBe(true);
     expect(screen.queryByText(CONFIRM)).toBeNull();
     expect(destroyed).toBe(1);
   });
@@ -173,7 +170,7 @@ describe("closing the window with unsaved edits", () => {
     answerStashWith(stashLands);
     await mountWithDirtyFile();
 
-    requestClose();
+    requestQuit();
 
     await waitFor(() => expect(screen.getByText(CONFIRM)).toBeTruthy());
     expect(destroyed).toBe(0);
@@ -186,7 +183,7 @@ describe("closing the window with unsaved edits", () => {
     await mountWithDirtyFile();
 
     vi.useFakeTimers();
-    requestClose();
+    requestQuit();
     await vi.advanceTimersByTimeAsync(6000);
     vi.useRealTimers();
 
@@ -201,7 +198,7 @@ describe("closing the window with unsaved edits", () => {
     offStash = onWith<{ requestId: string }>(EDITOR_STASH_DIRTY, ({ requestId }) => asked.push(requestId));
     await mountWithDirtyFile();
 
-    requestClose();
+    requestQuit();
 
     await waitFor(() => expect(screen.getByText(CONFIRM)).toBeTruthy());
     expect(asked, "the editor was never even asked to stash").toEqual([]);
@@ -226,14 +223,13 @@ describe("closing the window with unsaved edits", () => {
         <PaneView pinKind="file" />
       </>
     ));
-    await waitFor(() => expect(onClose).not.toBeNull());
+    await waitFor(() => expect(onQuit).not.toBeNull());
 
-    const closing = requestClose();
+    const closing = requestQuit();
     await closing.done;
 
     expect(saved, "the stash was rewritten even though nothing was dirty").toEqual([{}]);
     expect(asked, "nothing waited on a pane").toEqual([]);
-    expect(closing.wasPrevented()).toBe(true);
     // Closed on its own, with no "unsaved edits will be lost" prompt in the way.
     await waitFor(() => expect(destroyed).toBe(1));
     expect(screen.queryByText(CONFIRM)).toBeNull();
@@ -241,11 +237,7 @@ describe("closing the window with unsaved edits", () => {
 
   it("closes without a word when hot exit is off and nothing is dirty", async () => {
     // With the key off there is no stash to keep current, so there is nothing
-    // worth asking about. The close is still taken over rather than let
-    // through: the handler blocks first on every path, because the app's own
-    // quit guards (utils/closeGuard) are consulted asynchronously and a handler
-    // that returned unprevented would have closed the window before they
-    // answered. So "out of the way" is measured as a silent destroy.
+    // worth asking about. So "out of the way" is measured as a silent destroy.
     hotExit = false;
     await loadSettings();
     mounted = render(() => (
@@ -254,12 +246,11 @@ describe("closing the window with unsaved edits", () => {
         <PaneView pinKind="file" />
       </>
     ));
-    await waitFor(() => expect(onClose).not.toBeNull());
+    await waitFor(() => expect(onQuit).not.toBeNull());
 
-    const closing = requestClose();
+    const closing = requestQuit();
     await closing.done;
 
-    expect(closing.wasPrevented()).toBe(true);
     await waitFor(() => expect(destroyed).toBe(1));
     expect(screen.queryByText(CONFIRM)).toBeNull();
   });
