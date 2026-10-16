@@ -328,13 +328,18 @@ jobs:
         run: |
           flags=(--draft --verify-tag)
           case "$VERSION" in *-*) flags+=(--prerelease) ;; esac
+          # The artifacts keep their dmg/ and cli/ folders, so by file, not
+          # by assets/*, which would hand gh two directories.
+          files=()
+          while IFS= read -r f; do files+=("$f"); done < <(find assets -type f | sort)
+          [ ${#files[@]} -eq 5 ] || { echo "expected 5 assets, found ${#files[@]}:" >&2; printf '  %s\n' "${files[@]}" >&2; exit 1; }
           gh release create "v$VERSION" \
             --repo "$GITHUB_REPOSITORY" \
             "${flags[@]}" \
             --title "Tori v$VERSION" \
             --notes-file release-notes.md \
-            assets/*
-          want=$(ls assets | sort)
+            "${files[@]}"
+          want=$(printf '%s\n' "${files[@]}" | xargs -n1 basename | sort)
           have=$(gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' | sort)
           if [ "$want" != "$have" ]; then
             echo "the draft is missing an asset; have:" >&2
