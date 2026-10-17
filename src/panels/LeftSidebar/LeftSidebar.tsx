@@ -13,6 +13,7 @@ import {
 } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { isLocked } from "../../utils/autopilotStore";
+import { openPort, portsAt } from "../../utils/portsStore";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { homeDir } from "@tauri-apps/api/path";
@@ -2865,6 +2866,7 @@ export default function LeftSidebar(props: {
     // too is the one mark that matters most while the agent is still writing.
     const overlap = () => (u.kind !== "plain" || u.isCurrent ? overlapMark(overlapsAt(u.folderPath)) : null);
     const marks = createMemo(() => withOverlap(held() ? [] : syncMarks(sync(), finished()), overlap()));
+    const listening = portsAt(u.folderPath);
     // One hover target for the whole run rather than one per glyph: they are
     // 13px each, none of them is focusable, and the reader wants the branch's
     // standing in one place rather than four hovers to assemble it.
@@ -2901,6 +2903,24 @@ export default function LeftSidebar(props: {
         }
         end={
           <>
+            <For each={listening()}>
+              {(port) => (
+                <Tooltip
+                  as="button"
+                  type="button"
+                  class={rows.portChip}
+                  aria-label={`Open localhost:${port}`}
+                  label={`Listening on localhost:${port}`}
+                  data-port-chip={port}
+                  onClick={(e: MouseEvent) => {
+                    e.stopPropagation();
+                    openPort(port);
+                  }}
+                >
+                  {`:${port}`}
+                </Tooltip>
+              )}
+            </For>
             <Show when={u.issue}>
               {(issue) => (
                 <Tooltip

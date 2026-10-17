@@ -393,6 +393,7 @@ pub fn pty_spawn(
             quiet_ms,
             env: crate::credential::spawn_env()
                 .into_iter()
+                .chain(crate::ports::env_for(std::path::Path::new(&cwd)))
                 .chain(env.into_iter().flatten())
                 .collect(),
             agent: agent_id.clone(),

@@ -101,6 +101,11 @@ struct Server {
 pub struct DapState(Mutex<HashMap<DapServerId, Server>>);
 
 impl DapState {
+    pub fn pids(&self) -> Vec<u32> {
+        let servers = self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        servers.values().map(|s| s.child.id()).collect()
+    }
+
     /// Stop every adapter and everything it launched.
     ///
     /// Called on app exit, and this one is not optional the way it would be for
