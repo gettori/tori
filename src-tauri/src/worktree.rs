@@ -925,6 +925,7 @@ pub(crate) fn do_remove_worktree(repo_path: &str, worktree_path: &str, force: bo
     }
     let folder = Path::new(worktree_path);
     crate::setup::kill(folder);
+    crate::run::stop(folder);
     if folder.is_dir() && crate::setup::has_teardown(repo_path) && not_a_fork(folder) {
         crate::setup::teardown(repo_path, folder);
     }
@@ -1744,6 +1745,46 @@ mod tests {
         let b = create_worktree_in(&repo_s, "b", &cont, None).unwrap();
         do_remove_worktree(&repo_s, &b.to_string_lossy(), true).unwrap();
         assert!(!b.exists(), "a failed teardown does not stop the removal");
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn removal_stops_a_live_run_before_teardown() {
+        let tmp = std::fs::canonicalize(unique_tmp()).unwrap();
+        let repo = tmp.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        git(&repo, &["init", "-q"]);
+        git(&repo, &["config", "user.email", "t@t.t"]);
+        git(&repo, &["config", "user.name", "t"]);
+        std::fs::write(repo.join("a.txt"), "hi").unwrap();
+        git(&repo, &["add", "."]);
+        git(&repo, &["commit", "-qm", "init"]);
+        let cont = tmp.join("cont");
+        std::fs::create_dir_all(&cont).unwrap();
+        let repo_s = repo.to_string_lossy().into_owned();
+        let order = tmp.join("order");
+        let mut prefs = std::collections::HashMap::new();
+        prefs.insert(
+            repo_s.clone(),
+            crate::settings::WorktreePrefs {
+                run_command: format!(
+                    "trap \"echo stopped >> '{0}'; exit 0\" TERM; while true; do sleep 0.1; done",
+                    order.display()
+                ),
+                teardown_command: format!("echo teardown >> '{}'", order.display()),
+                ..Default::default()
+            },
+        );
+        crate::setup::seam(prefs, tmp.join("logs"));
+
+        let wt = create_worktree_in(&repo_s, "a", &cont, None).unwrap();
+        crate::run::start(&repo_s, &wt).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let pgid = crate::setup::shared().pid(&wt, crate::setup::Kind::Run).unwrap();
+        do_remove_worktree(&repo_s, &wt.to_string_lossy(), true).unwrap();
+        assert!(!crate::setup::signal_group(pgid, 0), "the run outlived its worktree");
+        assert_eq!(std::fs::read_to_string(&order).unwrap(), "stopped\nteardown\n");
 
         std::fs::remove_dir_all(&tmp).ok();
     }

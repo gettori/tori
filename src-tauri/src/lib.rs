@@ -61,6 +61,7 @@ mod radar;
 mod review;
 mod review_rule;
 mod rpc;
+mod run;
 mod scratch;
 mod search;
 mod second_opinion;
@@ -238,6 +239,7 @@ pub fn run() {
             }
 
             setup::set_publisher(app.handle().clone());
+            run::at_launch();
 
             app.manage(rpc::start(app.handle().clone()));
             rpc::attached::watch(app.handle().clone());
@@ -697,6 +699,9 @@ pub fn run() {
             worktree::worktree_status,
             worktree::branch_status,
             worktree::remove_worktree,
+            run::run_start,
+            run::run_stop,
+            run::run_list,
             worktree::prune_worktree_records,
             worktree::remove_worktree_and_branch,
             worktree_cleanup::worktree_cleanup_facts,
@@ -779,6 +784,7 @@ pub fn run() {
             }
             if let tauri::RunEvent::Exit = event {
                 credential::unpublish();
+                run::stop_all();
                 // And every debug adapter. A language server is a plain child
                 // and goes with the process; an adapter is deliberately put in
                 // its own process group so that killing it takes the debuggee
