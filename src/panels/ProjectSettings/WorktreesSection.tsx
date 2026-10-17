@@ -51,8 +51,9 @@ const STATE_WORD: Record<LinkState, string> = {
 };
 
 /**
- * What every worktree of a container gets: the commands it runs when created
- * and removed, and the files shared into it, as a section rather than a tree.
+ * What every worktree of a container gets: the commands it runs when created,
+ * on demand and when removed, and the files shared into it, as a section
+ * rather than a tree.
  *
  * The folder is a tree, but the thing worth seeing is not its contents: it is
  * where each entry did and did not land. Linking runs once, when a worktree is
@@ -233,6 +234,26 @@ export default function WorktreesSection(props: { workspace: string }) {
             checked={setup().setupWait}
             onChange={(on) => saveSetup({ setupWait: on })}
             aria-label="Agents started over the socket wait for it"
+          />
+        </Row>
+        <Row
+          stack
+          label="Run command"
+          hint={
+            <>
+              Started and stopped by hand from a worktree's row or the palette, a dev server usually. Runs in the
+              background with <code>sh -c</code>, its output in a log, with <code>TORI_PORT</code> set. A fork's pull
+              request never runs it.
+            </>
+          }
+        >
+          <input
+            type="text"
+            class={`${s.input} ${s.text}`}
+            aria-label="Run command"
+            value={setup().runCommand}
+            placeholder="pnpm dev --port $TORI_PORT"
+            onChange={(e) => saveSetup({ runCommand: e.currentTarget.value.trim() })}
           />
         </Row>
         <Row

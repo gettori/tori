@@ -24,6 +24,8 @@ import {
   FOCUS_TERMINAL,
   FOCUS_TOASTS,
   RUN_LAST_TASK,
+  START_RUN,
+  STOP_RUN,
   DEBUG_START,
   DEBUG_STOP,
   DEBUG_TOGGLE_BREAKPOINT,
@@ -170,7 +172,12 @@ export type Requirement =
   /** The active file's server advertises this provider. Hides when unmet, for
    *  `sourceActions`' reason. */
   | "implementationProvider"
-  | "typeDefinitionProvider";
+  | "typeDefinitionProvider"
+  /** The worktree in front belongs to a project with a run command. Hides
+   *  when unmet, since most projects never set one. */
+  | "runCommand"
+  | "runIdle"
+  | "runLive";
 
 export type Command = {
   id: string;
@@ -538,6 +545,20 @@ export const COMMANDS: Command[] = [
     scope: "global",
     match: cmdShift("b"),
     run: () => emit(RUN_LAST_TASK),
+  },
+  {
+    id: "run-command-start",
+    label: "Start the run command",
+    group: "terminal",
+    requires: ["runCommand", "runIdle"],
+    run: () => emit(START_RUN),
+  },
+  {
+    id: "run-command-stop",
+    label: "Stop the run command",
+    group: "terminal",
+    requires: ["runCommand", "runLive"],
+    run: () => emit(STOP_RUN),
   },
   {
     id: "tab-jump",

@@ -41,6 +41,9 @@ const EMPTY: EditorSnapshot = {
 const [editorState, setEditorState] = createSignal<EditorSnapshot>(EMPTY);
 export { editorState };
 
+/** The worktree the palette's per-worktree commands act on. */
+export const frontWorktree = (): string | null => editorState().projectRoot;
+
 /** Called by Editor.tsx from an effect over the state it already owns. */
 export function publishEditorState(next: EditorSnapshot) {
   setEditorState(next);

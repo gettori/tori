@@ -702,6 +702,7 @@ pub fn run() {
             run::run_start,
             run::run_stop,
             run::run_list,
+            worktree::worktree_not_a_fork,
             worktree::prune_worktree_records,
             worktree::remove_worktree_and_branch,
             worktree_cleanup::worktree_cleanup_facts,

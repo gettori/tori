@@ -20,6 +20,8 @@ export type CleanupInput = {
   merged: boolean;
   /** A live tab or a detached session is working in the folder. */
   busy: boolean;
+  /** The project's run command is live in the folder, which no tab shows. */
+  running: boolean;
   selectedRoot: string | null;
   openPaths: readonly string[];
   autopilotWorktrees: readonly string[];
@@ -43,6 +45,7 @@ export function cleanupVerdict(i: CleanupInput): CleanupVerdict {
   if (!mergeRule && !idleRule) return keep("no rule applies");
   if (facts.dirty) return keep("uncommitted changes");
   if (i.busy) return keep("a session is working in it");
+  if (i.running) return keep("its run command is running");
   if (i.selectedRoot && isUnderPath(i.selectedRoot, facts.path)) return keep("it is the selected folder");
   if (i.openPaths.some((p) => isUnderPath(p, facts.path))) return keep("a tab is open in it");
   if (i.autopilotWorktrees.some((w) => isUnderPath(w, facts.path) || isUnderPath(facts.path, w)))

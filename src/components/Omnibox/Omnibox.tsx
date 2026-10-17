@@ -9,7 +9,9 @@ import { enabledAgents } from "../../utils/agentEnabled";
 import { liveChats, stoppableChats } from "../../utils/chatSessions";
 import { awaitingUser, STATUS_LABEL } from "../../utils/sessionStatus";
 import { COMMANDS, type Command, type Requirement } from "../../utils/commands";
-import { editorState } from "../../utils/editorState";
+import { editorState, frontWorktree } from "../../utils/editorState";
+import { runAt, runnable } from "../../utils/runStore";
+import { runProjectFor } from "../../panels/Settings/settingsStore";
 import { stagedFiles, canPush } from "../../utils/gitActions";
 import { offersAnySourceAction } from "../../utils/sourceActions";
 import { activeServerProvides } from "../../utils/serverProviders";
@@ -110,6 +112,18 @@ function unmetReason(req: Requirement): string | null {
     case "implementationProvider":
     case "typeDefinitionProvider":
       return activeServerProvides(req) ? null : "This language server cannot answer that";
+    case "runCommand": {
+      const root = frontWorktree();
+      return root && runProjectFor(root) && runnable(root) ? null : "This worktree has no run command";
+    }
+    case "runIdle": {
+      const root = frontWorktree();
+      return root && runAt(root) ? "Already running" : null;
+    }
+    case "runLive": {
+      const state = runAt(frontWorktree() ?? "")?.state;
+      return state === "running" ? null : state === "stopping" ? "Stopping" : "Nothing is running here";
+    }
   }
 }
 
@@ -122,7 +136,12 @@ function unmetReason(req: Requirement): string | null {
  * the row would be permanent clutter in every Python or Rust buffer. Same rule
  * the Outline tab uses when a server advertises no symbol provider.
  */
-const HIDES_WHEN_UNMET = new Set<Requirement>(["sourceActions", "implementationProvider", "typeDefinitionProvider"]);
+const HIDES_WHEN_UNMET = new Set<Requirement>([
+  "sourceActions",
+  "implementationProvider",
+  "typeDefinitionProvider",
+  "runCommand",
+]);
 
 /** Whether a command should not be listed at all right now. */
 function suppressed(c: Command): boolean {

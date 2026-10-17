@@ -47,6 +47,12 @@ function start() {
   void listen<{ id: string; state: "active" | "quiet" }>("pty://activity", (e) => {
     if (e.payload.state === "quiet") scanIn(SETTLE_MS);
   }).catch((e) => console.warn("ports: no pty activity, scans run on the poll only", e));
+  // A run command has no terminal to go quiet, so its own start and stop say when.
+  void listen<{ kind: string; state: string }>("setup://changed", (e) => {
+    if (e.payload.kind !== "run") return;
+    if (e.payload.state === "running") scanIn(SETTLE_MS);
+    else if (e.payload.state !== "stopping") scanIn(0);
+  }).catch((e) => console.warn("ports: no run events, scans run on the poll only", e));
 }
 
 export function portsAt(path: string): () => number[] {

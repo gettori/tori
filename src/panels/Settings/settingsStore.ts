@@ -927,6 +927,17 @@ export function worktreePrefs(projectPath: string): WorktreePrefs {
   return { ...NO_SETUP, ...settings.worktree?.[projectPath] };
 }
 
+/** The project whose run command covers `worktree`, the deepest one holding it,
+ *  or null when none has a run command. */
+export function runProjectFor(worktree: string): string | null {
+  let best: string | null = null;
+  for (const [project, prefs] of Object.entries(settings.worktree ?? {})) {
+    if (!prefs.runCommand?.trim() || !isUnderPath(worktree, project)) continue;
+    if (!best || project.length > best.length) best = project;
+  }
+  return best;
+}
+
 /** Change this project's worktree setup, leaving the other field alone. Not
  *  swallowed like a chat pick: a setup command that silently failed to save
  *  would leave the next worktree without its install. */

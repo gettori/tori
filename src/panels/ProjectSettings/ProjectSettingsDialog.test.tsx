@@ -58,6 +58,9 @@ describe("Project settings dialog, Worktrees section", () => {
 
     fireEvent.change(screen.getByLabelText("Teardown command"), { target: { value: " docker compose down " } });
     await waitFor(() => expect(saves).toHaveLength(2));
+    fireEvent.change(screen.getByLabelText("Run command"), { target: { value: " pnpm dev " } });
+    await waitFor(() => expect(saves).toHaveLength(3));
+    expect(saves[2].worktree["/p"]).toMatchObject({ runCommand: "pnpm dev", teardownCommand: "docker compose down" });
     expect(saves[1].worktree["/p"]).toMatchObject({
       setupCommand: "pnpm install",
       teardownCommand: "docker compose down",

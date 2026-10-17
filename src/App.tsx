@@ -72,6 +72,8 @@ import {
   FOCUS_SEARCH,
   FOCUS_PROJECT_SEARCH,
   RUN_LAST_TASK,
+  START_RUN,
+  STOP_RUN,
   SET_RIGHT_MODE,
   PREFS_TOGGLE,
   type PrefsToggle,
@@ -151,7 +153,10 @@ import {
   zoomIn,
   zoomOut,
   resetZoom,
+  runProjectFor,
 } from "./panels/Settings/settingsStore";
+import { frontWorktree } from "./utils/editorState";
+import { startRun, stopRun } from "./utils/runStore";
 import "./styles/reset.css";
 import { CockpitPopup, CockpitSwitch, CockpitView } from "./panels/Autopilot/Cockpit";
 import { popupOpen, view } from "./utils/autopilotStore";
@@ -927,6 +932,8 @@ function App() {
   let offOpenSettings: (() => void) | undefined;
   let offOpenProjectSettings: (() => void) | undefined;
   let offRunLastTask: (() => void) | undefined;
+  let offStartRun: (() => void) | undefined;
+  let offStopRun: (() => void) | undefined;
   let offFocusIn: (() => void) | undefined;
   onMount(() => {
     window.addEventListener("keydown", onKeyDown);
@@ -1023,6 +1030,15 @@ function App() {
     // registry owns the binding but knows no workspace, and the Scripts section is
     // torn down whenever another right-hand mode is showing - a rerun that only
     // worked while its own panel was open would not be a shortcut past it.
+    offStartRun = onEvent(START_RUN, () => {
+      const root = frontWorktree();
+      const project = root && runProjectFor(root);
+      if (root && project) startRun(project, root);
+    });
+    offStopRun = onEvent(STOP_RUN, () => {
+      const root = frontWorktree();
+      if (root) stopRun(root);
+    });
     offRunLastTask = onEvent(RUN_LAST_TASK, () => {
       const outcome = rerunLast(selectionRoot(selected()));
       if (outcome === "ran") return;
@@ -1096,6 +1112,8 @@ function App() {
     offOpenSettings?.();
     offOpenProjectSettings?.();
     offRunLastTask?.();
+    offStartRun?.();
+    offStopRun?.();
     offFocusIn?.();
     document.body.classList.remove("dragging");
   });

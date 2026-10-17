@@ -46,4 +46,16 @@ describe("noteSetup", () => {
     expect(seen[0]).toMatchObject({ kind: "error", message: "Teardown in feat failed (exit 2)" });
     expect((seen[0].action as { label: string }).label).toBe("Show log");
   });
+
+  it("toasts a run that exits on its own with a failure, and stays quiet for a stop", () => {
+    const seen = toasts();
+    for (const state of ["running", "stopping", "stopped"] as const) {
+      noteSetup({ kind: "run", worktree: "/p/feat", state, code: null, log: "/l" });
+    }
+    noteSetup({ kind: "run", worktree: "/p/feat", state: "done", code: 0, log: "/l" });
+    noteSetup({ kind: "run", worktree: "/p/feat", state: "failed", code: 1, log: "/l" });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ kind: "error", message: "Run in feat failed (exit 1)" });
+    expect((seen[0].action as { label: string }).label).toBe("Show log");
+  });
 });

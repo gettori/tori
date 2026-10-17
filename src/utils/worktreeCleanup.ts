@@ -12,6 +12,7 @@ import { PURGE_UNDER_PATH, emitWith, type PurgeUnderPath } from "./events";
 import { detachedCandidates, liveCandidates } from "./folderActors";
 import { mergedHeads, onForgeReport } from "./forgeStatus";
 import { isUnderPath } from "./pathScope";
+import { runAt } from "./runStore";
 import { cleanupVerdict, type CleanupFacts } from "./worktreeCleanupVerdict";
 
 export type CleanupInputs = {
@@ -73,6 +74,7 @@ async function sweepProject(
         facts: f,
         merged: Object.prototype.hasOwnProperty.call(heads, f.branch),
         busy: isBusy,
+        running: runAt(f.path) !== null,
         selectedRoot: inputs.selectedRoot(),
         openPaths: inputs.openPaths(),
         autopilotWorktrees: autopilot,
