@@ -2055,6 +2055,7 @@ mod tests {
                 crate::settings::WorktreePrefs {
                     setup_command: command.into(),
                     setup_wait: wait,
+                    ..Default::default()
                 },
             );
             crate::setup::seam(prefs, base.join("logs"));

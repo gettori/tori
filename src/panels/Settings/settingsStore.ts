@@ -376,9 +376,10 @@ export type ReviewRule = {
   mode: string | null;
 };
 
-/** What a project runs in a worktree Tori has just created. An empty command
- *  runs nothing; `setupWait` holds `worktree.new` and `session.spawn` until it exits. */
-export type WorktreePrefs = { setupCommand: string; setupWait: boolean };
+/** What a project runs in the worktrees Tori creates. An empty command runs
+ *  nothing; `setupWait` holds `worktree.new` and `session.spawn` until setup exits,
+ *  and `teardownCommand` runs before a worktree is removed. */
+export type WorktreePrefs = { setupCommand: string; setupWait: boolean; teardownCommand: string };
 
 /** `available` is the feature: off, there is no cockpit. `enabled` is whether it
  *  was running, written only by `autopilot.start` and `autopilot.stop`; a save
@@ -918,7 +919,7 @@ export function rememberFormatOnSave(projectPath: string, on: boolean | null): v
   void saveSettings(next).catch(() => {});
 }
 
-const NO_SETUP: WorktreePrefs = { setupCommand: "", setupWait: false };
+const NO_SETUP: WorktreePrefs = { setupCommand: "", setupWait: false, teardownCommand: "" };
 
 /** What this project runs in a new worktree; nothing for one never set up. */
 export function worktreePrefs(projectPath: string): WorktreePrefs {

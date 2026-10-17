@@ -509,6 +509,12 @@
   color: var(--fg-muted);
   cursor: pointer;
 }
+.row .tearingDown {
+  flex: none;
+  margin-left: calc(4px * var(--ui-scale));
+  font-size: var(--tori-text-xs);
+  color: var(--fg-muted);
+}
 .row .issueChip:hover,
 .row .portChip:hover {
   color: var(--brand-strong);
