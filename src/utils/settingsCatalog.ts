@@ -314,6 +314,18 @@ export const SETTINGS: SettingEntry[] = [
     hint: "Which projects may start servers that run the project's own code, like TypeScript and Rust.",
   },
   {
+    id: "unattended-deny",
+    section: "trust",
+    label: "Never run unattended",
+    hint: "Commands a session may not run while nobody is at the window or the phone, one per line. A line matches the command and anything after it, so `git push --force` stops a forced push and leaves a plain one alone. It catches the usual forms, not a script that runs them, so a project that needs a hard wall is set to Always boxed.",
+  },
+  {
+    id: "unattended-domains",
+    section: "trust",
+    label: "Allowed domains when boxed",
+    hint: "Where a boxed Claude session's shell may connect, one per line, `*.example.com` included. The project's own git host is added for each session. A boxed Codex session has no network and asks for each host it needs.",
+  },
+  {
     id: "git",
     section: "git",
     label: "Git",

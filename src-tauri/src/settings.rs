@@ -985,6 +985,12 @@ pub struct Settings {
     /// path. No entry is off.
     #[serde(default, deserialize_with = "lenient_review_rules")]
     pub review_requested: std::collections::HashMap<String, ReviewRule>,
+    /// How each project's sessions run, keyed by project path. No entry is the
+    /// default level.
+    #[serde(default, deserialize_with = "lenient_execution")]
+    pub execution: std::collections::HashMap<String, ExecutionLevel>,
+    #[serde(default, deserialize_with = "lenient_unattended")]
+    pub unattended: Unattended,
 }
 
 /// Whether secret reads are marked, and additions to the list. The patterns
@@ -1179,6 +1185,131 @@ pub fn review_rule(path: &str) -> ReviewRule {
         .get(path.trim_end_matches('/'))
         .cloned()
         .unwrap_or_default()
+}
+
+/// When a project's sessions run in the agent's own sandbox.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ExecutionLevel {
+    AsMe,
+    #[default]
+    BoxedWhenUnattended,
+    AlwaysBoxed,
+}
+
+/// What an unattended session may not run, and where a boxed one may reach.
+/// `None` is the built-in list, so a save from a store that never read the file
+/// cannot empty either one.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Unattended {
+    #[serde(default)]
+    pub deny: Option<Vec<String>>,
+    #[serde(default)]
+    pub allowed_domains: Option<Vec<String>>,
+}
+
+impl Unattended {
+    #[cfg_attr(not(test), expect(dead_code, reason = "the boxing rule and the deny guard read it"))]
+    pub fn deny(&self) -> Vec<String> {
+        self.deny.clone().unwrap_or_else(default_deny)
+    }
+
+    #[cfg_attr(not(test), expect(dead_code, reason = "the boxing rule and the deny guard read it"))]
+    pub fn allowed_domains(&self) -> Vec<String> {
+        self.allowed_domains.clone().unwrap_or_else(default_allowed_domains)
+    }
+}
+
+pub fn default_deny() -> Vec<String> {
+    [
+        "aws",
+        "gcloud",
+        "az",
+        "railway",
+        "fly",
+        "flyctl",
+        "kubectl",
+        "terraform",
+        "pulumi",
+        "psql",
+        "mysql",
+        "mongosh",
+        "redis-cli",
+        "git push --force",
+        "git push -f",
+    ]
+    .map(String::from)
+    .to_vec()
+}
+
+// The project's own forge host is added per session, since it differs by project.
+pub fn default_allowed_domains() -> Vec<String> {
+    [
+        "registry.npmjs.org",
+        "registry.yarnpkg.com",
+        "pypi.org",
+        "files.pythonhosted.org",
+        "crates.io",
+        "index.crates.io",
+        "static.crates.io",
+        "proxy.golang.org",
+        "rubygems.org",
+    ]
+    .map(String::from)
+    .to_vec()
+}
+
+fn lenient_execution<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<std::collections::HashMap<String, ExecutionLevel>, D::Error> {
+    let raw = serde_json::Value::deserialize(d)?;
+    let Some(map) = raw.as_object() else {
+        return Ok(Default::default());
+    };
+    // A level nobody can read boxes always, rather than falling to a weaker one.
+    Ok(map
+        .iter()
+        .map(|(k, v)| {
+            let level = serde_json::from_value(v.clone()).unwrap_or(ExecutionLevel::AlwaysBoxed);
+            (k.clone(), level)
+        })
+        .collect())
+}
+
+// A malformed block reads as the built-in lists rather than failing the file,
+// which would turn every other section into its defaults too.
+fn lenient_unattended<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Unattended, D::Error> {
+    let raw = serde_json::Value::deserialize(d)?;
+    Ok(serde_json::from_value(raw).unwrap_or_default())
+}
+
+#[expect(dead_code, reason = "the boxing rule and the deny guard read it")]
+pub fn execution_level(project: &str) -> ExecutionLevel {
+    get_settings().execution_level(project)
+}
+
+impl Settings {
+    pub fn execution_level(&self, project: &str) -> ExecutionLevel {
+        self.execution
+            .get(project.trim_end_matches('/'))
+            .copied()
+            .unwrap_or_default()
+    }
+}
+
+#[expect(dead_code, reason = "the boxing rule and the deny guard read it")]
+pub fn unattended() -> Unattended {
+    load_from(&settings_path()).unattended
+}
+
+/// The built-in lists, for the panel to show while nothing is edited and to reset to.
+#[tauri::command]
+pub fn unattended_defaults() -> Unattended {
+    Unattended {
+        deny: Some(default_deny()),
+        allowed_domains: Some(default_allowed_domains()),
+    }
 }
 
 /// What a project does to a worktree Tori has just created for it.
@@ -2671,6 +2802,45 @@ mod tests {
             }
         }
         std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn the_execution_policy_round_trips_and_defaults_what_is_unset() {
+        let p = tmp_file();
+        let mut s = Settings::default();
+        s.execution.insert("/p/boxed".into(), ExecutionLevel::AlwaysBoxed);
+        s.unattended.deny = Some(vec!["flyctl".into()]);
+        save_to(&p, &s).unwrap();
+        let back = load_from(&p);
+        assert_eq!(back.execution_level("/p/boxed/"), ExecutionLevel::AlwaysBoxed);
+        assert_eq!(
+            back.execution_level("/p/never-set"),
+            ExecutionLevel::BoxedWhenUnattended
+        );
+        assert_eq!(back.unattended.deny(), ["flyctl"]);
+        assert_eq!(back.unattended.allowed_domains(), default_allowed_domains());
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn an_emptied_deny_list_stays_empty_and_an_unreadable_level_boxes_always() {
+        let p = tmp_file();
+        std::fs::write(
+            &p,
+            r#"{"execution":{"/p/a":"asMe","/p/b":"sideways"},"unattended":{"deny":[]}}"#,
+        )
+        .unwrap();
+        let s = load_from(&p);
+        assert_eq!(s.execution_level("/p/a"), ExecutionLevel::AsMe);
+        assert_eq!(s.execution_level("/p/b"), ExecutionLevel::AlwaysBoxed);
+        assert!(s.unattended.deny().is_empty());
+        std::fs::write(&p, r#"{"unattended":{"deny":"aws"}}"#).unwrap();
+        assert_eq!(
+            load_from(&p).unattended.deny(),
+            default_deny(),
+            "a malformed block reads as the built-in lists"
+        );
+        let _ = std::fs::remove_file(&p);
     }
 
     #[test]

@@ -397,6 +397,24 @@
     margin-top: var(--tori-space-4);
   }
 
+  .listField {
+    flex: 1;
+    min-width: 0;
+    padding: calc(7px * var(--ui-scale)) calc(10px * var(--ui-scale));
+    background: var(--canvas-input);
+    color: var(--fg-default);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
+    outline: none;
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-sm);
+    line-height: var(--tori-line-normal);
+    resize: vertical;
+  }
+  .listField:focus {
+    border-color: var(--brand-default);
+  }
+
   .pairing {
     display: flex;
     align-items: center;

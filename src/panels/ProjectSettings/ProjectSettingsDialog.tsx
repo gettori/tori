@@ -14,6 +14,7 @@ import AgentsSection from "./AgentsSection";
 import AutomationsSection from "./AutomationsSection";
 import ChecksSection from "./ChecksSection";
 import EditorSection from "./EditorSection";
+import ExecutionSection from "./ExecutionSection";
 import GeneralSection from "./GeneralSection";
 import { ProjectFoot, ProjectTitle } from "./ProjectHeader";
 import { ProjectSearch } from "./Section";
@@ -244,6 +245,7 @@ export default function ProjectSettingsDialog(props: { path: string; section?: P
               {pane("tooling", () => (
                 <>
                   <TrustSection projectPath={f().project.path} />
+                  <ExecutionSection projectPath={f().project.path} />
                   <ChecksSection projectPath={f().project.path} onDirty={(on) => markDirty("tooling:checks", on)} />
                   <Show when={kind() === "plain" || kind() === "plain-dir"}>
                     <EditorSection projectPath={f().project.path} />

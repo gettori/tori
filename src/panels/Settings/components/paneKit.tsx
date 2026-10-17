@@ -384,7 +384,9 @@ export function Stepper(props: {
  * is the catalogue's, which is the same id the search counts, so a badge saying
  * "3" and a pane showing two rows is not a state this can reach.
  */
-export function Row(props: PaneProps & { id: string; label: string; hint?: string; children: JSX.Element }) {
+export function Row(
+  props: PaneProps & { id: string; label: string; hint?: string; stack?: boolean; children: JSX.Element },
+) {
   /** The catalogue's hint unless the pane passed one.
    *
    * The two are allowed to differ - several rows say more on screen than the
@@ -397,7 +399,7 @@ export function Row(props: PaneProps & { id: string; label: string; hint?: strin
       {/* Siblings placed by grid, never nested columns: a wrapper div would lay
           out identically and quietly break `label.closest("div")`, which is how
           the suite reaches every control here. */}
-      <div id={rowDomId(props.id)} class={styles.row}>
+      <div id={rowDomId(props.id)} class={styles.row} classList={{ [styles.rowStack]: !!props.stack }}>
         <label id={rowLabelId(props.id)} class={styles.label}>
           <MarkedLabel query={props.query} text={props.label} />
         </label>
