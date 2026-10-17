@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -29,12 +29,19 @@ pub const TEARDOWN_LIMIT: Duration = Duration::from_secs(2 * 60);
 pub const WAIT_CAP: Duration = Duration::from_secs(240);
 
 const POLL: Duration = Duration::from_millis(100);
-const KILL_GRACE: Duration = Duration::from_secs(5);
+pub(crate) const KILL_GRACE: Duration = Duration::from_secs(5);
+
+/// A run's log is cut back to its last `LOG_KEEP` bytes once it passes `LOG_CAP`,
+/// since a dev server left running for days writes without end.
+const LOG_CAP: u64 = 5 * 1024 * 1024;
+const LOG_KEEP: u64 = 1024 * 1024;
 
 #[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum State {
     Running,
+    Stopping,
+    Stopped,
     Done,
     Failed,
 }
@@ -43,6 +50,7 @@ pub enum State {
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
     Setup,
+    Run,
     Teardown,
 }
 
@@ -50,6 +58,7 @@ impl Kind {
     fn word(self) -> &'static str {
         match self {
             Kind::Setup => "setup",
+            Kind::Run => "run",
             Kind::Teardown => "teardown",
         }
     }
@@ -73,7 +82,8 @@ pub struct Spec<'a> {
     pub worktree: &'a Path,
     pub path_env: &'a str,
     pub log_dir: &'a Path,
-    pub limit: Duration,
+    /// None runs until it exits or is stopped.
+    pub limit: Option<Duration>,
 }
 
 struct Entry {
@@ -99,12 +109,35 @@ fn canonical(path: &Path) -> String {
         .into_owned()
 }
 
+pub(crate) fn signal_group(pgid: u32, signal: libc::c_int) -> bool {
+    // SAFETY: killpg only sends a signal. Callers pass the pid of a child
+    // spawned with process_group(0), which names that child's own group.
+    unsafe { libc::killpg(pgid as libc::pid_t, signal) == 0 }
+}
+
 fn kill_group(pid: u32) {
-    // SAFETY: killpg only sends a signal. The pid is a child spawned with
-    // process_group(0), so it names that child's own group.
-    unsafe {
-        libc::killpg(pid as libc::pid_t, libc::SIGKILL);
+    signal_group(pid, libc::SIGKILL);
+}
+
+fn trim_log(log: &Path, cap: u64, keep: u64) {
+    let Ok(len) = std::fs::metadata(log).map(|m| m.len()) else {
+        return;
+    };
+    if len <= cap {
+        return;
     }
+    let Ok(mut f) = OpenOptions::new().read(true).write(true).open(log) else {
+        return;
+    };
+    let mut tail = Vec::new();
+    if f.seek(SeekFrom::Start(len - keep)).is_err() || (&mut f).take(keep).read_to_end(&mut tail).is_err() {
+        return;
+    }
+    // The child holds the log in append mode, so its next write lands after
+    // this tail rather than at its old offset.
+    let _ = f.set_len(0);
+    let _ = f.seek(SeekFrom::Start(0));
+    let _ = f.write_all(&tail);
 }
 
 fn note(log: &Path, line: &str) {
@@ -132,24 +165,28 @@ impl Runs {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or_default();
-        let log = spec.log_dir.join(format!("{stem}-{nanos}.log"));
+        let log = spec.log_dir.join(format!("{stem}-{}-{nanos}.log", spec.kind.word()));
 
-        let spawned = File::create(&log).and_then(|out| {
-            let err = out.try_clone()?;
-            Command::new("sh")
-                .arg("-c")
-                .arg(spec.command)
-                .current_dir(spec.worktree)
-                .env("TORI_PROJECT_ROOT", spec.project)
-                .env("TORI_WORKTREE_PATH", &worktree)
-                .envs(crate::ports::env_for(spec.worktree))
-                .env("PATH", spec.path_env)
-                .stdin(Stdio::null())
-                .stdout(out)
-                .stderr(err)
-                .process_group(0)
-                .spawn()
-        });
+        let spawned = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log)
+            .and_then(|out: File| {
+                let err = out.try_clone()?;
+                Command::new("sh")
+                    .arg("-c")
+                    .arg(spec.command)
+                    .current_dir(spec.worktree)
+                    .env("TORI_PROJECT_ROOT", spec.project)
+                    .env("TORI_WORKTREE_PATH", &worktree)
+                    .envs(crate::ports::env_for(spec.worktree))
+                    .env("PATH", spec.path_env)
+                    .stdin(Stdio::null())
+                    .stdout(out)
+                    .stderr(err)
+                    .process_group(0)
+                    .spawn()
+            });
         let log_str = log.to_string_lossy().into_owned();
         let kind = spec.kind;
         let mut child = match spawned {
@@ -187,11 +224,15 @@ impl Runs {
 
         let limit = spec.limit;
         thread::spawn(move || {
-            let deadline = Instant::now() + limit;
+            let deadline = limit.map(|limit| Instant::now() + limit);
             let status = loop {
+                if kind == Kind::Run {
+                    trim_log(&log, LOG_CAP, LOG_KEEP);
+                }
                 match child.try_wait() {
                     Ok(Some(status)) => break Some(status),
-                    Ok(None) if Instant::now() >= deadline => {
+                    Ok(None) if deadline.is_some_and(|d| Instant::now() >= d) => {
+                        let limit = limit.unwrap_or_default();
                         kill_group(pid);
                         note(
                             &log,
@@ -225,8 +266,13 @@ impl Runs {
         let mut entries = self.lock();
         let entry = entries
             .iter_mut()
-            .find(|e| e.pid == pid && e.report.state == State::Running)?;
-        entry.report.state = state;
+            .find(|e| e.pid == pid && matches!(e.report.state, State::Running | State::Stopping))?;
+        // A stop asked for is a stop, whatever the signal made of the exit code.
+        entry.report.state = if entry.report.state == State::Stopping {
+            State::Stopped
+        } else {
+            state
+        };
         entry.report.code = code;
         let report = entry.report.clone();
         self.changed.notify_all();
@@ -243,9 +289,13 @@ impl Runs {
 
     /// The folder's report once its run has exited, or still running at `cap`.
     pub fn wait(&self, worktree: &Path, kind: Kind, cap: Duration) -> Option<Report> {
+        self.wait_out(worktree, kind, State::Running, cap)
+    }
+
+    pub fn wait_out(&self, worktree: &Path, kind: Kind, state: State, cap: Duration) -> Option<Report> {
         let key = canonical(worktree);
         let mine = |e: &Entry| e.report.kind == kind && same_folder(&e.report.worktree, &key);
-        let running = |entries: &mut Vec<Entry>| entries.iter().any(|e| mine(e) && e.report.state == State::Running);
+        let running = |entries: &mut Vec<Entry>| entries.iter().any(|e| mine(e) && e.report.state == state);
         let entries = self.lock();
         let (entries, _) = self
             .changed
@@ -275,6 +325,79 @@ impl Runs {
         kill_group(pid);
         self.wait(worktree, kind, KILL_GRACE);
     }
+
+    pub fn live(&self, kind: Kind) -> Vec<Report> {
+        self.lock()
+            .iter()
+            .filter(|e| e.report.kind == kind && matches!(e.report.state, State::Running | State::Stopping))
+            .map(|e| e.report.clone())
+            .collect()
+    }
+
+    pub fn pid(&self, worktree: &Path, kind: Kind) -> Option<u32> {
+        let key = canonical(worktree);
+        self.lock()
+            .iter()
+            .find(|e| {
+                e.report.kind == kind && same_folder(&e.report.worktree, &key) && e.report.state == State::Running
+            })
+            .map(|e| e.pid)
+    }
+
+    pub fn stop(&self, worktree: &Path, kind: Kind, grace: Duration, publish: &Publish) {
+        let key = canonical(worktree);
+        self.stop_where(
+            |e| e.report.kind == kind && same_folder(&e.report.worktree, &key),
+            grace,
+            publish,
+        );
+    }
+
+    pub fn stop_all(&self, kind: Kind, grace: Duration, publish: &Publish) {
+        self.stop_where(|e| e.report.kind == kind, grace, publish);
+    }
+
+    fn stop_where(&self, pick: impl Fn(&Entry) -> bool, grace: Duration, publish: &Publish) {
+        let mut stopping = Vec::new();
+        {
+            let mut entries = self.lock();
+            for e in entries
+                .iter_mut()
+                .filter(|e| e.report.state == State::Running && pick(e))
+            {
+                e.report.state = State::Stopping;
+                stopping.push((e.pid, e.report.clone()));
+            }
+            self.changed.notify_all();
+        }
+        if stopping.is_empty() {
+            return;
+        }
+        for (pid, report) in &stopping {
+            publish(report);
+            signal_group(*pid, libc::SIGTERM);
+        }
+        let pids: Vec<u32> = stopping.iter().map(|(pid, _)| *pid).collect();
+        let held = |entries: &mut Vec<Entry>| {
+            entries
+                .iter()
+                .any(|e| pids.contains(&e.pid) && e.report.state == State::Stopping)
+        };
+        let (entries, waited) = self
+            .changed
+            .wait_timeout_while(self.lock(), grace, held)
+            .unwrap_or_else(PoisonError::into_inner);
+        drop(entries);
+        if waited.timed_out() {
+            for pid in &pids {
+                kill_group(*pid);
+            }
+            let _ = self
+                .changed
+                .wait_timeout_while(self.lock(), KILL_GRACE, held)
+                .unwrap_or_else(PoisonError::into_inner);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -289,7 +412,7 @@ pub(crate) fn seam(prefs: HashMap<String, WorktreePrefs>, log_dir: PathBuf) {
     TEST_SEAM.with(|s| *s.borrow_mut() = Some((prefs, log_dir)));
 }
 
-fn settings_and_logs() -> (HashMap<String, WorktreePrefs>, PathBuf) {
+pub(crate) fn settings_and_logs() -> (HashMap<String, WorktreePrefs>, PathBuf) {
     #[cfg(test)]
     if let Some(seam) = TEST_SEAM.with(|s| s.borrow().clone()) {
         return seam;
@@ -310,6 +433,14 @@ pub fn configured(project: &str) -> Option<WorktreePrefs> {
         .filter(|prefs| !prefs.setup_command.trim().is_empty())
 }
 
+pub(crate) fn shared() -> &'static Runs {
+    &RUNS
+}
+
+pub(crate) fn publisher() -> Publish {
+    PUBLISH.get().cloned().unwrap_or_else(|| Arc::new(|_: &Report| {}))
+}
+
 pub fn set_publisher(app: AppHandle) {
     let _ = PUBLISH.set(Arc::new(move |report| {
         let _ = app.emit("setup://changed", report);
@@ -327,7 +458,6 @@ pub fn on_created(project: &str, worktree: &Path) -> Option<Report> {
         return None;
     }
     let path_env = crate::env::login_path().map_or_else(crate::env::augmented_path, str::to_string);
-    let publish = PUBLISH.get().cloned().unwrap_or_else(|| Arc::new(|_: &Report| {}));
     let spec = Spec {
         kind: Kind::Setup,
         command: &prefs.setup_command,
@@ -335,9 +465,9 @@ pub fn on_created(project: &str, worktree: &Path) -> Option<Report> {
         worktree,
         path_env: &path_env,
         log_dir: &log_dir,
-        limit: LIMIT,
+        limit: Some(LIMIT),
     };
-    Some(RUNS.start(spec, publish))
+    Some(RUNS.start(spec, publisher()))
 }
 
 /// Whether the project has a teardown command.
@@ -360,7 +490,6 @@ pub fn teardown(project: &str, worktree: &Path) -> Option<Report> {
         return None;
     }
     let path_env = crate::env::login_path().map_or_else(crate::env::augmented_path, str::to_string);
-    let publish = PUBLISH.get().cloned().unwrap_or_else(|| Arc::new(|_: &Report| {}));
     let spec = Spec {
         kind: Kind::Teardown,
         command: &prefs.teardown_command,
@@ -368,9 +497,9 @@ pub fn teardown(project: &str, worktree: &Path) -> Option<Report> {
         worktree,
         path_env: &path_env,
         log_dir: &log_dir,
-        limit: TEARDOWN_LIMIT,
+        limit: Some(TEARDOWN_LIMIT),
     };
-    RUNS.start(spec, publish);
+    RUNS.start(spec, publisher());
     RUNS.wait(worktree, Kind::Teardown, TEARDOWN_LIMIT + KILL_GRACE)
 }
 
@@ -411,7 +540,7 @@ mod tests {
             worktree: &dir.join("wt"),
             path_env: "/usr/bin:/bin",
             log_dir: &dir.join("logs"),
-            limit,
+            limit: Some(limit),
         };
         runs.start(spec, Arc::new(|_: &Report| {}))
     }
@@ -558,7 +687,7 @@ mod tests {
             worktree: &dir.join("wt"),
             path_env: "/usr/bin:/bin",
             log_dir: &dir.join("logs"),
-            limit: LIMIT,
+            limit: Some(LIMIT),
         };
         runs.start(spec, Arc::new(|_: &Report| {}));
         let torn = runs

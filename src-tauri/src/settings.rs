@@ -1321,6 +1321,9 @@ pub struct WorktreePrefs {
     /// Run with `sh -c` in a worktree about to be removed. Empty runs nothing.
     #[serde(default)]
     pub teardown_command: String,
+    /// Started by hand in a worktree, a dev server usually. Empty offers nothing.
+    #[serde(default)]
+    pub run_command: String,
 }
 
 // --- pure core (explicit path, no globals), unit-tested off-disk ---
@@ -2921,11 +2924,13 @@ mod tests {
                 setup_command: "pnpm install".into(),
                 setup_wait: true,
                 teardown_command: "pnpm db:drop".into(),
+                run_command: "pnpm dev".into(),
             },
         );
         save_to(&p, &s).unwrap();
         assert!(std::fs::read_to_string(&p).unwrap().contains("\"setupCommand\""));
         assert!(std::fs::read_to_string(&p).unwrap().contains("\"teardownCommand\""));
+        assert!(std::fs::read_to_string(&p).unwrap().contains("\"runCommand\""));
         assert_eq!(load_from(&p).worktree, s.worktree);
 
         std::fs::write(&p, r#"{"worktree":{"/p":{"setupCommand":"pnpm install"}}}"#).unwrap();
@@ -2933,6 +2938,11 @@ mod tests {
             load_from(&p).worktree["/p"].teardown_command,
             "",
             "an older entry has no teardown"
+        );
+        assert_eq!(
+            load_from(&p).worktree["/p"].run_command,
+            "",
+            "an older entry has no run command"
         );
         std::fs::remove_file(&p).ok();
     }
