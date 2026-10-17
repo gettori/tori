@@ -117,7 +117,22 @@ impl Composer {
 
     pub fn attention(&self, session: Option<String>, focused: bool) {
         self.presence().attend(session, focused);
-        self.nudge(Nudge::Present);
+        self.looked();
+    }
+
+    // Also on coming back to a window that already shows the session, which
+    // sends no attention of its own.
+    pub fn looked(&self) {
+        let id = self.presence().looking_at().map(str::to_string);
+        let cleared = id.is_some_and(|id| self.dots.clear_denied(&id));
+        self.nudge(if cleared { Nudge::Compose } else { Nudge::Present });
+    }
+
+    #[expect(dead_code, reason = "the unattended deny guard calls it")]
+    pub fn denied(&self, id: &str) {
+        if self.dots.deny(id) {
+            self.nudge(Nudge::Compose);
+        }
     }
 
     pub fn activity(&self, tab: &str, state: &str) {

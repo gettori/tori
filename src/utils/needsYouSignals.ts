@@ -10,7 +10,8 @@ export type NeedsYouKind =
   | "prOpened"
   | "prMerged"
   | "limitHit"
-  | "limitResumed";
+  | "limitResumed"
+  | "denied";
 
 /** Mirrors `Event` in src-tauri/src/needs_you_log.rs. */
 export type NeedsYouEvent = {
@@ -39,11 +40,12 @@ const LABELS: Record<NeedsYouKind, string> = {
   prMerged: "Pull request merged",
   limitHit: "Hit its usage limit",
   limitResumed: "Continued after the limit reset",
+  denied: "Had a command blocked while you were away",
 };
 
 export const kindLabel = (kind: NeedsYouKind) => LABELS[kind];
 
-const BLOCKS: readonly NeedsYouKind[] = ["permission", "question", "budget", "waiting", "workerQuestion"];
+const BLOCKS: readonly NeedsYouKind[] = ["permission", "question", "budget", "waiting", "workerQuestion", "denied"];
 export const blocks = (kind: NeedsYouKind) => BLOCKS.includes(kind);
 
 export const unanswered = (events: readonly NeedsYouEvent[]) => events.filter((e) => e.resolvedAt === null).length;

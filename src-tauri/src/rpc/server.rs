@@ -809,6 +809,19 @@ pub(super) fn unsubscribe(hub: &Hub, conn: ConnId, params: &Value) -> Result<Val
     Ok(json!({}))
 }
 
+// Per connection rather than a method row: whether this phone is in front of
+// someone belongs to the socket it arrived on.
+fn visible(hub: &Hub, principal: &Principal, conn: ConnId, params: &Value) -> Result<Value, RpcError> {
+    if !matches!(principal, Principal::Device(_)) {
+        return Err(RpcError::new(REFUSED, "visible is for a paired device"));
+    }
+    let visible = params["visible"]
+        .as_bool()
+        .ok_or_else(|| RpcError::new(INVALID_PARAMS, "visible: a boolean"))?;
+    hub.set_visible(conn, visible);
+    Ok(json!({}))
+}
+
 impl Server {
     pub fn dispatch(&self, conn: ConnId, principal: &Principal, req: &Request) -> Result<Value, RpcError> {
         match req.method.as_str() {
@@ -816,6 +829,7 @@ impl Server {
                 self.backend.watching_sessions()
             }),
             "unsubscribe" => unsubscribe(&self.hub, conn, &req.params),
+            "visible" => visible(&self.hub, principal, conn, &req.params),
             "auth" => Err(RpcError::new(INVALID_REQUEST, "already authenticated")),
             _ => self.call(principal, req),
         }
@@ -1413,6 +1427,32 @@ pub mod tests {
 
     fn request(method: &str, params: Value) -> Request {
         serde_json::from_value(json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": params})).unwrap()
+    }
+
+    #[test]
+    fn a_hidden_phone_stays_connected_but_stops_attending() {
+        let server = stub_server();
+        let (tx, _rx) = sync_channel(QUEUE_CAP);
+        let conn = server.hub.register(tx, Box::new(|| {}));
+        let phone = Principal::Device("d1".into());
+        server.hub.tag_device(conn, "d1");
+        assert!(server.hub.device_visible(), "a phone connects from the foreground");
+        let hide = server.dispatch(conn, &phone, &request("visible", json!({ "visible": false })));
+        assert!(hide.is_ok(), "{hide:?}");
+        assert!(!server.hub.device_visible());
+        assert!(server.hub.connected_devices().contains("d1"), "hidden, not dropped");
+        server
+            .dispatch(conn, &phone, &request("visible", json!({ "visible": true })))
+            .unwrap();
+        assert!(server.hub.device_visible());
+        server.hub.remove(conn);
+        assert!(!server.hub.device_visible(), "dropped");
+        assert!(
+            server
+                .dispatch(conn, &Principal::Local, &request("visible", json!({ "visible": true })))
+                .is_err(),
+            "only a paired device reports this"
+        );
     }
 
     #[test]

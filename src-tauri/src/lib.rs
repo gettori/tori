@@ -235,6 +235,7 @@ pub fn run() {
             setup::set_publisher(app.handle().clone());
 
             app.manage(rpc::start(app.handle().clone()));
+            rpc::attached::watch(app.handle().clone());
 
             // Menu-bar tray (Finding F3/presence): starts empty (no sessions
             // yet at launch) - the frontend calls `update_tray` once presence

@@ -60,6 +60,7 @@ pub struct Inputs {
     pub pty: Option<Activity>,
     pub tail_blocked: bool,
     pub forge_attention: bool,
+    pub denied: bool,
 }
 
 fn dot_from_status(status: Status) -> Dot {
@@ -100,14 +101,16 @@ pub struct Composed {
     /// The dot is `NeedsYou` because of the pull request, not the agent, so the
     /// webview can draw it as the PR rather than as a question.
     pub raised: bool,
+    pub denied: bool,
 }
 
 /// Why a composed dot needs you, from what composed it.
-pub fn reason(dot: Dot, raised: bool, status: Option<Status>) -> Option<Reason> {
+pub fn reason(dot: Dot, raised: bool, denied: bool, status: Option<Status>) -> Option<Reason> {
     if dot != Dot::NeedsYou {
         return None;
     }
     Some(match (raised, status) {
+        _ if denied => Reason::Denied,
         (true, _) => Reason::Forge,
         (_, Some(Status::WaitingForApproval)) => Reason::Approval,
         (_, Some(Status::WaitingForAnswer)) => Reason::Question,
@@ -151,8 +154,10 @@ pub fn compose(input: &Inputs) -> Composed {
         Dot::Solid => Some(SessionState::Idle),
         Dot::None => None,
     };
-    let raised = input.forge_attention && matches!(tier, Dot::Solid | Dot::Hollow);
-    let dot = if raised { Dot::NeedsYou } else { tier };
+    let settled = matches!(tier, Dot::Solid | Dot::Hollow);
+    let denied = input.denied && settled;
+    let raised = !denied && input.forge_attention && settled;
+    let dot = if raised || denied { Dot::NeedsYou } else { tier };
     let certainty = if input.chat_status.is_some() {
         Certainty::Exact
     } else {
@@ -163,6 +168,7 @@ pub fn compose(input: &Inputs) -> Composed {
         dot,
         certainty,
         raised,
+        denied,
     }
 }
 
@@ -261,6 +267,7 @@ struct Inner {
     probes: HashMap<String, Probe>,
     probed_at: Option<Instant>,
     dots: BTreeMap<String, Change>,
+    denied: HashSet<String>,
 }
 
 /// One session's dot and the unit row it sits under, as it last changed, for
@@ -271,6 +278,7 @@ pub struct Change {
     pub dot: Dot,
     pub certainty: Certainty,
     pub raised: bool,
+    pub denied: bool,
     pub home: Option<Home>,
     #[serde(skip)]
     pub folder: String,
@@ -416,6 +424,14 @@ impl Dots {
         ids
     }
 
+    pub fn deny(&self, id: &str) -> bool {
+        self.inner().denied.insert(id.to_string())
+    }
+
+    pub fn clear_denied(&self, id: &str) -> bool {
+        self.inner().denied.remove(id)
+    }
+
     pub fn dot(&self, id: &str) -> (Dot, Certainty) {
         self.inner()
             .dots
@@ -427,9 +443,14 @@ impl Dots {
     /// every project are the caller's to fill in.
     pub fn live(&self) -> Vec<Live> {
         let inner = self.inner();
-        let change = |id: &str| inner.dots.get(id).map_or((Dot::None, false), |c| (c.dot, c.raised));
+        let change = |id: &str| {
+            inner
+                .dots
+                .get(id)
+                .map_or((Dot::None, false, false), |c| (c.dot, c.raised, c.denied))
+        };
         let hosted = |id: &str, folder: &str, status: Option<Status>| {
-            let (dot, raised) = change(id);
+            let (dot, raised, denied) = change(id);
             Live {
                 id: id.to_string(),
                 dot,
@@ -440,7 +461,7 @@ impl Dots {
                 visible: false,
                 spawner: None,
                 done_at: 0,
-                reason: reason(dot, raised, status),
+                reason: reason(dot, raised, denied, status),
                 branch: None,
             }
         };
@@ -521,6 +542,7 @@ impl Dots {
                 pty,
                 tail_blocked: blocked,
                 forge_attention: forge_attention(forge, &folder, branch),
+                denied: inner.denied.contains(id),
             };
             let composed = compose(&input);
             let change = Change {
@@ -528,6 +550,7 @@ impl Dots {
                 dot: composed.dot,
                 certainty: composed.certainty,
                 raised: composed.raised,
+                denied: composed.denied,
                 home,
                 folder,
             };
@@ -570,10 +593,12 @@ impl Dots {
                 dot: Dot::None,
                 certainty: Certainty::Inferred,
                 raised: false,
+                denied: false,
                 home: None,
                 folder: String::new(),
             });
         }
+        inner.denied.retain(|id| dots.contains_key(id));
         inner.dots = dots;
         (reports, changes)
     }
@@ -631,6 +656,7 @@ mod tests {
             pty,
             tail_blocked: v["tailState"] == "blocked-candidate",
             forge_attention: v["forgeAttention"].as_bool().unwrap_or(false),
+            denied: false,
         }
     }
 
@@ -673,10 +699,31 @@ mod tests {
     }
 
     #[test]
+    fn a_denial_waits_for_the_agent_to_stop_and_outranks_a_red_check() {
+        let working = Inputs {
+            chat_status: Some(Status::Executing),
+            denied: true,
+            ..Default::default()
+        };
+        assert_eq!(compose(&working).dot, Dot::Working);
+        let stopped = Inputs {
+            chat_status: Some(Status::Idle),
+            forge_attention: true,
+            ..working
+        };
+        let c = compose(&stopped);
+        assert_eq!(c.dot, Dot::NeedsYou);
+        assert_eq!(
+            reason(c.dot, c.raised, c.denied, stopped.chat_status),
+            Some(Reason::Denied)
+        );
+    }
+
+    #[test]
     fn a_needs_you_dot_says_why() {
         let reason_of = |input: Inputs| {
             let c = compose(&input);
-            reason(c.dot, c.raised, input.chat_status)
+            reason(c.dot, c.raised, c.denied, input.chat_status)
         };
         let chat = |status| Inputs {
             chat_status: Some(status),

@@ -7,6 +7,7 @@
 
 pub mod approvals;
 pub mod asks;
+pub mod attached;
 pub mod auth;
 pub mod awake;
 pub mod client;
@@ -118,6 +119,15 @@ pub(crate) fn in_daemon() -> bool {
     IN_DAEMON.get().is_some()
 }
 
+/// Whether anybody is watching, as the daemon last heard it. Outside the
+/// daemon nobody reports to this process, so the answer there is no.
+#[expect(dead_code, reason = "the unattended deny guard reads it")]
+pub fn attached() -> bool {
+    IN_DAEMON
+        .get()
+        .is_some_and(|role| role.attachment.attached(role.hub.device_visible()))
+}
+
 pub(crate) fn office_tell(op: &str, args: Value) {
     daemon_tell("office", json!({ "op": op, "args": args }));
 }
@@ -196,6 +206,7 @@ fn daemon_events(app: &AppHandle, states: &Arc<SessionStates>) -> window::OnEven
 // the app's behaviour.
 pub(crate) struct InDaemon {
     pub hub: Arc<Hub>,
+    pub attachment: Arc<attached::Attachment>,
     pub children: Arc<auth::Children>,
     pub states: Arc<SessionStates>,
     pub sock: String,
@@ -287,21 +298,29 @@ pub fn start(app: AppHandle) -> RpcState {
     RpcState { link, states }
 }
 
-// What only the webview knows about its tabs, chats and forge poll, and what
-// it is looking at. Kept, so a daemon that restarts under the window hears it again.
-static TOLD: std::sync::Mutex<Option<(Value, Value)>> = std::sync::Mutex::new(None);
+// What only the webview knows about its tabs, chats and forge poll, what it is
+// looking at, and whether anyone can see it. Kept, so a daemon that restarts
+// under the window hears it again.
+static TOLD: std::sync::Mutex<Option<(Value, Value, Value)>> = std::sync::Mutex::new(None);
 
-fn told(change: impl FnOnce(&mut (Value, Value))) {
+fn told(change: impl FnOnce(&mut (Value, Value, Value))) {
     let mut told = TOLD.lock().unwrap_or_else(|e| e.into_inner());
-    change(told.get_or_insert_with(|| (json!({}), json!({ "session": null, "focused": true }))));
+    change(told.get_or_insert_with(|| {
+        (
+            json!({}),
+            json!({ "session": null, "focused": true }),
+            json!(attached::Screen::OPENED),
+        )
+    }));
 }
 
 fn retell_facts() {
-    let Some((facts, attention)) = TOLD.lock().unwrap_or_else(|e| e.into_inner()).clone() else {
+    let Some((facts, attention, presence)) = TOLD.lock().unwrap_or_else(|e| e.into_inner()).clone() else {
         return;
     };
     daemon_tell("facts", facts);
     daemon_tell("attention", attention);
+    daemon_tell("presence", presence);
 }
 
 #[tauri::command]
@@ -316,6 +335,12 @@ pub fn rpc_attention(session: Option<String>, focused: bool) {
     let attention = json!({ "session": session, "focused": focused });
     told(|t| t.1 = attention.clone());
     daemon_tell("attention", attention);
+}
+
+pub fn rpc_presence(screen: attached::Screen) {
+    let presence = json!(screen);
+    told(|t| t.2 = presence.clone());
+    daemon_tell("presence", presence);
 }
 
 pub fn sessions_changed() {

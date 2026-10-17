@@ -21,6 +21,7 @@ use std::thread::{self, JoinHandle};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use super::attached::{Attachment, Screen};
 use super::auth::{authenticate, Caller, Children, Credential, Principal, AUTH_METHOD};
 use super::composer::{Composer, Sources};
 use super::frame::{
@@ -219,6 +220,7 @@ pub struct Daemon {
     table: OnceLock<Arc<Server>>,
     restarting: AtomicBool,
     composer: Arc<Composer>,
+    attachment: Arc<Attachment>,
     // The app process last attached, so a new one starts with no stale child tokens.
     instance: Mutex<Option<String>>,
 }
@@ -443,6 +445,7 @@ impl Daemon {
             }),
         )));
         self.ptys.set_watched(true);
+        self.attachment.window(Some(Screen::OPENED));
         self.composer.window(true);
         let Ok(mut write_half) = stream.try_clone_box() else {
             return;
@@ -464,6 +467,7 @@ impl Daemon {
             *slot = None;
             drop(slot);
             self.ptys.set_watched(false);
+            self.attachment.window(None);
             self.composer.window(false);
         }
     }
@@ -609,6 +613,14 @@ impl Daemon {
             "attention" => {
                 let p: AttentionParams = serde_json::from_value(req.params.clone()).map_err(|_| parse("attention"))?;
                 self.composer.attention(p.session, p.focused);
+                Ok(json!({}))
+            }
+            "presence" => {
+                let screen: Screen = serde_json::from_value(req.params.clone()).map_err(|_| parse("presence"))?;
+                self.attachment.window(Some(screen));
+                if screen.watched() {
+                    self.composer.looked();
+                }
                 Ok(json!({}))
             }
             "running" => {
@@ -913,6 +925,7 @@ pub fn start(paths: Paths) -> Result<Start, String> {
         Daemon {
             hub,
             composer,
+            attachment: Arc::default(),
             ptys: Host::new(events, children.clone(), paths.sock.clone(), paths.cli_link_dir.clone()),
             chats: OnceLock::new(),
             office: OnceLock::new(),
@@ -958,6 +971,7 @@ fn host_chats(daemon: &Arc<Daemon>) {
     crate::rpc::run_as_daemon(
         crate::rpc::InDaemon {
             hub: daemon.hub.clone(),
+            attachment: daemon.attachment.clone(),
             children: daemon.children.clone(),
             states: daemon.composer.states.clone(),
             sock: daemon.paths.sock.to_string_lossy().into_owned(),
@@ -1160,6 +1174,43 @@ mod tests {
         let one = running.next().expect("one starts");
         assert!(running.next().is_none(), "the other finds it running");
         stop(one);
+    }
+
+    #[test]
+    fn attachment_follows_the_window_link_and_its_presence_reports() {
+        let paths = Paths::under(&config("presence"));
+        let daemon = started(&paths);
+        let attached = || daemon.daemon.attachment.attached(false);
+        assert!(!attached(), "no window yet");
+        let mut raw = Raw::connect(&paths);
+        raw.call(
+            0,
+            WINDOW_METHOD,
+            json!({ "token": token(&paths), "build": build_id(), "instance": "a" }),
+        );
+        assert!(attached(), "a window that just linked was opened by somebody");
+        let mut report = |id, shown, locked, idle| {
+            let reply = raw.call(
+                id,
+                "presence",
+                json!({ "shown": shown, "locked": locked, "idle": idle }),
+            );
+            assert!(reply["error"].is_null(), "{reply}");
+            attached()
+        };
+        assert!(!report(1, false, false, false), "hidden");
+        assert!(report(2, true, false, false), "shown again");
+        assert!(!report(3, true, true, false), "locked");
+        assert!(report(4, true, false, false), "unlocked");
+        assert!(!report(5, true, false, true), "idle past ten minutes");
+        assert!(report(6, true, false, false), "back at the keyboard");
+        drop(raw);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while attached() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!attached(), "the window dropped");
+        stop(daemon);
     }
 
     #[test]

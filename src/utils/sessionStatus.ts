@@ -41,6 +41,9 @@ export type SessionStatus =
   /** Idle, but its branch's pull request has failed checks or changes
    *  requested. Not a prompt: nothing in the session is waiting on an answer. */
   | "prAttention"
+  /** Stopped after a deny-class command was refused while nobody watched. Not
+   *  a prompt: the agent already has the refusal and has moved on. */
+  | "commandDenied"
   | "idle"
   | "running"
   | "none";
@@ -52,6 +55,7 @@ export const STATUS_LABEL: Record<Exclude<SessionStatus, "none">, string> = {
   waitingForAnswer: "Waiting for an answer",
   budgetStopped: "Stopped: budget reached",
   prAttention: "Pull request needs attention",
+  commandDenied: "Had a command blocked while you were away",
   idle: "Idle",
   running: "Running",
 };
@@ -117,7 +121,7 @@ export function isWorking(status: SessionStatus): boolean {
 export function socketState(status: SessionStatus): "working" | "needs_you" | "idle" | null {
   if (isWorking(status) || status === "running") return "working";
   if (blockedOnUser(status)) return "needs_you";
-  return status === "idle" || status === "prAttention" ? "idle" : null;
+  return status === "idle" || status === "prAttention" || status === "commandDenied" ? "idle" : null;
 }
 
 /** Outstanding background work in the words a status line uses, e.g.

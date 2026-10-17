@@ -419,7 +419,11 @@ export default function App() {
   });
   onCleanup(() => unlisten?.());
 
-  const wake = () => document.visibilityState === "visible" && client()?.wake();
+  const wake = () => {
+    const shown = document.visibilityState === "visible";
+    client()?.visible(shown);
+    if (shown) client()?.wake();
+  };
   const online = () => client()?.wake();
   document.addEventListener("visibilitychange", wake);
   window.addEventListener("online", online);

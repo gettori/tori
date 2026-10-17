@@ -54,6 +54,7 @@ pub enum Reason {
     Budget,
     Waiting,
     Forge,
+    Denied,
 }
 
 /// The sessions that crossed into a state on one tick.
@@ -201,6 +202,10 @@ impl Presence {
         self.focused = focused;
     }
 
+    pub fn looking_at(&self) -> Option<&str> {
+        self.selected.as_deref().filter(|_| self.focused)
+    }
+
     /// Blocked, and nobody has looked since.
     pub fn unattended(&self, id: &str, dot: Dot) -> bool {
         dot == Dot::NeedsYou && !self.attended.get(id).copied().unwrap_or(false)
@@ -307,6 +312,7 @@ fn reason_note(reason: Reason) -> &'static str {
         Reason::Budget => "hit its budget",
         Reason::Waiting => "is waiting",
         Reason::Forge => "PR needs a look",
+        Reason::Denied => "had a command blocked",
     }
 }
 
@@ -799,6 +805,18 @@ mod tests {
         let all = [live("a", Dot::Working), live("b", Dot::Solid), live("c", Dot::Hollow)];
         let ids: Vec<String> = tray_entries(&all).into_iter().map(|e| e.id).collect();
         assert_eq!(ids, ["a", "b", "c"]);
+    }
+
+    #[test]
+    fn a_blocked_command_says_so_on_its_tray_row() {
+        let blocked = Live {
+            reason: Some(Reason::Denied),
+            ..named("chat-1", Dot::NeedsYou, "deploy", "repo")
+        };
+        assert_eq!(
+            tray_entries(&[blocked])[0].label,
+            "deploy (repo): had a command blocked"
+        );
     }
 
     #[test]
