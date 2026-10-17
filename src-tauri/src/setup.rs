@@ -21,6 +21,9 @@ use crate::settings::WorktreePrefs;
 /// Longest a setup may run before it is killed and reported failed.
 pub const LIMIT: Duration = Duration::from_secs(30 * 60);
 
+/// Longest a teardown may hold up a removal before it is killed.
+pub const TEARDOWN_LIMIT: Duration = Duration::from_secs(2 * 60);
+
 /// How long a socket caller waits for a setup, under the 300 s at which
 /// codex-acp kills a tool call ([[concept_blocking_tool_call_ceiling]]).
 pub const WAIT_CAP: Duration = Duration::from_secs(240);
@@ -36,8 +39,25 @@ pub enum State {
     Failed,
 }
 
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Kind {
+    Setup,
+    Teardown,
+}
+
+impl Kind {
+    fn word(self) -> &'static str {
+        match self {
+            Kind::Setup => "setup",
+            Kind::Teardown => "teardown",
+        }
+    }
+}
+
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct Report {
+    pub kind: Kind,
     pub worktree: String,
     pub state: State,
     pub code: Option<i32>,
@@ -47,6 +67,7 @@ pub struct Report {
 pub type Publish = Arc<dyn Fn(&Report) + Send + Sync>;
 
 pub struct Spec<'a> {
+    pub kind: Kind,
     pub command: &'a str,
     pub project: &'a str,
     pub worktree: &'a Path,
@@ -130,11 +151,13 @@ impl Runs {
                 .spawn()
         });
         let log_str = log.to_string_lossy().into_owned();
+        let kind = spec.kind;
         let mut child = match spawned {
             Ok(child) => child,
             Err(e) => {
-                note(&log, &format!("setup did not start: {e}"));
+                note(&log, &format!("{} did not start: {e}", kind.word()));
                 let report = Report {
+                    kind,
                     worktree,
                     state: State::Failed,
                     code: None,
@@ -150,6 +173,7 @@ impl Runs {
         };
         let pid = child.id();
         let report = Report {
+            kind,
             worktree: worktree.clone(),
             state: State::Running,
             code: None,
@@ -169,7 +193,10 @@ impl Runs {
                     Ok(Some(status)) => break Some(status),
                     Ok(None) if Instant::now() >= deadline => {
                         kill_group(pid);
-                        note(&log, &format!("setup killed after {} minutes", limit.as_secs() / 60));
+                        note(
+                            &log,
+                            &format!("{} killed after {} minutes", kind.word(), limit.as_secs() / 60),
+                        );
                         let _ = child.wait();
                         break None;
                     }
@@ -188,7 +215,8 @@ impl Runs {
 
     fn put(&self, entry: Entry) {
         let mut entries = self.lock();
-        entries.retain(|e| !same_folder(&e.report.worktree, &entry.report.worktree));
+        entries
+            .retain(|e| e.report.kind != entry.report.kind || !same_folder(&e.report.worktree, &entry.report.worktree));
         entries.push(entry);
         self.changed.notify_all();
     }
@@ -205,48 +233,47 @@ impl Runs {
         Some(report)
     }
 
-    pub fn status(&self, worktree: &Path) -> Option<Report> {
+    pub fn status(&self, worktree: &Path, kind: Kind) -> Option<Report> {
         let key = canonical(worktree);
         self.lock()
             .iter()
-            .find(|e| same_folder(&e.report.worktree, &key))
+            .find(|e| e.report.kind == kind && same_folder(&e.report.worktree, &key))
             .map(|e| e.report.clone())
     }
 
     /// The folder's report once its run has exited, or still running at `cap`.
-    pub fn wait(&self, worktree: &Path, cap: Duration) -> Option<Report> {
+    pub fn wait(&self, worktree: &Path, kind: Kind, cap: Duration) -> Option<Report> {
         let key = canonical(worktree);
-        let running = |entries: &mut Vec<Entry>| {
-            entries
-                .iter()
-                .any(|e| same_folder(&e.report.worktree, &key) && e.report.state == State::Running)
-        };
+        let mine = |e: &Entry| e.report.kind == kind && same_folder(&e.report.worktree, &key);
+        let running = |entries: &mut Vec<Entry>| entries.iter().any(|e| mine(e) && e.report.state == State::Running);
         let entries = self.lock();
         let (entries, _) = self
             .changed
             .wait_timeout_while(entries, cap, running)
             .unwrap_or_else(PoisonError::into_inner);
-        entries
-            .iter()
-            .find(|e| same_folder(&e.report.worktree, &key))
-            .map(|e| e.report.clone())
+        entries.iter().find(|e| mine(e)).map(|e| e.report.clone())
     }
 
     /// Kill the folder's run, if one is running, and wait briefly for it to
     /// end so nothing is still writing into the folder.
-    pub fn kill(&self, worktree: &Path) {
+    pub fn kill(&self, worktree: &Path, kind: Kind) {
         let key = canonical(worktree);
         let pid = self
             .lock()
             .iter()
-            .find(|e| same_folder(&e.report.worktree, &key) && e.report.state == State::Running)
+            .find(|e| {
+                e.report.kind == kind && same_folder(&e.report.worktree, &key) && e.report.state == State::Running
+            })
             .map(|e| e.pid);
         let Some(pid) = pid else { return };
-        if let Some(log) = self.status(worktree).map(|r| r.log) {
-            note(Path::new(&log), "setup killed because the worktree was removed");
+        if let Some(log) = self.status(worktree, kind).map(|r| r.log) {
+            note(
+                Path::new(&log),
+                &format!("{} killed because the worktree was removed", kind.word()),
+            );
         }
         kill_group(pid);
-        self.wait(worktree, KILL_GRACE);
+        self.wait(worktree, kind, KILL_GRACE);
     }
 }
 
@@ -302,6 +329,7 @@ pub fn on_created(project: &str, worktree: &Path) -> Option<Report> {
     let path_env = crate::env::login_path().map_or_else(crate::env::augmented_path, str::to_string);
     let publish = PUBLISH.get().cloned().unwrap_or_else(|| Arc::new(|_: &Report| {}));
     let spec = Spec {
+        kind: Kind::Setup,
         command: &prefs.setup_command,
         project,
         worktree,
@@ -312,16 +340,50 @@ pub fn on_created(project: &str, worktree: &Path) -> Option<Report> {
     Some(RUNS.start(spec, publish))
 }
 
+/// Whether the project has a teardown command.
+pub fn has_teardown(project: &str) -> bool {
+    settings_and_logs()
+        .0
+        .into_iter()
+        .any(|(key, prefs)| same_folder(&key, project) && !prefs.teardown_command.trim().is_empty())
+}
+
+/// Run the project's teardown in a worktree about to be removed, and return
+/// once it has exited or been killed at `TEARDOWN_LIMIT`.
+pub fn teardown(project: &str, worktree: &Path) -> Option<Report> {
+    let (prefs, log_dir) = settings_and_logs();
+    let prefs = prefs
+        .into_iter()
+        .find(|(key, _)| same_folder(key, project))
+        .map(|(_, p)| p)?;
+    if prefs.teardown_command.trim().is_empty() {
+        return None;
+    }
+    let path_env = crate::env::login_path().map_or_else(crate::env::augmented_path, str::to_string);
+    let publish = PUBLISH.get().cloned().unwrap_or_else(|| Arc::new(|_: &Report| {}));
+    let spec = Spec {
+        kind: Kind::Teardown,
+        command: &prefs.teardown_command,
+        project,
+        worktree,
+        path_env: &path_env,
+        log_dir: &log_dir,
+        limit: TEARDOWN_LIMIT,
+    };
+    RUNS.start(spec, publish);
+    RUNS.wait(worktree, Kind::Teardown, TEARDOWN_LIMIT + KILL_GRACE)
+}
+
 pub fn status(worktree: &Path) -> Option<Report> {
-    RUNS.status(worktree)
+    RUNS.status(worktree, Kind::Setup)
 }
 
 pub fn wait(worktree: &Path, cap: Duration) -> Option<Report> {
-    RUNS.wait(worktree, cap)
+    RUNS.wait(worktree, Kind::Setup, cap)
 }
 
 pub fn kill(worktree: &Path) {
-    RUNS.kill(worktree)
+    RUNS.kill(worktree, Kind::Setup)
 }
 
 #[cfg(test)]
@@ -343,6 +405,7 @@ mod tests {
 
     fn run(runs: &'static Runs, dir: &Path, command: &str, limit: Duration) -> Report {
         let spec = Spec {
+            kind: Kind::Setup,
             command,
             project: "/the/project",
             worktree: &dir.join("wt"),
@@ -354,7 +417,8 @@ mod tests {
     }
 
     fn settled(runs: &Runs, dir: &Path) -> Report {
-        runs.wait(&dir.join("wt"), Duration::from_secs(10)).unwrap()
+        runs.wait(&dir.join("wt"), Kind::Setup, Duration::from_secs(10))
+            .unwrap()
     }
 
     #[test]
@@ -418,8 +482,8 @@ mod tests {
         let dir = tmp();
         let runs = runs();
         run(runs, &dir, "sleep 30", LIMIT);
-        runs.kill(&dir.join("wt"));
-        assert_eq!(runs.status(&dir.join("wt")).unwrap().state, State::Failed);
+        runs.kill(&dir.join("wt"), Kind::Setup);
+        assert_eq!(runs.status(&dir.join("wt"), Kind::Setup).unwrap().state, State::Failed);
     }
 
     #[test]
@@ -431,11 +495,77 @@ mod tests {
             WorktreePrefs {
                 setup_command: "  ".into(),
                 setup_wait: true,
+                ..Default::default()
             },
         );
         seam(prefs, dir.join("logs"));
         assert!(on_created("/the/project", &dir.join("wt")).is_none());
         assert!(configured("/the/project").is_none());
         assert!(!dir.join("logs").exists());
+    }
+
+    fn teardown_seam(dir: &Path, command: &str) {
+        let mut prefs = HashMap::new();
+        prefs.insert(
+            "/the/project".to_string(),
+            WorktreePrefs {
+                teardown_command: command.into(),
+                ..Default::default()
+            },
+        );
+        seam(prefs, dir.join("logs"));
+    }
+
+    #[test]
+    fn teardown_returns_only_once_its_command_has_exited() {
+        let dir = tmp();
+        let marker = dir.join("dropped");
+        teardown_seam(&dir, &format!("sleep 0.3; touch '{}'", marker.display()));
+        let report = teardown("/the/project", &dir.join("wt")).unwrap();
+        assert_eq!(
+            (report.kind, report.state, report.code),
+            (Kind::Teardown, State::Done, Some(0))
+        );
+        assert!(marker.exists(), "teardown returned before its command finished");
+        assert!(
+            status(&dir.join("wt")).is_none(),
+            "a teardown is not the folder's setup"
+        );
+    }
+
+    #[test]
+    fn a_failing_teardown_reports_failed_and_an_empty_one_runs_nothing() {
+        let dir = tmp();
+        teardown_seam(&dir, "exit 4");
+        let report = teardown("/the/project", &dir.join("wt")).unwrap();
+        assert_eq!((report.state, report.code), (State::Failed, Some(4)));
+
+        let other = tmp();
+        teardown_seam(&other, " ");
+        assert!(teardown("/the/project", &other.join("wt")).is_none());
+        assert!(!other.join("logs").exists());
+    }
+
+    #[test]
+    fn a_setup_and_a_teardown_in_one_folder_keep_their_own_reports() {
+        let dir = tmp();
+        let runs = runs();
+        run(runs, &dir, "sleep 30", LIMIT);
+        let spec = Spec {
+            kind: Kind::Teardown,
+            command: "true",
+            project: "/the/project",
+            worktree: &dir.join("wt"),
+            path_env: "/usr/bin:/bin",
+            log_dir: &dir.join("logs"),
+            limit: LIMIT,
+        };
+        runs.start(spec, Arc::new(|_: &Report| {}));
+        let torn = runs
+            .wait(&dir.join("wt"), Kind::Teardown, Duration::from_secs(10))
+            .unwrap();
+        assert_eq!(torn.state, State::Done);
+        assert_eq!(runs.status(&dir.join("wt"), Kind::Setup).unwrap().state, State::Running);
+        runs.kill(&dir.join("wt"), Kind::Setup);
     }
 }

@@ -51,8 +51,8 @@ const STATE_WORD: Record<LinkState, string> = {
 };
 
 /**
- * What every new worktree of a container gets: the setup command it runs, and
- * the files shared into it, as a section rather than a tree.
+ * What every worktree of a container gets: the commands it runs when created
+ * and removed, and the files shared into it, as a section rather than a tree.
  *
  * The folder is a tree, but the thing worth seeing is not its contents: it is
  * where each entry did and did not land. Linking runs once, when a worktree is
@@ -208,7 +208,7 @@ export default function WorktreesSection(props: { workspace: string }) {
 
   return (
     <>
-      <Section heading="Setup">
+      <Section heading="Commands">
         <Row
           stack
           label="Setup command"
@@ -233,6 +233,26 @@ export default function WorktreesSection(props: { workspace: string }) {
             checked={setup().setupWait}
             onChange={(on) => saveSetup({ setupWait: on })}
             aria-label="Agents started over the socket wait for it"
+          />
+        </Row>
+        <Row
+          stack
+          label="Teardown command"
+          hint={
+            <>
+              Runs with <code>sh -c</code> before Tori removes a worktree here, with <code>TORI_PROJECT_ROOT</code>,{" "}
+              <code>TORI_WORKTREE_PATH</code> and <code>TORI_PORT</code> set. The removal goes ahead if it fails or runs
+              past 2 minutes. A fork's pull request never runs it.
+            </>
+          }
+        >
+          <input
+            type="text"
+            class={`${s.input} ${s.text}`}
+            aria-label="Teardown command"
+            value={setup().teardownCommand}
+            placeholder="docker compose down"
+            onChange={(e) => saveSetup({ teardownCommand: e.currentTarget.value.trim() })}
           />
         </Row>
       </Section>

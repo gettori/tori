@@ -1308,7 +1308,7 @@ pub fn unattended_defaults() -> Unattended {
     }
 }
 
-/// What a project does to a worktree Tori has just created for it.
+/// What a project runs in the worktrees Tori creates for it.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorktreePrefs {
@@ -1318,6 +1318,9 @@ pub struct WorktreePrefs {
     /// Whether `worktree.new` and `session.spawn` wait for the command to exit.
     #[serde(default)]
     pub setup_wait: bool,
+    /// Run with `sh -c` in a worktree about to be removed. Empty runs nothing.
+    #[serde(default)]
+    pub teardown_command: String,
 }
 
 // --- pure core (explicit path, no globals), unit-tested off-disk ---
@@ -2917,11 +2920,20 @@ mod tests {
             WorktreePrefs {
                 setup_command: "pnpm install".into(),
                 setup_wait: true,
+                teardown_command: "pnpm db:drop".into(),
             },
         );
         save_to(&p, &s).unwrap();
         assert!(std::fs::read_to_string(&p).unwrap().contains("\"setupCommand\""));
+        assert!(std::fs::read_to_string(&p).unwrap().contains("\"teardownCommand\""));
         assert_eq!(load_from(&p).worktree, s.worktree);
+
+        std::fs::write(&p, r#"{"worktree":{"/p":{"setupCommand":"pnpm install"}}}"#).unwrap();
+        assert_eq!(
+            load_from(&p).worktree["/p"].teardown_command,
+            "",
+            "an older entry has no teardown"
+        );
         std::fs::remove_file(&p).ok();
     }
 
