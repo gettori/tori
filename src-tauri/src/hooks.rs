@@ -10,8 +10,8 @@
 // source on top of the normal ones (`~/.claude/settings.json` stays
 // byte-identical); this is Tori-launched-only - an externally-launched
 // `claude` never sees the flag, so it never sees the hooks either. The value
-// is a **file path** (`~/.config/tori/claude-hooks-settings.json`), not
-// inline JSON - see `write_claude_settings_file`'s doc comment for why an
+// is a **file path** (`~/.config/tori/tab-settings/<tab>.json`), not
+// inline JSON - see `write_tab_settings`'s doc comment for why an
 // inline blob broke every claude launch (the command is typed into the
 // tab's login shell, and a PTY in canonical mode truncates a single long
 // line).
@@ -24,10 +24,11 @@
 // convention as `checkpoint.rs`'s `~/.config/tori/checkpoint-index/<id>`.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{json, Value};
 
 use crate::sessions::{SessionMeta, TailState};
 
@@ -197,23 +198,58 @@ fn hook_entry(command: &str) -> serde_json::Value {
     json!([{ "hooks": [{ "type": "command", "command": command }] }])
 }
 
-fn claude_settings_json() -> String {
+pub const ENV_SHELL_HOOK: &str = "TORI_SHELL_HOOK";
+
+fn shell_hook_command(exe: &Path) -> String {
+    format!(
+        "{ENV_SHELL_HOOK}=1 {}",
+        crate::chat::approval::sh_quote(&exe.to_string_lossy())
+    )
+}
+
+fn claude_settings_json(exe: &Path, sandbox: Option<Value>) -> String {
     let cmd = status_writer_command();
     let entry = hook_entry(&cmd);
-    let settings = json!({
+    let mut settings = json!({
         "permissions": { "allow": crate::rpc::mcp_allow(false) },
         "hooks": {
             "UserPromptSubmit": entry,
-            "PreToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": cmd }] }],
+            "PreToolUse": [
+                { "matcher": "*", "hooks": [{ "type": "command", "command": cmd }] },
+                { "matcher": "Bash", "hooks": [{
+                    "type": "command",
+                    "command": shell_hook_command(exe),
+                    "timeout": crate::chat::approval::HOOK_TIMEOUT_SECS,
+                }] },
+            ],
             "Notification": entry,
             "Stop": entry,
         }
     });
+    if let Some(sandbox) = sandbox {
+        settings["sandbox"] = sandbox;
+    }
     settings.to_string()
 }
 
-fn claude_settings_file_path() -> PathBuf {
-    crate::owned_state::config_dir().join("claude-hooks-settings.json")
+fn tab_settings_path(tab: &str) -> PathBuf {
+    let safe: String = tab
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    crate::owned_state::config_dir()
+        .join("tab-settings")
+        .join(format!("{safe}.json"))
+}
+
+pub fn forget_tab(tab: &str) {
+    let _ = std::fs::remove_file(tab_settings_path(tab));
 }
 
 /// The `--settings <path>` value (phase 1's verified non-invasive injection
@@ -226,15 +262,21 @@ fn claude_settings_file_path() -> PathBuf {
 /// shell (confirmed live: the typed command appeared but never ran).
 /// `--settings-sources user,project,local` stays at claude's default, so
 /// this layers *on top of* `~/.claude/settings.json` rather than replacing
-/// it - that file is never opened or edited. Content is static across
-/// launches, so writing it is cheap and idempotent; failure degrades to no
-/// hook args rather than a launch that can't proceed.
-fn write_claude_settings_file() -> Result<PathBuf, String> {
-    let path = claude_settings_file_path();
+/// it - that file is never opened or edited. Failure degrades to no hook args
+/// rather than a launch that can't proceed.
+///
+/// The deny hook carries no token: it reaches Tori with the tab's own
+/// `TORI_SOCK` and `TORI_CALLER`, so a file outliving a daemon restart still
+/// works in the tab's next shell.
+fn write_tab_settings(tab: &str, cwd: &str) -> Result<PathBuf, String> {
+    let boxed = crate::unattended::tab_boxed(crate::unattended::level_for(cwd));
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let path = tab_settings_path(tab);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    std::fs::write(&path, claude_settings_json()).map_err(|e| e.to_string())?;
+    let sandbox = boxed.then(|| crate::unattended::claude_sandbox(cwd));
+    std::fs::write(&path, claude_settings_json(&exe, sandbox)).map_err(|e| e.to_string())?;
     Ok(path)
 }
 
@@ -243,15 +285,15 @@ fn write_claude_settings_file() -> Result<PathBuf, String> {
 /// "<path>"]` for claude, empty for every other adapter (no verified injection mechanism yet, see
 /// `AgentAdapter::hooks`) or if the settings file can't be written.
 #[tauri::command(async)]
-pub fn agent_hook_launch_args(agent_id: String) -> Vec<String> {
+pub fn agent_hook_launch_args(agent_id: String, tab_id: String, cwd: String) -> Vec<String> {
     crate::agents::find(&agent_id)
-        .map(|a| launch_args(&a))
+        .map(|a| launch_args(&a, &tab_id, &cwd))
         .unwrap_or_default()
 }
 
 // Tori's MCP server reaches any claude transport, whether or not its adapter
 // takes the status hooks.
-fn launch_args(adapter: &crate::agents::AgentAdapter) -> Vec<String> {
+fn launch_args(adapter: &crate::agents::AgentAdapter, tab: &str, cwd: &str) -> Vec<String> {
     let claude = adapter
         .chat
         .as_ref()
@@ -262,11 +304,59 @@ fn launch_args(adapter: &crate::agents::AgentAdapter) -> Vec<String> {
         Vec::new()
     };
     if adapter.hooks {
-        if let Ok(path) = write_claude_settings_file() {
+        if let Ok(path) = write_tab_settings(tab, cwd) {
             args.extend(["--settings".to_string(), path.to_string_lossy().into_owned()]);
         }
     }
     args
+}
+
+pub fn is_shell_helper() -> bool {
+    std::env::var_os(ENV_SHELL_HOOK).is_some()
+}
+
+pub fn run_shell_helper() -> i32 {
+    let mut payload = String::new();
+    let _ = std::io::stdin().read_to_string(&mut payload);
+    let deny = shell_check(&payload, || crate::settings::unattended().deny(), ask_tori);
+    let output = deny.map_or_else(crate::chat::approval::hook_output, |reason| {
+        crate::chat::approval::hook_denial(&reason)
+    });
+    let mut stdout = std::io::stdout();
+    let _ = stdout.write_all(output.as_bytes());
+    let _ = stdout.flush();
+    0
+}
+
+fn ask_tori(session: &str, command: &str) -> Option<Option<String>> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let params = json!({ "session": session, "command": command });
+    std::thread::spawn(move || {
+        let ask = || {
+            let endpoint = crate::rpc::client::locate()?;
+            let mut client = crate::rpc::client::Client::connect(&endpoint).ok()?;
+            let answer = client.call("shell.check", params).ok()?;
+            Some(answer["deny"].as_str().map(str::to_string))
+        };
+        let _ = tx.send(ask());
+    });
+    rx.recv_timeout(crate::unattended::SHELL_CHECK_TIMEOUT).ok().flatten()
+}
+
+fn shell_check(
+    payload: &str,
+    deny: impl FnOnce() -> Vec<String>,
+    ask: impl FnOnce(&str, &str) -> Option<Option<String>>,
+) -> Option<String> {
+    let parsed: Value = serde_json::from_str(payload).unwrap_or(Value::Null);
+    if parsed["tool_name"] != "Bash" {
+        return None;
+    }
+    let command = parsed["tool_input"]["command"].as_str().unwrap_or_default();
+    let deny = deny();
+    let entry = crate::unattended::deny_match(command, &deny)?;
+    let session = parsed["session_id"].as_str().unwrap_or_default();
+    ask(session, command).unwrap_or_else(|| Some(crate::unattended::unreachable_refusal(entry)))
 }
 
 #[cfg(test)]
@@ -452,40 +542,107 @@ mod tests {
         assert!(!called.load(std::sync::atomic::Ordering::SeqCst));
     }
 
-    #[test]
-    fn non_claude_agent_gets_no_extra_args() {
-        assert!(agent_hook_launch_args("unknown-agent".to_string()).is_empty());
+    fn launch(agent: &str, tab: &str) -> Vec<String> {
+        agent_hook_launch_args(agent.to_string(), tab.to_string(), "/nowhere".to_string())
     }
 
     #[test]
-    fn claude_gets_settings_flag_pointing_at_a_short_file_path() {
-        let args = agent_hook_launch_args("claude".to_string());
-        assert_eq!(
-            (args[0].as_str(), args[2].as_str()),
-            ("--mcp-config", "--settings"),
-            "{args:?}"
-        );
-        // Load-bearing: a *path*, not inline JSON - see write_claude_settings_file's
-        // doc comment for why an inline blob hangs the shell it's typed into.
+    fn non_claude_agent_gets_no_extra_args() {
+        assert!(launch("unknown-agent", "t").is_empty());
+    }
+
+    #[test]
+    fn two_claude_tabs_get_two_settings_files_each_with_the_status_and_deny_hooks() {
+        let tabs = [
+            format!("tab-a-{}", std::process::id()),
+            format!("tab-b-{}", std::process::id()),
+        ];
+        let files: Vec<String> = tabs
+            .iter()
+            .map(|tab| {
+                let args = launch("claude", tab);
+                assert_eq!(
+                    (args[0].as_str(), args[2].as_str()),
+                    ("--mcp-config", "--settings"),
+                    "{args:?}"
+                );
+                args[3].clone()
+            })
+            .collect();
+        assert_ne!(files[0], files[1]);
+        for file in &files {
+            // Load-bearing: a *path*, not inline JSON - see write_tab_settings's
+            // doc comment for why an inline blob hangs the shell it's typed into.
+            assert!(
+                !file.trim_start().starts_with('{'),
+                "must be a file path, not inline JSON"
+            );
+            let parsed: Value = serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap();
+            assert_eq!(parsed["permissions"], json!({ "allow": crate::rpc::mcp_allow(false) }));
+            for event in ["Notification", "UserPromptSubmit", "Stop"] {
+                assert_eq!(
+                    parsed["hooks"][event][0]["hooks"][0]["command"],
+                    status_writer_command()
+                );
+            }
+            let pre = &parsed["hooks"]["PreToolUse"];
+            assert_eq!(pre[0]["matcher"], "*");
+            assert_eq!(pre[1]["matcher"], "Bash");
+            let deny = pre[1]["hooks"][0]["command"].as_str().unwrap();
+            assert!(deny.starts_with(&format!("{ENV_SHELL_HOOK}=1 ")), "{deny}");
+            assert!(
+                parsed.get("sandbox").is_none(),
+                "an attended tab under the default level is not boxed"
+            );
+        }
+        for tab in &tabs {
+            forget_tab(tab);
+        }
         assert!(
-            !args[3].trim_start().starts_with('{'),
-            "must be a file path, not inline JSON"
+            files.iter().all(|f| !Path::new(f).exists()),
+            "a closed tab leaves no file"
         );
-        let text = std::fs::read_to_string(&args[3]).expect("the settings file should exist");
-        let parsed: serde_json::Value = serde_json::from_str(&text).expect("valid JSON");
-        assert_eq!(parsed["permissions"], json!({ "allow": crate::rpc::mcp_allow(false) }));
-        assert!(parsed["hooks"]["Notification"].is_array());
-        assert!(parsed["hooks"]["UserPromptSubmit"].is_array());
-        assert!(parsed["hooks"]["PreToolUse"].is_array());
-        assert!(parsed["hooks"]["Stop"].is_array());
+    }
+
+    #[test]
+    fn a_boxed_tab_carries_the_sandbox() {
+        let sandbox = json!({ "enabled": true });
+        let parsed: Value =
+            serde_json::from_str(&claude_settings_json(Path::new("/bin/tori"), Some(sandbox.clone()))).unwrap();
+        assert_eq!(parsed["sandbox"], sandbox);
+    }
+
+    #[test]
+    fn the_tab_hook_asks_tori_only_for_a_listed_command_and_refuses_when_it_cannot() {
+        let deny = || vec!["aws".to_string()];
+        let bash = |command: &str| {
+            json!({ "session_id": "s1", "tool_name": "Bash", "tool_input": { "command": command } }).to_string()
+        };
+        let never = |_: &str, _: &str| -> Option<Option<String>> { panic!("an unlisted command asked Tori") };
+        assert_eq!(shell_check(&bash("ls"), deny, never), None);
+
+        let asked = shell_check(&bash("aws s3 ls"), deny, |session, command| {
+            assert_eq!((session, command), ("s1", "aws s3 ls"));
+            Some(Some("nobody is watching".to_string()))
+        });
+        assert_eq!(asked.as_deref(), Some("nobody is watching"));
+        assert_eq!(
+            shell_check(&bash("aws s3 ls"), deny, |_, _| Some(None)),
+            None,
+            "attended"
+        );
+
+        let unreachable = shell_check(&bash("aws s3 ls"), deny, |_, _| None).expect("fails closed");
+        assert!(unreachable.contains("could not be reached"), "{unreachable}");
     }
 
     #[test]
     fn an_adapter_with_hooks_but_no_claude_transport_gets_no_mcp_config() {
         let mut adapter = crate::agents::find("claude").unwrap().clone();
         adapter.chat.as_mut().unwrap().transport = crate::agents::ChatTransport::Acp;
-        let args = launch_args(&adapter);
+        let args = launch_args(&adapter, &format!("tab-acp-{}", std::process::id()), "/nowhere");
         assert_eq!(args[0], "--settings", "{args:?}");
         assert!(!args.iter().any(|a| a == "--mcp-config"));
+        forget_tab(&format!("tab-acp-{}", std::process::id()));
     }
 }

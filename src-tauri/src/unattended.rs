@@ -15,6 +15,14 @@ pub fn boxed(level: ExecutionLevel, background: bool, attached: bool) -> bool {
     }
 }
 
+// A person opened it, so only the level can box it.
+pub fn tab_boxed(level: ExecutionLevel) -> bool {
+    boxed(level, false, true)
+}
+
+// Well inside the agent's own hook timeout, which on expiry would let the call run.
+pub const SHELL_CHECK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
 pub fn level_for(cwd: &str) -> ExecutionLevel {
     let project = crate::rpc::events::project_of(cwd, &crate::config::discovered_project_dirs());
     crate::settings::execution_level(project.as_deref().unwrap_or(cwd))
@@ -46,12 +54,14 @@ fn forge_host(cwd: &str) -> Option<String> {
     crate::forge::remote::parse(&url).ok().map(|remote| remote.host)
 }
 
-pub fn shell_refusal(tool: &str, input: &Value) -> Option<String> {
+pub fn refuse_and_mark(session: &str, tool: &str, input: &Value) -> Option<String> {
     if tool != "Bash" {
         return None;
     }
     let command = input["command"].as_str().unwrap_or_default();
-    refusal_for(command, &crate::settings::unattended().deny(), crate::rpc::attached())
+    let reason = refusal_for(command, &crate::settings::unattended().deny(), crate::rpc::attached())?;
+    crate::rpc::denied(session);
+    Some(reason)
 }
 
 fn refusal_for(command: &str, deny: &[String], attached: bool) -> Option<String> {
