@@ -1,7 +1,7 @@
-import { createEffect, createSignal, on, onCleanup, onMount, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, on, onCleanup, onMount, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { Play } from "lucide-solid";
+import { Globe, Play } from "lucide-solid";
 import Icon from "../../../components/Icon/Icon";
 import Chevron from "../../../components/Chevron/Chevron";
 import ContextMenu from "../../../components/Menu/ContextMenu";
@@ -12,6 +12,8 @@ import { emitWith, OPEN_IN_EDITOR, OPEN_TERMINAL, type FsChanged, type OpenInEdi
 import { isTaskSource, loadTasks, taskTab, type Task } from "../../../utils/tasks";
 import { runTask } from "../../../utils/runTask";
 import { loadTaskRuns } from "../../../utils/taskRecents";
+import { openPort, portsAt, portUrl } from "../../../utils/portsStore";
+import { copyText } from "../../../utils/clipboard";
 import tree from "../FileTree/FileTree.module.css";
 import styles from "./FilesPanel.module.css";
 
@@ -142,8 +144,27 @@ export default function ScriptsSection(props: { root: string | null }) {
       return next;
     });
 
+  const listening = createMemo(() => (props.root ? portsAt(props.root) : () => []));
+
   return (
     <OverlayScroll class={styles.sectionScroll}>
+      <For each={listening()()}>
+        {(port) => (
+          <ContextMenu
+            items={[
+              { label: "Open in browser", onClick: () => openPort(port) },
+              { label: "Copy URL", onClick: () => void copyText(portUrl(port)) },
+            ]}
+            class={tree.treeRow}
+            style={{ "padding-left": "8px" }}
+            data-port-link={port}
+            onClick={() => openPort(port)}
+          >
+            <Icon icon={Globe} />
+            <span class={tree.treeName}>{`localhost:${port}`}</span>
+          </ContextMenu>
+        )}
+      </For>
       <Show when={!error()} fallback={<div class={tree.empty}>{error()}</div>}>
         <Show
           when={tasks().length}

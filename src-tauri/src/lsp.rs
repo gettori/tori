@@ -91,6 +91,11 @@ pub struct LspExited {
 const EXITED: &str = "lsp://exited";
 
 impl LspState {
+    pub fn pids(&self) -> Vec<u32> {
+        let sessions = self.sessions.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        sessions.values().map(|s| s.child.id()).collect()
+    }
+
     fn stop(&self, handle: &LspHandle) -> Result<Option<LspExited>, String> {
         let session = self.sessions.lock().map_err(|e| e.to_string())?.remove(handle);
         Ok(session.map(|mut s| LspExited {

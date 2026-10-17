@@ -53,6 +53,7 @@ pub mod palette;
 mod patch;
 #[cfg(test)]
 mod perf_budgets;
+mod ports;
 mod presence;
 mod provenance;
 mod pty;
@@ -699,6 +700,7 @@ pub fn run() {
             worktree::prune_worktree_records,
             worktree::remove_worktree_and_branch,
             worktree_cleanup::worktree_cleanup_facts,
+            ports::ports_scan,
             forge::commands::forge_accounts,
             forge::commands::forge_sign_in_start,
             forge::commands::forge_cli_installed,

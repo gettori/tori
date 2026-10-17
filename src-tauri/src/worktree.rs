@@ -894,6 +894,8 @@ pub(crate) fn do_remove_worktree(repo_path: &str, worktree_path: &str, force: bo
         return Err("This worktree has uncommitted changes; commit or discard them first.".into());
     }
     crate::setup::kill(Path::new(worktree_path));
+    // Canonical now, while the folder is still there to resolve.
+    let root = std::fs::canonicalize(worktree_path).ok();
     match move_to_trash(repo_path, Path::new(worktree_path)) {
         Some(trashed) => {
             std::thread::spawn(move || std::fs::remove_dir_all(trashed));
@@ -901,6 +903,9 @@ pub(crate) fn do_remove_worktree(repo_path: &str, worktree_path: &str, force: bo
         None => git_ok(repo_path, &["worktree", "remove", "--force", worktree_path])?,
     }
     prune_worktrees(repo_path);
+    if let Some(root) = root {
+        crate::ports::release(&root);
+    }
     Ok(())
 }
 
@@ -1683,6 +1688,31 @@ mod tests {
         // The branch checked out in place is the user's checkout, not a reuse.
         let err = create_worktree_in(&repo_s, "main", &container, None).unwrap_err();
         assert!(err.contains("checked out in the repository itself"), "{err}");
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn removing_a_worktree_frees_its_port_block_at_once() {
+        let tmp = std::fs::canonicalize(unique_tmp()).unwrap();
+        let repo = tmp.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        git(&repo, &["init", "-q"]);
+        git(&repo, &["config", "user.email", "t@t.t"]);
+        git(&repo, &["config", "user.name", "t"]);
+        std::fs::write(repo.join("a.txt"), "hi").unwrap();
+        git(&repo, &["add", "."]);
+        git(&repo, &["commit", "-qm", "init"]);
+        let repo_s = repo.to_string_lossy().into_owned();
+        let container = repo.join(".tori/worktrees");
+        std::fs::create_dir_all(&container).unwrap();
+        crate::git::exclude_from_repo(&repo_s, ".tori");
+
+        let wt = create_worktree_in(&repo_s, "ports", &container, None).unwrap();
+        assert!(!crate::ports::env_for(&wt).is_empty());
+        assert!(crate::ports::holds(&wt));
+        do_remove_worktree(&repo_s, &wt.to_string_lossy(), true).unwrap();
+        assert!(!crate::ports::holds(&wt));
 
         std::fs::remove_dir_all(&tmp).ok();
     }

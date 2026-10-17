@@ -196,7 +196,7 @@ impl RepoLock {
 }
 
 // An unwritable `.git` goes unlocked, as it was.
-fn flock(path: &std::path::Path, wait: bool) -> Option<std::fs::File> {
+pub(crate) fn flock(path: &std::path::Path, wait: bool) -> Option<std::fs::File> {
     use std::os::fd::AsRawFd;
     let file = std::fs::OpenOptions::new()
         .create(true)
