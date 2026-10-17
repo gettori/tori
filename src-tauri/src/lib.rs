@@ -645,6 +645,7 @@ pub fn run() {
             backstop::backstop_restore_file,
             backstop::backstop_prune,
             hooks::agent_hook_launch_args,
+            hooks::tab_launch_refusal,
             hooks::hooks_status_prune,
             rpc::rpc_session_facts,
             rpc::rpc_attention,
