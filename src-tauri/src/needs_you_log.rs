@@ -40,13 +40,14 @@ pub enum Kind {
     PrMerged,
     LimitHit,
     LimitResumed,
+    Denied,
 }
 
 impl Kind {
     fn blocks(self) -> bool {
         matches!(
             self,
-            Kind::Permission | Kind::Question | Kind::Budget | Kind::Waiting | Kind::WorkerQuestion
+            Kind::Permission | Kind::Question | Kind::Budget | Kind::Waiting | Kind::WorkerQuestion | Kind::Denied
         )
     }
 
@@ -333,6 +334,7 @@ fn kind_of(reason: Reason, relayed: bool) -> Option<Kind> {
         Reason::Budget => Kind::Budget,
         Reason::Waiting => Kind::Waiting,
         Reason::Forge => return None,
+        Reason::Denied => Kind::Denied,
     })
 }
 

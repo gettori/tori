@@ -118,6 +118,7 @@ export class RemoteClient {
   private retry: ReturnType<typeof setTimeout> | null = null;
   private probe: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
+  private shown = document.visibilityState === "visible";
 
   constructor(
     readonly saved: Saved,
@@ -165,6 +166,14 @@ export class RemoteClient {
     this.connect();
   }
 
+  /** Whether this phone is in front of someone. Tori counts a connected phone
+   *  in a pocket as nobody watching, so it hears every change and every connect. */
+  visible(shown: boolean) {
+    this.shown = shown;
+    if (this.status() === "open" && this.socket)
+      void this.send(this.socket, "visible", { visible: shown }).catch(() => {});
+  }
+
   close() {
     this.stopped = true;
     if (this.retry) clearTimeout(this.retry);
@@ -200,6 +209,7 @@ export class RemoteClient {
           this.retryMs = 1000;
           this.setStatus("open");
           this.probe = setInterval(() => void this.send(socket, "caller", null).catch(() => {}), PROBE_MS);
+          void this.send(socket, "visible", { visible: this.shown }).catch(() => {});
           for (const topic of this.topics.keys()) void this.send(socket, "subscribe", { topic }).catch(() => {});
           this.setGeneration(this.generation() + 1);
         },
