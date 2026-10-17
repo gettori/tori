@@ -99,6 +99,7 @@ export type RustDot = {
   certainty: StatusCertainty;
   /** `needsYou` came from the branch's pull request rather than the agent. */
   raised?: boolean;
+  denied?: boolean;
   home: SessionHome | null;
 };
 const [rustDots, setRustDots] = createSignal<Record<string, RustDot>>({});
@@ -225,13 +226,16 @@ export function sessionCertainty(id: string): StatusCertainty {
 // does not exist, and would lag the turn the revert guard must see at once.
 function chatStatus(c: LiveChat): SessionStatus {
   const raised = (c.status === "idle" || c.status === "running") && sessionDot(c.sessionId) === "needsYou";
-  return raised ? "prAttention" : c.status;
+  if (!raised) return c.status;
+  return rustDots()[c.sessionId]?.denied ? "commandDenied" : "prAttention";
 }
 
 export function sessionStatus(id: string): SessionStatus {
   const chat = liveChats().find((c) => c.sessionId === id);
   if (chat) return chatStatus(chat);
-  return rustDots()[id]?.raised ? "prAttention" : statusFromDot(sessionDot(id));
+  const dot = rustDots()[id];
+  if (dot?.denied) return "commandDenied";
+  return dot?.raised ? "prAttention" : statusFromDot(sessionDot(id));
 }
 
 const homeOf = (id: string, meta: SessionMeta | undefined) => rustDots()[id]?.home ?? meta?.home ?? null;

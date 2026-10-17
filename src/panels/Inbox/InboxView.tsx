@@ -15,6 +15,7 @@ import {
   LoaderCircle,
   MessageSquareText,
   PiggyBank,
+  ShieldAlert,
   SquareTerminal,
   UserRoundSearch,
   type LucideIcon,
@@ -63,6 +64,7 @@ const KINDS: Record<NeedsYouKind, { icon: LucideIcon; tone: Tone }> = {
   prMerged: { icon: GitMerge, tone: "progress" },
   limitHit: { icon: Hourglass, tone: "attention" },
   limitResumed: { icon: CirclePlay, tone: "muted" },
+  denied: { icon: ShieldAlert, tone: "danger" },
 };
 
 const TIERS = [

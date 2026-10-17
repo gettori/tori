@@ -79,6 +79,7 @@ struct Conn {
     channels: HashSet<Channel>,
     /// The paired device on the other end, so revoking it can drop the connection.
     device: Option<String>,
+    visible: bool,
     chat: Arc<ChatOutbox>,
 }
 
@@ -203,6 +204,7 @@ impl Hub {
                 close,
                 channels: HashSet::new(),
                 device: None,
+                visible: true,
                 chat: Arc::default(),
             },
         );
@@ -227,6 +229,16 @@ impl Hub {
                 c.device = Some(device.to_string());
             }
         });
+    }
+
+    pub fn set_visible(&self, conn: ConnId, visible: bool) {
+        if let Some(c) = self.lock().conns.get_mut(&conn) {
+            c.visible = visible;
+        }
+    }
+
+    pub fn device_visible(&self) -> bool {
+        self.lock().conns.values().any(|c| c.device.is_some() && c.visible)
     }
 
     /// Drops every connection held by `device`.
