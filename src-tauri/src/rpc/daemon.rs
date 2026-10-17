@@ -972,6 +972,7 @@ fn host_chats(daemon: &Arc<Daemon>) {
         crate::rpc::InDaemon {
             hub: daemon.hub.clone(),
             attachment: daemon.attachment.clone(),
+            composer: daemon.composer.clone(),
             children: daemon.children.clone(),
             states: daemon.composer.states.clone(),
             sock: daemon.paths.sock.to_string_lossy().into_owned(),
