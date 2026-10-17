@@ -184,6 +184,9 @@ pub fn run() {
     if chat::approval::is_helper() {
         std::process::exit(chat::approval::run_helper());
     }
+    if hooks::is_shell_helper() {
+        std::process::exit(hooks::run_shell_helper());
+    }
 
     // Before the builder, so a panic in setup is on disk too.
     crash::install();

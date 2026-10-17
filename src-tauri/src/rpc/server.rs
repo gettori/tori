@@ -822,6 +822,16 @@ fn visible(hub: &Hub, principal: &Principal, conn: ConnId, params: &Value) -> Re
     Ok(json!({}))
 }
 
+// Off the method table so no agent sees it as a tool.
+fn shell_check(principal: &Principal, params: &Value) -> Result<Value, RpcError> {
+    if !matches!(principal, Principal::Session(super::auth::Caller::Terminal(_))) {
+        return Err(RpcError::new(REFUSED, "shell.check is for a terminal tab's hook"));
+    }
+    let session = params["session"].as_str().unwrap_or_default();
+    let input = json!({ "command": params["command"] });
+    Ok(json!({ "deny": crate::unattended::refuse_and_mark(session, "Bash", &input) }))
+}
+
 impl Server {
     pub fn dispatch(&self, conn: ConnId, principal: &Principal, req: &Request) -> Result<Value, RpcError> {
         match req.method.as_str() {
@@ -830,6 +840,7 @@ impl Server {
             }),
             "unsubscribe" => unsubscribe(&self.hub, conn, &req.params),
             "visible" => visible(&self.hub, principal, conn, &req.params),
+            "shell.check" => shell_check(principal, &req.params),
             "auth" => Err(RpcError::new(INVALID_REQUEST, "already authenticated")),
             _ => self.call(principal, req),
         }

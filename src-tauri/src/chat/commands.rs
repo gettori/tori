@@ -394,8 +394,7 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
         // the new worktree to the very next write, and walking away denies
         // the very next listed command.
         Box::new(move |req| {
-            if let Some(reason) = crate::unattended::shell_refusal(&req.tool_name, &req.tool_input) {
-                crate::rpc::denied(&denied_session);
+            if let Some(reason) = crate::unattended::refuse_and_mark(&denied_session, &req.tool_name, &req.tool_input) {
                 return Some(reason);
             }
             let topics = crate::unit_home::topics();
