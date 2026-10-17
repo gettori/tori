@@ -741,6 +741,7 @@ pub fn run() {
             workspace_settings::set_workspace_settings,
             settings::settings_watch_start,
             settings::take_theme_import_notice,
+            settings::unattended_defaults,
             themes::list_user_themes,
             packs::packs_load_errors,
             packs::packs_migration_report,

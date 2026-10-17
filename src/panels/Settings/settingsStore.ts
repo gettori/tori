@@ -353,7 +353,14 @@ export type Settings = {
   conflictRadar: { enabled: boolean };
   /** Mirrors `ReviewRule` in src-tauri/src/settings.rs, keyed by project path. */
   reviewRequested?: Record<string, ReviewRule>;
+  /** Mirrors `ExecutionLevel` in src-tauri/src/settings.rs, keyed by project path. */
+  execution?: Record<string, ExecutionLevel>;
+  /** Mirrors `Unattended` in src-tauri/src/settings.rs. Null is the built-in list. */
+  unattended?: Unattended;
 };
+
+export type ExecutionLevel = "asMe" | "boxedWhenUnattended" | "alwaysBoxed";
+export type Unattended = { deny: string[] | null; allowedDomains: string[] | null };
 
 /** What a project does when a pull request asks for your review. A null prompt
  *  runs the built-in one; a null pick falls back the way any spawn does, and a
@@ -494,6 +501,8 @@ export const DEFAULT_SETTINGS: Settings = {
   verification: { enabled: true, commands: {} },
   conflictRadar: { enabled: true },
   reviewRequested: {},
+  execution: {},
+  unattended: { deny: null, allowedDomains: null },
 };
 
 /**
@@ -946,6 +955,19 @@ export function setReviewRule(projectPath: string, patch: Partial<ReviewRule>): 
     ...settings,
     reviewRequested: { ...settings.reviewRequested, [projectPath]: { ...reviewRule(projectPath), ...patch } },
   });
+}
+
+export function executionLevel(projectPath: string): ExecutionLevel {
+  return settings.execution?.[projectPath] ?? "boxedWhenUnattended";
+}
+
+export function setExecutionLevel(projectPath: string, level: ExecutionLevel): Promise<void> {
+  return saveSettings({ ...settings, execution: { ...settings.execution, [projectPath]: level } });
+}
+
+export function setUnattended(patch: Partial<Unattended>): Promise<void> {
+  const unattended = { deny: null, allowedDomains: null, ...settings.unattended, ...patch };
+  return saveSettings({ ...settings, unattended });
 }
 
 /** Re-read the themes folder, then re-apply the active theme so an edit to the
