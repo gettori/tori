@@ -378,6 +378,7 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
     let repo = PathBuf::from(&cwd);
     let capture_into = snapshots.clone();
     let guarded_cwd = cwd.clone();
+    let denied_session = session_id.clone();
     let server = approval::start_guarded(
         // Runs on every authenticated call, while the file about to be written
         // still holds its prior content.
@@ -390,8 +391,13 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
             }
         }),
         // Read per call rather than at spawn, so a promotion mid-chat opens
-        // the new worktree to the very next write.
+        // the new worktree to the very next write, and walking away denies
+        // the very next listed command.
         Box::new(move |req| {
+            if let Some(reason) = crate::unattended::shell_refusal(&req.tool_name, &req.tool_input) {
+                crate::rpc::denied(&denied_session);
+                return Some(reason);
+            }
             let topics = crate::unit_home::topics();
             snapshot::write_targets(&req.tool_name, &req.tool_input)
                 .iter()
@@ -418,6 +424,8 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
             crate::rpc::mark_spawned_worker(&session_id, spawner);
         }
     }
+    let boxed = chat.transport == ChatTransport::ClaudeStreamJson
+        && crate::unattended::boxed(crate::unattended::level_for(&cwd), background, crate::rpc::attached());
     args.extend(approval::settings_args(
         &session_id,
         server.sock_path(),
@@ -425,6 +433,7 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
         chat.transport,
         background,
         home.as_ref(),
+        boxed.then(|| crate::unattended::claude_sandbox(&cwd)),
     )?);
     let untrusted = !trusted;
     args.extend(trust_args);
@@ -2033,6 +2042,7 @@ mod tests {
             "tok",
             false,
             Some(&launch),
+            None,
         );
         assert!(settings.contains("Bash(npm test)"), "{settings}");
         assert!(settings.contains(&format!("Read(/{root_s}/.env)")), "{settings}");

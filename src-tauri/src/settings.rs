@@ -1210,12 +1210,10 @@ pub struct Unattended {
 }
 
 impl Unattended {
-    #[cfg_attr(not(test), expect(dead_code, reason = "the boxing rule and the deny guard read it"))]
     pub fn deny(&self) -> Vec<String> {
         self.deny.clone().unwrap_or_else(default_deny)
     }
 
-    #[cfg_attr(not(test), expect(dead_code, reason = "the boxing rule and the deny guard read it"))]
     pub fn allowed_domains(&self) -> Vec<String> {
         self.allowed_domains.clone().unwrap_or_else(default_allowed_domains)
     }
@@ -1284,7 +1282,6 @@ fn lenient_unattended<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Unattend
     Ok(serde_json::from_value(raw).unwrap_or_default())
 }
 
-#[expect(dead_code, reason = "the boxing rule and the deny guard read it")]
 pub fn execution_level(project: &str) -> ExecutionLevel {
     get_settings().execution_level(project)
 }
@@ -1298,7 +1295,6 @@ impl Settings {
     }
 }
 
-#[expect(dead_code, reason = "the boxing rule and the deny guard read it")]
 pub fn unattended() -> Unattended {
     load_from(&settings_path()).unattended
 }

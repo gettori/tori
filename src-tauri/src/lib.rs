@@ -76,6 +76,7 @@ mod topics;
 mod trace;
 mod trust;
 mod ui;
+mod unattended;
 mod unit_home;
 mod update;
 mod usage_probe;

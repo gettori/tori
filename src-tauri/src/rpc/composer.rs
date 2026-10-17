@@ -128,7 +128,6 @@ impl Composer {
         self.nudge(if cleared { Nudge::Compose } else { Nudge::Present });
     }
 
-    #[expect(dead_code, reason = "the unattended deny guard calls it")]
     pub fn denied(&self, id: &str) {
         if self.dots.deny(id) {
             self.nudge(Nudge::Compose);
