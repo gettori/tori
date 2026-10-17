@@ -10,6 +10,16 @@ matching section here fails the release rather than publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.1017.0-alpha
+
+- A pull request that is one layer of a GitHub stack shows its place on the branch's second line, like `2/3`, and the hover says which branch the stack targets.
+- When two or more layers of one stack are local, the project card gathers them under a **Stack** row with `3 PRs -> main`, top layer first, with the trunk at the bottom. Click it to collapse it; following a link or a notification to a layer opens it again.
+- A stack counts as one row against the six branches a project card shows before **N more**.
+- Closing the window hides Tori instead of quitting it. The menu bar icon keeps listing your sessions and Mac notifications keep coming. Click Tori in the Dock, or Open Tori in the menu bar icon, to bring the window back.
+- Quitting is Cmd+Q, or Quit Tori in the Tori menu or the menu bar icon. It still asks first.
+- Unsaved edits are stashed when the window hides too (with Keep unsaved edits across a quit on), so they come back even if Tori gets ended while hidden.
+- The Mac app has the current macOS window buttons and scrollbars again, instead of the old style in the last release.
+
 ## 26.1016.0-alpha
 
 - The tray groups sessions under **Needs you**, **Working** and **Idle**,
