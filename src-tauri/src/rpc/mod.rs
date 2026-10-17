@@ -121,11 +121,16 @@ pub(crate) fn in_daemon() -> bool {
 
 /// Whether anybody is watching, as the daemon last heard it. Outside the
 /// daemon nobody reports to this process, so the answer there is no.
-#[expect(dead_code, reason = "the unattended deny guard reads it")]
 pub fn attached() -> bool {
     IN_DAEMON
         .get()
         .is_some_and(|role| role.attachment.attached(role.hub.device_visible()))
+}
+
+pub fn denied(session: &str) {
+    if let Some(role) = IN_DAEMON.get() {
+        role.composer.denied(session);
+    }
 }
 
 pub(crate) fn office_tell(op: &str, args: Value) {
@@ -207,6 +212,7 @@ fn daemon_events(app: &AppHandle, states: &Arc<SessionStates>) -> window::OnEven
 pub(crate) struct InDaemon {
     pub hub: Arc<Hub>,
     pub attachment: Arc<attached::Attachment>,
+    pub composer: Arc<composer::Composer>,
     pub children: Arc<auth::Children>,
     pub states: Arc<SessionStates>,
     pub sock: String,

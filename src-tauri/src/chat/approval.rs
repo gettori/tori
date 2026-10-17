@@ -56,7 +56,7 @@ use crate::owned_state::now_ms;
 pub const ENV_SOCK: &str = "TORI_CHAT_HOOK_SOCK";
 pub const ENV_TOKEN: &str = "TORI_CHAT_HOOK_TOKEN";
 
-/// The `matcher` the capture hook ships.
+/// The write tools in the `matcher` the capture hook ships.
 ///
 /// Measured on claude 2.1.231: a matcher of `"Edit|Write|MultiEdit|NotebookEdit"`
 /// fires on `Edit` and `Write` and not on `Read`, so the alternation is a real
@@ -64,7 +64,7 @@ pub const ENV_TOKEN: &str = "TORI_CHAT_HOOK_TOKEN";
 /// `hook-matcher`). Built from [`super::snapshot::WRITE_TOOLS`] rather than
 /// written out, so a tool added to the snapshot list cannot be left off the
 /// matcher and silently lose its diff.
-fn matcher() -> String {
+fn write_matcher() -> String {
     super::snapshot::WRITE_TOOLS.join("|")
 }
 
@@ -205,6 +205,7 @@ pub fn run_helper() -> i32 {
             &payload,
             Path::new(&sock),
             &std::env::var(ENV_TOKEN).unwrap_or_default(),
+            || crate::settings::unattended().deny(),
         );
     }
     emit(&deny.map_or_else(hook_output, |reason| hook_denial(&reason)))
@@ -215,7 +216,7 @@ pub fn run_helper() -> i32 {
 /// Split out of [`run_helper`] so it is testable against a real socket without
 /// re-execing the binary. Every input is an argument; nothing here reads the
 /// environment.
-fn helper_capture(payload: &str, sock: &Path, token: &str) -> Option<String> {
+fn helper_capture(payload: &str, sock: &Path, token: &str, deny: impl FnOnce() -> Vec<String>) -> Option<String> {
     let parsed: Value = serde_json::from_str(payload).unwrap_or(Value::Null);
     let HookInputs {
         tool_name,
@@ -223,6 +224,26 @@ fn helper_capture(payload: &str, sock: &Path, token: &str) -> Option<String> {
         session_id,
         tool_use_id,
     } = hook_inputs(&parsed);
+
+    // Read from the settings file on each call, so an edit reaches a session
+    // already running. Only a listed command costs a round trip, and that one
+    // fails closed: an unreachable Tori cannot say anybody is watching.
+    if tool_name == "Bash" {
+        let command = tool_input["command"].as_str().unwrap_or_default();
+        let deny = deny();
+        let entry = crate::unattended::deny_match(command, &deny)?;
+        let req = HookRequest {
+            token: token.to_string(),
+            session_id,
+            tool_use_id,
+            tool_name,
+            tool_input,
+        };
+        return match helper_exchange(sock, &req) {
+            Ok(ack) if ack.captured || ack.deny.is_some() => ack.deny,
+            _ => Some(crate::unattended::unreachable_refusal(entry)),
+        };
+    }
 
     // The matcher should already have kept this tool away from us, but the
     // matcher is claude's and this is the claim Tori can keep on its own:
@@ -499,17 +520,19 @@ fn sh_quote(s: &str) -> String {
 /// hooks, permissions and config, and must never ship.
 #[cfg(test)]
 pub fn settings_json(exe: &Path, sock: &Path, token: &str, background: bool) -> String {
-    settings_json_with(exe, sock, token, background, None)
+    settings_json_with(exe, sock, token, background, None, None)
 }
 
-/// `settings_json` plus the member rules a Topic home chat carries. Only the
-/// rules: a member's hooks are tied to its own folder and never come along.
+/// `settings_json` plus the member rules a Topic home chat carries, and the
+/// sandbox of a boxed session. Only the rules: a member's hooks are tied to its
+/// own folder and never come along.
 pub fn settings_json_with(
     exe: &Path,
     sock: &Path,
     token: &str,
     background: bool,
     home: Option<&crate::topic_home::HomeLaunch>,
+    sandbox: Option<Value>,
 ) -> String {
     let mut permissions = json!({ "allow": crate::rpc::mcp_allow(background) });
     if let Some(home) = home {
@@ -527,11 +550,11 @@ pub fn settings_json_with(
                 .extend(rules.iter().cloned().map(Value::String));
         }
     }
-    json!({
+    let mut settings = json!({
         "permissions": permissions,
         "hooks": {
             "PreToolUse": [{
-                "matcher": matcher(),
+                "matcher": format!("{}|Bash", write_matcher()),
                 "hooks": [{
                     "type": "command",
                     "command": hook_command(exe, sock, token),
@@ -539,8 +562,11 @@ pub fn settings_json_with(
                 }],
             }],
         }
-    })
-    .to_string()
+    });
+    if let Some(sandbox) = sandbox {
+        settings["sandbox"] = sandbox;
+    }
+    settings.to_string()
 }
 
 /// Write the settings file and return the `["--settings", <path>]` args, led
@@ -558,13 +584,15 @@ pub fn settings_args(
     transport: ChatTransport,
     background: bool,
     home: Option<&crate::topic_home::HomeLaunch>,
+    sandbox: Option<Value>,
 ) -> Result<Vec<String>, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let path = settings_path(session_id);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    std::fs::write(&path, settings_json_with(&exe, sock, token, background, home)).map_err(|e| e.to_string())?;
+    std::fs::write(&path, settings_json_with(&exe, sock, token, background, home, sandbox))
+        .map_err(|e| e.to_string())?;
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
     let mut args = match transport {
         ChatTransport::ClaudeStreamJson => crate::rpc::mcp_config_args(),
@@ -616,6 +644,10 @@ mod tests {
             tool_name: tool.to_string(),
             tool_input: input,
         }
+    }
+
+    fn capture(payload: &str, sock: &Path, token: &str) -> Option<String> {
+        helper_capture(payload, sock, token, Vec::new)
     }
 
     fn payload(tool: &str, input: Value) -> String {
@@ -783,7 +815,7 @@ mod tests {
     #[test]
     fn the_helper_captures_a_write_and_decides_nothing() {
         let (server, observed) = observing_server();
-        helper_capture(
+        capture(
             &payload("Edit", json!({"file_path": "/proj/a.rs"})),
             server.sock_path(),
             server.token(),
@@ -801,7 +833,7 @@ mod tests {
     #[test]
     fn a_capture_that_cannot_reach_tori_is_not_a_refusal() {
         // No panic, no error propagated, nothing printed but the marker.
-        helper_capture(
+        capture(
             &payload("Write", json!({"file_path": "/proj/new.rs"})),
             Path::new("/nonexistent/socket"),
             "tok",
@@ -824,7 +856,7 @@ mod tests {
         )
         .unwrap();
         let call = |path: &str| {
-            helper_capture(
+            capture(
                 &payload("Edit", json!({"file_path": path})),
                 server.sock_path(),
                 server.token(),
@@ -840,7 +872,7 @@ mod tests {
         );
         assert_eq!(out[TORI_HOOK_MARKER], true);
         assert_eq!(call("/p/api/.tori/worktrees/auth/lib.rs"), None);
-        let unreachable = helper_capture(
+        let unreachable = capture(
             &payload("Edit", json!({"file_path": "/p/web/app.ts"})),
             Path::new("/nonexistent/socket"),
             "tok",
@@ -848,11 +880,56 @@ mod tests {
         assert_eq!(unreachable, None, "an unreachable Tori must not become a denial");
     }
 
+    #[test]
+    fn a_shell_call_with_no_listed_word_opens_no_socket() {
+        let (server, _observed) = observing_server();
+        for command in ["ls", "cargo test", "echo aws"] {
+            let call = payload("Bash", json!({ "command": command }));
+            let deny = || vec!["aws".to_string()];
+            assert_eq!(helper_capture(&call, server.sock_path(), server.token(), deny), None);
+        }
+        assert_eq!(server.connections(), 0);
+    }
+
+    #[test]
+    fn a_word_added_to_the_list_is_denied_in_a_running_session_only_while_unattended() {
+        let attended = Arc::new(AtomicBool::new(false));
+        let watching = attended.clone();
+        let server = start_guarded(
+            Box::new(|_| {}),
+            Box::new(move |req| {
+                (req.tool_name == "Bash" && !watching.load(Ordering::SeqCst)).then(|| "nobody is watching".to_string())
+            }),
+        )
+        .unwrap();
+        let call = |list: &[&str]| {
+            let deny = || list.iter().map(|w| w.to_string()).collect();
+            let bash = payload("Bash", json!({ "command": "bun publish" }));
+            helper_capture(&bash, server.sock_path(), server.token(), deny)
+        };
+
+        assert_eq!(call(&["aws"]), None);
+        assert_eq!(call(&["aws", "bun publish"]).as_deref(), Some("nobody is watching"));
+        attended.store(true, Ordering::SeqCst);
+        assert_eq!(call(&["aws", "bun publish"]), None);
+    }
+
+    #[test]
+    fn a_listed_command_fails_closed_and_a_write_stays_open_when_tori_is_unreachable() {
+        let dead = Path::new("/nonexistent/socket");
+        let deny = || vec!["aws".to_string()];
+        let bash = payload("Bash", json!({ "command": "aws s3 ls" }));
+        let reason = helper_capture(&bash, dead, "tok", deny).expect("an unreachable Tori denies a listed command");
+        assert!(reason.contains("could not be reached"), "{reason}");
+        let edit = payload("Edit", json!({ "file_path": "/p/a.rs" }));
+        assert_eq!(helper_capture(&edit, dead, "tok", deny), None);
+    }
+
     /// A payload that is not JSON at all must be survivable for the same reason.
     #[test]
     fn an_unparseable_payload_is_a_lost_diff_and_nothing_more() {
         let (server, observed) = observing_server();
-        helper_capture("not json", server.sock_path(), server.token());
+        capture("not json", server.sock_path(), server.token());
         assert!(observed.lock().unwrap().is_empty());
         assert_eq!(
             server.connections(),
@@ -868,7 +945,7 @@ mod tests {
     fn fifty_reads_open_no_sockets() {
         let (server, observed) = observing_server();
         for _ in 0..50 {
-            helper_capture(
+            capture(
                 &payload("Read", json!({"file_path": "/proj/a.rs"})),
                 server.sock_path(),
                 server.token(),
@@ -891,7 +968,7 @@ mod tests {
         let mut samples: Vec<Duration> = Vec::new();
         for i in 0..40 {
             let start = std::time::Instant::now();
-            helper_capture(
+            capture(
                 &payload("Edit", json!({"file_path": format!("/proj/f{i}.rs")})),
                 server.sock_path(),
                 server.token(),
@@ -1014,10 +1091,10 @@ mod tests {
     }
 
     /// The hook is handed exactly the tools whose before-state is worth keeping,
-    /// and nothing else. A tool `write_targets` reports but the matcher omits
+    /// and the shell. A tool `write_targets` reports but the matcher omits
     /// would lose its diff silently, which is why both read one list.
     #[test]
-    fn the_hook_matches_the_write_tools_and_only_those() {
+    fn the_hook_matches_the_write_tools_and_the_shell_only() {
         let parsed: Value = serde_json::from_str(&settings_json(
             Path::new("/bin/tori"),
             Path::new("/tmp/s"),
@@ -1030,8 +1107,10 @@ mod tests {
             .unwrap()
             .to_string();
         let named: Vec<&str> = matcher.split('|').collect();
-        assert_eq!(named, super::super::snapshot::WRITE_TOOLS.to_vec());
-        for tool in named {
+        let (shell, writes) = named.split_last().unwrap();
+        assert_eq!(*shell, "Bash", "the unattended deny list reads shell calls");
+        assert_eq!(writes, super::super::snapshot::WRITE_TOOLS);
+        for tool in writes {
             assert!(
                 !super::super::snapshot::write_targets(tool, &json!({"file_path": "/a"})).is_empty(),
                 "{tool} is in the matcher but captures nothing"
@@ -1075,6 +1154,7 @@ mod tests {
             "tok",
             ChatTransport::ClaudeStreamJson,
             false,
+            None,
             None,
         )
         .unwrap();
@@ -1130,6 +1210,7 @@ mod tests {
             ChatTransport::ClaudeStreamJson,
             false,
             None,
+            None,
         )
         .unwrap();
         let [.., flag, file] = args.as_slice() else {
@@ -1157,6 +1238,7 @@ mod tests {
             ChatTransport::ClaudeStreamJson,
             false,
             None,
+            None,
         )
         .unwrap();
         assert_eq!(args.len(), 4, "{args:?}");
@@ -1167,7 +1249,16 @@ mod tests {
             json!({ "command": "tori", "args": ["mcp"] })
         );
 
-        let acp = settings_args(&session, Path::new("/tmp/s"), "tok", ChatTransport::Acp, false, None).unwrap();
+        let acp = settings_args(
+            &session,
+            Path::new("/tmp/s"),
+            "tok",
+            ChatTransport::Acp,
+            false,
+            None,
+            None,
+        )
+        .unwrap();
         assert_eq!(acp[0], "--settings");
         let _ = std::fs::remove_file(settings_path(&session));
     }
@@ -1182,6 +1273,7 @@ mod tests {
                 "tok",
                 ChatTransport::ClaudeStreamJson,
                 background,
+                None,
                 None,
             )
             .unwrap();
