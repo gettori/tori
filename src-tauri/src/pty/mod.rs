@@ -476,6 +476,7 @@ pub fn pty_kill(state: State<PtyState>, chat: State<crate::chat::host::ChatState
             thread::spawn(move || registry.release(&session_id, &tab));
         }
     }
+    crate::hooks::forget_tab(&id);
     crate::rpc::daemon_tell("pty.kill", json!({ "tab": id }));
     Ok(())
 }

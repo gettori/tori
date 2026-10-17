@@ -44,6 +44,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -239,7 +240,7 @@ fn helper_capture(payload: &str, sock: &Path, token: &str, deny: impl FnOnce() -
             tool_name,
             tool_input,
         };
-        return match helper_exchange(sock, &req) {
+        return match helper_exchange(sock, &req, Some(crate::unattended::SHELL_CHECK_TIMEOUT)) {
             Ok(ack) if ack.captured || ack.deny.is_some() => ack.deny,
             _ => Some(crate::unattended::unreachable_refusal(entry)),
         };
@@ -262,7 +263,7 @@ fn helper_capture(payload: &str, sock: &Path, token: &str, deny: impl FnOnce() -
     // refusing here would be Tori gating again by the back door. The round trip
     // is still synchronous, because a before-state captured after the write is
     // not a before-state.
-    helper_exchange(sock, &req).ok().and_then(|ack| ack.deny)
+    helper_exchange(sock, &req, None).ok().and_then(|ack| ack.deny)
 }
 
 /// Exit 0 having written `output`.
@@ -281,8 +282,9 @@ fn emit(output: &str) -> i32 {
 
 /// One round trip to the server. Isolated from env and stdout so it is testable
 /// against a stub listener, the same split `askpass.rs` uses.
-fn helper_exchange(sock: &Path, req: &HookRequest) -> std::io::Result<CaptureAck> {
+fn helper_exchange(sock: &Path, req: &HookRequest, timeout: Option<Duration>) -> std::io::Result<CaptureAck> {
     let mut stream = UnixStream::connect(sock)?;
+    stream.set_read_timeout(timeout)?;
     stream.write_all(serde_json::to_string(req)?.as_bytes())?;
     stream.write_all(b"\n")?;
     stream.flush()?;
@@ -504,7 +506,7 @@ pub fn hook_command(exe: &Path, sock: &Path, token: &str) -> String {
     )
 }
 
-fn sh_quote(s: &str) -> String {
+pub(crate) fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
 }
 
@@ -669,6 +671,7 @@ mod tests {
         let ack = helper_exchange(
             server.sock_path(),
             &request(server.token(), "Edit", json!({"file_path": "/proj/a.rs"})),
+            None,
         )
         .unwrap();
 
@@ -691,6 +694,7 @@ mod tests {
         let ack = helper_exchange(
             server.sock_path(),
             &request("wrong-token", "Edit", json!({"file_path": "/a"})),
+            None,
         )
         .unwrap();
         assert!(!ack.captured, "a wrong token must not be answered as a capture");
@@ -709,7 +713,7 @@ mod tests {
         let started = std::time::Instant::now();
         // Either the connect fails outright or the answer is a non-capture; what
         // must never happen is the helper sitting there.
-        let _ = helper_exchange(&sock, &request(&token, "Write", json!({"file_path": "/a"})));
+        let _ = helper_exchange(&sock, &request(&token, "Write", json!({"file_path": "/a"})), None);
         assert!(
             started.elapsed() < Duration::from_secs(5),
             "a dead server must not hold a write open"
@@ -744,7 +748,7 @@ mod tests {
     #[test]
     fn an_unreachable_socket_errors_rather_than_blocking() {
         let missing = std::env::temp_dir().join("tori-cha-does-not-exist/s");
-        assert!(helper_exchange(&missing, &request("t", "Write", json!({}))).is_err());
+        assert!(helper_exchange(&missing, &request("t", "Write", json!({})), None).is_err());
     }
 
     /// The 104-byte `sun_path` cap. The session id is not in the path, which is
@@ -776,7 +780,7 @@ mod tests {
                 let t = server.token().to_string();
                 let tool = tool.to_string();
                 thread::spawn(move || {
-                    helper_exchange(&s, &request(&t, &tool, json!({"file_path": "/proj/a.rs"}))).unwrap()
+                    helper_exchange(&s, &request(&t, &tool, json!({"file_path": "/proj/a.rs"})), None).unwrap()
                 })
             })
             .collect();

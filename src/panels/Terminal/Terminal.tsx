@@ -1542,11 +1542,11 @@ export default function Terminal(props: {
   }
 
   // Extra launch args a Tori-launched session gets that an externally-typed
-  // registered adapter invocation never would (Phase 3): today just
-  // claude's injected `--settings <json>` (crate::hooks), which scopes
-  // hook-driven status to sessions this function actually spawned/resumed.
-  async function hookArgs(agentId: string): Promise<string[]> {
-    return invoke<string[]>("agent_hook_launch_args", { agentId }).catch(() => []);
+  // registered adapter invocation never would: today just claude's injected
+  // `--settings <file>` (crate::hooks), which scopes hook-driven status to
+  // sessions this function actually spawned/resumed.
+  async function hookArgs(agentId: string, tabId: string, cwd: string): Promise<string[]> {
+    return invoke<string[]>("agent_hook_launch_args", { agentId, tabId, cwd }).catch(() => []);
   }
 
   /**
@@ -1633,7 +1633,7 @@ export default function Terminal(props: {
     }
     const args = [
       ...applyTemplate(a.resume_args, { id: sessionId, file: sel.sessionFile ?? "" }),
-      ...(await hookArgs(agentId)),
+      ...(await hookArgs(agentId, id, sel.sessionCwd || sel.folderPath)),
     ];
     // A session lives in exactly one profile home, so resuming it anywhere else
     // would start an empty conversation wearing its name. Refuse rather than
@@ -1786,7 +1786,8 @@ export default function Terminal(props: {
   ) {
     const a = findAdapter(agentId);
     const profile = asked !== undefined ? asked : draftProfile(workspace, folderPath, agentId);
-    const args = [...a.base_args, ...(yolo ? a.yolo_args : []), ...(await hookArgs(agentId))];
+    const id = shellId();
+    const args = [...a.base_args, ...(yolo ? a.yolo_args : []), ...(await hookArgs(agentId, id, folderPath))];
     const env = await spawnEnvOrWarn(agentId, profile, folderPath);
     if (!env) return;
     // The account this project last used, on the same rule a chat records it:
@@ -1801,7 +1802,7 @@ export default function Terminal(props: {
       rememberChatPrefs(workspace, { profile: asProfileId(profile) });
     }
     openOrActivate({
-      id: shellId(),
+      id,
       title: `${projectName} ${agentId}`,
       cwd: folderPath,
       workspace,
