@@ -1,7 +1,7 @@
 ---
 summary: the cleanup sweep removes clean, merged or idle secondary worktrees from the webview; Rust only reports facts, the branch is the undo
 status: current
-updated: 2026-10-08
+updated: 2026-10-18
 source: plan "Automatic worktree cleanup policy" on branch phase-1-block-1, ticket gettori/tickets#12; src-tauri/src/worktree_cleanup.rs, src/utils/worktreeCleanup.ts, src/utils/worktreeCleanupVerdict.ts
 ---
 
@@ -17,7 +17,7 @@ Rust reports facts and decides nothing. `worktree_cleanup_facts(projectPath, mer
 - `inMergedHead` is `merge-base --is-ancestor HEAD <merged head>`. The merge rule can't use `unpushed`, because a merged branch's remote is usually auto-deleted and then reads as never pushed ([[gotcha_a_pruned_upstream_reads_as_never_pushed]]). Ancestry also accepts a local HEAD behind the PR, as after an upstream "Update branch". A head this clone never fetched fails the check, so the worktree is kept.
 - Session activity is read once per call through the session index (`sessions::activity_by_cwd`), not once per worktree.
 
-`cleanupVerdict` needs one rule to apply (merged and `inMergedHead`, or idle past the threshold and not unpushed). It then refuses on any of these, in order: dirty, a session working in the folder, the selection at or under it, an editor or terminal tab open under it, an autopilot item still working in it.
+`cleanupVerdict` needs one rule to apply (merged and `inMergedHead`, or idle past the threshold and not unpushed). It then refuses on any of these, in order: dirty, a session working in the folder, a live run command (`running`, from `runAt`, since a headless run has no tab or session to see), the selection at or under it, an editor or terminal tab open under it, an autopilot item still working in it.
 
 ## How the sweep runs
 
@@ -41,3 +41,4 @@ Rust reports facts and decides nothing. `worktree_cleanup_facts(projectPath, mer
 - [[concept_worktree_backstops]]: why there is nothing to snapshot
 - [[gotcha_a_pruned_upstream_reads_as_never_pushed]]: why the merge rule checks ancestry
 - [[concept_forge_rate_budget]]: why the merge rule stays inside what the poll already asks
+- [[component_run_command]]: the headless run the `running` check exists for

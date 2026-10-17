@@ -1,7 +1,7 @@
 ---
 summary: ports.rs hands each checkout a stable TORI_PORT block from ports.json and finds dev servers per worktree by lsof cwd
 status: current
-updated: 2026-10-17
+updated: 2026-10-18
 source: "plan \"Per-worktree ports and dev server URLs\" (personal/tori, branch `phase-1-block-4`, gettori/tickets#40); `src-tauri/src/ports.rs`, `src/utils/portsStore.ts`"
 ---
 
@@ -19,12 +19,13 @@ source: "plan \"Per-worktree ports and dev server URLs\" (personal/tori, branch 
 
 ## Interface
 
-- `env_for(cwd)` returns `TORI_PORT` and `TORI_PORT_1` to `TORI_PORT_9`, or nothing outside a checkout. It is layered into `setup::Runs::start` (`setup.rs:124`), `pty_spawn` (`pty/mod.rs:396`) and `chat::transport::build_command` (`chat/transport.rs:73`). `PORT` is deliberately not set.
+- `env_for(cwd)` returns `TORI_PORT` and `TORI_PORT_1` to `TORI_PORT_9`, or nothing outside a checkout. It is layered into `setup::Runs::start` (`setup.rs:182`, so setup, run and teardown all get it), `pty_spawn` (`pty/mod.rs:396`) and `chat::transport::build_command` (`chat/transport.rs:73`). `PORT` is deliberately not set.
 - `ports_scan(worktrees)` returns the listening ports keyed by the paths as given.
-- `src/utils/portsStore.ts` holds one scan for every consumer. `portsAt(path)` adds a path for the life of the calling owner. The store polls every 30 s while the document is visible, scans on focus, 3 s after any `pty://activity` quiet, and again when a path was added mid-scan.
+- `src/utils/portsStore.ts` holds one scan for every consumer. `portsAt(path)` adds a path for the life of the calling owner. The store polls every 30 s while the document is visible, scans on focus, 3 s after any `pty://activity` quiet, 3 s after a run command starts and at once when it stops (`setup://changed` with kind run, since a headless run has no terminal to go quiet), and again when a path was added mid-scan.
 - Shown as `:<port>` chips in the worktree row's end cluster in `LeftSidebar.tsx`, and as `localhost:<port>` rows at the top of `ScriptsSection.tsx`.
 
 ## Related
 
 - [[gotcha_git_worktree_list_reports_canonical_paths]] - why both the registry keys and the attribution compare canonical paths
 - [[adr_no_sync_ipc_commands]] - why the registry hit path stays unlocked
+- [[component_run_command]] - the headless run whose events trigger a rescan
