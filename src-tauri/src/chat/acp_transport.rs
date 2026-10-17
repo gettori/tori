@@ -399,6 +399,44 @@ pub struct AcpTransport {
     pending_mode: Option<PermissionMode>,
     /// The Tori session this one is a fork of, when it is one.
     fork_from: Option<String>,
+    mode_pin: ModePin,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ModePin {
+    forced: Option<String>,
+    refused: Option<String>,
+    reason: String,
+}
+
+impl ModePin {
+    pub fn forced(mode: &str, reason: &str) -> Self {
+        Self {
+            forced: Some(mode.to_string()),
+            refused: None,
+            reason: reason.to_string(),
+        }
+    }
+
+    pub fn refusing(mode: &str, reason: &str) -> Self {
+        Self {
+            forced: None,
+            refused: Some(mode.to_string()),
+            reason: reason.to_string(),
+        }
+    }
+
+    fn initial_mode(&self) -> Option<PermissionMode> {
+        self.forced.as_deref().map(PermissionMode::new)
+    }
+
+    fn check(&self, mode: &str) -> Result<(), String> {
+        let left = self.forced.as_deref().is_some_and(|f| f != mode);
+        if left || self.refused.as_deref() == Some(mode) {
+            return Err(self.reason.clone());
+        }
+        Ok(())
+    }
 }
 
 impl AcpTransport {
@@ -423,7 +461,14 @@ impl AcpTransport {
             overrides,
             pending_mode: None,
             fork_from: None,
+            mode_pin: ModePin::default(),
         }
+    }
+
+    pub fn with_mode_pin(mut self, pin: ModePin) -> Self {
+        self.pending_mode = pin.initial_mode();
+        self.mode_pin = pin;
+        self
     }
 
     pub fn with_fork_from(mut self, from: Option<String>) -> Self {
@@ -608,6 +653,7 @@ impl AgentTransport for AcpTransport {
     /// writes, so applying one mid-turn would change the rules under a tool call
     /// already in flight.
     fn set_mode(&mut self, mode: PermissionMode) -> Result<(), String> {
+        self.mode_pin.check(mode.as_str())?;
         self.pending_mode = Some(mode);
         Ok(())
     }
@@ -682,6 +728,17 @@ impl AgentTransport for AcpTransport {
     /// mirror came from this session's own answer, and re-validating them here
     /// would be a second copy of that list to keep in step.
     fn set_config_option(&mut self, config_id: &str, value: &ChatConfigValue) -> Result<(), String> {
+        let mode_switch = self
+            .shared
+            .mode_switch
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        if let (Switch::Available(mode_id), ChatConfigValue::Value(mode)) = (mode_switch, value) {
+            if mode_id == config_id {
+                self.mode_pin.check(mode)?;
+            }
+        }
         self.send_command(Command::SetConfigOption {
             config_id: config_id.to_string(),
             value: value.clone(),
@@ -1996,6 +2053,43 @@ mod tests {
             matches!(rx.try_recv().ok(), Some(Command::Prompt(_))),
             "and the message follows it rather than the other way round"
         );
+    }
+
+    #[test]
+    fn a_boxed_codex_chat_starts_read_only_and_cannot_leave_it() {
+        let pin = crate::unattended::codex::mode_pin(true, false);
+        let mut transport = AcpTransport::new("s1", "codex", AcpOverrides::default()).with_mode_pin(pin);
+        let (tx, mut rx) = mpsc::unbounded();
+        transport.commands = Some(tx);
+        *transport.shared.mode_switch.lock().unwrap() = Switch::Available("mode".into());
+
+        transport.send(&[ContentBlock::Text { text: "go".into() }]).unwrap();
+        assert!(
+            matches!(
+                rx.try_recv().ok(),
+                Some(Command::SetConfigOption { value: ChatConfigValue::Value(ref mode), what: ConfigOption::Mode, .. })
+                    if mode == "read-only"
+            ),
+            "the first turn already runs read-only"
+        );
+        let refused = transport.set_mode(PermissionMode::new("agent")).unwrap_err();
+        assert!(refused.contains("read-only"), "{refused}");
+        assert!(transport
+            .set_config_option("mode", &ChatConfigValue::Value("agent-full-access".into()))
+            .is_err());
+        transport.set_mode(PermissionMode::new("read-only")).unwrap();
+    }
+
+    #[test]
+    fn an_unwatched_codex_chat_cannot_take_full_access_and_a_watched_one_can() {
+        let mut background = AcpTransport::new("s1", "codex", AcpOverrides::default())
+            .with_mode_pin(crate::unattended::codex::mode_pin(false, true));
+        background.set_mode(PermissionMode::new("agent")).unwrap();
+        assert!(background.set_mode(PermissionMode::new("agent-full-access")).is_err());
+
+        let mut watched = AcpTransport::new("s1", "codex", AcpOverrides::default())
+            .with_mode_pin(crate::unattended::codex::mode_pin(false, false));
+        watched.set_mode(PermissionMode::new("agent-full-access")).unwrap();
     }
 
     /// The gate the listing task asks for: an agent that never advertises

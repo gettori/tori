@@ -1788,6 +1788,13 @@ export default function Terminal(props: {
     const profile = asked !== undefined ? asked : draftProfile(workspace, folderPath, agentId);
     const id = shellId();
     const args = [...a.base_args, ...(yolo ? a.yolo_args : []), ...(await hookArgs(agentId, id, folderPath))];
+    const refused = await invoke<string | null>("tab_launch_refusal", { agentId, cwd: folderPath, args }).catch(
+      () => null,
+    );
+    if (refused) {
+      emitWith<ToastEvent>(TOAST, { message: refused, kind: "error" });
+      return;
+    }
     const env = await spawnEnvOrWarn(agentId, profile, folderPath);
     if (!env) return;
     // The account this project last used, on the same rule a chat records it:
