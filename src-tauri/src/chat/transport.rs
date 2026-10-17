@@ -70,6 +70,7 @@ pub fn build_command(spec: &StartSpec) -> std::process::Command {
     cmd.args(&spec.args);
     if !spec.cwd.is_empty() {
         cmd.current_dir(&spec.cwd);
+        cmd.envs(crate::ports::env_for(std::path::Path::new(&spec.cwd)));
     }
     // No login shell runs to set PATH for a directly-spawned child, so the
     // agent binary would be unfindable without this - the same reason

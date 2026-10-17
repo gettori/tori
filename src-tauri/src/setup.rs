@@ -121,6 +121,7 @@ impl Runs {
                 .current_dir(spec.worktree)
                 .env("TORI_PROJECT_ROOT", spec.project)
                 .env("TORI_WORKTREE_PATH", &worktree)
+                .envs(crate::ports::env_for(spec.worktree))
                 .env("PATH", spec.path_env)
                 .stdin(Stdio::null())
                 .stdout(out)
