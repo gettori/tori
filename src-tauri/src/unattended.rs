@@ -308,6 +308,65 @@ fn lex(command: &str) -> Lexed {
     lx
 }
 
+/// Codex's own box as its CLI and its ACP wrapper spell it. Kept in Rust
+/// rather than its pack, since a native Codex transport will own it.
+pub mod codex {
+    use std::path::Path;
+
+    use crate::chat::acp_transport::ModePin;
+
+    pub const AGENT: &str = "codex";
+    // Workspace writes with no network, like `agent`, but an escalation out of
+    // the box asks the user instead of Codex's own reviewer model.
+    const BOXED_MODE: &str = "read-only";
+    const FULL_ACCESS_MODE: &str = "agent-full-access";
+    const YOLO: &str = "--dangerously-bypass-approvals-and-sandbox";
+
+    pub fn mode_pin(boxed: bool, background: bool) -> ModePin {
+        if boxed {
+            return ModePin::forced(
+                BOXED_MODE,
+                "This session runs in Codex's sandbox, so its mode stays read-only.",
+            );
+        }
+        if background {
+            return ModePin::refusing(
+                FULL_ACCESS_MODE,
+                "A session nobody is watching can't leave Codex's sandbox, so full access is off.",
+            );
+        }
+        ModePin::default()
+    }
+
+    pub fn yolo_refusal(args: &[String], boxed: bool) -> Option<String> {
+        (boxed && args.iter().any(|a| a == YOLO))
+            .then(|| "This project runs Codex in its sandbox, so it can't start without it.".to_string())
+    }
+
+    // The bypass also skips trust review of a repo's own Codex hooks, so it is
+    // passed only to a boxed launch.
+    pub fn boxed_tab_args(exe: Option<&Path>) -> Vec<String> {
+        let mut args = vec!["--sandbox".to_string(), "workspace-write".to_string()];
+        let Some(exe) = exe else { return args };
+        let hook = crate::hooks::shell_hook_command(exe);
+        let entry = format!(
+            "hooks.PreToolUse=[{{matcher=\"Bash\",hooks=[{{type=\"command\",command=\"{}\"}}]}}]",
+            hook.replace('\\', "\\\\").replace('"', "\\\"")
+        );
+        args.extend(
+            [
+                "--dangerously-bypass-hook-trust",
+                "-c",
+                "features.hooks=true",
+                "-c",
+                &entry,
+            ]
+            .map(String::from),
+        );
+        args
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -394,6 +453,35 @@ mod tests {
         assert!(reason.contains("`aws`"), "{reason}");
         assert_eq!(refusal_for("aws s3 ls", &deny(), true), None);
         assert_eq!(refusal_for("ls", &deny(), false), None);
+    }
+
+    #[test]
+    fn codex_yolo_is_refused_only_in_the_box() {
+        let yolo = vec!["--dangerously-bypass-approvals-and-sandbox".to_string()];
+        assert!(codex::yolo_refusal(&yolo, true).is_some());
+        assert_eq!(codex::yolo_refusal(&yolo, false), None);
+        assert_eq!(codex::yolo_refusal(&[], true), None);
+    }
+
+    #[test]
+    fn a_boxed_codex_tab_gets_the_sandbox_and_the_shell_hook() {
+        let args = codex::boxed_tab_args(Some(std::path::Path::new("/Apps/My \"Tori\"/tori")));
+        assert_eq!(
+            &args[..5],
+            [
+                "--sandbox",
+                "workspace-write",
+                "--dangerously-bypass-hook-trust",
+                "-c",
+                "features.hooks=true"
+            ]
+        );
+        let entry = &args[6];
+        assert!(entry.starts_with("hooks.PreToolUse=[{matcher=\"Bash\""), "{entry}");
+        assert!(
+            entry.contains("TORI_SHELL_HOOK=1 '/Apps/My \\\"Tori\\\"/tori'"),
+            "{entry}"
+        );
     }
 
     #[test]

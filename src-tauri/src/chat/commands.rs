@@ -16,7 +16,7 @@ use crate::agents::{self, ChatConfig, ChatEffortExtra, ChatTransport};
 
 use super::acp::AcpOverrides;
 use super::acp_sessions;
-use super::acp_transport::AcpTransport;
+use super::acp_transport::{AcpTransport, ModePin};
 use super::approval;
 use super::claude_transport::ClaudeTransport;
 use super::host::{ChatHost, ChatState, SessionBridge, Spawned};
@@ -39,6 +39,7 @@ use super::usage;
 /// one. `ChatTransport::as_str` is exhaustive for the same reason on the
 /// serialization side; between them a new agent has exactly two compiler-named
 /// obligations and no silent ones.
+#[allow(clippy::too_many_arguments)]
 fn make_transport(
     transport: ChatTransport,
     session_id: &str,
@@ -47,6 +48,7 @@ fn make_transport(
     effort_extras: Vec<ChatEffortExtra>,
     questions_as_permissions: bool,
     fork_from: Option<String>,
+    mode_pin: ModePin,
 ) -> Box<dyn AgentTransport> {
     match transport {
         // The extras ride along because claude advertises fewer effort levels
@@ -65,7 +67,11 @@ fn make_transport(
         // adapter id travels with it only so the session locators this transport
         // writes can name the agent they came from, and `acp` is that table's
         // `[chat.acp]` quirks rather than this build's defaults.
-        ChatTransport::Acp => Box::new(AcpTransport::new(session_id, agent_id, acp).with_fork_from(fork_from)),
+        ChatTransport::Acp => Box::new(
+            AcpTransport::new(session_id, agent_id, acp)
+                .with_fork_from(fork_from)
+                .with_mode_pin(mode_pin),
+        ),
     }
 }
 
@@ -423,8 +429,14 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
             crate::rpc::mark_spawned_worker(&session_id, spawner);
         }
     }
-    let boxed = chat.transport == ChatTransport::ClaudeStreamJson
-        && crate::unattended::boxed(crate::unattended::level_for(&cwd), background, crate::rpc::attached());
+    let boxed = crate::unattended::boxed(crate::unattended::level_for(&cwd), background, crate::rpc::attached());
+    let mode_pin = if agent_id == crate::unattended::codex::AGENT {
+        crate::unattended::codex::mode_pin(boxed, background)
+    } else {
+        ModePin::default()
+    };
+    let sandbox =
+        (boxed && chat.transport == ChatTransport::ClaudeStreamJson).then(|| crate::unattended::claude_sandbox(&cwd));
     args.extend(approval::settings_args(
         &session_id,
         server.sock_path(),
@@ -432,7 +444,7 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
         chat.transport,
         background,
         home.as_ref(),
-        boxed.then(|| crate::unattended::claude_sandbox(&cwd)),
+        sandbox,
     )?);
     let untrusted = !trusted;
     args.extend(trust_args);
@@ -480,6 +492,7 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
             effort_extras.clone(),
             questions_as_permissions,
             fork_for_factory.clone(),
+            mode_pin.clone(),
         )
     });
     let spawned = match spawned {
@@ -2271,6 +2284,7 @@ mod tests {
             Vec::new(),
             false,
             None,
+            ModePin::default(),
         );
         assert!(t.child_pid().is_none(), "a transport is inert until started");
     }
@@ -2287,6 +2301,7 @@ mod tests {
             chat.effort_extras.clone(),
             false,
             None,
+            ModePin::default(),
         );
         assert!(t.child_pid().is_none(), "a transport is inert until started");
     }

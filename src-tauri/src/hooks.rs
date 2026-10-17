@@ -200,7 +200,7 @@ fn hook_entry(command: &str) -> serde_json::Value {
 
 pub const ENV_SHELL_HOOK: &str = "TORI_SHELL_HOOK";
 
-fn shell_hook_command(exe: &Path) -> String {
+pub(crate) fn shell_hook_command(exe: &Path) -> String {
     format!(
         "{ENV_SHELL_HOOK}=1 {}",
         crate::chat::approval::sh_quote(&exe.to_string_lossy())
@@ -269,7 +269,7 @@ pub fn forget_tab(tab: &str) {
 /// `TORI_SOCK` and `TORI_CALLER`, so a file outliving a daemon restart still
 /// works in the tab's next shell.
 fn write_tab_settings(tab: &str, cwd: &str) -> Result<PathBuf, String> {
-    let boxed = crate::unattended::tab_boxed(crate::unattended::level_for(cwd));
+    let boxed = tab_boxed(cwd);
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let path = tab_settings_path(tab);
     if let Some(parent) = path.parent() {
@@ -308,7 +308,22 @@ fn launch_args(adapter: &crate::agents::AgentAdapter, tab: &str, cwd: &str) -> V
             args.extend(["--settings".to_string(), path.to_string_lossy().into_owned()]);
         }
     }
+    if adapter.id == crate::unattended::codex::AGENT && tab_boxed(cwd) {
+        let exe = std::env::current_exe().ok();
+        args.extend(crate::unattended::codex::boxed_tab_args(exe.as_deref()));
+    }
     args
+}
+
+fn tab_boxed(cwd: &str) -> bool {
+    crate::unattended::tab_boxed(crate::unattended::level_for(cwd))
+}
+
+#[tauri::command(async)]
+pub fn tab_launch_refusal(agent_id: String, cwd: String, args: Vec<String>) -> Option<String> {
+    (agent_id == crate::unattended::codex::AGENT)
+        .then(|| crate::unattended::codex::yolo_refusal(&args, tab_boxed(&cwd)))
+        .flatten()
 }
 
 pub fn is_shell_helper() -> bool {
@@ -318,14 +333,25 @@ pub fn is_shell_helper() -> bool {
 pub fn run_shell_helper() -> i32 {
     let mut payload = String::new();
     let _ = std::io::stdin().read_to_string(&mut payload);
-    let deny = shell_check(&payload, || crate::settings::unattended().deny(), ask_tori);
-    let output = deny.map_or_else(crate::chat::approval::hook_output, |reason| {
-        crate::chat::approval::hook_denial(&reason)
-    });
-    let mut stdout = std::io::stdout();
-    let _ = stdout.write_all(output.as_bytes());
-    let _ = stdout.flush();
+    if let Some(reason) = shell_check(&payload, || crate::settings::unattended().deny(), ask_tori) {
+        let mut stdout = std::io::stdout();
+        let _ = stdout.write_all(shell_denial(&reason).as_bytes());
+        let _ = stdout.flush();
+    }
     0
+}
+
+// No marker key, unlike the chat hook's: Codex fails a hook whose output has a
+// key it does not know, and a failed hook lets the command run.
+fn shell_denial(reason: &str) -> String {
+    json!({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason,
+        },
+    })
+    .to_string()
 }
 
 fn ask_tori(session: &str, command: &str) -> Option<Option<String>> {
@@ -634,6 +660,13 @@ mod tests {
 
         let unreachable = shell_check(&bash("aws s3 ls"), deny, |_, _| None).expect("fails closed");
         assert!(unreachable.contains("could not be reached"), "{unreachable}");
+    }
+
+    #[test]
+    fn an_attended_codex_tab_under_the_default_level_keeps_hook_trust() {
+        let args = launch("codex", "tab-codex");
+        assert!(!args.iter().any(|a| a == "--dangerously-bypass-hook-trust"), "{args:?}");
+        assert!(!args.iter().any(|a| a == "--sandbox"), "{args:?}");
     }
 
     #[test]
