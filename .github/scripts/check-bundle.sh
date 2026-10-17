@@ -52,7 +52,9 @@ fi
 
 MIN_SDK=26
 main="$APP/Contents/MacOS/tori"
-sdk=$(otool -l "$main" | awk '/LC_BUILD_VERSION/ { found = 1 } found && $1 == "sdk" { print $2; exit }')
+# The Intel build targets macOS 10.13, and for a target that old the linker
+# records the SDK in LC_VERSION_MIN_MACOSX instead of LC_BUILD_VERSION.
+sdk=$(otool -l "$main" | awk '/LC_BUILD_VERSION|LC_VERSION_MIN_MACOSX/ { found = 1 } found && $1 == "sdk" { print $2; exit }')
 if [ -z "$sdk" ] || [ "${sdk%%.*}" -lt "$MIN_SDK" ]; then
   echo "  OLD SDK: ${main#"$APP"/} links against SDK ${sdk:-unknown}, want $MIN_SDK or later" >&2
   fail=1
