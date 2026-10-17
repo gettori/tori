@@ -20,7 +20,7 @@ describe("noteSetup", () => {
     const opened: OpenInEditor[] = [];
     offs.push(onWith<OpenInEditor>(OPEN_IN_EDITOR, (o) => opened.push(o)));
 
-    noteSetup({ worktree: "/p/feat", state: "failed", code: 3, log: "/logs/feat-1.log" });
+    noteSetup({ kind: "setup", worktree: "/p/feat", state: "failed", code: 3, log: "/logs/feat-1.log" });
 
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject({ kind: "error", message: "Setup in feat failed (exit 3)" });
@@ -32,8 +32,18 @@ describe("noteSetup", () => {
 
   it("toasts a finish and stays quiet while running", () => {
     const seen = toasts();
-    noteSetup({ worktree: "/p/feat", state: "running", code: null, log: "/l" });
-    noteSetup({ worktree: "/p/feat", state: "done", code: 0, log: "/l" });
+    noteSetup({ kind: "setup", worktree: "/p/feat", state: "running", code: null, log: "/l" });
+    noteSetup({ kind: "setup", worktree: "/p/feat", state: "done", code: 0, log: "/l" });
     expect(seen).toEqual([{ message: "Setup finished in feat", kind: "info" }]);
+  });
+
+  it("toasts a failed teardown with Show log and says nothing for one that finished", () => {
+    const seen = toasts();
+    noteSetup({ kind: "teardown", worktree: "/p/feat", state: "running", code: null, log: "/l" });
+    noteSetup({ kind: "teardown", worktree: "/p/feat", state: "done", code: 0, log: "/l" });
+    noteSetup({ kind: "teardown", worktree: "/p/feat", state: "failed", code: 2, log: "/l" });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ kind: "error", message: "Teardown in feat failed (exit 2)" });
+    expect((seen[0].action as { label: string }).label).toBe("Show log");
   });
 });

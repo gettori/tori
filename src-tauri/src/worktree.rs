@@ -350,7 +350,7 @@ pub(crate) fn create_worktree_body(
 async fn create_pr_worktree(ui: Ui, repo_path: String, head: ReviewHead) -> Result<(String, String), String> {
     crate::exec::git_write("create_pr_worktree", repo_path.clone(), move || {
         let branch = review_branch(&repo_path, &head);
-        let target = create_pr_worktree_in(&repo_path, &branch, &head.sha, Path::new(&repo_path), !head.fork)?;
+        let target = create_pr_worktree_in(&repo_path, &branch, &head.sha, Path::new(&repo_path), head.fork)?;
         let target = target.to_string_lossy().into_owned();
         let _ = crate::sessions::adopt(&target);
         ui.emit("config://changed", ());
@@ -533,14 +533,14 @@ fn own_commits(folder: &str, at: &str, sha: &str, worktree_at: Option<&str>) -> 
     }
 }
 
-/// `setup` false for a fork's head: the setup command is the user's, but that
-/// tree is a stranger's, and its install scripts would run with nobody watching.
+/// A fork's head runs no setup and is marked a fork: the commands are the
+/// user's, but that tree is a stranger's, and its scripts would run with nobody watching.
 pub(crate) fn create_pr_worktree_in(
     repo: &str,
     branch: &str,
     sha: &str,
     container: &Path,
-    setup: bool,
+    fork: bool,
 ) -> Result<PathBuf, String> {
     if branch_exists(repo, branch) {
         let at = rev_parse(repo, &format!("refs/heads/{branch}"))?;
@@ -558,10 +558,40 @@ pub(crate) fn create_pr_worktree_in(
             path.display()
         ));
     }
-    if created && setup {
+    if created && fork {
+        mark_fork(&path);
+    } else if created {
         crate::setup::on_created(repo, &path);
     }
     Ok(path)
+}
+
+// Removal asks long after creation, maybe across a restart, so the answer is
+// kept in the worktree's admin dir, which git deletes along with the worktree.
+fn fork_marker(worktree: &Path) -> Option<PathBuf> {
+    let out = crate::exec::git_in(worktree)
+        .args(["rev-parse", "--absolute-git-dir"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())?;
+    Some(
+        PathBuf::from(String::from_utf8_lossy(&out.stdout).trim())
+            .join("tori")
+            .join("fork"),
+    )
+}
+
+fn mark_fork(worktree: &Path) {
+    if let Some(marker) = fork_marker(worktree) {
+        let _ = marker.parent().map(std::fs::create_dir_all);
+        let _ = std::fs::write(marker, "");
+    }
+}
+
+/// True only when the admin dir resolves and holds no fork marker, so a
+/// worktree git cannot read is treated as a fork.
+pub(crate) fn not_a_fork(worktree: &Path) -> bool {
+    fork_marker(worktree).is_some_and(|m| !m.exists())
 }
 
 fn rev_parse(repo: &str, rev: &str) -> Result<String, String> {
@@ -893,7 +923,11 @@ pub(crate) fn do_remove_worktree(repo_path: &str, worktree_path: &str, force: bo
     if !force && tree_dirty(Path::new(worktree_path))? {
         return Err("This worktree has uncommitted changes; commit or discard them first.".into());
     }
-    crate::setup::kill(Path::new(worktree_path));
+    let folder = Path::new(worktree_path);
+    crate::setup::kill(folder);
+    if folder.is_dir() && crate::setup::has_teardown(repo_path) && not_a_fork(folder) {
+        crate::setup::teardown(repo_path, folder);
+    }
     // Canonical now, while the folder is still there to resolve.
     let root = std::fs::canonicalize(worktree_path).ok();
     match move_to_trash(repo_path, Path::new(worktree_path)) {
@@ -1243,7 +1277,7 @@ mod tests {
         fetch_review_head(repo, &head, Path::new("/nonexistent/sock"), "t").unwrap();
         let branch = review_branch(repo, &head);
         assert_eq!(branch, "pr-9", "a fork's branch name means nothing here");
-        let wt = create_pr_worktree_in(repo, &branch, &head.sha, &cont, !head.fork).unwrap();
+        let wt = create_pr_worktree_in(repo, &branch, &head.sha, &cont, head.fork).unwrap();
         assert!(wt.ends_with("pr-9"), "{}", wt.display());
         assert_eq!(rev_parse(wt.to_str().unwrap(), "HEAD").unwrap(), sha);
 
@@ -1297,13 +1331,15 @@ mod tests {
             crate::settings::WorktreePrefs {
                 setup_command: "true".into(),
                 setup_wait: false,
+                ..Default::default()
             },
         );
         crate::setup::seam(prefs, tmp.join("logs"));
-        let wt = create_pr_worktree_in(repo, "pr-7", &first, &cont, false).unwrap();
+        let wt = create_pr_worktree_in(repo, "pr-7", &first, &cont, true).unwrap();
         assert!(crate::setup::status(&wt).is_none(), "a fork's head runs no setup");
+        assert!(!not_a_fork(&wt), "a fork's head is marked a fork");
         assert_eq!(rev_parse(wt.to_str().unwrap(), "HEAD").unwrap(), first);
-        let again = create_pr_worktree_in(repo, "pr-7", &first, &cont, true).unwrap();
+        let again = create_pr_worktree_in(repo, "pr-7", &first, &cont, false).unwrap();
         assert_eq!(
             again.canonicalize().unwrap(),
             wt.canonicalize().unwrap(),
@@ -1315,7 +1351,7 @@ mod tests {
         git(&src, &["commit", "-qam", "more"]);
         git(&src, &["update-ref", "refs/pull/7/head", "HEAD"]);
         let moved = fetch();
-        let err = create_pr_worktree_in(repo, "pr-7", &moved, &cont, true).unwrap_err();
+        let err = create_pr_worktree_in(repo, "pr-7", &moved, &cont, false).unwrap_err();
         assert!(err.contains("pr-7 is at"), "{err}");
         assert_eq!(
             rev_parse(wt.to_str().unwrap(), "HEAD").unwrap(),
@@ -1373,8 +1409,10 @@ mod tests {
         fetch_review_head(repo, &head, Path::new("/nonexistent/sock"), "t").unwrap();
         let branch = review_branch(repo, &head);
         assert_eq!(branch, "feat", "a same-repo review takes the pull request's own name");
-        let wt = create_pr_worktree_in(repo, &branch, &head.sha, &cont, false).unwrap();
+        crate::setup::seam(std::collections::HashMap::new(), tmp.join("logs"));
+        let wt = create_pr_worktree_in(repo, &branch, &head.sha, &cont, head.fork).unwrap();
         track_review_branch(repo, &head, &branch);
+        assert!(not_a_fork(&wt), "a same-repo head is not marked a fork");
         let folder = wt.to_str().unwrap();
         assert_eq!(rev_parse(folder, "@{upstream}").unwrap(), head.sha);
 
@@ -1396,9 +1434,13 @@ mod tests {
         };
         fetch_review_head(repo, &fork, Path::new("/nonexistent/sock"), "t").unwrap();
         let branch = review_branch(repo, &fork);
-        let wt = create_pr_worktree_in(repo, &branch, &fork.sha, &cont, false).unwrap();
+        let wt = create_pr_worktree_in(repo, &branch, &fork.sha, &cont, fork.fork).unwrap();
         track_review_branch(repo, &fork, &branch);
         assert!(rev_parse(wt.to_str().unwrap(), "@{upstream}").is_err());
+        let marker = fork_marker(&wt).unwrap();
+        assert!(marker.exists(), "a fork's head is marked a fork");
+        do_remove_worktree(repo, wt.to_str().unwrap(), true).unwrap();
+        assert!(!marker.exists(), "the marker goes with the worktree");
 
         std::fs::remove_dir_all(&tmp).ok();
     }
@@ -1622,6 +1664,7 @@ mod tests {
                 crate::settings::WorktreePrefs {
                     setup_command: command,
                     setup_wait: false,
+                    ..Default::default()
                 },
             );
             crate::setup::seam(prefs, tmp.join("logs"));
@@ -1645,6 +1688,62 @@ mod tests {
         do_remove_worktree(&repo_s, &b.to_string_lossy(), true).unwrap();
         assert_eq!(crate::setup::status(&b).unwrap().state, crate::setup::State::Failed);
         assert!(!b.exists());
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn removal_runs_teardown_first_goes_ahead_when_it_fails_and_skips_a_fork() {
+        let tmp = std::fs::canonicalize(unique_tmp()).unwrap();
+        let repo = tmp.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        git(&repo, &["init", "-q"]);
+        git(&repo, &["config", "user.email", "t@t.t"]);
+        git(&repo, &["config", "user.name", "t"]);
+        std::fs::write(repo.join("a.txt"), "hi").unwrap();
+        git(&repo, &["add", "."]);
+        git(&repo, &["commit", "-qm", "init"]);
+        let cont = tmp.join("cont");
+        std::fs::create_dir_all(&cont).unwrap();
+        let repo_s = repo.to_string_lossy().into_owned();
+        let seen = tmp.join("seen");
+        let seam = |teardown: String| {
+            let mut prefs = std::collections::HashMap::new();
+            prefs.insert(
+                repo_s.clone(),
+                crate::settings::WorktreePrefs {
+                    teardown_command: teardown,
+                    ..Default::default()
+                },
+            );
+            crate::setup::seam(prefs, tmp.join("logs"));
+        };
+        let saw = |wt: &Path| {
+            std::fs::read_to_string(&seen)
+                .unwrap_or_default()
+                .lines()
+                .any(|l| l == wt.to_string_lossy())
+        };
+
+        seam(format!(
+            "test -f a.txt && echo \"$TORI_WORKTREE_PATH\" >> '{}'",
+            seen.display()
+        ));
+        let a = create_worktree_in(&repo_s, "a", &cont, None).unwrap();
+        do_remove_worktree(&repo_s, &a.to_string_lossy(), true).unwrap();
+        assert!(saw(&a), "teardown ran inside the worktree before it went");
+        assert!(!a.exists());
+
+        let f = create_worktree_in(&repo_s, "f", &cont, None).unwrap();
+        mark_fork(&f);
+        do_remove_worktree(&repo_s, &f.to_string_lossy(), true).unwrap();
+        assert!(!saw(&f), "a fork's worktree runs no teardown");
+        assert!(!f.exists());
+
+        seam("exit 1".into());
+        let b = create_worktree_in(&repo_s, "b", &cont, None).unwrap();
+        do_remove_worktree(&repo_s, &b.to_string_lossy(), true).unwrap();
+        assert!(!b.exists(), "a failed teardown does not stop the removal");
 
         std::fs::remove_dir_all(&tmp).ok();
     }

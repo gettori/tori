@@ -14,6 +14,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { isLocked } from "../../utils/autopilotStore";
 import { openPort, portsAt } from "../../utils/portsStore";
+import { tearingDown } from "../../utils/teardowns";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { homeDir } from "@tauri-apps/api/path";
@@ -2903,6 +2904,9 @@ export default function LeftSidebar(props: {
         }
         end={
           <>
+            <Show when={tearingDown(u.folderPath)}>
+              <span class={rows.tearingDown}>Tearing down</span>
+            </Show>
             <For each={listening()}>
               {(port) => (
                 <Tooltip

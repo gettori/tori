@@ -44,12 +44,19 @@ describe("Project settings dialog, Worktrees section", () => {
     const field = screen.getByLabelText("Setup command") as HTMLInputElement;
     fireEvent.change(field, { target: { value: "  pnpm install  " } });
     await waitFor(() => expect(saves).toHaveLength(1));
-    expect(saves[0].worktree["/p"]).toEqual({ setupCommand: "pnpm install", setupWait: false });
+    expect(saves[0].worktree["/p"]).toEqual({ setupCommand: "pnpm install", setupWait: false, teardownCommand: "" });
 
     cleanup();
     render(() => <ProjectSettingsDialog path="/p" section="worktrees" onClose={() => {}} />);
     await screen.findByRole("tab", { name: "Worktrees" });
     expect((screen.getByLabelText("Setup command") as HTMLInputElement).value).toBe("pnpm install");
+
+    fireEvent.change(screen.getByLabelText("Teardown command"), { target: { value: " docker compose down " } });
+    await waitFor(() => expect(saves).toHaveLength(2));
+    expect(saves[1].worktree["/p"]).toMatchObject({
+      setupCommand: "pnpm install",
+      teardownCommand: "docker compose down",
+    });
   });
 });
 
