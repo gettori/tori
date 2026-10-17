@@ -509,6 +509,10 @@
   color: var(--fg-muted);
   cursor: pointer;
 }
+.row .runButton {
+  flex: none;
+  margin-left: calc(4px * var(--ui-scale));
+}
 .row .tearingDown {
   flex: none;
   margin-left: calc(4px * var(--ui-scale));

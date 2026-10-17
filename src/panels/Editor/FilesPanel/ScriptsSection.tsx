@@ -13,6 +13,8 @@ import { isTaskSource, loadTasks, taskTab, type Task } from "../../../utils/task
 import { runTask } from "../../../utils/runTask";
 import { loadTaskRuns } from "../../../utils/taskRecents";
 import { openPort, portsAt, portUrl } from "../../../utils/portsStore";
+import { runAt, stopRun } from "../../../utils/runStore";
+import { runProjectFor, worktreePrefs } from "../../Settings/settingsStore";
 import { copyText } from "../../../utils/clipboard";
 import tree from "../FileTree/FileTree.module.css";
 import styles from "./FilesPanel.module.css";
@@ -145,9 +147,35 @@ export default function ScriptsSection(props: { root: string | null }) {
     });
 
   const listening = createMemo(() => (props.root ? portsAt(props.root) : () => []));
+  const liveRun = () => (props.root ? runAt(props.root) : null);
+  const runCommand = () => {
+    const project = props.root && runProjectFor(props.root);
+    return project ? worktreePrefs(project).runCommand : "";
+  };
+  const showLog = (log: string) => emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: log });
 
   return (
     <OverlayScroll class={styles.sectionScroll}>
+      <Show when={liveRun()}>
+        {(r) => (
+          <ContextMenu
+            items={[
+              ...(r().state === "running" ? [{ label: "Stop", onClick: () => stopRun(r().worktree) }] : []),
+              { label: "Show log", onClick: () => showLog(r().log) },
+            ]}
+            class={tree.treeRow}
+            style={{ "padding-left": "8px" }}
+            data-run-row
+            onClick={() => showLog(r().log)}
+          >
+            <span class={`${styles.play} ${styles.running}`} title={r().state === "stopping" ? "Stopping" : "Running"}>
+              <Icon icon={Play} />
+            </span>
+            <span class={tree.treeName}>Run command</span>
+            <span class={styles.command}>{runCommand()}</span>
+          </ContextMenu>
+        )}
+      </Show>
       <For each={listening()()}>
         {(port) => (
           <ContextMenu

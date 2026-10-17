@@ -22,6 +22,7 @@ function input(over: Partial<CleanupInput> = {}): CleanupInput {
     facts: facts(),
     merged: false,
     busy: false,
+    running: false,
     selectedRoot: null,
     openPaths: [],
     autopilotWorktrees: [],
@@ -51,6 +52,11 @@ describe("cleanupVerdict", () => {
     ["a folder nested in the selection's worktree", { selectedRoot: "/p/feat/src" }, false],
     ["a sibling sharing a prefix is not the selection", { selectedRoot: "/p/feature" }, true],
     ["a live tab or session", { busy: true }, false],
+    [
+      "a merged, clean worktree with a live run",
+      { merged: true, facts: facts({ inMergedHead: true }), running: true },
+      false,
+    ],
     ["an open editor tab", { openPaths: ["/p/feat/a.ts"] }, false],
     ["an active autopilot worktree", { autopilotWorktrees: ["/p/feat"] }, false],
     [

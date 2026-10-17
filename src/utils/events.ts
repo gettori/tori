@@ -635,6 +635,11 @@ export type DebugPick = { kind: "file" | "script" | "attach" };
 // answer changes with the selected branch-unit.
 export const RUN_LAST_TASK = "tori:run-last-task";
 
+// Fire-and-forget: start or stop the project's run command in the worktree in
+// front. App resolves the worktree, as for RUN_LAST_TASK.
+export const START_RUN = "tori:start-run";
+export const STOP_RUN = "tori:stop-run";
+
 // Payload-carrying event: start a fresh agent session in a branch-unit folder.
 // Emitted by the sidebar's "New session" menu item; the terminal area owns the
 // spawn (id/title/yolo conventions), so the sidebar only names the target.

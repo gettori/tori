@@ -15,6 +15,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { isLocked } from "../../utils/autopilotStore";
 import { openPort, portsAt } from "../../utils/portsStore";
 import { tearingDown } from "../../utils/teardowns";
+import { runAt, runnable, startRun, stopRun } from "../../utils/runStore";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { homeDir } from "@tauri-apps/api/path";
@@ -167,7 +168,7 @@ import {
   reviewRequests,
   type WatchedProject,
 } from "../../utils/forgeStatus";
-import { reviewRule, settings as appSettings } from "../Settings/settingsStore";
+import { reviewRule, runProjectFor, settings as appSettings } from "../Settings/settingsStore";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
 import ProjectIcon from "../../components/Icon/ProjectIcon";
@@ -190,6 +191,8 @@ import {
   ShieldOff,
   UserRound,
   GitPullRequest,
+  Play,
+  Square,
 } from "lucide-solid";
 import { BranchMark, WorktreeMark } from "../../components/Icon/gitMarks";
 import { attemptFolderName, groupAttempts, samePath, type AttemptGroup, type AttemptRecord } from "./attempts";
@@ -2906,6 +2909,29 @@ export default function LeftSidebar(props: {
           <>
             <Show when={tearingDown(u.folderPath)}>
               <span class={rows.tearingDown}>Tearing down</span>
+            </Show>
+            <Show when={runnable(u.folderPath) && runProjectFor(u.folderPath)}>
+              {(project) => {
+                const run = () => runAt(u.folderPath);
+                const label = () =>
+                  run()?.state === "stopping" ? "Stopping" : run() ? "Stop the run command" : "Start the run command";
+                return (
+                  <IconButton
+                    size="xs"
+                    class={rows.runButton}
+                    icon={<Icon icon={run() ? Square : Play} />}
+                    tooltip={label()}
+                    tooltipWhenDisabled
+                    disabled={run()?.state === "stopping"}
+                    data-run-button
+                    onClick={(e: MouseEvent) => {
+                      e.stopPropagation();
+                      if (run()) stopRun(u.folderPath);
+                      else startRun(project(), u.folderPath);
+                    }}
+                  />
+                );
+              }}
             </Show>
             <For each={listening()}>
               {(port) => (
