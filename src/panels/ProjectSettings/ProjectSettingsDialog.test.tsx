@@ -44,7 +44,12 @@ describe("Project settings dialog, Worktrees section", () => {
     const field = screen.getByLabelText("Setup command") as HTMLInputElement;
     fireEvent.change(field, { target: { value: "  pnpm install  " } });
     await waitFor(() => expect(saves).toHaveLength(1));
-    expect(saves[0].worktree["/p"]).toEqual({ setupCommand: "pnpm install", setupWait: false, teardownCommand: "" });
+    expect(saves[0].worktree["/p"]).toEqual({
+      setupCommand: "pnpm install",
+      setupWait: false,
+      teardownCommand: "",
+      runCommand: "",
+    });
 
     cleanup();
     render(() => <ProjectSettingsDialog path="/p" section="worktrees" onClose={() => {}} />);
