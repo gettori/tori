@@ -594,6 +594,11 @@ pub(crate) fn not_a_fork(worktree: &Path) -> bool {
     fork_marker(worktree).is_some_and(|m| !m.exists())
 }
 
+#[tauri::command(async)]
+pub fn worktree_not_a_fork(worktree_path: String) -> bool {
+    not_a_fork(Path::new(&worktree_path))
+}
+
 fn rev_parse(repo: &str, rev: &str) -> Result<String, String> {
     let out = crate::exec::git_in(repo)
         .args(["rev-parse", "--verify", rev])
