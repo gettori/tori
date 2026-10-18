@@ -1,0 +1,10 @@
+{
+  "name": "tori-extension",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "../node_modules/.bin/vp build",
+    "build:dev": "../node_modules/.bin/vp build --mode development",
+    "typecheck": "../node_modules/.bin/tsc -p tsconfig.json"
+  }
+}

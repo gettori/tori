@@ -1245,8 +1245,11 @@ fn projects_tree(spaces: &[crate::config::Space], mut topics: Vec<crate::topics:
 #[derive(Serialize)]
 struct PortUnit {
     project: String,
+    name: String,
     folder: String,
     branch: Option<String>,
+    space: String,
+    space_color: Option<String>,
 }
 
 // One unit per folder: a plain repo's branches share its folder, and only the
@@ -1254,12 +1257,15 @@ struct PortUnit {
 fn port_units(spaces: &[crate::config::Space]) -> Vec<PortUnit> {
     let mut units: Vec<PortUnit> = Vec::new();
     let mut at: HashMap<String, usize> = HashMap::new();
-    for project in spaces.iter().flat_map(|s| &s.projects) {
+    for (space, project) in spaces.iter().flat_map(|s| s.projects.iter().map(move |p| (s, p))) {
         for u in &project.branch_units {
             let unit = PortUnit {
                 project: project.path.clone(),
+                name: project.name.clone(),
                 folder: u.folder_path.clone(),
                 branch: u.branch.clone(),
+                space: space.name.clone(),
+                space_color: space.color.clone(),
             };
             match at.get(&u.folder_path) {
                 Some(&i) if u.is_current => units[i] = unit,

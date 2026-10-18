@@ -55,9 +55,9 @@ pub fn status(store: &Devices, hub: &Hub) -> Value {
     json!({ "installed": !store.list().is_empty(), "connected": hub.browser_connected() })
 }
 
-// Set from the store item's public key, which pins the unpacked build to the
-// same id; until then no extension matches the host manifest.
-const EXTENSION_ID: &str = "PLACEHOLDER_SET_BY_THE_STORE_KEY";
+// The store item's id, which the `key` in the extension's manifest pins the
+// unpacked build to as well.
+const EXTENSION_ID: &str = "miahchgjdkmlidcpclfknpffbbipnono";
 
 const HOST_NAME: &str = if cfg!(debug_assertions) {
     "app.gettori.tori_dev"
