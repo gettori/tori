@@ -13,6 +13,7 @@ mod autopilot;
 mod backstop;
 mod blame;
 mod blind_edit;
+mod browser_host;
 mod catalog_probe;
 mod chat;
 mod checkpoint;

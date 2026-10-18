@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 use crate::pty::attach::Ended;
 use crate::rpc::client::{self, Client, Found};
 
-const COMMANDS: [&str; 23] = [
+const COMMANDS: [&str; 24] = [
     "sessions",
     "projects",
     "ports",
@@ -33,6 +33,7 @@ const COMMANDS: [&str; 23] = [
     "packs-catalog",
     "daemon",
     "attach",
+    "browser-host",
 ];
 
 const USAGE: &str = "usage:
@@ -76,16 +77,20 @@ const USAGE: &str = "usage:
   tori packs-index <dir> [--sign-key-env <name> --key-id <id>]
   tori packs-catalog --check
   tori daemon [--uninstall]
+  tori browser-host
   tori attach <session|tab>";
 
 pub fn is_cli() -> bool {
     std::env::args()
         .nth(1)
-        .is_some_and(|arg| COMMANDS.contains(&arg.as_str()))
+        .is_some_and(|arg| COMMANDS.contains(&arg.as_str()) || crate::browser_host::is_origin(&arg))
 }
 
 pub fn run() -> i32 {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args[0] == "browser-host" || crate::browser_host::is_origin(&args[0]) {
+        return crate::browser_host::run();
+    }
     if args[0] == "daemon" {
         return match args.get(1).map(String::as_str) {
             None => crate::rpc::daemon::run(),

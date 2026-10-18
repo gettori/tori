@@ -79,6 +79,9 @@ struct Conn {
     channels: HashSet<Channel>,
     /// The paired device on the other end, so revoking it can drop the connection.
     device: Option<String>,
+    /// The browser credential on the other end, kept apart from `device` since a
+    /// browser is not someone watching, so it never keeps the Mac awake.
+    browser: Option<String>,
     visible: bool,
     chat: Arc<ChatOutbox>,
 }
@@ -204,6 +207,7 @@ impl Hub {
                 close,
                 channels: HashSet::new(),
                 device: None,
+                browser: None,
                 visible: true,
                 chat: Arc::default(),
             },
@@ -229,6 +233,27 @@ impl Hub {
                 c.device = Some(device.to_string());
             }
         });
+    }
+
+    pub fn tag_browser(&self, conn: ConnId, browser: &str) {
+        if let Some(c) = self.lock().conns.get_mut(&conn) {
+            c.browser = Some(browser.to_string());
+        }
+    }
+
+    pub fn browser_connected(&self) -> bool {
+        self.lock().conns.values().any(|c| c.browser.is_some())
+    }
+
+    pub fn close_browser(&self, browser: &str) {
+        let mut inner = self.lock();
+        let ids: Vec<ConnId> = inner
+            .conns
+            .iter()
+            .filter(|(_, c)| c.browser.as_deref() == Some(browser))
+            .map(|(id, _)| *id)
+            .collect();
+        close_all(&mut inner, ids);
     }
 
     pub fn set_visible(&self, conn: ConnId, visible: bool) {

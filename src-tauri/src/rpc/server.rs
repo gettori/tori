@@ -759,6 +759,7 @@ pub trait Backend: Send + Sync {
     fn autopilot_start(&self) -> Result<Value, RpcError>;
     fn autopilot_stop(&self) -> Result<Value, RpcError>;
     fn device_mint(&self, params: MintParams) -> Result<Value, RpcError>;
+    fn browser_mint(&self) -> Result<Value, RpcError>;
 }
 
 pub struct Server {
@@ -793,6 +794,12 @@ pub(super) fn subscribe(
     watching_sessions: impl FnOnce(),
 ) -> Result<Value, RpcError> {
     let channel = channel(params)?;
+    if kind == CallerKind::Browser {
+        return Err(RpcError::new(
+            REFUSED,
+            "the browser extension subscribes to nothing yet",
+        ));
+    }
     if channel == Channel::Accounts && kind == CallerKind::Device {
         return Err(RpcError::new(
             REFUSED,
@@ -1005,8 +1012,10 @@ pub fn handle_first(
     let conn = server.hub().register(tx.clone(), Box::new(move || closer.close()));
     // Tagged before the check, so a revoke either sees this connection or
     // removed the device before the check reads it.
-    if let Principal::Device(id) = &principal {
-        server.hub().tag_device(conn, id);
+    match &principal {
+        Principal::Device(id) => server.hub().tag_device(conn, id),
+        Principal::Browser(id) => server.hub().tag_browser(conn, id),
+        _ => {}
     }
     if !credential.holds(&principal) {
         server.hub().remove(conn);
@@ -1098,6 +1107,7 @@ pub mod tests {
                 Principal::Local => json!({ "caller": null }),
                 Principal::Session(caller) => json!({ "caller": caller }),
                 Principal::Device(id) => json!({ "caller": { "kind": "device", "id": id } }),
+                Principal::Browser(id) => json!({ "caller": { "kind": "browser", "id": id } }),
             })
         }
         fn session_steer(&self, _: &Principal, p: SteerParams) -> Result<Value, RpcError> {
@@ -1281,6 +1291,9 @@ pub mod tests {
         fn device_mint(&self, p: MintParams) -> Result<Value, RpcError> {
             Ok(json!({ "name": p.name }))
         }
+        fn browser_mint(&self) -> Result<Value, RpcError> {
+            Ok(json!({}))
+        }
     }
 
     pub struct Running {
@@ -1307,6 +1320,9 @@ pub mod tests {
         let credential = Arc::new(Credential::Local {
             process: "tok".into(),
             children: children.clone(),
+            browsers: Arc::new(crate::rpc::devices::Devices::open(
+                std::env::temp_dir().join("tori-test-no-browsers.json"),
+            )),
         });
         serve(transport.clone(), credential, server);
         Running {
@@ -1561,6 +1577,7 @@ pub mod tests {
                 CallerKind::Terminal => Principal::Session(Caller::Terminal("t1".into())),
                 CallerKind::Chat | CallerKind::Worker => Principal::Session(Caller::Chat("s1".into())),
                 CallerKind::Device => Principal::Device("d1".into()),
+                CallerKind::Browser => Principal::Browser("b1".into()),
             };
             let outcome = server.dispatch(0, &principal, &request(method.name, Value::Object(sample)));
             assert!(outcome.is_ok(), "{}: {outcome:?}", method.name);
@@ -1724,6 +1741,34 @@ pub mod tests {
         assert!(server
             .dispatch(0, &worker, &request("ask.wait", json!({"id": "a1"})))
             .is_ok());
+    }
+
+    #[test]
+    fn the_browser_reads_and_steers_and_subscribes_to_nothing() {
+        let open: Vec<&str> = table::METHODS
+            .iter()
+            .filter(|m| m.callers.contains(&CallerKind::Browser))
+            .map(|m| m.name)
+            .collect();
+        assert_eq!(
+            open,
+            [
+                "sessions.list",
+                "session.tail",
+                "caller",
+                "session.steer",
+                "session.pending",
+                "ask.answer",
+                "projects.list",
+                "ports.list",
+                "worktree.at",
+            ]
+        );
+        let hub = Hub::default();
+        for topic in ["sessions", "accounts", "autopilot"] {
+            let refused = subscribe(&hub, CallerKind::Browser, 0, &json!({ "topic": topic }), || {});
+            assert_eq!(refused.unwrap_err().code, REFUSED, "{topic}");
+        }
     }
 
     #[test]

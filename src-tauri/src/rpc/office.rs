@@ -201,6 +201,7 @@ pub fn start(parts: Parts) -> Arc<Office> {
         adoptable: Arc::default(),
         quotas: Arc::default(),
         devices: devices.clone(),
+        hub: hub.clone(),
     };
     let server = Arc::new(Server {
         hub: hub.clone(),
@@ -494,6 +495,11 @@ impl Office {
                 &arg::<String>(args, "folder")?
             ))),
             "radar.list" => Ok(json!(crate::radar::list())),
+            "browsers.mint" => {
+                super::browsers::mint(&super::browsers::store(), &self.hub).map(|id| json!({ "id": id }))
+            }
+            "browsers.revoke" => super::browsers::revoke(&super::browsers::store(), &self.hub).map(|()| json!({})),
+            "browsers.status" => Ok(super::browsers::status(&super::browsers::store(), &self.hub)),
             "ports.scan" => {
                 let worktrees: Vec<String> = arg(args, "worktrees")?;
                 crate::ports::exclude(arg(args, "exclude")?);
