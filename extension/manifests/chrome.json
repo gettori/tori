@@ -1,0 +1,7 @@
+{
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoVHxG1x+lHP0j36Ti1mmCsnGI2vsMrJvVvt9mj7VakNzcWjE/1uAunyiQh1eA0xUWPtBC04aUUt01Gce4H6au1ASXmJxjDgBJU7+wrDGfdK2re3SdM7dnYgGh1axFPmphCilPFgHlSk32hTwRaSxglhT90QE41kaKRNv1YkUO4d/BltxunCALs30qHO0KTjkSF4nNmIyqJpSF+THctaN3dX3AwOm5BXNRqLWEVBdh+pRoXCuNfFd1JPl55Jg5g61f/bHYzngfQQbIL/9faErI6ZjYY6/+gajj4TA2KTAElbwpfXEW5LxXP29I/meGTckROmSnYmG7hcdmKfKthB9mQIDAQAB"
+}
