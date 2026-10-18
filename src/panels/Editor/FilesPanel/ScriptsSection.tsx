@@ -14,7 +14,7 @@ import { runTask } from "../../../utils/runTask";
 import { loadTaskRuns } from "../../../utils/taskRecents";
 import { openPort, portsAt, portUrl } from "../../../utils/portsStore";
 import { runAt, stopRun } from "../../../utils/runStore";
-import { runProjectFor, worktreePrefs } from "../../Settings/settingsStore";
+import { portLinksAt, runProjectFor, worktreePrefs } from "../../Settings/settingsStore";
 import { copyText } from "../../../utils/clipboard";
 import tree from "../FileTree/FileTree.module.css";
 import styles from "./FilesPanel.module.css";
@@ -146,7 +146,7 @@ export default function ScriptsSection(props: { root: string | null }) {
       return next;
     });
 
-  const listening = createMemo(() => (props.root ? portsAt(props.root) : () => []));
+  const listening = createMemo(() => (props.root && portLinksAt(props.root) ? portsAt(props.root) : () => []));
   const liveRun = () => (props.root ? runAt(props.root) : null);
   const runCommand = () => {
     const project = props.root && runProjectFor(props.root);

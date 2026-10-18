@@ -254,6 +254,7 @@ const KEPT = new Map<string, Kept>([
   ["panels/Settings/panes/EditorPane/EditorPane.tsx", { count: 2, reason: GROUP_HEADING }],
   ["panels/Settings/panes/PanesPane/PanesPane.tsx", { count: 1, reason: GROUP_HEADING }],
   ["panels/Settings/panes/ProjectsPane/ProjectsPane.tsx", { count: 1, reason: GROUP_HEADING }],
+  ["panels/Settings/panes/ProjectsPane/UnattendedLists.tsx", { count: 1, reason: GROUP_HEADING }],
   ["panels/Settings/panes/IntegrationsPane/IntegrationsPane.tsx", { count: 3, reason: GROUP_HEADING }],
   ["panels/Settings/panes/RemotePane/RemotePane.tsx", { count: 1, reason: GROUP_HEADING }],
   [
@@ -264,7 +265,11 @@ const KEPT = new Map<string, Kept>([
   ["components/Dialogs/RebaseDialog.tsx", { count: 2, reason: `${HEADING}, plus one ${TRUNCATION}` }],
   [
     "panels/Editor/FilesPanel/ScriptsSection.tsx",
-    { count: 1, reason: "the word behind a script row's play glyph while it runs, on a span no keyboard reaches" },
+    {
+      count: 2,
+      reason:
+        "the word behind the play glyph of a running script and of the run command's row, on spans no keyboard reaches",
+    },
   ],
   ["panels/LeftSidebar/TopicItem.test.tsx", { count: 3, reason: FIXTURE }],
   [
@@ -370,7 +375,7 @@ const KEPT = new Map<string, Kept>([
  *
  *  **Up one** with the project settings tab, whose header carries the project's
  *  path, truncated from the left, beside the Worktrees section's own. */
-const RAW_ELEMENT_TITLES = 72;
+const RAW_ELEMENT_TITLES = 73;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. The Changes
  *  panel's stash row is one: a click expands it to its files. */
@@ -509,8 +514,9 @@ describe("the title= guard", () => {
       p: 1,
       // Down one span: the pull request detail view went, and the branch line
       // it truncated is drawn once now, in the panel that replaced it. Up one
-      // for the project settings tab's path.
-      span: 56,
+      // for the project settings tab's path, and one for the run command row's
+      // running mark.
+      span: 57,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });

@@ -357,6 +357,9 @@ export type Settings = {
   execution?: Record<string, ExecutionLevel>;
   /** Mirrors `Unattended` in src-tauri/src/settings.rs. Null is the built-in list. */
   unattended?: Unattended;
+  /** Mirrors `port_links` in src-tauri/src/settings.rs: the project paths whose
+   *  dev servers show as links. */
+  portLinks?: string[];
 };
 
 export type ExecutionLevel = "asMe" | "boxedWhenUnattended" | "alwaysBoxed";
@@ -505,6 +508,7 @@ export const DEFAULT_SETTINGS: Settings = {
   reviewRequested: {},
   execution: {},
   unattended: { deny: null, allowedDomains: null },
+  portLinks: [],
 };
 
 /**
@@ -976,6 +980,21 @@ export function executionLevel(projectPath: string): ExecutionLevel {
 
 export function setExecutionLevel(projectPath: string, level: ExecutionLevel): Promise<void> {
   return saveSettings({ ...settings, execution: { ...settings.execution, [projectPath]: level } });
+}
+
+export function portLinksOn(projectPath: string): boolean {
+  return settings.portLinks?.includes(projectPath) ?? false;
+}
+
+/** Whether `path`, a project or one of its worktrees, is in a project that shows
+ *  dev server links. */
+export function portLinksAt(path: string): boolean {
+  return settings.portLinks?.some((project) => isUnderPath(path, project)) ?? false;
+}
+
+export function setPortLinks(projectPath: string, on: boolean): Promise<void> {
+  const rest = (settings.portLinks ?? []).filter((p) => p !== projectPath);
+  return saveSettings({ ...settings, portLinks: on ? [...rest, projectPath] : rest });
 }
 
 export function setUnattended(patch: Partial<Unattended>): Promise<void> {

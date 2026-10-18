@@ -991,6 +991,10 @@ pub struct Settings {
     pub execution: std::collections::HashMap<String, ExecutionLevel>,
     #[serde(default, deserialize_with = "lenient_unattended")]
     pub unattended: Unattended,
+    /// Projects whose dev servers show as links, by project path. Finding them
+    /// runs `lsof`, so a project not listed is never scanned.
+    #[serde(default, deserialize_with = "lenient_port_links")]
+    pub port_links: Vec<String>,
 }
 
 /// Whether secret reads are marked, and additions to the list. The patterns
@@ -1278,6 +1282,11 @@ fn lenient_execution<'de, D: serde::Deserializer<'de>>(
 // A malformed block reads as the built-in lists rather than failing the file,
 // which would turn every other section into its defaults too.
 fn lenient_unattended<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Unattended, D::Error> {
+    let raw = serde_json::Value::deserialize(d)?;
+    Ok(serde_json::from_value(raw).unwrap_or_default())
+}
+
+fn lenient_port_links<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
     let raw = serde_json::Value::deserialize(d)?;
     Ok(serde_json::from_value(raw).unwrap_or_default())
 }

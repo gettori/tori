@@ -5,7 +5,6 @@ import { createSignal, getOwner, onCleanup } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
-const POLL_MS = 30_000;
 // A dev server prints its banner and its terminal goes quiet, so a scan this
 // long after the quiet finds it listening.
 const SETTLE_MS = 3_000;
@@ -38,10 +37,11 @@ function scanIn(ms: number) {
   soon = setTimeout(() => void scan(), ms);
 }
 
+// No timer: a scan is two `lsof` runs, so it waits for something that can
+// start or stop a server rather than polling for one.
 function start() {
   if (started) return;
   started = true;
-  setInterval(() => void scan(), POLL_MS);
   window.addEventListener("focus", () => void scan());
   document.addEventListener("visibilitychange", () => void scan());
   void listen<{ id: string; state: "active" | "quiet" }>("pty://activity", (e) => {
@@ -56,9 +56,10 @@ function start() {
 }
 
 export function portsAt(path: string): () => number[] {
-  watched.set(path, (watched.get(path) ?? 0) + 1);
+  const n = watched.get(path) ?? 0;
+  watched.set(path, n + 1);
   start();
-  scanIn(0);
+  if (n === 0) scanIn(0);
   if (getOwner()) {
     onCleanup(() => {
       const n = (watched.get(path) ?? 1) - 1;
