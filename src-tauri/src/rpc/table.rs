@@ -24,6 +24,7 @@ pub enum CallerKind {
     Chat,
     Worker,
     Device,
+    Browser,
 }
 
 impl CallerKind {
@@ -33,6 +34,7 @@ impl CallerKind {
             Principal::Session(Caller::Terminal(_)) => Self::Terminal,
             Principal::Session(Caller::Chat(_)) => Self::Chat,
             Principal::Device(_) => Self::Device,
+            Principal::Browser(_) => Self::Browser,
         }
     }
 
@@ -43,6 +45,7 @@ impl CallerKind {
             Self::Chat => "chat",
             Self::Worker => "worker",
             Self::Device => "device",
+            Self::Browser => "browser",
         }
     }
 }
@@ -69,6 +72,28 @@ const NOT_WORKERS_AND_DEVICES: &[CallerKind] = &[
     CallerKind::Terminal,
     CallerKind::Chat,
     CallerKind::Device,
+];
+const ANYONE_DEVICES_AND_BROWSER: &[CallerKind] = &[
+    CallerKind::Local,
+    CallerKind::Terminal,
+    CallerKind::Chat,
+    CallerKind::Worker,
+    CallerKind::Device,
+    CallerKind::Browser,
+];
+const ANYONE_AND_BROWSER: &[CallerKind] = &[
+    CallerKind::Local,
+    CallerKind::Terminal,
+    CallerKind::Chat,
+    CallerKind::Worker,
+    CallerKind::Browser,
+];
+const NOT_WORKERS_DEVICES_AND_BROWSER: &[CallerKind] = &[
+    CallerKind::Local,
+    CallerKind::Terminal,
+    CallerKind::Chat,
+    CallerKind::Device,
+    CallerKind::Browser,
 ];
 // What a phone's screens read and switch, kept off every agent's tool list.
 const LOCAL_AND_DEVICES: &[CallerKind] = &[CallerKind::Local, CallerKind::Device];
@@ -106,7 +131,7 @@ pub static METHODS: &[Method] = &[
         name: "sessions.list",
         description: "List agent sessions, newest first, with whether each is live and its state.",
         params: schema::<ListParams>,
-        callers: ANYONE_AND_DEVICES,
+        callers: ANYONE_DEVICES_AND_BROWSER,
         refusal: None,
         outward: false,
         call: |b, _, v| b.sessions_list(params(v)?),
@@ -115,7 +140,7 @@ pub static METHODS: &[Method] = &[
         name: "session.tail",
         description: "The last events of a session's conversation, tool outputs capped.",
         params: schema::<TailParams>,
-        callers: ANYONE_AND_DEVICES,
+        callers: ANYONE_DEVICES_AND_BROWSER,
         refusal: None,
         outward: false,
         call: |b, _, v| b.session_tail(params(v)?),
@@ -124,7 +149,7 @@ pub static METHODS: &[Method] = &[
         name: "caller",
         description: "Who is calling: the session or terminal tab this connection belongs to, and its agent, account and folder.",
         params: no_params,
-        callers: ANYONE_AND_DEVICES,
+        callers: ANYONE_DEVICES_AND_BROWSER,
         refusal: None,
         outward: false,
         call: |b, p, _| {
@@ -157,7 +182,7 @@ pub static METHODS: &[Method] = &[
         name: "session.steer",
         description: "Send a message to a live chat session, as a steer mid turn or as its next turn.",
         params: schema::<SteerParams>,
-        callers: NOT_WORKERS_AND_DEVICES,
+        callers: NOT_WORKERS_DEVICES_AND_BROWSER,
         refusal: None,
         outward: false,
         call: |b, p, v| b.session_steer(p, params(v)?),
@@ -175,7 +200,7 @@ pub static METHODS: &[Method] = &[
         name: "session.pending",
         description: "What a session is waiting on: questions it asked with ask.create, and its agent's own questions and permission prompts, each with its id.",
         params: schema::<PendingParams>,
-        callers: NOT_WORKERS_AND_DEVICES,
+        callers: NOT_WORKERS_DEVICES_AND_BROWSER,
         refusal: None,
         outward: false,
         call: |b, _, v| b.session_pending(params(v)?),
@@ -451,7 +476,7 @@ pub static METHODS: &[Method] = &[
         name: "ask.answer",
         description: "Answer a question another session asked, on the user's behalf; the card in that session goes away.",
         params: schema::<AskAnswerParams>,
-        callers: NOT_WORKERS_AND_DEVICES,
+        callers: NOT_WORKERS_DEVICES_AND_BROWSER,
         refusal: None,
         outward: false,
         call: |b, p, v| b.ask_answer(p, params(v)?),
@@ -523,7 +548,7 @@ pub static METHODS: &[Method] = &[
         name: "projects.list",
         description: "The tree the sidebar draws, in its order: spaces with their projects and branch units (each with its issue key), then topics by name with their members.",
         params: no_params,
-        callers: ANYONE_AND_DEVICES,
+        callers: ANYONE_DEVICES_AND_BROWSER,
         refusal: None,
         outward: false,
         call: |b, _, _| b.projects_list(),
@@ -541,7 +566,7 @@ pub static METHODS: &[Method] = &[
         name: "ports.list",
         description: "Dev servers per worktree: every project unit with a server listening or a port block, with its project, folder, branch, block base (TORI_PORT) and listening ports.",
         params: no_params,
-        callers: ANYONE,
+        callers: ANYONE_AND_BROWSER,
         refusal: None,
         outward: false,
         call: |b, _, _| b.ports_list(),
@@ -550,7 +575,7 @@ pub static METHODS: &[Method] = &[
         name: "worktree.at",
         description: "The worktree a localhost port belongs to: its project, folder and branch, or null when no Tori worktree serves it.",
         params: schema::<PortParams>,
-        callers: ANYONE,
+        callers: ANYONE_AND_BROWSER,
         refusal: None,
         outward: false,
         call: |b, _, v| b.worktree_at(params(v)?),
@@ -626,6 +651,15 @@ pub static METHODS: &[Method] = &[
         refusal: Some("adding a device is the user's call, from outside any Tori session"),
         outward: false,
         call: |b, _, v| b.device_mint(params(v)?),
+    },
+    Method {
+        name: "browser.mint",
+        description: "Replace the browser extension's credential with a new one, written to browser.json for the native host; the old one stops working.",
+        params: no_params,
+        callers: &[CallerKind::Local],
+        refusal: Some("installing the browser host is the user's call, from outside any Tori session"),
+        outward: false,
+        call: |b, _, _| b.browser_mint(),
     },
 ];
 

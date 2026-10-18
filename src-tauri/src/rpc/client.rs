@@ -89,9 +89,18 @@ impl Client {
     }
 
     pub fn call(&mut self, method: &str, params: Value) -> Result<Value, ClientError> {
+        self.call_tagged(method, params, &json!({}))
+    }
+
+    pub fn call_tagged(&mut self, method: &str, params: Value, tags: &Value) -> Result<Value, ClientError> {
         self.next_id += 1;
         let id = self.next_id;
-        let request = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
+        let mut request = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
+        if let (Some(request), Some(tags)) = (request.as_object_mut(), tags.as_object()) {
+            for (key, value) in tags {
+                request.entry(key.clone()).or_insert_with(|| value.clone());
+            }
+        }
         self.writer.write_all(to_line(&request).as_bytes())?;
         loop {
             let message = self.read()?.ok_or(ClientError::Closed)?;
