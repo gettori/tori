@@ -9,9 +9,10 @@ use serde_json::{json, Value};
 use crate::pty::attach::Ended;
 use crate::rpc::client::{self, Client, Found};
 
-const COMMANDS: [&str; 22] = [
+const COMMANDS: [&str; 23] = [
     "sessions",
     "projects",
+    "ports",
     "session",
     "events",
     "whoami",
@@ -37,6 +38,7 @@ const COMMANDS: [&str; 22] = [
 const USAGE: &str = "usage:
   tori sessions [--live] [--cwd <path>] [--limit <n>] [--json]
   tori projects [--json]
+  tori ports [--json]
   tori session tail <id> [--lines <n>] [--agent <id>] [--json]
   tori session wait <id> [--timeout <secs>] [--json]
   tori session pending <id> [--json]
@@ -53,6 +55,7 @@ const USAGE: &str = "usage:
   tori spawn [--agent <id>] [--account <id>] [--model <id>] [--mode <id>] [--effort <level>] [--folder <path> | --new-worktree <branch> [--project <path>] [--from <ref>]]
              [--prompt <text>] [--attach <path>]... [--background] [--json]
   tori open <path> [--line <n>]
+  tori open --browser [<branch>]
   tori budget [<id>] [--folder <path>] [--json]
   tori ask <question>... [--option <text>]... [--timeout <secs>] [--approval <json> [--project <path>]]
   tori ask --wait <id> [--timeout <secs>]
@@ -180,6 +183,7 @@ fn dispatch(args: &[String]) -> Result<(), Failure> {
     match args[0].as_str() {
         "sessions" => sessions(rest),
         "projects" => projects(rest),
+        "ports" => ports(rest),
         "session" => match rest.first().map(String::as_str) {
             Some("tail") => session_tail(&rest[1..]),
             Some("wait") => session_wait(&rest[1..]),
@@ -1078,7 +1082,10 @@ fn spawn(args: &[String]) -> Result<(), Failure> {
 }
 
 fn open(args: &[String]) -> Result<(), Failure> {
-    let p = Parsed::new(args, &["line"], &[])?;
+    let p = Parsed::new(args, &["line"], &["browser"])?;
+    if p.has("browser") {
+        return open_browser(&p);
+    }
     let [path] = p.positional.as_slice() else {
         return Err(usage("open takes one file path"));
     };
@@ -1086,6 +1093,120 @@ fn open(args: &[String]) -> Result<(), Failure> {
         "window.open",
         json!({ "path": absolute(path)?, "line": p.number("line")? }),
     )?;
+    Ok(())
+}
+
+fn open_browser(p: &Parsed) -> Result<(), Failure> {
+    let branch = match p.positional.as_slice() {
+        [] => None,
+        [branch] => Some(branch.as_str()),
+        _ => return Err(usage("open --browser takes at most one branch")),
+    };
+    let mut client = connect()?;
+    let tree = client.call("projects.list", json!({}))?;
+    let units = tree_units(&tree);
+    let cwd = canonical(&std::env::current_dir()?.to_string_lossy());
+    let here = units
+        .iter()
+        .filter(|u| within(&cwd, &canonical(&u.folder)))
+        .max_by_key(|u| u.folder.len())
+        .ok_or_else(|| Failure::Refused("this folder is in no Tori project".into()))?;
+    let folder = match branch {
+        None => here.folder.clone(),
+        Some(branch) => units
+            .iter()
+            .find(|u| u.project == here.project && u.branch.as_deref() == Some(branch))
+            .map(|u| u.folder.clone())
+            .ok_or_else(|| {
+                Failure::Refused(format!(
+                    "{branch} is not a worktree of {}",
+                    home_relative(&here.project)
+                ))
+            })?,
+    };
+    let rows = client.call("ports.list", json!({}))?;
+    let row = rows
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|r| r["folder"].as_str() == Some(folder.as_str()));
+    let port = row
+        .and_then(|r| first_port(r["base"].as_u64(), r["ports"].as_array()?))
+        .ok_or_else(|| Failure::Refused(format!("nothing is listening from {}", home_relative(&folder))))?;
+    let url = format!("http://localhost:{port}");
+    let status = std::process::Command::new("/usr/bin/open").arg(&url).status()?;
+    if !status.success() {
+        return Err(Failure::Refused(format!("open could not open {url}")));
+    }
+    Ok(())
+}
+
+// The block's base when it listens, since that is the port the setup asked for.
+fn first_port(base: Option<u64>, ports: &[Value]) -> Option<u64> {
+    let ports: Vec<u64> = ports.iter().filter_map(Value::as_u64).collect();
+    base.filter(|b| ports.contains(b))
+        .or_else(|| ports.iter().min().copied())
+}
+
+struct TreeUnit {
+    project: String,
+    folder: String,
+    branch: Option<String>,
+}
+
+fn tree_units(tree: &Value) -> Vec<TreeUnit> {
+    let list = |v: &Value, key: &str| v.get(key).and_then(Value::as_array).cloned().unwrap_or_default();
+    let mut units = Vec::new();
+    for space in list(tree, "spaces") {
+        for project in list(&space, "projects") {
+            for unit in list(&project, "units") {
+                units.push(TreeUnit {
+                    project: project["path"].as_str().unwrap_or_default().to_string(),
+                    folder: unit["folder"].as_str().unwrap_or_default().to_string(),
+                    branch: unit["branch"].as_str().map(str::to_string),
+                });
+            }
+        }
+    }
+    units
+}
+
+fn canonical(path: &str) -> String {
+    std::fs::canonicalize(path).map_or_else(|_| path.to_string(), |p| p.to_string_lossy().into_owned())
+}
+
+fn within(path: &str, root: &str) -> bool {
+    !root.is_empty() && (path == root || path.starts_with(&format!("{}/", root.trim_end_matches('/'))))
+}
+
+fn ports(args: &[String]) -> Result<(), Failure> {
+    let p = Parsed::new(args, &[], &["json"])?;
+    let rows = connect()?.call("ports.list", json!({}))?;
+    let mut out = io::stdout().lock();
+    if p.has("json") {
+        return Ok(writeln!(out, "{rows}")?);
+    }
+    for row in rows.as_array().into_iter().flatten() {
+        let ports: Vec<String> = row["ports"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_u64)
+            .map(|p| p.to_string())
+            .collect();
+        let base = row["base"].as_u64().map_or_else(|| "-".to_string(), |b| b.to_string());
+        writeln!(
+            out,
+            "{}  {}  base {base}  {}",
+            row["branch"].as_str().unwrap_or("-"),
+            home_relative(row["folder"].as_str().unwrap_or_default()),
+            if ports.is_empty() {
+                "none listening".to_string()
+            } else {
+                ports.join(",")
+            }
+        )?;
+    }
     Ok(())
 }
 

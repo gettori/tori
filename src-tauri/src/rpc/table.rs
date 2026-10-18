@@ -11,10 +11,10 @@ use super::server::{
     params, AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams,
     CheckpointsParams, DigestLookedParams, DigestParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams,
     IssueGetParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams,
-    ModeParams, ModelParams, NeedsYouSeenParams, OpenParams, PendingParams, PrCreateParams, PrGetParams, PrMergeParams,
-    PrWatchParams, ProjectIconParams, ProjectSetParams, ProvenanceParams, ReviewMarkParams, ReviewSubmitParams,
-    SessionAnswerParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams,
-    UnitsSyncParams, WaitParams, WorktreeParams, UNITS_GIT_MAX,
+    ModeParams, ModelParams, NeedsYouSeenParams, OpenParams, PendingParams, PortParams, PrCreateParams, PrGetParams,
+    PrMergeParams, PrWatchParams, ProjectIconParams, ProjectSetParams, ProvenanceParams, ReviewMarkParams,
+    ReviewSubmitParams, SessionAnswerParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams,
+    UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, UNITS_GIT_MAX,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -536,6 +536,24 @@ pub static METHODS: &[Method] = &[
         refusal: None,
         outward: false,
         call: |b, _, v| b.project_icon(params(v)?),
+    },
+    Method {
+        name: "ports.list",
+        description: "Dev servers per worktree: every project unit with a server listening or a port block, with its project, folder, branch, block base (TORI_PORT) and listening ports.",
+        params: no_params,
+        callers: ANYONE,
+        refusal: None,
+        outward: false,
+        call: |b, _, _| b.ports_list(),
+    },
+    Method {
+        name: "worktree.at",
+        description: "The worktree a localhost port belongs to: its project, folder and branch, or null when no Tori worktree serves it.",
+        params: schema::<PortParams>,
+        callers: ANYONE,
+        refusal: None,
+        outward: false,
+        call: |b, _, v| b.worktree_at(params(v)?),
     },
     Method {
         name: "autopilot.state",

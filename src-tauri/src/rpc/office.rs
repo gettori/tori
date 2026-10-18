@@ -494,6 +494,15 @@ impl Office {
                 &arg::<String>(args, "folder")?
             ))),
             "radar.list" => Ok(json!(crate::radar::list())),
+            "ports.scan" => {
+                let worktrees: Vec<String> = arg(args, "worktrees")?;
+                crate::ports::exclude(arg(args, "exclude")?);
+                Ok(json!(crate::ports::scan(&worktrees, std::time::Duration::ZERO)))
+            }
+            "ports.exclude" => {
+                crate::ports::exclude(arg(args, "pids")?);
+                Ok(json!({}))
+            }
             "needs_you.list" => Ok(json!(crate::needs_you_log::list())),
             "needs_you.seen" => {
                 let (session, folder, branch): (Option<String>, Option<String>, Option<String>) =

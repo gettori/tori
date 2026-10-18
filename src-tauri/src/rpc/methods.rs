@@ -17,10 +17,10 @@ use super::server::{
     AskAnswerParams, AskParams, AskWaitParams, Backend, Before, BudgetParams, CheckpointDiffParams, CheckpointParams,
     CheckpointsParams, DigestLookedParams, DigestParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams,
     IssueGetParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams,
-    ModeParams, ModelParams, NeedsYouSeenParams, OpenParams, PendingParams, PrCreateParams, PrGetParams, PrMergeParams,
-    PrWatchParams, ProjectIconParams, ProjectSetParams, ProvenanceParams, ReviewMarkParams, ReviewSubmitParams,
-    SessionAnswerParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams,
-    UnitsSyncParams, WaitParams, WorktreeParams, DEFAULT_LOG_LIMIT,
+    ModeParams, ModelParams, NeedsYouSeenParams, OpenParams, PendingParams, PortParams, PrCreateParams, PrGetParams,
+    PrMergeParams, PrWatchParams, ProjectIconParams, ProjectSetParams, ProvenanceParams, ReviewMarkParams,
+    ReviewSubmitParams, SessionAnswerParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams,
+    UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, DEFAULT_LOG_LIMIT,
 };
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
@@ -749,6 +749,12 @@ pub struct DaemonBackend {
 }
 
 impl DaemonBackend {
+    fn port_units(&self) -> Result<Vec<PortUnit>, RpcError> {
+        let config =
+            crate::config::get_config_body(&self.composer.projects).map_err(|e| RpcError::new(INTERNAL_ERROR, e))?;
+        Ok(port_units(&config.spaces))
+    }
+
     pub fn spawn(&self, principal: &Principal, params: SpawnParams, read_only: bool) -> Result<Value, RpcError> {
         if let Principal::Device(_) = principal {
             device_may_spawn(&params, |agent| {
@@ -1235,6 +1241,38 @@ fn projects_tree(spaces: &[crate::config::Space], mut topics: Vec<crate::topics:
     json!({ "spaces": spaces, "topics": topics })
 }
 
+#[derive(Serialize)]
+struct PortUnit {
+    project: String,
+    folder: String,
+    branch: Option<String>,
+}
+
+// One unit per folder: a plain repo's branches share its folder, and only the
+// checked-out one is serving from it.
+fn port_units(spaces: &[crate::config::Space]) -> Vec<PortUnit> {
+    let mut units: Vec<PortUnit> = Vec::new();
+    let mut at: HashMap<String, usize> = HashMap::new();
+    for project in spaces.iter().flat_map(|s| &s.projects) {
+        for u in &project.branch_units {
+            let unit = PortUnit {
+                project: project.path.clone(),
+                folder: u.folder_path.clone(),
+                branch: u.branch.clone(),
+            };
+            match at.get(&u.folder_path) {
+                Some(&i) if u.is_current => units[i] = unit,
+                Some(_) => {}
+                None => {
+                    at.insert(u.folder_path.clone(), units.len());
+                    units.push(unit);
+                }
+            }
+        }
+    }
+    units
+}
+
 impl Backend for DaemonBackend {
     fn watching_sessions(&self) {
         self.composer.probe_soon();
@@ -1449,6 +1487,39 @@ impl Backend for DaemonBackend {
 
     fn radar_list(&self) -> Result<Value, RpcError> {
         to_json(crate::radar::list())
+    }
+
+    fn ports_list(&self) -> Result<Value, RpcError> {
+        let units = self.port_units()?;
+        let folders: Vec<String> = units.iter().map(|u| u.folder.clone()).collect();
+        let mut listening = crate::ports::scan(&folders, crate::ports::CACHE);
+        let bases = crate::ports::bases(&folders);
+        let rows: Vec<Value> = units
+            .into_iter()
+            .filter_map(|u| {
+                let ports = listening.remove(&u.folder).unwrap_or_default();
+                let base = bases.get(&u.folder).copied();
+                (base.is_some() || !ports.is_empty()).then(|| {
+                    json!({ "project": u.project, "folder": u.folder, "branch": u.branch, "base": base, "ports": ports })
+                })
+            })
+            .collect();
+        Ok(json!(rows))
+    }
+
+    fn worktree_at(&self, params: PortParams) -> Result<Value, RpcError> {
+        let units = self.port_units()?;
+        let folders: Vec<String> = units.iter().map(|u| u.folder.clone()).collect();
+        let owner = |max_age| {
+            crate::ports::scan(&folders, max_age)
+                .into_iter()
+                .find(|(_, ports)| ports.contains(&params.port))
+                .map(|(folder, _)| folder)
+        };
+        let Some(folder) = owner(crate::ports::CACHE).or_else(|| owner(crate::ports::MISS)) else {
+            return Ok(Value::Null);
+        };
+        to_json(units.into_iter().find(|u| u.folder == folder))
     }
 
     fn review_mark(&self, params: ReviewMarkParams) -> Result<Value, RpcError> {
