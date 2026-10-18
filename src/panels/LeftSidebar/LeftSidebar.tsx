@@ -168,7 +168,7 @@ import {
   reviewRequests,
   type WatchedProject,
 } from "../../utils/forgeStatus";
-import { reviewRule, runProjectFor, settings as appSettings } from "../Settings/settingsStore";
+import { portLinksAt, reviewRule, runProjectFor, settings as appSettings } from "../Settings/settingsStore";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
 import ProjectIcon from "../../components/Icon/ProjectIcon";
@@ -2870,7 +2870,8 @@ export default function LeftSidebar(props: {
     // too is the one mark that matters most while the agent is still writing.
     const overlap = () => (u.kind !== "plain" || u.isCurrent ? overlapMark(overlapsAt(u.folderPath)) : null);
     const marks = createMemo(() => withOverlap(held() ? [] : syncMarks(sync(), finished()), overlap()));
-    const listening = portsAt(u.folderPath);
+    const watch = createMemo(() => (portLinksAt(u.folderPath) ? portsAt(u.folderPath) : () => []));
+    const listening = () => watch()();
     // One hover target for the whole run rather than one per glyph: they are
     // 13px each, none of them is focusable, and the reader wants the branch's
     // standing in one place rather than four hovers to assemble it.
