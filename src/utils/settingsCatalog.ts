@@ -46,6 +46,7 @@ export type SettingSection =
   | "autopilot"
   | "panes"
   | "remote"
+  | "browser"
   | "root"
   | "crashes"
   | "shell"
@@ -74,6 +75,7 @@ export type SettingTab =
   | "integrations"
   | "panes"
   | "remote"
+  | "browser"
   | "advanced";
 
 /** Not "Workspace": the panel already uses that word for a folder, and most of
@@ -131,6 +133,7 @@ export const SETTING_TABS: SettingTabDef[] = [
   },
   { id: "integrations", label: "Integrations", group: "Application", icon: "plug", sections: ["git", "forge"] },
   { id: "remote", label: "Remote", group: "Application", icon: "smartphone", sections: ["remote"] },
+  { id: "browser", label: "Browser", group: "Application", icon: "globe", sections: ["browser"] },
   // Last in the rail because it is the only tab whose contents are not
   // settings: the base folder every space sits in, and the two actions that
   // replace or forget it.
@@ -176,6 +179,7 @@ export const SECTION_TITLES: Record<SettingSection, string> = {
   autopilot: "Autopilot",
   panes: "Panes",
   remote: "Remote access",
+  browser: "Browser extension",
   root: "Base folder",
   crashes: "Crash logs",
   shell: "Terminal command",
@@ -779,6 +783,30 @@ export const SETTINGS: SettingEntry[] = [
     section: "remote",
     label: "Paired devices",
     hint: "Revoking a device drops its connection at once and it has to pair again.",
+  },
+
+  {
+    id: "browser-found",
+    section: "browser",
+    label: "Browsers",
+    hint: "Chrome, Chromium, Brave, Edge and Arc, where this Mac has them. Install tells each one where Tori is, so the extension can reach it.",
+  },
+  {
+    id: "browser-install",
+    section: "browser",
+    label: "Install",
+    hint: "Writes a small file into each browser's folder and gives the extension its own key. Installing again replaces the key, and a browser still holding the old one is turned away.",
+  },
+  {
+    id: "browser-status",
+    section: "browser",
+    label: "Connected",
+  },
+  {
+    id: "browser-revoke",
+    section: "browser",
+    label: "Revoke",
+    hint: "Drops the extension's connection at once. It reaches Tori again only after Install.",
   },
 
   {
