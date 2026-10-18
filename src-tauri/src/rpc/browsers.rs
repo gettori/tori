@@ -54,3 +54,68 @@ pub fn revoke(store: &Devices, hub: &Hub) -> Result<(), String> {
 pub fn status(store: &Devices, hub: &Hub) -> Value {
     json!({ "installed": !store.list().is_empty(), "connected": hub.browser_connected() })
 }
+
+// Set from the store item's public key, which pins the unpacked build to the
+// same id; until then no extension matches the host manifest.
+const EXTENSION_ID: &str = "PLACEHOLDER_SET_BY_THE_STORE_KEY";
+
+const HOST_NAME: &str = if cfg!(debug_assertions) {
+    "app.gettori.tori_dev"
+} else {
+    "app.gettori.tori"
+};
+
+const NATIVE_HOST_DIRS: &[(&str, &str)] = &[
+    ("Chrome", "Google/Chrome"),
+    ("Chromium", "Chromium"),
+    ("Brave", "BraveSoftware/Brave-Browser"),
+    ("Edge", "Microsoft Edge"),
+    ("Arc", "Arc/User Data"),
+];
+
+fn support_dir() -> PathBuf {
+    dirs::home_dir().unwrap_or_default().join("Library/Application Support")
+}
+
+fn found() -> Vec<(&'static str, PathBuf)> {
+    let support = support_dir();
+    NATIVE_HOST_DIRS
+        .iter()
+        .map(|(name, dir)| (*name, support.join(dir)))
+        .filter(|(_, dir)| dir.is_dir())
+        .map(|(name, dir)| (name, dir.join("NativeMessagingHosts").join(format!("{HOST_NAME}.json"))))
+        .collect()
+}
+
+fn host_manifest() -> Value {
+    json!({
+        "name": HOST_NAME,
+        "description": "Tori",
+        "path": super::daemon::paths().cli_link_dir.join("tori"),
+        "type": "stdio",
+        "allowed_origins": [format!("chrome-extension://{EXTENSION_ID}/")],
+    })
+}
+
+fn is_current(path: &std::path::Path, want: &Value) -> bool {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .is_some_and(|have| &have == want)
+}
+
+pub fn manifests() -> Value {
+    let want = host_manifest();
+    found()
+        .into_iter()
+        .map(|(name, path)| json!({ "name": name, "installed": is_current(&path, &want) }))
+        .collect()
+}
+
+pub fn install_manifests() -> Result<(), String> {
+    let text = serde_json::to_string_pretty(&host_manifest()).map_err(|e| e.to_string())?;
+    for (name, path) in found() {
+        crate::owned_state::write_atomically(&path, &text).map_err(|e| format!("{name}: {e}"))?;
+    }
+    Ok(())
+}
