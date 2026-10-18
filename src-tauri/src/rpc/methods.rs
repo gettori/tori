@@ -527,7 +527,7 @@ fn may_steer(caller: &Principal, locked: bool, autopilot: Option<&str>) -> Resul
 // A chat's text arrives as a Tori note naming it; a person's, as typed.
 fn steered(principal: &Principal, text: String) -> (TurnBy, String) {
     match principal {
-        Principal::Local | Principal::Device(_) => (TurnBy::Local, text),
+        Principal::Local | Principal::Device(_) | Principal::Browser(_) => (TurnBy::Local, text),
         Principal::Session(Caller::Chat(from)) => (
             TurnBy::Session(from.clone()),
             super::events::from_tori("steer", Some(from), &text),
@@ -746,6 +746,7 @@ pub struct DaemonBackend {
     pub adoptable: Arc<std::sync::Mutex<Vec<Value>>>,
     pub quotas: Arc<super::quotas::Quotas>,
     pub devices: Arc<super::devices::Devices>,
+    pub hub: Arc<super::hub::Hub>,
 }
 
 impl DaemonBackend {
@@ -954,7 +955,7 @@ impl DaemonBackend {
 
     pub fn identity(&self, principal: &Principal) -> Identity {
         match principal {
-            Principal::Local | Principal::Device(_) => Identity::default(),
+            Principal::Local | Principal::Device(_) | Principal::Browser(_) => Identity::default(),
             Principal::Session(Caller::Terminal(tab)) => self
                 .ptys
                 .list()
@@ -1357,6 +1358,7 @@ impl Backend for DaemonBackend {
             Principal::Local => Value::Null,
             Principal::Session(caller) => json!(caller),
             Principal::Device(id) => json!({ "kind": "device", "id": id }),
+            Principal::Browser(id) => json!({ "kind": "browser", "id": id }),
         };
         Ok(json!({ "caller": caller, "identity": self.identity(principal) }))
     }
@@ -2069,6 +2071,12 @@ impl Backend for DaemonBackend {
             .mint(&params.name)
             .map_err(|e| RpcError::new(INTERNAL_ERROR, e))?;
         Ok(json!({ "id": device.id, "name": device.name, "credential": credential }))
+    }
+
+    fn browser_mint(&self) -> Result<Value, RpcError> {
+        let id = super::browsers::mint(&super::browsers::store(), &self.hub)
+            .map_err(|e| RpcError::new(INTERNAL_ERROR, e))?;
+        Ok(json!({ "id": id, "path": super::browsers::credential_path() }))
     }
 }
 

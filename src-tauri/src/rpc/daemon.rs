@@ -902,6 +902,7 @@ pub fn start(paths: Paths) -> Result<Start, String> {
     let credential = Arc::new(Credential::Local {
         process: token.clone().into(),
         children: children.clone(),
+        browsers: super::browsers::store(),
     });
     crate::credential::write_bridge(&paths.rpc_json, &paths.sock.to_string_lossy(), &token)
         .map_err(|e| format!("rpc bridge file not written: {e}"))?;

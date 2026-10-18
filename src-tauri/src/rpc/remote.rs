@@ -293,6 +293,9 @@ mod tests {
         let local = Arc::new(Credential::Local {
             process: "tok".into(),
             children: Default::default(),
+            browsers: Arc::new(crate::rpc::devices::Devices::open(
+                std::env::temp_dir().join("tori-test-no-browsers.json"),
+            )),
         });
         serve(unix.clone(), local, server.clone());
         let ended = Arc::new(Mutex::new(Vec::new()));

@@ -22,6 +22,7 @@ pub enum Credential {
         // Only in the bridge file, for a process Tori did not start.
         process: ProcessToken,
         children: Arc<Children>,
+        browsers: Arc<Devices>,
     },
     // Never the process token: a device reaches this over the network.
     Remote {
@@ -44,6 +45,7 @@ impl Credential {
     pub fn holds(&self, principal: &Principal) -> bool {
         match (self, principal) {
             (Credential::Remote { devices, .. }, Principal::Device(id)) => devices.contains(id),
+            (Credential::Local { browsers, .. }, Principal::Browser(id)) => browsers.contains(id),
             _ => true,
         }
     }
@@ -140,6 +142,8 @@ pub enum Principal {
     Session(Caller),
     /// Holds a paired device's credential, by device id.
     Device(String),
+    /// Holds the browser credential Settings > Browser installed, by its id.
+    Browser(String),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -178,13 +182,18 @@ pub fn authenticate(first: &Request, credential: &Credential) -> Result<Principa
         .and_then(|p| p.token)
         .ok_or(AuthError::MissingToken)?;
     match credential {
-        Credential::Local { process, children } => {
+        Credential::Local {
+            process,
+            children,
+            browsers,
+        } => {
             if process.matches(&token) {
                 return Ok(Principal::Local);
             }
             children
                 .get(&token)
                 .map(Principal::Session)
+                .or_else(|| browsers.find(&token).map(Principal::Browser))
                 .ok_or(AuthError::WrongToken)
         }
         Credential::Remote { devices, .. } => devices.find(&token).map(Principal::Device).ok_or(AuthError::WrongToken),
@@ -273,7 +282,29 @@ mod tests {
         Credential::Local {
             process: "secret".into(),
             children: Arc::default(),
+            browsers: Arc::new(Devices::open(std::env::temp_dir().join("tori-test-no-browsers.json"))),
         }
+    }
+
+    #[test]
+    fn a_browser_credential_authenticates_until_it_is_revoked() {
+        let path = std::env::temp_dir().join(format!("tori-browsers-{}.json", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let browsers = Arc::new(Devices::open(path.clone()));
+        let (browser, token) = browsers.mint("browser").unwrap();
+        let local = Credential::Local {
+            process: "secret".into(),
+            children: Arc::default(),
+            browsers: browsers.clone(),
+        };
+        let principal = Principal::Browser(browser.id.clone());
+        assert_eq!(auth(&token, &local), Ok(principal.clone()));
+        assert!(local.holds(&principal));
+        assert_eq!(auth("not-it", &local), Err(AuthError::WrongToken));
+        browsers.revoke(&browser.id).unwrap();
+        assert_eq!(auth(&token, &local), Err(AuthError::WrongToken));
+        assert!(!local.holds(&principal));
+        let _ = std::fs::remove_file(&path);
     }
 
     fn children(credential: &Credential) -> &Children {

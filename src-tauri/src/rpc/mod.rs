@@ -10,6 +10,7 @@ pub mod asks;
 pub mod attached;
 pub mod auth;
 pub mod awake;
+pub mod browsers;
 pub mod client;
 pub mod composer;
 pub mod daemon;
@@ -1019,6 +1020,10 @@ pub(crate) fn bridge_path() -> PathBuf {
 
 pub(crate) fn devices_path() -> PathBuf {
     crate::owned_state::config_dir().join("devices.json")
+}
+
+pub(crate) fn browsers_path() -> PathBuf {
+    crate::owned_state::config_dir().join("browsers.json")
 }
 
 #[cfg(test)]
