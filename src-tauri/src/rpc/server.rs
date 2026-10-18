@@ -132,6 +132,13 @@ pub struct ModeParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct PortParams {
+    /// A port listening on localhost.
+    pub port: u16,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ProjectIconParams {
     /// A project's `path` from `projects.list`.
     pub path: String,
@@ -700,6 +707,8 @@ pub trait Backend: Send + Sync {
     fn sessions_list(&self, params: ListParams) -> Result<Value, RpcError>;
     fn projects_list(&self) -> Result<Value, RpcError>;
     fn project_icon(&self, params: ProjectIconParams) -> Result<Value, RpcError>;
+    fn ports_list(&self) -> Result<Value, RpcError>;
+    fn worktree_at(&self, params: PortParams) -> Result<Value, RpcError>;
     fn session_tail(&self, params: TailParams) -> Result<Value, RpcError>;
     fn session_history(&self, params: HistoryParams) -> Result<Value, RpcError>;
     fn session_interrupt(&self, principal: &Principal, params: InterruptParams) -> Result<Value, RpcError>;
@@ -1141,6 +1150,12 @@ pub mod tests {
         }
         fn radar_list(&self) -> Result<Value, RpcError> {
             Ok(json!({ "enabled": true, "units": [] }))
+        }
+        fn ports_list(&self) -> Result<Value, RpcError> {
+            Ok(json!([]))
+        }
+        fn worktree_at(&self, p: PortParams) -> Result<Value, RpcError> {
+            Ok(json!({ "port": p.port }))
         }
         fn units_sync(&self, p: UnitsSyncParams) -> Result<Value, RpcError> {
             Ok(json!({ "units": p.units.len() }))

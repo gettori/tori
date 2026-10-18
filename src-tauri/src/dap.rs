@@ -528,6 +528,8 @@ pub async fn dap_start(
     server
         .sessions
         .insert(handle.session.clone(), Session { writer: started.writer });
+    drop(guard);
+    crate::ports::tell_excluded(&app);
     Ok(handle)
 }
 

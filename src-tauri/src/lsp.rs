@@ -439,6 +439,7 @@ pub fn lsp_start(
     };
 
     let exit_handle = handle.clone();
+    let owner = app.clone();
     let started = start_session(
         &state,
         &handle,
@@ -452,6 +453,9 @@ pub fn lsp_start(
             }
         },
     )?;
+    if started {
+        crate::ports::tell_excluded(&owner);
+    }
     if let (true, Some(tsdk)) = (started, tsdk) {
         state.note(&handle, &format!("tori: typescript.tsdk = {}", tsdk.display()));
     }
