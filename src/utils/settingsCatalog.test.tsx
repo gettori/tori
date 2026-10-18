@@ -102,6 +102,7 @@ describe("the tab grouping", () => {
       "appearance",
       "integrations",
       "remote",
+      "browser",
       "advanced",
     ]);
     expect(SETTING_TABS.map((t) => t.sections)).toEqual([
@@ -118,6 +119,7 @@ describe("the tab grouping", () => {
       ["appearance", "typography"],
       ["git", "forge"],
       ["remote"],
+      ["browser"],
       ["root", "crashes", "shell", "danger"],
     ]);
   });

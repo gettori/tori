@@ -718,6 +718,24 @@ pub fn device_revoke(id: String) -> Result<(), String> {
     office_call("device.revoke", json!({ "id": id })).map(|_| ())
 }
 
+#[tauri::command(async)]
+pub fn browser_status() -> Result<Value, String> {
+    let mut status = office_call("browsers.status", json!({}))?;
+    status["browsers"] = browsers::manifests();
+    Ok(status)
+}
+
+#[tauri::command(async)]
+pub fn browser_install() -> Result<(), String> {
+    browsers::install_manifests()?;
+    office_call("browsers.mint", json!({})).map(|_| ())
+}
+
+#[tauri::command(async)]
+pub fn browser_revoke() -> Result<(), String> {
+    office_call("browsers.revoke", json!({})).map(|_| ())
+}
+
 // The webview's own switch: not a socket caller, so it goes around the
 // `NOT_SESSIONS` rows to the same runner.
 #[tauri::command(async)]

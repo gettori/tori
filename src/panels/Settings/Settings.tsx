@@ -7,6 +7,7 @@ import {
   Columns2,
   FileCode,
   FolderCog,
+  Globe,
   Keyboard,
   ListChecks,
   MessageSquare,
@@ -33,6 +34,7 @@ import AgentsPane from "./panes/AgentsPane/AgentsPane";
 import AppearancePane from "./panes/AppearancePane/AppearancePane";
 import AutopilotPane from "./panes/AutopilotPane/AutopilotPane";
 import RemotePane from "./panes/RemotePane/RemotePane";
+import BrowserPane from "./panes/BrowserPane/BrowserPane";
 import ChatPane from "./panes/ChatPane/ChatPane";
 import EditorPane from "./panes/EditorPane/EditorPane";
 import IntegrationsPane from "./panes/IntegrationsPane/IntegrationsPane";
@@ -72,6 +74,7 @@ const TAB_ICONS: Record<string, LucideIcon> = {
   "columns-2": Columns2,
   "folder-cog": FolderCog,
   smartphone: Smartphone,
+  globe: Globe,
 };
 
 const PANES: Record<SettingTab, Component<PaneProps>> = {
@@ -88,6 +91,7 @@ const PANES: Record<SettingTab, Component<PaneProps>> = {
   panes: PanesPane,
   integrations: IntegrationsPane,
   remote: RemotePane,
+  browser: BrowserPane,
   advanced: AdvancedPane,
 };
 
