@@ -39,6 +39,9 @@
   border-radius: var(--tori-radius-pill);
   cursor: pointer;
 }
+.pending {
+  visibility: hidden;
+}
 .version:hover {
   border-color: var(--border-strong);
 }

@@ -66,22 +66,22 @@ export default function AboutDialog(props: { onClose: () => void }) {
         <img class={styles.icon} src="/favicon.png" alt="" />
         <h2 class={styles.name}>Tori</h2>
         <p class={styles.tagline}>A cockpit for the coding agents you already run.</p>
-        <Show when={info()}>
-          {(i) => (
-            <button
-              type="button"
-              class={styles.version}
-              aria-label={copied() ? "Version copied" : `Copy version, ${versionLine()}`}
-              onClick={() => void copyVersion()}
-            >
-              <span>Version {i().version}</span>
-              <Show when={i().commit}>
-                <span class={styles.commit}>{i().commit}</span>
-              </Show>
-              <Icon icon={copied() ? Check : Copy} class={styles.copyIcon} />
-            </button>
-          )}
-        </Show>
+        {/* Rendered before the version arrives, hidden, so the centered panel
+            opens at its final height instead of growing and shifting. */}
+        <button
+          type="button"
+          class={styles.version}
+          classList={{ [styles.pending]: !info() }}
+          disabled={!info()}
+          aria-label={copied() ? "Version copied" : `Copy version, ${versionLine()}`}
+          onClick={() => void copyVersion()}
+        >
+          <span>Version {info()?.version}</span>
+          <Show when={info()?.commit}>
+            <span class={styles.commit}>{info()?.commit}</span>
+          </Show>
+          <Icon icon={copied() ? Check : Copy} class={styles.copyIcon} />
+        </button>
         <nav class={styles.links} aria-label="Tori links">
           <For each={LINKS}>
             {([label, url]) => (
