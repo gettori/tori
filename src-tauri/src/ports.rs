@@ -10,7 +10,7 @@ use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, PoisonError};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tauri::State;
 
@@ -157,16 +157,84 @@ struct Listener {
     cwd: String,
 }
 
-static LAST: Mutex<Vec<Listener>> = Mutex::new(Vec::new());
+pub const CACHE: Duration = Duration::from_secs(2);
 
+/// How old a scan may be before a port nobody owns is looked for again, since
+/// a server that just started is the usual reason for a miss.
+pub const MISS: Duration = Duration::from_millis(500);
+
+static LAST: Mutex<Vec<Listener>> = Mutex::new(Vec::new());
+static SCANNED: Mutex<Option<Instant>> = Mutex::new(None);
+static SCANNING: Mutex<()> = Mutex::new(());
+static EXCLUDED: Mutex<Vec<u32>> = Mutex::new(Vec::new());
+
+/// The window's scan, answered by the daemon so the window and every socket
+/// caller see one scan.
 #[tauri::command(async)]
 pub fn ports_scan(
     worktrees: Vec<String>,
     lsp: State<crate::lsp::LspState>,
     dap: State<crate::dap::DapState>,
-) -> BTreeMap<String, Vec<u16>> {
-    let exclude: HashSet<u32> = lsp.pids().into_iter().chain(dap.pids()).collect();
-    attribute(&remember(&LAST, scan_lsof()), &worktrees, &exclude)
+) -> Result<BTreeMap<String, Vec<u16>>, String> {
+    let exclude: Vec<u32> = lsp.pids().into_iter().chain(dap.pids()).collect();
+    crate::rpc::office_call_as(
+        "ports.scan",
+        serde_json::json!({ "worktrees": worktrees, "exclude": exclude }),
+    )
+}
+
+pub fn tell_excluded(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    let lsp = app.state::<crate::lsp::LspState>().pids();
+    let pids: Vec<u32> = lsp
+        .into_iter()
+        .chain(app.state::<crate::dap::DapState>().pids())
+        .collect();
+    crate::rpc::office_tell("ports.exclude", serde_json::json!({ "pids": pids }));
+}
+
+pub fn exclude(pids: Vec<u32>) {
+    *EXCLUDED.lock().unwrap_or_else(PoisonError::into_inner) = pids;
+}
+
+pub fn scan(worktrees: &[String], max_age: Duration) -> BTreeMap<String, Vec<u16>> {
+    let exclude: HashSet<u32> = EXCLUDED
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .iter()
+        .copied()
+        .collect();
+    attribute(&listeners(max_age), worktrees, &exclude, &load(&registry_dir()))
+}
+
+/// The block base of each of `folders` that holds one, never allocating.
+pub fn bases(folders: &[String]) -> HashMap<String, u16> {
+    let map = load(&registry_dir());
+    folders
+        .iter()
+        .filter_map(|f| {
+            let canonical = std::fs::canonicalize(f).ok()?;
+            map.get(&key(&canonical)).map(|base| (f.clone(), *base))
+        })
+        .collect()
+}
+
+// One lsof at a time.
+fn listeners(max_age: Duration) -> Vec<Listener> {
+    let asked = Instant::now();
+    let _one = SCANNING.lock().unwrap_or_else(PoisonError::into_inner);
+    let scanned = *SCANNED.lock().unwrap_or_else(PoisonError::into_inner);
+    if answered_by(scanned, asked, max_age) {
+        return LAST.lock().unwrap_or_else(PoisonError::into_inner).clone();
+    }
+    let started = Instant::now();
+    let seen = remember(&LAST, scan_lsof());
+    *SCANNED.lock().unwrap_or_else(PoisonError::into_inner) = Some(started);
+    seen
+}
+
+fn answered_by(scanned: Option<Instant>, asked: Instant, max_age: Duration) -> bool {
+    scanned.is_some_and(|at| at >= asked || asked.duration_since(at) <= max_age)
 }
 
 // A scan that times out answers with the last one rather than with nothing,
@@ -240,7 +308,14 @@ fn parse_cwds(out: &str) -> HashMap<u32, String> {
     cwds
 }
 
-fn attribute(listeners: &[Listener], worktrees: &[String], exclude: &HashSet<u32>) -> BTreeMap<String, Vec<u16>> {
+// By cwd first, then by block: a port in a worktree's block is that worktree's
+// even when the process listening runs elsewhere, as Docker's does.
+fn attribute(
+    listeners: &[Listener],
+    worktrees: &[String],
+    exclude: &HashSet<u32>,
+    blocks: &BTreeMap<String, u16>,
+) -> BTreeMap<String, Vec<u16>> {
     let roots: Vec<(&String, String)> = worktrees
         .iter()
         .map(|w| {
@@ -253,7 +328,12 @@ fn attribute(listeners: &[Listener], worktrees: &[String], exclude: &HashSet<u32
         let owner = roots
             .iter()
             .filter(|(_, root)| l.cwd == *root || l.cwd.starts_with(&format!("{}/", root.trim_end_matches('/'))))
-            .max_by_key(|(_, root)| root.len());
+            .max_by_key(|(_, root)| root.len())
+            .or_else(|| {
+                roots
+                    .iter()
+                    .find(|(_, root)| blocks.get(root).is_some_and(|b| (*b..*b + BLOCK).contains(&l.port)))
+            });
         if let Some((given, _)) = owner {
             let ports = out.entry((*given).clone()).or_default();
             if !ports.contains(&l.port) {
@@ -416,7 +496,7 @@ mod tests {
             l(500, 7000, "/w/ab"),
         ];
         let worktrees = vec!["/w/a".to_string(), "/w/a/.tori/worktrees/b".to_string()];
-        let out = attribute(&listeners, &worktrees, &HashSet::from([400]));
+        let out = attribute(&listeners, &worktrees, &HashSet::from([400]), &BTreeMap::new());
         assert_eq!(out["/w/a"], vec![5173]);
         assert_eq!(out["/w/a/.tori/worktrees/b"], vec![5174]);
         assert_eq!(out.len(), 2);
