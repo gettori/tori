@@ -9,13 +9,13 @@ use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
     params, AskAnswerParams, AskParams, AskWaitParams, AttachmentWriteParams, Backend, BudgetParams,
-    CheckpointDiffParams, CheckpointParams, CheckpointsParams, DigestLookedParams, DigestParams, HistoryParams,
-    HoldResolveParams, InfoParams, InterruptParams, IssueGetParams, IssuesAssignedParams, ItemUpdateParams,
-    LinkBranchParams, ListParams, LogParams, MintParams, ModeParams, ModelParams, NeedsYouSeenParams, OpenParams,
-    PendingParams, PortParams, PrCreateParams, PrGetParams, PrMergeParams, PrWatchParams, ProjectIconParams,
-    ProjectSetParams, ProvenanceParams, RevealParams, ReviewMarkParams, ReviewSubmitParams, SessionAnswerParams,
-    SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams,
-    WaitParams, WorktreeParams, UNITS_GIT_MAX,
+    CheckpointDiffParams, CheckpointParams, CheckpointsParams, DigestLookedParams, DigestParams, DraftParams,
+    HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams, IssuesAssignedParams,
+    ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams, ModelParams, NeedsYouSeenParams,
+    OpenParams, PendingParams, PortParams, PrCreateParams, PrGetParams, PrMergeParams, PrWatchParams,
+    ProjectIconParams, ProjectSetParams, ProvenanceParams, RevealParams, ReviewMarkParams, ReviewSubmitParams,
+    SessionAnswerParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams,
+    UnitsSyncParams, WaitParams, WorktreeParams, UNITS_GIT_MAX,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -451,8 +451,17 @@ pub static METHODS: &[Method] = &[
         call: |b, _, v| b.window_reveal(params(v)?),
     },
     Method {
+        name: "chat.draft",
+        description: "Open a new chat draft in Tori in the tab's worktree, prefilled with text and attachments, for the person to send.",
+        params: schema::<DraftParams>,
+        callers: BROWSER,
+        refusal: None,
+        outward: false,
+        call: |b, _, v| b.chat_draft(params(v)?),
+    },
+    Method {
         name: "attachment.write",
-        description: "Write a file into Tori's attachments in base64 chunks, for session.steer's attach.",
+        description: "Write a file into Tori's attachments in base64 chunks, for session.steer's and chat.draft's attach.",
         params: schema::<AttachmentWriteParams>,
         callers: BROWSER,
         refusal: None,

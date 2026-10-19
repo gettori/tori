@@ -15,13 +15,13 @@ use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
     AskAnswerParams, AskParams, AskWaitParams, AttachmentWriteParams, Backend, Before, BudgetParams,
-    CheckpointDiffParams, CheckpointParams, CheckpointsParams, DigestLookedParams, DigestParams, HistoryParams,
-    HoldResolveParams, InfoParams, InterruptParams, IssueGetParams, IssuesAssignedParams, ItemUpdateParams,
-    LinkBranchParams, ListParams, LogParams, MintParams, ModeParams, ModelParams, NeedsYouSeenParams, OpenParams,
-    PendingParams, PortParams, PrCreateParams, PrGetParams, PrMergeParams, PrWatchParams, ProjectIconParams,
-    ProjectSetParams, ProvenanceParams, RevealParams, ReviewMarkParams, ReviewSubmitParams, SessionAnswerParams,
-    SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams,
-    WaitParams, WorktreeParams, DEFAULT_LOG_LIMIT,
+    CheckpointDiffParams, CheckpointParams, CheckpointsParams, DigestLookedParams, DigestParams, DraftParams,
+    HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams, IssuesAssignedParams,
+    ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams, ModelParams, NeedsYouSeenParams,
+    OpenParams, PendingParams, PortParams, PrCreateParams, PrGetParams, PrMergeParams, PrWatchParams,
+    ProjectIconParams, ProjectSetParams, ProvenanceParams, RevealParams, ReviewMarkParams, ReviewSubmitParams,
+    SessionAnswerParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams,
+    UnitsSyncParams, WaitParams, WorktreeParams, DEFAULT_LOG_LIMIT,
 };
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
@@ -2127,6 +2127,19 @@ impl Backend for DaemonBackend {
 
     fn attachment_write(&self, params: AttachmentWriteParams) -> Result<Value, RpcError> {
         self.uploads.write(params)
+    }
+
+    fn chat_draft(&self, params: DraftParams) -> Result<Value, RpcError> {
+        must_exist(&params.attach)?;
+        stored_by_attachment_write(&params.attach, &crate::attachments::dir())?;
+        if self.folder_unit(&params.folder).as_deref() != Some(params.folder.as_str()) {
+            return Err(refused(format!("{} is not a Tori worktree", params.folder)));
+        }
+        if params.check {
+            return self.screen.request("chat.draft.check", json!({}));
+        }
+        let draft = json!({ "folder": params.folder, "text": params.text, "attach": params.attach });
+        self.screen.request("chat.draft", draft)
     }
 
     fn window_reveal(&self, params: RevealParams) -> Result<Value, RpcError> {

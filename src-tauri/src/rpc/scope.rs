@@ -5,7 +5,7 @@
 use serde_json::Value;
 
 use super::auth::Principal;
-use super::frame::{Request, RpcError, REFUSED};
+use super::frame::{Request, RpcError, INVALID_PARAMS, REFUSED};
 use super::server::Backend;
 use super::table::Method;
 
@@ -14,6 +14,7 @@ enum Reach {
     Session,
     Ask,
     List,
+    Worktree,
 }
 
 fn reach(method: &str) -> Option<Reach> {
@@ -22,6 +23,7 @@ fn reach(method: &str) -> Option<Reach> {
         "session.steer" | "session.tail" | "session.pending" | "window.reveal" => Some(Reach::Session),
         "ask.answer" => Some(Reach::Ask),
         "sessions.list" => Some(Reach::List),
+        "chat.draft" => Some(Reach::Worktree),
         _ => None,
     }
 }
@@ -72,6 +74,14 @@ pub(super) fn call(
                 Value::Array(rows) => Value::Array(rows.into_iter().filter(mine).collect()),
                 other => other,
             });
+        }
+        Reach::Worktree => {
+            let mut params = req.params.clone();
+            params
+                .as_object_mut()
+                .ok_or_else(|| RpcError::new(INVALID_PARAMS, "params must be an object"))?
+                .insert("folder".into(), Value::String(tag(req)?.into()));
+            return (method.call)(backend, principal, &params);
         }
     }
     (method.call)(backend, principal, &req.params)
@@ -169,6 +179,14 @@ mod tests {
             listed,
             json!([{ "id": "a", "cwd": "/w/app" }, { "id": "d", "cwd": "/w/app/src" }])
         );
+    }
+
+    #[test]
+    fn a_draft_opens_in_the_tabs_worktree_whatever_it_names() {
+        let draft = |params: Value, worktree| browser("chat.draft", params, worktree);
+        let named = draft(json!({ "text": "hi", "folder": "/w/web" }), Some(APP)).unwrap();
+        assert_eq!(named, json!({ "folder": APP }));
+        assert_eq!(draft(json!({ "text": "hi" }), None).unwrap_err().code, REFUSED);
     }
 
     #[test]

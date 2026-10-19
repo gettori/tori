@@ -1180,19 +1180,23 @@ export default function LeftSidebar(props: {
   // A link or a notification: the space shown, the project open, then the
   // session's tab or the unit. Never a checkout, which would change the tree
   // under whatever else is open in that repo behind a click that said "show me".
-  async function navigateTo(t: NavTarget) {
-    if (t.project || t.space) return showInSpaces(t);
+  // Answers whether the target ended up selected.
+  async function navigateTo(t: NavTarget): Promise<boolean> {
+    if (t.project || t.space) {
+      showInSpaces(t);
+      return false;
+    }
     if (t.session && !findSession(t.session) && t.folder) await fetchSessions(t.folder);
     const hit = t.session ? findSession(t.session) : undefined;
     const at = hit ? locate(hit.folder, hit.session.branch) : t.folder ? locate(t.folder) : undefined;
     if (!at) {
-      if (t.session && (await selectSessionById(t.session))) return;
+      if (t.session && (await selectSessionById(t.session))) return true;
       pushToast("That worktree is no longer in Tori.", "info");
-      return;
+      return false;
     }
     if (at.u.kind === "plain" && at.u.branch && currentBranch(at.p) !== at.u.branch) {
       pushToast(`${at.p.name} has another branch checked out, so Tori left it as it is.`, "info");
-      return;
+      return false;
     }
     setMode("spaces");
     setActiveSpaceName(at.g.name);
@@ -1202,6 +1206,19 @@ export default function LeftSidebar(props: {
     setExpanded(next);
     if (hit) void selectSession(at.g, at.p, at.u, hit.session);
     else void selectUnit(at.g, at.p, at.u);
+    return true;
+  }
+
+  // The browser extension's new chat: nothing runs until the person sends it.
+  async function draftFromBrowser(d: { folder: string; text: string; attach: string[] }) {
+    const at = locate(d.folder);
+    if (!at || !(await navigateTo({ folder: d.folder }))) return;
+    emitWith<NewChatAt>(NEW_CHAT_AT, {
+      folderPath: at.u.folderPath,
+      projectName: at.p.name,
+      prompt: d.text,
+      attach: d.attach,
+    });
   }
 
   // A project or space a prompt referenced: shown, with nothing selected, so
@@ -3107,6 +3124,7 @@ export default function LeftSidebar(props: {
   let unlistenConfig: UnlistenFn | undefined;
   let unlistenSessions: UnlistenFn | undefined;
   let unlistenNavOpen: UnlistenFn | undefined;
+  let unlistenNavDraft: UnlistenFn | undefined;
   let unlistenTopics: UnlistenFn | undefined;
   let unlistenPrWatches: UnlistenFn | undefined;
   let unlistenFetchDone: UnlistenFn | undefined;
@@ -3143,6 +3161,10 @@ export default function LeftSidebar(props: {
     // Presence surfaces (phase 3): the tray's per-session menu entries and a
     // needs-you notification both focus the same way a sidebar row click does.
     unlistenNavOpen = await listen<NavTarget>("nav://open", (e) => void navigateTo(e.payload));
+    unlistenNavDraft = await listen<{ folder: string; text: string; attach: string[] }>(
+      "nav://draft",
+      (e) => void draftFromBrowser(e.payload),
+    );
     // Window refocus re-probes so a dot clears promptly after e.g. a Ctrl+C
     // exit-to-shell that happened while the window was unfocused (its own
     // transcript write, if any, may already have been debounced away).
@@ -3204,6 +3226,7 @@ export default function LeftSidebar(props: {
     unlistenPrWatches?.();
     unlistenSessions?.();
     unlistenNavOpen?.();
+    unlistenNavDraft?.();
     unlistenFetchDone?.();
     unlistenBaseChanged?.();
     unlistenRadar?.();
