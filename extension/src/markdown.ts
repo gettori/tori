@@ -1,4 +1,4 @@
-import type { LogEntry, Pick } from "./pick";
+import type { LogEntry, Pick, Where } from "./pick";
 
 // Longer than any backtick run inside, so page markup cannot close the block.
 function fence(body: string, lang = ""): string {
@@ -17,7 +17,25 @@ function shots(keys: string[], first: number): string {
   return keys.map((key, i) => `[Image ${first + i}] ${key.split(":").pop()}`).join(", ");
 }
 
-export function pickToMarkdown(pick: Pick, n: number, firstImage?: number): string {
+function relative(path: string, root: string): string {
+  const base = root.endsWith("/") ? root : `${root}/`;
+  return root && path.startsWith(base) ? path.slice(base.length) : path;
+}
+
+function whereToText(where: Where, route: string, root: string): string {
+  const props = where.props && Object.entries(where.props).map(([name, value]) => `${name}=${value}`);
+  return [
+    ...(where.chain.length ? [`component: ${where.chain.join(" > ")}`] : []),
+    ...(props?.length ? [`props: ${props.join(", ")}`] : []),
+    ...(where.source ? [`source: ${relative(where.source, root)}`] : []),
+    `route: ${route}`,
+    ...(where.testId ? [`data-testid: ${where.testId}`] : []),
+    ...(where.id ? [`id: ${where.id}`] : []),
+    ...(where.label ? [`aria-label: ${oneLine(where.label)}`] : []),
+  ].join("\n");
+}
+
+export function pickToMarkdown(pick: Pick, n: number, firstImage?: number, root = ""): string {
   const r = pick.rect;
   const facts = [
     `url: ${pick.url}`,
@@ -35,6 +53,7 @@ export function pickToMarkdown(pick: Pick, n: number, firstImage?: number): stri
     .join("\n");
   return [
     `### ${n}. ${oneLine(pick.comment) || "(no comment)"}`,
+    ...(pick.where ? [fence(whereToText(pick.where, pick.route, root))] : []),
     fence(facts),
     ...(pick.html ? [fence(pick.html, "html")] : []),
     ...(pick.text ? [fence(pick.text, "text")] : []),
@@ -58,10 +77,10 @@ export function logToMarkdown(log: LogEntry[], origin: number): string {
   return `### Page log\n\n${fence(lines.join("\n"))}`;
 }
 
-export function batchToMarkdown(picks: Pick[], withImages = false, log: LogEntry[] = []): string {
+export function batchToMarkdown(picks: Pick[], withImages = false, log: LogEntry[] = [], root = ""): string {
   let image = 1;
   const sections = picks.map((pick, i) => {
-    const md = pickToMarkdown(pick, i + 1, withImages ? image : undefined);
+    const md = pickToMarkdown(pick, i + 1, withImages ? image : undefined, root);
     image += pick.images.length;
     return md;
   });

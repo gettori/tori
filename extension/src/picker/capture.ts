@@ -1,9 +1,12 @@
-import type { Pick } from "../pick";
+import type { InspectChannel, InspectMessage, Pick, Where } from "../pick";
 
 const HTML_CAP = 4096;
 const TEXT_CAP = 1000;
 const STYLE_CAP = 40;
 const ATTRIBUTES = new Set(["id", "class", "role", "data-testid", "href", "src", "alt", "type", "name"]);
+
+const INSPECT: InspectChannel = "tori:inspect";
+const SOURCE_ATTRIBUTE = "data-insp-path";
 
 const LOGICAL_TWIN = /(^|-)(block|inline)(-|$)|-(start|end)-/;
 const SIZE_ORIGIN = /^(perspective|transform)-origin$/;
@@ -100,6 +103,44 @@ function stylesOf(el: Element, baseline: ShadowRoot): Record<string, string> {
   return out;
 }
 
+function askInspect(el: Element): Extract<InspectMessage, { type: "found" }> | null {
+  let found: InspectMessage | null = null;
+  const listen = (e: Event) => {
+    if (!(e instanceof CustomEvent) || typeof e.detail !== "string") return;
+    try {
+      const message = JSON.parse(e.detail) as InspectMessage;
+      if (message.type === "found") found = message;
+    } catch {
+      // Page code can dispatch anything under this event name.
+      return;
+    }
+  };
+  document.addEventListener(INSPECT, listen);
+  const ask: InspectMessage = { type: "ask", sensitive: isSensitive(el) };
+  el.dispatchEvent(new CustomEvent(INSPECT, { bubbles: true, detail: JSON.stringify(ask) }));
+  document.removeEventListener(INSPECT, listen);
+  return found;
+}
+
+// code-inspector-plugin writes `/abs/file:line:column:tag`.
+export function sourceOf(value: string | null | undefined): string | null {
+  const match = value?.match(/^(.+):(\d+):\d+:[^:]*$/);
+  return match ? `${match[1]}:${match[2]}` : null;
+}
+
+function whereOf(el: Element): Where {
+  const found = askInspect(el);
+  const nearest = (attribute: string) => el.closest(`[${attribute}]`)?.getAttribute(attribute) ?? "";
+  return {
+    chain: found?.chain ?? [],
+    props: found?.props ?? null,
+    source: found?.source ?? sourceOf(el.closest(`[${SOURCE_ATTRIBUTE}]`)?.getAttribute(SOURCE_ATTRIBUTE)),
+    testId: nearest("data-testid"),
+    id: el.id,
+    label: nearest("aria-label"),
+  };
+}
+
 export function capture(
   el: Element,
   comment: string,
@@ -121,6 +162,7 @@ export function capture(
     viewport: { width: innerWidth, height: innerHeight },
     dpr: devicePixelRatio,
     theme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
+    where: whereOf(el),
     at: Date.now(),
   };
 }

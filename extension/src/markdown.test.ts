@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vite-plus/test";
 import { batchToMarkdown } from "./markdown";
-import type { LogEntry, Pick } from "./pick";
+import type { LogEntry, Pick, Where } from "./pick";
 
 const pick = (over: Partial<Pick> = {}): Pick => ({
   comment: "Make this bolder",
@@ -81,6 +81,68 @@ describe("batchToMarkdown", () => {
     expect(sent).toContain("screenshots: [Image 3] viewport, [Image 4] element");
     expect(sent.match(/screenshots:/g)).toHaveLength(2);
     expect(batchToMarkdown(picks)).not.toContain("screenshots:");
+  });
+
+  const where = (over: Partial<Where> = {}): Where => ({
+    chain: [],
+    props: null,
+    source: null,
+    testId: "",
+    id: "",
+    label: "",
+    ...over,
+  });
+
+  it("leads with the component, its props and its file, relative to the worktree", () => {
+    const md = batchToMarkdown(
+      [
+        pick({
+          where: where({
+            chain: ["Button", "Form", "CheckoutPage"],
+            props: { label: '"Pay"', onClick: "fn" },
+            source: "/w/app/src/components/Form.tsx:14",
+            testId: "pay",
+            id: "checkout",
+            label: "Pay  now",
+          }),
+        }),
+      ],
+      false,
+      [],
+      "/w/app",
+    );
+    expect(md).toContain(
+      [
+        "### 1. Make this bolder",
+        "",
+        "```",
+        "component: Button > Form > CheckoutPage",
+        'props: label="Pay", onClick=fn',
+        "source: src/components/Form.tsx:14",
+        "route: /settings?tab=a",
+        "data-testid: pay",
+        "id: checkout",
+        "aria-label: Pay now",
+        "```",
+        "",
+        "```",
+        "url: http://localhost:5173/settings?tab=a",
+      ].join("\n"),
+    );
+  });
+
+  it("writes only what the page told", () => {
+    const partial = batchToMarkdown(
+      [pick({ where: where({ source: "/elsewhere/Form.tsx:3", testId: "pay" }) })],
+      false,
+      [],
+      "/w/app",
+    );
+    expect(partial).toContain(
+      "### 1. Make this bolder\n\n```\nsource: /elsewhere/Form.tsx:3\nroute: /settings?tab=a\ndata-testid: pay\n```",
+    );
+    const empty = batchToMarkdown([pick({ where: where() })]);
+    expect(empty).toContain("### 1. Make this bolder\n\n```\nroute: /settings?tab=a\n```\n\n```\nurl:");
   });
 
   const entry = (over: Partial<LogEntry> = {}): LogEntry => ({
