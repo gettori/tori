@@ -57,6 +57,7 @@ export default defineConfig(({ mode }) => {
         input: {
           background: "src/background.ts",
           options: "options.html",
+          welcome: "welcome.html",
           picker: "src/picker/index.ts",
           pagelog: "src/pagelog.ts",
           inspect: "src/inspect.ts",

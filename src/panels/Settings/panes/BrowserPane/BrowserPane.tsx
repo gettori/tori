@@ -5,7 +5,13 @@ import styles from "../../Settings.module.css";
 import Button from "../../../../components/Button/Button";
 import { pushToast } from "../../../../components/Toasts/Toasts";
 
-type Status = { installed: boolean; connected: boolean; browsers: { name: string; installed: boolean }[] };
+type Status = {
+  installed: boolean;
+  connected: boolean;
+  update: "extension" | "tori" | null;
+  store: string;
+  browsers: { name: string; installed: boolean }[];
+};
 
 // Polled, since nothing tells the window when a browser starts or drops the host.
 const POLL_MS = 2000;
@@ -38,6 +44,19 @@ export default function BrowserPane(props: PaneProps) {
       .catch((e) => pushToast(`The browser extension was not revoked: ${String(e)}`))
       .finally(load);
 
+  const getExtension = (url: string) =>
+    void invoke("plugin:opener|open_url", { url }).catch((e) =>
+      pushToast(`The Chrome Web Store did not open: ${String(e)}`),
+    );
+
+  const connection = () => {
+    const s = status();
+    if (!s?.installed) return "Not installed";
+    if (s.update === "extension") return "Update the extension";
+    if (s.update === "tori") return "Update Tori";
+    return s.connected ? "Connected" : "Not connected";
+  };
+
   const browsers = () => status()?.browsers ?? [];
 
   return (
@@ -64,10 +83,14 @@ export default function BrowserPane(props: PaneProps) {
         </Button>
       </Row>
 
+      <Row {...props} id="browser-store" label="Extension">
+        <Button size="sm" disabled={!status()} onClick={() => getExtension(status()!.store)}>
+          Get the extension
+        </Button>
+      </Row>
+
       <Row {...props} id="browser-status" label="Connected">
-        <span role="status">
-          {!status()?.installed ? "Not installed" : status()?.connected ? "Connected" : "Not connected"}
-        </span>
+        <span role="status">{connection()}</span>
       </Row>
 
       <Row {...props} id="browser-revoke" label="Revoke">

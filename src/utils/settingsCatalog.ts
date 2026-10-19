@@ -798,9 +798,16 @@ export const SETTINGS: SettingEntry[] = [
     hint: "Writes a small file into each browser's folder and gives the extension its own key. Installing again replaces the key, and a browser still holding the old one is turned away.",
   },
   {
+    id: "browser-store",
+    section: "browser",
+    label: "Extension",
+    hint: "Opens the extension's page in the Chrome Web Store, in your default browser. Edge, Brave and Arc install it from there too.",
+  },
+  {
     id: "browser-status",
     section: "browser",
     label: "Connected",
+    hint: "Connected once the extension has reached Tori since the last Install. Says which side to update when the extension and Tori are too far apart.",
   },
   {
     id: "browser-revoke",

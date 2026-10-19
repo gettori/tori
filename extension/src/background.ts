@@ -490,9 +490,12 @@ function answer(message: ConnectionRequest | BatchRequest, sender: chrome.runtim
   return tab?.id === undefined ? Promise.resolve(null) : handle(message, { ...tab, id: tab.id });
 }
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener(({ reason }) => {
   void refreshAll();
   syncPageLog();
+  if (reason === chrome.runtime.OnInstalledReason.INSTALL) {
+    void chrome.tabs.create({ url: chrome.runtime.getURL("welcome.html") });
+  }
 });
 chrome.runtime.onStartup.addListener(() => {
   void refreshAll();

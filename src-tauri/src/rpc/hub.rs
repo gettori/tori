@@ -155,6 +155,8 @@ struct Inner {
     next: ConnId,
     conns: HashMap<ConnId, Conn>,
     last_refusal: Option<Update>,
+    // Sticky, since the extension's service worker drops the host whenever it idles.
+    browser_seen: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -267,13 +269,21 @@ impl Hub {
     }
 
     pub fn tag_browser(&self, conn: ConnId, browser: &str) {
-        if let Some(c) = self.lock().conns.get_mut(&conn) {
+        let mut inner = self.lock();
+        if let Some(c) = inner.conns.get_mut(&conn) {
             c.browser = Some(browser.to_string());
+            inner.browser_seen = true;
         }
     }
 
-    pub fn browser_connected(&self) -> bool {
-        self.lock().conns.values().any(|c| c.browser.is_some())
+    pub fn browser_seen(&self) -> bool {
+        self.lock().browser_seen
+    }
+
+    pub fn forget_browser(&self) {
+        let mut inner = self.lock();
+        inner.browser_seen = false;
+        inner.last_refusal = None;
     }
 
     pub fn refuse_browser(&self, update: Update) {
