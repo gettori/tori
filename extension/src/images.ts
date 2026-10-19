@@ -25,5 +25,7 @@ export const putImage = (key: string, blob: Blob) => run("readwrite", (s) => s.p
 
 export const getImage = (key: string) => run<Blob | undefined>("readonly", (s) => s.get(key));
 
+export const dropImage = (key: string) => run("readwrite", (s) => s.delete(key));
+
 export const dropImages = (tabId: number) =>
   run("readwrite", (s) => s.delete(IDBKeyRange.bound(`${tabId}:`, `${tabId}:￿`)));

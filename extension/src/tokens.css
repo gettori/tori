@@ -1,0 +1,98 @@
+:host,
+:root {
+  --tori-font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --tori-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --tori-fs-1: 11px;
+  --tori-fs-2: 12px;
+  --tori-fs-3: 13px;
+  --tori-fs-4: 14px;
+  --tori-lh: 1.45;
+
+  --tori-sp-1: 4px;
+  --tori-sp-2: 6px;
+  --tori-sp-3: 8px;
+  --tori-sp-4: 12px;
+  --tori-sp-5: 16px;
+
+  --tori-r-1: 4px;
+  --tori-r-2: 6px;
+  --tori-r-3: 10px;
+  --tori-r-pill: 999px;
+
+  --tori-tray-w: 300px;
+  --tori-tray-max-h: 50vh;
+  --tori-comment-w: 280px;
+  --tori-z: 2147483647;
+
+  --tori-bg: #ffffff;
+  --tori-bg-sunk: #f6f6f7;
+  --tori-raised: #f0f0f2;
+  --tori-hover: #e8e8eb;
+  --tori-bd: #e4e5e8;
+  --tori-bd-strong: #cdd0d5;
+  --tori-fg: #1c1e22;
+  --tori-fg-2: #575b63;
+  --tori-fg-3: #737780;
+  --tori-acc: #9c6229;
+  --tori-acc-hover: #87531f;
+  --tori-acc-fg: #ffffff;
+  --tori-acc-soft: rgba(156, 98, 41, 0.1);
+  --tori-acc-tx: #7f4f1f;
+  --tori-focus: #9c6229;
+  --tori-danger: #c0362c;
+  --tori-danger-soft: rgba(192, 54, 44, 0.08);
+  --tori-warn-tx: #7a5600;
+  --tori-ok: #2b7a3d;
+  --tori-switch-off: #cdd0d5;
+  --tori-knob: #ffffff;
+  --tori-kbd-on-acc: rgba(255, 255, 255, 0.18);
+  --tori-pick: #c27a2c;
+  --tori-pick-fill: rgba(194, 122, 44, 0.1);
+
+  --tori-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.1), 0 4px 12px rgba(0, 0, 0, 0.12);
+  --tori-shadow-2: 0 0 0 1px rgba(0, 0, 0, 0.04), 0 2px 6px rgba(0, 0, 0, 0.1), 0 16px 40px rgba(0, 0, 0, 0.18);
+  --tori-ring-pick: 0 0 0 2px var(--tori-pick);
+}
+
+@media (prefers-color-scheme: dark) {
+  :host,
+  :root {
+    --tori-bg: #1b1d22;
+    --tori-bg-sunk: #15171b;
+    --tori-raised: #262930;
+    --tori-hover: #2c2f36;
+    --tori-bd: #2c2f36;
+    --tori-bd-strong: #41454e;
+    --tori-fg: #e8eaed;
+    --tori-fg-2: #a4a9b1;
+    --tori-fg-3: #868b93;
+    --tori-acc: #d39a5c;
+    --tori-acc-hover: #dea86c;
+    --tori-acc-fg: #1d1309;
+    --tori-acc-soft: rgba(211, 154, 92, 0.14);
+    --tori-acc-tx: #e3b17d;
+    --tori-focus: #e3b17d;
+    --tori-danger: #ef7b70;
+    --tori-danger-soft: rgba(239, 123, 112, 0.12);
+    --tori-warn-tx: #f0cd6d;
+    --tori-ok: #6cc07a;
+    --tori-switch-off: #41454e;
+    --tori-knob: #f1f2f4;
+    --tori-kbd-on-acc: rgba(29, 19, 9, 0.14);
+    --tori-pick: #e0a35f;
+    --tori-pick-fill: rgba(224, 163, 95, 0.12);
+    --tori-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.4);
+    --tori-shadow-2: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.5);
+  }
+}
+
+:host {
+  all: initial;
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: var(--tori-z);
+}
+:host * {
+  box-sizing: border-box;
+}
