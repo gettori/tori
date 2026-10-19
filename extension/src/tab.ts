@@ -17,6 +17,7 @@ export const NOT_SET_UP = "not set up: Tori > Settings > Browser > Install";
 
 export const GROUPS_KEY = "groups";
 export const SHOTS_KEY = "screenshots";
+export const LOG_KEY = "pageLog";
 
 const SENTENCES: Record<string, string> = {
   [NOT_WORKTREE]: "This tab is not a Tori worktree.",
