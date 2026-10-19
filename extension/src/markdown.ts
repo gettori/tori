@@ -22,12 +22,17 @@ function relative(path: string, root: string): string {
   return root && path.startsWith(base) ? path.slice(base.length) : path;
 }
 
-function whereToText(where: Where, route: string, root: string): string {
+// Svelte names a file from the app's folder, which in a monorepo is not the worktree.
+function sourcePath(source: string, root: string, app: string): string {
+  return source.startsWith("/") || !app ? relative(source, root) : `${app}/${source}`;
+}
+
+function whereToText(where: Where, route: string, root: string, app: string): string {
   const props = where.props && Object.entries(where.props).map(([name, value]) => `${name}=${value}`);
   return [
     ...(where.chain.length ? [`component: ${where.chain.join(" > ")}`] : []),
     ...(props?.length ? [`props: ${props.join(", ")}`] : []),
-    ...(where.source ? [`source: ${relative(where.source, root)}`] : []),
+    ...(where.source ? [`source: ${sourcePath(where.source, root, app)}`] : []),
     ...(where.rules.length
       ? ["rules:", ...where.rules.map((r) => `  ${relative(r.location, root)} ${r.selector} { ${r.declarations} }`)]
       : []),
@@ -38,7 +43,7 @@ function whereToText(where: Where, route: string, root: string): string {
   ].join("\n");
 }
 
-export function pickToMarkdown(pick: Pick, n: number, firstImage?: number, root = ""): string {
+export function pickToMarkdown(pick: Pick, n: number, firstImage?: number, root = "", app = ""): string {
   const r = pick.rect;
   const facts = [
     `url: ${pick.url}`,
@@ -56,7 +61,7 @@ export function pickToMarkdown(pick: Pick, n: number, firstImage?: number, root 
     .join("\n");
   return [
     `### ${n}. ${oneLine(pick.comment) || "(no comment)"}`,
-    ...(pick.where ? [fence(whereToText(pick.where, pick.route, root))] : []),
+    ...(pick.where ? [fence(whereToText(pick.where, pick.route, root, app))] : []),
     fence(facts),
     ...(pick.html ? [fence(pick.html, "html")] : []),
     ...(pick.text ? [fence(pick.text, "text")] : []),
@@ -80,10 +85,10 @@ export function logToMarkdown(log: LogEntry[], origin: number): string {
   return `### Page log\n\n${fence(lines.join("\n"))}`;
 }
 
-export function batchToMarkdown(picks: Pick[], withImages = false, log: LogEntry[] = [], root = ""): string {
+export function batchToMarkdown(picks: Pick[], withImages = false, log: LogEntry[] = [], root = "", app = ""): string {
   let image = 1;
   const sections = picks.map((pick, i) => {
-    const md = pickToMarkdown(pick, i + 1, withImages ? image : undefined, root);
+    const md = pickToMarkdown(pick, i + 1, withImages ? image : undefined, root, app);
     image += pick.images.length;
     return md;
   });

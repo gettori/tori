@@ -10,6 +10,7 @@ import type {
   PickerRequest,
   Rect,
   Sent,
+  Setup,
   Shot,
   TrayState,
 } from "./pick";
@@ -372,6 +373,17 @@ async function upload(key: string, tab: TabTag): Promise<string> {
   }
 }
 
+async function setupOf(tab: chrome.tabs.Tab): Promise<Setup | null> {
+  const port = localPort(tab.url);
+  if (port === null) return null;
+  try {
+    return (await call("web.setup", { port }, tagOf(tab))) as Setup | null;
+  } catch {
+    // Without it a pick only loses a hint and a path prefix; a send must not fail on it.
+    return null;
+  }
+}
+
 // No chat opens a new chat draft in Tori, which the person sends from there.
 async function sendBatch(tab: chrome.tabs.Tab, chat: Chat | null, log: LogEntry[]): Promise<Sent> {
   const held = await batch(tab.id!);
@@ -386,7 +398,7 @@ async function sendBatch(tab: chrome.tabs.Tab, chat: Chat | null, log: LogEntry[
     if (!chat) await call("chat.draft", { text: "", check: true }, tag);
     const attach: string[] = [];
     for (const key of picks.flatMap((p) => p.images)) attach.push(await upload(key, tag));
-    const text = batchToMarkdown(picks, true, said, held?.worktree);
+    const text = batchToMarkdown(picks, true, said, held?.worktree, (await setupOf(tab))?.dir);
     if (chat) await call("session.steer", { id: chat.id, text, attach }, tag);
     else await call("chat.draft", { text, attach }, tag);
   } catch (e) {
@@ -441,7 +453,8 @@ async function handle(message: BatchRequest, tab: chrome.tabs.Tab & { id: number
       return shoot(tab, message.rect, message.viewport);
     case "markdown": {
       const held = await batch(tab.id);
-      return batchToMarkdown(held?.picks ?? [], false, (await pageLogOn()) ? message.log : [], held?.worktree);
+      const log = (await pageLogOn()) ? message.log : [];
+      return batchToMarkdown(held?.picks ?? [], false, log, held?.worktree, (await setupOf(tab))?.dir);
     }
     case "chats":
       return chats(tab);
@@ -452,6 +465,8 @@ async function handle(message: BatchRequest, tab: chrome.tabs.Tab & { id: number
         () => ({}),
         (e: Error) => ({ error: e.message }),
       );
+    case "setup":
+      return setupOf(tab);
     case "options":
       return chrome.runtime.openOptionsPage();
     case "screenshots":

@@ -130,7 +130,7 @@ function sourceOf(value: string | null | undefined): string | null {
   return match ? `${match[1]}:${match[2]}` : null;
 }
 
-const hasLine = (source: string | null): source is string => source !== null && /:\d+$/.test(source);
+export const hasLine = (source: string | null): source is string => source !== null && /:\d+$/.test(source);
 
 function sourceFor(framework: string | null, el: Element): string | null {
   if (hasLine(framework)) return framework;

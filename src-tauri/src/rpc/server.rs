@@ -179,6 +179,16 @@ pub struct PortParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct SetupParams {
+    /// The tab's port, which says which app of the worktree the page is.
+    pub port: u16,
+    /// The worktree. Set from the browser tab, whatever the caller sends.
+    #[serde(default)]
+    pub folder: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ProjectIconParams {
     /// A project's `path` from `projects.list`.
     pub path: String,
@@ -803,6 +813,7 @@ pub trait Backend: Send + Sync {
     fn attachment_write(&self, params: AttachmentWriteParams) -> Result<Value, RpcError>;
     fn window_reveal(&self, params: RevealParams) -> Result<Value, RpcError>;
     fn chat_draft(&self, params: DraftParams) -> Result<Value, RpcError>;
+    fn web_setup(&self, params: SetupParams) -> Result<Value, RpcError>;
     fn session_unit(&self, id: &str) -> Option<String>;
     fn folder_unit(&self, folder: &str) -> Option<String>;
     fn ask_session(&self, id: &str) -> Option<String>;
@@ -1357,6 +1368,9 @@ pub mod tests {
         fn chat_draft(&self, p: DraftParams) -> Result<Value, RpcError> {
             Ok(json!({ "folder": p.folder }))
         }
+        fn web_setup(&self, p: SetupParams) -> Result<Value, RpcError> {
+            Ok(json!({ "port": p.port, "folder": p.folder }))
+        }
         fn session_unit(&self, id: &str) -> Option<String> {
             self.folder_unit(id.split_once('@')?.1)
         }
@@ -1845,6 +1859,7 @@ pub mod tests {
                 "session.pending",
                 "window.reveal",
                 "chat.draft",
+                "web.setup",
                 "attachment.write",
                 "ask.answer",
                 "projects.list",

@@ -46,6 +46,17 @@ export type InspectMessage =
   | { type: "ask"; sensitive: boolean }
   | { type: "found"; chain: string[]; props: Record<string, string> | null; source: string | null };
 
+export type Setup = {
+  dir: string;
+  framework: string;
+  bundler: string;
+  config: string;
+  snippet: string;
+  install: string;
+  plugin: boolean;
+  own_lines: boolean;
+};
+
 export type Chat = { id: string; title: string; agent: string };
 
 export type Shot = { images: string[]; why?: string };
@@ -76,6 +87,7 @@ export type BatchRequest =
   | { type: "send"; chat: Chat | null; log: LogEntry[] }
   | { type: "reveal"; id: string }
   | { type: "options" }
+  | { type: "setup" }
   | { type: "screenshots" };
 
 // Answered with null when Tori is reachable, otherwise the sentence saying why not.
