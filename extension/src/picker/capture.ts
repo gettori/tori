@@ -123,9 +123,16 @@ function askInspect(el: Element): Extract<InspectMessage, { type: "found" }> | n
 }
 
 // code-inspector-plugin writes `/abs/file:line:column:tag`.
-export function sourceOf(value: string | null | undefined): string | null {
+function sourceOf(value: string | null | undefined): string | null {
   const match = value?.match(/^(.+):(\d+):\d+:[^:]*$/);
   return match ? `${match[1]}:${match[2]}` : null;
+}
+
+const hasLine = (source: string | null): source is string => source !== null && /:\d+$/.test(source);
+
+function sourceFor(framework: string | null, el: Element): string | null {
+  if (hasLine(framework)) return framework;
+  return sourceOf(el.closest(`[${SOURCE_ATTRIBUTE}]`)?.getAttribute(SOURCE_ATTRIBUTE)) ?? framework;
 }
 
 function whereOf(el: Element): Where {
@@ -134,7 +141,7 @@ function whereOf(el: Element): Where {
   return {
     chain: found?.chain ?? [],
     props: found?.props ?? null,
-    source: found?.source ?? sourceOf(el.closest(`[${SOURCE_ATTRIBUTE}]`)?.getAttribute(SOURCE_ATTRIBUTE)),
+    source: sourceFor(found?.source ?? null, el),
     testId: nearest("data-testid"),
     id: el.id,
     label: nearest("aria-label"),
