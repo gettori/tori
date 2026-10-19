@@ -28,6 +28,9 @@ function whereToText(where: Where, route: string, root: string): string {
     ...(where.chain.length ? [`component: ${where.chain.join(" > ")}`] : []),
     ...(props?.length ? [`props: ${props.join(", ")}`] : []),
     ...(where.source ? [`source: ${relative(where.source, root)}`] : []),
+    ...(where.rules.length
+      ? ["rules:", ...where.rules.map((r) => `  ${relative(r.location, root)} ${r.selector} { ${r.declarations} }`)]
+      : []),
     `route: ${route}`,
     ...(where.testId ? [`data-testid: ${where.testId}`] : []),
     ...(where.id ? [`id: ${where.id}`] : []),
