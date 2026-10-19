@@ -87,6 +87,7 @@ describe("batchToMarkdown", () => {
     chain: [],
     props: null,
     source: null,
+    rules: [],
     testId: "",
     id: "",
     label: "",
