@@ -7,8 +7,6 @@
   "options_ui": { "page": "options.html", "open_in_tab": true },
   "permissions": ["nativeMessaging", "tabs", "tabGroups", "storage", "activeTab", "scripting"],
   "host_permissions": ["*://localhost/*", "*://127.0.0.1/*"],
-  "optional_permissions": ["debugger", "webRequest"],
-  "optional_host_permissions": ["<all_urls>"],
   "commands": {
     "pick": {
       "suggested_key": { "default": "Alt+Shift+C", "mac": "MacCtrl+Shift+C" },
