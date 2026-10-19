@@ -659,6 +659,8 @@ export type NewChatAt = {
   projectName: string;
   prompt: string;
   origin?: DraftOrigin;
+  // Offered as chips, labelled `[Image 1]` on in this order, as `prompt` names them.
+  attach?: string[];
 };
 
 // Payload-carrying event: open an empty chat draft in a worktree or Topic the
