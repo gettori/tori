@@ -64,6 +64,11 @@ button:focus-visible { outline: 2px solid var(--tori-focus); outline-offset: 2px
 .choose { display: flex; flex-direction: column; gap: var(--tori-sp-2); }
 .choose-head { display: flex; align-items: center; justify-content: space-between; gap: var(--tori-sp-3); min-height: 22px; }
 .choose-head span { font: 600 var(--tori-fs-1)/1 var(--tori-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--tori-fg-3); }
+.choose-head.end { justify-content: flex-end; }
+.new-chat { height: 22px; padding: 0 6px 0 4px; display: flex; align-items: center; gap: var(--tori-sp-1); border-radius: var(--tori-r-1); background: transparent; color: var(--tori-acc-tx); }
+.new-chat:hover:not(:disabled) { background: var(--tori-acc-soft); }
+.new-chat:focus-visible { outline-offset: 0; }
+.none .grow { flex: 1; min-width: 0; }
 .chooser { display: flex; flex-direction: column; border: 1px solid var(--tori-bd-strong); border-radius: var(--tori-r-2); background: var(--tori-bg-sunk); overflow: hidden; }
 .chooser button { border-radius: 0; display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: var(--tori-sp-3); align-items: center; padding: 6px var(--tori-sp-3); text-align: left; color: var(--tori-fg); background: transparent; font: 400 var(--tori-fs-2)/1.35 var(--tori-font); }
 .chooser button + button { border-top: 1px solid var(--tori-bd); }
@@ -125,6 +130,9 @@ const MASK = `input[type="password"], input[autocomplete="off"], textarea[autoco
 input[data-sensitive], textarea[data-sensitive] { color: transparent !important; -webkit-text-fill-color: transparent !important; text-shadow: none !important; }`;
 const KEEP_PICKING = "Press the shortcut or click Tori to keep picking";
 const PICKING = "Click an element or select text. Esc stops.";
+const DRAFTING = "Opening a new chat in Tori\u2026";
+const DRAFTED = "New chat open in Tori";
+const DRAFT_NEXT = "Pick a model and send it there.";
 const TEXTAREA_ROWS = 6;
 const EDGE = 8;
 const CARET_X = 28;
@@ -148,6 +156,7 @@ const ICONS = {
   ],
   chat: [14, 1.4, [["path", { d: CHAT_PATH }]]],
   close: [14, 1.6, [["path", { d: "M4 4l8 8M12 4l-8 8" }]]],
+  plus: [12, 1.6, [["path", { d: "M8 3.5v9M3.5 8h9" }]]],
   options: [
     14,
     1.5,
@@ -291,8 +300,9 @@ function start() {
   let screenshots = true;
   let chats: Chat[] | null = null;
   let chosen = "";
-  let sent: { chat: Chat; count: number } | null = null;
+  let sent: { chat: Chat | null; count: number } | null = null;
   let sending = false;
+  let drafting = false;
   let error = "";
   let flash = "";
   let down: { x: number; y: number } | null = null;
@@ -369,7 +379,7 @@ function start() {
 
   const statusLine = (): HTMLElement => {
     const line = el("div", { className: "status" });
-    if (sending) line.append(icon("spinner"), `Sending ${comments(picks.length)}\u2026`);
+    if (sending) line.append(icon("spinner"), drafting ? DRAFTING : `Sending ${comments(picks.length)}\u2026`);
     else if (flash) line.append(flash);
     else if (mode === "pick") line.append(el("span", { className: "dot live" }), "Picking. Esc stops.");
     else if (restored) line.append(el("span", { className: "info" }, icon("info", 14)), KEEP_PICKING);
@@ -408,17 +418,31 @@ function start() {
       };
       group.append(radio);
     }
-    const label = el("div", { className: "choose-head" }, el("span", { id: "tori-send-to", textContent: "Send to" }));
+    const label = el(
+      "div",
+      { className: "choose-head" },
+      el("span", { id: "tori-send-to", textContent: "Send to" }),
+      newChat(),
+    );
     return el("div", { className: "choose" }, label, group);
+  };
+
+  const newChat = (): HTMLElement => {
+    const draft = button("new-chat", "", () => void sendTo(null), "new-chat");
+    draft.append(icon("plus"), "New chat in Tori");
+    draft.disabled = sending;
+    return draft;
   };
 
   const choice = (): HTMLElement[] => {
     if (!picks.length || !chats) return [];
     if (!chats.length) {
-      const none = el("div", { className: "none" }, icon("chat"), "No live chat in this worktree");
-      return [el("div", { className: "send" }, none)];
+      const none = el("span", { className: "grow", textContent: "No live chat in this worktree" });
+      return [el("div", { className: "send" }, el("div", { className: "none" }, icon("chat"), none, newChat()))];
     }
-    return chats.length > 1 ? [el("div", { className: "send" }, chooser(chats))] : [];
+    if (chats.length === 1)
+      return [el("div", { className: "send" }, el("div", { className: "choose-head end" }, newChat()))];
+    return [el("div", { className: "send" }, chooser(chats))];
   };
 
   const actions = (joined: boolean): HTMLElement => {
@@ -427,8 +451,8 @@ function start() {
     if (picks.length && chats?.length) {
       const only = chats.length === 1 ? chats[0] : null;
       const go = button("primary go", "", () => void sendTo(chats!.find((c) => c.id === chosen)!), "send");
-      if (sending) {
-        go.disabled = true;
+      go.disabled = sending;
+      if (sending && !drafting) {
         go.setAttribute("aria-busy", "true");
         go.append(icon("spinner", 14), "Sending\u2026");
       } else go.append(el("span", { textContent: only ? `Send to ${only.title}` : "Send" }));
@@ -446,7 +470,7 @@ function start() {
     return area;
   };
 
-  const sentView = ({ chat, count }: { chat: Chat; count: number }): HTMLElement => {
+  const sentView = ({ chat, count }: { chat: Chat | null; count: number }): HTMLElement => {
     const done = el(
       "div",
       { className: "done-row" },
@@ -454,12 +478,12 @@ function start() {
       el(
         "span",
         { className: "done-text" },
-        el("span", { className: "done-title", textContent: `Sent to ${chat.title}` }),
-        el("span", { className: "sub", textContent: comments(count) }),
+        el("span", { className: "done-title", textContent: chat ? `Sent to ${chat.title}` : DRAFTED }),
+        el("span", { className: "sub", textContent: chat ? comments(count) : `${comments(count)}. ${DRAFT_NEXT}` }),
       ),
     );
-    const show = button("primary", "Show in Tori", () => void reveal(chat), "show");
-    const actions = el("div", { className: "actions" }, button("secondary", "Close", leave, "close"), show);
+    const actions = el("div", { className: "actions" }, button("secondary", "Close", leave, "close"));
+    if (chat) actions.append(button("primary", "Show in Tori", () => void reveal(chat), "show"));
     return el("div", { className: "done" }, done, ...(error ? [alert(error)] : []), actions);
   };
 
@@ -499,7 +523,7 @@ function start() {
     mount();
     say(
       sent && !picks.length
-        ? `Sent to ${sent.chat.title}, ${comments(sent.count)}`
+        ? `${sent.chat ? `Sent to ${sent.chat.title}` : DRAFTED}, ${comments(sent.count)}`
         : (tray.querySelector(".status, .hint")?.textContent ?? ""),
     );
     if (keep) tray.querySelector<HTMLElement>(`[data-key="${CSS.escape(keep)}"]`)?.focus();
@@ -562,18 +586,20 @@ function start() {
     watch(host.isConnected);
   };
 
-  const sendTo = async (chat: Chat) => {
+  const sendTo = async (chat: Chat | null) => {
     sending = true;
+    drafting = !chat;
     error = "";
     renderTray();
     const outcome = await ask<Sent | null>({ type: "send", chat });
     sending = false;
+    drafting = false;
     if (outcome && "title" in outcome) {
-      sent = { chat: { ...chat, title: outcome.title }, count: picks.length };
+      sent = { chat: chat && { ...chat, title: outcome.title }, count: picks.length };
       picks = [];
       targets = [];
       flash = "";
-      refresh("show");
+      refresh(chat ? "show" : "close");
       return;
     }
     error = outcome?.error ?? "Could not send";

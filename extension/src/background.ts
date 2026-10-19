@@ -330,21 +330,25 @@ async function upload(key: string, tab: TabTag): Promise<string> {
   }
 }
 
-async function sendBatch(tab: chrome.tabs.Tab, chat: Chat): Promise<Sent> {
+// No chat opens a new chat draft in Tori, which the person sends from there.
+async function sendBatch(tab: chrome.tabs.Tab, chat: Chat | null): Promise<Sent> {
   const held = await batch(tab.id!);
   if (!held?.picks.length) return { error: "nothing picked" };
   const tag = tagOf(tab);
   try {
-    const pending = (await call("session.pending", { id: chat.id }, tag)) as unknown[];
-    if (pending.length) return { error: `${chat.title} is waiting on you in Tori; answer it first` };
+    const pending = chat ? ((await call("session.pending", { id: chat.id }, tag)) as unknown[]) : [];
+    if (chat && pending.length) return { error: `${chat.title} is waiting on you in Tori; answer it first` };
+    if (!chat) await call("chat.draft", { text: "", check: true }, tag);
     const attach: string[] = [];
     for (const key of held.picks.flatMap((p) => p.images)) attach.push(await upload(key, tag));
-    await call("session.steer", { id: chat.id, text: batchToMarkdown(held.picks, true), attach }, tag);
+    const text = batchToMarkdown(held.picks, true);
+    if (chat) await call("session.steer", { id: chat.id, text, attach }, tag);
+    else await call("chat.draft", { text, attach }, tag);
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
   await dropBatch(tab.id!);
-  return { title: chat.title };
+  return { title: chat?.title ?? "a new chat" };
 }
 
 async function opened(tab: chrome.tabs.Tab & { id: number }): Promise<TrayState> {

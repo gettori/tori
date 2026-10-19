@@ -282,12 +282,20 @@ fn screen(app: &AppHandle) -> window::Answers {
                 .emit(OPEN_EVENT, params)
                 .map(|_| json!({}))
                 .map_err(|e| frame::RpcError::new(frame::INTERNAL_ERROR, e.to_string())),
-            "window.reveal" if !OPENS_HEARD.load(std::sync::atomic::Ordering::SeqCst) => {
+            "window.reveal" | "chat.draft" | "chat.draft.check"
+                if !OPENS_HEARD.load(std::sync::atomic::Ordering::SeqCst) =>
+            {
                 Err(frame::RpcError::new(frame::REFUSED, "the Tori window is still loading"))
             }
-            "window.reveal" => {
+            "chat.draft.check" => Ok(json!({})),
+            "window.reveal" | "chat.draft" => {
                 crate::presence::raise_window(&app);
-                app.emit("nav://open", params)
+                let event = if method == "chat.draft" {
+                    "nav://draft"
+                } else {
+                    "nav://open"
+                };
+                app.emit(event, params)
                     .map(|_| json!({}))
                     .map_err(|e| frame::RpcError::new(frame::INTERNAL_ERROR, e.to_string()))
             }

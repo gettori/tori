@@ -122,6 +122,22 @@ pub struct AttachmentWriteParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct DraftParams {
+    /// The draft's text, left in the composer for the person to read and send.
+    pub text: String,
+    /// Files offered with it as chips: paths `attachment.write` answered.
+    #[serde(default)]
+    pub attach: Vec<String>,
+    /// The worktree the draft opens in. Set from the browser tab, whatever the caller sends.
+    #[serde(default)]
+    pub folder: String,
+    /// Only ask whether a draft could open now, so files are not uploaded for a window that is not there.
+    #[serde(default)]
+    pub check: bool,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RevealParams {
     /// The chat session to bring forward in Tori's window.
     pub id: String,
@@ -786,6 +802,7 @@ pub trait Backend: Send + Sync {
     fn browser_mint(&self) -> Result<Value, RpcError>;
     fn attachment_write(&self, params: AttachmentWriteParams) -> Result<Value, RpcError>;
     fn window_reveal(&self, params: RevealParams) -> Result<Value, RpcError>;
+    fn chat_draft(&self, params: DraftParams) -> Result<Value, RpcError>;
     fn session_unit(&self, id: &str) -> Option<String>;
     fn folder_unit(&self, folder: &str) -> Option<String>;
     fn ask_session(&self, id: &str) -> Option<String>;
@@ -1337,6 +1354,9 @@ pub mod tests {
         fn window_reveal(&self, p: RevealParams) -> Result<Value, RpcError> {
             Ok(json!({ "revealed": p.id }))
         }
+        fn chat_draft(&self, p: DraftParams) -> Result<Value, RpcError> {
+            Ok(json!({ "folder": p.folder }))
+        }
         fn session_unit(&self, id: &str) -> Option<String> {
             self.folder_unit(id.split_once('@')?.1)
         }
@@ -1824,6 +1844,7 @@ pub mod tests {
                 "session.steer",
                 "session.pending",
                 "window.reveal",
+                "chat.draft",
                 "attachment.write",
                 "ask.answer",
                 "projects.list",

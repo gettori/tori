@@ -43,7 +43,7 @@ export type BatchRequest =
   | { type: "shot"; rect: Rect; viewport: number }
   | { type: "markdown" }
   | { type: "chats" }
-  | { type: "send"; chat: Chat }
+  | { type: "send"; chat: Chat | null }
   | { type: "reveal"; id: string }
   | { type: "options" }
   | { type: "screenshots" };

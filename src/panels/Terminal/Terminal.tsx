@@ -146,8 +146,10 @@ import { liveChatIds, liveChats } from "../../utils/chatSessions";
 import {
   clearComposer,
   draftFor,
+  fileMentionBlocks,
   markAutoSend,
   offerToComposer,
+  relabelInto,
   routeFor,
   setDraft,
   setDraftOrigin,
@@ -1167,14 +1169,17 @@ export default function Terminal(props: {
     offNewSession = onWith<NewSession>(NEW_SESSION, (s) => {
       spawnSession(s.agent ?? "claude", s.folderPath, s.projectName, false);
     });
-    offNewChatAt = onWith<NewChatAt>(NEW_CHAT_AT, async ({ folderPath, projectName, prompt, origin }) => {
+    offNewChatAt = onWith<NewChatAt>(NEW_CHAT_AT, async ({ folderPath, projectName, prompt, origin, attach }) => {
       // A reused worktree folder can have stored tabs coming back, and the
       // draft lands after them.
       await Promise.all([stripReady(folderPath), fileStripReady(folderPath)]);
       const agent = draftAgent(folderPath, folderPath);
       if (!agent) return;
       const id = openChatDraft(folderPath, folderPath, projectName, agent, draftProfile(folderPath, folderPath, agent));
-      setDraft(id, prompt);
+      const chips = (attach ?? []).flatMap((path, i) => fileMentionBlocks(path, `[Image ${i + 1}]`));
+      const offered = relabelInto(id, prompt, chips);
+      setDraft(id, offered.text);
+      offerToComposer(id, offered.blocks);
       if (origin) setDraftOrigin(id, origin);
     });
     offDraftIntoNew = onWith<DraftIntoNew>(DRAFT_INTO_NEW, ({ workspace, root, projectName }) => {
