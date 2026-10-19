@@ -240,7 +240,12 @@ async function worktreeOf(tab: chrome.tabs.Tab): Promise<string | null | undefin
   return state.title === NOT_WORKTREE ? null : undefined;
 }
 
-const inject = (tabId: number) => chrome.scripting.executeScript({ target: { tabId }, files: ["picker.js"] });
+// The inspect script reads the page's own properties, so it goes in the main world,
+// first, and only on a worktree's page.
+async function inject(tabId: number, inspect = true) {
+  if (inspect) await chrome.scripting.executeScript({ target: { tabId }, files: ["inspect.js"], world: "MAIN" });
+  await chrome.scripting.executeScript({ target: { tabId }, files: ["picker.js"] });
+}
 
 async function togglePicker(tab: chrome.tabs.Tab) {
   if (tab.id === undefined || (await describe(tab)).kind !== "worktree") return;
@@ -252,7 +257,7 @@ async function togglePicker(tab: chrome.tabs.Tab) {
 // Any page the click grants, so the tray can say why there is nothing to pick there.
 async function openTray(tab: chrome.tabs.Tab) {
   if (tab.id === undefined) return;
-  await inject(tab.id);
+  await inject(tab.id, (await describe(tab)).kind === "worktree");
   const message: PickerRequest = { type: "picker.open" };
   await chrome.tabs.sendMessage(tab.id, message);
 }
@@ -381,7 +386,7 @@ async function sendBatch(tab: chrome.tabs.Tab, chat: Chat | null, log: LogEntry[
     if (!chat) await call("chat.draft", { text: "", check: true }, tag);
     const attach: string[] = [];
     for (const key of picks.flatMap((p) => p.images)) attach.push(await upload(key, tag));
-    const text = batchToMarkdown(picks, true, said);
+    const text = batchToMarkdown(picks, true, said, held?.worktree);
     if (chat) await call("session.steer", { id: chat.id, text, attach }, tag);
     else await call("chat.draft", { text, attach }, tag);
   } catch (e) {
@@ -434,8 +439,10 @@ async function handle(message: BatchRequest, tab: chrome.tabs.Tab & { id: number
       return dropBatch(tab.id);
     case "shot":
       return shoot(tab, message.rect, message.viewport);
-    case "markdown":
-      return batchToMarkdown((await batch(tab.id))?.picks ?? [], false, (await pageLogOn()) ? message.log : []);
+    case "markdown": {
+      const held = await batch(tab.id);
+      return batchToMarkdown(held?.picks ?? [], false, (await pageLogOn()) ? message.log : [], held?.worktree);
+    }
     case "chats":
       return chats(tab);
     case "send":
