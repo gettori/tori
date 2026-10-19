@@ -1,9 +1,12 @@
 export type Rect = { x: number; y: number; width: number; height: number };
 
+export type MatchedRule = { selector: string; declarations: string; location: string };
+
 export type Where = {
   chain: string[];
   props: Record<string, string> | null;
   source: string | null;
+  rules: MatchedRule[];
   testId: string;
   id: string;
   label: string;

@@ -1,4 +1,5 @@
-import type { InspectChannel, InspectMessage, Pick, Where } from "../pick";
+import type { InspectChannel, InspectMessage, MatchedRule, Pick, Where } from "../pick";
+import { matchRules, shrinkStyles, type SheetLike } from "./rules";
 
 const HTML_CAP = 4096;
 const TEXT_CAP = 1000;
@@ -7,6 +8,7 @@ const ATTRIBUTES = new Set(["id", "class", "role", "data-testid", "href", "src",
 
 const INSPECT: InspectChannel = "tori:inspect";
 const SOURCE_ATTRIBUTE = "data-insp-path";
+const GENERATED = /^\/\*! tailwindcss /;
 
 const LOGICAL_TWIN = /(^|-)(block|inline)(-|$)|-(start|end)-/;
 const SIZE_ORIGIN = /^(perspective|transform)-origin$/;
@@ -135,13 +137,46 @@ function sourceFor(framework: string | null, el: Element): string | null {
   return sourceOf(el.closest(`[${SOURCE_ATTRIBUTE}]`)?.getAttribute(SOURCE_ATTRIBUTE)) ?? framework;
 }
 
-function whereOf(el: Element): Where {
+// Vite's dev server tags each sheet it injects with the file it came from. A
+// query means the sheet is one block of a bigger file, such as a Vue SFC style,
+// and a generated sheet's lines are not the file's.
+function sheetOf(sheet: CSSStyleSheet): SheetLike | null {
+  let cssRules: CSSRuleList;
+  try {
+    cssRules = sheet.cssRules;
+  } catch {
+    // Another origin's sheet, which the page itself cannot read either.
+    return null;
+  }
+  const owner = sheet.ownerNode;
+  const devId = owner instanceof HTMLStyleElement ? owner.getAttribute("data-vite-dev-id") : null;
+  if (devId) {
+    const [file, query] = devId.split("?");
+    const text = owner!.textContent ?? "";
+    const exact = query === undefined && !GENERATED.test(text);
+    return { cssRules, where: file, text: exact ? text : null, exact };
+  }
+  const where = sheet.href ? new URL(sheet.href).pathname : "inline <style>";
+  return { cssRules, where, text: null, exact: false };
+}
+
+function rulesOf(el: Element): { rules: MatchedRule[]; properties: string[] } {
+  const sheets = [...document.styleSheets].map(sheetOf).filter((s): s is SheetLike => s !== null);
+  return matchRules(sheets, {
+    matches: (selector) => el.matches(selector),
+    media: (query) => matchMedia(query).matches,
+    supports: (condition) => CSS.supports(condition),
+  });
+}
+
+function whereOf(el: Element, rules: MatchedRule[]): Where {
   const found = askInspect(el);
   const nearest = (attribute: string) => el.closest(`[${attribute}]`)?.getAttribute(attribute) ?? "";
   return {
     chain: found?.chain ?? [],
     props: found?.props ?? null,
     source: sourceFor(found?.source ?? null, el),
+    rules,
     testId: nearest("data-testid"),
     id: el.id,
     label: nearest("aria-label"),
@@ -155,6 +190,8 @@ export function capture(
   selection?: { text: string; rect: DOMRect },
 ): Omit<Pick, "images"> {
   const r = selection?.rect ?? el.getBoundingClientRect();
+  const matched = rulesOf(el);
+  const computed = getComputedStyle(el);
   return {
     comment,
     kind: selection ? "selection" : "element",
@@ -164,12 +201,14 @@ export function capture(
     path: domPath(el),
     html: cleanHtml(el),
     text: cap(selection ? selection.text : textOf(el), TEXT_CAP),
-    styles: stylesOf(el, baseline),
+    styles: matched.rules.length
+      ? shrinkStyles(matched.properties, (name) => computed.getPropertyValue(name), STYLE_CAP)
+      : stylesOf(el, baseline),
     rect: { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) },
     viewport: { width: innerWidth, height: innerHeight },
     dpr: devicePixelRatio,
     theme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
-    where: whereOf(el),
+    where: whereOf(el, matched.rules),
     at: Date.now(),
   };
 }
