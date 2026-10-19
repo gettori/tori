@@ -197,3 +197,7 @@ answers "update the Tori extension", above it "update Tori".
   protocol is public. Never on a release count: every store version waits for
   a review, so a release that drops the old shape too early leaves every
   installed extension refused until the review passes.
+- `MIN_TORI` (`extension/src/tab.ts`) is the first Tori with Settings >
+  Browser, shown on the extension's welcome and options pages. Until the
+  release that ships the extension is cut it holds a guess; set it to that
+  release's version in its release PR.

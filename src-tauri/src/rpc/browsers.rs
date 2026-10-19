@@ -53,7 +53,7 @@ fn revoke_at(store: &Devices, hub: &Hub, credential: &Path) -> Result<(), String
         store.revoke(&browser.id)?;
         hub.close_browser(&browser.id);
     }
-    hub.forget_last_refusal();
+    hub.forget_browser();
     match std::fs::remove_file(credential) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
         _ => Ok(()),
@@ -63,8 +63,9 @@ fn revoke_at(store: &Devices, hub: &Hub, credential: &Path) -> Result<(), String
 pub fn status(store: &Devices, hub: &Hub) -> Value {
     json!({
         "installed": !store.list().is_empty(),
-        "connected": hub.browser_connected(),
+        "connected": hub.browser_seen(),
         "update": hub.last_refusal().map(|u| u.name()),
+        "store": format!("https://chromewebstore.google.com/detail/{EXTENSION_ID}"),
     })
 }
 
@@ -139,13 +140,21 @@ mod tests {
     use crate::rpc::hub::Update;
 
     #[test]
-    fn minting_again_forgets_the_hosts_last_refusal() {
+    fn minting_again_forgets_the_browser_and_its_last_refusal() {
         let dir = std::env::temp_dir().join(format!("tori-browsers-mint-{}", std::process::id()));
         let store = Devices::open(dir.join("browsers.json"));
+        let credential = dir.join("browser.json");
         let hub = Hub::default();
+        let id = mint_at(&store, &hub, &credential).unwrap();
+        let (tx, _rx) = std::sync::mpsc::sync_channel(1);
+        let conn = hub.register(tx, Box::new(|| {}));
+        hub.tag_browser(conn, &id);
+        hub.remove(conn);
         hub.refuse_browser(Update::Extension);
-        mint_at(&store, &hub, &dir.join("browser.json")).unwrap();
-        assert_eq!(hub.last_refusal(), None);
+        assert!(status(&store, &hub)["connected"].as_bool().unwrap());
+        mint_at(&store, &hub, &credential).unwrap();
+        assert_eq!(status(&store, &hub)["connected"], json!(false));
+        assert_eq!(status(&store, &hub)["update"], Value::Null);
         let _ = std::fs::remove_dir_all(dir);
     }
 }
