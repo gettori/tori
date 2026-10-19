@@ -21,7 +21,7 @@ version=$(node -p "require('$root/package.json').version.split('-')[0]")
 manifest="$dist/manifest.json"
 [ "$(node -p "require('$manifest').version")" = "$version" ] || die "manifest version is not $version"
 [ "$(node -p "'key' in require('$manifest')")" = "false" ] || die "the store manifest carries a key"
-grep -Eq '["`]app\.gettori\.tori["`]' "$dist/background.js" || die "background.js does not name app.gettori.tori"
+grep -Eq "[\"\`]app\\.gettori\\.tori[\"\`]" "$dist/background.js" || die "background.js does not name app.gettori.tori"
 ! grep -rq 'tori_dev' "$dist" || die "the store build names the dev host"
 
 mkdir -p "$OUT"
