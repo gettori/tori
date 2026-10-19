@@ -89,6 +89,16 @@ Only when all three have passed does the `publish` job tag the commit
 confirm each is attached, publish it, and point the Homebrew cask at the two
 DMGs. A failed build therefore leaves nothing behind: no tag, no draft.
 
+After `publish`, the `extension` job builds the store zip with
+`.github/scripts/extension-zip.sh` and uploads it to the Chrome Web Store item
+as its new draft with `.github/scripts/extension-upload.sh`. It never submits
+for review or publishes. When the run is green, open the item in the
+[Web Store dashboard](https://chrome.google.com/webstore/devconsole), check
+the draft's version, and **Submit for review** by hand; once review passes,
+publish it there. Nothing waits on this job: if it goes red, the release is
+already out, and the job's log names the step that failed. Re-run that job
+alone once the cause is fixed.
+
 Expect 25 minutes with warm caches, up to 45 after a quiet week.
 
 `scripts/release.sh status` shows the run and says what, if anything, is next.
@@ -109,12 +119,34 @@ from. A workflow run from a PR branch never sees them.
 | `ANDROID_KEYSTORE` | the release keystore, base64 | `base64 -i release.jks \| pbcopy` |
 | `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` | what `keystore.properties` held locally | same file |
 | `TAP_TOKEN` | fine-grained PAT, Contents read and write on `gettori/homebrew-tap` only | GitHub, Settings, Developer settings |
+| `CWS_CLIENT_ID` | an OAuth client for the Chrome Web Store API | Google Cloud console, APIs and Services: enable the Chrome Web Store API, then Credentials, OAuth client ID, type Web application, redirect URI `https://developers.google.com/oauthplayground` |
+| `CWS_CLIENT_SECRET` | that client's secret | same page |
+| `CWS_REFRESH_TOKEN` | a refresh token for the account that owns the store item | OAuth 2.0 Playground: gear icon, use your own client ID and secret, authorize scope `https://www.googleapis.com/auth/chromewebstore`, exchange the code, copy the refresh token |
+| `CWS_PUBLISHER_ID` | the publisher the item belongs to | Web Store developer dashboard, Publisher, Settings |
 
 The API key is only the notary service's login; nothing goes to the App
 Store. Notarization itself has no fee beyond the developer membership. The
 signing identity is not a secret: the workflow imports the certificate into
 its own keychain and reads the identity's hash from there, so the name never
 has to match anything.
+
+The OAuth consent screen behind `CWS_CLIENT_ID` must be **In production**,
+not Testing: a Testing app's refresh tokens expire after 7 days, and the
+first release after that fails its upload with `invalid_grant`. Google's
+own setup guide adds you as a Test user instead, which is the 7 day kind:
+move the app to production first, then mint the refresh token. The account needs 2-step
+verification to update a store item.
+
+To check the four secrets without a release, run the upload against the draft
+item from your own machine; it replaces the current draft and submits nothing:
+
+```bash
+CWS_CLIENT_ID=... CWS_CLIENT_SECRET=... CWS_REFRESH_TOKEN=... CWS_PUBLISHER_ID=... \
+  .github/scripts/extension-upload.sh "$(.github/scripts/extension-zip.sh /tmp/tori-extension)"
+```
+
+It prints `uploadState: SUCCEEDED` with the version, or names the step that
+failed. The version has to be above the item's published one.
 
 A ruleset on tags `v*` that blocks deletion and non-fast-forward updates is
 worth adding. It must not block creation, since the workflow creates the tag
@@ -124,8 +156,8 @@ with `github.token`.
 
 The workflow can be dispatched by hand from any branch the environment allows.
 A dispatched run builds everything a real one does, uploads the DMGs, the
-tarballs and the APK as run artifacts, and publishes nothing: no tag, no
-release, no cask. Download the DMG onto a Mac that has never seen Tori and
+tarballs, the APK and the extension zip as run artifacts, and publishes
+nothing: no tag, no release, no cask, no store upload. Download the DMG onto a Mac that has never seen Tori and
 check `spctl -a -vv /Applications/Tori.app` says
 `accepted, source=Notarized Developer ID`; the app then opens without a
 dialog. Do this before the first real release after any change to signing,
