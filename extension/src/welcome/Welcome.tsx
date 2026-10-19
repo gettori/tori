@@ -1,6 +1,6 @@
 import { ConnectionRow, Icon, Row, ShortcutRow } from "../options/rows";
 
-const DOCS = "https://gettori.app/docs/browser-extension/";
+const DOCS = "https://gettori.app/docs/browser/extension/";
 
 export default function Welcome() {
   return (
