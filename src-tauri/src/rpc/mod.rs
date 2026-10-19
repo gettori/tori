@@ -29,10 +29,12 @@ pub mod pr_watch;
 pub mod quotas;
 pub mod remote;
 pub mod runner;
+mod scope;
 pub mod server;
 pub mod states;
 pub mod table;
 pub mod transport;
+pub mod uploads;
 pub mod watcher;
 pub mod window;
 pub mod ws;
@@ -280,6 +282,15 @@ fn screen(app: &AppHandle) -> window::Answers {
                 .emit(OPEN_EVENT, params)
                 .map(|_| json!({}))
                 .map_err(|e| frame::RpcError::new(frame::INTERNAL_ERROR, e.to_string())),
+            "window.reveal" if !OPENS_HEARD.load(std::sync::atomic::Ordering::SeqCst) => {
+                Err(frame::RpcError::new(frame::REFUSED, "the Tori window is still loading"))
+            }
+            "window.reveal" => {
+                crate::presence::raise_window(&app);
+                app.emit("nav://open", params)
+                    .map(|_| json!({}))
+                    .map_err(|e| frame::RpcError::new(frame::INTERNAL_ERROR, e.to_string()))
+            }
             _ => Err(frame::RpcError::new(
                 frame::REFUSED,
                 format!("the window answers no {method}"),

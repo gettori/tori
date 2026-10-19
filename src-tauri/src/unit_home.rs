@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
-use crate::config::{BranchUnit, ProjectIndex, ProjectKind, Space};
+use crate::config::{BranchUnit, Project, ProjectIndex, ProjectKind, Space};
 use crate::topics::Topic;
 
 // The sidebar lists every tracked folder in one burst, and each listing wants
@@ -114,13 +114,23 @@ pub fn home_of(spaces: &[Space], topics: &[Topic], cwd: &str, branch: Option<&st
     })
 }
 
-fn unit_of(spaces: &[Space], cwd: &str, branch: Option<&str>) -> Option<Home> {
-    let (project, folder) = spaces
+fn deepest<'a>(spaces: &'a [Space], cwd: &str) -> Option<(&'a Project, &'a str)> {
+    spaces
         .iter()
         .flat_map(|s| &s.projects)
         .flat_map(|p| p.branch_units.iter().map(move |u| (p, u.folder_path.as_str())))
         .filter(|(_, folder)| crate::sessions::owned_by_listing(cwd, folder))
-        .max_by_key(|(_, folder)| folder.len())?;
+        .max_by_key(|(_, folder)| folder.len())
+}
+
+/// The folder of the unit a session in `cwd` belongs to: the deepest one
+/// holding it, so a worktree nested inside its repo owns its own sessions.
+pub fn unit_folder(spaces: &[Space], cwd: &str) -> Option<String> {
+    deepest(spaces, cwd).map(|(_, folder)| folder.to_string())
+}
+
+fn unit_of(spaces: &[Space], cwd: &str, branch: Option<&str>) -> Option<Home> {
+    let (project, folder) = deepest(spaces, cwd)?;
     let siblings: Vec<&BranchUnit> = project
         .branch_units
         .iter()

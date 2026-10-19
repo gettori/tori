@@ -14,10 +14,25 @@ export type Pick = {
   viewport: { width: number; height: number };
   dpr: number;
   theme: "light" | "dark";
+  images: string[];
 };
+
+export type Chat = { id: string; title: string; agent: string };
+
+export type Shot = { images: string[]; why?: string };
+
+export type Sent = { title: string } | { error: string };
 
 export type ToggleRequest = { type: "picker.toggle" };
 
-export type BatchRequest = { type: "batch.get" } | { type: "batch.add"; pick: Pick } | { type: "batch.clear" };
+export type BatchRequest =
+  | { type: "batch.get" }
+  | { type: "batch.add"; pick: Pick }
+  | { type: "batch.clear" }
+  | { type: "shot"; rect: Rect; viewport: number }
+  | { type: "markdown" }
+  | { type: "chats" }
+  | { type: "send"; chat: Chat }
+  | { type: "reveal"; id: string };
 
 export type PickRequest = { type: "pick"; tabId: number };
