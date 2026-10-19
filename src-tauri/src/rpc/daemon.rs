@@ -380,6 +380,7 @@ impl Daemon {
             id: None,
             method: AUTH_METHOD.into(),
             params: json!({ "token": token }),
+            worktree: None,
         };
         match authenticate(&auth, &self.credential) {
             Ok(Principal::Local) => Ok(()),
@@ -838,7 +839,7 @@ impl Dispatch for Daemon {
                 Some(table) => table.call(principal, req),
                 None => Err(RpcError::new(REFUSED, STARTING)),
             },
-            "sessions.list" => {
+            "sessions.list" if self.kind(principal) != CallerKind::Browser => {
                 permit(&req.method, self.kind(principal))?;
                 Ok(self.composer.sessions_list(&params(&req.params)?))
             }
