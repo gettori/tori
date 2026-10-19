@@ -23,7 +23,7 @@ fn reach(method: &str) -> Option<Reach> {
         "session.steer" | "session.tail" | "session.pending" | "window.reveal" => Some(Reach::Session),
         "ask.answer" => Some(Reach::Ask),
         "sessions.list" => Some(Reach::List),
-        "chat.draft" => Some(Reach::Worktree),
+        "chat.draft" | "web.setup" => Some(Reach::Worktree),
         _ => None,
     }
 }

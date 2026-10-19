@@ -1,7 +1,7 @@
 import { createEffect, createMemo, createSignal, on, onCleanup, onMount, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { Globe, Play } from "lucide-solid";
+import { Globe, MousePointerClick, Play } from "lucide-solid";
 import Icon from "../../../components/Icon/Icon";
 import Chevron from "../../../components/Chevron/Chevron";
 import ContextMenu from "../../../components/Menu/ContextMenu";
@@ -21,6 +21,15 @@ import styles from "./FilesPanel.module.css";
 
 type DirEntry = { name: string };
 type Group = { file: string; tasks: Task[] };
+type WebApp = {
+  dir: string;
+  framework: string;
+  config: string;
+  snippet: string;
+  install: string;
+  plugin: boolean;
+  own_lines: boolean;
+};
 
 const FS_CHANGE_DEBOUNCE_MS = 400;
 
@@ -53,6 +62,7 @@ function groupByFile(tasks: Task[]): Group[] {
 export default function ScriptsSection(props: { root: string | null }) {
   const [tasks, setTasks] = createSignal<Task[]>([]);
   const [error, setError] = createSignal<string | null>(null);
+  const [apps, setApps] = createSignal<WebApp[]>([]);
   const [shut, setShut] = createSignal<ReadonlySet<string>>(new Set());
   const [busy, setBusy] = createSignal<ReadonlySet<string>>(new Set());
   // Bumped per read so a slow fs-refresh cannot overwrite a newer one.
@@ -72,8 +82,11 @@ export default function ScriptsSection(props: { root: string | null }) {
         (path) => invoke<string>("fs_read_file", { path }),
         () => invoke<string[]>("list_project_files", { projectPath: root }),
       );
+      // An app Tori cannot read only goes without the plugin hint; its scripts still show.
+      const web = await invoke<WebApp[]>("web_setup", { root }).catch(() => [] as WebApp[]);
       if (gen !== scanGen) return;
       setTasks(found);
+      setApps(web);
       setError(null);
     } catch (e) {
       // Said rather than swallowed: an empty list would read as "this project
@@ -153,6 +166,12 @@ export default function ScriptsSection(props: { root: string | null }) {
     return project ? worktreePrefs(project).runCommand : "";
   };
   const showLog = (log: string) => emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: log });
+
+  const needsPlugin = (app: WebApp) => !app.plugin && !app.own_lines;
+  const pluginHint = (file: string) =>
+    apps().find((a) => `${a.dir ? `${a.dir}/` : ""}package.json` === file && needsPlugin(a));
+  const copySetup = (app: WebApp) => void copyText(`${app.install}\n\n// ${app.config}\n${app.snippet}\n`);
+  const appFile = (app: WebApp) => (app.dir ? `${app.dir}/${app.config}` : app.config);
 
   return (
     <OverlayScroll class={styles.sectionScroll}>
@@ -240,6 +259,24 @@ export default function ScriptsSection(props: { root: string | null }) {
                       </ContextMenu>
                     )}
                   </For>
+                  <Show when={pluginHint(g.file)}>
+                    {(app) => (
+                      <ContextMenu
+                        items={[
+                          { label: "Copy plugin setup", onClick: () => copySetup(app()) },
+                          { label: `Open ${appFile(app())}`, onClick: () => open(appFile(app())) },
+                        ]}
+                        class={tree.treeRow}
+                        style={{ "padding-left": "20px" }}
+                        data-plugin-hint={app().dir}
+                        onClick={() => copySetup(app())}
+                      >
+                        <Icon icon={MousePointerClick} />
+                        <span class={tree.treeName}>Browser file and line</span>
+                        <span class={styles.command}>{`Copy code-inspector-plugin setup for ${app().config}`}</span>
+                      </ContextMenu>
+                    )}
+                  </Show>
                 </Show>
               </>
             )}

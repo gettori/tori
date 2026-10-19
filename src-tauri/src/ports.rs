@@ -207,6 +207,10 @@ pub fn scan(worktrees: &[String], max_age: Duration) -> BTreeMap<String, Vec<u16
     attribute(&listeners(max_age), worktrees, &exclude, &load(&registry_dir()))
 }
 
+pub fn cwd_of(port: u16, max_age: Duration) -> Option<String> {
+    listeners(max_age).into_iter().find(|l| l.port == port).map(|l| l.cwd)
+}
+
 /// The block base of each of `folders` that holds one, never allocating.
 pub fn bases(folders: &[String]) -> HashMap<String, u16> {
     let map = load(&registry_dir());

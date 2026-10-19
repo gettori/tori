@@ -86,6 +86,7 @@ mod usage_probe;
 mod usage_snapshot;
 mod usage_token;
 mod verification;
+mod web_setup;
 mod workspace_settings;
 mod worktree;
 mod worktree_cleanup;
@@ -711,6 +712,7 @@ pub fn run() {
             worktree::remove_worktree_and_branch,
             worktree_cleanup::worktree_cleanup_facts,
             ports::ports_scan,
+            web_setup::web_setup,
             forge::commands::forge_accounts,
             forge::commands::forge_sign_in_start,
             forge::commands::forge_cli_installed,

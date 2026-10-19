@@ -20,8 +20,8 @@ use super::server::{
     ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams, ModelParams, NeedsYouSeenParams,
     OpenParams, PendingParams, PortParams, PrCreateParams, PrGetParams, PrMergeParams, PrWatchParams,
     ProjectIconParams, ProjectSetParams, ProvenanceParams, RevealParams, ReviewMarkParams, ReviewSubmitParams,
-    SessionAnswerParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams,
-    UnitsSyncParams, WaitParams, WorktreeParams, DEFAULT_LOG_LIMIT,
+    SessionAnswerParams, SetupParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams,
+    UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, DEFAULT_LOG_LIMIT,
 };
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
@@ -2140,6 +2140,15 @@ impl Backend for DaemonBackend {
         }
         let draft = json!({ "folder": params.folder, "text": params.text, "attach": params.attach });
         self.screen.request("chat.draft", draft)
+    }
+
+    fn web_setup(&self, params: SetupParams) -> Result<Value, RpcError> {
+        if self.folder_unit(&params.folder).as_deref() != Some(params.folder.as_str()) {
+            return Err(refused(format!("{} is not a Tori worktree", params.folder)));
+        }
+        let cwd = crate::ports::cwd_of(params.port, crate::ports::CACHE);
+        let app = crate::web_setup::app_at(Path::new(&params.folder), cwd.as_deref().map(Path::new));
+        to_json(app)
     }
 
     fn window_reveal(&self, params: RevealParams) -> Result<Value, RpcError> {

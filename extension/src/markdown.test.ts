@@ -146,6 +146,17 @@ describe("batchToMarkdown", () => {
     expect(empty).toContain("### 1. Make this bolder\n\n```\nroute: /settings?tab=a\n```\n\n```\nurl:");
   });
 
+  it("places a file named from the app's folder under that folder", () => {
+    const md = batchToMarkdown(
+      [pick({ where: where({ source: "src/lib/Counter.svelte:5" }) })],
+      false,
+      [],
+      "/w",
+      "apps/web",
+    );
+    expect(md).toContain("source: apps/web/src/lib/Counter.svelte:5\n");
+  });
+
   const entry = (over: Partial<LogEntry> = {}): LogEntry => ({
     seq: 1,
     at: 1_002_300,
