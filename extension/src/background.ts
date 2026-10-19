@@ -1,16 +1,18 @@
 import { SPACE_COLORS, spaceHue } from "../../src/utils/spaceTint";
-import { dropImages, getImage, putImage } from "./images";
+import { dropImage, dropImages, getImage, putImage } from "./images";
 import { batchToMarkdown } from "./markdown";
-import type { BatchRequest, Chat, Pick, PickRequest, Rect, Sent, Shot, ToggleRequest } from "./pick";
+import type { BatchRequest, Chat, ConnectionRequest, Pick, PickerRequest, Rect, Sent, Shot, TrayState } from "./pick";
+import { pickShortcut } from "./shortcut";
 import {
   CLOSED,
   GROUPS_KEY,
   NOT_RUNNING,
   NOT_SET_UP,
   NOT_WORKTREE,
+  SHOTS_KEY,
+  sentenceOf,
   label,
   type GroupColor,
-  type StateRequest,
   type TabState,
   type Unit,
 } from "./tab";
@@ -136,7 +138,7 @@ async function describe(tab: chrome.tabs.Tab): Promise<TabState> {
 async function show(tabId: number, state: TabState) {
   if (state.kind === "other") {
     await chrome.action.setBadgeText({ tabId, text: "" });
-    await chrome.action.setTitle({ tabId, title: state.title });
+    await chrome.action.setTitle({ tabId, title: sentenceOf(state.title) });
     return;
   }
   await chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_HEX[state.color] });
@@ -231,9 +233,19 @@ const inject = (tabId: number) => chrome.scripting.executeScript({ target: { tab
 async function togglePicker(tab: chrome.tabs.Tab) {
   if (tab.id === undefined || (await describe(tab)).kind !== "worktree") return;
   await inject(tab.id);
-  const message: ToggleRequest = { type: "picker.toggle" };
+  const message: PickerRequest = { type: "picker.toggle" };
   await chrome.tabs.sendMessage(tab.id, message);
 }
+
+// Any page the click grants, so the tray can say why there is nothing to pick there.
+async function openTray(tab: chrome.tabs.Tab) {
+  if (tab.id === undefined) return;
+  await inject(tab.id);
+  const message: PickerRequest = { type: "picker.open" };
+  await chrome.tabs.sendMessage(tab.id, message);
+}
+
+const screenshotsOn = async () => (await chrome.storage.local.get(SHOTS_KEY))[SHOTS_KEY] !== false;
 
 // A reload ends pick mode but keeps the batch, so its tray comes back.
 async function restore(tab: chrome.tabs.Tab) {
@@ -256,6 +268,7 @@ function encode(bitmap: ImageBitmap, r: Rect, type: string, quality?: number): P
 }
 
 async function shoot(tab: chrome.tabs.Tab, rect: Rect, viewport: number): Promise<Shot> {
+  if (!(await screenshotsOn())) return { images: [], why: "screenshots are off in the options" };
   const held = await batch(tab.id!);
   const taken = held?.picks.reduce((n, p) => n + p.images.length, 0) ?? 0;
   if (taken + 2 > IMAGES_PER_SEND) return { images: [], why: `${IMAGES_PER_SEND} screenshots per send` };
@@ -334,12 +347,33 @@ async function sendBatch(tab: chrome.tabs.Tab, chat: Chat): Promise<Sent> {
   return { title: chat.title };
 }
 
+async function opened(tab: chrome.tabs.Tab & { id: number }): Promise<TrayState> {
+  const state = await describe(tab);
+  return {
+    picks: (await batch(tab.id))?.picks ?? [],
+    branch: state.kind === "worktree" ? label(state.unit) : "",
+    shortcut: await pickShortcut(),
+    status: state.kind === "worktree" ? null : sentenceOf(state.title),
+    screenshots: await screenshotsOn(),
+  };
+}
+
+async function removePick(tabId: number, index: number): Promise<Pick[]> {
+  const held = await batch(tabId);
+  if (!held) return [];
+  const [gone] = held.picks.splice(index, 1);
+  for (const key of gone?.images ?? []) await dropImage(key);
+  if (held.picks.length) await chrome.storage.session.set({ [batchKey(tabId)]: held });
+  else await chrome.storage.session.remove(batchKey(tabId));
+  return held.picks;
+}
+
 const tagOf = (tab: chrome.tabs.Tab): TabTag => ({ id: tab.id!, url: tab.url ?? "" });
 
 async function handle(message: BatchRequest, tab: chrome.tabs.Tab & { id: number }): Promise<unknown> {
   switch (message.type) {
     case "batch.get":
-      return (await batch(tab.id))?.picks ?? [];
+      return opened(tab);
     case "batch.add": {
       const held = await batch(tab.id);
       const worktree = (await worktreeOf(tab)) ?? held?.worktree;
@@ -349,6 +383,8 @@ async function handle(message: BatchRequest, tab: chrome.tabs.Tab & { id: number
       await chrome.storage.session.set({ [batchKey(tab.id)]: next });
       return picks;
     }
+    case "batch.remove":
+      return removePick(tab.id, message.index);
     case "batch.clear":
       return dropBatch(tab.id);
     case "shot":
@@ -364,13 +400,24 @@ async function handle(message: BatchRequest, tab: chrome.tabs.Tab & { id: number
         () => ({}),
         (e: Error) => ({ error: e.message }),
       );
+    case "options":
+      return chrome.runtime.openOptionsPage();
+    case "screenshots":
+      return screenshotsOn();
   }
 }
 
-function answer(message: StateRequest | PickRequest | BatchRequest, sender: chrome.runtime.MessageSender) {
-  // Read only: Arc closes an open popup when its action's badge or title is set.
-  if (message.type === "state") return chrome.tabs.get(message.tabId).then(describe);
-  if (message.type === "pick") return chrome.tabs.get(message.tabId).then(togglePicker);
+async function connection(): Promise<string | null> {
+  try {
+    await call("caller", {});
+    return null;
+  } catch (e) {
+    return sentenceOf(e instanceof Error ? e.message : String(e));
+  }
+}
+
+function answer(message: ConnectionRequest | BatchRequest, sender: chrome.runtime.MessageSender) {
+  if (message.type === "connection") return connection();
   const tab = sender.tab;
   return tab?.id === undefined ? Promise.resolve(null) : handle(message, { ...tab, id: tab.id });
 }
@@ -384,6 +431,8 @@ chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
   else if (change.status === "complete") void dropBatch(tabId);
 });
 chrome.tabs.onRemoved.addListener((tabId) => void dropBatch(tabId));
+// Swallowed: browser pages refuse every script, and the toolbar title already says why.
+chrome.action.onClicked.addListener((tab) => void openTray(tab).catch(() => {}));
 chrome.commands.onCommand.addListener((command, tab) => {
   if (command === "pick" && tab) void togglePicker(tab);
 });
