@@ -1,7 +1,7 @@
 import { createResource, createSignal, onMount, Show, type JSX } from "solid-js";
 import type { ConnectionRequest } from "../pick";
 import { pickShortcut } from "../shortcut";
-import { GROUPS_KEY, NOT_SET_UP, SHOTS_KEY, sentenceOf } from "../tab";
+import { GROUPS_KEY, LOG_KEY, NOT_SET_UP, SHOTS_KEY, sentenceOf } from "../tab";
 
 const SHORTCUTS_PAGE = "chrome://extensions/shortcuts";
 
@@ -106,6 +106,19 @@ export default function Options() {
           }
         >
           <Switch key={SHOTS_KEY} labelledBy="screenshots" />
+        </Row>
+        <Row
+          id="page-log"
+          label="Console and network"
+          hint="Sends the page's console errors and warnings and its failed requests with each send. Never headers or bodies. Takes effect when a tab loads."
+          icon={
+            <Icon>
+              <rect x="2" y="3" width="12" height="10" rx="1.5" />
+              <path d="M5 6.5l2 1.5-2 1.5M8.5 10h2.5" />
+            </Icon>
+          }
+        >
+          <Switch key={LOG_KEY} labelledBy="page-log" />
         </Row>
         <Row
           id="shortcut"

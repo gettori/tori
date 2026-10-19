@@ -1,4 +1,4 @@
-import type { Pick } from "./pick";
+import type { LogEntry, Pick } from "./pick";
 
 // Longer than any backtick run inside, so page markup cannot close the block.
 function fence(body: string, lang = ""): string {
@@ -42,13 +42,29 @@ export function pickToMarkdown(pick: Pick, n: number, firstImage?: number): stri
   ].join("\n\n");
 }
 
-export function batchToMarkdown(picks: Pick[], withImages = false): string {
+function offset(ms: number): string {
+  return `${ms < 0 ? "-" : "+"}${(Math.abs(ms) / 1000).toFixed(1)}s`;
+}
+
+// Times run from the first pick, so what the page said before it reads as negative.
+export function logToMarkdown(log: LogEntry[], origin: number): string {
+  const lines = log.map((entry) => {
+    const [head, ...rest] = entry.text.split("\n");
+    const times = entry.count > 1 ? ` x${entry.count}` : "";
+    return [`${offset(entry.at - origin)} ${entry.kind}: ${head}${times}`, ...rest.map((line) => `  ${line}`)].join(
+      "\n",
+    );
+  });
+  return `### Page log\n\n${fence(lines.join("\n"))}`;
+}
+
+export function batchToMarkdown(picks: Pick[], withImages = false, log: LogEntry[] = []): string {
   let image = 1;
-  return picks
-    .map((pick, i) => {
-      const md = pickToMarkdown(pick, i + 1, withImages ? image : undefined);
-      image += pick.images.length;
-      return md;
-    })
-    .join("\n\n");
+  const sections = picks.map((pick, i) => {
+    const md = pickToMarkdown(pick, i + 1, withImages ? image : undefined);
+    image += pick.images.length;
+    return md;
+  });
+  if (log.length) sections.push(logToMarkdown(log, picks[0]?.at ?? log[0].at));
+  return sections.join("\n\n");
 }
