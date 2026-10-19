@@ -154,6 +154,37 @@ pub struct Hub {
 struct Inner {
     next: ConnId,
     conns: HashMap<ConnId, Conn>,
+    last_refusal: Option<Update>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Update {
+    Extension,
+    Tori,
+}
+
+impl Update {
+    pub fn parse(side: &str) -> Option<Self> {
+        match side {
+            "extension" => Some(Self::Extension),
+            "tori" => Some(Self::Tori),
+            _ => None,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Extension => "extension",
+            Self::Tori => "tori",
+        }
+    }
+
+    pub fn message(self) -> &'static str {
+        match self {
+            Self::Extension => "update the Tori extension",
+            Self::Tori => "update Tori",
+        }
+    }
 }
 
 fn devices_of(inner: &Inner) -> HashSet<String> {
@@ -243,6 +274,18 @@ impl Hub {
 
     pub fn browser_connected(&self) -> bool {
         self.lock().conns.values().any(|c| c.browser.is_some())
+    }
+
+    pub fn refuse_browser(&self, update: Update) {
+        self.lock().last_refusal = Some(update);
+    }
+
+    pub fn forget_last_refusal(&self) {
+        self.lock().last_refusal = None;
+    }
+
+    pub fn last_refusal(&self) -> Option<Update> {
+        self.lock().last_refusal
     }
 
     pub fn close_browser(&self, browser: &str) {
@@ -349,6 +392,17 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::mpsc::sync_channel;
     use std::sync::Arc;
+
+    #[test]
+    fn a_refusal_holds_until_forgotten() {
+        let hub = Hub::default();
+        assert_eq!(hub.last_refusal(), None);
+        hub.refuse_browser(Update::Extension);
+        hub.refuse_browser(Update::Tori);
+        assert_eq!(hub.last_refusal(), Some(Update::Tori));
+        hub.forget_last_refusal();
+        assert_eq!(hub.last_refusal(), None);
+    }
 
     #[test]
     fn channels_round_trip_through_their_wire_names() {

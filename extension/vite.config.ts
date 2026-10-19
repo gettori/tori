@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 
 // @ts-expect-error process is a nodejs global
 const target: string = process.env.TORI_TARGET ?? "chrome";
+// Chrome's build without the key, since the store item already fixes the id.
+const store = target === "store";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url));
 const json = (path: string) => JSON.parse(read(path).toString());
@@ -27,7 +29,12 @@ const manifest = (): Plugin => ({
       const page = bundle[name];
       if (page?.type === "chunk") page.code = `(() => {\n${page.code}\n})();\n`;
     }
-    const merged = { ...json("./manifests/base.json"), ...json(`./manifests/${target}.json`), version };
+    const merged = {
+      ...json("./manifests/base.json"),
+      ...json(`./manifests/${store ? "chrome" : target}.json`),
+      version,
+    };
+    if (store) delete merged.key;
     this.emitFile({ type: "asset", fileName: "manifest.json", source: JSON.stringify(merged, null, 2) });
     for (const [size, file] of Object.entries(ICONS)) {
       this.emitFile({ type: "asset", fileName: `icons/${size}.png`, source: read(`../src-tauri/icons/${file}`) });
@@ -35,29 +42,32 @@ const manifest = (): Plugin => ({
   },
 });
 
-export default defineConfig(({ mode }) => ({
-  plugins: [solid(), manifest()],
-  publicDir: false,
-  define: {
-    __HOST__: JSON.stringify(mode === "development" ? "app.gettori.tori_dev" : "app.gettori.tori"),
-  },
-  build: {
-    outDir: `dist/${target}`,
-    emptyOutDir: true,
-    rolldownOptions: {
-      input: {
-        background: "src/background.ts",
-        options: "options.html",
-        picker: "src/picker/index.ts",
-        pagelog: "src/pagelog.ts",
-        inspect: "src/inspect.ts",
-      },
-      output: {
-        // The manifest names the worker and the worker names the picker, the page log and the inspect script by a fixed path.
-        entryFileNames: "[name].js",
-        chunkFileNames: "chunks/[name]-[hash].js",
-        assetFileNames: "assets/[name]-[hash][extname]",
+export default defineConfig(({ mode }) => {
+  if (store && mode === "development") throw new Error("the store build talks to the release host only");
+  return {
+    plugins: [solid(), manifest()],
+    publicDir: false,
+    define: {
+      __HOST__: JSON.stringify(mode === "development" ? "app.gettori.tori_dev" : "app.gettori.tori"),
+    },
+    build: {
+      outDir: `dist/${target}`,
+      emptyOutDir: true,
+      rolldownOptions: {
+        input: {
+          background: "src/background.ts",
+          options: "options.html",
+          picker: "src/picker/index.ts",
+          pagelog: "src/pagelog.ts",
+          inspect: "src/inspect.ts",
+        },
+        output: {
+          // The manifest names the worker and the worker names the picker, the page log and the inspect script by a fixed path.
+          entryFileNames: "[name].js",
+          chunkFileNames: "chunks/[name]-[hash].js",
+          assetFileNames: "assets/[name]-[hash][extname]",
+        },
       },
     },
-  },
-}));
+  };
+});

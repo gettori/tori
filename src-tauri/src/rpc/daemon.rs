@@ -30,7 +30,9 @@ use super::frame::{
 };
 use super::hub::{Channel, ConnId, Hub};
 use super::outbox::{Outbox, OUTBOX_BYTES};
-use super::server::{handle_first, params, permit, subscribe, unsubscribe, Dispatch, Server, AUTH_TIMEOUT};
+use super::server::{
+    browser_refused, handle_first, params, permit, subscribe, unsubscribe, Dispatch, Server, AUTH_TIMEOUT,
+};
 use super::table::CallerKind;
 use super::transport::{Stream, Transport, UnixTransport};
 use crate::chat::serve::Served;
@@ -834,6 +836,7 @@ impl Dispatch for Daemon {
                 self.composer.probe_soon()
             }),
             "unsubscribe" => unsubscribe(&self.hub, conn, &req.params),
+            "browser.refused" => browser_refused(&self.hub, principal, &req.params),
             "auth" => Err(RpcError::new(INVALID_REQUEST, "already authenticated")),
             _ if self.table.get().is_some() => match self.table.get() {
                 Some(table) => table.call(principal, req),
