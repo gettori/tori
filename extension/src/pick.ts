@@ -23,16 +23,30 @@ export type Shot = { images: string[]; why?: string };
 
 export type Sent = { title: string } | { error: string };
 
-export type ToggleRequest = { type: "picker.toggle" };
+export type Shortcut = { label: string; aria: string };
+
+export type TrayState = {
+  picks: Pick[];
+  branch: string;
+  shortcut: Shortcut | null;
+  status: string | null;
+  screenshots: boolean;
+};
+
+export type PickerRequest = { type: "picker.toggle" } | { type: "picker.open" };
 
 export type BatchRequest =
   | { type: "batch.get" }
   | { type: "batch.add"; pick: Pick }
+  | { type: "batch.remove"; index: number }
   | { type: "batch.clear" }
   | { type: "shot"; rect: Rect; viewport: number }
   | { type: "markdown" }
   | { type: "chats" }
   | { type: "send"; chat: Chat }
-  | { type: "reveal"; id: string };
+  | { type: "reveal"; id: string }
+  | { type: "options" }
+  | { type: "screenshots" };
 
-export type PickRequest = { type: "pick"; tabId: number };
+// Answered with null when Tori is reachable, otherwise the sentence saying why not.
+export type ConnectionRequest = { type: "connection" };

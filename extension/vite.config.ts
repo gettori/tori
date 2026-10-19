@@ -38,7 +38,7 @@ export default defineConfig(({ mode }) => ({
     outDir: `dist/${target}`,
     emptyOutDir: true,
     rolldownOptions: {
-      input: { background: "src/background.ts", popup: "popup.html", picker: "src/picker/index.ts" },
+      input: { background: "src/background.ts", options: "options.html", picker: "src/picker/index.ts" },
       output: {
         // The manifest names the worker and the worker names the picker by a fixed path.
         entryFileNames: "[name].js",
