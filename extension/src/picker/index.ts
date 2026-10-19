@@ -1,5 +1,18 @@
 import TOKENS from "../tokens.css?raw";
-import type { BatchRequest, Chat, Pick, PickerRequest, Sent, Shortcut, Shot, TrayState } from "../pick";
+import type {
+  BatchRequest,
+  Chat,
+  LogChannel,
+  LogEntry,
+  LogKind,
+  LogMessage,
+  Pick,
+  PickerRequest,
+  Sent,
+  Shortcut,
+  Shot,
+  TrayState,
+} from "../pick";
 import { capture, insideSensitive } from "./capture";
 
 // Injected again on every pick request; the first copy in this world answers.
@@ -53,6 +66,7 @@ button:focus-visible { outline: 2px solid var(--tori-focus); outline-offset: 2px
 .note { display: flex; gap: 5px; align-items: center; font-size: var(--tori-fs-1); color: var(--tori-warn-tx); }
 .status { flex: none; display: flex; align-items: center; gap: var(--tori-sp-2); padding: var(--tori-sp-2) var(--tori-sp-4); border-top: 1px solid var(--tori-bd); font-size: var(--tori-fs-2); color: var(--tori-fg-2); }
 .status .info { display: flex; color: var(--tori-acc-tx); }
+.status .warn { display: flex; color: var(--tori-warn-tx); }
 .dot { flex: none; width: 7px; height: 7px; border-radius: 4px; background: var(--tori-fg-3); }
 .dot.live { background: var(--tori-acc); animation: tori-pulse 1.6s ease-in-out infinite; }
 .spin { animation: tori-spin .8s linear infinite; }
@@ -134,6 +148,13 @@ const DRAFTING = "Opening a new chat in Tori\u2026";
 const DRAFTED = "New chat open in Tori";
 const DRAFT_NEXT = "Pick a model and send it there.";
 const TEXTAREA_ROWS = 6;
+const CHANNEL: LogChannel = "tori:page-log";
+const LOG_KINDS: [kinds: LogKind[], one: string, many: string][] = [
+  [["error", "uncaught", "rejection"], "error", "errors"],
+  [["overlay"], "build error", "build errors"],
+  [["warn"], "warning", "warnings"],
+  [["request"], "failed request", "failed requests"],
+];
 const EDGE = 8;
 const CARET_X = 28;
 
@@ -234,6 +255,23 @@ const clamp = (n: number, low: number, high: number) => Math.max(low, Math.min(n
 
 const comments = (n: number) => `${n} comment${n === 1 ? "" : "s"}`;
 
+const carried = (count: number, withLog: boolean) =>
+  !withLog ? comments(count) : count ? `${comments(count)} and the page log` : "the page log";
+
+const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+function summary(log: LogEntry[]): string {
+  return LOG_KINDS.map(([kinds, one, many]) => {
+    const n = log.filter((e) => kinds.includes(e.kind)).reduce((sum, e) => sum + e.count, 0);
+    return n ? `${n} ${n === 1 ? one : many}` : "";
+  })
+    .filter(Boolean)
+    .join(", ");
+}
+
+const tell = (message: LogMessage) =>
+  document.dispatchEvent(new CustomEvent(CHANNEL, { detail: JSON.stringify(message) }));
+
 const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
 
 const quoted = (text: string) => `\u201c${oneLine(text)}\u201d`;
@@ -298,9 +336,13 @@ function start() {
   let shortcut: Shortcut | null = null;
   let status: string | null | undefined;
   let screenshots = true;
+  let pageLog = true;
+  let log: LogEntry[] = [];
+  let asking = false;
+  let replied = false;
   let chats: Chat[] | null = null;
   let chosen = "";
-  let sent: { chat: Chat | null; count: number } | null = null;
+  let sent: { chat: Chat | null; count: number; log: boolean } | null = null;
   let sending = false;
   let drafting = false;
   let error = "";
@@ -312,6 +354,40 @@ function start() {
   };
 
   const ours = (e: Event) => e.composedPath().includes(host);
+
+  const onWorktree = () => status === null;
+
+  const logged = () => pageLog && onWorktree() && log.length > 0;
+
+  // Picking with nothing picked yet keeps its own hint.
+  const canSend = () => picks.length > 0 || (mode !== "pick" && logged());
+
+  // The page log answers inside dispatchEvent, so no answer means it is not running on this load.
+  const pullLog = () => {
+    if (!pageLog) {
+      log = [];
+      return;
+    }
+    asking = true;
+    replied = false;
+    tell({ type: "ask" });
+    asking = false;
+    if (!replied) log = [];
+  };
+
+  document.addEventListener(CHANNEL, (e) => {
+    if (!(e instanceof CustomEvent) || typeof e.detail !== "string") return;
+    let message: LogMessage;
+    try {
+      message = JSON.parse(e.detail) as LogMessage;
+    } catch {
+      return;
+    }
+    if (message.type !== "entries") return;
+    replied = true;
+    log = message.entries;
+    if (!asking && !sending && tray.isConnected) renderTray();
+  });
 
   // In the top layer, above any z-index the page uses.
   const mount = () => {
@@ -379,7 +455,7 @@ function start() {
 
   const statusLine = (): HTMLElement => {
     const line = el("div", { className: "status" });
-    if (sending) line.append(icon("spinner"), drafting ? DRAFTING : `Sending ${comments(picks.length)}\u2026`);
+    if (sending) line.append(icon("spinner"), drafting ? DRAFTING : `Sending ${carried(picks.length, logged())}\u2026`);
     else if (flash) line.append(flash);
     else if (mode === "pick") line.append(el("span", { className: "dot live" }), "Picking. Esc stops.");
     else if (restored) line.append(el("span", { className: "info" }, icon("info", 14)), KEEP_PICKING);
@@ -389,6 +465,14 @@ function start() {
     }
     return line;
   };
+
+  const logLine = (): HTMLElement =>
+    el(
+      "div",
+      { className: "status" },
+      el("span", { className: "warn" }, icon("alert", 14)),
+      `Page log: ${summary(log)}`,
+    );
 
   const chooser = (list: Chat[]): HTMLElement => {
     const group = el("div", { className: "chooser" });
@@ -435,7 +519,7 @@ function start() {
   };
 
   const choice = (): HTMLElement[] => {
-    if (!picks.length || !chats) return [];
+    if (!canSend() || !chats) return [];
     if (!chats.length) {
       const none = el("span", { className: "grow", textContent: "No live chat in this worktree" });
       return [el("div", { className: "send" }, el("div", { className: "none" }, icon("chat"), none, newChat()))];
@@ -446,9 +530,9 @@ function start() {
   };
 
   const actions = (joined: boolean): HTMLElement => {
-    const area = el("div", { className: joined ? "act joined" : picks.length ? "act" : "act bare" });
+    const area = el("div", { className: joined ? "act joined" : canSend() ? "act" : "act bare" });
     if (error) area.append(alert(error));
-    if (picks.length && chats?.length) {
+    if (canSend() && chats?.length) {
       const only = chats.length === 1 ? chats[0] : null;
       const go = button("primary go", "", () => void sendTo(chats!.find((c) => c.id === chosen)!), "send");
       go.disabled = sending;
@@ -461,7 +545,7 @@ function start() {
     const cancel = button("ghost", "Cancel", cancelBatch, "cancel");
     cancel.disabled = sending;
     const foot = el("div", { className: "foot" }, cancel);
-    if (picks.length) {
+    if (canSend()) {
       const copy = button("secondary", "Copy as Markdown", () => void copyBatch(), "copy");
       copy.disabled = sending;
       foot.append(copy);
@@ -470,7 +554,8 @@ function start() {
     return area;
   };
 
-  const sentView = ({ chat, count }: { chat: Chat | null; count: number }): HTMLElement => {
+  const sentView = ({ chat, count, log: withLog }: NonNullable<typeof sent>): HTMLElement => {
+    const what = capital(carried(count, withLog));
     const done = el(
       "div",
       { className: "done-row" },
@@ -479,7 +564,7 @@ function start() {
         "span",
         { className: "done-text" },
         el("span", { className: "done-title", textContent: chat ? `Sent to ${chat.title}` : DRAFTED }),
-        el("span", { className: "sub", textContent: chat ? comments(count) : `${comments(count)}. ${DRAFT_NEXT}` }),
+        el("span", { className: "sub", textContent: chat ? what : `${what}. ${DRAFT_NEXT}` }),
       ),
     );
     const actions = el("div", { className: "actions" }, button("secondary", "Close", leave, "close"));
@@ -489,11 +574,11 @@ function start() {
 
   const renderTray = (focus?: string) => {
     const waiting = mode === "ready" && status === undefined;
-    if ((!picks.length && mode !== "pick" && mode !== "ready" && !sent) || waiting) {
+    if ((!picks.length && (mode === null || (!logged() && mode !== "pick" && mode !== "ready")) && !sent) || waiting) {
       tray.remove();
       return;
     }
-    if (picks.length && chats === null) loadChats();
+    if (canSend() && chats === null) loadChats();
     const keep = focus ?? (root.activeElement as HTMLElement | null)?.dataset?.key;
     if (sent && !picks.length) tray.replaceChildren(header(), sentView(sent));
     else if (mode === "ready" && status) {
@@ -505,7 +590,14 @@ function start() {
         go.append(el("kbd", { textContent: shortcut.label }));
         go.setAttribute("aria-keyshortcuts", shortcut.aria);
       }
-      tray.replaceChildren(header(), el("div", { className: "ready" }, go));
+      const ready = el("div", { className: "ready" }, go);
+      if (!logged()) tray.replaceChildren(header(), ready);
+      else {
+        const choosing = choice();
+        const copied = flash ? [el("div", { className: "status" }, flash)] : [];
+        const body = el("div", { className: "body" }, ready, ...copied, logLine(), ...choosing);
+        tray.replaceChildren(header(), body, actions(choosing.length > 0));
+      }
     } else if (!picks.length) {
       const hint = el("div", { className: "hint" }, el("span", { className: "dot live" }), PICKING);
       tray.replaceChildren(header(), hint, actions(false));
@@ -514,7 +606,7 @@ function start() {
       list.setAttribute("aria-label", "Comments");
       // One scroller under the header and Send outside it, so a short window still reaches Send.
       const choosing = choice();
-      const body = el("div", { className: "body" }, list, statusLine(), ...choosing);
+      const body = el("div", { className: "body" }, list, statusLine(), ...(logged() ? [logLine()] : []), ...choosing);
       const scrolled = tray.querySelector(".body")?.scrollTop ?? 0;
       tray.replaceChildren(header(), body, actions(choosing.length > 0));
       body.scrollTop = scrolled;
@@ -523,7 +615,7 @@ function start() {
     mount();
     say(
       sent && !picks.length
-        ? `${sent.chat ? `Sent to ${sent.chat.title}` : DRAFTED}, ${comments(sent.count)}`
+        ? `${sent.chat ? `Sent to ${sent.chat.title}` : DRAFTED}, ${carried(sent.count, sent.log)}`
         : (tray.querySelector(".status, .hint")?.textContent ?? ""),
     );
     if (keep) tray.querySelector<HTMLElement>(`[data-key="${CSS.escape(keep)}"]`)?.focus();
@@ -590,12 +682,19 @@ function start() {
     sending = true;
     drafting = !chat;
     error = "";
+    pullLog();
+    const said = logged() ? log : [];
     renderTray();
-    const outcome = await ask<Sent | null>({ type: "send", chat });
+    const outcome = await ask<Sent | null>({ type: "send", chat, log: said });
     sending = false;
     drafting = false;
     if (outcome && "title" in outcome) {
-      sent = { chat: chat && { ...chat, title: outcome.title }, count: picks.length };
+      sent = { chat: chat && { ...chat, title: outcome.title }, count: picks.length, log: outcome.logged };
+      if (outcome.logged) {
+        const top = Math.max(...said.map((e) => e.seq));
+        tell({ type: "mark", seq: top });
+        log = log.filter((e) => e.seq > top);
+      }
       picks = [];
       targets = [];
       flash = "";
@@ -614,7 +713,8 @@ function start() {
 
   const copyBatch = async () => {
     try {
-      await navigator.clipboard.writeText(await ask<string>({ type: "markdown" }));
+      pullLog();
+      await navigator.clipboard.writeText(await ask<string>({ type: "markdown", log: logged() ? log : [] }));
       flash = "Copied as Markdown";
       error = "";
     } catch {
@@ -637,8 +737,11 @@ function start() {
     targets.splice(i, 1);
     flash = "";
     error = "";
-    if (!picks.length && mode !== "pick") leave();
-    else refresh(picks.length ? `remove-${Math.min(i, picks.length - 1)}` : "cancel");
+    if (!picks.length && mode !== "pick" && !logged()) leave();
+    else {
+      if (!picks.length && mode !== "pick") rest();
+      refresh(picks.length ? `remove-${Math.min(i, picks.length - 1)}` : "cancel");
+    }
   };
 
   const hideOutline = () => {
@@ -861,11 +964,12 @@ function start() {
 
   const stop = () => {
     if (mode === "pick") listen(false);
-    if (!picks.length) {
+    if (!picks.length && !logged()) {
       leave();
       return;
     }
-    mode = "idle";
+    if (picks.length) mode = "idle";
+    else rest();
     flash = "";
     closeBox();
     closeChip();
@@ -890,6 +994,11 @@ function start() {
     host.remove();
   };
 
+  const rest = () => {
+    mode = "ready";
+    addEventListener("keydown", key as EventListener, true);
+  };
+
   const enter = () => {
     if (mode !== "pick") listen(true);
     mode = "pick";
@@ -904,8 +1013,7 @@ function start() {
     else if (mode === "pick") stop();
     else if (mode === "idle") enter();
     else {
-      mode = "ready";
-      addEventListener("keydown", key as EventListener, true);
+      rest();
       refresh();
     }
   };
@@ -918,7 +1026,8 @@ function start() {
 
   void ask<TrayState | null>({ type: "batch.get" }).then((opened) => {
     if (!opened) return;
-    ({ picks, branch, shortcut, status, screenshots } = opened);
+    ({ picks, branch, shortcut, status, screenshots, pageLog } = opened);
+    pullLog();
     targets = picks.map((p) => find(p.selector));
     if ((mode === null || mode === "ready") && picks.length) {
       mode = "idle";

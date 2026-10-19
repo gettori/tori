@@ -15,13 +15,22 @@ export type Pick = {
   dpr: number;
   theme: "light" | "dark";
   images: string[];
+  at: number;
 };
+
+export type LogKind = "error" | "warn" | "uncaught" | "rejection" | "request" | "overlay";
+
+export type LogEntry = { seq: number; at: number; kind: LogKind; text: string; count: number };
+
+// One event name both ways between the page log in the main world and the picker; `detail` is this, as JSON.
+export type LogChannel = "tori:page-log";
+export type LogMessage = { type: "ask" } | { type: "mark"; seq: number } | { type: "entries"; entries: LogEntry[] };
 
 export type Chat = { id: string; title: string; agent: string };
 
 export type Shot = { images: string[]; why?: string };
 
-export type Sent = { title: string } | { error: string };
+export type Sent = { title: string; logged: boolean } | { error: string };
 
 export type Shortcut = { label: string; aria: string };
 
@@ -31,6 +40,7 @@ export type TrayState = {
   shortcut: Shortcut | null;
   status: string | null;
   screenshots: boolean;
+  pageLog: boolean;
 };
 
 export type PickerRequest = { type: "picker.toggle" } | { type: "picker.open" };
@@ -41,9 +51,9 @@ export type BatchRequest =
   | { type: "batch.remove"; index: number }
   | { type: "batch.clear" }
   | { type: "shot"; rect: Rect; viewport: number }
-  | { type: "markdown" }
+  | { type: "markdown"; log: LogEntry[] }
   | { type: "chats" }
-  | { type: "send"; chat: Chat | null }
+  | { type: "send"; chat: Chat | null; log: LogEntry[] }
   | { type: "reveal"; id: string }
   | { type: "options" }
   | { type: "screenshots" };

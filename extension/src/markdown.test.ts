@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vite-plus/test";
 import { batchToMarkdown } from "./markdown";
-import type { Pick } from "./pick";
+import type { LogEntry, Pick } from "./pick";
 
 const pick = (over: Partial<Pick> = {}): Pick => ({
   comment: "Make this bolder",
@@ -17,6 +17,7 @@ const pick = (over: Partial<Pick> = {}): Pick => ({
   dpr: 2,
   theme: "dark",
   images: [],
+  at: 1_000_000,
   ...over,
 });
 
@@ -80,5 +81,52 @@ describe("batchToMarkdown", () => {
     expect(sent).toContain("screenshots: [Image 3] viewport, [Image 4] element");
     expect(sent.match(/screenshots:/g)).toHaveLength(2);
     expect(batchToMarkdown(picks)).not.toContain("screenshots:");
+  });
+
+  const entry = (over: Partial<LogEntry> = {}): LogEntry => ({
+    seq: 1,
+    at: 1_002_300,
+    kind: "error",
+    text: "TypeError: x is undefined",
+    count: 1,
+    ...over,
+  });
+
+  it("leaves the page log out when there is none", () => {
+    expect(batchToMarkdown([pick()], false, [])).not.toContain("Page log");
+  });
+
+  it("times the page log from the first pick, before it negative", () => {
+    const md = batchToMarkdown([pick(), pick({ at: 1_009_000 })], false, [
+      entry({ at: 996_600, kind: "warn", text: "Slow" }),
+      entry({ count: 3 }),
+    ]);
+    expect(md).toContain("### 2. Make this bolder\n");
+    expect(md.endsWith("### Page log\n\n```\n-3.4s warn: Slow\n+2.3s error: TypeError: x is undefined x3\n```")).toBe(
+      true,
+    );
+  });
+
+  it("times a log with no picks from its first entry and indents stack lines", () => {
+    const md = batchToMarkdown([], false, [
+      entry({ text: "TypeError: boom\n    at App (src/App.tsx:3:9)" }),
+      entry({ seq: 2, at: 1_003_500, kind: "request", text: "GET /api/me?x=1 -> 500" }),
+    ]);
+    expect(md).toBe(
+      [
+        "### Page log",
+        "",
+        "```",
+        "+0.0s error: TypeError: boom",
+        "      at App (src/App.tsx:3:9)",
+        "+1.2s request: GET /api/me?x=1 -> 500",
+        "```",
+      ].join("\n"),
+    );
+  });
+
+  it("fences the page log past backticks in a message", () => {
+    const md = batchToMarkdown([], false, [entry({ text: "bad ``` fence" })]);
+    expect(md).toContain("````\n+0.0s error: bad ``` fence\n````");
   });
 });

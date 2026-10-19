@@ -121,5 +121,6 @@ export function capture(
     viewport: { width: innerWidth, height: innerHeight },
     dpr: devicePixelRatio,
     theme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
+    at: Date.now(),
   };
 }

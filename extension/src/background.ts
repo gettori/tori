@@ -1,11 +1,23 @@
 import { SPACE_COLORS, spaceHue } from "../../src/utils/spaceTint";
 import { dropImage, dropImages, getImage, putImage } from "./images";
 import { batchToMarkdown } from "./markdown";
-import type { BatchRequest, Chat, ConnectionRequest, Pick, PickerRequest, Rect, Sent, Shot, TrayState } from "./pick";
+import type {
+  BatchRequest,
+  Chat,
+  ConnectionRequest,
+  LogEntry,
+  Pick,
+  PickerRequest,
+  Rect,
+  Sent,
+  Shot,
+  TrayState,
+} from "./pick";
 import { pickShortcut } from "./shortcut";
 import {
   CLOSED,
   GROUPS_KEY,
+  LOG_KEY,
   NOT_RUNNING,
   NOT_SET_UP,
   NOT_WORKTREE,
@@ -246,6 +258,31 @@ async function openTray(tab: chrome.tabs.Tab) {
 }
 
 const screenshotsOn = async () => (await chrome.storage.local.get(SHOTS_KEY))[SHOTS_KEY] !== false;
+const pageLogOn = async () => (await chrome.storage.local.get(LOG_KEY))[LOG_KEY] !== false;
+
+const PAGE_LOG = "pagelog";
+
+async function registerPageLog() {
+  const on = await pageLogOn();
+  const there = (await chrome.scripting.getRegisteredContentScripts({ ids: [PAGE_LOG] })).length > 0;
+  if (on && !there) {
+    await chrome.scripting.registerContentScripts([
+      {
+        id: PAGE_LOG,
+        js: ["pagelog.js"],
+        matches: chrome.runtime.getManifest().host_permissions ?? [],
+        runAt: "document_start",
+        world: "MAIN",
+      },
+    ]);
+  } else if (!on && there) await chrome.scripting.unregisterContentScripts({ ids: [PAGE_LOG] });
+}
+
+// Install, startup and the switch can land together; two checks at once would both register.
+let registering: Promise<unknown> = Promise.resolve();
+function syncPageLog() {
+  registering = registering.then(registerPageLog).catch((e: unknown) => console.error("page log registration", e));
+}
 
 // A reload ends pick mode but keeps the batch, so its tray comes back.
 async function restore(tab: chrome.tabs.Tab) {
@@ -331,24 +368,27 @@ async function upload(key: string, tab: TabTag): Promise<string> {
 }
 
 // No chat opens a new chat draft in Tori, which the person sends from there.
-async function sendBatch(tab: chrome.tabs.Tab, chat: Chat | null): Promise<Sent> {
+async function sendBatch(tab: chrome.tabs.Tab, chat: Chat | null, log: LogEntry[]): Promise<Sent> {
   const held = await batch(tab.id!);
-  if (!held?.picks.length) return { error: "nothing picked" };
+  const picks = held?.picks ?? [];
+  const said = (await pageLogOn()) ? log : [];
+  if (!picks.length && !said.length)
+    return { error: log.length ? "the page log is off in the options" : "nothing picked" };
   const tag = tagOf(tab);
   try {
     const pending = chat ? ((await call("session.pending", { id: chat.id }, tag)) as unknown[]) : [];
     if (chat && pending.length) return { error: `${chat.title} is waiting on you in Tori; answer it first` };
     if (!chat) await call("chat.draft", { text: "", check: true }, tag);
     const attach: string[] = [];
-    for (const key of held.picks.flatMap((p) => p.images)) attach.push(await upload(key, tag));
-    const text = batchToMarkdown(held.picks, true);
+    for (const key of picks.flatMap((p) => p.images)) attach.push(await upload(key, tag));
+    const text = batchToMarkdown(picks, true, said);
     if (chat) await call("session.steer", { id: chat.id, text, attach }, tag);
     else await call("chat.draft", { text, attach }, tag);
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
   await dropBatch(tab.id!);
-  return { title: chat?.title ?? "a new chat" };
+  return { title: chat?.title ?? "a new chat", logged: said.length > 0 };
 }
 
 async function opened(tab: chrome.tabs.Tab & { id: number }): Promise<TrayState> {
@@ -359,6 +399,7 @@ async function opened(tab: chrome.tabs.Tab & { id: number }): Promise<TrayState>
     shortcut: await pickShortcut(),
     status: state.kind === "worktree" ? null : sentenceOf(state.title),
     screenshots: await screenshotsOn(),
+    pageLog: await pageLogOn(),
   };
 }
 
@@ -394,11 +435,11 @@ async function handle(message: BatchRequest, tab: chrome.tabs.Tab & { id: number
     case "shot":
       return shoot(tab, message.rect, message.viewport);
     case "markdown":
-      return batchToMarkdown((await batch(tab.id))?.picks ?? []);
+      return batchToMarkdown((await batch(tab.id))?.picks ?? [], false, (await pageLogOn()) ? message.log : []);
     case "chats":
       return chats(tab);
     case "send":
-      return sendBatch(tab, message.chat);
+      return sendBatch(tab, message.chat, message.log);
     case "reveal":
       return call("window.reveal", { id: message.id }, tagOf(tab)).then(
         () => ({}),
@@ -426,8 +467,17 @@ function answer(message: ConnectionRequest | BatchRequest, sender: chrome.runtim
   return tab?.id === undefined ? Promise.resolve(null) : handle(message, { ...tab, id: tab.id });
 }
 
-chrome.runtime.onInstalled.addListener(() => void refreshAll());
-chrome.runtime.onStartup.addListener(() => void refreshAll());
+chrome.runtime.onInstalled.addListener(() => {
+  void refreshAll();
+  syncPageLog();
+});
+chrome.runtime.onStartup.addListener(() => {
+  void refreshAll();
+  syncPageLog();
+});
+chrome.storage.onChanged.addListener((change, area) => {
+  if (area === "local" && LOG_KEY in change) syncPageLog();
+});
 chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
   if (change.url || change.status === "complete") void enqueue(tab);
   // Swallowed: the tab can close or navigate away before the script lands.

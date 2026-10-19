@@ -16,10 +16,15 @@ const ICONS: Record<string, string> = { "32": "32x32.png", "128": "128x128.png" 
 const manifest = (): Plugin => ({
   name: "tori-extension-manifest",
   generateBundle(_, bundle) {
-    const picker = bundle["picker.js"];
-    if (picker?.type === "chunk" && (picker.imports.length || picker.dynamicImports.length)) {
-      this.error(`picker.js is injected as a classic script and cannot import ${picker.imports.join(", ")}`);
+    for (const name of ["picker.js", "pagelog.js"]) {
+      const script = bundle[name];
+      if (script?.type === "chunk" && (script.imports.length || script.dynamicImports.length)) {
+        this.error(`${name} is injected as a classic script and cannot import ${script.imports.join(", ")}`);
+      }
     }
+    const page = bundle["pagelog.js"];
+    // It runs in the page's own world, where a top level var would be one of the page's globals.
+    if (page?.type === "chunk") page.code = `(() => {\n${page.code}\n})();\n`;
     const merged = { ...json("./manifests/base.json"), ...json(`./manifests/${target}.json`), version };
     this.emitFile({ type: "asset", fileName: "manifest.json", source: JSON.stringify(merged, null, 2) });
     for (const [size, file] of Object.entries(ICONS)) {
@@ -38,9 +43,14 @@ export default defineConfig(({ mode }) => ({
     outDir: `dist/${target}`,
     emptyOutDir: true,
     rolldownOptions: {
-      input: { background: "src/background.ts", options: "options.html", picker: "src/picker/index.ts" },
+      input: {
+        background: "src/background.ts",
+        options: "options.html",
+        picker: "src/picker/index.ts",
+        pagelog: "src/pagelog.ts",
+      },
       output: {
-        // The manifest names the worker and the worker names the picker by a fixed path.
+        // The manifest names the worker and the worker names the picker and the page log by a fixed path.
         entryFileNames: "[name].js",
         chunkFileNames: "chunks/[name]-[hash].js",
         assetFileNames: "assets/[name]-[hash][extname]",
