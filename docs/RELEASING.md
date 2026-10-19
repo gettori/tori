@@ -232,4 +232,6 @@ answers "update the Tori extension", above it "update Tori".
 - `MIN_TORI` (`extension/src/tab.ts`) is the first Tori with Settings >
   Browser, shown on the extension's welcome and options pages. Until the
   release that ships the extension is cut it holds a guess; set it to that
-  release's version in its release PR.
+  release's version in its release PR, and the same number in
+  `extension/store/listing.md` (twice, plus the dashboard copy) and on
+  tori-web's `docs/browser/extension` page.
