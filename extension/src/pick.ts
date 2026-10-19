@@ -1,5 +1,14 @@
 export type Rect = { x: number; y: number; width: number; height: number };
 
+export type Where = {
+  chain: string[];
+  props: Record<string, string> | null;
+  source: string | null;
+  testId: string;
+  id: string;
+  label: string;
+};
+
 export type Pick = {
   comment: string;
   kind: "element" | "selection";
@@ -14,6 +23,7 @@ export type Pick = {
   viewport: { width: number; height: number };
   dpr: number;
   theme: "light" | "dark";
+  where?: Where;
   images: string[];
   at: number;
 };
@@ -25,6 +35,13 @@ export type LogEntry = { seq: number; at: number; kind: LogKind; text: string; c
 // One event name both ways between the page log in the main world and the picker; `detail` is this, as JSON.
 export type LogChannel = "tori:page-log";
 export type LogMessage = { type: "ask" } | { type: "mark"; seq: number } | { type: "entries"; entries: LogEntry[] };
+
+// The picker dispatches `ask` on the picked element and the inspect script in the
+// main world answers on `document` before dispatchEvent returns; `detail` is this, as JSON.
+export type InspectChannel = "tori:inspect";
+export type InspectMessage =
+  | { type: "ask"; sensitive: boolean }
+  | { type: "found"; chain: string[]; props: Record<string, string> | null; source: string | null };
 
 export type Chat = { id: string; title: string; agent: string };
 
