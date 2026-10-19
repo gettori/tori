@@ -97,6 +97,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "list_branches":
       case "list_project_files":
       case "fs_read_dir_compact":
+      case "web_setup":
         return Promise.resolve([]);
       case "git_ahead_behind":
         return Promise.resolve({ ahead: 0, behind: 0, has_upstream: false });

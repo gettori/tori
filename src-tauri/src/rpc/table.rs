@@ -14,8 +14,8 @@ use super::server::{
     ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams, ModelParams, NeedsYouSeenParams,
     OpenParams, PendingParams, PortParams, PrCreateParams, PrGetParams, PrMergeParams, PrWatchParams,
     ProjectIconParams, ProjectSetParams, ProvenanceParams, RevealParams, ReviewMarkParams, ReviewSubmitParams,
-    SessionAnswerParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams,
-    UnitsSyncParams, WaitParams, WorktreeParams, UNITS_GIT_MAX,
+    SessionAnswerParams, SetupParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams,
+    UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, UNITS_GIT_MAX,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -458,6 +458,15 @@ pub static METHODS: &[Method] = &[
         refusal: None,
         outward: false,
         call: |b, _, v| b.chat_draft(params(v)?),
+    },
+    Method {
+        name: "web.setup",
+        description: "The tab's app in its worktree: framework, bundler, and the code-inspector-plugin config line and install command, or null when Tori cannot tell.",
+        params: schema::<SetupParams>,
+        callers: BROWSER,
+        refusal: None,
+        outward: false,
+        call: |b, _, v| b.web_setup(params(v)?),
     },
     Method {
         name: "attachment.write",

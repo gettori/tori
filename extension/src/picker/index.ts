@@ -9,11 +9,12 @@ import type {
   Pick,
   PickerRequest,
   Sent,
+  Setup,
   Shortcut,
   Shot,
   TrayState,
 } from "../pick";
-import { capture, insideSensitive } from "./capture";
+import { capture, hasLine, insideSensitive } from "./capture";
 
 // Injected again on every pick request; the first copy in this world answers.
 const loaded = globalThis as { toriPicker?: boolean };
@@ -67,6 +68,8 @@ button:focus-visible { outline: 2px solid var(--tori-focus); outline-offset: 2px
 .status { flex: none; display: flex; align-items: center; gap: var(--tori-sp-2); padding: var(--tori-sp-2) var(--tori-sp-4); border-top: 1px solid var(--tori-bd); font-size: var(--tori-fs-2); color: var(--tori-fg-2); }
 .status .info { display: flex; color: var(--tori-acc-tx); }
 .status .warn { display: flex; color: var(--tori-warn-tx); }
+.status .grow { flex: 1; min-width: 0; }
+.status .ghost { height: 24px; margin: -4px -8px -4px 0; padding: 0 8px; }
 .dot { flex: none; width: 7px; height: 7px; border-radius: 4px; background: var(--tori-fg-3); }
 .dot.live { background: var(--tori-acc); animation: tori-pulse 1.6s ease-in-out infinite; }
 .spin { animation: tori-spin .8s linear infinite; }
@@ -347,6 +350,7 @@ function start() {
   let drafting = false;
   let error = "";
   let flash = "";
+  let setup: Setup | null | undefined;
   let down: { x: number; y: number } | null = null;
 
   const say = (text = "") => {
@@ -473,6 +477,42 @@ function start() {
       el("span", { className: "warn" }, icon("alert", 14)),
       `Page log: ${summary(log)}`,
     );
+
+  const chainWithoutLine = () => picks.some((p) => p.where?.chain.length && !hasLine(p.where.source));
+
+  const loadSetup = () => {
+    setup = null;
+    void ask<Setup | null>({ type: "setup" }).then((found) => {
+      setup = found;
+      if (found) renderTray();
+    });
+  };
+
+  const copySetup = async (app: Setup) => {
+    try {
+      await navigator.clipboard.writeText(`${app.install}\n\n// ${app.config}\n${app.snippet}\n`);
+      flash = "Copied the plugin setup";
+      error = "";
+    } catch {
+      error = "Could not copy";
+    }
+    renderTray();
+  };
+
+  const setupLine = (): HTMLElement[] => {
+    if (!setup || setup.plugin || setup.own_lines || !chainWithoutLine()) return [];
+    const app = setup;
+    const copy = button("ghost", "Copy", () => void copySetup(app), "setup-copy");
+    return [
+      el(
+        "div",
+        { className: "status" },
+        el("span", { className: "info" }, icon("info", 14)),
+        el("span", { className: "grow", textContent: `File and line: add code-inspector-plugin to ${app.config}` }),
+        copy,
+      ),
+    ];
+  };
 
   const chooser = (list: Chat[]): HTMLElement => {
     const group = el("div", { className: "chooser" });
@@ -606,7 +646,16 @@ function start() {
       list.setAttribute("aria-label", "Comments");
       // One scroller under the header and Send outside it, so a short window still reaches Send.
       const choosing = choice();
-      const body = el("div", { className: "body" }, list, statusLine(), ...(logged() ? [logLine()] : []), ...choosing);
+      if (setup === undefined && chainWithoutLine()) loadSetup();
+      const body = el(
+        "div",
+        { className: "body" },
+        list,
+        statusLine(),
+        ...setupLine(),
+        ...(logged() ? [logLine()] : []),
+        ...choosing,
+      );
       const scrolled = tray.querySelector(".body")?.scrollTop ?? 0;
       tray.replaceChildren(header(), body, actions(choosing.length > 0));
       body.scrollTop = scrolled;
