@@ -22,6 +22,7 @@ import {
   NOT_RUNNING,
   NOT_SET_UP,
   NOT_WORKTREE,
+  PROTOCOL,
   SHOTS_KEY,
   sentenceOf,
   label,
@@ -109,7 +110,7 @@ function send(method: string, params: object, tab?: TabTag): Promise<unknown> {
   return new Promise((resolve, reject) => {
     waiting.set(id, (reply) => (reply.error ? reject(new Error(reply.error.message)) : resolve(reply.result)));
     try {
-      open().postMessage({ jsonrpc: "2.0", id, method, params, tab });
+      open().postMessage({ jsonrpc: "2.0", id, method, params, tab, protocol: PROTOCOL });
     } catch {
       // The host went away before onDisconnect ran.
       port = null;

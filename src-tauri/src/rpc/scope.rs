@@ -90,6 +90,7 @@ pub(super) fn call(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rpc::hub::Update;
     use crate::rpc::server::tests::StubBackend;
     use crate::rpc::server::Server;
     use crate::rpc::table::{CallerKind, METHODS};
@@ -223,6 +224,25 @@ mod tests {
             };
             assert_eq!(server(None).call(&principal, &req).unwrap_err().code, REFUSED);
         }
+    }
+
+    #[test]
+    fn a_call_that_gets_through_clears_the_hosts_last_refusal() {
+        let server = server(None);
+        let browser = Principal::Browser("b1".into());
+        let req = |method: &str, params: Value| Request {
+            jsonrpc: "2.0".into(),
+            id: Some(json!(1)),
+            method: method.into(),
+            params,
+            worktree: None,
+        };
+        server
+            .dispatch(1, &browser, &req("browser.refused", json!({ "update": "tori" })))
+            .unwrap();
+        assert_eq!(server.hub.last_refusal(), Some(Update::Tori));
+        server.call(&browser, &req("projects.list", json!({}))).unwrap();
+        assert_eq!(server.hub.last_refusal(), None);
     }
 
     #[test]

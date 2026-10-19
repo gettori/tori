@@ -2,7 +2,7 @@
 //! no token of its own, so Settings > Browser mints one into `browser.json`,
 //! where the host reads it. One at a time: minting again replaces it.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
 use serde_json::{json, Value};
@@ -28,10 +28,18 @@ pub fn read_token() -> Option<String> {
 }
 
 pub fn mint(store: &Devices, hub: &Hub) -> Result<String, String> {
-    revoke(store, hub)?;
+    mint_at(store, hub, &credential_path())
+}
+
+pub fn revoke(store: &Devices, hub: &Hub) -> Result<(), String> {
+    revoke_at(store, hub, &credential_path())
+}
+
+fn mint_at(store: &Devices, hub: &Hub, credential: &Path) -> Result<String, String> {
+    revoke_at(store, hub, credential)?;
     let (browser, token) = store.mint("browser")?;
     let text = json!({ "id": browser.id, "token": token }).to_string();
-    if let Err(e) = crate::owned_state::write_private(&credential_path(), &text) {
+    if let Err(e) = crate::owned_state::write_private(credential, &text) {
         let _ = store.revoke(&browser.id);
         return Err(e);
     }
@@ -40,19 +48,24 @@ pub fn mint(store: &Devices, hub: &Hub) -> Result<String, String> {
 
 // Revoked in the store before the connections close: a connection still being
 // set up checks the store after registering, so it cannot slip between the two.
-pub fn revoke(store: &Devices, hub: &Hub) -> Result<(), String> {
+fn revoke_at(store: &Devices, hub: &Hub, credential: &Path) -> Result<(), String> {
     for browser in store.list() {
         store.revoke(&browser.id)?;
         hub.close_browser(&browser.id);
     }
-    match std::fs::remove_file(credential_path()) {
+    hub.forget_last_refusal();
+    match std::fs::remove_file(credential) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
         _ => Ok(()),
     }
 }
 
 pub fn status(store: &Devices, hub: &Hub) -> Value {
-    json!({ "installed": !store.list().is_empty(), "connected": hub.browser_connected() })
+    json!({
+        "installed": !store.list().is_empty(),
+        "connected": hub.browser_connected(),
+        "update": hub.last_refusal().map(|u| u.name()),
+    })
 }
 
 // The store item's id, which the `key` in the extension's manifest pins the
@@ -118,4 +131,21 @@ pub fn install_manifests() -> Result<(), String> {
         crate::owned_state::write_atomically(&path, &text).map_err(|e| format!("{name}: {e}"))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rpc::hub::Update;
+
+    #[test]
+    fn minting_again_forgets_the_hosts_last_refusal() {
+        let dir = std::env::temp_dir().join(format!("tori-browsers-mint-{}", std::process::id()));
+        let store = Devices::open(dir.join("browsers.json"));
+        let hub = Hub::default();
+        hub.refuse_browser(Update::Extension);
+        mint_at(&store, &hub, &dir.join("browser.json")).unwrap();
+        assert_eq!(hub.last_refusal(), None);
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

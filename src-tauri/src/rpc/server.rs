@@ -20,7 +20,7 @@ use super::frame::{
     read_request, to_line, write_line, ReadError, Request, Response, RpcError, INTERNAL_ERROR, INVALID_PARAMS,
     INVALID_REQUEST, METHOD_NOT_FOUND, REFUSED, UNAUTHORIZED,
 };
-use super::hub::{Channel, ChatOutbox, ConnId, Hub, QUEUE_CAP, WAKE};
+use super::hub::{Channel, ChatOutbox, ConnId, Hub, Update, QUEUE_CAP, WAKE};
 use super::table::{self, CallerKind};
 use super::transport::{Stream, Transport};
 use crate::autopilot::{
@@ -895,6 +895,22 @@ fn visible(hub: &Hub, principal: &Principal, conn: ConnId, params: &Value) -> Re
     Ok(json!({}))
 }
 
+// Off the method table: the native host reports it, and no agent has a use for it.
+pub(super) fn browser_refused(hub: &Hub, principal: &Principal, params: &Value) -> Result<Value, RpcError> {
+    if !matches!(principal, Principal::Browser(_)) {
+        return Err(RpcError::new(
+            REFUSED,
+            "browser.refused is for the browser's native host",
+        ));
+    }
+    let update = params["update"]
+        .as_str()
+        .and_then(Update::parse)
+        .ok_or_else(|| RpcError::new(INVALID_PARAMS, "update: \"extension\" or \"tori\""))?;
+    hub.refuse_browser(update);
+    Ok(json!({}))
+}
+
 // Off the method table so no agent sees it as a tool.
 fn shell_check(principal: &Principal, params: &Value) -> Result<Value, RpcError> {
     if !matches!(principal, Principal::Session(super::auth::Caller::Terminal(_))) {
@@ -913,6 +929,7 @@ impl Server {
             }),
             "unsubscribe" => unsubscribe(&self.hub, conn, &req.params),
             "visible" => visible(&self.hub, principal, conn, &req.params),
+            "browser.refused" => browser_refused(&self.hub, principal, &req.params),
             "shell.check" => shell_check(principal, &req.params),
             "auth" => Err(RpcError::new(INVALID_REQUEST, "already authenticated")),
             _ => self.call(principal, req),
@@ -924,9 +941,19 @@ impl Server {
         let kind = self.backend.kind(principal);
         let method = permit(&req.method, kind)?;
         if kind == CallerKind::Browser {
-            return super::scope::call(self.backend.as_ref(), method, principal, req);
+            return self.call_past_the_protocol_check(method, principal, req);
         }
         (method.call)(self.backend.as_ref(), principal, &req.params)
+    }
+
+    fn call_past_the_protocol_check(
+        &self,
+        method: &'static table::Method,
+        principal: &Principal,
+        req: &Request,
+    ) -> Result<Value, RpcError> {
+        self.hub.forget_last_refusal();
+        super::scope::call(self.backend.as_ref(), method, principal, req)
     }
 }
 
