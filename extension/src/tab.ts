@@ -21,6 +21,8 @@ export const OLD_TORI = "update Tori";
 // breaking change raises this and the host's PROTOCOL together.
 export const PROTOCOL = 1;
 
+export const MIN_TORI = "26.1020.0";
+
 export const GROUPS_KEY = "groups";
 export const SHOTS_KEY = "screenshots";
 export const LOG_KEY = "pageLog";
