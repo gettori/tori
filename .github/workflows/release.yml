@@ -355,3 +355,42 @@ jobs:
         env:
           TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
         run: .github/scripts/update-cask.sh "$VERSION"
+
+  # Nothing waits on this job, so a store failure leaves the release alone
+  # and goes red here on its own. Review and publishing stay in the dashboard.
+  extension:
+    needs: [gate, publish]
+    if: >-
+      !cancelled() && needs.gate.outputs.release == 'true' &&
+      (needs.publish.result == 'success' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build the store zip
+        id: zip
+        run: echo "path=$(.github/scripts/extension-zip.sh out)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          name: extension
+          path: ${{ steps.zip.outputs.path }}
+          if-no-files-found: error
+
+      - name: Upload the draft to the Chrome Web Store
+        if: github.event_name == 'push'
+        env:
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+          CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+        run: .github/scripts/extension-upload.sh "${{ steps.zip.outputs.path }}"
