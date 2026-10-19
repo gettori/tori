@@ -1,4 +1,5 @@
 import { SPACE_COLORS, spaceHue } from "../../src/utils/spaceTint";
+import type { BatchRequest, Pick, PickRequest, ToggleRequest } from "./pick";
 import {
   CLOSED,
   GROUPS_KEY,
@@ -200,16 +201,60 @@ async function refreshAll() {
   for (const tab of await chrome.tabs.query({})) void enqueue(tab);
 }
 
+const batchKey = (tabId: number) => `batch:${tabId}`;
+
+async function batch(tabId: number): Promise<Pick[]> {
+  const key = batchKey(tabId);
+  return ((await chrome.storage.session.get(key))[key] as Pick[] | undefined) ?? [];
+}
+
+const inject = (tabId: number) => chrome.scripting.executeScript({ target: { tabId }, files: ["picker.js"] });
+
+async function togglePicker(tab: chrome.tabs.Tab) {
+  if (tab.id === undefined || (await describe(tab)).kind !== "worktree") return;
+  await inject(tab.id);
+  const message: ToggleRequest = { type: "picker.toggle" };
+  await chrome.tabs.sendMessage(tab.id, message);
+}
+
+// A reload ends pick mode but keeps the batch, so its tray comes back.
+async function restore(tabId: number) {
+  if ((await batch(tabId)).length) await inject(tabId);
+}
+
+async function handle(message: BatchRequest, tabId: number): Promise<unknown> {
+  switch (message.type) {
+    case "batch.get":
+      return batch(tabId);
+    case "batch.add": {
+      const next = [...(await batch(tabId)), message.pick];
+      await chrome.storage.session.set({ [batchKey(tabId)]: next });
+      return next;
+    }
+    case "batch.clear":
+      return chrome.storage.session.remove(batchKey(tabId));
+  }
+}
+
+function answer(message: StateRequest | PickRequest | BatchRequest, sender: chrome.runtime.MessageSender) {
+  if (message.type === "state") return chrome.tabs.get(message.tabId).then(mark);
+  if (message.type === "pick") return chrome.tabs.get(message.tabId).then(togglePicker);
+  const tabId = sender.tab?.id;
+  return tabId === undefined ? Promise.resolve(null) : handle(message, tabId);
+}
+
 chrome.runtime.onInstalled.addListener(() => void refreshAll());
 chrome.runtime.onStartup.addListener(() => void refreshAll());
-chrome.tabs.onUpdated.addListener((_id, change, tab) => {
+chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
   if (change.url || change.status === "complete") void enqueue(tab);
+  // Swallowed: the tab can close or navigate away before the script lands.
+  if (change.status === "complete" && localPort(tab.url) !== null) void restore(tabId).catch(() => {});
 });
-chrome.runtime.onMessage.addListener((request: StateRequest, _sender, reply) => {
-  if (request.type !== "state") return false;
-  void chrome.tabs
-    .get(request.tabId)
-    .then(mark)
-    .then(reply, () => reply(null));
+chrome.tabs.onRemoved.addListener((tabId) => void chrome.storage.session.remove(batchKey(tabId)));
+chrome.commands.onCommand.addListener((command, tab) => {
+  if (command === "pick" && tab) void togglePicker(tab);
+});
+chrome.runtime.onMessage.addListener((message, sender, reply) => {
+  void answer(message, sender).then(reply, () => reply(null));
   return true;
 });

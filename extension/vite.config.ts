@@ -15,7 +15,11 @@ const ICONS: Record<string, string> = { "32": "32x32.png", "128": "128x128.png" 
 
 const manifest = (): Plugin => ({
   name: "tori-extension-manifest",
-  generateBundle() {
+  generateBundle(_, bundle) {
+    const picker = bundle["picker.js"];
+    if (picker?.type === "chunk" && (picker.imports.length || picker.dynamicImports.length)) {
+      this.error(`picker.js is injected as a classic script and cannot import ${picker.imports.join(", ")}`);
+    }
     const merged = { ...json("./manifests/base.json"), ...json(`./manifests/${target}.json`), version };
     this.emitFile({ type: "asset", fileName: "manifest.json", source: JSON.stringify(merged, null, 2) });
     for (const [size, file] of Object.entries(ICONS)) {
@@ -34,9 +38,9 @@ export default defineConfig(({ mode }) => ({
     outDir: `dist/${target}`,
     emptyOutDir: true,
     rolldownOptions: {
-      input: { background: "src/background.ts", popup: "popup.html" },
+      input: { background: "src/background.ts", popup: "popup.html", picker: "src/picker/index.ts" },
       output: {
-        // The manifest names the worker by a fixed path.
+        // The manifest names the worker and the worker names the picker by a fixed path.
         entryFileNames: "[name].js",
         chunkFileNames: "chunks/[name]-[hash].js",
         assetFileNames: "assets/[name]-[hash][extname]",

@@ -1,11 +1,25 @@
 import { createResource, createSignal, onMount, Show } from "solid-js";
+import type { PickRequest } from "../pick";
 import { GROUPS_KEY, label, type StateRequest, type TabState } from "../tab";
 
-async function activeState(): Promise<TabState | null> {
+async function activeTabId(): Promise<number | undefined> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab?.id === undefined) return null;
-  const request: StateRequest = { type: "state", tabId: tab.id };
+  return tab?.id;
+}
+
+async function activeState(): Promise<TabState | null> {
+  const tabId = await activeTabId();
+  if (tabId === undefined) return null;
+  const request: StateRequest = { type: "state", tabId };
   return chrome.runtime.sendMessage(request);
+}
+
+async function pick() {
+  const tabId = await activeTabId();
+  if (tabId === undefined) return;
+  const request: PickRequest = { type: "pick", tabId };
+  await chrome.runtime.sendMessage(request);
+  window.close();
 }
 
 export default function Popup() {
@@ -35,6 +49,9 @@ export default function Popup() {
                 <>
                   <p class="branch">{label(tab.unit)}</p>
                   <p class="muted">{tab.unit.name}</p>
+                  <button type="button" onClick={() => void pick()}>
+                    Pick and comment
+                  </button>
                 </>
               );
             }}

@@ -1,11 +1,17 @@
 {
   "manifest_version": 3,
   "name": "Tori",
-  "description": "Shows which Tori worktree a localhost tab is serving.",
+  "description": "Shows which Tori worktree a localhost tab is serving, and lets you pick elements on it to comment on.",
   "icons": { "32": "icons/32.png", "128": "icons/128.png" },
   "action": { "default_popup": "popup.html", "default_title": "Tori", "default_icon": { "32": "icons/32.png" } },
   "permissions": ["nativeMessaging", "tabs", "tabGroups", "storage", "activeTab", "scripting"],
   "host_permissions": ["*://localhost/*", "*://127.0.0.1/*"],
   "optional_permissions": ["debugger", "webRequest"],
-  "optional_host_permissions": ["<all_urls>"]
+  "optional_host_permissions": ["<all_urls>"],
+  "commands": {
+    "pick": {
+      "suggested_key": { "default": "Alt+Shift+C", "mac": "MacCtrl+Shift+C" },
+      "description": "Pick and comment"
+    }
+  }
 }
