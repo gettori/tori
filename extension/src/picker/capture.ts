@@ -105,7 +105,7 @@ export function capture(
   comment: string,
   baseline: ShadowRoot,
   selection?: { text: string; rect: DOMRect },
-): Pick {
+): Omit<Pick, "images"> {
   const r = selection?.rect ?? el.getBoundingClientRect();
   return {
     comment,

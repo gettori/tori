@@ -14,13 +14,14 @@ use super::auth::{Caller, Principal};
 use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
-    AskAnswerParams, AskParams, AskWaitParams, Backend, Before, BudgetParams, CheckpointDiffParams, CheckpointParams,
-    CheckpointsParams, DigestLookedParams, DigestParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams,
-    IssueGetParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams,
-    ModeParams, ModelParams, NeedsYouSeenParams, OpenParams, PendingParams, PortParams, PrCreateParams, PrGetParams,
-    PrMergeParams, PrWatchParams, ProjectIconParams, ProjectSetParams, ProvenanceParams, ReviewMarkParams,
-    ReviewSubmitParams, SessionAnswerParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams,
-    UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, DEFAULT_LOG_LIMIT,
+    AskAnswerParams, AskParams, AskWaitParams, AttachmentWriteParams, Backend, Before, BudgetParams,
+    CheckpointDiffParams, CheckpointParams, CheckpointsParams, DigestLookedParams, DigestParams, HistoryParams,
+    HoldResolveParams, InfoParams, InterruptParams, IssueGetParams, IssuesAssignedParams, ItemUpdateParams,
+    LinkBranchParams, ListParams, LogParams, MintParams, ModeParams, ModelParams, NeedsYouSeenParams, OpenParams,
+    PendingParams, PortParams, PrCreateParams, PrGetParams, PrMergeParams, PrWatchParams, ProjectIconParams,
+    ProjectSetParams, ProvenanceParams, RevealParams, ReviewMarkParams, ReviewSubmitParams, SessionAnswerParams,
+    SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams,
+    WaitParams, WorktreeParams, DEFAULT_LOG_LIMIT,
 };
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
@@ -135,6 +136,7 @@ pub fn sessions_rows(indexed: Vec<SessionMeta>, params: &ListParams, from: Joine
         if let Some(levers) = row["id"].as_str().and_then(from.levers) {
             row["model"] = json!(levers.model);
             row["permission_mode"] = json!(levers.mode);
+            row["chat"] = json!(true);
         }
         let id = row["id"].as_str().unwrap_or_default();
         let (dot, certainty, attended) = (from.dot)(id);
@@ -524,6 +526,25 @@ fn may_steer(caller: &Principal, locked: bool, autopilot: Option<&str>) -> Resul
     }
 }
 
+fn must_exist(attach: &[String]) -> Result<(), RpcError> {
+    match attach.iter().find(|path| !Path::new(path).is_file()) {
+        Some(missing) => Err(RpcError::new(INVALID_PARAMS, format!("no file {missing}"))),
+        None => Ok(()),
+    }
+}
+
+fn stored_by_attachment_write(attach: &[String], store: &Path) -> Result<(), RpcError> {
+    let store = store.canonicalize().unwrap_or_else(|_| store.to_path_buf());
+    match attach.iter().find(|path| {
+        !Path::new(path)
+            .canonicalize()
+            .is_ok_and(|real| real.starts_with(&store))
+    }) {
+        Some(outside) => Err(refused(format!("{outside} is not a file attachment.write stored"))),
+        None => Ok(()),
+    }
+}
+
 // A chat's text arrives as a Tori note naming it; a person's, as typed.
 fn steered(principal: &Principal, text: String) -> (TurnBy, String) {
     match principal {
@@ -747,6 +768,7 @@ pub struct DaemonBackend {
     pub quotas: Arc<super::quotas::Quotas>,
     pub devices: Arc<super::devices::Devices>,
     pub hub: Arc<super::hub::Hub>,
+    pub uploads: Arc<super::uploads::Uploads>,
 }
 
 impl DaemonBackend {
@@ -1378,6 +1400,12 @@ impl Backend for DaemonBackend {
         }
         let locked = super::is_locked(&self.desk.states, &self.autopilot, &self.runner, &params.id);
         may_steer(principal, locked, self.runner.status().session.as_deref())?;
+        if matches!(principal, Principal::Browser(_)) && !host.is_live(&params.id) {
+            return Err(refused(format!(
+                "{} is not a live chat: the browser starts no agent",
+                params.id
+            )));
+        }
         if !host.is_live(&params.id) {
             self.revive(&params.id)?;
         }
@@ -1386,9 +1414,21 @@ impl Backend for DaemonBackend {
             self.desk.states.snapshot().get(&params.id),
             Some(SessionState::Working | SessionState::NeedsYou)
         );
+        let attach = params.attach.unwrap_or_default();
+        must_exist(&attach)?;
+        if let Principal::Browser(_) = principal {
+            stored_by_attachment_write(&attach, &crate::attachments::dir())?;
+        }
         let (by, text) = steered(principal, params.text);
-        host.deliver(&params.id, vec![ContentBlock::Text { text }], mid_turn, by)
-            .map_err(refused)?;
+        let blocks = if attach.is_empty() {
+            vec![ContentBlock::Text { text }]
+        } else {
+            let agent = self
+                .agent_of(&params.id)
+                .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no session {}", params.id)))?;
+            crate::chat::pick::first_message(&agent, Some(&text), &attach).map_err(refused)?
+        };
+        host.deliver(&params.id, blocks, mid_turn, by).map_err(refused)?;
         Ok(json!({ "delivered": if mid_turn { "steer" } else { "send" } }))
     }
 
@@ -2084,6 +2124,30 @@ impl Backend for DaemonBackend {
             .map_err(|e| RpcError::new(INTERNAL_ERROR, e))?;
         Ok(json!({ "id": id, "path": super::browsers::credential_path() }))
     }
+
+    fn attachment_write(&self, params: AttachmentWriteParams) -> Result<Value, RpcError> {
+        self.uploads.write(params)
+    }
+
+    fn window_reveal(&self, params: RevealParams) -> Result<Value, RpcError> {
+        let target = crate::autopilot::NavTarget {
+            folder: self.session_unit(&params.id),
+            session: Some(params.id),
+        };
+        self.screen.request("window.reveal", json!(target))
+    }
+
+    fn session_unit(&self, id: &str) -> Option<String> {
+        self.session_cwd(id).ok().and_then(|cwd| self.folder_unit(&cwd))
+    }
+
+    fn folder_unit(&self, folder: &str) -> Option<String> {
+        crate::unit_home::unit_folder(&crate::unit_home::spaces(&self.composer.projects), folder)
+    }
+
+    fn ask_session(&self, id: &str) -> Option<String> {
+        self.asks.pending().into_iter().find(|a| a.id == id).map(|a| a.session)
+    }
 }
 
 #[cfg(test)]
@@ -2091,6 +2155,29 @@ mod tests {
     use super::*;
     use crate::chat::commands::HistorySource;
     use serde_json::json;
+
+    #[test]
+    fn the_browser_attaches_only_what_attachment_write_stored() {
+        let root = std::env::temp_dir().join(format!("tori-attachable-{}", std::process::id()));
+        let store = root.join("attachments");
+        std::fs::create_dir_all(store.join("h1")).unwrap();
+        let inside = store.join("h1/shot.png");
+        let outside = root.join("secret.txt");
+        std::fs::write(&inside, b"png").unwrap();
+        std::fs::write(&outside, b"no").unwrap();
+        let (inside, outside) = (inside.display().to_string(), outside.display().to_string());
+        let sneaky = format!("{}/attachments/h1/../../secret.txt", root.display());
+        assert!(stored_by_attachment_write(std::slice::from_ref(&inside), &store).is_ok());
+        assert_eq!(
+            stored_by_attachment_write(&[outside], &store).unwrap_err().code,
+            REFUSED
+        );
+        assert_eq!(stored_by_attachment_write(&[sneaky], &store).unwrap_err().code, REFUSED);
+        assert_eq!(
+            must_exist(&[format!("{inside}.gone")]).unwrap_err().code,
+            INVALID_PARAMS
+        );
+    }
 
     #[test]
     fn an_issue_url_with_no_checkout_finds_the_one_project_reading_its_repo() {

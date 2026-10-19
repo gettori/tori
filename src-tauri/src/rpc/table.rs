@@ -8,13 +8,14 @@ use serde_json::{json, Value};
 use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
-    params, AskAnswerParams, AskParams, AskWaitParams, Backend, BudgetParams, CheckpointDiffParams, CheckpointParams,
-    CheckpointsParams, DigestLookedParams, DigestParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams,
-    IssueGetParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams,
-    ModeParams, ModelParams, NeedsYouSeenParams, OpenParams, PendingParams, PortParams, PrCreateParams, PrGetParams,
-    PrMergeParams, PrWatchParams, ProjectIconParams, ProjectSetParams, ProvenanceParams, ReviewMarkParams,
-    ReviewSubmitParams, SessionAnswerParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams,
-    UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, UNITS_GIT_MAX,
+    params, AskAnswerParams, AskParams, AskWaitParams, AttachmentWriteParams, Backend, BudgetParams,
+    CheckpointDiffParams, CheckpointParams, CheckpointsParams, DigestLookedParams, DigestParams, HistoryParams,
+    HoldResolveParams, InfoParams, InterruptParams, IssueGetParams, IssuesAssignedParams, ItemUpdateParams,
+    LinkBranchParams, ListParams, LogParams, MintParams, ModeParams, ModelParams, NeedsYouSeenParams, OpenParams,
+    PendingParams, PortParams, PrCreateParams, PrGetParams, PrMergeParams, PrWatchParams, ProjectIconParams,
+    ProjectSetParams, ProvenanceParams, RevealParams, ReviewMarkParams, ReviewSubmitParams, SessionAnswerParams,
+    SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams,
+    WaitParams, WorktreeParams, UNITS_GIT_MAX,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,6 +99,7 @@ const NOT_WORKERS_DEVICES_AND_BROWSER: &[CallerKind] = &[
 // What a phone's screens read and switch, kept off every agent's tool list.
 const LOCAL_AND_DEVICES: &[CallerKind] = &[CallerKind::Local, CallerKind::Device];
 const CHATS: &[CallerKind] = &[CallerKind::Chat];
+const BROWSER: &[CallerKind] = &[CallerKind::Browser];
 const WATCH_REFUSAL: &str =
     "a watch wakes its chat with a new turn, so only a chat you drive can hold one; an autopilot worker's pull request already reaches the autopilot";
 
@@ -438,6 +440,24 @@ pub static METHODS: &[Method] = &[
         refusal: None,
         outward: false,
         call: |b, _, v| b.window_open(params(v)?),
+    },
+    Method {
+        name: "window.reveal",
+        description: "Bring Tori's window forward on a chat session's tab.",
+        params: schema::<RevealParams>,
+        callers: BROWSER,
+        refusal: None,
+        outward: false,
+        call: |b, _, v| b.window_reveal(params(v)?),
+    },
+    Method {
+        name: "attachment.write",
+        description: "Write a file into Tori's attachments in base64 chunks, for session.steer's attach.",
+        params: schema::<AttachmentWriteParams>,
+        callers: BROWSER,
+        refusal: None,
+        outward: false,
+        call: |b, _, v| b.attachment_write(params(v)?),
     },
     Method {
         name: "budget",

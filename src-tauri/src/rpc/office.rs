@@ -202,6 +202,10 @@ pub fn start(parts: Parts) -> Arc<Office> {
         quotas: Arc::default(),
         devices: devices.clone(),
         hub: hub.clone(),
+        uploads: Arc::new(super::uploads::Uploads::new(
+            crate::attachments::dir(),
+            super::uploads::ABANDONED,
+        )),
     };
     let server = Arc::new(Server {
         hub: hub.clone(),

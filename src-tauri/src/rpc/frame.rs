@@ -28,6 +28,10 @@ pub struct Request {
     pub method: String,
     #[serde(default)]
     pub params: Value,
+    // Trusted for the browser caller only: `tori`, as its native host, sets it
+    // from the tab's URL. Anyone else could send any folder here.
+    #[serde(default)]
+    pub worktree: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

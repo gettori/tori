@@ -275,6 +275,7 @@ mod tests {
             id: Some(json!(1)),
             method: method.into(),
             params,
+            worktree: None,
         }
     }
 

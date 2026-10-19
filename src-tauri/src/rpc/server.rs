@@ -101,6 +101,30 @@ pub struct SteerParams {
     pub id: String,
     /// The message, delivered as a steer mid turn or as the next turn otherwise.
     pub text: String,
+    /// Files sent with it, as the agent's first message would carry them. The browser's must be paths
+    /// `attachment.write` answered.
+    pub attach: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AttachmentWriteParams {
+    /// The file's name, as the agent will see it.
+    pub name: String,
+    /// One chunk of the file, base64, at most 192 KB of it.
+    pub data: String,
+    /// The id the first chunk answered; left out on the first.
+    pub upload: Option<String>,
+    /// This chunk ends the file: the answer is its path.
+    #[serde(default)]
+    pub last: bool,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RevealParams {
+    /// The chat session to bring forward in Tori's window.
+    pub id: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -760,6 +784,11 @@ pub trait Backend: Send + Sync {
     fn autopilot_stop(&self) -> Result<Value, RpcError>;
     fn device_mint(&self, params: MintParams) -> Result<Value, RpcError>;
     fn browser_mint(&self) -> Result<Value, RpcError>;
+    fn attachment_write(&self, params: AttachmentWriteParams) -> Result<Value, RpcError>;
+    fn window_reveal(&self, params: RevealParams) -> Result<Value, RpcError>;
+    fn session_unit(&self, id: &str) -> Option<String>;
+    fn folder_unit(&self, folder: &str) -> Option<String>;
+    fn ask_session(&self, id: &str) -> Option<String>;
 }
 
 pub struct Server {
@@ -864,7 +893,11 @@ impl Server {
 
     /// One row of the method table, for a caller the transport already proved.
     pub fn call(&self, principal: &Principal, req: &Request) -> Result<Value, RpcError> {
-        let method = permit(&req.method, self.backend.kind(principal))?;
+        let kind = self.backend.kind(principal);
+        let method = permit(&req.method, kind)?;
+        if kind == CallerKind::Browser {
+            return super::scope::call(self.backend.as_ref(), method, principal, req);
+        }
         (method.call)(self.backend.as_ref(), principal, &req.params)
     }
 }
@@ -1071,6 +1104,7 @@ pub mod tests {
     pub struct StubBackend {
         pub autopilot: Option<AutopilotStore>,
         pub asks: Option<Arc<crate::rpc::asks::Asks>>,
+        pub sessions: Option<Value>,
     }
 
     // A chat session with this id is treated as a worker.
@@ -1085,6 +1119,9 @@ pub mod tests {
             }
         }
         fn sessions_list(&self, p: ListParams) -> Result<Value, RpcError> {
+            if let Some(rows) = &self.sessions {
+                return Ok(rows.clone());
+            }
             Ok(json!([{ "id": "s1", "limit": p.limit }]))
         }
         fn projects_list(&self) -> Result<Value, RpcError> {
@@ -1294,7 +1331,28 @@ pub mod tests {
         fn browser_mint(&self) -> Result<Value, RpcError> {
             Ok(json!({}))
         }
+        fn attachment_write(&self, p: AttachmentWriteParams) -> Result<Value, RpcError> {
+            Ok(json!({ "name": p.name }))
+        }
+        fn window_reveal(&self, p: RevealParams) -> Result<Value, RpcError> {
+            Ok(json!({ "revealed": p.id }))
+        }
+        fn session_unit(&self, id: &str) -> Option<String> {
+            self.folder_unit(id.split_once('@')?.1)
+        }
+        fn folder_unit(&self, folder: &str) -> Option<String> {
+            STUB_UNITS
+                .iter()
+                .filter(|unit| crate::sessions::owned_by_listing(folder, unit))
+                .max_by_key(|unit| unit.len())
+                .map(|unit| unit.to_string())
+        }
+        fn ask_session(&self, id: &str) -> Option<String> {
+            id.contains('@').then(|| id.to_string())
+        }
     }
+
+    pub const STUB_UNITS: &[&str] = &["/w/app", "/w/app/.tori/worktrees/x", "/w/web"];
 
     pub struct Running {
         pub transport: Arc<UnixTransport>,
@@ -1579,7 +1637,14 @@ pub mod tests {
                 CallerKind::Device => Principal::Device("d1".into()),
                 CallerKind::Browser => Principal::Browser("b1".into()),
             };
-            let outcome = server.dispatch(0, &principal, &request(method.name, Value::Object(sample)));
+            let mut req = request(method.name, Value::Object(sample));
+            if let Principal::Browser(_) = principal {
+                req.worktree = Some(STUB_UNITS[0].into());
+                if req.params.get("id").is_some() {
+                    req.params["id"] = json!(format!("x@{}", STUB_UNITS[0]));
+                }
+            }
+            let outcome = server.dispatch(0, &principal, &req);
             assert!(outcome.is_ok(), "{}: {outcome:?}", method.name);
         }
     }
@@ -1758,6 +1823,8 @@ pub mod tests {
                 "caller",
                 "session.steer",
                 "session.pending",
+                "window.reveal",
+                "attachment.write",
                 "ask.answer",
                 "projects.list",
                 "ports.list",
@@ -1870,7 +1937,7 @@ pub mod tests {
         let server = Server {
             backend: Box::new(StubBackend {
                 autopilot: Some(store),
-                asks: None,
+                ..StubBackend::default()
             }),
             ..stub_server()
         };
@@ -2025,6 +2092,7 @@ pub mod tests {
             backend: Box::new(StubBackend {
                 autopilot: Some(store),
                 asks: Some(asks.clone()),
+                ..StubBackend::default()
             }),
             ..stub_server()
         };

@@ -11,7 +11,13 @@ function oneLine(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
-export function pickToMarkdown(pick: Pick, n: number): string {
+// Screenshots travel as attachments, which the agent sees as [Image n] in the
+// order they are attached: each pick's own, viewport first.
+function shots(keys: string[], first: number): string {
+  return keys.map((key, i) => `[Image ${first + i}] ${key.split(":").pop()}`).join(", ");
+}
+
+export function pickToMarkdown(pick: Pick, n: number, firstImage?: number): string {
   const r = pick.rect;
   const facts = [
     `url: ${pick.url}`,
@@ -22,6 +28,7 @@ export function pickToMarkdown(pick: Pick, n: number): string {
     `viewport: ${pick.viewport.width}x${pick.viewport.height}`,
     `dpr: ${pick.dpr}`,
     `theme: ${pick.theme}`,
+    ...(firstImage !== undefined && pick.images.length ? [`screenshots: ${shots(pick.images, firstImage)}`] : []),
   ].join("\n");
   const styles = Object.entries(pick.styles)
     .map(([name, value]) => `${name}: ${value};`)
@@ -35,6 +42,13 @@ export function pickToMarkdown(pick: Pick, n: number): string {
   ].join("\n\n");
 }
 
-export function batchToMarkdown(picks: Pick[]): string {
-  return picks.map((pick, i) => pickToMarkdown(pick, i + 1)).join("\n\n");
+export function batchToMarkdown(picks: Pick[], withImages = false): string {
+  let image = 1;
+  return picks
+    .map((pick, i) => {
+      const md = pickToMarkdown(pick, i + 1, withImages ? image : undefined);
+      image += pick.images.length;
+      return md;
+    })
+    .join("\n\n");
 }

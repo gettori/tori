@@ -16,6 +16,7 @@ const pick = (over: Partial<Pick> = {}): Pick => ({
   viewport: { width: 1440, height: 900 },
   dpr: 2,
   theme: "dark",
+  images: [],
   ...over,
 });
 
@@ -68,5 +69,16 @@ describe("batchToMarkdown", () => {
   it("fences past backticks in the page", () => {
     const md = batchToMarkdown([pick({ text: "a ``` b", html: "", styles: {} })]);
     expect(md).toContain("````text\na ``` b\n````");
+  });
+
+  it("labels each pick's screenshots in attach order when they are sent", () => {
+    const shot = (n: number) => [`7:${n}:viewport`, `7:${n}:element`];
+    const picks = [pick({ images: shot(1) }), pick({ comment: "Typo" }), pick({ comment: "Gap", images: shot(3) })];
+    const sent = batchToMarkdown(picks, true);
+    expect(sent).toContain("theme: dark\nscreenshots: [Image 1] viewport, [Image 2] element\n```");
+    expect(sent).toContain("### 3. Gap\n");
+    expect(sent).toContain("screenshots: [Image 3] viewport, [Image 4] element");
+    expect(sent.match(/screenshots:/g)).toHaveLength(2);
+    expect(batchToMarkdown(picks)).not.toContain("screenshots:");
   });
 });
