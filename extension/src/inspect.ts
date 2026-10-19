@@ -1,4 +1,6 @@
-import { componentsOf, fiberOf } from "./fiber";
+import { reactComponents, fiberOf } from "./fiber";
+import { svelteComponents } from "./svelte";
+import { vueComponents } from "./vue";
 import type { InspectChannel, InspectMessage } from "./pick";
 
 const CHANNEL: InspectChannel = "tori:inspect";
@@ -7,9 +9,11 @@ const CHANNEL: InspectChannel = "tori:inspect";
 const loaded = globalThis as { toriInspect?: boolean };
 
 function answer(target: EventTarget | null, sensitive: boolean): InspectMessage {
-  const fiber = target instanceof Node ? fiberOf(target) : null;
-  const found = fiber && componentsOf(fiber, sensitive);
-  return { type: "found", chain: found?.chain ?? [], props: found?.props ?? null, source: null };
+  if (!(target instanceof Node)) return { type: "found", chain: [], props: null, source: null };
+  const fiber = fiberOf(target);
+  const found =
+    (fiber && reactComponents(fiber, sensitive)) ?? vueComponents(target, sensitive) ?? svelteComponents(target);
+  return { type: "found", chain: found?.chain ?? [], props: found?.props ?? null, source: found?.source ?? null };
 }
 
 if (!loaded.toriInspect) {
