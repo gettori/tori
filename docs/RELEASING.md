@@ -183,3 +183,17 @@ accepts:
 - `packs-index` signs with an Ed25519 key in PKCS#8 PEM. macOS's own `openssl`
   (LibreSSL) cannot make one; use Homebrew's: `$(brew --prefix
   openssl@3)/bin/openssl genpkey -algorithm ed25519`.
+
+## Browser extension protocol
+
+The native host reads frames from extensions whose `protocol` falls in
+`MIN_PROTOCOL..=PROTOCOL` (`src-tauri/src/browser_host.rs`), and the extension
+sends its own `PROTOCOL` (`extension/src/tab.ts`). Below the range the host
+answers "update the Tori extension", above it "update Tori".
+
+- A breaking change to the frame raises `PROTOCOL` on both sides, and the host
+  keeps reading the old shape.
+- `MIN_PROTOCOL` rises only once the store version that speaks the new
+  protocol is public. Never on a release count: every store version waits for
+  a review, so a release that drops the old shape too early leaves every
+  installed extension refused until the review passes.

@@ -4,9 +4,9 @@
 //
 //   node dev/browser-host-probe.mjs [--bin <tori>] [--mint] <step>...
 //
-// A step is `method`, `method=<params json>`, `tab=<url>` (sent with every later
-// frame, as the extension does), or `wait=<ms>`, which pauses so the daemon can be
-// stopped or started by hand. `--mint` first calls `browser.mint` on the bridge
+// A step is `method`, `method=<params json>`, `tab=<url>` or `protocol=<n>` (sent
+// with every later frame, as the extension does; the protocol starts at 1), or
+// `wait=<ms>`, which pauses so the daemon can be stopped or started by hand. `--mint` first calls `browser.mint` on the bridge
 // file's socket as a local caller, which is what Settings > Browser > Install does.
 // Defaults to the debug binary, so it reaches Tori Dev.
 import { spawn } from "node:child_process";
@@ -77,6 +77,7 @@ const exited = new Promise((resolve) => host.on("exit", (code) => ((gone = true)
 host.stdin.on("error", () => {});
 
 let tab;
+let protocol = 1;
 let id = 0;
 for (const step of steps) {
   const [name, value] = step.split(/=(.*)/s);
@@ -89,6 +90,10 @@ for (const step of steps) {
     tab = { id: 1, url: value };
     continue;
   }
+  if (name === "protocol") {
+    protocol = Number(value);
+    continue;
+  }
   if (gone) {
     console.log(name, "not sent, the host has exited");
     continue;
@@ -96,7 +101,9 @@ for (const step of steps) {
   id += 1;
   const sent = id;
   const reply = new Promise((resolve) => waiting.set(sent, resolve));
-  host.stdin.write(frame({ jsonrpc: "2.0", id: sent, method: name, params: value ? JSON.parse(value) : {}, tab }));
+  host.stdin.write(
+    frame({ jsonrpc: "2.0", id: sent, method: name, params: value ? JSON.parse(value) : {}, tab, protocol }),
+  );
   const outcome = await Promise.race([reply, exited.then((code) => ({ exited: code }))]);
   console.log(name, JSON.stringify(outcome.error ?? outcome.result ?? outcome).slice(0, 300));
 }

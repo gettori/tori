@@ -11,6 +11,7 @@ use serde_json::{json, Value};
 
 use crate::rpc::client::{Client, ClientError, Endpoint, Found};
 use crate::rpc::frame::REFUSED;
+use crate::rpc::hub::Update;
 
 /// What Chrome accepts from a host in one message.
 const TO_BROWSER_MAX: usize = 1024 * 1024;
@@ -21,6 +22,12 @@ const NOT_SET_UP: &str = "not set up: Tori > Settings > Browser > Install";
 const NOT_RUNNING: &str = "Tori is not running";
 const CLOSED: &str = "Tori closed the connection";
 const REPLACED: &str = "this browser's credential was replaced or revoked: Tori > Settings > Browser > Install";
+
+const PROTOCOL: u64 = 1;
+// Raised only once the store extension that speaks a newer protocol is public:
+// the store reviews every version, so raising it with the release refuses every
+// installed extension until that review passes.
+const MIN_PROTOCOL: u64 = 1;
 
 pub fn is_origin(arg: &str) -> bool {
     arg.starts_with("chrome-extension://")
@@ -39,11 +46,17 @@ pub fn run() -> i32 {
             }
         };
         let id = frame.get("id").cloned();
-        let relayed = match daemon.as_mut() {
-            Some(client) => relay(client, &frame),
-            None => match connect() {
-                Ok(client) => relay(daemon.insert(client), &frame),
-                Err(refused) => Relayed::Answer(Err(refused)),
+        let relayed = match mismatch(&frame) {
+            Some(update) => {
+                report(&mut daemon, update);
+                Relayed::Answer(Err(refusal(update.message())))
+            }
+            None => match daemon.as_mut() {
+                Some(client) => relay(client, &frame),
+                None => match connect() {
+                    Ok(client) => relay(daemon.insert(client), &frame),
+                    Err(refused) => Relayed::Answer(Err(refused)),
+                },
             },
         };
         let (outcome, lost) = match relayed {
@@ -59,6 +72,31 @@ pub fn run() -> i32 {
         // daemon that may have restarted or revoked this one.
         if lost {
             return 0;
+        }
+    }
+}
+
+fn mismatch(frame: &Value) -> Option<Update> {
+    match frame["protocol"].as_u64() {
+        None => Some(Update::Extension),
+        Some(p) if p < MIN_PROTOCOL => Some(Update::Extension),
+        Some(p) if p > PROTOCOL => Some(Update::Tori),
+        Some(_) => None,
+    }
+}
+
+// Best effort, so Settings can name the side to update; the extension hears
+// the refusal either way.
+fn report(daemon: &mut Option<Client>, update: Update) {
+    if daemon.is_none() {
+        *daemon = connect().ok();
+    }
+    if let Some(client) = daemon.as_mut() {
+        if client
+            .call("browser.refused", json!({ "update": update.name() }))
+            .is_err()
+        {
+            *daemon = None;
         }
     }
 }
@@ -150,4 +188,21 @@ fn write_frame(output: &mut impl Write, message: &Value) -> io::Result<()> {
     output.write_all(&len.to_ne_bytes())?;
     output.write_all(body.as_bytes())?;
     output.flush()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_frame_outside_the_protocol_range_names_the_side_to_update() {
+        assert_eq!(mismatch(&json!({ "protocol": PROTOCOL })), None);
+        assert_eq!(mismatch(&json!({ "protocol": MIN_PROTOCOL })), None);
+        assert_eq!(
+            mismatch(&json!({ "protocol": MIN_PROTOCOL - 1 })),
+            Some(Update::Extension)
+        );
+        assert_eq!(mismatch(&json!({ "protocol": PROTOCOL + 1 })), Some(Update::Tori));
+        assert_eq!(mismatch(&json!({ "method": "caller" })), Some(Update::Extension));
+    }
 }
