@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vite-plus/test";
-import { shallowProps } from "./fiber";
+import { shallowProps } from "./components";
 
 const named = (name: string) => Object.assign(() => null, { displayName: name });
 
