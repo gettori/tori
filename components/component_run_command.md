@@ -1,7 +1,7 @@
 ---
 summary: run.rs starts a project's run command headless, stops it with TERM then KILL, and reaps crash leftovers from runs.json
 status: current
-updated: 2026-10-18
+updated: 2026-10-21
 source: plan "Run and teardown commands beside the setup command" on branch phase-1-block-4, ticket gettori/tickets#41; src-tauri/src/run.rs, src-tauri/src/setup.rs:360, src/utils/runStore.ts
 ---
 
@@ -15,14 +15,16 @@ source: plan "Run and teardown commands beside the setup command" on branch phas
 - **Stop** (`Runs::stop_where`, `setup.rs:360`): marks the entries `Stopping`, sends TERM to each group, waits once for the shared 5 s grace, then KILLs what is left. `finish` turns a `Stopping` entry into `Stopped` whatever the exit code, so a stop never reads as `Failed`. `stop_all` runs on `RunEvent::Exit`, and `do_remove_worktree` stops the run before teardown.
 - **The record** is `<config dir>/runs.json`, a list of `{ pgid, worktree }`. It is written after a start and cleared by the run's publisher on any state that is not live. At launch `reap` lists each group with `pgrep -g` and stops it only if a member's cwd (from `lsof -d cwd`) is under the recorded worktree (`still_ours`, `run.rs:155`), because a pgid can be reused. It then deletes the file.
 - **Logs** share `<config dir>/setup/` as `<folder>-run-<nanos>.log`. Past 5 MB a log is cut back to its last 1 MB while the run writes ([[gotcha_cutting_a_log_a_child_writes_needs_append_mode]]), and launch deletes run logs older than 7 days.
-- **Does NOT** restart a run, auto-start one on open, or keep one across an app restart.
+- **Opens the browser** when `open_browser` is on (default true): `start` snapshots the worktree's ports under the start lock before the spawn, then a thread scans every 1 s for up to 120 s and opens the first new port, the `TORI_PORT` base when it is among them (`port_to_open`). It ends when its own pgid is no longer the running one, so a restart opens once; a failed snapshot skips it, so a server already listening never opens as new.
+- **Starts after setup** when `run_on_create` is on (default false), only from the app's `create_worktree` Tauri command on a worktree it created (`CreatedWorktree.created`): `start_after_setup` waits for setup and starts unless it ended other than Done. Agents' `worktree.new`, PR review, attempts and topics never start one. See [[gotcha_a_dev_build_has_its_own_project_settings]].
+- **Does NOT** restart a run, start one on selection, or keep one across an app restart.
 
 ## Interface
 
 - Tauri: `run_start(projectPath, worktreePath)`, `run_stop(worktreePath)`, `run_list()`, and `worktree_not_a_fork(worktreePath)` in worktree.rs.
 - Events: `setup://changed` with `kind: "run"` and states `running`, `stopping`, `stopped`, `done`, `failed`.
 - `src/utils/runStore.ts`: `runAt(worktree)`, seeded by `run_list` after the listener is up, plus `runnable(worktree)`, false until Rust answers. `runProjectFor(worktree)` in settingsStore picks the deepest project holding the worktree that has a run command.
-- Surfaces: the play/stop button in the sidebar row's end cluster, "Start the run command" and "Stop the run command" in the palette (requirement tags `runCommand`, `runIdle`, `runLive`, resolved on `frontWorktree()`), and a "Run command" row at the top of Scripts. A run that exits on its own with a failure toasts with Show log.
+- Surfaces: the play/stop button in the sidebar row's end cluster, shown only on the hovered row or with keyboard focus, "Start the run command" and "Stop the run command" in the palette (requirement tags `runCommand`, `runIdle`, `runLive`, resolved on `frontWorktree()`), and a "Run command" row at the top of Scripts. A run that exits on its own with a failure toasts with Show log.
 
 ## Related
 
@@ -30,3 +32,4 @@ source: plan "Run and teardown commands beside the setup command" on branch phas
 - [[adr_run_command_headless_not_a_tab]]: why not a terminal tab
 - [[component_worktree_cleanup]]: the sweep refuses a worktree with a live run
 - [[component_ports]]: why the port chips rescan on run events
+- [[adr_tori_opens_the_url_the_extension_folds_the_tab]]: how the watcher's open reaches an existing tab
