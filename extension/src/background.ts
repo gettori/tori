@@ -1,11 +1,16 @@
 import { SPACE_COLORS, spaceHue } from "../../src/utils/spaceTint";
 import { dropImage, dropImages, getImage, putImage } from "./images";
 import { batchToMarkdown } from "./markdown";
+import { LOG_PORT, PANEL_PORT } from "./pick";
 import type {
   BatchRequest,
   Chat,
   ConnectionRequest,
   LogEntry,
+  PanelIn,
+  PanelOut,
+  PanelRequest,
+  PanelState,
   Pick,
   PickerRequest,
   Rect,
@@ -414,9 +419,13 @@ async function setupOf(tab: chrome.tabs.Tab): Promise<Setup | null> {
 }
 
 // No chat opens a new chat draft in Tori, which the person sends from there.
-async function sendBatch(tab: chrome.tabs.Tab, chat: Chat | null, log: LogEntry[]): Promise<Sent> {
-  const held = await batch(tab.id!);
-  const picks = held?.picks ?? [];
+async function deliver(
+  tab: chrome.tabs.Tab,
+  chat: Chat | null,
+  picks: Pick[],
+  log: LogEntry[],
+  worktree?: string,
+): Promise<Sent> {
   const said = (await pageLogOn()) ? log : [];
   if (!picks.length && !said.length)
     return { error: log.length ? "the page log is off in the options" : "nothing picked" };
@@ -427,14 +436,24 @@ async function sendBatch(tab: chrome.tabs.Tab, chat: Chat | null, log: LogEntry[
     if (!chat) await call("chat.draft", { text: "", check: true }, tag);
     const attach: string[] = [];
     for (const key of picks.flatMap((p) => p.images)) attach.push(await upload(key, tag));
-    const text = batchToMarkdown(picks, true, said, held?.worktree, (await setupOf(tab))?.dir);
+    const text = batchToMarkdown(picks, true, said, worktree, (await setupOf(tab))?.dir);
     if (chat) await call("session.steer", { id: chat.id, text, attach }, tag);
     else await call("chat.draft", { text, attach }, tag);
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
-  await dropBatch(tab.id!);
   return { title: chat?.title ?? "a new chat", logged: said.length > 0 };
+}
+
+async function sendBatch(tab: chrome.tabs.Tab, chat: Chat | null, log: LogEntry[]): Promise<Sent> {
+  const held = await batch(tab.id!);
+  const sent = await deliver(tab, chat, held?.picks ?? [], log, held?.worktree);
+  if ("title" in sent) await dropBatch(tab.id!);
+  return sent;
+}
+
+async function sendLog(tab: chrome.tabs.Tab, chat: Chat | null, log: LogEntry[]): Promise<Sent> {
+  return deliver(tab, chat, [], log, (await batch(tab.id!))?.worktree);
 }
 
 async function opened(tab: chrome.tabs.Tab & { id: number }): Promise<TrayState> {
@@ -512,8 +531,29 @@ async function connection(): Promise<string | null> {
   }
 }
 
-function answer(message: ConnectionRequest | BatchRequest | TallyRequest, sender: chrome.runtime.MessageSender) {
+async function forPanel(message: PanelRequest): Promise<unknown> {
+  const tab = await chrome.tabs.get(message.tabId);
+  switch (message.type) {
+    case "panel.state": {
+      const state = await describe(tab);
+      return (
+        state.kind === "worktree"
+          ? { worktree: label(state.unit), title: state.unit.name }
+          : { worktree: null, title: sentenceOf(state.title) }
+      ) satisfies PanelState;
+    }
+    case "panel.chats":
+      return chats(tab);
+    case "send.log":
+      return sendLog(tab, message.chat, message.log);
+  }
+}
+
+type Request = ConnectionRequest | BatchRequest | TallyRequest | PanelRequest;
+
+function answer(message: Request, sender: chrome.runtime.MessageSender) {
   if (message.type === "connection") return connection();
+  if ("tabId" in message) return sender.tab ? Promise.resolve(null) : forPanel(message);
   const tab = sender.tab;
   if (message.type === "tally") return tab?.id === undefined ? Promise.resolve(null) : tallied(tab.id, message);
   return tab?.id === undefined ? Promise.resolve(null) : handle(message, { ...tab, id: tab.id });
@@ -566,4 +606,27 @@ chrome.commands.onCommand.addListener((command, tab) => {
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
   void answer(message, sender).then(reply, () => reply(null));
   return true;
+});
+
+chrome.runtime.onConnect.addListener((panel) => {
+  if (panel.name !== PANEL_PORT) return;
+  let page: chrome.runtime.Port | null = null;
+  panel.onMessage.addListener((message: PanelIn) => {
+    if (message.type !== "watch") {
+      page?.postMessage(message);
+      return;
+    }
+    page?.disconnect();
+    const opened = chrome.tabs.connect(message.tabId, { name: LOG_PORT });
+    page = opened;
+    opened.onMessage.addListener((out: PanelOut) => panel.postMessage(out));
+    opened.onDisconnect.addListener(() => {
+      // Read, or Chrome logs a page with no relay as an unchecked error.
+      void chrome.runtime.lastError;
+      if (page !== opened) return;
+      page = null;
+      panel.postMessage({ type: "missing" } satisfies PanelOut);
+    });
+  });
+  panel.onDisconnect.addListener(() => page?.disconnect());
 });

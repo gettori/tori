@@ -5,6 +5,7 @@
   "icons": { "32": "icons/32.png", "128": "icons/128.png" },
   "action": { "default_title": "Tori", "default_icon": { "32": "icons/32.png" } },
   "options_ui": { "page": "options.html", "open_in_tab": true },
+  "devtools_page": "devtools.html",
   "permissions": ["nativeMessaging", "tabs", "tabGroups", "storage", "activeTab", "scripting"],
   "host_permissions": ["*://localhost/*", "*://127.0.0.1/*"],
   "commands": {

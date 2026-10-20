@@ -66,7 +66,7 @@ export default function Options() {
         <Row
           id="page-log"
           label="Console and network"
-          hint="Sends the page's console errors and warnings and its failed requests with each send. Never headers or bodies. Takes effect when a tab loads."
+          hint="Counts the page's errors on the toolbar icon and sends its console errors and warnings and its failed requests with each send. Request and response bodies only from the DevTools panel, when you open them. Never headers. Takes effect when a tab loads."
           icon={
             <Icon>
               <rect x="2" y="3" width="12" height="10" rx="1.5" />

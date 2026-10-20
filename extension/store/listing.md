@@ -25,6 +25,8 @@ On a localhost tab served by one of your worktrees:
 - Tabs can be grouped by branch.
 - Press the pick shortcut (Ctrl+Shift+C on a Mac) to pick elements or select text and write a comment on each.
 - Send the picks to a chat running in that worktree, open them as a new chat draft in Tori, or copy them as Markdown.
+- The toolbar icon counts the page's own errors: uncaught errors, build errors and failed requests to its own server. The tray lists them, and you choose which ones to send.
+- A Tori panel in DevTools lists the same errors with the failed requests' bodies, and sends the ones you pick.
 
 Each pick carries what an agent needs to find the code: the element's HTML, text, selector and computed styles, the component chain, props and source file on React, Vue and Svelte pages, the CSS rules that style it with their files and lines, and optionally screenshots and the page's console errors and failed requests.
 
@@ -51,7 +53,7 @@ Connect localhost tabs to the Tori desktop app on the same computer, so a develo
 ## Data use
 
 - Collected by the developer: nothing. There is no server and no analytics.
-- Website content: on localhost tabs only. Their address goes to the Tori app on the same computer to find the worktree, and when the user picks an element or selects text and sends it, the HTML, text, styles, screenshots and page log of that pick go there too, over native messaging, and nowhere else. Other tabs' addresses are read only to tell them apart and never leave the browser.
+- Website content: on localhost tabs only. Their address goes to the Tori app on the same computer to find the worktree, and when the user picks an element or selects text and sends it, the HTML, text, styles, screenshots and page log of that pick go there too, over native messaging, and nowhere else. A failed request's body goes there only when the user opens it in the Tori DevTools panel and sends it. Other tabs' addresses are read only to tell them apart and never leave the browser.
 - Sold or transferred to third parties: no.
 - Used for anything but the single purpose: no.
 - Used for creditworthiness or lending: no.

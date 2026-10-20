@@ -540,8 +540,8 @@ function start() {
     if (!logOpen) return [line];
     const list = el("ul", { className: "logs" }, ...[...log].reverse().map(logRow));
     list.setAttribute("aria-label", "Page log entries");
-    const lost = overflow ? [el("div", { className: "logs-more", textContent: `${overflow} more not kept` })] : [];
-    return [line, list, ...lost];
+    const lost = overflow ? `${overflow} more not kept. ` : "";
+    return [line, list, el("div", { className: "logs-more", textContent: `${lost}More in DevTools > Tori` })];
   };
 
   const chainWithoutLine = () => picks.some((p) => p.where?.chain.length && !hasLine(p.where.source));
