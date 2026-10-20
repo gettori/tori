@@ -10,8 +10,6 @@ import {
   CircleX,
   FileDiff,
   MessageSquare,
-  MessageSquareCheck,
-  MessageSquareWarning,
   Eye,
   SquareStack,
   type LucideIcon,
@@ -25,17 +23,9 @@ import type { UnitStatus } from "../../utils/forgeTypes";
 import type { BaseSync } from "../../utils/gitActions";
 import styles from "./BranchLine.module.css";
 
-// The same two families ForgeChip uses, for the same reason: checks and the
-// verdict can both be green at once, and two identical ticks say nothing about
-// which of the two passed.
 const CHECK_ICON: Record<BadgeTone, LucideIcon> = {
   good: CircleCheck,
   bad: CircleX,
-  busy: CircleDotDashed,
-};
-const REVIEW_ICON: Record<BadgeTone, LucideIcon> = {
-  good: MessageSquareCheck,
-  bad: MessageSquareWarning,
   busy: CircleDotDashed,
 };
 
@@ -174,14 +164,6 @@ export default function BranchLine(props: {
         <span class={styles.item} data-pr-watched>
           <Icon icon={Eye} />
         </span>
-      </Show>
-
-      <Show when={badges().review}>
-        {(r) => (
-          <span class={`${styles.item} ${styles[r().tone]}`} data-pr-review={r().tone}>
-            <Icon icon={REVIEW_ICON[r().tone]} />
-          </span>
-        )}
       </Show>
 
       <Show when={badges().checks}>

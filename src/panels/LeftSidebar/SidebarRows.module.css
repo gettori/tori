@@ -513,6 +513,17 @@
   flex: none;
   margin-left: calc(4px * var(--ui-scale));
 }
+/* Started on one worktree at a time, so the button waits for the row the
+   pointer is on; a live run shows through its port chip. Opacity, not display,
+   keeps the cluster from shifting under the pointer and the button reachable
+   by keyboard. */
+.row .runButton:not(:focus-visible) {
+  opacity: 0;
+}
+.row:hover .runButton,
+.row[data-expanded] .runButton {
+  opacity: 1;
+}
 .row .tearingDown {
   flex: none;
   margin-left: calc(4px * var(--ui-scale));
@@ -522,6 +533,31 @@
 .row .issueChip:hover,
 .row .portChip:hover {
   color: var(--brand-strong);
+}
+.row .portChip.portChipConnected {
+  color: var(--brand-default);
+}
+.row .portChip.portChipConnected:hover {
+  color: var(--brand-strong);
+}
+
+.row .reviewMark {
+  display: inline-flex;
+  flex: none;
+  margin-left: calc(4px * var(--ui-scale));
+}
+.row .reviewMark svg {
+  width: calc(13px * var(--ui-scale));
+  height: calc(13px * var(--ui-scale));
+}
+.row .review_asked {
+  color: var(--attention-fg);
+}
+.row .review_bad {
+  color: var(--danger-fg);
+}
+.row .review_good {
+  color: var(--success-fg);
 }
 
 .row .topicChip,
