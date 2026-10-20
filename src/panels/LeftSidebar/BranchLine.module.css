@@ -96,15 +96,25 @@
 .skipped {
   color: var(--fg-muted);
 }
-.pr_open {
+/* An open PR's number is coloured for what it needs, most pressing first; a
+   draft or closed one asks nothing, so only its glyph tells them apart. */
+.tone_asked {
+  color: var(--status-needs-you);
+}
+.tone_changes {
+  color: var(--attention-fg);
+}
+.tone_conflict {
+  color: var(--danger-fg);
+}
+.tone_approved {
   color: var(--success-fg);
 }
-.pr_draft {
+.tone_quiet,
+.pr_draft,
+.pr_closed {
   color: var(--fg-muted);
 }
 .pr_merged {
   color: var(--status-progress);
-}
-.pr_closed {
-  color: var(--danger-fg);
 }

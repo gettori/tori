@@ -19,7 +19,7 @@ import Tooltip from "../../components/Tooltip/Tooltip";
 import TooltipLines from "../../components/Tooltip/TooltipLines";
 import { compactAge, compactAgo } from "../../utils/compactAge";
 import { forgeBadges, ranChecks, type BadgeTone, type PrChipState } from "../../utils/forgeChip";
-import type { UnitStatus } from "../../utils/forgeTypes";
+import { prTone, type PrTone, type UnitStatus } from "../../utils/forgeTypes";
 import type { BaseSync } from "../../utils/gitActions";
 import styles from "./BranchLine.module.css";
 
@@ -27,6 +27,14 @@ const CHECK_ICON: Record<BadgeTone, LucideIcon> = {
   good: CircleCheck,
   bad: CircleX,
   busy: CircleDotDashed,
+};
+
+const TONE_SAYS: Record<PrTone, string> = {
+  asked: "Your review is requested",
+  changes: "Changes requested",
+  conflict: "",
+  approved: "Approved",
+  quiet: "",
 };
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -68,6 +76,8 @@ export default function BranchLine(props: {
    *  request of it shows. */
   base?: BaseSync | null;
   watched?: boolean;
+  /** Whether the viewer's review is requested on it, a re-request included. */
+  reviewAsked?: boolean;
 }) {
   const pr = () => props.status?.pullRequest ?? null;
   const stat = () => {
@@ -104,6 +114,9 @@ export default function BranchLine(props: {
     if (!p) return "none";
     return p.state === "open" ? (p.isDraft ? "draft" : "open") : p.state;
   };
+  const conflicts = () => props.base?.conflicts ?? [];
+  const tone = () =>
+    props.status ? prTone(props.status, props.reviewAsked === true, conflicts().length > 0) : "quiet";
   const checks = () => props.status!.checks;
   const ran = () => ranChecks(checks());
   const passed = () => ran() - checks().failing;
@@ -125,6 +138,16 @@ export default function BranchLine(props: {
     if (p) return [`#${p.number} ${p.title}`];
     return stat() ? [diffLine()] : [];
   };
+  const conflictStory = () => {
+    const files = conflicts();
+    if (!files.length || pr()?.state !== "open") return [];
+    const CAP = 3;
+    return [
+      `${props.base!.name} has moved on, and ${plural(files.length, "file")} would conflict when you catch up`,
+      ...files.slice(0, CAP),
+      files.length > CAP ? `+${files.length - CAP} more files` : "",
+    ];
+  };
   const storyRest = () => {
     const p = pr();
     if (!p) return [];
@@ -134,10 +157,11 @@ export default function BranchLine(props: {
       openedAt() !== null ? `${p.author} opened ${compactAgo(openedAt()!)}` : `Opened by ${p.author}`,
       endedAt() !== null ? `${pr()!.state === "merged" ? "Merged" : "Closed"} ${compactAgo(endedAt()!)}` : "",
       p.stack ? `Layer ${p.stack.position} of ${p.stack.size} in a stack, targets ${p.stack.baseRef}` : "",
-      b.review?.title,
+      TONE_SAYS[tone()] || b.review?.title,
       b.checks?.title,
       p.comments ? `${p.comments} comment${p.comments === 1 ? "" : "s"}` : "",
       props.watched ? "A chat is watching it" : "",
+      ...conflictStory(),
     ].filter((line): line is string => Boolean(line));
   };
 
@@ -146,7 +170,11 @@ export default function BranchLine(props: {
   // the size of the change, and last the age and the comment count.
   const standing = (p: () => NonNullable<UnitStatus["pullRequest"]>) => (
     <>
-      <span class={`${styles.item} ${styles[`pr_${state()}`]}`} data-pr-state={state()}>
+      <span
+        class={`${styles.item} ${styles[state() === "open" ? `tone_${tone()}` : `pr_${state()}`]}`}
+        data-pr-state={state()}
+        data-pr-tone={state() === "open" ? tone() : undefined}
+      >
         <Icon icon={prIcon(state())} />
         {`#${p().number}`}
       </span>

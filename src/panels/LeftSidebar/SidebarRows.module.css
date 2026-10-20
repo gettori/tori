@@ -541,25 +541,6 @@
   color: var(--brand-strong);
 }
 
-.row .reviewMark {
-  display: inline-flex;
-  flex: none;
-  margin-left: calc(4px * var(--ui-scale));
-}
-.row .reviewMark svg {
-  width: calc(13px * var(--ui-scale));
-  height: calc(13px * var(--ui-scale));
-}
-.row .review_asked {
-  color: var(--attention-fg);
-}
-.row .review_bad {
-  color: var(--danger-fg);
-}
-.row .review_good {
-  color: var(--success-fg);
-}
-
 .row .topicChip,
 .row .topicChip:hover:not(:disabled) {
   flex: none;

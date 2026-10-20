@@ -23,8 +23,8 @@ import styles from "./StatusBubble.module.css";
  * `untitled` drops the per-state titles, for a bubble inside a control whose
  * own tooltip already says what it holds.
  *
- * `noPrAttention` drops the pull request state, for a worktree row whose own
- * review mark already says why its PR needs you.
+ * `noPrAttention` drops the pull request state, for a worktree row whose PR
+ * number is already coloured for why it needs you.
  */
 export default function StatusBubble(props: {
   rollup: () => Rollup | null;
