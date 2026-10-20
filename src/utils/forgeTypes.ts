@@ -575,15 +575,16 @@ export function needsAttention(status: UnitStatus, ctx: AttentionContext): boole
 
 export type AttentionContext = { viewer: string | null; requested: readonly number[] | null };
 
-export type ReviewSlot = "requested" | "changesRequested" | "approved";
+export type PrTone = "asked" | "changes" | "conflict" | "approved" | "quiet";
 
-/// The one review fact a row shows. A review someone is waiting on from you
-/// beats the verdict already on the PR, since a re-request after your changes
-/// requested leaves that verdict in place until you review again.
-export function reviewSlot(status: UnitStatus, ctx: AttentionContext): ReviewSlot | null {
+/// What an open pull request's number is coloured for, most pressing first. A
+/// review asked of you beats the verdict already on the PR, since a re-request
+/// after your changes requested leaves that verdict standing until you review.
+export function prTone(status: UnitStatus, asked: boolean, conflicting: boolean): PrTone {
   const pr = status.pullRequest;
-  if (!pr || pr.state !== "open") return null;
-  if (ctx.requested?.includes(pr.number)) return "requested";
-  if (status.reviewDecision === "changesRequested") return "changesRequested";
-  return status.reviewDecision === "approved" ? "approved" : null;
+  if (!pr || pr.state !== "open" || pr.isDraft) return "quiet";
+  if (asked) return "asked";
+  if (status.reviewDecision === "changesRequested") return "changes";
+  if (conflicting) return "conflict";
+  return status.reviewDecision === "approved" ? "approved" : "quiet";
 }
