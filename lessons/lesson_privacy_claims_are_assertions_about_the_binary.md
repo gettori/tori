@@ -1,7 +1,7 @@
 ---
 summary: a privacy claim drifted from two requests to six as features added calls; recount every outbound site
 status: current
-updated: 2026-10-09
+updated: 2026-10-20
 source: "v0.1 release gate: adapter cards, releases, light mode, polish (personal/tori, branch `topbar`); Phase 5; `README.md`, `src-tauri/src/model.rs:11`, `docs/INSTALL.md`; positioning plan for gettori/tickets#29 (branch `phase-1-block-1`, commit a9c014e4)"
 ---
 
@@ -50,7 +50,7 @@ Two things this round added:
 The copies were the README, the docs site's files-and-privacy page, its docs index, and its security page.
 
 ## Related
-
+- [[component_browser_extension]]: the same recount, for what the extension sends (only native messaging to Tori on the same Mac), before its store listing and privacy policy were written.
 - [[adr_native_chat_surface]] - the change that triggered the re-audit.
 - [[component_release_pipeline]] - the update check, the other of the two calls.
 - [[gotcha_a_tauri_command_without_async_runs_on_the_main_thread]] - the bug the audit turned up.
