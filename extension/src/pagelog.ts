@@ -185,6 +185,7 @@ document.addEventListener(CHANNEL, (e) => {
     if (message.type !== "ask") return;
     listening = true;
     watchOverlays();
+    tally();
     post({ type: "entries", entries: book.unsent() });
   });
 });

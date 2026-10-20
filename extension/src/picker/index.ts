@@ -70,6 +70,18 @@ button:focus-visible { outline: 2px solid var(--tori-focus); outline-offset: 2px
 .status .warn { display: flex; color: var(--tori-warn-tx); }
 .status .grow { flex: 1; min-width: 0; }
 .status .ghost { height: 24px; margin: -4px -8px -4px 0; padding: 0 8px; }
+.log-toggle { flex: 1; min-width: 0; height: 24px; margin: -4px -8px; padding: 0 8px; display: flex; align-items: center; gap: var(--tori-sp-2); background: transparent; color: inherit; font: inherit; text-align: left; }
+.log-toggle:hover { background: var(--tori-hover); }
+.log-toggle .grow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.logs { list-style: none; margin: 0; padding: 0 0 var(--tori-sp-2); }
+.logs label { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: var(--tori-sp-3); align-items: start; padding: 3px var(--tori-sp-4); font-size: var(--tori-fs-2); cursor: pointer; }
+.logs label:hover { background: var(--tori-hover); }
+.logs input { margin: 2px 0 0; accent-color: var(--tori-acc); }
+.log-what { min-width: 0; display: flex; gap: var(--tori-sp-2); }
+.log-kind, .log-count { flex: none; font: 500 var(--tori-fs-1)/1.6 var(--tori-mono); color: var(--tori-fg-3); }
+.log-kind.counted { color: var(--tori-warn-tx); }
+.log-text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.logs-more { padding: 0 var(--tori-sp-4) var(--tori-sp-2); font-size: var(--tori-fs-1); color: var(--tori-fg-3); }
 .dot { flex: none; width: 7px; height: 7px; border-radius: 4px; background: var(--tori-fg-3); }
 .dot.live { background: var(--tori-acc); animation: tori-pulse 1.6s ease-in-out infinite; }
 .spin { animation: tori-spin .8s linear infinite; }
@@ -158,6 +170,14 @@ const LOG_KINDS: [kinds: LogKind[], one: string, many: string][] = [
   [["warn"], "warning", "warnings"],
   [["request"], "failed request", "failed requests"],
 ];
+const KIND_LABEL: Record<LogKind, string> = {
+  error: "console",
+  warn: "warning",
+  uncaught: "error",
+  rejection: "rejection",
+  request: "request",
+  overlay: "build",
+};
 const EDGE = 8;
 const CARET_X = 28;
 
@@ -181,6 +201,8 @@ const ICONS = {
   chat: [14, 1.4, [["path", { d: CHAT_PATH }]]],
   close: [14, 1.6, [["path", { d: "M4 4l8 8M12 4l-8 8" }]]],
   plus: [12, 1.6, [["path", { d: "M8 3.5v9M3.5 8h9" }]]],
+  more: [12, 1.6, [["path", { d: "M4.5 6.5l3.5 3.5 3.5-3.5" }]]],
+  less: [12, 1.6, [["path", { d: "M4.5 9.5l3.5-3.5 3.5 3.5" }]]],
   options: [
     14,
     1.5,
@@ -341,6 +363,9 @@ function start() {
   let screenshots = true;
   let pageLog = true;
   let log: LogEntry[] = [];
+  let logOpen = false;
+  const leftOut = new Set<number>();
+  let overflow = 0;
   let asking = false;
   let replied = false;
   let chats: Chat[] | null = null;
@@ -364,7 +389,9 @@ function start() {
   const logged = () => pageLog && onWorktree() && log.length > 0;
 
   // Picking with nothing picked yet keeps its own hint.
-  const canSend = () => picks.length > 0 || (mode !== "pick" && logged());
+  const chosenLog = () => (logged() ? log.filter((e) => !leftOut.has(e.seq)) : []);
+
+  const canSend = () => picks.length > 0 || (mode !== "pick" && chosenLog().length > 0);
 
   // The page log answers inside dispatchEvent, so no answer means it is not running on this load.
   const pullLog = () => {
@@ -387,9 +414,11 @@ function start() {
     } catch {
       return;
     }
+    if (message.type === "tally") overflow = message.overflow;
     if (message.type !== "entries") return;
     replied = true;
     log = message.entries;
+    for (const seq of leftOut) if (!log.some((e) => e.seq === seq)) leftOut.delete(seq);
     if (!asking && !sending && tray.isConnected) renderTray();
   });
 
@@ -459,7 +488,11 @@ function start() {
 
   const statusLine = (): HTMLElement => {
     const line = el("div", { className: "status" });
-    if (sending) line.append(icon("spinner"), drafting ? DRAFTING : `Sending ${carried(picks.length, logged())}\u2026`);
+    if (sending)
+      line.append(
+        icon("spinner"),
+        drafting ? DRAFTING : `Sending ${carried(picks.length, chosenLog().length > 0)}\u2026`,
+      );
     else if (flash) line.append(flash);
     else if (mode === "pick") line.append(el("span", { className: "dot live" }), "Picking. Esc stops.");
     else if (restored) line.append(el("span", { className: "info" }, icon("info", 14)), KEEP_PICKING);
@@ -470,13 +503,46 @@ function start() {
     return line;
   };
 
-  const logLine = (): HTMLElement =>
-    el(
-      "div",
-      { className: "status" },
-      el("span", { className: "warn" }, icon("alert", 14)),
-      `Page log: ${summary(log)}`,
+  const logRow = (entry: LogEntry): HTMLElement => {
+    const box = el("input", { type: "checkbox", checked: !leftOut.has(entry.seq), disabled: sending });
+    box.dataset.key = `log-${entry.seq}`;
+    box.onchange = () => {
+      if (box.checked) leftOut.delete(entry.seq);
+      else leftOut.add(entry.seq);
+      renderTray(`log-${entry.seq}`);
+    };
+    const kind = el("span", { className: entry.reportable ? "log-kind counted" : "log-kind" }, KIND_LABEL[entry.kind]);
+    if (entry.reportable) kind.title = "Counted on the Tori icon";
+    const text = el("span", { className: "log-text", textContent: oneLine(entry.text), title: entry.text });
+    const count = entry.count > 1 ? [el("span", { className: "log-count", textContent: `x${entry.count}` })] : [];
+    return el("li", {}, el("label", {}, box, el("span", { className: "log-what" }, kind, text), ...count));
+  };
+
+  const logLine = (): HTMLElement[] => {
+    const out = log.length - chosenLog().length;
+    const said = [summary(chosenLog()), out ? `${out} left out` : ""].filter(Boolean).join(", ");
+    const toggle = button(
+      "log-toggle",
+      "",
+      () => {
+        logOpen = !logOpen;
+        renderTray("log-toggle");
+      },
+      "log-toggle",
     );
+    toggle.setAttribute("aria-expanded", String(logOpen));
+    toggle.append(
+      el("span", { className: "warn" }, icon("alert", 14)),
+      el("span", { className: "grow", textContent: `Page log: ${said}` }),
+      icon(logOpen ? "less" : "more"),
+    );
+    const line = el("div", { className: "status" }, toggle);
+    if (!logOpen) return [line];
+    const list = el("ul", { className: "logs" }, ...[...log].reverse().map(logRow));
+    list.setAttribute("aria-label", "Page log entries");
+    const lost = overflow ? [el("div", { className: "logs-more", textContent: `${overflow} more not kept` })] : [];
+    return [line, list, ...lost];
+  };
 
   const chainWithoutLine = () => picks.some((p) => p.where?.chain.length && !hasLine(p.where.source));
 
@@ -635,8 +701,10 @@ function start() {
       else {
         const choosing = choice();
         const copied = flash ? [el("div", { className: "status" }, flash)] : [];
-        const body = el("div", { className: "body" }, ready, ...copied, logLine(), ...choosing);
+        const body = el("div", { className: "body" }, ready, ...copied, ...logLine(), ...choosing);
+        const scrolled = tray.querySelector(".body")?.scrollTop ?? 0;
         tray.replaceChildren(header(), body, actions(choosing.length > 0));
+        body.scrollTop = scrolled;
       }
     } else if (!picks.length) {
       const hint = el("div", { className: "hint" }, el("span", { className: "dot live" }), PICKING);
@@ -653,7 +721,7 @@ function start() {
         list,
         statusLine(),
         ...setupLine(),
-        ...(logged() ? [logLine()] : []),
+        ...(logged() ? logLine() : []),
         ...choosing,
       );
       const scrolled = tray.querySelector(".body")?.scrollTop ?? 0;
@@ -732,7 +800,7 @@ function start() {
     drafting = !chat;
     error = "";
     pullLog();
-    const said = logged() ? log : [];
+    const said = chosenLog();
     renderTray();
     const outcome = await ask<Sent | null>({ type: "send", chat, log: said });
     sending = false;
@@ -764,7 +832,7 @@ function start() {
   const copyBatch = async () => {
     try {
       pullLog();
-      await navigator.clipboard.writeText(await ask<string>({ type: "markdown", log: logged() ? log : [] }));
+      await navigator.clipboard.writeText(await ask<string>({ type: "markdown", log: chosenLog() }));
       flash = "Copied as Markdown";
       error = "";
     } catch {
