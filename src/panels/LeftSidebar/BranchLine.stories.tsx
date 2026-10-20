@@ -32,6 +32,9 @@ function status(o: {
   skipped?: number;
   review?: ReviewDecision;
   stack?: PrStack;
+  baseRef?: string;
+  /** Hours back from now that it merged, for a merged one. */
+  mergedHoursAgo?: number;
 }): UnitStatus {
   return {
     headRef: "feat/thing",
@@ -42,12 +45,13 @@ function status(o: {
       state: o.state ?? "open",
       isDraft: o.isDraft ?? false,
       createdAt: new Date(Date.now() - (o.openedHoursAgo ?? 20) * 3600_000).toISOString(),
-      mergedAt: null,
+      mergedAt:
+        o.mergedHoursAgo === undefined ? null : new Date(Date.now() - o.mergedHoursAgo * 3600_000).toISOString(),
       closedAt: null,
       comments: o.comments ?? 0,
       author: "skarif",
       headRef: "feat/thing",
-      baseRef: "main",
+      baseRef: o.baseRef ?? "main",
       headSha: "abc1234",
       headRepoIsOrigin: true,
       url: `https://github.com/gettori/tori/pull/${o.number}`,
@@ -172,6 +176,28 @@ export const Tones: Story = {
           <BranchLine status={status({ number: 7961, isDraft: true, checks: "none" })} />
           <BranchLine status={status({ number: 7860, state: "merged", review: "approved", openedHoursAgo: 24 * 8 })} />
           <BranchLine status={status({ number: 7859, state: "closed", checks: "none", openedHoursAgo: 24 * 15 })} />
+        </div>
+      </Tree>
+    ),
+  ],
+};
+
+/** The default branch's own pull request is a release to another long-lived
+ *  branch, so it names where it goes and stays quiet even when approved: open
+ *  and approved, open with your review asked, merged an hour ago (shown for a
+ *  day), and merged two days ago, which draws no line at all. */
+export const Release: Story = {
+  decorators: [
+    () => (
+      <Tree>
+        <div style={{ display: "flex", "flex-direction": "column", gap: "8px" }}>
+          <BranchLine status={status({ number: 8021, baseRef: "stage", review: "approved" })} release />
+          <BranchLine status={status({ number: 8022, baseRef: "prod" })} release reviewAsked />
+          <BranchLine status={status({ number: 8020, baseRef: "stage", state: "merged", mergedHoursAgo: 1 })} release />
+          <BranchLine
+            status={status({ number: 8019, baseRef: "stage", state: "merged", mergedHoursAgo: 48 })}
+            release
+          />
         </div>
       </Tree>
     ),

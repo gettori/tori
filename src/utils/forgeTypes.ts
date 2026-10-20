@@ -575,16 +575,30 @@ export function needsAttention(status: UnitStatus, ctx: AttentionContext): boole
 
 export type AttentionContext = { viewer: string | null; requested: readonly number[] | null };
 
+/// How long a finished release pull request stays on the default branch's row.
+export const RELEASE_AFTERGLOW_SECS = 24 * 60 * 60;
+
+/// Whether the default branch's row still shows its release pull request: an
+/// open one always, a merged or closed one for a day after it finished.
+export function releaseShows(status: UnitStatus, nowSecs: number): boolean {
+  const pr = status.pullRequest;
+  if (!pr) return false;
+  if (pr.state === "open") return true;
+  const at = Date.parse((pr.state === "merged" ? pr.mergedAt : pr.closedAt) ?? "");
+  return !Number.isNaN(at) && nowSecs - at / 1000 < RELEASE_AFTERGLOW_SECS;
+}
+
 export type PrTone = "asked" | "changes" | "conflict" | "approved" | "quiet";
 
 /// What an open pull request's number is coloured for, most pressing first. A
 /// review asked of you beats the verdict already on the PR, since a re-request
 /// after your changes requested leaves that verdict standing until you review.
-export function prTone(status: UnitStatus, asked: boolean, conflicting: boolean): PrTone {
+/// A release from the default branch is routine once approved, so it stays quiet.
+export function prTone(status: UnitStatus, asked: boolean, conflicting: boolean, release = false): PrTone {
   const pr = status.pullRequest;
   if (!pr || pr.state !== "open" || pr.isDraft) return "quiet";
   if (asked) return "asked";
   if (status.reviewDecision === "changesRequested") return "changes";
   if (conflicting) return "conflict";
-  return status.reviewDecision === "approved" ? "approved" : "quiet";
+  return status.reviewDecision === "approved" && !release ? "approved" : "quiet";
 }
