@@ -67,14 +67,41 @@ describe("Logbook", () => {
     expect(log[log.length - 1].kind).toBe("overlay");
   });
 
-  it("sends only what came after the mark, and a repeat of a sent entry is new", () => {
+  it("sends only what was not marked, and a repeat of a sent entry is new", () => {
     const book = new Logbook();
     book.add("error", "same");
     const [sent] = book.unsent();
-    book.mark(sent.seq);
+    book.mark([sent.seq]);
     expect(book.unsent()).toEqual([]);
     book.add("error", "same");
     expect(book.unsent().map((e) => [e.text, e.count])).toEqual([["same", 1]]);
+  });
+
+  it("marks exactly the entries sent, not everything before them", () => {
+    const book = new Logbook();
+    for (let i = 1; i <= 5; i++) book.add("error", `e${i}`);
+    const seqs = book.unsent().map((e) => e.seq);
+    book.mark([seqs[0], seqs[2], seqs[4]]);
+    expect(book.unsent().map((e) => e.text)).toEqual(["e2", "e4"]);
+  });
+
+  it("tallies unsent reportable entries by count, and drops what is sent", () => {
+    const book = new Logbook();
+    book.add("uncaught", "boom", 1, true);
+    book.add("uncaught", "boom", 2, true);
+    book.add("error", "console noise", 3);
+    book.add("request", "GET /api -> 502", 4, true);
+    expect(book.tally()).toEqual({ count: 3, overflow: 0 });
+    book.mark([book.unsent()[0].seq]);
+    expect(book.tally()).toEqual({ count: 1, overflow: 0 });
+  });
+
+  it("counts reportable entries it let go of as overflow, never in the count", () => {
+    const book = new Logbook();
+    for (let i = 0; i < 300; i++) book.add("uncaught", `e${i}`, i, true);
+    expect(book.tally()).toEqual({ count: 50, overflow: 250 });
+    book.mark(book.unsent().map((e) => e.seq));
+    expect(book.tally()).toEqual({ count: 0, overflow: 250 });
   });
 
   it("caps a message at 500 characters", () => {

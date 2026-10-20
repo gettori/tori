@@ -163,6 +163,7 @@ describe("batchToMarkdown", () => {
     kind: "error",
     text: "TypeError: x is undefined",
     count: 1,
+    reportable: false,
     ...over,
   });
 

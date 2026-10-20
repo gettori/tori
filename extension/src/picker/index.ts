@@ -740,9 +740,10 @@ function start() {
     if (outcome && "title" in outcome) {
       sent = { chat: chat && { ...chat, title: outcome.title }, count: picks.length, log: outcome.logged };
       if (outcome.logged) {
-        const top = Math.max(...said.map((e) => e.seq));
-        tell({ type: "mark", seq: top });
-        log = log.filter((e) => e.seq > top);
+        const seqs = said.map((e) => e.seq);
+        // `seq` is for a page still running the page log from before an update, which reads only that.
+        tell({ type: "mark", seqs, seq: Math.max(...seqs) });
+        log = log.filter((e) => !seqs.includes(e.seq));
       }
       picks = [];
       targets = [];
