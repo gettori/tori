@@ -1318,7 +1318,7 @@ pub fn unattended_defaults() -> Unattended {
 }
 
 /// What a project runs in the worktrees Tori creates for it.
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorktreePrefs {
     /// Run with `sh -c` in the new worktree. Empty runs nothing.
@@ -1333,6 +1333,21 @@ pub struct WorktreePrefs {
     /// Started by hand in a worktree, a dev server usually. Empty offers nothing.
     #[serde(default)]
     pub run_command: String,
+    /// Open the run's first port in the browser once it listens.
+    #[serde(default = "yes")]
+    pub open_browser: bool,
+}
+
+impl Default for WorktreePrefs {
+    fn default() -> Self {
+        Self {
+            setup_command: String::new(),
+            setup_wait: false,
+            teardown_command: String::new(),
+            run_command: String::new(),
+            open_browser: true,
+        }
+    }
 }
 
 // --- pure core (explicit path, no globals), unit-tested off-disk ---
@@ -2921,6 +2936,14 @@ mod tests {
     }
 
     #[test]
+    fn a_project_saved_before_open_browser_opens_the_browser() {
+        let p = tmp_file();
+        std::fs::write(&p, r#"{"worktree":{"/p":{"runCommand":"pnpm dev"}}}"#).unwrap();
+        assert!(load_from(&p).worktree["/p"].open_browser);
+        assert!(WorktreePrefs::default().open_browser);
+    }
+
+    #[test]
     fn the_worktree_block_round_trips_and_a_file_without_it_runs_nothing() {
         let p = tmp_file();
         std::fs::write(&p, "{}").unwrap();
@@ -2934,6 +2957,7 @@ mod tests {
                 setup_wait: true,
                 teardown_command: "pnpm db:drop".into(),
                 run_command: "pnpm dev".into(),
+                open_browser: false,
             },
         );
         save_to(&p, &s).unwrap();
