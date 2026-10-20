@@ -4,6 +4,7 @@ import { WorktreeMark } from "../../components/Icon/gitMarks";
 import SyncMarks from "../../components/SyncMarks/SyncMarks";
 import type { MenuItem } from "../../components/Menu/rows";
 import type { CheckState, PrStack, PrState, ReviewDecision, UnitStatus } from "../../utils/forgeTypes";
+import type { BaseSync } from "../../utils/gitActions";
 import BranchLine from "./BranchLine";
 import { BranchRow, ProjectRow } from "./SidebarRows";
 import rows from "./SidebarRows.module.css";
@@ -63,6 +64,15 @@ function status(o: {
     reviewDecision: o.review ?? "reviewRequired",
   };
 }
+
+/** A base the branch would fight on catching up, for the red number. */
+const CONFLICTING: BaseSync = {
+  name: "main",
+  ahead: 4,
+  behind: 12,
+  conflicts: ["src/grid/Grid.tsx", "src/grid/drag.ts", "src/grid/drop.ts", "src/widgets/Tabs.tsx"],
+  stat: { files: 17, insertions: 1020, deletions: 24 },
+};
 
 const NO_PR: UnitStatus = {
   headRef: "main",
@@ -136,6 +146,31 @@ export const States: Story = {
           <BranchLine
             status={status({ number: 7860, state: "merged", review: "approved", comments: 14, openedHoursAgo: 24 * 8 })}
           />
+          <BranchLine status={status({ number: 7859, state: "closed", checks: "none", openedHoursAgo: 24 * 15 })} />
+        </div>
+      </Tree>
+    ),
+  ],
+};
+
+/** What an open PR's number is coloured for, one row per tone, most pressing
+ *  first: your review asked (a re-request after changes requested included),
+ *  changes requested, a conflict with the base, approved, and nothing pending.
+ *  Draft and closed stay muted under their own glyphs; merged keeps purple.
+ *  Hover a line for the words behind its colour. */
+export const Tones: Story = {
+  decorators: [
+    () => (
+      <Tree>
+        <div style={{ display: "flex", "flex-direction": "column", gap: "8px" }}>
+          <BranchLine status={status({ number: 7945, review: "changesRequested", comments: 2 })} reviewAsked />
+          <BranchLine status={status({ number: 7964, review: "changesRequested", comments: 4 })} />
+          <BranchLine status={status({ number: 7962, review: "approved" })} base={CONFLICTING} />
+          <BranchLine status={status({ number: 7963 })} base={CONFLICTING} />
+          <BranchLine status={status({ number: 7954, review: "approved", comments: 2 })} />
+          <BranchLine status={status({ number: 7946, comments: 1 })} />
+          <BranchLine status={status({ number: 7961, isDraft: true, checks: "none" })} />
+          <BranchLine status={status({ number: 7860, state: "merged", review: "approved", openedHoursAgo: 24 * 8 })} />
           <BranchLine status={status({ number: 7859, state: "closed", checks: "none", openedHoursAgo: 24 * 15 })} />
         </div>
       </Tree>
