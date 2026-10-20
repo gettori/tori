@@ -1,8 +1,10 @@
 import { fillDirectives, Logbook, show } from "./logbook";
 import type { LogChannel, LogKind, LogMessage } from "./pick";
+import { reportable, throttle, type Source } from "./reportable";
 
 const CHANNEL: LogChannel = "tori:page-log";
 const UPDATE_MS = 250;
+const TALLY_MS = 1000;
 
 const book = new Logbook();
 let listening = false;
@@ -21,8 +23,15 @@ function update() {
   }, UPDATE_MS);
 }
 
-function add(kind: LogKind, text: string) {
-  if (book.add(kind, text)) update();
+function tally() {
+  post({ type: "tally", ...book.tally() });
+}
+const retally = throttle(TALLY_MS, tally);
+
+function add(kind: LogKind, text: string, source: Source = {}) {
+  if (!book.add(kind, text, Date.now(), reportable(kind, source, location.origin))) return;
+  update();
+  retally();
 }
 
 // The page's own code must never see this script fail.
@@ -58,25 +67,30 @@ addEventListener("error", (e) => {
   safely(() => {
     if (!(e instanceof ErrorEvent)) return;
     const at = e.filename ? ` (${where(e.filename)}:${e.lineno}:${e.colno})` : "";
-    add("uncaught", e.error instanceof Error ? show(e.error) : `${e.message}${at}`);
+    const stack = e.error instanceof Error ? e.error.stack : undefined;
+    add("uncaught", e.error instanceof Error ? show(e.error) : `${e.message}${at}`, { file: e.filename, stack });
   });
 });
 
-addEventListener("unhandledrejection", (e) => safely(() => add("rejection", show(e.reason))));
+addEventListener("unhandledrejection", (e) =>
+  safely(() => add("rejection", show(e.reason), { stack: e.reason instanceof Error ? e.reason.stack : undefined })),
+);
 
 const nativeFetch = window.fetch;
 window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
   const request = input instanceof Request ? input : null;
   const method = (init?.method ?? request?.method ?? "GET").toUpperCase();
-  const what = `${method} ${where(request ? request.url : String(input))}`;
+  const url = request ? request.url : String(input);
+  const what = `${method} ${where(url)}`;
   const signal = init?.signal ?? request?.signal;
   return nativeFetch(input, init).then(
     (response) => {
-      if (response.status >= 400) safely(() => add("request", `${what} -> ${response.status}`));
+      const status = response.status;
+      if (status >= 400) safely(() => add("request", `${what} -> ${status}`, { file: url, status }));
       return response;
     },
     (error: unknown) => {
-      if (!signal?.aborted) safely(() => add("request", `${what} -> failed`));
+      if (!signal?.aborted) safely(() => add("request", `${what} -> failed`, { file: url, status: "failed" }));
       throw error;
     },
   );
@@ -85,12 +99,17 @@ window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
 // Attached on the first open, ahead of the handlers a page usually sets after it, and read
 // on load, error and timeout, which fire before loadend: a page that reuses the object from
 // its loadend handler has reopened it by the time loadend reaches us.
-const opened = new WeakMap<XMLHttpRequest, string>();
-const sending = new WeakMap<XMLHttpRequest, string>();
+type Target = { what: string; url: string };
+const opened = new WeakMap<XMLHttpRequest, Target>();
+const sending = new WeakMap<XMLHttpRequest, Target>();
 function watchRequest(xhr: XMLHttpRequest) {
-  const failed = () => safely(() => add("request", `${sending.get(xhr)} -> failed`));
+  const said = (status: number | "failed") => {
+    const target = sending.get(xhr);
+    add("request", `${target?.what ?? ""} -> ${status}`, { file: target?.url, status });
+  };
+  const failed = () => safely(() => said("failed"));
   xhr.addEventListener("load", () => {
-    if (xhr.status >= 400) safely(() => add("request", `${sending.get(xhr)} -> ${xhr.status}`));
+    if (xhr.status >= 400) safely(() => said(xhr.status));
   });
   xhr.addEventListener("error", failed);
   xhr.addEventListener("timeout", failed);
@@ -100,14 +119,15 @@ const nativeOpen = XMLHttpRequest.prototype.open as (this: XMLHttpRequest, ...ar
 XMLHttpRequest.prototype.open = function (this: XMLHttpRequest, ...args: unknown[]) {
   safely(() => {
     if (!opened.has(this)) watchRequest(this);
-    opened.set(this, `${String(args[0]).toUpperCase()} ${where(String(args[1]))}`);
+    const url = String(args[1]);
+    opened.set(this, { what: `${String(args[0]).toUpperCase()} ${where(url)}`, url });
   });
   nativeOpen.apply(this, args);
 } as typeof XMLHttpRequest.prototype.open;
 
 const nativeSend = XMLHttpRequest.prototype.send;
 XMLHttpRequest.prototype.send = function (this: XMLHttpRequest, body?: Document | XMLHttpRequestBodyInit | null) {
-  safely(() => sending.set(this, opened.get(this) ?? ""));
+  safely(() => sending.set(this, opened.get(this) ?? { what: "", url: "" }));
   nativeSend.call(this, body);
 };
 
@@ -131,7 +151,9 @@ function nextOverlay(): string | null {
 }
 
 function readOverlays() {
-  if (book.overlay(viteOverlay() ?? nextOverlay())) update();
+  if (!book.overlay(viteOverlay() ?? nextOverlay())) return;
+  update();
+  retally();
 }
 
 // Overlays are children of the body, and Next opens its dialog inside a portal that is always there.
@@ -154,10 +176,20 @@ document.addEventListener(CHANNEL, (e) => {
   safely(() => {
     if (!(e instanceof CustomEvent) || typeof e.detail !== "string") return;
     const message = JSON.parse(e.detail) as LogMessage;
-    if (message.type === "mark") book.mark(message.seq);
+    if (message.type === "tally?") tally();
+    if (message.type === "mark") {
+      book.mark(message.seqs);
+      update();
+      retally();
+    }
     if (message.type !== "ask") return;
     listening = true;
     watchOverlays();
     post({ type: "entries", entries: book.unsent() });
   });
 });
+
+// The relay may be listening already or may start after us, so say it now and answer its tally?.
+// A page back from the back/forward cache runs nothing again, so say it again then.
+tally();
+addEventListener("pageshow", (e) => safely(() => e.persisted && tally()));
