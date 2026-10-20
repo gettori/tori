@@ -109,11 +109,15 @@ export type PanelOut =
   | ({ type: "tally" } & Tally)
   | { type: "missing" };
 
+// The picker's global the DevTools panel evals with `$0`; a refusal, or null once the comment box is open.
+export type CommentOn = "toriComment";
+
 // The panel has no tab of its own, so it names the one DevTools inspects.
 export type PanelRequest =
   | { type: "panel.state"; tabId: number }
   | { type: "panel.chats"; tabId: number }
-  | { type: "send.log"; tabId: number; chat: Chat | null; log: LogEntry[] };
+  | { type: "send.log"; tabId: number; chat: Chat | null; log: LogEntry[] }
+  | { type: "panel.inject"; tabId: number };
 
 export type PanelState = { worktree: string | null; title: string };
 

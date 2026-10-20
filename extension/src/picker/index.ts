@@ -2,6 +2,7 @@ import TOKENS from "../tokens.css?raw";
 import type {
   BatchRequest,
   Chat,
+  CommentOn,
   LogChannel,
   LogEntry,
   LogKind,
@@ -16,8 +17,10 @@ import type {
 } from "../pick";
 import { capture, hasLine, insideSensitive } from "./capture";
 
+const COMMENT_ON: CommentOn = "toriComment";
+
 // Injected again on every pick request; the first copy in this world answers.
-const loaded = globalThis as { toriPicker?: boolean };
+const loaded = globalThis as { toriPicker?: boolean; [COMMENT_ON]?: (target: unknown) => string | null };
 
 type Mode = "ready" | "pick" | "idle";
 
@@ -998,6 +1001,7 @@ function start() {
       screenshots = (await ask<boolean | null>({ type: "screenshots" })) !== false;
       const shot: Shot = screenshots ? await screenshot(target, selection?.range) : { images: [] };
       picks = await ask<Pick[]>({ type: "batch.add", pick: { ...facts, images: shot.images } });
+      if (mode === null) mode = "idle";
       targets = [...targets.slice(0, picks.length - 1), target];
       sent = null;
       chats = null;
@@ -1134,6 +1138,20 @@ function start() {
       rest();
       refresh();
     }
+  };
+
+  // `$0` skips the hit testing a click gets, so it can name what a click never reaches.
+  loaded[COMMENT_ON] = (target) => {
+    if (!(target instanceof Element) || target.ownerDocument !== document)
+      return "Select an element on this page in the Elements panel. One inside a frame cannot be picked.";
+    if (target === host || target.getRootNode() === root) return "That is Tori's own overlay.";
+    if (target === document.documentElement || target === document.head || target === document.body)
+      return "Select an element inside the page, not the whole document.";
+    target.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
+    const r = target.getBoundingClientRect();
+    if (!r.width || !r.height) return "That element has no size on the page, so there is nothing to point at.";
+    comment(target);
+    return null;
   };
 
   chrome.runtime.onMessage.addListener((message: PickerRequest) => {
