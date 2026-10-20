@@ -1,7 +1,7 @@
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { PanelWindow } from "../devtools";
 import { PANEL_PORT } from "../pick";
-import type { Chat, LogEntry, LogKind, PanelIn, PanelOut, PanelRequest, PanelState, Sent } from "../pick";
+import type { Chat, CommentOn, LogEntry, LogKind, PanelIn, PanelOut, PanelRequest, PanelState, Sent } from "../pick";
 import { LOG_KEY } from "../tab";
 import { rows, withDetail, type Detail, type DevToolsNetwork, type NetRequest, type Row } from "./rows";
 
@@ -25,6 +25,23 @@ function ask<T>(message: PanelRequest): Promise<T> {
 
 const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
 
+const COMMENT_ON: CommentOn = "toriComment";
+// Runs in the picker's world, where `$0` is the element selected in Elements; false means no picker answered.
+const COMMENT_ON_SELECTED = `globalThis.${COMMENT_ON} ? globalThis.${COMMENT_ON}($0) : false`;
+
+function commentInPage(): Promise<string | null> {
+  return new Promise((resolve) =>
+    chrome.devtools.inspectedWindow.eval<string | null | false>(
+      COMMENT_ON_SELECTED,
+      { useContentScriptContext: true },
+      (...[result, failed]) => {
+        if (failed || result === false) resolve("Tori could not reach the page. Reload it and try again.");
+        else resolve(result);
+      },
+    ),
+  );
+}
+
 export default function Panel() {
   const [state, setState] = createSignal<PanelState | null>(null);
   const [logOn, setLogOn] = createSignal(true);
@@ -42,6 +59,7 @@ export default function Panel() {
   const [sending, setSending] = createSignal(false);
   const [said, setSaid] = createSignal("");
   const [error, setError] = createSignal("");
+  const [refused, setRefused] = createSignal("");
 
   const shown = createMemo(() =>
     rows(
@@ -122,6 +140,7 @@ export default function Panel() {
   const navigated = () => {
     retries = 0;
     setSaid("");
+    setRefused("");
     void load();
     watch();
   };
@@ -152,6 +171,14 @@ export default function Panel() {
     }
   };
 
+  const commentOnSelected = async () => {
+    setRefused("");
+    const why = await ask<string | null>({ type: "panel.inject", tabId }).catch((e: unknown) =>
+      e instanceof Error ? e.message : String(e),
+    );
+    setRefused(why ?? (await commentInPage()) ?? "");
+  };
+
   let unlisten = () => {};
   onCleanup(() => unlisten());
 
@@ -179,7 +206,17 @@ export default function Panel() {
         <Show when={counted()}>
           <span class="counted">{counted()} counted on the icon</span>
         </Show>
+        <Show when={state()?.worktree}>
+          <button type="button" class="more" onClick={() => void commentOnSelected()}>
+            Comment on selected element
+          </button>
+        </Show>
       </header>
+      <Show when={refused()}>
+        <p class="empty" role="status">
+          {refused()}
+        </p>
+      </Show>
       <Show when={state()} fallback={<p class="empty">Looking for the worktree...</p>}>
         {(now) => (
           <Show when={now().worktree} fallback={<p class="empty">{now().title}</p>}>

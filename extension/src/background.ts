@@ -546,6 +546,12 @@ async function forPanel(message: PanelRequest): Promise<unknown> {
       return chats(tab);
     case "send.log":
       return sendLog(tab, message.chat, message.log);
+    case "panel.inject": {
+      const state = await describe(tab);
+      if (state.kind !== "worktree") return sentenceOf(state.title);
+      await inject(message.tabId);
+      return null;
+    }
   }
 }
 
