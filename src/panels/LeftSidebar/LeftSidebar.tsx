@@ -145,7 +145,8 @@ import { resetToUpstream } from "../../utils/gitActions";
 import { compactAgo } from "../../utils/compactAge";
 import SyncMarks from "../../components/SyncMarks/SyncMarks";
 import TooltipLines from "../../components/Tooltip/TooltipLines";
-import { forgeAccountName, forgeErrorMessage, needsAttention } from "../../utils/forgeTypes";
+import { forgeAccountName, forgeErrorMessage, needsAttention, releaseShows } from "../../utils/forgeTypes";
+import { defaultBranchOf } from "../../utils/defaultBranch";
 import { apiCanServe } from "../../utils/createPr";
 import {
   forgeHosts,
@@ -2879,8 +2880,11 @@ export default function LeftSidebar(props: {
     // Memoized, not a bare accessor: the row reads it several times and each
     // read would otherwise re-parse the origin URL.
     const chip = createMemo(() => unitChip(p, u));
+    // The default branch's pull request is a release to another long-lived
+    // branch: merging it finishes nothing on this row.
+    const trunk = () => u.branch !== null && u.branch === defaultBranchOf(p.path);
     const finished = (): FinishedPr | null => {
-      const pr = showPr() ? status()?.pullRequest : null;
+      const pr = showPr() && !trunk() ? status()?.pullRequest : null;
       return pr && pr.state !== "open" ? { state: pr.state, relation: relation() } : null;
     };
     // Kept while an agent holds the row: a file another worktree is changing
@@ -2924,12 +2928,14 @@ export default function LeftSidebar(props: {
         onClick={() => selectUnit(g, p, u)}
         onDragStart={(e) => startAbsDrag(e, u.folderPath)}
         meta={
-          showPr() || (sync()?.base?.stat?.files ?? 0) > 0 ? (
+          (showPr() && (!trunk() || releaseShows(status()!, Date.now() / 1000))) ||
+          (sync()?.base?.stat?.files ?? 0) > 0 ? (
             <BranchLine
               status={showPr() ? status()! : null}
               base={sync()?.base}
               watched={showPr() && prWatches().some((w) => w.url === status()?.pullRequest?.url)}
               reviewAsked={reviewAsked()}
+              release={trunk()}
             />
           ) : undefined
         }
