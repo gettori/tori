@@ -1055,7 +1055,9 @@ impl DaemonBackend {
     fn create_worktree(&self, principal: &Principal, params: WorktreeParams) -> Result<String, RpcError> {
         let project = self.project(principal, params.project)?;
         let create = crate::worktree::create_worktree_for(self.desk.ui.clone(), project, params.branch, params.from);
-        tauri::async_runtime::block_on(create).map_err(refused)
+        tauri::async_runtime::block_on(create)
+            .map(|made| made.path)
+            .map_err(refused)
     }
 
     fn remember_issue(&self, project: &str, branch: &str, issue: &Issue, path: &str) -> Result<(), RpcError> {

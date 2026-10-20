@@ -165,6 +165,28 @@ fn open_when_listening(runs: &'static setup::Runs, worktree: PathBuf, key: Strin
     });
 }
 
+pub fn start_after_setup(project: String, worktree: PathBuf) {
+    let wanted = setup::settings_and_logs()
+        .0
+        .into_iter()
+        .any(|(key, p)| same_folder(&key, &project) && p.run_on_create && !p.run_command.trim().is_empty());
+    if !wanted {
+        return;
+    }
+    thread::spawn(move || {
+        if !setup_allows_run(setup::wait(&worktree, setup::LIMIT + GRACE)) {
+            return;
+        }
+        if let Err(e) = start(&project, &worktree) {
+            eprintln!("run: could not start after setup in {}: {e}", worktree.display());
+        }
+    });
+}
+
+fn setup_allows_run(setup: Option<Report>) -> bool {
+    setup.is_none_or(|r| r.state == State::Done)
+}
+
 pub fn stop(worktree: &Path) {
     setup::shared().stop(worktree, Kind::Run, GRACE, &publisher(record_path()));
 }
