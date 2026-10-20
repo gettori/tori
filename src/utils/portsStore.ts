@@ -10,6 +10,7 @@ import { listen } from "@tauri-apps/api/event";
 const SETTLE_MS = 3_000;
 
 const [ports, setPorts] = createSignal<Record<string, number[]>>({});
+const [connected, setConnected] = createSignal(false);
 const watched = new Map<string, number>();
 let started = false;
 let scanning = false;
@@ -22,7 +23,12 @@ async function scan() {
   scanning = true;
   const asked = watchedKey();
   try {
-    setPorts((await invoke<Record<string, number[]>>("ports_scan", { worktrees: [...watched.keys()] })) ?? {});
+    const found = (await invoke<Record<string, number[]>>("ports_scan", { worktrees: [...watched.keys()] })) ?? {};
+    setPorts(found);
+    // Only a listening port wears the extension's state, so nobody asks without one.
+    if (Object.values(found).some((list) => list.length > 0)) {
+      setConnected((await invoke<{ connected?: boolean }>("browser_status").catch(() => null))?.connected === true);
+    }
   } catch (e) {
     console.warn("ports_scan failed", e);
   } finally {
@@ -69,6 +75,9 @@ export function portsAt(path: string): () => number[] {
   }
   return () => ports()[path] ?? [];
 }
+
+/** Whether the Tori extension has called in since its credential was minted. */
+export const extensionConnected = connected;
 
 export const portUrl = (port: number) => `http://localhost:${port}`;
 

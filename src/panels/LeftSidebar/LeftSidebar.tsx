@@ -13,7 +13,7 @@ import {
 } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { isLocked } from "../../utils/autopilotStore";
-import { openPort, portsAt } from "../../utils/portsStore";
+import { extensionConnected, openPort, portsAt } from "../../utils/portsStore";
 import { tearingDown } from "../../utils/teardowns";
 import { runAt, runnable, startRun, stopRun } from "../../utils/runStore";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -127,7 +127,7 @@ import {
   liveSessionStatuses,
   inUnit,
 } from "../../utils/sessionActivity";
-import { forgeChip, forgeDoor } from "../../utils/forgeChip";
+import { checksSentence, forgeChip, forgeDoor } from "../../utils/forgeChip";
 import {
   finishedLook,
   overlapMark,
@@ -145,7 +145,13 @@ import { resetToUpstream } from "../../utils/gitActions";
 import { compactAgo } from "../../utils/compactAge";
 import SyncMarks from "../../components/SyncMarks/SyncMarks";
 import TooltipLines from "../../components/Tooltip/TooltipLines";
-import { forgeAccountName, forgeErrorMessage, needsAttention } from "../../utils/forgeTypes";
+import {
+  forgeAccountName,
+  forgeErrorMessage,
+  needsAttention,
+  reviewSlot,
+  type ReviewSlot,
+} from "../../utils/forgeTypes";
 import { apiCanServe } from "../../utils/createPr";
 import {
   forgeHosts,
@@ -191,6 +197,9 @@ import {
   ShieldOff,
   UserRound,
   GitPullRequest,
+  MessageSquareCheck,
+  MessageSquareDot,
+  MessageSquareWarning,
   Play,
   Square,
 } from "lucide-solid";
@@ -235,6 +244,12 @@ import styles from "./LeftSidebar.module.css";
 // bullet at its right edge. The glyph draws a branch and its tip, so it can
 // say where HEAD is in the ink it already has, and the end cluster keeps its
 // width for the things that change.
+const REVIEW_MARK: Record<ReviewSlot, { icon: LucideIcon; tone: "asked" | "bad" | "good"; title: string }> = {
+  requested: { icon: MessageSquareDot, tone: "asked", title: "Your review is requested" },
+  changesRequested: { icon: MessageSquareWarning, tone: "bad", title: "Changes requested" },
+  approved: { icon: MessageSquareCheck, tone: "good", title: "Approved" },
+};
+
 function UnitIcon(props: { kind: string | undefined; active: boolean; current: boolean }) {
   return (
     <Switch fallback={<Icon icon={Folder} />}>
@@ -2886,7 +2901,35 @@ export default function LeftSidebar(props: {
     // Kept while an agent holds the row: a file another worktree is changing
     // too is the one mark that matters most while the agent is still writing.
     const overlap = () => (u.kind !== "plain" || u.isCurrent ? overlapMark(overlapsAt(u.folderPath)) : null);
-    const marks = createMemo(() => withOverlap(held() ? [] : syncMarks(sync(), finished()), overlap()));
+    const attention = () => {
+      const st = status();
+      return (
+        showPr() &&
+        st !== null &&
+        needsAttention(st, { viewer: forgeViewer(p.path), requested: requestedReviews(p.path) })
+      );
+    };
+    const review = () => {
+      const st = status();
+      return showPr() && st !== null
+        ? reviewSlot(st, { viewer: forgeViewer(p.path), requested: requestedReviews(p.path) })
+        : null;
+    };
+    const allMarks = createMemo(() => withOverlap(held() ? [] : syncMarks(sync(), finished()), overlap()));
+    // A PR that needs you already sends you to it, so a conflict with the base
+    // waits behind it, told in the review slot's tooltip instead.
+    const hiddenConflict = () => (attention() ? allMarks().find((m) => m.kind === "conflict") : undefined);
+    const marks = createMemo(() => (hiddenConflict() ? allMarks().filter((m) => m.kind !== "conflict") : allMarks()));
+    const reviewStory = () => {
+      const st = status();
+      const out: string[] = [];
+      if (st?.checks.state === "failure" && attention()) out.push(checksSentence(st.checks));
+      const conflict = hiddenConflict();
+      if (conflict) out.push(conflict.title);
+      const comments = st?.pullRequest?.comments ?? 0;
+      if (comments) out.push(`${comments} comment${comments === 1 ? "" : "s"}`);
+      return out;
+    };
     const watch = createMemo(() => (portLinksAt(u.folderPath) ? portsAt(u.folderPath) : () => []));
     const listening = () => watch()();
     // One hover target for the whole run rather than one per glyph: they are
@@ -2900,7 +2943,7 @@ export default function LeftSidebar(props: {
       const out: string[] = [];
       const at = sync()?.head_committed_at;
       if (at) out.push(`Last commit ${compactAgo(at)}`);
-      out.push(...conflictLines(sync()?.base?.conflicts ?? []));
+      if (!hiddenConflict()) out.push(...conflictLines(sync()?.base?.conflicts ?? []));
       return out;
     };
     return (
@@ -2957,8 +3000,13 @@ export default function LeftSidebar(props: {
                   as="button"
                   type="button"
                   class={rows.portChip}
+                  classList={{ [rows.portChipConnected]: extensionConnected() }}
                   aria-label={`Open localhost:${port}`}
-                  label={`Listening on localhost:${port}`}
+                  label={
+                    extensionConnected()
+                      ? `Listening on localhost:${port}, the Tori extension is connected`
+                      : `Listening on localhost:${port}`
+                  }
                   data-port-chip={port}
                   onClick={(e: MouseEvent) => {
                     e.stopPropagation();
@@ -2987,6 +3035,18 @@ export default function LeftSidebar(props: {
                 </Tooltip>
               )}
             </Show>
+            <Show when={review()}>
+              {(r) => (
+                <Tooltip<HTMLSpanElement>
+                  as="span"
+                  class={`${rows.reviewMark} ${rows[`review_${REVIEW_MARK[r()].tone}`]}`}
+                  label={<TooltipLines lead={[REVIEW_MARK[r()].title]} rest={reviewStory()} />}
+                  data-pr-review={REVIEW_MARK[r()].tone}
+                >
+                  <Icon icon={REVIEW_MARK[r()].icon} />
+                </Tooltip>
+              )}
+            </Show>
             <SyncMarks marks={marks()} label={<TooltipLines lead={storyLead()} rest={storyRest()} />} />
             <For each={topicsAt(u.folderPath)}>
               {(f) => (
@@ -3005,7 +3065,7 @@ export default function LeftSidebar(props: {
                 />
               )}
             </For>
-            {statusBubble(rollup)}
+            <StatusBubble rollup={rollup} noPrAttention />
           </>
         }
       />

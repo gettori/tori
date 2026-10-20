@@ -22,13 +22,21 @@ import styles from "./StatusBubble.module.css";
  *
  * `untitled` drops the per-state titles, for a bubble inside a control whose
  * own tooltip already says what it holds.
+ *
+ * `noPrAttention` drops the pull request state, for a worktree row whose own
+ * review mark already says why its PR needs you.
  */
-export default function StatusBubble(props: { rollup: () => Rollup | null; tile?: boolean; untitled?: boolean }) {
+export default function StatusBubble(props: {
+  rollup: () => Rollup | null;
+  tile?: boolean;
+  untitled?: boolean;
+  noPrAttention?: boolean;
+}) {
   const r = createMemo(() => props.rollup());
   const tile = () => props.tile === true;
   const quiet = () => tile() || props.untitled === true;
   const waiting = () => (r()?.waitingForApproval ?? 0) + (r()?.waitingForAnswer ?? 0);
-  const pr = () => r()?.prAttention ?? 0;
+  const pr = () => (props.noPrAttention ? 0 : (r()?.prAttention ?? 0));
   const executing = () => r()?.executing ?? 0;
   const idle = () => r()?.idle ?? 0;
   const running = () => r()?.running ?? 0;
