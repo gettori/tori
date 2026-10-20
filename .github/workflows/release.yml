@@ -357,7 +357,7 @@ jobs:
         run: .github/scripts/update-cask.sh "$VERSION"
 
   # Nothing waits on this job, so a store failure leaves the release alone
-  # and goes red here on its own. Review and publishing stay in the dashboard.
+  # and goes red here on its own. It submits staged; Publish stays a click.
   extension:
     needs: [gate, publish]
     if: >-
@@ -386,11 +386,11 @@ jobs:
           path: ${{ steps.zip.outputs.path }}
           if-no-files-found: error
 
-      - name: Upload the draft to the Chrome Web Store
+      - name: Upload and submit to the Chrome Web Store
         if: github.event_name == 'push'
         env:
           CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
           CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
           CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
           CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
-        run: .github/scripts/extension-upload.sh "${{ steps.zip.outputs.path }}"
+        run: .github/scripts/extension-upload.sh --submit "${{ steps.zip.outputs.path }}"
