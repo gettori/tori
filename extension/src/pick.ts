@@ -33,11 +33,18 @@ export type Pick = {
 
 export type LogKind = "error" | "warn" | "uncaught" | "rejection" | "request" | "overlay";
 
-export type LogEntry = { seq: number; at: number; kind: LogKind; text: string; count: number };
+export type LogEntry = { seq: number; at: number; kind: LogKind; text: string; count: number; reportable: boolean };
 
-// One event name both ways between the page log in the main world and the picker; `detail` is this, as JSON.
+export type Tally = { count: number; overflow: number };
+
+// One event name both ways between the page log in the main world and the picker or the relay; `detail` is this, as JSON.
 export type LogChannel = "tori:page-log";
-export type LogMessage = { type: "ask" } | { type: "mark"; seq: number } | { type: "entries"; entries: LogEntry[] };
+export type LogMessage =
+  | { type: "ask" }
+  | { type: "mark"; seqs: number[]; seq: number }
+  | { type: "entries"; entries: LogEntry[] }
+  | { type: "tally?" }
+  | ({ type: "tally" } & Tally);
 
 // The picker dispatches `ask` on the picked element and the inspect script in the
 // main world answers on `document` before dispatchEvent returns; `detail` is this, as JSON.
@@ -89,6 +96,9 @@ export type BatchRequest =
   | { type: "options" }
   | { type: "setup" }
   | { type: "screenshots" };
+
+// The relay forwards each tally the page log posts; answered with nothing.
+export type TallyRequest = { type: "tally" } & Tally;
 
 // Answered with null when Tori is reachable, otherwise the sentence saying why not.
 export type ConnectionRequest = { type: "connection" };

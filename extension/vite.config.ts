@@ -18,14 +18,15 @@ const ICONS: Record<string, string> = { "32": "32x32.png", "128": "128x128.png" 
 const manifest = (): Plugin => ({
   name: "tori-extension-manifest",
   generateBundle(_, bundle) {
-    for (const name of ["picker.js", "pagelog.js", "inspect.js"]) {
+    for (const name of ["picker.js", "pagelog.js", "pagerelay.js", "inspect.js"]) {
       const script = bundle[name];
       if (script?.type === "chunk" && (script.imports.length || script.dynamicImports.length)) {
         this.error(`${name} is injected as a classic script and cannot import ${script.imports.join(", ")}`);
       }
     }
-    // These run in the page's own world, where a top level var would be one of the page's globals.
-    for (const name of ["pagelog.js", "inspect.js"]) {
+    // These run in the page's own world, where a top level var would be one of the page's globals,
+    // or beside the picker, where it would clash with one of the picker's.
+    for (const name of ["pagelog.js", "pagerelay.js", "inspect.js"]) {
       const page = bundle[name];
       if (page?.type === "chunk") page.code = `(() => {\n${page.code}\n})();\n`;
     }
@@ -60,6 +61,7 @@ export default defineConfig(({ mode }) => {
           welcome: "welcome.html",
           picker: "src/picker/index.ts",
           pagelog: "src/pagelog.ts",
+          pagerelay: "src/pagerelay.ts",
           inspect: "src/inspect.ts",
         },
         output: {

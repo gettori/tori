@@ -12,6 +12,7 @@ import type {
   Sent,
   Setup,
   Shot,
+  TallyRequest,
   TrayState,
 } from "./pick";
 import { addressOf, keeperOf } from "./collapse";
@@ -137,15 +138,44 @@ async function describe(tab: chrome.tabs.Tab): Promise<TabState> {
   }
 }
 
+const worktreeKey = (tabId: number) => `worktree:${tabId}`;
+const tallyKey = (tabId: number) => `tally:${tabId}`;
+const BADGE_MAX = 999;
+
+// The only badge writer. Two keys, not one record, so a tally and a refresh landing
+// together cannot overwrite each other's half; kept in session storage since the worker sleeps.
+async function paint(tabId: number) {
+  const keys = [worktreeKey(tabId), tallyKey(tabId)];
+  const stored = await chrome.storage.session.get(keys);
+  const count = (await pageLogOn()) ? Number(stored[keys[1]] ?? 0) : 0;
+  const number = count > BADGE_MAX ? `${BADGE_MAX}+` : count > 0 ? String(count) : " ";
+  await chrome.action.setBadgeText({ tabId, text: stored[keys[0]] === true ? number : "" });
+}
+
 async function show(tabId: number, state: TabState) {
+  await chrome.storage.session.set({ [worktreeKey(tabId)]: state.kind === "worktree" });
   if (state.kind === "other") {
-    await chrome.action.setBadgeText({ tabId, text: "" });
+    await paint(tabId);
     await chrome.action.setTitle({ tabId, title: sentenceOf(state.title) });
     return;
   }
   await chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_HEX[state.color] });
-  await chrome.action.setBadgeText({ tabId, text: " " });
+  await paint(tabId);
   await chrome.action.setTitle({ tabId, title: `${label(state.unit)}, ${state.unit.name}` });
+}
+
+async function tallied(tabId: number, { count }: TallyRequest) {
+  await chrome.storage.session.set({ [tallyKey(tabId)]: count });
+  await paint(tabId);
+}
+
+async function paintAll() {
+  for (const tab of await chrome.tabs.query({})) if (tab.id !== undefined) void paint(tab.id);
+}
+
+function forgetTab(tabId: number) {
+  void dropBatch(tabId);
+  void chrome.storage.session.remove([worktreeKey(tabId), tallyKey(tabId)]);
 }
 
 const GROUP_MS = 2000;
@@ -255,22 +285,32 @@ async function openTray(tab: chrome.tabs.Tab) {
 const screenshotsOn = async () => (await chrome.storage.local.get(SHOTS_KEY))[SHOTS_KEY] !== false;
 const pageLogOn = async () => (await chrome.storage.local.get(LOG_KEY))[LOG_KEY] !== false;
 
-const PAGE_LOG = "pagelog";
+// The log runs in the page's world to see its errors; the relay runs in ours to reach the worker.
+// Checked one by one, since an install from before the relay already has the log registered.
+const PAGE_SCRIPTS = [
+  { id: "pagelog", world: "MAIN" },
+  { id: "pagerelay", world: "ISOLATED" },
+] as const;
 
 async function registerPageLog() {
   const on = await pageLogOn();
-  const there = (await chrome.scripting.getRegisteredContentScripts({ ids: [PAGE_LOG] })).length > 0;
-  if (on && !there) {
-    await chrome.scripting.registerContentScripts([
-      {
-        id: PAGE_LOG,
-        js: ["pagelog.js"],
+  const there = new Set<string>(
+    (await chrome.scripting.getRegisteredContentScripts({ ids: PAGE_SCRIPTS.map((s) => s.id) })).map((s) => s.id),
+  );
+  const add = PAGE_SCRIPTS.filter((s) => on && !there.has(s.id));
+  const drop = PAGE_SCRIPTS.filter((s) => !on && there.has(s.id)).map((s) => s.id);
+  if (add.length) {
+    await chrome.scripting.registerContentScripts(
+      add.map(({ id, world }) => ({
+        id,
+        js: [`${id}.js`],
         matches: chrome.runtime.getManifest().host_permissions ?? [],
         runAt: "document_start",
-        world: "MAIN",
-      },
-    ]);
-  } else if (!on && there) await chrome.scripting.unregisterContentScripts({ ids: [PAGE_LOG] });
+        world,
+      })),
+    );
+  }
+  if (drop.length) await chrome.scripting.unregisterContentScripts({ ids: drop });
 }
 
 // Install, startup and the switch can land together; two checks at once would both register.
@@ -472,9 +512,10 @@ async function connection(): Promise<string | null> {
   }
 }
 
-function answer(message: ConnectionRequest | BatchRequest, sender: chrome.runtime.MessageSender) {
+function answer(message: ConnectionRequest | BatchRequest | TallyRequest, sender: chrome.runtime.MessageSender) {
   if (message.type === "connection") return connection();
   const tab = sender.tab;
+  if (message.type === "tally") return tab?.id === undefined ? Promise.resolve(null) : tallied(tab.id, message);
   return tab?.id === undefined ? Promise.resolve(null) : handle(message, { ...tab, id: tab.id });
 }
 
@@ -504,7 +545,9 @@ chrome.runtime.onStartup.addListener(() => {
   syncPageLog();
 });
 chrome.storage.onChanged.addListener((change, area) => {
-  if (area === "local" && LOG_KEY in change) syncPageLog();
+  if (area !== "local" || !(LOG_KEY in change)) return;
+  syncPageLog();
+  void paintAll();
 });
 chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
   if (change.url || change.status === "complete") void enqueue(tab);
@@ -514,7 +557,7 @@ chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
 });
 // Swallowed: an older Tori has no browser.opened, and the tab just stays.
 chrome.tabs.onCreated.addListener((tab) => void collapse(tab).catch(() => {}));
-chrome.tabs.onRemoved.addListener((tabId) => void dropBatch(tabId));
+chrome.tabs.onRemoved.addListener(forgetTab);
 // Swallowed: browser pages refuse every script, and the toolbar title already says why.
 chrome.action.onClicked.addListener((tab) => void openTray(tab).catch(() => {}));
 chrome.commands.onCommand.addListener((command, tab) => {
