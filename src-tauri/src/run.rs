@@ -15,6 +15,8 @@ use crate::setup::{self, Kind, Publish, Report, Spec, State};
 
 const GRACE: Duration = setup::KILL_GRACE;
 const LOG_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+const LISTEN_WAIT: Duration = Duration::from_secs(120);
+const SCAN_WAIT: Duration = Duration::from_secs(2);
 
 static STARTING: Mutex<()> = Mutex::new(());
 static RECORD: Mutex<()> = Mutex::new(());
@@ -78,11 +80,12 @@ fn publisher(record: PathBuf) -> Publish {
 /// races the old server for its port.
 pub fn start(project: &str, worktree: &Path) -> Result<Report, String> {
     let (prefs, log_dir) = setup::settings_and_logs();
-    let command = prefs
+    let prefs = prefs
         .into_iter()
         .find(|(key, _)| same_folder(key, project))
-        .map(|(_, p)| p.run_command)
+        .map(|(_, p)| p)
         .unwrap_or_default();
+    let command = prefs.run_command;
     if command.trim().is_empty() {
         return Err("This project has no run command.".into());
     }
@@ -97,6 +100,13 @@ pub fn start(project: &str, worktree: &Path) -> Result<Report, String> {
         Some(old) if old.state == State::Stopping => return Err("The last run is still stopping.".into()),
         _ => {}
     }
+    let worktree_key = worktree.to_string_lossy().into_owned();
+    // Taken before the server exists, so a port it opens is new even if it binds fast.
+    let before = if prefs.open_browser {
+        ports_now(&worktree_key)
+    } else {
+        None
+    };
     let path_env = crate::env::login_path().map_or_else(crate::env::augmented_path, str::to_string);
     let record = record_path();
     let spec = Spec {
@@ -111,8 +121,48 @@ pub fn start(project: &str, worktree: &Path) -> Result<Report, String> {
     let report = runs.start(spec, publisher(record.clone()));
     if let Some(pgid) = runs.pid(worktree, Kind::Run) {
         remember(&record, pgid, &report.worktree);
+        if let Some(before) = before {
+            open_when_listening(runs, worktree.to_path_buf(), worktree_key, pgid, before);
+        }
     }
     Ok(report)
+}
+
+fn ports_now(worktree: &str) -> Option<Vec<u16>> {
+    let ask = serde_json::json!({ "op": "ports.scan", "args": { "worktrees": [worktree] } });
+    let found = crate::rpc::daemon_wait("office", ask, SCAN_WAIT).ok()?;
+    let mut found: std::collections::BTreeMap<String, Vec<u16>> = serde_json::from_value(found).ok()?;
+    Some(found.remove(worktree).unwrap_or_default())
+}
+
+// The block's base when it is among them, since that is the port the setup asked for.
+fn port_to_open(before: &[u16], now: &[u16], base: Option<u16>) -> Option<u16> {
+    let new: Vec<u16> = now.iter().copied().filter(|p| !before.contains(p)).collect();
+    base.filter(|b| new.contains(b)).or_else(|| new.iter().min().copied())
+}
+
+fn still_running_as(runs: &setup::Runs, worktree: &Path, pgid: u32) -> bool {
+    runs.pid(worktree, Kind::Run) == Some(pgid)
+}
+
+fn open_when_listening(runs: &'static setup::Runs, worktree: PathBuf, key: String, pgid: u32, before: Vec<u16>) {
+    thread::spawn(move || {
+        let base = crate::ports::bases(std::slice::from_ref(&key)).get(&key).copied();
+        let until = Instant::now() + LISTEN_WAIT;
+        while Instant::now() < until {
+            thread::sleep(Duration::from_secs(1));
+            if !still_running_as(runs, &worktree, pgid) {
+                return;
+            }
+            let now = ports_now(&key).unwrap_or_default();
+            if let Some(port) = port_to_open(&before, &now, base) {
+                if let Err(e) = crate::ports::open_in_browser(port) {
+                    eprintln!("run: could not open port {port}: {e}");
+                }
+                return;
+            }
+        }
+    });
 }
 
 pub fn stop(worktree: &Path) {
@@ -224,6 +274,13 @@ mod tests {
     use std::os::unix::process::CommandExt;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::UNIX_EPOCH;
+
+    #[test]
+    fn the_port_to_open_prefers_the_block_base() {
+        assert_eq!(port_to_open(&[3000], &[3000, 9229, 40010], Some(40010)), Some(40010));
+        assert_eq!(port_to_open(&[], &[9229, 5173], Some(40010)), Some(5173));
+        assert_eq!(port_to_open(&[5173], &[5173], None), None);
+    }
 
     fn tmp() -> PathBuf {
         static SEQ: AtomicU64 = AtomicU64::new(0);

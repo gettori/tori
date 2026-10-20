@@ -511,7 +511,9 @@ impl Office {
             }
             "ports.scan" => {
                 let worktrees: Vec<String> = arg(args, "worktrees")?;
-                crate::ports::exclude(arg(args, "exclude")?);
+                if let Some(pids) = arg(args, "exclude")? {
+                    crate::ports::exclude(pids);
+                }
                 Ok(json!(crate::ports::scan(&worktrees, std::time::Duration::ZERO)))
             }
             "ports.exclude" => {
