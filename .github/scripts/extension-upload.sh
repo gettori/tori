@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
-# Upload an extension zip to the Chrome Web Store item as its new draft. Never
-# submits it for review: that, and publishing, stay a click in the dashboard.
+# Upload an extension zip to the Chrome Web Store item as its new draft. With
+# --submit it also submits that draft for review as a staged publish: once
+# approved it waits for someone to click Publish in the dashboard.
 #
 #   CWS_CLIENT_ID=... CWS_CLIENT_SECRET=... CWS_REFRESH_TOKEN=... CWS_PUBLISHER_ID=... \
-#     .github/scripts/extension-upload.sh <zip>
+#     .github/scripts/extension-upload.sh [--submit] <zip>
 set -euo pipefail
 
-ZIP="${1:?usage: extension-upload.sh <zip>}"
+submit=false
+if [ "${1:-}" = --submit ]; then
+  submit=true
+  shift
+fi
+ZIP="${1:?usage: extension-upload.sh [--submit] <zip>}"
 : "${CWS_CLIENT_ID:?}" "${CWS_CLIENT_SECRET:?}" "${CWS_REFRESH_TOKEN:?}" "${CWS_PUBLISHER_ID:?}"
 root=$(cd "$(dirname "$0")/../.." && pwd)
 [ -f "$ZIP" ] || { echo "error: no zip at $ZIP" >&2; exit 1; }
@@ -47,4 +53,16 @@ for _ in $(seq 60); do
 done
 
 [ "$state" = SUCCEEDED ] || fail "the upload" "${state:-no state}: $(jq -c . <<<"$reply")"
-echo "uploadState: SUCCEEDED for $item, version $(unzip -p "$ZIP" manifest.json | jq -r .version)"
+version=$(unzip -p "$ZIP" manifest.json | jq -r .version)
+echo "uploadState: SUCCEEDED for $item, version $version"
+$submit || exit 0
+
+reply=$(curl -sS -w '\n%{http_code}' -X POST "https://chromewebstore.googleapis.com/v2/$name:publish" \
+  -H "Authorization: Bearer $token" -H "Content-Type: application/json" \
+  -d '{"publishType": "STAGED_PUBLISH", "blockOnWarnings": true}') || fail "the submit" "curl exited $?"
+code=$(tail -n1 <<<"$reply")
+body=$(sed '$d' <<<"$reply")
+case "$code" in
+  2??) echo "submitted $version for review; publish it from the dashboard once approved" ;;
+  *) fail "the submit" "HTTP $code: $(jq -c . <<<"$body" 2>/dev/null || echo "$body")" ;;
+esac

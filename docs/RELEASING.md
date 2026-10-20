@@ -90,14 +90,17 @@ confirm each is attached, publish it, and point the Homebrew cask at the two
 DMGs. A failed build therefore leaves nothing behind: no tag, no draft.
 
 After `publish`, the `extension` job builds the store zip with
-`.github/scripts/extension-zip.sh` and uploads it to the Chrome Web Store item
-as its new draft with `.github/scripts/extension-upload.sh`. It never submits
-for review or publishes. When the run is green, open the item in the
-[Web Store dashboard](https://chrome.google.com/webstore/devconsole), check
-the draft's version, and **Submit for review** by hand; once review passes,
-publish it there. Nothing waits on this job: if it goes red, the release is
-already out, and the job's log names the step that failed. Re-run that job
-alone once the cause is fixed.
+`.github/scripts/extension-zip.sh`, uploads it to the Chrome Web Store item
+and submits it for review as a staged publish, with
+`.github/scripts/extension-upload.sh --submit`. A green job means the
+version is in review. When the store's approval email arrives, open the item
+in the [Web Store dashboard](https://chrome.google.com/webstore/devconsole)
+and click **Publish**; nothing goes live without that click. A rejection
+also comes by email: fix the cause, then re-run the job, or submit the draft
+by hand from the dashboard. Nothing waits on this job: if it goes red, the
+release is already out, and the job's log names the step that failed
+(token request, upload, status check or submit). Re-run that job alone once
+the cause is fixed.
 
 Expect 25 minutes with warm caches, up to 45 after a quiet week.
 
@@ -138,7 +141,8 @@ move the app to production first, then mint the refresh token. The account needs
 verification to update a store item.
 
 To check the four secrets without a release, run the upload against the draft
-item from your own machine; it replaces the current draft and submits nothing:
+item from your own machine; without `--submit` it replaces the current draft
+and submits nothing:
 
 ```bash
 CWS_CLIENT_ID=... CWS_CLIENT_SECRET=... CWS_REFRESH_TOKEN=... CWS_PUBLISHER_ID=... \
@@ -229,9 +233,9 @@ answers "update the Tori extension", above it "update Tori".
   protocol is public. Never on a release count: every store version waits for
   a review, so a release that drops the old shape too early leaves every
   installed extension refused until the review passes.
-- `MIN_TORI` (`extension/src/tab.ts`) is the first Tori with Settings >
-  Browser, shown on the extension's welcome and options pages. Until the
-  release that ships the extension is cut it holds a guess; set it to that
-  release's version in its release PR, and the same number in
-  `extension/store/listing.md` (twice, plus the dashboard copy) and on
-  tori-web's `docs/browser/extension` page.
+- `MIN_TORI` (`extension/src/tab.ts`) is the oldest Tori the extension
+  works with, 26.1020.0, the first with Settings > Browser. It is shown on
+  the extension's welcome and options pages. It changes only when
+  `MIN_PROTOCOL` rises past what an older Tori speaks; then change it
+  together with `extension/store/listing.md` (twice, plus the dashboard
+  copy) and tori-web's `docs/browser/extension` page.
