@@ -2,6 +2,7 @@ import { Show } from "solid-js";
 import {
   GitMerge,
   GitPullRequest,
+  GitPullRequestArrow,
   GitPullRequestClosed,
   GitPullRequestDraft,
   CircleCheck,
@@ -19,7 +20,7 @@ import Tooltip from "../../components/Tooltip/Tooltip";
 import TooltipLines from "../../components/Tooltip/TooltipLines";
 import { compactAge, compactAgo } from "../../utils/compactAge";
 import { forgeBadges, ranChecks, type BadgeTone, type PrChipState } from "../../utils/forgeChip";
-import { prTone, type PrTone, type UnitStatus } from "../../utils/forgeTypes";
+import { prTone, releaseShows, type PrTone, type UnitStatus } from "../../utils/forgeTypes";
 import type { BaseSync } from "../../utils/gitActions";
 import styles from "./BranchLine.module.css";
 
@@ -78,8 +79,15 @@ export default function BranchLine(props: {
   watched?: boolean;
   /** Whether the viewer's review is requested on it, a re-request included. */
   reviewAsked?: boolean;
+  /** The branch is the repo's default, so its pull request is a release to
+   *  another long-lived branch rather than a feature landing. */
+  release?: boolean;
 }) {
-  const pr = () => props.status?.pullRequest ?? null;
+  const pr = () => {
+    const st = props.status;
+    if (!st?.pullRequest) return null;
+    return props.release && !releaseShows(st, Date.now() / 1000) ? null : st.pullRequest;
+  };
   const stat = () => {
     const s = props.base?.stat;
     return s && s.files > 0 ? s : null;
@@ -116,7 +124,11 @@ export default function BranchLine(props: {
   };
   const conflicts = () => props.base?.conflicts ?? [];
   const tone = () =>
-    props.status ? prTone(props.status, props.reviewAsked === true, conflicts().length > 0) : "quiet";
+    props.status ? prTone(props.status, props.reviewAsked === true, conflicts().length > 0, props.release) : "quiet";
+  const numberClass = () => {
+    if (state() === "open") return `tone_${tone()}`;
+    return props.release ? "pr_closed" : `pr_${state()}`;
+  };
   const checks = () => props.status!.checks;
   const ran = () => ranChecks(checks());
   const passed = () => ran() - checks().failing;
@@ -171,12 +183,13 @@ export default function BranchLine(props: {
   const standing = (p: () => NonNullable<UnitStatus["pullRequest"]>) => (
     <>
       <span
-        class={`${styles.item} ${styles[state() === "open" ? `tone_${tone()}` : `pr_${state()}`]}`}
+        class={`${styles.item} ${styles[numberClass()]}`}
         data-pr-state={state()}
         data-pr-tone={state() === "open" ? tone() : undefined}
+        data-pr-release={props.release ? p().baseRef : undefined}
       >
-        <Icon icon={prIcon(state())} />
-        {`#${p().number}`}
+        <Icon icon={props.release ? GitPullRequestArrow : prIcon(state())} />
+        {props.release ? `-> ${p().baseRef} #${p().number}` : `#${p().number}`}
       </span>
 
       <Show when={p().stack}>
