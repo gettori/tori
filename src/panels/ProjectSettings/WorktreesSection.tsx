@@ -257,6 +257,16 @@ export default function WorktreesSection(props: { workspace: string }) {
           />
         </Row>
         <Row
+          label="Open the browser when a server starts"
+          hint="Once the run command's server listens, its first port opens in the browser, or the tab already on it comes to the front."
+        >
+          <Switch
+            checked={setup().openBrowser}
+            onChange={(on) => saveSetup({ openBrowser: on })}
+            aria-label="Open the browser when a server starts"
+          />
+        </Row>
+        <Row
           stack
           label="Teardown command"
           hint={
