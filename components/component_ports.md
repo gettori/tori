@@ -1,7 +1,7 @@
 ---
 summary: ports.rs hands each checkout a stable TORI_PORT block from ports.json and finds dev servers per worktree by lsof cwd
 status: current
-updated: 2026-10-18
+updated: 2026-10-21
 source: "plan \"Per-worktree ports and dev server URLs\" (personal/tori, branch `phase-1-block-4`, gettori/tickets#40); `src-tauri/src/ports.rs`, `src/utils/portsStore.ts`"
 ---
 
@@ -21,8 +21,10 @@ source: "plan \"Per-worktree ports and dev server URLs\" (personal/tori, branch 
 
 - `env_for(cwd)` returns `TORI_PORT` and `TORI_PORT_1` to `TORI_PORT_9`, or nothing outside a checkout. It is layered into `setup::Runs::start` (`setup.rs:182`, so setup, run and teardown all get it), `pty_spawn` (`pty/mod.rs:396`) and `chat::transport::build_command` (`chat/transport.rs:73`). `PORT` is deliberately not set.
 - `ports_scan(worktrees)` returns the listening ports keyed by the paths as given.
-- `src/utils/portsStore.ts` holds one scan for every consumer. `portsAt(path)` adds a path for the life of the calling owner. The store polls every 30 s while the document is visible, scans on focus, 3 s after any `pty://activity` quiet, 3 s after a run command starts and at once when it stops (`setup://changed` with kind run, since a headless run has no terminal to go quiet), and again when a path was added mid-scan.
-- Shown as `:<port>` chips in the worktree row's end cluster in `LeftSidebar.tsx`, and as `localhost:<port>` rows at the top of `ScriptsSection.tsx`.
+- `src/utils/portsStore.ts` holds one scan for every consumer. `portsAt(path)` adds a path for the life of the calling owner. The store has no timer: it scans on focus, 3 s after any `pty://activity` quiet, 3 s after a run command starts and at once when it stops (`setup://changed` with kind run, since a headless run has no terminal to go quiet), and again when a path was added mid-scan.
+- Shown as `:<port>` chips in the worktree row's end cluster in `LeftSidebar.tsx`, brand amber while `extensionConnected()` (read from `browser_status` after a scan that found a port), and as `localhost:<port>` rows at the top of `ScriptsSection.tsx`.
+- `openPort` calls `browser_open(port)`, which builds `http://localhost:<port>/` in Rust, records it with the daemon (`browser.opening`, 1 s cap) and opens it ([[adr_tori_opens_the_url_the_extension_folds_the_tab]]). `open_in_browser` is the same path for the run watcher.
+- The `ports.scan` office op takes `exclude` as optional, so a caller without the window's LSP and DAP pids (the run watcher) keeps the last exclusion.
 
 ## Related
 

@@ -41,3 +41,4 @@ source: "Notifications inbox plan (branch `phase-1-block-2`, gettori/tickets#36)
 - [[component_digest]] the Since you looked tab that reads this log
 - [[concept_in_app_navigation]] how a row opens its session
 - [[gotcha_the_webview_is_not_a_hub_subscriber]] why changes go out on two channels
+- [[adr_page_errors_stay_in_the_browser]] why browser page errors have no row here
