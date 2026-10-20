@@ -102,6 +102,12 @@ release is already out, and the job's log names the step that failed
 (token request, upload, status check or submit). Re-run that job alone once
 the cause is fixed.
 
+A release can land while the previous version is still in review, or
+approved and waiting for Publish. The store may then refuse the upload or
+the submit and the job goes red, which is expected rather than broken.
+Publish the waiting version, or cancel its submission in the dashboard, and
+re-run the job; or let the next release carry the change.
+
 Expect 25 minutes with warm caches, up to 45 after a quiet week.
 
 `scripts/release.sh status` shows the run and says what, if anything, is next.
@@ -137,8 +143,8 @@ The OAuth consent screen behind `CWS_CLIENT_ID` must be **In production**,
 not Testing: a Testing app's refresh tokens expire after 7 days, and the
 first release after that fails its upload with `invalid_grant`. Google's
 own setup guide adds you as a Test user instead, which is the 7 day kind:
-move the app to production first, then mint the refresh token. The account needs 2-step
-verification to update a store item.
+move the app to production first, then mint the refresh token. The account
+needs 2-step verification to update a store item.
 
 To check the four secrets without a release, run the upload against the draft
 item from your own machine; without `--submit` it replaces the current draft
@@ -161,7 +167,8 @@ with `github.token`.
 The workflow can be dispatched by hand from any branch the environment allows.
 A dispatched run builds everything a real one does, uploads the DMGs, the
 tarballs, the APK and the extension zip as run artifacts, and publishes
-nothing: no tag, no release, no cask, no store upload. Download the DMG onto a Mac that has never seen Tori and
+nothing: no tag, no release, no cask, no store upload. Download the DMG onto
+a Mac that has never seen Tori and
 check `spctl -a -vv /Applications/Tori.app` says
 `accepted, source=Notarized Developer ID`; the app then opens without a
 dialog. Do this before the first real release after any change to signing,
@@ -235,7 +242,9 @@ answers "update the Tori extension", above it "update Tori".
   installed extension refused until the review passes.
 - `MIN_TORI` (`extension/src/tab.ts`) is the oldest Tori the extension
   works with, 26.1020.0, the first with Settings > Browser. It is shown on
-  the extension's welcome and options pages. It changes only when
-  `MIN_PROTOCOL` rises past what an older Tori speaks; then change it
-  together with `extension/store/listing.md` (twice, plus the dashboard
-  copy) and tori-web's `docs/browser/extension` page.
+  the extension's welcome and options pages. It changes only when the
+  extension's own `PROTOCOL` rises above what an older Tori's host reads,
+  since that Tori then answers "update Tori": set it to the first release
+  whose host reads the new protocol, together with
+  `extension/store/listing.md` (twice, plus the dashboard copy) and
+  tori-web's `docs/browser/extension` page.
