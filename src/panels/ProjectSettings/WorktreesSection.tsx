@@ -267,6 +267,17 @@ export default function WorktreesSection(props: { workspace: string }) {
           />
         </Row>
         <Row
+          label="Start the run command when a worktree is created"
+          hint="Only for a worktree you create from the sidebar, once its setup command finishes without an error. Agents and attempts never start it."
+        >
+          <Switch
+            checked={setup().runOnCreate}
+            disabled={!setup().runCommand}
+            onChange={(on) => saveSetup({ runOnCreate: on })}
+            aria-label="Start the run command when a worktree is created"
+          />
+        </Row>
+        <Row
           stack
           label="Teardown command"
           hint={

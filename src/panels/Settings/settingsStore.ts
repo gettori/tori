@@ -382,13 +382,15 @@ export type ReviewRule = {
 /** What a project runs in the worktrees Tori creates. An empty command runs
  *  nothing; `setupWait` holds `worktree.new` and `session.spawn` until setup exits,
  *  `teardownCommand` runs before a worktree is removed, and `runCommand` is
- *  started and stopped by hand. `openBrowser` opens a run's first port once it listens. */
+ *  started and stopped by hand. `openBrowser` opens a run's first port once it listens, and `runOnCreate`
+ *  starts it in a worktree created from the app once setup is done. */
 export type WorktreePrefs = {
   setupCommand: string;
   setupWait: boolean;
   teardownCommand: string;
   runCommand: string;
   openBrowser: boolean;
+  runOnCreate: boolean;
 };
 
 /** `available` is the feature: off, there is no cockpit. `enabled` is whether it
@@ -936,6 +938,7 @@ const NO_SETUP: WorktreePrefs = {
   teardownCommand: "",
   runCommand: "",
   openBrowser: true,
+  runOnCreate: false,
 };
 
 /** What this project runs in a new worktree; nothing for one never set up. */

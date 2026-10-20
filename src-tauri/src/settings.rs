@@ -1336,6 +1336,9 @@ pub struct WorktreePrefs {
     /// Open the run's first port in the browser once it listens.
     #[serde(default = "yes")]
     pub open_browser: bool,
+    /// Start the run command in a worktree created from the app once setup is done.
+    #[serde(default)]
+    pub run_on_create: bool,
 }
 
 impl Default for WorktreePrefs {
@@ -1346,6 +1349,7 @@ impl Default for WorktreePrefs {
             teardown_command: String::new(),
             run_command: String::new(),
             open_browser: true,
+            run_on_create: false,
         }
     }
 }
@@ -2940,6 +2944,7 @@ mod tests {
         let p = tmp_file();
         std::fs::write(&p, r#"{"worktree":{"/p":{"runCommand":"pnpm dev"}}}"#).unwrap();
         assert!(load_from(&p).worktree["/p"].open_browser);
+        assert!(!load_from(&p).worktree["/p"].run_on_create);
         assert!(WorktreePrefs::default().open_browser);
     }
 
@@ -2958,6 +2963,7 @@ mod tests {
                 teardown_command: "pnpm db:drop".into(),
                 run_command: "pnpm dev".into(),
                 open_browser: false,
+                run_on_create: true,
             },
         );
         save_to(&p, &s).unwrap();

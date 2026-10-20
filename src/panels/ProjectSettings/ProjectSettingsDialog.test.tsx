@@ -50,6 +50,7 @@ describe("Project settings dialog, Worktrees section", () => {
       teardownCommand: "",
       runCommand: "",
       openBrowser: true,
+      runOnCreate: false,
     });
 
     cleanup();

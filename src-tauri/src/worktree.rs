@@ -299,7 +299,17 @@ pub async fn create_worktree(
     branch: String,
     base: Option<String>,
 ) -> Result<String, String> {
-    create_worktree_for(Ui::from(&app), repo_path, branch, base).await
+    let project = repo_path.clone();
+    let made = create_worktree_for(Ui::from(&app), repo_path, branch, base).await?;
+    if made.created {
+        crate::run::start_after_setup(project, PathBuf::from(&made.path));
+    }
+    Ok(made.path)
+}
+
+pub struct CreatedWorktree {
+    pub path: String,
+    pub created: bool,
 }
 
 pub async fn create_worktree_for(
@@ -307,7 +317,7 @@ pub async fn create_worktree_for(
     repo_path: String,
     branch: String,
     base: Option<String>,
-) -> Result<String, String> {
+) -> Result<CreatedWorktree, String> {
     crate::exec::git_write("create_worktree", repo_path.clone(), move || {
         create_worktree_body(&ui, repo_path, branch, base)
     })
@@ -319,7 +329,7 @@ pub(crate) fn create_worktree_body(
     repo_path: String,
     branch: String,
     base: Option<String>,
-) -> Result<String, String> {
+) -> Result<CreatedWorktree, String> {
     let branch = branch.trim().to_string();
     if branch.is_empty() {
         return Err("Branch name is empty".into());
@@ -330,7 +340,10 @@ pub(crate) fn create_worktree_body(
         .into_iter()
         .find(|w| w.branch == branch)
     {
-        return Ok(existing.path);
+        return Ok(CreatedWorktree {
+            path: existing.path,
+            created: false,
+        });
     }
 
     let target = create_worktree_in(&repo_path, &branch, Path::new(&repo_path), base.as_deref())?;
@@ -339,7 +352,10 @@ pub(crate) fn create_worktree_body(
     // does not surface them as historical.
     let _ = crate::sessions::adopt(&target_str);
     ui.emit("config://changed", ());
-    Ok(target_str)
+    Ok(CreatedWorktree {
+        path: target_str,
+        created: true,
+    })
 }
 
 /// A worktree on a pull request's head commit, on a local `pr-<number>` branch.
