@@ -42,7 +42,7 @@ export type LogChannel = "tori:page-log";
 export type LogMessage =
   | { type: "ask" }
   | { type: "mark"; seqs: number[]; seq: number }
-  | { type: "entries"; entries: LogEntry[] }
+  | { type: "entries"; entries: LogEntry[]; page: number }
   | { type: "tally?" }
   | ({ type: "tally" } & Tally);
 
@@ -99,6 +99,23 @@ export type BatchRequest =
 
 // The relay forwards each tally the page log posts; answered with nothing.
 export type TallyRequest = { type: "tally" } & Tally;
+
+export const PANEL_PORT = "panel";
+export const LOG_PORT = "log";
+
+export type PanelIn = { type: "watch"; tabId: number } | { type: "mark"; seqs: number[] };
+export type PanelOut =
+  | { type: "entries"; entries: LogEntry[]; page: number }
+  | ({ type: "tally" } & Tally)
+  | { type: "missing" };
+
+// The panel has no tab of its own, so it names the one DevTools inspects.
+export type PanelRequest =
+  | { type: "panel.state"; tabId: number }
+  | { type: "panel.chats"; tabId: number }
+  | { type: "send.log"; tabId: number; chat: Chat | null; log: LogEntry[] };
+
+export type PanelState = { worktree: string | null; title: string };
 
 // Answered with null when Tori is reachable, otherwise the sentence saying why not.
 export type ConnectionRequest = { type: "connection" };
