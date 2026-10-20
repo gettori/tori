@@ -64,25 +64,29 @@ https://gettori.app/privacy-policy
 
 ## Test instructions (for the reviewer)
 
-The extension needs the Tori desktop app on macOS 26.1020.0 or later:
+The dashboard field takes 500 characters at most; paste the block as is.
 
-1. Install Tori from https://gettori.app (or `brew install --cask gettori/tap/tori`) and open it.
-2. Add any web project as a project in Tori, and start its dev server from Tori so it serves on localhost.
-3. In Tori, open Settings > Browser and click Install.
-4. Install this extension. The welcome page says "Tori is running and set up for this browser", and Settings > Browser says Connected.
-5. Open the dev server's localhost tab. The toolbar icon shows a coloured dot and hovering it names the branch.
-6. Press Ctrl+Shift+C, click an element, write a comment, then copy it as Markdown or send it to Tori.
-
-Without Tori running, every tab shows "Tori is not running" and the extension does nothing else.
+```text
+Needs the Tori Mac app 26.1020.0 or later.
+1. Install Tori from gettori.app and open it.
+2. Add a web project and start its dev server from Tori.
+3. In Tori: Settings > Browser > Install.
+4. Add this extension. The welcome page says Tori is running and set up.
+5. Open the dev server's localhost tab. The icon shows a dot; hovering names the branch.
+6. Press Ctrl+Shift+C, click an element, comment, then Copy as Markdown or Send.
+Without Tori running, tabs show "Tori is not running".
+```
 
 ## Screenshots (1280x800)
 
-1. A localhost tab with its tab group named after the branch and the toolbar icon's coloured dot, the tooltip showing branch and project.
-2. The picker on an element, with the outline and the comment box open.
-3. The tray with three picks, their comments and thumbnails, and the Send menu listing chats in the worktree.
-4. The pick arriving in a Tori chat, showing the component chain, source file and screenshot.
-5. The options page: tab grouping, screenshots, console and network, shortcut, connection.
+In `images/`. The extension UI is the real build, rendered with the browser APIs stubbed, inside a drawn browser frame on a demo localhost app (acme), set on the site's gradient with a headline and an orange callout on the Tori part. Upload five; the order below is the store order.
+
+1. `1-worktree.png`: two branches' tab groups, the toolbar icon's dot, and its tooltip naming branch and project.
+2. `2-pick.png`: picking an element, with its outline and the comment box open.
+3. `3-tray.png`: the tray with three comments marked on the page, the page log line, and Send.
+4. `4-sent.png`: the tray after sending to a live chat, with Show in Tori.
+5. `6-options.png`: the options page. `5-welcome.png` (the first run page) is the alternative.
 
 ## Small promo tile (440x280)
 
-The Tori mark on the app's background colour, with "Comment on localhost, send it to your agent".
+`images/promo-440x280.png`: the Tori mark and "Comment on localhost, send it to your agent." on the site's poster gradient.
