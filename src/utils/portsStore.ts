@@ -72,4 +72,4 @@ export function portsAt(path: string): () => number[] {
 
 export const portUrl = (port: number) => `http://localhost:${port}`;
 
-export const openPort = (port: number) => void invoke("plugin:opener|open_url", { url: portUrl(port) }).catch(() => {});
+export const openPort = (port: number) => void invoke("browser_open", { port }).catch(() => {});

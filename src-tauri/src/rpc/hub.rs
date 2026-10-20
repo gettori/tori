@@ -150,6 +150,8 @@ pub struct Hub {
     upstream: Mutex<Option<Upstream>>,
 }
 
+const OPENED_FOR: std::time::Duration = std::time::Duration::from_secs(10);
+
 #[derive(Default)]
 struct Inner {
     next: ConnId,
@@ -157,6 +159,7 @@ struct Inner {
     last_refusal: Option<Update>,
     // Sticky, since the extension's service worker drops the host whenever it idles.
     browser_seen: bool,
+    opened: HashMap<String, std::time::Instant>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -298,6 +301,19 @@ impl Hub {
         self.lock().last_refusal
     }
 
+    pub fn note_opened(&self, url: &str, at: std::time::Instant) {
+        let mut inner = self.lock();
+        inner.opened.retain(|_, then| at.duration_since(*then) < OPENED_FOR);
+        inner.opened.insert(url.to_string(), at);
+    }
+
+    pub fn take_opened(&self, url: &str, at: std::time::Instant) -> bool {
+        self.lock()
+            .opened
+            .remove(url)
+            .is_some_and(|then| at.duration_since(then) < OPENED_FOR)
+    }
+
     pub fn close_browser(&self, browser: &str) {
         let mut inner = self.lock();
         let ids: Vec<ConnId> = inner
@@ -412,6 +428,18 @@ mod tests {
         assert_eq!(hub.last_refusal(), Some(Update::Tori));
         hub.forget_last_refusal();
         assert_eq!(hub.last_refusal(), None);
+    }
+
+    #[test]
+    fn an_opened_url_answers_once_and_only_while_fresh() {
+        let hub = Hub::default();
+        let t = std::time::Instant::now();
+        hub.note_opened("http://localhost:5173", t);
+        assert!(!hub.take_opened("http://localhost:5173/settings", t));
+        assert!(hub.take_opened("http://localhost:5173", t + std::time::Duration::from_secs(9)));
+        assert!(!hub.take_opened("http://localhost:5173", t + std::time::Duration::from_secs(9)));
+        hub.note_opened("http://localhost:5173", t);
+        assert!(!hub.take_opened("http://localhost:5173", t + OPENED_FOR));
     }
 
     #[test]

@@ -912,6 +912,20 @@ pub(super) fn browser_refused(hub: &Hub, principal: &Principal, params: &Value) 
 }
 
 // Off the method table so no agent sees it as a tool.
+pub(super) fn browser_opened(hub: &Hub, principal: &Principal, params: &Value) -> Result<Value, RpcError> {
+    if !matches!(principal, Principal::Browser(_)) {
+        return Err(RpcError::new(
+            REFUSED,
+            "browser.opened is for the browser's native host",
+        ));
+    }
+    let url = params["url"]
+        .as_str()
+        .ok_or_else(|| RpcError::new(INVALID_PARAMS, "url: the new tab's address"))?;
+    Ok(json!(hub.take_opened(url, std::time::Instant::now())))
+}
+
+// Off the method table so no agent sees it as a tool.
 fn shell_check(principal: &Principal, params: &Value) -> Result<Value, RpcError> {
     if !matches!(principal, Principal::Session(super::auth::Caller::Terminal(_))) {
         return Err(RpcError::new(REFUSED, "shell.check is for a terminal tab's hook"));
@@ -930,6 +944,7 @@ impl Server {
             "unsubscribe" => unsubscribe(&self.hub, conn, &req.params),
             "visible" => visible(&self.hub, principal, conn, &req.params),
             "browser.refused" => browser_refused(&self.hub, principal, &req.params),
+            "browser.opened" => browser_opened(&self.hub, principal, &req.params),
             "shell.check" => shell_check(principal, &req.params),
             "auth" => Err(RpcError::new(INVALID_REQUEST, "already authenticated")),
             _ => self.call(principal, req),

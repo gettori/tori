@@ -38,4 +38,18 @@ const SENTENCES: Record<string, string> = {
 
 export const sentenceOf = (why: string) => SENTENCES[why] ?? why;
 
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+export function localPort(url: string | undefined): number | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    return (u.protocol === "http:" || u.protocol === "https:") && LOCAL_HOSTS.has(u.hostname) && u.port
+      ? Number(u.port)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export const label = (unit: Unit) => unit.branch ?? unit.folder.split("/").pop() ?? unit.folder;

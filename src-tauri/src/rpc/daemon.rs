@@ -31,7 +31,8 @@ use super::frame::{
 use super::hub::{Channel, ConnId, Hub};
 use super::outbox::{Outbox, OUTBOX_BYTES};
 use super::server::{
-    browser_refused, handle_first, params, permit, subscribe, unsubscribe, Dispatch, Server, AUTH_TIMEOUT,
+    browser_opened, browser_refused, handle_first, params, permit, subscribe, unsubscribe, Dispatch, Server,
+    AUTH_TIMEOUT,
 };
 use super::table::CallerKind;
 use super::transport::{Stream, Transport, UnixTransport};
@@ -837,6 +838,7 @@ impl Dispatch for Daemon {
             }),
             "unsubscribe" => unsubscribe(&self.hub, conn, &req.params),
             "browser.refused" => browser_refused(&self.hub, principal, &req.params),
+            "browser.opened" => browser_opened(&self.hub, principal, &req.params),
             "auth" => Err(RpcError::new(INVALID_REQUEST, "already authenticated")),
             _ if self.table.get().is_some() => match self.table.get() {
                 Some(table) => table.call(principal, req),

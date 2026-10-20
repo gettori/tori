@@ -183,6 +183,21 @@ pub fn ports_scan(
     )
 }
 
+#[tauri::command(async)]
+pub fn browser_open(port: u16) -> Result<(), String> {
+    open_in_browser(port)
+}
+
+pub fn open_in_browser(port: u16) -> Result<(), String> {
+    let url = format!("http://localhost:{port}/");
+    let record = serde_json::json!({ "op": "browser.opening", "args": { "url": url } });
+    // A stalled daemon must not hold the browser back; the record only saves a tab.
+    if let Err(e) = crate::rpc::daemon_wait("office", record, Duration::from_secs(1)) {
+        eprintln!("browser_open: the daemon did not hear {url}: {e}");
+    }
+    crate::exec::spawn_detached(std::process::Command::new("open").arg(url)).map_err(|e| e.to_string())
+}
+
 pub fn tell_excluded(app: &tauri::AppHandle) {
     use tauri::Manager;
     let lsp = app.state::<crate::lsp::LspState>().pids();
