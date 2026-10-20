@@ -19,7 +19,7 @@ function update() {
   queued = true;
   setTimeout(() => {
     queued = false;
-    post({ type: "entries", entries: book.unsent() });
+    post({ type: "entries", entries: book.unsent(), page: performance.timeOrigin });
   }, UPDATE_MS);
 }
 
@@ -186,7 +186,7 @@ document.addEventListener(CHANNEL, (e) => {
     listening = true;
     watchOverlays();
     tally();
-    post({ type: "entries", entries: book.unsent() });
+    post({ type: "entries", entries: book.unsent(), page: performance.timeOrigin });
   });
 });
 

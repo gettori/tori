@@ -59,6 +59,8 @@ export default defineConfig(({ mode }) => {
           background: "src/background.ts",
           options: "options.html",
           welcome: "welcome.html",
+          devtools: "devtools.html",
+          panel: "panel.html",
           picker: "src/picker/index.ts",
           pagelog: "src/pagelog.ts",
           pagerelay: "src/pagerelay.ts",

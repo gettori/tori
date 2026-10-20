@@ -1,0 +1,209 @@
+@import "../tokens.css";
+
+body {
+  margin: 0;
+  background: var(--tori-bg);
+  color: var(--tori-fg);
+  font-family: var(--tori-font);
+  font-size: var(--tori-fs-2);
+  line-height: var(--tori-lh);
+}
+
+main {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--tori-sp-3);
+  padding: var(--tori-sp-3) var(--tori-sp-4);
+  border-bottom: 1px solid var(--tori-bd);
+}
+
+.title {
+  font-weight: 600;
+}
+
+.branch {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--tori-mono);
+  font-size: var(--tori-fs-1);
+  color: var(--tori-fg-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.counted {
+  color: var(--tori-warn-tx);
+}
+
+.empty,
+.lost {
+  margin: 0;
+  padding: var(--tori-sp-4);
+  color: var(--tori-fg-2);
+}
+
+.lost {
+  padding-top: 0;
+  font-size: var(--tori-fs-1);
+  color: var(--tori-fg-3);
+}
+
+.rows {
+  flex: 1;
+  list-style: none;
+  margin: 0;
+  padding: var(--tori-sp-2) 0;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 14px auto minmax(0, 1fr) auto auto;
+  gap: var(--tori-sp-3);
+  align-items: center;
+  padding: 2px var(--tori-sp-4);
+}
+
+.row:hover {
+  background: var(--tori-hover);
+}
+
+.row input {
+  margin: 0;
+  accent-color: var(--tori-acc);
+}
+
+.kind,
+.times {
+  font: 500 var(--tori-fs-1) / 1.6 var(--tori-mono);
+  color: var(--tori-fg-3);
+}
+
+.kind.counted {
+  color: var(--tori-warn-tx);
+}
+
+.text {
+  font-family: var(--tori-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+button {
+  appearance: none;
+  border: none;
+  margin: 0;
+  cursor: pointer;
+  font-family: var(--tori-font);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--tori-focus);
+  outline-offset: 2px;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.more {
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--tori-r-1);
+  background: transparent;
+  color: var(--tori-acc-tx);
+  font-size: var(--tori-fs-1);
+}
+
+.more:hover {
+  background: var(--tori-acc-soft);
+}
+
+.detail {
+  margin: 0 var(--tori-sp-4) var(--tori-sp-2) 36px;
+  padding: var(--tori-sp-2) var(--tori-sp-3);
+  border-left: 2px solid var(--tori-bd-strong);
+  color: var(--tori-fg-2);
+}
+
+.detail p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.detail h3 {
+  margin: var(--tori-sp-2) 0 2px;
+  font: 600 var(--tori-fs-1) / 1 var(--tori-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--tori-fg-3);
+}
+
+.detail pre {
+  margin: 0;
+  max-height: 160px;
+  overflow: auto;
+  font: var(--tori-fs-1) / 1.4 var(--tori-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--tori-fg);
+}
+
+.detail .note {
+  margin-top: var(--tori-sp-2);
+  font-size: var(--tori-fs-1);
+  color: var(--tori-fg-3);
+}
+
+footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--tori-sp-3);
+  padding: var(--tori-sp-3) var(--tori-sp-4);
+  border-top: 1px solid var(--tori-bd);
+  background: var(--tori-bg);
+}
+
+footer label {
+  color: var(--tori-fg-2);
+}
+
+select {
+  max-width: 240px;
+  height: 26px;
+  border: 1px solid var(--tori-bd-strong);
+  border-radius: var(--tori-r-2);
+  background: var(--tori-bg-sunk);
+  color: var(--tori-fg);
+  font: var(--tori-fs-2) var(--tori-font);
+}
+
+.primary {
+  height: 26px;
+  padding: 0 var(--tori-sp-4);
+  border-radius: var(--tori-r-2);
+  background: var(--tori-acc);
+  color: var(--tori-acc-fg);
+  font-weight: 600;
+  font-size: var(--tori-fs-2);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--tori-acc-hover);
+}
+
+.said {
+  min-width: 0;
+  color: var(--tori-fg-2);
+  overflow-wrap: anywhere;
+}
