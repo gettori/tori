@@ -14,6 +14,7 @@ import type {
   Shot,
   TrayState,
 } from "./pick";
+import { addressOf, keeperOf } from "./collapse";
 import { pickShortcut } from "./shortcut";
 import {
   CLOSED,
@@ -26,14 +27,13 @@ import {
   SHOTS_KEY,
   sentenceOf,
   label,
+  localPort,
   type GroupColor,
   type TabState,
   type Unit,
 } from "./tab";
 
 type Reply = { id: number; result?: unknown; error?: { message: string } };
-
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 const GROUP_COLORS: Record<string, GroupColor> = {
   Amber: "orange",
@@ -118,18 +118,6 @@ function send(method: string, params: object, tab?: TabTag): Promise<unknown> {
       reject(new Error(NOT_RUNNING));
     }
   });
-}
-
-function localPort(url: string | undefined): number | null {
-  if (!url) return null;
-  try {
-    const u = new URL(url);
-    return (u.protocol === "http:" || u.protocol === "https:") && LOCAL_HOSTS.has(u.hostname) && u.port
-      ? Number(u.port)
-      : null;
-  } catch {
-    return null;
-  }
 }
 
 function groupColor(unit: Unit): GroupColor {
@@ -490,6 +478,20 @@ function answer(message: ConnectionRequest | BatchRequest, sender: chrome.runtim
   return tab?.id === undefined ? Promise.resolve(null) : handle(message, { ...tab, id: tab.id });
 }
 
+// Tori opens a server's URL through the system, so a second click or a run
+// restart would stack tabs; fold Tori's own tab into the one already there.
+async function collapse(tab: chrome.tabs.Tab) {
+  if (tab.openerTabId !== undefined || tab.id === undefined) return;
+  const port = localPort(addressOf(tab));
+  if (port === null) return;
+  const keeper = keeperOf(tab, await chrome.tabs.query({}), port);
+  if (keeper?.id === undefined) return;
+  if ((await call("browser.opened", { url: addressOf(tab) })) !== true) return;
+  await chrome.tabs.update(keeper.id, { active: true });
+  await chrome.windows.update(keeper.windowId, { focused: true });
+  await chrome.tabs.remove(tab.id);
+}
+
 chrome.runtime.onInstalled.addListener(({ reason }) => {
   void refreshAll();
   syncPageLog();
@@ -510,6 +512,8 @@ chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
   if (change.status === "complete" && localPort(tab.url) !== null) void restore(tab).catch(() => {});
   else if (change.status === "complete") void dropBatch(tabId);
 });
+// Swallowed: an older Tori has no browser.opened, and the tab just stays.
+chrome.tabs.onCreated.addListener((tab) => void collapse(tab).catch(() => {}));
 chrome.tabs.onRemoved.addListener((tabId) => void dropBatch(tabId));
 // Swallowed: browser pages refuse every script, and the toolbar title already says why.
 chrome.action.onClicked.addListener((tab) => void openTray(tab).catch(() => {}));

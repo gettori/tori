@@ -712,6 +712,7 @@ pub fn run() {
             worktree::remove_worktree_and_branch,
             worktree_cleanup::worktree_cleanup_facts,
             ports::ports_scan,
+            ports::browser_open,
             web_setup::web_setup,
             forge::commands::forge_accounts,
             forge::commands::forge_sign_in_start,

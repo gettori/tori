@@ -504,6 +504,11 @@ impl Office {
             }
             "browsers.revoke" => super::browsers::revoke(&super::browsers::store(), &self.hub).map(|()| json!({})),
             "browsers.status" => Ok(super::browsers::status(&super::browsers::store(), &self.hub)),
+            "browser.opening" => {
+                self.hub
+                    .note_opened(&arg::<String>(args, "url")?, std::time::Instant::now());
+                Ok(json!({}))
+            }
             "ports.scan" => {
                 let worktrees: Vec<String> = arg(args, "worktrees")?;
                 crate::ports::exclude(arg(args, "exclude")?);
