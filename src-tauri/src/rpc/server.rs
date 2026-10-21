@@ -25,6 +25,7 @@ use super::table::{self, CallerKind};
 use super::transport::{Stream, Transport};
 use crate::autopilot::{
     Autonomy, AutopilotStore, ContractPatch, Kind, Observed, Patch, Pickup, Ships, Source, State, Target, UpdateError,
+    What,
 };
 use crate::forge::model::{DraftComment, ReviewEvent};
 use crate::forge::MergeMethod;
@@ -673,11 +674,8 @@ impl ItemUpdateParams {
             title: self.title,
             contract: self.contract,
         };
-        match store.update(target, patch) {
-            Ok(item) => serde_json::to_value(item).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string())),
-            Err(e @ UpdateError::NoItem(_)) => Err(RpcError::new(INVALID_PARAMS, e.to_string())),
-            Err(e @ UpdateError::Write(_)) => Err(RpcError::new(INTERNAL_ERROR, e.to_string())),
-        }
+        let item = store.update(target, patch).map_err(update_error)?;
+        serde_json::to_value(item).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))
     }
 }
 
@@ -740,6 +738,62 @@ pub fn autopilot_state(
 pub struct HoldResolveParams {
     /// The ask id of the hold.
     pub id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ScheduleAddParams {
+    /// The project folder, the caller's own project when left out.
+    pub project: Option<String>,
+    /// What the schedule is called wherever its runs are named.
+    pub name: String,
+    /// When it fires: five cron fields in the Mac's local time, `0 7 * * 1-5` for weekdays at 7.
+    pub cron: String,
+    /// What each run does, in words. Pass this or `issue`.
+    pub prompt: Option<String>,
+    /// The issue each run works on. Pass this or `prompt`.
+    pub issue: Option<String>,
+}
+
+impl ScheduleAddParams {
+    pub fn apply(self, store: &AutopilotStore, project: String, origin: &str) -> Result<Value, RpcError> {
+        let name = self.name.trim();
+        if name.is_empty() {
+            return Err(RpcError::new(INVALID_PARAMS, "name the schedule"));
+        }
+        crate::autopilot::schedules::parse(&self.cron).map_err(|e| RpcError::new(INVALID_PARAMS, e))?;
+        let given = |v: Option<String>| v.map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+        let what = match (given(self.prompt), given(self.issue)) {
+            (Some(text), None) => What::Prompt { text },
+            (None, Some(key)) => What::Issue {
+                key: crate::issues::canonical_key(&key, origin),
+            },
+            _ => {
+                return Err(RpcError::new(
+                    INVALID_PARAMS,
+                    "pass a prompt or an issue, one of the two",
+                ))
+            }
+        };
+        let row = store
+            .add_schedule(project, name.to_string(), self.cron.trim().to_string(), what)
+            .map_err(update_error)?;
+        Ok(json!(row))
+    }
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ScheduleIdParams {
+    /// The schedule's id.
+    pub id: String,
+}
+
+pub fn update_error(e: UpdateError) -> RpcError {
+    match e {
+        UpdateError::NoItem(_) | UpdateError::NoSchedule(_) => RpcError::new(INVALID_PARAMS, e.to_string()),
+        UpdateError::Write(_) => RpcError::new(INTERNAL_ERROR, e.to_string()),
+    }
 }
 
 // Withdraws, never approves: approving is the user's answer on the card.
@@ -806,6 +860,10 @@ pub trait Backend: Send + Sync {
     fn autopilot_item_update(&self, principal: &Principal, params: ItemUpdateParams) -> Result<Value, RpcError>;
     fn autopilot_project_set(&self, principal: &Principal, params: ProjectSetParams) -> Result<Value, RpcError>;
     fn autopilot_hold_resolve(&self, params: HoldResolveParams) -> Result<Value, RpcError>;
+    fn autopilot_schedule_list(&self) -> Result<Value, RpcError>;
+    fn autopilot_schedule_add(&self, principal: &Principal, params: ScheduleAddParams) -> Result<Value, RpcError>;
+    fn autopilot_schedule_remove(&self, params: ScheduleIdParams) -> Result<Value, RpcError>;
+    fn autopilot_schedule_resume(&self, params: ScheduleIdParams) -> Result<Value, RpcError>;
     fn autopilot_start(&self) -> Result<Value, RpcError>;
     fn autopilot_stop(&self) -> Result<Value, RpcError>;
     fn device_mint(&self, params: MintParams) -> Result<Value, RpcError>;
@@ -1386,6 +1444,30 @@ pub mod tests {
         fn autopilot_hold_resolve(&self, p: HoldResolveParams) -> Result<Value, RpcError> {
             match &self.asks {
                 Some(asks) => hold_resolve(asks, &p.id),
+                None => Ok(json!({ "id": p.id })),
+            }
+        }
+        fn autopilot_schedule_list(&self) -> Result<Value, RpcError> {
+            Ok(json!(self.autopilot.as_ref().map(|store| store.schedules())))
+        }
+        fn autopilot_schedule_add(&self, _: &Principal, p: ScheduleAddParams) -> Result<Value, RpcError> {
+            match &self.autopilot {
+                Some(store) => {
+                    let project = p.project.clone().unwrap_or_default();
+                    p.apply(store, project, "")
+                }
+                None => Ok(json!({ "name": p.name })),
+            }
+        }
+        fn autopilot_schedule_remove(&self, p: ScheduleIdParams) -> Result<Value, RpcError> {
+            match &self.autopilot {
+                Some(store) => Ok(json!(store.remove_schedule(&p.id).map_err(update_error)?)),
+                None => Ok(json!({ "id": p.id })),
+            }
+        }
+        fn autopilot_schedule_resume(&self, p: ScheduleIdParams) -> Result<Value, RpcError> {
+            match &self.autopilot {
+                Some(store) => Ok(json!(store.resume_schedule(&p.id).map_err(update_error)?)),
                 None => Ok(json!({ "id": p.id })),
             }
         }
