@@ -19,7 +19,7 @@ use crate::forge::model::PrState;
 use crate::issues::{canonical_key, FailedSource, IssueKind, IssueQuery, IssueRef, SourceList};
 use crate::owned_state::{now_ms, write_atomically};
 use crate::rpc::events::same_folder;
-use crate::settings::PrEvent;
+use crate::settings::{PrEvent, PrRule};
 
 pub mod schedules;
 pub use schedules::{Schedule, ScheduleRow, What};
@@ -589,6 +589,41 @@ pub struct RuleHit {
 pub(crate) struct Rules {
     #[serde(default)]
     resumed: BTreeMap<String, u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RuleRow {
+    pub project: String,
+    pub on: Vec<PrEvent>,
+    pub max_per_hour: u32,
+    pub fired_this_hour: usize,
+    pub paused: bool,
+}
+
+pub fn rule_rows(rules: &HashMap<String, PrRule>, items: &[Item], resumed: &Rules, now: u64) -> Vec<RuleRow> {
+    let mut rows: Vec<RuleRow> = rules
+        .iter()
+        .filter(|(_, rule)| !rule.on.is_empty())
+        .map(|(project, rule)| {
+            let resumed_at = in_project(&resumed.resumed, project).copied();
+            let since = now.saturating_sub(HOUR_MS).max(resumed_at.unwrap_or(0));
+            let fired_this_hour = items
+                .iter()
+                .filter(|i| {
+                    same_folder(&i.project, project) && matches!(i.source, Source::Rule { .. }) && i.created > since
+                })
+                .count();
+            RuleRow {
+                project: project.clone(),
+                on: rule.on.clone(),
+                max_per_hour: rule.max_per_hour,
+                fired_this_hour,
+                paused: rule_paused(project, rule.max_per_hour, items, resumed_at),
+            }
+        })
+        .collect();
+    rows.sort_by(|a, b| a.project.cmp(&b.project));
+    rows
 }
 
 #[derive(Debug, Default)]
@@ -1515,6 +1550,25 @@ impl AutopilotStore {
         Ok(RuleFirings { filed, handed })
     }
 
+    pub fn rules(&self, rules: &HashMap<String, PrRule>) -> Vec<RuleRow> {
+        let held = self.lock();
+        rule_rows(rules, &held.items, &held.rules, now_ms())
+    }
+
+    pub fn resume_rule(&self, project: &str) -> Result<(), UpdateError> {
+        {
+            let mut held = self.lock();
+            let mut next = held.rules.clone();
+            next.resumed.retain(|known, _| !same_folder(known, project));
+            next.resumed.insert(project.to_string(), now_ms());
+            self.save(RULES, json!(next))?;
+            held.rules = next;
+            self.log(json!({ "rule_resumed": project }));
+        }
+        (self.publish)(json!({ "kind": "autopilot.changed", "rule_resumed": project, "ts": now_ms() }));
+        Ok(())
+    }
+
     pub fn fire_due(&self, now: u64) -> Result<Fired, UpdateError> {
         let mint = || format!("item-{}", crate::chat::approval::random_token());
         let (firings, mut rows, paused) = {
@@ -2022,6 +2076,55 @@ pub mod tests {
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn a_rule_row_counts_this_hours_firings_and_shows_the_pause() {
+        let mut items = Vec::new();
+        fire_rule(&[hit(1)], &mut items, Pickup::Auto, &Rules::default(), 1_000);
+        items[0].state = State::Done;
+        fire_rule(&[hit(2)], &mut items, Pickup::Auto, &Rules::default(), 2_000);
+        let rules = HashMap::from([
+            (
+                "/p".to_string(),
+                PrRule {
+                    on: vec![PrEvent::CheckFailed],
+                    max_per_hour: 2,
+                },
+            ),
+            ("/off".to_string(), PrRule::default()),
+        ]);
+        let rows = rule_rows(&rules, &items, &Rules::default(), 3_000);
+        assert_eq!(rows.len(), 1, "a rule with no events is no row");
+        assert_eq!((rows[0].fired_this_hour, rows[0].paused), (2, true));
+
+        let later = rule_rows(&rules, &items, &Rules::default(), 3_000 + HOUR_MS);
+        assert_eq!(
+            (later[0].fired_this_hour, later[0].paused),
+            (0, true),
+            "the pause outlasts the hour"
+        );
+    }
+
+    #[test]
+    fn resuming_a_rule_is_kept_on_disk_and_lifts_its_pause() {
+        let dir = temp_dir("rule-resume");
+        let rules = HashMap::from([(
+            "/p".to_string(),
+            PrRule {
+                on: vec![PrEvent::Conflicting],
+                max_per_hour: 1,
+            },
+        )]);
+        let store = quiet(&dir);
+        store.set_project("/p".into(), ContractPatch::default()).unwrap();
+        let firings = store.fire_rules(&[hit(4)]).unwrap();
+        assert_eq!(firings.filed.len(), 1);
+        assert!(store.rules(&rules)[0].paused);
+        store.resume_rule("/p").unwrap();
+        let reopened = quiet(&dir).rules(&rules);
+        assert_eq!((reopened[0].paused, reopened[0].fired_this_hour), (false, 0));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

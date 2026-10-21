@@ -23,6 +23,7 @@ import {
   type AutopilotEvent,
   type Hold,
   type ItemRow,
+  type RuleRow,
   type ScheduleRow,
 } from "./autopilotRows";
 import { findSession } from "./sessionStore";
@@ -111,7 +112,18 @@ const [items, setItems] = createSignal<ItemRow[]>([]);
 const [holds, setHolds] = createSignal<Hold[]>([]);
 const [activity, setActivity] = createSignal<ActivityItem[]>([]);
 const [schedules, setSchedules] = createSignal<ScheduleRow[]>([]);
-export { items, activity, schedules };
+const [rules, setRules] = createSignal<RuleRow[]>([]);
+export { items, activity, schedules, rules };
+
+export async function loadRules() {
+  const rows = await invoke<RuleRow[]>("autopilot_rules").catch(() => null);
+  if (rows) setRules(rows);
+}
+
+export async function resumeRule(project: string) {
+  const rows = await invoke<RuleRow[]>("autopilot_rule_resume", { project }).catch(() => null);
+  if (rows) setRules(rows);
+}
 
 export async function resumeSchedule(id: string) {
   const row = await invoke<ScheduleRow>("autopilot_schedule_resume", { id }).catch(() => null);
@@ -143,6 +155,7 @@ function applyChange(e: AutopilotEvent) {
   const hold = e.hold;
   if (hold) setHolds((prev) => [...prev.filter((h) => h.ask !== hold.ask), ...(e.cleared ? [] : [hold])]);
   if (e.schedule || e.schedule_removed) setSchedules((prev) => applySchedule(prev, e));
+  if (e.rule_resumed || item?.source.type === "rule") void loadRules();
   addActivity([e]);
 }
 
@@ -154,6 +167,7 @@ async function loadAutopilot() {
   }
   const rows = await invoke<ScheduleRow[]>("autopilot_schedules").catch(() => null);
   if (rows) setSchedules(rows);
+  await loadRules();
   const logged = await invoke<AutopilotEvent[]>("autopilot_log", { limit: ACTIVITY_KEPT }).catch(() => []);
   // A line at or after the first live event was already added by it.
   addActivity(
@@ -188,6 +202,7 @@ export function watchAutopilot() {
   void invoke<RunnerStatus>("autopilot_status")
     .then(setRunner)
     .catch(() => {});
+  void listen("settings://changed", () => void loadRules()).catch(() => {});
   void listen<AutopilotEvent>("autopilot://changed", (e) => {
     applyChange(e.payload);
     void refreshLocked();

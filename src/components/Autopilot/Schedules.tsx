@@ -2,7 +2,7 @@ import { For, Show } from "solid-js";
 import Button from "../Button/Button";
 import { SectionHead, TicketLink } from "./ShellParts";
 import type { ScheduleCard, TicketHandlers } from "./autopilot";
-import styles from "./Schedules.module.css";
+import styles from "./DeckList.module.css";
 
 export interface SchedulesProps extends TicketHandlers {
   schedules: ScheduleCard[];

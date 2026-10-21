@@ -404,6 +404,12 @@ impl Office {
             "autopilot.pickup" => self.pickup(&arg::<String>(args, "project_path")?).map(|()| json!({})),
             "autopilot.log" => Ok(json!(self.autopilot.recent_log(arg(args, "limit")?))),
             "autopilot.schedules" => Ok(json!(self.autopilot.schedules())),
+            "autopilot.rules" => Ok(json!(self.autopilot.rules(&crate::settings::pr_rules()))),
+            "autopilot.rule_resume" => {
+                let project: String = arg(args, "project")?;
+                self.autopilot.resume_rule(&project).map_err(|e| e.to_string())?;
+                Ok(json!(self.autopilot.rules(&crate::settings::pr_rules())))
+            }
             "autopilot.schedule_resume" => {
                 let id: String = arg(args, "id")?;
                 self.autopilot

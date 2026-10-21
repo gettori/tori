@@ -8,7 +8,15 @@ import { Composer } from "../../components/Autopilot/ShellParts";
 import type { AutopilotState } from "../../components/Autopilot/autopilot";
 import ChatView from "../Chat/ChatView";
 import Markdown from "../Chat/Markdown";
-import { heroFor, inFlightRows, overLimit, queuedItems, scheduleCards, workerCards } from "../../utils/autopilotRows";
+import {
+  heroFor,
+  inFlightRows,
+  overLimit,
+  queuedItems,
+  ruleCards,
+  scheduleCards,
+  workerCards,
+} from "../../utils/autopilotRows";
 import { settings } from "../Settings/settingsStore";
 import { emitWith, NAVIGATE, type NavTarget } from "../../utils/events";
 import {
@@ -21,7 +29,9 @@ import {
   items,
   loadThread,
   popupOpen,
+  resumeRule,
   resumeSchedule,
+  rules,
   runner,
   schedules,
   sendToAutopilot,
@@ -132,6 +142,7 @@ export function CockpitView() {
         emptyWorkers="The deck is quiet. Hand the autopilot a ticket or a PR."
         queue={queuedItems(items())}
         schedules={scheduleCards(schedules(), items(), now())}
+        rules={ruleCards(rules())}
         messages={[]}
         decisions={[]}
         activity={activity()}
@@ -144,6 +155,7 @@ export function CockpitView() {
         onStop={() => void stopAutopilot()}
         onRestart={() => void startAutopilot()}
         onResumeSchedule={(id) => void resumeSchedule(id)}
+        onResumeRule={(project) => void resumeRule(project)}
       />
     </div>
   );
