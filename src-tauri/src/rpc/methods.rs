@@ -20,8 +20,8 @@ use super::server::{
     ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams, ModelParams, NeedsYouSeenParams,
     OpenParams, PendingParams, PortParams, PrCreateParams, PrGetParams, PrMergeParams, PrWatchParams,
     ProjectIconParams, ProjectSetParams, ProvenanceParams, RevealParams, ReviewMarkParams, ReviewSubmitParams,
-    SessionAnswerParams, SetupParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams,
-    UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, DEFAULT_LOG_LIMIT,
+    ScheduleAddParams, ScheduleIdParams, SessionAnswerParams, SetupParams, SpawnParams, SteerParams, TailParams,
+    TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, DEFAULT_LOG_LIMIT,
 };
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
@@ -2101,6 +2101,38 @@ impl Backend for DaemonBackend {
         let resolved = super::server::hold_resolve(&self.asks, &params.id)?;
         self.desk.ui.emit(super::asks::CLOSE_EVENT, json!({ "id": params.id }));
         Ok(resolved)
+    }
+
+    fn autopilot_schedule_list(&self) -> Result<Value, RpcError> {
+        Ok(json!(self.autopilot.schedules()))
+    }
+
+    fn autopilot_schedule_add(&self, principal: &Principal, params: ScheduleAddParams) -> Result<Value, RpcError> {
+        let project = self.project(principal, params.project.clone())?;
+        if !crate::worktree::repo_readable(&project) {
+            return Err(RpcError::new(
+                INVALID_PARAMS,
+                format!("{project} is not a project Tori trusts, or git cannot read it"),
+            ));
+        }
+        let origin = origin_of(&project);
+        params.apply(&self.autopilot, project, &origin)
+    }
+
+    fn autopilot_schedule_remove(&self, params: ScheduleIdParams) -> Result<Value, RpcError> {
+        let removed = self
+            .autopilot
+            .remove_schedule(&params.id)
+            .map_err(super::server::update_error)?;
+        Ok(json!(removed))
+    }
+
+    fn autopilot_schedule_resume(&self, params: ScheduleIdParams) -> Result<Value, RpcError> {
+        let resumed = self
+            .autopilot
+            .resume_schedule(&params.id)
+            .map_err(super::server::update_error)?;
+        Ok(json!(resumed))
     }
 
     fn autopilot_start(&self) -> Result<Value, RpcError> {

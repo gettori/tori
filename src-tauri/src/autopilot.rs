@@ -20,15 +20,20 @@ use crate::issues::{canonical_key, FailedSource, IssueKind, IssueQuery, IssueRef
 use crate::owned_state::{now_ms, write_atomically};
 use crate::rpc::events::same_folder;
 
+pub mod schedules;
+pub use schedules::{Schedule, ScheduleRow, What};
+
 const QUEUE: &str = "queue.json";
 const PROJECTS: &str = "projects.json";
 const LOG: &str = "log.jsonl";
+const SCHEDULES: &str = "schedules.json";
 const PR_STATES_TTL: Duration = Duration::from_secs(30);
 const CLOSED_NOTE: &str = "its pull request was closed without merging";
 const CLOSED_BY_HAND: &str = "closed by hand";
 const GONE_UPSTREAM: &str = "no longer assigned or open upstream";
 const LEFT_SOURCE: &str = "no longer matches its issue source";
 const REVIEW_CLEARED: &str = "review request cleared (reviewed or withdrawn)";
+const SCHEDULE_REMOVED: &str = "schedule removed";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -46,6 +51,12 @@ pub enum Source {
     Issue { key: String, project: String },
     /// A pull request, by number, in `owner/name`.
     Pr { number: u64, repo: String },
+    /// A schedule's run, with the issue it works on when the schedule names one.
+    Schedule {
+        schedule: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        issue: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -193,6 +204,7 @@ pub struct Patch {
 #[derive(Debug, PartialEq)]
 pub enum UpdateError {
     NoItem(String),
+    NoSchedule(String),
     Write(String),
 }
 
@@ -200,6 +212,7 @@ impl std::fmt::Display for UpdateError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             UpdateError::NoItem(id) => write!(f, "no autopilot item {id}"),
+            UpdateError::NoSchedule(id) => write!(f, "no autopilot schedule {id}"),
             UpdateError::Write(e) => write!(f, "the autopilot queue was not saved: {e}"),
         }
     }
@@ -430,6 +443,24 @@ fn fail_closed_by_hand(items: &mut [Item], session: &str, held: &HashSet<String>
     changed
 }
 
+// Pickup's rule for a removed source: running work is never closed under the worker.
+fn drop_schedule_runs(items: &mut [Item], schedule: &str, now: u64) -> Vec<Item> {
+    let mut changed = Vec::new();
+    for item in items.iter_mut().filter(|i| {
+        !i.state.terminal() && matches!(&i.source, Source::Schedule { schedule: s, .. } if s == schedule)
+    }) {
+        if matches!(item.state, State::Proposed | State::Queued) {
+            item.state = State::Failed;
+        } else if item.note.as_deref() == Some(SCHEDULE_REMOVED) {
+            continue;
+        }
+        item.note = Some(SCHEDULE_REMOVED.to_string());
+        item.updated = now;
+        changed.push(item.clone());
+    }
+    changed
+}
+
 // What a closed PR means is the autopilot's call, so it only gets a note.
 fn settle(items: &mut [Item], prs: &HashMap<String, HashMap<PrKey, PrState>>, now: u64) -> Vec<Item> {
     let mut changed = Vec::new();
@@ -472,7 +503,7 @@ fn same_work(item: &Item, row: &IssueRef, repo: &str) -> bool {
 
 fn kind_of(item: &Item) -> IssueKind {
     match item.source {
-        Source::Issue { .. } => IssueKind::Issue,
+        Source::Issue { .. } | Source::Schedule { .. } => IssueKind::Issue,
         Source::Pr { .. } => IssueKind::ReviewRequest,
     }
 }
@@ -812,9 +843,10 @@ fn is_tracker_key(s: &str) -> bool {
 
 // An issue key may arrive as `12`, `#12`, `ENG-123` or the issue's url, whose
 // key sits before any slug: `/issues/12`, `/issue/ENG-123/fix-login`.
-fn label_of(source: &Source) -> String {
+fn label_of(source: &Source, title: Option<&str>) -> String {
     let key = match source {
         Source::Pr { number, .. } => return format!("#{number}"),
+        Source::Schedule { schedule, .. } => return title.unwrap_or(schedule).to_string(),
         Source::Issue { key, .. } => key.trim().trim_start_matches('#'),
     };
     let found = key
@@ -868,14 +900,14 @@ fn encode(text: &str) -> String {
 }
 
 pub fn reference(item: &Item, worktrees: &HashMap<String, Option<Vec<Listed>>>, root: Option<&Path>) -> Reference {
-    let label = label_of(&item.source);
+    let label = label_of(&item.source, item.title.as_deref());
     let key_url = match &item.source {
         Source::Issue { key, .. } if key.starts_with("https://") => Some(key.clone()),
         _ => None,
     };
     let url = item.url.clone().or(key_url);
     let pr = match &item.source {
-        Source::Issue { .. } => item.pr_url.as_ref().and_then(|u| {
+        Source::Issue { .. } | Source::Schedule { .. } => item.pr_url.as_ref().and_then(|u| {
             Some(Link {
                 label: format!("PR #{}", pr_key_of_url(u)?.1),
                 url: u.clone(),
@@ -987,6 +1019,7 @@ type Closed = Box<dyn Fn(&str) + Send + Sync>;
 struct Held {
     items: Vec<Item>,
     projects: BTreeMap<String, Contract>,
+    schedules: Vec<Schedule>,
 }
 
 pub struct AutopilotStore {
@@ -1031,9 +1064,14 @@ impl AutopilotStore {
             unreadable.insert(PROJECTS, e);
             Projects::default()
         });
+        let schedules: schedules::Schedules = load(&dir.join(SCHEDULES)).unwrap_or_else(|e| {
+            unreadable.insert(SCHEDULES, e);
+            schedules::Schedules::default()
+        });
         let held = Held {
             items: queue.items,
             projects: projects.projects,
+            schedules: schedules.schedules,
         };
         Self {
             dir,
@@ -1131,6 +1169,80 @@ impl AutopilotStore {
         };
         (self.publish)(json!({ "kind": "autopilot.changed", "project": key, "contract": contract, "ts": now_ms() }));
         Ok(contract)
+    }
+
+    pub fn schedules(&self) -> Vec<ScheduleRow> {
+        let now = now_ms();
+        self.lock()
+            .schedules
+            .iter()
+            .map(|s| schedules::row(s, now, &chrono::Local))
+            .collect()
+    }
+
+    pub fn add_schedule(&self, project: String, name: String, cron: String, what: What) -> Result<ScheduleRow, UpdateError> {
+        let schedule = Schedule {
+            id: format!("schedule-{}", crate::chat::approval::random_token()),
+            name,
+            project,
+            cron,
+            what,
+            created: now_ms(),
+            last_slot: None,
+            resumed_at: None,
+        };
+        self.write_schedules(|all| {
+            all.push(schedule.clone());
+            Ok(schedule)
+        })
+    }
+
+    pub fn resume_schedule(&self, id: &str) -> Result<ScheduleRow, UpdateError> {
+        self.write_schedules(|all| {
+            let schedule = all
+                .iter_mut()
+                .find(|s| s.id == id)
+                .ok_or_else(|| UpdateError::NoSchedule(id.to_string()))?;
+            schedule.resumed_at = Some(now_ms());
+            Ok(schedule.clone())
+        })
+    }
+
+    pub fn remove_schedule(&self, id: &str) -> Result<Schedule, UpdateError> {
+        let removed = {
+            let mut held = self.lock();
+            let mut next = held.schedules.clone();
+            let at = next
+                .iter()
+                .position(|s| s.id == id)
+                .ok_or_else(|| UpdateError::NoSchedule(id.to_string()))?;
+            let removed = next.remove(at);
+            self.save(SCHEDULES, json!({ "schedules": next }))?;
+            held.schedules = next;
+            self.log(json!({ "schedule_removed": removed }));
+            removed
+        };
+        (self.publish)(json!({ "kind": "autopilot.changed", "schedule_removed": id, "ts": now_ms() }));
+        self.write(|items| Ok(drop_schedule_runs(items, id, now_ms())))?;
+        Ok(removed)
+    }
+
+    fn write_schedules(
+        &self,
+        change: impl FnOnce(&mut Vec<Schedule>) -> Result<Schedule, UpdateError>,
+    ) -> Result<ScheduleRow, UpdateError> {
+        let schedule = {
+            let mut held = self.lock();
+            let mut next = held.schedules.clone();
+            let schedule = change(&mut next)?;
+            self.save(SCHEDULES, json!({ "schedules": next }))?;
+            held.schedules = next;
+            self.log(json!({ "schedule": schedule }));
+            schedule
+        };
+        let row = schedules::row(&schedule, now_ms(), &chrono::Local);
+        (self.publish)(json!({ "kind": "autopilot.changed", "schedule": row, "ts": now_ms() }));
+        Ok(row)
     }
 
     /// Applies one tick of the project's lists; see [`plan_pickup`]. `failed`
@@ -2330,6 +2442,7 @@ pub mod tests {
             .map(|i| match &i.source {
                 Source::Issue { key, .. } => (key.clone(), i.state),
                 Source::Pr { number, .. } => (format!("pr{number}"), i.state),
+                Source::Schedule { schedule, .. } => (schedule.clone(), i.state),
             })
             .collect()
     }
@@ -2518,10 +2631,13 @@ pub mod tests {
     #[test]
     fn a_foreign_issue_is_labelled_by_its_repo() {
         let label = |key: &str| {
-            label_of(&Source::Issue {
-                key: key.into(),
-                project: "/p".into(),
-            })
+            label_of(
+                &Source::Issue {
+                    key: key.into(),
+                    project: "/p".into(),
+                },
+                None,
+            )
         };
         assert_eq!(
             [label("31"), label("#31"), label("gettori/tickets#31")],
@@ -2600,5 +2716,102 @@ pub mod tests {
             (json!("s1"), json!(false))
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn scheduled(id: &str, schedule: &str, state: State) -> Item {
+        Item {
+            id: id.into(),
+            kind: Kind::Ship,
+            source: Source::Schedule {
+                schedule: schedule.into(),
+                issue: None,
+            },
+            project: "/p".into(),
+            state,
+            worktree: None,
+            session: None,
+            pr_url: None,
+            url: None,
+            created: 1,
+            updated: 1,
+            note: None,
+            title: Some("Bump deps".into()),
+            contract: None,
+            picked_by: None,
+            gone_upstream: false,
+            picked_from: None,
+        }
+    }
+
+    #[test]
+    fn a_schedule_comes_back_after_a_reopen_and_a_file_that_does_not_parse_is_left_alone() {
+        let dir = temp_dir("schedules");
+        let store = quiet(&dir);
+        let what = What::Prompt {
+            text: "bump deps".into(),
+        };
+        let added = store
+            .add_schedule("/p".into(), "Bump deps".into(), "0 7 * * 1-5".into(), what)
+            .unwrap();
+        assert!(added.next_run.is_some());
+        assert_eq!(
+            quiet(&dir).schedules().into_iter().map(|r| r.schedule).collect::<Vec<_>>(),
+            vec![added.schedule.clone()]
+        );
+        let resumed = quiet(&dir).resume_schedule(&added.schedule.id).unwrap();
+        assert!(resumed.schedule.resumed_at.is_some());
+        assert_eq!(
+            quiet(&dir).resume_schedule("nope").map(|r| r.schedule.id),
+            Err(UpdateError::NoSchedule("nope".into()))
+        );
+
+        std::fs::write(dir.join(SCHEDULES), r#"{"schedules": [{"id": 7}]}"#).unwrap();
+        let broken = quiet(&dir);
+        assert!(broken.schedules().is_empty());
+        let what = What::Issue { key: "12".into() };
+        assert!(matches!(
+            broken.add_schedule("/p".into(), "n".into(), "0 7 * * *".into(), what),
+            Err(UpdateError::Write(_))
+        ));
+        assert_eq!(
+            std::fs::read_to_string(dir.join(SCHEDULES)).unwrap(),
+            r#"{"schedules": [{"id": 7}]}"#
+        );
+        broken.update(issue("3"), Patch::default()).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn removing_a_schedule_fails_its_queued_run_and_notes_a_running_one() {
+        let mut items = vec![
+            scheduled("a", "s1", State::Queued),
+            scheduled("b", "s1", State::Running),
+            scheduled("c", "s2", State::Queued),
+            scheduled("d", "s1", State::Done),
+        ];
+        let changed = drop_schedule_runs(&mut items, "s1", 9);
+        let states: Vec<(State, Option<&str>)> = items.iter().map(|i| (i.state, i.note.as_deref())).collect();
+        assert_eq!(
+            states,
+            vec![
+                (State::Failed, Some(SCHEDULE_REMOVED)),
+                (State::Running, Some(SCHEDULE_REMOVED)),
+                (State::Queued, None),
+                (State::Done, None),
+            ]
+        );
+        assert_eq!(changed.len(), 2);
+        assert!(drop_schedule_runs(&mut items, "s1", 10).is_empty(), "the note is written once");
+    }
+
+    #[test]
+    fn a_scheduled_run_is_named_by_its_schedule_and_links_its_pr() {
+        let mut item = scheduled("a", "schedule-1", State::Running);
+        item.pr_url = Some("https://github.com/o/r/pull/40".into());
+        let back: Item = serde_json::from_str(&serde_json::to_string(&item).unwrap()).unwrap();
+        assert_eq!(back, item);
+        let named = reference(&item, &HashMap::new(), None);
+        assert_eq!(named.label, "Bump deps");
+        assert_eq!(named.pr.map(|p| p.label), Some("PR #40".to_string()));
     }
 }
