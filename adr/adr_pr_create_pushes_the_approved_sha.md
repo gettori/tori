@@ -26,6 +26,7 @@ The `PrCreate` draft carries `head_sha`, and the approval card shows "a pull req
 - Pinning the sha mirrors `pr.merge`, which pins the head it approves.
 - The autopilot's brief reads the head sha (`git rev-parse`) before asking, and passes it through.
 - A branch that moved after the approval needs a fresh approval, by design.
+- `pr.push` reuses the push for an existing PR's head ([[adr_a_pr_rule_hands_a_watched_pr_to_the_autopilot_once_its_chat_is_gone]]); it doesn't create a PR, so the rejected `branch.push` still stands for this flow.
 
 ## Related
 
