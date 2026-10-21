@@ -609,6 +609,31 @@ impl PrMergeParams {
     }
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PrPushParams {
+    /// The pull request's number.
+    pub number: u64,
+    /// Its head branch on origin.
+    pub head: String,
+    /// The commit to push, from any worktree of the project; never forced.
+    pub head_sha: String,
+    /// The project folder, the caller's own project when left out.
+    pub project: Option<String>,
+    /// The approval `ask.create` returned for exactly this call; a background session is refused without one.
+    pub approval_id: Option<String>,
+}
+
+impl PrPushParams {
+    pub fn draft(&self) -> Draft {
+        Draft::PrPush {
+            number: self.number,
+            head: self.head.clone(),
+            head_sha: self.head_sha.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ItemUpdateParams {
@@ -853,6 +878,7 @@ pub trait Backend: Send + Sync {
     fn pr_create(&self, principal: &Principal, params: PrCreateParams) -> Result<Value, RpcError>;
     fn review_submit(&self, principal: &Principal, params: ReviewSubmitParams) -> Result<Value, RpcError>;
     fn pr_merge(&self, principal: &Principal, params: PrMergeParams) -> Result<Value, RpcError>;
+    fn pr_push(&self, principal: &Principal, params: PrPushParams) -> Result<Value, RpcError>;
     fn pr_watch(&self, principal: &Principal, params: PrWatchParams) -> Result<Value, RpcError>;
     fn pr_unwatch(&self, principal: &Principal, params: PrWatchParams) -> Result<Value, RpcError>;
     fn autopilot_state(&self) -> Result<Value, RpcError>;
@@ -1399,6 +1425,9 @@ pub mod tests {
             Ok(json!({ "number": p.number }))
         }
         fn pr_merge(&self, _: &Principal, p: PrMergeParams) -> Result<Value, RpcError> {
+            Ok(json!({ "number": p.number }))
+        }
+        fn pr_push(&self, _: &Principal, p: PrPushParams) -> Result<Value, RpcError> {
             Ok(json!({ "number": p.number }))
         }
         fn pr_watch(&self, _: &Principal, p: PrWatchParams) -> Result<Value, RpcError> {

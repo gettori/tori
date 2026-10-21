@@ -112,6 +112,23 @@ describe("an approval card", () => {
     expect(screen.getByText(/worker asks:/)).toBeTruthy();
   });
 
+  it("shows a push's commit and the branch it lands on", () => {
+    render(() => (
+      <AskCard
+        here="autopilot"
+        ask={approvalAsk({
+          project: "/work/repo",
+          action: "pr.push",
+          number: 42,
+          head: "42-fix",
+          head_sha: "def456",
+        })}
+      />
+    ));
+    expect(screen.getByText("Push to pull request 42")).toBeTruthy();
+    expect(screen.getByText("def456 onto 42-fix")).toBeTruthy();
+  });
+
   it("still answers with the option picked", async () => {
     render(() => (
       <AskCard

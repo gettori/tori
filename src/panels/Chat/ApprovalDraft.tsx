@@ -7,6 +7,7 @@ const VERDICT = { approve: "Approve", comment: "Comment", requestChanges: "Reque
 export default function ApprovalDraft(props: { approval: AskApproval }) {
   const pr = () => (props.approval.action === "pr.create" ? props.approval : undefined);
   const review = () => (props.approval.action === "review.submit" ? props.approval : undefined);
+  const push = () => (props.approval.action === "pr.push" ? props.approval : undefined);
   const merge = () => (props.approval.action === "pr.merge" ? props.approval : undefined);
   return (
     <div class={styles.askDraft}>
@@ -42,6 +43,16 @@ export default function ApprovalDraft(props: { approval: AskApproval }) {
                 </div>
               )}
             </For>
+          </>
+        )}
+      </Show>
+      <Show when={push()}>
+        {(push) => (
+          <>
+            <strong>Push to pull request {push().number}</strong>
+            <span class={styles.askDraftMeta}>
+              {push().head_sha} onto {push().head}
+            </span>
           </>
         )}
       </Show>

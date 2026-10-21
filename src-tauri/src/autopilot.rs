@@ -19,6 +19,7 @@ use crate::forge::model::PrState;
 use crate::issues::{canonical_key, FailedSource, IssueKind, IssueQuery, IssueRef, SourceList};
 use crate::owned_state::{now_ms, write_atomically};
 use crate::rpc::events::same_folder;
+use crate::settings::PrEvent;
 
 pub mod schedules;
 pub use schedules::{Schedule, ScheduleRow, What};
@@ -27,6 +28,8 @@ const QUEUE: &str = "queue.json";
 const PROJECTS: &str = "projects.json";
 const LOG: &str = "log.jsonl";
 const SCHEDULES: &str = "schedules.json";
+const RULES: &str = "rules.json";
+const HOUR_MS: u64 = 3_600_000;
 const PR_STATES_TTL: Duration = Duration::from_secs(30);
 const CLOSED_NOTE: &str = "its pull request was closed without merging";
 const CLOSED_BY_HAND: &str = "closed by hand";
@@ -57,6 +60,12 @@ pub enum Source {
         schedule: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         issue: Option<String>,
+    },
+    /// A project rule's firing on a watched pull request, in `owner/name`.
+    Rule {
+        pr: u64,
+        repo: String,
+        event: crate::settings::PrEvent,
     },
 }
 
@@ -405,7 +414,7 @@ fn set_contract(
 pub type PrKey = (String, u64);
 
 fn pr_key(item: &Item) -> Option<PrKey> {
-    if let Source::Pr { number, repo } = &item.source {
+    if let Source::Pr { number, repo } | Source::Rule { pr: number, repo, .. } = &item.source {
         return Some((repo.to_lowercase(), *number));
     }
     pr_key_of_url(item.pr_url.as_deref()?)
@@ -565,6 +574,132 @@ fn drop_schedule_runs(items: &mut [Item], schedule: &str, now: u64) -> Vec<Item>
     changed
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct RuleHit {
+    pub session: String,
+    pub project: String,
+    pub url: String,
+    pub repo: String,
+    pub pr: u64,
+    pub event: PrEvent,
+    pub max_per_hour: u32,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub(crate) struct Rules {
+    #[serde(default)]
+    resumed: BTreeMap<String, u64>,
+}
+
+#[derive(Debug, Default)]
+pub struct RuleFirings {
+    pub filed: Vec<Item>,
+    /// (session, url, item id) of each watch whose pull request an open item now holds.
+    pub handed: Vec<(String, String, String)>,
+}
+
+fn in_project<'a, T>(map: &'a BTreeMap<String, T>, project: &str) -> Option<&'a T> {
+    map.iter()
+        .find(|(known, _)| same_folder(known, project))
+        .map(|(_, v)| v)
+}
+
+// Paused once `max` firings since the last resume fell inside one hour, and
+// stays so until a person resumes it.
+pub fn rule_paused(project: &str, max_per_hour: u32, items: &[Item], resumed_at: Option<u64>) -> bool {
+    let since = resumed_at.unwrap_or(0);
+    let mut fired: Vec<u64> = items
+        .iter()
+        .filter(|i| same_folder(&i.project, project) && matches!(i.source, Source::Rule { .. }) && i.created > since)
+        .map(|i| i.created)
+        .collect();
+    fired.sort_unstable();
+    let max = (max_per_hour as usize).max(1);
+    fired.windows(max).any(|w| w[max - 1] - w[0] < HOUR_MS)
+}
+
+fn rule_work(event: PrEvent, url: &str) -> (String, String) {
+    match event {
+        PrEvent::ChangesRequested => (
+            "Changes requested".into(),
+            format!("A review requested changes on {url}. Address the review on the pull request's own branch."),
+        ),
+        PrEvent::CheckFailed => (
+            "Check failed".into(),
+            format!("A check failed on {url}. Fix it on the pull request's own branch."),
+        ),
+        PrEvent::Conflicting => (
+            "Conflicts with its base".into(),
+            format!(
+                "{url} now conflicts with its base. Bring the base in and resolve it on the pull request's own branch."
+            ),
+        ),
+    }
+}
+
+pub fn plan_rule_firings(
+    hits: &[RuleHit],
+    items: &mut Vec<Item>,
+    projects: &BTreeMap<String, Contract>,
+    rules: &Rules,
+    now: u64,
+    mut mint: impl FnMut() -> String,
+) -> RuleFirings {
+    let mut firings = RuleFirings::default();
+    for hit in hits {
+        let Some(contract) = in_project(projects, &hit.project) else {
+            continue;
+        };
+        let key = (hit.repo.to_lowercase(), hit.pr);
+        if let Some(open) = items
+            .iter()
+            .find(|i| !i.state.terminal() && pr_key(i).as_ref() == Some(&key))
+        {
+            firings
+                .handed
+                .push((hit.session.clone(), hit.url.clone(), open.id.clone()));
+            continue;
+        }
+        let resumed_at = in_project(&rules.resumed, &hit.project).copied();
+        if rule_paused(&hit.project, hit.max_per_hour, items, resumed_at) {
+            continue;
+        }
+        let (what, task) = rule_work(hit.event, &hit.url);
+        let item = Item {
+            id: mint(),
+            kind: Kind::Ship,
+            source: Source::Rule {
+                pr: hit.pr,
+                repo: hit.repo.clone(),
+                event: hit.event,
+            },
+            project: hit.project.clone(),
+            state: match contract.pickup {
+                Pickup::Ask => State::Proposed,
+                Pickup::Auto => State::Queued,
+            },
+            worktree: None,
+            session: None,
+            pr_url: Some(hit.url.clone()),
+            url: Some(hit.url.clone()),
+            created: now,
+            updated: now,
+            note: None,
+            title: Some(format!("{what} on #{}", hit.pr)),
+            contract: Some(task),
+            picked_by: None,
+            gone_upstream: false,
+            picked_from: None,
+        };
+        firings
+            .handed
+            .push((hit.session.clone(), hit.url.clone(), item.id.clone()));
+        items.push(item.clone());
+        firings.filed.push(item);
+    }
+    firings
+}
+
 // What a closed PR means is the autopilot's call, so it only gets a note.
 fn settle(items: &mut [Item], prs: &HashMap<String, HashMap<PrKey, PrState>>, now: u64) -> Vec<Item> {
     let mut changed = Vec::new();
@@ -609,10 +744,11 @@ fn same_work(item: &Item, row: &IssueRef, repo: &str) -> bool {
     }
 }
 
-fn kind_of(item: &Item) -> IssueKind {
+fn kind_of(item: &Item) -> Option<IssueKind> {
     match item.source {
-        Source::Issue { .. } | Source::Schedule { .. } => IssueKind::Issue,
-        Source::Pr { .. } => IssueKind::ReviewRequest,
+        Source::Issue { .. } | Source::Schedule { .. } => Some(IssueKind::Issue),
+        Source::Pr { .. } => Some(IssueKind::ReviewRequest),
+        Source::Rule { .. } => None,
     }
 }
 
@@ -663,7 +799,9 @@ pub fn plan_pickup(
         .iter_mut()
         .filter(|i| here(i) && !i.state.terminal() && i.picked_by.as_deref() == Some(account))
     {
-        let kind = kind_of(item);
+        let Some(kind) = kind_of(item) else {
+            continue;
+        };
         if !complete(kind) || listed(item) {
             continue;
         }
@@ -953,7 +1091,7 @@ fn is_tracker_key(s: &str) -> bool {
 // key sits before any slug: `/issues/12`, `/issue/ENG-123/fix-login`.
 fn label_of(source: &Source, title: Option<&str>) -> String {
     let key = match source {
-        Source::Pr { number, .. } => return format!("#{number}"),
+        Source::Pr { number, .. } | Source::Rule { pr: number, .. } => return format!("#{number}"),
         Source::Schedule { schedule, .. } => return title.unwrap_or(schedule).to_string(),
         Source::Issue { key, .. } => key.trim().trim_start_matches('#'),
     };
@@ -1021,7 +1159,7 @@ pub fn reference(item: &Item, worktrees: &HashMap<String, Option<Vec<Listed>>>, 
                 url: u.clone(),
             })
         }),
-        Source::Pr { .. } => None,
+        Source::Pr { .. } | Source::Rule { .. } => None,
     };
     let place = place(item, worktrees, root);
     let folder = item.worktree.clone().unwrap_or_else(|| item.project.clone());
@@ -1128,6 +1266,7 @@ struct Held {
     items: Vec<Item>,
     projects: BTreeMap<String, Contract>,
     schedules: Vec<Schedule>,
+    rules: Rules,
 }
 
 pub struct AutopilotStore {
@@ -1178,10 +1317,15 @@ impl AutopilotStore {
             unreadable.insert(SCHEDULES, e);
             schedules::Schedules::default()
         });
+        let rules: Rules = load(&dir.join(RULES)).unwrap_or_else(|e| {
+            unreadable.insert(RULES, e);
+            Rules::default()
+        });
         let held = Held {
             items: queue.items,
             projects: projects.projects,
             schedules: schedules.schedules,
+            rules,
         };
         Self {
             dir,
@@ -1351,6 +1495,24 @@ impl AutopilotStore {
         (self.publish)(json!({ "kind": "autopilot.changed", "schedule_removed": id, "ts": now_ms() }));
         self.write(|items| Ok(drop_schedule_runs(items, id, now_ms())))?;
         Ok(removed)
+    }
+
+    pub fn fire_rules(&self, hits: &[RuleHit]) -> Result<RuleFirings, UpdateError> {
+        if hits.is_empty() {
+            return Ok(RuleFirings::default());
+        }
+        let mint = || format!("item-{}", crate::chat::approval::random_token());
+        let (projects, rules) = {
+            let held = self.lock();
+            (held.projects.clone(), held.rules.clone())
+        };
+        let mut handed = Vec::new();
+        let filed = self.write(|items| {
+            let firings = plan_rule_firings(hits, items, &projects, &rules, now_ms(), mint);
+            handed = firings.handed;
+            Ok(firings.filed)
+        })?;
+        Ok(RuleFirings { filed, handed })
     }
 
     pub fn fire_due(&self, now: u64) -> Result<Fired, UpdateError> {
@@ -1760,6 +1922,118 @@ pub mod tests {
             gone_upstream: false,
             picked_from: None,
         }
+    }
+
+    fn hit(pr: u64) -> RuleHit {
+        RuleHit {
+            session: "chat".into(),
+            project: "/p".into(),
+            url: format!("https://github.com/o/r/pull/{pr}"),
+            repo: "o/r".into(),
+            pr,
+            event: PrEvent::ChangesRequested,
+            max_per_hour: 2,
+        }
+    }
+
+    fn contracts(pickup: Pickup) -> BTreeMap<String, Contract> {
+        BTreeMap::from([(
+            "/p".to_string(),
+            Contract {
+                pickup,
+                ..Contract::default()
+            },
+        )])
+    }
+
+    fn fire_rule(hits: &[RuleHit], items: &mut Vec<Item>, pickup: Pickup, rules: &Rules, now: u64) -> RuleFirings {
+        let mut n = items.len();
+        plan_rule_firings(hits, items, &contracts(pickup), rules, now, || {
+            n += 1;
+            format!("r{n}")
+        })
+    }
+
+    #[test]
+    fn a_rule_hit_files_a_ship_item_on_the_pull_request_under_the_contracts_pickup() {
+        let mut items = Vec::new();
+        let asked = fire_rule(&[hit(7)], &mut items, Pickup::Ask, &Rules::default(), 10);
+        let filed = &asked.filed[0];
+        assert_eq!((filed.kind, filed.state), (Kind::Ship, State::Proposed));
+        assert_eq!(filed.pr_url.as_deref(), Some("https://github.com/o/r/pull/7"));
+        assert!(filed.worktree.is_none());
+        assert_eq!(
+            asked.handed,
+            vec![("chat".into(), filed.url.clone().unwrap(), "r1".into())]
+        );
+
+        let mut items = Vec::new();
+        let auto = fire_rule(&[hit(7)], &mut items, Pickup::Auto, &Rules::default(), 10);
+        assert_eq!(auto.filed[0].state, State::Queued);
+    }
+
+    #[test]
+    fn a_project_with_no_contract_files_nothing() {
+        let mut items = Vec::new();
+        let none = plan_rule_firings(&[hit(7)], &mut items, &BTreeMap::new(), &Rules::default(), 10, || {
+            "x".into()
+        });
+        assert!(none.filed.is_empty() && none.handed.is_empty() && items.is_empty());
+    }
+
+    #[test]
+    fn an_open_item_on_the_pull_request_takes_the_hit_instead_of_a_second_item() {
+        let mut items = Vec::new();
+        fire_rule(&[hit(7)], &mut items, Pickup::Auto, &Rules::default(), 10);
+        let again = fire_rule(&[hit(7)], &mut items, Pickup::Auto, &Rules::default(), 20);
+        assert!(again.filed.is_empty());
+        assert_eq!(again.handed[0].2, "r1", "the watch is handed to the open item");
+        assert_eq!(items.len(), 1);
+    }
+
+    #[test]
+    fn the_hourly_cap_pauses_the_rule_until_a_resume() {
+        let mut items = Vec::new();
+        let done = |items: &mut Vec<Item>| items.iter_mut().for_each(|i| i.state = State::Done);
+        fire_rule(&[hit(1)], &mut items, Pickup::Auto, &Rules::default(), 1_000);
+        done(&mut items);
+        fire_rule(&[hit(2)], &mut items, Pickup::Auto, &Rules::default(), 2_000);
+        done(&mut items);
+        let capped = fire_rule(&[hit(3)], &mut items, Pickup::Auto, &Rules::default(), 3_000);
+        assert!(
+            capped.filed.is_empty() && capped.handed.is_empty(),
+            "two in an hour is the cap"
+        );
+        let later = fire_rule(
+            &[hit(3)],
+            &mut items,
+            Pickup::Auto,
+            &Rules::default(),
+            3_000 + HOUR_MS * 5,
+        );
+        assert!(later.filed.is_empty(), "a pause outlasts the hour");
+
+        let resumed = Rules {
+            resumed: BTreeMap::from([("/p".to_string(), 2_500)]),
+        };
+        assert_eq!(
+            fire_rule(&[hit(3)], &mut items, Pickup::Auto, &resumed, 4_000)
+                .filed
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn a_merged_pull_request_closes_its_rule_item() {
+        let mut items = Vec::new();
+        fire_rule(&[hit(7)], &mut items, Pickup::Auto, &Rules::default(), 10);
+        let prs = HashMap::from([(
+            "/p".to_string(),
+            HashMap::from([(("o/r".to_string(), 7), PrState::Merged)]),
+        )]);
+        let changed = settle(&mut items, &prs, 20);
+        assert_eq!(changed[0].state, State::Done);
     }
 
     #[test]
@@ -2577,6 +2851,22 @@ pub mod tests {
     }
 
     #[test]
+    fn the_brief_pushes_a_rule_item_to_its_own_pull_request_and_opens_none() {
+        let brief = include_str!("../resources/autopilot/brief.md");
+        let rules = &brief[brief.find("My pull request rules").unwrap()..];
+        let section = &rules[..rules.find("\n\nWhen a wake names").unwrap()];
+        for needed in [
+            "`pr.push` draft",
+            "its head branch\n  as `head`",
+            "passing `pr` and no branch",
+            "Never open a new pull request",
+        ] {
+            assert!(section.contains(needed), "{needed} missing");
+        }
+        assert!(!section.contains("pr_create"), "a rule item never opens a pull request");
+    }
+
+    #[test]
     fn the_brief_says_a_review_the_rule_started_is_handled_like_its_own() {
         let brief = include_str!("../resources/autopilot/brief.md");
         assert!(brief.contains("`started (review rule)`"));
@@ -2655,6 +2945,7 @@ pub mod tests {
                 Source::Issue { key, .. } => (key.clone(), i.state),
                 Source::Pr { number, .. } => (format!("pr{number}"), i.state),
                 Source::Schedule { schedule, .. } => (schedule.clone(), i.state),
+                Source::Rule { pr, .. } => (format!("rule{pr}"), i.state),
             })
             .collect()
     }

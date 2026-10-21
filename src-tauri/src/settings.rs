@@ -983,8 +983,12 @@ pub struct Settings {
     pub conflict_radar: ConflictRadar,
     /// What each project does when your review is requested, keyed by project
     /// path. No entry is off.
-    #[serde(default, deserialize_with = "lenient_review_rules")]
+    #[serde(default, deserialize_with = "lenient_map")]
     pub review_requested: std::collections::HashMap<String, ReviewRule>,
+    /// What each project does when a watched pull request needs work and its
+    /// chat is gone, keyed by project path. No entry is off.
+    #[serde(default, deserialize_with = "lenient_map")]
+    pub pr_rules: std::collections::HashMap<String, PrRule>,
     /// How each project's sessions run, keyed by project path. No entry is the
     /// default level.
     #[serde(default, deserialize_with = "lenient_execution")]
@@ -1170,9 +1174,9 @@ impl Default for ReviewRule {
 
 // One malformed project entry is dropped rather than failing the whole file,
 // which `load_from` would turn into every section reading its defaults.
-fn lenient_review_rules<'de, D: serde::Deserializer<'de>>(
+fn lenient_map<'de, D: serde::Deserializer<'de>, T: serde::de::DeserializeOwned>(
     d: D,
-) -> Result<std::collections::HashMap<String, ReviewRule>, D::Error> {
+) -> Result<std::collections::HashMap<String, T>, D::Error> {
     let raw = serde_json::Value::deserialize(d)?;
     let Some(map) = raw.as_object() else {
         return Ok(Default::default());
@@ -1189,6 +1193,41 @@ pub fn review_rule(path: &str) -> ReviewRule {
         .get(path.trim_end_matches('/'))
         .cloned()
         .unwrap_or_default()
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PrEvent {
+    ChangesRequested,
+    CheckFailed,
+    Conflicting,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PrRule {
+    #[serde(default)]
+    pub on: Vec<PrEvent>,
+    #[serde(default = "default_rule_max_per_hour")]
+    pub max_per_hour: u32,
+}
+
+// Lower than the review rule's: each firing is a worker that pushes.
+fn default_rule_max_per_hour() -> u32 {
+    3
+}
+
+impl Default for PrRule {
+    fn default() -> Self {
+        Self {
+            on: Vec::new(),
+            max_per_hour: default_rule_max_per_hour(),
+        }
+    }
+}
+
+pub fn pr_rules() -> std::collections::HashMap<String, PrRule> {
+    load_from(&settings_path()).pr_rules
 }
 
 /// When a project's sessions run in the agent's own sandbox.
@@ -1758,6 +1797,30 @@ mod tests {
 
         save_to(&p, &s).unwrap();
         assert_eq!(load_from(&p).review_requested, s.review_requested);
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn a_pr_rule_round_trips_and_a_broken_entry_reads_off() {
+        let p = tmp_file();
+        std::fs::write(
+            &p,
+            r#"{"git":{"fetchEveryMinutes":5},"prRules":{"/r/a":{"on":["changes_requested","conflicting"]},"/r/b":{"on":["sometimes"]}}}"#,
+        )
+        .unwrap();
+        let s = load_from(&p);
+        assert_eq!(s.git.fetch_every_minutes, 5, "a broken entry costs no other section");
+        assert_eq!(
+            s.pr_rules.get("/r/a"),
+            Some(&PrRule {
+                on: vec![PrEvent::ChangesRequested, PrEvent::Conflicting],
+                max_per_hour: 3,
+            })
+        );
+        assert!(!s.pr_rules.contains_key("/r/b"), "an unknown event drops the rule");
+
+        save_to(&p, &s).unwrap();
+        assert_eq!(load_from(&p).pr_rules, s.pr_rules);
         let _ = std::fs::remove_file(&p);
     }
 
