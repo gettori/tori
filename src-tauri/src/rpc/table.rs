@@ -14,8 +14,8 @@ use super::server::{
     ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams, ModelParams, NeedsYouSeenParams,
     OpenParams, PendingParams, PortParams, PrCreateParams, PrGetParams, PrMergeParams, PrWatchParams,
     ProjectIconParams, ProjectSetParams, ProvenanceParams, RevealParams, ReviewMarkParams, ReviewSubmitParams,
-    SessionAnswerParams, SetupParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams,
-    UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, UNITS_GIT_MAX,
+    ScheduleAddParams, ScheduleIdParams, SessionAnswerParams, SetupParams, SpawnParams, SteerParams, TailParams,
+    TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, UNITS_GIT_MAX,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -680,6 +680,42 @@ pub static METHODS: &[Method] = &[
         refusal: Some("withdrawing a hold is the autopilot's call"),
         outward: false,
         call: |b, _, v| b.autopilot_hold_resolve(params(v)?),
+    },
+    Method {
+        name: "autopilot.schedule.list",
+        description: "The autopilot's schedules, each with when it fires next.",
+        params: no_params,
+        callers: ANYONE,
+        refusal: None,
+        outward: false,
+        call: |b, _, _| b.autopilot_schedule_list(),
+    },
+    Method {
+        name: "autopilot.schedule.add",
+        description: "Add a schedule: at each cron time in the Mac's local time, Tori queues a ship item in the project for the autopilot, with the prompt or the issue as its work. A slot missed while asleep fires once on wake, and a firing is skipped while the schedule's last run is still open.",
+        params: schema::<ScheduleAddParams>,
+        callers: NOT_WORKERS,
+        refusal: Some("schedules are the user's and the autopilot's to set"),
+        outward: false,
+        call: |b, p, v| b.autopilot_schedule_add(p, params(v)?),
+    },
+    Method {
+        name: "autopilot.schedule.remove",
+        description: "Remove a schedule. Its run is closed if it has not started; a running one keeps going with a note.",
+        params: schema::<ScheduleIdParams>,
+        callers: NOT_WORKERS,
+        refusal: Some("schedules are the user's and the autopilot's to set"),
+        outward: false,
+        call: |b, _, v| b.autopilot_schedule_remove(params(v)?),
+    },
+    Method {
+        name: "autopilot.schedule.resume",
+        description: "Resume a schedule paused after three failed runs: only runs from now on count towards the next pause.",
+        params: schema::<ScheduleIdParams>,
+        callers: NOT_WORKERS,
+        refusal: Some("schedules are the user's and the autopilot's to set"),
+        outward: false,
+        call: |b, _, v| b.autopilot_schedule_resume(params(v)?),
     },
     Method {
         name: "device.mint",

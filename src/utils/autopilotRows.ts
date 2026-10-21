@@ -21,7 +21,10 @@ export type Reference = TicketRef & { pr?: { label: string; url: string }; targe
 export type ItemRow = {
   id: string;
   kind: "ship" | "review";
-  source: { type: "issue"; key: string; project: string } | { type: "pr"; number: number; repo: string };
+  source:
+    | { type: "issue"; key: string; project: string }
+    | { type: "pr"; number: number; repo: string }
+    | { type: "schedule"; schedule: string; issue?: string };
   project: string;
   state: "proposed" | "queued" | "running" | "waiting_on_you" | "taken_over" | "done" | "failed";
   worktree?: string | null;
@@ -68,6 +71,7 @@ const lastSegment = (path: string) => path.split("/").filter(Boolean).pop() ?? p
 // reads by its number alone.
 export function ticketOf(item: ItemRow): TicketRef {
   if (item.reference) return item.reference;
+  if (item.source.type === "schedule") return { label: item.title ?? item.source.schedule, place: [] };
   const key = item.source.type === "pr" ? String(item.source.number) : item.source.key.replace(/^#/, "");
   return { label: /^\d+$/.test(key) ? `#${key}` : key, place: [] };
 }

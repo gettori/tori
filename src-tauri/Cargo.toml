@@ -44,6 +44,10 @@ portable-pty = "0.8"
 json5 = "0.4"
 ureq = { version = "3", features = ["json"] }
 regex = "1"
+# An autopilot schedule is a 5-field cron in the Mac's local time; `croner`
+# walks DST gaps and repeats, which a hand-rolled matcher would get wrong.
+croner = "4"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 quick-xml = "0.42"
 globset = "0.4"
 rusqlite = { version = "0.31", features = ["bundled"] }

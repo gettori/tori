@@ -72,6 +72,8 @@ const USAGE: &str = "usage:
   tori autopilot project [--project <path>] [--ships pr|local] [--autonomy ask-everything|auto-until-outward]
                          [--pickup ask|auto] [--agent <id>] [--account <id>] [--model <id>] [--issues <json>] [--json]
   tori autopilot hold resolve <id> [--json]
+  tori autopilot schedule add --name <text> --cron <expr> (--prompt <text> | --issue <key>) [--project <path>] [--json]
+  tori autopilot schedule list | remove <id> | resume <id> [--json]
   tori mcp
   tori validate-pack <file|dir>... [--assets] [--registry] [--json]
   tori packs-index <dir> [--sign-key-env <name> --key-id <id>]
@@ -1395,7 +1397,7 @@ fn pr(args: &[String]) -> Result<(), Failure> {
 fn autopilot_request(args: &[String]) -> Result<(&'static str, Value), Failure> {
     let Some((sub, rest)) = args.split_first() else {
         return Err(usage(
-            "autopilot needs a subcommand: state, start, stop, item, project or hold",
+            "autopilot needs a subcommand: state, start, stop, item, project, hold or schedule",
         ));
     };
     match sub.as_str() {
@@ -1499,8 +1501,41 @@ fn autopilot_request(args: &[String]) -> Result<(&'static str, Value), Failure> 
                 _ => Err(usage("autopilot hold takes: resolve <id>")),
             }
         }
+        "schedule" => {
+            let valued = ["name", "cron", "prompt", "issue", "project"];
+            let p = Parsed::new(rest, &valued, &["json"])?;
+            let verb = p.positional.first().map(String::as_str);
+            if verb != Some("add") && valued.iter().any(|f| p.value(f).is_some()) {
+                return Err(usage("only autopilot schedule add takes flags"));
+            }
+            match (verb, &p.positional[p.positional.len().min(1)..]) {
+                (Some("add"), []) => {
+                    let name = p.value("name").ok_or_else(|| usage("schedule add needs --name"))?;
+                    let cron = p
+                        .value("cron")
+                        .ok_or_else(|| usage("schedule add needs --cron, five fields in local time"))?;
+                    if p.value("prompt").is_some() == p.value("issue").is_some() {
+                        return Err(usage(
+                            "schedule add takes --prompt <text> or --issue <key>, one of the two",
+                        ));
+                    }
+                    let params = json!({
+                        "project": p.value("project").map(absolute).transpose()?,
+                        "name": name,
+                        "cron": cron,
+                        "prompt": p.value("prompt"),
+                        "issue": p.value("issue"),
+                    });
+                    Ok(("autopilot.schedule.add", params))
+                }
+                (Some("list"), []) => Ok(("autopilot.schedule.list", json!({}))),
+                (Some("remove"), [id]) => Ok(("autopilot.schedule.remove", json!({ "id": id }))),
+                (Some("resume"), [id]) => Ok(("autopilot.schedule.resume", json!({ "id": id }))),
+                _ => Err(usage("autopilot schedule takes: add, list, remove <id> or resume <id>")),
+            }
+        }
         other => Err(usage(format!(
-            "unknown autopilot subcommand {other}: state, start, stop, item, project or hold"
+            "unknown autopilot subcommand {other}: state, start, stop, item, project, hold or schedule"
         ))),
     }
 }
@@ -1526,6 +1561,14 @@ fn autopilot(args: &[String]) -> Result<(), Failure> {
         "autopilot.project.set" => return Ok(write!(out, "{}", render_contract(&done))?),
         "autopilot.hold.resolve" => return Ok(writeln!(out, "withdrawn: {}", done["id"].as_str().unwrap_or(""))?),
         "autopilot.start" | "autopilot.stop" => return Ok(writeln!(out, "{}", runner_line(&done))?),
+        "autopilot.schedule.remove" => return Ok(writeln!(out, "removed: {}", done["id"].as_str().unwrap_or(""))?),
+        "autopilot.schedule.add" | "autopilot.schedule.resume" => {
+            return write_table(&mut out, SCHEDULE_HEADER, &[schedule_cells(&done)])
+        }
+        "autopilot.schedule.list" => {
+            let table: Vec<[String; 6]> = done.as_array().into_iter().flatten().map(schedule_cells).collect();
+            return write_table(&mut out, SCHEDULE_HEADER, &table);
+        }
         _ => {}
     }
     writeln!(out, "autopilot: {}", runner_line(&done["runner"]))?;
@@ -1547,6 +1590,29 @@ fn autopilot(args: &[String]) -> Result<(), Failure> {
         write_table(&mut out, ["HOLD", "ITEM", "ACTION", "ANSWER"], &table)?;
     }
     Ok(())
+}
+
+const SCHEDULE_HEADER: [&str; 6] = ["ID", "NAME", "CRON", "NEXT", "PROJECT", "WHAT"];
+
+fn schedule_cells(row: &Value) -> [String; 6] {
+    let text = |key: &str| row[key].as_str().unwrap_or("").to_string();
+    let next = row["next_run"]
+        .as_i64()
+        .and_then(chrono::DateTime::from_timestamp_millis)
+        .map(|t| t.with_timezone(&chrono::Local).format("%a %d %b %H:%M").to_string())
+        .unwrap_or_default();
+    let what = match row["what"]["type"].as_str() {
+        Some("issue") => format!("issue {}", row["what"]["key"].as_str().unwrap_or("")),
+        _ => row["what"]["text"].as_str().unwrap_or("").to_string(),
+    };
+    [
+        text("id"),
+        text("name"),
+        text("cron"),
+        next,
+        text("project"),
+        clip(&what, 50),
+    ]
 }
 
 fn hold_cells(hold: &Value) -> [String; 4] {
@@ -1595,6 +1661,7 @@ fn item_cells(row: &Value) -> [String; 6] {
     let source = match source["type"].as_str() {
         Some("issue") => format!("issue {}", source["key"].as_str().unwrap_or("")),
         Some("pr") => format!("{}#{}", source["repo"].as_str().unwrap_or(""), source["number"]),
+        Some("schedule") => format!("schedule {}", source["schedule"].as_str().unwrap_or("")),
         _ => String::new(),
     };
     let session = match row["session_live"].as_bool() {
