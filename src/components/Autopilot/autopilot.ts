@@ -11,7 +11,7 @@ export type CockpitHero = {
   body: string;
 };
 
-export type DecisionKind = "pr" | "review" | "merge" | "question";
+export type DecisionKind = "pr" | "review" | "push" | "merge" | "question";
 
 export const AUTOPILOT_STATES: AutopilotState[] = ["off", "idle", "working", "needs", "error"];
 

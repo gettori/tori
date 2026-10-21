@@ -648,6 +648,40 @@ impl Office {
         }
     }
 
+    // After each watch fold, so a rule rides the same poll as the watch it reads.
+    pub fn pr_rules_tick(&self) {
+        if !crate::settings::autopilot().available {
+            return;
+        }
+        let rules = crate::settings::pr_rules();
+        if rules.values().all(|r| r.on.is_empty()) {
+            return;
+        }
+        let shown = self.states.shown();
+        let gone = |session: &str| super::pr_rules::session_ended(&shown, session);
+        let hits = super::pr_rules::hits(&super::pr_watch::store().list(), &rules, gone);
+        let firings = match self.autopilot.fire_rules(&hits) {
+            Ok(firings) => firings,
+            Err(e) => return eprintln!("tori: a pull request rule did not fire: {e}"),
+        };
+        let handed = &firings.handed;
+        let saved = super::pr_watch::store().update(|watches| {
+            watches
+                .iter()
+                .filter(|w| handed.iter().any(|(s, u, _)| *s == w.session && *u == w.url))
+                .map(|w| {
+                    let mut next = w.clone();
+                    next.hand_over(super::pr_rules::HANDED_OVER);
+                    next
+                })
+                .collect()
+        });
+        if let Err(e) = saved {
+            eprintln!("tori: pull request watch not saved: {e}");
+        }
+        super::watcher_picked(&firings.filed);
+    }
+
     // Called from the window's forge poll tick, so it rides that cadence and its
     // pause and backoff rather than a clock of its own.
     fn pickup(&self, project: &str) -> Result<(), String> {

@@ -1,5 +1,13 @@
 import { Show } from "solid-js";
-import { ArrowUpRight, Eye, GitMerge, GitPullRequest, MessageCircleQuestion, type LucideIcon } from "lucide-solid";
+import {
+  ArrowUpFromLine,
+  ArrowUpRight,
+  Eye,
+  GitMerge,
+  GitPullRequest,
+  MessageCircleQuestion,
+  type LucideIcon,
+} from "lucide-solid";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
 import { TicketLink, TicketNumber } from "./ShellParts";
@@ -9,6 +17,7 @@ import styles from "./DecisionCard.module.css";
 const KINDS: Record<DecisionKind, { label: string; icon: LucideIcon }> = {
   pr: { label: "PR", icon: GitPullRequest },
   review: { label: "Review", icon: Eye },
+  push: { label: "Push", icon: ArrowUpFromLine },
   merge: { label: "Merge", icon: GitMerge },
   question: { label: "Question from worker", icon: MessageCircleQuestion },
 };

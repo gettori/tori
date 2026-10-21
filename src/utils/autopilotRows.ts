@@ -12,6 +12,7 @@ import type {
   WorkerStatus,
 } from "../components/Autopilot/autopilot";
 import type { AskApproval, SocketAsk } from "./socketAsks";
+import type { PrEvent } from "../panels/Settings/settingsStore";
 import { ago } from "./relativeTime";
 import { sameFolder } from "./autopilotContracts";
 import type { NavTarget } from "./events";
@@ -26,7 +27,8 @@ export type ItemRow = {
   source:
     | { type: "issue"; key: string; project: string }
     | { type: "pr"; number: number; repo: string }
-    | { type: "schedule"; schedule: string; issue?: string };
+    | { type: "schedule"; schedule: string; issue?: string }
+    | { type: "rule"; pr: number; repo: string; event: PrEvent };
   project: string;
   state: "proposed" | "queued" | "running" | "waiting_on_you" | "taken_over" | "done" | "failed";
   worktree?: string | null;
@@ -90,6 +92,7 @@ const lastSegment = (path: string) => path.split("/").filter(Boolean).pop() ?? p
 export function ticketOf(item: ItemRow): TicketRef {
   if (item.reference) return item.reference;
   if (item.source.type === "schedule") return { label: item.title ?? item.source.schedule, place: [] };
+  if (item.source.type === "rule") return { label: `#${item.source.pr}`, place: [] };
   const key = item.source.type === "pr" ? String(item.source.number) : item.source.key.replace(/^#/, "");
   return { label: /^\d+$/.test(key) ? `#${key}` : key, place: [] };
 }
@@ -215,6 +218,7 @@ export function activityOf(e: AutopilotEvent, items: ItemRow[]): ActivityItem | 
 const KIND_OF: Record<AskApproval["action"], DecisionKind> = {
   "pr.create": "pr",
   "review.submit": "review",
+  "pr.push": "push",
   "pr.merge": "merge",
 };
 
@@ -235,7 +239,13 @@ export function decisionOf(
     id: ask.id,
     kind: approval ? KIND_OF[approval.action] : "question",
     ticket,
-    refKind: item ? (item.source.type === "pr" ? "pr" : "issue") : number !== undefined ? "pr" : undefined,
+    refKind: item
+      ? item.source.type === "pr" || item.source.type === "rule"
+        ? "pr"
+        : "issue"
+      : number !== undefined
+        ? "pr"
+        : undefined,
     pr: item?.reference?.pr,
     title: approval?.action === "pr.create" ? approval.title : lastSegment(approval?.project ?? item?.project ?? ""),
     summary: ask.question,
