@@ -279,6 +279,12 @@ impl Watch {
         }
     }
 
+    // The autopilot holds the pull request now, so the chat hears only that.
+    pub fn hand_over(&mut self, why: &str) {
+        self.pending.clear();
+        self.end(why);
+    }
+
     // Ended, and nothing left to tell.
     pub fn finished(&self) -> bool {
         self.ended && self.pending.is_empty()
@@ -529,6 +535,9 @@ pub fn fold(owner: &str, repo: &str, read: Read) {
     let now = crate::owned_state::now_ms();
     if let Err(e) = store().update(|watches| fold_into(watches, owner, repo, &read, now)) {
         eprintln!("tori: pull request watch not saved: {e}");
+    }
+    if let Some(office) = crate::rpc::office() {
+        office.pr_rules_tick();
     }
     super::pr_wake::nudge();
     if polled() != before {

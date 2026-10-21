@@ -49,6 +49,15 @@ pub enum Draft {
         /// The head commit the comments were drawn against; the review is refused once the pull request has moved on.
         head_sha: String,
     },
+    #[serde(rename = "pr.push")]
+    PrPush {
+        /// The pull request's number.
+        number: u64,
+        /// Its head branch on origin.
+        head: String,
+        /// The commit to push, never forced, so it lands only on top of the branch as it is.
+        head_sha: String,
+    },
     #[serde(rename = "pr.merge")]
     PrMerge {
         /// The pull request's number.
@@ -65,6 +74,7 @@ impl Draft {
         match self {
             Draft::PrCreate { .. } => "pr.create",
             Draft::ReviewSubmit { .. } => "review.submit",
+            Draft::PrPush { .. } => "pr.push",
             Draft::PrMerge { .. } => "pr.merge",
         }
     }
@@ -80,6 +90,9 @@ impl Draft {
                 head_sha,
                 ..
             } => format!("a {event:?} review on #{number} at {head_sha}"),
+            Draft::PrPush {
+                number, head, head_sha, ..
+            } => format!("pushing {head_sha} to {head} for #{number}"),
             Draft::PrMerge { number, head_sha, .. } => format!("merging #{number} at {head_sha}"),
         }
     }

@@ -353,6 +353,8 @@ export type Settings = {
   conflictRadar: { enabled: boolean };
   /** Mirrors `ReviewRule` in src-tauri/src/settings.rs, keyed by project path. */
   reviewRequested?: Record<string, ReviewRule>;
+  /** Mirrors `PrRule` in src-tauri/src/settings.rs, keyed by project path. */
+  prRules?: Record<string, PrRule>;
   /** Mirrors `ExecutionLevel` in src-tauri/src/settings.rs, keyed by project path. */
   execution?: Record<string, ExecutionLevel>;
   /** Mirrors `Unattended` in src-tauri/src/settings.rs. Null is the built-in list. */
@@ -377,6 +379,13 @@ export type ReviewRule = {
   model: string | null;
   effort: string | null;
   mode: string | null;
+};
+
+export type PrEvent = "changes_requested" | "check_failed" | "conflicting";
+
+export type PrRule = {
+  on: PrEvent[];
+  maxPerHour: number;
 };
 
 /** What a project runs in the worktrees Tori creates. An empty command runs
@@ -514,6 +523,7 @@ export const DEFAULT_SETTINGS: Settings = {
   verification: { enabled: true, commands: {} },
   conflictRadar: { enabled: true },
   reviewRequested: {},
+  prRules: {},
   execution: {},
   unattended: { deny: null, allowedDomains: null },
   portLinks: [],

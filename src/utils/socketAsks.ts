@@ -12,6 +12,7 @@ export type AskApproval = { project: string } & (
       comments: DraftComment[];
       head_sha: string;
     }
+  | { action: "pr.push"; number: number; head: string; head_sha: string }
   | { action: "pr.merge"; number: number; method: MergeMethod; head_sha: string }
 );
 

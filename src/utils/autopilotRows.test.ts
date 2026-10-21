@@ -67,6 +67,11 @@ describe("ticket references", () => {
     );
   });
 
+  it("reads a rule's item by its pull request number", () => {
+    const ruled = row({ source: { type: "rule", pr: 7, repo: "o/r", event: "changes_requested" } });
+    expect(workerCards([ruled])[0].ticket).toEqual({ label: n(7), place: [] });
+  });
+
   it("names a logged item by the current row's reference", () => {
     const logged = { ts: 0, item: row({ id: "a", state: "done" }) };
     const line = activityOf(logged, [tori]);

@@ -2513,6 +2513,10 @@ pub fn push_sha(repo: &str, remote: &str, branch: &str, sha: &str, sock: &Path, 
             "{branch} moved to {at} after {sha} was approved: ask again for the new head"
         ));
     }
+    push_commit(repo, remote, branch, sha, sock, token)
+}
+
+pub fn push_commit(repo: &str, remote: &str, branch: &str, sha: &str, sock: &Path, token: &str) -> Result<(), String> {
     let op_id = next_op_id();
     let mut cmd = git_command(repo, &op_id, sock, token);
     let _bridge = crate::credential::bridge(&mut cmd, repo, remote, &op_id);

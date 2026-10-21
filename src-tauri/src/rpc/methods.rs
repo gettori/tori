@@ -18,7 +18,7 @@ use super::server::{
     CheckpointDiffParams, CheckpointParams, CheckpointsParams, DigestLookedParams, DigestParams, DraftParams,
     HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams, IssuesAssignedParams,
     ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams, ModelParams, NeedsYouSeenParams,
-    OpenParams, PendingParams, PortParams, PrCreateParams, PrGetParams, PrMergeParams, PrWatchParams,
+    OpenParams, PendingParams, PortParams, PrCreateParams, PrGetParams, PrMergeParams, PrPushParams, PrWatchParams,
     ProjectIconParams, ProjectSetParams, ProvenanceParams, RevealParams, ReviewMarkParams, ReviewSubmitParams,
     ScheduleAddParams, ScheduleIdParams, SessionAnswerParams, SetupParams, SpawnParams, SteerParams, TailParams,
     TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, DEFAULT_LOG_LIMIT,
@@ -645,6 +645,25 @@ fn refused(message: String) -> RpcError {
 
 fn forge_refused(e: crate::forge::ForgeError) -> RpcError {
     refused(e.to_string())
+}
+
+fn pushable(pr: &crate::forge::model::PullRequest, head: &str) -> Result<(), String> {
+    if pr.state != crate::forge::model::PrState::Open {
+        return Err(format!(
+            "#{} is no longer open, so there is nothing to push to",
+            pr.number
+        ));
+    }
+    if !pr.head_repo_is_origin {
+        return Err(format!(
+            "#{} is from a fork, whose branch origin does not hold",
+            pr.number
+        ));
+    }
+    if pr.head_ref != head {
+        return Err(format!("#{}'s head branch is {}, not {head}", pr.number, pr.head_ref));
+    }
+    Ok(())
 }
 
 fn gated_by_approval(
@@ -2042,6 +2061,33 @@ impl Backend for DaemonBackend {
         )
     }
 
+    fn pr_push(&self, principal: &Principal, params: PrPushParams) -> Result<Value, RpcError> {
+        let draft = params.draft();
+        let askpass = self.git_askpass()?;
+        self.gated_outward(
+            principal,
+            params.project,
+            draft,
+            params.approval_id.as_deref(),
+            |project| {
+                let pr = crate::forge::commands::pull_request(project, params.number).map_err(forge_refused)?;
+                pushable(&pr, &params.head).map_err(refused)?;
+                let lock = crate::exec::repo_lock(project);
+                let _held = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                crate::git::push_commit(
+                    project,
+                    "origin",
+                    &params.head,
+                    &params.head_sha,
+                    askpass.sock_path(),
+                    askpass.token(),
+                )
+                .map_err(refused)?;
+                Ok(json!({}))
+            },
+        )
+    }
+
     fn autopilot_state(&self) -> Result<Value, RpcError> {
         let mut state = super::server::autopilot_state(&self.autopilot, self.asks.holds(), |items| {
             let reported = self
@@ -2599,6 +2645,46 @@ mod tests {
             mergeable_state: crate::forge::model::MergeableState::Unknown,
             stack: None,
         }
+    }
+
+    fn push_draft() -> Approval {
+        Approval {
+            project: "/p".into(),
+            draft: Draft::PrPush {
+                number: 12,
+                head: "1-x".into(),
+                head_sha: "def".into(),
+            },
+        }
+    }
+
+    #[test]
+    fn a_background_pr_push_needs_its_approval_and_spends_it_once() {
+        let approvals = Approvals::default();
+        let pushed = || Ok(json!({}));
+        let err = gated_by_approval(&approvals, Some("s1"), &push_draft(), None, pushed).unwrap_err();
+        assert!(err.message.contains("pushing def to 1-x for #12"), "{}", err.message);
+        let id = approvals.grant("s1", push_draft());
+        assert!(gated_by_approval(&approvals, Some("s1"), &push_draft(), Some(&id), pushed).is_ok());
+        let again = gated_by_approval(&approvals, Some("s1"), &push_draft(), Some(&id), pushed).unwrap_err();
+        assert!(again.message.contains("already spent"), "{}", again.message);
+    }
+
+    #[test]
+    fn a_push_goes_only_to_an_open_origin_pull_request_on_its_own_head() {
+        let pr = sample_pr();
+        assert!(pushable(&pr, "1-x").is_ok());
+        assert!(pushable(&pr, "main").unwrap_err().contains("head branch is 1-x"));
+        let fork = crate::forge::model::PullRequest {
+            head_repo_is_origin: false,
+            ..sample_pr()
+        };
+        assert!(pushable(&fork, "1-x").unwrap_err().contains("fork"));
+        let merged = crate::forge::model::PullRequest {
+            state: crate::forge::model::PrState::Merged,
+            ..sample_pr()
+        };
+        assert!(pushable(&merged, "1-x").unwrap_err().contains("no longer open"));
     }
 
     #[test]
