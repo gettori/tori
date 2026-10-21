@@ -16,12 +16,14 @@ import { allAsks, answerAsk } from "./socketAsks";
 import {
   activityOf,
   applyItem,
+  applySchedule,
   autopilotState,
   decisionOf,
   decisionsFor,
   type AutopilotEvent,
   type Hold,
   type ItemRow,
+  type ScheduleRow,
 } from "./autopilotRows";
 import { findSession } from "./sessionStore";
 import { toriNote } from "./toriNote";
@@ -108,7 +110,13 @@ export async function sendToAutopilot(text: string) {
 const [items, setItems] = createSignal<ItemRow[]>([]);
 const [holds, setHolds] = createSignal<Hold[]>([]);
 const [activity, setActivity] = createSignal<ActivityItem[]>([]);
-export { items, activity };
+const [schedules, setSchedules] = createSignal<ScheduleRow[]>([]);
+export { items, activity, schedules };
+
+export async function resumeSchedule(id: string) {
+  const row = await invoke<ScheduleRow>("autopilot_schedule_resume", { id }).catch(() => null);
+  if (row) setSchedules((prev) => applySchedule(prev, { ts: Date.now(), schedule: row }));
+}
 
 const [locked, setLocked] = createSignal<ReadonlySet<string>>(new Set());
 export const isLocked = (session: string | null | undefined) => !!session && locked().has(session);
@@ -134,6 +142,7 @@ function applyChange(e: AutopilotEvent) {
   if (item) setItems((prev) => applyItem(prev, item));
   const hold = e.hold;
   if (hold) setHolds((prev) => [...prev.filter((h) => h.ask !== hold.ask), ...(e.cleared ? [] : [hold])]);
+  if (e.schedule || e.schedule_removed) setSchedules((prev) => applySchedule(prev, e));
   addActivity([e]);
 }
 
@@ -143,6 +152,8 @@ async function loadAutopilot() {
     setItems(state.items);
     setHolds(state.holds);
   }
+  const rows = await invoke<ScheduleRow[]>("autopilot_schedules").catch(() => null);
+  if (rows) setSchedules(rows);
   const logged = await invoke<AutopilotEvent[]>("autopilot_log", { limit: ACTIVITY_KEPT }).catch(() => []);
   // A line at or after the first live event was already added by it.
   addActivity(
