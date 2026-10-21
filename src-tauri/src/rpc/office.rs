@@ -121,6 +121,38 @@ fn start_watcher(desk: &Desk, autopilot: &Arc<AutopilotStore>, runner: &Arc<Runn
     });
 }
 
+// A sleeping Mac stops the timer, so the wait is capped and the wall clock read again.
+fn start_clock(autopilot: &Arc<AutopilotStore>) {
+    const MINUTE: std::time::Duration = std::time::Duration::from_secs(60);
+    let store = autopilot.clone();
+    std::thread::spawn(move || {
+        let mut failed = None;
+        loop {
+            let fired = crate::settings::autopilot().available
+                && match store.fire_due(crate::owned_state::now_ms()) {
+                    Ok(queued) => {
+                        failed = None;
+                        super::watcher_scheduled(&queued);
+                        true
+                    }
+                    Err(e) => {
+                        if failed.as_ref() != Some(&e.to_string()) {
+                            eprintln!("tori: a schedule did not fire: {e}");
+                            failed = Some(e.to_string());
+                        }
+                        false
+                    }
+                };
+            // Only a pass that fired moved the due slots on; any other would find them due again at once.
+            let next = store.next_slot().filter(|_| fired);
+            let until = next.map_or(MINUTE, |at| {
+                std::time::Duration::from_millis(at.saturating_sub(crate::owned_state::now_ms()))
+            });
+            store.wait_for_schedules(until.clamp(std::time::Duration::from_secs(1), MINUTE));
+        }
+    });
+}
+
 // On `sessions`, which every phone screen already reads and ignores unknown kinds of.
 fn start_radar(desk: &Desk, hub: &Arc<Hub>, autopilot: &Arc<AutopilotStore>) {
     let (ui, hub) = (desk.ui.clone(), hub.clone());
@@ -181,6 +213,7 @@ pub fn start(parts: Parts) -> Arc<Office> {
     super::set_stores(asks.clone(), runner.clone(), hub.clone(), desk.states.clone());
     start_radar(&desk, &hub, &autopilot);
     start_watcher(&desk, &autopilot, &runner);
+    start_clock(&autopilot);
     let moved = desk.ui.clone();
     super::pr_watch::on_polled_moved(Box::new(move || moved.emit("pr_watch://changed", ())));
     let devices = Arc::new(super::devices::Devices::open(super::devices_path()));
