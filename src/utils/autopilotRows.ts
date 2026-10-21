@@ -6,6 +6,7 @@ import type {
   DecisionKind,
   InFlightRow,
   QueuedItem,
+  RuleCard,
   ScheduleCard,
   TicketRef,
   WorkerCard,
@@ -60,6 +61,15 @@ export type ScheduleRow = {
   paused: boolean;
 };
 
+/** Mirrors `RuleRow` in src-tauri/src/autopilot.rs. */
+export type RuleRow = {
+  project: string;
+  on: PrEvent[];
+  max_per_hour: number;
+  fired_this_hour: number;
+  paused: boolean;
+};
+
 /** Mirrors `Hold` in src-tauri/src/rpc/asks.rs, as much of it as the rows read. */
 export type Hold = { item: string; ask: string; question: string; asked_at: number };
 
@@ -69,6 +79,7 @@ export type AutopilotEvent = {
   item?: ItemRow;
   schedule?: ScheduleRow;
   schedule_removed?: string;
+  rule_resumed?: string;
   project?: string;
   contract?: unknown;
   hold?: Hold;
@@ -181,6 +192,22 @@ export function scheduleCards(rows: ScheduleRow[], items: ItemRow[], now = Date.
       waitingOn: open && ticketOf(open),
     };
   });
+}
+
+const EVENT_WORDS: Record<PrEvent, string> = {
+  changes_requested: "changes requested",
+  check_failed: "a failed check",
+  conflicting: "a conflict",
+};
+
+export function ruleCards(rows: RuleRow[]): RuleCard[] {
+  return rows.map((r) => ({
+    project: r.project,
+    name: lastSegment(r.project),
+    on: `on ${r.on.map((e) => EVENT_WORDS[e]).join(", ")}`,
+    fired: `${r.fired_this_hour} of ${r.max_per_hour} this hour`,
+    paused: r.paused,
+  }));
 }
 
 export function applySchedule(prev: ScheduleRow[], e: AutopilotEvent): ScheduleRow[] {

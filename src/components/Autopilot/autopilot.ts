@@ -86,6 +86,14 @@ export type ScheduleCard = {
   waitingOn?: TicketRef;
 };
 
+export type RuleCard = {
+  project: string;
+  name: string;
+  on: string;
+  fired: string;
+  paused: boolean;
+};
+
 export type AutopilotError = { title: string; detail: string };
 
 export type DecisionAction = "approve" | "edit" | "reply" | "dismiss";

@@ -809,6 +809,16 @@ pub fn autopilot_schedules() -> Result<Value, String> {
 }
 
 #[tauri::command(async)]
+pub fn autopilot_rules() -> Result<Value, String> {
+    office_call("autopilot.rules", json!({}))
+}
+
+#[tauri::command(async)]
+pub fn autopilot_rule_resume(project: String) -> Result<Value, String> {
+    office_call("autopilot.rule_resume", json!({ "project": project }))
+}
+
+#[tauri::command(async)]
 pub fn autopilot_schedule_resume(id: String) -> Result<Value, String> {
     office_call("autopilot.schedule_resume", json!({ "id": id }))
 }

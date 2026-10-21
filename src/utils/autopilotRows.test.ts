@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { activityOf, applyItem, decisionOf, queuedItems, workerCards, type ItemRow } from "./autopilotRows";
+import { activityOf, applyItem, decisionOf, queuedItems, ruleCards, workerCards, type ItemRow } from "./autopilotRows";
 import type { SocketAsk } from "./socketAsks";
 
 const row = (over: Partial<ItemRow>): ItemRow => ({
@@ -109,5 +109,26 @@ describe("ticket references", () => {
     expect([card.ticket?.label, card.refKind, card.pr?.label]).toEqual([n(212), "issue", `PR ${n(230)}`]);
     const bare = decisionOf({ ...ask, item: undefined } as SocketAsk, [], [], () => "");
     expect([bare.ticket?.label, bare.refKind]).toEqual([n(230), "pr"]);
+  });
+});
+
+describe("pull request rules", () => {
+  it("names the project, its events and how much of the hour it used", () => {
+    const [card] = ruleCards([
+      {
+        project: "/code/tori",
+        on: ["changes_requested", "conflicting"],
+        max_per_hour: 3,
+        fired_this_hour: 1,
+        paused: false,
+      },
+    ]);
+    expect(card).toEqual({
+      project: "/code/tori",
+      name: "tori",
+      on: "on changes requested, a conflict",
+      fired: "1 of 3 this hour",
+      paused: false,
+    });
   });
 });
