@@ -257,18 +257,20 @@ fn make_executable(path: &Path) -> Result<(), String> {
 pub(crate) fn download(url: &str) -> Result<Vec<u8>, String> {
     // GitHub redirects a release download to its object store. HTTPS only, so
     // no hop can move the download onto plain HTTP.
-    let agent = ureq::AgentBuilder::new()
+    let agent: ureq::Agent = ureq::Agent::config_builder()
         .https_only(true)
-        .redirects(5)
-        .timeout(Duration::from_secs(300))
-        .build();
+        .max_redirects(5)
+        .timeout_global(Some(Duration::from_secs(300)))
+        .build()
+        .into();
     let response = agent
         .get(url)
-        .set("User-Agent", "tori-lsp-install")
+        .header("User-Agent", "tori-lsp-install")
         .call()
         .map_err(|e| e.to_string())?;
     let mut bytes = Vec::new();
     response
+        .into_body()
         .into_reader()
         .take(MAX_DOWNLOAD_BYTES + 1)
         .read_to_end(&mut bytes)

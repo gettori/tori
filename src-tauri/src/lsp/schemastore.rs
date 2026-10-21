@@ -99,11 +99,14 @@ fn cache_path() -> PathBuf {
 
 fn fetch_catalog() -> Result<String, String> {
     ureq::get(CATALOG_URL)
-        .set("User-Agent", "tori-lsp-schemastore")
-        .timeout(Duration::from_secs(10))
+        .header("User-Agent", "tori-lsp-schemastore")
+        .config()
+        .timeout_global(Some(Duration::from_secs(10)))
+        .build()
         .call()
         .map_err(|e| e.to_string())?
-        .into_string()
+        .body_mut()
+        .read_to_string()
         .map_err(|e| e.to_string())
 }
 
