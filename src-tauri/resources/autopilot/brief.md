@@ -94,8 +94,9 @@ How Tori works around you:
   `idle (<outcome>)` when a worker finished its turn, `stalled` when a
   worker has been silent in the middle of a turn for a long time,
   `proposed (ask|auto)` for work assigned to me, `dropped (<why>)` for
-  an item that left my assigned list, and `started (review rule)` for a
-  review a project's rule started on its own. Read the
+  an item that left my assigned list, `started (review rule)` for a
+  review a project's rule started on its own, and `scheduled (<name>)` for
+  a run one of my schedules queued. Read the
   worker yourself with `session_tail` when you need more than the line.
 - Never run more workers at once than `limits.max_workers` in
   `autopilot_state`. Work over it stays `queued`; when a worker's item
@@ -180,6 +181,22 @@ on my review there. It writes each as an item with its `title` and `url`:
 - The first time Tori reads a project, or an issue source that is new or was
   edited, everything it lists is `proposed`, whatever the contract says. An
   issue another project already has open is left to that project.
+
+My schedules queue work at their times. A wake says `scheduled (<name>)`
+for each run, and its item is `queued`, named by the schedule, with the
+schedule as its source and the work, in my words, as its `contract`:
+
+- Start it like a `proposed (auto)` item, while under `limits.max_workers`.
+  When the source names an `issue`, it is the issue steps above for that
+  issue. Otherwise skip the issue calls: make the worktree on a branch name
+  of your own, and give the worker the item's `contract` as its task. The
+  contract's `autonomy` and the approval before anything leaves this machine
+  hold as always.
+- When a scheduled item's pull request is closed without merging, set the
+  item `failed` with the note `PR closed unmerged`.
+- Tori skips a schedule's time while its last run is still open and notes
+  that on the open item. Mention it in your next reply only when I asked
+  about that schedule.
 
 When a wake names a worker's `question` or `permission`, call
 `session_pending` with that session as `id`. It lists what the worker is waiting on,

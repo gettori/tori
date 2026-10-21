@@ -77,6 +77,14 @@ pub fn due<Tz: TimeZone>(schedule: &Schedule, now: u64, tz: &Tz) -> Option<u64> 
     Some(latest.max(first))
 }
 
+pub fn next_slot<Tz: TimeZone>(schedule: &Schedule, tz: &Tz) -> Option<u64> {
+    next_after(
+        &parse(&schedule.cron).ok()?,
+        schedule.last_slot.unwrap_or(schedule.created),
+        tz,
+    )
+}
+
 pub fn row<Tz: TimeZone>(schedule: &Schedule, now: u64, tz: &Tz) -> ScheduleRow {
     ScheduleRow {
         schedule: schedule.clone(),
@@ -99,8 +107,14 @@ mod tests {
     struct Oslo;
 
     fn summer(utc: &NaiveDateTime) -> bool {
-        let on = NaiveDate::from_ymd_opt(2026, 3, 29).unwrap().and_hms_opt(1, 0, 0).unwrap();
-        let off = NaiveDate::from_ymd_opt(2026, 10, 25).unwrap().and_hms_opt(1, 0, 0).unwrap();
+        let on = NaiveDate::from_ymd_opt(2026, 3, 29)
+            .unwrap()
+            .and_hms_opt(1, 0, 0)
+            .unwrap();
+        let off = NaiveDate::from_ymd_opt(2026, 10, 25)
+            .unwrap()
+            .and_hms_opt(1, 0, 0)
+            .unwrap();
         (on..off).contains(utc)
     }
 
@@ -117,7 +131,8 @@ mod tests {
             self.offset_from_local_datetime(&local.and_hms_opt(12, 0, 0).unwrap())
         }
         fn offset_from_local_datetime(&self, local: &NaiveDateTime) -> LocalResult<FixedOffset> {
-            let fits = |h: i32| self.offset_from_utc_datetime(&(*local - chrono::Duration::hours(h.into()))) == hours(h);
+            let fits =
+                |h: i32| self.offset_from_utc_datetime(&(*local - chrono::Duration::hours(h.into()))) == hours(h);
             match (fits(2), fits(1)) {
                 (true, true) => LocalResult::Ambiguous(hours(2), hours(1)),
                 (true, false) => LocalResult::Single(hours(2)),
@@ -138,7 +153,10 @@ mod tests {
     }
 
     fn utc(day: u32, h: u32, m: u32, s: u32) -> u64 {
-        let t = NaiveDate::from_ymd_opt(2026, 10, day).unwrap().and_hms_opt(h, m, s).unwrap();
+        let t = NaiveDate::from_ymd_opt(2026, 10, day)
+            .unwrap()
+            .and_hms_opt(h, m, s)
+            .unwrap();
         t.and_utc().timestamp_millis() as u64
     }
 
@@ -148,7 +166,9 @@ mod tests {
             name: "bump".into(),
             project: "/p".into(),
             cron: cron.into(),
-            what: What::Prompt { text: "bump deps".into() },
+            what: What::Prompt {
+                text: "bump deps".into(),
+            },
             created,
             last_slot,
             resumed_at: None,
@@ -200,7 +220,10 @@ mod tests {
     #[test]
     fn a_skipped_hour_fires_at_most_once() {
         let march = |day: u32, h: u32, m: u32| {
-            let t = NaiveDate::from_ymd_opt(2026, 3, day).unwrap().and_hms_opt(h, m, 0).unwrap();
+            let t = NaiveDate::from_ymd_opt(2026, 3, day)
+                .unwrap()
+                .and_hms_opt(h, m, 0)
+                .unwrap();
             t.and_utc().timestamp_millis() as u64
         };
         let s = schedule("30 2 * * *", march(1, 0, 0), Some(march(28, 1, 30)));
