@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { pointerClick } from "../../test/menus";
 
-const saves: { worktree: Record<string, unknown>; reviewRequested?: Record<string, unknown> }[] = [];
+const saves: {
+  worktree: Record<string, unknown>;
+  reviewRequested?: Record<string, unknown>;
+  prRules?: Record<string, unknown>;
+}[] = [];
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: Record<string, unknown>) => {
@@ -109,5 +113,18 @@ describe("Project settings dialog, Automations section", () => {
     await waitFor(() =>
       expect(screen.getByText("When your review is requested").closest("section")?.hidden).toBe(false),
     );
+  });
+
+  it("saves the pull request rule's events and its cap", async () => {
+    saves.length = 0;
+    render(() => <ProjectSettingsDialog path="/p" onClose={() => {}} />);
+    fireEvent.click(await screen.findByRole("tab", { name: "Automations" }));
+    expect(screen.queryByLabelText("Pull request rule, at most per hour")).toBeNull();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "A check fails" }));
+    await waitFor(() =>
+      expect(saves[saves.length - 1]?.prRules?.["/p"]).toEqual({ on: ["check_failed"], maxPerHour: 3 }),
+    );
+    expect(screen.getByLabelText("Pull request rule, at most per hour")).toBeTruthy();
   });
 });

@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { TriangleAlert } from "lucide-solid";
 import Button from "../../components/Button/Button";
+import CheckboxGroup, { type CheckboxOption } from "../../components/CheckboxGroup/CheckboxGroup";
 import Icon from "../../components/Icon/Icon";
 import Select, { type SelectOption } from "../../components/Select/Select";
 import { enabledChatAgents } from "../../utils/agentEnabled";
@@ -24,7 +25,15 @@ import ModelPicker from "../Chat/ModelPicker";
 import { paletteProviders } from "../Chat/agentPaletteData";
 import { probeOnHighlight, recheckAgent } from "../Chat/draftProbe";
 import { Stepper } from "../Settings/components/paneKit";
-import { reviewRule, setReviewRule, type ReviewRule } from "../Settings/settingsStore";
+import {
+  prRule,
+  reviewRule,
+  setPrRule,
+  setReviewRule,
+  type PrEvent,
+  type PrRule,
+  type ReviewRule,
+} from "../Settings/settingsStore";
 import { Row, Section } from "./Section";
 import styles from "./ProjectSettingsDialog.module.css";
 
@@ -33,6 +42,44 @@ const ACTIONS: SelectOption[] = [
   { value: "worktree", label: "Create a worktree" },
   { value: "review", label: "Create a worktree and review it" },
 ];
+
+const PR_EVENTS: CheckboxOption[] = [
+  { value: "changes_requested", label: "A review requests changes" },
+  { value: "check_failed", label: "A check fails" },
+  { value: "conflicting", label: "It conflicts with its base" },
+];
+
+function PrRuleSection(props: { projectPath: string }) {
+  const rule = () => prRule(props.projectPath);
+  const save = (patch: Partial<PrRule>) => void setPrRule(props.projectPath, patch);
+  return (
+    <Section heading="When a watched pull request needs work">
+      <Row
+        stack
+        label="Hand it to the autopilot when"
+        hint="Only for a pull request a chat watches, once that chat is closed. The autopilot gets the fix as work under this project's contract, in its own worktree, and nothing is pushed without you. Needs pull request watches and the autopilot on."
+      >
+        <CheckboxGroup
+          options={PR_EVENTS}
+          value={rule().on}
+          onChange={(on) => save({ on: on as PrEvent[] })}
+          aria-label="Hand it to the autopilot when"
+        />
+      </Row>
+      <Show when={rule().on.length > 0}>
+        <Row label="At most per hour" hint="Past this the rule pauses until you resume it in the Cockpit.">
+          <Stepper
+            value={rule().maxPerHour}
+            min={1}
+            max={20}
+            onChange={(v) => save({ maxPerHour: v })}
+            aria-label="Pull request rule, at most per hour"
+          />
+        </Row>
+      </Show>
+    </Section>
+  );
+}
 
 const UNPICKED: Partial<ReviewRule> = { agent: null, account: null, model: null, effort: null, mode: null };
 
@@ -153,47 +200,50 @@ export default function AutomationsSection(props: { projectPath: string }) {
   };
 
   return (
-    <Section heading="When your review is requested">
-      <Row
-        label="Do"
-        hint="For each pull request that asks for your review from now on, and again when it asks after a push. Nothing is posted to the pull request without you."
-      >
-        <Select
-          options={ACTIONS}
-          value={rule().action}
-          onChange={(v) => save({ action: v as ReviewRule["action"] })}
-          aria-label="When your review is requested"
-        />
-      </Row>
-      <Show when={rule().action === "review"}>
-        <Row stack label="Review prompt" hint="Empty runs the built-in prompt shown.">
-          <textarea
-            class={styles.textarea}
-            aria-label="Review prompt"
-            rows={8}
-            placeholder={defaultPrompt()}
-            value={rule().prompt ?? ""}
-            onChange={(e) => save({ prompt: e.currentTarget.value.trim() || null })}
+    <>
+      <Section heading="When your review is requested">
+        <Row
+          label="Do"
+          hint="For each pull request that asks for your review from now on, and again when it asks after a push. Nothing is posted to the pull request without you."
+        >
+          <Select
+            options={ACTIONS}
+            value={rule().action}
+            onChange={(v) => save({ action: v as ReviewRule["action"] })}
+            aria-label="When your review is requested"
           />
         </Row>
-        <ReviewRunsOn rule={rule()} save={save} />
-      </Show>
-      <Show when={rule().action !== "off"}>
-        <Row label="At most per hour" hint="Past this the rule pauses until you resume it.">
-          <Stepper
-            value={rule().maxPerHour}
-            min={1}
-            max={50}
-            onChange={(v) => save({ maxPerHour: v })}
-            aria-label="At most per hour"
-          />
-        </Row>
-      </Show>
-      <Show when={paused()}>
-        <Row label="Paused" hint="It reached its hourly limit. Requests that came in meanwhile are not acted on.">
-          <Button onClick={() => void resume()}>Resume</Button>
-        </Row>
-      </Show>
-    </Section>
+        <Show when={rule().action === "review"}>
+          <Row stack label="Review prompt" hint="Empty runs the built-in prompt shown.">
+            <textarea
+              class={styles.textarea}
+              aria-label="Review prompt"
+              rows={8}
+              placeholder={defaultPrompt()}
+              value={rule().prompt ?? ""}
+              onChange={(e) => save({ prompt: e.currentTarget.value.trim() || null })}
+            />
+          </Row>
+          <ReviewRunsOn rule={rule()} save={save} />
+        </Show>
+        <Show when={rule().action !== "off"}>
+          <Row label="At most per hour" hint="Past this the rule pauses until you resume it.">
+            <Stepper
+              value={rule().maxPerHour}
+              min={1}
+              max={50}
+              onChange={(v) => save({ maxPerHour: v })}
+              aria-label="At most per hour"
+            />
+          </Row>
+        </Show>
+        <Show when={paused()}>
+          <Row label="Paused" hint="It reached its hourly limit. Requests that came in meanwhile are not acted on.">
+            <Button onClick={() => void resume()}>Resume</Button>
+          </Row>
+        </Show>
+      </Section>
+      <PrRuleSection projectPath={props.projectPath} />
+    </>
   );
 }

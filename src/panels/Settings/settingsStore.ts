@@ -999,6 +999,19 @@ export function setReviewRule(projectPath: string, patch: Partial<ReviewRule>): 
   });
 }
 
+const PR_RULE_OFF: PrRule = { on: [], maxPerHour: 3 };
+
+export function prRule(projectPath: string): PrRule {
+  return { ...PR_RULE_OFF, ...settings.prRules?.[projectPath] };
+}
+
+export function setPrRule(projectPath: string, patch: Partial<PrRule>): Promise<void> {
+  return saveSettings({
+    ...settings,
+    prRules: { ...settings.prRules, [projectPath]: { ...prRule(projectPath), ...patch } },
+  });
+}
+
 export function executionLevel(projectPath: string): ExecutionLevel {
   return settings.execution?.[projectPath] ?? "boxedWhenUnattended";
 }
