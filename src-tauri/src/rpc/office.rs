@@ -403,6 +403,14 @@ impl Office {
             }
             "autopilot.pickup" => self.pickup(&arg::<String>(args, "project_path")?).map(|()| json!({})),
             "autopilot.log" => Ok(json!(self.autopilot.recent_log(arg(args, "limit")?))),
+            "autopilot.schedules" => Ok(json!(self.autopilot.schedules())),
+            "autopilot.schedule_resume" => {
+                let id: String = arg(args, "id")?;
+                self.autopilot
+                    .resume_schedule(&id)
+                    .map(|row| json!(row))
+                    .map_err(|e| e.to_string())
+            }
             "autopilot.closed_by_hand" => {
                 let held: HashSet<String> = self.asks.holds().into_iter().map(|h| h.item).collect();
                 self.autopilot
