@@ -1598,9 +1598,16 @@ fn schedule_cells(row: &Value) -> [String; 6] {
     let text = |key: &str| row[key].as_str().unwrap_or("").to_string();
     let next = row["next_run"]
         .as_i64()
+        .filter(|_| row["paused"] != true)
         .and_then(chrono::DateTime::from_timestamp_millis)
         .map(|t| t.with_timezone(&chrono::Local).format("%a %d %b %H:%M").to_string())
-        .unwrap_or_default();
+        .unwrap_or_else(|| {
+            if row["paused"] == true {
+                "paused".into()
+            } else {
+                String::new()
+            }
+        });
     let what = match row["what"]["type"].as_str() {
         Some("issue") => format!("issue {}", row["what"]["key"].as_str().unwrap_or("")),
         _ => row["what"]["text"].as_str().unwrap_or("").to_string(),

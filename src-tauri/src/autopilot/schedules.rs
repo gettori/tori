@@ -41,6 +41,7 @@ pub struct ScheduleRow {
     #[serde(flatten)]
     pub schedule: Schedule,
     pub next_run: Option<u64>,
+    pub paused: bool,
 }
 
 pub fn parse(cron: &str) -> Result<Cron, String> {
@@ -85,10 +86,11 @@ pub fn next_slot<Tz: TimeZone>(schedule: &Schedule, tz: &Tz) -> Option<u64> {
     )
 }
 
-pub fn row<Tz: TimeZone>(schedule: &Schedule, now: u64, tz: &Tz) -> ScheduleRow {
+pub fn row<Tz: TimeZone>(schedule: &Schedule, now: u64, tz: &Tz, paused: bool) -> ScheduleRow {
     ScheduleRow {
         schedule: schedule.clone(),
         next_run: next_run(schedule, now, tz),
+        paused,
     }
 }
 

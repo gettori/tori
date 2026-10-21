@@ -130,9 +130,9 @@ fn start_clock(autopilot: &Arc<AutopilotStore>) {
         loop {
             let fired = crate::settings::autopilot().available
                 && match store.fire_due(crate::owned_state::now_ms()) {
-                    Ok(queued) => {
+                    Ok(fired) => {
                         failed = None;
-                        super::watcher_scheduled(&queued);
+                        super::watcher_scheduled(&fired);
                         true
                     }
                     Err(e) => {
