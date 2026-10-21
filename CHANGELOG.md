@@ -10,6 +10,41 @@ matching section here fails the release rather than publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.1021.0-alpha
+
+- New **Sandbox** setting in Project settings > Tooling > Execution: **As me**, **Boxed when unattended** (default) or **Always boxed**. A boxed Claude session runs its shell in Claude's sandbox, with writes only in the project and network only to the allowed domains plus the project's git host. A boxed Codex chat stays in read-only mode, and a boxed Codex tab starts with `--sandbox workspace-write`.
+- A session nobody is watching can't run the commands in Settings > Projects > Unattended sessions > **Never run unattended** (cloud, infra and database CLIs and forced pushes by default). The agent is told why, and the session shows **Had a command blocked while you were away** on its dot, in the tray and in the Inbox.
+- Settings > Projects > Unattended sessions > **Allowed domains when boxed**: where a boxed Claude session's shell may connect. Defaults to the main package registries.
+- Somebody counts as watching when the Tori window is on screen with the Mac unlocked and used in the last 10 minutes, or the phone app is open and connected.
+- Each Claude terminal tab now gets its own settings file, removed when the tab closes.
+- New **Show dev server links** in Project settings > Tooling > Dev servers, off by default. When on, a dev server running in the project shows up as a link: `:5173` on the worktree's row in the sidebar, and `localhost:5173` at the top of **Scripts**, with **Open in browser** and **Copy URL** on right-click. A server counts for the worktree its process runs in. Works for bare repos, normal clones and plain folders. Links refresh on focus, a few seconds after a terminal goes quiet, and when the run command starts or stops.
+- Every terminal tab, chat session and setup command in a checkout gets `TORI_PORT` and `TORI_PORT_1` to `TORI_PORT_9`, a block that stays the same for the life of the worktree. Pass it to your server, like `vite --port $TORI_PORT` or `PORT=$TORI_PORT next dev`. Removing the worktree frees the block. Tori does not set `PORT`.
+- **Run command** in Project settings > Worktrees: a play button on each worktree row starts it, a square stops it. Also **Start the run command** and **Stop the run command** in the command palette, and a **Run command** row at the top of Scripts with **Show log** and **Stop**.
+- Stopping a run gives it 5 seconds to clean up before it is ended, and starting it again while it stops waits for the old one, so two servers never fight over a port.
+- Removing a worktree stops its run command, quitting Tori stops all of them, and after a crash the next launch stops what was left running.
+- A run that exits on its own with an error shows a toast with **Show log**.
+- **Teardown command** in Project settings > Worktrees: runs before Tori removes a worktree (Remove worktree, automatic cleanup, promoting an attempt, removing a Topic member). The row shows **Tearing down** while it runs. If it fails or runs past 2 minutes the removal still goes ahead, with a toast.
+- Automatic worktree cleanup never removes a worktree whose run command is running.
+- The **Setup** section in Project settings > Worktrees is now called **Commands**.
+- The About box opens at its final height instead of jumping when the version loads.
+- New browser extension for Chrome, Edge, Brave and Arc, from the Chrome Web Store. A localhost tab served by a worktree gets a dot in its space's colour on the toolbar icon, hovering names the branch and project, and tabs can be grouped by branch (Group tabs by branch in the options, on by default).
+- Settings > Browser installs the browser host, has a Get the extension button that opens the store page, lists the browsers Tori found with Install again and Revoke, and says Connected once the extension has reached Tori since the last Install. When the extension and Tori are too far apart in version, it says Update the extension or Update Tori instead.
+- The extension opens a welcome page on first install with the connection check, what the toolbar icon means, the pick shortcut and a link to the docs. Settings live on an options page: Group tabs by branch, Screenshots, Console and network, Shortcut and Connection.
+- Pick and comment: click the Tori icon or press Ctrl+Shift+C (Alt+Shift+C off the Mac) on a worktree tab, then click an element or select text and write what should change. The tray lists the comments with numbers matching markers on the page. Send them to a live chat in that worktree, open them as a new chat draft in Tori (nothing runs until you press Send there), or Copy as Markdown. After a send, Show in Tori brings the window to that chat.
+- Each comment carries the element's HTML, the CSS rules that style it with their file and lines, screenshots of the page and the element, and where it lives in the code: the component chain and props for React (Next too), Vue 3 and Svelte, and the file and line with code-inspector-plugin in the app's dev build. When a comment has a component but no line, the tray and Files > Scripts offer the one line plugin config with a Copy.
+- Password fields, fields with `autocomplete="off"` and fields marked `data-sensitive` are blanked in what is sent and hidden in screenshots. A prop named like a password, secret, token or key is sent as `[redacted]`.
+- The page log: from the moment a localhost page loads, the extension notes console errors and warnings, uncaught errors and rejections, requests that fail or answer 400 or more, and the Vite or Next build overlay. A send adds what came after the last send as a Page log section. The Console and network option turns it off.
+- The toolbar icon counts the page's own errors you have not sent yet: uncaught errors, build errors, and requests to the page's own server that fail or answer 500 or more. In the tray, the Page log line opens a checkbox list, so you send only the entries the agent needs.
+- New Tori panel in the browser's DevTools: the same list, plus failed requests DevTools saw with their request and response bodies, which go to the chat only for an entry you open. **Comment on selected element** opens the comment box on the element selected in Elements.
+- Project Settings > Worktrees > **Open the browser when a server starts**, on by default: when the run command's server starts listening, its first port opens in the browser, the `$TORI_PORT` one when there are several.
+- Project Settings > Worktrees > **Start the run command when a worktree is created**, off by default: a worktree you create from the sidebar starts its run command once setup finishes without an error.
+- With the extension installed, clicking a port in the sidebar or in Scripts, or a run opening its server, brings the tab already on that port to the front instead of opening another. The port chip is amber while the extension is connected.
+- `tori ports` lists each worktree's dev servers (`--json` for scripts), and `tori open --browser [branch]` opens a worktree's dev server. Agents get the `ports_list` and `worktree_at` tools.
+- A server listening on a port of the worktree's block gets its link even when it runs somewhere else, so a Docker container published on `$TORI_PORT` shows up in the sidebar and in Scripts.
+- The play and stop button on a worktree row only shows while the pointer is on the row.
+- An open pull request's number on a branch row is coloured for what it needs: rose when your review is requested, orange for changes requested, red when it would conflict with the base, green when approved, grey otherwise. The review icon and the conflict icon on rows with an open PR are gone; hover the line for the conflicting files.
+- On the repository's default branch, a pull request shows as a release, `-> stage #8020`. It stays grey when approved and shows for a day after it merges.
+
 ## 26.1017.0-alpha
 
 - A pull request that is one layer of a GitHub stack shows its place on the branch's second line, like `2/3`, and the hover says which branch the stack targets.
