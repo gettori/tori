@@ -1,8 +1,8 @@
 ---
 summary: the cockpit wires the autopilot parts: an always shown switch when enabled, a view with a time of day banner and a live ChatView, the popup
 status: current
-updated: 2026-09-25
-source: gettori/tori#218 plan "Ticket refs that say where they are, and one way to navigate there", commit 380c7112; plan "Autopilot session and the cockpit (#205)" on branch orchestrator, issue gettori/tori#205, commits 4b309f03, 7dfdc1a9, 669596a1; restyle and feature switch on branch orchestrator for gettori/tori#207, commits c490ea9a, 21d68948, e7c57d49, cec896d9, df821076, 298de4cf, 251e53fa; src/panels/Autopilot/Cockpit.tsx, src/utils/autopilotStore.ts, src/utils/autopilotRows.ts, src/panels/Settings/panes/AutopilotPane/AutopilotPane.tsx; gettori/tori#210 on branch orchestrator, plan 'Assigned pickup: poll my issues and review requests, queue them, start on ask or auto (#210)'
+updated: 2026-10-21
+source: gettori/tori#218 plan "Ticket refs that say where they are, and one way to navigate there", commit 380c7112; plan "Autopilot session and the cockpit (#205)" on branch orchestrator, issue gettori/tori#205, commits 4b309f03, 7dfdc1a9, 669596a1; restyle and feature switch on branch orchestrator for gettori/tori#207, commits c490ea9a, 21d68948, e7c57d49, cec896d9, df821076, 298de4cf, 251e53fa; src/panels/Autopilot/Cockpit.tsx, src/utils/autopilotStore.ts, src/utils/autopilotRows.ts, src/panels/Settings/panes/AutopilotPane/AutopilotPane.tsx; gettori/tori#210 on branch orchestrator, plan 'Assigned pickup: poll my issues and review requests, queue them, start on ask or auto (#210)'; gettori/tickets#43 on branch scheduled-runs, plan "Scheduled runs", commits 0cdcf86b, ee900c1d, f5e7ccb4
 ---
 
 # Autopilot cockpit
@@ -34,6 +34,8 @@ It shows the [[component_autopilot_runner]] and the [[component_autopilot_store]
 - **The conversation is a real `ChatView`**, keyed on `runner.session`, in `detach` mode: on unmount it calls `chat_detach` rather than `chat_close`, so leaving the view keeps the session. It mounts only once the runner is `idle` or `working` ([[gotcha_a_chat_view_on_a_rust_spawned_session_must_wait_for_its_first_turn]]), and whether it is shown is a memo, so a turn flipping idle and working does not remount it ([[gotcha_a_remounted_chat_view_on_a_shared_tab_id_is_detached_by_the_old_one]]). After a second death it shows the dead session read only (`started=false`).
 - **`cockpit` on the ChatView** hides the status strip and the pickers, since the picks live in Settings; puts the wheel beside each reply (`replyMark` on `MessageList`); draws prompts in violet; and heads the ask cards with Captain's call. The rules are `.chat[data-cockpit]` in `Chat.module.css`.
 - **In flight and queue** come from items (`running` and `waiting_on_you` in flight, `queued` queued, oldest first, then `proposed` items marked "proposed" with no "after", since they wait for a go typed in the chat). The banner's queued count leaves proposed rows out. A card reads the item's `title`, else "Ship in <project>"; worker log, diff and progress are empty until something records them.
+
+- **Tide table** (`Schedules.tsx`, props only) sits under the queue: each schedule's name, cron, what a run does, and `next <time>`, or **waiting on** the open item its next time would be skipped for (`scheduleCards` in `autopilotRows.ts` works that out the way the clock does), plus `last <state> <age> ago`. A paused one says **paused after 3 failed runs** with **Resume**. The list comes from `autopilot_schedules` and live `autopilot.changed` events carrying `schedule` or `schedule_removed`; Resume calls `autopilot_schedule_resume`, an office op, so it is not refused like the socket row that keeps agent sessions from resuming ([[component_autopilot_schedules]]).
 
 ## Ticket refs
 
