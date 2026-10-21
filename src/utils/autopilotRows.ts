@@ -6,12 +6,14 @@ import type {
   DecisionKind,
   InFlightRow,
   QueuedItem,
+  ScheduleCard,
   TicketRef,
   WorkerCard,
   WorkerStatus,
 } from "../components/Autopilot/autopilot";
 import type { AskApproval, SocketAsk } from "./socketAsks";
 import { ago } from "./relativeTime";
+import { sameFolder } from "./autopilotContracts";
 import type { NavTarget } from "./events";
 
 /** Mirrors `Reference` in src-tauri/src/autopilot.rs. */
@@ -42,6 +44,20 @@ export type ItemRow = {
   reference?: Reference;
 };
 
+/** Mirrors `ScheduleRow` in src-tauri/src/autopilot/schedules.rs. */
+export type ScheduleRow = {
+  id: string;
+  name: string;
+  project: string;
+  cron: string;
+  what: { type: "prompt"; text: string } | { type: "issue"; key: string };
+  created: number;
+  last_slot?: number | null;
+  resumed_at?: number | null;
+  next_run?: number | null;
+  paused: boolean;
+};
+
 /** Mirrors `Hold` in src-tauri/src/rpc/asks.rs, as much of it as the rows read. */
 export type Hold = { item: string; ask: string; question: string; asked_at: number };
 
@@ -49,6 +65,8 @@ export type Hold = { item: string; ask: string; question: string; asked_at: numb
 export type AutopilotEvent = {
   ts: number;
   item?: ItemRow;
+  schedule?: ScheduleRow;
+  schedule_removed?: string;
   project?: string;
   contract?: unknown;
   hold?: Hold;
@@ -125,6 +143,48 @@ export function queuedItems(items: ItemRow[]): QueuedItem[] {
   });
   const proposed = items.filter((i) => i.state === "proposed").sort((a, b) => a.created - b.created);
   return [...lined, ...proposed.map((i) => ({ ticket: ticketOf(i), title: itemTitle(i), proposed: true }))];
+}
+
+function blockingItem(s: ScheduleRow, items: ItemRow[]): ItemRow | undefined {
+  const open = items.filter((i) => i.state !== "done" && i.state !== "failed" && sameFolder(i.project, s.project));
+  const key = s.what.type === "issue" ? s.what.key.toLowerCase() : undefined;
+  return open.find(
+    (i) =>
+      (i.source.type === "schedule" && i.source.schedule === s.id) ||
+      (key !== undefined &&
+        ((i.source.type === "issue" && i.source.key.toLowerCase() === key) ||
+          (i.source.type === "schedule" && i.source.issue?.toLowerCase() === key))),
+  );
+}
+
+const nextAt = (ms: number) =>
+  new Date(ms).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false });
+
+export function scheduleCards(rows: ScheduleRow[], items: ItemRow[], now = Date.now()): ScheduleCard[] {
+  return rows.map((s) => {
+    const finished = items
+      .filter((i) => i.source.type === "schedule" && i.source.schedule === s.id)
+      .filter((i) => i.state === "done" || i.state === "failed")
+      .sort((a, b) => b.updated - a.updated)[0];
+    const open = blockingItem(s, items);
+    return {
+      id: s.id,
+      name: s.name,
+      cron: s.cron,
+      what: s.what.type === "prompt" ? s.what.text : `issue ${s.what.key}`,
+      next: s.next_run ? nextAt(s.next_run) : undefined,
+      last: finished && `${finished.state} ${ago(Math.floor(finished.updated / 1000), Math.floor(now / 1000))} ago`,
+      paused: s.paused,
+      waitingOn: open && ticketOf(open),
+    };
+  });
+}
+
+export function applySchedule(prev: ScheduleRow[], e: AutopilotEvent): ScheduleRow[] {
+  if (e.schedule_removed) return prev.filter((s) => s.id !== e.schedule_removed);
+  const row = e.schedule;
+  if (!row) return prev;
+  return prev.some((s) => s.id === row.id) ? prev.map((s) => (s.id === row.id ? row : s)) : [...prev, row];
 }
 
 const clock = (ms: number) =>

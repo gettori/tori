@@ -688,6 +688,8 @@ pub fn run() {
             rpc::autopilot_closed_by_hand,
             rpc::autopilot_state,
             rpc::autopilot_log,
+            rpc::autopilot_schedules,
+            rpc::autopilot_schedule_resume,
             rpc::autopilot_pickup,
             rpc::autopilot_contracts,
             rpc::autopilot_project_set,

@@ -1,0 +1,57 @@
+@layer components {
+  .row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-2);
+    padding: var(--tori-space-4) var(--tori-space-5);
+    border-radius: var(--tori-radius-lg);
+    border: var(--tori-border-thin) solid var(--border-default);
+  }
+  .row[data-paused="true"] {
+    border-color: var(--attention-emphasis);
+  }
+  .head,
+  .foot {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-4);
+    min-width: 0;
+  }
+  .name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--tori-text-xl);
+    color: var(--fg-default);
+  }
+  .cron {
+    flex: none;
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-md);
+    color: var(--fg-muted);
+  }
+  .what {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--tori-text-md);
+    color: var(--fg-muted);
+  }
+  .when,
+  .paused {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: var(--tori-text-md);
+    color: var(--fg-subtle);
+  }
+  .paused {
+    color: var(--attention-fg);
+  }
+  .last {
+    flex: none;
+    font-size: var(--tori-text-md);
+    color: var(--fg-subtle);
+  }
+}

@@ -4,6 +4,7 @@ import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
 import DecisionCard from "./DecisionCard";
 import Horizon, { type SceneKey } from "./Horizon";
+import Schedules from "./Schedules";
 import {
   CaptainsCall,
   ComposerShell,
@@ -25,6 +26,7 @@ import type {
   Decision,
   DecisionAction,
   QueuedItem,
+  ScheduleCard,
   ThreadMessage,
   TicketHandlers,
   WorkerCard,
@@ -37,6 +39,7 @@ export interface AutopilotViewProps extends TicketHandlers {
   /** Shown in place of the cards when nothing is in flight. */
   emptyWorkers: string;
   queue: QueuedItem[];
+  schedules?: ScheduleCard[];
   messages: ThreadMessage[];
   /** Pending decisions, drawn at the end of the thread. */
   decisions: Decision[];
@@ -51,6 +54,7 @@ export interface AutopilotViewProps extends TicketHandlers {
   onStop?: () => void;
   onRestart?: () => void;
   onViewLog?: () => void;
+  onResumeSchedule?: (id: string) => void;
   /** The live conversation, in place of the drawn thread and composer. */
   chat?: JSX.Element;
   hero: CockpitHero;
@@ -167,6 +171,12 @@ export default function AutopilotView(props: AutopilotViewProps) {
             )}
           </For>
         </Show>
+        <Schedules
+          schedules={props.schedules ?? []}
+          onResume={props.onResumeSchedule}
+          onOpenLink={props.onOpenLink}
+          onNavigate={props.onNavigate}
+        />
       </aside>
 
       <section class={styles.center} aria-label="Conversation">

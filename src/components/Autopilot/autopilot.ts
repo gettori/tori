@@ -75,6 +75,17 @@ export type QueuedItem = { ticket: TicketRef; title: string; after?: TicketRef; 
 /** `text` follows the ticket when there is one. */
 export type ActivityItem = { time: string; ticket?: TicketRef; text: string; needsYou?: boolean };
 
+export type ScheduleCard = {
+  id: string;
+  name: string;
+  cron: string;
+  what: string;
+  next?: string;
+  last?: string;
+  paused: boolean;
+  waitingOn?: TicketRef;
+};
+
 export type AutopilotError = { title: string; detail: string };
 
 export type DecisionAction = "approve" | "edit" | "reply" | "dismiss";

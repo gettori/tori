@@ -803,6 +803,16 @@ pub fn autopilot_pickup(project_path: String) -> Result<(), String> {
 }
 
 #[tauri::command(async)]
+pub fn autopilot_schedules() -> Result<Value, String> {
+    office_call("autopilot.schedules", json!({}))
+}
+
+#[tauri::command(async)]
+pub fn autopilot_schedule_resume(id: String) -> Result<Value, String> {
+    office_call("autopilot.schedule_resume", json!({ "id": id }))
+}
+
+#[tauri::command(async)]
 pub fn autopilot_log(limit: usize) -> Result<Vec<Value>, String> {
     office_call_as("autopilot.log", json!({ "limit": limit }))
 }
