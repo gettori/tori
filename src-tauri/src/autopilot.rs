@@ -7,7 +7,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use schemars::JsonSchema;
@@ -443,12 +443,87 @@ fn fail_closed_by_hand(items: &mut [Item], session: &str, held: &HashSet<String>
     changed
 }
 
+#[derive(Debug, Default)]
+pub struct Firings {
+    pub queued: Vec<Item>,
+    pub noted: Vec<Item>,
+    pub skipped: Vec<(String, String)>,
+}
+
+fn holds_work(item: &Item, schedule: &Schedule) -> bool {
+    if item.state.terminal() || !same_folder(&item.project, &schedule.project) {
+        return false;
+    }
+    match (&item.source, &schedule.what) {
+        (Source::Schedule { schedule: id, .. }, _) if *id == schedule.id => true,
+        (Source::Schedule { issue: Some(held), .. }, What::Issue { key })
+        | (Source::Issue { key: held, .. }, What::Issue { key }) => held.eq_ignore_ascii_case(key),
+        _ => false,
+    }
+}
+
+pub fn plan_firings<Tz: chrono::TimeZone>(
+    schedules: &mut [Schedule],
+    items: &mut Vec<Item>,
+    now: u64,
+    tz: &Tz,
+    mut mint: impl FnMut() -> String,
+) -> Firings {
+    let mut firings = Firings::default();
+    for schedule in schedules.iter_mut() {
+        let Some(slot) = schedules::due(schedule, now, tz) else {
+            continue;
+        };
+        schedule.last_slot = Some(slot);
+        if let Some(open) = items.iter_mut().find(|i| holds_work(i, schedule)) {
+            firings.skipped.push((schedule.id.clone(), open.id.clone()));
+            let note = format!("skipped a run of {} while this one is open", schedule.name);
+            if open.note.as_deref() != Some(note.as_str()) {
+                open.note = Some(note);
+                open.updated = now;
+                firings.noted.push(open.clone());
+            }
+            continue;
+        }
+        let (issue, contract) = match &schedule.what {
+            What::Prompt { text } => (None, text.clone()),
+            What::Issue { key } => (Some(key.clone()), format!("Work on issue {key}.")),
+        };
+        let item = Item {
+            id: mint(),
+            kind: Kind::Ship,
+            source: Source::Schedule {
+                schedule: schedule.id.clone(),
+                issue,
+            },
+            project: schedule.project.clone(),
+            state: State::Queued,
+            worktree: None,
+            session: None,
+            pr_url: None,
+            url: None,
+            created: now,
+            updated: now,
+            note: None,
+            title: Some(schedule.name.clone()),
+            contract: Some(contract),
+            picked_by: None,
+            gone_upstream: false,
+            picked_from: None,
+        };
+        items.push(item.clone());
+        firings.queued.push(item);
+    }
+    firings
+}
+
 // Pickup's rule for a removed source: running work is never closed under the worker.
 fn drop_schedule_runs(items: &mut [Item], schedule: &str, now: u64) -> Vec<Item> {
     let mut changed = Vec::new();
-    for item in items.iter_mut().filter(|i| {
-        !i.state.terminal() && matches!(&i.source, Source::Schedule { schedule: s, .. } if s == schedule)
-    }) {
+    for item in items
+        .iter_mut()
+        .filter(|i| !i.state.terminal() && matches!(&i.source, Source::Schedule { schedule: s, .. } if s == schedule))
+    {
         if matches!(item.state, State::Proposed | State::Queued) {
             item.state = State::Failed;
         } else if item.note.as_deref() == Some(SCHEDULE_REMOVED) {
@@ -492,6 +567,10 @@ fn same_source(a: &Source, b: &Source, origin: &str) -> bool {
 fn same_work(item: &Item, row: &IssueRef, repo: &str) -> bool {
     match (&item.source, row.kind) {
         (Source::Issue { key, .. }, IssueKind::Issue) => canonical_key(key, repo) == canonical_key(&row.key, repo),
+        // Only while open: a finished scheduled run must not keep pickup off the issue for good.
+        (Source::Schedule { issue: Some(key), .. }, IssueKind::Issue) => {
+            !item.state.terminal() && canonical_key(key, repo) == canonical_key(&row.key, repo)
+        }
         (Source::Pr { .. }, IssueKind::ReviewRequest) => row
             .key
             .parse()
@@ -1038,6 +1117,8 @@ pub struct AutopilotStore {
     seen: Mutex<Seen>,
     // The pickup trouble already logged, by project, so a tick repeating it every poll writes nothing.
     noted: Mutex<HashMap<String, HashSet<String>>>,
+    // Set when a schedule is written, so the clock is not asleep through a slot added a moment before.
+    rescheduled: (Mutex<bool>, Condvar),
 }
 
 #[derive(Default)]
@@ -1082,6 +1163,7 @@ impl AutopilotStore {
             pr_states: PrStates::default(),
             seen: Mutex::default(),
             noted: Mutex::default(),
+            rescheduled: (Mutex::new(false), Condvar::new()),
         }
     }
 
@@ -1180,7 +1262,13 @@ impl AutopilotStore {
             .collect()
     }
 
-    pub fn add_schedule(&self, project: String, name: String, cron: String, what: What) -> Result<ScheduleRow, UpdateError> {
+    pub fn add_schedule(
+        &self,
+        project: String,
+        name: String,
+        cron: String,
+        what: What,
+    ) -> Result<ScheduleRow, UpdateError> {
         let schedule = Schedule {
             id: format!("schedule-{}", crate::chat::approval::random_token()),
             name,
@@ -1227,6 +1315,62 @@ impl AutopilotStore {
         Ok(removed)
     }
 
+    pub fn fire_due(&self, now: u64) -> Result<Vec<Item>, UpdateError> {
+        let mint = || format!("item-{}", crate::chat::approval::random_token());
+        let (firings, fired) = {
+            let mut held = self.lock();
+            let mut items = held.items.clone();
+            let mut schedules = held.schedules.clone();
+            let firings = plan_firings(&mut schedules, &mut items, now, &chrono::Local, mint);
+            if schedules == held.schedules {
+                return Ok(Vec::new());
+            }
+            if !firings.queued.is_empty() || !firings.noted.is_empty() {
+                self.save(QUEUE, json!({ "items": items }))?;
+            }
+            self.save(SCHEDULES, json!({ "schedules": schedules }))?;
+            let fired: Vec<Schedule> = schedules
+                .iter()
+                .filter(|s| !held.schedules.contains(s))
+                .cloned()
+                .collect();
+            held.items = items;
+            held.schedules = schedules;
+            for item in firings.queued.iter().chain(&firings.noted) {
+                self.log(json!({ "item": item }));
+            }
+            for (schedule, open) in &firings.skipped {
+                self.log(json!({ "schedule": schedule, "skipped_for": open }));
+            }
+            (firings, fired)
+        };
+        for item in firings.queued.iter().chain(&firings.noted) {
+            self.changed(item, None);
+        }
+        for schedule in &fired {
+            let row = schedules::row(schedule, now, &chrono::Local);
+            (self.publish)(json!({ "kind": "autopilot.changed", "schedule": row, "ts": now_ms() }));
+        }
+        Ok(firings.queued)
+    }
+
+    pub fn wait_for_schedules(&self, timeout: Duration) {
+        let (flag, changed) = &self.rescheduled;
+        let flag = flag.lock().unwrap_or_else(|e| e.into_inner());
+        let (mut flag, _) = changed
+            .wait_timeout_while(flag, timeout, |set| !*set)
+            .unwrap_or_else(|e| e.into_inner());
+        *flag = false;
+    }
+
+    pub fn next_slot(&self) -> Option<u64> {
+        self.lock()
+            .schedules
+            .iter()
+            .filter_map(|s| schedules::next_slot(s, &chrono::Local))
+            .min()
+    }
+
     fn write_schedules(
         &self,
         change: impl FnOnce(&mut Vec<Schedule>) -> Result<Schedule, UpdateError>,
@@ -1240,6 +1384,9 @@ impl AutopilotStore {
             self.log(json!({ "schedule": schedule }));
             schedule
         };
+        let (flag, changed) = &self.rescheduled;
+        *flag.lock().unwrap_or_else(|e| e.into_inner()) = true;
+        changed.notify_all();
         let row = schedules::row(&schedule, now_ms(), &chrono::Local);
         (self.publish)(json!({ "kind": "autopilot.changed", "schedule": row, "ts": now_ms() }));
         Ok(row)
@@ -2755,7 +2902,11 @@ pub mod tests {
             .unwrap();
         assert!(added.next_run.is_some());
         assert_eq!(
-            quiet(&dir).schedules().into_iter().map(|r| r.schedule).collect::<Vec<_>>(),
+            quiet(&dir)
+                .schedules()
+                .into_iter()
+                .map(|r| r.schedule)
+                .collect::<Vec<_>>(),
             vec![added.schedule.clone()]
         );
         let resumed = quiet(&dir).resume_schedule(&added.schedule.id).unwrap();
@@ -2801,7 +2952,10 @@ pub mod tests {
             ]
         );
         assert_eq!(changed.len(), 2);
-        assert!(drop_schedule_runs(&mut items, "s1", 10).is_empty(), "the note is written once");
+        assert!(
+            drop_schedule_runs(&mut items, "s1", 10).is_empty(),
+            "the note is written once"
+        );
     }
 
     #[test]
@@ -2813,5 +2967,88 @@ pub mod tests {
         let named = reference(&item, &HashMap::new(), None);
         assert_eq!(named.label, "Bump deps");
         assert_eq!(named.pr.map(|p| p.label), Some("PR #40".to_string()));
+    }
+
+    fn daily(id: &str, what: What) -> Schedule {
+        Schedule {
+            id: id.into(),
+            name: "Bump deps".into(),
+            project: "/p".into(),
+            cron: "0 7 * * *".into(),
+            what,
+            created: 0,
+            last_slot: None,
+            resumed_at: None,
+        }
+    }
+
+    const DAY: u64 = 86_400_000;
+    const SEVEN: u64 = 7 * 3_600_000;
+
+    fn fire(schedules: &mut [Schedule], items: &mut Vec<Item>, now: u64) -> Firings {
+        let n = std::cell::Cell::new(0);
+        plan_firings(schedules, items, now, &chrono::Utc, || {
+            n.set(n.get() + 1);
+            format!("f{}", n.get())
+        })
+    }
+
+    #[test]
+    fn a_due_schedule_queues_one_run_named_by_it_and_skips_while_that_run_is_open() {
+        let prompt = What::Prompt {
+            text: "bump deps".into(),
+        };
+        let mut schedules = vec![daily("s1", prompt)];
+        let mut items = Vec::new();
+        let first = fire(&mut schedules, &mut items, 3 * DAY + SEVEN + 5);
+        assert_eq!(first.queued.len(), 1, "three missed days fire once");
+        let run = &first.queued[0];
+        assert_eq!(
+            (run.state, run.title.as_deref(), run.contract.as_deref()),
+            (State::Queued, Some("Bump deps"), Some("bump deps"))
+        );
+        assert_eq!(schedules[0].last_slot, Some(3 * DAY + SEVEN));
+        assert!(fire(&mut schedules, &mut items, 3 * DAY + SEVEN + 60_000)
+            .queued
+            .is_empty());
+
+        items[0].state = State::TakenOver;
+        let next = fire(&mut schedules, &mut items, 4 * DAY + SEVEN);
+        assert!(next.queued.is_empty());
+        assert_eq!(next.skipped, vec![("s1".to_string(), "f1".to_string())]);
+        assert_eq!(
+            items[0].note.as_deref(),
+            Some("skipped a run of Bump deps while this one is open")
+        );
+        let again = fire(&mut schedules, &mut items, 5 * DAY + SEVEN);
+        assert!(again.noted.is_empty(), "the note is written once");
+        assert_eq!(schedules[0].last_slot, Some(5 * DAY + SEVEN));
+
+        items[0].state = State::Done;
+        assert_eq!(fire(&mut schedules, &mut items, 6 * DAY + SEVEN).queued.len(), 1);
+    }
+
+    #[test]
+    fn an_issue_schedule_and_pickup_never_hold_one_issue_twice() {
+        let mut items = Vec::new();
+        tick(&mut items, "me", &[row("12", IssueKind::Issue)], 100, Pickup::Auto);
+        let mut schedules = vec![daily("s1", What::Issue { key: "12".into() })];
+        let firings = fire(&mut schedules, &mut items, DAY + SEVEN);
+        assert!(firings.queued.is_empty());
+        assert_eq!(firings.skipped, vec![("s1".to_string(), "p1".to_string())]);
+
+        let mut items = Vec::new();
+        let made = fire(&mut schedules, &mut items, 2 * DAY + SEVEN).queued;
+        assert_eq!(made.len(), 1);
+        assert!(
+            tick(&mut items, "me", &[row("12", IssueKind::Issue)], 100, Pickup::Auto).is_empty(),
+            "pickup leaves an issue a scheduled run holds"
+        );
+        items[0].state = State::Done;
+        assert_eq!(
+            tick(&mut items, "me", &[row("12", IssueKind::Issue)], 100, Pickup::Auto).len(),
+            1,
+            "a finished scheduled run lets pickup have the issue"
+        );
     }
 }

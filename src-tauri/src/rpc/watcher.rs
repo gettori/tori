@@ -42,6 +42,7 @@ pub enum What {
     Proposed(String),
     Dropped(String),
     Started(String),
+    Scheduled(String),
 }
 
 impl What {
@@ -57,6 +58,7 @@ impl What {
             What::Proposed(_) => "proposed",
             What::Dropped(_) => "dropped",
             What::Started(_) => "started",
+            What::Scheduled(_) => "scheduled",
         }
     }
 
@@ -71,7 +73,8 @@ impl What {
             | What::Idle(detail)
             | What::Proposed(detail)
             | What::Dropped(detail)
-            | What::Started(detail) => {
+            | What::Started(detail)
+            | What::Scheduled(detail) => {
                 format!("{} ({detail})", self.kind())
             }
             _ => self.kind().to_string(),
@@ -432,6 +435,20 @@ impl Watcher {
                 _ => What::Dropped(item.note.clone().unwrap_or_default()),
             };
             core.item(item.id.clone(), item.session.clone(), what, now);
+        }
+        drop(core);
+        self.nudge();
+    }
+
+    pub fn scheduled(&self, items: &[Item]) {
+        if items.is_empty() {
+            return;
+        }
+        let now = Instant::now();
+        let mut core = self.core();
+        for item in items {
+            let name = item.title.clone().unwrap_or_default();
+            core.item(item.id.clone(), item.session.clone(), What::Scheduled(name), now);
         }
         drop(core);
         self.nudge();
