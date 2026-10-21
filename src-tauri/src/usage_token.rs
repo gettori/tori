@@ -266,12 +266,15 @@ pub struct Anthropic;
 impl UsageApi for Anthropic {
     fn get(&self, token: &str) -> Result<String, TokenFailure> {
         match ureq::get(USAGE_URL)
-            .set("Authorization", &format!("Bearer {token}"))
-            .set("anthropic-beta", OAUTH_BETA)
+            .header("Authorization", &format!("Bearer {token}"))
+            .header("anthropic-beta", OAUTH_BETA)
             .call()
         {
-            Ok(r) => r.into_string().map_err(|e| TokenFailure::Transport(e.to_string())),
-            Err(ureq::Error::Status(code, _)) => Err(TokenFailure::Refused(code)),
+            Ok(mut r) => r
+                .body_mut()
+                .read_to_string()
+                .map_err(|e| TokenFailure::Transport(e.to_string())),
+            Err(ureq::Error::StatusCode(code)) => Err(TokenFailure::Refused(code)),
             Err(e) => Err(TokenFailure::Transport(e.to_string())),
         }
     }

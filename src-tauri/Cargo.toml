@@ -42,7 +42,7 @@ notify = "6"
 dirs = "5"
 portable-pty = "0.8"
 json5 = "0.4"
-ureq = { version = "2", features = ["json"] }
+ureq = { version = "3", features = ["json"] }
 regex = "1"
 quick-xml = "0.42"
 globset = "0.4"
