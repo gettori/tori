@@ -315,6 +315,9 @@ export default function MessageList(props: {
    *  renders every prompt read only, the same as `onAnswerQuestion`. */
   onAnswer?: (card: ToolItem, answer: Answer) => void;
   onSetMode: (mode: PermissionMode) => void;
+  /** Start the agent's own login for this chat's account. Absent where the
+   *  chat has no account to sign in to, which leaves the notice as text. */
+  onSignIn?: () => void;
   onRevertHunk: (ref: HunkRef) => Promise<boolean>;
   /** Send the answers to a question. Absent where nothing can be sent, which
    *  renders every question read only rather than offering a Submit that would
@@ -846,6 +849,15 @@ export default function MessageList(props: {
               }
             >
               {(since) => <PendingNotice text={it().text} since={since()} />}
+            </Show>
+            <Show when={it().signIn && props.onSignIn}>
+              {(signIn) => (
+                <div class={styles.noticeAction}>
+                  <Button size="sm" onClick={() => signIn()()}>
+                    Sign in again
+                  </Button>
+                </div>
+              )}
             </Show>
             {/* Closed by default: the line is the news, the details are
                 what you go looking for afterwards. A plain `<details>`

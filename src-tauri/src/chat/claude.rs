@@ -361,6 +361,10 @@ pub struct ClaudeMapper {
     /// it is held on the mapper and re-read on every model switch: the reason
     /// does not change when the model does, but the option set is rebuilt.
     fast_mode_reason: Option<String>,
+    /// Set by a synthetic assistant frame tagged `authentication_failed` and
+    /// spent by the `result` that follows. That `result` carries the message
+    /// but no marker, so the reason has to be carried across to it.
+    auth_failed: bool,
 }
 
 impl ClaudeMapper {
@@ -558,7 +562,12 @@ impl ClaudeMapper {
             Some("system") => self.map_system(frame),
             Some("stream_event") => self.map_stream_event(frame),
             Some("user") => self.map_user(frame),
-            Some("assistant") => self.map_assistant(frame),
+            Some("assistant") => {
+                if frame["error"].as_str() == Some("authentication_failed") {
+                    self.auth_failed = true;
+                }
+                self.map_assistant(frame)
+            }
             Some("rate_limit_event") => self.map_rate_limit(frame),
             Some("result") => self.map_result(frame),
             Some("control_response") => {
@@ -1239,6 +1248,7 @@ impl ClaudeMapper {
         self.open_blocks.clear();
         self.partial_tool_input.clear();
 
+        let needs_sign_in = std::mem::take(&mut self.auth_failed);
         let is_error = frame["is_error"].as_bool().unwrap_or(false);
         let subtype = frame["subtype"].as_str().unwrap_or_default();
         // An interrupt is delivered as a failure-shaped result. It is not a
@@ -1262,6 +1272,7 @@ impl ClaudeMapper {
                     session_id: self.session_id.clone(),
                     message: reason.to_string(),
                     fatal: false,
+                    needs_sign_in,
                 });
             }
         }

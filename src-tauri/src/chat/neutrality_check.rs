@@ -281,6 +281,7 @@ pub fn map_codex(ev: CodexEvent) -> ChatEvent {
             session_id: sid(),
             message: "codex rawResponseItem/completed has no normalized mapping".into(),
             fatal: false,
+            needs_sign_in: false,
         },
     }
 }
@@ -296,6 +297,7 @@ pub fn map_acp(update: AcpSessionUpdate) -> ChatEvent {
             session_id: sid(),
             message: "acp user_message_chunk is an echo with no normalized target".into(),
             fatal: false,
+            needs_sign_in: false,
         },
         AcpSessionUpdate::AgentMessageChunk => ChatEvent::TextDelta {
             session_id: sid(),
@@ -382,6 +384,7 @@ pub fn map_acp(update: AcpSessionUpdate) -> ChatEvent {
             session_id: sid(),
             message: "acp current_mode_update is dropped; a mode is confirmed by the config option answer".into(),
             fatal: false,
+            needs_sign_in: false,
         },
     }
 }

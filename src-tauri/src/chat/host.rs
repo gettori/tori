@@ -2776,6 +2776,7 @@ mod tests {
                 session_id: "s-dies".to_string(),
                 message: "child exited with status 1".to_string(),
                 fatal: true,
+                needs_sign_in: false,
             },
         );
 
@@ -2884,7 +2885,8 @@ mod tests {
         assert!(!ends_session(&ChatEvent::SessionError {
             session_id: "s1".into(),
             message: "one bad line".into(),
-            fatal: false
+            fatal: false,
+            needs_sign_in: false,
         }));
         assert!(host.is_live("s1"));
     }
