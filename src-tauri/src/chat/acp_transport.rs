@@ -558,6 +558,7 @@ impl AgentTransport for AcpTransport {
                                 session_id: shared.session_id.clone(),
                                 message,
                                 fatal: true,
+                                needs_sign_in: false,
                             },
                         ),
                     }
@@ -850,6 +851,7 @@ async fn run_session(
                             session_id: shared.session_id.clone(),
                             message,
                             fatal: true,
+                            needs_sign_in: false,
                         },
                     );
                     shared.finished.store(true, Ordering::SeqCst);
@@ -1006,6 +1008,7 @@ async fn drive_session(
                     session_id: shared.session_id.clone(),
                     message: format!("this agent would not list its sessions: {message}"),
                     fatal: false,
+                    needs_sign_in: false,
                 },
             );
         }
@@ -1044,6 +1047,7 @@ async fn drive_session(
                                 "this agent would not hand the conversation back, so this tab starts empty: {e}"
                             ),
                             fatal: false,
+                            needs_sign_in: false,
                         },
                     ),
                 }
@@ -1103,6 +1107,7 @@ fn switch_events(
             session_id: session_id.to_string(),
             message,
             fatal: false,
+            needs_sign_in: false,
         },
     };
     let options = match answer {
@@ -1212,6 +1217,7 @@ fn run_turn(
                     session_id: shared.session_id.clone(),
                     message: format!("the turn failed: {e}"),
                     fatal: false,
+                    needs_sign_in: false,
                 },
             ),
         }
@@ -1224,6 +1230,7 @@ fn run_turn(
                 session_id: outer_shared.session_id.clone(),
                 message: "the agent's connection is no longer accepting turns".to_string(),
                 fatal: true,
+                needs_sign_in: false,
             },
         );
     }
@@ -1562,6 +1569,7 @@ async fn open_session(
                             "this agent could not reopen the earlier conversation, so this chat starts empty: {e}"
                         ),
                         fatal: false,
+                        needs_sign_in: false,
                     },
                 ),
             }
@@ -1572,6 +1580,7 @@ async fn open_session(
                     session_id: shared.session_id.clone(),
                     message: "this agent cannot reopen an earlier conversation, so this chat starts empty.".to_string(),
                     fatal: false,
+                    needs_sign_in: false,
                 },
             );
         }

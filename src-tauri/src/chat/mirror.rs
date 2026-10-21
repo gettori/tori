@@ -937,6 +937,7 @@ mod tests {
             session_id: "s1".into(),
             message: "this agent would not hand the conversation back".into(),
             fatal: false,
+            needs_sign_in: false,
         });
         mirror.note(&started());
 
