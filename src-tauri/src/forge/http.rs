@@ -151,44 +151,42 @@ pub trait Transport: Send + Sync {
 
 /// The real one.
 pub struct UreqTransport {
-    timeout: std::time::Duration,
+    agent: ureq::Agent,
 }
 
 impl Default for UreqTransport {
     fn default() -> Self {
-        Self {
-            timeout: std::time::Duration::from_secs(15),
-        }
+        // A 401 or a 429 is a response we very much want to read: the status
+        // and the headers are the whole signal. Only a genuine transport
+        // failure is an error here.
+        let agent = ureq::Agent::config_builder()
+            .http_status_as_error(false)
+            .timeout_global(Some(std::time::Duration::from_secs(15)))
+            .build()
+            .into();
+        Self { agent }
     }
 }
 
 impl Transport for UreqTransport {
     fn send(&self, req: HttpRequest) -> Result<HttpResponse, ForgeError> {
-        let mut r = ureq::request(req.method, &req.url).timeout(self.timeout);
+        let transport = |e: &dyn std::fmt::Display| ForgeError::Transport { message: e.to_string() };
+        let mut builder = ureq::http::Request::builder().method(req.method).uri(&req.url);
         for (k, v) in &req.headers {
-            r = r.set(k, v);
+            builder = builder.header(k, v);
         }
         let result = match &req.body {
-            Some(b) => r.send_string(b),
-            None => r.call(),
+            Some(b) => builder.body(b.clone()).map(|r| self.agent.run(r)),
+            None => builder.body(()).map(|r| self.agent.run(r)),
         };
-        // `ureq` treats any non-2xx as an `Err`, but a 401 or a 429 is a
-        // response we very much want to read: the status and the headers are
-        // the whole signal. Only a genuine transport failure is an error here.
-        let resp = match result {
-            Ok(resp) => resp,
-            Err(ureq::Error::Status(_, resp)) => resp,
-            Err(e) => return Err(ForgeError::Transport { message: e.to_string() }),
-        };
-        let status = resp.status();
+        let mut resp = result.map_err(|e| transport(&e))?.map_err(|e| transport(&e))?;
+        let status = resp.status().as_u16();
         let headers = resp
-            .headers_names()
-            .into_iter()
-            .filter_map(|n| resp.header(&n).map(|v| (n.clone(), v.to_string())))
+            .headers()
+            .iter()
+            .filter_map(|(n, v)| v.to_str().ok().map(|v| (n.as_str().to_string(), v.to_string())))
             .collect();
-        let body = resp
-            .into_string()
-            .map_err(|e| ForgeError::Transport { message: e.to_string() })?;
+        let body = resp.body_mut().read_to_string().map_err(|e| transport(&e))?;
         Ok(HttpResponse { status, headers, body })
     }
 }

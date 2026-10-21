@@ -188,9 +188,10 @@ pub fn refresh(
     }
 }
 
-fn read_body(response: ureq::Response) -> Result<Vec<u8>, String> {
+fn read_body(response: ureq::http::Response<ureq::Body>) -> Result<Vec<u8>, String> {
     let mut bytes = Vec::new();
     response
+        .into_body()
         .into_reader()
         .take(MAX_BYTES)
         .read_to_end(&mut bytes)
@@ -199,19 +200,24 @@ fn read_body(response: ureq::Response) -> Result<Vec<u8>, String> {
 }
 
 fn request(etag: Option<&str>) -> Result<Response, String> {
-    let agent = ureq::AgentBuilder::new()
-        .timeout(Duration::from_secs(15))
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(15)))
         .user_agent("tori-packs")
-        .build();
+        .build()
+        .into();
     let mut get = agent.get(INDEX_URL);
     if let Some(etag) = etag {
-        get = get.set("If-None-Match", etag);
+        get = get.header("If-None-Match", etag);
     }
     let response = get.call().map_err(|e| e.to_string())?;
     if response.status() == 304 {
         return Ok(Response::NotModified);
     }
-    let etag = response.header("ETag").map(str::to_string);
+    let etag = response
+        .headers()
+        .get("ETag")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
     let index = read_body(response)?;
     let sig = read_body(agent.get(SIG_URL).call().map_err(|e| e.to_string())?)?;
     Ok(Response::Body { etag, index, sig })

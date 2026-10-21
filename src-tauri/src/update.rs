@@ -197,13 +197,15 @@ fn pick_update(releases: &[GithubRelease], current: &str) -> Option<String> {
 }
 
 fn fetch_releases() -> Option<Vec<GithubRelease>> {
-    let response = ureq::get(RELEASES_API)
-        .set("User-Agent", "tori-update-check")
-        .set("Accept", "application/vnd.github+json")
-        .timeout(std::time::Duration::from_secs(10))
+    let mut response = ureq::get(RELEASES_API)
+        .header("User-Agent", "tori-update-check")
+        .header("Accept", "application/vnd.github+json")
+        .config()
+        .timeout_global(Some(std::time::Duration::from_secs(10)))
+        .build()
         .call()
         .ok()?;
-    response.into_json().ok()
+    response.body_mut().read_json().ok()
 }
 
 /// Check for a newer release, or return `None`.

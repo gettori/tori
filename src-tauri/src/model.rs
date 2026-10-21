@@ -20,10 +20,13 @@ fn cache_path() -> Option<PathBuf> {
 /// Pull `id -> context_length` from OpenRouter's public model list.
 fn fetch_caps() -> Result<HashMap<String, u64>, String> {
     let body = ureq::get(MODELS_URL)
-        .timeout(std::time::Duration::from_secs(10))
+        .config()
+        .timeout_global(Some(std::time::Duration::from_secs(10)))
+        .build()
         .call()
         .map_err(|e| e.to_string())?
-        .into_string()
+        .body_mut()
+        .read_to_string()
         .map_err(|e| e.to_string())?;
     let v: serde_json::Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
     let arr = v

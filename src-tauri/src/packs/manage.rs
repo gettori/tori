@@ -133,15 +133,17 @@ pub fn check_idle(kind: Kind, id: &str, runs: impl Fn(&str) -> bool) -> Result<(
 }
 
 fn download(url: &str) -> Result<Vec<u8>, String> {
-    let agent = ureq::AgentBuilder::new()
+    let agent: ureq::Agent = ureq::Agent::config_builder()
         .https_only(true)
-        .redirects(5)
-        .timeout(Duration::from_secs(60))
+        .max_redirects(5)
+        .timeout_global(Some(Duration::from_secs(60)))
         .user_agent("tori-packs")
-        .build();
+        .build()
+        .into();
     let response = agent.get(url).call().map_err(|e| format!("{url}: {e}"))?;
     let mut bytes = Vec::new();
     response
+        .into_body()
         .into_reader()
         .take(MAX_BYTES)
         .read_to_end(&mut bytes)

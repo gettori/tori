@@ -458,9 +458,10 @@ pub fn check_remote(remote: &Remote) -> Result<(), String> {
         }
         Remote::Pypi { package, version } => {
             let url = format!("https://pypi.org/pypi/{package}/{version}/json");
-            let agent = ureq::AgentBuilder::new()
-                .timeout(std::time::Duration::from_secs(30))
-                .build();
+            let agent: ureq::Agent = ureq::Agent::config_builder()
+                .timeout_global(Some(std::time::Duration::from_secs(30)))
+                .build()
+                .into();
             match agent.get(&url).call() {
                 Ok(_) => Ok(()),
                 Err(_) => Err(format!("PyPI has no {package}=={version}")),
