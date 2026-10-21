@@ -690,7 +690,7 @@ export type ChatEvent =
     }
   /// Not a turn outcome: the child died, stdout was unparseable, the transport
   /// could not start. Never a silent hang.
-  | { type: "sessionError"; sessionId: string; message: string; fatal: boolean }
+  | { type: "sessionError"; sessionId: string; message: string; fatal: boolean; needsSignIn?: boolean }
   | { type: "sessionEnded"; sessionId: string; reason: string | null };
 
 export type ChatEventType = ChatEvent["type"];
@@ -913,7 +913,7 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
     required: ["sessionId", "turnId", "outcome", "stopReason", "usage", "costUsd", "permissionDenials"],
     optional: ["extra"],
   },
-  sessionError: { required: ["sessionId", "message", "fatal"] },
+  sessionError: { required: ["sessionId", "message", "fatal"], optional: ["needsSignIn"] },
   sessionEnded: { required: ["sessionId", "reason"] },
   configOptions: { required: ["sessionId", "options"] },
 };

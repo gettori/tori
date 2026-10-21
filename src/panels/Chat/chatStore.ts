@@ -131,6 +131,8 @@ export type NoticeItem = {
    *  makes. Set on a compaction whose turn ended without a boundary: removing
    *  the row would move every index in `toolIndex` under it. */
   hidden?: boolean;
+  /** The agent's login is gone, so the row offers to sign in again. */
+  signIn?: boolean;
 };
 export type ToolItem = {
   kind: "tool";
@@ -1695,7 +1697,13 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       return;
     }
     case "sessionError": {
-      push(s, { kind: "notice", id: nextId(s, "note"), text: ev.message, level: "error" });
+      push(s, {
+        kind: "notice",
+        id: nextId(s, "note"),
+        text: ev.message,
+        level: "error",
+        ...(ev.needsSignIn ? { signIn: true } : {}),
+      });
       if (ev.fatal) {
         s.ended = true;
         s.activeTurnId = null;

@@ -127,6 +127,8 @@ import { attachmentSources, chatTier, publishedCapabilities, steerCostLabel } fr
 import { providerMarkKey } from "../../components/Icon/ProviderIcon";
 import { rememberChatPrefs, saveSettings, settings } from "../Settings/settingsStore";
 import { agentRefusal } from "../../utils/projectAgents";
+import { loginJob, loginNote } from "../../utils/signIn";
+import type { AccountsView } from "../Settings/panes/AgentsPane/AgentAccounts";
 import { capNotice, markNoticed, noticed, pastCap, shouldNotice, MULTI_CHAT_NOTICE } from "../../utils/chatConcurrency";
 import {
   emitWith,
@@ -140,6 +142,7 @@ import {
   REVEAL_TURN,
   REWIND_CHAT,
   CHAT_SUBMIT,
+  OPEN_JOB,
   SEND_TO_SESSION_RESULT,
   TOAST,
   type ChatSubmit,
@@ -148,6 +151,7 @@ import {
   type EditorFileSaved,
   type EditorTabClosed,
   type FocusSessionTab,
+  type OpenJob,
   type RevealTurn,
   type RewindChat,
   type ToastEvent,
@@ -1867,6 +1871,22 @@ export default function ChatView(props: {
     }
   }
 
+  // The route is asked for at the press rather than held: it names the
+  // account's home, and an account renamed or re-homed since this chat opened
+  // would otherwise sign the old one in.
+  async function onSignIn() {
+    const agent = findAdapter(props.agentId).label;
+    const view = await invoke<AccountsView>("agent_accounts", { adapterId: props.agentId }).catch(() => null);
+    const profile = view?.profiles.find((p) => p.id === asProfileId(resolvedProfile()));
+    if (!profile) {
+      emitWith<ToastEvent>(TOAST, { message: `Tori could not find this chat's ${agent} account.`, kind: "error" });
+      return;
+    }
+    const job = loginJob(props.agentId, agent, profile.id, profile.label, profile.login, props.cwd);
+    if (job) emitWith<OpenJob>(OPEN_JOB, job);
+    else emitWith<ToastEvent>(TOAST, { message: loginNote(agent, profile.login) ?? "", kind: "info" });
+  }
+
   function onSelectMode(mode: PermissionMode) {
     edit((s) => selectMode(s, mode));
     void invoke("chat_set_mode", { sessionId: props.sessionId, mode })
@@ -2507,6 +2527,7 @@ export default function ChatView(props: {
           onAnswer={locked() ? undefined : onAnswer}
           onAnswerQuestion={locked() ? undefined : onAnswerQuestion}
           onSetMode={onSelectMode}
+          onSignIn={() => void onSignIn()}
           onRevertHunk={onRevertHunk}
           // Gated on the declaration, not on the checkpoint alone: a agent that
           // cannot fork has no way to carry the conversation across, and offering

@@ -530,6 +530,7 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
                         adapter.label
                     ),
                     fatal: false,
+                    needs_sign_in: false,
                 },
             );
         }
@@ -1613,6 +1614,7 @@ fn history_from_log(session_id: &str, path: &std::path::Path) -> Vec<ChatEvent> 
             session_id: session_id.to_string(),
             message: format!("{skipped} line(s) of this session's saved history could not be read and were skipped."),
             fatal: false,
+            needs_sign_in: false,
         });
     }
     events

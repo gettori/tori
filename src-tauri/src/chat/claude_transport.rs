@@ -690,6 +690,7 @@ impl AgentTransport for ClaudeTransport {
                                 session_id: shared.session_id.clone(),
                                 message: format!("unparseable stdout: {e}"),
                                 fatal: false,
+                                needs_sign_in: false,
                             },
                         ),
                     }
@@ -731,6 +732,7 @@ impl AgentTransport for ClaudeTransport {
                             session_id: shared.session_id.clone(),
                             message,
                             fatal: true,
+                            needs_sign_in: false,
                         },
                     );
                 }

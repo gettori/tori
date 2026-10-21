@@ -1631,6 +1631,10 @@ pub enum ChatEvent {
         message: String,
         /// Whether the session is unusable from here on.
         fatal: bool,
+        /// The agent refused because its login is gone, so signing in again
+        /// is the fix rather than anything about the session.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        needs_sign_in: bool,
     },
 
     SessionEnded {
@@ -2290,6 +2294,7 @@ mod tests {
                 session_id: "s1".into(),
                 message: "child exited with status 1".into(),
                 fatal: true,
+                needs_sign_in: false,
             },
             ChatEvent::SessionEnded {
                 session_id: "s1".into(),

@@ -1804,6 +1804,12 @@ button.diffHunkHeader:hover {
   font-variant-numeric: tabular-nums;
 }
 
+.noticeAction {
+  display: flex;
+  justify-content: center;
+  margin-top: calc(6px * var(--ui-scale));
+}
+
 /* The long half of a notice (a compaction summary), folded away. The trigger
    is quieter than the line above it: it is an offer, not news. */
 .noticeDetails {
