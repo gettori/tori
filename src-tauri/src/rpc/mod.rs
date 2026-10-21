@@ -102,9 +102,10 @@ pub(crate) fn watcher_started(item: &crate::autopilot::Item) {
     }
 }
 
-pub(crate) fn watcher_scheduled(queued: &[crate::autopilot::Item]) {
+pub(crate) fn watcher_scheduled(fired: &crate::autopilot::Fired) {
     if let Some(watcher) = WATCHER.get() {
-        watcher.scheduled(queued);
+        watcher.scheduled(&fired.queued);
+        watcher.paused(&fired.paused);
     }
 }
 

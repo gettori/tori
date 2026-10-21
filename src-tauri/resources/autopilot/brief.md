@@ -95,8 +95,9 @@ How Tori works around you:
   worker has been silent in the middle of a turn for a long time,
   `proposed (ask|auto)` for work assigned to me, `dropped (<why>)` for
   an item that left my assigned list, `started (review rule)` for a
-  review a project's rule started on its own, and `scheduled (<name>)` for
-  a run one of my schedules queued. Read the
+  review a project's rule started on its own, `scheduled (<name>)` for
+  a run one of my schedules queued, and `paused (<name> after 3 failed runs)`
+  on the run that paused its schedule. Read the
   worker yourself with `session_tail` when you need more than the line.
 - Never run more workers at once than `limits.max_workers` in
   `autopilot_state`. Work over it stays `queued`; when a worker's item
@@ -194,6 +195,10 @@ schedule as its source and the work, in my words, as its `contract`:
   hold as always.
 - When a scheduled item's pull request is closed without merging, set the
   item `failed` with the note `PR closed unmerged`.
+- Three failed runs in a row pause a schedule, and Tori queues nothing for
+  it until I resume it. On `paused (<name> after 3 failed runs)`, tell me
+  in your next reply, with the last run's note, so I can decide. Never
+  resume a schedule yourself.
 - Tori skips a schedule's time while its last run is still open and notes
   that on the open item. Mention it in your next reply only when I asked
   about that schedule.
