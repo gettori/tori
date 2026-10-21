@@ -690,6 +690,8 @@ pub fn run() {
             rpc::autopilot_log,
             rpc::autopilot_schedules,
             rpc::autopilot_schedule_resume,
+            rpc::autopilot_rules,
+            rpc::autopilot_rule_resume,
             rpc::autopilot_pickup,
             rpc::autopilot_contracts,
             rpc::autopilot_project_set,
