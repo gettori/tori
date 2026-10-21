@@ -1,7 +1,7 @@
 ---
 summary: the cockpit wires the autopilot parts: an always shown switch when enabled, a view with a time of day banner and a live ChatView, the popup
 status: current
-updated: 2026-10-21
+updated: 2026-10-22
 source: gettori/tori#218 plan "Ticket refs that say where they are, and one way to navigate there", commit 380c7112; plan "Autopilot session and the cockpit (#205)" on branch orchestrator, issue gettori/tori#205, commits 4b309f03, 7dfdc1a9, 669596a1; restyle and feature switch on branch orchestrator for gettori/tori#207, commits c490ea9a, 21d68948, e7c57d49, cec896d9, df821076, 298de4cf, 251e53fa; src/panels/Autopilot/Cockpit.tsx, src/utils/autopilotStore.ts, src/utils/autopilotRows.ts, src/panels/Settings/panes/AutopilotPane/AutopilotPane.tsx; gettori/tori#210 on branch orchestrator, plan 'Assigned pickup: poll my issues and review requests, queue them, start on ask or auto (#210)'; gettori/tickets#43 on branch scheduled-runs, plan "Scheduled runs", commits 0cdcf86b, ee900c1d, f5e7ccb4
 ---
 
@@ -36,6 +36,7 @@ It shows the [[component_autopilot_runner]] and the [[component_autopilot_store]
 - **In flight and queue** come from items (`running` and `waiting_on_you` in flight, `queued` queued, oldest first, then `proposed` items marked "proposed" with no "after", since they wait for a go typed in the chat). The banner's queued count leaves proposed rows out. A card reads the item's `title`, else "Ship in <project>"; worker log, diff and progress are empty until something records them.
 
 - **Tide table** (`Schedules.tsx`, props only) sits under the queue: each schedule's name, cron, what a run does, and `next <time>`, or **waiting on** the open item its next time would be skipped for (`scheduleCards` in `autopilotRows.ts` works that out the way the clock does), plus `last <state> <age> ago`. A paused one says **paused after 3 failed runs** with **Resume**. The list comes from `autopilot_schedules` and live `autopilot.changed` events carrying `schedule` or `schedule_removed`; Resume calls `autopilot_schedule_resume`, an office op, so it is not refused like the socket row that keeps agent sessions from resuming ([[component_autopilot_schedules]]).
+- **Pull request rules** (`Rules.tsx`, props only) sits under the Tide table and shares its list styles in `DeckList.module.css`. Each row is a project with a rule on: what it acts on, and `N of M this hour`, or **paused at its hourly limit** with **Resume** and the count beside it. Rows come from `autopilot_rules` through `ruleCards`; Resume calls `autopilot_rule_resume` ([[component_pr_rules]]). A **Push** decision card shows a `pr.push` approval as the commit onto the PR's branch.
 
 ## Ticket refs
 
@@ -56,3 +57,4 @@ Every ref is the row's `reference`, drawn by `TicketLink` in `ShellParts.tsx`: `
 - [[component_app_socket]]: the asks and holds decisions come from
 - [[concept_tori_notes]]: the brief, wakes and resumes in its chat
 - [[adr_assigned_pickup_rides_the_forge_poll_tick]]: where proposed rows come from
+- [[component_pr_rules]]: the Pull request rules list

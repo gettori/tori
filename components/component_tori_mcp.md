@@ -29,7 +29,7 @@ What it owns is only what MCP needs and the socket cannot know:
 
 ## Launch
 
-- **claude**: one static `~/.config/tori/claude-mcp.json` (`command: "tori", args: ["mcp"]`), passed as `--mcp-config` on every spawn and resume. The server finds `tori` through the `bin/tori` PATH link and inherits `TORI_SOCK` and `TORI_CALLER`. The injected settings pre-allow Tori's tools per session: `mcp__tori__*` for a background session, every row not marked `outward` by name otherwise, so `pr_create`, `review_submit` and `pr_merge` prompt in the foreground. See [[concept_mcp_config_scopes]].
+- **claude**: one static `~/.config/tori/claude-mcp.json` (`command: "tori", args: ["mcp"]`), passed as `--mcp-config` on every spawn and resume. The server finds `tori` through the `bin/tori` PATH link and inherits `TORI_SOCK` and `TORI_CALLER`. The injected settings pre-allow Tori's tools per session: `mcp__tori__*` for a background session, every row not marked `outward` by name otherwise, so `pr_create`, `pr_push`, `review_submit` and `pr_merge` prompt in the foreground. See [[concept_mcp_config_scopes]].
 - **ACP**: `session/new` and `session/load` carry one stdio server whose command is the `bin/tori` link, with `TORI_SOCK` and `TORI_CALLER` as `env` pairs minted for that session (`rpc::mcp_launch`). Only when the adapter sets `send_mcp_servers` (codex, opencode). pi-acp drops the array.
 
 ## Prompt references
