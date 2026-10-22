@@ -527,6 +527,16 @@ fn may_steer(caller: &Principal, locked: bool, autopilot: Option<&str>) -> Resul
     }
 }
 
+// A steer opens a turn, which is what a spend ceiling refuses; only a person lifts it.
+fn steer_past_ceiling(caller: &Principal, target: &str, stopped: bool) -> Result<(), RpcError> {
+    match caller {
+        Principal::Session(Caller::Chat(_)) if stopped => Err(refused(format!(
+            "{target} is held at its spend ceiling; tell the user instead of steering it"
+        ))),
+        _ => Ok(()),
+    }
+}
+
 fn must_exist(attach: &[String]) -> Result<(), RpcError> {
     match attach.iter().find(|path| !Path::new(path).is_file()) {
         Some(missing) => Err(RpcError::new(INVALID_PARAMS, format!("no file {missing}"))),
@@ -1454,6 +1464,7 @@ impl Backend for DaemonBackend {
         }
         let locked = super::is_locked(&self.desk.states, &self.autopilot, &self.runner, &params.id);
         may_steer(principal, locked, self.runner.status().session.as_deref())?;
+        steer_past_ceiling(principal, &params.id, self.composer.budget_stopped(&params.id))?;
         if matches!(principal, Principal::Browser(_)) && !host.is_live(&params.id) {
             return Err(refused(format!(
                 "{} is not a live chat: the browser starts no agent",
@@ -2133,6 +2144,9 @@ impl Backend for DaemonBackend {
                 crate::settings::pr_fix_loop(&project),
                 |max| {
                     let key = (origin_of(&project).to_lowercase(), params.number);
+                    if let Some(who) = super::pr_watch::loop_stopped(&key.0, key.1) {
+                        return Err(format!("@{who} reviewed or commented, so the fix loop stopped"));
+                    }
                     self.autopilot.reserve_fix_push(&key, max, &params.head_sha)
                 },
             )
@@ -2560,6 +2574,19 @@ mod tests {
                 FixGate::Refused(why.into())
             );
         }
+    }
+
+    #[test]
+    fn an_agent_never_steers_a_chat_held_at_its_spend_ceiling() {
+        let autopilot = Principal::Session(Caller::Chat("pilot".into()));
+        let refused = steer_past_ceiling(&autopilot, "w1", true).unwrap_err();
+        assert_eq!(refused.code, REFUSED);
+        assert!(refused.message.contains("spend ceiling"));
+        assert!(steer_past_ceiling(&autopilot, "w1", false).is_ok());
+        assert!(
+            steer_past_ceiling(&Principal::Local, "w1", true).is_ok(),
+            "a person lifts it"
+        );
     }
 
     #[test]

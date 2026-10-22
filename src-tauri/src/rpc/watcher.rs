@@ -44,6 +44,10 @@ pub enum What {
     Started(String),
     Scheduled(String),
     Paused(String),
+    CheckFailed(String),
+    ChecksPassed,
+    Remark(String),
+    Conflicting,
 }
 
 impl What {
@@ -61,6 +65,10 @@ impl What {
             What::Started(_) => "started",
             What::Scheduled(_) => "scheduled",
             What::Paused(_) => "paused",
+            What::CheckFailed(_) => "check_failed",
+            What::ChecksPassed => "checks_passed",
+            What::Remark(_) => "remark",
+            What::Conflicting => "conflicting",
         }
     }
 
@@ -77,7 +85,9 @@ impl What {
             | What::Dropped(detail)
             | What::Started(detail)
             | What::Scheduled(detail)
-            | What::Paused(detail) => {
+            | What::Paused(detail)
+            | What::CheckFailed(detail)
+            | What::Remark(detail) => {
                 format!("{} ({detail})", self.kind())
             }
             _ => self.kind().to_string(),
@@ -304,8 +314,9 @@ impl Core {
         }
     }
 
-    pub fn take(&mut self, now: Instant) -> Option<Vec<(Target, Line)>> {
-        if self.pilot.0 != Pilot::Idle || self.sent.is_some() || self.pending.is_empty() {
+    // `stopped`: the autopilot is at its spend ceiling, so nothing goes until it is lifted.
+    pub fn take(&mut self, now: Instant, stopped: bool) -> Option<Vec<(Target, Line)>> {
+        if stopped || self.pilot.0 != Pilot::Idle || self.sent.is_some() || self.pending.is_empty() {
             return None;
         }
         self.sent = Some(now);
@@ -403,6 +414,7 @@ impl Watcher {
             .store
             .items_for_pr(url, checked_out_in)
             .into_iter()
+            .filter(|(item, _)| !super::pr_watch::item_watched(item))
             .map(|(item, session)| (Target::Item(item), session))
             .collect();
         let found: Vec<(String, Option<Target>)> = ids.iter().map(|id| (id.clone(), self.found(id))).collect();
@@ -419,6 +431,19 @@ impl Watcher {
         let now = Instant::now();
         for (target, session) in targets {
             core.pr(target, session, detail.clone(), now);
+        }
+        drop(core);
+        self.nudge();
+    }
+
+    pub fn fix_news(&self, item: &str, whats: Vec<What>) {
+        if whats.is_empty() {
+            return;
+        }
+        let now = Instant::now();
+        let mut core = self.core();
+        for what in whats {
+            core.item(item.to_string(), None, what, now);
         }
         drop(core);
         self.nudge();
@@ -489,6 +514,7 @@ impl Watcher {
         rx: Receiver<()>,
         deliver: impl Fn(&str, String) -> Result<(), String>,
         stall_of: impl Fn() -> Duration,
+        budget_stopped: impl Fn(&str) -> bool,
     ) {
         let (mut stall, mut read_at) = (stall_of(), Instant::now());
         loop {
@@ -497,11 +523,12 @@ impl Watcher {
                 (stall, read_at) = (stall_of(), now);
             }
             let status = (self.status)();
+            let stopped = status.session.as_deref().is_some_and(&budget_stopped);
             let batch = {
                 let mut core = self.core();
                 core.set_pilot(status.state, status.session.clone());
                 core.tick(now, stall);
-                core.take(now)
+                core.take(now, stopped)
             };
             if let (Some(batch), Some(session)) = (batch, &status.session) {
                 if let Err(e) = deliver(session, render(&batch)) {
@@ -557,11 +584,31 @@ mod tests {
     }
 
     fn lines(core: &mut Core, now: Instant) -> String {
-        core.take(now).map(|batch| render(&batch)).unwrap_or_default()
+        core.take(now, false).map(|batch| render(&batch)).unwrap_or_default()
     }
 
     fn mins(n: u64) -> Duration {
         Duration::from_secs(n * 60)
+    }
+
+    #[test]
+    fn a_fix_loop_items_news_is_one_uncapped_line() {
+        let (mut core, now) = (idle_core(), Instant::now());
+        core.item("i1".into(), None, What::CheckFailed("test, run 12".into()), now);
+        core.item("i1".into(), None, What::Remark("@ana".into()), now);
+        core.item("i2".into(), None, What::ChecksPassed, now);
+        assert_eq!(
+            lines(&mut core, now),
+            "item i1: check_failed (test, run 12), remark (@ana)\nitem i2: checks_passed"
+        );
+    }
+
+    #[test]
+    fn nothing_goes_to_an_autopilot_held_at_its_spend_ceiling() {
+        let (mut core, now) = (idle_core(), Instant::now());
+        core.item("i1".into(), None, What::ChecksPassed, now);
+        assert_eq!(core.take(now, true), None);
+        assert!(core.take(now, false).is_some(), "kept until the ceiling is lifted");
     }
 
     #[test]
@@ -575,7 +622,7 @@ mod tests {
         ] {
             core.observe("w", item("i1"), &event(kind), now);
         }
-        assert_eq!(core.take(now), None);
+        assert_eq!(core.take(now, false), None);
     }
 
     #[test]
@@ -642,7 +689,7 @@ mod tests {
             now + Duration::from_secs(3),
         );
         core.tick(now + Duration::from_secs(11), STALL);
-        assert_eq!(core.take(now), None, "the agent carried on");
+        assert_eq!(core.take(now, false), None, "the agent carried on");
 
         core.observe(
             "w",
@@ -651,7 +698,7 @@ mod tests {
             now,
         );
         core.tick(now + Duration::from_secs(9), STALL);
-        assert_eq!(core.take(now), None, "still inside the debounce");
+        assert_eq!(core.take(now, false), None, "still inside the debounce");
         core.tick(now + Duration::from_secs(10), STALL);
         assert_eq!(lines(&mut core, now), "item i1: idle (completed), session w");
     }
@@ -666,7 +713,7 @@ mod tests {
         core.set_pilot(RunnerState::Idle, Some("pilot".into()));
 
         core.tick(start + mins(40), STALL);
-        assert_eq!(core.take(start + mins(40)), None, "still the same silence");
+        assert_eq!(core.take(start + mins(40), false), None, "still the same silence");
 
         core.touch("w", start + mins(41));
         core.tick(start + mins(62), STALL);
@@ -682,11 +729,11 @@ mod tests {
         let (mut core, start) = (idle_core(), Instant::now());
         core.observe("w", item("i1"), &event("session.turn_started"), start);
         core.observe("w", item("i1"), &event("session.question"), start + mins(1));
-        let _ = core.take(start + mins(1));
+        let _ = core.take(start + mins(1), false);
         core.set_pilot(RunnerState::Working, Some("pilot".into()));
         core.set_pilot(RunnerState::Idle, Some("pilot".into()));
         core.tick(start + mins(26), STALL);
-        assert_eq!(core.take(start + mins(26)), None);
+        assert_eq!(core.take(start + mins(26), false), None);
     }
 
     #[test]
@@ -700,7 +747,7 @@ mod tests {
         core.pr(item("i1"), None, "checks failure".into(), start + mins(1));
         core.pr(item("i1"), None, "checks success".into(), start + mins(2));
         core.tick(start + mins(3), STALL);
-        assert_eq!(core.take(start + mins(3)), None, "held inside the window");
+        assert_eq!(core.take(start + mins(3), false), None, "held inside the window");
         core.tick(start + mins(5), STALL);
         assert_eq!(lines(&mut core, start + mins(5)), "item i1: pr (checks success)");
     }
@@ -728,11 +775,11 @@ mod tests {
                 now,
             );
         }
-        assert_eq!(core.take(now), None, "held while it works");
+        assert_eq!(core.take(now, false), None, "held while it works");
         core.set_pilot(RunnerState::Idle, Some("pilot".into()));
-        let batch = core.take(now).expect("sent once it is idle");
+        let batch = core.take(now, false).expect("sent once it is idle");
         assert_eq!(render(&batch).lines().count(), 10);
-        assert_eq!(core.take(now), None, "nothing left, and nothing sent twice");
+        assert_eq!(core.take(now, false), None, "nothing left, and nothing sent twice");
     }
 
     #[test]
@@ -740,19 +787,19 @@ mod tests {
         let (mut core, now) = (Core::default(), Instant::now());
         core.observe("w", item("i1"), &event("session.question"), now);
         core.set_pilot(RunnerState::Idle, Some("pilot".into()));
-        assert_eq!(core.take(now), None);
+        assert_eq!(core.take(now, false), None);
 
         core.observe("w", item("i1"), &event("session.question"), now);
         core.set_pilot(RunnerState::Off, None);
         core.set_pilot(RunnerState::Idle, Some("pilot-2".into()));
-        assert_eq!(core.take(now), None, "a stop drops what was pending");
+        assert_eq!(core.take(now, false), None, "a stop drops what was pending");
     }
 
     #[test]
     fn a_send_with_no_turn_lets_the_next_batch_out_after_the_timeout() {
         let (mut core, now) = (idle_core(), Instant::now());
         core.observe("a", item("i1"), &event("session.question"), now);
-        assert!(core.take(now).is_some());
+        assert!(core.take(now, false).is_some());
         core.observe(
             "b",
             item("i2"),
@@ -761,7 +808,7 @@ mod tests {
         );
         core.tick(now + Duration::from_secs(20), STALL);
         assert_eq!(
-            core.take(now + Duration::from_secs(20)),
+            core.take(now + Duration::from_secs(20), false),
             None,
             "the first send may still open its turn"
         );
@@ -776,7 +823,7 @@ mod tests {
     fn a_failed_send_keeps_the_batch() {
         let (mut core, now) = (idle_core(), Instant::now());
         core.observe("w", item("i1"), &event("session.question"), now);
-        let batch = core.take(now).unwrap();
+        let batch = core.take(now, false).unwrap();
         core.observe(
             "w",
             item("i1"),

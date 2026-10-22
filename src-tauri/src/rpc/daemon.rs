@@ -818,6 +818,7 @@ fn host_office(daemon: &Arc<Daemon>) {
     };
     let office = super::office::start(parts);
     super::set_office(office.clone());
+    office.fix_loop_sync();
     let _ = daemon.table.set(office.server.clone());
     let _ = daemon.office.set(office);
 }
