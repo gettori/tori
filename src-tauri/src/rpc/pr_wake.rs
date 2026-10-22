@@ -86,7 +86,7 @@ impl Core {
 pub fn wake_for(watches: &[Watch], session: &str) -> Option<(String, Vec<(String, usize)>)> {
     let mine: Vec<&Watch> = watches
         .iter()
-        .filter(|w| w.session == session && !w.pending.is_empty())
+        .filter(|w| w.item.is_none() && w.session == session && !w.pending.is_empty())
         .collect();
     if mine.is_empty() {
         return None;
@@ -102,7 +102,7 @@ pub fn wake_for(watches: &[Watch], session: &str) -> Option<(String, Vec<(String
 pub fn sessions_with_news(watches: &[Watch]) -> Vec<String> {
     let sessions: BTreeMap<&str, ()> = watches
         .iter()
-        .filter(|w| !w.pending.is_empty())
+        .filter(|w| w.item.is_none() && !w.pending.is_empty())
         .map(|w| (w.session.as_str(), ()))
         .collect();
     sessions.into_keys().map(str::to_string).collect()

@@ -57,6 +57,8 @@ pub struct Remark {
     pub body: String,
     // `None` for a comment, the verdict for a review.
     pub review: Option<String>,
+    #[serde(default)]
+    pub bot: bool,
 }
 
 // `None` means the read carried no detail for that part, which keeps the last
@@ -76,6 +78,8 @@ pub enum News {
     CheckFailed {
         name: String,
         url: Option<String>,
+        #[serde(default)]
+        run_id: String,
     },
     Passed,
     Conflicting,
@@ -83,6 +87,8 @@ pub enum News {
         author: String,
         body: String,
         review: Option<String>,
+        #[serde(default)]
+        bot: bool,
     },
     Ended {
         why: String,
@@ -136,6 +142,13 @@ pub struct Watch {
     // Set once the watch has stopped; the record goes after its last delivery.
     #[serde(default)]
     pub ended: bool,
+    // An autopilot item's watch, whose news goes to the autopilot; `session` is empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub item: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stopped: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub reran: BTreeSet<String>,
 }
 
 impl Watch {
@@ -158,6 +171,16 @@ impl Watch {
             pending: Vec::new(),
             tori_posted: BTreeSet::new(),
             ended: false,
+            item: None,
+            stopped: None,
+            reran: BTreeSet::new(),
+        }
+    }
+
+    pub fn for_item(item: &str, url: &str, project: &str, branch: &str, now: u64) -> Self {
+        Self {
+            item: Some(item.to_string()),
+            ..Self::new("", url, project, branch, now)
         }
     }
 
@@ -181,6 +204,7 @@ impl Watch {
         }
         if self.head_sha.as_deref() != Some(snapshot.head_sha.as_str()) {
             self.failed_checks.clear();
+            self.reran.clear();
             self.passed = false;
             self.head_sha = Some(snapshot.head_sha.clone());
         }
@@ -207,6 +231,7 @@ impl Watch {
                 self.pending.push(News::CheckFailed {
                     name: check.name.clone(),
                     url: check.url.clone(),
+                    run_id: check.run_id.clone(),
                 });
             }
         }
@@ -243,6 +268,7 @@ impl Watch {
                     author: remark.author.clone(),
                     body: remark.body.clone(),
                     review: remark.review.clone(),
+                    bot: remark.bot,
                 });
             }
         }
@@ -295,11 +321,15 @@ pub fn render(url: &str, news: &[News]) -> String {
     let mut lines = vec![format!("pull request {url}:")];
     for item in news.iter().take(WAKE_ITEMS) {
         lines.push(match item {
-            News::CheckFailed { name, url: Some(link) } => format!("- check failed: {} ({link})", clean(name)),
-            News::CheckFailed { name, url: None } => format!("- check failed: {}", clean(name)),
+            News::CheckFailed {
+                name, url: Some(link), ..
+            } => format!("- check failed: {} ({link})", clean(name)),
+            News::CheckFailed { name, url: None, .. } => format!("- check failed: {}", clean(name)),
             News::Passed => "- the checks passed".to_string(),
             News::Conflicting => "- now conflicts with its base".to_string(),
-            News::Remark { author, body, review } => {
+            News::Remark {
+                author, body, review, ..
+            } => {
                 let what = review
                     .as_ref()
                     .map_or("comment".to_string(), |v| format!("review ({})", clean(v)));
@@ -331,7 +361,7 @@ fn snippet(body: &str) -> String {
 
 // Text anyone on the pull request wrote goes inside a Tori note: one line, and
 // no tag that could close the note or open a new one.
-fn clean(text: &str) -> String {
+pub(crate) fn clean(text: &str) -> String {
     let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
     let mut out = String::with_capacity(flat.len());
     let mut rest = flat.as_str();
@@ -437,6 +467,10 @@ impl PrWatches {
         self.remove_where(|w| w.session == session && w.url == url)
     }
 
+    pub fn remove_item(&self, item: &str) -> Result<bool, String> {
+        self.remove_where(|w| w.item.as_deref() == Some(item))
+    }
+
     pub fn remove_session(&self, session: &str) -> Result<bool, String> {
         self.remove_where(|w| w.session == session)
     }
@@ -520,10 +554,35 @@ pub fn watched_numbers(owner: &str, repo: &str) -> Vec<u64> {
         let asked = serde_json::json!({ "owner": owner, "repo": repo });
         return crate::rpc::office_call_as("pr_watch.watched", asked).unwrap_or_default();
     }
-    if !crate::settings::pr_watch() {
-        return Vec::new();
-    }
-    numbers_on(&store().list(), owner, repo)
+    numbers_on(&readable(store().list()), owner, repo)
+}
+
+// An item's watch is the fix loop's, which its own switch turns on.
+fn readable(watches: Vec<Watch>) -> Vec<Watch> {
+    readable_with(watches, crate::settings::pr_watch())
+}
+
+fn readable_with(watches: Vec<Watch>, on: bool) -> Vec<Watch> {
+    watches.into_iter().filter(|w| on || w.item.is_some()).collect()
+}
+
+pub fn item_watched(item: &str) -> bool {
+    store()
+        .list()
+        .iter()
+        .any(|w| !w.ended && w.item.as_deref() == Some(item))
+}
+
+pub fn loop_stopped(owner_repo: &str, number: u64) -> Option<String> {
+    stopped_on(store().list(), owner_repo, number)
+}
+
+fn stopped_on(watches: Vec<Watch>, owner_repo: &str, number: u64) -> Option<String> {
+    let (owner, repo) = owner_repo.split_once('/')?;
+    watches
+        .into_iter()
+        .filter(|w| w.item.is_some() && on_repo(w, owner, repo) == Some(number))
+        .find_map(|w| w.stopped)
 }
 
 pub fn fold(owner: &str, repo: &str, read: Read) {
@@ -538,7 +597,9 @@ pub fn fold(owner: &str, repo: &str, read: Read) {
     }
     if let Some(office) = crate::rpc::office() {
         office.pr_rules_tick();
+        office.fix_loop_sync();
     }
+    super::fix_loop::tick();
     super::pr_wake::nudge();
     if polled() != before {
         polled_moved();
@@ -665,13 +726,9 @@ pub fn polled() -> Vec<Polled> {
     if in_window() {
         return crate::rpc::office_call_as("pr_watch.polled", serde_json::json!({})).unwrap_or_default();
     }
-    if !crate::settings::pr_watch() {
-        return Vec::new();
-    }
-    let all: BTreeSet<(String, String)> = store()
-        .list()
+    let all: BTreeSet<(String, String)> = readable(store().list())
         .into_iter()
-        .filter(|w| !w.ended && !w.project.is_empty())
+        .filter(|w| !w.ended && !w.project.is_empty() && !w.branch.is_empty())
         .map(|w| (w.project, w.branch))
         .collect();
     all.into_iter()
@@ -703,6 +760,7 @@ mod tests {
             at_ms,
             body: body.into(),
             review: None,
+            bot: false,
         }
     }
 
@@ -834,7 +892,8 @@ mod tests {
             vec![News::Remark {
                 author: "bob".into(),
                 body: "new".into(),
-                review: None
+                review: None,
+                bot: false
             }]
         );
     }
@@ -886,7 +945,8 @@ mod tests {
             vec![News::Remark {
                 author: "arif".into(),
                 body: "from the browser".into(),
-                review: None
+                review: None,
+                bot: false
             }]
         );
     }
@@ -949,6 +1009,7 @@ mod tests {
                 author: "bot".into(),
                 body: "hi".into(),
                 review: None,
+                bot: false,
             },
             News::Conflicting,
         ];
@@ -988,6 +1049,7 @@ mod tests {
                 author: "bob".into(),
                 body: long.clone(),
                 review: None,
+                bot: false,
             })
             .collect();
         let text = render("u", &news);
@@ -1008,6 +1070,7 @@ mod tests {
                 author: "eve".into(),
                 body: body.into(),
                 review: None,
+                bot: false,
             }],
         );
         let note = crate::rpc::events::from_tori("pr_watch", None, &text);
@@ -1102,9 +1165,54 @@ mod tests {
             vec![News::Remark {
                 author: "amy".into(),
                 body: "rebase?".into(),
-                review: None
+                review: None,
+                bot: false
             }]
         );
+    }
+
+    #[test]
+    fn an_items_watch_folds_like_a_chats_and_is_read_with_watches_off() {
+        let item = Watch::for_item("i1", "https://github.com/o/r/pull/7", "/p", "fix", T0);
+        let chat = on("https://github.com/o/r/pull/8");
+        let red = Snapshot {
+            remarks: Some(vec![remark("c1", "amy", T0 + 1, "why?")]),
+            ..snap("a", Some(vec![check("501", "build", true, true, true)]))
+        };
+        let folded = fold_into(
+            std::slice::from_ref(&item),
+            "o",
+            "r",
+            &Read::Fetched(vec![(7, Some(red))]),
+            T0,
+        );
+        let news = &folded[0].pending;
+        assert!(matches!(&news[0], News::CheckFailed { run_id, .. } if run_id == "501"));
+        assert!(matches!(&news[1], News::Remark { author, .. } if author == "amy"));
+        assert!(folded[0].failed_checks.contains("501"));
+        assert!(!folded[0].passed);
+        let green = snap("b", Some(vec![check("502", "build", true, false, true)]));
+        let passed = fold_into(&folded, "o", "r", &Read::Fetched(vec![(7, Some(green))]), T0);
+        assert!(passed[0].passed && passed[0].pending.contains(&News::Passed));
+
+        let off = readable_with(vec![item.clone(), chat.clone()], false);
+        assert_eq!(off, vec![item.clone()], "the loop's own switch reads it");
+        assert_eq!(numbers_on(&off, "o", "r"), vec![7]);
+        assert_eq!(readable_with(vec![item, chat], true).len(), 2);
+    }
+
+    #[test]
+    fn a_stopped_loop_is_found_by_its_repo_and_number_only() {
+        let mut item = Watch::for_item("i1", "https://github.com/O/R/pull/7", "/p", "fix", T0);
+        item.stopped = Some("ana".into());
+        let mut chat = on("https://github.com/o/r/pull/7");
+        chat.stopped = Some("not an item".into());
+        assert_eq!(
+            stopped_on(vec![chat.clone(), item.clone()], "o/r", 7).as_deref(),
+            Some("ana")
+        );
+        assert_eq!(stopped_on(vec![item.clone()], "o/r", 8), None);
+        assert_eq!(stopped_on(vec![chat], "o/r", 7), None, "a chat's watch has no loop");
     }
 
     #[test]
@@ -1147,7 +1255,8 @@ mod tests {
             vec![News::Remark {
                 author: "arif".into(),
                 body: "one more thing".into(),
-                review: None
+                review: None,
+                bot: false
             }]
         );
         let mut theirs = theirs;

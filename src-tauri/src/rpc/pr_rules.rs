@@ -24,7 +24,7 @@ pub fn session_ended(shown: &HashMap<String, Shown>, session: &str) -> bool {
 pub fn hits(watches: &[Watch], rules: &HashMap<String, PrRule>, gone: impl Fn(&str) -> bool) -> Vec<RuleHit> {
     watches
         .iter()
-        .filter(|w| !w.ended)
+        .filter(|w| !w.ended && w.item.is_none())
         .filter_map(|w| {
             let rule = rules
                 .iter()
@@ -73,6 +73,7 @@ mod tests {
             author: "x".into(),
             body: "b".into(),
             review: Some(state.into()),
+            bot: false,
         }
     }
 

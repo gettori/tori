@@ -486,6 +486,12 @@ impl Dots {
         self.inner().facts.forge.clone()
     }
 
+    pub fn budget_stopped(&self, session: &str) -> bool {
+        let inner = self.inner();
+        let chat = inner.composed_chats.iter().find(|c| c.session == session);
+        chat.is_some_and(|c| c.status == Status::BudgetStopped)
+    }
+
     pub fn tab_of(&self, session: &str) -> Option<String> {
         let inner = self.inner();
         let tab = inner.composed_tabs.iter().find(|t| t.session == session && t.live);

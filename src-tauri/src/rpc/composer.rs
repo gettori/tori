@@ -182,6 +182,10 @@ impl Composer {
         self.dots.all()
     }
 
+    pub fn budget_stopped(&self, session: &str) -> bool {
+        self.dots.budget_stopped(session)
+    }
+
     pub fn tab_of(&self, session: &str) -> Option<String> {
         self.dots.tab_of(session)
     }
