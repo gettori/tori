@@ -367,6 +367,21 @@ pub trait Forge: Send + Sync {
     /// one whose head branch is gone, and its refusal is what the caller shows.
     fn reopen(&self, repo: &RepoRef, number: u64) -> Result<(), ForgeError>;
 
+    /// What failed check run `check_id` left to read: its log's last lines, or
+    /// what the check reported where there is no log.
+    fn check_log(&self, _repo: &RepoRef, _check_id: u64) -> Result<model::CheckLog, ForgeError> {
+        Err(ForgeError::Invalid {
+            message: "this host has no check logs Tori can read".into(),
+        })
+    }
+
+    /// Run failed check run `check_id`'s job again.
+    fn rerun_check(&self, _repo: &RepoRef, _check_id: u64) -> Result<(), ForgeError> {
+        Err(ForgeError::Invalid {
+            message: "this host cannot rerun a check from Tori".into(),
+        })
+    }
+
     /// The same host as an issue source, where it is one. On the forge rather
     /// than beside it so an issue call rides this account's client, renewal
     /// and all.

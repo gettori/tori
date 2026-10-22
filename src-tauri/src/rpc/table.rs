@@ -12,10 +12,11 @@ use super::server::{
     CheckpointDiffParams, CheckpointParams, CheckpointsParams, DigestLookedParams, DigestParams, DraftParams,
     HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams, IssuesAssignedParams,
     ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams, ModelParams, NeedsYouSeenParams,
-    OpenParams, PendingParams, PortParams, PrCreateParams, PrGetParams, PrMergeParams, PrPushParams, PrWatchParams,
-    ProjectIconParams, ProjectSetParams, ProvenanceParams, RevealParams, ReviewMarkParams, ReviewSubmitParams,
-    ScheduleAddParams, ScheduleIdParams, SessionAnswerParams, SetupParams, SpawnParams, SteerParams, TailParams,
-    TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, UNITS_GIT_MAX,
+    OpenParams, PendingParams, PortParams, PrCheckLogParams, PrCreateParams, PrGetParams, PrMergeParams, PrPushParams,
+    PrWatchParams, ProjectIconParams, ProjectSetParams, ProvenanceParams, RevealParams, ReviewMarkParams,
+    ReviewSubmitParams, ScheduleAddParams, ScheduleIdParams, SessionAnswerParams, SetupParams, SpawnParams,
+    SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams,
+    WorktreeParams, UNITS_GIT_MAX,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -572,6 +573,15 @@ pub static METHODS: &[Method] = &[
         refusal: None,
         outward: true,
         call: |b, p, v| b.pr_merge(p, params(v)?),
+    },
+    Method {
+        name: "pr.check_log",
+        description: "What a failed check left to read, by the run id a check_failed wake names: the last 300 lines of a GitHub Actions job's log, or for any other check its summary and details URL, with log_missing saying why there is no log.",
+        params: schema::<PrCheckLogParams>,
+        callers: ANYONE,
+        refusal: None,
+        outward: false,
+        call: |b, p, v| b.pr_check_log(p, params(v)?),
     },
     Method {
         name: "pr.watch",

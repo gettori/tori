@@ -149,6 +149,9 @@ pub trait Transport: Send + Sync {
     fn send(&self, req: HttpRequest) -> Result<HttpResponse, ForgeError>;
 }
 
+// An Actions job's log runs past ureq's 10 MB default, and only its tail is kept.
+const MAX_BODY_BYTES: u64 = 64 * 1024 * 1024;
+
 /// The real one.
 pub struct UreqTransport {
     agent: ureq::Agent,
@@ -186,7 +189,12 @@ impl Transport for UreqTransport {
             .iter()
             .filter_map(|(n, v)| v.to_str().ok().map(|v| (n.as_str().to_string(), v.to_string())))
             .collect();
-        let body = resp.body_mut().read_to_string().map_err(|e| transport(&e))?;
+        let body = resp
+            .body_mut()
+            .with_config()
+            .limit(MAX_BODY_BYTES)
+            .read_to_string()
+            .map_err(|e| transport(&e))?;
         Ok(HttpResponse { status, headers, body })
     }
 }

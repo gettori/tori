@@ -1510,6 +1510,16 @@ pub fn pull_request(project_path: &str, number: u64) -> Result<PullRequest, Forg
     attempt(&c, |f| f.pull_request(&c.repo, number))
 }
 
+pub fn check_log(project_path: &str, check_id: u64) -> Result<super::model::CheckLog, ForgeError> {
+    let c = gated_client(project_path)?;
+    attempt(&c, |f| f.check_log(&c.repo, check_id))
+}
+
+pub fn rerun_check(project_path: &str, check_id: u64) -> Result<(), ForgeError> {
+    let c = gated_client(project_path)?;
+    attempt(&c, |f| f.rerun_check(&c.repo, check_id))
+}
+
 /// One pull request by its number, for a `#` reference to one the open list
 /// does not hold: an old one, or a merged one.
 #[tauri::command(async)]
