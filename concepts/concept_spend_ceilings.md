@@ -1,8 +1,8 @@
 ---
 summary: chatBudget.ts enforces spend ceilings at the turn boundary, refusing the next turn, so a running turn always finishes
 status: current
-updated: 2026-10-04
-source: "\"Defer permissions to the harness, and grow to four harnesses\" (phase 2, branch `chat-fix`); originally Chat surface plan, phase 7 (branch `chat`); `src/utils/chatBudget.ts`; `src/panels/Chat/chatStore.ts` (`pendingFlush`); plan \"Let a session watch a pull request and wake on changes\" (branch watch-pull-request, gettori/tickets#4), `src-tauri/src/rpc/mod.rs:491` (start_pr_wake)"
+updated: 2026-10-22
+source: "\"Defer permissions to the harness, and grow to four harnesses\" (phase 2, branch `chat-fix`); originally Chat surface plan, phase 7 (branch `chat`); `src/utils/chatBudget.ts`; `src/panels/Chat/chatStore.ts` (`pendingFlush`); plan \"Let a session watch a pull request and wake on changes\" (branch watch-pull-request, gettori/tickets#4), `src-tauri/src/rpc/mod.rs:491` (start_pr_wake); gettori/tickets#45 on branch fix-ci-until-green, plan 'Fix CI until green, then ask to merge', commits 40193aae, bb56adef, 02c357b4, 04ab48cd"
 ---
 
 # Spend ceilings
@@ -39,7 +39,11 @@ Not built: gettori/tori#203 plans a refusal point for outward actions from a ses
 
 ## A turn Rust sends reads the ceiling off the reported state (2026-10-04)
 
-A pull request watch's wake is sent by Rust, so it never passes `pendingFlush`. It is held instead by sending only to a chat `SessionStates` reports `idle`: `applyBudget` sets `budgetStopped` right after the crossing turn ends, and `socketState` (`src/utils/sessionStatus.ts:113`) reports a stopped chat as `needs_you`. The 10 s idle debounce covers the moment between the turn ending and the stop landing. The autopilot's own wake does not do this yet. See [[adr_a_pr_watch_rides_the_poll_and_wakes_only_an_idle_chat]].
+A pull request watch's wake is sent by Rust, so it never passes `pendingFlush`. It is held instead by sending only to a chat `SessionStates` reports `idle`: `applyBudget` sets `budgetStopped` right after the crossing turn ends, and `socketState` (`src/utils/sessionStatus.ts:113`) reports a stopped chat as `needs_you`. The 10 s idle debounce covers the moment between the turn ending and the stop landing. See [[adr_a_pr_watch_rides_the_poll_and_wakes_only_an_idle_chat]].
+
+## Rust reads the budget stop off the dots composer (2026-10-22)
+
+The webview already tells Rust each chat's status, `BudgetStopped` included, for the dots ([[adr_rust_composes_the_dot_from_reported_facts]]), so `Composer::budget_stopped(session)` answers it with no new plumbing. The autopilot's runner goes `Idle` on every turn end and knows nothing of budgets, so the watcher now holds its wake while the autopilot is budget-stopped (`Watcher::run`, `take(now, stopped)`), and `session_steer` refuses an agent chat steering a chat held at its ceiling (`steer_past_ceiling`); a person can still steer. Added for the fix loop, whose turns are all Rust-sent ([[component_fix_loop]]).
 
 ## Related
 
