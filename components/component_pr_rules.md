@@ -2,7 +2,7 @@
 summary: rpc/pr_rules.rs matches a watch's pending news to its project's prRules; Office::pr_rules_tick files items and hands the watch over
 status: current
 updated: 2026-10-22
-source: gettori/tickets#44 on branch evernt-automation, plan "Event rules: queue a ship item when a watched PR needs work"; commits 5718fccb, df4d2c0a; src-tauri/src/rpc/pr_rules.rs, src-tauri/src/autopilot.rs, src-tauri/src/rpc/office.rs, src-tauri/src/settings.rs (PrRule), src/panels/ProjectSettings/AutomationsSection.tsx, src/components/Autopilot/Rules.tsx
+source: gettori/tickets#44 on branch evernt-automation, plan "Event rules: queue a ship item when a watched PR needs work"; commits 5718fccb, df4d2c0a; src-tauri/src/rpc/pr_rules.rs, src-tauri/src/autopilot.rs, src-tauri/src/rpc/office.rs, src-tauri/src/settings.rs (PrRule), src/panels/ProjectSettings/AutomationsSection.tsx, src/components/Autopilot/Rules.tsx; gettori/tickets#45 on branch fix-ci-until-green, plan "Fix CI until green, then ask to merge", commits 40193aae, bb56adef, 02c357b4, 04ab48cd
 ---
 
 # Pull request rules
@@ -16,6 +16,8 @@ source: gettori/tickets#44 on branch evernt-automation, plan "Event rules: queue
 - **Filing.** `plan_rule_firings` (pure) needs a contract, and skips while `rule_paused`. An open item on the PR (`pr_key`) takes the hit instead. Otherwise it writes a `Kind::Ship` item with `Source::Rule`, `pr_url` and `url` set, a title like "Changes requested on #N" and the task as its `contract`. `AutopilotStore::fire_rules` runs it under `write`.
 - **The tick.** `Office::pr_rules_tick` runs on the daemon side of `pr_watch::fold`, gated on `autopilot.available`. It calls `Watch::hand_over` on every handed watch and wakes the autopilot through `watcher_picked`.
 - **The pause.** `rule_paused`: `max_per_hour` firings since `resumed_at` that fit inside one hour. `rules.json` holds only `resumed`. `rule_rows` gives the Cockpit each rule with `fired_this_hour` and `paused`.
+
+In a project with the fix loop on, the filed item gets its own item watch from `fix_loop::sync_item` when it lands, a fresh one rather than the handed watch converted, so a failure already on the PR is rerun once before it wakes ([[component_fix_loop]]).
 
 It does not poll, pick a worktree or push. The brief does those, through `worktree_new` with `pr` and `pr.push`.
 

@@ -2,7 +2,7 @@
 summary: rpc/pr_watch.rs keeps what a chat's PR watch last told it; rpc/pr_wake.rs sends the news as one Tori note once the chat is idle
 status: current
 updated: 2026-10-22
-source: plan "Let a session watch a pull request and wake on changes" on branch watch-pull-request, ticket gettori/tickets#4; commits ee33dbd9, ce84d7f4, 158fc1df; src-tauri/src/rpc/pr_watch.rs, src-tauri/src/rpc/pr_wake.rs, src-tauri/src/forge/github.rs (unit_statuses_watching), src-tauri/src/rpc/table.rs (pr.watch, pr.unwatch), src/utils/prWatchMenu.ts
+source: plan "Let a session watch a pull request and wake on changes" on branch watch-pull-request, ticket gettori/tickets#4; commits ee33dbd9, ce84d7f4, 158fc1df; src-tauri/src/rpc/pr_watch.rs, src-tauri/src/rpc/pr_wake.rs, src-tauri/src/forge/github.rs (unit_statuses_watching), src-tauri/src/rpc/table.rs (pr.watch, pr.unwatch), src/utils/prWatchMenu.ts; gettori/tickets#45 on branch fix-ci-until-green, plan "Fix CI until green, then ask to merge", commits 40193aae, bb56adef, 02c357b4, 04ab48cd
 ---
 
 # Pull request watch
@@ -16,6 +16,7 @@ source: plan "Let a session watch a pull request and wake on changes" on branch 
 - **The read.** Each watched number is a `w{n}: pullRequest(number:n)` alias inside the project's one batched status query (`github.rs:838`, `watched_fields` at `github.rs:548`), with recent comments and reviews, check run `databaseId` and `isRequired`. `forge_unit_statuses` folds the read into every watch on the repo (`pr_watch::fold`, `pr_watch.rs:465`). A cache hit or a coalesced flight reads nothing, which counts as neither seen nor unseen.
 - **Delivery.** `pr_wake.rs` sends a session's pending news as one `from_tori("pr_watch")` turn once it has been idle 10 s, at most once per 5 minutes (`Core::due`, `pr_wake.rs:54`). Ready means the setting is on, `SessionStates` reports `idle` and `ChatHost::is_live`. A wake clears only the news it rendered (`Watch::delivered(told)`).
 - **Hand over.** After each fold the daemon runs the [[component_pr_rules]] tick. A watch whose chat is gone, with news its project's rule names, gets `Watch::hand_over`: pending is cleared and it ends with "handed to the autopilot", which a reopened chat hears.
+- **Item watches.** A watch with `item: Some(id)` and an empty `session` belongs to an autopilot item under the fix loop ([[component_fix_loop]]). It folds like a chat's but is read whatever `forge.prWatch` says (`readable`), never reaches `pr_wake` or a PR rule, and carries `stopped` (who stopped the loop) and `reran` (check names rerun on this head, cleared with the head). `item_watched`, `loop_stopped` and `remove_item` answer for it. `News::CheckFailed` carries the `run_id` and `News::Remark` a `bot` flag, read from GraphQL `__typename` ([[gotcha_graphql_spells_a_bot_login_without_the_bot_suffix]]). `polled` leaves out a watch with no branch. After each fold the daemon also runs `Office::fix_loop_sync` and `fix_loop::tick`.
 - **The wake text.** `render` (`pr_watch.rs:266`) lists at most 10 items, quotes third-party text on one line through `clean` (`pr_watch.rs:302`), and says a wake is news, not a merge decision.
 
 It does not own the poll clock, the rate budget or the forge credential ([[concept_forge_rate_budget]]), and it never resumes a chat to deliver.
@@ -36,3 +37,4 @@ It does not own the poll clock, the rate budget or the forge credential ([[conce
 - [[gotcha_forge_epoch_secs_is_not_iso_8601]]: the parser the remark times need
 - [[concept_spend_ceilings]]: why delivery gates on the reported state
 - [[component_pr_rules]]: the rule that hands a watch to the autopilot
+- [[component_fix_loop]]: the item watches and what their news tells the autopilot
