@@ -578,8 +578,8 @@ fn watched_fields(number: u64) -> String {
     format!(
         r#"
   state headRefOid mergeable
-  comments(last: 20) {{ nodes {{ id createdAt body author {{ login }} }} }}
-  reviews(last: 20) {{ nodes {{ id submittedAt state body author {{ login }} comments(first: 1) {{ nodes {{ body }} }} }} }}
+  comments(last: 20) {{ nodes {{ id createdAt body author {{ __typename login }} }} }}
+  reviews(last: 20) {{ nodes {{ id submittedAt state body author {{ __typename login }} comments(first: 1) {{ nodes {{ body }} }} }} }}
   commits(last: 1) {{ nodes {{ commit {{ statusCheckRollup {{ contexts(first: 100) {{ nodes {{
     __typename
     ... on CheckRun {{ databaseId name status conclusion detailsUrl isRequired(pullRequestNumber: {number}) }}
@@ -618,6 +618,11 @@ fn watched_from_graphql(v: &Value) -> crate::rpc::pr_watch::Snapshot {
             .collect()
     });
     let author = |n: &Value| n.get("author").map(|a| str_at(a, "login")).unwrap_or_default();
+    // GraphQL spells a bot's login without the `[bot]` REST adds.
+    let bot = |n: &Value| {
+        n.get("author")
+            .is_some_and(|a| str_at(a, "__typename") == "Bot" || str_at(a, "login").ends_with("[bot]"))
+    };
     let at = |n: &Value, key: &str| {
         n.get(key)
             .and_then(|t| t.as_str())
@@ -633,6 +638,7 @@ fn watched_from_graphql(v: &Value) -> crate::rpc::pr_watch::Snapshot {
                     at_ms: at(n, "createdAt")?,
                     body: str_at(n, "body"),
                     review: None,
+                    bot: bot(n),
                 })
             })
             .collect::<Vec<_>>()
@@ -659,6 +665,7 @@ fn watched_from_graphql(v: &Value) -> crate::rpc::pr_watch::Snapshot {
                     at_ms,
                     body,
                     review: Some(state),
+                    bot: bot(n),
                 })
             })
             .collect::<Vec<_>>()
@@ -1618,9 +1625,9 @@ mod tests {
             r#"{"data":{"repository":{
                 "u0":{"nodes":[]},"e0":{"nodes":[]},
                 "w7":{"state":"OPEN","headRefOid":"h7","mergeable":"CONFLICTING",
-                      "comments":{"nodes":[{"id":"c1","createdAt":"2026-10-04T10:00:00Z","body":"please rebase","author":{"login":"amy"}}]},
+                      "comments":{"nodes":[{"id":"c1","createdAt":"2026-10-04T10:00:00Z","body":"please rebase","author":{"__typename":"User","login":"amy"}},{"id":"c2","createdAt":"2026-10-04T10:01:00Z","body":"preview ready","author":{"login":"vercel[bot]"}}]},
                       "reviews":{"nodes":[
-                        {"id":"r1","submittedAt":"2026-10-04T10:05:00Z","state":"CHANGES_REQUESTED","body":"","author":{"login":"bob"},"comments":{"nodes":[{"body":"off by one here"}]}},
+                        {"id":"r1","submittedAt":"2026-10-04T10:05:00Z","state":"CHANGES_REQUESTED","body":"","author":{"__typename":"Bot","login":"bob"},"comments":{"nodes":[{"body":"off by one here"}]}},
                         {"id":"r2","submittedAt":"2026-10-04T10:06:00Z","state":"COMMENTED","body":"","author":{"login":"bob"},"comments":{"nodes":[]}},
                         {"id":"r3","submittedAt":null,"state":"PENDING","body":"draft","author":{"login":"me"},"comments":{"nodes":[]}}
                       ]},
@@ -1674,14 +1681,20 @@ mod tests {
         let bodies: Vec<&str> = remarks.iter().map(|r| r.body.as_str()).collect();
         assert_eq!(
             bodies,
-            vec!["please rebase", "off by one here"],
+            vec!["please rebase", "preview ready", "off by one here"],
             "empty and pending reviews say nothing"
         );
         assert_eq!(
             remarks[0].at_ms,
             crate::chat::acp_sessions::epoch_from_iso8601("2026-10-04T10:00:00Z").unwrap() * 1000
         );
-        assert_eq!(remarks[1].review.as_deref(), Some("changes_requested"));
+        assert_eq!(remarks[2].review.as_deref(), Some("changes_requested"));
+        let bots: Vec<bool> = remarks.iter().map(|r| r.bot).collect();
+        assert_eq!(
+            bots,
+            vec![false, true, true],
+            "a bot by its login's [bot] or by its type"
+        );
 
         let nine = read(9).expect("9 answered");
         assert_eq!(nine.state, crate::rpc::pr_watch::PrState::Merged);

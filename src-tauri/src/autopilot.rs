@@ -1881,6 +1881,10 @@ impl AutopilotStore {
         })
     }
 
+    pub fn items(&self) -> Vec<Item> {
+        self.lock().items.clone()
+    }
+
     /// The open item `session` works on.
     pub fn item_for_session(&self, session: &str) -> Option<String> {
         self.lock()
@@ -2017,7 +2021,7 @@ pub mod tests {
         }
     }
 
-    fn item(id: &str, state: State) -> Item {
+    pub fn item(id: &str, state: State) -> Item {
         Item {
             id: id.into(),
             kind: Kind::Ship,

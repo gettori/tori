@@ -17,6 +17,7 @@ pub mod daemon;
 pub mod devices;
 pub mod dots;
 pub mod events;
+pub mod fix_loop;
 pub mod frame;
 pub mod hub;
 pub mod launchd;
@@ -94,6 +95,12 @@ pub(crate) fn office() -> Option<&'static Arc<office::Office>> {
 pub(crate) fn rate_limit_heard(session: &str, event: &crate::chat::model::ChatEvent) {
     if let Some(office) = OFFICE.get() {
         office.rate_limit(session, event);
+    }
+}
+
+pub(crate) fn watcher_fix_news(item: &str, whats: Vec<watcher::What>) {
+    if let Some(watcher) = WATCHER.get() {
+        watcher.fix_news(item, whats);
     }
 }
 

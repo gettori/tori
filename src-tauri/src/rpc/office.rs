@@ -17,7 +17,7 @@ use super::runner::Runner;
 use super::server::{self, Server, AUTH_TIMEOUT};
 use super::states::SessionStates;
 use super::watcher::Watcher;
-use crate::autopilot::AutopilotStore;
+use crate::autopilot::{AutopilotStore, Item};
 use crate::desk::Desk;
 use crate::ui::Ui;
 
@@ -57,6 +57,12 @@ pub struct Parts {
 fn autopilot_publisher(hub: &Arc<Hub>, ui: &Ui) -> Box<dyn Fn(Value) + Send + Sync> {
     let (hub, ui) = (hub.clone(), ui.clone());
     Box::new(move |event| {
+        if let Some(item) = event
+            .get("item")
+            .and_then(|i| serde_json::from_value::<Item>(i.clone()).ok())
+        {
+            super::fix_loop::sync_item(&item);
+        }
         ui.emit("autopilot://changed", &event);
         hub.publish(&Channel::Autopilot, event);
     })
@@ -96,8 +102,12 @@ fn start_askpass(
     }
 }
 
-// A chat stopped by its spend ceiling reports needs_you, so it is held here too.
-fn start_watcher(desk: &Desk, autopilot: &Arc<AutopilotStore>, runner: &Arc<Runner>) {
+fn start_watcher(
+    desk: &Desk,
+    autopilot: &Arc<AutopilotStore>,
+    runner: &Arc<Runner>,
+    composer: &Arc<super::composer::Composer>,
+) {
     let status = runner.clone();
     let (watcher, nudges) = Watcher::new(
         desk.states.clone(),
@@ -106,6 +116,7 @@ fn start_watcher(desk: &Desk, autopilot: &Arc<AutopilotStore>, runner: &Arc<Runn
     );
     super::set_watcher(watcher.clone());
     let chats = desk.chats.clone();
+    let composer = Arc::downgrade(composer);
     std::thread::spawn(move || {
         let deliver = |session: &str, text: String| {
             let text = events::from_tori("wake", None, &text);
@@ -117,7 +128,8 @@ fn start_watcher(desk: &Desk, autopilot: &Arc<AutopilotStore>, runner: &Arc<Runn
             )
         };
         let stall = || std::time::Duration::from_secs(u64::from(crate::settings::autopilot().stall_minutes) * 60);
-        watcher.run(nudges, deliver, stall);
+        let stopped = |session: &str| composer.upgrade().is_some_and(|c| c.budget_stopped(session));
+        watcher.run(nudges, deliver, stall, stopped);
     });
 }
 
@@ -212,7 +224,7 @@ pub fn start(parts: Parts) -> Arc<Office> {
     }));
     super::set_stores(asks.clone(), runner.clone(), hub.clone(), desk.states.clone());
     start_radar(&desk, &hub, &autopilot);
-    start_watcher(&desk, &autopilot, &runner);
+    start_watcher(&desk, &autopilot, &runner, &composer);
     start_clock(&autopilot);
     let moved = desk.ui.clone();
     super::pr_watch::on_polled_moved(Box::new(move || moved.emit("pr_watch://changed", ())));
@@ -686,6 +698,11 @@ impl Office {
             eprintln!("tori: pull request watch not saved: {e}");
         }
         super::watcher_picked(&firings.filed);
+    }
+
+    // Every open item, so a loop switched on after its pull request opened still finds it.
+    pub fn fix_loop_sync(&self) {
+        super::fix_loop::sync(&self.autopilot.items());
     }
 
     // Called from the window's forge poll tick, so it rides that cadence and its
