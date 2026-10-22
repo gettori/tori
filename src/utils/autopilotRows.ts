@@ -43,6 +43,10 @@ export type ItemRow = {
   contract?: string | null;
   session_live?: boolean;
   worktree_gone?: boolean;
+  /** Pushes made without asking under the project's fix loop. */
+  fix_pushes?: { sha: string; at: number }[];
+  /** Who stopped the item's fix loop with a review or comment. */
+  fix_stopped?: string;
   /** Derived per read; absent on an item read back from `log.jsonl`. */
   reference?: Reference;
 };
@@ -127,16 +131,31 @@ function workerStatus(item: ItemRow): WorkerStatus {
   return item.session_live === false ? "idle" : "working";
 }
 
-const doing = (item: ItemRow) => item.note || (item.state === "waiting_on_you" ? "Waiting on you" : "Running");
+/** The project's fix attempts, null where its fix loop is off. */
+export type AttemptsOf = (project: string) => number | null;
 
-export const inFlightRows = (items: ItemRow[]): InFlightRow[] =>
+export function fixMark(item: ItemRow, attempts: number | null): string | null {
+  if (attempts === null || item.kind !== "ship" || !item.pr_url) return null;
+  const count = `fix ${item.fix_pushes?.length ?? 0}/${attempts}`;
+  return item.fix_stopped ? `${count}, stopped by @${item.fix_stopped}` : count;
+}
+
+const doing = (item: ItemRow, attemptsOf: AttemptsOf) => {
+  const said = item.note || (item.state === "waiting_on_you" ? "Waiting on you" : "Running");
+  const fix = fixMark(item, attemptsOf(item.project));
+  return fix ? `${said}, ${fix}` : said;
+};
+
+const noLoop: AttemptsOf = () => null;
+
+export const inFlightRows = (items: ItemRow[], attemptsOf: AttemptsOf = noLoop): InFlightRow[] =>
   inFlight(items).map((i) => ({
     ticket: ticketOf(i),
     status: workerStatus(i),
-    doing: doing(i),
+    doing: doing(i, attemptsOf),
   }));
 
-export const workerCards = (items: ItemRow[]): WorkerCard[] =>
+export const workerCards = (items: ItemRow[], attemptsOf: AttemptsOf = noLoop): WorkerCard[] =>
   inFlight(items).map((i) => ({
     ticket: ticketOf(i),
     title: itemTitle(i),
@@ -144,7 +163,7 @@ export const workerCards = (items: ItemRow[]): WorkerCard[] =>
     diff: "",
     status: workerStatus(i),
     log: [],
-    doing: doing(i),
+    doing: doing(i, attemptsOf),
   }));
 
 export function queuedItems(items: ItemRow[]): QueuedItem[] {

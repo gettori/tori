@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
-import { activityOf, applyItem, decisionOf, queuedItems, ruleCards, workerCards, type ItemRow } from "./autopilotRows";
+import {
+  activityOf,
+  applyItem,
+  decisionOf,
+  inFlightRows,
+  queuedItems,
+  ruleCards,
+  workerCards,
+  type ItemRow,
+} from "./autopilotRows";
 import type { SocketAsk } from "./socketAsks";
 
 const row = (over: Partial<ItemRow>): ItemRow => ({
@@ -11,6 +20,25 @@ const row = (over: Partial<ItemRow>): ItemRow => ({
   created: 1,
   updated: 1,
   ...over,
+});
+
+describe("fix loop marks", () => {
+  const pr = "https://github.com/o/r/pull/7";
+  const three = () => 3;
+
+  it("counts fix pushes against the project's attempts and names who stopped it", () => {
+    const pushed = row({ pr_url: pr, note: "Fixing lint", fix_pushes: [{ sha: "a", at: 1 }] });
+    expect(inFlightRows([pushed], three)[0].doing).toBe("Fixing lint, fix 1/3");
+    expect(workerCards([{ ...pushed, fix_stopped: "ana" }], three)[0].doing).toBe(
+      "Fixing lint, fix 1/3, stopped by @ana",
+    );
+  });
+
+  it("marks nothing where the loop is off, before a pull request, or on a review", () => {
+    expect(inFlightRows([row({ pr_url: pr })])[0].doing).toBe("Running");
+    expect(inFlightRows([row({})], three)[0].doing).toBe("Running");
+    expect(inFlightRows([row({ pr_url: pr, kind: "review" })], three)[0].doing).toBe("Running");
+  });
 });
 
 describe("item titles", () => {

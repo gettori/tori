@@ -45,6 +45,17 @@ pub fn plan(next: &mut Watch, stop_on_review: bool) -> Plan {
     plan
 }
 
+pub fn mark_stopped(row: &mut serde_json::Value, watches: &[Watch]) {
+    let Some(id) = row["id"].as_str() else { return };
+    let stopped = watches
+        .iter()
+        .find(|w| w.item.as_deref() == Some(id))
+        .and_then(|w| w.stopped.clone());
+    if let Some(who) = stopped {
+        row["fix_stopped"] = serde_json::json!(who);
+    }
+}
+
 pub fn wants_watch(item: &Item, loop_on: bool) -> bool {
     loop_on
         && item.kind == Kind::Ship
@@ -131,6 +142,7 @@ fn rerun_or_tell(project: &str, id: u64, name: &str) -> Option<What> {
 
 pub fn tick() {
     let mut planned = Vec::new();
+    let mut stopped = Vec::new();
     let saved = pr_watch::store().update(|watches| {
         watches
             .iter()
@@ -139,6 +151,9 @@ pub fn tick() {
                 let stop = crate::settings::pr_fix_loop(&w.project).is_some_and(|l| l.stop_on_review);
                 let mut next = w.clone();
                 let plan = plan(&mut next, stop);
+                if next.stopped != w.stopped {
+                    stopped.extend(w.item.clone());
+                }
                 planned.push((w.item.clone().unwrap_or_default(), w.project.clone(), plan));
                 next
             })
@@ -146,6 +161,9 @@ pub fn tick() {
     });
     if let Err(e) = saved {
         return eprintln!("tori: fix loop news not saved: {e}");
+    }
+    if let Some(office) = crate::rpc::office() {
+        stopped.iter().for_each(|item| office.republish_item(item));
     }
     for (item, project, mut plan) in planned {
         let told: Vec<What> = plan
@@ -293,5 +311,19 @@ mod tests {
             vec!["ship".to_string()],
             "loop turned off"
         );
+    }
+
+    #[test]
+    fn a_row_names_who_stopped_its_loop() {
+        let mut stopped = Watch::for_item("i1", "https://github.com/o/r/pull/7", "/p", "fix", 1);
+        stopped.stopped = Some("ana".into());
+        let running = Watch::for_item("i2", "https://github.com/o/r/pull/8", "/p", "fix", 1);
+        let watches = [stopped, running];
+        let mut row = serde_json::json!({ "id": "i1" });
+        mark_stopped(&mut row, &watches);
+        assert_eq!(row["fix_stopped"], "ana");
+        let mut row = serde_json::json!({ "id": "i2" });
+        mark_stopped(&mut row, &watches);
+        assert!(row.get("fix_stopped").is_none());
     }
 }

@@ -17,7 +17,7 @@ import {
   scheduleCards,
   workerCards,
 } from "../../utils/autopilotRows";
-import { settings } from "../Settings/settingsStore";
+import { prFixLoop, settings } from "../Settings/settingsStore";
 import { emitWith, NAVIGATE, type NavTarget } from "../../utils/events";
 import {
   activity,
@@ -45,6 +45,8 @@ import {
   type RunnerStatus,
 } from "../../utils/autopilotStore";
 import styles from "./Cockpit.module.css";
+
+const attemptsOf = (project: string) => prFixLoop(project)?.maxAttempts ?? null;
 
 // One tab id for every view of the autopilot: a detach names the tab it was
 // attached from, and a remount on a new session is still this view.
@@ -138,7 +140,7 @@ export function CockpitView() {
         state={autopilotNow()}
         hero={hero()}
         scene={scene()}
-        workers={workerCards(items())}
+        workers={workerCards(items(), attemptsOf)}
         emptyWorkers="The deck is quiet. Hand the autopilot a ticket or a PR."
         queue={queuedItems(items())}
         schedules={scheduleCards(schedules(), items(), now())}
@@ -197,7 +199,7 @@ export function CockpitPopup() {
         state={autopilotNow()}
         stateLine={STATE_LINE[autopilotNow()]}
         decisions={decisionCards()}
-        inFlight={inFlightRows(items())}
+        inFlight={inFlightRows(items(), attemptsOf)}
         messages={thread()}
         renderReply={(text) => <Markdown text={text} cwd={runner().cwd ?? ""} />}
         error={runner().error ?? undefined}

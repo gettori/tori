@@ -1881,6 +1881,13 @@ impl AutopilotStore {
         })
     }
 
+    pub fn republish(&self, id: &str) {
+        let item = self.lock().items.iter().find(|i| i.id == id).cloned();
+        if let Some(item) = item {
+            self.changed(&item, None);
+        }
+    }
+
     pub fn items(&self) -> Vec<Item> {
         self.lock().items.clone()
     }
