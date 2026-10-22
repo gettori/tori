@@ -355,6 +355,8 @@ export type Settings = {
   reviewRequested?: Record<string, ReviewRule>;
   /** Mirrors `PrRule` in src-tauri/src/settings.rs, keyed by project path. */
   prRules?: Record<string, PrRule>;
+  /** Mirrors `PrFixLoop` in src-tauri/src/settings.rs, keyed by project path. No entry is off. */
+  prFixLoop?: Record<string, PrFixLoop>;
   /** Mirrors `ExecutionLevel` in src-tauri/src/settings.rs, keyed by project path. */
   execution?: Record<string, ExecutionLevel>;
   /** Mirrors `Unattended` in src-tauri/src/settings.rs. Null is the built-in list. */
@@ -386,6 +388,11 @@ export type PrEvent = "changes_requested" | "check_failed" | "conflicting";
 export type PrRule = {
   on: PrEvent[];
   maxPerHour: number;
+};
+
+export type PrFixLoop = {
+  maxAttempts: number;
+  stopOnReview: boolean;
 };
 
 /** What a project runs in the worktrees Tori creates. An empty command runs
@@ -1010,6 +1017,25 @@ export function setPrRule(projectPath: string, patch: Partial<PrRule>): Promise<
     ...settings,
     prRules: { ...settings.prRules, [projectPath]: { ...prRule(projectPath), ...patch } },
   });
+}
+
+const FIX_LOOP_DEFAULT: PrFixLoop = { maxAttempts: 3, stopOnReview: true };
+
+export function prFixLoop(projectPath: string): PrFixLoop | null {
+  const loop = settings.prFixLoop?.[projectPath];
+  return loop ? { ...FIX_LOOP_DEFAULT, ...loop } : null;
+}
+
+export function setPrFixLoop(projectPath: string, patch: Partial<PrFixLoop>): Promise<void> {
+  return saveSettings({
+    ...settings,
+    prFixLoop: { ...settings.prFixLoop, [projectPath]: { ...FIX_LOOP_DEFAULT, ...prFixLoop(projectPath), ...patch } },
+  });
+}
+
+export function clearPrFixLoop(projectPath: string): Promise<void> {
+  const { [projectPath]: _, ...rest } = settings.prFixLoop ?? {};
+  return saveSettings({ ...settings, prFixLoop: rest });
 }
 
 export function executionLevel(projectPath: string): ExecutionLevel {

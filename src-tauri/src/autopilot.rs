@@ -118,6 +118,14 @@ pub struct Item {
     pub gone_upstream: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub picked_from: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fix_pushes: Vec<FixPush>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FixPush {
+    pub sha: String,
+    pub at: u64,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -356,6 +364,7 @@ fn apply(
                         picked_by: None,
                         gone_upstream: false,
                         picked_from: None,
+                        fix_pushes: Vec::new(),
                     });
                     items.len() - 1
                 }
@@ -418,6 +427,22 @@ fn pr_key(item: &Item) -> Option<PrKey> {
         return Some((repo.to_lowercase(), *number));
     }
     pr_key_of_url(item.pr_url.as_deref()?)
+}
+
+fn reserve_fix_push(items: &mut [Item], key: &PrKey, max_attempts: u32, sha: &str, now: u64) -> Result<Item, String> {
+    let item = items
+        .iter_mut()
+        .find(|i| i.kind == Kind::Ship && !i.state.terminal() && pr_key(i).as_ref() == Some(key))
+        .ok_or("no open autopilot ship item holds this pull request")?;
+    if item.fix_pushes.len() >= max_attempts as usize {
+        return Err(format!("item {} has used its {max_attempts} fix attempts", item.id));
+    }
+    item.fix_pushes.push(FixPush {
+        sha: sha.into(),
+        at: now,
+    });
+    item.updated = now;
+    Ok(item.clone())
 }
 
 // A GitHub `/pull/N` or GitLab `/-/merge_requests/N` URL.
@@ -548,6 +573,7 @@ pub fn plan_firings<Tz: chrono::TimeZone>(
             picked_by: None,
             gone_upstream: false,
             picked_from: None,
+            fix_pushes: Vec::new(),
         };
         items.push(item.clone());
         firings.queued.push(item);
@@ -725,6 +751,7 @@ pub fn plan_rule_firings(
             picked_by: None,
             gone_upstream: false,
             picked_from: None,
+            fix_pushes: Vec::new(),
         };
         firings
             .handed
@@ -923,6 +950,7 @@ pub fn plan_pickup(
                 picked_by: Some(account.to_string()),
                 gone_upstream: false,
                 picked_from: list.search.clone(),
+                fix_pushes: Vec::new(),
             };
             items.push(item.clone());
             changed.push(item);
@@ -981,6 +1009,7 @@ pub fn plan_rule_review(
             picked_by: None,
             gone_upstream: false,
             picked_from: None,
+            fix_pushes: Vec::new(),
         });
         items.len() - 1
     });
@@ -1817,6 +1846,41 @@ impl AutopilotStore {
         }
     }
 
+    pub fn reserve_fix_push(&self, key: &PrKey, max_attempts: u32, sha: &str) -> Result<String, String> {
+        let mut refusal = None;
+        let reserved = self
+            .write(
+                |items| match reserve_fix_push(items, key, max_attempts, sha, now_ms()) {
+                    Ok(item) => Ok(vec![item]),
+                    Err(why) => {
+                        refusal = Some(why);
+                        Ok(Vec::new())
+                    }
+                },
+            )
+            .map_err(|e| e.to_string())?;
+        match (refusal, reserved.into_iter().next()) {
+            (Some(why), _) => Err(why),
+            (None, Some(item)) => Ok(item.id),
+            (None, None) => Err("the fix push was not recorded".into()),
+        }
+    }
+
+    // A push that never reached origin gives its attempt back.
+    pub fn release_fix_push(&self, id: &str, sha: &str) -> Result<Vec<Item>, UpdateError> {
+        self.write(|items| {
+            Ok(items
+                .iter_mut()
+                .filter(|i| i.id == id)
+                .filter_map(|i| {
+                    let at = i.fix_pushes.iter().rposition(|p| p.sha == sha)?;
+                    i.fix_pushes.remove(at);
+                    Some(i.clone())
+                })
+                .collect())
+        })
+    }
+
     /// The open item `session` works on.
     pub fn item_for_session(&self, session: &str) -> Option<String> {
         self.lock()
@@ -1975,6 +2039,7 @@ pub mod tests {
             picked_by: None,
             gone_upstream: false,
             picked_from: None,
+            fix_pushes: Vec::new(),
         }
     }
 
@@ -2006,6 +2071,59 @@ pub mod tests {
             n += 1;
             format!("r{n}")
         })
+    }
+
+    #[test]
+    fn a_fix_push_lands_on_an_open_ship_item_under_its_cap() {
+        let key: PrKey = ("o/r".into(), 7);
+        let mut items = vec![item("a", State::Running)];
+        assert_eq!(
+            reserve_fix_push(&mut items, &key, 2, "s1", 5).map(|i| i.fix_pushes.len()),
+            Ok(1)
+        );
+        assert_eq!(
+            reserve_fix_push(&mut items, &("o/r".into(), 8), 2, "s2", 6).unwrap_err(),
+            "no open autopilot ship item holds this pull request",
+            "another pull request"
+        );
+        assert!(reserve_fix_push(&mut items, &key, 2, "s2", 6).is_ok());
+        assert_eq!(
+            reserve_fix_push(&mut items, &key, 2, "s3", 7).unwrap_err(),
+            "item a has used its 2 fix attempts"
+        );
+        assert_eq!(items[0].fix_pushes.len(), 2, "a refusal records nothing");
+
+        let mut review = item("r", State::Running);
+        review.kind = Kind::Review;
+        assert!(
+            reserve_fix_push(&mut [review], &key, 3, "s", 1).is_err(),
+            "a review request is someone else's"
+        );
+        assert!(
+            reserve_fix_push(&mut [item("d", State::Done)], &key, 3, "s", 1).is_err(),
+            "a closed item"
+        );
+    }
+
+    #[test]
+    fn a_fix_push_is_counted_on_disk_and_a_failed_one_given_back() {
+        let dir = temp_dir("fix-push");
+        let store = quiet(&dir);
+        store
+            .write(|items| {
+                items.push(item("a", State::Running));
+                Ok(items.clone())
+            })
+            .unwrap();
+        let key: PrKey = ("o/r".into(), 7);
+        assert_eq!(store.reserve_fix_push(&key, 1, "abc"), Ok("a".into()));
+        assert_eq!(
+            quiet(&dir).reserve_fix_push(&key, 1, "def"),
+            Err("item a has used its 1 fix attempts".into())
+        );
+        let store = quiet(&dir);
+        store.release_fix_push("a", "abc").unwrap();
+        assert_eq!(store.reserve_fix_push(&key, 1, "def"), Ok("a".into()));
     }
 
     #[test]
@@ -3346,6 +3464,7 @@ pub mod tests {
             picked_by: None,
             gone_upstream: false,
             picked_from: None,
+            fix_pushes: Vec::new(),
         }
     }
 

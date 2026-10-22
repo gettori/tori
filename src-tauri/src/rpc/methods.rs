@@ -647,6 +647,34 @@ fn forge_refused(e: crate::forge::ForgeError) -> RpcError {
     refused(e.to_string())
 }
 
+#[derive(Debug, PartialEq)]
+enum FixGate {
+    Approval,
+    Refused(String),
+    Unapproved { item: String },
+}
+
+// Under a project's fix loop the autopilot pushes to its own ship item's pull
+// request without an approval, up to the cap.
+fn fix_gate(
+    caller: &Principal,
+    autopilot: Option<&str>,
+    approval_id: Option<&str>,
+    fix_loop: Option<crate::settings::PrFixLoop>,
+    reserve: impl FnOnce(u32) -> Result<String, String>,
+) -> FixGate {
+    let Principal::Session(Caller::Chat(id)) = caller else {
+        return FixGate::Approval;
+    };
+    let Some(fix_loop) = fix_loop.filter(|_| approval_id.is_none() && Some(id.as_str()) == autopilot) else {
+        return FixGate::Approval;
+    };
+    match reserve(fix_loop.max_attempts) {
+        Ok(item) => FixGate::Unapproved { item },
+        Err(why) => FixGate::Refused(why),
+    }
+}
+
 fn pushable(pr: &crate::forge::model::PullRequest, head: &str) -> Result<(), String> {
     if pr.state != crate::forge::model::PrState::Open {
         return Err(format!(
@@ -2064,28 +2092,51 @@ impl Backend for DaemonBackend {
     fn pr_push(&self, principal: &Principal, params: PrPushParams) -> Result<Value, RpcError> {
         let draft = params.draft();
         let askpass = self.git_askpass()?;
-        self.gated_outward(
-            principal,
-            params.project,
-            draft,
-            params.approval_id.as_deref(),
-            |project| {
-                let pr = crate::forge::commands::pull_request(project, params.number).map_err(forge_refused)?;
-                pushable(&pr, &params.head).map_err(refused)?;
-                let lock = crate::exec::repo_lock(project);
-                let _held = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-                crate::git::push_commit(
-                    project,
-                    "origin",
-                    &params.head,
-                    &params.head_sha,
-                    askpass.sock_path(),
-                    askpass.token(),
-                )
-                .map_err(refused)?;
-                Ok(json!({}))
-            },
-        )
+        let push = |project: &str| {
+            let pr = crate::forge::commands::pull_request(project, params.number).map_err(forge_refused)?;
+            pushable(&pr, &params.head).map_err(refused)?;
+            let lock = crate::exec::repo_lock(project);
+            let _held = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            crate::git::push_commit(
+                project,
+                "origin",
+                &params.head,
+                &params.head_sha,
+                askpass.sock_path(),
+                askpass.token(),
+            )
+            .map_err(refused)?;
+            Ok(json!({}))
+        };
+        let project = self.project(principal, params.project.clone())?;
+        // A dev build's Keychain prompt needs someone at the window, which the approval path waits for.
+        let gate = if cfg!(debug_assertions) && !self.screen.attached() {
+            FixGate::Approval
+        } else {
+            fix_gate(
+                principal,
+                self.runner.status().session.as_deref(),
+                params.approval_id.as_deref(),
+                crate::settings::pr_fix_loop(&project),
+                |max| {
+                    let key = (origin_of(&project).to_lowercase(), params.number);
+                    self.autopilot.reserve_fix_push(&key, max, &params.head_sha)
+                },
+            )
+        };
+        match gate {
+            FixGate::Approval => {
+                self.gated_outward(principal, Some(project), draft, params.approval_id.as_deref(), push)
+            }
+            FixGate::Refused(why) => Err(refused(format!(
+                "{why}, so this push needs an approval: call ask_create with the pr.push draft"
+            ))),
+            FixGate::Unapproved { item } => push(&project).inspect_err(|_| {
+                if let Err(e) = self.autopilot.release_fix_push(&item, &params.head_sha) {
+                    eprintln!("tori: failed fix push on {item} still counted: {e}");
+                }
+            }),
+        }
     }
 
     fn autopilot_state(&self) -> Result<Value, RpcError> {
@@ -2461,6 +2512,41 @@ mod tests {
             None
         );
         assert_eq!(last_assistant_text(&[]), None);
+    }
+
+    #[test]
+    fn a_fix_push_skips_the_approval_only_for_the_autopilot_under_a_loop() {
+        let pilot = Some("pilot");
+        let autopilot = Principal::Session(Caller::Chat("pilot".into()));
+        let worker = Principal::Session(Caller::Chat("worker".into()));
+        let on = Some(crate::settings::PrFixLoop::default());
+        let found = |max: u32| {
+            assert_eq!(max, 3);
+            Ok::<_, String>("item".to_string())
+        };
+        let unapproved = FixGate::Unapproved { item: "item".into() };
+        assert_eq!(fix_gate(&autopilot, pilot, None, on, found), unapproved);
+        assert_eq!(
+            fix_gate(&worker, pilot, None, on, found),
+            FixGate::Approval,
+            "a worker caller"
+        );
+        assert_eq!(
+            fix_gate(&autopilot, pilot, None, None, found),
+            FixGate::Approval,
+            "no loop"
+        );
+        assert_eq!(
+            fix_gate(&autopilot, pilot, Some("a1"), on, found),
+            FixGate::Approval,
+            "an approval takes its own path"
+        );
+        for why in ["no open autopilot ship item", "used its 3 fix attempts"] {
+            assert_eq!(
+                fix_gate(&autopilot, pilot, None, on, |_| Err(why.into())),
+                FixGate::Refused(why.into())
+            );
+        }
     }
 
     #[test]
