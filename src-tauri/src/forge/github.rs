@@ -29,9 +29,9 @@ use super::http::{
     HttpResponse, NestedSpec, Recording, Transport, PAGE_CAP,
 };
 use super::model::{
-    AuthState, Capabilities, CheckContext, CheckRollup, CheckState, DiffSide, DraftComment, FileStatus, Grant,
-    MergeableState, OrgAccess, Paged, PrCounts, PrFile, PrReviewCounts, PrStack, PrState, PrSummary, PullRequest,
-    RateSnapshot, RepoRef, ReviewComment, ReviewDecision, ReviewEvent, ReviewThread, UnitStatus, Viewer,
+    AuthState, Capabilities, CheckContext, CheckLog, CheckRollup, CheckState, DiffSide, DraftComment, FileStatus,
+    Grant, MergeableState, OrgAccess, Paged, PrCounts, PrFile, PrReviewCounts, PrStack, PrState, PrSummary,
+    PullRequest, RateSnapshot, RepoRef, ReviewComment, ReviewDecision, ReviewEvent, ReviewThread, UnitStatus, Viewer,
 };
 use super::{CreatePr, Forge, ForgeError, MergeMethod};
 use serde_json::Value;
@@ -137,6 +137,12 @@ impl GitHubForge {
             return Ok(Value::Null);
         }
         serde_json::from_str(&resp.body).map_err(|e| ForgeError::Malformed { message: e.to_string() })
+    }
+
+    fn check_run(&self, repo: &RepoRef, check_id: u64) -> Result<Value, ForgeError> {
+        self.require_token()?;
+        let path = format!("/repos/{}/{}/check-runs/{check_id}", repo.owner, repo.repo);
+        self.send(self.rest("GET", &path, None))
     }
 
     fn rest(&self, method: &'static str, path: &str, body: Option<Value>) -> HttpRequest {
@@ -1208,8 +1214,91 @@ mutation($threadId:ID!,$body:String!){
         Ok(())
     }
 
+    fn check_log(&self, repo: &RepoRef, check_id: u64) -> Result<CheckLog, ForgeError> {
+        let run = self.check_run(repo, check_id)?;
+        let mut out = CheckLog {
+            name: run["name"].as_str().unwrap_or_default().to_string(),
+            details_url: run["details_url"].as_str().map(str::to_string),
+            summary: check_summary(&run["output"]),
+            log: None,
+            log_lines_dropped: 0,
+            log_missing: None,
+        };
+        if !is_actions_job(&run) {
+            out.log_missing = Some("not a GitHub Actions job, so there is no log to read; see the details URL".into());
+            return Ok(out);
+        }
+        // The answer is a redirect to the log's own host, which ureq follows without the token.
+        let path = format!("/repos/{}/{}/actions/jobs/{check_id}/logs", repo.owner, repo.repo);
+        let resp = self.transport.send(self.rest("GET", &path, None))?;
+        match classify(&resp) {
+            None => {
+                let (tail, dropped) = log_tail(&resp.body, LOG_TAIL_LINES);
+                out.log = Some(tail);
+                out.log_lines_dropped = dropped;
+            }
+            Some(ForgeError::NotFound | ForgeError::Api { status: 410, .. }) => {
+                out.log_missing = Some("the log is gone: GitHub expired or deleted it".into());
+            }
+            Some(ForgeError::Forbidden { message }) => {
+                return Err(ForgeError::Forbidden {
+                    message: format!(
+                        "this credential cannot read Actions logs, which needs Actions read access: {message}"
+                    ),
+                });
+            }
+            Some(e) => return Err(e),
+        }
+        Ok(out)
+    }
+
+    fn rerun_check(&self, repo: &RepoRef, check_id: u64) -> Result<(), ForgeError> {
+        let run = self.check_run(repo, check_id)?;
+        if !is_actions_job(&run) {
+            return Err(ForgeError::Invalid {
+                message: format!("check run {check_id} is not a GitHub Actions job, so Tori cannot rerun it"),
+            });
+        }
+        let path = format!("/repos/{}/{}/actions/jobs/{check_id}/rerun", repo.owner, repo.repo);
+        self.send(self.rest("POST", &path, Some(serde_json::json!({}))))?;
+        Ok(())
+    }
+
     fn issues(&self) -> Option<&dyn crate::issues::IssueSource> {
         Some(self)
+    }
+}
+
+const LOG_TAIL_LINES: usize = 300;
+
+fn is_actions_job(run: &Value) -> bool {
+    run["app"]["slug"].as_str() == Some("github-actions")
+}
+
+fn check_summary(output: &Value) -> Option<String> {
+    let parts: Vec<&str> = ["title", "summary", "text"]
+        .iter()
+        .filter_map(|k| output[k].as_str().map(str::trim).filter(|t| !t.is_empty()))
+        .collect();
+    (!parts.is_empty()).then(|| parts.join("\n\n"))
+}
+
+fn log_tail(body: &str, keep: usize) -> (String, usize) {
+    let lines: Vec<&str> = body.lines().collect();
+    let dropped = lines.len().saturating_sub(keep);
+    let tail = lines[dropped..]
+        .iter()
+        .map(|line| crate::auth::strip_ansi(strip_timestamp(line)).replace(|c: char| c.is_control() && c != '\t', ""))
+        .collect::<Vec<_>>()
+        .join("\n");
+    (tail, dropped)
+}
+
+fn strip_timestamp(line: &str) -> &str {
+    let line = line.strip_prefix('\u{feff}').unwrap_or(line);
+    match line.split_once(' ') {
+        Some((stamp, rest)) if stamp.len() >= 20 && stamp.ends_with('Z') && stamp.as_bytes()[10] == b'T' => rest,
+        _ => line,
     }
 }
 
@@ -2043,6 +2132,83 @@ mod tests {
                 message: "At least 1 approving review is required by reviewers with write access.".into()
             }
         );
+    }
+
+    const ACTIONS_RUN: &str = r#"{"name":"test","details_url":"https://github.com/skarif2/tori/actions/runs/1/job/9","app":{"slug":"github-actions"},"output":{"title":null,"summary":null,"text":null}}"#;
+
+    #[test]
+    fn an_actions_check_log_is_its_cleaned_tail() {
+        let mut log = String::from("\u{feff}2026-10-22T10:00:00.1234567Z first\n");
+        for n in 0..LOG_TAIL_LINES {
+            log.push_str(&format!("2026-10-22T10:00:01.0000000Z \u{1b}[31mline {n}\u{1b}[0m\n"));
+        }
+        let (f, stub) = forge(vec![
+            StubTransport::json(200, ACTIONS_RUN),
+            StubTransport::with_headers(200, &[("Content-Type", "text/plain")], &log),
+        ]);
+        let got = f.check_log(&repo(), 9).unwrap();
+        assert_eq!(got.name, "test");
+        assert_eq!(got.log_lines_dropped, 1);
+        let tail = got.log.unwrap();
+        assert!(tail.starts_with("line 0\n"), "got {tail:?}");
+        assert!(tail.ends_with(&format!("line {}", LOG_TAIL_LINES - 1)));
+        assert!(stub.requests()[1]
+            .url
+            .ends_with("/repos/skarif2/tori/actions/jobs/9/logs"));
+    }
+
+    #[test]
+    fn another_apps_check_has_its_summary_and_no_log() {
+        let (f, stub) = forge(vec![StubTransport::json(
+            200,
+            r#"{"name":"ci/circleci","details_url":"https://circleci.com/x","app":{"slug":"circleci-checks"},"output":{"title":"2 failed","summary":"api tests","text":""}}"#,
+        )]);
+        let got = f.check_log(&repo(), 5).unwrap();
+        assert_eq!(got.summary.as_deref(), Some("2 failed\n\napi tests"));
+        assert_eq!(got.details_url.as_deref(), Some("https://circleci.com/x"));
+        assert!(got.log.is_none() && got.log_missing.is_some());
+        assert_eq!(stub.request_count(), 1, "nothing asked of the Actions endpoints");
+    }
+
+    #[test]
+    fn a_log_that_is_gone_says_so_and_a_refused_one_names_the_permission() {
+        for status in [404, 410] {
+            let (f, _stub) = forge(vec![
+                StubTransport::json(200, ACTIONS_RUN),
+                StubTransport::json(status, r#"{"message":"Not Found"}"#),
+            ]);
+            let got = f.check_log(&repo(), 9).unwrap();
+            assert!(got.log.is_none());
+            assert_eq!(
+                got.log_missing.as_deref(),
+                Some("the log is gone: GitHub expired or deleted it")
+            );
+        }
+        let (f, _stub) = forge(vec![
+            StubTransport::json(200, ACTIONS_RUN),
+            StubTransport::json(403, r#"{"message":"Resource not accessible by personal access token"}"#),
+        ]);
+        let err = f.check_log(&repo(), 9).unwrap_err();
+        assert!(format!("{err}").contains("Actions read access"), "got {err}");
+    }
+
+    #[test]
+    fn a_failed_actions_job_is_rerun_and_another_apps_check_is_refused() {
+        let (f, stub) = forge(vec![
+            StubTransport::json(200, ACTIONS_RUN),
+            StubTransport::json(201, "{}"),
+        ]);
+        f.rerun_check(&repo(), 9).unwrap();
+        let sent = stub.requests();
+        assert_eq!(sent[1].method, "POST");
+        assert!(sent[1].url.ends_with("/repos/skarif2/tori/actions/jobs/9/rerun"));
+
+        let (f, stub) = forge(vec![StubTransport::json(
+            200,
+            r#"{"name":"ci/circleci","app":{"slug":"circleci-checks"},"output":{}}"#,
+        )]);
+        assert!(matches!(f.rerun_check(&repo(), 5), Err(ForgeError::Invalid { .. })));
+        assert_eq!(stub.request_count(), 1);
     }
 
     #[test]
