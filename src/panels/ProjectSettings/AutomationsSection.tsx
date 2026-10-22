@@ -6,6 +6,7 @@ import Button from "../../components/Button/Button";
 import CheckboxGroup, { type CheckboxOption } from "../../components/CheckboxGroup/CheckboxGroup";
 import Icon from "../../components/Icon/Icon";
 import Select, { type SelectOption } from "../../components/Select/Select";
+import Switch from "../../components/Switch/Switch";
 import { enabledChatAgents } from "../../utils/agentEnabled";
 import {
   agentReady,
@@ -26,8 +27,11 @@ import { paletteProviders } from "../Chat/agentPaletteData";
 import { probeOnHighlight, recheckAgent } from "../Chat/draftProbe";
 import { Stepper } from "../Settings/components/paneKit";
 import {
+  clearPrFixLoop,
+  prFixLoop,
   prRule,
   reviewRule,
+  setPrFixLoop,
   setPrRule,
   setReviewRule,
   type PrEvent,
@@ -76,6 +80,49 @@ function PrRuleSection(props: { projectPath: string }) {
             aria-label="Pull request rule, at most per hour"
           />
         </Row>
+      </Show>
+    </Section>
+  );
+}
+
+function FixLoopSection(props: { projectPath: string }) {
+  const loop = () => prFixLoop(props.projectPath);
+  return (
+    <Section heading="Keep fixing until checks pass">
+      <Row
+        label="Push fixes without asking"
+        hint="For the autopilot's pull requests in this project. A failed check goes to its worker with the log, and the fix is pushed without asking you, up to the attempts below. Merging always asks. Needs the autopilot on."
+      >
+        <Switch
+          checked={loop() !== null}
+          onChange={(on) => void (on ? setPrFixLoop(props.projectPath, {}) : clearPrFixLoop(props.projectPath))}
+          aria-label="Push fixes without asking"
+        />
+      </Row>
+      <Show when={loop()}>
+        {(on) => (
+          <>
+            <Row label="Attempts" hint="Pushes per pull request before each push asks you again.">
+              <Stepper
+                value={on().maxAttempts}
+                min={1}
+                max={10}
+                onChange={(v) => void setPrFixLoop(props.projectPath, { maxAttempts: v })}
+                aria-label="Fix attempts"
+              />
+            </Row>
+            <Row
+              label="Stop when a person reviews or comments"
+              hint="After that every push asks you. Bots and approvals do not stop it."
+            >
+              <Switch
+                checked={on().stopOnReview}
+                onChange={(stopOnReview) => void setPrFixLoop(props.projectPath, { stopOnReview })}
+                aria-label="Stop when a person reviews or comments"
+              />
+            </Row>
+          </>
+        )}
       </Show>
     </Section>
   );
@@ -244,6 +291,7 @@ export default function AutomationsSection(props: { projectPath: string }) {
         </Show>
       </Section>
       <PrRuleSection projectPath={props.projectPath} />
+      <FixLoopSection projectPath={props.projectPath} />
     </>
   );
 }

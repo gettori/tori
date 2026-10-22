@@ -989,6 +989,10 @@ pub struct Settings {
     /// chat is gone, keyed by project path. No entry is off.
     #[serde(default, deserialize_with = "lenient_map")]
     pub pr_rules: std::collections::HashMap<String, PrRule>,
+    /// Which projects let the autopilot push fixes to a failing pull request
+    /// without asking, keyed by project path. No entry is off.
+    #[serde(default, deserialize_with = "lenient_map")]
+    pub pr_fix_loop: std::collections::HashMap<String, PrFixLoop>,
     /// How each project's sessions run, keyed by project path. No entry is the
     /// default level.
     #[serde(default, deserialize_with = "lenient_execution")]
@@ -1228,6 +1232,35 @@ impl Default for PrRule {
 
 pub fn pr_rules() -> std::collections::HashMap<String, PrRule> {
     load_from(&settings_path()).pr_rules
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PrFixLoop {
+    #[serde(default = "default_fix_attempts")]
+    pub max_attempts: u32,
+    #[serde(default = "default_true")]
+    pub stop_on_review: bool,
+}
+
+fn default_fix_attempts() -> u32 {
+    3
+}
+
+impl Default for PrFixLoop {
+    fn default() -> Self {
+        Self {
+            max_attempts: default_fix_attempts(),
+            stop_on_review: true,
+        }
+    }
+}
+
+pub fn pr_fix_loop(path: &str) -> Option<PrFixLoop> {
+    load_from(&settings_path())
+        .pr_fix_loop
+        .get(path.trim_end_matches('/'))
+        .copied()
 }
 
 /// When a project's sessions run in the agent's own sandbox.
@@ -1821,6 +1854,31 @@ mod tests {
 
         save_to(&p, &s).unwrap();
         assert_eq!(load_from(&p).pr_rules, s.pr_rules);
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn a_fix_loop_round_trips_and_a_missing_key_is_off() {
+        let p = tmp_file();
+        std::fs::write(
+            &p,
+            r#"{"git":{"fetchEveryMinutes":5},"prFixLoop":{"/r/a":{},"/r/b":{"maxAttempts":5,"stopOnReview":false},"/r/c":{"maxAttempts":"x"}}}"#,
+        )
+        .unwrap();
+        let s = load_from(&p);
+        assert_eq!(s.pr_fix_loop.get("/r/a"), Some(&PrFixLoop::default()));
+        assert_eq!(
+            s.pr_fix_loop.get("/r/b"),
+            Some(&PrFixLoop {
+                max_attempts: 5,
+                stop_on_review: false,
+            })
+        );
+        assert!(!s.pr_fix_loop.contains_key("/r/c"), "a broken entry reads off");
+        assert!(!s.pr_fix_loop.contains_key("/r/d"));
+
+        save_to(&p, &s).unwrap();
+        assert_eq!(load_from(&p).pr_fix_loop, s.pr_fix_loop);
         let _ = std::fs::remove_file(&p);
     }
 
