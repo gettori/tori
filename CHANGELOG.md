@@ -10,6 +10,28 @@ matching section here fails the release rather than publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.1022.0-alpha
+
+- When a Claude account's login has expired, the chat error now has a **Sign in again** button, so you don't need to sign out and back in from Settings.
+- Autopilot schedules: `tori autopilot schedule add --name <text> --cron <expr> --prompt <text>` (or `--issue <key>`) queues a ship item for the autopilot at each cron time, in your Mac's local time. Every pull request, review and merge still waits for your approval.
+- A time your Mac slept through runs once when it wakes, never once per missed time.
+- A schedule runs one at a time: while its last run is still open, the next time is skipped and the open item says so.
+- After three failed runs in a row a schedule pauses and the autopilot tells you. Resume it from **Tide table** in the Cockpit, or with `tori autopilot schedule resume <id>`.
+- The Cockpit lists your schedules under **Tide table**: when each runs next, what its next time is waiting on, and how the last run went.
+- `tori autopilot schedule list` and `remove`, and the same tools over MCP.
+- New in Project settings > Automations: **When a watched pull request needs work**. Tick **A review requests changes**, **A check fails** or **It conflicts with its base**, and once the watching chat is closed, the autopilot gets the fix as work under the project's contract.
+- **At most per hour** caps a rule (3 by default). Past that the rule pauses until you resume it in the Cockpit.
+- The Cockpit lists **Pull request rules** under the Tide table, with how many it filed this hour, and **Resume** on a paused one.
+- New **Push** decision card: the autopilot pushes a fix onto an existing pull request's branch only after you approve that exact commit. Never forced, and refused for a fork's pull request.
+- New in Project settings > Automations: **Keep fixing until checks pass**. Turn on **Push fixes without asking** and the autopilot pushes fixes to its own pull requests in that project without a **Push** card.
+- **Attempts** (3 by default) caps the pushes per pull request. After that every push asks you again.
+- **Stop when a person reviews or comments** (on by default): once someone comments or reviews, every push asks you. Bots and approvals don't stop it.
+- A failed GitHub Actions job is rerun once before the autopilot hears about it, so a flaky test costs nothing.
+- When the checks pass and GitHub says the pull request can merge, the autopilot raises a **Merge** card (squash, at the commit that passed).
+- The Cockpit shows a fix-loop item's fixes against its attempts, like **fix 1/3**, and who stopped the loop, like **fix 1/3, stopped by @ana**.
+- An autopilot or worker stopped at its spending ceiling gets no more turns from the autopilot until you raise or clear it.
+- New MCP tool `pr_check_log`: the last 300 lines of a failed Actions job's log, or another check's summary and link.
+
 ## 26.1021.0-alpha
 
 - New **Sandbox** setting in Project settings > Tooling > Execution: **As me**, **Boxed when unattended** (default) or **Always boxed**. A boxed Claude session runs its shell in Claude's sandbox, with writes only in the project and network only to the allowed domains plus the project's git host. A boxed Codex chat stays in read-only mode, and a boxed Codex tab starts with `--sandbox workspace-write`.
