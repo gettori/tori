@@ -141,6 +141,20 @@ pub struct PrCounts {
     pub reviews: Option<PrReviewCounts>,
 }
 
+/// What a failed check run left to read. An Actions job carries its log's
+/// tail; any other check, or a job whose log is gone, carries what the check
+/// reported and `log_missing` saying why there is no log.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckLog {
+    pub name: String,
+    pub details_url: Option<String>,
+    pub summary: Option<String>,
+    pub log: Option<String>,
+    pub log_lines_dropped: usize,
+    pub log_missing: Option<String>,
+}
+
 /// The per-pull-request detail the list endpoint does not carry.
 ///
 /// GitHub's pull-request-simple objects (what `list_pull_requests` and the

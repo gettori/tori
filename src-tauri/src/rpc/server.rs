@@ -370,6 +370,17 @@ pub struct PrGetParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct PrCheckLogParams {
+    /// The pull request's number, or its URL.
+    pub key: String,
+    /// The failed check run's id, as a check_failed wake names it.
+    pub run_id: u64,
+    /// The project folder. Left out, a URL key names the local project whose origin is that repo, else the
+    /// caller's own project.
+    pub project: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LinkBranchParams {
     /// The issue's key, the number on GitHub.
@@ -875,6 +886,7 @@ pub trait Backend: Send + Sync {
     fn issue_get(&self, principal: &Principal, params: IssueGetParams) -> Result<Value, RpcError>;
     fn issue_link_branch(&self, principal: &Principal, params: LinkBranchParams) -> Result<Value, RpcError>;
     fn pr_get(&self, principal: &Principal, params: PrGetParams) -> Result<Value, RpcError>;
+    fn pr_check_log(&self, principal: &Principal, params: PrCheckLogParams) -> Result<Value, RpcError>;
     fn pr_create(&self, principal: &Principal, params: PrCreateParams) -> Result<Value, RpcError>;
     fn review_submit(&self, principal: &Principal, params: ReviewSubmitParams) -> Result<Value, RpcError>;
     fn pr_merge(&self, principal: &Principal, params: PrMergeParams) -> Result<Value, RpcError>;
@@ -1417,6 +1429,9 @@ pub mod tests {
         }
         fn pr_get(&self, _: &Principal, p: PrGetParams) -> Result<Value, RpcError> {
             Ok(json!({ "key": p.key }))
+        }
+        fn pr_check_log(&self, _: &Principal, p: PrCheckLogParams) -> Result<Value, RpcError> {
+            Ok(json!({ "runId": p.run_id }))
         }
         fn pr_create(&self, _: &Principal, p: PrCreateParams) -> Result<Value, RpcError> {
             Ok(json!({ "head": p.head }))

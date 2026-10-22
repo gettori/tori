@@ -207,7 +207,7 @@ fn parse_opencode_credentials(stdout: &str) -> Whoami {
 /// Drop CSI escape sequences so a coloured table parses as the text it renders
 /// as. OpenCode writes its dim colour inline (`[90m`), and a token carrying one
 /// would not parse as a number.
-fn strip_ansi(line: &str) -> String {
+pub(crate) fn strip_ansi(line: &str) -> String {
     let mut out = String::with_capacity(line.len());
     let mut chars = line.chars();
     while let Some(c) = chars.next() {
