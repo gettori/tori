@@ -56,12 +56,13 @@ pub struct Parts {
 
 fn autopilot_publisher(hub: &Arc<Hub>, ui: &Ui) -> Box<dyn Fn(Value) + Send + Sync> {
     let (hub, ui) = (hub.clone(), ui.clone());
-    Box::new(move |event| {
+    Box::new(move |mut event| {
         if let Some(item) = event
             .get("item")
             .and_then(|i| serde_json::from_value::<Item>(i.clone()).ok())
         {
             super::fix_loop::sync_item(&item);
+            super::fix_loop::mark_stopped(&mut event["item"], &super::pr_watch::store().list());
         }
         ui.emit("autopilot://changed", &event);
         hub.publish(&Channel::Autopilot, event);
@@ -698,6 +699,11 @@ impl Office {
             eprintln!("tori: pull request watch not saved: {e}");
         }
         super::watcher_picked(&firings.filed);
+    }
+
+    // The Cockpit row says who stopped the loop, which lives on the watch, not the item.
+    pub fn republish_item(&self, id: &str) {
+        self.autopilot.republish(id);
     }
 
     // Every open item, so a loop switched on after its pull request opened still finds it.

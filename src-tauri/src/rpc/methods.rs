@@ -2196,6 +2196,11 @@ impl Backend for DaemonBackend {
                 ),
             }
         })?;
+        let watches = super::pr_watch::store().list();
+        if let Some(rows) = state["items"].as_array_mut() {
+            rows.iter_mut()
+                .for_each(|row| super::fix_loop::mark_stopped(row, &watches));
+        }
         state["runner"] = json!(self.runner.status());
         state["limits"] = json!({ "max_workers": crate::settings::autopilot_worker_cap() });
         Ok(state)
