@@ -6,6 +6,7 @@ const saves: {
   worktree: Record<string, unknown>;
   reviewRequested?: Record<string, unknown>;
   prRules?: Record<string, unknown>;
+  prFixLoop?: Record<string, unknown>;
 }[] = [];
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -126,5 +127,25 @@ describe("Project settings dialog, Automations section", () => {
       expect(saves[saves.length - 1]?.prRules?.["/p"]).toEqual({ on: ["check_failed"], maxPerHour: 3 }),
     );
     expect(screen.getByLabelText("Pull request rule, at most per hour")).toBeTruthy();
+  });
+
+  it("turns the fix loop on with its defaults, changes them, and off again", async () => {
+    saves.length = 0;
+    render(() => <ProjectSettingsDialog path="/p" onClose={() => {}} />);
+    fireEvent.click(await screen.findByRole("tab", { name: "Automations" }));
+    expect(screen.queryByLabelText("Fix attempts")).toBeNull();
+
+    fireEvent.click(screen.getByRole("switch", { name: "Push fixes without asking" }));
+    await waitFor(() =>
+      expect(saves[saves.length - 1]?.prFixLoop?.["/p"]).toEqual({ maxAttempts: 3, stopOnReview: true }),
+    );
+    fireEvent.click(await screen.findByRole("switch", { name: "Stop when a person reviews or comments" }));
+    await waitFor(() =>
+      expect(saves[saves.length - 1]?.prFixLoop?.["/p"]).toEqual({ maxAttempts: 3, stopOnReview: false }),
+    );
+
+    fireEvent.click(screen.getByRole("switch", { name: "Push fixes without asking" }));
+    await waitFor(() => expect(saves[saves.length - 1]?.prFixLoop).toEqual({}));
+    expect(screen.queryByLabelText("Fix attempts")).toBeNull();
   });
 });
