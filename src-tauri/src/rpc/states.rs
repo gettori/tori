@@ -67,6 +67,8 @@ pub struct SessionStates {
     // Worker -> the chat session that spawned it.
     spawned_by: Mutex<HashMap<String, String>>,
     limit_resets_at: Mutex<HashMap<String, u64>>,
+    // Kept past the end, since a spawner asks after it once the old one is gone.
+    handed_to: Mutex<HashMap<String, String>>,
 }
 
 impl SessionStates {
@@ -209,6 +211,23 @@ impl SessionStates {
         }
     }
 
+    pub fn wait_closable(&self, id: &str, timeout: Duration) -> Option<SessionState> {
+        let deadline = Instant::now() + timeout;
+        let mut held = self.states.lock().unwrap_or_else(|e| e.into_inner());
+        loop {
+            let state = held.get(id)?.state;
+            let left = deadline.saturating_duration_since(Instant::now());
+            if matches!(state, SessionState::Idle | SessionState::Ended) || left.is_zero() {
+                return Some(state);
+            }
+            held = self
+                .settled
+                .wait_timeout(held, left)
+                .unwrap_or_else(|e| e.into_inner())
+                .0;
+        }
+    }
+
     pub fn snapshot(&self) -> HashMap<String, SessionState> {
         let held = self.states.lock().unwrap_or_else(|e| e.into_inner());
         held.iter().map(|(id, h)| (id.clone(), h.state)).collect()
@@ -322,6 +341,21 @@ impl SessionStates {
     pub fn unexpired_limit(&self, id: &str, now: u64) -> Option<u64> {
         let limited = self.limit_resets_at.lock().unwrap_or_else(|e| e.into_inner());
         limited.get(id).copied().filter(|resets_at| *resets_at > now)
+    }
+
+    pub fn note_handoff(&self, from: &str, to: &str) {
+        self.handed_to
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(from.to_string(), to.to_string());
+    }
+
+    pub fn handed_to(&self, id: &str) -> Option<String> {
+        self.handed_to
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(id)
+            .cloned()
     }
 
     pub fn forget_worker(&self, id: &str) {
@@ -460,6 +494,26 @@ mod tests {
         states.note_limit("c", 2_000);
         states.replace(vec![], place, GONE);
         assert_eq!(states.unexpired_limit("c", 1_000), None);
+    }
+
+    #[test]
+    fn a_closable_wait_sits_through_a_question_and_wakes_on_idle() {
+        let states = std::sync::Arc::new(SessionStates::default());
+        states.replace(vec![report("h", SessionState::NeedsYou, Source::Chat)], place, GONE);
+        assert_eq!(
+            states.wait_closable("h", Duration::from_millis(20)),
+            Some(SessionState::NeedsYou),
+            "a session waiting on a question is not closable"
+        );
+        let waiter = {
+            let states = states.clone();
+            std::thread::spawn(move || states.wait_closable("h", Duration::from_secs(5)))
+        };
+        std::thread::sleep(Duration::from_millis(50));
+        states.replace(vec![report("h", SessionState::Idle, Source::Chat)], place, GONE);
+        assert_eq!(waiter.join().unwrap(), Some(SessionState::Idle));
+        states.replace(vec![], place, GONE);
+        assert_eq!(states.wait_closable("h", Duration::from_secs(5)), None);
     }
 
     #[test]

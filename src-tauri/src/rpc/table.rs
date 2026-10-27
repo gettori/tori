@@ -10,7 +10,7 @@ use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
     params, AskAnswerParams, AskParams, AskWaitParams, AttachmentWriteParams, Backend, BudgetParams, CheckParams,
     CheckpointDiffParams, CheckpointParams, CheckpointsParams, DigestLookedParams, DigestParams, DraftParams,
-    HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams, IssuesAssignedParams,
+    HandoffParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams, IssuesAssignedParams,
     ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams, ModelParams, NeedsYouSeenParams,
     OpenParams, PendingParams, PortParams, PrCheckLogParams, PrCreateParams, PrGetParams, PrMergeParams, PrPushParams,
     PrWatchParams, ProjectIconParams, ProjectSetParams, ProvenanceParams, RevealParams, ReviewMarkParams,
@@ -207,6 +207,15 @@ pub static METHODS: &[Method] = &[
         refusal: None,
         outward: false,
         call: |b, _, v| b.session_check(params(v)?),
+    },
+    Method {
+        name: "session.handoff",
+        description: "Hand a live chat session over to another agent: start it in the same folder with a brief of the old one's work and a reference to read the rest, then close the old one once it is idle. A session can hand itself over and still finish its turn. Refused for a session the autopilot holds.",
+        params: schema::<HandoffParams>,
+        callers: NOT_WORKERS,
+        refusal: None,
+        outward: false,
+        call: |b, p, v| b.session_handoff(p, params(v)?),
     },
     Method {
         name: "session.pending",

@@ -280,6 +280,21 @@ pub struct WaitParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct HandoffParams {
+    /// The live chat session to hand over.
+    pub id: String,
+    /// The agent id the new session runs.
+    pub to: String,
+    /// The account the new session runs on, the project contract's when left out.
+    pub account: Option<String>,
+    /// The model the new session opens on.
+    pub model: Option<String>,
+    /// A line for the new session, added to the brief.
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CheckParams {
     /// The session whose work to check.
     pub id: String,
@@ -863,6 +878,7 @@ pub trait Backend: Send + Sync {
     fn session_steer(&self, principal: &Principal, params: SteerParams) -> Result<Value, RpcError>;
     fn session_wait(&self, params: WaitParams) -> Result<Value, RpcError>;
     fn session_check(&self, params: CheckParams) -> Result<Value, RpcError>;
+    fn session_handoff(&self, principal: &Principal, params: HandoffParams) -> Result<Value, RpcError>;
     fn session_pending(&self, params: PendingParams) -> Result<Value, RpcError>;
     fn session_answer(&self, principal: &Principal, params: SessionAnswerParams) -> Result<Value, RpcError>;
     fn session_info(&self, params: InfoParams) -> Result<Value, RpcError>;
@@ -1332,6 +1348,9 @@ pub mod tests {
         }
         fn session_check(&self, p: CheckParams) -> Result<Value, RpcError> {
             Ok(json!({ "id": p.id }))
+        }
+        fn session_handoff(&self, _: &Principal, p: HandoffParams) -> Result<Value, RpcError> {
+            Ok(json!({ "id": p.to }))
         }
         fn session_pending(&self, p: PendingParams) -> Result<Value, RpcError> {
             if p.id == SLOW {
@@ -2004,6 +2023,7 @@ pub mod tests {
         for (method, params) in [
             ("session.spawn", json!({})),
             ("session.steer", json!({"id": "s1", "text": "hi"})),
+            ("session.handoff", json!({"id": "s1", "to": "codex"})),
         ] {
             let err = server.dispatch(0, &worker, &request(method, params)).unwrap_err();
             assert_eq!(err.code, REFUSED, "{method}");

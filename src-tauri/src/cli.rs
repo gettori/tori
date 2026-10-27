@@ -9,13 +9,14 @@ use serde_json::{json, Value};
 use crate::pty::attach::Ended;
 use crate::rpc::client::{self, Client, Found};
 
-const COMMANDS: [&str; 26] = [
+const COMMANDS: [&str; 27] = [
     "sessions",
     "projects",
     "ports",
     "session",
     "wait",
     "check",
+    "handoff",
     "events",
     "whoami",
     "steer",
@@ -45,6 +46,7 @@ const USAGE: &str = "usage:
   tori session tail <id> [--lines <n>] [--agent <id>] [--json]
   tori wait <id> [--timeout <secs>] [--json]
   tori check <id> [--json]
+  tori handoff <id> --to <agent> [--account <id>] [--model <id>] [--note <text>] [--json]
   tori session wait <id> [--timeout <secs>] [--json]
   tori session pending <id> [--json]
   tori session answer <session> <id> <text>...
@@ -204,6 +206,7 @@ fn dispatch(args: &[String]) -> Result<(), Failure> {
         },
         "wait" => session_wait(rest),
         "check" => check(rest),
+        "handoff" => handoff(rest),
         "events" => events(rest),
         "whoami" => whoami(rest),
         "steer" => steer(rest),
@@ -760,6 +763,34 @@ fn check(args: &[String]) -> Result<(), Failure> {
         writeln!(out, "{line}")?;
     }
     Ok(())
+}
+
+fn handoff_params(args: &[String]) -> Result<(Value, bool), Failure> {
+    let p = Parsed::new(args, &["to", "account", "model", "note"], &["json"])?;
+    let [id] = p.positional.as_slice() else {
+        return Err(usage("handoff takes one session id"));
+    };
+    let Some(to) = p.value("to") else {
+        return Err(usage("handoff needs --to <agent>"));
+    };
+    let params = json!({
+        "id": id,
+        "to": to,
+        "account": p.value("account"),
+        "model": p.value("model"),
+        "note": p.value("note"),
+    });
+    Ok((params, p.has("json")))
+}
+
+fn handoff(args: &[String]) -> Result<(), Failure> {
+    let (params, json) = handoff_params(args)?;
+    let handed = connect()?.call("session.handoff", params)?;
+    let mut out = io::stdout().lock();
+    if json {
+        return Ok(writeln!(out, "{handed}")?);
+    }
+    Ok(writeln!(out, "{}", handed["id"].as_str().unwrap_or_default())?)
 }
 
 fn check_lines(checked: &Value) -> Vec<String> {
@@ -1777,6 +1808,21 @@ mod tests {
         assert!(wait_params(&args(&[])).is_err());
         assert!(USAGE.contains("session wait <id>"));
         assert!(USAGE.contains("tori wait <id>") && COMMANDS.contains(&"wait"));
+    }
+
+    #[test]
+    fn a_handoff_needs_a_session_and_an_agent() {
+        let (params, json) = handoff_params(&args(&["s1", "--to", "codex", "--note", "finish the tests"]))
+            .ok()
+            .unwrap();
+        assert_eq!(
+            params,
+            json!({ "id": "s1", "to": "codex", "account": null, "model": null, "note": "finish the tests" })
+        );
+        assert!(!json);
+        assert!(handoff_params(&args(&["s1"])).is_err());
+        assert!(handoff_params(&args(&["--to", "codex"])).is_err());
+        assert!(USAGE.contains("tori handoff <id> --to <agent>") && COMMANDS.contains(&"handoff"));
     }
 
     #[test]
