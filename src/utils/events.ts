@@ -91,7 +91,7 @@ export type OpenOmnibox = { prefix: string };
 // an open, so the same key that summons it dismisses it.
 export const TOGGLE_SHORTCUTS = "tori:toggle-shortcuts";
 
-// Check for a newer release now, past the daily throttle, and say what came
+// Check for a newer release now, past the throttle, and say what came
 // back. Consumed by UpdatePill, which owns the notice a newer one shows.
 export const CHECK_UPDATES = "tori:check-updates";
 
