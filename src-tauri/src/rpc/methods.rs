@@ -14,7 +14,7 @@ use super::auth::{Caller, Principal};
 use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
-    AskAnswerParams, AskParams, AskWaitParams, AttachmentWriteParams, Backend, Before, BudgetParams,
+    AskAnswerParams, AskParams, AskWaitParams, AttachmentWriteParams, Backend, Before, BudgetParams, CheckParams,
     CheckpointDiffParams, CheckpointParams, CheckpointsParams, DigestLookedParams, DigestParams, DraftParams,
     HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams, IssuesAssignedParams,
     ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams, ModelParams, NeedsYouSeenParams,
@@ -207,6 +207,16 @@ pub fn wait_for(
         reply["resets_at"] = json!(resets_at);
     }
     Ok(reply)
+}
+
+fn check_reply(id: &str, latest: Option<&crate::verification::VerifiedTurn>, stat: Option<(usize, u64, u64)>) -> Value {
+    let (files, added, removed) = stat.unwrap_or_default();
+    json!({
+        "id": id,
+        "verdict": latest.map(|t| t.verdict),
+        "checks": latest.map(|t| t.checks.clone()).unwrap_or_default(),
+        "diff": { "files": files, "added": added, "removed": removed },
+    })
 }
 
 fn wait_reason(state: SessionState, question: &Value, resets_at: Option<u64>) -> &'static str {
@@ -1532,6 +1542,21 @@ impl Backend for DaemonBackend {
         self.composer.session_wait(params)
     }
 
+    fn session_check(&self, params: CheckParams) -> Result<Value, RpcError> {
+        let agent = self
+            .agent_of(&params.id)
+            .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no session {}", params.id)))?;
+        let cwd = self.session_cwd(&params.id)?;
+        let turns = crate::chat::commands::verified_turns(&params.id, &agent, Some(&cwd));
+        let stat = crate::checkpoint::session_stat(&cwd, &params.id);
+        let mut reply = check_reply(&params.id, turns.last(), stat);
+        // Off, there are no verdicts at all, which would read as no code changed.
+        if !crate::verification::enabled() {
+            reply["verification"] = json!("off");
+        }
+        Ok(reply)
+    }
+
     fn session_pending(&self, params: PendingParams) -> Result<Value, RpcError> {
         let native = self.chats.host.waiting(&params.id);
         Ok(Value::Array(pending_rows(&params.id, self.asks.pending(), native)))
@@ -2392,6 +2417,40 @@ mod tests {
         };
         states.replace(vec![reported], |_| Default::default(), |_, _| false);
         states
+    }
+
+    #[test]
+    fn a_check_reports_the_latest_code_turn_and_the_whole_diff() {
+        use crate::chat::model::{Check, CheckResult, Verdict};
+        let turn = |verdict, result| crate::verification::VerifiedTurn {
+            prompt_ts: Some(100),
+            verdict,
+            checks: vec![Check {
+                tool_use_id: "t1".into(),
+                command: "cargo test".into(),
+                result,
+                exit_code: None,
+                duration_ms: None,
+            }],
+            settled_later: false,
+        };
+        let none = check_reply("s", None, None);
+        assert_eq!(none["verdict"], Value::Null);
+        assert_eq!(none["checks"], json!([]));
+        assert_eq!(none["diff"], json!({ "files": 0, "added": 0, "removed": 0 }));
+
+        let verified = check_reply(
+            "s",
+            Some(&turn(Verdict::Verified, CheckResult::Passed)),
+            Some((3, 40, 2)),
+        );
+        assert_eq!(verified["verdict"], "verified");
+        assert_eq!(verified["checks"][0]["command"], "cargo test");
+        assert_eq!(verified["diff"], json!({ "files": 3, "added": 40, "removed": 2 }));
+
+        let failed = check_reply("s", Some(&turn(Verdict::Failed, CheckResult::Failed)), Some((1, 1, 0)));
+        assert_eq!(failed["verdict"], "failed");
+        assert_eq!(failed["checks"][0]["result"], "failed");
     }
 
     #[test]
