@@ -810,6 +810,28 @@ li + li > .item {
   text-align: left;
 }
 
+.permissionCommand {
+  overflow-wrap: anywhere;
+  font-family: var(--tori-font-mono);
+  font-size: 15px;
+}
+
+.permissionRows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.permissionRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.card [data-tone="attention"] {
+  color: var(--attention-fg);
+}
+
 .card[data-crew="true"],
 .card[data-phase="working"] {
   background: linear-gradient(

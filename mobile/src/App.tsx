@@ -8,7 +8,7 @@ import { rgbTriple, spaceHue } from "../../src/utils/spaceTint";
 import AutopilotScreen, { AutopilotChat, watchRunner } from "./Autopilot";
 import BottomBar from "./BottomBar";
 import Chat from "./Chat";
-import InboxScreen, { watchDigest, watchInbox, watchNeedsYou } from "./Inbox";
+import InboxScreen, { watchDigest, watchInbox, watchNeedsYou, watchPermissions } from "./Inbox";
 import { setSpaceName, showWheel, spaceName } from "./prefs";
 import Root, { type RootTab } from "./Root";
 import { ProjectScreen, TopicScreen } from "./Screens";
@@ -186,6 +186,7 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
   const { runner, decisions, crew } = autopilot;
   const inbox = watchInbox(props.client);
   const needsYou = watchNeedsYou(props.client);
+  const permissions = watchPermissions(props.client);
   const digest = watchDigest(props.client);
   const [tab, setTab] = createSignal<RootTab>("projects");
   const [stack, setStack] = createSignal<View[]>([]);
@@ -342,10 +343,16 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
             client={props.client}
             inbox={inbox}
             needsYou={needsYou}
+            permissions={permissions}
             digest={digest}
             live={live}
             onReply={openSession}
             onEvent={openEvent}
+            onPermission={(row) =>
+              openSession(
+                live().find((r) => r.id === row.session) ?? { id: row.session, cwd: row.folder, last_active: 0 },
+              )
+            }
             onBack={back}
           />
         </Match>
@@ -362,7 +369,7 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
           showWheel={showWheel()}
           runner={runner}
           decisions={decisions}
-          inboxCount={() => inbox.items().length + needsYou.count()}
+          inboxCount={() => inbox.items().length + needsYou.count() + permissions.count()}
           onInbox={() => go({ screen: "inbox" })}
           onSpace={(picked) => {
             setSpaceName(picked.name);

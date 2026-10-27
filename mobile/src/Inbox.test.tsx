@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vite-plus/test";
 import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
-import InboxScreen, { watchDigest, watchInbox, watchNeedsYou } from "./Inbox";
+import InboxScreen, { watchDigest, watchInbox, watchNeedsYou, watchPermissions } from "./Inbox";
 import type { RemoteClient } from "./remote";
 import type { Digest } from "../../src/utils/digest";
 import type { NeedsYouEvent } from "../../src/utils/needsYouSignals";
@@ -58,15 +58,18 @@ function mount(answers: Record<string, unknown>) {
   const opened: NeedsYouEvent[] = [];
   const view = render(() => {
     const [inbox, needsYou, digest] = [watchInbox(fake), watchNeedsYou(fake), watchDigest(fake)];
+    const permissions = watchPermissions(fake);
     return (
       <InboxScreen
         client={fake}
         inbox={inbox}
         needsYou={needsYou}
+        permissions={permissions}
         digest={digest}
         live={() => []}
         onReply={() => {}}
         onEvent={(e) => opened.push(e)}
+        onPermission={() => {}}
         onBack={() => {}}
       />
     );
@@ -77,7 +80,7 @@ function mount(answers: Record<string, unknown>) {
 describe("the phone's Since you looked", () => {
   it("lists finished sessions with lines and verdict and pull requests, each opening its own", async () => {
     const { opened } = mount({ "digest.list": digest, "needs_you.list": [], "review.list": [] });
-    fireEvent.click(await screen.findByRole("button", { name: /^Since you looked/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Since \d/ }));
     const row = (await screen.findByText("run a")).closest("li")!.textContent!;
     expect(row).toContain("+120 -30");
     expect(row).toContain("Verified");
@@ -95,7 +98,7 @@ describe("the phone's Since you looked", () => {
     const looked = () => request.mock.calls.filter(([m]) => m === "digest.looked");
     fireEvent.click(await screen.findByRole("button", { name: /^Needs you/ }));
     expect(looked()).toHaveLength(0);
-    fireEvent.click(screen.getByRole("button", { name: /^Since you looked/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Since \d/ }));
     await screen.findByText("run a");
     fireEvent.click(screen.getByRole("button", { name: /^Needs you/ }));
     await waitFor(() => expect(looked()).toEqual([["digest.looked", { at: 3_000 }]]));
