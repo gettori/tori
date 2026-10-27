@@ -66,6 +66,7 @@ pub struct SessionStates {
     workers: Mutex<HashSet<String>>,
     // Worker -> the chat session that spawned it.
     spawned_by: Mutex<HashMap<String, String>>,
+    limit_resets_at: Mutex<HashMap<String, u64>>,
 }
 
 impl SessionStates {
@@ -91,6 +92,12 @@ impl SessionStates {
                 events.push(session_event("session.started", &r.id, &place, json!({})));
             }
             let was = before.as_ref().map(|b| b.state);
+            if r.state == SessionState::Working && was != Some(SessionState::Working) {
+                self.limit_resets_at
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(&r.id);
+            }
             if was != Some(r.state) {
                 events.push(session_event(
                     "session.state",
@@ -140,10 +147,12 @@ impl SessionStates {
         let mut background = self.background.lock().unwrap_or_else(|e| e.into_inner());
         let mut workers = self.workers.lock().unwrap_or_else(|e| e.into_inner());
         let mut spawned_by = self.spawned_by.lock().unwrap_or_else(|e| e.into_inner());
+        let mut limited = self.limit_resets_at.lock().unwrap_or_else(|e| e.into_inner());
         for id in ended {
             background.remove(&id);
             workers.remove(&id);
             spawned_by.remove(&id);
+            limited.remove(&id);
         }
         self.settled.notify_all();
     }
@@ -303,6 +312,18 @@ impl SessionStates {
         self.workers.lock().unwrap_or_else(|e| e.into_inner()).contains(id)
     }
 
+    pub fn note_limit(&self, id: &str, resets_at: u64) {
+        self.limit_resets_at
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(id.to_string(), resets_at);
+    }
+
+    pub fn unexpired_limit(&self, id: &str, now: u64) -> Option<u64> {
+        let limited = self.limit_resets_at.lock().unwrap_or_else(|e| e.into_inner());
+        limited.get(id).copied().filter(|resets_at| *resets_at > now)
+    }
+
     pub fn forget_worker(&self, id: &str) {
         self.workers.lock().unwrap_or_else(|e| e.into_inner()).remove(id);
         self.spawned_by.lock().unwrap_or_else(|e| e.into_inner()).remove(id);
@@ -419,6 +440,26 @@ mod tests {
         assert_eq!(states.snapshot().get("p"), Some(&SessionState::Idle));
         let back = states.replace(vec![report("p", SessionState::Idle, Source::Pty)], place, GONE);
         assert!(back.is_empty(), "coming back is not a second start");
+    }
+
+    #[test]
+    fn a_limit_holds_until_the_session_works_again_or_ends() {
+        let states = SessionStates::default();
+        states.replace(vec![report("c", SessionState::Working, Source::Chat)], place, GONE);
+        states.note_limit("c", 2_000);
+        states.replace(vec![report("c", SessionState::Idle, Source::Chat)], place, GONE);
+        assert_eq!(states.unexpired_limit("c", 1_000), Some(2_000));
+        assert_eq!(
+            states.unexpired_limit("c", 2_000),
+            None,
+            "a limit already reset explains nothing"
+        );
+        states.replace(vec![report("c", SessionState::Working, Source::Chat)], place, GONE);
+        assert_eq!(states.unexpired_limit("c", 1_000), None);
+
+        states.note_limit("c", 2_000);
+        states.replace(vec![], place, GONE);
+        assert_eq!(states.unexpired_limit("c", 1_000), None);
     }
 
     #[test]

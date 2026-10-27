@@ -192,7 +192,7 @@ pub static METHODS: &[Method] = &[
     },
     Method {
         name: "session.wait",
-        description: "Wait for a session to stop working: its state, the question it is waiting on if any, and its last message.",
+        description: "Wait for a session to stop working: its state, why the wait came back (ended, idle, asking, needs_you, limited with resets_at, or timeout), the question it is waiting on if any, and its last message.",
         params: schema::<WaitParams>,
         callers: NOT_WORKERS,
         refusal: None,

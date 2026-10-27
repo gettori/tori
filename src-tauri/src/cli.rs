@@ -9,11 +9,12 @@ use serde_json::{json, Value};
 use crate::pty::attach::Ended;
 use crate::rpc::client::{self, Client, Found};
 
-const COMMANDS: [&str; 24] = [
+const COMMANDS: [&str; 25] = [
     "sessions",
     "projects",
     "ports",
     "session",
+    "wait",
     "events",
     "whoami",
     "steer",
@@ -41,6 +42,7 @@ const USAGE: &str = "usage:
   tori projects [--json]
   tori ports [--json]
   tori session tail <id> [--lines <n>] [--agent <id>] [--json]
+  tori wait <id> [--timeout <secs>] [--json]
   tori session wait <id> [--timeout <secs>] [--json]
   tori session pending <id> [--json]
   tori session answer <session> <id> <text>...
@@ -198,6 +200,7 @@ fn dispatch(args: &[String]) -> Result<(), Failure> {
             Some("answer") => session_answer(&rest[1..]),
             _ => Err(usage("session needs a subcommand: tail, wait, pending or answer")),
         },
+        "wait" => session_wait(rest),
         "events" => events(rest),
         "whoami" => whoami(rest),
         "steer" => steer(rest),
@@ -541,7 +544,7 @@ fn transcript(events: &[Value]) -> Vec<String> {
 fn wait_params(args: &[String]) -> Result<(Value, bool), Failure> {
     let p = Parsed::new(args, &["timeout"], &["json"])?;
     let [id] = p.positional.as_slice() else {
-        return Err(usage("session wait takes one session id"));
+        return Err(usage("wait takes one session id"));
     };
     Ok((json!({ "id": id, "timeout": p.number("timeout")? }), p.has("json")))
 }
@@ -553,18 +556,28 @@ fn session_wait(args: &[String]) -> Result<(), Failure> {
     if json {
         return Ok(writeln!(out, "{settled}")?);
     }
-    writeln!(out, "{}", settled["state"].as_str().unwrap_or(""))?;
-    if let Some(question) = settled["question"]["question"].as_str() {
-        writeln!(
-            out,
-            "asking {}: {question}",
-            settled["question"]["id"].as_str().unwrap_or("")
-        )?;
-    }
-    if let Some(last) = settled["last"].as_str() {
-        writeln!(out, "{last}")?;
+    for line in wait_lines(&settled) {
+        writeln!(out, "{line}")?;
     }
     Ok(())
+}
+
+fn wait_lines(settled: &Value) -> Vec<String> {
+    let reason = settled["reason"].as_str().unwrap_or("");
+    let resets = settled["resets_at"]
+        .as_i64()
+        .and_then(|secs| chrono::DateTime::from_timestamp(secs, 0))
+        .map(|t| t.with_timezone(&chrono::Local).format("%a %d %b %H:%M").to_string());
+    let mut lines = vec![match resets {
+        Some(at) => format!("{reason} until {at}"),
+        None => reason.to_string(),
+    }];
+    if let Some(question) = settled["question"]["question"].as_str() {
+        let id = settled["question"]["id"].as_str().unwrap_or("");
+        lines.push(format!("asking {id}: {question}"));
+    }
+    lines.extend(settled["last"].as_str().map(String::from));
+    lines
 }
 
 fn session_pending(args: &[String]) -> Result<(), Failure> {
@@ -1724,6 +1737,24 @@ mod tests {
         assert!(json);
         assert!(wait_params(&args(&[])).is_err());
         assert!(USAGE.contains("session wait <id>"));
+        assert!(USAGE.contains("tori wait <id>") && COMMANDS.contains(&"wait"));
+    }
+
+    #[test]
+    fn a_wait_prints_its_reason_then_the_question_then_the_last_reply() {
+        let asking = json!({
+            "reason": "asking",
+            "question": { "id": "a1", "question": "which branch?" },
+            "last": "I need a branch.",
+        });
+        assert_eq!(
+            wait_lines(&asking),
+            ["asking", "asking a1: which branch?", "I need a branch."]
+        );
+        let limited =
+            wait_lines(&json!({ "reason": "limited", "resets_at": 1_900_000_000, "question": null, "last": null }));
+        assert_eq!(limited.len(), 1);
+        assert!(limited[0].starts_with("limited until "), "{limited:?}");
     }
 
     #[test]

@@ -69,6 +69,20 @@ fn autopilot_publisher(hub: &Arc<Hub>, ui: &Ui) -> Box<dyn Fn(Value) + Send + Sy
     })
 }
 
+// The reset of a limit that refused the turn, the same reading the digest's
+// limit-hit row takes. `overage_status` is not it: it says `rejected` while
+// the turn is allowed.
+fn rejected_until(event: &crate::chat::model::ChatEvent) -> Option<u64> {
+    match event {
+        crate::chat::model::ChatEvent::RateLimit {
+            status,
+            resets_at: Some(resets_at),
+            ..
+        } if status == "rejected" => Some(*resets_at),
+        _ => None,
+    }
+}
+
 fn withdraw_holds(asks: Arc<Asks>, ui: Ui) -> Box<dyn Fn(&str) + Send + Sync> {
     Box::new(move |item| {
         for id in asks.withdraw_item(item) {
@@ -372,6 +386,9 @@ impl Office {
     /// A chat's own rate limit frame, filed under the account it runs on, so
     /// the windows are known with no window open.
     pub fn rate_limit(&self, session: &str, event: &crate::chat::model::ChatEvent) {
+        if let Some(resets_at) = rejected_until(event) {
+            self.states.note_limit(session, resets_at);
+        }
         let readings = quotas::of_rate_limit(event);
         if readings.is_empty() {
             return;
@@ -747,6 +764,28 @@ mod tests {
             project: "/p".into(),
             draft,
         })
+    }
+
+    #[test]
+    fn only_a_rejected_limit_with_a_reset_stops_a_session() {
+        let limit = |status: &str, resets_at, overage: Option<&str>| crate::chat::model::ChatEvent::RateLimit {
+            session_id: "s".into(),
+            status: status.into(),
+            resets_at,
+            limit_type: Some("five_hour".into()),
+            utilization: None,
+            windows: vec![],
+            overage_status: overage.map(String::from),
+        };
+        assert_eq!(
+            rejected_until(&limit("rejected", Some(1_900_000_000), None)),
+            Some(1_900_000_000)
+        );
+        assert_eq!(rejected_until(&limit("rejected", None, None)), None);
+        assert_eq!(
+            rejected_until(&limit("allowed", Some(1_900_000_000), Some("rejected"))),
+            None
+        );
     }
 
     #[test]

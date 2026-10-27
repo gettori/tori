@@ -241,6 +241,13 @@ impl Composer {
             live_chat,
             || methods::agent_in(&id, &live, &self.index),
             || self.sources.question(&id),
+            || {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                self.states.unexpired_limit(&id, now)
+            },
         )
     }
 
