@@ -67,6 +67,8 @@ pub enum Source {
         repo: String,
         event: crate::settings::PrEvent,
     },
+    /// One entry of a `tori loop` run, by the run it was queued in.
+    Loop { run: String, entry: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -581,6 +583,76 @@ pub fn plan_firings<Tz: chrono::TimeZone>(
     firings
 }
 
+#[derive(Debug, Default)]
+pub struct Looped {
+    pub queued: Vec<Item>,
+    pub skipped: Vec<String>,
+}
+
+const LOOP_TITLE_CAP: usize = 80;
+
+fn loop_contract(prompt: &str, entry: &str) -> String {
+    if prompt.contains("{item}") {
+        prompt.replace("{item}", entry)
+    } else {
+        format!("{prompt}\n\n{entry}")
+    }
+}
+
+fn loop_entry_open(items: &[Item], project: &str, contract: &str) -> bool {
+    items.iter().any(|i| {
+        !i.state.terminal()
+            && matches!(i.source, Source::Loop { .. })
+            && same_folder(&i.project, project)
+            && i.contract.as_deref() == Some(contract)
+    })
+}
+
+pub fn plan_loop(
+    items: &mut Vec<Item>,
+    project: &str,
+    prompt: &str,
+    entries: &[String],
+    run: &str,
+    now: u64,
+    mut mint: impl FnMut() -> String,
+) -> Looped {
+    let mut looped = Looped::default();
+    for entry in entries {
+        let contract = loop_contract(prompt, entry);
+        if loop_entry_open(items, project, &contract) {
+            looped.skipped.push(entry.clone());
+            continue;
+        }
+        let item = Item {
+            id: mint(),
+            kind: Kind::Ship,
+            source: Source::Loop {
+                run: run.to_string(),
+                entry: entry.clone(),
+            },
+            project: project.to_string(),
+            state: State::Queued,
+            worktree: None,
+            session: None,
+            pr_url: None,
+            url: None,
+            created: now,
+            updated: now,
+            note: None,
+            title: Some(entry.chars().take(LOOP_TITLE_CAP).collect()),
+            contract: Some(contract),
+            picked_by: None,
+            gone_upstream: false,
+            picked_from: None,
+            fix_pushes: Vec::new(),
+        };
+        items.push(item.clone());
+        looped.queued.push(item);
+    }
+    looped
+}
+
 // Pickup's rule for a removed source: running work is never closed under the worker.
 fn drop_schedule_runs(items: &mut [Item], schedule: &str, now: u64) -> Vec<Item> {
     let mut changed = Vec::new();
@@ -810,7 +882,7 @@ fn kind_of(item: &Item) -> Option<IssueKind> {
     match item.source {
         Source::Issue { .. } | Source::Schedule { .. } => Some(IssueKind::Issue),
         Source::Pr { .. } => Some(IssueKind::ReviewRequest),
-        Source::Rule { .. } => None,
+        Source::Rule { .. } | Source::Loop { .. } => None,
     }
 }
 
@@ -1157,6 +1229,7 @@ fn label_of(source: &Source, title: Option<&str>) -> String {
     let key = match source {
         Source::Pr { number, .. } | Source::Rule { pr: number, .. } => return format!("#{number}"),
         Source::Schedule { schedule, .. } => return title.unwrap_or(schedule).to_string(),
+        Source::Loop { entry, .. } => return title.unwrap_or(entry).to_string(),
         Source::Issue { key, .. } => key.trim().trim_start_matches('#'),
     };
     let found = key
@@ -1217,7 +1290,7 @@ pub fn reference(item: &Item, worktrees: &HashMap<String, Option<Vec<Listed>>>, 
     };
     let url = item.url.clone().or(key_url);
     let pr = match &item.source {
-        Source::Issue { .. } | Source::Schedule { .. } => item.pr_url.as_ref().and_then(|u| {
+        Source::Issue { .. } | Source::Schedule { .. } | Source::Loop { .. } => item.pr_url.as_ref().and_then(|u| {
             Some(Link {
                 label: format!("PR #{}", pr_key_of_url(u)?.1),
                 url: u.clone(),
@@ -1596,6 +1669,18 @@ impl AutopilotStore {
         }
         (self.publish)(json!({ "kind": "autopilot.changed", "rule_resumed": project, "ts": now_ms() }));
         Ok(())
+    }
+
+    pub fn queue_loop(&self, project: &str, prompt: &str, entries: &[String]) -> Result<Looped, UpdateError> {
+        let run = format!("loop-{}", crate::chat::approval::random_token());
+        let mint = || format!("item-{}", crate::chat::approval::random_token());
+        let mut skipped = Vec::new();
+        let queued = self.write(|items| {
+            let looped = plan_loop(items, project, prompt, entries, &run, now_ms(), mint);
+            skipped = looped.skipped;
+            Ok(looped.queued)
+        })?;
+        Ok(Looped { queued, skipped })
     }
 
     pub fn fire_due(&self, now: u64) -> Result<Fired, UpdateError> {
@@ -3178,6 +3263,7 @@ pub mod tests {
                 Source::Pr { number, .. } => (format!("pr{number}"), i.state),
                 Source::Schedule { schedule, .. } => (schedule.clone(), i.state),
                 Source::Rule { pr, .. } => (format!("rule{pr}"), i.state),
+                Source::Loop { entry, .. } => (format!("loop{entry}"), i.state),
             })
             .collect()
     }
@@ -3573,6 +3659,68 @@ pub mod tests {
 
     const DAY: u64 = 86_400_000;
     const SEVEN: u64 = 7 * 3_600_000;
+
+    #[test]
+    fn a_loop_queues_an_item_per_entry_and_skips_what_is_already_open() {
+        let dir = temp_dir("loop");
+        let store = AutopilotStore::open(dir.clone(), Box::new(|_| {}));
+        let entries = vec!["auth".to_string(), "billing".to_string()];
+        let looped = store
+            .queue_loop("/p", "Port {item} to the new client", &entries)
+            .unwrap();
+        assert!(looped.skipped.is_empty());
+        let contracts: Vec<_> = looped.queued.iter().map(|i| i.contract.clone().unwrap()).collect();
+        assert_eq!(
+            contracts,
+            ["Port auth to the new client", "Port billing to the new client"]
+        );
+        let first = &looped.queued[0];
+        assert_eq!(
+            (first.kind, first.state, first.title.as_deref()),
+            (Kind::Ship, State::Queued, Some("auth"))
+        );
+        assert!(matches!(&first.source, Source::Loop { entry, .. } if entry == "auth"));
+
+        let again = store
+            .queue_loop("/p", "Port {item} to the new client", &entries)
+            .unwrap();
+        assert!(again.queued.is_empty());
+        assert_eq!(again.skipped, entries, "a second run queues nothing open twice");
+
+        let appended = store
+            .queue_loop("/p", "Write a test for", &["parse.rs".to_string()])
+            .unwrap();
+        assert_eq!(
+            appended.queued[0].contract.as_deref(),
+            Some("Write a test for\n\nparse.rs")
+        );
+
+        let reopened = AutopilotStore::open(dir.clone(), Box::new(|_| {}));
+        assert_eq!(reopened.items().len(), 3, "the queue is written through");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_finished_loop_item_frees_its_entry_for_the_next_run() {
+        let mut items = Vec::new();
+        let n = std::cell::Cell::new(0);
+        let mint = || {
+            n.set(n.get() + 1);
+            format!("l{}", n.get())
+        };
+        let entries = vec!["a".to_string(), "a".to_string()];
+        let first = plan_loop(&mut items, "/p", "do {item}", &entries, "run1", 1, mint);
+        assert_eq!(
+            (first.queued.len(), first.skipped.len()),
+            (1, 1),
+            "a repeat in one list is queued once"
+        );
+        items[0].state = State::Done;
+        let next = plan_loop(&mut items, "/p", "do {item}", &entries[..1], "run2", 2, || "l9".into());
+        assert_eq!(next.queued.len(), 1);
+        let other = plan_loop(&mut items, "/q", "do {item}", &entries[..1], "run3", 3, || "l10".into());
+        assert_eq!(other.queued.len(), 1, "another project's open item does not hold it");
+    }
 
     fn fire(schedules: &mut [Schedule], items: &mut Vec<Item>, now: u64) -> Firings {
         let n = std::cell::Cell::new(0);

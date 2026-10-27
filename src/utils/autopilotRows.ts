@@ -29,7 +29,8 @@ export type ItemRow = {
     | { type: "issue"; key: string; project: string }
     | { type: "pr"; number: number; repo: string }
     | { type: "schedule"; schedule: string; issue?: string }
-    | { type: "rule"; pr: number; repo: string; event: PrEvent };
+    | { type: "rule"; pr: number; repo: string; event: PrEvent }
+    | { type: "loop"; run: string; entry: string };
   project: string;
   state: "proposed" | "queued" | "running" | "waiting_on_you" | "taken_over" | "done" | "failed";
   worktree?: string | null;
@@ -108,6 +109,7 @@ export function ticketOf(item: ItemRow): TicketRef {
   if (item.reference) return item.reference;
   if (item.source.type === "schedule") return { label: item.title ?? item.source.schedule, place: [] };
   if (item.source.type === "rule") return { label: `#${item.source.pr}`, place: [] };
+  if (item.source.type === "loop") return { label: item.title ?? item.source.entry, place: [] };
   const key = item.source.type === "pr" ? String(item.source.number) : item.source.key.replace(/^#/, "");
   return { label: /^\d+$/.test(key) ? `#${key}` : key, place: [] };
 }

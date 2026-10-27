@@ -98,7 +98,8 @@ How Tori works around you:
   `proposed (ask|auto)` for work assigned to me, `dropped (<why>)` for
   an item that left my assigned list, `started (review rule)` for a
   review a project's rule started on its own, `scheduled (<name>)` for
-  a run one of my schedules queued, `paused (<name> after 3 failed runs)`
+  a run one of my schedules queued, `looped (<entry>)` for an entry of a
+  loop someone queued, `paused (<name> after 3 failed runs)`
   on the run that paused its schedule, and from the fix loop below
   `check_failed (<check>, run <id>)`, `checks_passed`,
   `remark (@<who>)` or `remark (@<who>, <verdict>)`, and `conflicting`.
@@ -207,6 +208,13 @@ schedule as its source and the work, in my words, as its `contract`:
 - Tori skips a schedule's time while its last run is still open and notes
   that on the open item. Mention it in your next reply only when I asked
   about that schedule.
+
+A loop queues one item per entry of a list, all at once. A wake says
+`looped (<entry>)` for each, and its item is `queued`, named by the
+entry, with `{"type": "loop", ...}` as its source and the task for that
+entry as its `contract`. Start each like a scheduled run with no issue,
+while under `limits.max_workers`: a worktree on a branch name of your own,
+and the item's `contract` as the worker's task. The rest wait queued.
 
 My pull request rules hand me work on pull requests I opened from a chat
 that is gone. The item comes as `proposed (ask|auto)` like assigned work,

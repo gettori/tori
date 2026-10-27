@@ -43,6 +43,7 @@ pub enum What {
     Dropped(String),
     Started(String),
     Scheduled(String),
+    Looped(String),
     Paused(String),
     CheckFailed(String),
     ChecksPassed,
@@ -64,6 +65,7 @@ impl What {
             What::Dropped(_) => "dropped",
             What::Started(_) => "started",
             What::Scheduled(_) => "scheduled",
+            What::Looped(_) => "looped",
             What::Paused(_) => "paused",
             What::CheckFailed(_) => "check_failed",
             What::ChecksPassed => "checks_passed",
@@ -85,6 +87,7 @@ impl What {
             | What::Dropped(detail)
             | What::Started(detail)
             | What::Scheduled(detail)
+            | What::Looped(detail)
             | What::Paused(detail)
             | What::CheckFailed(detail)
             | What::Remark(detail) => {
@@ -477,6 +480,20 @@ impl Watcher {
         for item in items {
             let name = item.title.clone().unwrap_or_default();
             core.item(item.id.clone(), item.session.clone(), What::Scheduled(name), now);
+        }
+        drop(core);
+        self.nudge();
+    }
+
+    pub fn looped(&self, items: &[Item]) {
+        if items.is_empty() {
+            return;
+        }
+        let now = Instant::now();
+        let mut core = self.core();
+        for item in items {
+            let entry = item.title.clone().unwrap_or_default();
+            core.item(item.id.clone(), item.session.clone(), What::Looped(entry), now);
         }
         drop(core);
         self.nudge();

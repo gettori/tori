@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 use crate::pty::attach::Ended;
 use crate::rpc::client::{self, Client, Found};
 
-const COMMANDS: [&str; 27] = [
+const COMMANDS: [&str; 28] = [
     "sessions",
     "projects",
     "ports",
@@ -17,6 +17,7 @@ const COMMANDS: [&str; 27] = [
     "wait",
     "check",
     "handoff",
+    "loop",
     "events",
     "whoami",
     "steer",
@@ -47,6 +48,7 @@ const USAGE: &str = "usage:
   tori wait <id> [--timeout <secs>] [--json]
   tori check <id> [--json]
   tori handoff <id> --to <agent> [--account <id>] [--model <id>] [--note <text>] [--json]
+  tori loop --prompt <text> [--project <path>] [<entry>...] [--json]   (entries one per line on stdin when none are given)
   tori session wait <id> [--timeout <secs>] [--json]
   tori session pending <id> [--json]
   tori session answer <session> <id> <text>...
@@ -207,6 +209,7 @@ fn dispatch(args: &[String]) -> Result<(), Failure> {
         "wait" => session_wait(rest),
         "check" => check(rest),
         "handoff" => handoff(rest),
+        "loop" => run_loop(rest),
         "events" => events(rest),
         "whoami" => whoami(rest),
         "steer" => steer(rest),
@@ -791,6 +794,64 @@ fn handoff(args: &[String]) -> Result<(), Failure> {
         return Ok(writeln!(out, "{handed}")?);
     }
     Ok(writeln!(out, "{}", handed["id"].as_str().unwrap_or_default())?)
+}
+
+fn loop_params(args: &[String], stdin: impl FnOnce() -> io::Result<String>) -> Result<(Value, bool), Failure> {
+    let p = Parsed::new(args, &["prompt", "project"], &["json"])?;
+    let Some(prompt) = p.value("prompt") else {
+        return Err(usage("loop needs --prompt <text>"));
+    };
+    let entries: Vec<String> = match p.positional.as_slice() {
+        [] => stdin()?
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(String::from)
+            .collect(),
+        given => given.to_vec(),
+    };
+    if entries.is_empty() {
+        return Err(usage("loop needs entries, as arguments or one per line on stdin"));
+    }
+    let project = p.value("project").map(absolute).transpose()?;
+    let params = json!({ "prompt": prompt, "project": project, "entries": entries });
+    Ok((params, p.has("json")))
+}
+
+fn run_loop(args: &[String]) -> Result<(), Failure> {
+    let stdin = || {
+        use std::io::{IsTerminal, Read};
+        let mut text = String::new();
+        if !io::stdin().is_terminal() {
+            io::stdin().read_to_string(&mut text)?;
+        }
+        Ok(text)
+    };
+    let (params, json) = loop_params(args, stdin)?;
+    let looped = connect()?.call("autopilot.loop", params)?;
+    let mut out = io::stdout().lock();
+    if json {
+        return Ok(writeln!(out, "{looped}")?);
+    }
+    for line in loop_lines(&looped) {
+        writeln!(out, "{line}")?;
+    }
+    Ok(())
+}
+
+fn loop_lines(looped: &Value) -> Vec<String> {
+    let mut lines = Vec::new();
+    for item in looped["queued"].as_array().into_iter().flatten() {
+        let (id, entry) = (item["id"].as_str().unwrap_or(""), item["entry"].as_str().unwrap_or(""));
+        lines.push(format!("queued {id}  {entry}"));
+    }
+    for entry in looped["skipped"].as_array().into_iter().flatten() {
+        lines.push(format!("skipped {}  (already open)", entry.as_str().unwrap_or("")));
+    }
+    if looped["autopilot"] == false {
+        lines.push("the autopilot is off: these wait until it starts".to_string());
+    }
+    lines
 }
 
 fn check_lines(checked: &Value) -> Vec<String> {
@@ -1808,6 +1869,41 @@ mod tests {
         assert!(wait_params(&args(&[])).is_err());
         assert!(USAGE.contains("session wait <id>"));
         assert!(USAGE.contains("tori wait <id>") && COMMANDS.contains(&"wait"));
+    }
+
+    #[test]
+    fn a_loop_takes_entries_as_arguments_or_stdin_lines() {
+        let unread = || -> io::Result<String> { panic!("stdin read with entries given") };
+        let (params, _) = loop_params(&args(&["--prompt", "Port {item}", "a", "b"]), unread)
+            .ok()
+            .unwrap();
+        assert_eq!(params["entries"], json!(["a", "b"]));
+        let piped = || Ok("auth\n\n  billing  \n".to_string());
+        let (params, json) = loop_params(&args(&["--prompt", "Port {item}", "--json"]), piped)
+            .ok()
+            .unwrap();
+        assert_eq!(params["entries"], json!(["auth", "billing"]));
+        assert!(json);
+        assert!(loop_params(&args(&["--prompt", "x"]), || Ok(String::new())).is_err());
+        assert!(loop_params(&args(&["a"]), || Ok(String::new())).is_err());
+        assert!(USAGE.contains("tori loop --prompt") && COMMANDS.contains(&"loop"));
+    }
+
+    #[test]
+    fn a_loop_prints_what_it_queued_skipped_and_whether_anything_runs_it() {
+        let looped = json!({
+            "queued": [{ "id": "item-1", "entry": "auth" }],
+            "skipped": ["billing"],
+            "autopilot": false,
+        });
+        assert_eq!(
+            loop_lines(&looped),
+            [
+                "queued item-1  auth",
+                "skipped billing  (already open)",
+                "the autopilot is off: these wait until it starts"
+            ]
+        );
     }
 
     #[test]

@@ -117,6 +117,12 @@ pub(crate) fn watcher_scheduled(fired: &crate::autopilot::Fired) {
     }
 }
 
+pub(crate) fn watcher_looped(looped: &[crate::autopilot::Item]) {
+    if let Some(watcher) = WATCHER.get() {
+        watcher.looped(looped);
+    }
+}
+
 pub(crate) fn watcher_picked(picked: &[crate::autopilot::Item]) {
     if let Some(watcher) = WATCHER.get() {
         watcher.picked(picked);
