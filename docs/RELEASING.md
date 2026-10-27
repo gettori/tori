@@ -74,8 +74,10 @@ few seconds and the run ends there. A release commit goes on to, in parallel:
   Each builds the app, signs it with the Developer ID under the hardened
   runtime, checks every Mach-O inside is for that arch alone and that the
   signature verifies all the way down, then notarizes the DMG (one
-  submission covers the app inside it) and staples the ticket to it. It packs
-  the binary as `tori-cli-<version>-macos-<arm64|x64>.tar.gz`, notarized as
+  submission covers the app inside it) and staples the ticket to it. It
+  staples the same ticket onto the app and packs it as
+  `Tori_<version>_<aarch64|x64>.app.tar.gz`, the file the in-app updater and
+  `install.sh` download. It packs the binary as `tori-cli-<version>-macos-<arm64|x64>.tar.gz`, notarized as
   a zip, after checking it answers as the CLI. The arm64 job also runs the
   binary's `tori packs-catalog --check`, which fetches the live index from
   gettori.app and verifies it with the keys this build trusts. Apple's queue
@@ -85,9 +87,17 @@ few seconds and the run ends there. A release commit goes on to, in parallel:
   builds, checks the APK is signed, and names it `Tori_<version>.apk`.
 
 Only when all three have passed does the `publish` job tag the commit
-`v<version>`, create the GitHub release as a draft with all five files,
-confirm each is attached, publish it, and point the Homebrew cask at the two
-DMGs. A failed build therefore leaves nothing behind: no tag, no draft.
+`v<version>`, create the GitHub release as a draft with all seven files,
+confirm each is attached, publish it as the latest release, and point the
+Homebrew cask at the two DMGs. A release is never marked a prerelease, whatever
+its stage suffix: the in-app updater and `install.sh` read GitHub's latest
+release, which skips prereleases.
+
+The cask does not yet say `auto_updates true`. Builds up to 26.1022 update only
+through `brew upgrade`, so the first release with the in-app updater has to
+reach Homebrew installs that way. Add `auto_updates true` to the template in
+`.github/scripts/update-cask.sh` from the release after it, so brew stops
+offering upgrades the app already makes itself. A failed build therefore leaves nothing behind: no tag, no draft.
 
 After `publish`, the `extension` job builds the store zip with
 `.github/scripts/extension-zip.sh`, uploads it to the Chrome Web Store item

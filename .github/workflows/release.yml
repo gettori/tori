@@ -182,6 +182,14 @@ jobs:
           .github/scripts/notarize.sh "${dmgs[0]}"
           echo "path=${dmgs[0]}" >> "$GITHUB_OUTPUT"
 
+      - name: Pack the app for in-app updates
+        id: app
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          path=$(.github/scripts/app-tarball.sh "$BUNDLE/macos/Tori.app" "$VERSION" ${{ matrix.dmg_arch }} "$BUNDLE/updater")
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+
       # gettori/packs CI runs validate-pack and packs-index from this, pinned by
       # tag, so it ships with every release.
       - name: Pack the CLI
@@ -205,6 +213,7 @@ jobs:
           name: macos-${{ matrix.arch }}
           path: |
             ${{ steps.dmg.outputs.path }}
+            ${{ steps.app.outputs.path }}
             ${{ steps.cli.outputs.path }}
           if-no-files-found: error
 
@@ -324,18 +333,19 @@ jobs:
           git push origin "v$VERSION"
 
       # Drafted first so a failed upload never leaves a live release without
-      # its assets; published only after all five are confirmed present.
+      # its assets; published only after every one is confirmed present.
       # --verify-tag: gh must not invent a tag on the default branch if the
       # push above somehow did not land.
       - name: Create the release
         run: |
+          # Never a prerelease, whatever the stage suffix: the in-app updater
+          # and install.sh read GitHub's latest release, which skips prereleases.
           flags=(--draft --verify-tag)
-          case "$VERSION" in *-*) flags+=(--prerelease) ;; esac
           # The artifacts keep their dmg/ and cli/ folders, so by file, not
           # by assets/*, which would hand gh two directories.
           files=()
           while IFS= read -r f; do files+=("$f"); done < <(find assets -type f | sort)
-          [ ${#files[@]} -eq 5 ] || { echo "expected 5 assets, found ${#files[@]}:" >&2; printf '  %s\n' "${files[@]}" >&2; exit 1; }
+          [ ${#files[@]} -eq 7 ] || { echo "expected 7 assets, found ${#files[@]}:" >&2; printf '  %s\n' "${files[@]}" >&2; exit 1; }
           gh release create "v$VERSION" \
             --repo "$GITHUB_REPOSITORY" \
             "${flags[@]}" \
@@ -349,7 +359,7 @@ jobs:
             echo "$have" >&2
             exit 1
           fi
-          gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
+          gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false --latest
 
       - name: Point the Homebrew cask at it
         env:

@@ -1,49 +1,42 @@
-// Update check: is there a newer release than the running build?
-//
-// Check-only, by design. Tori ships unsigned, so replacing the bundle in place
-// would re-trigger quarantine and the user would have to walk the Gatekeeper
-// steps again anyway - an auto-updater would buy nothing and could leave a
-// half-replaced app. So this fetches a tag, compares it, and at most shows a
-// notice linking to that release. When Homebrew owns the install the notice
-// also offers `brew upgrade --cask tori`, run in a terminal tab the user
-// watches; the cask clears quarantine, which is what makes that one safe.
-//
-// Three rules keep it from becoming a nuisance:
-//
-// 1. Throttled to once a day, persisted, so relaunching all morning does not
-//    hammer the API (unauthenticated GitHub allows 60 requests/hour/IP).
-// 2. Silent on failure. Offline, rate-limited, DNS down, GitHub 500 - all
-//    produce no update and no error surface. A user who cannot reach GitHub
-//    has nothing to act on.
-// 3. Never downgrades or nags sideways: only a strictly greater semver counts.
+// Every build is signed with the Developer ID and notarized, so an update is
+// trusted the way Apple trusts it: it must verify, carry our team id and pass
+// Gatekeeper. That spares a second signing key and a manifest to publish.
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use tauri::Emitter;
 
-// The list rather than `/releases/latest`, which never returns a prerelease:
-// while every release is an alpha, that endpoint has nothing to say.
-const RELEASES_API: &str = "https://api.github.com/repos/gettori/tori/releases?per_page=10";
+const LATEST_API: &str = "https://api.github.com/repos/gettori/tori/releases/latest";
 const RELEASES_PAGE: &str = "https://github.com/gettori/tori/releases";
 
-/// Where the cask lives on Apple Silicon and on Intel.
-const CASKROOMS: [&str; 2] = ["/opt/homebrew/Caskroom/tori", "/usr/local/Caskroom/tori"];
+const TEAM_ID: &str = "C328TXY8Q3";
 
-/// The tag the last successful check found, for the pill's click to open.
-static FOUND_TAG: Mutex<Option<String>> = Mutex::new(None);
+const ASSET_ARCH: &str = if cfg!(target_arch = "aarch64") {
+    "aarch64"
+} else {
+    "x64"
+};
+
+const PROGRESS_EVENT: &str = "update://progress";
+
+static FOUND: Mutex<Option<Found>> = Mutex::new(None);
+
+static INSTALLING: AtomicBool = AtomicBool::new(false);
 
 /// Gap after a check that actually reached GitHub.
-const CHECK_INTERVAL_SECS: u64 = 24 * 60 * 60;
+const CHECK_INTERVAL_SECS: u64 = 6 * 60 * 60;
 
 /// Gap after a check that failed (offline, rate-limited, GitHub down).
 ///
-/// Deliberately much shorter than the success interval. Launching while
-/// offline is ordinary - a laptop opened before the wifi connects - and
-/// charging that a full day of silence would mean a user who is briefly
-/// offline each morning never gets told about a release at all. An hour is
-/// still far too sparse to hammer anyone during an outage.
+/// Shorter than the success interval: launching while offline is ordinary - a
+/// laptop opened before the wifi connects - and should not cost the whole
+/// interval of silence.
 const RETRY_INTERVAL_SECS: u64 = 60 * 60;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -51,8 +44,31 @@ const RETRY_INTERVAL_SECS: u64 = 60 * 60;
 pub struct UpdateInfo {
     /// The newer version, without the `v` prefix.
     pub version: String,
-    /// Homebrew owns this install, so `brew upgrade --cask tori` can update it.
-    pub brew: bool,
+    /// `None` when this copy can replace itself; otherwise why not, for the pill
+    /// to say instead of offering Install.
+    pub blocked: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+struct Found {
+    tag: String,
+    version: String,
+    url: Option<String>,
+    #[serde(default)]
+    size: u64,
+}
+
+impl Found {
+    fn info(&self) -> UpdateInfo {
+        let blocked = match &self.url {
+            None => Some("This release has no update for this Mac; download it from the release page.".to_string()),
+            Some(_) => replaceable_bundle().err(),
+        };
+        UpdateInfo {
+            version: self.version.clone(),
+            blocked,
+        }
+    }
 }
 
 /// Open the found release's page in the user's browser, or the releases list
@@ -64,9 +80,9 @@ pub struct UpdateInfo {
 /// "spawn the real tool" convention.
 #[tauri::command(async)]
 pub fn open_releases_page() -> Result<(), String> {
-    let found = FOUND_TAG.lock().ok().and_then(|t| t.clone());
+    let found = FOUND.lock().ok().and_then(|f| f.as_ref().map(|f| f.tag.clone()));
     let url = found.map_or_else(|| RELEASES_PAGE.to_string(), |tag| format!("{RELEASES_PAGE}/tag/{tag}"));
-    crate::exec::spawn_detached(std::process::Command::new("open").arg(url)).map_err(|e| e.to_string())
+    crate::exec::spawn_detached(Command::new("open").arg(url)).map_err(|e| e.to_string())
 }
 
 /// Start this app's bundle again and quit this process.
@@ -78,7 +94,7 @@ pub fn open_releases_page() -> Result<(), String> {
 pub fn relaunch(app: tauri::AppHandle) -> Result<(), String> {
     let bundle = running_bundle().unwrap_or_else(|| PathBuf::from("/Applications/Tori.app"));
     crate::exec::spawn_detached(
-        std::process::Command::new("/bin/sh")
+        Command::new("/bin/sh")
             .arg("-c")
             .arg(r#"while kill -0 "$1" 2>/dev/null; do sleep 0.2; done; exec open "$2""#)
             .arg("sh")
@@ -99,11 +115,35 @@ fn running_bundle() -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
-/// `brew` on the login PATH and a Caskroom folder for tori: the same rule
-/// agent health uses to call a tool installed, plus proof the cask is what
-/// put this copy here rather than a hand-dragged download.
-fn brew_owns_install() -> bool {
-    CASKROOMS.iter().any(|p| Path::new(p).is_dir()) && crate::env::resolve_binary("brew").is_some()
+fn replaceable_bundle() -> Result<PathBuf, String> {
+    let bundle = running_bundle()
+        .filter(|_| !cfg!(debug_assertions))
+        .ok_or_else(|| "A dev build does not update itself.".to_string())?;
+    may_replace(&bundle)?;
+    Ok(bundle)
+}
+
+// macOS runs an app opened straight from a DMG or a quarantined download from
+// a read-only translocated copy, which an update could never replace.
+fn may_replace(bundle: &Path) -> Result<(), String> {
+    let path = bundle.to_string_lossy();
+    if path.contains("/AppTranslocation/") || path.starts_with("/Volumes/") {
+        return Err("Move Tori to Applications to update it in place.".to_string());
+    }
+    let dir = bundle.parent().ok_or_else(|| "Tori is not in a folder.".to_string())?;
+    if !writable(dir) {
+        return Err(format!("Tori cannot write to {}.", dir.display()));
+    }
+    Ok(())
+}
+
+fn writable(dir: &Path) -> bool {
+    use std::os::unix::ffi::OsStrExt;
+    let Ok(c) = std::ffi::CString::new(dir.as_os_str().as_bytes()) else {
+        return false;
+    };
+    // SAFETY: a valid NUL-terminated path; access only reads it.
+    unsafe { libc::access(c.as_ptr(), libc::W_OK) == 0 }
 }
 
 /// Parse a semver-ish string into comparable parts, tolerating a `v` prefix and
@@ -132,17 +172,40 @@ fn is_newer(candidate: &str, current: &str) -> bool {
     }
 }
 
-/// When the next check becomes due. Storing the *deadline* rather than the
-/// last-check time is what lets a failed check schedule a short retry and a
-/// successful one schedule a full day, without a second field recording which
-/// kind it was.
+/// When the next check becomes due, and what the last one found. Storing the
+/// *deadline* rather than the last-check time is what lets a failed check
+/// schedule a short retry and a successful one the full interval.
 #[derive(Serialize, Deserialize, Default)]
 struct Throttle {
     next_check_secs: u64,
+    #[serde(default)]
+    found: Option<Found>,
 }
 
-fn throttle_path() -> std::path::PathBuf {
+fn throttle_path() -> PathBuf {
     crate::owned_state::config_dir().join("update-check.json")
+}
+
+fn read_throttle(path: &Path) -> Throttle {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+/// Persist the next deadline and what was found. Best-effort: an unwritable
+/// config dir degrades to checking once per launch.
+fn write_throttle(path: &Path, interval: u64, found: Option<&Found>) {
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let throttle = Throttle {
+        next_check_secs: now_secs().saturating_add(interval),
+        found: found.cloned(),
+    };
+    if let Ok(json) = serde_json::to_string(&throttle) {
+        let _ = std::fs::write(path, json);
+    }
 }
 
 fn now_secs() -> u64 {
@@ -165,80 +228,76 @@ fn is_due(next: u64, now: u64) -> bool {
 struct GithubRelease {
     tag_name: String,
     #[serde(default)]
-    draft: bool,
+    assets: Vec<GithubAsset>,
+}
+
+#[derive(Deserialize)]
+struct GithubAsset {
+    name: String,
+    browser_download_url: String,
     #[serde(default)]
-    prerelease: bool,
+    size: u64,
 }
 
-/// Does the running version carry a stage suffix (`26.1002.1-alpha`)?
-fn is_prerelease(version: &str) -> bool {
-    version
-        .trim()
-        .trim_start_matches('v')
-        .split('+')
-        .next()
-        .is_some_and(|core| core.contains('-'))
+fn found_in(release: &GithubRelease, current: &str, arch: &str) -> Option<Found> {
+    if !is_newer(&release.tag_name, current) {
+        return None;
+    }
+    let version = release.tag_name.trim_start_matches('v').to_string();
+    let name = format!("Tori_{version}_{arch}.app.tar.gz");
+    let asset = release.assets.iter().find(|a| a.name == name);
+    Some(Found {
+        tag: release.tag_name.clone(),
+        url: asset.map(|a| a.browser_download_url.clone()),
+        size: asset.map_or(0, |a| a.size),
+        version,
+    })
 }
 
-/// The newest tag strictly newer than `current`, skipping drafts, and skipping
-/// prereleases unless `current` is one: an alpha hears about the next alpha, a
-/// stable build only about stable ones. On a tie the earlier entry wins, which
-/// is the more recently published one in GitHub's ordering.
-fn pick_update(releases: &[GithubRelease], current: &str) -> Option<String> {
-    let allow_pre = is_prerelease(current);
-    releases
-        .iter()
-        .filter(|r| !r.draft && (allow_pre || !r.prerelease) && is_newer(&r.tag_name, current))
-        .fold(None::<&GithubRelease>, |best, r| match best {
-            Some(b) if !is_newer(&r.tag_name, &b.tag_name) => Some(b),
-            _ => Some(r),
-        })
-        .map(|r| r.tag_name.clone())
-}
-
-fn fetch_releases() -> Option<Vec<GithubRelease>> {
-    let mut response = ureq::get(RELEASES_API)
+fn fetch_latest() -> Option<GithubRelease> {
+    let mut response = ureq::get(LATEST_API)
         .header("User-Agent", "tori-update-check")
         .header("Accept", "application/vnd.github+json")
         .config()
-        .timeout_global(Some(std::time::Duration::from_secs(10)))
+        .timeout_global(Some(Duration::from_secs(10)))
         .build()
         .call()
         .ok()?;
     response.body_mut().read_json().ok()
 }
 
+fn remember(found: Option<Found>) -> Option<Found> {
+    if let Ok(mut held) = FOUND.lock() {
+        *held = found.clone();
+    }
+    found
+}
+
 /// Check for a newer release, or return `None`.
 ///
-/// `None` covers every uninteresting case identically - up to date, throttled,
-/// offline, rate-limited, malformed response - because the frontend's response
-/// to all of them is the same: show nothing.
+/// `None` covers every uninteresting case identically - up to date, offline,
+/// rate-limited, malformed response - because the frontend's response to all
+/// of them is the same: show nothing. A throttled call answers what the last
+/// check found, so a known update never disappears on a relaunch.
 #[tauri::command]
 pub async fn check_for_update(app: tauri::AppHandle) -> Option<UpdateInfo> {
+    let current = app.package_info().version.to_string();
     let path = throttle_path();
-    let next = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|t| serde_json::from_str::<Throttle>(&t).ok())
-        .map(|t| t.next_check_secs)
-        .unwrap_or(0);
-
-    if !is_due(next, now_secs()) {
-        return None;
+    let held = read_throttle(&path);
+    let still_newer = |found: Option<Found>| found.filter(|f| is_newer(&f.version, &current));
+    if !is_due(held.next_check_secs, now_secs()) {
+        return remember(still_newer(held.found)).map(|f| f.info());
     }
-
     // Schedule the *failure* retry before the request goes out, so a crash or
     // a hang mid-check still leaves a deadline behind and cannot turn into a
-    // request on every launch. A success upgrades it to the full day below.
-    write_deadline(&path, RETRY_INTERVAL_SECS);
-
-    match lookup(&app) {
-        ManualCheck::Failed => None,
-        found => {
-            write_deadline(&path, CHECK_INTERVAL_SECS);
-            match found {
-                ManualCheck::Newer(info) => Some(info),
-                _ => None,
-            }
+    // request on every launch. A success upgrades it to the full interval below.
+    write_throttle(&path, RETRY_INTERVAL_SECS, held.found.as_ref());
+    match fetch_latest() {
+        None => remember(still_newer(held.found)).map(|f| f.info()),
+        Some(release) => {
+            let found = found_in(&release, &current, ASSET_ARCH);
+            write_throttle(&path, CHECK_INTERVAL_SECS, found.as_ref());
+            remember(found).map(|f| f.info())
         }
     }
 }
@@ -251,46 +310,181 @@ pub enum ManualCheck {
     Failed,
 }
 
-/// Check now, past the daily throttle. A check that reaches GitHub still
-/// pushes the background one a day out, since it has nothing left to tell.
+/// Check now, past the throttle. A check that reaches GitHub still pushes the
+/// background one out, since it has nothing left to tell.
 #[tauri::command]
 pub async fn check_for_update_now(app: tauri::AppHandle) -> ManualCheck {
-    let found = lookup(&app);
-    if found != ManualCheck::Failed {
-        write_deadline(&throttle_path(), CHECK_INTERVAL_SECS);
-    }
-    found
-}
-
-fn lookup(app: &tauri::AppHandle) -> ManualCheck {
     let current = app.package_info().version.to_string();
-    let Some(releases) = fetch_releases() else {
+    let Some(release) = fetch_latest() else {
         return ManualCheck::Failed;
     };
-    let Some(tag) = pick_update(&releases, &current) else {
-        return ManualCheck::Current;
-    };
-    let version = tag.trim_start_matches('v').to_string();
-    if let Ok(mut found) = FOUND_TAG.lock() {
-        *found = Some(tag);
+    let found = found_in(&release, &current, ASSET_ARCH);
+    write_throttle(&throttle_path(), CHECK_INTERVAL_SECS, found.as_ref());
+    match remember(found) {
+        Some(found) => ManualCheck::Newer(found.info()),
+        None => ManualCheck::Current,
     }
-    ManualCheck::Newer(UpdateInfo {
-        version,
-        brew: brew_owns_install(),
-    })
 }
 
-/// Persist "do not check again until `now + interval`". Best-effort: an
-/// unwritable config dir degrades to checking once per launch, which is
-/// noisier than intended but never a failure the user should see.
-fn write_deadline(path: &std::path::Path, interval: u64) {
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+#[derive(Clone, Serialize)]
+struct Progress {
+    received: u64,
+    total: u64,
+}
+
+/// Download the found update, verify it, and put it in place of the running
+/// bundle. The running process keeps its own files open, so it carries on
+/// until the user restarts; the daemon follows once no session is working.
+#[tauri::command]
+pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
+    let found = FOUND
+        .lock()
+        .ok()
+        .and_then(|f| f.clone())
+        .ok_or_else(|| "No update to install.".to_string())?;
+    let url = found
+        .url
+        .clone()
+        .ok_or_else(|| "This release has no update for this Mac.".to_string())?;
+    let bundle = replaceable_bundle()?;
+    if INSTALLING.swap(true, Ordering::SeqCst) {
+        return Err("An update is already installing.".to_string());
     }
-    let next = now_secs().saturating_add(interval);
-    if let Ok(json) = serde_json::to_string(&Throttle { next_check_secs: next }) {
-        let _ = std::fs::write(path, json);
+    let done = crate::exec::blocking("install_update", move || {
+        let mut last = 0;
+        install(&url, found.size, &found.version, &bundle, |received, total| {
+            let percent = received * 100 / total.max(1);
+            if percent != last {
+                last = percent;
+                let _ = app.emit(PROGRESS_EVENT, Progress { received, total });
+            }
+        })
+    })
+    .await;
+    INSTALLING.store(false, Ordering::SeqCst);
+    done
+}
+
+fn install(url: &str, size: u64, version: &str, bundle: &Path, progress: impl FnMut(u64, u64)) -> Result<(), String> {
+    let dir = bundle.parent().ok_or_else(|| "Tori is not in a folder.".to_string())?;
+    // Beside the bundle, so the swap is a rename on one volume.
+    let staging = dir.join(format!(".Tori-update-{version}"));
+    let _ = std::fs::remove_dir_all(&staging);
+    std::fs::create_dir_all(&staging).map_err(|e| format!("could not stage the update: {e}"))?;
+    let result = (|| {
+        let tarball = staging.join("Tori.app.tar.gz");
+        download(url, size, &tarball, progress)?;
+        run(Command::new("/usr/bin/tar")
+            .arg("-xzf")
+            .arg(&tarball)
+            .arg("-C")
+            .arg(&staging))?;
+        let new_app = staging.join("Tori.app");
+        verify(&new_app, version)?;
+        swap(bundle, &new_app, &staging.join("Tori.app.old"))
+    })();
+    let _ = std::fs::remove_dir_all(&staging);
+    result
+}
+
+fn download(url: &str, size: u64, to: &Path, mut progress: impl FnMut(u64, u64)) -> Result<(), String> {
+    let mut response = ureq::get(url)
+        .header("User-Agent", "tori-update")
+        .config()
+        .timeout_connect(Some(Duration::from_secs(30)))
+        .timeout_recv_response(Some(Duration::from_secs(60)))
+        .timeout_recv_body(Some(Duration::from_secs(30 * 60)))
+        .build()
+        .call()
+        .map_err(|e| format!("download failed: {e}"))?;
+    let total = response
+        .headers()
+        .get("content-length")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(size);
+    let mut reader = response.body_mut().as_reader();
+    let mut file = std::fs::File::create(to).map_err(|e| e.to_string())?;
+    let mut buf = vec![0; 64 * 1024];
+    let mut received = 0;
+    loop {
+        let n = reader.read(&mut buf).map_err(|e| format!("download failed: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        std::io::Write::write_all(&mut file, &buf[..n]).map_err(|e| e.to_string())?;
+        received += n as u64;
+        progress(received, total);
     }
+    if total > 0 && received != total {
+        return Err(format!("download stopped at {received} of {total} bytes"));
+    }
+    Ok(())
+}
+
+fn verify(app: &Path, version: &str) -> Result<(), String> {
+    run(Command::new("/usr/bin/codesign")
+        .args(["--verify", "--deep", "--strict"])
+        .arg(app))
+    .map_err(|e| format!("the update's signature does not verify: {e}"))?;
+    let shown = Command::new("/usr/bin/codesign")
+        .arg("-dv")
+        .arg(app)
+        .output()
+        .map_err(|e| e.to_string())?;
+    let team = team_of(&String::from_utf8_lossy(&shown.stderr)).map(str::to_string);
+    if team.as_deref() != Some(TEAM_ID) {
+        return Err(format!(
+            "the update is signed by {}, not Tori's team",
+            team.as_deref().unwrap_or("nobody")
+        ));
+    }
+    run(Command::new("/usr/sbin/spctl")
+        .args(["--assess", "--type", "execute"])
+        .arg(app))
+    .map_err(|e| format!("Gatekeeper refuses the update: {e}"))?;
+    let plist = app.join("Contents/Info.plist");
+    let read = Command::new("/usr/bin/plutil")
+        .args(["-extract", "CFBundleShortVersionString", "raw", "-o", "-"])
+        .arg(&plist)
+        .output()
+        .map_err(|e| e.to_string())?;
+    let found = String::from_utf8_lossy(&read.stdout).trim().to_string();
+    if found != version {
+        return Err(format!("the update says it is {found}, not {version}"));
+    }
+    Ok(())
+}
+
+fn team_of(codesign_dv: &str) -> Option<&str> {
+    codesign_dv
+        .lines()
+        .find_map(|line| line.strip_prefix("TeamIdentifier="))
+        .map(str::trim)
+        .filter(|team| !team.is_empty() && *team != "not set")
+}
+
+fn swap(current: &Path, new: &Path, aside: &Path) -> Result<(), String> {
+    std::fs::rename(current, aside).map_err(|e| format!("could not move the old Tori aside: {e}"))?;
+    if let Err(e) = std::fs::rename(new, current) {
+        return match std::fs::rename(aside, current) {
+            Ok(()) => Err(format!("could not put the update in place: {e}")),
+            Err(back) => Err(format!(
+                "could not put the update in place ({e}), nor the old Tori back ({back}); it is at {}",
+                aside.display()
+            )),
+        };
+    }
+    Ok(())
+}
+
+fn run(cmd: &mut Command) -> Result<(), String> {
+    let out = cmd.output().map_err(|e| e.to_string())?;
+    if out.status.success() {
+        return Ok(());
+    }
+    let said = String::from_utf8_lossy(&out.stderr);
+    Err(said.lines().last().unwrap_or("failed").trim().to_string())
 }
 
 #[cfg(test)]
@@ -341,56 +535,106 @@ mod tests {
         assert!(is_newer("v1.0.0", "0.100.0"));
     }
 
-    fn release(tag: &str, prerelease: bool) -> GithubRelease {
+    fn release(tag: &str, assets: &[&str]) -> GithubRelease {
         GithubRelease {
             tag_name: tag.to_string(),
-            draft: false,
-            prerelease,
+            assets: assets
+                .iter()
+                .map(|name| GithubAsset {
+                    name: name.to_string(),
+                    browser_download_url: format!("https://example.test/{name}"),
+                    size: 7,
+                })
+                .collect(),
         }
     }
 
     #[test]
-    fn an_alpha_hears_of_the_next_alpha_and_a_stable_build_only_of_stable() {
-        let list = [
-            release("v26.1010.0-alpha", true),
-            release("v26.1005.0", false),
-            release("v26.1002.1-alpha", true),
-        ];
-        assert_eq!(pick_update(&list, "26.1002.1-alpha"), Some("v26.1010.0-alpha".into()));
-        assert_eq!(pick_update(&list, "26.1001.0"), Some("v26.1005.0".into()));
-        assert_eq!(pick_update(&list, "26.1005.0"), None);
+    fn a_newer_release_offers_this_macs_asset_and_only_that() {
+        let latest = release(
+            "v26.1030.0-beta",
+            &[
+                "Tori_26.1030.0-beta_aarch64.app.tar.gz",
+                "Tori_26.1030.0-beta_x64.app.tar.gz",
+                "Tori_26.1030.0-beta_aarch64.dmg",
+            ],
+        );
+        let found = found_in(&latest, "26.1022.0-alpha", "x64").unwrap();
+        assert_eq!(found.version, "26.1030.0-beta");
+        assert_eq!(
+            found.url.as_deref(),
+            Some("https://example.test/Tori_26.1030.0-beta_x64.app.tar.gz")
+        );
+        assert_eq!(
+            found_in(&latest, "26.1030.0-beta", "x64"),
+            None,
+            "the same version is no update"
+        );
     }
 
     #[test]
-    fn the_pick_skips_drafts_and_takes_the_highest_version_not_the_first() {
-        let mut draft = release("v27.0.0-alpha", true);
-        draft.draft = true;
-        let list = [
-            draft,
-            release("v26.1003.0-alpha", true),
-            release("v26.1004.0-alpha", true),
-        ];
-        assert_eq!(pick_update(&list, "26.1002.1-alpha"), Some("v26.1004.0-alpha".into()));
-        assert_eq!(pick_update(&[], "26.1002.1-alpha"), None);
+    fn a_release_without_this_macs_asset_is_found_but_not_installable() {
+        let older_pipeline = release("v26.1030.0-beta", &["Tori_26.1030.0-beta_aarch64.dmg"]);
+        let found = found_in(&older_pipeline, "26.1022.0-alpha", "aarch64").unwrap();
+        assert_eq!(found.url, None);
+        assert!(found.info().blocked.is_some());
     }
 
     #[test]
-    fn a_build_suffix_alone_is_not_a_prerelease() {
-        assert!(is_prerelease("26.1002.1-alpha"));
-        assert!(is_prerelease("v1.0.0-rc.1+build7"));
-        assert!(!is_prerelease("27.101.0"));
-        assert!(!is_prerelease("1.0.0+build-7"));
+    fn the_team_comes_from_codesigns_description() {
+        let dv = "Executable=/Applications/Tori.app/Contents/MacOS/tori\nIdentifier=app.gettori.tori\nTeamIdentifier=C328TXY8Q3\nSealed Resources version=2\n";
+        assert_eq!(team_of(dv), Some(TEAM_ID));
+        assert_eq!(team_of("Identifier=x\nTeamIdentifier=not set\n"), None);
+        assert_eq!(team_of("Identifier=x\n"), None);
+    }
+
+    #[test]
+    fn an_app_run_from_a_disk_image_or_translocated_cannot_replace_itself() {
+        let refused = |p: &str| may_replace(Path::new(p)).is_err();
+        assert!(refused("/Volumes/Tori/Tori.app"));
+        assert!(refused("/private/var/folders/x/AppTranslocation/ABC/d/Tori.app"));
+    }
+
+    fn temp(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("tori-update-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_swap_puts_the_new_bundle_in_and_keeps_the_old_one_aside() {
+        let dir = temp("swap");
+        let (current, new, aside) = (dir.join("Tori.app"), dir.join("new/Tori.app"), dir.join("Tori.app.old"));
+        std::fs::create_dir_all(&current).unwrap();
+        std::fs::write(current.join("v"), "old").unwrap();
+        std::fs::create_dir_all(&new).unwrap();
+        std::fs::write(new.join("v"), "new").unwrap();
+        swap(&current, &new, &aside).unwrap();
+        assert_eq!(std::fs::read_to_string(current.join("v")).unwrap(), "new");
+        assert_eq!(std::fs::read_to_string(aside.join("v")).unwrap(), "old");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_swap_that_cannot_place_the_new_bundle_puts_the_old_one_back() {
+        let dir = temp("rollback");
+        let (current, aside) = (dir.join("Tori.app"), dir.join("Tori.app.old"));
+        std::fs::create_dir_all(&current).unwrap();
+        std::fs::write(current.join("v"), "old").unwrap();
+        let missing = dir.join("never-unpacked/Tori.app");
+        assert!(swap(&current, &missing, &aside).is_err());
+        assert_eq!(std::fs::read_to_string(current.join("v")).unwrap(), "old");
+        assert!(!aside.exists());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
     fn throttle_allows_the_first_check_then_blocks_until_the_deadline() {
         let now = 1_000_000;
-        // No deadline stored yet: never checked.
         assert!(is_due(0, now));
-        // Deadline still ahead.
         assert!(!is_due(now + 1, now));
         assert!(!is_due(now + CHECK_INTERVAL_SECS, now));
-        // Deadline reached.
         assert!(is_due(now, now));
         assert!(is_due(now - 1, now));
     }
@@ -398,9 +642,7 @@ mod tests {
     #[test]
     fn a_failed_check_retries_sooner_than_a_successful_one() {
         let now = 1_000_000;
-        // The deadline a failure writes has passed an hour later...
         assert!(is_due(now + RETRY_INTERVAL_SECS, now + RETRY_INTERVAL_SECS));
-        // ...while the one a success writes has not.
         assert!(!is_due(now + CHECK_INTERVAL_SECS, now + RETRY_INTERVAL_SECS));
         const {
             assert!(
@@ -412,12 +654,32 @@ mod tests {
 
     #[test]
     fn a_backwards_clock_does_not_wedge_the_check() {
-        // A deadline further out than any interval we would ever schedule means
-        // the clock moved, not that a check is genuinely pending: due now,
-        // rather than blocked until the wall clock catches up.
         assert!(is_due(u64::MAX, 1_000_000));
         assert!(is_due(1_000_000 + CHECK_INTERVAL_SECS + 1, 1_000_000));
-        // A deadline inside the normal window is still honoured.
         assert!(!is_due(1_000_000 + CHECK_INTERVAL_SECS, 1_000_000));
+    }
+
+    #[test]
+    fn a_found_update_outlives_the_throttle() {
+        let dir = temp("throttle");
+        let path = dir.join("update-check.json");
+        let found = Found {
+            tag: "v26.1030.0-beta".into(),
+            version: "26.1030.0-beta".into(),
+            url: Some("https://example.test/a".into()),
+            size: 7,
+        };
+        write_throttle(&path, CHECK_INTERVAL_SECS, Some(&found));
+        let held = read_throttle(&path);
+        assert!(!is_due(held.next_check_secs, now_secs()));
+        assert_eq!(held.found, Some(found));
+        let old_file = dir.join("old.json");
+        std::fs::write(&old_file, r#"{"next_check_secs":5}"#).unwrap();
+        assert_eq!(
+            read_throttle(&old_file).next_check_secs,
+            5,
+            "a file from before reads with nothing found"
+        );
+        let _ = std::fs::remove_dir_all(dir);
     }
 }
