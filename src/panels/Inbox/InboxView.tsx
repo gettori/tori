@@ -20,6 +20,7 @@ import {
   UserRoundSearch,
   type LucideIcon,
 } from "lucide-solid";
+import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
@@ -42,6 +43,15 @@ import {
   type NeedsYouEvent,
   type NeedsYouKind,
 } from "../../utils/needsYouSignals";
+import {
+  allowGroup,
+  byPlace,
+  denyPermission,
+  openPermission,
+  permissionCount,
+  permissionRows,
+  type PermissionRow,
+} from "../../utils/permissionInbox";
 import { askedTab, markReviewed, openItem, reviewItems, setAskedTab, type InboxTab } from "../../utils/reviewInbox";
 import { opinionLabel, runSecondOpinion, secondOpinionRunning } from "../../utils/secondOpinion";
 import { signalLabel, type ReviewItem, type SecondOpinion, type SignalKind } from "../../utils/reviewSignals";
@@ -311,6 +321,94 @@ function NeedsYouList(props: { onReview: () => void }) {
   );
 }
 
+const agentName = (agent: string) => agent.charAt(0).toUpperCase() + agent.slice(1);
+
+function PermissionPromptRow(props: {
+  row: PermissionRow;
+  onDeny: (row: PermissionRow) => void;
+  onOpen: (row: PermissionRow) => void;
+}) {
+  return (
+    <li class={styles.prompt}>
+      <EventLine
+        icon={Hand}
+        tone="attention"
+        name={folderName(props.row.folder)}
+        meta={[props.row.tool]}
+        time=""
+        onOpen={() => props.onOpen(props.row)}
+      />
+      <IconButton
+        size="sm"
+        icon={<Icon icon={CircleX} />}
+        aria-label={`Deny in ${folderName(props.row.folder)}`}
+        tooltip="Deny"
+        tooltipPlacement="top"
+        onClick={() => props.onDeny(props.row)}
+      />
+    </li>
+  );
+}
+
+export function PermissionList(props: {
+  rows: PermissionRow[];
+  onAllow?: (rows: PermissionRow[]) => void;
+  onDeny?: (row: PermissionRow) => void;
+  onOpen?: (row: PermissionRow) => void;
+}) {
+  const allow = (rows: PermissionRow[]) => (props.onAllow ?? allowGroup)(rows);
+  const deny = (row: PermissionRow) => (props.onDeny ?? denyPermission)(row);
+  const open = (row: PermissionRow) => (props.onOpen ?? openPermission)(row);
+  return (
+    <Show when={props.rows.length} fallback={<Empty text="No worker is waiting on a permission." />}>
+      <For each={byPlace(props.rows)}>
+        {(place) => (
+          <Group
+            label={place.project ? folderName(place.place) : `Other: ${folderName(place.place)}`}
+            count={place.commands.reduce((n, c) => n + c.rows.length, 0)}
+          >
+            <For each={place.commands}>
+              {(command) => {
+                const first = () => command.rows[0];
+                const count = () => command.rows.length;
+                return (
+                  <li class={styles.command}>
+                    <div class={styles.commandHead}>
+                      <span class={styles.text}>
+                        <code class={styles.commandText}>{first().action ?? first().tool}</code>
+                        <Meta
+                          parts={[
+                            agentName(first().agent),
+                            first().tool,
+                            `${count()} waiting`,
+                            ...(first().rule
+                              ? [
+                                  <span data-tone="attention">{`${agentName(first().agent)} will remember ${first().rule}`}</span>,
+                                ]
+                              : []),
+                          ]}
+                        />
+                      </span>
+                      <Button size="sm" variant="primary" onClick={() => allow(command.rows)}>
+                        {count() === 1 ? "Always allow" : `Always allow for all ${count()}`}
+                      </Button>
+                    </div>
+                    <ul class={styles.list}>
+                      <For each={command.rows}>
+                        {(row) => <PermissionPromptRow row={row} onDeny={deny} onOpen={open} />}
+                      </For>
+                    </ul>
+                  </li>
+                );
+              }}
+            </For>
+          </Group>
+        )}
+      </For>
+    </Show>
+  );
+}
+
 function opinionLook(o: SecondOpinion): { icon: LucideIcon; tone: Tone | "brand" } {
   if (o.state === "running") return { icon: LoaderCircle, tone: "progress" };
   if (o.state === "failed") return { icon: CircleAlert, tone: "danger" };
@@ -472,6 +570,7 @@ export default function InboxView(props: { landing?: (el: HTMLElement) => void }
   const views: { id: InboxTab; label: string; icon: LucideIcon; count: () => number }[] = [
     { id: "since", label: "Since you looked", icon: Clock, count: () => digestCount(digest()) },
     { id: "needsYou", label: "Needs you", icon: Hand, count: needsYouCount },
+    { id: "permissions", label: "Permissions", icon: ShieldAlert, count: permissionCount },
     { id: "review", label: "Review", icon: ClipboardCheck, count: () => reviewItems().length },
   ];
   const toReview = () => setTab("review");
@@ -496,7 +595,7 @@ export default function InboxView(props: { landing?: (el: HTMLElement) => void }
                 <Icon icon={view.icon} />
                 <span class={s.railLabel}>{view.label}</span>{" "}
                 <Show when={view.count() > 0}>
-                  <span class={styles.count} data-warn={view.id === "needsYou"}>
+                  <span class={styles.count} data-warn={view.id === "needsYou" || view.id === "permissions"}>
                     {view.count()}
                   </span>
                 </Show>
@@ -511,6 +610,9 @@ export default function InboxView(props: { landing?: (el: HTMLElement) => void }
             </Show>
             <Show when={tab() === "needsYou"}>
               <NeedsYouList onReview={toReview} />
+            </Show>
+            <Show when={tab() === "permissions"}>
+              <PermissionList rows={permissionRows()} />
             </Show>
             <Show when={tab() === "review"}>
               <ReviewList />

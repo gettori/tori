@@ -597,6 +597,15 @@ impl Office {
                 crate::ports::exclude(arg(args, "pids")?);
                 Ok(json!({}))
             }
+            "permissions.pending" => to(self.backend.permissions_pending()),
+            "permissions.allow_group" => {
+                let params = serde_json::from_value(args.clone()).map_err(|e| e.to_string())?;
+                to(self.backend.permissions_allow_group(params))
+            }
+            "permissions.deny" => {
+                let params = serde_json::from_value(args.clone()).map_err(|e| e.to_string())?;
+                to(self.backend.permissions_deny(params))
+            }
             "needs_you.list" => Ok(json!(crate::needs_you_log::list())),
             "needs_you.seen" => {
                 let (session, folder, branch): (Option<String>, Option<String>, Option<String>) =

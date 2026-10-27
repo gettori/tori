@@ -211,6 +211,35 @@
     white-space: nowrap;
   }
 
+  .command {
+    padding: var(--tori-space-4);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
+  }
+  .command + .command {
+    margin-top: var(--tori-space-4);
+  }
+
+  .commandHead {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--tori-space-4);
+    justify-content: space-between;
+    margin-bottom: var(--tori-space-2);
+  }
+
+  .commandText {
+    overflow-wrap: anywhere;
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-md);
+  }
+
+  .prompt {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-2);
+  }
+
   .answered .title {
     color: var(--fg-muted);
     font-weight: 400;

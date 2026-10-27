@@ -20,7 +20,7 @@ import {
 } from "./events";
 import type { ReviewItem } from "./reviewSignals";
 
-export type InboxTab = "since" | "needsYou" | "review";
+export type InboxTab = "since" | "needsYou" | "permissions" | "review";
 
 const [inboxOpen, setInboxOpen] = createSignal(false);
 const [reviewItems, setReviewItems] = createSignal<ReviewItem[]>([]);
