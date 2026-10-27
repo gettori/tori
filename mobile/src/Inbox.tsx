@@ -16,6 +16,7 @@ import {
   unanswered,
   type NeedsYouEvent,
 } from "../../src/utils/needsYouSignals";
+import { byPlace, type PermissionRow } from "../../src/utils/permissionGroups";
 import { signalLabel, type ReviewItem } from "../../src/utils/reviewSignals";
 import type { RemoteClient } from "./remote";
 import { DOT, Offline } from "./Root";
@@ -56,6 +57,19 @@ export function watchNeedsYou(client: RemoteClient) {
     }),
   );
   return { events: () => events() ?? [], count: () => unanswered(events() ?? []) };
+}
+
+export function watchPermissions(client: RemoteClient) {
+  const [rows, { refetch }] = createResource<PermissionRow[], number>(
+    () => client.generation() || undefined,
+    (_, info) => client.request<PermissionRow[]>("permissions.pending").catch(() => info.value ?? []),
+  );
+  onCleanup(
+    client.subscribe("sessions", (data) => {
+      if ((data as { kind?: string } | null)?.kind === "permissions.changed") void refetch();
+    }),
+  );
+  return { rows: () => rows() ?? [], count: () => (rows() ?? []).length, refetch: () => void refetch() };
 }
 
 // While the tab shows, its start stays where it opened, so reading it does not
@@ -219,6 +233,123 @@ function NeedsYouList(props: { events: NeedsYouEvent[]; onOpen: (e: NeedsYouEven
   );
 }
 
+const agentName = (agent: string) => agent.charAt(0).toUpperCase() + agent.slice(1);
+
+function CommandCard(props: {
+  client: RemoteClient;
+  rows: PermissionRow[];
+  onOpen: (row: PermissionRow) => void;
+  onDone: () => void;
+}) {
+  const [busy, setBusy] = createSignal<ReadonlySet<string>>(new Set());
+  const [error, setError] = createSignal<string | null>(null);
+  const first = () => props.rows[0];
+  const count = () => props.rows.length;
+  const run = async (key: string, call: () => Promise<unknown>) => {
+    setBusy((keys) => new Set(keys).add(key));
+    setError(null);
+    try {
+      await call();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy((keys) => {
+        const left = new Set(keys);
+        left.delete(key);
+        return left;
+      });
+      props.onDone();
+    }
+  };
+  const allowing = () => busy().has("allow");
+  const allow = () =>
+    run("allow", async () => {
+      const ids = props.rows.map((r) => ({ session: r.session, id: r.id }));
+      const { failed } = await props.client.request<{ failed: string[] }>("permissions.allow_group", { ids });
+      if (failed.length) throw new Error(`${failed.length} of ${ids.length} did not reach the agent: ${failed[0]}`);
+    });
+  const deny = (row: PermissionRow) =>
+    run(row.id, () => props.client.request("permissions.deny", { session: row.session, id: row.id }));
+  return (
+    <li class={styles.card}>
+      <span class={styles.text}>
+        <code class={styles.permissionCommand}>{first().action ?? first().tool}</code>
+        <span class={styles.meta}>
+          {[agentName(first().agent), first().tool, `${count()} waiting`].join(` ${DOT} `)}
+        </span>
+        <Show when={first().rule}>
+          {(rule) => (
+            <span class={styles.meta} data-tone="attention">
+              {agentName(first().agent)} will remember {rule()}
+            </span>
+          )}
+        </Show>
+      </span>
+      <ul class={styles.permissionRows}>
+        <For each={props.rows}>
+          {(row) => (
+            <li class={styles.permissionRow}>
+              <button class={styles.item} onClick={() => props.onOpen(row)}>
+                <span class={styles.text}>
+                  <span class={styles.name}>{folderName(row.folder)}</span>
+                  <span class={styles.meta}>{row.tool}</span>
+                </span>
+              </button>
+              <button
+                class={mobile.secondary}
+                disabled={allowing() || busy().has(row.id)}
+                onClick={() => void deny(row)}
+              >
+                Deny
+              </button>
+            </li>
+          )}
+        </For>
+      </ul>
+      <Show when={error()}>
+        <p class={styles.empty}>{error()}</p>
+      </Show>
+      <div class={mobile.cardActions}>
+        <button class={mobile.primarySmall} disabled={allowing()} onClick={() => void allow()}>
+          {count() === 1 ? "Always allow" : `Always allow for all ${count()}`}
+        </button>
+      </div>
+    </li>
+  );
+}
+
+function PermissionList(props: {
+  client: RemoteClient;
+  watch: ReturnType<typeof watchPermissions>;
+  onOpen: (row: PermissionRow) => void;
+}) {
+  return (
+    <Show when={props.watch.count()} fallback={<p class={styles.empty}>No worker is waiting on a permission.</p>}>
+      <For each={byPlace(props.watch.rows())}>
+        {(place) => (
+          <>
+            <h2 class={styles.label}>
+              {place.project ? folderName(place.place) : `Other: ${folderName(place.place)}`}
+            </h2>
+            <ul class={styles.cards}>
+              <For each={place.commands}>
+                {(command) => (
+                  <CommandCard
+                    client={props.client}
+                    rows={command.rows}
+                    onOpen={props.onOpen}
+                    onDone={props.watch.refetch}
+                  />
+                )}
+              </For>
+            </ul>
+          </>
+        )}
+      </For>
+    </Show>
+  );
+}
+
 function Card(props: {
   client: RemoteClient;
   item: ReviewItem;
@@ -282,16 +413,18 @@ function Card(props: {
   );
 }
 
-type Tab = "since" | "needsYou" | "review";
+type Tab = "since" | "needsYou" | "permissions" | "review";
 
 export default function InboxScreen(props: {
   client: RemoteClient;
   inbox: ReturnType<typeof watchInbox>;
   needsYou: ReturnType<typeof watchNeedsYou>;
+  permissions: ReturnType<typeof watchPermissions>;
   digest: ReturnType<typeof watchDigest>;
   live: () => SessionRow[];
   onReply: (row: SessionRow) => void;
   onEvent: (e: NeedsYouEvent) => void;
+  onPermission: (row: PermissionRow) => void;
   onBack: () => void;
 }) {
   props.inbox.refetch();
@@ -314,8 +447,9 @@ export default function InboxScreen(props: {
           value={tab()}
           onChange={setTab}
           options={[
-            { value: "since", label: `Since you looked ${props.digest.count()}` },
+            { value: "since", label: `Since ${props.digest.count()}` },
             { value: "needsYou", label: `Needs you ${props.needsYou.count()}` },
+            { value: "permissions", label: `Permissions ${props.permissions.count()}` },
             { value: "review", label: `Review ${props.inbox.items().length}` },
           ]}
         />
@@ -324,6 +458,9 @@ export default function InboxScreen(props: {
         </Show>
         <Show when={tab() === "needsYou"}>
           <NeedsYouList events={props.needsYou.events()} onOpen={props.onEvent} />
+        </Show>
+        <Show when={tab() === "permissions"}>
+          <PermissionList client={props.client} watch={props.permissions} onOpen={props.onPermission} />
         </Show>
         <Show when={tab() === "review"}>
           <Show when={props.inbox.items().length} fallback={<p class={styles.empty}>Nothing is waiting for review.</p>}>

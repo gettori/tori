@@ -43,14 +43,13 @@ import {
   type NeedsYouEvent,
   type NeedsYouKind,
 } from "../../utils/needsYouSignals";
+import { byPlace, type PermissionRow } from "../../utils/permissionGroups";
 import {
   allowGroup,
-  byPlace,
   denyPermission,
   openPermission,
   permissionCount,
   permissionRows,
-  type PermissionRow,
 } from "../../utils/permissionInbox";
 import { askedTab, markReviewed, openItem, reviewItems, setAskedTab, type InboxTab } from "../../utils/reviewInbox";
 import { opinionLabel, runSecondOpinion, secondOpinionRunning } from "../../utils/secondOpinion";
