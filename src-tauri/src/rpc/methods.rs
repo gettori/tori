@@ -169,24 +169,55 @@ pub fn wait_for(
     is_live: impl Fn() -> bool,
     agent: impl FnOnce() -> Option<String>,
     question: impl FnOnce() -> Value,
+    limit: impl FnOnce() -> Option<u64>,
 ) -> Result<Value, RpcError> {
     let deadline =
         std::time::Instant::now() + std::time::Duration::from_secs(params.timeout.unwrap_or(DEFAULT_SESSION_WAIT));
-    let state = loop {
+    let held = loop {
         let left = deadline.saturating_duration_since(std::time::Instant::now());
         match states.wait_settled(&params.id, left) {
-            Some(state) => break state,
+            Some(state) => break Some(state),
             // Live but not yet in a composition since its spawn.
             None if is_live() && !left.is_zero() => std::thread::sleep(std::time::Duration::from_millis(200)),
-            None if is_live() => break SessionState::Working,
-            None => return Err(RpcError::new(INVALID_PARAMS, format!("no live session {}", params.id))),
+            None if is_live() => break Some(SessionState::Working),
+            None => break None,
         }
     };
-    let last = agent().and_then(|agent| {
+    let agent = agent();
+    // Gone from the states but known to the index: it ran and has ended.
+    let state = match (held, &agent) {
+        (Some(state), _) => state,
+        (None, Some(_)) => SessionState::Ended,
+        (None, None) => return Err(RpcError::new(INVALID_PARAMS, format!("no live session {}", params.id))),
+    };
+    let last = agent.and_then(|agent| {
         let from = history_source(&params.id, &agent);
         last_assistant_text(&read_history(&params.id, &from, &agent, None))
     });
-    Ok(json!({ "id": params.id, "state": state, "question": question(), "last": last }))
+    let question = question();
+    let resets_at = (state == SessionState::Idle).then(limit).flatten();
+    let mut reply = json!({
+        "id": params.id,
+        "state": state,
+        "reason": wait_reason(state, &question, resets_at),
+        "question": question,
+        "last": last,
+    });
+    if let Some(resets_at) = resets_at {
+        reply["resets_at"] = json!(resets_at);
+    }
+    Ok(reply)
+}
+
+fn wait_reason(state: SessionState, question: &Value, resets_at: Option<u64>) -> &'static str {
+    match state {
+        SessionState::Working => "timeout",
+        SessionState::Ended => "ended",
+        _ if !question.is_null() => "asking",
+        SessionState::NeedsYou => "needs_you",
+        SessionState::Idle if resets_at.is_some() => "limited",
+        SessionState::Idle => "idle",
+    }
 }
 
 /// The last `limit` events with every tool output capped. Capped here rather
@@ -2340,6 +2371,73 @@ mod tests {
     use super::*;
     use crate::chat::commands::HistorySource;
     use serde_json::json;
+
+    fn waited(states: &SessionStates, id: &str, agent: Option<&str>, question: Value, limit: Option<u64>) -> Value {
+        let params = WaitParams {
+            id: id.into(),
+            timeout: Some(0),
+        };
+        let agent = agent.map(String::from);
+        wait_for(params, states, || false, || agent, || question, || limit).unwrap()
+    }
+
+    fn holding(id: &str, state: SessionState) -> SessionStates {
+        let states = SessionStates::default();
+        let reported = super::super::states::Reported {
+            id: id.into(),
+            state,
+            source: super::super::states::Source::Chat,
+            folder: None,
+            tab: None,
+        };
+        states.replace(vec![reported], |_| Default::default(), |_, _| false);
+        states
+    }
+
+    #[test]
+    fn a_wait_names_why_it_came_back() {
+        let reason =
+            |state, question: Value, limit| waited(&holding("s", state), "s", None, question, limit)["reason"].clone();
+        assert_eq!(reason(SessionState::Working, Value::Null, None), "timeout");
+        assert_eq!(reason(SessionState::Idle, Value::Null, None), "idle");
+        assert_eq!(reason(SessionState::NeedsYou, Value::Null, None), "needs_you");
+        assert_eq!(reason(SessionState::NeedsYou, json!({ "id": "a1" }), None), "asking");
+        assert_eq!(reason(SessionState::Idle, Value::Null, Some(1_900_000_000)), "limited");
+        assert_eq!(
+            reason(SessionState::NeedsYou, Value::Null, Some(1_900_000_000)),
+            "needs_you",
+            "a limit only explains a session that stopped"
+        );
+    }
+
+    #[test]
+    fn a_limited_wait_says_when_the_limit_resets() {
+        let reply = waited(
+            &holding("s", SessionState::Idle),
+            "s",
+            None,
+            Value::Null,
+            Some(1_900_000_000),
+        );
+        assert_eq!(reply["resets_at"], 1_900_000_000);
+        let idle = waited(&holding("s", SessionState::Idle), "s", None, Value::Null, None);
+        assert!(idle.get("resets_at").is_none());
+    }
+
+    #[test]
+    fn a_wait_on_a_session_that_already_ended_answers_ended() {
+        let states = holding("s", SessionState::Idle);
+        states.replace(vec![], |_| Default::default(), |_, _| false);
+        let reply = waited(&states, "s", Some("no-such-agent"), Value::Null, None);
+        assert_eq!(reply["state"], "ended");
+        assert_eq!(reply["reason"], "ended");
+        let params = WaitParams {
+            id: "never".into(),
+            timeout: Some(0),
+        };
+        let unknown = wait_for(params, &states, || false, || None, || Value::Null, || None).unwrap_err();
+        assert_eq!(unknown.code, INVALID_PARAMS);
+    }
 
     #[test]
     fn the_browser_attaches_only_what_attachment_write_stored() {
