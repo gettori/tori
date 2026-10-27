@@ -369,7 +369,7 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
           showWheel={showWheel()}
           runner={runner}
           decisions={decisions}
-          inboxCount={() => inbox.items().length + needsYou.count() + permissions.count()}
+          inboxCount={() => inbox.items().length + needsYou.count()}
           onInbox={() => go({ screen: "inbox" })}
           onSpace={(picked) => {
             setSpaceName(picked.name);
