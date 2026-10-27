@@ -16,6 +16,12 @@ use crate::rpc::table::{self, Method};
 // Under codex-acp's 300s kill of a tool call, see [[concept_blocking_tool_call_ceiling]].
 const BLOCKING_CALL_TIMEOUT_SECS: u64 = 240;
 const PATH_ARGS: [&str; 4] = ["folder", "project", "path", "worktree"];
+// An agent reaches for the git and gh it knows unless told; a hint, not a gate.
+const INSTRUCTIONS: &str = "Tori runs this session. Where Tori has a tool for an action, use it instead of the shell: \
+worktree_new to make a worktree (not git worktree add), session_spawn to start another agent, \
+pr_create, pr_push, review_submit and pr_merge for pull requests (not gh pr), ask_create to ask the user. \
+Tori's tools keep its sidebar, the project's setup command, approvals and checkpoints in step, and the shell skips them. \
+A tool that refuses says why: follow that rather than doing the same thing from the shell.";
 
 pub type Connect = Arc<dyn Fn() -> Result<Client, ClientError> + Send + Sync>;
 type Out = Arc<Mutex<dyn Write + Send>>;
@@ -49,6 +55,7 @@ pub fn serve(input: impl BufRead, out: Out, connect: Connect) -> io::Result<Vec<
                     "protocolVersion": version,
                     "capabilities": { "tools": {} },
                     "serverInfo": { "name": "tori", "version": env!("CARGO_PKG_VERSION") },
+                    "instructions": INSTRUCTIONS,
                 });
                 reply(&out, id, Ok(result));
             }
@@ -303,6 +310,8 @@ mod tests {
         assert_eq!(replies.len(), 2);
         assert_eq!(replies[0]["result"]["protocolVersion"], json!("2025-03-26"));
         assert_eq!(replies[0]["result"]["capabilities"], json!({ "tools": {} }));
+        let instructions = replies[0]["result"]["instructions"].as_str().unwrap();
+        assert!(instructions.contains("worktree_new") && instructions.contains("not gh pr"));
         assert_eq!(replies[1]["result"], json!({}));
     }
 
