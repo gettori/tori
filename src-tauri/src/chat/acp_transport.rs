@@ -35,10 +35,10 @@ use std::time::Duration;
 
 use agent_client_protocol::schema::v1::{
     AuthMethod, CancelNotification, EnvVariable, ForkSessionRequest, InitializeRequest, InitializeResponse,
-    ListSessionsRequest, LoadSessionRequest, McpServer, McpServerStdio, NewSessionRequest, PromptRequest,
-    RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
-    SessionConfigId, SessionConfigOption, SessionConfigOptionValue, SessionConfigValueId, SessionId, SessionModeId,
-    SessionNotification, SessionUpdate, SetSessionConfigOptionRequest, SetSessionModeRequest,
+    ListSessionsRequest, LoadSessionRequest, McpServer, McpServerStdio, NewSessionRequest, PermissionOptionKind,
+    PromptRequest, RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
+    SelectedPermissionOutcome, SessionConfigId, SessionConfigOption, SessionConfigOptionValue, SessionConfigValueId,
+    SessionId, SessionModeId, SessionNotification, SessionUpdate, SetSessionConfigOptionRequest, SetSessionModeRequest,
 };
 use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::{Agent, ByteStreams, Client, ConnectionTo, ErrorCode, Responder};
@@ -244,11 +244,14 @@ enum Switch {
 /// vocabulary.
 struct Parked {
     responder: Responder<RequestPermissionResponse>,
-    /// `optionId`s the agent supplied, split by what they mean. Tori's UI
-    /// answers Allow or Deny; the agent expects one of *its* ids, so the
-    /// translation needs both lists.
-    allow_options: Vec<String>,
-    deny_options: Vec<String>,
+    options: Offered,
+}
+
+#[derive(Debug, Default, PartialEq)]
+struct Offered {
+    allow_once: Vec<String>,
+    allow_always: Vec<String>,
+    deny: Vec<String>,
 }
 
 impl Shared {
@@ -262,7 +265,13 @@ impl Shared {
     /// Neither is an error: the first is how the host learns to try the
     /// `PreToolUse` bridge instead, and the second is a user clicking as the
     /// deadline fires - a race they should never be shown.
-    fn answer(&self, request_id: &str, decision: PermissionDecision, reason: Option<&str>) -> Result<bool, String> {
+    fn answer(
+        &self,
+        request_id: &str,
+        decision: PermissionDecision,
+        scope: PermissionScope,
+        reason: Option<&str>,
+    ) -> Result<bool, String> {
         let Some(parked) = self.claim(request_id) else {
             return Ok(false);
         };
@@ -271,7 +280,7 @@ impl Shared {
         // explanation in. It still reaches the user through the event that
         // announced the denial.
         let _ = reason;
-        let outcome = outcome_for(&parked.allow_options, &parked.deny_options, decision);
+        let outcome = outcome_for(&parked.options, decision, scope);
         parked
             .responder
             .respond(RequestPermissionResponse::new(outcome))
@@ -335,27 +344,22 @@ impl Shared {
     }
 }
 
-/// Turn Tori's Allow/Deny into one of the agent's own option ids.
-///
-/// The agent owns the permission vocabulary, so this picks from what it offered
-/// rather than sending a fixed token. An agent that offered nothing usable in
-/// the requested direction gets `cancelled`, which is honest: Tori cannot
-/// express the user's answer in that agent's grammar, and inventing an id would
-/// be answered with a protocol error at best.
-///
-/// A free function taking the two lists rather than a method on [`Parked`], so
-/// the translation can be tested without a [`Responder`] - which only the SDK
-/// can construct, and only for a request that is really on the wire.
-fn outcome_for(
-    allow_options: &[String],
-    deny_options: &[String],
-    decision: PermissionDecision,
-) -> RequestPermissionOutcome {
-    let options = match decision {
-        PermissionDecision::Allow => allow_options,
-        PermissionDecision::Deny => deny_options,
+// A free function rather than a method on `Parked`, so it can be tested
+// without a `Responder`, which only the SDK can construct for a request on the
+// wire. An agent that offered nothing in the answered direction gets `cancelled`.
+fn outcome_for(options: &Offered, decision: PermissionDecision, scope: PermissionScope) -> RequestPermissionOutcome {
+    let chosen = match decision {
+        PermissionDecision::Deny => options.deny.first(),
+        PermissionDecision::Allow => {
+            let (wanted, other) = match wanted_kind(scope) {
+                PermissionOptionKind::AllowAlways => (&options.allow_always, &options.allow_once),
+                _ => (&options.allow_once, &options.allow_always),
+            };
+            // The user said allow, so the other allow kind beats no answer.
+            wanted.first().or(other.first())
+        }
     };
-    match options.first() {
+    match chosen {
         Some(id) => RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(
             agent_client_protocol::schema::v1::PermissionOptionId::new(id.as_str()),
         )),
@@ -363,19 +367,26 @@ fn outcome_for(
     }
 }
 
-/// Sort an agent's offered options into the two directions Tori's UI can
-/// answer in, keyed on the `kind` the agent itself gave each one.
-fn split_options(options: &[agent_client_protocol::schema::v1::PermissionOption]) -> (Vec<String>, Vec<String>) {
-    use agent_client_protocol::schema::v1::PermissionOptionKind;
-    let (mut allow, mut deny) = (Vec::new(), Vec::new());
+// ACP has no session kind, so Session asks for the narrower one.
+fn wanted_kind(scope: PermissionScope) -> PermissionOptionKind {
+    match scope {
+        PermissionScope::Project => PermissionOptionKind::AllowAlways,
+        PermissionScope::Once | PermissionScope::Session => PermissionOptionKind::AllowOnce,
+    }
+}
+
+/// Sort an agent's offered options by the `kind` the agent itself gave each one.
+fn split_options(options: &[agent_client_protocol::schema::v1::PermissionOption]) -> Offered {
+    let mut offered = Offered::default();
     for option in options {
         let id = option.option_id.0.to_string();
         match option.kind {
-            PermissionOptionKind::AllowOnce | PermissionOptionKind::AllowAlways => allow.push(id),
-            _ => deny.push(id),
+            PermissionOptionKind::AllowOnce => offered.allow_once.push(id),
+            PermissionOptionKind::AllowAlways => offered.allow_always.push(id),
+            _ => offered.deny.push(id),
         }
     }
-    (allow, deny)
+    offered
 }
 
 pub struct AcpTransport {
@@ -619,14 +630,12 @@ impl AgentTransport for AcpTransport {
         _tool_use_id: &str,
         request_id: &str,
         decision: PermissionDecision,
-        _scope: PermissionScope,
+        scope: PermissionScope,
         reason: Option<&str>,
     ) -> Result<bool, String> {
-        // Scope is dropped on purpose: ACP has no "remember this" grammar of its
-        // own. An agent's `allow_always` option is the closest thing, and it is
-        // the agent's to offer, not Tori's to synthesize from a scope the
-        // protocol cannot carry.
-        self.shared.answer(request_id, decision, reason)
+        // The scope only chooses among the agent's own allow options: Tori
+        // synthesizes no "remember this" the agent did not offer.
+        self.shared.answer(request_id, decision, scope, reason)
     }
 
     /// Refused, not swallowed. ACP's `elicitation/create` is the wire form a
@@ -875,19 +884,12 @@ fn park_permission_request(
     responder: Responder<RequestPermissionResponse>,
 ) {
     let request_id = shared.next_id("acp-perm");
-    let (allow_options, deny_options) = split_options(&request.options);
+    let options = split_options(&request.options);
     let deadline = now_ms() + DECIDE_TIMEOUT_SECS * 1000;
     let event = acp::map_permission_request(&shared.session_id, &request_id, &request, Some(deadline));
 
     if let Ok(mut pending) = shared.pending.lock() {
-        pending.insert(
-            request_id.clone(),
-            Parked {
-                responder,
-                allow_options,
-                deny_options,
-            },
-        );
+        pending.insert(request_id.clone(), Parked { responder, options });
     } else {
         // The map is poisoned, so the question can never be answered through
         // it. Say so rather than showing a prompt whose answer goes nowhere.
@@ -931,6 +933,7 @@ fn arm_auto_deny(shared: &Arc<Shared>, request_id: String) {
         let _ = shared.answer(
             &request_id,
             PermissionDecision::Deny,
+            PermissionScope::Once,
             Some("Tori denied this because nobody answered in time."),
         );
     });
@@ -1918,25 +1921,77 @@ mod tests {
         );
     }
 
+    fn offered(allow_once: &[&str], allow_always: &[&str], deny: &[&str]) -> Offered {
+        Offered {
+            allow_once: ids(allow_once),
+            allow_always: ids(allow_always),
+            deny: ids(deny),
+        }
+    }
+
+    fn chosen(outcome: RequestPermissionOutcome) -> Option<String> {
+        match outcome {
+            RequestPermissionOutcome::Selected(s) => Some(s.option_id.0.to_string()),
+            _ => None,
+        }
+    }
+
     /// An answer must come back in the agent's own vocabulary. Sending a fixed
     /// "allow" token would be answered with a protocol error by an agent whose
     /// option is called something else.
     #[test]
     fn an_allow_selects_the_agents_own_allow_option() {
-        let outcome = outcome_for(&ids(&["proceed"]), &ids(&["stop"]), PermissionDecision::Allow);
-        assert!(matches!(
-            outcome,
-            RequestPermissionOutcome::Selected(s) if s.option_id.0.as_ref() == "proceed"
-        ));
+        let options = offered(&["proceed"], &[], &["stop"]);
+        let outcome = outcome_for(&options, PermissionDecision::Allow, PermissionScope::Once);
+        assert_eq!(chosen(outcome).as_deref(), Some("proceed"));
     }
 
     #[test]
     fn a_deny_selects_the_agents_own_reject_option() {
-        let outcome = outcome_for(&ids(&["proceed"]), &ids(&["stop"]), PermissionDecision::Deny);
-        assert!(matches!(
-            outcome,
-            RequestPermissionOutcome::Selected(s) if s.option_id.0.as_ref() == "stop"
-        ));
+        let options = offered(&["proceed"], &["always"], &["stop"]);
+        for scope in [
+            PermissionScope::Once,
+            PermissionScope::Session,
+            PermissionScope::Project,
+        ] {
+            let outcome = outcome_for(&options, PermissionDecision::Deny, scope);
+            assert_eq!(chosen(outcome).as_deref(), Some("stop"), "{scope:?}");
+        }
+    }
+
+    #[test]
+    fn the_scope_picks_the_agents_once_or_always_option_in_either_order() {
+        let once = PermissionOption::new(
+            PermissionOptionId::new("once"),
+            "Once".to_string(),
+            PermissionOptionKind::AllowOnce,
+        );
+        let always = PermissionOption::new(
+            PermissionOptionId::new("always"),
+            "Always".to_string(),
+            PermissionOptionKind::AllowAlways,
+        );
+        for listed in [vec![once.clone(), always.clone()], vec![always, once]] {
+            let options = split_options(&listed);
+            for (scope, expected) in [
+                (PermissionScope::Once, "once"),
+                (PermissionScope::Session, "once"),
+                (PermissionScope::Project, "always"),
+            ] {
+                let outcome = outcome_for(&options, PermissionDecision::Allow, scope);
+                assert_eq!(chosen(outcome).as_deref(), Some(expected), "{scope:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn an_allow_falls_back_to_the_other_allow_kind() {
+        let only_always = offered(&[], &["always"], &["stop"]);
+        let outcome = outcome_for(&only_always, PermissionDecision::Allow, PermissionScope::Once);
+        assert_eq!(chosen(outcome).as_deref(), Some("always"));
+        let only_once = offered(&["once"], &[], &["stop"]);
+        let outcome = outcome_for(&only_once, PermissionDecision::Allow, PermissionScope::Project);
+        assert_eq!(chosen(outcome).as_deref(), Some("once"));
     }
 
     /// An agent that offered no option in the answered direction leaves Tori
@@ -1944,7 +1999,11 @@ mod tests {
     /// inventing an option id would be rejected by the agent anyway.
     #[test]
     fn an_answer_the_agent_offered_no_option_for_is_cancelled() {
-        let outcome = outcome_for(&[], &ids(&["stop"]), PermissionDecision::Allow);
+        let outcome = outcome_for(
+            &offered(&[], &[], &["stop"]),
+            PermissionDecision::Allow,
+            PermissionScope::Project,
+        );
         assert!(matches!(outcome, RequestPermissionOutcome::Cancelled));
     }
 
@@ -1953,7 +2012,10 @@ mod tests {
     #[test]
     fn a_question_the_transport_never_parked_is_disclaimed() {
         let shared = shared();
-        assert_eq!(shared.answer("never-seen", PermissionDecision::Allow, None), Ok(false));
+        assert_eq!(
+            shared.answer("never-seen", PermissionDecision::Allow, PermissionScope::Once, None),
+            Ok(false)
+        );
     }
 
     /// The defect this pins: turn ids and permission request ids once came from
@@ -3509,8 +3571,6 @@ mod tests {
                 PermissionOptionKind::RejectAlways,
             ),
         ];
-        let (allow, deny) = split_options(&options);
-        assert_eq!(allow, vec!["yes".to_string()]);
-        assert_eq!(deny, vec!["no".to_string()]);
+        assert_eq!(split_options(&options), offered(&[], &["yes"], &["no"]));
     }
 }

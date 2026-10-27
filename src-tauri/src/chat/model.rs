@@ -303,8 +303,8 @@ pub enum PermissionDecision {
     Deny,
 }
 
-/// How far an approval answer reaches. Project scope is Tori-owned and never
-/// written to the user's own `~/.claude/settings.json`.
+/// How far an approval answer reaches. Tori stores none of it: a scope wider
+/// than `Once` rides back to the agent in its own grammar, and the agent keeps it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum PermissionScope {
