@@ -8,15 +8,15 @@ use serde_json::{json, Value};
 use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
-    params, AskAnswerParams, AskParams, AskWaitParams, AttachmentWriteParams, Backend, BudgetParams, CheckParams,
-    CheckpointDiffParams, CheckpointParams, CheckpointsParams, DigestLookedParams, DigestParams, DraftParams,
-    HandoffParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams, IssuesAssignedParams,
-    ItemUpdateParams, LinkBranchParams, ListParams, LogParams, LoopParams, MintParams, ModeParams, ModelParams,
-    NeedsYouSeenParams, OpenParams, PendingParams, PortParams, PrCheckLogParams, PrCreateParams, PrGetParams,
-    PrMergeParams, PrPushParams, PrWatchParams, ProjectIconParams, ProjectSetParams, ProvenanceParams, RevealParams,
-    ReviewMarkParams, ReviewSubmitParams, ScheduleAddParams, ScheduleIdParams, SessionAnswerParams, SetupParams,
-    SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams,
-    WaitParams, WorktreeParams, UNITS_GIT_MAX,
+    params, AllowGroupParams, AskAnswerParams, AskParams, AskWaitParams, AttachmentWriteParams, Backend, BudgetParams,
+    CheckParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, DigestLookedParams, DigestParams,
+    DraftParams, HandoffParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams,
+    IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, LoopParams, MintParams,
+    ModeParams, ModelParams, NeedsYouSeenParams, OpenParams, PendingParams, PortParams, PrCheckLogParams,
+    PrCreateParams, PrGetParams, PrMergeParams, PrPushParams, PrWatchParams, ProjectIconParams, ProjectSetParams,
+    PromptRef, ProvenanceParams, RevealParams, ReviewMarkParams, ReviewSubmitParams, ScheduleAddParams,
+    ScheduleIdParams, SessionAnswerParams, SetupParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams,
+    UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, UNITS_GIT_MAX,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -279,6 +279,33 @@ pub static METHODS: &[Method] = &[
         refusal: Some("an agent cannot review its own work"),
         outward: false,
         call: |b, _, v| b.review_mark(params(v)?),
+    },
+    Method {
+        name: "permissions.pending",
+        description: "Every permission prompt any live session is waiting on, one row each, with the group it shares with the same command asked in the same project by the same kind of agent.",
+        params: no_params,
+        callers: LOCAL_AND_DEVICES,
+        refusal: Some("a permission prompt is answered by a person"),
+        outward: false,
+        call: |b, _, _| b.permissions_pending(),
+    },
+    Method {
+        name: "permissions.allow_group",
+        description: "Allow each listed permission prompt with its agent's own always-in-this-project, and say how many were allowed, how many were already answered or gone, and why any failed.",
+        params: schema::<AllowGroupParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: Some("a permission prompt is answered by a person"),
+        outward: false,
+        call: |b, _, v| b.permissions_allow_group(params(v)?),
+    },
+    Method {
+        name: "permissions.deny",
+        description: "Deny one permission prompt. An id nothing waits on any more is an error.",
+        params: schema::<PromptRef>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: Some("a permission prompt is answered by a person"),
+        outward: false,
+        call: |b, _, v| b.permissions_deny(params(v)?),
     },
     Method {
         name: "needs_you.list",

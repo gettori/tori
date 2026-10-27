@@ -14,15 +14,15 @@ use super::auth::{Caller, Principal};
 use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
-    AskAnswerParams, AskParams, AskWaitParams, AttachmentWriteParams, Backend, Before, BudgetParams, CheckParams,
-    CheckpointDiffParams, CheckpointParams, CheckpointsParams, DigestLookedParams, DigestParams, DraftParams,
-    HandoffParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams, IssuesAssignedParams,
-    ItemUpdateParams, LinkBranchParams, ListParams, LogParams, LoopParams, MintParams, ModeParams, ModelParams,
-    NeedsYouSeenParams, OpenParams, PendingParams, PortParams, PrCheckLogParams, PrCreateParams, PrGetParams,
-    PrMergeParams, PrPushParams, PrWatchParams, ProjectIconParams, ProjectSetParams, ProvenanceParams, RevealParams,
-    ReviewMarkParams, ReviewSubmitParams, ScheduleAddParams, ScheduleIdParams, SessionAnswerParams, SetupParams,
-    SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams,
-    WaitParams, WorktreeParams, DEFAULT_LOG_LIMIT,
+    AllowGroupParams, AskAnswerParams, AskParams, AskWaitParams, AttachmentWriteParams, Backend, Before, BudgetParams,
+    CheckParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, DigestLookedParams, DigestParams,
+    DraftParams, HandoffParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams,
+    IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, LoopParams, MintParams,
+    ModeParams, ModelParams, NeedsYouSeenParams, OpenParams, PendingParams, PortParams, PrCheckLogParams,
+    PrCreateParams, PrGetParams, PrMergeParams, PrPushParams, PrWatchParams, ProjectIconParams, ProjectSetParams,
+    PromptRef, ProvenanceParams, RevealParams, ReviewMarkParams, ReviewSubmitParams, ScheduleAddParams,
+    ScheduleIdParams, SessionAnswerParams, SetupParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams,
+    UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, DEFAULT_LOG_LIMIT,
 };
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
@@ -1782,6 +1782,46 @@ impl Backend for DaemonBackend {
 
     fn review_list(&self) -> Result<Value, RpcError> {
         to_json(crate::review::inbox_now(&self.composer.index))
+    }
+
+    fn permissions_pending(&self) -> Result<Value, RpcError> {
+        let waiting = self.chats.host.waiting_permissions();
+        to_json(super::permissions::rows(
+            waiting,
+            &crate::config::discovered_project_dirs(),
+        ))
+    }
+
+    fn permissions_allow_group(&self, params: AllowGroupParams) -> Result<Value, RpcError> {
+        use crate::chat::model::{PermissionDecision, PermissionScope};
+        let (mut allowed, mut skipped, mut failed) = (0, 0, Vec::new());
+        for p in &params.ids {
+            let host = &self.chats.host;
+            match host.settle_permission(&p.session, &p.id, PermissionDecision::Allow, PermissionScope::Project) {
+                Ok(true) => allowed += 1,
+                Ok(false) => skipped += 1,
+                Err(e) => failed.push(e),
+            }
+        }
+        Ok(json!({ "allowed": allowed, "skipped": skipped, "failed": failed }))
+    }
+
+    fn permissions_deny(&self, params: PromptRef) -> Result<Value, RpcError> {
+        use crate::chat::model::{PermissionDecision, PermissionScope};
+        let host = &self.chats.host;
+        match host.settle_permission(
+            &params.session,
+            &params.id,
+            PermissionDecision::Deny,
+            PermissionScope::Once,
+        ) {
+            Ok(true) => Ok(json!({ "denied": params.id })),
+            Ok(false) => Err(RpcError::new(
+                INVALID_PARAMS,
+                format!("{} is already answered or gone", params.id),
+            )),
+            Err(e) => Err(RpcError::new(INTERNAL_ERROR, e)),
+        }
     }
 
     fn needs_you_list(&self) -> Result<Value, RpcError> {

@@ -25,6 +25,7 @@ pub mod methods;
 pub mod office;
 pub mod outbox;
 pub mod pairing;
+pub mod permissions;
 pub mod pr_rules;
 pub mod pr_wake;
 pub mod pr_watch;
@@ -225,6 +226,9 @@ fn daemon_events(app: &AppHandle, states: &Arc<SessionStates>) -> window::OnEven
             "present" => present_later(&app, p.clone()),
             "needs_you.changed" => {
                 let _ = app.emit(crate::needs_you_log::CHANGED_EVENT, ());
+            }
+            "permissions.changed" => {
+                let _ = app.emit(permissions::CHANGED_EVENT, ());
             }
             _ => crate::pty::heard(&app, event, p),
         }

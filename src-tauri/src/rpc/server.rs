@@ -337,6 +337,22 @@ pub struct SessionAnswerParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct PromptRef {
+    /// The session the permission prompt waits in.
+    pub session: String,
+    /// The prompt's id, as `permissions.pending` gave it.
+    pub id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AllowGroupParams {
+    /// The prompts the person saw in the group. Only these are answered, and one already answered or gone is skipped.
+    pub ids: Vec<PromptRef>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct WorktreeParams {
     /// The new branch, created in a new worktree. Left out with `pr`, which names it after the pull request.
     #[serde(default)]
@@ -898,6 +914,9 @@ pub trait Backend: Send + Sync {
     fn units_git(&self, params: UnitsGitParams) -> Result<Value, RpcError>;
     fn review_list(&self) -> Result<Value, RpcError>;
     fn review_mark(&self, params: ReviewMarkParams) -> Result<Value, RpcError>;
+    fn permissions_pending(&self) -> Result<Value, RpcError>;
+    fn permissions_allow_group(&self, params: AllowGroupParams) -> Result<Value, RpcError>;
+    fn permissions_deny(&self, params: PromptRef) -> Result<Value, RpcError>;
     fn needs_you_list(&self) -> Result<Value, RpcError>;
     fn needs_you_seen(&self, params: NeedsYouSeenParams) -> Result<Value, RpcError>;
     fn digest_list(&self, params: DigestParams) -> Result<Value, RpcError>;
@@ -1390,6 +1409,15 @@ pub mod tests {
         }
         fn review_mark(&self, p: ReviewMarkParams) -> Result<Value, RpcError> {
             Ok(json!({ "id": p.id }))
+        }
+        fn permissions_pending(&self) -> Result<Value, RpcError> {
+            Ok(json!([]))
+        }
+        fn permissions_allow_group(&self, p: AllowGroupParams) -> Result<Value, RpcError> {
+            Ok(json!({ "allowed": p.ids.len(), "skipped": 0, "failed": [] }))
+        }
+        fn permissions_deny(&self, p: PromptRef) -> Result<Value, RpcError> {
+            Ok(json!({ "denied": p.id }))
         }
         fn needs_you_list(&self) -> Result<Value, RpcError> {
             Ok(json!([]))
@@ -1989,6 +2017,33 @@ pub mod tests {
     }
 
     #[test]
+    fn only_a_person_or_a_paired_phone_answers_the_permission_inbox() {
+        let server = stub_server();
+        let pending = || request("permissions.pending", json!({}));
+        let allow = || {
+            request(
+                "permissions.allow_group",
+                json!({"ids": [{"session": "s1", "id": "p1"}]}),
+            )
+        };
+        let deny = || request("permissions.deny", json!({"session": "s1", "id": "p1"}));
+        for caller in [Principal::Local, Principal::Device("d1".into())] {
+            for call in [pending(), allow(), deny()] {
+                assert!(server.dispatch(0, &caller, &call).is_ok(), "{caller:?}");
+            }
+        }
+        for caller in [
+            Principal::Session(Caller::Chat("s1".into())),
+            Principal::Session(Caller::Terminal("t1".into())),
+        ] {
+            for call in [pending(), allow(), deny()] {
+                let err = server.dispatch(0, &caller, &call).unwrap_err();
+                assert_eq!(err.code, REFUSED, "{caller:?}");
+            }
+        }
+    }
+
+    #[test]
     fn session_answer_is_refused_to_a_worker_a_shell_and_a_terminal() {
         let server = stub_server();
         let answer = || {
@@ -2111,6 +2166,9 @@ pub mod tests {
                 "session.mode",
                 "review.list",
                 "review.mark",
+                "permissions.pending",
+                "permissions.allow_group",
+                "permissions.deny",
                 "needs_you.list",
                 "needs_you.seen",
                 "digest.list",

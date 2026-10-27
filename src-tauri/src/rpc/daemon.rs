@@ -1002,6 +1002,11 @@ fn host_chats(daemon: &Arc<Daemon>) {
             composer.beat();
         }
     }));
+    let (hub, window) = (daemon.hub.clone(), tell(Arc::downgrade(daemon)));
+    chats.host.set_on_waiting(Arc::new(move || {
+        hub.publish(&Channel::Sessions, json!({ "kind": "permissions.changed" }));
+        window("permissions.changed", json!({}));
+    }));
     crate::chat::serve::pr_wake(&chats, daemon.composer.states.clone());
     let _ = daemon.chats.set(chats);
 }
