@@ -16,7 +16,7 @@ use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
     AskAnswerParams, AskParams, AskWaitParams, AttachmentWriteParams, Backend, Before, BudgetParams, CheckParams,
     CheckpointDiffParams, CheckpointParams, CheckpointsParams, DigestLookedParams, DigestParams, DraftParams,
-    HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams, IssuesAssignedParams,
+    HandoffParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams, IssuesAssignedParams,
     ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams, ModelParams, NeedsYouSeenParams,
     OpenParams, PendingParams, PortParams, PrCheckLogParams, PrCreateParams, PrGetParams, PrMergeParams, PrPushParams,
     PrWatchParams, ProjectIconParams, ProjectSetParams, ProvenanceParams, RevealParams, ReviewMarkParams,
@@ -206,7 +206,72 @@ pub fn wait_for(
     if let Some(resets_at) = resets_at {
         reply["resets_at"] = json!(resets_at);
     }
+    if let Some(to) = states.handed_to(&params.id) {
+        reply["handed_to"] = json!(to);
+    }
     Ok(reply)
+}
+
+const BRIEF_PART_CAP: usize = 4000;
+
+fn handoff_brief(
+    handed: &crate::chat::model::RefTarget,
+    events: &[ChatEvent],
+    pending: &[Value],
+    check: &Value,
+    note: Option<&str>,
+) -> String {
+    let crate::chat::model::RefTarget::Session { id, title, agent, .. } = handed else {
+        return String::new();
+    };
+    let capped = |text: &str| match text.char_indices().nth(BRIEF_PART_CAP) {
+        Some((at, _)) => format!("{} [cut]", &text[..at]),
+        None => text.to_string(),
+    };
+    let mut brief =
+        format!("You are taking over session {id} ({agent}), which handed its work to you. You run in its folder.\n");
+    if let Some(first) = first_prompt_text(events) {
+        brief.push_str(&format!("\nIts first prompt:\n{}\n", capped(&first)));
+    }
+    if let Some(last) = last_assistant_text(events) {
+        brief.push_str(&format!("\nIts last reply:\n{}\n", capped(&last)));
+    }
+    for waiting in pending {
+        if let Some(text) = waiting["text"].as_str() {
+            brief.push_str(&format!("\nIt was waiting on: {text}\n"));
+        }
+    }
+    let diff = &check["diff"];
+    let verdict = check["verdict"].as_str().unwrap_or("no code changed");
+    brief.push_str(&format!(
+        "\nIts latest code turn: {verdict}. Its changes: {} files, +{} -{}.\n",
+        diff["files"], diff["added"], diff["removed"]
+    ));
+    if let Some(note) = note.filter(|n| !n.trim().is_empty()) {
+        brief.push_str(&format!("\nNote from the handoff: {note}\n"));
+    }
+    let label = format!("[Session: {title}]");
+    brief.push_str(&format!(
+        "\nThe rest of its conversation:\n{}",
+        crate::chat::model::ref_note(&label, handed)
+    ));
+    brief
+}
+
+fn first_prompt_text(events: &[ChatEvent]) -> Option<String> {
+    events.iter().find_map(|event| match event {
+        ChatEvent::UserMessage { blocks, .. } => {
+            let text: Vec<&str> = blocks
+                .iter()
+                .filter_map(|b| match b {
+                    ContentBlock::Text { text } => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect();
+            (!text.is_empty()).then(|| text.join("\n"))
+        }
+        _ => None,
+    })
 }
 
 fn check_reply(id: &str, latest: Option<&crate::verification::VerifiedTurn>, stat: Option<(usize, u64, u64)>) -> Value {
@@ -566,6 +631,17 @@ fn may_steer(caller: &Principal, locked: bool, autopilot: Option<&str>) -> Resul
         Principal::Session(Caller::Chat(id)) if Some(id.as_str()) == autopilot => Ok(()),
         _ => Err(refused(super::LOCKED.to_string())),
     }
+}
+
+// Unlike a steer, not even the autopilot: its item would keep the old id.
+fn may_hand_off(id: &str, live: bool, locked: bool) -> Result<(), RpcError> {
+    if !live {
+        return Err(RpcError::new(INVALID_PARAMS, format!("no live chat session {id}")));
+    }
+    if locked {
+        return Err(refused(super::LOCKED.to_string()));
+    }
+    Ok(())
 }
 
 // A steer opens a turn, which is what a spend ceiling refuses; only a person lifts it.
@@ -980,6 +1056,30 @@ impl DaemonBackend {
         });
         self.offer(adopt);
         Ok(json!({ "id": id, "tab": tab, "folder": folder, "agent": picked.agent, "background": background }))
+    }
+
+    fn inherited_spawner(&self, old: &str) -> Principal {
+        let spawner = self.desk.states.spawner_of(old).map(|s| super::current_spawner(&s));
+        spawner.map_or(Principal::Local, |s| Principal::Session(Caller::Chat(s)))
+    }
+
+    // Off the request thread: a session handing itself over is mid-turn in this
+    // very call, and a question or permission it waits on must not be dropped.
+    fn close_when_idle(&self, id: String) {
+        let (chats, states) = (self.chats.clone(), self.desk.states.clone());
+        std::thread::spawn(move || loop {
+            match states.wait_closable(&id, std::time::Duration::from_secs(3600)) {
+                Some(SessionState::Idle) => {
+                    if let Err(e) = chats.host.close(&id, super::events::EndReason::Closed) {
+                        eprintln!("tori: handed off session {id} not closed: {e}");
+                    }
+                    return;
+                }
+                None if chats.host.is_live(&id) => std::thread::sleep(std::time::Duration::from_secs(1)),
+                None | Some(SessionState::Ended) => return,
+                Some(_) => {}
+            }
+        });
     }
 
     fn offer(&self, adopt: Value) {
@@ -1555,6 +1655,48 @@ impl Backend for DaemonBackend {
             reply["verification"] = json!("off");
         }
         Ok(reply)
+    }
+
+    fn session_handoff(&self, _: &Principal, params: HandoffParams) -> Result<Value, RpcError> {
+        let old = params.id;
+        let host = &self.chats.host;
+        let locked = super::is_locked(&self.desk.states, &self.autopilot, &self.runner, &old);
+        may_hand_off(&old, host.is_live(&old), locked)?;
+        let agent = self
+            .agent_of(&old)
+            .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no session {old}")))?;
+        let cwd = self.session_cwd(&old)?;
+        let events = read_history(&old, &history_source(&old, &agent), &agent, None);
+        let pending = pending_rows(&old, self.asks.pending(), host.waiting(&old));
+        let check = self.session_check(CheckParams { id: old.clone() })?;
+        let title = listed_sessions(&self.composer.index, None)
+            .into_iter()
+            .find(|m| m.id == old)
+            .and_then(|m| m.name)
+            .unwrap_or_else(|| old.clone());
+        let handed = crate::chat::model::RefTarget::Session {
+            id: old.clone(),
+            title,
+            agent,
+            project: project_of(&cwd, &crate::config::discovered_project_dirs()).unwrap_or_default(),
+        };
+        let brief = handoff_brief(&handed, &events, &pending, &check, params.note.as_deref());
+        let states = &self.desk.states;
+        let as_spawner = self.inherited_spawner(&old);
+        let spawn = SpawnParams {
+            agent: Some(params.to),
+            account: params.account,
+            model: params.model,
+            folder: Some(cwd),
+            prompt: Some(brief),
+            background: Some(states.is_background(&old)),
+            ..Default::default()
+        };
+        let spawned = self.spawn(&as_spawner, spawn, false)?;
+        let new = spawned["id"].as_str().unwrap_or_default().to_string();
+        states.note_handoff(&old, &new);
+        self.close_when_idle(old.clone());
+        Ok(with_fields(spawned, json!({ "handed_from": old })))
     }
 
     fn session_pending(&self, params: PendingParams) -> Result<Value, RpcError> {
@@ -2451,6 +2593,73 @@ mod tests {
         let failed = check_reply("s", Some(&turn(Verdict::Failed, CheckResult::Failed)), Some((1, 1, 0)));
         assert_eq!(failed["verdict"], "failed");
         assert_eq!(failed["checks"][0]["result"], "failed");
+    }
+
+    #[test]
+    fn a_handoff_brief_carries_the_work_and_a_reference_to_the_rest() {
+        let events = vec![
+            ChatEvent::UserMessage {
+                session_id: "old".into(),
+                turn_id: "t1".into(),
+                blocks: vec![ContentBlock::Text {
+                    text: "Fix the login redirect".into(),
+                }],
+            },
+            ChatEvent::TextDelta {
+                session_id: "old".into(),
+                turn_id: "t2".into(),
+                text: "Redirect fixed, tests next.".into(),
+                agent_id: None,
+            },
+        ];
+        let handed = crate::chat::model::RefTarget::Session {
+            id: "old".into(),
+            title: "Login fix".into(),
+            agent: "claude".into(),
+            project: "/p".into(),
+        };
+        let pending = vec![json!({ "kind": "ask", "id": "a1", "text": "Which branch?" })];
+        let check = json!({ "verdict": "unverified", "diff": { "files": 2, "added": 10, "removed": 1 } });
+        let brief = handoff_brief(&handed, &events, &pending, &check, Some("run the e2e suite"));
+        for part in [
+            "taking over session old (claude)",
+            "Its first prompt:\nFix the login redirect",
+            "Its last reply:\nRedirect fixed, tests next.",
+            "It was waiting on: Which branch?",
+            "Its latest code turn: unverified. Its changes: 2 files, +10 -1.",
+            "Note from the handoff: run the e2e suite",
+            "[Session: Login fix]",
+            "session_history tool, id old",
+        ] {
+            assert!(brief.contains(part), "{part:?} missing from {brief}");
+        }
+        let long = "x".repeat(BRIEF_PART_CAP + 10);
+        let events = vec![ChatEvent::UserMessage {
+            session_id: "old".into(),
+            turn_id: "t1".into(),
+            blocks: vec![ContentBlock::Text { text: long }],
+        }];
+        let cut = handoff_brief(&handed, &events, &[], &check, None);
+        assert!(cut.contains(" [cut]") && !cut.contains("Note from"));
+    }
+
+    #[test]
+    fn a_handoff_needs_a_live_chat_the_autopilot_does_not_hold() {
+        assert!(may_hand_off("s", true, false).is_ok());
+        assert_eq!(may_hand_off("s", false, false).unwrap_err().code, INVALID_PARAMS);
+        let held = may_hand_off("s", true, true).unwrap_err();
+        assert_eq!(held.code, REFUSED);
+        assert_eq!(held.message, super::super::LOCKED);
+    }
+
+    #[test]
+    fn a_wait_on_a_handed_off_session_names_its_successor() {
+        let states = holding("s", SessionState::Idle);
+        states.note_handoff("s", "s2");
+        states.replace(vec![], |_| Default::default(), |_, _| false);
+        let reply = waited(&states, "s", Some("no-such-agent"), Value::Null, None);
+        assert_eq!(reply["reason"], "ended");
+        assert_eq!(reply["handed_to"], "s2");
     }
 
     #[test]
