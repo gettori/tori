@@ -1,8 +1,8 @@
 ---
 summary: a worker asks like any session; its spawner reads its Tori asks, native questions and permissions and answers them
 status: current
-updated: 2026-09-25
-source: plan "tori mcp: the MCP front on the socket" (phase 9, revised after phase 8) on branch orchestrator; commits 928f500e, a375fb7a; src-tauri/src/rpc/table.rs (WORKER_REFUSAL); src-tauri/src/rpc/states.rs (wait_settled); src-tauri/src/rpc/methods.rs (session_wait); the approval exception from plan "Approval gate for background sessions" (gettori/tori#203) on branch orchestrator, commits 277c772e, 66dbe76d and 4f3069ce; native questions and permissions from plan "Ticket flow: work on #N" (gettori/tori#207), commits 1b7e479d, 4cd91a8f; src-tauri/src/chat/host.rs (track_waiting, settle); src-tauri/src/rpc/methods.rs (session_answer)
+updated: 2026-10-27
+source: plan "tori mcp: the MCP front on the socket" (phase 9, revised after phase 8) on branch orchestrator; commits 928f500e, a375fb7a; src-tauri/src/rpc/table.rs (WORKER_REFUSAL); src-tauri/src/rpc/states.rs (wait_settled); src-tauri/src/rpc/methods.rs (session_wait); the approval exception from plan "Approval gate for background sessions" (gettori/tori#203) on branch orchestrator, commits 277c772e, 66dbe76d and 4f3069ce; native questions and permissions from plan "Ticket flow: work on #N" (gettori/tori#207), commits 1b7e479d, 4cd91a8f; src-tauri/src/chat/host.rs (track_waiting, settle); src-tauri/src/rpc/methods.rs (session_answer); gettori/tickets#46 on branch agents-launching-agents, plan "Agents launching agents: wait reasons, check, handoff, loop", commits 9ad18c06, 78628446, 7fefbcd6, dc61f72c
 ---
 
 # A worker's questions bubble up to its spawner
@@ -34,6 +34,7 @@ Only `session.spawn` and `session.steer` are refused to a worker, with "a worker
 - **An approval ask is the exception.** An ask carrying an `approval` is the user's alone: `ask.answer` refuses it for every socket caller, the spawner included, so no agent approves its own worker's post. Its card is mirrored into the worker's root background chat instead, so the user answers it where they are looking. See [[adr_a_background_session_needs_a_tori_gate]].
 - An ask the worker's harness cancels still leaves its card up until someone answers it, and nobody reads that answer.
 - Worker marks live in `SessionStates` and do not survive a Tori restart.
+- **A worker may read `session.check`** (gettori/tickets#46): it is a read, and a reviewer worker needs its writer's verdict. `session.handoff` and `autopilot.loop` are refused it with `session.spawn`, since both start work. A handoff of a worker keeps it a worker: the new session is spawned as the old one's spawner ([[adr_a_handoff_is_a_rust_brief_and_a_close_on_idle]]).
 
 ## Related
 
