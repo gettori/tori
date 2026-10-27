@@ -36,6 +36,7 @@ source: "Notifications inbox plan (branch `phase-1-block-2`, gettori/tickets#36)
 
 ## Related
 
+- [[gotcha_the_needs_you_limit_row_is_once_per_account_and_reset]]: why a per-session limit cannot come from this row
 - [[component_presence]] the edges and `Live` it reads
 - [[component_review_inbox]] the other tab of the same Inbox
 - [[component_digest]] the Since you looked tab that reads this log

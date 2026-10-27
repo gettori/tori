@@ -95,6 +95,7 @@ The touched-index also gained a **reverse** direction. `checkpoint_note_touched`
 
 ## Related
 
+- [[gotcha_a_first_checkpoint_equal_to_head_is_never_written]]: why a test repo needs a change before its first snapshot
 - [[component_provenance]] - walks these trees to say who wrote a hunk or a line.
 - [[component_review_inbox]] - diffs a stored tree to the live one for unreviewed work.
 - [[component_chat_panel]] - the source of the exact per-turn file lists.
