@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::server::{
-    params, AskAnswerParams, AskParams, AskWaitParams, AttachmentWriteParams, Backend, BudgetParams,
+    params, AskAnswerParams, AskParams, AskWaitParams, AttachmentWriteParams, Backend, BudgetParams, CheckParams,
     CheckpointDiffParams, CheckpointParams, CheckpointsParams, DigestLookedParams, DigestParams, DraftParams,
     HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams, IssuesAssignedParams,
     ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams, ModelParams, NeedsYouSeenParams,
@@ -198,6 +198,15 @@ pub static METHODS: &[Method] = &[
         refusal: None,
         outward: false,
         call: |b, _, v| b.session_wait(params(v)?),
+    },
+    Method {
+        name: "session.check",
+        description: "What a session's work came to: the verification verdict and checks of its latest turn that changed code (null when none did), and a diff stat over all its turns, counting only files it wrote. verification is \"off\" when the user turned verdicts off.",
+        params: schema::<CheckParams>,
+        callers: ANYONE,
+        refusal: None,
+        outward: false,
+        call: |b, _, v| b.session_check(params(v)?),
     },
     Method {
         name: "session.pending",

@@ -1227,17 +1227,33 @@ fn diff_file_one(
 /// `at_ts` (epoch seconds) to its latest. `None` with no turn by then, or when
 /// nothing changed.
 pub fn session_lines_since(repo_path: &str, session_id: &str, at_ts: u64) -> Option<(u64, u64)> {
+    let prompts = prompt_times(repo_path, session_id);
+    let from = prompts.iter().copied().filter(|ts| *ts <= at_ts).max()?;
+    let to = prompts.iter().copied().max()?;
+    let (_, added, removed) = range_stat(repo_path, session_id, from, to)?;
+    ((added, removed) != (0, 0)).then_some((added, removed))
+}
+
+pub fn session_stat(repo_path: &str, session_id: &str) -> Option<(usize, u64, u64)> {
+    let prompts = prompt_times(repo_path, session_id);
+    let from = prompts.iter().copied().min()?;
+    let to = prompts.iter().copied().max()?;
+    range_stat(repo_path, session_id, from, to)
+}
+
+fn prompt_times(repo_path: &str, session_id: &str) -> Vec<u64> {
     let roots = worktree_members(repo_path).unwrap_or_else(|| vec![repo_path.to_string()]);
-    let prompts: Vec<u64> = roots
+    roots
         .iter()
         .flat_map(|r| list_checkpoints(r, session_id))
         .filter(|c| c.kind.is_empty())
         .map(|c| c.ts)
-        .collect();
-    let from = prompts.iter().copied().filter(|ts| *ts <= at_ts).max()?;
-    let to = prompts.iter().copied().max()?;
+        .collect()
+}
+
+fn range_stat(repo_path: &str, session_id: &str, from: u64, to: u64) -> Option<(usize, u64, u64)> {
     // The range's files carry no counts, so they come from its patch.
-    let (_, diff) = checkpoint_range_diff(repo_path, session_id, from, to).ok()?;
+    let (files, diff) = checkpoint_range_diff(repo_path, session_id, from, to).ok()?;
     let (mut added, mut removed, mut in_hunk) = (0, 0, false);
     for line in diff.lines() {
         if line.starts_with("diff --git") {
@@ -1250,7 +1266,7 @@ pub fn session_lines_since(repo_path: &str, session_id: &str, at_ts: u64) -> Opt
             removed += 1;
         }
     }
-    ((added, removed) != (0, 0)).then_some((added, removed))
+    Some((files.len(), added, removed))
 }
 
 /// The files and unified diff from the tree before the turn at `from_ts` to
@@ -2717,6 +2733,34 @@ mod tests {
         assert_eq!(session_lines_since(&repo, &sid, 50), None, "no turn had started");
         assert_eq!(session_lines_since(&repo, "nobody", 250), None);
         cleanup(&dir, &sid);
+    }
+
+    #[test]
+    fn a_session_stat_spans_every_turn_and_leaves_out_another_sessions_file() {
+        let (dir, a) = tmp_repo();
+        let b = format!("{a}-b");
+        let repo = dir.to_string_lossy().into_owned();
+        std::fs::write(dir.join("base.txt"), "0").unwrap();
+        checkpoint_snapshot_body(a.clone(), repo.clone(), 100).unwrap();
+        checkpoint_snapshot_body(b.clone(), repo.clone(), 100).unwrap();
+        std::fs::write(dir.join("mine.txt"), "one\ntwo\n").unwrap();
+        std::fs::write(dir.join("theirs.txt"), "b wrote this\n").unwrap();
+        let touched = |id: &str, ts, file: &str| {
+            let path = dir.join(file).to_string_lossy().into_owned();
+            checkpoint_note_touched(id.to_string(), ts, "Edit".into(), vec![path]).unwrap();
+        };
+        touched(&a, 100, "mine.txt");
+        touched(&b, 100, "theirs.txt");
+        checkpoint_snapshot_body(a.clone(), repo.clone(), 200).unwrap();
+        std::fs::write(dir.join("mine.txt"), "one\n").unwrap();
+        std::fs::write(dir.join("later.txt"), "three\n").unwrap();
+        touched(&a, 200, "mine.txt");
+        touched(&a, 200, "later.txt");
+
+        assert_eq!(session_stat(&repo, &a), Some((2, 2, 0)));
+        assert_eq!(session_stat(&repo, "nobody"), None);
+        cleanup(&dir, &b);
+        cleanup(&dir, &a);
     }
 
     #[test]

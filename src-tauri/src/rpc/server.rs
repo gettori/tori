@@ -280,6 +280,13 @@ pub struct WaitParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct CheckParams {
+    /// The session whose work to check.
+    pub id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct PendingParams {
     /// The session whose open questions and permission prompts to list.
     pub id: String,
@@ -855,6 +862,7 @@ pub trait Backend: Send + Sync {
     fn caller(&self, principal: &Principal) -> Result<Value, RpcError>;
     fn session_steer(&self, principal: &Principal, params: SteerParams) -> Result<Value, RpcError>;
     fn session_wait(&self, params: WaitParams) -> Result<Value, RpcError>;
+    fn session_check(&self, params: CheckParams) -> Result<Value, RpcError>;
     fn session_pending(&self, params: PendingParams) -> Result<Value, RpcError>;
     fn session_answer(&self, principal: &Principal, params: SessionAnswerParams) -> Result<Value, RpcError>;
     fn session_info(&self, params: InfoParams) -> Result<Value, RpcError>;
@@ -1321,6 +1329,9 @@ pub mod tests {
                 thread::sleep(Duration::from_millis(800));
             }
             Ok(json!({ "id": p.id, "state": "idle", "question": null, "last": null }))
+        }
+        fn session_check(&self, p: CheckParams) -> Result<Value, RpcError> {
+            Ok(json!({ "id": p.id }))
         }
         fn session_pending(&self, p: PendingParams) -> Result<Value, RpcError> {
             if p.id == SLOW {

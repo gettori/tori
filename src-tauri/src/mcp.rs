@@ -327,10 +327,10 @@ mod tests {
         );
         let worker = listed("worker");
         assert!(worker.iter().any(|t| t == "ask_create"), "{worker:?}");
-        assert!(
-            !worker.iter().any(|t| t == "session_spawn"),
-            "a worker was offered session_spawn"
-        );
+        assert!(worker.iter().any(|t| t == "session_check"), "{worker:?}");
+        for refused in ["session_spawn", "session_wait"] {
+            assert!(!worker.iter().any(|t| t == refused), "a worker was offered {refused}");
+        }
     }
 
     #[test]

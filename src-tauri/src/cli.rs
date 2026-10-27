@@ -9,12 +9,13 @@ use serde_json::{json, Value};
 use crate::pty::attach::Ended;
 use crate::rpc::client::{self, Client, Found};
 
-const COMMANDS: [&str; 25] = [
+const COMMANDS: [&str; 26] = [
     "sessions",
     "projects",
     "ports",
     "session",
     "wait",
+    "check",
     "events",
     "whoami",
     "steer",
@@ -43,6 +44,7 @@ const USAGE: &str = "usage:
   tori ports [--json]
   tori session tail <id> [--lines <n>] [--agent <id>] [--json]
   tori wait <id> [--timeout <secs>] [--json]
+  tori check <id> [--json]
   tori session wait <id> [--timeout <secs>] [--json]
   tori session pending <id> [--json]
   tori session answer <session> <id> <text>...
@@ -201,6 +203,7 @@ fn dispatch(args: &[String]) -> Result<(), Failure> {
             _ => Err(usage("session needs a subcommand: tail, wait, pending or answer")),
         },
         "wait" => session_wait(rest),
+        "check" => check(rest),
         "events" => events(rest),
         "whoami" => whoami(rest),
         "steer" => steer(rest),
@@ -741,6 +744,42 @@ fn packs_catalog(args: &[String]) -> Result<(), Failure> {
         index["generated_at"].as_str().unwrap_or("?"),
         index["expires"].as_str().unwrap_or("?"),
     )?)
+}
+
+fn check(args: &[String]) -> Result<(), Failure> {
+    let p = Parsed::new(args, &[], &["json"])?;
+    let [id] = p.positional.as_slice() else {
+        return Err(usage("check takes one session id"));
+    };
+    let checked = connect()?.call("session.check", json!({ "id": id }))?;
+    let mut out = io::stdout().lock();
+    if p.has("json") {
+        return Ok(writeln!(out, "{checked}")?);
+    }
+    for line in check_lines(&checked) {
+        writeln!(out, "{line}")?;
+    }
+    Ok(())
+}
+
+fn check_lines(checked: &Value) -> Vec<String> {
+    let verdict = match checked["verification"].as_str() {
+        Some("off") => "verification off",
+        _ => checked["verdict"].as_str().unwrap_or("no code changed"),
+    };
+    let mut lines = vec![verdict.to_string()];
+    for check in checked["checks"].as_array().into_iter().flatten() {
+        let result = check["result"].as_str().unwrap_or("");
+        lines.push(format!("  {result:<8} {}", check["command"].as_str().unwrap_or("")));
+    }
+    let diff = &checked["diff"];
+    lines.push(format!(
+        "{} files, +{} -{}",
+        diff["files"].as_u64().unwrap_or(0),
+        diff["added"].as_u64().unwrap_or(0),
+        diff["removed"].as_u64().unwrap_or(0)
+    ));
+    lines
 }
 
 fn whoami(args: &[String]) -> Result<(), Failure> {
@@ -1738,6 +1777,24 @@ mod tests {
         assert!(wait_params(&args(&[])).is_err());
         assert!(USAGE.contains("session wait <id>"));
         assert!(USAGE.contains("tori wait <id>") && COMMANDS.contains(&"wait"));
+    }
+
+    #[test]
+    fn a_check_prints_the_verdict_its_checks_and_the_diff() {
+        let checked = json!({
+            "verdict": "failed",
+            "checks": [{ "command": "cargo test", "result": "failed" }],
+            "diff": { "files": 2, "added": 10, "removed": 3 },
+        });
+        assert_eq!(
+            check_lines(&checked),
+            ["failed", "  failed   cargo test", "2 files, +10 -3"]
+        );
+        let none = json!({ "verdict": null, "checks": [], "diff": { "files": 0, "added": 0, "removed": 0 } });
+        assert_eq!(check_lines(&none), ["no code changed", "0 files, +0 -0"]);
+        let off = json!({ "verification": "off", "verdict": null, "checks": [], "diff": { "files": 1, "added": 2, "removed": 0 } });
+        assert_eq!(check_lines(&off), ["verification off", "1 files, +2 -0"]);
+        assert!(USAGE.contains("tori check <id>") && COMMANDS.contains(&"check"));
     }
 
     #[test]
