@@ -109,6 +109,7 @@ struct Lifecycle {
     replaying: Arc<Mutex<HashSet<String>>>,
     pulses: Arc<Mutex<Pulses>>,
     on_beat: Arc<std::sync::OnceLock<OnBeat>>,
+    on_waiting: Arc<std::sync::OnceLock<OnBeat>>,
 }
 
 impl Lifecycle {
@@ -149,6 +150,12 @@ impl Lifecycle {
     fn beat(&self) {
         if let Some(beat) = self.on_beat.get() {
             beat();
+        }
+    }
+
+    fn waited(&self) {
+        if let Some(waited) = self.on_waiting.get() {
+            waited();
         }
     }
 
@@ -303,12 +310,30 @@ impl Waiting {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct WaitingPermission {
+    pub session: String,
+    pub cwd: String,
+    pub agent: String,
+    pub event: ChatEvent,
+}
+
 // Each prompt with the event that raised it, for a view that attaches after it was asked.
 type WaitingMap = Arc<Mutex<HashMap<String, Vec<(Waiting, ChatEvent)>>>>;
 
 // A background subagent outlives its parent's turn, and so can its prompt.
-fn track_waiting(waiting: &WaitingMap, id: &str, event: &ChatEvent) {
+fn permissions_in(list: Option<&Vec<(Waiting, ChatEvent)>>) -> usize {
+    list.map_or(0, |list| {
+        list.iter()
+            .filter(|(w, _)| matches!(w, Waiting::Permission { .. }))
+            .count()
+    })
+}
+
+// Whether the permission prompts this session waits on changed.
+fn track_waiting(waiting: &WaitingMap, id: &str, event: &ChatEvent) -> bool {
     let mut waiting = lock(waiting);
+    let before = permissions_in(waiting.get(id));
     match event {
         ChatEvent::QuestionRequest {
             tool_use_id,
@@ -354,6 +379,7 @@ fn track_waiting(waiting: &WaitingMap, id: &str, event: &ChatEvent) {
         }
         _ => {}
     }
+    permissions_in(waiting.get(id)) != before
 }
 
 fn answer_to(question: &ChatQuestion, answer: &str) -> QuestionAnswer {
@@ -944,14 +970,49 @@ impl ChatHost {
     }
 
     fn forget_waiting(&self, session_id: &str, id: &str) {
-        if let Some(list) = lock(&self.waiting).get_mut(session_id) {
+        let forgot = lock(&self.waiting).get_mut(session_id).is_some_and(|list| {
+            let before = permissions_in(Some(list));
             list.retain(|(w, _)| w.id() != id);
+            permissions_in(Some(list)) != before
+        });
+        if forgot {
+            self.lifecycle.waited();
         }
         self.lifecycle.beat();
     }
 
     pub fn set_on_beat(&self, beat: OnBeat) {
         let _ = self.lifecycle.on_beat.set(beat);
+    }
+
+    pub fn set_on_waiting(&self, waited: OnBeat) {
+        let _ = self.lifecycle.on_waiting.set(waited);
+    }
+
+    pub fn waiting_permissions(&self) -> Vec<WaitingPermission> {
+        let places: HashMap<String, String> = lock(&self.sessions)
+            .iter()
+            .map(|(id, entry)| (id.clone(), entry.cwd.clone()))
+            .collect();
+        let asked: Vec<(String, ChatEvent)> = lock(&self.waiting)
+            .iter()
+            .flat_map(|(session, list)| {
+                list.iter()
+                    .filter(|(w, _)| matches!(w, Waiting::Permission { .. }))
+                    .map(move |(_, event)| (session.clone(), event.clone()))
+            })
+            .collect();
+        asked
+            .into_iter()
+            .filter_map(|(session, event)| {
+                Some(WaitingPermission {
+                    cwd: places.get(&session)?.clone(),
+                    agent: self.registry.agent_of(&session).unwrap_or_default(),
+                    session,
+                    event,
+                })
+            })
+            .collect()
     }
 
     /// Every live chat as the daemon composes its dot.
@@ -990,20 +1051,13 @@ impl ChatHost {
             .find(|w| w.id() == id)
             .ok_or_else(gone)?;
         let landed = match waiting {
-            Waiting::Permission { request_id, .. } => {
+            Waiting::Permission { .. } => {
                 let decision = match answers {
                     [one] if one.eq_ignore_ascii_case("allow") => PermissionDecision::Allow,
                     [one] if one.eq_ignore_ascii_case("deny") => PermissionDecision::Deny,
                     _ => return Err(format!("{id} is a permission: answer allow or deny")),
                 };
-                let transport = lock(&self.sessions).get(session_id).map(|e| e.transport.clone());
-                let Some(transport) = transport else {
-                    return Err(format!("no live session {session_id}"));
-                };
-                let landed =
-                    lock(&transport).respond_permission(id, &request_id, decision, PermissionScope::Once, None)?;
-                self.forget_waiting(session_id, id);
-                landed
+                self.settle_permission(session_id, id, decision, PermissionScope::Once)?
             }
             Waiting::Question {
                 request_id, questions, ..
@@ -1024,6 +1078,30 @@ impl ChatHost {
         } else {
             Err(gone())
         }
+    }
+
+    /// `Ok(false)` when nothing waits on `id` any more; `Err` only when the
+    /// answer could not be delivered.
+    pub fn settle_permission(
+        &self,
+        session_id: &str,
+        id: &str,
+        decision: PermissionDecision,
+        scope: PermissionScope,
+    ) -> Result<bool, String> {
+        let request_id = self.waiting(session_id).into_iter().find_map(|w| match w {
+            Waiting::Permission {
+                id: asked, request_id, ..
+            } if asked == id => Some(request_id),
+            _ => None,
+        });
+        let transport = lock(&self.sessions).get(session_id).map(|e| e.transport.clone());
+        let (Some(request_id), Some(transport)) = (request_id, transport) else {
+            return Ok(false);
+        };
+        let landed = lock(&transport).respond_permission(id, &request_id, decision, scope, None)?;
+        self.forget_waiting(session_id, id);
+        Ok(landed)
     }
 
     /// Tear a session's bridge down.
@@ -1291,7 +1369,9 @@ impl ChatHost {
                 if let Some(mirror) = &mirror {
                     mirror.note(&event);
                 }
-                track_waiting(&waiting, &id, &event);
+                if track_waiting(&waiting, &id, &event) {
+                    lifecycle.waited();
+                }
                 lifecycle.observe(&id, &event);
                 crate::rpc::publish_chat(&id, &event);
                 emit(event);
@@ -1303,7 +1383,10 @@ impl ChatHost {
                     // Same, and it matters more here: these entries are the large
                     // ones.
                     lock(&outputs).remove(&id);
-                    lock(&waiting).remove(&id);
+                    let dropped = lock(&waiting).remove(&id);
+                    if permissions_in(dropped.as_ref()) > 0 {
+                        lifecycle.waited();
+                    }
                     lock(&notes).remove(&id);
                     lock(&blind).remove(&id);
                     lock(&verify).remove(&id);
@@ -1541,7 +1624,10 @@ impl ChatHost {
         // child is still there to receive the denial, not after it is killed.
         self.drop_bridge(session_id);
         let entry = lock(&self.sessions).remove(session_id);
-        lock(&self.waiting).remove(session_id);
+        let dropped = lock(&self.waiting).remove(session_id);
+        if permissions_in(dropped.as_ref()) > 0 {
+            self.lifecycle.waited();
+        }
         lock(&self.notes).remove(session_id);
         lock(&self.blind).remove(session_id);
         lock(&self.verify).remove(session_id);
@@ -3503,6 +3589,77 @@ mod tests {
         };
         assert_eq!(answer_to(&questions[0], "no").picks, ["No"]);
         assert_eq!(answer_to(&questions[0], "later").free_text.as_deref(), Some("later"));
+    }
+
+    #[test]
+    fn waiting_permissions_span_sessions_and_say_when_they_change() {
+        let host = ChatHost::at(temp_store());
+        let changes = Arc::new(AtomicU32::new(0));
+        let counted = changes.clone();
+        host.set_on_waiting(Arc::new(move || {
+            counted.fetch_add(1, Ordering::SeqCst);
+        }));
+        let owner = || {
+            Box::new(Puppet {
+                owns_answers: true,
+                ..Default::default()
+            }) as Box<dyn AgentTransport>
+        };
+        for id in ["s-1", "s-2"] {
+            host.spawn_plain(id, "tab", Box::new(|_| {}), spec(id), owner).unwrap();
+        }
+        let emit = host.emitter();
+        emit("s-1", permission("s-1", "p1"));
+        emit("s-1", asked("s-1", "q1", &["Yes"]));
+        emit("s-2", permission("s-2", "p2"));
+        emit("s-2", permission("s-2", "p3"));
+        let mut ids: Vec<String> = host.waiting_permissions().into_iter().map(|w| w.session).collect();
+        ids.sort();
+        assert_eq!(ids, ["s-1", "s-2", "s-2"], "questions are not permissions");
+        assert_eq!(changes.load(Ordering::SeqCst), 3, "a question is not a permission");
+
+        host.settle_permission("s-1", "p1", PermissionDecision::Allow, PermissionScope::Project)
+            .unwrap();
+        emit("s-2", completed("s-2", "p2", "denied: nobody answered"));
+        emit(
+            "s-2",
+            ChatEvent::TextDelta {
+                session_id: "s-2".into(),
+                turn_id: "t1".into(),
+                agent_id: None,
+                text: "x".into(),
+            },
+        );
+        assert_eq!(host.waiting_permissions().len(), 1);
+        assert_eq!(changes.load(Ordering::SeqCst), 5, "an unrelated frame changes nothing");
+    }
+
+    #[test]
+    fn a_group_allow_answers_only_what_was_listed() {
+        let host = ChatHost::at(temp_store());
+        let owner = || {
+            Box::new(Puppet {
+                owns_answers: true,
+                ..Default::default()
+            }) as Box<dyn AgentTransport>
+        };
+        host.spawn_plain("s-g", "tab", Box::new(|_| {}), spec("s-g"), owner)
+            .unwrap();
+        let emit = host.emitter();
+        emit("s-g", permission("s-g", "p1"));
+        emit("s-g", permission("s-g", "p2"));
+        let listed = ["p1", "p2"];
+        emit("s-g", completed("s-g", "p2", "denied: nobody answered"));
+        emit("s-g", permission("s-g", "p3"));
+
+        let allowed = listed
+            .iter()
+            .filter(|id| {
+                host.settle_permission("s-g", id, PermissionDecision::Allow, PermissionScope::Project) == Ok(true)
+            })
+            .count();
+        assert_eq!((allowed, listed.len() - allowed), (1, 1));
+        assert_eq!(waiting_ids(&host, "s-g"), ["p3"]);
     }
 
     fn published(host: &ChatHost) -> Arc<Mutex<Vec<(String, String)>>> {
