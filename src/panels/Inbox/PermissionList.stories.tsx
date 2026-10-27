@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { PermissionList } from "./InboxView";
-import type { PermissionRow } from "../../utils/permissionInbox";
+import type { PermissionRow } from "../../utils/permissionGroups";
 import styles from "./InboxView.module.css";
 
 function row(session: string, folder: string, extra: Partial<PermissionRow> = {}): PermissionRow {
