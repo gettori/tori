@@ -11,12 +11,12 @@ use super::server::{
     params, AskAnswerParams, AskParams, AskWaitParams, AttachmentWriteParams, Backend, BudgetParams, CheckParams,
     CheckpointDiffParams, CheckpointParams, CheckpointsParams, DigestLookedParams, DigestParams, DraftParams,
     HandoffParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams, IssuesAssignedParams,
-    ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams, ModelParams, NeedsYouSeenParams,
-    OpenParams, PendingParams, PortParams, PrCheckLogParams, PrCreateParams, PrGetParams, PrMergeParams, PrPushParams,
-    PrWatchParams, ProjectIconParams, ProjectSetParams, ProvenanceParams, RevealParams, ReviewMarkParams,
-    ReviewSubmitParams, ScheduleAddParams, ScheduleIdParams, SessionAnswerParams, SetupParams, SpawnParams,
-    SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams,
-    WorktreeParams, UNITS_GIT_MAX,
+    ItemUpdateParams, LinkBranchParams, ListParams, LogParams, LoopParams, MintParams, ModeParams, ModelParams,
+    NeedsYouSeenParams, OpenParams, PendingParams, PortParams, PrCheckLogParams, PrCreateParams, PrGetParams,
+    PrMergeParams, PrPushParams, PrWatchParams, ProjectIconParams, ProjectSetParams, ProvenanceParams, RevealParams,
+    ReviewMarkParams, ReviewSubmitParams, ScheduleAddParams, ScheduleIdParams, SessionAnswerParams, SetupParams,
+    SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams,
+    WaitParams, WorktreeParams, UNITS_GIT_MAX,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -690,6 +690,15 @@ pub static METHODS: &[Method] = &[
         refusal: Some("turning the autopilot off is the user's call"),
         outward: false,
         call: |b, _, _| b.autopilot_stop(),
+    },
+    Method {
+        name: "autopilot.loop",
+        description: "Queue one autopilot ship item per entry, each with the prompt as its task: {item} in the prompt is replaced by the entry, else the entry is appended. An entry whose item is already open in the project is skipped. Nothing starts until the autopilot picks the items up.",
+        params: schema::<LoopParams>,
+        callers: NOT_WORKERS,
+        refusal: Some("the queue is the autopilot's to change"),
+        outward: false,
+        call: |b, p, v| b.autopilot_loop(p, params(v)?),
     },
     Method {
         name: "autopilot.item.update",
