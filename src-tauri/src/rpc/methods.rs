@@ -17,12 +17,12 @@ use super::server::{
     AskAnswerParams, AskParams, AskWaitParams, AttachmentWriteParams, Backend, Before, BudgetParams, CheckParams,
     CheckpointDiffParams, CheckpointParams, CheckpointsParams, DigestLookedParams, DigestParams, DraftParams,
     HandoffParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams, IssuesAssignedParams,
-    ItemUpdateParams, LinkBranchParams, ListParams, LogParams, MintParams, ModeParams, ModelParams, NeedsYouSeenParams,
-    OpenParams, PendingParams, PortParams, PrCheckLogParams, PrCreateParams, PrGetParams, PrMergeParams, PrPushParams,
-    PrWatchParams, ProjectIconParams, ProjectSetParams, ProvenanceParams, RevealParams, ReviewMarkParams,
-    ReviewSubmitParams, ScheduleAddParams, ScheduleIdParams, SessionAnswerParams, SetupParams, SpawnParams,
-    SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams,
-    WorktreeParams, DEFAULT_LOG_LIMIT,
+    ItemUpdateParams, LinkBranchParams, ListParams, LogParams, LoopParams, MintParams, ModeParams, ModelParams,
+    NeedsYouSeenParams, OpenParams, PendingParams, PortParams, PrCheckLogParams, PrCreateParams, PrGetParams,
+    PrMergeParams, PrPushParams, PrWatchParams, ProjectIconParams, ProjectSetParams, ProvenanceParams, RevealParams,
+    ReviewMarkParams, ReviewSubmitParams, ScheduleAddParams, ScheduleIdParams, SessionAnswerParams, SetupParams,
+    SpawnParams, SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams,
+    WaitParams, WorktreeParams, DEFAULT_LOG_LIMIT,
 };
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
@@ -631,6 +631,19 @@ fn may_steer(caller: &Principal, locked: bool, autopilot: Option<&str>) -> Resul
         Principal::Session(Caller::Chat(id)) if Some(id.as_str()) == autopilot => Ok(()),
         _ => Err(refused(super::LOCKED.to_string())),
     }
+}
+
+fn loop_entries_are_work(prompt: &str, entries: &[String]) -> Result<(), RpcError> {
+    if prompt.trim().is_empty() {
+        return Err(RpcError::new(INVALID_PARAMS, "a loop needs a prompt"));
+    }
+    if entries.is_empty() {
+        return Err(RpcError::new(INVALID_PARAMS, "a loop needs at least one entry"));
+    }
+    if let Some(at) = entries.iter().position(|e| e.trim().is_empty()) {
+        return Err(RpcError::new(INVALID_PARAMS, format!("loop entry {} is empty", at + 1)));
+    }
+    Ok(())
 }
 
 // Unlike a steer, not even the autopilot: its item would keep the old id.
@@ -2410,6 +2423,23 @@ impl Backend for DaemonBackend {
             .recent_log(params.limit.unwrap_or(DEFAULT_LOG_LIMIT))))
     }
 
+    fn autopilot_loop(&self, principal: &Principal, params: LoopParams) -> Result<Value, RpcError> {
+        loop_entries_are_work(&params.prompt, &params.entries)?;
+        let project = self.project(principal, params.project)?;
+        let looped = self
+            .autopilot
+            .queue_loop(&project, &params.prompt, &params.entries)
+            .map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))?;
+        super::watcher_looped(&looped.queued);
+        let queued: Vec<Value> = looped
+            .queued
+            .iter()
+            .map(|i| json!({ "id": i.id, "entry": i.title }))
+            .collect();
+        let running = !matches!(self.runner.status().state, super::runner::RunnerState::Off);
+        Ok(json!({ "project": project, "queued": queued, "skipped": looped.skipped, "autopilot": running }))
+    }
+
     fn autopilot_item_update(&self, principal: &Principal, params: ItemUpdateParams) -> Result<Value, RpcError> {
         let project = match params.id {
             Some(_) => params.project.clone(),
@@ -2641,6 +2671,19 @@ mod tests {
         }];
         let cut = handoff_brief(&handed, &events, &[], &check, None);
         assert!(cut.contains(" [cut]") && !cut.contains("Note from"));
+    }
+
+    #[test]
+    fn a_loop_refuses_an_empty_prompt_list_or_entry() {
+        let entries = |all: &[&str]| all.iter().map(|e| e.to_string()).collect::<Vec<_>>();
+        assert!(loop_entries_are_work("do {item}", &entries(&["a"])).is_ok());
+        assert_eq!(
+            loop_entries_are_work(" ", &entries(&["a"])).unwrap_err().code,
+            INVALID_PARAMS
+        );
+        assert_eq!(loop_entries_are_work("do", &[]).unwrap_err().code, INVALID_PARAMS);
+        let blank = loop_entries_are_work("do", &entries(&["a", "  "])).unwrap_err();
+        assert_eq!(blank.message, "loop entry 2 is empty");
     }
 
     #[test]

@@ -667,6 +667,17 @@ impl PrPushParams {
     }
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LoopParams {
+    /// The project the items are queued in, the caller's own when left out.
+    pub project: Option<String>,
+    /// The task for each entry; `{item}` is replaced by the entry, else the entry is appended.
+    pub prompt: String,
+    /// One ship item per entry.
+    pub entries: Vec<String>,
+}
+
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ItemUpdateParams {
@@ -920,6 +931,7 @@ pub trait Backend: Send + Sync {
     fn autopilot_state(&self) -> Result<Value, RpcError>;
     fn autopilot_log(&self, params: LogParams) -> Result<Value, RpcError>;
     fn autopilot_item_update(&self, principal: &Principal, params: ItemUpdateParams) -> Result<Value, RpcError>;
+    fn autopilot_loop(&self, principal: &Principal, params: LoopParams) -> Result<Value, RpcError>;
     fn autopilot_project_set(&self, principal: &Principal, params: ProjectSetParams) -> Result<Value, RpcError>;
     fn autopilot_hold_resolve(&self, params: HoldResolveParams) -> Result<Value, RpcError>;
     fn autopilot_schedule_list(&self) -> Result<Value, RpcError>;
@@ -1496,6 +1508,9 @@ pub mod tests {
                 .as_ref()
                 .map(|store| store.recent_log(p.limit.unwrap_or(DEFAULT_LOG_LIMIT)));
             Ok(json!(log.unwrap_or_default()))
+        }
+        fn autopilot_loop(&self, _: &Principal, p: LoopParams) -> Result<Value, RpcError> {
+            Ok(json!({ "queued": p.entries }))
         }
         fn autopilot_item_update(&self, _: &Principal, p: ItemUpdateParams) -> Result<Value, RpcError> {
             match &self.autopilot {
