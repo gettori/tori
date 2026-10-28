@@ -1,0 +1,36 @@
+.fields {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--tori-space-2) var(--tori-space-5);
+  margin-bottom: var(--tori-space-6);
+  font-size: var(--tori-text-md);
+}
+.name {
+  color: var(--fg-muted);
+}
+.value {
+  font-family: var(--tori-font-mono);
+  color: var(--fg-default);
+  overflow-wrap: anywhere;
+}
+.diff {
+  margin: 0;
+  padding: var(--tori-space-3) 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-md);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
+  max-height: calc(260px * var(--ui-scale));
+  overflow: auto;
+}
+.line {
+  padding: 0 var(--tori-space-4);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.add {
+  background: color-mix(in srgb, var(--diff-added) 20%, transparent);
+}
+.del {
+  background: color-mix(in srgb, var(--diff-deleted) 20%, transparent);
+}

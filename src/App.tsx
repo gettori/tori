@@ -23,6 +23,7 @@ import WindowControls from "./components/WindowControls/WindowControls";
 import Resizer from "./components/Resizer/Resizer";
 import AskpassDialog from "./components/Dialogs/AskpassDialog";
 import ServerMessageDialog from "./components/Dialogs/ServerMessageDialog";
+import ProposalDialog from "./components/Dialogs/ProposalDialog";
 import ConfirmDialog, { type ConfirmReq } from "./components/Dialogs/ConfirmDialog";
 import Checkbox from "./components/Checkbox/Checkbox";
 import ToastRegion from "./components/Toasts/Toasts";
@@ -157,6 +158,7 @@ import {
 } from "./panels/Settings/settingsStore";
 import { frontWorktree } from "./utils/editorState";
 import { startRun, stopRun } from "./utils/runStore";
+import { noticeProposal } from "./utils/proposals";
 import "./styles/reset.css";
 import { CockpitPopup, CockpitSwitch, CockpitView } from "./panels/Autopilot/Cockpit";
 import { popupOpen, view } from "./utils/autopilotStore";
@@ -589,6 +591,14 @@ function App() {
       },
       { defer: true },
     ),
+  );
+
+  // Selecting a worktree, which creating one does, is when its proposal is first seen.
+  const selectedRoot = createMemo(() => selectionRoot(selected()));
+  createEffect(
+    on(selectedRoot, (root) => {
+      if (root) void noticeProposal(root);
+    }),
   );
 
   // The selection signal and the pane tree are what the scripted perf recipe
@@ -1272,6 +1282,7 @@ function App() {
 
       <AskpassDialog />
       <ServerMessageDialog />
+      <ProposalDialog />
       <ToastRegion />
     </div>
   );
