@@ -41,7 +41,7 @@ struct Read {
     values: Values,
 }
 
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
 #[serde(tag = "state", rename_all = "lowercase")]
 pub enum Proposal {
     None,
@@ -62,6 +62,19 @@ pub enum Proposal {
         digest: String,
         values: Values,
     },
+}
+
+impl Proposal {
+    pub fn word(&self) -> &'static str {
+        match self {
+            Proposal::None => "none",
+            Proposal::Untrusted => "untrusted",
+            Proposal::Fork => "fork",
+            Proposal::Unaccepted { .. } => "unaccepted",
+            Proposal::Declined { .. } => "declined",
+            Proposal::Accepted { .. } => "accepted",
+        }
+    }
 }
 
 fn command(v: Option<&Value>) -> Option<String> {
@@ -234,6 +247,13 @@ fn scope_of(worktree: &Path) -> String {
 }
 
 pub fn proposal(worktree: &Path) -> Proposal {
+    #[cfg(test)]
+    return SEAM.with(|s| s.borrow().get(worktree).cloned().unwrap_or(Proposal::None));
+    #[cfg(not(test))]
+    if !file_in(worktree).is_file() {
+        return Proposal::None;
+    }
+    #[cfg(not(test))]
     state_at(
         &store_path(),
         &scope_of(worktree),
@@ -241,6 +261,36 @@ pub fn proposal(worktree: &Path) -> Proposal {
         crate::trust::gate_project(worktree).is_ok(),
         || !crate::worktree::not_a_fork(worktree),
     )
+}
+
+#[cfg(test)]
+thread_local! {
+    static SEAM: std::cell::RefCell<std::collections::HashMap<PathBuf, Proposal>> = std::cell::RefCell::default();
+}
+
+/// Stand in for `worktree`'s proposal on this thread, so a test of a runner never
+/// reads the real trust and consent stores.
+#[cfg(test)]
+pub(crate) fn seam(worktree: &Path, proposal: Proposal) {
+    SEAM.with(|s| s.borrow_mut().insert(worktree.to_path_buf(), proposal));
+}
+
+#[cfg(test)]
+pub(crate) fn seam_accepted(worktree: &Path, values: Values) {
+    seam(
+        worktree,
+        Proposal::Accepted {
+            digest: String::new(),
+            values,
+        },
+    );
+}
+
+pub fn accepted(worktree: &Path) -> Option<Values> {
+    match proposal(worktree) {
+        Proposal::Accepted { values, .. } => Some(values),
+        _ => None,
+    }
 }
 
 #[tauri::command(async)]

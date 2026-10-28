@@ -947,7 +947,7 @@ pub(crate) fn do_remove_worktree(repo_path: &str, worktree_path: &str, force: bo
     let folder = Path::new(worktree_path);
     crate::setup::kill(folder);
     crate::run::stop(folder);
-    if folder.is_dir() && crate::setup::has_teardown(repo_path) && not_a_fork(folder) {
+    if folder.is_dir() && not_a_fork(folder) {
         crate::setup::teardown(repo_path, folder);
     }
     // Canonical now, while the folder is still there to resolve.

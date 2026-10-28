@@ -943,7 +943,15 @@ fn submit_pinned(
 // Past `cap` this says `running`, so a caller keeps waiting by asking again.
 // Never an error: a failed setup is reported, not refused.
 fn setup_fields(project: &str, worktree: &Path, skipped: bool, cap: std::time::Duration) -> Value {
-    let Some(prefs) = crate::setup::configured(project) else {
+    let proposal = crate::project_config::proposal(worktree).word();
+    with_fields(
+        setup_state(project, worktree, skipped, cap),
+        json!({ "proposal": proposal }),
+    )
+}
+
+fn setup_state(project: &str, worktree: &Path, skipped: bool, cap: std::time::Duration) -> Value {
+    let Some(prefs) = crate::setup::setup_prefs(project, worktree) else {
         return json!({ "setup": "none", "setup_log": null });
     };
     if skipped {
@@ -961,7 +969,7 @@ fn setup_fields(project: &str, worktree: &Path, skipped: bool, cap: std::time::D
 }
 
 fn wait_for_setup(project: &str, folder: &Path, cap: std::time::Duration) {
-    if crate::setup::configured(project).is_some_and(|prefs| prefs.setup_wait) {
+    if crate::setup::setup_prefs(project, folder).is_some_and(|prefs| prefs.setup_wait) {
         crate::setup::wait(folder, cap);
     }
 }
@@ -1109,7 +1117,15 @@ impl DaemonBackend {
             "name": name,
         });
         self.offer(adopt);
-        Ok(json!({ "id": id, "tab": tab, "folder": folder, "agent": picked.agent, "background": background }))
+        let proposal = crate::project_config::proposal(Path::new(&folder)).word();
+        Ok(json!({
+            "id": id,
+            "tab": tab,
+            "folder": folder,
+            "agent": picked.agent,
+            "background": background,
+            "proposal": proposal,
+        }))
     }
 
     fn inherited_spawner(&self, old: &str) -> Principal {
@@ -2956,6 +2972,20 @@ mod tests {
 
         crate::setup::seam(HashMap::new(), base.join("logs"));
         assert_eq!(state(setup_fields(&project, &folder("none"), false, long)), "none");
+
+        let fresh = folder("fresh");
+        crate::project_config::seam(
+            &fresh,
+            crate::project_config::Proposal::Unaccepted {
+                digest: "d".into(),
+                content: r#"{ "setupCommand": "pnpm i" }"#.into(),
+                values: Default::default(),
+                previous: None,
+            },
+        );
+        let reply = setup_fields(&project, &fresh, false, long);
+        assert_eq!(reply["proposal"], "unaccepted");
+        assert_eq!(state(reply), "none", "an unaccepted file runs nothing of its own");
 
         seam("true", false);
         assert_eq!(state(setup_fields(&project, &folder("fork"), true, long)), "skipped");
