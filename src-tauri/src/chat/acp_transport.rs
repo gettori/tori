@@ -744,21 +744,22 @@ impl AgentTransport for AcpTransport {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
+        // The agent's own id is the noun a failure names. Tori has no friendlier
+        // word for a lever it has never seen, and the label is the agent's too,
+        // so quoting the id at least names the thing the agent itself refused.
+        let mut what = ConfigOption::Mirrored {
+            id: config_id.to_string(),
+        };
         if let (Switch::Available(mode_id), ChatConfigValue::Value(mode)) = (mode_switch, value) {
             if mode_id == config_id {
                 self.mode_pin.check(mode)?;
+                what = ConfigOption::Mode;
             }
         }
         self.send_command(Command::SetConfigOption {
             config_id: config_id.to_string(),
             value: value.clone(),
-            // The agent's own id is the noun a failure names. Tori has no
-            // friendlier word for a lever it has never seen, and the label is
-            // the agent's too, so quoting the id at least names the thing the
-            // agent itself refused.
-            what: ConfigOption::Mirrored {
-                id: config_id.to_string(),
-            },
+            what,
         })
     }
 

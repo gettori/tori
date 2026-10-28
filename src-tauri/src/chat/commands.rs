@@ -25,6 +25,7 @@ use super::model::{
     ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode, PermissionScope, QuestionAnswer,
 };
 use super::ownership::{Claim, ClaimOutcome, Reaped, Surface};
+use super::side::ReadOnly;
 use super::snapshot::{self, SnapshotCache, CACHE_CAP};
 use super::tail::{page_before, HistoryCursor, HistoryPage, HistoryTail, PageCache, Parsed};
 use super::transport::{AgentTransport, Emit, StartSpec};
@@ -279,11 +280,11 @@ pub struct SpawnRequest {
 }
 
 // A side chat is a person's question, never an unattended worker.
-fn side_mode(agent_id: &str, background: bool) -> Result<&'static str, String> {
+fn side_mode(agent_id: &str, background: bool) -> Result<ReadOnly, String> {
     if background {
         return Err("a side chat runs in the foreground".into());
     }
-    super::side::read_only_mode(agent_id).ok_or_else(|| format!("{agent_id} has no read-only mode for a side chat"))
+    super::side::read_only(agent_id).ok_or_else(|| format!("{agent_id} has no read-only mode for a side chat"))
 }
 
 /// `chat_spawn` with the sink passed in, so Rust can start a session too.
@@ -306,12 +307,17 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
         side_of,
     } = req;
     let adapter = agents::find(&agent_id).ok_or_else(|| format!("unknown agent {agent_id}"))?;
-    let mode = match &side_of {
+    let side = match &side_of {
         Some(parent) => {
-            let held = side_mode(&agent_id, background)?;
-            super::side::mark(&session_id, parent, held);
-            Some(held.to_string())
+            let how = side_mode(&agent_id, background)?;
+            super::side::mark(&session_id, parent, how);
+            Some(how)
         }
+        None => None,
+    };
+    let mode = match side {
+        Some(ReadOnly::Flag(held)) => Some(held.to_string()),
+        Some(ReadOnly::Option(_)) => None,
         None => mode,
     };
     let chat = adapter
@@ -457,7 +463,9 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
         }
     }
     let boxed = crate::unattended::boxed(crate::unattended::level_for(&cwd), background, crate::rpc::attached());
-    let mode_pin = if agent_id == crate::unattended::codex::AGENT {
+    let mode_pin = if let Some(how) = side {
+        ModePin::forced(how.mode(), super::side::REFUSED)
+    } else if agent_id == crate::unattended::codex::AGENT {
         crate::unattended::codex::mode_pin(boxed, background)
     } else {
         ModePin::default()
@@ -2314,7 +2322,7 @@ mod tests {
 
     #[test]
     fn a_side_chat_is_held_in_plan_and_never_runs_in_the_background() {
-        assert_eq!(side_mode("claude", false), Ok("plan"));
+        assert_eq!(side_mode("claude", false), Ok(ReadOnly::Flag("plan")));
         assert!(side_mode("claude", true).is_err());
         assert!(side_mode("opencode", false).is_err());
     }
