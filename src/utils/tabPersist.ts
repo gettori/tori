@@ -31,6 +31,8 @@ const MAX_DRAFT_TEXT = 16_000;
 // progress views, and re-running a clone on relaunch would be destructive.
 export type PersistedKind = "shell" | "agent" | "chat";
 
+export type SavedSides = { sessions: string[]; active: number };
+
 export type PersistedTab = {
   // The frontend tab id this entry was written from. Absent on anything a build
   // older than this one wrote, so every reader treats it as a bonus rather than
@@ -76,6 +78,7 @@ export type PersistedTab = {
   background?: boolean;
   // The session that spawned it, so a resume links the worker back.
   spawner?: string;
+  sides?: SavedSides;
 };
 
 export type WorkspaceTabs = {
@@ -115,6 +118,7 @@ export type OpenTabLike = {
    *  tab id; the caller reads them there, so this module keeps its distance. */
   text?: string;
   pick?: DraftPick;
+  sides?: SavedSides;
 };
 
 const isPersistable = (kind: string): kind is PersistedKind => kind === "shell" || kind === "agent" || kind === "chat";
@@ -164,6 +168,7 @@ export function toStore(
       ...(t.spawner ? { spawner: t.spawner } : {}),
       ...(draft && t.text && t.text.length <= MAX_DRAFT_TEXT ? { text: t.text } : {}),
       ...(keepPick && t.pick && (hasPick(t.pick) || hasOptionPick(t.pick)) ? { pick: t.pick } : {}),
+      ...(t.kind === "chat" && t.sides?.sessions.length ? { sides: t.sides } : {}),
     });
   }
   return out;
@@ -219,9 +224,14 @@ const optionValuesField = (v: unknown): Record<string, ChatConfigValue> => {
  *  for any chat at all - a live one is restored by resuming a session that comes
  *  back without its mode or its effort level. This end only normalises what it
  *  finds, since a hand-edited file reaches the composer through it. */
-function chatFields(t: PersistedTab): Pick<PersistedTab, "text" | "pick"> {
+function chatFields(t: PersistedTab): Pick<PersistedTab, "text" | "pick" | "sides"> {
   const p = t.pick as Partial<DraftPick> | undefined;
+  const sides = t.sides as Partial<SavedSides> | undefined;
+  const sessions = Array.isArray(sides?.sessions)
+    ? sides.sessions.filter((s): s is string => typeof s === "string" && !!s)
+    : [];
   return {
+    sides: sessions.length ? { sessions, active: typeof sides?.active === "number" ? sides.active : -1 } : undefined,
     text: typeof t.text === "string" && t.text.length <= MAX_DRAFT_TEXT ? t.text : undefined,
     pick:
       p && typeof p === "object"

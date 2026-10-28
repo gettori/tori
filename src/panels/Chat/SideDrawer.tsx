@@ -9,7 +9,7 @@ import Resizer from "../../components/Resizer/Resizer";
 import { clearComposer } from "../../utils/chatCompose";
 import { dropQueue } from "./queuePersist";
 import { clearDraftPick } from "../../utils/chatDraftPick";
-import { closeSide, drawerOf, openSide, selectSide, type SideChat } from "./sideChats";
+import { closeSide, drawerOf, markSideStarted, openSide, selectSide, type SideChat } from "./sideChats";
 import styles from "./SideDrawer.module.css";
 
 const WIDTH_MIN = 320;
@@ -77,10 +77,10 @@ export default function SideDrawer(props: {
                 cwd={props.cwd}
                 workspace={props.workspace}
                 title={label(side)}
-                resume={false}
-                started
-                onStart={() => {}}
-                forkFrom={props.parentSession}
+                resume={side.restored === true}
+                started={!side.restored || side.started}
+                onStart={() => markSideStarted(props.parentTab, side.tabId)}
+                forkFrom={side.restored ? undefined : props.parentSession}
                 sideOf={props.parentSession}
                 active={props.active && drawer().active === side.tabId}
                 onRewindFrom={() => {}}

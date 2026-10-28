@@ -13,7 +13,7 @@ import ChatDraft from "../Chat/ChatDraft";
 import { dropQueue } from "../Chat/queuePersist";
 import SideDrawer, { forgetSide } from "../Chat/SideDrawer";
 import sideStyles from "../Chat/SideDrawer.module.css";
-import { canSideChat, dropSides, openSide } from "../Chat/sideChats";
+import { canSideChat, drawerOf, dropSides, openSide, restoreSides, savedSides } from "../Chat/sideChats";
 import Dropdown from "../../components/Menu/Dropdown";
 import Icon from "../../components/Icon/Icon";
 import TabMark from "./TabMark";
@@ -140,6 +140,7 @@ import {
   mergeStore,
   restoreId,
   activeIndex,
+  type SavedSides,
   type WorkspaceTabs,
 } from "../../utils/tabPersist";
 import { profileEnv } from "../../utils/profileEnv";
@@ -625,6 +626,7 @@ export default function Terminal(props: {
         // this conversation was set to, and the spawn below re-asserts it.
         if (d.text) setDraft(id, d.text);
         if (d.pick) setDraftPick(id, d.pick);
+        if (d.sides) restoreSides(id, d.sides, (sessionId) => byId.has(sessionId));
         producedId[i] = id;
         continue;
       }
@@ -837,22 +839,28 @@ export default function Terminal(props: {
   // name every save. Nothing showed it until restore ran on its own: the
   // override lands a moment after the tab opens, so the wrong title was only
   // ever on screen for a frame, and only the store kept it.
-  const withDrafts = (tabs: readonly OpenTerm[]) =>
+  const sidesOf = (tabs: readonly OpenTerm[]) => new Map(tabs.map((t) => [t.id, savedSides(drawerOf(t.id))]));
+  const withDrafts = (tabs: readonly OpenTerm[], sidesByTab: ReadonlyMap<string, SavedSides | undefined>) =>
     tabs.map((t) => {
       const named = { ...t, title: tabTitle(t) };
       if (named.kind !== "chat") return named;
+      const sides = sidesByTab.get(t.id);
       // The pick goes down either way. A live chat's session restores its own
       // model and nothing else: `--permission-mode` and `--effort` are
       // per-process flags a resume does not carry, so this is the only record
       // of two of the three. Its *text* is still left behind, which is the
       // half a running conversation really does have somewhere else to keep.
-      if (chatIsLive(named)) return { ...named, live: true, pick: draftPick(t.id) };
-      return { ...named, live: false, text: draftFor(t.id), pick: draftPick(t.id) };
+      if (chatIsLive(named)) return { ...named, live: true, pick: draftPick(t.id), sides };
+      return { ...named, live: false, text: draftFor(t.id), pick: draftPick(t.id), sides };
     });
 
-  function saveTabStore(tabs: readonly OpenTerm[], active: Record<string, string>) {
+  function saveTabStore(
+    tabs: readonly OpenTerm[],
+    active: Record<string, string>,
+    sidesByTab: ReadonlyMap<string, SavedSides | undefined> = untrack(() => sidesOf(tabs)),
+  ) {
     const live = toStore(
-      untrack(() => withDrafts(tabs)),
+      untrack(() => withDrafts(tabs, sidesByTab)),
       active,
       Date.now(),
     );
@@ -860,7 +868,7 @@ export default function Terminal(props: {
     saveTabs(mergeStore(restorable, live, touched));
   }
 
-  createEffect(() => saveTabStore(open(), activeByWorkspace()));
+  createEffect(() => saveTabStore(open(), activeByWorkspace(), sidesOf(open())));
 
   // The same save, armed by a keystroke instead of run by one. Composer text
   // changes on every key, and this store is a single localStorage key covering

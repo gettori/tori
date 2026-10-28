@@ -342,6 +342,18 @@ describe("parseStore", () => {
     expect(parseStore(JSON.stringify(written))).toEqual(written);
   });
 
+  it("round-trips a chat tab's side chats and drops a malformed list", () => {
+    const sides = { sessions: ["f1", "f2"], active: 1 };
+    const written = toStore([tab({ kind: "chat", program: "claude", sessionId: "c1", sides })], {}, 100);
+    expect(parseStore(JSON.stringify(written))["/w/a"].tabs[0].sides).toEqual(sides);
+
+    const junk = {
+      ...written["/w/a"],
+      tabs: [{ ...written["/w/a"].tabs[0], sides: { sessions: [3, ""], active: 0 } }],
+    };
+    expect(parseStore(JSON.stringify({ "/w/a": junk }))["/w/a"].tabs[0].sides).toBeUndefined();
+  });
+
   it("brings a chat and an agent tab back on the account they ran as", () => {
     const written = toStore(
       [
