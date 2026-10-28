@@ -502,6 +502,8 @@ pub struct SpawnParams {
     pub mode: Option<String>,
     /// The effort level it opens on.
     pub effort: Option<String>,
+    /// The autopilot item this worker is for. Refused when that item is already past its spend ceiling.
+    pub item: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -726,6 +728,9 @@ pub struct ItemUpdateParams {
     pub title: Option<String>,
     /// What to build, how it ships and what is out of scope.
     pub contract: Option<String>,
+    /// A dollar ceiling for this item alone, over its project's. Its workers get no new turn once their sessions
+    /// have spent it. An ACP worker reports no cost, so it never reaches one.
+    pub item_usd: Option<f64>,
 }
 
 impl ItemUpdateParams {
@@ -762,6 +767,7 @@ impl ItemUpdateParams {
             note: self.note,
             title: self.title,
             contract: self.contract,
+            item_usd: self.item_usd,
         };
         let item = store.update(target, patch).map_err(update_error)?;
         serde_json::to_value(item).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))
@@ -788,6 +794,9 @@ pub struct ProjectSetParams {
     /// Where the project's issues come from, replacing the list before. Empty, it is the issues assigned to you
     /// in the project's own repo.
     pub issues: Option<Vec<IssueQuery>>,
+    /// A dollar ceiling each item inherits, over the global `budgets.itemUsd`. Its workers get no new turn once
+    /// their sessions have spent it. An ACP worker reports no cost, so it never reaches one.
+    pub item_usd: Option<f64>,
 }
 
 impl ProjectSetParams {
@@ -803,6 +812,7 @@ impl ProjectSetParams {
             account: self.account,
             model: self.model,
             issues: self.issues,
+            item_usd: self.item_usd,
         };
         let contract = store
             .set_project(project, patch)
@@ -1838,7 +1848,7 @@ pub mod tests {
     fn every_spawn_param_is_optional_and_described() {
         let schema = schemars::schema_for!(SpawnParams).to_value();
         let properties = schema["properties"].as_object().unwrap();
-        assert_eq!(properties.len(), 12);
+        assert_eq!(properties.len(), 13);
         for (name, field) in properties {
             assert!(
                 field["description"].as_str().is_some_and(|d| !d.is_empty()),

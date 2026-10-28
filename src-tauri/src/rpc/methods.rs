@@ -677,10 +677,29 @@ fn may_hand_off(id: &str, live: bool, locked: bool) -> Result<(), RpcError> {
 }
 
 // A steer opens a turn, which is what a spend ceiling refuses; only a person lifts it.
-fn steer_past_ceiling(caller: &Principal, target: &str, stopped: bool) -> Result<(), RpcError> {
-    match caller {
-        Principal::Session(Caller::Chat(_)) if stopped => Err(refused(format!(
+fn steer_past_ceiling(
+    caller: &Principal,
+    target: &str,
+    stopped: bool,
+    item_over: Option<&str>,
+) -> Result<(), RpcError> {
+    match (caller, item_over) {
+        (Principal::Session(Caller::Chat(_)), Some(over)) => Err(refused(format!(
+            "{target}'s item is past its spend ceiling ({over}); the item's or project's itemUsd, or budgets.itemUsd, \
+             sets it. Tell the user instead of steering it"
+        ))),
+        (Principal::Session(Caller::Chat(_)), None) if stopped => Err(refused(format!(
             "{target} is held at its spend ceiling; tell the user instead of steering it"
+        ))),
+        _ => Ok(()),
+    }
+}
+
+fn spawn_past_ceiling(item: &str, ceiling: Option<super::office::Ceiling>) -> Result<(), RpcError> {
+    match ceiling {
+        Some(super::office::Ceiling::Over(over)) => Err(refused(format!(
+            "item {item} is past its spend ceiling ({over}); the item's or project's itemUsd, or budgets.itemUsd, \
+             sets it. Tell the user instead of starting a worker"
         ))),
         _ => Ok(()),
     }
@@ -990,6 +1009,9 @@ impl DaemonBackend {
     }
 
     pub fn spawn(&self, principal: &Principal, params: SpawnParams, read_only: bool) -> Result<Value, RpcError> {
+        if let Some(item) = &params.item {
+            spawn_past_ceiling(item, super::office::item_ceiling_state(&self.autopilot, item))?;
+        }
         if let Principal::Device(_) = principal {
             device_may_spawn(&params, |agent| {
                 crate::agents::find(agent).is_some_and(|a| a.chat.is_some())
@@ -1637,7 +1659,13 @@ impl Backend for DaemonBackend {
         }
         let locked = super::is_locked(&self.desk.states, &self.autopilot, &self.runner, &params.id);
         may_steer(principal, locked, self.runner.status().session.as_deref())?;
-        steer_past_ceiling(principal, &params.id, self.composer.budget_stopped(&params.id))?;
+        let item_over = self.composer.item_over(&params.id);
+        steer_past_ceiling(
+            principal,
+            &params.id,
+            self.composer.budget_stopped(&params.id),
+            item_over.as_deref(),
+        )?;
         if matches!(principal, Principal::Browser(_)) && !host.is_live(&params.id) {
             return Err(refused(format!(
                 "{} is not a live chat: the browser starts no agent",
@@ -3083,14 +3111,31 @@ mod tests {
     #[test]
     fn an_agent_never_steers_a_chat_held_at_its_spend_ceiling() {
         let autopilot = Principal::Session(Caller::Chat("pilot".into()));
-        let refused = steer_past_ceiling(&autopilot, "w1", true).unwrap_err();
+        let refused = steer_past_ceiling(&autopilot, "w1", true, None).unwrap_err();
         assert_eq!(refused.code, REFUSED);
         assert!(refused.message.contains("spend ceiling"));
-        assert!(steer_past_ceiling(&autopilot, "w1", false).is_ok());
+        assert!(steer_past_ceiling(&autopilot, "w1", false, None).is_ok());
         assert!(
-            steer_past_ceiling(&Principal::Local, "w1", true).is_ok(),
+            steer_past_ceiling(&Principal::Local, "w1", true, None).is_ok(),
             "a person lifts it"
         );
+        let over = steer_past_ceiling(&autopilot, "w1", true, Some("$5.20 of $5.00")).unwrap_err();
+        assert_eq!(over.code, REFUSED);
+        assert!(
+            over.message.contains("$5.20 of $5.00") && over.message.contains("itemUsd"),
+            "names what it spent and the setting that moves it: {}",
+            over.message
+        );
+    }
+
+    #[test]
+    fn no_worker_starts_for_an_item_past_its_spend_ceiling() {
+        use super::super::office::Ceiling;
+        let refused = spawn_past_ceiling("i1", Some(Ceiling::Over("$5.20 of $5.00".into()))).unwrap_err();
+        assert_eq!(refused.code, REFUSED);
+        assert!(refused.message.contains("$5.20 of $5.00") && refused.message.contains("itemUsd"));
+        assert!(spawn_past_ceiling("i1", Some(Ceiling::Under)).is_ok());
+        assert!(spawn_past_ceiling("i1", None).is_ok(), "no ceiling anywhere");
     }
 
     #[test]

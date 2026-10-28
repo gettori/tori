@@ -647,6 +647,12 @@ export const SETTINGS: SettingEntry[] = [
     hint: "Dollars across every chat in one project. Two chats open on one repo spend one budget.",
   },
   {
+    id: "item-budget",
+    section: "chat",
+    label: "Stop an autopilot item after",
+    hint: "Dollars across every session the autopilot runs for one item. A project or an item can set its own. ACP agents report no cost, so this never stops their workers.",
+  },
+  {
     id: "context-budget",
     section: "chat",
     label: "Stop at context",

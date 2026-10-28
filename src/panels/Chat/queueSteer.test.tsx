@@ -130,7 +130,7 @@ beforeEach(async () => {
   clearComposer(TAB);
   budgetSettings = {
     ...DEFAULT_SETTINGS,
-    budgets: { sessionUsd: 1, projectUsd: null, contextPercent: null, warnAtFraction: 0.8 },
+    budgets: { sessionUsd: 1, projectUsd: null, contextPercent: null, itemUsd: null, warnAtFraction: 0.8 },
   };
   await ensureAdaptersLoaded();
   await loadSettings();

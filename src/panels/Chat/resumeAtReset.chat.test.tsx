@@ -105,7 +105,13 @@ const { FIRE_GRACE_MS, RESUME_ARMED, RESUME_STOPPED, armedFor, resetResumeAtRese
 const settingsWith = (o: { resumeAtReset?: boolean; sessionUsd?: number }) => ({
   ...DEFAULT_SETTINGS,
   chatDefaults: { ...DEFAULT_SETTINGS.chatDefaults, resumeAtReset: o.resumeAtReset ?? false },
-  budgets: { sessionUsd: o.sessionUsd ?? null, projectUsd: null, contextPercent: null, warnAtFraction: 0.8 },
+  budgets: {
+    sessionUsd: o.sessionUsd ?? null,
+    projectUsd: null,
+    contextPercent: null,
+    itemUsd: null,
+    warnAtFraction: 0.8,
+  },
 });
 
 const HOURS = 3;

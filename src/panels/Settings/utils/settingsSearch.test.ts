@@ -58,13 +58,12 @@ describe("counting the settings a query matches, per row and per tab", () => {
 
   it("aggregates across tabs when a query matches rows in more than one", () => {
     // "font" is six typography rows in Appearance and none anywhere else;
-    // "stop" reaches the two dollar ceilings and the context one, all in Chat.
     const fonts = matchingEntries("font family")!;
     expect(fonts.counts.appearance).toBe(3);
     expect(badged("font family")).toEqual(["appearance"]);
 
-    const stop = matchingEntries("Dollars")!;
-    expect(stop.counts.chat).toBe(2);
+    const dollars = matchingEntries("Dollars")!;
+    expect(dollars.counts.chat).toBe(3);
     expect(badged("Dollars")).toEqual(["chat"]);
   });
 

@@ -221,10 +221,9 @@ describe("searching across every category at once", () => {
     // see is worse than no number. Card sections stand for a whole section and
     // draw a row of their own, so they count exactly once here too.
     render(() => <Settings onClose={() => {}} />);
-    // The two money ceilings; the context one is a percentage and says so.
     type("Dollars");
-    expect(count()).toBe("2 settings matching");
-    expect(shownRows()).toHaveLength(2);
+    expect(count()).toBe("3 settings matching");
+    expect(shownRows()).toHaveLength(3);
   });
 
   it("says “1 setting”, not “1 settings”", () => {
