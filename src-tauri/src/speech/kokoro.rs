@@ -87,6 +87,10 @@ impl Voice for Kokoro {
         Ok(split(&phonemes, |c| self.vocab.contains_key(&c), PIECE_TOKENS, first))
     }
 
+    fn sample_rate(&self) -> u32 {
+        SAMPLE_RATE
+    }
+
     fn synth(&mut self, piece: &str, voice: &str, rate: f32) -> Result<Vec<f32>, String> {
         let mut ids = vec![0i64];
         ids.extend(piece.chars().filter_map(|c| self.vocab.get(&c).copied()));

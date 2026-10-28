@@ -56,4 +56,14 @@ describe("speakableBlocks", () => {
       "Last paragraph.",
     ]);
   });
+
+  it("gives a heading and a list item a pause, and says a task's state", () => {
+    const got = blocks(["## Next steps", "", "- [ ] write docs", "- [x] add tests", "", "Then ship."].join("\n"));
+    expect(got.map((b) => [b.text, b.pause])).toEqual([
+      ["Next steps", 500],
+      ["to do, write docs", 250],
+      ["done, add tests", 250],
+      ["Then ship.", 0],
+    ]);
+  });
 });
