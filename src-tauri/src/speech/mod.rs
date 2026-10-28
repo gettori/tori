@@ -196,6 +196,7 @@ pub fn speech_speak(
     app: AppHandle,
     state: State<SpeechState>,
     chunks: Vec<String>,
+    pauses: Option<Vec<u32>>,
     rate: f32,
     voice: Option<String>,
 ) -> Result<u64, SpeakError> {
@@ -203,7 +204,12 @@ pub fn speech_speak(
     installed(&dir).ok_or(SpeakError::NotDownloaded)?;
     state
         .engine(&app)
-        .speak(chunks, rate.clamp(0.5, 2.0), voice_or_default(&dir, voice))
+        .speak(
+            chunks,
+            pauses.unwrap_or_default(),
+            rate.clamp(0.5, 2.0),
+            voice_or_default(&dir, voice),
+        )
         .map_err(|error| SpeakError::Failed { error })
 }
 

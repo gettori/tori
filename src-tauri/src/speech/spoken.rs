@@ -149,6 +149,13 @@ const SYMBOLS: &[(&str, &str)] = &[
     ("::", " "),
 ];
 
+// The emoji that carry a verdict are said; the rest are decoration.
+const EMOJI_SAID: &[(&str, &str)] = &[("\u{2705}", "check"), ("\u{274c}", "cross"), ("\u{26a0}", "warning")];
+
+static EMOJI: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"[\x{1F000}-\x{1FAFF}\x{2600}-\x{27BF}\x{2B00}-\x{2BFF}\x{FE0F}\x{200D}\x{1F3FB}-\x{1F3FF}]").unwrap()
+});
+static TASK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[([ xX])\]").unwrap());
 static ABBREV: LazyLock<Regex> = LazyLock::new(|| {
     let alts: Vec<String> = ABBREVIATIONS.iter().map(|(a, _)| regex::escape(a)).collect();
     Regex::new(&format!(r"(?i)(^|[\s(])({})(?:$|[\s,;:)])", alts.join("|"))).unwrap()
@@ -208,7 +215,11 @@ fn lookup<'a>(table: &'a [(&str, &str)], key: &str) -> Option<&'a str> {
 /// versions, units, flags, key names and operators become words the
 /// phonemizer can read.
 pub fn spoken(text: &str) -> String {
-    let text = ABBREV.replace_all(text, |c: &Captures| {
+    let text = EMOJI.replace_all(text, |c: &Captures| {
+        lookup(EMOJI_SAID, &c[0]).map_or(String::new(), |said| format!(" {said} "))
+    });
+    let text = TASK.replace_all(&text, |c: &Captures| if &c[1] == " " { "to do," } else { "done," });
+    let text = ABBREV.replace_all(&text, |c: &Captures| {
         let said = lookup(ABBREVIATIONS, &c[2].to_ascii_lowercase()).unwrap();
         format!("{}{said}{}", &c[1], &c[0][c[1].len() + c[2].len()..])
     });
@@ -279,7 +290,7 @@ pub fn spoken(text: &str) -> String {
     let text = text.replace("(s)", "s");
     let text = PAREN.replace_all(&text, ", ");
     let text = COMMAS.replace_all(&text, ",");
-    let text = text.replace(", .", ".").replace(" ,", ",");
+    let text = text.replace(", .", ".").replace(" ,", ",").replace(" .", ".");
     SPACES.replace_all(&text, " ").into_owned().trim_end().to_string()
 }
 
@@ -526,6 +537,14 @@ mod tests {
                 "Two things, one, the first, and two, the second.",
             ),
             ("Pick the file(s): done", "Pick the files, done"),
+            (
+                "Tests pass \u{2705} and ship it \u{1F680}\u{FE0F} now \u{1F44D}.",
+                "Tests pass check and ship it now.",
+            ),
+            (
+                "[ ] write docs and [x] add tests",
+                "to do, write docs and done, add tests",
+            ),
             (
                 "The keymap is config/corne.keymap.",
                 "The keymap is corne dot keymap, in config.",

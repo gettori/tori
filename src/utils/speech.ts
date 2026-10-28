@@ -22,7 +22,8 @@ export type Voice = { id: string; name: string; language: string };
 
 export const DEFAULT_VOICE = "af_heart";
 
-export type Chunk = { text: string; block?: number };
+/** `pause` is extra silence after the chunk, in milliseconds. */
+export type Chunk = { text: string; block?: number; pause?: number };
 
 export type Reading = { source: string; block: number | undefined };
 
@@ -134,6 +135,7 @@ function start(next: Chunk[], from: string, at: number, rate: number): Promise<u
       held = [];
       const id = await invoke<number>("speech_speak", {
         chunks: next.slice(at).map((c) => c.text),
+        pauses: next.slice(at).map((c) => c.pause ?? 0),
         rate,
         voice: settings.speech.voice,
       });
