@@ -3,7 +3,7 @@ import { createStore, produce } from "solid-js/store";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import MessageList from "./MessageList";
-import QuoteSelection, { quoteBlock } from "../../components/QuoteSelection/QuoteSelection";
+import SelectionToolbar, { quoteBlock } from "../../components/SelectionToolbar/SelectionToolbar";
 import { mirrorSaved, openDraftInEditor, scratchTabClosed, unlinkScratch } from "./composerScratch";
 import { liveBufferText } from "../Editor/liveBuffers";
 import SessionDiffView from "./SessionDiffView";
@@ -232,7 +232,7 @@ import { UNATTRIBUTED_NOTICE } from "../../utils/attribution";
 import { BLOCKED_REASON, sendWithProbeGate, type SendResult } from "../../utils/safeSend";
 import { REWIND_BANNER, REWIND_CAVEAT, rewindSeed } from "./rewind";
 import { CaptainsCall, ReplyMark } from "../../components/Autopilot/ShellParts";
-import { read } from "../../utils/speech";
+import { read, readSelection } from "../../utils/speech";
 import { speakableChunks } from "./speakable";
 import styles from "./Chat.module.css";
 
@@ -2531,9 +2531,15 @@ export default function ChatView(props: {
           showVerification={settings.verification?.enabled !== false}
         />
       </Show>
-      {/* Selected transcript text goes into the reply as a quote. Scoped to this
-          transcript's root, since every attached tab stays mounted. */}
-      <QuoteSelection root={() => transcriptEl} onQuote={(text) => composer?.insertBlock(quoteBlock(text))} />
+      {/* Scoped to this transcript's root, since every attached tab stays
+          mounted. */}
+      <SelectionToolbar
+        root={() => transcriptEl}
+        actions={[
+          { label: "Quote", run: (text) => composer?.insertBlock(quoteBlock(text)) },
+          { label: "Read", run: (text) => void readSelection(text) },
+        ]}
+      />
 
       <Show when={props.cockpit && asksFor(props.sessionId).length}>
         {(count) => (

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vite-plus/test";
 import { render, fireEvent, screen } from "@solidjs/testing-library";
-import QuoteSelection, { quoteBlock, selectionWithin } from "./QuoteSelection";
+import SelectionToolbar, { quoteBlock, selectionWithin } from "./SelectionToolbar";
 
 // jsdom never fires selectionchange on its own, so every test sets the
 // selection and dispatches the event by hand, the way the browser would.
@@ -23,7 +23,13 @@ function mount() {
         <textarea aria-label="Other">typed</textarea>
       </div>
       <p>elsewhere</p>
-      <QuoteSelection root={() => root} onQuote={onQuote} />
+      <SelectionToolbar
+        root={() => root}
+        actions={[
+          { label: "Quote", run: onQuote },
+          { label: "Read", run: vi.fn() },
+        ]}
+      />
     </div>
   ));
   return { ...result, root, onQuote };
@@ -33,7 +39,7 @@ const quoteButtons = () => screen.queryAllByRole("button", { name: "Quote" });
 
 afterEach(() => document.getSelection()?.removeAllRanges());
 
-describe("QuoteSelection", () => {
+describe("SelectionToolbar", () => {
   it("offers Quote for a selection inside the transcript, and not outside it", () => {
     const { getByText } = mount();
     expect(quoteButtons()).toHaveLength(0);

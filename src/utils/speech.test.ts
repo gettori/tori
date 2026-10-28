@@ -20,7 +20,7 @@ vi.mock("tauri-plugin-tts-api", () => ({
 const emitWith = vi.fn();
 vi.mock("./events", () => ({ TOAST: "toast", emitWith: (...a: unknown[]) => emitWith(...a) }));
 
-const { read, stop, reading, splitToFit } = await import("./speech");
+const { read, readSelection, stop, reading, splitToFit } = await import("./speech");
 
 const fire = (type: string, id?: string, error?: string) => handlers.get(`speech:${type}`)?.({ id, error });
 const texts = () => speak.mock.calls.map(([o]) => (o as { text: string }).text);
@@ -112,5 +112,13 @@ describe("speech", () => {
     expect(parts.length).toBeGreaterThan(1);
     for (const p of parts) expect(bytes(p)).toBeLessThanOrEqual(10_000);
     expect(parts.join("")).toBe(text);
+  });
+
+  it("splits a 15,000 byte selection with no blank lines under the cap", async () => {
+    const text = "A line of a PDF page, no blank line after.\n".repeat(350);
+    expect(bytes(text)).toBeGreaterThan(15_000);
+    await readSelection(text);
+    expect(texts().length).toBeGreaterThan(1);
+    for (const t of texts()) expect(bytes(t)).toBeLessThanOrEqual(10_000);
   });
 });
