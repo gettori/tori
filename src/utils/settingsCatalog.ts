@@ -722,7 +722,7 @@ export const SETTINGS: SettingEntry[] = [
     id: "read-aloud-rate",
     section: "chat",
     label: "Speed",
-    hint: "How fast Read aloud speaks.",
+    hint: "How fast Read aloud speaks. The speed on the reading chip changes this same setting.",
   },
 
   {

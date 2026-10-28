@@ -19,3 +19,21 @@
   font-size: var(--tori-text-md);
   line-height: 1.4;
 }
+
+.speed {
+  min-width: calc(36px * var(--ui-scale));
+  padding: 0 calc(4px * var(--ui-scale));
+  border: 0;
+  border-radius: var(--tori-radius-sm);
+  background: none;
+  color: var(--fg-muted);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.speed:hover,
+.speed:focus-visible {
+  color: var(--fg-default);
+  background: var(--neutral-hover);
+}

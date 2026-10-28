@@ -232,7 +232,7 @@ import { UNATTRIBUTED_NOTICE } from "../../utils/attribution";
 import { BLOCKED_REASON, sendWithProbeGate, type SendResult } from "../../utils/safeSend";
 import { REWIND_BANNER, REWIND_CAVEAT, rewindSeed } from "./rewind";
 import { CaptainsCall, ReplyMark } from "../../components/Autopilot/ShellParts";
-import { read, readSelection } from "../../utils/speech";
+import { read, readSelection, readingBlockOf } from "../../utils/speech";
 import { speakableChunks } from "./speakable";
 import styles from "./Chat.module.css";
 
@@ -2523,6 +2523,7 @@ export default function ChatView(props: {
           onOpenLane={(agentId) => edit((s) => selectLane(s, agentId))}
           onRewind={onRewind}
           onRead={(body, itemId) => void read(speakableChunks(body), `${props.sessionId}:${itemId}`)}
+          readingBlock={(itemId) => readingBlockOf(`${props.sessionId}:${itemId}`)}
           replyMark={props.cockpit ? ReplyMark : undefined}
           collapseWork={settings.chatDefaults.collapseWork}
           showSecrets={settings.secretWatch?.enabled !== false}

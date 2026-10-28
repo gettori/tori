@@ -53,6 +53,7 @@ import { emitWith, NAVIGATE, SESSION_ACTION, type NavTarget, type SessionAction 
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
+import { speakableBlocks } from "./speakable";
 import ToolCallCard, { type HunkRef } from "./ToolCallCard";
 import QuestionCard from "./QuestionCard";
 import ToriNoteRow from "./ToriNote";
@@ -230,8 +231,18 @@ function ReplyText(props: {
   text: string;
   cwd: string;
   onRead?: (body: HTMLElement, itemId: string) => void;
+  readingBlock?: (itemId: string) => number | undefined;
 }) {
   let body!: HTMLDivElement;
+  const [renders, setRenders] = createSignal(0);
+  createEffect(() => {
+    renders();
+    const block = props.readingBlock?.(props.id);
+    if (block === undefined) return;
+    const el = speakableBlocks(body)[block]?.el;
+    el?.classList.add(styles.readingBlock);
+    onCleanup(() => el?.classList.remove(styles.readingBlock));
+  });
   return (
     <div class={styles.replyText}>
       <Show when={props.onRead}>
@@ -246,7 +257,7 @@ function ReplyText(props: {
         )}
       </Show>
       <div ref={body} class={styles.assistant}>
-        <Markdown text={props.text} cwd={props.cwd} />
+        <Markdown text={props.text} cwd={props.cwd} onRendered={() => setRenders((n) => n + 1)} />
       </div>
     </div>
   );
@@ -368,6 +379,7 @@ export default function MessageList(props: {
   /** Read a reply aloud, given the element its text renders into. Absent where
    *  there is no speech, which leaves replies without the button. */
   onRead?: (body: HTMLElement, itemId: string) => void;
+  readingBlock?: (itemId: string) => number | undefined;
   /** Whether the agent opened this turn for itself, which a background
    *  subagent's finishing makes it do. Such a turn answers no prompt, so it
    *  must not claim the one above it. */
@@ -813,12 +825,26 @@ export default function MessageList(props: {
             <TurnAnchor itemId={it().id} off={p.unanchored} />
             <Show
               when={props.replyMark}
-              fallback={<ReplyText id={it().id} text={it().text} cwd={props.cwd} onRead={props.onRead} />}
+              fallback={
+                <ReplyText
+                  id={it().id}
+                  text={it().text}
+                  cwd={props.cwd}
+                  onRead={props.onRead}
+                  readingBlock={props.readingBlock}
+                />
+              }
             >
               {(mark) => (
                 <div class={styles.markedReply}>
                   {mark()()}
-                  <ReplyText id={it().id} text={it().text} cwd={props.cwd} onRead={props.onRead} />
+                  <ReplyText
+                    id={it().id}
+                    text={it().text}
+                    cwd={props.cwd}
+                    onRead={props.onRead}
+                    readingBlock={props.readingBlock}
+                  />
                 </div>
               )}
             </Show>

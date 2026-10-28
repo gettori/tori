@@ -532,6 +532,12 @@ code.secretReason {
   opacity: 1;
 }
 
+.readingBlock {
+  border-radius: var(--tori-radius-sm);
+  background: var(--brand-subtle);
+  box-shadow: 0 0 0 calc(3px * var(--ui-scale)) var(--brand-subtle);
+}
+
 /* Assistant text is flat prose filling the column: the prompt bubbles above it
    and the tool cards between turns already segment the flow. */
 .assistant {

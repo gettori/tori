@@ -20,12 +20,13 @@ vi.mock("tauri-plugin-tts-api", () => ({
 
 const getVoices = vi.fn();
 const speechSettings = vi.hoisted(() => ({ speech: { rate: 1, voice: null as string | null } }));
-vi.mock("../panels/Settings/settingsStore", () => ({ settings: speechSettings }));
+const saveSettings = vi.hoisted(() => vi.fn(async (_s: unknown) => {}));
+vi.mock("../panels/Settings/settingsStore", () => ({ settings: speechSettings, saveSettings }));
 
 const emitWith = vi.fn();
 vi.mock("./events", () => ({ TOAST: "toast", emitWith: (...a: unknown[]) => emitWith(...a) }));
 
-const { read, readSelection, stop, reading, splitToFit } = await import("./speech");
+const { changeRate, read, readSelection, readingBlockOf, stop, reading, splitToFit } = await import("./speech");
 
 const fire = (type: string, id?: string, error?: string) => handlers.get(`speech:${type}`)?.({ id, error });
 const texts = () => speak.mock.calls.map(([o]) => (o as { text: string }).text);
@@ -68,6 +69,8 @@ describe("speech", () => {
     fire("finish", a.utteranceId);
     fire("start", b.utteranceId);
     expect(reading()).toEqual({ source: "r1", block: 1 });
+    expect(readingBlockOf("r1")).toBe(1);
+    expect(readingBlockOf("r2")).toBeUndefined();
     fire("finish", b.utteranceId);
     expect(reading()).toBeNull();
   });
@@ -139,5 +142,27 @@ describe("speech", () => {
     speechSettings.speech = { rate: 1, voice: "removed" };
     await read([{ text: "one" }], "r1");
     expect((speak.mock.calls[0][0] as { voiceId?: string }).voiceId).toBeUndefined();
+  });
+
+  it("queues again from the chunk being spoken when the speed changes mid read", async () => {
+    await read(
+      [
+        { text: "one", block: 0 },
+        { text: "two", block: 1 },
+        { text: "three", block: 2 },
+      ],
+      "r1",
+    );
+    const second = await (speak.mock.results[1].value as Promise<{ utteranceId: string }>);
+    fire("start", second.utteranceId);
+    speak.mockClear();
+
+    await changeRate(1.5);
+    expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({ speech: { rate: 1.5, voice: null } }));
+    expect(speak.mock.calls.map(([o]) => o)).toEqual([
+      expect.objectContaining({ text: "two", queueMode: "flush", rate: 1.5 }),
+      expect.objectContaining({ text: "three", queueMode: "add", rate: 1.5 }),
+    ]);
+    expect(reading()).toEqual({ source: "r1", block: 1 });
   });
 });

@@ -42,7 +42,7 @@ type Segment = { kind: "prose"; html: string } | { kind: "code"; lang: string; c
  * are the whole structure, and rendering those as prose ran the session, the
  * week and the per-model rows together into one sentence.
  */
-export default function Markdown(props: { text: string; cwd: string; breaks?: boolean }) {
+export default function Markdown(props: { text: string; cwd: string; breaks?: boolean; onRendered?: () => void }) {
   // Rendered prose keyed by its raw source, carried across recomputes: while
   // streaming, every segment but the tail hits this cache, so the per-delta
   // cost is one lexer pass plus one segment's parse and sanitize.
@@ -103,6 +103,11 @@ export default function Markdown(props: { text: string; cwd: string; breaks?: bo
     flush();
     prev = next;
     return segs;
+  });
+
+  createEffect(() => {
+    segments();
+    props.onRendered?.();
   });
 
   function onLinkClick(e: MouseEvent) {

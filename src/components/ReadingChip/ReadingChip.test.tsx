@@ -4,7 +4,12 @@ import { createSignal } from "solid-js";
 
 const [reading, setReading] = createSignal<{ source: string; block?: number } | null>(null);
 const stop = vi.fn(async () => setReading(null));
-vi.mock("../../utils/speech", () => ({ reading: () => reading(), stop: () => stop(), reset: async () => {} }));
+vi.mock("../../utils/speech", () => ({
+  reading: () => reading(),
+  stop: () => stop(),
+  reset: async () => {},
+  changeRate: vi.fn(),
+}));
 
 const { default: ReadingChip } = await import("./ReadingChip");
 

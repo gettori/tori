@@ -58,4 +58,9 @@ describe("the Read aloud settings group", () => {
     fireEvent.click(screen.getByRole("button", { name: "Hear this voice" }));
     expect(previewVoice).toHaveBeenCalledWith(expect.objectContaining({ voiceId: "daniel" }));
   });
+
+  it("says the chip's speed is this same setting", () => {
+    render(() => <ChatPane {...paneProps} />);
+    expect(screen.getByText(/The speed on the reading chip changes this same setting/)).toBeTruthy();
+  });
 });
