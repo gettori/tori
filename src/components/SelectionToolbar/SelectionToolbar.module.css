@@ -1,0 +1,31 @@
+/* Floats by the selection it offers actions for. Fixed, so it rides above the
+   scroll and clipping of whatever it is floating over. */
+.toolbar {
+  position: fixed;
+  z-index: 900;
+  display: inline-flex;
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-pill);
+  background: var(--canvas-card);
+  overflow: hidden;
+}
+
+.action {
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border: 0;
+  background: none;
+  color: var(--fg-default);
+  font: inherit;
+  font-size: var(--tori-text-md);
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.action + .action {
+  border-left: 1px solid var(--border-default);
+}
+
+.action:hover,
+.action:focus-visible {
+  background: var(--neutral-hover);
+}

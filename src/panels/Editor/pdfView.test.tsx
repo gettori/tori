@@ -21,6 +21,9 @@ vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (path: string) => `asset://localhost/${path}`,
 }));
 
+const speakSelection = vi.hoisted(() => vi.fn(async (_text: string) => {}));
+vi.mock("../../utils/speech", () => ({ readSelection: speakSelection }));
+
 vi.mock("./pdfjsRuntime", () => {
   const page = (n: number) => ({
     getViewport: ({ scale }: { scale: number }) => ({ width: 612 * scale, height: 792 * scale }),
@@ -415,6 +418,15 @@ describe("PdfView", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "Quote" }));
       await waitFor(() => expect(onQuote).toHaveBeenCalledWith(expect.stringContaining("page 1 text"), 1, 2));
+    });
+
+    it("reads the selection aloud from the same toolbar", async () => {
+      const { container } = await readyPage(vi.fn());
+      selectAcross(container, 1, 2);
+
+      fireEvent.click(screen.getByRole("button", { name: "Read" }));
+      await waitFor(() => expect(speakSelection).toHaveBeenCalledWith(expect.stringContaining("page 1 text")));
+      expect(speakSelection.mock.calls[0][0]).toContain("page 2 text");
     });
 
     it("waits for a page the selection only just reached before reading the quote", async () => {

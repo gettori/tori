@@ -1,7 +1,7 @@
 import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask, TextLayer } from "pdfjs-dist";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
-import QuoteSelection, { selectionWithin } from "../../components/QuoteSelection/QuoteSelection";
+import SelectionToolbar, { selectionWithin } from "../../components/SelectionToolbar/SelectionToolbar";
 import { loadPdf, pdfFailureMessage, pdfTextLayer, pdfView, setPdfView } from "./pdfDocument";
 import {
   clampPage,
@@ -15,6 +15,7 @@ import {
   scrollTopFor,
   type PageSize,
 } from "./pdfLayout";
+import { readSelection as speakSelection } from "../../utils/speech";
 import styles from "./PdfView.module.css";
 
 /** How long a resize drag has to settle before the visible pages are rasterised
@@ -490,19 +491,26 @@ function PdfDocumentView(props: {
     setSelected({ first: from - 1, last: to });
   }
 
+  // A shift-click at the far end widens the window, and the pages it just
+  // reached are still fetching their words. `toString()` walks the DOM as it
+  // is now, so text read before they land comes back with a hole in it. So the
+  // text the toolbar already read is re-read here rather than trusted, and kept
+  // only as the fallback if the selection has since gone.
+  async function settled(text: string) {
+    if (!streaming.size) return text;
+    await Promise.all(streaming);
+    return document.getSelection()?.toString() || text;
+  }
+
   async function quote(text: string) {
     const s = selected();
     if (!s) return;
-    // A shift-click at the far end widens the window, and the pages it just
-    // reached are still fetching their words. `toString()` walks the DOM as it
-    // is now, so a quote read before they land comes back with a hole in it -
-    // which is why the text the button already read is re-read here rather than
-    // trusted, and kept only as the fallback if the selection has since gone.
-    if (streaming.size) {
-      await Promise.all(streaming);
-      text = document.getSelection()?.toString() || text;
-    }
-    props.onQuote?.(text, s.first + 1, s.last);
+    props.onQuote?.(await settled(text), s.first + 1, s.last);
+  }
+
+  async function readAloud(text: string) {
+    if (!selected()) return;
+    await speakSelection(await settled(text));
   }
 
   /** The same send as the Quote button, for a reader whose hands are on the
@@ -556,9 +564,15 @@ function PdfDocumentView(props: {
             )}
           </For>
         </div>
-        {/* The same button the chat transcript floats by a selection, scoped to
-            this view's scroller so a second PDF pane does not draw its own. */}
-        <QuoteSelection root={() => scroller} onQuote={quote} />
+        {/* The same toolbar the chat transcript floats by a selection, scoped
+            to this view's scroller so a second PDF pane does not draw its own. */}
+        <SelectionToolbar
+          root={() => scroller}
+          actions={[
+            { label: "Quote", run: (text) => void quote(text) },
+            { label: "Read", run: (text) => void readAloud(text) },
+          ]}
+        />
       </Show>
     </OverlayScroll>
   );
