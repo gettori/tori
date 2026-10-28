@@ -19,6 +19,7 @@ import DevServersSection from "./DevServersSection";
 import GeneralSection from "./GeneralSection";
 import { ProjectFoot, ProjectTitle } from "./ProjectHeader";
 import { ProjectSearch } from "./Section";
+import ProposalsSection from "./ProposalsSection";
 import TrustSection from "./TrustSection";
 import WorktreesSection from "./WorktreesSection";
 import styles from "./ProjectSettingsDialog.module.css";
@@ -246,6 +247,7 @@ export default function ProjectSettingsDialog(props: { path: string; section?: P
               {pane("tooling", () => (
                 <>
                   <TrustSection projectPath={f().project.path} />
+                  <ProposalsSection project={f().project} />
                   <ExecutionSection projectPath={f().project.path} />
                   <DevServersSection projectPath={f().project.path} />
                   <ChecksSection projectPath={f().project.path} onDirty={(on) => markDirty("tooling:checks", on)} />
