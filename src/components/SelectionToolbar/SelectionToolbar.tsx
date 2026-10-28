@@ -1,5 +1,5 @@
-import { Show, createSignal, onCleanup, onMount } from "solid-js";
-import styles from "./QuoteSelection.module.css";
+import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
+import styles from "./SelectionToolbar.module.css";
 
 /** Each selected line as a Markdown quote, then a blank line so what follows
  *  reads as the reply rather than as more of the quote. */
@@ -25,23 +25,25 @@ export function selectionWithin(root: HTMLElement, sel: Selection | null): Range
   return range;
 }
 
+export type SelectionAction = { label: string; run: (text: string) => void };
+
 /**
- * A Quote button floating by a selection.
+ * Actions floating by a selection.
  *
- * One per surface that offers quoting (a chat transcript, a PDF), each
- * answering only for its own root: every attached tab stays mounted, so a
- * document-wide listener that did not check containment would draw a button
- * under every hidden chat as well.
+ * One per surface that offers them (a chat transcript, a PDF), each answering
+ * only for its own root: every attached tab stays mounted, so a document-wide
+ * listener that did not check containment would draw a toolbar under every
+ * hidden chat as well.
  */
-export default function QuoteSelection(props: {
+export default function SelectionToolbar(props: {
   root: () => HTMLElement | undefined;
-  onQuote: (text: string) => void;
+  actions: readonly SelectionAction[];
 }) {
   const [range, setRange] = createSignal<Range | null>(null);
   const [pos, setPos] = createSignal({ x: 0, y: 0 });
 
   function place(r: Range) {
-    // jsdom has no Range geometry; the button then sits at the origin.
+    // jsdom has no Range geometry; the toolbar then sits at the origin.
     if (typeof r.getBoundingClientRect !== "function") return;
     const box = r.getBoundingClientRect();
     setPos({ x: box.left, y: box.bottom });
@@ -53,7 +55,7 @@ export default function QuoteSelection(props: {
     if (r) place(r);
   }
   // The transcript scrolls under a standing selection without any
-  // selectionchange, so the button follows the rect on scroll.
+  // selectionchange, so the toolbar follows the rect on scroll.
   function follow() {
     const r = range();
     if (r) place(r);
@@ -71,22 +73,32 @@ export default function QuoteSelection(props: {
   return (
     <Show when={range()}>
       {(r) => (
-        <button
-          type="button"
-          class={styles.quoteButton}
+        <div
+          role="toolbar"
+          aria-label="Selection"
+          class={styles.toolbar}
           style={{ left: `${pos().x}px`, top: `${pos().y + 4}px` }}
           // Mousedown would move focus and collapse the selection before the
-          // click lands, and then there would be nothing to quote.
+          // click lands, and then there would be nothing to act on.
           onMouseDown={(e) => e.preventDefault()}
-          onClick={() => {
-            // The selection's own text, which keeps a line break between
-            // blocks where the bare range would run them together.
-            props.onQuote(document.getSelection()?.toString() || r().toString());
-            setRange(null);
-          }}
         >
-          Quote
-        </button>
+          <For each={props.actions}>
+            {(action) => (
+              <button
+                type="button"
+                class={styles.action}
+                onClick={() => {
+                  // The selection's own text, which keeps a line break between
+                  // blocks where the bare range would run them together.
+                  action.run(document.getSelection()?.toString() || r().toString());
+                  setRange(null);
+                }}
+              >
+                {action.label}
+              </button>
+            )}
+          </For>
+        </div>
       )}
     </Show>
   );

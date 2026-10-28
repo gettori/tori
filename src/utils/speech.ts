@@ -136,6 +136,13 @@ export function read(chunks: Chunk[], from: string): Promise<unknown> {
   });
 }
 
+export function readSelection(text: string): Promise<unknown> {
+  return read(
+    text.split(/\n\s*\n/).map((t) => ({ text: t.trim() })),
+    "selection",
+  );
+}
+
 export function stop(): Promise<unknown> {
   settle();
   return enqueue(() => stopEngine().catch(fail));
