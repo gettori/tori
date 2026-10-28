@@ -5,8 +5,12 @@ import { createStore, produce } from "solid-js/store";
 import { invoke } from "@tauri-apps/api/core";
 import type { ChatItem, ToolItem, TurnRecord } from "./chatStore";
 import { canFork } from "../../utils/agentForks";
+import type { SavedSides } from "../../utils/tabPersist";
 
-export type SideChat = { tabId: string; sessionId: string };
+export type SideChat = { tabId: string; sessionId: string } & (
+  | { restored?: false }
+  | { restored: true; started: boolean }
+);
 export type Drawer = { sides: SideChat[]; active: string | null };
 
 const EMPTY: Drawer = { sides: [], active: null };
@@ -55,6 +59,38 @@ export function closeSide(parentTab: string, tabId: string): void {
 
 export function selectSide(parentTab: string, tabId: string): void {
   setDrawers(parentTab, "active", tabId);
+}
+
+export function markSideStarted(parentTab: string, tabId: string): void {
+  const sides = drawerOf(parentTab).sides;
+  const at = sides.findIndex((s) => s.tabId === tabId);
+  const side = sides[at];
+  if (side?.restored) setDrawers(parentTab, "sides", at, { ...side, started: true });
+}
+
+export function savedSides(drawer: Drawer): SavedSides | undefined {
+  if (!drawer.sides.length) return undefined;
+  return {
+    sessions: drawer.sides.map((s) => s.sessionId),
+    active: drawer.sides.findIndex((s) => s.tabId === drawer.active),
+  };
+}
+
+export function restoredDrawer(saved: SavedSides, exists: (sessionId: string) => boolean, fresh: () => string): Drawer {
+  const kept = saved.sessions.map((sessionId, i) => ({ sessionId, i })).filter(({ sessionId }) => exists(sessionId));
+  const sides: SideChat[] = kept.map(({ sessionId }) => ({
+    tabId: `side:${fresh()}`,
+    sessionId,
+    restored: true,
+    started: false,
+  }));
+  const active = sides[kept.findIndex(({ i }) => i === saved.active)] ?? sides[sides.length - 1];
+  return { sides, active: active?.tabId ?? null };
+}
+
+export function restoreSides(parentTab: string, saved: SavedSides, exists: (sessionId: string) => boolean): void {
+  const drawer = restoredDrawer(saved, exists, () => crypto.randomUUID());
+  if (drawer.sides.length) setDrawers(parentTab, drawer);
 }
 
 /** The parent tab closed. Returns its side chats, for the caller to clean up after. */
