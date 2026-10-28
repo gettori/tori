@@ -1,15 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { render } from "@solidjs/testing-library";
 
-const speak = vi.hoisted(() => vi.fn(async (_o: { text: string }) => ({ success: true, utteranceId: "u1" })));
-vi.mock("tauri-plugin-tts-api", () => ({
-  MAX_TEXT_LENGTH: 10_000,
-  isTtsError: () => false,
-  onSpeechEvent: async () => () => {},
-  getVoices: async () => [],
-  speak,
-  stop: async () => {},
-}));
+const speak = vi.hoisted(() => vi.fn(async (_cmd: string, _o?: { chunks: string[] }) => 1));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: speak }));
+vi.mock("@tauri-apps/api/event", () => ({ listen: async () => () => {} }));
 vi.mock("../panels/Settings/settingsStore", () => ({
   settings: { speech: { rate: 1, voice: null } },
   saveSettings: async () => {},
@@ -49,8 +43,8 @@ describe("read aloud from the palette", () => {
     document.getSelection()!.removeAllRanges();
 
     emit(READ_SELECTION);
-    await vi.waitFor(() => expect(speak).toHaveBeenCalled());
-    expect(speak.mock.calls[0][0].text).toBe("a transcript line");
+    await vi.waitFor(() => expect(speak).toHaveBeenCalledWith("speech_speak", expect.anything()));
+    expect(speak.mock.calls.find(([cmd]) => cmd === "speech_speak")![1]!.chunks).toEqual(["a transcript line"]);
   });
 
   it("holds nothing for a selection in the composer", () => {
