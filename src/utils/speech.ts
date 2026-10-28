@@ -1,18 +1,21 @@
-// Every plugin call runs on one chain, in the order asked: a Stop pressed while
-// a reply is still being queued must not reach the engine ahead of chunks
-// queued before it, or those would speak after it.
+// Every engine call runs on one chain, in the order asked: a Stop pressed while
+// a read is still being handed over must not reach the engine ahead of it, or
+// that read would speak after the Stop.
 import { createSignal } from "solid-js";
-import {
-  MAX_TEXT_LENGTH,
-  getVoices,
-  isTtsError,
-  onSpeechEvent,
-  speak,
-  stop as stopEngine,
-  type SpeechEvent,
-} from "tauri-plugin-tts-api";
+import { invoke } from "@tauri-apps/api/core";
+import { listen as listenTo } from "@tauri-apps/api/event";
 import { emitWith, TOAST, type ToastEvent } from "./events";
 import { saveSettings, settings } from "../panels/Settings/settingsStore";
+
+type SpeechEvent =
+  | { kind: "start"; read: number; chunk: number }
+  | { kind: "finish"; read: number; chunk: number }
+  | { kind: "cancel"; read: number }
+  | { kind: "error"; read: number; error: string };
+
+export type Voice = { id: string; name: string; language: string };
+
+export const DEFAULT_VOICE = "af_heart";
 
 export type Chunk = { text: string; block?: number };
 
@@ -39,7 +42,10 @@ let chain: Promise<unknown> = Promise.resolve();
 let parts: Chunk[] = [];
 let source = "";
 let current = 0;
-const utterances = new Map<string, number>();
+let offset = 0;
+let readId: number | null = null;
+// The engine can answer before the command that started the read returns.
+let held: SpeechEvent[] | null = null;
 let listening: Promise<void> | null = null;
 
 function enqueue(op: () => Promise<unknown>) {
@@ -50,36 +56,36 @@ function enqueue(op: () => Promise<unknown>) {
 function settle() {
   generation += 1;
   parts = [];
-  utterances.clear();
+  readId = null;
   setReading(null);
 }
 
-function fail(e: unknown) {
+function fail(e: unknown, what = "read aloud") {
   settle();
-  const message = isTtsError(e) ? e.message : String(e);
-  emitWith<ToastEvent>(TOAST, { message: `Couldn't read aloud: ${message}`, kind: "error" });
+  emitWith<ToastEvent>(TOAST, { message: `Couldn't ${what}: ${String(e)}`, kind: "error" });
+}
+
+function heard(e: SpeechEvent) {
+  if (held) {
+    held.push(e);
+    return;
+  }
+  if (e.read !== readId) return;
+  if (e.kind === "start") {
+    current = offset + e.chunk;
+    setReading({ source, block: parts[current]?.block });
+  } else if (e.kind === "finish") {
+    if (offset + e.chunk === parts.length - 1) settle();
+  } else if (e.kind === "cancel") {
+    // Stopped from the Rust side, which happens when the window closes.
+    settle();
+  } else {
+    fail(e.error);
+  }
 }
 
 function listen() {
-  listening ??= Promise.all([
-    onSpeechEvent("speech:start", (e: SpeechEvent) => {
-      const at = e.id ? utterances.get(e.id) : undefined;
-      if (at === undefined) return;
-      current = at;
-      setReading({ source, block: parts[at]?.block });
-    }),
-    onSpeechEvent("speech:finish", (e: SpeechEvent) => {
-      if (e.id && utterances.get(e.id) === parts.length - 1) settle();
-    }),
-    // A cancel of one of ours that this module did not ask for: another speak
-    // flushed the queue, such as a voice preview.
-    onSpeechEvent("speech:cancel", (e: SpeechEvent) => {
-      if (e.id && utterances.has(e.id)) settle();
-    }),
-    onSpeechEvent("speech:error", (e: SpeechEvent) => {
-      if (e.id && utterances.has(e.id)) fail(e.error ?? "speech engine error");
-    }),
-  ]).then(
+  listening ??= listenTo<SpeechEvent>("speech", (e) => heard(e.payload)).then(
     () => {},
     (e) => {
       listening = null;
@@ -89,58 +95,10 @@ function listen() {
   return listening;
 }
 
-// Checked rather than handed over: the plugin answers an unknown voice by
-// keeping whichever one it last spoke in, not the system's. A list that cannot
-// be read is no evidence the voice is gone, so it is kept.
-async function installed(voice: string | null): Promise<string | undefined> {
-  if (!voice) return undefined;
-  const voices = await getVoices().catch(() => null);
-  return !voices || voices.some((v) => v.id === voice) ? voice : undefined;
-}
-
-const bytes = (text: string) => new TextEncoder().encode(text).length;
-
-function hardSplit(text: string, cap: number): string[] {
-  const out: string[] = [];
-  let cur = "";
-  let size = 0;
-  for (const ch of text) {
-    const n = bytes(ch);
-    if (size + n > cap) {
-      out.push(cur);
-      cur = "";
-      size = 0;
-    }
-    cur += ch;
-    size += n;
-  }
-  if (cur) out.push(cur);
-  return out;
-}
-
-export function splitToFit(text: string, cap = MAX_TEXT_LENGTH): string[] {
-  if (bytes(text) <= cap) return [text];
-  const sentences = text.match(/[^.!?\u0964]+[.!?\u0964]*\s*|[.!?\u0964]+\s*/g) ?? [text];
-  const pieces = sentences.flatMap((s) =>
-    bytes(s) <= cap ? [s] : (s.match(/\S+\s*|\s+/g) ?? [s]).flatMap((w) => (bytes(w) <= cap ? [w] : hardSplit(w, cap))),
-  );
-  const out: string[] = [];
-  let cur = "";
-  for (const p of pieces) {
-    if (cur && bytes(cur + p) > cap) {
-      out.push(cur);
-      cur = "";
-    }
-    cur += p;
-  }
-  if (cur) out.push(cur);
-  return out;
-}
+export const voices = () => invoke<Voice[]>("speech_voices");
 
 export function read(chunks: Chunk[], from: string): Promise<unknown> {
-  const next = chunks
-    .flatMap((c) => splitToFit(c.text).map((text) => ({ text, block: c.block })))
-    .filter((c) => c.text.trim());
+  const next = chunks.filter((c) => c.text.trim());
   if (!next.length) return stop();
   return start(next, from, 0, settings.speech.rate);
 }
@@ -151,26 +109,31 @@ function start(next: Chunk[], from: string, at: number, rate: number): Promise<u
   parts = next;
   source = from;
   current = at;
+  offset = at;
   setReading({ source, block: next[at].block });
-  // All queued now rather than from finish events, so Stop has nothing of
-  // ours left to race.
   return enqueue(async () => {
     try {
       await listen();
-      const voiceId = await installed(settings.speech.voice);
-      for (let i = at; i < next.length; i++) {
-        if (mine !== generation) return;
-        const res = await speak({ text: next[i].text, queueMode: i === at ? "flush" : "add", rate, voiceId });
-        if (res.utteranceId && mine === generation) utterances.set(res.utteranceId, i);
-      }
+      held = [];
+      const id = await invoke<number>("speech_speak", {
+        chunks: next.slice(at).map((c) => c.text),
+        rate,
+        voice: settings.speech.voice,
+      });
+      const early = held;
+      held = null;
+      if (mine !== generation) return;
+      readId = id;
+      early.forEach(heard);
     } catch (e) {
+      held = null;
       if (mine === generation) fail(e);
     }
   });
 }
 
-// The rate goes out with each queued chunk, so a new one only takes effect by
-// queueing again, from the chunk being spoken now.
+// The rate goes out with the read, so a new one only takes effect by reading
+// again, from the chunk being spoken now.
 export function changeRate(rate: number): Promise<unknown> {
   void saveSettings({ ...settings, speech: { ...settings.speech, rate } }).catch(fail);
   return parts.length ? start(parts, source, current, rate) : Promise.resolve();
@@ -183,14 +146,23 @@ export function readSelection(text: string): Promise<unknown> {
   );
 }
 
+export function preview(voice: string | null, text: string): Promise<unknown> {
+  settle();
+  return enqueue(() =>
+    invoke("speech_speak", { chunks: [text], rate: settings.speech.rate, voice }).catch((e) =>
+      fail(e, "play the voice"),
+    ),
+  );
+}
+
 export function stop(): Promise<unknown> {
   settle();
-  return enqueue(() => stopEngine().catch(fail));
+  return enqueue(() => invoke("speech_stop").catch(fail));
 }
 
 // For speech left over from before a reload. Nobody pressed anything, so an
 // engine that cannot stop has nobody to tell.
 export function reset(): Promise<unknown> {
   settle();
-  return enqueue(() => stopEngine().catch(() => {}));
+  return enqueue(() => invoke("speech_stop").catch(() => {}));
 }

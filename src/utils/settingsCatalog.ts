@@ -716,7 +716,7 @@ export const SETTINGS: SettingEntry[] = [
     id: "read-aloud-voice",
     section: "chat",
     label: "Voice",
-    hint: "The voice Read aloud speaks in. System voice follows the one set in macOS. A voice since removed falls back to it.",
+    hint: "The voice Read aloud speaks in. A voice since removed falls back to Heart, the default.",
   },
   {
     id: "read-aloud-rate",

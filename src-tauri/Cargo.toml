@@ -52,7 +52,6 @@ quick-xml = "0.42"
 globset = "0.4"
 rusqlite = { version = "0.31", features = ["bundled"] }
 tauri-plugin-clipboard-manager = "2.3.2"
-tauri-plugin-tts = "0.2.1"
 # espeak-ng is GPL, and misaki-rs only uses it behind its default features.
 # ort is pinned exactly because 2.0 is still a release candidate.
 misaki-rs = { version = "0.6.0", default-features = false }

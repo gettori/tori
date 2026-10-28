@@ -74,7 +74,7 @@ impl Out for Speakers {
                 return Ok(());
             }
             if device.is_none() {
-                let mut sink = DeviceSinkBuilder::open_default_sink().map_err(|e| format!("no audio output: {e}"))?;
+                let mut sink = open_sink().map_err(|e| format!("no audio output: {e}"))?;
                 sink.log_on_drop(false);
                 let player = Arc::new(Player::connect_new(sink.mixer()));
                 *device = Some((sink, player));
@@ -98,6 +98,14 @@ impl Out for Speakers {
     fn release(&self) {
         self.0.lock().unwrap().take();
     }
+}
+
+// rodio asks for a fixed 2048 frame buffer, past what Bluetooth headphones
+// accept (1024 at most), so the device's own buffer size is tried first.
+fn open_sink() -> Result<MixerDeviceSink, rodio::DeviceSinkError> {
+    DeviceSinkBuilder::from_default_device()
+        .and_then(|b| b.with_buffer_size(rodio::cpal::BufferSize::Default).open_stream())
+        .or_else(|_| DeviceSinkBuilder::open_default_sink())
 }
 
 #[derive(Serialize)]
@@ -145,10 +153,15 @@ pub fn speech_speak(
 ) -> Result<u64, String> {
     let dir = dir();
     installed(&dir).ok_or("No voice is downloaded")?;
-    let voice = voice
+    state
+        .engine(&app)
+        .speak(chunks, rate.clamp(0.5, 2.0), voice_or_default(&dir, voice))
+}
+
+fn voice_or_default(dir: &Path, voice: Option<String>) -> String {
+    voice
         .filter(|v| dir.join("voices").join(format!("{v}.bin")).is_file())
-        .unwrap_or_else(|| DEFAULT_VOICE.into());
-    state.engine(&app).speak(chunks, rate.clamp(0.5, 2.0), voice)
+        .unwrap_or_else(|| DEFAULT_VOICE.into())
 }
 
 #[tauri::command]
@@ -169,5 +182,22 @@ pub fn speech_status() -> SpeechStatus {
     SpeechStatus {
         installed: model.is_some(),
         model,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_voice_since_removed_falls_back_to_the_default() {
+        let dir = std::env::temp_dir().join(format!("tori_speech_voice_{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("voices")).unwrap();
+        std::fs::write(dir.join("voices/bf_emma.bin"), []).unwrap();
+
+        assert_eq!(voice_or_default(&dir, Some("bf_emma".into())), "bf_emma");
+        assert_eq!(voice_or_default(&dir, Some("am_removed".into())), DEFAULT_VOICE);
+        assert_eq!(voice_or_default(&dir, None), DEFAULT_VOICE);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
