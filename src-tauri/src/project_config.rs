@@ -490,4 +490,25 @@ mod tests {
         scan(&Path::new(env!("CARGO_MANIFEST_DIR")).join("src/rpc"), &mut hits);
         assert!(hits.is_empty(), "the socket reaches proposal consent in {hits:?}");
     }
+
+    #[test]
+    fn the_schema_describes_what_parse_reads() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/schemas/tori-project.schema.json");
+        let schema: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let props = schema["properties"].as_object().unwrap();
+
+        let full = parse(r#"{ setupCommand: "a", runCommand: "b", teardownCommand: "c", ports: 3, checks: ["d"] }"#);
+        let fields = serde_json::to_value(&full).unwrap();
+        let mut read: Vec<_> = fields.as_object().unwrap().keys().collect();
+        let mut described: Vec<_> = props.keys().collect();
+        read.sort();
+        described.sort();
+        assert_eq!(read, described);
+
+        let ports = &props["ports"];
+        let rejects = |n: u64| n < ports["minimum"].as_u64().unwrap() || n > ports["maximum"].as_u64().unwrap();
+        assert!(rejects(11) && rejects(0));
+        assert_eq!(parse("{ ports: 11 }").ports, None);
+        assert_eq!(parse("{ ports: 10 }").ports, Some(10));
+    }
 }

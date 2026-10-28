@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Tori project config",
+  "description": "What this repo proposes for the worktrees Tori makes of it, at <worktree>/.tori/project.json. Nothing in it runs until the user accepts this exact content, and a value the user set in Tori wins over it.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "setupCommand": {
+      "type": "string",
+      "description": "Setup command. Runs with sh -c in each new worktree, with TORI_PROJECT_ROOT and TORI_WORKTREE_PATH set."
+    },
+    "runCommand": {
+      "type": "string",
+      "description": "Run command. Started and stopped by hand from a worktree's row, a dev server usually, with TORI_PORT set."
+    },
+    "teardownCommand": {
+      "type": "string",
+      "description": "Teardown command. Runs with sh -c before a worktree is removed. The removal goes ahead if it fails or runs past 2 minutes."
+    },
+    "ports": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "description": "Ports per worktree. How many of each worktree's block of 10 ports are exported as TORI_PORT, TORI_PORT_1 and on."
+    },
+    "checks": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Verification commands. A turn that changed code is verified when the last of these it ran after its last edit passed."
+    }
+  }
+}

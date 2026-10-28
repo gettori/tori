@@ -117,6 +117,7 @@ describe("the shipped settings schemas", () => {
     // A schema shipped under a name nothing asks for is a schema that never
     // loads, and the server reports no error for an association it cannot read.
     expect(TORI_SETTINGS_FILES.map((f) => f.schema).sort()).toEqual([
+      "tori-project.schema.json",
       "tori-settings.schema.json",
       "tori-workspace-settings.schema.json",
     ]);

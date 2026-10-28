@@ -24,7 +24,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}) }));
 
 const { default: ProposalsSection } = await import("./ProposalsSection");
-const { noticeProposal } = await import("../../utils/proposals");
+const { createProposals, noticeProposal } = await import("../../utils/proposals");
 
 describe("a declined proposal", () => {
   it("never toasts, and the project's Tooling section still accepts it", async () => {
@@ -36,16 +36,14 @@ describe("a declined proposal", () => {
     window.removeEventListener(TOAST, count);
     expect(toasts).toHaveLength(0);
 
-    render(() => (
-      <ProposalsSection
-        project={
-          {
-            path: "/work/app",
-            branchUnits: [{ folderPath: "/work/app/feature", kind: "worktree" }],
-          } as never
-        }
-      />
-    ));
+    const project = {
+      path: "/work/app",
+      branchUnits: [{ folderPath: "/work/app/feature", kind: "worktree" }],
+    } as never;
+    render(() => {
+      const answered = createProposals(() => project);
+      return <ProposalsSection answered={answered()} />;
+    });
     await vi.waitFor(() => expect(screen.getByText("feature")).toBeTruthy());
     expect(screen.queryByText("app")).toBeNull();
 

@@ -25,6 +25,7 @@ vi.mock("@tauri-apps/api/core", () => ({
         ],
       });
     }
+    if (cmd === "proposal_for") return Promise.resolve({ state: "none" });
     if (cmd === "shared_overview") {
       return Promise.resolve({ dir: "/p/.shared", exists: false, worktrees: [], entries: [] });
     }
