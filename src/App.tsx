@@ -28,6 +28,7 @@ import ConfirmDialog, { type ConfirmReq } from "./components/Dialogs/ConfirmDial
 import Checkbox from "./components/Checkbox/Checkbox";
 import ToastRegion from "./components/Toasts/Toasts";
 import ReadingChip from "./components/ReadingChip/ReadingChip";
+import VoiceDownloadDialog from "./components/VoiceDownload/VoiceDownloadDialog";
 import { holdSelection } from "./components/SelectionToolbar/SelectionToolbar";
 import { watchReadAloud } from "./utils/readAloud";
 import type { GitReport } from "./utils/gitHealth";
@@ -1290,6 +1291,7 @@ function App() {
       <AskpassDialog />
       <ServerMessageDialog />
       <ProposalDialog />
+      <VoiceDownloadDialog />
       {/* One for the window, not per transcript: a read keeps going when its
           tab is switched away from, so Stop has to stay in reach. */}
       <ReadingChip />

@@ -1,8 +1,18 @@
-import { createResource } from "solid-js";
+import { Show, createResource, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { Play } from "lucide-solid";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { DEFAULT_VOICE, preview, voices as listVoices } from "../../../../utils/speech";
+import {
+  askToDownload,
+  cancelDownload,
+  deleteVoice,
+  mb,
+  refresh as refreshVoice,
+  sizeLabel,
+  status as voiceStatus,
+} from "../../../../utils/voiceDownload";
+import ConfirmDialog from "../../../../components/Dialogs/ConfirmDialog";
 import {
   Group,
   Row,
@@ -22,6 +32,7 @@ import {
   type PaneProps,
 } from "../../components/paneKit";
 import { settings, type DefaultSurface, type NotificationSettings, type TranscriptDensity } from "../../settingsStore";
+import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
 import IconButton from "../../../../components/IconButton/IconButton";
 import Select, { type SelectOption } from "../../../../components/Select/Select";
@@ -81,7 +92,7 @@ const NOTIFICATIONS = [
   "tray-count",
 ];
 const SAFETY = ["checkpoints"];
-const READ_ALOUD = ["read-aloud-voice", "read-aloud-rate"];
+const READ_ALOUD = ["read-aloud-model", "read-aloud-voice", "read-aloud-rate"];
 
 const RATE_MIN = 0.5;
 const RATE_MAX = 2;
@@ -113,12 +124,21 @@ function PlaySound(props: { sound: keyof NotificationSettings; label: string }) 
 const toast = (message: string) => emitWith<ToastEvent>(TOAST, { message, kind: "error" });
 
 export default function ChatPane(props: PaneProps) {
-  const [voices] = createResource(() =>
-    listVoices().catch(() => {
-      toast("Couldn't list the downloaded voices, so only Heart is offered.");
-      return [];
-    }),
+  void refreshVoice().catch((e) => toast(`Couldn't check the downloaded voice: ${String(e)}`));
+  const [voices] = createResource(
+    () => voiceStatus().model ?? false,
+    () =>
+      listVoices().catch(() => {
+        toast("Couldn't list the downloaded voices, so only Heart is offered.");
+        return [];
+      }),
   );
+  const [confirmingDelete, setConfirmingDelete] = createSignal(false);
+  const removeVoice = () => {
+    setConfirmingDelete(false);
+    void deleteVoice().catch((e) => toast(`Couldn't delete the voice: ${String(e)}`));
+  };
+  const downloading = () => voiceStatus().downloading;
   const voiceOptions = (): SelectOption[] => [
     { value: "", label: "Heart (en-US)" },
     ...(voices() ?? [])
@@ -476,20 +496,73 @@ export default function ChatPane(props: PaneProps) {
       </Group>
 
       <Group {...props} title="Read aloud" ids={READ_ALOUD}>
+        <Row {...props} id="read-aloud-model" label="Voice size">
+          <div class={styles.control}>
+            <Show
+              when={downloading()}
+              fallback={
+                <Show when={voiceStatus().model} fallback={<span>Not downloaded</span>}>
+                  {(size) => (
+                    <>
+                      <span>{sizeLabel(size())}</span>
+                      <Button size="sm" onClick={() => askToDownload()}>
+                        Change
+                      </Button>
+                      <Button size="sm" variant="danger" onClick={() => setConfirmingDelete(true)}>
+                        Delete
+                      </Button>
+                    </>
+                  )}
+                </Show>
+              }
+            >
+              {(p) => (
+                <>
+                  <span>
+                    Downloading, {mb(p().done)} of {mb(p().total)} MB
+                  </span>
+                  <Button size="sm" onClick={() => void cancelDownload()}>
+                    Cancel
+                  </Button>
+                </>
+              )}
+            </Show>
+          </div>
+        </Row>
+        <Show when={confirmingDelete()}>
+          <ConfirmDialog
+            title="Delete the voice?"
+            message="Read aloud needs it. Getting it back means downloading it again."
+            confirmLabel="Delete"
+            danger
+            onConfirm={removeVoice}
+            onCancel={() => setConfirmingDelete(false)}
+          />
+        </Show>
+
         <Row {...props} id="read-aloud-voice" label="Voice">
           <div class={styles.control}>
-            <Select
-              options={voiceOptions()}
-              value={settings.speech.voice ?? ""}
-              onChange={(value) => setSpeech({ voice: value || null })}
-              aria-labelledby={rowLabelId("read-aloud-voice")}
-            />
-            <IconButton
-              size="sm"
-              icon={<Icon icon={Play} />}
-              tooltip="Hear this voice"
-              onClick={() => void preview(settings.speech.voice, SAMPLE)}
-            />
+            <Show
+              when={voiceStatus().installed}
+              fallback={
+                <Button size="sm" disabled={!!downloading()} onClick={() => askToDownload()}>
+                  Download
+                </Button>
+              }
+            >
+              <Select
+                options={voiceOptions()}
+                value={settings.speech.voice ?? ""}
+                onChange={(value) => setSpeech({ voice: value || null })}
+                aria-labelledby={rowLabelId("read-aloud-voice")}
+              />
+              <IconButton
+                size="sm"
+                icon={<Icon icon={Play} />}
+                tooltip="Hear this voice"
+                onClick={() => void preview(settings.speech.voice, SAMPLE)}
+              />
+            </Show>
           </div>
         </Row>
 

@@ -2,12 +2,14 @@
 // it holds about 2 GB while loaded, too much to keep for a feature used now
 // and then.
 
+mod download;
 mod kokoro;
 mod queue;
 mod text;
 
 use std::num::NonZero;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
@@ -19,8 +21,6 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use queue::{Engine, Models, Out};
 
 const DEFAULT_VOICE: &str = "af_heart";
-
-const MODELS: [(&str, &str); 2] = [("int8", "model_quantized.onnx"), ("full", "model.onnx")];
 
 pub fn dir() -> PathBuf {
     #[cfg(debug_assertions)]
@@ -34,21 +34,51 @@ fn installed(dir: &Path) -> Option<(&'static str, &'static str)> {
     if !dir.join("tokenizer.json").is_file() {
         return None;
     }
-    MODELS.into_iter().find(|(_, file)| dir.join(file).is_file())
+    download::SIZES
+        .iter()
+        .find(|s| dir.join(s.file).is_file())
+        .map(|s| (s.id, s.file))
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Progress {
+    size: &'static str,
+    done: u64,
+    total: u64,
+}
+
+struct Running {
+    progress: Progress,
+    cancel: Arc<AtomicBool>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum DownloadEvent {
+    Progress(Progress),
+    Done { size: &'static str },
+    Cancel,
+    Error { error: String },
 }
 
 #[derive(Default)]
-pub struct SpeechState(OnceLock<Engine>);
+pub struct SpeechState {
+    engine: OnceLock<Engine>,
+    model_generation: Arc<AtomicU64>,
+    download: Arc<Mutex<Option<Running>>>,
+}
 
 impl SpeechState {
     fn engine(&self, app: &AppHandle) -> &Engine {
-        self.0.get_or_init(|| {
+        self.engine.get_or_init(|| {
             let app = app.clone();
-            let models = Models::new(Box::new(|| {
+            let load = Box::new(|| {
                 let dir = dir();
                 let (_, model) = installed(&dir).ok_or("No voice is downloaded")?;
                 kokoro::load(&dir, &dir.join(model))
-            }));
+            });
+            let models = Models::new(load, self.model_generation.clone());
             let emit = Arc::new(move |event: queue::Event| {
                 let _ = app.emit("speech", event);
             });
@@ -58,7 +88,7 @@ impl SpeechState {
 }
 
 pub fn stop(app: &AppHandle) {
-    if let Some(engine) = app.try_state::<SpeechState>().as_ref().and_then(|s| s.0.get()) {
+    if let Some(engine) = app.try_state::<SpeechState>().as_ref().and_then(|s| s.engine.get()) {
         engine.stop();
     }
 }
@@ -119,6 +149,21 @@ pub struct SpeechVoice {
 pub struct SpeechStatus {
     installed: bool,
     model: Option<&'static str>,
+    downloading: Option<Progress>,
+    sizes: Vec<SizeInfo>,
+}
+
+#[derive(Serialize)]
+pub struct SizeInfo {
+    id: &'static str,
+    bytes: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum SpeakError {
+    NotDownloaded,
+    Failed { error: String },
 }
 
 fn voices(dir: &Path) -> Vec<SpeechVoice> {
@@ -150,12 +195,13 @@ pub fn speech_speak(
     chunks: Vec<String>,
     rate: f32,
     voice: Option<String>,
-) -> Result<u64, String> {
+) -> Result<u64, SpeakError> {
     let dir = dir();
-    installed(&dir).ok_or("No voice is downloaded")?;
+    installed(&dir).ok_or(SpeakError::NotDownloaded)?;
     state
         .engine(&app)
         .speak(chunks, rate.clamp(0.5, 2.0), voice_or_default(&dir, voice))
+        .map_err(|error| SpeakError::Failed { error })
 }
 
 fn voice_or_default(dir: &Path, voice: Option<String>) -> String {
@@ -166,7 +212,7 @@ fn voice_or_default(dir: &Path, voice: Option<String>) -> String {
 
 #[tauri::command]
 pub fn speech_stop(state: State<SpeechState>) {
-    if let Some(engine) = state.0.get() {
+    if let Some(engine) = state.engine.get() {
         engine.stop();
     }
 }
@@ -177,17 +223,114 @@ pub fn speech_voices() -> Vec<SpeechVoice> {
 }
 
 #[tauri::command]
-pub fn speech_status() -> SpeechStatus {
+pub fn speech_status(state: State<SpeechState>) -> SpeechStatus {
     let model = installed(&dir()).map(|(size, _)| size);
     SpeechStatus {
         installed: model.is_some(),
         model,
+        downloading: state.download.lock().unwrap().as_ref().map(|r| r.progress.clone()),
+        sizes: download::SIZES
+            .iter()
+            .map(|s| SizeInfo {
+                id: s.id,
+                bytes: download::manifest(s.id).unwrap().iter().map(|f| f.bytes).sum(),
+            })
+            .collect(),
     }
+}
+
+fn begin(slot: &Mutex<Option<Running>>, size: &'static str, total: u64) -> Result<Arc<AtomicBool>, String> {
+    let mut slot = slot.lock().unwrap();
+    if slot.is_some() {
+        return Err("A voice is already downloading".into());
+    }
+    let cancel = Arc::new(AtomicBool::new(false));
+    *slot = Some(Running {
+        progress: Progress { size, done: 0, total },
+        cancel: cancel.clone(),
+    });
+    Ok(cancel)
+}
+
+#[tauri::command]
+pub fn speech_download(app: AppHandle, state: State<SpeechState>, size: String) -> Result<(), String> {
+    let size = download::SIZES
+        .iter()
+        .find(|s| s.id == size)
+        .map(|s| s.id)
+        .ok_or_else(|| format!("no voice size {size}"))?;
+    let files = download::manifest(size).unwrap();
+    let cancel = begin(&state.download, size, files.iter().map(|f| f.bytes).sum())?;
+    let slot = state.download.clone();
+    let changed = state.model_generation.clone();
+    std::thread::Builder::new()
+        .name("speech-download".into())
+        .spawn(move || {
+            let emit = |event: DownloadEvent| {
+                let _ = app.emit("speech-download", event);
+            };
+            let result = download::install(
+                &dir(),
+                &files,
+                &download::fetch,
+                &|| cancel.load(Ordering::SeqCst),
+                &mut |done, total| {
+                    let progress = Progress { size, done, total };
+                    if let Some(running) = slot.lock().unwrap().as_mut() {
+                        running.progress = progress.clone();
+                    }
+                    emit(DownloadEvent::Progress(progress));
+                },
+            );
+            slot.lock().unwrap().take();
+            match result {
+                Ok(()) => {
+                    changed.fetch_add(1, Ordering::SeqCst);
+                    emit(DownloadEvent::Done { size });
+                }
+                Err(e) if e == download::CANCELLED => emit(DownloadEvent::Cancel),
+                Err(error) => emit(DownloadEvent::Error { error }),
+            }
+        })
+        .map_err(|e| {
+            state.download.lock().unwrap().take();
+            e.to_string()
+        })?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn speech_download_cancel(state: State<SpeechState>) {
+    if let Some(running) = state.download.lock().unwrap().as_ref() {
+        running.cancel.store(true, Ordering::SeqCst);
+    }
+}
+
+#[tauri::command]
+pub fn speech_delete(state: State<SpeechState>) -> Result<(), String> {
+    if state.download.lock().unwrap().is_some() {
+        return Err("A voice is downloading".into());
+    }
+    if let Some(engine) = state.engine.get() {
+        engine.stop();
+    }
+    download::remove(&dir())?;
+    state.model_generation.fetch_add(1, Ordering::SeqCst);
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_second_download_is_refused_while_one_runs() {
+        let slot = Mutex::new(None);
+        begin(&slot, "int8", 10).unwrap();
+        assert_eq!(begin(&slot, "full", 10).unwrap_err(), "A voice is already downloading");
+        slot.lock().unwrap().take();
+        assert!(begin(&slot, "full", 10).is_ok());
+    }
 
     #[test]
     fn a_voice_since_removed_falls_back_to_the_default() {

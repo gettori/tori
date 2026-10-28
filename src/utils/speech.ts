@@ -5,6 +5,7 @@ import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen as listenTo } from "@tauri-apps/api/event";
 import { emitWith, TOAST, type ToastEvent } from "./events";
+import { askToDownload, dropPending } from "./voiceDownload";
 import { saveSettings, settings } from "../panels/Settings/settingsStore";
 
 type SpeechEvent =
@@ -12,6 +13,10 @@ type SpeechEvent =
   | { kind: "finish"; read: number; chunk: number }
   | { kind: "cancel"; read: number }
   | { kind: "error"; read: number; error: string };
+
+type SpeakError = { kind: "notDownloaded" } | { kind: "failed"; error: string };
+
+const speakError = (e: unknown) => (typeof e === "object" && e !== null && "kind" in e ? (e as SpeakError) : null);
 
 export type Voice = { id: string; name: string; language: string };
 
@@ -58,11 +63,14 @@ function settle() {
   parts = [];
   readId = null;
   setReading(null);
+  dropPending();
 }
 
 function fail(e: unknown, what = "read aloud") {
   settle();
-  emitWith<ToastEvent>(TOAST, { message: `Couldn't ${what}: ${String(e)}`, kind: "error" });
+  const known = speakError(e);
+  const why = !known ? String(e) : known.kind === "failed" ? known.error : "no voice is downloaded";
+  emitWith<ToastEvent>(TOAST, { message: `Couldn't ${what}: ${why}`, kind: "error" });
 }
 
 function heard(e: SpeechEvent) {
@@ -127,7 +135,10 @@ function start(next: Chunk[], from: string, at: number, rate: number): Promise<u
       early.forEach(heard);
     } catch (e) {
       held = null;
-      if (mine === generation) fail(e);
+      if (mine !== generation) return;
+      if (speakError(e)?.kind !== "notDownloaded") return fail(e);
+      settle();
+      askToDownload(() => void start(next, from, at, rate));
     }
   });
 }
