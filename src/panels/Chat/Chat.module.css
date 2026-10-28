@@ -515,6 +515,23 @@ code.secretReason {
   color: var(--fg-default);
 }
 
+.replyText {
+  position: relative;
+}
+
+.replyRead {
+  position: absolute;
+  top: calc(2px * var(--ui-scale));
+  right: calc(100% + 4px * var(--ui-scale));
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.replyText:hover .replyRead,
+.replyRead:focus-visible {
+  opacity: 1;
+}
+
 /* Assistant text is flat prose filling the column: the prompt bubbles above it
    and the tool cards between turns already segment the flow. */
 .assistant {
@@ -3087,7 +3104,7 @@ button.attachmentBody:hover {
   margin-top: calc(6px * var(--ui-scale));
 }
 
-.markedReply > .assistant {
+.markedReply > .replyText {
   flex: 1;
   min-width: 0;
   padding-top: calc(4px * var(--ui-scale));

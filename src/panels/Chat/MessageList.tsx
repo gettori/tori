@@ -24,6 +24,7 @@ import {
   Info,
   KeyRound,
   TriangleAlert,
+  Volume2,
   Webhook,
 } from "lucide-solid";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -51,6 +52,7 @@ import { openPrByNumber } from "../../utils/openPrTab";
 import { emitWith, NAVIGATE, SESSION_ACTION, type NavTarget, type SessionAction } from "../../utils/events";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
+import IconButton from "../../components/IconButton/IconButton";
 import ToolCallCard, { type HunkRef } from "./ToolCallCard";
 import QuestionCard from "./QuestionCard";
 import ToriNoteRow from "./ToriNote";
@@ -223,6 +225,33 @@ function ThinkingBlock(props: { text: string; live: boolean; thoughtMs: number }
   );
 }
 
+function ReplyText(props: {
+  id: string;
+  text: string;
+  cwd: string;
+  onRead?: (body: HTMLElement, itemId: string) => void;
+}) {
+  let body!: HTMLDivElement;
+  return (
+    <div class={styles.replyText}>
+      <Show when={props.onRead}>
+        {(onRead) => (
+          <IconButton
+            size="xs"
+            icon={<Icon icon={Volume2} />}
+            class={styles.replyRead}
+            tooltip="Read aloud"
+            onClick={() => onRead()(body, props.id)}
+          />
+        )}
+      </Show>
+      <div ref={body} class={styles.assistant}>
+        <Markdown text={props.text} cwd={props.cwd} />
+      </div>
+    </div>
+  );
+}
+
 /**
  * One hook frame.
  *
@@ -336,6 +365,9 @@ export default function MessageList(props: {
   onRewind?: (promptTs: number) => void;
   /** Drawn beside each reply, for a view that puts a face on the agent. */
   replyMark?: () => JSX.Element;
+  /** Read a reply aloud, given the element its text renders into. Absent where
+   *  there is no speech, which leaves replies without the button. */
+  onRead?: (body: HTMLElement, itemId: string) => void;
   /** Whether the agent opened this turn for itself, which a background
    *  subagent's finishing makes it do. Such a turn answers no prompt, so it
    *  must not claim the one above it. */
@@ -781,18 +813,12 @@ export default function MessageList(props: {
             <TurnAnchor itemId={it().id} off={p.unanchored} />
             <Show
               when={props.replyMark}
-              fallback={
-                <div class={styles.assistant}>
-                  <Markdown text={it().text} cwd={props.cwd} />
-                </div>
-              }
+              fallback={<ReplyText id={it().id} text={it().text} cwd={props.cwd} onRead={props.onRead} />}
             >
               {(mark) => (
                 <div class={styles.markedReply}>
                   {mark()()}
-                  <div class={styles.assistant}>
-                    <Markdown text={it().text} cwd={props.cwd} />
-                  </div>
+                  <ReplyText id={it().id} text={it().text} cwd={props.cwd} onRead={props.onRead} />
                 </div>
               )}
             </Show>
