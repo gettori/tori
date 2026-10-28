@@ -46,6 +46,12 @@ describe("breach", () => {
     expect(breach(spend({ sessionUsd: 1, projectUsd: 11 }), budgets)?.kind).toBe("project");
   });
 
+  it("stops on a parent's own spend plus what its side chats charged to it", () => {
+    const budgets = { ...NONE, sessionUsd: 2 };
+    expect(breach(spend({ sessionUsd: 1.5 }), budgets)).toBeNull();
+    expect(breach(spend({ sessionUsd: 1.5 + 0.75 }), budgets)).toEqual({ kind: "session", spent: 2.25, limit: 2 });
+  });
+
   // A ceiling set against a figure nothing has reported cannot fire: a agent
   // that reports no cost must not read as having spent nothing and be stopped
   // by a limit of 0.

@@ -484,6 +484,7 @@ export default function ChatView(props: {
   // What this session and its project have spent, read back from disk on open so
   // a reopened tab resumes its budget rather than restarting it.
   const [spent, setSpent] = createSignal<UsageTotals | null>(null);
+  const chargedSession = () => props.sideOf ?? props.sessionId;
   // The ceiling that stopped this chat, if one did. Sticky: the stop is
   // terminal for the session, so this is cleared only by raising the limit.
   const [stopped, setStopped] = createSignal<BudgetBreach | null>(null);
@@ -643,14 +644,14 @@ export default function ChatView(props: {
     // The budget this tab is resuming, and how much of the session it can
     // actually vouch for. Both are reads of what happened before this tab
     // existed, so both happen on open rather than being accumulated.
-    void invoke<UsageTotals>("chat_usage_totals", { cwd: props.cwd, sessionId: props.sessionId })
+    void invoke<UsageTotals>("chat_usage_totals", { cwd: props.cwd, sessionId: chargedSession() })
       .then((totals) => {
         setSpent(totals);
         return applyBudget();
       })
       .catch(() => {});
     const unlistenSpend = listen<UsageChanged>(USAGE_CHANGED, ({ payload }) => {
-      if (payload.sessionId !== props.sessionId) return;
+      if (payload.sessionId !== chargedSession()) return;
       setSpent(payload.totals);
       void applyBudget();
     });
