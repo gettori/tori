@@ -4,7 +4,7 @@ import { Show, createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import { expectNoAxeViolations } from "../../test/axe";
 import MessageList from "./MessageList";
-import { speakableChunks } from "./speakable";
+import { lastReply, speakableChunks } from "./speakable";
 import chatStyles from "./Chat.module.css";
 import { applyEvent, initialChat, prependHistory, pushUserTurn } from "./chatStore";
 import type { ChatItem, QuestionItem, ToolItem, TurnCheck } from "./chatStore";
@@ -1201,5 +1201,14 @@ describe("the block being read aloud", () => {
     await waitFor(() => expect(lit(container)).toEqual(["Second part, and more."]));
     setBlock(undefined);
     expect(lit(container)).toEqual([]);
+  });
+});
+
+describe("the last reply", () => {
+  it("is the latest text row on screen, found by its rendered body", () => {
+    const { container } = render(() => list());
+    const last = lastReply(ITEMS, container);
+    expect(last?.id).toBe("t3");
+    expect(speakableChunks(last!.body)).toEqual([{ text: "answer 3", block: 0 }]);
   });
 });

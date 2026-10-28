@@ -21,6 +21,14 @@ export type Reading = { source: string; block: number | undefined };
 const [reading, setReading] = createSignal<Reading | null>(null);
 export { reading };
 
+const [frontReply, setFrontReply] = createSignal<(() => void) | null>(null);
+export { frontReply };
+
+export function offerLastReply(readLast: () => void): () => void {
+  setFrontReply(() => readLast);
+  return () => setFrontReply((now) => (now === readLast ? null : now));
+}
+
 export function readingBlockOf(from: string): number | undefined {
   const now = reading();
   return now?.source === from ? now.block : undefined;

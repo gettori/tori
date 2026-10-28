@@ -25,6 +25,16 @@ export function selectionWithin(root: HTMLElement, sel: Selection | null): Range
   return range;
 }
 
+let held = "";
+
+/** Keeps the document's selection, if it is reading rather than editing, for
+ *  a command run after focus has moved and taken the selection with it. */
+export function holdSelection() {
+  held = selectionWithin(document.body, document.getSelection()) ? (document.getSelection()?.toString() ?? "") : "";
+}
+
+export const heldSelection = () => held;
+
 export type SelectionAction = { label: string; run: (text: string) => void };
 
 /**
