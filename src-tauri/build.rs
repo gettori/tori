@@ -8,7 +8,24 @@ use std::process::Command;
 fn main() {
     embed_packs();
     embed_commit();
+    link_compiler_runtime();
     tauri_build::build()
+}
+
+// The static ONNX Runtime (read aloud) calls `__isPlatformVersionAtLeast`,
+// which lives in clang's runtime, and rustc does not link that on its own.
+fn link_compiler_runtime() {
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos") {
+        return;
+    }
+    let dir = Command::new("clang")
+        .arg("--print-resource-dir")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .expect("clang --print-resource-dir");
+    println!("cargo:rustc-link-arg={dir}/lib/darwin/libclang_rt.osx.a");
 }
 
 /// Sets `TORI_COMMIT` to the short SHA of HEAD, or to nothing outside a git

@@ -74,6 +74,7 @@ mod setup;
 mod shared;
 mod shell_path;
 mod sound;
+mod speech;
 mod themes;
 mod topic_home;
 mod topics;
@@ -221,6 +222,7 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 let _ = window.tts().stop();
+                speech::stop(window.app_handle());
             }
         })
         .setup(|app| {
@@ -321,6 +323,7 @@ pub fn run() {
         .manage(SessionWatch::default())
         .manage(TouchedIndex::default())
         .manage(SettingsWatch::default())
+        .manage(speech::SpeechState::default())
         .manage(themes::ThemesWatch::default())
         .invoke_handler(trace::traced(tauri::generate_handler![
             pty::pty_spawn,
@@ -780,6 +783,10 @@ pub fn run() {
             settings::get_settings,
             settings::set_settings,
             sound::sound_preview,
+            speech::speech_speak,
+            speech::speech_stop,
+            speech::speech_voices,
+            speech::speech_status,
             workspace_settings::get_workspace_settings,
             workspace_settings::set_workspace_settings,
             settings::settings_watch_start,
@@ -822,6 +829,7 @@ pub fn run() {
                 // its own process group so that killing it takes the debuggee
                 // down, which also means quitting does not reach it.
                 app.state::<DapState>().shutdown();
+                speech::stop(app);
                 if let Some(rpc) = app.try_state::<rpc::RpcState>() {
                     rpc.shutdown();
                 }
