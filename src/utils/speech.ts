@@ -12,7 +12,7 @@ import {
   type SpeechEvent,
 } from "tauri-plugin-tts-api";
 import { emitWith, TOAST, type ToastEvent } from "./events";
-import { settings } from "../panels/Settings/settingsStore";
+import { saveSettings, settings } from "../panels/Settings/settingsStore";
 
 export type Chunk = { text: string; block?: number };
 
@@ -21,10 +21,16 @@ export type Reading = { source: string; block: number | undefined };
 const [reading, setReading] = createSignal<Reading | null>(null);
 export { reading };
 
+export function readingBlockOf(from: string): number | undefined {
+  const now = reading();
+  return now?.source === from ? now.block : undefined;
+}
+
 let generation = 0;
 let chain: Promise<unknown> = Promise.resolve();
 let parts: Chunk[] = [];
 let source = "";
+let current = 0;
 const utterances = new Map<string, number>();
 let listening: Promise<void> | null = null;
 
@@ -50,7 +56,9 @@ function listen() {
   listening ??= Promise.all([
     onSpeechEvent("speech:start", (e: SpeechEvent) => {
       const at = e.id ? utterances.get(e.id) : undefined;
-      if (at !== undefined) setReading({ source, block: parts[at]?.block });
+      if (at === undefined) return;
+      current = at;
+      setReading({ source, block: parts[at]?.block });
     }),
     onSpeechEvent("speech:finish", (e: SpeechEvent) => {
       if (e.id && utterances.get(e.id) === parts.length - 1) settle();
@@ -126,27 +134,38 @@ export function read(chunks: Chunk[], from: string): Promise<unknown> {
     .flatMap((c) => splitToFit(c.text).map((text) => ({ text, block: c.block })))
     .filter((c) => c.text.trim());
   if (!next.length) return stop();
+  return start(next, from, 0, settings.speech.rate);
+}
+
+function start(next: Chunk[], from: string, at: number, rate: number): Promise<unknown> {
   settle();
   const mine = generation;
   parts = next;
   source = from;
-  setReading({ source, block: next[0].block });
+  current = at;
+  setReading({ source, block: next[at].block });
   // All queued now rather than from finish events, so Stop has nothing of
   // ours left to race.
   return enqueue(async () => {
     try {
       await listen();
-      const { rate, voice } = settings.speech;
-      const voiceId = await installed(voice);
-      for (const [i, part] of next.entries()) {
+      const voiceId = await installed(settings.speech.voice);
+      for (let i = at; i < next.length; i++) {
         if (mine !== generation) return;
-        const res = await speak({ text: part.text, queueMode: i === 0 ? "flush" : "add", rate, voiceId });
+        const res = await speak({ text: next[i].text, queueMode: i === at ? "flush" : "add", rate, voiceId });
         if (res.utteranceId && mine === generation) utterances.set(res.utteranceId, i);
       }
     } catch (e) {
       if (mine === generation) fail(e);
     }
   });
+}
+
+// The rate goes out with each queued chunk, so a new one only takes effect by
+// queueing again, from the chunk being spoken now.
+export function changeRate(rate: number): Promise<unknown> {
+  void saveSettings({ ...settings, speech: { ...settings.speech, rate } }).catch(fail);
+  return parts.length ? start(parts, source, current, rate) : Promise.resolve();
 }
 
 export function readSelection(text: string): Promise<unknown> {
