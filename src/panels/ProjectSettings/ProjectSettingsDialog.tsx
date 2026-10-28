@@ -7,12 +7,14 @@ import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import { onWith, OPEN_SETTINGS } from "../../utils/events";
 import { markProjectShown, SECTION_LABEL, sectionsFor, type ProjectSection } from "../../utils/projectSettings";
 import { projectUntrusted } from "../../utils/projectTrust";
+import { createProposals } from "../../utils/proposals";
 import { createSpaceProject, projectUnitKind } from "../../utils/topicMembers";
 import ModalShell from "../Settings/components/ModalShell";
 import s from "../Settings/Settings.module.css";
 import AgentsSection from "./AgentsSection";
 import AutomationsSection from "./AutomationsSection";
 import ChecksSection from "./ChecksSection";
+import CommandsSection from "./CommandsSection";
 import EditorSection from "./EditorSection";
 import ExecutionSection from "./ExecutionSection";
 import DevServersSection from "./DevServersSection";
@@ -166,99 +168,116 @@ export default function ProjectSettingsDialog(props: { path: string; section?: P
           </Show>
         }
       >
-        {(f) => (
-          <div class={s.body}>
-            <div class={s.railCol}>
-              <div class={s.railSearch}>
-                <input
-                  ref={searchEl}
-                  class={s.searchInput}
-                  type="search"
-                  aria-label="Search project settings"
-                  placeholder="Search project settings"
-                  value={query()}
-                  onInput={(e) => setQuery(e.currentTarget.value)}
-                />
-              </div>
-              <OverlayScroll class={s.railScroll}>
-                <div class={s.railGroup}>Project</div>
-                <div
-                  ref={railEl}
-                  class={s.rail}
-                  role="tablist"
-                  aria-orientation="vertical"
-                  aria-label="Project settings sections"
-                  onKeyDown={onRailKeyDown}
-                >
-                  <For each={sections()}>
-                    {(id) => {
-                      const selected = () => !searching() && section() === id;
-                      const warn = () => id === "tooling" && projectUntrusted(f().project.path);
-                      const label = () =>
-                        [SECTION_LABEL[id], warn() ? "not trusted" : null, sectionDirty(id) ? "unsaved changes" : null]
-                          .filter(Boolean)
-                          .join(", ");
-                      return (
-                        <button
-                          type="button"
-                          role="tab"
-                          id={tabId(id)}
-                          class={s.railItem}
-                          classList={{ [s.railItemActive]: selected() }}
-                          aria-controls={selected() ? paneId(id) : undefined}
-                          aria-selected={selected()}
-                          aria-label={label()}
-                          tabindex={section() === id ? 0 : -1}
-                          onClick={() => openSection(id)}
-                        >
-                          <Icon icon={SECTION_ICON[id]} />
-                          <span class={s.railLabel}>{SECTION_LABEL[id]}</span>
-                          <Show when={sectionDirty(id)}>
-                            <span class={`${s.dot} ${styles.dotUnsaved}`} aria-hidden="true" />
-                          </Show>
-                          <Show when={warn()}>
-                            <span class={`${s.dot} ${s.dotWarn}`} aria-hidden="true" />
-                          </Show>
-                        </button>
-                      );
-                    }}
-                  </For>
+        {(f) => {
+          const answered = createProposals(() => f().project);
+          return (
+            <div class={s.body}>
+              <div class={s.railCol}>
+                <div class={s.railSearch}>
+                  <input
+                    ref={searchEl}
+                    class={s.searchInput}
+                    type="search"
+                    aria-label="Search project settings"
+                    placeholder="Search project settings"
+                    value={query()}
+                    onInput={(e) => setQuery(e.currentTarget.value)}
+                  />
                 </div>
-              </OverlayScroll>
-              <ProjectFoot project={f().project} space={f().space.name} kind={kind()} />
-            </div>
+                <OverlayScroll class={s.railScroll}>
+                  <div class={s.railGroup}>Project</div>
+                  <div
+                    ref={railEl}
+                    class={s.rail}
+                    role="tablist"
+                    aria-orientation="vertical"
+                    aria-label="Project settings sections"
+                    onKeyDown={onRailKeyDown}
+                  >
+                    <For each={sections()}>
+                      {(id) => {
+                        const selected = () => !searching() && section() === id;
+                        const warn = () => id === "tooling" && projectUntrusted(f().project.path);
+                        const label = () =>
+                          [
+                            SECTION_LABEL[id],
+                            warn() ? "not trusted" : null,
+                            sectionDirty(id) ? "unsaved changes" : null,
+                          ]
+                            .filter(Boolean)
+                            .join(", ");
+                        return (
+                          <button
+                            type="button"
+                            role="tab"
+                            id={tabId(id)}
+                            class={s.railItem}
+                            classList={{ [s.railItemActive]: selected() }}
+                            aria-controls={selected() ? paneId(id) : undefined}
+                            aria-selected={selected()}
+                            aria-label={label()}
+                            tabindex={section() === id ? 0 : -1}
+                            onClick={() => openSection(id)}
+                          >
+                            <Icon icon={SECTION_ICON[id]} />
+                            <span class={s.railLabel}>{SECTION_LABEL[id]}</span>
+                            <Show when={sectionDirty(id)}>
+                              <span class={`${s.dot} ${styles.dotUnsaved}`} aria-hidden="true" />
+                            </Show>
+                            <Show when={warn()}>
+                              <span class={`${s.dot} ${s.dotWarn}`} aria-hidden="true" />
+                            </Show>
+                          </button>
+                        );
+                      }}
+                    </For>
+                  </div>
+                </OverlayScroll>
+                <ProjectFoot project={f().project} space={f().space.name} kind={kind()} />
+              </div>
 
-            <OverlayScroll class={s.pane} contentClass={s.paneInner}>
-              <Show when={nothingMatched()}>
-                <div class={s.note}>No setting matches "{query().trim()}".</div>
-              </Show>
-              {pane("general", () => (
-                <GeneralSection project={f().project} kind={kind()} />
-              ))}
-              {pane("worktrees", () => (
-                <WorktreesSection workspace={f().project.path} />
-              ))}
-              {pane("agents", () => (
-                <AgentsSection project={f().project} onDirty={(key, on) => markDirty(`agents:${key}`, on)} />
-              ))}
-              {pane("automations", () => (
-                <AutomationsSection projectPath={f().project.path} />
-              ))}
-              {pane("tooling", () => (
-                <>
-                  <TrustSection projectPath={f().project.path} />
-                  <ProposalsSection project={f().project} />
-                  <ExecutionSection projectPath={f().project.path} />
-                  <DevServersSection projectPath={f().project.path} />
-                  <ChecksSection projectPath={f().project.path} onDirty={(on) => markDirty("tooling:checks", on)} />
-                  <Show when={kind() === "plain" || kind() === "plain-dir"}>
-                    <EditorSection projectPath={f().project.path} />
-                  </Show>
-                </>
-              ))}
-            </OverlayScroll>
-          </div>
-        )}
+              <OverlayScroll class={s.pane} contentClass={s.paneInner}>
+                <Show when={nothingMatched()}>
+                  <div class={s.note}>No setting matches "{query().trim()}".</div>
+                </Show>
+                {pane("general", () => (
+                  <GeneralSection project={f().project} kind={kind()} />
+                ))}
+                {pane("worktrees", () => (
+                  <>
+                    <CommandsSection projectPath={f().project.path} answered={answered()} />
+                    <WorktreesSection workspace={f().project.path} />
+                  </>
+                ))}
+                {pane("agents", () => (
+                  <AgentsSection project={f().project} onDirty={(key, on) => markDirty(`agents:${key}`, on)} />
+                ))}
+                {pane("automations", () => (
+                  <AutomationsSection projectPath={f().project.path} />
+                ))}
+                {pane("tooling", () => (
+                  <>
+                    <TrustSection projectPath={f().project.path} />
+                    <ProposalsSection answered={answered()} />
+                    <Show when={kind() === "plain"}>
+                      <CommandsSection projectPath={f().project.path} answered={answered()} />
+                    </Show>
+                    <ExecutionSection projectPath={f().project.path} />
+                    <DevServersSection projectPath={f().project.path} answered={answered()} />
+                    <ChecksSection
+                      projectPath={f().project.path}
+                      answered={answered()}
+                      onDirty={(on) => markDirty("tooling:checks", on)}
+                    />
+                    <Show when={kind() === "plain" || kind() === "plain-dir"}>
+                      <EditorSection projectPath={f().project.path} />
+                    </Show>
+                  </>
+                ))}
+              </OverlayScroll>
+            </div>
+          );
+        }}
       </Show>
     </ModalShell>
   );

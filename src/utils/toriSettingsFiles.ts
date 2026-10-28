@@ -1,16 +1,6 @@
-// The two files Tori writes its own settings to, and the schema describing each.
-//
-// Tori ships schemas for its own settings for the reason it feeds the JSON
-// server SchemaStore's catalog: the server validates a JSON file against a
-// schema and has no idea which schema, so a settings file nobody told it about
-// is a settings file with no completion and no spell-check on its keys.
-//
-// **No imports, deliberately.** `utils/lspServers.ts` needs the path rule to
-// decide a language id, and `panels/Editor/lspClient.ts` needs it to build the
-// associations. The latter owns `pathToUri` but sits behind the editor's lazy
-// boundary and pulls in CodeMirror, so importing it from `utils` would drag the
-// editor into every bundle that asks which server claims a file. The rule is
-// what is shared; the wire form is built where the wire is.
+// No imports, deliberately: `lspClient.ts` owns `pathToUri` but pulls in
+// CodeMirror, so importing it here would drag the editor into every bundle
+// that asks which server claims a file.
 
 /** One settings file: how the server recognizes it, and what describes it. */
 export type ToriSettingsFile = {
@@ -24,18 +14,12 @@ export type ToriSettingsFile = {
   schema: string;
 };
 
-/**
- * Both files, each with the schema that describes it.
- *
- * They are separate schemas rather than one because the two shapes collide:
- * `editor` in the global file is the per-project override *map*, keyed by
- * project path, while `editor` in a workspace file is the override block
- * itself. One schema covering both would describe whichever it chose and
- * misreport the other.
- */
+// Two settings schemas, not one: `editor` is a per-project map in the global
+// file and the override block itself in a workspace file.
 export const TORI_SETTINGS_FILES: ToriSettingsFile[] = [
   { fileMatch: "**/.config/tori/settings.json", schema: "tori-settings.schema.json" },
   { fileMatch: "**/.tori/settings.json", schema: "tori-workspace-settings.schema.json" },
+  { fileMatch: "**/.tori/project.json", schema: "tori-project.schema.json" },
 ];
 
 /** The suffix each pattern reduces to, which is what the server's leading `**`
@@ -43,19 +27,8 @@ export const TORI_SETTINGS_FILES: ToriSettingsFile[] = [
  *  patterns above cannot drift into disagreeing about which files these are. */
 const SUFFIXES = TORI_SETTINGS_FILES.map((f) => f.fileMatch.replace(/^\*\*/, ""));
 
-/**
- * Is this one of Tori's own settings files?
- *
- * Used to open them as `jsonc`. Both are read with json5 (`settings.rs:2`,
- * `workspace_settings.rs:44`), so a comment in one is supported and not a
- * mistake - but the JSON server reports comments as errors for every language
- * id except `jsonc` (`jsonServer.js:285`), which would put a red squiggle on a
- * line Tori itself reads without complaint.
- *
- * A suffix match, not an absolute path: `settings.rs` builds the global path
- * from the home directory, and a test that had to know the home directory would
- * be testing the machine it ran on.
- */
+// Opened as `jsonc`: Tori reads all of these with json5, and the JSON server
+// errors on comments under every other id (`jsonServer.js:285`).
 export function isToriSettingsFile(path: string): boolean {
   return SUFFIXES.some((suffix) => path.endsWith(suffix));
 }

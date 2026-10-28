@@ -319,3 +319,39 @@
   font-family: var(--tori-font-mono);
   font-size: var(--tori-text-xs);
 }
+
+.repoValues {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-2);
+  margin: var(--tori-space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.repoValue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--tori-space-3);
+  min-width: 0;
+}
+
+.repoText {
+  overflow-wrap: anywhere;
+  color: var(--fg-default);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-xs);
+}
+
+.repoWhere {
+  color: var(--fg-subtle);
+  font-size: var(--tori-text-2xs);
+}
+
+.field {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}

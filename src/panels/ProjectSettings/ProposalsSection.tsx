@@ -1,9 +1,7 @@
-import { createResource, For, onCleanup, onMount, Show } from "solid-js";
-import { listen } from "@tauri-apps/api/event";
+import { For, Show } from "solid-js";
 
 import Button from "../../components/Button/Button";
-import { acceptProposal, openReview, proposalFor, type Proposal } from "../../utils/proposals";
-import type { SpaceProject } from "../../utils/topicMembers";
+import { acceptProposal, openReview, type Answered, type Proposal } from "../../utils/proposals";
 import { Row, Section } from "./Section";
 
 type Waiting = { worktree: string; proposal: Extract<Proposal, { state: "unaccepted" | "declined" }> };
@@ -12,31 +10,14 @@ const nameOf = (path: string) => path.split("/").filter(Boolean).pop() ?? path;
 
 /** The worktrees whose `.tori/project.json` is not accepted. A declined one
  *  never toasts again, so this is where it can still be accepted. */
-export default function ProposalsSection(props: { project: SpaceProject }) {
-  const folders = () => [
-    ...new Set([props.project.path, ...(props.project.branchUnits ?? []).map((u) => u.folderPath)]),
-  ];
-  const [waiting, { refetch }] = createResource(folders, async (paths) => {
-    const answers = await Promise.all(
-      paths.map((worktree) =>
-        proposalFor(worktree).then(
-          (proposal) => ({ worktree, proposal }),
-          (e) => {
-            console.warn("proposal_for failed", worktree, e);
-            return null;
-          },
-        ),
-      ),
+export default function ProposalsSection(props: { answered: Answered[] | undefined }) {
+  const waiting = () =>
+    (props.answered ?? []).filter(
+      (a): a is Waiting => a.proposal.state === "unaccepted" || a.proposal.state === "declined",
     );
-    return answers.filter((a): a is Waiting => a?.proposal.state === "unaccepted" || a?.proposal.state === "declined");
-  });
-  onMount(() => {
-    const off = listen("proposals://changed", () => void refetch());
-    onCleanup(() => void off.then((stop) => stop()));
-  });
 
   return (
-    <Show when={waiting()?.length}>
+    <Show when={waiting().length}>
       <Section heading="Repo proposals">
         <For each={waiting()}>
           {(w) => (

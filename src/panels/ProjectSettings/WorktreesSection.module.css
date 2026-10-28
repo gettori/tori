@@ -1,7 +1,6 @@
-/* The Worktrees section: the setup command as Settings rows, then the shared
-   entries beside the worktrees one entry did and did not reach, as one card
-   in the column. Two halves because the two questions are different, and the
-   second only matters for the entry in hand. */
+/* The shared entries beside the worktrees one entry did and did not reach, as
+   one card in the column. Two halves because the two questions are different,
+   and the second only matters for the entry in hand. */
 /* The whole path, wrapping: under the heading there is room for it, and a
    cut path is the one thing nobody can copy. */
 .dir {
