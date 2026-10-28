@@ -118,6 +118,8 @@ pub struct Method {
     pub refusal: Option<&'static str>,
     /// Its effect is visible outside this machine, so the harness asks before it runs in a foreground session.
     pub outward: bool,
+    /// Only these are open to a side chat, which may write to no tree, session, autopilot, Inbox or forge.
+    pub read_only: bool,
     pub call: Call,
 }
 
@@ -137,6 +139,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE_DEVICES_AND_BROWSER,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, v| b.sessions_list(params(v)?),
     },
     Method {
@@ -146,6 +149,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE_DEVICES_AND_BROWSER,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, v| b.session_tail(params(v)?),
     },
     Method {
@@ -155,6 +159,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE_DEVICES_AND_BROWSER,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, p, _| {
             let mut me = b.caller(p)?;
             if let Some(me) = me.as_object_mut() {
@@ -170,6 +175,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE_AND_DEVICES,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, v| b.session_history(params(v)?),
     },
     Method {
@@ -179,6 +185,7 @@ pub static METHODS: &[Method] = &[
         callers: NOT_WORKERS_AND_DEVICES,
         refusal: None,
         outward: false,
+        read_only: false,
         call: |b, p, v| b.session_interrupt(p, params(v)?),
     },
     Method {
@@ -188,6 +195,7 @@ pub static METHODS: &[Method] = &[
         callers: NOT_WORKERS_DEVICES_AND_BROWSER,
         refusal: None,
         outward: false,
+        read_only: false,
         call: |b, p, v| b.session_steer(p, params(v)?),
     },
     Method {
@@ -197,6 +205,7 @@ pub static METHODS: &[Method] = &[
         callers: NOT_WORKERS,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, v| b.session_wait(params(v)?),
     },
     Method {
@@ -206,6 +215,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, v| b.session_check(params(v)?),
     },
     Method {
@@ -215,6 +225,7 @@ pub static METHODS: &[Method] = &[
         callers: NOT_WORKERS,
         refusal: None,
         outward: false,
+        read_only: false,
         call: |b, p, v| b.session_handoff(p, params(v)?),
     },
     Method {
@@ -224,6 +235,7 @@ pub static METHODS: &[Method] = &[
         callers: NOT_WORKERS_DEVICES_AND_BROWSER,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, v| b.session_pending(params(v)?),
     },
     Method {
@@ -233,6 +245,7 @@ pub static METHODS: &[Method] = &[
         callers: &[CallerKind::Chat, CallerKind::Device],
         refusal: Some("only the session that spawned a worker, or a paired device, answers for it"),
         outward: true,
+        read_only: false,
         call: |b, p, v| b.session_answer(p, params(v)?),
     },
     Method {
@@ -242,6 +255,7 @@ pub static METHODS: &[Method] = &[
         callers: LOCAL_AND_DEVICES,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, v| b.session_info(params(v)?),
     },
     Method {
@@ -251,6 +265,7 @@ pub static METHODS: &[Method] = &[
         callers: LOCAL_AND_DEVICES,
         refusal: None,
         outward: false,
+        read_only: false,
         call: |b, p, v| b.session_model(p, params(v)?),
     },
     Method {
@@ -260,6 +275,7 @@ pub static METHODS: &[Method] = &[
         callers: LOCAL_AND_DEVICES,
         refusal: None,
         outward: false,
+        read_only: false,
         call: |b, p, v| b.session_mode(p, params(v)?),
     },
     Method {
@@ -269,6 +285,7 @@ pub static METHODS: &[Method] = &[
         callers: LOCAL_AND_DEVICES,
         refusal: Some("an agent cannot review its own work"),
         outward: false,
+        read_only: true,
         call: |b, _, _| b.review_list(),
     },
     Method {
@@ -278,6 +295,7 @@ pub static METHODS: &[Method] = &[
         callers: LOCAL_AND_DEVICES,
         refusal: Some("an agent cannot review its own work"),
         outward: false,
+        read_only: false,
         call: |b, _, v| b.review_mark(params(v)?),
     },
     Method {
@@ -287,6 +305,7 @@ pub static METHODS: &[Method] = &[
         callers: LOCAL_AND_DEVICES,
         refusal: Some("a permission prompt is answered by a person"),
         outward: false,
+        read_only: true,
         call: |b, _, _| b.permissions_pending(),
     },
     Method {
@@ -296,6 +315,7 @@ pub static METHODS: &[Method] = &[
         callers: LOCAL_AND_DEVICES,
         refusal: Some("a permission prompt is answered by a person"),
         outward: false,
+        read_only: false,
         call: |b, _, v| b.permissions_allow_group(params(v)?),
     },
     Method {
@@ -305,6 +325,7 @@ pub static METHODS: &[Method] = &[
         callers: LOCAL_AND_DEVICES,
         refusal: Some("a permission prompt is answered by a person"),
         outward: false,
+        read_only: false,
         call: |b, _, v| b.permissions_deny(params(v)?),
     },
     Method {
@@ -314,6 +335,7 @@ pub static METHODS: &[Method] = &[
         callers: LOCAL_AND_DEVICES,
         refusal: Some("an agent cannot read what needs the person"),
         outward: false,
+        read_only: true,
         call: |b, _, _| b.needs_you_list(),
     },
     Method {
@@ -323,6 +345,7 @@ pub static METHODS: &[Method] = &[
         callers: LOCAL_AND_DEVICES,
         refusal: Some("an agent cannot answer for the person"),
         outward: false,
+        read_only: false,
         call: |b, _, v| b.needs_you_seen(params(v)?),
     },
     Method {
@@ -332,6 +355,7 @@ pub static METHODS: &[Method] = &[
         callers: LOCAL_AND_DEVICES,
         refusal: Some("an agent cannot read what needs the person"),
         outward: false,
+        read_only: true,
         call: |b, _, v| b.digest_list(params(v)?),
     },
     Method {
@@ -341,6 +365,7 @@ pub static METHODS: &[Method] = &[
         callers: LOCAL_AND_DEVICES,
         refusal: Some("an agent cannot look for the person"),
         outward: false,
+        read_only: false,
         call: |b, _, v| b.digest_looked(params(v)?),
     },
     Method {
@@ -350,6 +375,7 @@ pub static METHODS: &[Method] = &[
         callers: LOCAL_AND_DEVICES,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, _| b.radar_list(),
     },
     Method {
@@ -359,6 +385,7 @@ pub static METHODS: &[Method] = &[
         callers: LOCAL_AND_DEVICES,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, v| {
             let p: UnitsGitParams = params(v)?;
             if p.folders.len() > UNITS_GIT_MAX {
@@ -374,6 +401,7 @@ pub static METHODS: &[Method] = &[
         callers: LOCAL_AND_DEVICES,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, v| {
             let p: UnitsSyncParams = params(v)?;
             if p.units.len() > UNITS_GIT_MAX {
@@ -389,6 +417,7 @@ pub static METHODS: &[Method] = &[
         callers: LOCAL_AND_DEVICES,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, v| b.units_pr(params(v)?),
     },
     Method {
@@ -398,6 +427,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE,
         refusal: None,
         outward: false,
+        read_only: false,
         call: |b, p, v| b.worktree_new(p, params(v)?),
     },
     Method {
@@ -407,6 +437,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, p, v| b.issues_assigned(p, params(v)?),
     },
     Method {
@@ -416,6 +447,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, p, v| b.issue_get(p, params(v)?),
     },
     Method {
@@ -425,6 +457,7 @@ pub static METHODS: &[Method] = &[
         callers: NOT_WORKERS,
         refusal: Some("making a branch on the host is the spawner's call"),
         outward: false,
+        read_only: false,
         call: |b, p, v| b.issue_link_branch(p, params(v)?),
     },
     Method {
@@ -434,6 +467,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, v| b.checkpoints_list(params(v)?),
     },
     Method {
@@ -443,6 +477,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, v| {
             let p: CheckpointDiffParams = params(v)?;
             if let Some(to) = p.to.filter(|to| *to < p.turn) {
@@ -458,6 +493,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, v| b.provenance_hunks(params(v)?),
     },
     Method {
@@ -467,6 +503,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE,
         refusal: None,
         outward: false,
+        read_only: false,
         call: |b, p, v| b.checkpoint_revert(p, params(v)?),
     },
     Method {
@@ -476,6 +513,7 @@ pub static METHODS: &[Method] = &[
         callers: NOT_WORKERS_AND_DEVICES,
         refusal: None,
         outward: false,
+        read_only: false,
         call: |b, p, v| b.session_spawn(p, params(v)?),
     },
     Method {
@@ -485,6 +523,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, v| b.window_open(params(v)?),
     },
     Method {
@@ -494,6 +533,7 @@ pub static METHODS: &[Method] = &[
         callers: BROWSER,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, v| b.window_reveal(params(v)?),
     },
     Method {
@@ -503,6 +543,7 @@ pub static METHODS: &[Method] = &[
         callers: BROWSER,
         refusal: None,
         outward: false,
+        read_only: false,
         call: |b, _, v| b.chat_draft(params(v)?),
     },
     Method {
@@ -512,6 +553,7 @@ pub static METHODS: &[Method] = &[
         callers: BROWSER,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, v| b.web_setup(params(v)?),
     },
     Method {
@@ -521,6 +563,7 @@ pub static METHODS: &[Method] = &[
         callers: BROWSER,
         refusal: None,
         outward: false,
+        read_only: false,
         call: |b, _, v| b.attachment_write(params(v)?),
     },
     Method {
@@ -530,6 +573,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, p, v| b.budget(p, params(v)?),
     },
     Method {
@@ -539,6 +583,7 @@ pub static METHODS: &[Method] = &[
         callers: &[CallerKind::Chat, CallerKind::Worker],
         refusal: Some("its card shows in a chat panel, so only a chat session can ask"),
         outward: false,
+        read_only: false,
         call: |b, p, v| match p {
             Principal::Session(Caller::Chat(session)) => b.ask_create(session, params(v)?),
             _ => Err(RpcError::new(INTERNAL_ERROR, "ask.create reached with a caller its row does not admit")),
@@ -551,6 +596,7 @@ pub static METHODS: &[Method] = &[
         callers: &[CallerKind::Chat, CallerKind::Worker],
         refusal: Some("only a chat runs in a Topic, and the question shows in its panel"),
         outward: false,
+        read_only: false,
         call: |b, p, v| match p {
             Principal::Session(Caller::Chat(session)) => b.topic_member_promote(session, params(v)?),
             _ => Err(RpcError::new(INTERNAL_ERROR, "topic.member.promote reached with a caller its row does not admit")),
@@ -563,6 +609,7 @@ pub static METHODS: &[Method] = &[
         callers: NOT_WORKERS_DEVICES_AND_BROWSER,
         refusal: None,
         outward: false,
+        read_only: false,
         call: |b, p, v| b.ask_answer(p, params(v)?),
     },
     Method {
@@ -572,6 +619,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE,
         refusal: None,
         outward: false,
+        read_only: false,
         call: |b, _, v| b.ask_wait(params(v)?),
     },
     Method {
@@ -581,6 +629,7 @@ pub static METHODS: &[Method] = &[
         callers: NOT_WORKERS,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, p, v| b.pr_get(p, params(v)?),
     },
     Method {
@@ -590,6 +639,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE,
         refusal: None,
         outward: true,
+        read_only: false,
         call: |b, p, v| b.pr_create(p, params(v)?),
     },
     Method {
@@ -599,6 +649,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE,
         refusal: None,
         outward: true,
+        read_only: false,
         call: |b, p, v| b.review_submit(p, params(v)?),
     },
     Method {
@@ -608,6 +659,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE,
         refusal: None,
         outward: true,
+        read_only: false,
         call: |b, p, v| b.pr_push(p, params(v)?),
     },
     Method {
@@ -617,6 +669,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE,
         refusal: None,
         outward: true,
+        read_only: false,
         call: |b, p, v| b.pr_merge(p, params(v)?),
     },
     Method {
@@ -626,6 +679,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, p, v| b.pr_check_log(p, params(v)?),
     },
     Method {
@@ -635,6 +689,7 @@ pub static METHODS: &[Method] = &[
         callers: CHATS,
         refusal: Some(WATCH_REFUSAL),
         outward: false,
+        read_only: false,
         call: |b, p, v| b.pr_watch(p, params(v)?),
     },
     Method {
@@ -644,6 +699,7 @@ pub static METHODS: &[Method] = &[
         callers: CHATS,
         refusal: Some(WATCH_REFUSAL),
         outward: false,
+        read_only: false,
         call: |b, p, v| b.pr_unwatch(p, params(v)?),
     },
     Method {
@@ -653,6 +709,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE_DEVICES_AND_BROWSER,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, _| b.projects_list(),
     },
     Method {
@@ -662,6 +719,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE_AND_DEVICES,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, v| b.project_icon(params(v)?),
     },
     Method {
@@ -671,6 +729,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE_AND_BROWSER,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, _| b.ports_list(),
     },
     Method {
@@ -680,6 +739,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE_AND_BROWSER,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, v| b.worktree_at(params(v)?),
     },
     Method {
@@ -689,6 +749,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE_AND_DEVICES,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, _| b.autopilot_state(),
     },
     Method {
@@ -698,6 +759,7 @@ pub static METHODS: &[Method] = &[
         callers: LOCAL_AND_DEVICES,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, v| b.autopilot_log(params(v)?),
     },
     Method {
@@ -707,6 +769,7 @@ pub static METHODS: &[Method] = &[
         callers: NOT_SESSIONS_AND_DEVICES,
         refusal: Some("turning the autopilot on is the user's call"),
         outward: false,
+        read_only: false,
         call: |b, _, _| b.autopilot_start(),
     },
     Method {
@@ -716,6 +779,7 @@ pub static METHODS: &[Method] = &[
         callers: NOT_SESSIONS_AND_DEVICES,
         refusal: Some("turning the autopilot off is the user's call"),
         outward: false,
+        read_only: false,
         call: |b, _, _| b.autopilot_stop(),
     },
     Method {
@@ -725,6 +789,7 @@ pub static METHODS: &[Method] = &[
         callers: NOT_WORKERS,
         refusal: Some("the queue is the autopilot's to change"),
         outward: false,
+        read_only: false,
         call: |b, p, v| b.autopilot_loop(p, params(v)?),
     },
     Method {
@@ -734,6 +799,7 @@ pub static METHODS: &[Method] = &[
         callers: NOT_WORKERS,
         refusal: Some("the queue is the autopilot's to change"),
         outward: false,
+        read_only: false,
         call: |b, p, v| b.autopilot_item_update(p, params(v)?),
     },
     Method {
@@ -743,6 +809,7 @@ pub static METHODS: &[Method] = &[
         callers: NOT_WORKERS,
         refusal: Some("a project's contract is the user's and the autopilot's to set"),
         outward: false,
+        read_only: false,
         call: |b, p, v| b.autopilot_project_set(p, params(v)?),
     },
     Method {
@@ -752,6 +819,7 @@ pub static METHODS: &[Method] = &[
         callers: NOT_WORKERS,
         refusal: Some("withdrawing a hold is the autopilot's call"),
         outward: false,
+        read_only: false,
         call: |b, _, v| b.autopilot_hold_resolve(params(v)?),
     },
     Method {
@@ -761,6 +829,7 @@ pub static METHODS: &[Method] = &[
         callers: ANYONE,
         refusal: None,
         outward: false,
+        read_only: true,
         call: |b, _, _| b.autopilot_schedule_list(),
     },
     Method {
@@ -770,6 +839,7 @@ pub static METHODS: &[Method] = &[
         callers: NOT_WORKERS,
         refusal: Some("schedules are the user's and the autopilot's to set"),
         outward: false,
+        read_only: false,
         call: |b, p, v| b.autopilot_schedule_add(p, params(v)?),
     },
     Method {
@@ -779,6 +849,7 @@ pub static METHODS: &[Method] = &[
         callers: NOT_WORKERS,
         refusal: Some("schedules are the user's and the autopilot's to set"),
         outward: false,
+        read_only: false,
         call: |b, _, v| b.autopilot_schedule_remove(params(v)?),
     },
     Method {
@@ -788,6 +859,7 @@ pub static METHODS: &[Method] = &[
         callers: &[CallerKind::Local, CallerKind::Terminal],
         refusal: Some("resuming a paused schedule is the user's call"),
         outward: false,
+        read_only: false,
         call: |b, _, v| b.autopilot_schedule_resume(params(v)?),
     },
     Method {
@@ -797,6 +869,7 @@ pub static METHODS: &[Method] = &[
         callers: &[CallerKind::Local],
         refusal: Some("adding a device is the user's call, from outside any Tori session"),
         outward: false,
+        read_only: false,
         call: |b, _, v| b.device_mint(params(v)?),
     },
     Method {
@@ -806,6 +879,7 @@ pub static METHODS: &[Method] = &[
         callers: &[CallerKind::Local],
         refusal: Some("installing the browser host is the user's call, from outside any Tori session"),
         outward: false,
+        read_only: false,
         call: |b, _, _| b.browser_mint(),
     },
 ];

@@ -257,6 +257,7 @@ impl Lifecycle {
 
     fn ended(&self, id: &str, reason: EndReason) {
         crate::rpc::revoke(&crate::rpc::auth::Caller::Chat(id.to_string()));
+        super::side::forget(id);
         lock(&self.origins).remove(id);
         lock(&self.replaying).remove(id);
         lock(&self.pulses).forget(id);
@@ -709,6 +710,81 @@ fn split_user_notes(event: ChatEvent) -> Vec<ChatEvent> {
     out
 }
 
+// What a side chat's lock does with one of its events.
+enum SideHold {
+    Pass,
+    // An ask, denied before anyone sees it.
+    Swallow,
+    // A mode other than the read-only one: the session is closed with this.
+    End(Box<ChatEvent>),
+}
+
+fn hold_side(sessions: &Sessions, id: &str, event: &ChatEvent) -> SideHold {
+    let transport = || lock(sessions).get(id).map(|e| e.transport.clone());
+    match event {
+        ChatEvent::PermissionRequest {
+            tool_use_id,
+            request_id,
+            ..
+        } => {
+            let Some(transport) = transport() else {
+                return SideHold::Pass;
+            };
+            let (tool_use_id, request_id, session) = (tool_use_id.clone(), request_id.clone(), id.to_string());
+            // This runs inside the transport's own event callback, which may
+            // hold what an answer needs.
+            std::thread::spawn(move || {
+                let denied = lock(&transport).respond_permission(
+                    &tool_use_id,
+                    &request_id,
+                    PermissionDecision::Deny,
+                    PermissionScope::Once,
+                    Some(super::side::REFUSED),
+                );
+                if let Err(e) = denied {
+                    eprintln!("tori: side chat {session} could not deny {tool_use_id}: {e}");
+                }
+            });
+            SideHold::Swallow
+        }
+        ChatEvent::SessionStarted { permission_mode, .. } | ChatEvent::TurnStarted { permission_mode, .. }
+            if super::side::left_lock(id, permission_mode) =>
+        {
+            if let Some(transport) = transport() {
+                let session = id.to_string();
+                std::thread::spawn(move || {
+                    if let Err(e) = lock(&transport).close() {
+                        eprintln!("tori: side chat {session} left read-only mode and could not be closed: {e}");
+                    }
+                });
+            }
+            SideHold::End(Box::new(ChatEvent::SessionError {
+                session_id: id.to_string(),
+                message: format!(
+                    "This side chat left read-only mode ({}), so it was closed.",
+                    permission_mode.as_str()
+                ),
+                fatal: true,
+                needs_sign_in: false,
+            }))
+        }
+        _ => SideHold::Pass,
+    }
+}
+
+// A replay hands back turns from before the fork, in the parent's modes; only
+// the session's own start is live.
+fn live_event(lifecycle: &Lifecycle, id: &str, event: &ChatEvent) -> bool {
+    !lifecycle.replaying(id) || matches!(event, ChatEvent::SessionStarted { .. })
+}
+
+fn refuse_side_allow(session_id: &str, decision: PermissionDecision) -> Result<(), String> {
+    if decision != PermissionDecision::Deny && super::side::is_side(session_id) {
+        return Err(super::side::REFUSED.to_string());
+    }
+    Ok(())
+}
+
 /// Is this event the end of a session's life?
 ///
 /// A non-fatal `SessionError` is deliberately not: a single unparseable stdout
@@ -923,6 +999,7 @@ impl ChatHost {
         scope: PermissionScope,
         reason: Option<&str>,
     ) -> Result<(), String> {
+        refuse_side_allow(session_id, decision)?;
         let transport = lock(&self.sessions).get(session_id).map(|e| e.transport.clone());
         let Some(transport) = transport else {
             return Err(format!("no live session {session_id}"));
@@ -1104,6 +1181,7 @@ impl ChatHost {
         decision: PermissionDecision,
         scope: PermissionScope,
     ) -> Result<bool, String> {
+        refuse_side_allow(session_id, decision)?;
         let request_id = self.waiting(session_id).into_iter().find_map(|w| match w {
             Waiting::Permission {
                 id: asked, request_id, ..
@@ -1283,6 +1361,24 @@ impl ChatHost {
         let cwd = std::path::PathBuf::from(cwd);
         Box::new(move |event| {
             let mut events = split_user_notes(event);
+            if super::side::is_side(&id) {
+                let mut held = Vec::with_capacity(events.len());
+                for event in events {
+                    if !live_event(&lifecycle, &id, &event) {
+                        held.push(event);
+                        continue;
+                    }
+                    match hold_side(&sessions, &id, &event) {
+                        SideHold::Pass => held.push(event),
+                        SideHold::Swallow => {}
+                        SideHold::End(ended) => {
+                            held.push(event);
+                            held.push(*ended);
+                        }
+                    }
+                }
+                events = held;
+            }
             if let Some(
                 last @ (ChatEvent::ToolCallStarted { .. }
                 | ChatEvent::FileEdit { .. }
@@ -1435,6 +1531,13 @@ impl ChatHost {
             | ChatCommand::SetConfigOption { session_id, .. }
             | ChatCommand::Close { session_id } => session_id.clone(),
         };
+        match command {
+            ChatCommand::SetMode { .. } if super::side::is_side(&session_id) => {
+                return Err(super::side::REFUSED.to_string())
+            }
+            ChatCommand::RespondPermission { decision, .. } => refuse_side_allow(&session_id, *decision)?,
+            _ => {}
+        }
         let Some(transport) = lock(&self.sessions).get(&session_id).map(|e| e.transport.clone()) else {
             return Err(format!("no live chat session {session_id}"));
         };
@@ -1763,6 +1866,7 @@ mod tests {
         refuses_start: bool,
         /// Whether a question or permission answered here was one it asked.
         owns_answers: bool,
+        decisions: Arc<Mutex<Vec<(String, PermissionDecision)>>>,
     }
 
     impl AgentTransport for Puppet {
@@ -1795,12 +1899,13 @@ mod tests {
         }
         fn respond_permission(
             &mut self,
-            _t: &str,
+            t: &str,
             _r: &str,
-            _d: PermissionDecision,
+            d: PermissionDecision,
             _s: PermissionScope,
             _reason: Option<&str>,
         ) -> Result<bool, String> {
+            lock(&self.decisions).push((t.to_string(), d));
             Ok(self.owns_answers)
         }
         fn respond_question(&mut self, _t: &str, _r: &str, _a: &[QuestionAnswer]) -> Result<bool, String> {
@@ -3565,6 +3670,98 @@ mod tests {
             agent_id: None,
             suggestions: Vec::new(),
         }
+    }
+
+    fn wait_for(what: impl Fn() -> bool) -> bool {
+        for _ in 0..200 {
+            if what() {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        false
+    }
+
+    #[test]
+    fn a_side_chat_denies_every_ask_unseen_keeps_questions_and_refuses_a_mode_switch_and_an_allow() {
+        let host = ChatHost::at(temp_store());
+        let decisions = Arc::new(Mutex::new(Vec::new()));
+        let seen = Collector::default();
+        crate::chat::side::mark("s-side", "s-parent", "plan");
+        let transport = Puppet {
+            owns_answers: true,
+            decisions: decisions.clone(),
+            ..Default::default()
+        };
+        host.spawn_plain("s-side", "tab-side", seen.emit(), spec("s-side"), || {
+            Box::new(transport)
+        })
+        .unwrap();
+        let emit = host.emitter();
+        let mut plan = started("s-side");
+        if let ChatEvent::SessionStarted { permission_mode, .. } = &mut plan {
+            *permission_mode = PermissionMode::new("plan");
+        }
+        emit("s-side", plan);
+
+        emit("s-side", permission("s-side", "p-bash"));
+        let mut exit = permission("s-side", "p-exit");
+        if let ChatEvent::PermissionRequest { tool_name, .. } = &mut exit {
+            *tool_name = "ExitPlanMode".into();
+        }
+        emit("s-side", exit);
+
+        assert!(wait_for(|| lock(&decisions).len() == 2), "{:?}", lock(&decisions));
+        assert!(lock(&decisions).iter().all(|(_, d)| *d == PermissionDecision::Deny));
+        assert!(!seen
+            .events()
+            .iter()
+            .any(|e| matches!(e, ChatEvent::PermissionRequest { .. })));
+        assert!(host.waiting("s-side").is_empty());
+        emit("s-side", asked("s-side", "q-side", &["Yes"]));
+        assert_eq!(
+            waiting_ids(&host, "s-side"),
+            ["q-side"],
+            "a question still reaches the user"
+        );
+
+        let refused = host.set_mode("s-side", PermissionMode::new("default")).unwrap_err();
+        assert_eq!(refused, crate::chat::side::REFUSED);
+        let allow = host.answer_permission(
+            "s-side",
+            "p-bash",
+            "r-p-bash",
+            PermissionDecision::Allow,
+            PermissionScope::Once,
+            None,
+        );
+        assert!(allow.is_err());
+        let _ = host.close("s-side", EndReason::Closed);
+        assert!(!crate::chat::side::is_side("s-side"), "the mark goes with the session");
+    }
+
+    #[test]
+    fn a_side_chat_that_reports_any_mode_but_plan_is_closed() {
+        let host = ChatHost::at(temp_store());
+        let closed = Arc::new(AtomicU32::new(0));
+        let seen = Collector::default();
+        crate::chat::side::mark("s-loose", "s-parent", "plan");
+        let transport = Puppet {
+            closed: closed.clone(),
+            ..Default::default()
+        };
+        host.spawn_plain("s-loose", "tab-loose", seen.emit(), spec("s-loose"), || {
+            Box::new(transport)
+        })
+        .unwrap();
+        host.emitter()("s-loose", started("s-loose"));
+
+        assert!(wait_for(|| closed.load(Ordering::SeqCst) == 1));
+        assert!(!host.is_live("s-loose"));
+        assert!(seen.events().iter().any(
+            |e| matches!(e, ChatEvent::SessionError { fatal: true, message, .. } if message.contains("read-only"))
+        ));
+        assert!(!crate::chat::side::is_side("s-loose"));
     }
 
     fn waiting_ids(host: &ChatHost, id: &str) -> Vec<String> {

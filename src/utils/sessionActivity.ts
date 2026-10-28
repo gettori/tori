@@ -267,6 +267,7 @@ const liveSessionStatuses = createMemo<LiveSessionStatus[]>(() => {
     });
   }
   for (const c of liveChats()) {
+    if (c.side) continue;
     const meta = all.find((s) => s.id === c.sessionId);
     const owner = folderOwners()[c.folderPath];
     live.push({

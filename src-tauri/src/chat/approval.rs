@@ -522,7 +522,7 @@ pub(crate) fn sh_quote(s: &str) -> String {
 /// hooks, permissions and config, and must never ship.
 #[cfg(test)]
 pub fn settings_json(exe: &Path, sock: &Path, token: &str, background: bool) -> String {
-    settings_json_with(exe, sock, token, background, None, None)
+    settings_json_with(exe, sock, token, crate::rpc::mcp_allow(background), None, None)
 }
 
 /// `settings_json` plus the member rules a Topic home chat carries, and the
@@ -532,11 +532,11 @@ pub fn settings_json_with(
     exe: &Path,
     sock: &Path,
     token: &str,
-    background: bool,
+    allow: Vec<String>,
     home: Option<&crate::topic_home::HomeLaunch>,
     sandbox: Option<Value>,
 ) -> String {
-    let mut permissions = json!({ "allow": crate::rpc::mcp_allow(background) });
+    let mut permissions = json!({ "allow": allow });
     if let Some(home) = home {
         for (key, rules) in [("allow", &home.allow), ("deny", &home.deny), ("ask", &home.ask)] {
             if rules.is_empty() {
@@ -593,8 +593,12 @@ pub fn settings_args(
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    std::fs::write(&path, settings_json_with(&exe, sock, token, background, home, sandbox))
-        .map_err(|e| e.to_string())?;
+    let allow = if crate::chat::side::is_side(session_id) {
+        crate::rpc::mcp_allow_side()
+    } else {
+        crate::rpc::mcp_allow(background)
+    };
+    std::fs::write(&path, settings_json_with(&exe, sock, token, allow, home, sandbox)).map_err(|e| e.to_string())?;
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
     let mut args = match transport {
         ChatTransport::ClaudeStreamJson => crate::rpc::mcp_config_args(),

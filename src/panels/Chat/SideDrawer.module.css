@@ -1,0 +1,47 @@
+/* Every chat tab's row sits at the same place in the stage, so a hidden tab's
+   row must not take the pointer from the tab in front. */
+.row {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  min-width: 0;
+}
+
+.row.hidden {
+  display: none;
+}
+
+.main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.drawer {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--canvas-card);
+}
+
+.tabs {
+  min-height: calc(40px * var(--ui-scale));
+  display: flex;
+  flex: none;
+  align-items: center;
+  padding: 0 calc(6px * var(--ui-scale));
+  overflow: clip;
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.body.hidden {
+  display: none;
+}

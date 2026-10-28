@@ -581,6 +581,7 @@ impl Runner {
                 visible: false,
                 background: true,
                 spawner: None,
+                side_of: None,
             },
             Box::new(move |event| {
                 gauge.lock().unwrap_or_else(|e| e.into_inner()).see(&event);

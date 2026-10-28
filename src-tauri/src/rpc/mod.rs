@@ -1040,6 +1040,15 @@ pub fn mcp_allow(background: bool) -> Vec<String> {
     if background {
         return vec![format!("mcp__{MCP_SERVER}__*")];
     }
+    agent_tools(|m| !m.outward)
+}
+
+/// The daemon refuses the rest whatever the harness lets through.
+pub fn mcp_allow_side() -> Vec<String> {
+    agent_tools(|m| m.read_only)
+}
+
+fn agent_tools(keep: impl Fn(&table::Method) -> bool) -> Vec<String> {
     let agents = [
         table::CallerKind::Terminal,
         table::CallerKind::Chat,
@@ -1047,7 +1056,7 @@ pub fn mcp_allow(background: bool) -> Vec<String> {
     ];
     table::METHODS
         .iter()
-        .filter(|m| !m.outward && m.callers.iter().any(|k| agents.contains(k)))
+        .filter(|m| keep(m) && m.callers.iter().any(|k| agents.contains(k)))
         .map(|m| format!("mcp__{MCP_SERVER}__{}", m.name.replace('.', "_")))
         .collect()
 }

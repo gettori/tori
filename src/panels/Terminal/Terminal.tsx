@@ -11,6 +11,9 @@ import TerminalView, { type PtyExit } from "./TerminalView";
 import ChatView from "../Chat/ChatView";
 import ChatDraft from "../Chat/ChatDraft";
 import { dropQueue } from "../Chat/queuePersist";
+import SideDrawer, { forgetSide } from "../Chat/SideDrawer";
+import sideStyles from "../Chat/SideDrawer.module.css";
+import { canSideChat, dropSides, openSide } from "../Chat/sideChats";
 import Dropdown from "../../components/Menu/Dropdown";
 import Icon from "../../components/Icon/Icon";
 import TabMark from "./TabMark";
@@ -2356,6 +2359,7 @@ export default function Terminal(props: {
       if (t.sessionId) void dropQueue(t.sessionId);
       clearDraftError(id);
       clearDraftPick(id);
+      dropSides(id).forEach(forgetSide);
     }
     // Closing the active tab hands the slot to its right neighbor, then the
     // left (plan phase 5's unified policy; the fallback used to be the first
@@ -2660,52 +2664,66 @@ export default function Terminal(props: {
     // Past the branch above, so this tab has a session by construction: the two
     // states are exactly "has a session id" and "does not".
     return (
-      <ChatView
-        sessionId={t.sessionId!}
-        tabId={t.id}
-        agentId={t.program}
-        profile={t.profile}
-        cwd={t.cwd}
-        workspace={t.workspace}
-        title={tabTitle(t)}
-        resume={!!t.resume}
-        // A chat that has been reached for but not started renders its
-        // transcript from disk and spawns nothing. `resume` above is what its
-        // first send then starts it on, so the child comes back to this
-        // session rather than to a fresh one.
-        started={tabState(t) === "live"}
-        onStart={() => advanceTabState(t, "live")}
-        active={active()}
-        onForkSession={() =>
-          spawnChat(
-            t.workspace,
-            t.cwd,
-            t.workspace.split("/").pop() || "chat",
-            t.program,
-            undefined,
-            undefined,
-            t.profile,
-          )
-        }
-        onForkFrom={() =>
-          spawnChat(
-            t.workspace,
-            t.cwd,
-            t.workspace.split("/").pop() || "chat",
-            t.program,
-            t.sessionId,
-            undefined,
-            t.profile,
-          )
-        }
-        onRewindFrom={(promptTs) => rewindChat(t, promptTs)}
-        onFirstSendFailed={(reason) => revertChatDraft(t.id, reason)}
-        onProfileResolved={(profile) => recordChatProfile(t.id, profile)}
-        forkFrom={t.forkFrom}
-        rewindTo={t.rewindTo}
-        background={t.background}
-        spawner={t.spawner}
-      />
+      <div class={sideStyles.row} classList={{ [sideStyles.hidden]: !active() }}>
+        <div class={sideStyles.main}>
+          <ChatView
+            sessionId={t.sessionId!}
+            tabId={t.id}
+            agentId={t.program}
+            profile={t.profile}
+            cwd={t.cwd}
+            workspace={t.workspace}
+            title={tabTitle(t)}
+            resume={!!t.resume}
+            // A chat that has been reached for but not started renders its
+            // transcript from disk and spawns nothing. `resume` above is what its
+            // first send then starts it on, so the child comes back to this
+            // session rather than to a fresh one.
+            started={tabState(t) === "live"}
+            onStart={() => advanceTabState(t, "live")}
+            active={active()}
+            onForkSession={() =>
+              spawnChat(
+                t.workspace,
+                t.cwd,
+                t.workspace.split("/").pop() || "chat",
+                t.program,
+                undefined,
+                undefined,
+                t.profile,
+              )
+            }
+            onForkFrom={() =>
+              spawnChat(
+                t.workspace,
+                t.cwd,
+                t.workspace.split("/").pop() || "chat",
+                t.program,
+                t.sessionId,
+                undefined,
+                t.profile,
+              )
+            }
+            onRewindFrom={(promptTs) => rewindChat(t, promptTs)}
+            onFirstSendFailed={(reason) => revertChatDraft(t.id, reason)}
+            onProfileResolved={(profile) => recordChatProfile(t.id, profile)}
+            forkFrom={t.forkFrom}
+            rewindTo={t.rewindTo}
+            background={t.background}
+            spawner={t.spawner}
+            onSideChat={canSideChat(t.program) ? () => openSide(t.id) : undefined}
+          />
+        </div>
+        <SideDrawer
+          parentTab={t.id}
+          parentSession={t.sessionId!}
+          agentId={t.program}
+          profile={t.profile}
+          cwd={t.cwd}
+          workspace={t.workspace}
+          active={active()}
+        />
+      </div>
     );
   };
   // The bar's trailing cluster, one closure shared by every terminal kind (the
