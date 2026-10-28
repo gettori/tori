@@ -20,12 +20,13 @@ use std::sync::{Arc, Mutex};
 use super::approval::{self, CaptureServer};
 use super::mirror::Mirror;
 use super::model::{
-    cap_output, ChatCommand, ChatConfigValue, ChatEvent, ChatModeInfo, ChatModelInfo, ChatQuestion, ContentBlock,
-    PermissionDecision, PermissionMode, PermissionScope, QuestionAnswer,
+    cap_output, ChatCommand, ChatConfigKind, ChatConfigValue, ChatEvent, ChatModeInfo, ChatModelInfo, ChatQuestion,
+    ContentBlock, PermissionDecision, PermissionMode, PermissionScope, QuestionAnswer,
 };
 use super::ownership::Registry;
 use super::pacing::{monotonic_clock, Pacer, HIDDEN_RELEASE_MS};
 use super::pulse::{changes_status, Pulses};
+use super::side::ModeStep;
 use super::snapshot::SnapshotCache;
 use super::transport::{emit, new_sink, AgentTransport, Emit, Sink, StartSpec};
 use crate::rpc::events::{session_event, EndReason, Place, TurnBy};
@@ -750,32 +751,78 @@ fn hold_side(sessions: &Sessions, id: &str, event: &ChatEvent) -> SideHold {
         ChatEvent::SessionStarted { permission_mode, .. } | ChatEvent::TurnStarted { permission_mode, .. }
             if super::side::left_lock(id, permission_mode) =>
         {
-            if let Some(transport) = transport() {
-                let session = id.to_string();
-                std::thread::spawn(move || {
-                    if let Err(e) = lock(&transport).close() {
-                        eprintln!("tori: side chat {session} left read-only mode and could not be closed: {e}");
-                    }
-                });
-            }
-            SideHold::End(Box::new(ChatEvent::SessionError {
-                session_id: id.to_string(),
-                message: format!(
-                    "This side chat left read-only mode ({}), so it was closed.",
-                    permission_mode.as_str()
-                ),
-                fatal: true,
-                needs_sign_in: false,
-            }))
+            close_side(transport(), id, &left(permission_mode.as_str()))
         }
+        ChatEvent::ConfigOptions { options, .. } => {
+            let mode = options
+                .iter()
+                .find(|o| o.category == "mode")
+                .and_then(|o| match &o.kind {
+                    ChatConfigKind::Select { current, .. } => Some((o.id.clone(), current.as_str())),
+                    _ => None,
+                });
+            match super::side::on_mode_option(id, mode.as_ref().map(|(_, current)| *current)) {
+                ModeStep::Hold => SideHold::Pass,
+                ModeStep::Left(now) => close_side(transport(), id, &left(&now)),
+                ModeStep::Unheld => close_side(transport(), id, NO_READ_ONLY),
+                ModeStep::Set(held) => {
+                    let (Some((option, _)), Some((transport, sink))) = (
+                        mode,
+                        lock(sessions).get(id).map(|e| (e.transport.clone(), e.sink.clone())),
+                    ) else {
+                        return SideHold::Pass;
+                    };
+                    let session = id.to_string();
+                    std::thread::spawn(move || {
+                        let set = lock(&transport).set_config_option(&option, &ChatConfigValue::Value(held.into()));
+                        if let Err(e) = set {
+                            if let SideHold::End(ended) =
+                                close_side(Some(transport), &session, &format!("{NO_READ_ONLY} ({e})"))
+                            {
+                                emit(&sink, *ended);
+                            }
+                        }
+                    });
+                    SideHold::Pass
+                }
+            }
+        }
+        ChatEvent::ModeRefused { mode, .. } => close_side(transport(), id, &left(mode.as_str())),
         _ => SideHold::Pass,
     }
 }
 
+const NO_READ_ONLY: &str = "This side chat could not be held to read-only mode, so it was closed.";
+
+fn left(mode: &str) -> String {
+    format!("This side chat left read-only mode ({mode}), so it was closed.")
+}
+
+fn close_side(transport: Option<Arc<Mutex<Box<dyn AgentTransport>>>>, id: &str, message: &str) -> SideHold {
+    if let Some(transport) = transport {
+        let session = id.to_string();
+        std::thread::spawn(move || {
+            if let Err(e) = lock(&transport).close() {
+                eprintln!("tori: side chat {session} could not be closed: {e}");
+            }
+        });
+    }
+    SideHold::End(Box::new(ChatEvent::SessionError {
+        session_id: id.to_string(),
+        message: message.to_string(),
+        fatal: true,
+        needs_sign_in: false,
+    }))
+}
+
 // A replay hands back turns from before the fork, in the parent's modes; only
-// the session's own start is live.
+// the session's own start and its current options are live.
 fn live_event(lifecycle: &Lifecycle, id: &str, event: &ChatEvent) -> bool {
-    !lifecycle.replaying(id) || matches!(event, ChatEvent::SessionStarted { .. })
+    !lifecycle.replaying(id)
+        || matches!(
+            event,
+            ChatEvent::SessionStarted { .. } | ChatEvent::ConfigOptions { .. }
+        )
 }
 
 fn refuse_side_allow(session_id: &str, decision: PermissionDecision) -> Result<(), String> {
@@ -1535,6 +1582,9 @@ impl ChatHost {
             ChatCommand::SetMode { .. } if super::side::is_side(&session_id) => {
                 return Err(super::side::REFUSED.to_string())
             }
+            ChatCommand::SendTurn { .. } | ChatCommand::Steer { .. } if !super::side::may_send(&session_id) => {
+                return Err("This side chat is still switching to read-only mode.".to_string())
+            }
             ChatCommand::RespondPermission { decision, .. } => refuse_side_allow(&session_id, *decision)?,
             _ => {}
         }
@@ -1867,6 +1917,7 @@ mod tests {
         /// Whether a question or permission answered here was one it asked.
         owns_answers: bool,
         decisions: Arc<Mutex<Vec<(String, PermissionDecision)>>>,
+        options_set: Arc<Mutex<Vec<(String, ChatConfigValue)>>>,
     }
 
     impl AgentTransport for Puppet {
@@ -1917,7 +1968,8 @@ mod tests {
         fn set_model(&mut self, _model: &str, _effort: Option<String>) -> Result<(), String> {
             Ok(())
         }
-        fn set_config_option(&mut self, _id: &str, _v: &ChatConfigValue) -> Result<(), String> {
+        fn set_config_option(&mut self, id: &str, v: &ChatConfigValue) -> Result<(), String> {
+            lock(&self.options_set).push((id.to_string(), v.clone()));
             Ok(())
         }
         fn replay(&mut self) -> Result<bool, String> {
@@ -3687,7 +3739,7 @@ mod tests {
         let host = ChatHost::at(temp_store());
         let decisions = Arc::new(Mutex::new(Vec::new()));
         let seen = Collector::default();
-        crate::chat::side::mark("s-side", "s-parent", "plan");
+        crate::chat::side::mark("s-side", "s-parent", crate::chat::side::ReadOnly::Flag("plan"));
         let transport = Puppet {
             owns_answers: true,
             decisions: decisions.clone(),
@@ -3745,7 +3797,7 @@ mod tests {
         let host = ChatHost::at(temp_store());
         let closed = Arc::new(AtomicU32::new(0));
         let seen = Collector::default();
-        crate::chat::side::mark("s-loose", "s-parent", "plan");
+        crate::chat::side::mark("s-loose", "s-parent", crate::chat::side::ReadOnly::Flag("plan"));
         let transport = Puppet {
             closed: closed.clone(),
             ..Default::default()
@@ -3762,6 +3814,90 @@ mod tests {
             |e| matches!(e, ChatEvent::SessionError { fatal: true, message, .. } if message.contains("read-only"))
         ));
         assert!(!crate::chat::side::is_side("s-loose"));
+    }
+
+    fn mode_option(id: &str, current: &str) -> ChatEvent {
+        let choice = |value: &str| super::super::model::ChatConfigChoice {
+            value: value.into(),
+            label: value.into(),
+            description: String::new(),
+        };
+        ChatEvent::ConfigOptions {
+            session_id: id.to_string(),
+            options: vec![super::super::model::ChatConfigOption {
+                id: "mode".into(),
+                name: "Mode".into(),
+                description: String::new(),
+                category: "mode".into(),
+                disabled: false,
+                note: String::new(),
+                kind: ChatConfigKind::Select {
+                    current: current.into(),
+                    choices: vec![choice("agent"), choice("read-only")],
+                },
+            }],
+        }
+    }
+
+    #[test]
+    fn an_acp_side_chat_sends_nothing_until_read_only_is_confirmed_and_closes_when_it_leaves() {
+        let host = ChatHost::at(temp_store());
+        let closed = Arc::new(AtomicU32::new(0));
+        let options_set = Arc::new(Mutex::new(Vec::new()));
+        let seen = Collector::default();
+        crate::chat::side::mark("s-acp", "s-parent", crate::chat::side::ReadOnly::Option("read-only"));
+        let transport = Puppet {
+            closed: closed.clone(),
+            options_set: options_set.clone(),
+            ..Default::default()
+        };
+        host.spawn_plain("s-acp", "tab-acp", seen.emit(), spec("s-acp"), || Box::new(transport))
+            .unwrap();
+        let emit = host.emitter();
+        let text = || vec![ContentBlock::Text { text: "why?".into() }];
+
+        emit("s-acp", started("s-acp"));
+        emit("s-acp", mode_option("s-acp", "agent"));
+        assert!(host.is_live("s-acp"), "its opening mode is not a departure");
+        assert!(host.send("s-acp", text()).is_err());
+        assert!(wait_for(|| lock(&options_set).len() == 1));
+        assert_eq!(
+            lock(&options_set)[0],
+            ("mode".to_string(), ChatConfigValue::Value("read-only".into()))
+        );
+
+        emit("s-acp", mode_option("s-acp", "read-only"));
+        host.send("s-acp", text()).unwrap();
+
+        emit("s-acp", mode_option("s-acp", "agent"));
+        assert!(wait_for(|| closed.load(Ordering::SeqCst) == 1));
+        assert!(seen.events().iter().any(
+            |e| matches!(e, ChatEvent::SessionError { fatal: true, message, .. } if message.contains("read-only"))
+        ));
+        assert!(!crate::chat::side::is_side("s-acp"));
+    }
+
+    #[test]
+    fn an_acp_side_chat_whose_agent_offers_no_mode_is_closed() {
+        let host = ChatHost::at(temp_store());
+        let closed = Arc::new(AtomicU32::new(0));
+        crate::chat::side::mark("s-nomode", "s-parent", crate::chat::side::ReadOnly::Option("read-only"));
+        let transport = Puppet {
+            closed: closed.clone(),
+            ..Default::default()
+        };
+        host.spawn_plain("s-nomode", "tab-nomode", Box::new(|_| {}), spec("s-nomode"), || {
+            Box::new(transport)
+        })
+        .unwrap();
+        host.emitter()(
+            "s-nomode",
+            ChatEvent::ConfigOptions {
+                session_id: "s-nomode".into(),
+                options: Vec::new(),
+            },
+        );
+        assert!(wait_for(|| closed.load(Ordering::SeqCst) == 1));
     }
 
     fn waiting_ids(host: &ChatHost, id: &str) -> Vec<String> {

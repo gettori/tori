@@ -13,9 +13,8 @@ import {
 import type { DiffHunk } from "../../utils/diffHunks";
 import { liveChats } from "../../utils/chatSessions";
 import { checkpointClock } from "../../utils/syntheticTabs";
-import { chatTier } from "../../utils/chatCapabilities";
-import { findAdapter } from "../../utils/agents";
-import { catalogFor, ensureModelCatalogsLoaded } from "../../utils/modelCatalog";
+import { canFork } from "../../utils/agentForks";
+import { ensureModelCatalogsLoaded } from "../../utils/modelCatalog";
 import {
   askRefusal,
   CALLS_SHOWN,
@@ -106,14 +105,7 @@ function RangeClaim(props: { file: string; hunk: DiffHunk; range: ClaimRange; la
   );
 }
 
-// Claude forks by its transport, which Tori measured. An ACP agent forks only
-// if it said so on a handshake Tori has cached, since the verb is unstable in
-// the protocol and agents differ.
-function canFork(session: SessionLabel): boolean {
-  const transport = findAdapter(session.agent).chat?.transport;
-  if (chatTier(transport).rewind === "fork") return true;
-  return transport === "acp" && !!catalogFor(session.agent, session.profile)?.catalogue?.capabilities?.fork;
-}
+const forks = (session: SessionLabel) => canFork(session.agent, session.profile);
 
 const POLL_MS = 1500;
 const GIVE_UP_MS = 10 * 60 * 1000;
@@ -131,7 +123,7 @@ function AskWhy(props: { file: string; hunk: DiffHunk; range: ClaimRange; calls:
   onCleanup(() => clearInterval(timer));
   void ensureModelCatalogsLoaded();
 
-  const refusal = () => askRefusal(props.range.claim, canFork);
+  const refusal = () => askRefusal(props.range.claim, forks);
   const fork = () => {
     const a = asked();
     return a ? liveChats().find((c) => c.sessionId === a.forkId) : undefined;
