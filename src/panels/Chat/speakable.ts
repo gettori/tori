@@ -2,6 +2,7 @@
 // Markdown source: the rendered blocks are what the highlight has to land on,
 // and the lexer's tokens do not line up with them for lists, quotes and tables.
 import type { Chunk } from "../../utils/speech";
+import type { ChatItem } from "./chatStore";
 import styles from "./Chat.module.css";
 
 export const CODE_SKIPPED = "Code block skipped.";
@@ -54,4 +55,10 @@ export function speakableBlocks(root: Element): SpeakableBlock[] {
 
 export function speakableChunks(root: Element): Chunk[] {
   return speakableBlocks(root).map((b, block) => ({ text: b.text, block }));
+}
+
+export function lastReply(items: readonly ChatItem[], root: Element | undefined) {
+  const last = [...items].reverse().find((it) => it.kind === "text");
+  const body = last && root?.querySelector(`[data-reply="${CSS.escape(last.id)}"]`);
+  return last && body ? { id: last.id, body } : null;
 }

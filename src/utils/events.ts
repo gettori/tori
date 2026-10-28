@@ -75,6 +75,12 @@ export const NEXT_WAITING_SESSION = "tori:next-waiting-session";
 export const STOP_CHAT = "tori:stop-chat";
 export type StopChat = { sessionId: string | null };
 
+// Consumed by utils/readAloud.ts, which holds the speech store: `commands.ts`
+// cannot import it, for the terminal chunk's reason.
+export const READ_SELECTION = "tori:read-selection";
+export const READ_LAST_REPLY = "tori:read-last-reply";
+export const STOP_READING = "tori:stop-reading";
+
 // Payload-carrying event: open the omnibox, in the mode the prefix selects
 // (`""` files, `">"` actions, and the rest of `utils/omniboxModes.ts`). Consumed
 // by App.tsx, which owns the only signal behind it.

@@ -37,6 +37,9 @@ import {
   TAB_CYCLE,
   CLOSE_TAB,
   NEXT_WAITING_SESSION,
+  READ_LAST_REPLY,
+  READ_SELECTION,
+  STOP_READING,
   STOP_CHAT,
   type StopChat,
   OPEN_OMNIBOX,
@@ -177,7 +180,10 @@ export type Requirement =
    *  when unmet, since most projects never set one. */
   | "runCommand"
   | "runIdle"
-  | "runLive";
+  | "runLive"
+  | "heldSelection"
+  | "frontChat"
+  | "reading";
 
 export type Command = {
   id: string;
@@ -615,6 +621,27 @@ export const COMMANDS: Command[] = [
     // The palette lists every stoppable chat by name instead, which is the case
     // this binding deliberately refuses to guess at (see `chatToStop`).
     hidden: true,
+  },
+  {
+    id: "read-selection",
+    label: "Read Selection Aloud",
+    group: "session",
+    run: () => emit(READ_SELECTION),
+    requires: ["heldSelection"],
+  },
+  {
+    id: "read-last-reply",
+    label: "Read Last Reply Aloud",
+    group: "session",
+    run: () => emit(READ_LAST_REPLY),
+    requires: ["frontChat"],
+  },
+  {
+    id: "stop-reading",
+    label: "Stop Reading Aloud",
+    group: "session",
+    run: () => emit(STOP_READING),
+    requires: ["reading"],
   },
 
   // --- Editor -------------------------------------------------------------

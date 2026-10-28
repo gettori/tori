@@ -38,6 +38,8 @@ import { mentionPath } from "../../utils/pathScope";
 import FileIcon from "../../seti/FileIcon";
 import SymbolIcon from "../SymbolIcon/SymbolIcon";
 import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
+import { heldSelection } from "../SelectionToolbar/SelectionToolbar";
+import { frontReply, reading } from "../../utils/speech";
 import styles from "./Omnibox.module.css";
 
 /** How many project files the list holds. Past this the scroll bar is a hint
@@ -124,6 +126,12 @@ function unmetReason(req: Requirement): string | null {
       const state = runAt(frontWorktree() ?? "")?.state;
       return state === "running" ? null : state === "stopping" ? "Stopping" : "Nothing is running here";
     }
+    case "heldSelection":
+      return heldSelection() ? null : "Nothing selected";
+    case "frontChat":
+      return frontReply() ? null : "No chat in front";
+    case "reading":
+      return reading() ? null : "Nothing is being read";
   }
 }
 
@@ -141,6 +149,7 @@ const HIDES_WHEN_UNMET = new Set<Requirement>([
   "implementationProvider",
   "typeDefinitionProvider",
   "runCommand",
+  "heldSelection",
 ]);
 
 /** Whether a command should not be listed at all right now. */

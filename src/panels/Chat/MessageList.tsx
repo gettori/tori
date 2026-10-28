@@ -256,7 +256,7 @@ function ReplyText(props: {
           />
         )}
       </Show>
-      <div ref={body} class={styles.assistant}>
+      <div ref={body} class={styles.assistant} data-reply={props.id}>
         <Markdown text={props.text} cwd={props.cwd} onRendered={() => setRenders((n) => n + 1)} />
       </div>
     </div>

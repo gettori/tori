@@ -28,6 +28,8 @@ import ConfirmDialog, { type ConfirmReq } from "./components/Dialogs/ConfirmDial
 import Checkbox from "./components/Checkbox/Checkbox";
 import ToastRegion from "./components/Toasts/Toasts";
 import ReadingChip from "./components/ReadingChip/ReadingChip";
+import { holdSelection } from "./components/SelectionToolbar/SelectionToolbar";
+import { watchReadAloud } from "./utils/readAloud";
 import type { GitReport } from "./utils/gitHealth";
 import Settings from "./panels/Settings/Settings";
 import ProjectSettingsDialog from "./panels/ProjectSettings/ProjectSettingsDialog";
@@ -369,6 +371,7 @@ function App() {
   const [bodyW, setBodyW] = createSignal(window.innerWidth);
   const [bodyH, setBodyH] = createSignal(window.innerHeight);
   onMount(watchInbox);
+  onMount(watchReadAloud);
   onMount(watchNeedsYou);
   onMount(watchPermissions);
   onMount(watchDigest);
@@ -966,7 +969,10 @@ function App() {
     // The same hold for the menu bar's routes to these, which never pass
     // through the keydown above.
     offOmnibox = onEventWith<OpenOmnibox>(OPEN_OMNIBOX, ({ prefix }) => {
-      if (!firstRunOpen()) setOmnibox({ prefix });
+      if (firstRunOpen()) return;
+      // Before the box takes focus, which moves the selection into its input.
+      holdSelection();
+      setOmnibox({ prefix });
     });
     offShortcuts = onEvent(TOGGLE_SHORTCUTS, () => {
       if (!firstRunOpen()) setShortcutsOpen((open) => !open);

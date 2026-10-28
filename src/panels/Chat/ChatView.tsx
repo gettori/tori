@@ -232,8 +232,8 @@ import { UNATTRIBUTED_NOTICE } from "../../utils/attribution";
 import { BLOCKED_REASON, sendWithProbeGate, type SendResult } from "../../utils/safeSend";
 import { REWIND_BANNER, REWIND_CAVEAT, rewindSeed } from "./rewind";
 import { CaptainsCall, ReplyMark } from "../../components/Autopilot/ShellParts";
-import { read, readSelection, readingBlockOf } from "../../utils/speech";
-import { speakableChunks } from "./speakable";
+import { offerLastReply, read, readSelection, readingBlockOf } from "../../utils/speech";
+import { lastReply, speakableChunks } from "./speakable";
 import styles from "./Chat.module.css";
 
 /** `SpawnResult` from `chat/commands.rs`. A refusal is a normal answer, not an
@@ -529,6 +529,23 @@ export default function ChatView(props: {
   const shownItems = createMemo(() =>
     visibleItems(state.items, settings.chatDefaults.showToriHooks, state.selectedLane),
   );
+
+  // The palette's Read Last Reply reads the chat in front. The row's rendered
+  // text is what is read, so a reply the window has not drawn has nothing to
+  // offer.
+  createEffect(() => {
+    if (!props.active) return;
+    onCleanup(
+      offerLastReply(() => {
+        const last = lastReply(shownItems(), transcriptEl);
+        if (!last) {
+          emitWith<ToastEvent>(TOAST, { message: "There is no reply on screen to read.", kind: "info" });
+          return;
+        }
+        void read(speakableChunks(last.body), `${props.sessionId}:${last.id}`);
+      }),
+    );
+  });
 
   /** The lane being read, by name, for the composer's placeholder. */
   const watchedLane = () => {
