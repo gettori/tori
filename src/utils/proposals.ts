@@ -1,10 +1,12 @@
 // A repo's `.tori/project.json` for a worktree, and the user's answer to it.
 // Rust owns the answer; this asks for it, raises one toast per proposal, and
 // holds the proposal the Review dialog is showing.
-import { createSignal } from "solid-js";
+import { createResource, createSignal, onCleanup, onMount } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 import { emitWith, TOAST, type ToastEvent } from "./events";
+import type { SpaceProject } from "./topicMembers";
 
 export type ProposalValues = {
   setupCommand?: string;
@@ -37,6 +39,56 @@ function toastError(e: unknown) {
 
 export function proposalFor(worktree: string): Promise<Proposal> {
   return invoke<Proposal>("proposal_for", { worktree });
+}
+
+export type Answered = { worktree: string; proposal: Proposal };
+
+export const projectFolders = (project: SpaceProject) => [
+  ...new Set([project.path, ...(project.branchUnits ?? []).map((u) => u.folderPath)]),
+];
+
+export function createProposals(project: () => SpaceProject) {
+  const [answered, { refetch }] = createResource(
+    () => projectFolders(project()),
+    async (paths) => {
+      const answers = await Promise.all(
+        paths.map((worktree) =>
+          proposalFor(worktree).then(
+            (proposal): Answered => ({ worktree, proposal }),
+            (e) => {
+              console.warn("proposal_for failed", worktree, e);
+              return null;
+            },
+          ),
+        ),
+      );
+      return answers.filter((a): a is Answered => a !== null);
+    },
+  );
+  onMount(() => {
+    const off = listen("proposals://changed", () => void refetch());
+    onCleanup(() => void off.then((stop) => stop()));
+  });
+  return answered;
+}
+
+export type RepoValue<T> = { value: T; worktrees: string[] };
+
+export function repoValues<K extends keyof ProposalValues>(
+  answered: readonly Answered[] | undefined,
+  key: K,
+): RepoValue<NonNullable<ProposalValues[K]>>[] {
+  const byValue = new Map<string, RepoValue<NonNullable<ProposalValues[K]>>>();
+  for (const { worktree, proposal } of answered ?? []) {
+    if (proposal.state !== "accepted") continue;
+    const value = proposal.values[key];
+    if (value === undefined || (Array.isArray(value) && !value.length)) continue;
+    const id = JSON.stringify(value);
+    const seen = byValue.get(id);
+    if (seen) seen.worktrees.push(worktree);
+    else byValue.set(id, { value: value as NonNullable<ProposalValues[K]>, worktrees: [worktree] });
+  }
+  return [...byValue.values()];
 }
 
 export async function openReview(worktree: string): Promise<void> {

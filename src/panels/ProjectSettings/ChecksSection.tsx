@@ -2,8 +2,10 @@ import { createEffect, createMemo, createResource, createSignal, on, Show } from
 
 import Button from "../../components/Button/Button";
 import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
+import { repoValues, type Answered } from "../../utils/proposals";
 import { builtInChecks, projectChecks, setProjectChecks } from "../../utils/verification";
 import { settings } from "../Settings/settingsStore";
+import RepoValues from "./RepoValues";
 import { Section } from "./Section";
 import styles from "./ProjectSettingsDialog.module.css";
 
@@ -23,7 +25,11 @@ const lines = (text: string) =>
  * only refills the field; like any edit it waits for Save, and saving the
  * built-in list as it is removes the project's own instead of copying it.
  */
-export default function ChecksSection(props: { projectPath: string; onDirty?: (dirty: boolean) => void }) {
+export default function ChecksSection(props: {
+  projectPath: string;
+  answered?: Answered[];
+  onDirty?: (dirty: boolean) => void;
+}) {
   const [inForce, setInForce] = createSignal<string[]>([]);
   const [text, setText] = createSignal("");
   const [busy, setBusy] = createSignal(false);
@@ -47,13 +53,19 @@ export default function ChecksSection(props: { projectPath: string; onDirty?: (d
   );
 
   const own = () => !!settings.verification.commands[props.projectPath]?.length;
+  const repo = () => repoValues(props.answered, "checks");
   const draft = () => lines(text());
   const dirty = () => draft().join("\n") !== inForce().join("\n");
   const isBuiltIn = () => draft().join("\n") === (builtIn() ?? []).join("\n");
   createEffect(() => props.onDirty?.(dirty()));
 
   const status = () => {
-    if (!dirty()) return own() ? "This project uses its own list." : "This project uses the built-in list.";
+    if (!dirty()) {
+      if (own()) return "This project uses its own list.";
+      return repo().length
+        ? "Worktrees with an accepted repo list use it, the rest the built-in one."
+        : "This project uses the built-in list.";
+    }
     return isBuiltIn()
       ? "Unsaved. Saving goes back to the built-in list."
       : "Unsaved. Saving makes this the project's own list.";
@@ -80,6 +92,7 @@ export default function ChecksSection(props: { projectPath: string; onDirty?: (d
           One command per line. A turn that changed code is verified when the last of these it ran after its last edit
           passed. A command matches with any arguments after it, and through wrappers like npx or uv run.
         </p>
+        <RepoValues values={repo()} overridden={own()} show={(list) => list.join(", ")} />
         <textarea
           class={styles.textarea}
           classList={{ [styles.textareaDirty]: dirty() }}
