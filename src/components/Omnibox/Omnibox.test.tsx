@@ -414,6 +414,34 @@ describe("the empty box's recent blocks", () => {
 });
 
 describe("> - actions", () => {
+  it("offers Read Selection Aloud only for a selection held when the box opened", async () => {
+    const { holdSelection } = await import("../SelectionToolbar/SelectionToolbar");
+    const page = render(() => (
+      <div>
+        <p>a transcript line</p>
+        <textarea aria-label="Composer">a draft</textarea>
+      </div>
+    ));
+    const hold = (node: Node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      document.getSelection()!.removeAllRanges();
+      document.getSelection()!.addRange(range);
+      holdSelection();
+    };
+    const offered = () => rowLabels().includes("Read Selection Aloud");
+
+    hold(page.getByLabelText("Composer"));
+    open(">");
+    expect(offered()).toBe(false);
+    mounted?.unmount();
+
+    hold(page.getByText("a transcript line"));
+    open(">");
+    expect(offered()).toBe(true);
+    document.getSelection()!.removeAllRanges();
+  });
+
   it("lists no sessions, live or resumable", () => {
     // A chat mid-turn: live, named, and in the selected folder, which is exactly
     // what the old palette listed at the top as a "Focus" row.
