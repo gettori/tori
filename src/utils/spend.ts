@@ -2,6 +2,7 @@
 // money (ACP) still counts turns, and "12 turns" is the honest figure for it;
 // "$0.00" would read as free.
 import type { SessionUsage } from "./chatUsageStore";
+import type { Projection } from "../components/Autopilot/autopilot";
 
 export type SpendView = { text: string; says: string };
 
@@ -17,5 +18,19 @@ export function spendView(usage: SessionUsage | null | undefined, what: string):
   return {
     text: plural(usage.turns, "turn"),
     says: `${plural(usage.turns, "turn")} on ${what}, no cost reported: this agent reports context, not dollars`,
+  };
+}
+
+export function projectionView(projection: Projection): SpendView {
+  if (projection.usd === undefined) {
+    return {
+      text: "no history yet",
+      says: `A projection shows once enough items this size have finished in this project, ${projection.samples} so far`,
+    };
+  }
+  const dollars = `$${projection.usd.toFixed(2)}`;
+  return {
+    text: `~${dollars}`,
+    says: `Items this size in this project cost ${dollars} at the median, across ${plural(projection.samples, "finished item")}`,
   };
 }

@@ -18,7 +18,7 @@ pub const ASSIGNED_CAP: u32 = 50;
 
 const ASSIGNED: &str = "query($issues: String!, $reviews: String!, $first: Int!) {
   issues: search(query: $issues, type: ISSUE, first: $first) {
-    nodes { ... on Issue { number title url repository { nameWithOwner } } }
+    nodes { ... on Issue { number title body url repository { nameWithOwner } } }
   }
   reviews: search(query: $reviews, type: ISSUE, first: $first) {
     nodes { ... on PullRequest { number title url repository { nameWithOwner } author { login } headRefOid } }
@@ -27,7 +27,7 @@ const ASSIGNED: &str = "query($issues: String!, $reviews: String!, $first: Int!)
 
 const MATCHING: &str = "query($issues: String!, $first: Int!) {
   issues: search(query: $issues, type: ISSUE, first: $first) {
-    nodes { ... on Issue { number title url repository { nameWithOwner } } }
+    nodes { ... on Issue { number title body url repository { nameWithOwner } } }
   }
 }";
 
@@ -123,6 +123,7 @@ fn refs_from(data: &Value, alias: &str, kind: IssueKind, origin: &RepoRef) -> Ve
                 kind,
                 author: n.pointer("/author/login").and_then(Value::as_str).map(str::to_string),
                 head_sha: n.get("headRefOid").and_then(Value::as_str).map(str::to_string),
+                body_len: n.get("body").and_then(Value::as_str).map(|b| b.chars().count()),
             })
         })
         .collect()

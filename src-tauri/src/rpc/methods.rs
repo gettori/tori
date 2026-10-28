@@ -2558,13 +2558,20 @@ impl Backend for DaemonBackend {
         Ok(json!({ "project": project, "queued": queued, "skipped": looped.skipped, "autopilot": running }))
     }
 
-    fn autopilot_item_update(&self, principal: &Principal, params: ItemUpdateParams) -> Result<Value, RpcError> {
+    fn autopilot_item_update(&self, principal: &Principal, mut params: ItemUpdateParams) -> Result<Value, RpcError> {
         let project = match params.id {
             Some(_) => params.project.clone(),
             None => Some(self.project(principal, params.project.clone())?),
         };
         let origin = project.as_deref().map(origin_of).unwrap_or_default();
-        params.apply(&self.autopilot, project, origin)
+        let target = params.target(project, origin)?;
+        let body_len = self.autopilot.new_issue_item(&target).and_then(|(project, key)| {
+            crate::issues::commands::get(project, key)
+                .inspect_err(|e| eprintln!("tori: {key} has no projection, its body was not read: {e}"))
+                .ok()
+                .map(|issue| issue.body.chars().count())
+        });
+        params.apply(&self.autopilot, target, body_len)
     }
 
     fn autopilot_project_set(&self, principal: &Principal, params: ProjectSetParams) -> Result<Value, RpcError> {
