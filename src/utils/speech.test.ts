@@ -16,6 +16,12 @@ vi.mock("@tauri-apps/api/event", () => ({
   },
 }));
 
+const askToDownload = vi.fn();
+vi.mock("./voiceDownload", () => ({
+  askToDownload: (then: unknown) => askToDownload(then),
+  dropPending: () => {},
+}));
+
 const speechSettings = vi.hoisted(() => ({ speech: { rate: 1, voice: null as string | null } }));
 const saveSettings = vi.hoisted(() => vi.fn(async (_s: unknown) => {}));
 vi.mock("../panels/Settings/settingsStore", () => ({ settings: speechSettings, saveSettings }));
@@ -96,12 +102,12 @@ describe("speech", () => {
   });
 
   it("goes idle and toasts when the engine refuses", async () => {
-    speak.mockRejectedValueOnce("No voice is downloaded");
+    speak.mockRejectedValueOnce("no audio output");
     await read([{ text: "one" }], "r1");
     expect(reading()).toBeNull();
     expect(emitWith).toHaveBeenCalledWith(
       "toast",
-      expect.objectContaining({ kind: "error", message: expect.stringContaining("No voice is downloaded") }),
+      expect.objectContaining({ kind: "error", message: expect.stringContaining("no audio output") }),
     );
   });
 
@@ -122,7 +128,7 @@ describe("speech", () => {
   });
 
   it("previews a voice, naming the preview when it fails", async () => {
-    speak.mockRejectedValueOnce("No voice is downloaded");
+    speak.mockRejectedValueOnce({ kind: "notDownloaded" });
     await preview("am_michael", "a sample");
     expect(calls()[0]).toMatchObject({ chunks: ["a sample"], voice: "am_michael" });
     expect(emitWith).toHaveBeenCalledWith(

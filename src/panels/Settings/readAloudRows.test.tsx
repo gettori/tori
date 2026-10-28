@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, fireEvent } from "@solidjs/testing-library";
+import { render, screen, fireEvent, within } from "@solidjs/testing-library";
 
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
@@ -10,6 +10,8 @@ import ChatPane from "./panes/ChatPane/ChatPane";
 import { loadWorkspaceSettings, settings } from "./settingsStore";
 import { unstubbed } from "../../test/settingsBackend";
 
+const voice = { installed: true };
+
 const VOICES = [
   { id: "af_heart", name: "Heart", language: "en-US" },
   { id: "am_michael", name: "Michael", language: "en-US" },
@@ -17,9 +19,18 @@ const VOICES = [
 ];
 
 beforeEach(async () => {
+  voice.installed = true;
   invoke.mockReset();
   invoke.mockImplementation(async (cmd: string, args: Record<string, unknown>) => {
     if (cmd === "set_settings") return args.settings;
+    if (cmd === "speech_status")
+      return {
+        installed: voice.installed,
+        model: voice.installed ? "int8" : null,
+        downloading: null,
+        sizes: [{ id: "int8", bytes: 106_987_333 }],
+      };
+    if (cmd === "speech_delete") voice.installed = false;
     if (cmd === "speech_voices") return VOICES;
     if (cmd === "speech_speak") return 1;
     return unstubbed(cmd);
@@ -60,5 +71,20 @@ describe("the Read aloud settings group", () => {
   it("says the chip's speed is this same setting", () => {
     render(() => <ChatPane {...paneProps} />);
     expect(screen.getByText(/The speed on the reading chip changes this same setting/)).toBeTruthy();
+  });
+
+  it("shows the downloaded size with Delete, and offers Download once it is gone", async () => {
+    render(() => <ChatPane {...paneProps} />);
+    expect(await screen.findByText("Smaller, 107 MB")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    const confirm = await screen.findByRole("dialog");
+    expect(invoke).not.toHaveBeenCalledWith("speech_delete");
+    fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
+    await macrotask();
+    expect(invoke).toHaveBeenCalledWith("speech_delete");
+    expect(await screen.findByText("Not downloaded")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Download" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Hear this voice" })).toBeNull();
   });
 });
