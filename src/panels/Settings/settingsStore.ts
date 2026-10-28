@@ -355,6 +355,8 @@ export type Settings = {
   verification: { enabled: boolean; commands: Record<string, string[]> };
   /** Mirrors `ConflictRadar` in src-tauri/src/settings.rs. */
   conflictRadar: { enabled: boolean };
+  /** Mirrors `Speech` in src-tauri/src/settings.rs. A null voice is the system's own. */
+  speech: { rate: number; voice: string | null };
   /** Mirrors `ReviewRule` in src-tauri/src/settings.rs, keyed by project path. */
   reviewRequested?: Record<string, ReviewRule>;
   /** Mirrors `PrRule` in src-tauri/src/settings.rs, keyed by project path. */
@@ -535,6 +537,7 @@ export const DEFAULT_SETTINGS: Settings = {
   blindEdits: { enabled: true },
   verification: { enabled: true, commands: {} },
   conflictRadar: { enabled: true },
+  speech: { rate: 1, voice: null },
   reviewRequested: {},
   prRules: {},
   execution: {},

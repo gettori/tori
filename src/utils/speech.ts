@@ -4,6 +4,7 @@
 import { createSignal } from "solid-js";
 import {
   MAX_TEXT_LENGTH,
+  getVoices,
   isTtsError,
   onSpeechEvent,
   speak,
@@ -11,6 +12,7 @@ import {
   type SpeechEvent,
 } from "tauri-plugin-tts-api";
 import { emitWith, TOAST, type ToastEvent } from "./events";
+import { settings } from "../panels/Settings/settingsStore";
 
 export type Chunk = { text: string; block?: number };
 
@@ -71,6 +73,15 @@ function listen() {
   return listening;
 }
 
+// Checked rather than handed over: the plugin answers an unknown voice by
+// keeping whichever one it last spoke in, not the system's. A list that cannot
+// be read is no evidence the voice is gone, so it is kept.
+async function installed(voice: string | null): Promise<string | undefined> {
+  if (!voice) return undefined;
+  const voices = await getVoices().catch(() => null);
+  return !voices || voices.some((v) => v.id === voice) ? voice : undefined;
+}
+
 const bytes = (text: string) => new TextEncoder().encode(text).length;
 
 function hardSplit(text: string, cap: number): string[] {
@@ -125,9 +136,11 @@ export function read(chunks: Chunk[], from: string): Promise<unknown> {
   return enqueue(async () => {
     try {
       await listen();
+      const { rate, voice } = settings.speech;
+      const voiceId = await installed(voice);
       for (const [i, part] of next.entries()) {
         if (mine !== generation) return;
-        const res = await speak({ text: part.text, queueMode: i === 0 ? "flush" : "add" });
+        const res = await speak({ text: part.text, queueMode: i === 0 ? "flush" : "add", rate, voiceId });
         if (res.utteranceId && mine === generation) utterances.set(res.utteranceId, i);
       }
     } catch (e) {
