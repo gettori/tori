@@ -27,7 +27,7 @@ use super::server::{
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
 use crate::accounts::DEFAULT_PROFILE_ID;
-use crate::autopilot::{AutopilotStore, Contract, Observed};
+use crate::autopilot::{AutopilotStore, Contract, Item, Observed, Source};
 use crate::chat::commands::{history_source, read_history, read_with_prompts, HistorySource};
 use crate::chat::host::{Levers, Waiting};
 use crate::chat::model::{cap_output, ChatEvent, ContentBlock, PermissionMode};
@@ -528,6 +528,25 @@ fn web_ref(key: &str, kinds: &[&str]) -> Option<(String, String)> {
     };
     number.parse::<u64>().ok()?;
     repo.contains('/').then(|| (repo.to_lowercase(), number.to_string()))
+}
+
+fn issue_spend(items: &[Item], key: &str, project: &str) -> crate::chat::usage::SessionUsage {
+    let origin = origin_of(project);
+    let store = crate::issues::store::IssueStore::load();
+    let branches = store
+        .for_repo(project)
+        .into_iter()
+        .flatten()
+        .filter(|(_, linked)| crate::issues::canonical_key(&linked.key, &origin) == key)
+        .map(|(branch, _)| branch.clone())
+        .collect();
+    let worked = items
+        .iter()
+        .filter(|i| matches!(&i.source, Source::Issue { key: k, project: p } if k == key && p == project))
+        .map(|i| i.id.clone())
+        .collect();
+    let repo = crate::exec::common_dir(project).to_string_lossy().into_owned();
+    crate::chat::usage::with_index(|index| crate::chat::usage::issue_total(index, &repo, &branches, &worked))
 }
 
 // `owner/name` of a project's origin, empty where it has none git can read.
@@ -2096,11 +2115,42 @@ impl Backend for DaemonBackend {
                 .shown(agent, account.as_deref().filter(|a| *a != DEFAULT_PROFILE_ID))),
             None => Value::Null,
         };
+        let (item, issue) = match params.item {
+            Some(item) => {
+                let items = self.autopilot.items();
+                let Some(found) = items.iter().find(|i| i.id == item) else {
+                    return Err(RpcError::new(INVALID_PARAMS, format!("no autopilot item {item}")));
+                };
+                let spend = crate::chat::usage::with_index(|index| crate::chat::usage::item_total(index, &item));
+                let issue = match &found.source {
+                    Source::Issue { key, project } => json!({ "key": key, "spend": issue_spend(&items, key, project) }),
+                    _ => Value::Null,
+                };
+                (json!({ "id": item, "spend": spend }), issue)
+            }
+            None => (Value::Null, Value::Null),
+        };
+        let pr = match params.pr {
+            Some(key) => {
+                let (project, number) = self.pr_target(principal, key, None)?;
+                let branch = crate::forge::commands::pull_request(&project, number)
+                    .map_err(forge_refused)?
+                    .head_ref;
+                let repo = crate::exec::common_dir(&project).to_string_lossy().into_owned();
+                let spend =
+                    crate::chat::usage::with_index(|index| crate::chat::usage::branch_total(index, &repo, &branch));
+                json!({ "number": number, "branch": branch, "spend": spend })
+            }
+            None => Value::Null,
+        };
         Ok(json!({
             "id": id,
             "folder": folder,
             "session": session,
             "project": crate::chat::usage::project_total(&file),
+            "item": item,
+            "issue": issue,
+            "pr": pr,
             "budgets": crate::settings::get_settings().budgets,
             "agent": agent,
             "account": account,

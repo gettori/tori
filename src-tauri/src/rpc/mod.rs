@@ -93,6 +93,12 @@ pub(crate) fn office() -> Option<&'static Arc<office::Office>> {
     OFFICE.get()
 }
 
+// A reviewer is a session of its own, so the item it serves is its parent's.
+pub(crate) fn item_for_spend(session: &str) -> Option<String> {
+    let owner = crate::chat::usage::parent_of(session);
+    OFFICE.get().and_then(|office| office.item_for_session(&owner))
+}
+
 pub(crate) fn rate_limit_heard(session: &str, event: &crate::chat::model::ChatEvent) {
     if let Some(office) = OFFICE.get() {
         office.rate_limit(session, event);
