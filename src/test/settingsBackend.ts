@@ -5,6 +5,9 @@
 // in a resource, outside any test, and fails the run without failing a test.
 import { DEFAULT_SETTINGS } from "../panels/Settings/settingsStore";
 
-const LISTS = new Set(["lsp_health", "trusted_projects", "untrusted_projects"]);
+const LISTS = new Set(["lsp_health", "trusted_projects", "untrusted_projects", "speech_voices"]);
 
-export const unstubbed = (cmd: string): unknown => (LISTS.has(cmd) ? [] : DEFAULT_SETTINGS);
+const NO_VOICE = { installed: false, model: null, downloading: null, sizes: [] };
+
+export const unstubbed = (cmd: string): unknown =>
+  cmd === "speech_status" ? NO_VOICE : LISTS.has(cmd) ? [] : DEFAULT_SETTINGS;

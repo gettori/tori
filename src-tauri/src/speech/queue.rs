@@ -40,19 +40,33 @@ pub struct Models<V> {
     load: Loader<V>,
     loaded: Option<V>,
     used: Instant,
+    model_generation: Arc<AtomicU64>,
+    seen: u64,
 }
 
 impl<V> Models<V> {
-    pub fn new(load: Loader<V>) -> Self {
+    pub fn new(load: Loader<V>, model_generation: Arc<AtomicU64>) -> Self {
+        let seen = model_generation.load(Ordering::SeqCst);
         Models {
             load,
             loaded: None,
             used: Instant::now(),
+            model_generation,
+            seen,
+        }
+    }
+
+    fn forget_replaced(&mut self) {
+        let now = self.model_generation.load(Ordering::SeqCst);
+        if now != self.seen {
+            self.seen = now;
+            self.loaded = None;
         }
     }
 
     pub fn get(&mut self, now: Instant) -> Result<&mut V, String> {
         self.used = now;
+        self.forget_replaced();
         if self.loaded.is_none() {
             self.loaded = Some((self.load)()?);
         }
@@ -60,6 +74,7 @@ impl<V> Models<V> {
     }
 
     pub fn sweep(&mut self, now: Instant) {
+        self.forget_replaced();
         if now.saturating_duration_since(self.used) >= IDLE {
             self.loaded = None;
         }
@@ -343,7 +358,7 @@ mod tests {
         let synthesised = Arc::new(Mutex::new(Vec::new()));
         let events = Arc::new(Mutex::new(Vec::new()));
         let voice = synthesised.clone();
-        let models = Models::new(Box::new(move || Ok(FakeVoice(voice.clone()))));
+        let models = Models::new(Box::new(move || Ok(FakeVoice(voice.clone()))), Default::default());
         let log = events.clone();
         let emit: Emit = Arc::new(move |e| log.lock().unwrap().push(e));
         let engine = Engine::start(models, out.clone(), emit, Duration::from_millis(10));
@@ -456,10 +471,13 @@ mod tests {
     fn the_model_is_dropped_after_five_idle_minutes_and_loaded_again_on_use() {
         let loads = Arc::new(AtomicU64::new(0));
         let counter = loads.clone();
-        let mut models = Models::new(Box::new(move || {
-            counter.fetch_add(1, Ordering::SeqCst);
-            Ok(())
-        }));
+        let mut models = Models::new(
+            Box::new(move || {
+                counter.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }),
+            Default::default(),
+        );
         let t0 = Instant::now();
         models.get(t0).unwrap();
         models.sweep(t0 + IDLE - Duration::from_secs(1));

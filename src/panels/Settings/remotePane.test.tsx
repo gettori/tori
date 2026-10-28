@@ -10,6 +10,7 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) })
 
 import Settings from "./Settings";
 import { DEFAULT_SETTINGS, loadSettings } from "./settingsStore";
+import { unstubbed } from "../../test/settingsBackend";
 
 beforeEach(async () => {
   // What `remote_set` saved is what the next `get_settings` reads, as on disk.
@@ -23,6 +24,7 @@ beforeEach(async () => {
       return { state: "listening", url: "ws://100.101.7.9:47821" };
     }
     if (cmd === "get_settings") return { ...DEFAULT_SETTINGS, remote: stored };
+    if (cmd === "speech_status") return unstubbed(cmd);
     return null;
   });
   await loadSettings();

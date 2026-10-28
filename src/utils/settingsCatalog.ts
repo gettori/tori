@@ -713,6 +713,12 @@ export const SETTINGS: SettingEntry[] = [
     hint: "A claude chat that stopped on a usage limit continues by itself once the limit resets.",
   },
   {
+    id: "read-aloud-model",
+    section: "chat",
+    label: "Voice size",
+    hint: "The voice Read aloud downloads. Smaller loads faster, larger is a little clearer. Change swaps one for the other.",
+  },
+  {
     id: "read-aloud-voice",
     section: "chat",
     label: "Voice",
