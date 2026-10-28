@@ -1,8 +1,17 @@
 import { describe, it, expect } from "vite-plus/test";
-import { lastReplies, planAsReply, withSide, withoutSide, type Drawer } from "./sideChats";
+import { lastReplies, planAsReply, sideChatOffered, withSide, withoutSide, type Drawer } from "./sideChats";
 import type { ChatItem, ToolItem } from "./chatStore";
 
 const side = (n: number) => ({ tabId: `side:${n}`, sessionId: `s${n}` });
+
+describe("offering a side chat", () => {
+  it("needs both a known read-only mode and a fork", () => {
+    const readOnly = ["claude", "codex"];
+    expect(sideChatOffered(readOnly, "codex", true)).toBe(true);
+    expect(sideChatOffered(readOnly, "codex", false)).toBe(false);
+    expect(sideChatOffered(readOnly, "opencode", true)).toBe(false);
+  });
+});
 
 describe("the side drawer", () => {
   it("opens a side chat as the active tab", () => {

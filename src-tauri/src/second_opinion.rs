@@ -16,6 +16,7 @@ use crate::chat::host::ChatHost;
 use crate::chat::model::{
     ChatConfigKind, ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionScope,
 };
+use crate::chat::side::{read_only, ReadOnly};
 use crate::checkpoint::CheckpointFile;
 use crate::rpc::events::{EndReason, TurnBy};
 use crate::sessions::SessionIndex;
@@ -43,25 +44,6 @@ const LOCKFILES: &[&str] = &[
 
 const DENIED: &str = "A second opinion is read-only. Do not act; finish the review in plain text.";
 const NO_ANSWER: &str = "Nobody is here to answer. Finish the review with what you have.";
-
-/// How each reviewer agent is held to reading. An agent missing here has no
-/// mode Tori can confirm as read-only, so it cannot review.
-#[derive(Clone, Copy)]
-enum ReadOnly {
-    /// A launch flag, confirmed from the mode the session reports it started in.
-    Flag(&'static str),
-    /// A `mode` config option, set and confirmed before the brief goes out.
-    Option(&'static str),
-}
-
-const REVIEWERS: &[(&str, ReadOnly)] = &[
-    ("claude", ReadOnly::Flag("plan")),
-    ("codex", ReadOnly::Option("read-only")),
-];
-
-fn read_only(agent: &str) -> Option<ReadOnly> {
-    REVIEWERS.iter().find(|(id, _)| *id == agent).map(|(_, how)| *how)
-}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -148,7 +130,7 @@ fn running(id: &str) -> bool {
 /// The agents a second opinion can run on.
 #[tauri::command]
 pub fn second_opinion_reviewers() -> Vec<String> {
-    REVIEWERS.iter().map(|(id, _)| (*id).to_string()).collect()
+    crate::chat::side::read_only_agents()
 }
 
 /// The sessions with a second opinion running now.

@@ -4,6 +4,7 @@ import { createSignal } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import { invoke } from "@tauri-apps/api/core";
 import type { ChatItem, ToolItem, TurnRecord } from "./chatStore";
+import { canFork } from "../../utils/agentForks";
 
 export type SideChat = { tabId: string; sessionId: string };
 export type Drawer = { sides: SideChat[]; active: string | null };
@@ -15,8 +16,12 @@ void invoke<string[]>("chat_side_agents")
   .then((ids) => setSideAgents(Array.isArray(ids) ? ids : []))
   .catch(() => {});
 
-export function canSideChat(agentId: string): boolean {
-  return sideAgents().includes(agentId);
+export function sideChatOffered(readOnly: readonly string[], agentId: string, forks: boolean): boolean {
+  return forks && readOnly.includes(agentId);
+}
+
+export function canSideChat(agentId: string, profile: string | null): boolean {
+  return sideChatOffered(sideAgents(), agentId, canFork(agentId, profile));
 }
 
 export function withSide(drawer: Drawer, side: SideChat): Drawer {

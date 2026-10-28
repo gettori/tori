@@ -2138,7 +2138,7 @@ pub mod tests {
     #[test]
     fn a_side_chat_may_only_call_a_read_only_method() {
         let server = stub_server();
-        crate::chat::side::mark("side-rpc", "parent-rpc", "plan");
+        crate::chat::side::mark("side-rpc", "parent-rpc", crate::chat::side::ReadOnly::Flag("plan"));
         let side = Principal::Session(Caller::Chat("side-rpc".into()));
         for (method, params) in [
             ("checkpoint.revert", json!({"id": "s1", "turn": 1})),

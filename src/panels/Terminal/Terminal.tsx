@@ -2711,7 +2711,7 @@ export default function Terminal(props: {
             rewindTo={t.rewindTo}
             background={t.background}
             spawner={t.spawner}
-            onSideChat={canSideChat(t.program) ? () => openSide(t.id) : undefined}
+            onSideChat={canSideChat(t.program, t.profile ?? null) ? () => openSide(t.id) : undefined}
           />
         </div>
         <SideDrawer
