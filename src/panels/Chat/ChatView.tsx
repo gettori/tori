@@ -232,6 +232,8 @@ import { UNATTRIBUTED_NOTICE } from "../../utils/attribution";
 import { BLOCKED_REASON, sendWithProbeGate, type SendResult } from "../../utils/safeSend";
 import { REWIND_BANNER, REWIND_CAVEAT, rewindSeed } from "./rewind";
 import { CaptainsCall, ReplyMark } from "../../components/Autopilot/ShellParts";
+import { read } from "../../utils/speech";
+import { speakableChunks } from "./speakable";
 import styles from "./Chat.module.css";
 
 /** `SpawnResult` from `chat/commands.rs`. A refusal is a normal answer, not an
@@ -2520,6 +2522,7 @@ export default function ChatView(props: {
           blockedIn={blockedIn}
           onOpenLane={(agentId) => edit((s) => selectLane(s, agentId))}
           onRewind={onRewind}
+          onRead={(body, itemId) => void read(speakableChunks(body), `${props.sessionId}:${itemId}`)}
           replyMark={props.cockpit ? ReplyMark : undefined}
           collapseWork={settings.chatDefaults.collapseWork}
           showSecrets={settings.secretWatch?.enabled !== false}

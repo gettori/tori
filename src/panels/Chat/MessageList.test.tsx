@@ -4,6 +4,7 @@ import { Show, createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import { expectNoAxeViolations } from "../../test/axe";
 import MessageList from "./MessageList";
+import { speakableChunks } from "./speakable";
 import { applyEvent, initialChat, prependHistory, pushUserTurn } from "./chatStore";
 import type { ChatItem, QuestionItem, ToolItem, TurnCheck } from "./chatStore";
 import type { Check, ContentBlock, QuestionAnswer, Verdict } from "../../utils/chatTypes";
@@ -68,6 +69,7 @@ function list(
     rewindTsFor?: (turnId: string) => number | null;
     agentTurn?: (turnId: string) => boolean;
     onRewind?: (promptTs: number) => void;
+    onRead?: (body: HTMLElement, itemId: string) => void;
     collapseWork?: boolean;
     showSecrets?: boolean;
     showBlindEdits?: boolean;
@@ -1156,5 +1158,21 @@ describe("a turn that changed code says what checked it", () => {
   it("shows no mark with the setting switched off", () => {
     render(() => list({ items, verifications: verified("failed", [check({})]), showVerification: false }));
     expect(screen.queryByText("Checks failed")).toBeNull();
+  });
+});
+
+describe("Read on a reply", () => {
+  it("hands the reply's rendered text to onRead, chunked by block", () => {
+    const onRead = vi.fn();
+    const items: ChatItem[] = [
+      { kind: "text", id: "t1", turnId: "turn-1", text: "First part.\n\nSecond part.", agentId: null },
+    ];
+    render(() => list({ items, onRead }));
+    fireEvent.click(screen.getByRole("button", { name: "Read aloud" }));
+    expect(onRead).toHaveBeenCalledWith(expect.any(HTMLElement), "t1");
+    expect(speakableChunks(onRead.mock.calls[0][0])).toEqual([
+      { text: "First part.", block: 0 },
+      { text: "Second part.", block: 1 },
+    ]);
   });
 });
