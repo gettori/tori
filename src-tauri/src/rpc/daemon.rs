@@ -999,13 +999,16 @@ fn host_chats(daemon: &Arc<Daemon>) {
     let window = tell(Arc::downgrade(daemon));
     chats.host.set_on_turn(Arc::new(
         move |cwd, id, tokens, cost_usd| match crate::chat::usage::record_live(cwd, id, tokens, cost_usd) {
-            Ok(totals) => window(
-                "emit",
-                json!({
-                    "event": crate::chat::usage::CHANGED_EVENT,
-                    "payload": { "sessionId": id, "cwd": cwd, "totals": totals },
-                }),
-            ),
+            Ok(totals) => {
+                window(
+                    "emit",
+                    json!({
+                        "event": crate::chat::usage::CHANGED_EVENT,
+                        "payload": { "sessionId": id, "cwd": cwd, "totals": totals },
+                    }),
+                );
+                crate::rpc::spend_heard(id);
+            }
             Err(e) => eprintln!("tori daemon: spend for {id} not recorded: {e}"),
         },
     ));
@@ -1020,7 +1023,11 @@ fn host_chats(daemon: &Arc<Daemon>) {
         hub.publish(&Channel::Sessions, json!({ "kind": "permissions.changed" }));
         window("permissions.changed", json!({}));
     }));
-    crate::chat::serve::pr_wake(&chats, daemon.composer.states.clone());
+    daemon.composer.set_item_over(Box::new(crate::rpc::item_over_ceiling));
+    let held = Arc::downgrade(&daemon.composer);
+    crate::chat::serve::pr_wake(&chats, daemon.composer.states.clone(), move |session| {
+        held.upgrade().is_some_and(|c| c.budget_stopped(session))
+    });
     let _ = daemon.chats.set(chats);
 }
 

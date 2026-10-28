@@ -2,7 +2,8 @@
 //! sent as a new turn once the autopilot is idle. It never calls a model or reads
 //! a transcript. See [[adr_autopilot_is_a_session_not_a_state_machine]].
 
-use std::collections::{BTreeMap, HashMap};
+use super::office::Ceiling;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -49,6 +50,7 @@ pub enum What {
     ChecksPassed,
     Remark(String),
     Conflicting,
+    OverCeiling(String),
 }
 
 impl What {
@@ -71,6 +73,7 @@ impl What {
             What::ChecksPassed => "checks_passed",
             What::Remark(_) => "remark",
             What::Conflicting => "conflicting",
+            What::OverCeiling(_) => "over_ceiling",
         }
     }
 
@@ -90,7 +93,8 @@ impl What {
             | What::Looped(detail)
             | What::Paused(detail)
             | What::CheckFailed(detail)
-            | What::Remark(detail) => {
+            | What::Remark(detail)
+            | What::OverCeiling(detail) => {
                 format!("{} ({detail})", self.kind())
             }
             _ => self.kind().to_string(),
@@ -171,6 +175,7 @@ pub struct Core {
     last_sent: HashMap<Capped, Instant>,
     pilot: (Pilot, Option<String>),
     sent: Option<Instant>,
+    told_over_ceiling: HashSet<String>,
 }
 
 impl Default for Core {
@@ -182,6 +187,7 @@ impl Default for Core {
             last_sent: HashMap::new(),
             pilot: (Pilot::Off, None),
             sent: None,
+            told_over_ceiling: HashSet::new(),
         }
     }
 }
@@ -243,6 +249,21 @@ impl Core {
         self.queue(Target::Item(id), session, what, now);
     }
 
+    pub fn spend(&mut self, id: &str, session: &str, ceiling: Ceiling, now: Instant) {
+        match ceiling {
+            Ceiling::Over(detail) if self.told_over_ceiling.insert(id.to_string()) => self.item(
+                id.to_string(),
+                Some(session.to_string()),
+                What::OverCeiling(detail),
+                now,
+            ),
+            Ceiling::Over(_) => {}
+            Ceiling::Under => {
+                self.told_over_ceiling.remove(id);
+            }
+        }
+    }
+
     pub fn touch(&mut self, id: &str, now: Instant) {
         if let Some(track) = self.tracks.get_mut(id) {
             (track.last, track.asking, track.stalled) = (now, false, false);
@@ -278,6 +299,7 @@ impl Core {
         if self.pilot.0 == Pilot::Off {
             self.pending.clear();
             self.held.clear();
+            self.told_over_ceiling.clear();
         }
     }
 
@@ -435,6 +457,13 @@ impl Watcher {
         for (target, session) in targets {
             core.pr(target, session, detail.clone(), now);
         }
+        drop(core);
+        self.nudge();
+    }
+
+    pub fn spend(&self, item: &str, session: &str, ceiling: Ceiling) {
+        let mut core = self.core();
+        core.spend(item, session, ceiling, Instant::now());
         drop(core);
         self.nudge();
     }
@@ -617,6 +646,39 @@ mod tests {
         assert_eq!(
             lines(&mut core, now),
             "item i1: check_failed (test, run 12), remark (@ana)\nitem i2: checks_passed"
+        );
+    }
+
+    #[test]
+    fn an_item_past_its_ceiling_wakes_the_autopilot_once_per_crossing() {
+        let (mut core, now) = (idle_core(), Instant::now());
+        let over = |detail: &str| Ceiling::Over(detail.into());
+        core.spend("i1", "w1", over("$5.20 of $5.00"), now);
+        core.spend("i1", "w1", over("$5.90 of $5.00"), now);
+        assert_eq!(
+            lines(&mut core, now),
+            "item i1: over_ceiling ($5.20 of $5.00), session w1"
+        );
+
+        core.sent = None;
+        core.spend("i1", "w1", over("$6.40 of $5.00"), now);
+        assert_eq!(lines(&mut core, now), "", "still past the same crossing");
+
+        core.spend("i1", "w1", Ceiling::Under, now);
+        core.spend("i1", "w1", over("$10.10 of $10.00"), now);
+        assert_eq!(
+            lines(&mut core, now),
+            "item i1: over_ceiling ($10.10 of $10.00), session w1",
+            "a raised ceiling crossed again is news again"
+        );
+
+        core.set_pilot(RunnerState::Off, None);
+        core.set_pilot(RunnerState::Idle, Some("pilot-2".into()));
+        core.spend("i1", "w1", over("$10.40 of $10.00"), now);
+        assert_eq!(
+            lines(&mut core, now),
+            "item i1: over_ceiling ($10.40 of $10.00), session w1",
+            "a fresh autopilot has not been told"
         );
     }
 

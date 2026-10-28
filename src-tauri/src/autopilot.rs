@@ -122,6 +122,8 @@ pub struct Item {
     pub picked_from: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fix_pushes: Vec<FixPush>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub item_usd: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -178,6 +180,7 @@ pub struct Contract {
     pub account: Option<String>,
     pub model: Option<String>,
     pub issues: Vec<IssueQuery>,
+    pub item_usd: Option<f64>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -195,6 +198,7 @@ pub struct ContractPatch {
     pub account: Option<String>,
     pub model: Option<String>,
     pub issues: Option<Vec<IssueQuery>>,
+    pub item_usd: Option<f64>,
 }
 
 pub enum Target {
@@ -219,6 +223,7 @@ pub struct Patch {
     pub note: Option<String>,
     pub title: Option<String>,
     pub contract: Option<String>,
+    pub item_usd: Option<f64>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -367,6 +372,7 @@ fn apply(
                         gone_upstream: false,
                         picked_from: None,
                         fix_pushes: Vec::new(),
+                        item_usd: None,
                     });
                     items.len() - 1
                 }
@@ -387,6 +393,9 @@ fn apply(
         if value.is_some() {
             *field = value;
         }
+    }
+    if patch.item_usd.is_some() {
+        item.item_usd = patch.item_usd;
     }
     item.updated = now;
     Ok(item.clone())
@@ -409,6 +418,9 @@ fn set_contract(
     if let Some(issues) = patch.issues {
         contract.issues = issues;
     }
+    if patch.item_usd.is_some() {
+        contract.item_usd = patch.item_usd;
+    }
     for (field, value) in [
         (&mut contract.agent, patch.agent),
         (&mut contract.account, patch.account),
@@ -419,6 +431,10 @@ fn set_contract(
         }
     }
     (key, contract.clone())
+}
+
+pub fn item_ceiling(item: &Item, contract: Option<&Contract>, global: Option<f64>) -> Option<f64> {
+    item.item_usd.or(contract.and_then(|c| c.item_usd)).or(global)
 }
 
 // (`owner/name` lowercased, number): a number alone would match another repo's PR.
@@ -576,6 +592,7 @@ pub fn plan_firings<Tz: chrono::TimeZone>(
             gone_upstream: false,
             picked_from: None,
             fix_pushes: Vec::new(),
+            item_usd: None,
         };
         items.push(item.clone());
         firings.queued.push(item);
@@ -646,6 +663,7 @@ pub fn plan_loop(
             gone_upstream: false,
             picked_from: None,
             fix_pushes: Vec::new(),
+            item_usd: None,
         };
         items.push(item.clone());
         looped.queued.push(item);
@@ -824,6 +842,7 @@ pub fn plan_rule_firings(
             gone_upstream: false,
             picked_from: None,
             fix_pushes: Vec::new(),
+            item_usd: None,
         };
         firings
             .handed
@@ -1023,6 +1042,7 @@ pub fn plan_pickup(
                 gone_upstream: false,
                 picked_from: list.search.clone(),
                 fix_pushes: Vec::new(),
+                item_usd: None,
             };
             items.push(item.clone());
             changed.push(item);
@@ -1082,6 +1102,7 @@ pub fn plan_rule_review(
             gone_upstream: false,
             picked_from: None,
             fix_pushes: Vec::new(),
+            item_usd: None,
         });
         items.len() - 1
     });
@@ -2136,6 +2157,7 @@ pub mod tests {
             gone_upstream: false,
             picked_from: None,
             fix_pushes: Vec::new(),
+            item_usd: None,
         }
     }
 
@@ -2500,6 +2522,65 @@ pub mod tests {
         assert_eq!((old.autonomy, old.pickup), (Autonomy::AskEverything, Pickup::Ask));
         let empty: Projects = serde_json::from_str("{}").unwrap();
         assert!(empty.projects.is_empty());
+    }
+
+    #[test]
+    fn an_items_ceiling_is_its_own_else_its_projects_else_the_global_one() {
+        let contract = |usd: Option<f64>| Contract {
+            item_usd: usd,
+            ..Contract::default()
+        };
+        let mut it = item("i1", State::Running);
+        assert_eq!(item_ceiling(&it, None, None), None, "no ceiling anywhere is no ceiling");
+        assert_eq!(item_ceiling(&it, None, Some(10.0)), Some(10.0));
+        assert_eq!(item_ceiling(&it, Some(&contract(None)), Some(10.0)), Some(10.0));
+        assert_eq!(item_ceiling(&it, Some(&contract(Some(4.0))), Some(10.0)), Some(4.0));
+        it.item_usd = Some(25.0);
+        assert_eq!(item_ceiling(&it, Some(&contract(Some(4.0))), Some(10.0)), Some(25.0));
+    }
+
+    #[test]
+    fn a_projects_and_an_items_ceiling_are_patched_and_kept() {
+        let dir = temp_dir("ceilings");
+        let store = quiet(&dir);
+        let set = store
+            .set_project(
+                "/p".into(),
+                ContractPatch {
+                    item_usd: Some(4.0),
+                    ..ContractPatch::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(set.item_usd, Some(4.0));
+        let made = store
+            .update(
+                Target::Key {
+                    kind: Kind::Ship,
+                    source: Source::Issue {
+                        key: "7".into(),
+                        project: "/p".into(),
+                    },
+                    project: "/p".into(),
+                    origin: String::new(),
+                },
+                Patch {
+                    item_usd: Some(9.0),
+                    ..Patch::default()
+                },
+            )
+            .unwrap();
+        let later = store
+            .update(
+                Target::Id(made.id.clone()),
+                Patch {
+                    note: Some("going".into()),
+                    ..Patch::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(later.item_usd, Some(9.0), "a patch without it leaves it");
+        assert_eq!(quiet(&dir).contract("/p").and_then(|c| c.item_usd), Some(4.0));
     }
 
     #[test]
@@ -3562,6 +3643,7 @@ pub mod tests {
             gone_upstream: false,
             picked_from: None,
             fix_pushes: Vec::new(),
+            item_usd: None,
         }
     }
 

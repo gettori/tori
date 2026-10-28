@@ -319,12 +319,17 @@ fn coalesce(rx: Receiver<ChatEvent>, mut out: impl FnMut(ChatEvent), window: Dur
 }
 
 // A chat idle as composed: live, no turn running, and not stopped at a spend ceiling.
-pub fn pr_wake(served: &Arc<Served>, states: Arc<crate::rpc::states::SessionStates>) {
+pub fn pr_wake(
+    served: &Arc<Served>,
+    states: Arc<crate::rpc::states::SessionStates>,
+    stopped: impl Fn(&str) -> bool + Send + Sync + 'static,
+) {
     let deliver = Arc::downgrade(served);
     crate::rpc::pr_wake::start(
         move |session| {
             use crate::rpc::states::{SessionState, Source};
             crate::settings::pr_watch()
+                && !stopped(session)
                 && states
                     .shown()
                     .get(session)

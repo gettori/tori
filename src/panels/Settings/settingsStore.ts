@@ -303,6 +303,9 @@ export type Budgets = {
   projectUsd: number | null;
   /** Stop when a turn's context window passes this percentage. */
   contextPercent: number | null;
+  /** Ceiling for one autopilot item across all its sessions, in dollars, unless
+   *  its project or the item sets its own. */
+  itemUsd: number | null;
   /** Warn once at this fraction of whichever ceiling is in force. */
   warnAtFraction: number;
 };
@@ -467,7 +470,7 @@ export const DEFAULT_SETTINGS: Settings = {
     resumeAtReset: false,
     maxConcurrentChats: 4,
   },
-  budgets: { sessionUsd: null, projectUsd: null, contextPercent: null, warnAtFraction: 0.8 },
+  budgets: { sessionUsd: null, projectUsd: null, contextPercent: null, itemUsd: null, warnAtFraction: 0.8 },
   // The comfort defaults follow the tickets: the three that only cost a line of
   // pixels are on, the three cosmetic overlays are off (a stance nobody asked
   // for is worse than a switch), and the two behavioural ones are on because a
