@@ -23,7 +23,7 @@ export default function AskCard(props: { ask: SocketAsk; here: string }) {
     });
   };
   return (
-    <div class={props.ask.approval ? `${styles.banner} ${styles.askApproval}` : styles.banner}>
+    <div class={`${styles.banner} ${styles.ask}${props.ask.approval ? ` ${styles.askApproval}` : ""}`}>
       <span class={styles.bannerText}>
         <Show when={asker()}>{(name) => <span class={styles.askDraftMeta}>{name()} asks: </span>}</Show>
         {props.ask.question}
