@@ -1,8 +1,8 @@
 ---
-summary: SchemaStore plus two bundled schemas attach validation to Tori's own settings, three delivery paths failed silently
+summary: SchemaStore plus three bundled schemas attach validation to Tori's own files, three delivery paths failed silently
 status: current
-updated: 2026-08-08
-source: "Editor wave 7: language intelligence depth (personal/tori, branch `wave-7`); Phase 5 (commit a620384), Phase 6 (506d7e7); `src-tauri/src/lsp/schemastore.rs`, `src-tauri/lsp/json.toml`, `yaml.toml`, `src-tauri/resources/schemas/*.schema.json`, `src/utils/toriSettingsFiles.ts`, `src/panels/Editor/lspClient.ts:262-323`"
+updated: 2026-10-28
+source: "Editor wave 7: language intelligence depth (personal/tori, branch `wave-7`); Phase 5 (commit a620384), Phase 6 (506d7e7); `src-tauri/src/lsp/schemastore.rs`, `src-tauri/lsp/json.toml`, `yaml.toml`, `src-tauri/resources/schemas/*.schema.json`, `src/utils/toriSettingsFiles.ts`, `src/panels/Editor/lspClient.ts:262-323`; plan \"Shareable project config in the repository, trust-gated\" (branch shareable-project-config, gettori/tickets#49)"
 ---
 
 # Schema-backed JSON and YAML, including Tori's own settings
@@ -18,6 +18,8 @@ A JSON file is only as good as the schema someone remembered to attach, so wave 
 The associations are built in **TypeScript**, unlike the catalog's, because the rule that says which files they describe is also the rule that decides their language id (below). Rust does only the part that needs it. They are gathered *separately* from the catalog's and prepended, because the offline path returns early on an empty list: folded in after that check they would be dropped exactly when they are the only ones left.
 
 **Globs, not absolute paths**, and that is the server's choice rather than a shortcut: `FilePatternAssociation` prepends `**/` to every pattern it is given (`jsonSchemaService.js:41`), so an absolute path built from the home directory is matched as a suffix anyway.
+
+**A third schema**, `tori-project.schema.json`, describes a repo's `.tori/project.json` ([[concept_repo_proposals]]) and opens as `jsonc` too, since it is read with json5. `the_schema_describes_what_parse_reads` in `project_config.rs` holds its keys equal to what `parse` reads and its `ports` bound equal to `parse`'s, so the schema cannot promise what the parser drops.
 
 ## Why it's this way
 

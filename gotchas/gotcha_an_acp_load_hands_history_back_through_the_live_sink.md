@@ -1,8 +1,8 @@
 ---
 summary: an ACP load or replaying rewire sends the whole conversation through wrap before SessionStarted, so live observers must gate on it
 status: current
-updated: 2026-10-08
-source: gettori/tori#199 on branch orchestrator; blind-edit warning plan (branch phase-1-block-1, gettori/tickets#27), src-tauri/src/blind_edit.rs; commit 3a04d580; src-tauri/src/chat/host.rs (Lifecycle::observe, expect_replay); src-tauri/src/chat/mirror.rs (expect_replay); AgentTransport::replay in src-tauri/src/chat/transport.rs
+updated: 2026-10-28
+source: gettori/tori#199 on branch orchestrator; blind-edit warning plan (branch phase-1-block-1, gettori/tickets#27), src-tauri/src/blind_edit.rs; commit 3a04d580; src-tauri/src/chat/host.rs (Lifecycle::observe, expect_replay); src-tauri/src/chat/mirror.rs (expect_replay); AgentTransport::replay in src-tauri/src/chat/transport.rs; gettori/tickets#48 on branch cost-per-ticket, plan "Cost per ticket and per pull request, with a projection before queueing", commits 798e6f83, a72dc201, 6374485e, e0acfc08
 ---
 
 # An ACP load hands history back through the live sink
@@ -18,6 +18,8 @@ The verification tracker does the same per turn id, and measures no time while
 the session is replaying, since replayed frames arrive all at once.
 
 ## Related
+
+- [[concept_spend_attribution]]: spend is recorded past the same replay gate, so a load is never counted
 
 - [[component_blind_edit]] - the verdict cache per call id
 - [[component_verification]] - the verdict cache per turn id

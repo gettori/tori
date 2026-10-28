@@ -1,8 +1,8 @@
 ---
 summary: one dialog per project, in Settings' own panel, owns every per-project setting in four sections and stacks over Settings
 status: current
-updated: 2026-10-11
-source: plan "Project settings tab" (branch phase-1-block-2, gettori/tickets#81); src/utils/projectSettings.ts, src/panels/ProjectSettings/, src/panels/Settings/components/ModalShell.tsx, src/panels/Settings/panes/ProjectsPane/; commits eff8c5be, 09af6480, 1707e908, d155d793, d4eb0d90 and the dialog move after them
+updated: 2026-10-28
+source: plan "Project settings tab" (branch phase-1-block-2, gettori/tickets#81); src/utils/projectSettings.ts, src/panels/ProjectSettings/, src/panels/Settings/components/ModalShell.tsx, src/panels/Settings/panes/ProjectsPane/; commits eff8c5be, 09af6480, 1707e908, d155d793, d4eb0d90 and the dialog move after them; plan "Shareable project config in the repository, trust-gated" (branch shareable-project-config, gettori/tickets#49), commit 70a3fb0c
 ---
 
 # Project settings dialog
@@ -24,6 +24,7 @@ Owns every per-project setting, in four sections: General (icon, layout, and for
 - Sections are built from `Section` and `Row` in `ProjectSettings/Section.tsx`, which render Settings' section title and row classes. Its prop is `heading`, not `title`, because the `title=` guard in `interactiveTitle.test.ts` counts the text.
 - The dialog reads its record through `createSpaceProject(path)` in `src/utils/topicMembers.ts` (one `get_config` per `config://changed`), with `loaded` so a missing project is told apart from one still loading.
 - Sections save on change; list editors (agent rows, commands, issue sources) keep a draft with Save and Discard, and reset their draft only when the stored value changes by content, see [[gotcha_every_settings_save_replaces_every_per_project_map]]. Checks' Reset to defaults only refills the draft (from the `verification_defaults` command); Save with the built-in text stores an empty list.
+- Repo proposals: the dialog builds `createProposals(project)` once (every folder's `proposal_for`, refetched on `proposals://changed`) and hands the list to Repo proposals, Commands, Dev servers and Checks. `RepoValues` draws each accepted value with the `repo` origin badge and the worktrees it covers, and hides itself through `overridden` when the user's own value is set ([[concept_repo_proposals]]). `CommandsSection` is its own component, mounted under Worktrees for a bare container and under Tooling for a plain repo. Dev servers has Ports per worktree, a stepper bounded by the schema's `ports.maximum`.
 - `ProjectContractEditor` (`src/panels/Settings/panes/AutopilotPane/`) is used only by the dialog now, and follows `autopilot://changed`, so a contract an agent sets over the socket shows at once.
 
 ## History
@@ -33,6 +34,7 @@ It shipped first as a synthetic editor tab (`tori://project`) and moved to this 
 ## Related
 
 - [[component_settings_store]] how each per-project map is keyed
-- [[component_worktree_setup]] what the Worktrees section edits
+- [[component_worktree_setup]] what the Commands section edits
+- [[concept_repo_proposals]] the repo values shown under empty fields
 - [[component_verification]] what the Checks section edits
 - [[component_icon_grid]] the glyph grid inside the General section's picker

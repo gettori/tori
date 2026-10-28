@@ -1,8 +1,8 @@
 ---
 summary: autopilot queue and contracts on disk, issue sources included; reads derive liveness, a merge is written back
 status: current
-updated: 2026-10-27
-source: Conflict radar plan (gettori/tickets#33), Phase 4; gettori/tori#218 plan "Ticket refs that say where they are, and one way to navigate there", commit 380c7112; gettori/tori#204 on branch orchestrator, plan "Autopilot state on disk"; commits 424a5d26, aa67f28d, 29293fe2, 280f72e8; gettori/tori#205 commit 669596a1; src-tauri/src/autopilot.rs; src-tauri/src/rpc/{mod,methods,server,asks}.rs; gettori/tori#207 commit aca065a5; plan "Autopilot hard lock, release on stop, reconcile on start (#209)" on branch orchestrator, issue gettori/tori#209; commits 28f747ed, 32def50a, f29dfcbd; gettori/tori#210 on branch orchestrator, plan 'Assigned pickup: poll my issues and review requests, queue them, start on ask or auto (#210)'; gettori/tickets#31 on branch phase-1-block-1, plan \"Issue sources per project, and the autopilot on Tori's own repo\", commits e7d4df6f, 8646bb90; gettori/tickets#43 on branch scheduled-runs, plan "Scheduled runs", commits 0cdcf86b, ee900c1d, f5e7ccb4; gettori/tickets#45 on branch fix-ci-until-green, plan "Fix CI until green, then ask to merge", commits 40193aae, bb56adef, 02c357b4, 04ab48cd; gettori/tickets#46 on branch agents-launching-agents, plan "Agents launching agents: wait reasons, check, handoff, loop", commits 9ad18c06, 78628446, 7fefbcd6, dc61f72c
+updated: 2026-10-28
+source: Conflict radar plan (gettori/tickets#33), Phase 4; gettori/tori#218 plan "Ticket refs that say where they are, and one way to navigate there", commit 380c7112; gettori/tori#204 on branch orchestrator, plan "Autopilot state on disk"; commits 424a5d26, aa67f28d, 29293fe2, 280f72e8; gettori/tori#205 commit 669596a1; src-tauri/src/autopilot.rs; src-tauri/src/rpc/{mod,methods,server,asks}.rs; gettori/tori#207 commit aca065a5; plan "Autopilot hard lock, release on stop, reconcile on start (#209)" on branch orchestrator, issue gettori/tori#209; commits 28f747ed, 32def50a, f29dfcbd; gettori/tori#210 on branch orchestrator, plan 'Assigned pickup: poll my issues and review requests, queue them, start on ask or auto (#210)'; gettori/tickets#31 on branch phase-1-block-1, plan \"Issue sources per project, and the autopilot on Tori's own repo\", commits e7d4df6f, 8646bb90; gettori/tickets#43 on branch scheduled-runs, plan "Scheduled runs", commits 0cdcf86b, ee900c1d, f5e7ccb4; gettori/tickets#45 on branch fix-ci-until-green, plan "Fix CI until green, then ask to merge", commits 40193aae, bb56adef, 02c357b4, 04ab48cd; gettori/tickets#46 on branch agents-launching-agents, plan "Agents launching agents: wait reasons, check, handoff, loop", commits 9ad18c06, 78628446, 7fefbcd6, dc61f72c; gettori/tickets#48 on branch cost-per-ticket, plan "Cost per ticket and per pull request, with a projection before queueing", commits 798e6f83, a72dc201, 6374485e, e0acfc08
 ---
 
 # Autopilot store
@@ -60,7 +60,16 @@ A file that exists but doesn't parse (say, written by a newer Tori) loads as emp
 - The `publish` closure `rpc::start` hands in also emits the Tauri event `autopilot://changed`, and so does the holds one, because the webview is not a hub subscriber ([[gotcha_the_webview_is_not_a_hub_subscriber]]).
 - Socket methods: `autopilot.state` (anyone), `autopilot.item.update`, `autopilot.project.set`, `autopilot.hold.resolve` (not workers). Front ends: [[component_tori_cli]] and the MCP tools from the same table rows.
 
+## Spend fields (2026-10-28)
+
+- `item_usd` on `Item` and `Contract` is a dollar ceiling; a patch sets it and never clears it. `item_ceiling` resolves item, then contract, then `budgets.itemUsd`.
+- `body_len` (an issue body in chars) is stamped once at creation: pickup copies `IssueRef.body_len` off the search, and `new_issue_item(&target)` tells `autopilot_item_update` when one issue read is needed. `Patch.body_len` never overwrites it.
+- `ever_taken_over` is set by `apply` whenever the state is `TakenOver` and stays set, so a person's finish is never a projection sample.
+- `Row.projection` (`projection(item, items, costs)`) is on proposed and queued rows with a `body_len`, on full reads and on `autopilot.changed` alike. The costs come from the `with_costs` hook the office sets to `usage::item_costs`; tests get an empty map ([[concept_spend_attribution]]).
+
 ## Related
+
+- [[concept_spend_attribution]]: what the spend fields and the projection read
 
 - [[adr_autopilot_stores_decisions_and_derives_facts]]: why only decisions are stored
 - [[adr_autopilot_is_a_session_not_a_state_machine]]: the session this store is the memory of
