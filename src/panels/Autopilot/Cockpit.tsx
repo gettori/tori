@@ -44,6 +44,7 @@ import {
   watchAutopilot,
   type RunnerStatus,
 } from "../../utils/autopilotStore";
+import { spendFor } from "../../utils/spendStore";
 import styles from "./Cockpit.module.css";
 
 const attemptsOf = (project: string) => prFixLoop(project)?.maxAttempts ?? null;
@@ -140,7 +141,7 @@ export function CockpitView() {
         state={autopilotNow()}
         hero={hero()}
         scene={scene()}
-        workers={workerCards(items(), attemptsOf)}
+        workers={workerCards(items(), attemptsOf, (item) => spendFor({ kind: "item", id: item }))}
         emptyWorkers="The deck is quiet. Hand the autopilot a ticket or a PR."
         queue={queuedItems(items())}
         schedules={scheduleCards(schedules(), items(), now())}

@@ -17,6 +17,7 @@ import type { PrEvent } from "../panels/Settings/settingsStore";
 import { ago } from "./relativeTime";
 import { sameFolder } from "./autopilotContracts";
 import type { NavTarget } from "./events";
+import type { SessionUsage } from "./chatUsageStore";
 
 /** Mirrors `Reference` in src-tauri/src/autopilot.rs. */
 export type Reference = TicketRef & { pr?: { label: string; url: string }; target: NavTarget; markdown: string };
@@ -157,7 +158,11 @@ export const inFlightRows = (items: ItemRow[], attemptsOf: AttemptsOf = noLoop):
     doing: doing(i, attemptsOf),
   }));
 
-export const workerCards = (items: ItemRow[], attemptsOf: AttemptsOf = noLoop): WorkerCard[] =>
+export const workerCards = (
+  items: ItemRow[],
+  attemptsOf: AttemptsOf = noLoop,
+  spendOf: (item: string) => SessionUsage | null = () => null,
+): WorkerCard[] =>
   inFlight(items).map((i) => ({
     ticket: ticketOf(i),
     title: itemTitle(i),
@@ -166,6 +171,7 @@ export const workerCards = (items: ItemRow[], attemptsOf: AttemptsOf = noLoop): 
     status: workerStatus(i),
     log: [],
     doing: doing(i, attemptsOf),
+    spend: spendOf(i.id),
   }));
 
 export function queuedItems(items: ItemRow[]): QueuedItem[] {

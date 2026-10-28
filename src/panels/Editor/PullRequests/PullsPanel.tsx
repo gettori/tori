@@ -75,6 +75,7 @@ import { prAllTabId, prDiffTabId, prListTabId, prTabId } from "../../../utils/sy
 import { PR_TABS, prLayout, prTab, revealPrTab } from "../../../utils/prSections";
 import { SECTION_MIN_H } from "../../../utils/sectionLayout";
 import { reloadPrList } from "../../../utils/prListStore";
+import { spendFor } from "../../../utils/spendStore";
 import { projectPathFor, projectUnitFor } from "../../../utils/sessionActivity";
 import { prRelation } from "../../../utils/prRelation";
 import {
@@ -111,6 +112,7 @@ import { CreatePrFlowDialog } from "../../../components/Dialogs/CreatePrDialog";
 import Button from "../../../components/Button/Button";
 import IconButton from "../../../components/IconButton/IconButton";
 import Tooltip from "../../../components/Tooltip/Tooltip";
+import SpendFigure from "../../../components/SpendFigure/SpendFigure";
 import Icon from "../../../components/Icon/Icon";
 import Chevron from "../../../components/Chevron/Chevron";
 import Checkbox from "../../../components/Checkbox/Checkbox";
@@ -882,6 +884,13 @@ export default function PullsPanel(props: {
                     </div>
                     <div class={styles.meta}>
                       {prMetaParts(s().pr, summary()?.updatedAt ?? null, totals()).join(", ")}
+                      <SpendFigure
+                        usage={
+                          props.root ? spendFor({ kind: "branch", project: props.root, branch: s().pr.headRef }) : null
+                        }
+                        what="this pull request"
+                        before=", "
+                      />
                     </div>
                     <div class={styles.branches}>
                       {/* The head loses its *start* when it does not fit: a long

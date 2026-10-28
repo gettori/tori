@@ -1,6 +1,7 @@
 import { For, Show, type JSX } from "solid-js";
 import { Anchor, ArrowUpRight, Sailboat } from "lucide-solid";
 import Button from "../Button/Button";
+import SpendFigure from "../SpendFigure/SpendFigure";
 import Icon from "../Icon/Icon";
 import DecisionCard from "./DecisionCard";
 import Horizon, { type SceneKey } from "./Horizon";
@@ -114,6 +115,7 @@ export default function AutopilotView(props: AutopilotViewProps) {
                     <span class={styles.cardBranch}>
                       <TicketPlace ticket={w.ticket} onNavigate={props.onNavigate} />
                       {w.diff ? ` \u00b7 ${w.diff}` : ""}
+                      <SpendFigure usage={w.spend} what="this item" before={" \u00b7 "} />
                     </span>
                   </div>
                 </div>
