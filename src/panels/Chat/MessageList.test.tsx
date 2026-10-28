@@ -5,6 +5,7 @@ import { createStore } from "solid-js/store";
 import { expectNoAxeViolations } from "../../test/axe";
 import MessageList from "./MessageList";
 import { speakableChunks } from "./speakable";
+import chatStyles from "./Chat.module.css";
 import { applyEvent, initialChat, prependHistory, pushUserTurn } from "./chatStore";
 import type { ChatItem, QuestionItem, ToolItem, TurnCheck } from "./chatStore";
 import type { Check, ContentBlock, QuestionAnswer, Verdict } from "../../utils/chatTypes";
@@ -70,6 +71,7 @@ function list(
     agentTurn?: (turnId: string) => boolean;
     onRewind?: (promptTs: number) => void;
     onRead?: (body: HTMLElement, itemId: string) => void;
+    readingBlock?: (itemId: string) => number | undefined;
     collapseWork?: boolean;
     showSecrets?: boolean;
     showBlindEdits?: boolean;
@@ -1174,5 +1176,30 @@ describe("Read on a reply", () => {
       { text: "First part.", block: 0 },
       { text: "Second part.", block: 1 },
     ]);
+  });
+});
+
+describe("the block being read aloud", () => {
+  const lit = (container: HTMLElement) =>
+    [...container.querySelectorAll(`.${chatStyles.readingBlock}`)].map((el) => el.textContent);
+
+  it("moves block by block, and stays on the live element when the tail re-renders", async () => {
+    const [state, setState] = createStore({
+      items: [
+        { kind: "text", id: "t1", turnId: "turn-1", text: "First part.\n\nSecond part.", agentId: null },
+      ] as ChatItem[],
+    });
+    const [block, setBlock] = createSignal<number | undefined>(0);
+    const { container } = render(() =>
+      list({ items: state.items, readingBlock: (id) => (id === "t1" ? block() : undefined) }),
+    );
+    expect(lit(container)).toEqual(["First part."]);
+    setBlock(1);
+    expect(lit(container)).toEqual(["Second part."]);
+
+    setState("items", 0, "text" as never, "First part.\n\nSecond part, and more." as never);
+    await waitFor(() => expect(lit(container)).toEqual(["Second part, and more."]));
+    setBlock(undefined);
+    expect(lit(container)).toEqual([]);
   });
 });
