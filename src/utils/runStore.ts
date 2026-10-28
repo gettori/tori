@@ -2,6 +2,7 @@
 // after, so a webview reload still sees the servers Rust kept running.
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 import { emitWith, TOAST, type ToastEvent } from "./events";
 import type { SetupReport } from "./setupToasts";
@@ -49,6 +50,31 @@ export function runnable(worktree: string): boolean {
       .catch(() => asked.delete(worktree));
   }
   return allowed()[worktree] === true;
+}
+
+export type RepoRun = { project: string; command: string };
+
+const [repoRuns, setRepoRuns] = createSignal<Readonly<Record<string, RepoRun | null>>>({});
+const repoAsked = new Set<string>();
+let repoListening = false;
+
+/** The run command this worktree's accepted proposal gives it, null until Rust
+ *  has answered or when there is none. Asked again after any accept or decline. */
+export function repoRunAt(worktree: string): RepoRun | null {
+  if (!repoListening) {
+    repoListening = true;
+    void listen("proposals://changed", () => {
+      repoAsked.clear();
+      setRepoRuns({});
+    }).catch((e) => console.warn("run: no proposal events, a repo run command shows after a reload", e));
+  }
+  if (!repoAsked.has(worktree)) {
+    repoAsked.add(worktree);
+    invoke<RepoRun | null>("repo_run_at", { worktreePath: worktree })
+      .then((run) => setRepoRuns((prev) => ({ ...prev, [worktree]: run })))
+      .catch(() => repoAsked.delete(worktree));
+  }
+  return repoRuns()[worktree] ?? null;
 }
 
 function toastError(e: unknown) {

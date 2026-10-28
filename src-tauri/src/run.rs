@@ -85,10 +85,9 @@ pub fn start(project: &str, worktree: &Path) -> Result<Report, String> {
         .find(|(key, _)| same_folder(key, project))
         .map(|(_, p)| p)
         .unwrap_or_default();
-    let command = prefs.run_command;
-    if command.trim().is_empty() {
+    let Some((command, source)) = setup::command_for(Kind::Run, project, worktree) else {
         return Err("This project has no run command.".into());
-    }
+    };
     if !crate::worktree::not_a_fork(worktree) {
         return Err("This worktree is a fork's pull request, or git cannot read it.".into());
     }
@@ -112,6 +111,7 @@ pub fn start(project: &str, worktree: &Path) -> Result<Report, String> {
     let spec = Spec {
         kind: Kind::Run,
         command: &command,
+        source,
         project,
         worktree,
         path_env: &path_env,
@@ -169,7 +169,8 @@ pub fn start_after_setup(project: String, worktree: PathBuf) {
     let wanted = setup::settings_and_logs()
         .0
         .into_iter()
-        .any(|(key, p)| same_folder(&key, &project) && p.run_on_create && !p.run_command.trim().is_empty());
+        .any(|(key, p)| same_folder(&key, &project) && p.run_on_create)
+        && setup::command_for(Kind::Run, &project, &worktree).is_some();
     if !wanted {
         return;
     }
@@ -280,6 +281,21 @@ pub fn run_start(project_path: String, worktree_path: String) -> Result<Report, 
     start(&project_path, Path::new(&worktree_path))
 }
 
+#[derive(Serialize)]
+pub struct RepoRun {
+    project: String,
+    command: String,
+}
+
+// The webview offers Run from the user's settings, which know nothing of a
+// repo's accepted run command, so it asks here for that one.
+#[tauri::command(async)]
+pub fn repo_run_at(worktree_path: String) -> Option<RepoRun> {
+    let command = crate::project_config::accepted(Path::new(&worktree_path))?.run_command?;
+    let project = crate::config::project_of_folder(worktree_path)?;
+    Some(RepoRun { project, command })
+}
+
 #[tauri::command(async)]
 pub fn run_stop(worktree_path: String) {
     stop(Path::new(&worktree_path));
@@ -324,6 +340,7 @@ mod tests {
         let spec = Spec {
             kind: Kind::Run,
             command,
+            source: setup::Source::User,
             project: "/the/project",
             worktree: &dir.join("wt"),
             path_env: "/usr/bin:/bin",

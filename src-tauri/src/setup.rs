@@ -15,6 +15,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
+use crate::project_config::Values;
 use crate::rpc::events::same_folder;
 use crate::settings::WorktreePrefs;
 
@@ -54,6 +55,13 @@ pub enum Kind {
     Teardown,
 }
 
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Source {
+    User,
+    Repo,
+}
+
 impl Kind {
     fn word(self) -> &'static str {
         match self {
@@ -71,6 +79,7 @@ pub struct Report {
     pub state: State,
     pub code: Option<i32>,
     pub log: String,
+    pub source: Source,
 }
 
 pub type Publish = Arc<dyn Fn(&Report) + Send + Sync>;
@@ -78,6 +87,7 @@ pub type Publish = Arc<dyn Fn(&Report) + Send + Sync>;
 pub struct Spec<'a> {
     pub kind: Kind,
     pub command: &'a str,
+    pub source: Source,
     pub project: &'a str,
     pub worktree: &'a Path,
     pub path_env: &'a str,
@@ -199,6 +209,7 @@ impl Runs {
                     state: State::Failed,
                     code: None,
                     log: log_str,
+                    source: spec.source,
                 };
                 self.put(Entry {
                     report: report.clone(),
@@ -215,6 +226,7 @@ impl Runs {
             state: State::Running,
             code: None,
             log: log_str,
+            source: spec.source,
         };
         self.put(Entry {
             report: report.clone(),
@@ -417,20 +429,56 @@ pub(crate) fn settings_and_logs() -> (HashMap<String, WorktreePrefs>, PathBuf) {
     if let Some(seam) = TEST_SEAM.with(|s| s.borrow().clone()) {
         return seam;
     }
-    (
-        crate::settings::get_settings().worktree,
-        crate::owned_state::config_dir().join("setup"),
-    )
+    (worktree_settings(), crate::owned_state::config_dir().join("setup"))
 }
 
-/// The project's setup, when it has a command.
-pub fn configured(project: &str) -> Option<WorktreePrefs> {
+// Every spawn asks for its port width, so the file is read again only once it changed.
+fn worktree_settings() -> HashMap<String, WorktreePrefs> {
+    static CACHE: Mutex<Option<(SystemTime, HashMap<String, WorktreePrefs>)>> = Mutex::new(None);
+    let stamp = crate::settings::modified();
+    let mut cache = CACHE.lock().unwrap_or_else(PoisonError::into_inner);
+    if let (Some(stamp), Some((at, prefs))) = (stamp, &*cache) {
+        if *at == stamp {
+            return prefs.clone();
+        }
+    }
+    let prefs = crate::settings::get_settings().worktree;
+    *cache = stamp.map(|stamp| (stamp, prefs.clone()));
+    prefs
+}
+
+fn prefs_for(project: &str) -> WorktreePrefs {
     settings_and_logs()
         .0
         .into_iter()
         .find(|(key, _)| same_folder(key, project))
         .map(|(_, prefs)| prefs)
-        .filter(|prefs| !prefs.setup_command.trim().is_empty())
+        .unwrap_or_default()
+}
+
+fn pick(kind: Kind, user: &WorktreePrefs, repo: Option<&Values>) -> Option<(String, Source)> {
+    let (mine, theirs) = match kind {
+        Kind::Setup => (&user.setup_command, repo.and_then(|r| r.setup_command.as_ref())),
+        Kind::Run => (&user.run_command, repo.and_then(|r| r.run_command.as_ref())),
+        Kind::Teardown => (&user.teardown_command, repo.and_then(|r| r.teardown_command.as_ref())),
+    };
+    if !mine.trim().is_empty() {
+        return Some((mine.clone(), Source::User));
+    }
+    theirs.map(|c| (c.clone(), Source::Repo))
+}
+
+pub fn command_for(kind: Kind, project: &str, worktree: &Path) -> Option<(String, Source)> {
+    pick(
+        kind,
+        &prefs_for(project),
+        crate::project_config::accepted(worktree).as_ref(),
+    )
+}
+
+/// The project's prefs, when `worktree` has a setup command to run.
+pub fn setup_prefs(project: &str, worktree: &Path) -> Option<WorktreePrefs> {
+    command_for(Kind::Setup, project, worktree).map(|_| prefs_for(project))
 }
 
 pub(crate) fn shared() -> &'static Runs {
@@ -449,18 +497,13 @@ pub fn set_publisher(app: AppHandle) {
 
 /// Run the project's setup in a worktree Tori has just created for it.
 pub fn on_created(project: &str, worktree: &Path) -> Option<Report> {
-    let (prefs, log_dir) = settings_and_logs();
-    let prefs = prefs
-        .into_iter()
-        .find(|(key, _)| same_folder(key, project))
-        .map(|(_, p)| p)?;
-    if prefs.setup_command.trim().is_empty() {
-        return None;
-    }
+    let (command, source) = command_for(Kind::Setup, project, worktree)?;
+    let log_dir = settings_and_logs().1;
     let path_env = crate::env::login_path().map_or_else(crate::env::augmented_path, str::to_string);
     let spec = Spec {
         kind: Kind::Setup,
-        command: &prefs.setup_command,
+        command: &command,
+        source,
         project,
         worktree,
         path_env: &path_env,
@@ -470,29 +513,16 @@ pub fn on_created(project: &str, worktree: &Path) -> Option<Report> {
     Some(RUNS.start(spec, publisher()))
 }
 
-/// Whether the project has a teardown command.
-pub fn has_teardown(project: &str) -> bool {
-    settings_and_logs()
-        .0
-        .into_iter()
-        .any(|(key, prefs)| same_folder(&key, project) && !prefs.teardown_command.trim().is_empty())
-}
-
-/// Run the project's teardown in a worktree about to be removed, and return
-/// once it has exited or been killed at `TEARDOWN_LIMIT`.
+/// Run the teardown in a worktree about to be removed, and return once it has
+/// exited or been killed at `TEARDOWN_LIMIT`.
 pub fn teardown(project: &str, worktree: &Path) -> Option<Report> {
-    let (prefs, log_dir) = settings_and_logs();
-    let prefs = prefs
-        .into_iter()
-        .find(|(key, _)| same_folder(key, project))
-        .map(|(_, p)| p)?;
-    if prefs.teardown_command.trim().is_empty() {
-        return None;
-    }
+    let (command, source) = command_for(Kind::Teardown, project, worktree)?;
+    let log_dir = settings_and_logs().1;
     let path_env = crate::env::login_path().map_or_else(crate::env::augmented_path, str::to_string);
     let spec = Spec {
         kind: Kind::Teardown,
-        command: &prefs.teardown_command,
+        command: &command,
+        source,
         project,
         worktree,
         path_env: &path_env,
@@ -536,6 +566,7 @@ mod tests {
         let spec = Spec {
             kind: Kind::Setup,
             command,
+            source: Source::User,
             project: "/the/project",
             worktree: &dir.join("wt"),
             path_env: "/usr/bin:/bin",
@@ -629,8 +660,79 @@ mod tests {
         );
         seam(prefs, dir.join("logs"));
         assert!(on_created("/the/project", &dir.join("wt")).is_none());
-        assert!(configured("/the/project").is_none());
+        assert!(setup_prefs("/the/project", &dir.join("wt")).is_none());
         assert!(!dir.join("logs").exists());
+    }
+
+    fn user_setup(dir: &Path, command: &str) {
+        let mut prefs = HashMap::new();
+        prefs.insert(
+            "/the/project".to_string(),
+            WorktreePrefs {
+                setup_command: command.into(),
+                ..Default::default()
+            },
+        );
+        seam(prefs, dir.join("logs"));
+    }
+
+    fn repo(setup: &str, run: &str) -> Values {
+        Values {
+            setup_command: Some(setup.into()),
+            run_command: Some(run.into()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn the_users_command_beats_the_repos_and_the_repos_fills_an_empty_one() {
+        let dir = tmp();
+        let wt = dir.join("wt");
+        user_setup(&dir, "mine");
+        crate::project_config::seam_accepted(&wt, repo("theirs", "pnpm dev"));
+        assert_eq!(
+            command_for(Kind::Setup, "/the/project", &wt),
+            Some(("mine".to_string(), Source::User))
+        );
+        assert_eq!(
+            command_for(Kind::Run, "/the/project", &wt),
+            Some(("pnpm dev".to_string(), Source::Repo))
+        );
+        assert_eq!(command_for(Kind::Teardown, "/the/project", &wt), None);
+    }
+
+    #[test]
+    fn a_repo_setup_runs_where_the_user_has_none_and_says_so() {
+        let dir = tmp();
+        let wt = dir.join("wt");
+        let marker = dir.join("ran");
+        user_setup(&dir, " ");
+        crate::project_config::seam_accepted(&wt, repo(&format!("touch '{}'", marker.display()), "x"));
+        assert_eq!(on_created("/the/project", &wt).unwrap().source, Source::Repo);
+        let report = wait(&wt, Duration::from_secs(10)).unwrap();
+        assert_eq!((report.state, report.source), (State::Done, Source::Repo));
+        assert!(marker.exists());
+    }
+
+    #[test]
+    fn an_unaccepted_proposal_runs_only_the_users_command() {
+        let dir = tmp();
+        let wt = dir.join("wt");
+        user_setup(&dir, "mine");
+        crate::project_config::seam(
+            &wt,
+            crate::project_config::Proposal::Unaccepted {
+                digest: "d".into(),
+                content: String::new(),
+                values: repo("theirs", "pnpm dev"),
+                previous: None,
+            },
+        );
+        assert_eq!(
+            command_for(Kind::Setup, "/the/project", &wt),
+            Some(("mine".to_string(), Source::User))
+        );
+        assert_eq!(command_for(Kind::Run, "/the/project", &wt), None);
     }
 
     fn teardown_seam(dir: &Path, command: &str) {
@@ -683,6 +785,7 @@ mod tests {
         let spec = Spec {
             kind: Kind::Teardown,
             command: "true",
+            source: Source::User,
             project: "/the/project",
             worktree: &dir.join("wt"),
             path_env: "/usr/bin:/bin",

@@ -22,6 +22,7 @@ import {
 } from "./utils/workspaceSettings";
 import { DEFAULT_PIN_SIDES, type PinSide } from "../../layout/pinRules";
 import { isUnderPath } from "../../utils/pathScope";
+import { repoRunAt } from "../../utils/runStore";
 
 /** Where the sidebar's space tiles sit. Mirrors `SpaceStrip` in
  *  src-tauri/src/settings.rs. */
@@ -402,7 +403,8 @@ export type PrFixLoop = {
  *  nothing; `setupWait` holds `worktree.new` and `session.spawn` until setup exits,
  *  `teardownCommand` runs before a worktree is removed, and `runCommand` is
  *  started and stopped by hand. `openBrowser` opens a run's first port once it listens, and `runOnCreate`
- *  starts it in a worktree created from the app once setup is done. */
+ *  starts it in a worktree created from the app once setup is done. `ports` is
+ *  how many of the worktree's ten ports are exported, all ten when unset. */
 export type WorktreePrefs = {
   setupCommand: string;
   setupWait: boolean;
@@ -410,6 +412,7 @@ export type WorktreePrefs = {
   runCommand: string;
   openBrowser: boolean;
   runOnCreate: boolean;
+  ports?: number;
 };
 
 /** `available` is the feature: off, there is no cockpit. `enabled` is whether it
@@ -967,14 +970,21 @@ export function worktreePrefs(projectPath: string): WorktreePrefs {
 }
 
 /** The project whose run command covers `worktree`, the deepest one holding it,
- *  or null when none has a run command. */
+ *  else the project of the worktree's accepted repo run command, or null. */
 export function runProjectFor(worktree: string): string | null {
   let best: string | null = null;
   for (const [project, prefs] of Object.entries(settings.worktree ?? {})) {
     if (!prefs.runCommand?.trim() || !isUnderPath(worktree, project)) continue;
     if (!best || project.length > best.length) best = project;
   }
-  return best;
+  return best ?? repoRunAt(worktree)?.project ?? null;
+}
+
+/** The run command `worktree` would start: the user's, else the repo's. */
+export function runCommandFor(worktree: string): string {
+  const project = runProjectFor(worktree);
+  const mine = project ? worktreePrefs(project).runCommand : "";
+  return mine.trim() ? mine : (repoRunAt(worktree)?.command ?? "");
 }
 
 /** Change this project's worktree setup, leaving the other field alone. Not
