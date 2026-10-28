@@ -1034,6 +1034,10 @@ describe("schema associations", () => {
           uri: `file://${schemaDir}/tori-workspace-settings.schema.json`,
           fileMatch: ["**/.tori/settings.json"],
         },
+        {
+          uri: `file://${schemaDir}/tori-project.schema.json`,
+          fileMatch: ["**/.tori/project.json"],
+        },
       ],
     ]);
   });
@@ -1052,6 +1056,7 @@ describe("schema associations", () => {
     expect(sent.map((a) => a.uri)).toEqual([
       "file:///res/schemas/tori-settings.schema.json",
       "file:///res/schemas/tori-workspace-settings.schema.json",
+      "file:///res/schemas/tori-project.schema.json",
       "https://json.schemastore.org/package.json",
     ]);
   });
