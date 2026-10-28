@@ -639,6 +639,13 @@ impl Office {
                 crate::review::mark_now(&self.desk.ui, index, arg(args, "unit")?, arg(args, "to_ts")?)
                     .map(|()| json!({}))
             }
+            "usage.spend" => {
+                let queries: Vec<crate::chat::usage::SpendQuery> = arg(args, "queries")?;
+                let repo_of = |project: &str| crate::exec::common_dir(project).to_string_lossy().into_owned();
+                Ok(json!(crate::chat::usage::with_index(|index| {
+                    crate::chat::usage::spend_for(index, &queries, repo_of)
+                })))
+            }
             "second_opinion.running" => Ok(json!(crate::second_opinion::running_now())),
             "second_opinion.list" => Ok(json!(crate::second_opinion::list_in(
                 &self.backend.composer.index,

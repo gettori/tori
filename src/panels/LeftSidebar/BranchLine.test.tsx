@@ -60,3 +60,26 @@ describe("a pull request's line", () => {
     expect(plain.container.querySelector("[data-pr-stack]")).toBeNull();
   });
 });
+
+describe("what a branch has cost", () => {
+  it("adds the dollars to a pull request's line", () => {
+    const { container } = render(() => (
+      <BranchLine status={status({})} branchSpend={{ tokens: 9, costUsd: 3.5, turns: 2 }} />
+    ));
+    expect(container.querySelector("[data-spend]")?.textContent).toBe("$3.50");
+  });
+
+  it("draws the line for spend alone, in turns for an agent with no cost", () => {
+    const { container } = render(() => (
+      <BranchLine status={null} branchSpend={{ tokens: 0, costUsd: null, turns: 7 }} />
+    ));
+    expect(container.querySelector("[data-spend]")?.textContent).toBe("7 turns");
+  });
+
+  it("stays absent when there is no pull request, no diff and nothing spent", () => {
+    const { container } = render(() => (
+      <BranchLine status={null} branchSpend={{ tokens: 0, costUsd: null, turns: 0 }} />
+    ));
+    expect(container.firstChild).toBeNull();
+  });
+});

@@ -22,6 +22,8 @@ import { compactAge, compactAgo } from "../../utils/compactAge";
 import { forgeBadges, ranChecks, type BadgeTone, type PrChipState } from "../../utils/forgeChip";
 import { prTone, releaseShows, type PrTone, type UnitStatus } from "../../utils/forgeTypes";
 import type { BaseSync } from "../../utils/gitActions";
+import type { SessionUsage } from "../../utils/chatUsageStore";
+import { spendView } from "../../utils/spend";
 import styles from "./BranchLine.module.css";
 
 const CHECK_ICON: Record<BadgeTone, LucideIcon> = {
@@ -57,8 +59,8 @@ function prIcon(state: PrChipState): LucideIcon {
  * A branch row's second line: its pull request, in the words and numbers the
  * first line has never had the width for, then the size of the branch's diff.
  *
- * **It draws only when there is a pull request or a diff**, and that is the
- * whole design.
+ * **It draws only when there is a pull request, a diff or recorded spend**, and
+ * that is the whole design.
  * The chip on line one had to compress "is there a PR, what state, how are the
  * checks, what did review say" into three 13px glyphs, because three glyphs is
  * what a 260px rail leaves once the name has had its share. Given a line of its
@@ -82,6 +84,7 @@ export default function BranchLine(props: {
   /** The branch is the repo's default, so its pull request is a release to
    *  another long-lived branch rather than a feature landing. */
   release?: boolean;
+  branchSpend?: SessionUsage | null;
 }) {
   const pr = () => {
     const st = props.status;
@@ -92,6 +95,7 @@ export default function BranchLine(props: {
     const s = props.base?.stat;
     return s && s.files > 0 ? s : null;
   };
+  const spent = () => spendView(props.branchSpend, "this branch");
   const badges = () => forgeBadges(props.status);
   // RFC 3339 on the wire, epoch seconds here, and nothing at all if the host
   // sent something unparseable: a row that prints `NaNd` is worse than a row
@@ -148,7 +152,8 @@ export default function BranchLine(props: {
   const storyLead = () => {
     const p = pr();
     if (p) return [`#${p.number} ${p.title}`];
-    return stat() ? [diffLine()] : [];
+    if (stat()) return [diffLine()];
+    return spent() ? [spent()!.says] : [];
   };
   const conflictStory = () => {
     const files = conflicts();
@@ -162,10 +167,11 @@ export default function BranchLine(props: {
   };
   const storyRest = () => {
     const p = pr();
-    if (!p) return [];
+    if (!p) return stat() && spent() ? [spent()!.says] : [];
     const b = badges();
     return [
       stat() ? diffLine() : "",
+      spent()?.says ?? "",
       openedAt() !== null ? `${p.author} opened ${compactAgo(openedAt()!)}` : `Opened by ${p.author}`,
       endedAt() !== null ? `${pr()!.state === "merged" ? "Merged" : "Closed"} ${compactAgo(endedAt()!)}` : "",
       p.stack ? `Layer ${p.stack.position} of ${p.stack.size} in a stack, targets ${p.stack.baseRef}` : "",
@@ -253,7 +259,7 @@ export default function BranchLine(props: {
   );
 
   return (
-    <Show when={pr() || stat()}>
+    <Show when={pr() || stat() || spent()}>
       {
         // A span, not a button. The line reports; it is not a way in. The
         // Pull Requests panel is reached from the command palette and from
@@ -269,6 +275,13 @@ export default function BranchLine(props: {
           <span class={styles.items}>
             <Show when={pr()}>{(p) => standing(p)}</Show>
             <Show when={stat()}>{(s) => size(s)}</Show>
+            <Show when={spent()}>
+              {(v) => (
+                <span class={styles.item} data-spend>
+                  {v().text}
+                </span>
+              )}
+            </Show>
             <Show when={pr()}>{(p) => history(p)}</Show>
           </span>
         </Tooltip>

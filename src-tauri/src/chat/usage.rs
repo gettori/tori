@@ -264,6 +264,23 @@ pub fn item_total(index: &Index, item: &str) -> SessionUsage {
     out
 }
 
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum SpendQuery {
+    Branch { project: String, branch: String },
+    Item { id: String },
+}
+
+pub fn spend_for(index: &Index, queries: &[SpendQuery], repo_of: impl Fn(&str) -> String) -> Vec<SessionUsage> {
+    queries
+        .iter()
+        .map(|q| match q {
+            SpendQuery::Branch { project, branch } => branch_total(index, &repo_of(project), branch),
+            SpendQuery::Item { id } => item_total(index, id),
+        })
+        .collect()
+}
+
 // A session one of `items` worked on counts whole, any other only for its
 // buckets on `branches`, so a session reached both ways counts once.
 pub fn issue_total(index: &Index, repo: &str, branches: &HashSet<String>, items: &HashSet<String>) -> SessionUsage {
@@ -459,6 +476,21 @@ mod tests {
         let items: HashSet<String> = ["i1".to_string()].into();
         let issue = issue_total(&index, "/r/.git", &branches, &items);
         assert_eq!((issue.cost_usd, issue.turns), (Some(6.5), 3));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_batch_answers_each_query_in_order_by_the_projects_repo() {
+        let (dir, index) = machine("batch");
+        let queries: Vec<SpendQuery> = serde_json::from_value(serde_json::json!([
+            { "kind": "item", "id": "i1" },
+            { "kind": "branch", "project": "/r/worktree", "branch": "fix-x" },
+            { "kind": "branch", "project": "/r/worktree", "branch": "nowhere" },
+        ]))
+        .unwrap();
+        let answers = spend_for(&index, &queries, |_| "/r/.git".to_string());
+        let costs: Vec<_> = answers.iter().map(|s| s.cost_usd).collect();
+        assert_eq!(costs, [Some(4.5), Some(2.0), None]);
         let _ = std::fs::remove_dir_all(dir);
     }
 
