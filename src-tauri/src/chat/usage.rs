@@ -60,6 +60,14 @@ pub struct SessionUsage {
     /// inside one chat splits the cost instead of moving it.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub branches: BTreeMap<String, Spend>,
+    /// Split by the session whose ceiling each turn was charged to, stamped per
+    /// turn so a side chat's fork reopened as an ordinary chat charges nobody.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub charged_to: BTreeMap<String, Spend>,
+    /// A side chat's turns split by the item they were charged to, kept per turn
+    /// rather than in `item`, which would charge every later turn too.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub items: BTreeMap<String, Spend>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -78,6 +86,7 @@ pub struct Stamp {
     pub repo: Option<String>,
     pub branch: Option<String>,
     pub item: Option<String>,
+    pub parent: Option<String>,
     pub at: u64,
 }
 
@@ -136,21 +145,38 @@ fn write_turn(
     if stamp.repo.is_some() {
         entry.repo.clone_from(&stamp.repo);
     }
-    if stamp.item.is_some() {
-        entry.item.clone_from(&stamp.item);
-    }
     if let Some(branch) = &stamp.branch {
-        let bucket = entry.branches.entry(branch.clone()).or_insert_with(|| Spend {
-            first: stamp.at,
-            ..Spend::default()
-        });
-        bucket.tokens = bucket.tokens.saturating_add(tokens);
-        bucket.turns = bucket.turns.saturating_add(1);
-        add_cost(&mut bucket.cost_usd, cost_usd);
-        bucket.last = stamp.at;
+        add_to(&mut entry.branches, branch, tokens, cost_usd, stamp.at);
+    }
+    if let Some(parent) = &stamp.parent {
+        add_to(&mut entry.charged_to, parent, tokens, cost_usd, stamp.at);
+        if let Some(item) = &stamp.item {
+            add_to(&mut entry.items, item, tokens, cost_usd, stamp.at);
+        }
+    } else if stamp.item.is_some() {
+        entry.item.clone_from(&stamp.item);
     }
     write_atomically(path, &serde_json::to_string(&file).map_err(|e| e.to_string())?)?;
     Ok(file)
+}
+
+fn add_to(buckets: &mut BTreeMap<String, Spend>, key: &str, tokens: u64, cost_usd: Option<f64>, at: u64) {
+    let bucket = buckets.entry(key.to_string()).or_insert_with(|| Spend {
+        first: at,
+        ..Spend::default()
+    });
+    bucket.tokens = bucket.tokens.saturating_add(tokens);
+    bucket.turns = bucket.turns.saturating_add(1);
+    add_cost(&mut bucket.cost_usd, cost_usd);
+    bucket.last = at;
+}
+
+pub fn folded_session_total(file: &UsageFile, session_id: &str) -> SessionUsage {
+    let mut out = file.sessions.get(session_id).cloned().unwrap_or_default();
+    for b in file.sessions.values().filter_map(|s| s.charged_to.get(session_id)) {
+        out.add(b.tokens, b.cost_usd, b.turns);
+    }
+    out
 }
 
 /// What a project has spent across every session in it, for the project ceiling.
@@ -171,24 +197,41 @@ pub struct UsageTotals {
     pub project: SessionUsage,
 }
 
-pub fn record_live(cwd: &str, session_id: &str, tokens: u64, cost_usd: Option<f64>) -> Result<UsageTotals, String> {
+pub fn record_live(
+    cwd: &str,
+    session_id: &str,
+    tokens: u64,
+    cost_usd: Option<f64>,
+) -> Result<Vec<(String, UsageTotals)>, String> {
     let stamp = Stamp {
         repo: Some(crate::exec::common_dir(cwd).to_string_lossy().into_owned()),
         branch: crate::git::current_branch(cwd),
         item: crate::rpc::item_for_spend(session_id),
+        parent: super::side::parent(session_id),
         at: crate::owned_state::now_ms(),
     };
     let path = usage_path(cwd);
     let file = write_turn(&path, session_id, tokens, cost_usd, &stamp)?;
-    let totals = UsageTotals {
-        session: file.sessions[session_id].clone(),
-        project: project_total(&file),
-    };
+    let changed = moved(&file, session_id, stamp.parent.as_deref());
     index()
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .insert(path, file);
-    Ok(totals)
+    Ok(changed)
+}
+
+fn moved(file: &UsageFile, session_id: &str, parent: Option<&str>) -> Vec<(String, UsageTotals)> {
+    let project = project_total(file);
+    std::iter::once(session_id)
+        .chain(parent)
+        .map(|id| {
+            let totals = UsageTotals {
+                session: folded_session_total(file, id),
+                project: project.clone(),
+            };
+            (id.to_string(), totals)
+        })
+        .collect()
 }
 
 fn parents() -> &'static Mutex<HashMap<String, String>> {
@@ -258,8 +301,12 @@ pub fn branch_total(index: &Index, repo: &str, branch: &str) -> SessionUsage {
 
 pub fn item_total(index: &Index, item: &str) -> SessionUsage {
     let mut out = SessionUsage::default();
-    for s in sessions(index).filter(|s| s.item.as_deref() == Some(item)) {
-        out.add(s.tokens, s.cost_usd, s.turns);
+    for s in sessions(index) {
+        if s.item.as_deref() == Some(item) {
+            out.add(s.tokens, s.cost_usd, s.turns);
+        } else if let Some(b) = s.items.get(item) {
+            out.add(b.tokens, b.cost_usd, b.turns);
+        }
     }
     out
 }
@@ -269,9 +316,11 @@ pub fn item_total(index: &Index, item: &str) -> SessionUsage {
 pub fn item_costs(index: &Index) -> HashMap<String, f64> {
     let mut costs: HashMap<&str, Option<f64>> = HashMap::new();
     for s in sessions(index).filter(|s| s.turns > 0) {
-        if let Some(item) = s.item.as_deref() {
+        let whole = s.item.as_deref().map(|item| (item, s.cost_usd));
+        let charged = s.items.iter().map(|(item, b)| (item.as_str(), b.cost_usd));
+        for (item, cost) in whole.into_iter().chain(charged) {
             let total = costs.entry(item).or_insert(Some(0.0));
-            *total = total.zip(s.cost_usd).map(|(a, b)| a + b);
+            *total = total.zip(cost).map(|(a, b)| a + b);
         }
     }
     costs
@@ -297,13 +346,19 @@ pub fn spend_for(index: &Index, queries: &[SpendQuery], repo_of: impl Fn(&str) -
         .collect()
 }
 
-// A session one of `items` worked on counts whole, any other only for its
-// buckets on `branches`, so a session reached both ways counts once.
+// A session one of `items` worked on counts whole (a side chat only its turns
+// charged to one), any other only for its buckets on `branches`, so a session
+// reached both ways counts once.
 pub fn issue_total(index: &Index, repo: &str, branches: &HashSet<String>, items: &HashSet<String>) -> SessionUsage {
     let mut out = SessionUsage::default();
     for s in sessions(index) {
+        let charged: Vec<&Spend> = items.iter().filter_map(|i| s.items.get(i)).collect();
         if s.item.as_ref().is_some_and(|i| items.contains(i)) {
             out.add(s.tokens, s.cost_usd, s.turns);
+        } else if !charged.is_empty() {
+            for b in charged {
+                out.add(b.tokens, b.cost_usd, b.turns);
+            }
         } else if s.repo.as_deref() == Some(repo) {
             for b in branches.iter().filter_map(|b| s.branches.get(b)) {
                 out.add(b.tokens, b.cost_usd, b.turns);
@@ -388,6 +443,7 @@ mod tests {
             repo: Some(repo.into()),
             branch: branch.map(Into::into),
             item: item.map(Into::into),
+            parent: None,
             at,
         }
     }
@@ -532,6 +588,54 @@ mod tests {
         let issue = issue_total(&index, "/o/.git", &everything, &HashSet::new());
         assert_eq!(issue.cost_usd, Some(8.0), "the old session's 16 is in no bucket");
         assert_eq!(item_total(&index, "").turns, 0);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_side_chats_stamped_turns_count_toward_its_parents_session_and_item_only() {
+        let dir = scratch("side").parent().unwrap().to_path_buf();
+        let path = dir.join("p.json");
+        let repo = "/r/.git";
+        record_turn(&path, "parent", 10, Some(1.0), &at(repo, Some("b"), Some("i1"), 1)).unwrap();
+        let side = Stamp {
+            parent: Some("parent".into()),
+            ..at(repo, Some("b"), Some("i1"), 2)
+        };
+        record_turn(&path, "side", 10, Some(0.5), &side).unwrap();
+        record_turn(&path, "side", 10, Some(0.25), &side).unwrap();
+        record_turn(&path, "side", 10, Some(2.0), &at(repo, Some("b"), None, 3)).unwrap();
+
+        let index = load_dir(&dir);
+        let file = &index[&path];
+        let parent = folded_session_total(file, "parent");
+        assert_eq!((parent.cost_usd, parent.turns), (Some(1.75), 3));
+        assert_eq!(
+            file.sessions["parent"].cost_usd,
+            Some(1.0),
+            "the stored total is the parent's own"
+        );
+        assert_eq!(folded_session_total(file, "side").cost_usd, Some(2.75));
+        assert_eq!(
+            item_total(&index, "i1").cost_usd,
+            Some(1.75),
+            "the fork's unstamped turn is not the item's"
+        );
+        assert_eq!(item_costs(&index).get("i1"), Some(&1.75));
+        let items: HashSet<String> = ["i1".to_string()].into();
+        assert_eq!(issue_total(&index, repo, &HashSet::new(), &items).cost_usd, Some(1.75));
+        assert_eq!(branch_total(&index, repo, "b").cost_usd, Some(3.75));
+        let branches: HashSet<String> = ["b".to_string()].into();
+        assert_eq!(
+            issue_total(&index, repo, &branches, &HashSet::new()).cost_usd,
+            Some(3.75)
+        );
+
+        let changed = moved(file, "side", Some("parent"));
+        let ids: Vec<_> = changed
+            .iter()
+            .map(|(id, t)| (id.as_str(), t.session.cost_usd))
+            .collect();
+        assert_eq!(ids, [("side", Some(2.75)), ("parent", Some(1.75))]);
         let _ = std::fs::remove_dir_all(dir);
     }
 

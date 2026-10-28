@@ -999,14 +999,16 @@ fn host_chats(daemon: &Arc<Daemon>) {
     let window = tell(Arc::downgrade(daemon));
     chats.host.set_on_turn(Arc::new(
         move |cwd, id, tokens, cost_usd| match crate::chat::usage::record_live(cwd, id, tokens, cost_usd) {
-            Ok(totals) => {
-                window(
-                    "emit",
-                    json!({
-                        "event": crate::chat::usage::CHANGED_EVENT,
-                        "payload": { "sessionId": id, "cwd": cwd, "totals": totals },
-                    }),
-                );
+            Ok(changed) => {
+                for (session, totals) in changed {
+                    window(
+                        "emit",
+                        json!({
+                            "event": crate::chat::usage::CHANGED_EVENT,
+                            "payload": { "sessionId": session, "cwd": cwd, "totals": totals },
+                        }),
+                    );
+                }
                 crate::rpc::spend_heard(id);
             }
             Err(e) => eprintln!("tori daemon: spend for {id} not recorded: {e}"),
