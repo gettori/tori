@@ -311,9 +311,19 @@ fn answer(app: &tauri::AppHandle, worktree: &str, digest: &str, answer: consent:
     Ok(())
 }
 
+// Answers with whose setup now runs there, since the user's own still wins and
+// offering to run the repo's would then run the user's instead.
 #[tauri::command(async)]
-pub fn accept_proposal(app: tauri::AppHandle, worktree: String, digest: String) -> Result<(), String> {
-    answer(&app, &worktree, &digest, consent::Answer::Accept)
+pub fn accept_proposal(
+    app: tauri::AppHandle,
+    worktree: String,
+    digest: String,
+) -> Result<Option<crate::setup::Source>, String> {
+    answer(&app, &worktree, &digest, consent::Answer::Accept)?;
+    let Some(project) = crate::config::project_of_folder(worktree.clone()) else {
+        return Ok(None);
+    };
+    Ok(crate::setup::command_for(crate::setup::Kind::Setup, &project, Path::new(&worktree)).map(|(_, source)| source))
 }
 
 #[tauri::command(async)]

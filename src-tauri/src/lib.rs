@@ -718,6 +718,7 @@ pub fn run() {
             worktree::remove_worktree,
             run::run_start,
             run::repo_run_at,
+            setup::setup_rerun,
             run::run_stop,
             run::run_list,
             worktree::worktree_not_a_fork,

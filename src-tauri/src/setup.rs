@@ -164,6 +164,12 @@ impl Runs {
     /// Start `spec.command` in `spec.worktree` and return at once. A command
     /// that cannot be spawned is reported failed, with the reason in its log.
     pub fn start(&'static self, spec: Spec, publish: Publish) -> Report {
+        // `put` drops the entry this replaces, which would leave a live run
+        // nobody can stop writing into the same folder.
+        if let Some(pid) = self.pid(spec.worktree, spec.kind) {
+            kill_group(pid);
+            self.wait_out(spec.worktree, spec.kind, State::Running, KILL_GRACE);
+        }
         let worktree = canonical(spec.worktree);
         let _ = std::fs::create_dir_all(spec.log_dir);
         let stem = spec
@@ -513,6 +519,12 @@ pub fn on_created(project: &str, worktree: &Path) -> Option<Report> {
     Some(RUNS.start(spec, publisher()))
 }
 
+#[tauri::command(async)]
+pub fn setup_rerun(worktree_path: String) -> Result<Report, String> {
+    let project = crate::config::project_of_folder(worktree_path.clone()).ok_or("This folder is in no project.")?;
+    on_created(&project, Path::new(&worktree_path)).ok_or_else(|| "This worktree has no setup command.".to_string())
+}
+
 /// Run the teardown in a worktree about to be removed, and return once it has
 /// exited or been killed at `TEARDOWN_LIMIT`.
 pub fn teardown(project: &str, worktree: &Path) -> Option<Report> {
@@ -712,6 +724,37 @@ mod tests {
         let report = wait(&wt, Duration::from_secs(10)).unwrap();
         assert_eq!((report.state, report.source), (State::Done, Source::Repo));
         assert!(marker.exists());
+    }
+
+    #[test]
+    fn a_setup_started_over_a_running_one_leaves_one_process_and_runs_the_repos() {
+        let dir = tmp();
+        let wt = dir.join("wt");
+        user_setup(&dir, " ");
+        crate::project_config::seam_accepted(&wt, repo("sleep 30", "x"));
+        on_created("/the/project", &wt).unwrap();
+        let first = RUNS.pid(&wt, Kind::Setup).unwrap();
+
+        let marker = dir.join("again");
+        crate::project_config::seam_accepted(&wt, repo(&format!("touch '{}'; sleep 30", marker.display()), "x"));
+        let report = on_created("/the/project", &wt).unwrap();
+        assert_eq!((report.state, report.source), (State::Running, Source::Repo));
+        assert!(!signal_group(first, 0), "the first setup is still alive");
+        let second = RUNS.pid(&wt, Kind::Setup).unwrap();
+        assert_ne!(first, second);
+        let key = canonical(&wt);
+        let live = RUNS
+            .live(Kind::Setup)
+            .into_iter()
+            .filter(|r| same_folder(&r.worktree, &key))
+            .count();
+        assert_eq!(live, 1);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !marker.exists() && Instant::now() < deadline {
+            thread::sleep(POLL);
+        }
+        assert!(marker.exists());
+        kill(&wt);
     }
 
     #[test]
