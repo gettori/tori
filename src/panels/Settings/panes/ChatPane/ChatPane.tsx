@@ -352,7 +352,7 @@ export default function ChatPane(props: PaneProps) {
           />
         </Row>
 
-        {/* The three ceilings keep a plain field rather than a stepper: each one
+        {/* The ceilings keep a plain field rather than a stepper: each one
             is opt-in, and blank is a value a stepper cannot hold or return to.
             The placeholder is what says so. */}
         <Row
@@ -388,6 +388,24 @@ export default function ChatPane(props: PaneProps) {
             class={`${styles.input} ${styles.numField}`}
             value={settings.budgets.projectUsd ?? ""}
             onChange={(e) => setBudgets({ projectUsd: optionalNumber(e.currentTarget.value, 0) })}
+          />
+        </Row>
+
+        <Row
+          {...props}
+          id="item-budget"
+          label="Stop an autopilot item after"
+          hint="Dollars across every session the autopilot runs for one item, retries and second opinions included. A project or an item can set its own. ACP agents report no cost, so this never stops their workers."
+        >
+          <input
+            type="number"
+            min="0"
+            step="0.5"
+            placeholder="no limit"
+            aria-label="Stop an autopilot item after"
+            class={`${styles.input} ${styles.numField}`}
+            value={settings.budgets.itemUsd ?? ""}
+            onChange={(e) => setBudgets({ itemUsd: optionalNumber(e.currentTarget.value, 0) })}
           />
         </Row>
 

@@ -56,7 +56,12 @@ pub struct Composer {
     callers: Mutex<crate::hooks::Callers>,
     pilot: AtomicBool,
     nudges: Mutex<Sender<Nudge>>,
+    item_over: std::sync::OnceLock<ItemOver>,
 }
+
+/// How far past its item's spend ceiling a session is, computed in Rust since
+/// a worker may have no window to report a stop from.
+pub type ItemOver = Box<dyn Fn(&str) -> Option<String> + Send + Sync>;
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
@@ -77,6 +82,7 @@ impl Composer {
             callers: Mutex::default(),
             pilot: AtomicBool::new(false),
             nudges: Mutex::new(tx),
+            item_over: std::sync::OnceLock::new(),
         });
         let weak = Arc::downgrade(&composer);
         std::thread::spawn(move || {
@@ -183,7 +189,15 @@ impl Composer {
     }
 
     pub fn budget_stopped(&self, session: &str) -> bool {
-        self.dots.budget_stopped(session)
+        self.dots.budget_stopped(session) || self.item_over(session).is_some()
+    }
+
+    pub fn item_over(&self, session: &str) -> Option<String> {
+        self.item_over.get().and_then(|over| over(session))
+    }
+
+    pub fn set_item_over(&self, over: ItemOver) {
+        let _ = self.item_over.set(over);
     }
 
     pub fn tab_of(&self, session: &str) -> Option<String> {
@@ -460,5 +474,50 @@ impl Composer {
         if !quiet_tick {
             self.sources.tell("present", shown);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Nothing;
+
+    impl Sources for Nothing {
+        fn beats(&self) -> Vec<Beat> {
+            Vec::new()
+        }
+        fn tabs(&self) -> Vec<Listed> {
+            Vec::new()
+        }
+        fn tab_of(&self, _: &str) -> Option<String> {
+            None
+        }
+        fn running(&self, _: Vec<SessionRef>) -> Vec<String> {
+            Vec::new()
+        }
+        fn live(&self) -> BTreeMap<String, Live> {
+            BTreeMap::new()
+        }
+        fn levers(&self, _: &str) -> Option<Levers> {
+            None
+        }
+        fn question(&self, _: &str) -> Value {
+            Value::Null
+        }
+        fn tell(&self, _: &'static str, _: Value) {}
+        fn heard(&self, _: &str, _: &Value) {}
+    }
+
+    #[test]
+    fn a_worker_past_its_items_ceiling_is_stopped_with_no_window_attached() {
+        let composer = Composer::start(Box::new(Nothing), Arc::new(Hub::default()));
+        assert!(!composer.budget_stopped("w1"));
+        composer.set_item_over(Box::new(|session| {
+            (session == "w1").then(|| "$5.20 of $5.00".to_string())
+        }));
+        assert!(composer.budget_stopped("w1"));
+        assert_eq!(composer.item_over("w1").as_deref(), Some("$5.20 of $5.00"));
+        assert!(!composer.budget_stopped("w2"), "another session is not held");
     }
 }

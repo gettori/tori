@@ -397,6 +397,10 @@ pub struct Budgets {
     /// Stop when a turn's context window passes this percentage.
     #[serde(default)]
     pub context_percent: Option<f64>,
+    /// Ceiling for one autopilot item across all its sessions, in dollars,
+    /// unless its project or the item sets its own.
+    #[serde(default)]
+    pub item_usd: Option<f64>,
     /// Warn once at this fraction of whichever ceiling is in force.
     #[serde(default = "default_warn_at_fraction")]
     pub warn_at_fraction: f64,
@@ -412,6 +416,7 @@ impl Default for Budgets {
             session_usd: None,
             project_usd: None,
             context_percent: None,
+            item_usd: None,
             warn_at_fraction: default_warn_at_fraction(),
         }
     }
@@ -2071,6 +2076,7 @@ mod tests {
         assert_eq!(loaded.budgets.session_usd, None);
         assert_eq!(loaded.budgets.project_usd, None);
         assert_eq!(loaded.budgets.context_percent, None);
+        assert_eq!(loaded.budgets.item_usd, None);
         assert_eq!(loaded.budgets.warn_at_fraction, 0.8);
 
         let mut s = loaded;
@@ -2078,6 +2084,7 @@ mod tests {
             session_usd: Some(5.5),
             project_usd: Some(20.0),
             context_percent: Some(75.0),
+            item_usd: Some(12.0),
             warn_at_fraction: 0.9,
         };
         save_to(&p, &s).unwrap();
@@ -2087,7 +2094,13 @@ mod tests {
         // Written under the names the frontend sends, or the round trip only
         // works between this struct and itself.
         let raw = std::fs::read_to_string(&p).unwrap();
-        for key in ["sessionUsd", "projectUsd", "contextPercent", "warnAtFraction"] {
+        for key in [
+            "sessionUsd",
+            "projectUsd",
+            "contextPercent",
+            "itemUsd",
+            "warnAtFraction",
+        ] {
             assert!(raw.contains(key), "{key} missing from {raw}");
         }
         let _ = std::fs::remove_file(&p);

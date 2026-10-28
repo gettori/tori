@@ -99,6 +99,22 @@ pub(crate) fn item_for_spend(session: &str) -> Option<String> {
     OFFICE.get().and_then(|office| office.item_for_session(&owner))
 }
 
+pub(crate) fn item_over_ceiling(session: &str) -> Option<String> {
+    match OFFICE.get()?.item_spend(session)? {
+        (_, office::Ceiling::Over(over)) => Some(over),
+        (_, office::Ceiling::Under) => None,
+    }
+}
+
+pub(crate) fn spend_heard(session: &str) {
+    let (Some(office), Some(watcher)) = (OFFICE.get(), WATCHER.get()) else {
+        return;
+    };
+    if let Some((item, ceiling)) = office.item_spend(session) {
+        watcher.spend(&item, session, ceiling);
+    }
+}
+
 pub(crate) fn rate_limit_heard(session: &str, event: &crate::chat::model::ChatEvent) {
     if let Some(office) = OFFICE.get() {
         office.rate_limit(session, event);

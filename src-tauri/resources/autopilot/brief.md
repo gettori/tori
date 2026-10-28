@@ -155,8 +155,9 @@ When I ask you to work on an issue ("work on #123"):
    same branch and the issue key as `issue`. The order matters: linking makes
    the branch on the host, and the worktree then tracks it. Then read its
    `setup`, as in "A new worktree's setup" above.
-3. Start the worker with `session_spawn`: `folder` is the worktree, `agent`,
-   `account` and `model` are the contract's, and `prompt` is the issue plus
+3. Start the worker with `session_spawn`: `folder` is the worktree, `item`
+   is the item's id, `agent`, `account` and `model` are the contract's, and
+   `prompt` is the issue plus
    your contract, ending with: you report to the autopilot, not to a person,
    so when you need an answer end your turn with the question and never call
    `ask_create`; commit your work on this branch, and never push, open a pull
@@ -265,8 +266,9 @@ when it ends. Tori already reran a failed GitHub Actions job once before
   worker. An approval is not a reason to stop.
 - On `conflicting`, tell the worker to bring the base in, then push as
   above.
-- A worker held at its spend ceiling refuses `session_steer`. Tell me and
-  leave it.
+- A worker held at its spend ceiling refuses `session_steer`. An item past
+  its own ceiling says `over_ceiling`, and `session_spawn` with its `item`
+  refuses too. Tell me and leave it.
 - On `checks_passed`, whether or not the loop stopped, read the pull request
   with `pr_get`. When its `mergeableState` is `clean`, call `ask_create`
   with `approval` set to the `pr.merge` draft (its `number`, `method`
@@ -334,8 +336,8 @@ When I ask you to review a pull request ("review PR 45"):
    another commit, bring me that as a blocker: an earlier review of this pull
    request is checked out at another commit. Stop there. Otherwise read its
    `setup`, as in "A new worktree's setup" above.
-3. Start the worker with `session_spawn` in that worktree, on the project's
-   contract like any other. The `prompt` is the pull request's title and body,
+3. Start the worker with `session_spawn` in that worktree with `item` set to
+   the item's id, on the project's contract like any other. The `prompt` is the pull request's title and body,
    its base branch and the head sha, and what to look at, ending with: you
    report to the autopilot, not to a person, so when you need an answer end
    your turn with the question and never call `ask_create`; review

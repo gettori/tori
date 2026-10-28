@@ -306,6 +306,30 @@ pub fn start(parts: Parts) -> Arc<Office> {
 const DEVICES_EVENT: &str = "remote://devices";
 const UPDATE_EVENT: &str = "daemon://update-waiting";
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum Ceiling {
+    Under,
+    Over(String),
+}
+
+// No cost reported (an ACP worker) never reaches a ceiling.
+fn against(spent: Option<f64>, ceiling: f64) -> Ceiling {
+    match spent {
+        Some(spent) if spent >= ceiling => Ceiling::Over(format!("${spent:.2} of ${ceiling:.2}")),
+        _ => Ceiling::Under,
+    }
+}
+
+/// `None` for an item that does not exist or has no ceiling anywhere.
+pub(crate) fn item_ceiling_state(store: &AutopilotStore, id: &str) -> Option<Ceiling> {
+    let item = store.items().into_iter().find(|i| i.id == id)?;
+    let contract = store.contract(&item.project);
+    let global = crate::settings::get_settings().budgets.item_usd;
+    let ceiling = crate::autopilot::item_ceiling(&item, contract.as_ref(), global)?;
+    let spent = crate::chat::usage::with_index(|index| crate::chat::usage::item_total(index, id)).cost_usd;
+    Some(against(spent, ceiling))
+}
+
 fn arg<T: for<'de> Deserialize<'de>>(args: &Value, key: &str) -> Result<T, String> {
     serde_json::from_value(args.get(key).cloned().unwrap_or(Value::Null)).map_err(|e| format!("{key}: {e}"))
 }
@@ -385,6 +409,14 @@ impl Office {
 
     pub fn item_for_session(&self, session: &str) -> Option<String> {
         self.autopilot.item_for_session(session)
+    }
+
+    pub fn item_spend(&self, session: &str) -> Option<(String, Ceiling)> {
+        let id = self
+            .autopilot
+            .item_for_session(&crate::chat::usage::parent_of(session))?;
+        let ceiling = item_ceiling_state(&self.autopilot, &id)?;
+        Some((id, ceiling))
     }
 
     /// A chat's own rate limit frame, filed under the account it runs on, so
