@@ -601,6 +601,9 @@ export type OpenJob = {
    *  whose whole purpose is to change the answer: without it a completed login
    *  would keep reading as signed out. */
   recheckAgentsOnExit?: boolean;
+  /** Re-read the speech status when the process exits. Set by the espeak-ng
+   *  install and uninstall, so the Pronunciation row shows the new answer. */
+  recheckSpeechOnExit?: boolean;
   /** Which account a clean exit finishes signing in. Set by sign-in only:
    *  the agent's own first-run flag is set for that home, so its next
    *  interactive run does not open the wizard on an account already in. */

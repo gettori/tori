@@ -1,6 +1,7 @@
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import type { OpenJob } from "./events";
 
 export type VoiceSize = "int8" | "full";
 
@@ -16,6 +17,8 @@ export type SpeechStatus = {
   model: VoiceSize | null;
   downloading: Progress | null;
   sizes: { id: VoiceSize; bytes: number }[];
+  espeak: boolean;
+  brew: boolean;
 };
 
 type DownloadEvent =
@@ -29,6 +32,8 @@ const [status, setStatus] = createSignal<SpeechStatus>({
   model: null,
   downloading: null,
   sizes: [],
+  espeak: false,
+  brew: false,
 });
 const [asking, setAsking] = createSignal(false);
 const [failed, setFailed] = createSignal<string | null>(null);
@@ -99,6 +104,18 @@ export function sizeLabel(id: VoiceSize): string {
   const size = SIZES.find((s) => s.id === id)!;
   const bytes = status().sizes.find((s) => s.id === id)?.bytes;
   return bytes ? `${size.label}, ${mb(bytes)} MB` : size.label;
+}
+
+export function espeakJob(verb: "install" | "uninstall", cwd: string): OpenJob {
+  return {
+    id: `${verb}:espeak-ng`,
+    title: `${verb === "install" ? "Install" : "Uninstall"} espeak-ng`,
+    cwd,
+    program: "brew",
+    args: [verb, "espeak-ng"],
+    interactive: true,
+    recheckSpeechOnExit: true,
+  };
 }
 
 export const cancelDownload = () => invoke("speech_download_cancel");

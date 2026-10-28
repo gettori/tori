@@ -783,6 +783,7 @@ pub fn run() {
             sound::sound_preview,
             speech::speech_speak,
             speech::speech_stop,
+            speech::speech_warm,
             speech::speech_voices,
             speech::speech_status,
             speech::speech_download,

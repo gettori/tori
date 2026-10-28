@@ -1,8 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { refreshAgentHealth } from "./agentHealth";
+import { refresh as refreshSpeech } from "./voiceDownload";
 import type { OpenJob } from "./events";
 
-type ExitEffects = Pick<OpenJob, "rediscoverOnExit" | "recheckAgentsOnExit" | "completeSignInOnExit">;
+type ExitEffects = Pick<
+  OpenJob,
+  "rediscoverOnExit" | "recheckAgentsOnExit" | "recheckSpeechOnExit" | "completeSignInOnExit"
+>;
 
 /** What a job asked to happen once its process ends. Shared by the dock's
  *  command tabs and first run's inline jobs, so a sign-in finishes the same
@@ -14,5 +18,6 @@ export async function runExitEffects(job: ExitEffects, code: number | null): Pro
     const { agentId, profileId } = job.completeSignInOnExit;
     invoke("complete_sign_in", { adapterId: agentId, profileId }).catch(() => {});
   }
+  if (job.recheckSpeechOnExit) refreshSpeech().catch(() => {});
   if (job.recheckAgentsOnExit) await refreshAgentHealth();
 }

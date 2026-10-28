@@ -719,6 +719,12 @@ export const SETTINGS: SettingEntry[] = [
     hint: "The voice Read aloud downloads. Smaller loads faster, larger is a little clearer. Change swaps one for the other.",
   },
   {
+    id: "read-aloud-pronunciation",
+    section: "chat",
+    label: "Pronunciation",
+    hint: "Without espeak-ng, a word Tori does not know is spelled out letter by letter. Install runs Homebrew in a terminal; without Homebrew, install espeak-ng yourself.",
+  },
+  {
     id: "read-aloud-voice",
     section: "chat",
     label: "Voice",

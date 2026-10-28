@@ -1332,6 +1332,7 @@ export default function Terminal(props: {
       ...(j.env ? { env: j.env } : {}),
       ...(j.rediscoverOnExit ? { rediscoverOnExit: true } : {}),
       ...(j.recheckAgentsOnExit ? { recheckAgentsOnExit: true } : {}),
+      ...(j.recheckSpeechOnExit ? { recheckSpeechOnExit: true } : {}),
       ...(j.completeSignInOnExit ? { completeSignInOnExit: j.completeSignInOnExit } : {}),
       ...(j.relaunchOnSuccess ? { relaunchOnSuccess: true } : {}),
       ...(j.interactive ? { interactive: true } : {}),
