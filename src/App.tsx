@@ -27,6 +27,7 @@ import ProposalDialog from "./components/Dialogs/ProposalDialog";
 import ConfirmDialog, { type ConfirmReq } from "./components/Dialogs/ConfirmDialog";
 import Checkbox from "./components/Checkbox/Checkbox";
 import ToastRegion from "./components/Toasts/Toasts";
+import ReadingChip from "./components/ReadingChip/ReadingChip";
 import type { GitReport } from "./utils/gitHealth";
 import Settings from "./panels/Settings/Settings";
 import ProjectSettingsDialog from "./panels/ProjectSettings/ProjectSettingsDialog";
@@ -1283,6 +1284,9 @@ function App() {
       <AskpassDialog />
       <ServerMessageDialog />
       <ProposalDialog />
+      {/* One for the window, not per transcript: a read keeps going when its
+          tab is switched away from, so Stop has to stay in reach. */}
+      <ReadingChip />
       <ToastRegion />
     </div>
   );

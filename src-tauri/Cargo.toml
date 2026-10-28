@@ -52,6 +52,7 @@ quick-xml = "0.42"
 globset = "0.4"
 rusqlite = { version = "0.31", features = ["bundled"] }
 tauri-plugin-clipboard-manager = "2.3.2"
+tauri-plugin-tts = "0.2.1"
 # The forge token store. `keyring-core` rather than the all-in-one `keyring`
 # crate on that crate's own advice: it says an application that wants to choose
 # its credential stores should link core plus the specific store, since `keyring`
