@@ -1,8 +1,8 @@
 ---
 summary: ports.rs hands each checkout a stable TORI_PORT block from ports.json and finds dev servers per worktree by lsof cwd
 status: current
-updated: 2026-10-21
-source: "plan \"Per-worktree ports and dev server URLs\" (personal/tori, branch `phase-1-block-4`, gettori/tickets#40); `src-tauri/src/ports.rs`, `src/utils/portsStore.ts`"
+updated: 2026-10-28
+source: "plan \"Per-worktree ports and dev server URLs\" (personal/tori, branch `phase-1-block-4`, gettori/tickets#40); `src-tauri/src/ports.rs`, `src/utils/portsStore.ts`; plan \"Shareable project config in the repository, trust-gated\" (branch shareable-project-config, gettori/tickets#49)"
 ---
 
 # Ports
@@ -19,7 +19,7 @@ source: "plan \"Per-worktree ports and dev server URLs\" (personal/tori, branch 
 
 ## Interface
 
-- `env_for(cwd)` returns `TORI_PORT` and `TORI_PORT_1` to `TORI_PORT_9`, or nothing outside a checkout. It is layered into `setup::Runs::start` (`setup.rs:182`, so setup, run and teardown all get it), `pty_spawn` (`pty/mod.rs:396`) and `chat::transport::build_command` (`chat/transport.rs:73`). `PORT` is deliberately not set.
+- `env_for(cwd)` returns `TORI_PORT` and `TORI_PORT_1` up to `width(root)` variables, or nothing outside a checkout. `width` is the user's `WorktreePrefs.ports` (the deepest canonical key holding the root), else the accepted repo `ports` ([[concept_repo_proposals]]), clamped to 1..10. The allocator stays 10 wide, so a width never moves a block. It is layered into `setup::Runs::start` (`setup.rs:182`, so setup, run and teardown all get it), `pty_spawn` (`pty/mod.rs:396`) and `chat::transport::build_command` (`chat/transport.rs:73`). `PORT` is deliberately not set.
 - `ports_scan(worktrees)` returns the listening ports keyed by the paths as given.
 - `src/utils/portsStore.ts` holds one scan for every consumer. `portsAt(path)` adds a path for the life of the calling owner. The store has no timer: it scans on focus, 3 s after any `pty://activity` quiet, 3 s after a run command starts and at once when it stops (`setup://changed` with kind run, since a headless run has no terminal to go quiet), and again when a path was added mid-scan.
 - Shown as `:<port>` chips in the worktree row's end cluster in `LeftSidebar.tsx`, brand amber while `extensionConnected()` (read from `browser_status` after a scan that found a port), and as `localhost:<port>` rows at the top of `ScriptsSection.tsx`.

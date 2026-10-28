@@ -1,8 +1,8 @@
 ---
 summary: verification.rs marks each code-changing turn verified, failed or unverified from the last check after its last edit
 status: current
-updated: 2026-10-12
-source: "Verification badge plan (branch `phase-1-block-1`, gettori/tickets#26); commits 32bb7fa2, 1624030d, 140d5b82; `src-tauri/src/verification.rs` (`Tracker`, `mark_history`, `session_turns`, `entries_for`), `src-tauri/src/chat/host.rs` (`wrap`, `mark_verification`), `src-tauri/src/chat/commands.rs` (`session_verification`), `src/utils/verification.ts`, `src/components/Dialogs/VerificationCommandsDialog.tsx`"
+updated: 2026-10-28
+source: "Verification badge plan (branch `phase-1-block-1`, gettori/tickets#26); commits 32bb7fa2, 1624030d, 140d5b82; `src-tauri/src/verification.rs` (`Tracker`, `mark_history`, `session_turns`, `entries_for`), `src-tauri/src/chat/host.rs` (`wrap`, `mark_verification`), `src-tauri/src/chat/commands.rs` (`session_verification`), `src/utils/verification.ts`, `src/components/Dialogs/VerificationCommandsDialog.tsx`; plan \"Shareable project config in the repository, trust-gated\" (branch shareable-project-config, gettori/tickets#49)"
 ---
 
 # Verification
@@ -15,7 +15,7 @@ source: "Verification badge plan (branch `phase-1-block-1`, gettori/tickets#26);
 - **The verdict** comes from the last checking call after the last edit, by its worst entry: passed is verified, failed is failed, and no check or an exit not seen is unverified. A later edit voids an earlier pass.
 - **A check** is a command whose words start with an entry of the list, after `strip_wrappers` takes off assignments, `timeout`, `time`, `nice`, `command`, `npx`, `bunx`, `env`, `pnpm|npm|yarn exec|dlx`, `uv|poetry run`, `python -m` and runner flags. `cd`, `export` and friends are setup, and `sh -c "..."` is read recursively.
 - **Exit trust.** Only the trailing `&&` run of a line can own the call's exit, and only when what precedes it is `;`, `&` or nothing, the line ends there, the call was not backgrounded, and the output does not show a timeout or an interrupt. Anything else is `notSeen`. A rejected call never ran and yields no check. A failing chain holding a command that is neither a check nor setup is `notSeen`, since Tori cannot tell which one failed; setup is assumed not to be what failed.
-- **The list** is `DEFAULTS`, or the project's own from `verification.commands`, resolved by the deepest key that is a component prefix of the session cwd (so worktrees under a container and `.tori/worktrees/x` find it, `/work/app-other` does not). An empty list is no entry. It replaces the defaults, never adds.
+- **The list** is `DEFAULTS`, or the project's own from `verification.commands`, resolved by the deepest key that is a component prefix of the session cwd (so worktrees under a container and `.tori/worktrees/x` find it, `/work/app-other` does not). An empty list is no entry. It replaces the defaults, never adds. With no user list, `entries_in` takes the accepted `checks` of the cwd's root (`repo_checks`, [[concept_repo_proposals]]) before `DEFAULTS`. `verification_commands`, which prefills the settings field, still answers only the user's list or the defaults; the repo's is shown beside it.
 
 ## Interface
 
@@ -31,7 +31,7 @@ source: "Verification badge plan (branch `phase-1-block-1`, gettori/tickets#26);
 - **Its own event, not a field on `TurnCompleted`**, because a Claude transcript replay has no `TurnCompleted` to carry it.
 - **One rollup, in Rust.** A second copy in `chatStore` (the blind-edit shape) would let the ordering rule drift between two languages.
 - **First answer per turn kept** in the tracker, so an ACP load replaying through `wrap` does not overwrite measured times. See [[gotcha_an_acp_load_hands_history_back_through_the_live_sink]].
-- **Never read from the repo**, so a project cannot declare its own work verified.
+- **Read from the repo only once accepted**, so a project cannot declare its own work verified without the user agreeing to what counts.
 
 ## Related
 

@@ -1,8 +1,8 @@
 ---
 summary: chatBudget.ts enforces spend ceilings at the turn boundary, refusing the next turn, so a running turn always finishes
 status: current
-updated: 2026-10-22
-source: "\"Defer permissions to the harness, and grow to four harnesses\" (phase 2, branch `chat-fix`); originally Chat surface plan, phase 7 (branch `chat`); `src/utils/chatBudget.ts`; `src/panels/Chat/chatStore.ts` (`pendingFlush`); plan \"Let a session watch a pull request and wake on changes\" (branch watch-pull-request, gettori/tickets#4), `src-tauri/src/rpc/mod.rs:491` (start_pr_wake); gettori/tickets#45 on branch fix-ci-until-green, plan 'Fix CI until green, then ask to merge', commits 40193aae, bb56adef, 02c357b4, 04ab48cd"
+updated: 2026-10-28
+source: "\"Defer permissions to the harness, and grow to four harnesses\" (phase 2, branch `chat-fix`); originally Chat surface plan, phase 7 (branch `chat`); `src/utils/chatBudget.ts`; `src/panels/Chat/chatStore.ts` (`pendingFlush`); plan \"Let a session watch a pull request and wake on changes\" (branch watch-pull-request, gettori/tickets#4), `src-tauri/src/rpc/mod.rs:491` (start_pr_wake); gettori/tickets#45 on branch fix-ci-until-green, plan 'Fix CI until green, then ask to merge', commits 40193aae, bb56adef, 02c357b4, 04ab48cd; gettori/tickets#48 on branch cost-per-ticket, plan \"Cost per ticket and per pull request, with a projection before queueing\", commits 798e6f83, a72dc201, 6374485e, e0acfc08"
 ---
 
 # Spend ceilings
@@ -45,8 +45,13 @@ A pull request watch's wake is sent by Rust, so it never passes `pendingFlush`. 
 
 The webview already tells Rust each chat's status, `BudgetStopped` included, for the dots ([[adr_rust_composes_the_dot_from_reported_facts]]), so `Composer::budget_stopped(session)` answers it with no new plumbing. The autopilot's runner goes `Idle` on every turn end and knows nothing of budgets, so the watcher now holds its wake while the autopilot is budget-stopped (`Watcher::run`, `take(now, stopped)`), and `session_steer` refuses an agent chat steering a chat held at its ceiling (`steer_past_ceiling`); a person can still steer. Added for the fix loop, whose turns are all Rust-sent ([[component_fix_loop]]).
 
+## The item ceiling is computed in Rust (2026-10-28)
+
+An autopilot item has a dollar ceiling across every session it ran: the item's own `item_usd`, else its project contract's, else `budgets.itemUsd` (`autopilot::item_ceiling`). Rust computes it from the usage index (`office::item_ceiling_state`), and `Composer::budget_stopped` ORs it in through the `ItemOver` hook the daemon sets, so steer, the watcher hold and the PR watch wake refuse through the one check; `session_spawn` with an `item` is refused too. No reported cost (ACP) is always under. Spend itself is now recorded by the daemon ([[concept_spend_attribution]]), and the webview's session and project ceilings read their totals from `usage://changed` rather than from a write it made.
+
 ## Related
 
+- [[concept_spend_attribution]] - where the totals come from, and the item ceiling's input
 - [[concept_harness_capability_tiers]] - where a harness's ability to carry one is published, and why ACP cannot
 - [[concept_pretooluse_capture_hook]] - the mechanism this used to ride, and no longer needs
 - [[component_settings_store]] - where the ceilings are set
