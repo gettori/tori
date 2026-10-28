@@ -14,6 +14,8 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { isLocked } from "../../utils/autopilotStore";
 import { extensionConnected, openPort, portsAt } from "../../utils/portsStore";
+import { spendFor } from "../../utils/spendStore";
+import { spendView } from "../../utils/spend";
 import { tearingDown } from "../../utils/teardowns";
 import { runAt, runnable, startRun, stopRun } from "../../utils/runStore";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -2854,6 +2856,7 @@ export default function LeftSidebar(props: {
     // readings of the same fact, and computing it twice is how they drift.
     const rollup = () => bubbleForUnits([u]);
     const sync = () => syncFor(u.folderPath, u.branch);
+    const spent = () => (u.branch ? spendFor({ kind: "branch", project: p.path, branch: u.branch }) : null);
     // While an agent holds this row, the row is about the agent. Half of these
     // marks are being rewritten as you read them, since an executing agent is
     // writing files and may be committing, and "uncommitted changes" during an
@@ -2929,10 +2932,12 @@ export default function LeftSidebar(props: {
         onDragStart={(e) => startAbsDrag(e, u.folderPath)}
         meta={
           (showPr() && (!trunk() || releaseShows(status()!, Date.now() / 1000))) ||
-          (sync()?.base?.stat?.files ?? 0) > 0 ? (
+          (sync()?.base?.stat?.files ?? 0) > 0 ||
+          spendView(spent(), "") ? (
             <BranchLine
               status={showPr() ? status()! : null}
               base={sync()?.base}
+              branchSpend={spent()}
               watched={showPr() && prWatches().some((w) => w.url === status()?.pullRequest?.url)}
               reviewAsked={reviewAsked()}
               release={trunk()}

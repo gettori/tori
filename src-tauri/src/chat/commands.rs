@@ -768,6 +768,11 @@ pub async fn chat_usage_totals(cwd: String, session_id: String) -> Result<usage:
     })
 }
 
+#[tauri::command(async)]
+pub fn usage_spend(queries: serde_json::Value) -> Result<serde_json::Value, String> {
+    crate::rpc::office_call("usage.spend", serde_json::json!({ "queries": queries }))
+}
+
 // `chat_set_budget_stop` used to live here, arming a spend stop in the rule file
 // so the hook would refuse every subsequent tool call. Tori no longer decides
 // tool calls, so the ceiling moved to the one boundary it still owns: whether a

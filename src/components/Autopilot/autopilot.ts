@@ -1,4 +1,5 @@
 import type { NavTarget } from "../../utils/events";
+import type { SessionUsage } from "../../utils/chatUsageStore";
 
 export type AutopilotState = "off" | "idle" | "working" | "needs" | "error";
 
@@ -67,6 +68,7 @@ export type WorkerCard = {
   doing: string;
   /** 0 to 1 while it runs; absent once it waits on the user. */
   progress?: number;
+  spend?: SessionUsage | null;
 };
 
 /** `proposed` waits for your go in the chat, so it runs after nothing. */

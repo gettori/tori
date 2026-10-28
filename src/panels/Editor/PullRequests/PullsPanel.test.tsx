@@ -87,6 +87,7 @@ const bridge = vi.hoisted(() => ({
   /** What `forge_repo_account` answers. `pick` is the one pause reason that is
    *  about the repo rather than about the account. */
   repoAccount: null as unknown,
+  spend: null as unknown,
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -121,6 +122,10 @@ vi.mock("@tauri-apps/api/core", () => ({
         : Promise.resolve({ items: bridge.files, truncated: bridge.filesTruncated });
     if (cmd === "forge_review_threads") return Promise.resolve({ items: bridge.threads, truncated: false });
     if (cmd === "forge_list_prs") return Promise.resolve({ items: [], truncated: false });
+    if (cmd === "usage_spend")
+      return Promise.resolve(
+        (args.queries as unknown[]).map(() => bridge.spend ?? { tokens: 0, costUsd: null, turns: 0 }),
+      );
     if (cmd === "forge_repo_account")
       return bridge.accountPending
         ? new Promise(() => {})
@@ -173,6 +178,7 @@ const { onWith, ADD_BRANCH_UNIT, OPEN_IN_EDITOR, SEND_TO_SESSION, SEND_TO_SESSIO
 const { resetPrListStoreForTests } = await import("../../../utils/prListStore");
 const { enterRoots, refreshMeta } = await import("../../../utils/gitActions");
 const { noteForgeUnits, resetSessionActivityForTests } = await import("../../../utils/sessionActivity");
+const { resetSpendForTests } = await import("../../../utils/spendStore");
 const { REMOVE_BRANCH_UNIT } = await import("../../../utils/events");
 
 const cmds = (name: string) => bridge.calls.filter((c) => c.cmd === name);
@@ -228,6 +234,7 @@ const signIn = () => {
 /// as well as per test, because several tests open the panel more than once and
 /// an override left behind from the last one is a state nobody asked for.
 function restBridge() {
+  bridge.spend = null;
   bridge.branch = BRANCH;
   bridge.sync = SYNC;
   bridge.origin = "git@github.com:skarif2/tori.git";
@@ -300,6 +307,7 @@ beforeEach(() => {
   resetPrListStoreForTests();
   resetForgeStatusForTests();
   resetSessionActivityForTests();
+  resetSpendForTests();
 });
 
 describe("the branch's pull request", () => {
@@ -365,6 +373,32 @@ describe("the branch's pull request", () => {
     noteAuth({ kind: "signedOut" });
     await open();
     expect(cmds("forge_pr_for_branch")).toHaveLength(0);
+  });
+});
+
+describe("what the pull request has cost", () => {
+  const spendShown = async (spend: unknown) => {
+    signIn();
+    const view = await open({ statuses: [unit()], spend });
+    await pollNow("manual");
+    await waitFor(() => expect(screen.getByText("#42")).toBeTruthy());
+    await new Promise((settled) => setTimeout(settled, 80));
+    return view.container.querySelector("[data-spend]")?.textContent ?? null;
+  };
+
+  it("shows its head branch's dollars beside the meta line", async () => {
+    expect(await spendShown({ tokens: 9, costUsd: 6.4, turns: 4 })).toBe("$6.40");
+    expect(bridge.calls.find((c) => c.cmd === "usage_spend")?.args).toEqual({
+      queries: [{ kind: "branch", project: ROOT, branch: BRANCH }],
+    });
+  });
+
+  it("shows turns for an agent with no cost", async () => {
+    expect(await spendShown({ tokens: 0, costUsd: null, turns: 3 })).toBe("3 turns");
+  });
+
+  it("shows nothing when nothing was recorded", async () => {
+    expect(await spendShown(null)).toBeNull();
   });
 });
 
