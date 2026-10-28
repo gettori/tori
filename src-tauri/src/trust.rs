@@ -86,6 +86,10 @@ fn scope(path: &Path, root: Option<&Path>) -> PathBuf {
     path.to_path_buf()
 }
 
+pub(crate) fn scope_of(path: &Path) -> PathBuf {
+    scope(path, crate::config::discovery_root().as_deref())
+}
+
 fn gate_at(
     file: &Path,
     discover: impl FnOnce() -> Vec<PathBuf>,
