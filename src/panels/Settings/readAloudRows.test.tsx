@@ -4,13 +4,16 @@ import { render, screen, fireEvent, within } from "@solidjs/testing-library";
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
+vi.mock("@tauri-apps/api/path", () => ({ homeDir: async () => "/Users/me" }));
 
 import { pointerClick } from "../../test/menus";
 import ChatPane from "./panes/ChatPane/ChatPane";
 import { loadWorkspaceSettings, settings } from "./settingsStore";
 import { unstubbed } from "../../test/settingsBackend";
+import { OPEN_JOB, onWith, type OpenJob } from "../../utils/events";
+import { runExitEffects } from "../../utils/jobExit";
 
-const voice = { installed: true };
+const voice = { installed: true, espeak: false, brew: true };
 
 const VOICES = [
   { id: "af_heart", name: "Heart", language: "en-US" },
@@ -19,7 +22,7 @@ const VOICES = [
 ];
 
 beforeEach(async () => {
-  voice.installed = true;
+  Object.assign(voice, { installed: true, espeak: false, brew: true });
   invoke.mockReset();
   invoke.mockImplementation(async (cmd: string, args: Record<string, unknown>) => {
     if (cmd === "set_settings") return args.settings;
@@ -29,6 +32,8 @@ beforeEach(async () => {
         model: voice.installed ? "int8" : null,
         downloading: null,
         sizes: [{ id: "int8", bytes: 106_987_333 }],
+        espeak: voice.espeak,
+        brew: voice.brew,
       };
     if (cmd === "speech_delete") voice.installed = false;
     if (cmd === "speech_voices") return VOICES;
@@ -86,5 +91,30 @@ describe("the Read aloud settings group", () => {
     expect(await screen.findByText("Not downloaded")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Download" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Hear this voice" })).toBeNull();
+  });
+
+  it("installs espeak-ng through Homebrew in a terminal, then offers Uninstall once the job exits", async () => {
+    const jobs: OpenJob[] = [];
+    const off = onWith<OpenJob>(OPEN_JOB, (j) => jobs.push(j));
+    render(() => <ChatPane {...paneProps} />);
+    expect(await screen.findByText("Words Tori does not know are spelled out")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Install espeak-ng" }));
+    await macrotask();
+    expect(jobs[0]).toMatchObject({ program: "brew", args: ["install", "espeak-ng"], cwd: "/Users/me" });
+
+    voice.espeak = true;
+    await runExitEffects(jobs[0], 0);
+    fireEvent.click(await screen.findByRole("button", { name: "Uninstall" }));
+    await macrotask();
+    expect(jobs[1]).toMatchObject({ program: "brew", args: ["uninstall", "espeak-ng"], recheckSpeechOnExit: true });
+    off();
+  });
+
+  it("names espeak-ng with no button when Homebrew is missing", async () => {
+    voice.brew = false;
+    render(() => <ChatPane {...paneProps} />);
+    expect(await screen.findByText(/spelled out\. Install espeak-ng to fix that\./)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Install espeak-ng" })).toBeNull();
   });
 });

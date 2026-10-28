@@ -1,12 +1,14 @@
 import { Show, createResource, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { Play } from "lucide-solid";
-import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
+import { homeDir } from "@tauri-apps/api/path";
+import { emitWith, OPEN_JOB, TOAST, type OpenJob, type ToastEvent } from "../../../../utils/events";
 import { DEFAULT_VOICE, preview, voices as listVoices } from "../../../../utils/speech";
 import {
   askToDownload,
   cancelDownload,
   deleteVoice,
+  espeakJob,
   mb,
   refresh as refreshVoice,
   sizeLabel,
@@ -92,7 +94,7 @@ const NOTIFICATIONS = [
   "tray-count",
 ];
 const SAFETY = ["checkpoints"];
-const READ_ALOUD = ["read-aloud-model", "read-aloud-voice", "read-aloud-rate"];
+const READ_ALOUD = ["read-aloud-model", "read-aloud-pronunciation", "read-aloud-voice", "read-aloud-rate"];
 
 const RATE_MIN = 0.5;
 const RATE_MAX = 2;
@@ -133,6 +135,10 @@ export default function ChatPane(props: PaneProps) {
         return [];
       }),
   );
+  const runEspeak = async (verb: "install" | "uninstall") => {
+    const cwd = await homeDir().catch(() => "/");
+    emitWith<OpenJob>(OPEN_JOB, espeakJob(verb, cwd));
+  };
   const [confirmingDelete, setConfirmingDelete] = createSignal(false);
   const removeVoice = () => {
     setConfirmingDelete(false);
@@ -529,6 +535,32 @@ export default function ChatPane(props: PaneProps) {
             </Show>
           </div>
         </Row>
+        <Row {...props} id="read-aloud-pronunciation" label="Pronunciation">
+          <div class={styles.control}>
+            <Show
+              when={voiceStatus().espeak}
+              fallback={
+                <>
+                  <Show
+                    when={voiceStatus().brew}
+                    fallback={<span>Words Tori does not know are spelled out. Install espeak-ng to fix that.</span>}
+                  >
+                    <span>Words Tori does not know are spelled out</span>
+                    <Button size="sm" onClick={() => void runEspeak("install")}>
+                      Install espeak-ng
+                    </Button>
+                  </Show>
+                </>
+              }
+            >
+              <span>espeak-ng says the words Tori does not know</span>
+              <Button size="sm" onClick={() => void runEspeak("uninstall")}>
+                Uninstall
+              </Button>
+            </Show>
+          </div>
+        </Row>
+
         <Show when={confirmingDelete()}>
           <ConfirmDialog
             title="Delete the voice?"
