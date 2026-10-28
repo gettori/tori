@@ -38,6 +38,9 @@ export type LiveChat = {
    *  presence to tell a turn that finished from one that was cancelled, failed,
    *  replayed from history, or has a queued message about to follow it. */
   doneAt?: number;
+  /** The chat this side chat forked from. A side chat cannot write, so it is
+   *  nobody who could be writing in a folder, but it still costs a process. */
+  side?: string;
 };
 
 const [liveChats, setLiveChats] = createSignal<LiveChat[]>([]);
@@ -71,7 +74,7 @@ export function liveChatIds(): Set<string> {
 /** How many chats are live in a worktree. Feeds both the "second chat on this
  *  worktree" notice and the checkpoint attribution marker. */
 export function chatsInFolder(folderPath: string): LiveChat[] {
-  return liveChats().filter((c) => c.folderPath === folderPath);
+  return liveChats().filter((c) => c.folderPath === folderPath && !c.side);
 }
 
 /** Would a stop do anything to this chat?

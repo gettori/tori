@@ -165,6 +165,23 @@ describe("the two tiers in one list", () => {
     });
     expect(liveSessionStatuses().filter((s) => s.sessionId === "c1")).toHaveLength(1);
   });
+
+  // A side chat cannot write, so it is nobody the revert guard or a rollup waits on.
+  it("leaves a side chat out", async () => {
+    await seedSessions([]);
+    setLiveChat({
+      sessionId: "c-side",
+      sessionName: "Side 1",
+      agentId: "claude",
+      folderPath: FOLDER,
+      tabId: "side:1",
+      visible: true,
+      status: "executing",
+      side: "c1",
+    });
+    expect(liveSessionStatuses().find((s) => s.sessionId === "c-side")).toBeUndefined();
+    dropLiveChat("c-side");
+  });
 });
 
 describe("the metadata a live status carries", () => {

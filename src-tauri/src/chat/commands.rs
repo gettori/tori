@@ -230,6 +230,9 @@ pub async fn chat_spawn(
     // The session that spawned this worker, carried by the tab so a resume
     // after a relaunch can link it back.
     spawner: Option<String>,
+    // The chat this side chat forked from, carried on every spawn and resume so
+    // the read-only lock is back before the child starts.
+    side_of: Option<String>,
     on_event: Channel<serde_json::Value>,
 ) -> Result<SpawnResult, String> {
     let chats = state.inner().0.clone();
@@ -248,6 +251,7 @@ pub async fn chat_spawn(
         visible,
         background: background.unwrap_or(false),
         spawner,
+        side_of,
     };
     crate::exec::blocking("chat_spawn", move || chats.spawn_webview(req, on_event)).await
 }
@@ -270,6 +274,16 @@ pub struct SpawnRequest {
     pub visible: bool,
     pub background: bool,
     pub spawner: Option<String>,
+    #[serde(default)]
+    pub side_of: Option<String>,
+}
+
+// A side chat is a person's question, never an unattended worker.
+fn side_mode(agent_id: &str, background: bool) -> Result<&'static str, String> {
+    if background {
+        return Err("a side chat runs in the foreground".into());
+    }
+    super::side::read_only_mode(agent_id).ok_or_else(|| format!("{agent_id} has no read-only mode for a side chat"))
 }
 
 /// `chat_spawn` with the sink passed in, so Rust can start a session too.
@@ -289,8 +303,17 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
         visible,
         background,
         spawner,
+        side_of,
     } = req;
     let adapter = agents::find(&agent_id).ok_or_else(|| format!("unknown agent {agent_id}"))?;
+    let mode = match &side_of {
+        Some(parent) => {
+            let held = side_mode(&agent_id, background)?;
+            super::side::mark(&session_id, parent, held);
+            Some(held.to_string())
+        }
+        None => mode,
+    };
     let chat = adapter
         .chat
         .as_ref()
@@ -363,6 +386,7 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
         };
         let outcome = host.registry.claim(&session_id, want);
         if !matches!(outcome, ClaimOutcome::Granted { .. }) {
+            super::side::forget(&session_id);
             return Ok(SpawnResult {
                 ownership: outcome,
                 spawned: None,
@@ -400,6 +424,9 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
         // the new worktree to the very next write, and walking away denies
         // the very next listed command.
         Box::new(move |req| {
+            if super::side::is_side(&denied_session) {
+                return Some(super::side::REFUSED.to_string());
+            }
             if let Some(reason) = crate::unattended::refuse_and_mark(&denied_session, &req.tool_name, &req.tool_input) {
                 return Some(reason);
             }
@@ -2032,7 +2059,7 @@ mod tests {
             std::path::Path::new("/bin/tori"),
             std::path::Path::new("/tmp/s"),
             "tok",
-            false,
+            crate::rpc::mcp_allow(false),
             Some(&launch),
             None,
         );
@@ -2284,6 +2311,13 @@ mod tests {
             ModePin::default(),
         );
         assert!(t.child_pid().is_none(), "a transport is inert until started");
+    }
+
+    #[test]
+    fn a_side_chat_is_held_in_plan_and_never_runs_in_the_background() {
+        assert_eq!(side_mode("claude", false), Ok("plan"));
+        assert!(side_mode("claude", true).is_err());
+        assert!(side_mode("opencode", false).is_err());
     }
 }
 

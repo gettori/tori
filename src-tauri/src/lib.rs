@@ -376,6 +376,7 @@ pub fn run() {
             chat::commands::chat_answer_question,
             chat::commands::chat_waiting,
             chat::commands::chat_set_mode,
+            chat::side::chat_side_agents,
             chat::commands::chat_set_model,
             chat::commands::chat_set_config_option,
             chat::commands::chat_close,

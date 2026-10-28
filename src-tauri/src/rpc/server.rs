@@ -1120,6 +1120,12 @@ impl Server {
     pub fn call(&self, principal: &Principal, req: &Request) -> Result<Value, RpcError> {
         let kind = self.backend.kind(principal);
         let method = permit(&req.method, kind)?;
+        if !method.read_only && from_side_chat(principal) {
+            return Err(RpcError::new(
+                REFUSED,
+                format!("{} is refused. {}", req.method, crate::chat::side::REFUSED),
+            ));
+        }
         if kind == CallerKind::Browser {
             return self.call_past_the_protocol_check(method, principal, req);
         }
@@ -1135,6 +1141,10 @@ impl Server {
         self.hub.forget_last_refusal();
         super::scope::call(self.backend.as_ref(), method, principal, req)
     }
+}
+
+fn from_side_chat(principal: &Principal) -> bool {
+    matches!(principal, Principal::Session(super::auth::Caller::Chat(id)) if crate::chat::side::is_side(id))
 }
 
 pub(super) fn permit(name: &str, kind: CallerKind) -> Result<&'static table::Method, RpcError> {
@@ -2123,6 +2133,30 @@ pub mod tests {
         assert!(server
             .dispatch(0, &worker, &request("ask.wait", json!({"id": "a1"})))
             .is_ok());
+    }
+
+    #[test]
+    fn a_side_chat_may_only_call_a_read_only_method() {
+        let server = stub_server();
+        crate::chat::side::mark("side-rpc", "parent-rpc", "plan");
+        let side = Principal::Session(Caller::Chat("side-rpc".into()));
+        for (method, params) in [
+            ("checkpoint.revert", json!({"id": "s1", "turn": 1})),
+            ("session.steer", json!({"id": "s1", "text": "hi"})),
+            ("session.spawn", json!({})),
+            ("ask.create", json!({"question": "q"})),
+        ] {
+            let err = server.dispatch(0, &side, &request(method, params)).unwrap_err();
+            assert_eq!(err.code, REFUSED, "{method}");
+            assert!(
+                err.message.contains(crate::chat::side::REFUSED),
+                "{method}: {}",
+                err.message
+            );
+        }
+        let read = server.dispatch(0, &side, &request("pr.get", json!({"key": "7"})));
+        crate::chat::side::forget("side-rpc");
+        assert_eq!(read.unwrap(), json!({ "key": "7" }));
     }
 
     #[test]

@@ -1094,6 +1094,7 @@ impl DaemonBackend {
             visible: false,
             background,
             spawner: spawner.clone(),
+            side_of: None,
         };
         let host = &self.chats.host;
         let spawned = crate::chat::commands::spawn_session(host, request, Box::new(|_| {})).map_err(refused)?;
@@ -1188,6 +1189,7 @@ impl DaemonBackend {
             visible: false,
             background: false,
             spawner: None,
+            side_of: None,
         };
         let spawned =
             crate::chat::commands::spawn_session(&self.chats.host, request, Box::new(|_| {})).map_err(refused)?;
