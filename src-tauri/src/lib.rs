@@ -377,7 +377,6 @@ pub fn run() {
             chat::commands::chat_mcp_list,
             chat::commands::chat_mcp_add,
             chat::commands::chat_mcp_remove,
-            chat::commands::chat_record_usage,
             chat::commands::chat_usage_totals,
             chat::commands::chat_prompt_count,
             chat::commands::chat_session_detail,

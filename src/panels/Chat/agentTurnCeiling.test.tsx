@@ -18,7 +18,6 @@ globalThis.ResizeObserver ??= class {
 
 const invokes: { cmd: string; args: Record<string, unknown> }[] = [];
 let channel: { onmessage?: (raw: unknown) => void } | null = null;
-/** What `chat_record_usage` reports back, which is what the ceiling measures. */
 let recorded = { tokens: 0, costUsd: 0, turns: 0 };
 let budgetSettings: unknown = null;
 
@@ -34,7 +33,7 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve({ ownership: { type: "granted", contested: false } });
       case "chat_history":
         return Promise.resolve(wholeHistory([]));
-      case "chat_record_usage":
+      case "chat_usage_totals":
         return Promise.resolve({ session: recorded, project: recorded });
       case "get_settings":
         return Promise.resolve(budgetSettings);
@@ -47,10 +46,19 @@ vi.mock("@tauri-apps/api/core", () => ({
     }
   },
 }));
+const listeners = new Map<string, (event: { payload: unknown }) => void>();
 vi.mock("@tauri-apps/api/event", () => ({
-  listen: () => Promise.resolve(() => {}),
+  listen: (name: string, handler: (event: { payload: unknown }) => void) => {
+    listeners.set(name, handler);
+    return Promise.resolve(() => listeners.delete(name));
+  },
   emit: () => Promise.resolve(),
 }));
+
+const spendRecorded = (sessionId: string) =>
+  listeners.get("usage://changed")?.({
+    payload: { sessionId, cwd: "/work/repo", totals: { session: recorded, project: recorded } },
+  });
 vi.mock("@tauri-apps/api/path", () => ({ homeDir: () => Promise.resolve("/home/me") }));
 
 const chat = {
@@ -90,8 +98,6 @@ const { default: styles } = await import("./Chat.module.css");
 
 const TAB = "chat:ceiling-1";
 const SESSION = "s-ceiling";
-
-const recordings = () => invokes.filter((i) => i.cmd === "chat_record_usage");
 
 const turnStarted = (turnId: string, agentInitiated: boolean) => ({
   type: "turnStarted",
@@ -157,10 +163,9 @@ describe("the spend ceiling and a turn the agent opened", () => {
     recorded = { tokens: 15, costUsd: 5, turns: 1 };
     channel!.onmessage!(turnStarted("turn-2", true));
     channel!.onmessage!(turnCompleted("turn-2", 5));
+    spendRecorded(SESSION);
 
-    // Recorded, so a reopened tab still knows what the session spent...
-    await waitFor(() => expect(recordings()).toHaveLength(1));
-    // ...and acted on, rather than left for the next user message that may
+    // Acted on at once, rather than left for the next user message that may
     // never come.
     await screen.findByText(/will not start another turn/);
   });
@@ -172,8 +177,9 @@ describe("the spend ceiling and a turn the agent opened", () => {
     recorded = { tokens: 15, costUsd: 0.2, turns: 1 };
     channel!.onmessage!(turnStarted("turn-2", true));
     channel!.onmessage!(turnCompleted("turn-2", 0.2));
+    spendRecorded(SESSION);
 
-    await waitFor(() => expect(recordings()).toHaveLength(1));
+    await new Promise((settled) => setTimeout(settled, 0));
     expect(screen.queryByText(/will not start another turn/)).toBeNull();
   });
 });
@@ -193,6 +199,7 @@ describe("what a budget notice looks like", () => {
     recorded = { tokens: 15, costUsd: 0.85, turns: 1 };
     channel!.onmessage!(turnStarted("turn-2", true));
     channel!.onmessage!(turnCompleted("turn-2", 0.85));
+    spendRecorded(SESSION);
 
     const box = noticeAround(await screen.findByText(/It will stop when the limit is reached/));
     expect(box.className).toContain(styles.noticeAttention);
@@ -206,6 +213,7 @@ describe("what a budget notice looks like", () => {
     recorded = { tokens: 15, costUsd: 5, turns: 1 };
     channel!.onmessage!(turnStarted("turn-2", true));
     channel!.onmessage!(turnCompleted("turn-2", 5));
+    spendRecorded(SESSION);
 
     const box = noticeAround(await screen.findByText(/will not start another turn/));
     expect(box.className).toContain(styles.noticeError);

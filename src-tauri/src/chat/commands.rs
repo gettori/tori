@@ -693,26 +693,6 @@ pub fn chat_waiting(state: State<'_, ChatState>, session_id: String) -> Vec<Chat
 
 // --- spend ceilings --------------------------------------------------------
 
-/// Record one completed turn against this session's running total.
-///
-/// Returns the session's new total **and** the project's, because the two
-/// ceilings are checked against different sums and the caller would otherwise
-/// need a second round trip to learn the one it did not ask for.
-#[tauri::command]
-pub async fn chat_record_usage(
-    cwd: String,
-    session_id: String,
-    tokens: u64,
-    cost_usd: Option<f64>,
-) -> Result<UsageTotals, String> {
-    let path = usage::usage_path(&cwd);
-    let session = usage::record_turn(&path, &session_id, tokens, cost_usd)?;
-    Ok(UsageTotals {
-        project: usage::project_total(&usage::load(&path)),
-        session,
-    })
-}
-
 /// How many human prompts this session's transcript holds.
 ///
 /// The denominator of the honesty rule: compared against the turns this chat saw
@@ -779,20 +759,13 @@ pub fn chat_session_detail(
 
 /// This session's persisted total, for a panel that has just reopened.
 #[tauri::command]
-pub async fn chat_usage_totals(cwd: String, session_id: String) -> Result<UsageTotals, String> {
+pub async fn chat_usage_totals(cwd: String, session_id: String) -> Result<usage::UsageTotals, String> {
     let file = usage::load(&usage::usage_path(&cwd));
     let session = file.sessions.get(&session_id).cloned().unwrap_or_default();
-    Ok(UsageTotals {
+    Ok(usage::UsageTotals {
         project: usage::project_total(&file),
         session,
     })
-}
-
-#[derive(serde::Serialize, Debug, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct UsageTotals {
-    pub session: usage::SessionUsage,
-    pub project: usage::SessionUsage,
 }
 
 // `chat_set_budget_stop` used to live here, arming a spend stop in the rule file

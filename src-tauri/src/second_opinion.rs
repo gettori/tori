@@ -353,7 +353,7 @@ pub(crate) fn run_in(
             let session = session.clone();
             move || {
                 let host = &chats.host;
-                let review = match drive(host, &agent, profile, &folder, &brief, how) {
+                let review = match drive(host, &session, &agent, profile, &folder, &brief, how) {
                     Ok(reply) => match findings_of(&reply, &subject) {
                         Some(findings) => Review {
                             reviewer: agent,
@@ -549,6 +549,7 @@ struct Reply {
 
 fn drive(
     host: &ChatHost,
+    parent: &str,
     agent: &str,
     profile: Option<String>,
     folder: &str,
@@ -556,6 +557,7 @@ fn drive(
     how: ReadOnly,
 ) -> Result<Reply, String> {
     let id = crate::rpc::runner::new_session_id();
+    crate::chat::usage::adopt(&id, parent);
     let (tx, rx) = mpsc::channel::<ChatEvent>();
     let tx = Mutex::new(tx);
     let spawned = crate::chat::commands::spawn_session(
@@ -584,23 +586,19 @@ fn drive(
                 let _ = tx.send(event);
             }
         }),
-    )?;
+    )
+    .inspect_err(|_| crate::chat::usage::forget_parent(&id))?;
     if spawned.spawned.is_none() {
+        crate::chat::usage::forget_parent(&id);
         return Err(format!("the reviewer's session was refused: {:?}", spawned.ownership));
     }
-    let result = review(host, &id, folder, &rx, brief, how);
+    let result = review(host, &id, &rx, brief, how);
     let _ = host.close(&id, EndReason::Closed);
+    crate::chat::usage::forget_parent(&id);
     result
 }
 
-fn review(
-    host: &ChatHost,
-    id: &str,
-    folder: &str,
-    rx: &Receiver<ChatEvent>,
-    brief: &str,
-    how: ReadOnly,
-) -> Result<Reply, String> {
+fn review(host: &ChatHost, id: &str, rx: &Receiver<ChatEvent>, brief: &str, how: ReadOnly) -> Result<Reply, String> {
     let mut watch = Watch::new(how);
     if let ReadOnly::Option(value) = how {
         let deadline = Instant::now() + START_TIMEOUT;
@@ -626,9 +624,7 @@ fn review(
     let deadline = Instant::now() + REVIEW_TIMEOUT;
     loop {
         let event = next(rx, deadline, "The reviewer ran past 15 minutes and was stopped.")?;
-        if let ChatEvent::TurnCompleted { usage, cost_usd, .. } = event {
-            let tokens = usage.input_tokens + usage.output_tokens + usage.cache_read_tokens + usage.cache_write_tokens;
-            let _ = crate::chat::usage::record_turn(&crate::chat::usage::usage_path(folder), id, tokens, cost_usd);
+        if matches!(event, ChatEvent::TurnCompleted { .. }) {
             return Ok(watch.reply);
         }
         watch.see(host, id, event)?;
