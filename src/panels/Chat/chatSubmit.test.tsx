@@ -179,12 +179,15 @@ const BLOCKS = [
   { type: "text", text: "why" },
 ];
 
+let lastReason: string | undefined;
+
 /** Hand the panel a submit and wait for its answer to the original request. */
 function submit(): Promise<SendToSessionResult["result"]> {
   return new Promise((resolve) => {
     const off = onWith<SendToSessionResult>(SEND_TO_SESSION_RESULT, (r) => {
       if (r.requestId !== "r1") return;
       off();
+      lastReason = r.reason;
       resolve(r.result);
     });
     emitWith(CHAT_SUBMIT, { requestId: "r1", sessionId: SESSION, blocks: BLOCKS });
@@ -222,6 +225,7 @@ describe("a submit from outside the composer", () => {
     spendRecorded(SESSION);
     await screen.findByText(/will not start another turn/);
     expect(await submit()).toBe("blocked");
+    expect(lastReason).toBe("This chat is stopped at its spend limit, so nothing was sent.");
     expect(sends()).toHaveLength(0);
   });
 

@@ -3,7 +3,7 @@
 import { createSignal } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import { invoke } from "@tauri-apps/api/core";
-import type { ChatItem, ToolItem } from "./chatStore";
+import type { ChatItem, ToolItem, TurnRecord } from "./chatStore";
 
 export type SideChat = { tabId: string; sessionId: string };
 export type Drawer = { sides: SideChat[]; active: string | null };
@@ -74,4 +74,16 @@ export function planAsReply(items: readonly ChatItem[]): ChatItem[] {
     if (plan === null) return it;
     return { kind: "text", id: it.id, turnId: it.turnId ?? "", text: plan, agentId: it.agentId };
   });
+}
+
+export function lastReplies(items: readonly ChatItem[], turns: Readonly<Record<string, TurnRecord>>): Set<string> {
+  const last = new Map<string, string>();
+  for (const it of items) {
+    if (it.kind === "text" && it.agentId === null && turns[it.turnId]?.completed) last.set(it.turnId, it.id);
+  }
+  return new Set(last.values());
+}
+
+export function fromSide(reply: string): string {
+  return `From a side chat:\n\n${reply}`;
 }
