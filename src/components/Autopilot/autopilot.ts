@@ -71,8 +71,17 @@ export type WorkerCard = {
   spend?: SessionUsage | null;
 };
 
+/** Mirrors `Projection` in src-tauri/src/autopilot.rs: `usd` is left out until enough items have finished. */
+export type Projection = { usd?: number; samples: number };
+
 /** `proposed` waits for your go in the chat, so it runs after nothing. */
-export type QueuedItem = { ticket: TicketRef; title: string; after?: TicketRef; proposed?: boolean };
+export type QueuedItem = {
+  ticket: TicketRef;
+  title: string;
+  after?: TicketRef;
+  proposed?: boolean;
+  projection?: Projection;
+};
 
 /** `text` follows the ticket when there is one. */
 export type ActivityItem = { time: string; ticket?: TicketRef; text: string; needsYou?: boolean };

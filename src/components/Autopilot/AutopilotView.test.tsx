@@ -25,3 +25,20 @@ describe("a worker card's spend", () => {
     expect(container.querySelector("[data-spend]")).toBeNull();
   });
 });
+
+describe("a waiting item's projection", () => {
+  const withProjection = (projection: { usd?: number; samples: number }) => {
+    const props = VIEW.working;
+    return { ...props, queue: [{ ...props.queue[0], projection }] };
+  };
+
+  it("shows the median once enough items have finished", () => {
+    const { container } = render(() => <AutopilotView {...withProjection({ usd: 3.5, samples: 6 })} />);
+    expect(container.querySelector("[data-projection]")?.textContent).toBe("~$3.50");
+  });
+
+  it("says there is no history yet below that", () => {
+    const { container } = render(() => <AutopilotView {...withProjection({ samples: 4 })} />);
+    expect(container.querySelector("[data-projection]")?.textContent).toBe("no history yet");
+  });
+});

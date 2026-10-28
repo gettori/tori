@@ -221,7 +221,10 @@ pub fn start(parts: Parts) -> Arc<Office> {
     ));
     let autopilot = Arc::new(
         AutopilotStore::open(dir.clone(), autopilot_publisher(&hub, &desk.ui))
-            .on_closed(withdraw_holds(asks.clone(), desk.ui.clone())),
+            .on_closed(withdraw_holds(asks.clone(), desk.ui.clone()))
+            .with_costs(Box::new(|| {
+                crate::chat::usage::with_index(crate::chat::usage::item_costs)
+            })),
     );
     let pilot = Arc::downgrade(&composer);
     let runner = Arc::new(Runner::new(super::runner::Wiring {

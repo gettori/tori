@@ -2,6 +2,8 @@ import { For, Show, type JSX } from "solid-js";
 import { Anchor, ArrowUpRight, Sailboat } from "lucide-solid";
 import Button from "../Button/Button";
 import SpendFigure from "../SpendFigure/SpendFigure";
+import Tooltip from "../Tooltip/Tooltip";
+import { projectionView } from "../../utils/spend";
 import Icon from "../Icon/Icon";
 import DecisionCard from "./DecisionCard";
 import Horizon, { type SceneKey } from "./Horizon";
@@ -163,6 +165,13 @@ export default function AutopilotView(props: AutopilotViewProps) {
                   <TicketLink ticket={q.ticket} onOpenLink={props.onOpenLink} onNavigate={props.onNavigate} />
                 </span>
                 <span class={styles.queuedTitle}>{q.title}</span>
+                <Show when={q.projection && projectionView(q.projection)}>
+                  {(view) => (
+                    <Tooltip<HTMLSpanElement> as="span" class={styles.queuedAfter} label={view().says} data-projection>
+                      {view().text}
+                    </Tooltip>
+                  )}
+                </Show>
                 <Show when={q.proposed}>
                   <span class={styles.queuedAfter}>proposed</span>
                 </Show>

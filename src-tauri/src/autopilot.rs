@@ -38,6 +38,8 @@ const LEFT_SOURCE: &str = "no longer matches its issue source";
 const REVIEW_CLEARED: &str = "review request cleared (reviewed or withdrawn)";
 const SCHEDULE_REMOVED: &str = "schedule removed";
 const PAUSE_AFTER: usize = 3;
+const BAND_EDGES: [usize; 2] = [500, 2000];
+const PROJECTION_SAMPLES: usize = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -124,6 +126,11 @@ pub struct Item {
     pub fix_pushes: Vec<FixPush>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub item_usd: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body_len: Option<usize>,
+    // Kept once set, so work a person finished never teaches the projection.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ever_taken_over: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -224,6 +231,7 @@ pub struct Patch {
     pub title: Option<String>,
     pub contract: Option<String>,
     pub item_usd: Option<f64>,
+    pub body_len: Option<usize>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -266,6 +274,15 @@ pub struct Row {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub base_conflicts: Option<Vec<String>>,
     pub reference: Reference,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub projection: Option<Projection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Projection {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usd: Option<f64>,
+    pub samples: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -322,6 +339,25 @@ pub struct Observed {
     pub prs: HashMap<String, HashMap<PrKey, PrState>>,
 }
 
+fn canonical_source(source: Source, origin: &str) -> Source {
+    match source {
+        Source::Issue { key, project } => Source::Issue {
+            key: canonical_key(&key, origin),
+            project,
+        },
+        other => other,
+    }
+}
+
+fn open_at(items: &[Item], kind: Kind, source: &Source, project: &str, origin: &str) -> Option<usize> {
+    items.iter().position(|i| {
+        !i.state.terminal()
+            && i.kind == kind
+            && same_source(&i.source, source, origin)
+            && same_folder(&i.project, project)
+    })
+}
+
 fn apply(
     items: &mut Vec<Item>,
     target: Target,
@@ -337,20 +373,8 @@ fn apply(
             project,
             origin,
         } => {
-            let source = match source {
-                Source::Issue { key, project } => Source::Issue {
-                    key: canonical_key(&key, &origin),
-                    project,
-                },
-                pr => pr,
-            };
-            let open = items.iter().position(|i| {
-                !i.state.terminal()
-                    && i.kind == kind
-                    && same_source(&i.source, &source, &origin)
-                    && same_folder(&i.project, &project)
-            });
-            match open {
+            let source = canonical_source(source, &origin);
+            match open_at(items, kind, &source, &project, &origin) {
                 Some(at) => at,
                 None => {
                     items.push(Item {
@@ -373,6 +397,8 @@ fn apply(
                         picked_from: None,
                         fix_pushes: Vec::new(),
                         item_usd: None,
+                        body_len: None,
+                        ever_taken_over: false,
                     });
                     items.len() - 1
                 }
@@ -397,6 +423,8 @@ fn apply(
     if patch.item_usd.is_some() {
         item.item_usd = patch.item_usd;
     }
+    item.body_len = item.body_len.or(patch.body_len);
+    item.ever_taken_over |= item.state == State::TakenOver;
     item.updated = now;
     Ok(item.clone())
 }
@@ -593,6 +621,8 @@ pub fn plan_firings<Tz: chrono::TimeZone>(
             picked_from: None,
             fix_pushes: Vec::new(),
             item_usd: None,
+            body_len: None,
+            ever_taken_over: false,
         };
         items.push(item.clone());
         firings.queued.push(item);
@@ -664,6 +694,8 @@ pub fn plan_loop(
             picked_from: None,
             fix_pushes: Vec::new(),
             item_usd: None,
+            body_len: None,
+            ever_taken_over: false,
         };
         items.push(item.clone());
         looped.queued.push(item);
@@ -843,6 +875,8 @@ pub fn plan_rule_firings(
             picked_from: None,
             fix_pushes: Vec::new(),
             item_usd: None,
+            body_len: None,
+            ever_taken_over: false,
         };
         firings
             .handed
@@ -1043,6 +1077,8 @@ pub fn plan_pickup(
                 picked_from: list.search.clone(),
                 fix_pushes: Vec::new(),
                 item_usd: None,
+                body_len: row.body_len,
+                ever_taken_over: false,
             };
             items.push(item.clone());
             changed.push(item);
@@ -1103,6 +1139,8 @@ pub fn plan_rule_review(
             picked_from: None,
             fix_pushes: Vec::new(),
             item_usd: None,
+            body_len: None,
+            ever_taken_over: false,
         });
         items.len() - 1
     });
@@ -1178,16 +1216,47 @@ fn canon(path: &Path) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
+fn band(body_len: usize) -> usize {
+    BAND_EDGES.iter().filter(|edge| body_len >= **edge).count()
+}
+
+// Only work the autopilot carried to the end teaches it: a failure, a take
+// over and an agent that reports no cost all leave no cost to learn from.
+pub fn projection(item: &Item, items: &[Item], costs: &HashMap<String, f64>) -> Option<Projection> {
+    if !matches!(item.state, State::Proposed | State::Queued) {
+        return None;
+    }
+    let size = band(item.body_len?);
+    let mut spent: Vec<f64> = items
+        .iter()
+        .filter(|i| {
+            i.state == State::Done
+                && !i.ever_taken_over
+                && i.body_len.map(band) == Some(size)
+                && same_folder(&i.project, &item.project)
+        })
+        .filter_map(|i| costs.get(&i.id).copied())
+        .collect();
+    spent.sort_by(f64::total_cmp);
+    let n = spent.len();
+    Some(Projection {
+        usd: (n >= PROJECTION_SAMPLES).then(|| (spent[(n - 1) / 2] + spent[n / 2]) / 2.0),
+        samples: n,
+    })
+}
+
 pub fn reconcile(
     items: &[Item],
     live: &HashSet<String>,
     worktrees: &HashMap<String, Option<Vec<Listed>>>,
     root: Option<&Path>,
     radar: Option<&crate::radar::View>,
+    costs: &HashMap<String, f64>,
 ) -> Vec<Row> {
     items
         .iter()
         .map(|item| Row {
+            projection: projection(item, items, costs),
             overlaps: radar.map(|r| overlaps_of(item, items, &r.overlaps)),
             base_conflicts: radar.and_then(|r| r.conflicts.get(item.worktree.as_deref()?).cloned().flatten()),
             session_live: item.session.as_ref().map(|s| live.contains(s)),
@@ -1418,6 +1487,7 @@ fn tail_lines(path: &Path, limit: usize) -> Vec<String> {
 
 type Publish = Box<dyn Fn(Value) + Send + Sync>;
 type Closed = Box<dyn Fn(&str) + Send + Sync>;
+type Costs = Box<dyn Fn() -> HashMap<String, f64> + Send + Sync>;
 
 #[derive(Default)]
 struct Held {
@@ -1437,6 +1507,8 @@ pub struct AutopilotStore {
     // Told the id of an item that just became done or failed, with the lock
     // released, so it may call into `Asks` without ever nesting the two locks.
     closed: Closed,
+    // Item -> what its sessions cost, only where every one of them reported a cost.
+    costs: Costs,
     pub pr_states: PrStates,
     // The last full read's worktrees and root, so a change names its place
     // without a git call per update.
@@ -1491,6 +1563,7 @@ impl AutopilotStore {
             unreadable,
             publish,
             closed: Box::new(|_| {}),
+            costs: Box::new(HashMap::new),
             pr_states: PrStates::default(),
             seen: Mutex::default(),
             noted: Mutex::default(),
@@ -1503,8 +1576,27 @@ impl AutopilotStore {
         Self { closed, ..self }
     }
 
+    pub fn with_costs(self, costs: Costs) -> Self {
+        Self { costs, ..self }
+    }
+
     pub fn has(&self, id: &str) -> bool {
         self.lock().items.iter().any(|i| i.id == id)
+    }
+
+    pub fn new_issue_item<'a>(&self, target: &'a Target) -> Option<(&'a str, &'a str)> {
+        let Target::Key {
+            kind,
+            source: source @ Source::Issue { key, .. },
+            project,
+            origin,
+        } = target
+        else {
+            return None;
+        };
+        let source = canonical_source(source.clone(), origin);
+        let open = open_at(&self.lock().items, *kind, &source, project, origin);
+        open.is_none().then_some((project.as_str(), key.as_str()))
     }
 
     fn lock(&self) -> MutexGuard<'_, Held> {
@@ -1939,6 +2031,7 @@ impl AutopilotStore {
         if let Err(e) = self.write(|items| Ok(settle(items, &seen.prs, now_ms()))) {
             eprintln!("tori: merged pull requests not recorded: {e}");
         }
+        let costs = (self.costs)();
         let held = self.lock();
         Snapshot {
             items: reconcile(
@@ -1947,6 +2040,7 @@ impl AutopilotStore {
                 &seen.worktrees,
                 root.as_deref(),
                 seen.radar.as_ref(),
+                &costs,
             ),
             projects: held.projects.clone(),
         }
@@ -2086,6 +2180,13 @@ impl AutopilotStore {
             }
             reference(item, &seen.worktrees, seen.root.as_deref())
         };
+        let projection = match item.state {
+            State::Proposed | State::Queued if item.body_len.is_some() => {
+                let items = self.lock().items.clone();
+                projection(item, &items, &(self.costs)())
+            }
+            _ => None,
+        };
         let row = Row {
             item: item.clone(),
             session_live,
@@ -2093,6 +2194,7 @@ impl AutopilotStore {
             overlaps: None,
             base_conflicts: None,
             reference,
+            projection,
         };
         (self.publish)(json!({ "kind": "autopilot.changed", "item": row, "ts": now_ms() }));
     }
@@ -2158,6 +2260,8 @@ pub mod tests {
             picked_from: None,
             fix_pushes: Vec::new(),
             item_usd: None,
+            body_len: None,
+            ever_taken_over: false,
         }
     }
 
@@ -2509,6 +2613,195 @@ pub mod tests {
     }
 
     #[test]
+    fn a_picked_up_issue_carries_its_body_length_and_an_old_item_loads_without_one() {
+        let mut items = Vec::new();
+        let sized = IssueRef {
+            body_len: Some(820),
+            ..row("1", IssueKind::Issue)
+        };
+        let made = tick(
+            &mut items,
+            "me",
+            &[sized, row("2", IssueKind::ReviewRequest)],
+            50,
+            Pickup::Auto,
+        );
+        assert_eq!(
+            made.iter().map(|i| i.body_len).collect::<Vec<_>>(),
+            vec![Some(820), None]
+        );
+        let mut old = serde_json::to_value(item("old", State::Done)).unwrap();
+        old.as_object_mut().unwrap().remove("body_len");
+        let old: Item = serde_json::from_value(old).unwrap();
+        assert_eq!((old.body_len, old.ever_taken_over), (None, false));
+    }
+
+    fn sized(id: &str, state: State, body_len: usize) -> Item {
+        Item {
+            body_len: Some(body_len),
+            ..item(id, state)
+        }
+    }
+
+    fn costs(spent: &[(&str, f64)]) -> HashMap<String, f64> {
+        spent.iter().map(|(id, usd)| (id.to_string(), *usd)).collect()
+    }
+
+    #[test]
+    fn a_projection_is_the_median_of_five_finished_items_and_waits_for_the_fifth() {
+        let new = sized("new", State::Queued, 100);
+        let mut items: Vec<Item> = (0..4).map(|n| sized(&format!("d{n}"), State::Done, 100)).collect();
+        let mut spent = costs(&[("d0", 1.0), ("d1", 9.0), ("d2", 2.0), ("d3", 3.0)]);
+        assert_eq!(
+            projection(&new, &items, &spent),
+            Some(Projection { usd: None, samples: 4 })
+        );
+        items.push(sized("d4", State::Done, 100));
+        spent.insert("d4".into(), 4.0);
+        assert_eq!(
+            projection(&new, &items, &spent),
+            Some(Projection {
+                usd: Some(3.0),
+                samples: 5
+            })
+        );
+        items.push(sized("d5", State::Done, 100));
+        spent.insert("d5".into(), 5.0);
+        assert_eq!(projection(&new, &items, &spent).unwrap().usd, Some(3.5));
+        let proposed = sized("p", State::Proposed, 100);
+        assert!(projection(&proposed, &items, &spent).is_some());
+        assert_eq!(projection(&sized("r", State::Running, 100), &items, &spent), None);
+        assert_eq!(projection(&item("unsized", State::Queued), &items, &spent), None);
+    }
+
+    #[test]
+    fn a_projection_learns_only_from_items_of_the_same_size() {
+        let done = [
+            sized("a", State::Done, 0),
+            sized("b", State::Done, 499),
+            sized("c", State::Done, 500),
+            sized("d", State::Done, 1999),
+            sized("e", State::Done, 2000),
+        ];
+        let spent = costs(&[("a", 1.0), ("b", 1.0), ("c", 1.0), ("d", 1.0), ("e", 1.0)]);
+        let samples = |len| {
+            projection(&sized("new", State::Queued, len), &done, &spent)
+                .unwrap()
+                .samples
+        };
+        assert_eq!(
+            [
+                samples(499),
+                samples(500),
+                samples(1999),
+                samples(2000),
+                samples(90_000)
+            ],
+            [2, 2, 2, 1, 1]
+        );
+    }
+
+    #[test]
+    fn a_projection_skips_failed_taken_over_costless_and_other_projects_work() {
+        let mut items: Vec<Item> = (0..4).map(|n| sized(&format!("d{n}"), State::Done, 100)).collect();
+        let mut taken = sized("taken", State::Queued, 100);
+        taken.ever_taken_over = true;
+        taken.state = State::Done;
+        items.extend([
+            sized("failed", State::Failed, 100),
+            taken,
+            sized("acp", State::Done, 100),
+            Item {
+                project: "/elsewhere".into(),
+                ..sized("other", State::Done, 100)
+            },
+        ]);
+        let spent = costs(&[
+            ("d0", 1.0),
+            ("d1", 1.0),
+            ("d2", 1.0),
+            ("d3", 1.0),
+            ("failed", 1.0),
+            ("taken", 1.0),
+            ("other", 1.0),
+        ]);
+        assert_eq!(
+            projection(&sized("new", State::Queued, 100), &items, &spent),
+            Some(Projection { usd: None, samples: 4 })
+        );
+    }
+
+    #[test]
+    fn a_taken_over_item_stays_marked_once_it_is_finished() {
+        let mut items = vec![item("a", State::Running)];
+        apply(
+            &mut items,
+            Target::Id("a".into()),
+            state(State::TakenOver),
+            2,
+            || unreachable!(),
+        )
+        .unwrap();
+        let done = apply(
+            &mut items,
+            Target::Id("a".into()),
+            state(State::Done),
+            3,
+            || unreachable!(),
+        )
+        .unwrap();
+        assert!(done.ever_taken_over);
+    }
+
+    #[test]
+    fn only_an_update_making_an_issue_item_reads_its_body_and_the_length_is_kept() {
+        let dir = temp_dir("new-issue-item");
+        let store = quiet(&dir);
+        assert_eq!(store.new_issue_item(&issue("12")), Some(("/p", "12")));
+        let sized = |body_len| Patch {
+            body_len: Some(body_len),
+            ..Patch::default()
+        };
+        let made = store.update(issue("12"), sized(640)).unwrap();
+        assert_eq!(store.new_issue_item(&issue("12")), None);
+        assert_eq!(store.new_issue_item(&Target::Id(made.id.clone())), None);
+        let pr = Target::Key {
+            kind: Kind::Review,
+            source: Source::Pr {
+                number: 4,
+                repo: "o/r".into(),
+            },
+            project: "/p".into(),
+            origin: "o/r".into(),
+        };
+        assert_eq!(store.new_issue_item(&pr), None);
+        let again = store.update(Target::Id(made.id), sized(9)).unwrap();
+        assert_eq!(again.body_len, Some(640));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_changed_waiting_item_carries_its_projection() {
+        let dir = temp_dir("changed-projection");
+        let (tx, rx) = channel();
+        let tx = Mutex::new(tx);
+        let store = AutopilotStore::open(dir.clone(), Box::new(move |e| tx.lock().unwrap().send(e).unwrap()))
+            .with_costs(Box::new(HashMap::new));
+        store
+            .update(
+                issue("12"),
+                Patch {
+                    body_len: Some(100),
+                    ..Patch::default()
+                },
+            )
+            .unwrap();
+        let event = rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert_eq!(event["item"]["projection"], json!({ "samples": 0 }));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn a_contract_missing_fields_reads_them_as_the_cautious_defaults() {
         let old: Contract = serde_json::from_str(r#"{"ships": "local", "agent": "codex"}"#).unwrap();
         assert_eq!(
@@ -2771,7 +3064,14 @@ pub mod tests {
             session: Some("gone".into()),
             ..item("a", State::Running)
         };
-        let rows = reconcile(&[running], &HashSet::new(), &HashMap::new(), None, None);
+        let rows = reconcile(
+            &[running],
+            &HashSet::new(),
+            &HashMap::new(),
+            None,
+            None,
+            &HashMap::new(),
+        );
         assert_eq!(rows[0].item.state, State::Running);
         assert_eq!(rows[0].session_live, Some(false));
         assert_eq!(rows[0].worktree_gone, None, "no worktree, nothing to say");
@@ -2784,6 +3084,7 @@ pub mod tests {
             &HashMap::new(),
             None,
             None,
+            &HashMap::new(),
         );
         assert_eq!(live[0].session_live, Some(true));
     }
@@ -2814,7 +3115,14 @@ pub mod tests {
                 ("/p/two".to_string(), None),
             ]),
         };
-        let rows = reconcile(&items, &HashSet::new(), &HashMap::new(), None, Some(&view));
+        let rows = reconcile(
+            &items,
+            &HashSet::new(),
+            &HashMap::new(),
+            None,
+            Some(&view),
+            &HashMap::new(),
+        );
         let named = |row: &Row| {
             row.overlaps
                 .as_ref()
@@ -2828,7 +3136,7 @@ pub mod tests {
         assert_eq!(rows[0].base_conflicts, Some(vec!["src/b.rs".to_string()]));
         assert_eq!(rows[1].base_conflicts, None, "unknown is left out");
 
-        let off = reconcile(&items, &HashSet::new(), &HashMap::new(), None, None);
+        let off = reconcile(&items, &HashSet::new(), &HashMap::new(), None, None, &HashMap::new());
         let json = serde_json::to_value(&off[0]).unwrap();
         assert!(
             json.get("overlaps").is_none() && json.get("base_conflicts").is_none(),
@@ -2849,6 +3157,7 @@ pub mod tests {
             &listed,
             None,
             None,
+            &HashMap::new(),
         );
         assert_eq!(
             (rows[0].worktree_gone, rows[1].worktree_gone),
@@ -2862,7 +3171,15 @@ pub mod tests {
 
         let unreadable = HashMap::from([("/p".to_string(), None)]);
         assert_eq!(
-            reconcile(&[with("/p/wt-2")], &HashSet::new(), &unreadable, None, None)[0].worktree_gone,
+            reconcile(
+                &[with("/p/wt-2")],
+                &HashSet::new(),
+                &unreadable,
+                None,
+                None,
+                &HashMap::new()
+            )[0]
+            .worktree_gone,
             None
         );
     }
@@ -2975,6 +3292,7 @@ pub mod tests {
             kind,
             author: None,
             head_sha: None,
+            body_len: None,
         }
     }
 
@@ -3644,6 +3962,8 @@ pub mod tests {
             picked_from: None,
             fix_pushes: Vec::new(),
             item_usd: None,
+            body_len: None,
+            ever_taken_over: false,
         }
     }
 

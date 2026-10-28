@@ -11,6 +11,7 @@ import type {
   TicketRef,
   WorkerCard,
   WorkerStatus,
+  Projection,
 } from "../components/Autopilot/autopilot";
 import type { AskApproval, SocketAsk } from "./socketAsks";
 import type { PrEvent } from "../panels/Settings/settingsStore";
@@ -51,6 +52,7 @@ export type ItemRow = {
   fix_stopped?: string;
   /** Derived per read; absent on an item read back from `log.jsonl`. */
   reference?: Reference;
+  projection?: Projection;
 };
 
 /** Mirrors `ScheduleRow` in src-tauri/src/autopilot/schedules.rs. */
@@ -180,10 +182,18 @@ export function queuedItems(items: ItemRow[]): QueuedItem[] {
   const ahead = flying[flying.length - 1];
   const lined = queued.map((i, n) => {
     const before = n > 0 ? queued[n - 1] : ahead;
-    return { ticket: ticketOf(i), title: itemTitle(i), after: before && ticketOf(before) };
+    return {
+      ticket: ticketOf(i),
+      title: itemTitle(i),
+      after: before && ticketOf(before),
+      projection: i.projection,
+    };
   });
   const proposed = items.filter((i) => i.state === "proposed").sort((a, b) => a.created - b.created);
-  return [...lined, ...proposed.map((i) => ({ ticket: ticketOf(i), title: itemTitle(i), proposed: true }))];
+  return [
+    ...lined,
+    ...proposed.map((i) => ({ ticket: ticketOf(i), title: itemTitle(i), proposed: true, projection: i.projection })),
+  ];
 }
 
 function blockingItem(s: ScheduleRow, items: ItemRow[]): ItemRow | undefined {

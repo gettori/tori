@@ -736,28 +736,27 @@ pub struct ItemUpdateParams {
 impl ItemUpdateParams {
     /// `project` is the one resolved for a new item; with an id it must be left out. `origin` is that
     /// project's `owner/name`, which an issue key is read against.
-    pub fn apply(self, store: &AutopilotStore, project: Option<String>, origin: String) -> Result<Value, RpcError> {
-        let target = match (self.id, self.kind, self.source, project) {
-            (Some(id), None, None, None) => Target::Id(id),
-            (Some(_), ..) => {
-                return Err(RpcError::new(
-                    INVALID_PARAMS,
-                    "kind, source and project name a new item: with an id pass only what changes",
-                ))
-            }
-            (None, Some(kind), Some(source), Some(project)) => Target::Key {
+    pub fn target(&mut self, project: Option<String>, origin: String) -> Result<Target, RpcError> {
+        match (self.id.take(), self.kind.take(), self.source.take(), project) {
+            (Some(id), None, None, None) => Ok(Target::Id(id)),
+            (Some(_), ..) => Err(RpcError::new(
+                INVALID_PARAMS,
+                "kind, source and project name a new item: with an id pass only what changes",
+            )),
+            (None, Some(kind), Some(source), Some(project)) => Ok(Target::Key {
                 kind,
                 source,
                 project,
                 origin,
-            },
-            (None, ..) => {
-                return Err(RpcError::new(
-                    INVALID_PARAMS,
-                    "without an id, pass kind, source and project",
-                ))
-            }
-        };
+            }),
+            (None, ..) => Err(RpcError::new(
+                INVALID_PARAMS,
+                "without an id, pass kind, source and project",
+            )),
+        }
+    }
+
+    pub fn apply(self, store: &AutopilotStore, target: Target, body_len: Option<usize>) -> Result<Value, RpcError> {
         let patch = Patch {
             state: self.state,
             worktree: self.worktree,
@@ -768,6 +767,7 @@ impl ItemUpdateParams {
             title: self.title,
             contract: self.contract,
             item_usd: self.item_usd,
+            body_len,
         };
         let item = store.update(target, patch).map_err(update_error)?;
         serde_json::to_value(item).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))
@@ -1554,11 +1554,11 @@ pub mod tests {
         fn autopilot_loop(&self, _: &Principal, p: LoopParams) -> Result<Value, RpcError> {
             Ok(json!({ "queued": p.entries }))
         }
-        fn autopilot_item_update(&self, _: &Principal, p: ItemUpdateParams) -> Result<Value, RpcError> {
+        fn autopilot_item_update(&self, _: &Principal, mut p: ItemUpdateParams) -> Result<Value, RpcError> {
             match &self.autopilot {
                 Some(store) => {
-                    let project = p.project.clone();
-                    p.apply(store, project, String::new())
+                    let target = p.target(p.project.clone(), String::new())?;
+                    p.apply(store, target, None)
                 }
                 None => Ok(json!({ "id": p.id })),
             }

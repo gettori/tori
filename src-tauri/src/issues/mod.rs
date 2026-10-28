@@ -53,6 +53,8 @@ pub struct IssueRef {
     pub author: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub head_sha: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body_len: Option<usize>,
 }
 
 /// One issue, with what a branch unit started from it needs.

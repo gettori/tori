@@ -148,10 +148,17 @@ function addActivity(events: AutopilotEvent[], older = false) {
 
 let firstLive: number | null = null;
 
+// A finished item moves what the waiting ones are projected to cost.
+async function reloadItems() {
+  const state = await invoke<{ items: ItemRow[] }>("autopilot_state").catch(() => null);
+  if (state) setItems(state.items);
+}
+
 function applyChange(e: AutopilotEvent) {
   firstLive ??= e.ts;
   const item = e.item;
   if (item) setItems((prev) => applyItem(prev, item));
+  if (item?.state === "done") void reloadItems();
   const hold = e.hold;
   if (hold) setHolds((prev) => [...prev.filter((h) => h.ask !== hold.ask), ...(e.cleared ? [] : [hold])]);
   if (e.schedule || e.schedule_removed) setSchedules((prev) => applySchedule(prev, e));

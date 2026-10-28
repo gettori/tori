@@ -275,6 +275,7 @@ mod tests {
             kind,
             author: None,
             head_sha: None,
+            body_len: None,
         }
     }
 
