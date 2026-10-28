@@ -795,7 +795,11 @@ export const CHAT_SUBMIT = "tori:chat-submit";
 export type ChatSubmit = { requestId: string; sessionId: string; blocks: ContentBlock[] };
 
 export const SEND_TO_SESSION_RESULT = "tori:send-to-session-result";
-export type SendToSessionResult = { requestId: string; result: "sent" | "blocked" | "timeout" };
+export type SendToSessionResult = {
+  requestId: string;
+  result: "sent" | "blocked" | "timeout";
+  reason?: string;
+};
 
 // DataTransfer MIME carrying an absolute file path when dragging a tree row or
 // editor tab onto the terminal (which inserts it as a cwd-relative `@path`).

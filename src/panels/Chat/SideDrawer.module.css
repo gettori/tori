@@ -45,3 +45,15 @@
 .body.hidden {
   display: none;
 }
+
+.sendReply {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  margin-top: calc(6px * var(--ui-scale));
+}
+
+.sendNote {
+  color: var(--fg-muted);
+  font-size: var(--tori-text-sm);
+}

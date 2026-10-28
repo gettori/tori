@@ -38,6 +38,7 @@ import {
   type ChatItem,
   type QuestionItem,
   type SecretRow,
+  type TextItem,
   type ToolItem,
   type TurnCheck,
 } from "./chatStore";
@@ -232,6 +233,7 @@ function ReplyText(props: {
   cwd: string;
   onRead?: (body: HTMLElement, itemId: string) => void;
   readingBlock?: (itemId: string) => number | undefined;
+  action?: JSX.Element;
 }) {
   let body!: HTMLDivElement;
   const [renders, setRenders] = createSignal(0);
@@ -259,6 +261,7 @@ function ReplyText(props: {
       <div ref={body} class={styles.assistant} data-reply={props.id}>
         <Markdown text={props.text} cwd={props.cwd} onRendered={() => setRenders((n) => n + 1)} />
       </div>
+      {props.action}
     </div>
   );
 }
@@ -380,6 +383,7 @@ export default function MessageList(props: {
    *  there is no speech, which leaves replies without the button. */
   onRead?: (body: HTMLElement, itemId: string) => void;
   readingBlock?: (itemId: string) => number | undefined;
+  replyAction?: (item: TextItem) => JSX.Element | undefined;
   /** Whether the agent opened this turn for itself, which a background
    *  subagent's finishing makes it do. Such a turn answers no prompt, so it
    *  must not claim the one above it. */
@@ -832,6 +836,7 @@ export default function MessageList(props: {
                   cwd={props.cwd}
                   onRead={props.onRead}
                   readingBlock={props.readingBlock}
+                  action={props.replyAction?.(it())}
                 />
               }
             >
@@ -844,6 +849,7 @@ export default function MessageList(props: {
                     cwd={props.cwd}
                     onRead={props.onRead}
                     readingBlock={props.readingBlock}
+                    action={props.replyAction?.(it())}
                   />
                 </div>
               )}

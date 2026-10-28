@@ -147,7 +147,7 @@ export function composeTodo(target: SessionTarget, filePath: string, line: numbe
 // behind it); anything else probing clean is "ready" to write.
 export type ProbeState = "ready" | "blocked" | "not-ready";
 
-export type SendResult = { kind: "sent" } | { kind: "blocked" } | { kind: "timeout" };
+export type SendResult = { kind: "sent" } | { kind: "blocked"; reason?: string } | { kind: "timeout" };
 
 // What a caller tells the user when the gate refuses a blocked target. One
 // string rather than one per surface: the PTY route and the chat steer are
@@ -235,7 +235,7 @@ export function requestSend(payload: Omit<SendToSession, "requestId">): Promise<
       settled = true;
       off();
       clearTimeout(timer);
-      resolve({ kind: r.result });
+      resolve(r.result === "blocked" ? { kind: "blocked", reason: r.reason } : { kind: r.result });
     });
     const timer = setTimeout(() => {
       if (settled) return;

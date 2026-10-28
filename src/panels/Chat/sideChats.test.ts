@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vite-plus/test";
-import { planAsReply, withSide, withoutSide, type Drawer } from "./sideChats";
+import { lastReplies, planAsReply, withSide, withoutSide, type Drawer } from "./sideChats";
 import type { ChatItem, ToolItem } from "./chatStore";
 
 const side = (n: number) => ({ tabId: `side:${n}`, sessionId: `s${n}` });
@@ -38,5 +38,33 @@ describe("planAsReply", () => {
     const read = tool({ toolKind: "read", input: { plan: "not a plan" } });
     const empty = tool({ toolKind: "switchMode", input: { plan: "  " } });
     expect(planAsReply([read, empty])).toEqual([read, empty]);
+  });
+});
+
+describe("which side replies can be sent", () => {
+  const turns = {
+    done: { completed: true, model: null, agentInitiated: false },
+    live: { completed: false, model: null, agentInitiated: false },
+  };
+  const text = (id: string, turnId: string, agentId: string | null = null): ChatItem => ({
+    kind: "text",
+    id,
+    turnId,
+    text: id,
+    agentId,
+  });
+
+  it("is the main agent's last reply of each finished turn, a denied plan included", () => {
+    const plan = {
+      kind: "tool",
+      id: "plan",
+      toolUseId: "p",
+      turnId: "done",
+      agentId: null,
+      toolKind: "switchMode",
+      input: { plan: "the answer" },
+    } as unknown as ToolItem;
+    const items = planAsReply([text("first", "done"), plan, text("sub", "done", "task-1"), text("running", "live")]);
+    expect([...lastReplies(items, turns)]).toEqual(["plan"]);
   });
 });

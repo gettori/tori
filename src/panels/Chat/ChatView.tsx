@@ -14,7 +14,8 @@ import PlanCard from "./PlanCard";
 import UsageReadout from "./UsageReadout";
 import StatusStrip from "./StatusStrip";
 import ModeSelector from "./ModeSelector";
-import { planAsReply } from "./sideChats";
+import { lastReplies, planAsReply } from "./sideChats";
+import SendReply from "./SendReply";
 import ConfigMirror from "./ConfigMirror";
 import FollowToggle from "./FollowToggle";
 import ModelPicker from "./ModelPicker";
@@ -225,6 +226,7 @@ import {
   type ChatState,
   type QueuedInput,
   type QuestionItem,
+  type TextItem,
   type ToolItem,
 } from "./chatStore";
 import { loadQueue, saveQueue } from "./queuePersist";
@@ -555,6 +557,15 @@ export default function ChatView(props: {
       }),
     );
   });
+
+  const sendable = createMemo(() => (props.sideOf ? lastReplies(shownItems(), state.turns) : new Set<string>()));
+  const sendableReply = (item: TextItem) =>
+    props.sideOf && sendable().has(item.id) ? (
+      <SendReply
+        target={{ sessionId: props.sideOf, agent: props.agentId, profile: props.profile, folderPath: props.workspace }}
+        text={item.text}
+      />
+    ) : undefined;
 
   /** The lane being read, by name, for the composer's placeholder. */
   const watchedLane = () => {
@@ -1275,6 +1286,7 @@ export default function ChatView(props: {
       emitWith<SendToSessionResult>(SEND_TO_SESSION_RESULT, {
         requestId: ev.requestId,
         result: refused ? "blocked" : "sent",
+        reason: refused ?? undefined,
       });
     }),
   );
@@ -2574,6 +2586,7 @@ export default function ChatView(props: {
           onRead={(body, itemId) => void read(speakableChunks(body), `${props.sessionId}:${itemId}`)}
           readingBlock={(itemId) => readingBlockOf(`${props.sessionId}:${itemId}`)}
           replyMark={props.cockpit ? ReplyMark : undefined}
+          replyAction={props.sideOf ? sendableReply : undefined}
           collapseWork={settings.chatDefaults.collapseWork}
           showSecrets={settings.secretWatch?.enabled !== false}
           showBlindEdits={settings.blindEdits?.enabled !== false}

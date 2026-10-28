@@ -431,7 +431,7 @@ export function queuedText(q: Pick<QueuedInput, "blocks">): string {
  *  for a turn that never named one (replayed history has no turn frames). The
  *  transcript's per-turn header reads it, so an old turn keeps the model that
  *  actually ran it rather than inheriting whatever the session switched to. */
-type TurnRecord = {
+export type TurnRecord = {
   completed: boolean;
   model: string | null;
   /** The agent opened this turn, not anything the user sent: a background
