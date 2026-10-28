@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use ort::session::builder::AutoDevicePolicy;
 use ort::session::Session;
 use ort::value::Tensor;
 
@@ -41,7 +42,11 @@ pub fn load(dir: &Path, model: &Path) -> Result<Kokoro, String> {
         .with_execution_providers([ort::ep::CPU::default().build()])
         .build()
         .map_err(|e| fail("runtime", &e))?;
+    // ort's default policy registers CoreML on a Mac, which compiles the
+    // graph on every load (5 s here) and then runs it slower than the CPU.
     let session = Session::builder(&env)
+        .map_err(|e| fail("runtime", &e))?
+        .with_auto_device(AutoDevicePolicy::PreferCPU)
         .map_err(|e| fail("runtime", &e))?
         .commit_from_file(model)
         .map_err(|e| fail("model", &e))?;
