@@ -996,6 +996,19 @@ fn host_chats(daemon: &Arc<Daemon>) {
             composer.lifecycle(params["id"].as_str().unwrap_or_default(), params["data"].clone());
         }
     }));
+    let window = tell(Arc::downgrade(daemon));
+    chats.host.set_on_turn(Arc::new(
+        move |cwd, id, tokens, cost_usd| match crate::chat::usage::record_live(cwd, id, tokens, cost_usd) {
+            Ok(totals) => window(
+                "emit",
+                json!({
+                    "event": crate::chat::usage::CHANGED_EVENT,
+                    "payload": { "sessionId": id, "cwd": cwd, "totals": totals },
+                }),
+            ),
+            Err(e) => eprintln!("tori daemon: spend for {id} not recorded: {e}"),
+        },
+    ));
     let beat = Arc::downgrade(&daemon.composer);
     chats.host.set_on_beat(Arc::new(move || {
         if let Some(composer) = beat.upgrade() {

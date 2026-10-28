@@ -65,7 +65,7 @@ const USAGE: &str = "usage:
              [--prompt <text>] [--attach <path>]... [--background] [--json]
   tori open <path> [--line <n>]
   tori open --browser [<branch>]
-  tori budget [<id>] [--folder <path>] [--json]
+  tori budget [<id>] [--folder <path>] [--item <id>] [--pr <n|url>] [--json]
   tori ask <question>... [--option <text>]... [--timeout <secs>] [--approval <json> [--project <path>]]
   tori ask --wait <id> [--timeout <secs>]
   tori ask --answer <id> <text>...
@@ -1362,14 +1362,17 @@ fn ports(args: &[String]) -> Result<(), Failure> {
 }
 
 fn budget(args: &[String]) -> Result<(), Failure> {
-    let p = Parsed::new(args, &["folder"], &["json"])?;
+    let p = Parsed::new(args, &["folder", "item", "pr"], &["json"])?;
     let id = match p.positional.as_slice() {
         [] => None,
         [id] => Some(id),
         _ => return Err(usage("budget takes at most one session id")),
     };
     let folder = p.value("folder").map(absolute).transpose()?;
-    let figures = connect()?.call("budget", json!({ "id": id, "folder": folder }))?;
+    let figures = connect()?.call(
+        "budget",
+        json!({ "id": id, "folder": folder, "item": p.value("item"), "pr": p.value("pr") }),
+    )?;
     let mut out = io::stdout().lock();
     if p.has("json") {
         return Ok(writeln!(out, "{figures}")?);
@@ -1392,6 +1395,9 @@ fn budget(args: &[String]) -> Result<(), Failure> {
         ceiling(&budgets["projectUsd"]),
         figures["folder"].as_str().unwrap_or("")
     )?;
+    for line in attributed_lines(&figures) {
+        writeln!(out, "{line}")?;
+    }
     for window in figures["quota"].as_array().into_iter().flatten() {
         let used = window["utilization"]
             .as_f64()
@@ -1400,6 +1406,38 @@ fn budget(args: &[String]) -> Result<(), Failure> {
         writeln!(out, "{kind}  {used}  {}", window["state"].as_str().unwrap_or(""))?;
     }
     Ok(())
+}
+
+fn attributed_lines(figures: &Value) -> Vec<String> {
+    let mut lines = Vec::new();
+    if let Some(item) = figures["item"].as_object() {
+        let id = item["id"].as_str().unwrap_or("");
+        lines.push(format!("item     {}  {id}", spent_line(&item["spend"])));
+    }
+    if let Some(issue) = figures["issue"].as_object() {
+        let key = issue["key"].as_str().unwrap_or("");
+        lines.push(format!("issue    {}  {key}", spent_line(&issue["spend"])));
+    }
+    if let Some(pr) = figures["pr"].as_object() {
+        let branch = pr["branch"].as_str().unwrap_or("");
+        lines.push(format!(
+            "pr       {}  #{} {branch}",
+            spent_line(&pr["spend"]),
+            pr["number"]
+        ));
+    }
+    lines
+}
+
+// ACP agents report turns and no money, which reads differently from $0.00.
+fn spent_line(spend: &Value) -> String {
+    match spend["costUsd"].as_f64() {
+        Some(usd) => format!("${usd:.2}"),
+        None if spend["turns"].as_u64().unwrap_or(0) > 0 => {
+            format!("{} turns, no cost reported", spend["turns"])
+        }
+        None => "nothing recorded".to_string(),
+    }
 }
 
 fn ask_request(args: &[String]) -> Result<(&'static str, Value), Failure> {
@@ -1859,6 +1897,41 @@ mod tests {
 
     fn args(all: &[&str]) -> Vec<String> {
         all.iter().map(|a| a.to_string()).collect()
+    }
+
+    #[test]
+    fn budget_prints_an_item_its_issue_and_a_pr_and_says_when_acp_reported_no_cost() {
+        use crate::chat::usage::SessionUsage;
+        let costed = SessionUsage {
+            cost_usd: Some(4.5),
+            turns: 3,
+            ..Default::default()
+        };
+        let acp = SessionUsage {
+            turns: 12,
+            ..Default::default()
+        };
+        let figures = json!({
+            "item": { "id": "i1", "spend": acp },
+            "issue": { "key": "48", "spend": costed },
+            "pr": { "number": 7, "branch": "fix-x", "spend": SessionUsage::default() },
+        });
+
+        assert_eq!(
+            figures["item"]["spend"]["costUsd"],
+            Value::Null,
+            "--json keeps unknown apart from free"
+        );
+        assert_eq!(figures["item"]["spend"]["turns"], 12);
+        assert_eq!(
+            attributed_lines(&figures),
+            [
+                "item     12 turns, no cost reported  i1",
+                "issue    $4.50  48",
+                "pr       nothing recorded  #7 fix-x",
+            ]
+        );
+        assert!(attributed_lines(&json!({ "item": null, "pr": null })).is_empty());
     }
 
     #[test]

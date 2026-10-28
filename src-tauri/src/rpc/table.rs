@@ -525,7 +525,7 @@ pub static METHODS: &[Method] = &[
     },
     Method {
         name: "budget",
-        description: "Spend for a session and its project against the configured budgets, and the agent's quota windows.",
+        description: "Spend for a session and its project against the configured budgets, the agent's quota windows, and optionally an autopilot item's or a pull request's spend.",
         params: schema::<BudgetParams>,
         callers: ANYONE,
         refusal: None,

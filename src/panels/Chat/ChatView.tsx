@@ -1,6 +1,7 @@
 import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, untrack } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import MessageList from "./MessageList";
 import QuoteSelection, { quoteBlock } from "../../components/QuoteSelection/QuoteSelection";
 import { mirrorSaved, openDraftInEditor, scratchTabClosed, unlinkScratch } from "./composerScratch";
@@ -21,7 +22,7 @@ import { pendingCard, setPendingCard } from "../../utils/pendingCard";
 import { isLocked, items as autopilotItems, refreshLocked, setView, stopAutopilot } from "../../utils/autopilotStore";
 import LockedBar from "../../components/Autopilot/LockedBar";
 import { draftPick, hasPick, pickRidesArgv, setDraftPick } from "../../utils/chatDraftPick";
-import { turnTokens, usageSummary } from "../../utils/chatUsage";
+import { usageSummary } from "../../utils/chatUsage";
 import { quotaState, rateLimitFrom, readingsOf, windowSentence } from "../../utils/chatRateLimit";
 import { accountKey, recordReadings, transitionKey, windowsFor } from "../../utils/usageStore";
 import { toriText } from "../../utils/toriNote";
@@ -99,7 +100,7 @@ import {
 } from "../../utils/chatTypes";
 import { dropLiveChat, chatsInFolder, liveChats, setLiveChat } from "../../utils/chatSessions";
 import { checkpointChatTurn } from "../../utils/checkpoints";
-import type { UsageTotals } from "../../utils/chatUsageStore";
+import { USAGE_CHANGED, type UsageChanged, type UsageTotals } from "../../utils/chatUsageStore";
 import {
   capabilitiesFor,
   contextPercent,
@@ -609,6 +610,12 @@ export default function ChatView(props: {
         return applyBudget();
       })
       .catch(() => {});
+    const unlistenSpend = listen<UsageChanged>(USAGE_CHANGED, ({ payload }) => {
+      if (payload.sessionId !== props.sessionId) return;
+      setSpent(payload.totals);
+      void applyBudget();
+    });
+    onCleanup(() => void unlistenSpend.then((unlisten) => unlisten()));
     // Where this agent's earlier turns come from. `session-replay` means the
     // agent hands them back on the live channel and Tori's log is only a cache
     // of that, which is what the reset, the notice and the prompt-count re-read
@@ -859,11 +866,7 @@ export default function ChatView(props: {
         toolNames.clear();
         void checkpointChatTurn(props.sessionId, props.cwd, turnTs);
       }
-      // A turn's cost is persisted the moment it lands, not on close: a ceiling
-      // that forgets what has been spent whenever a tab is reopened is not a
-      // ceiling, and a crash mid-session must not reset the tally to zero.
       if (ev.type === "turnCompleted") {
-        void recordSpend(ev.usage ? turnTokens(ev.usage) : 0, ev.costUsd);
         // A queued message is about to start the next turn, so the work the
         // user is waiting on is not over yet.
         if (ev.outcome === "completed" && !pendingFlush(state)) setDoneAt(Date.now());
@@ -1670,28 +1673,6 @@ export default function ChatView(props: {
       // be stopped against one denominator while the strip draws another.
       contextPercent: contextPercent(state.contextTokens, stripWindow()),
     };
-  }
-
-  /**
-   * Persist one completed turn, then decide whether this chat may run another.
-   *
-   * The stop is armed **between** turns, which is also the only place it can be:
-   * the ceiling is only knowable once a turn has reported what it cost. Armed in
-   * the rule file, it then bites at the *next tool boundary* - the hook fires
-   * before a call runs, so the refusal means the tool never started rather than
-   * that it was cut off halfway. Nothing here can stop a tool mid-flight, which
-   * is the property the plan asked for and the one this shape gives for free.
-   */
-  async function recordSpend(tokens: number, costUsd: number | null) {
-    const totals = await invoke<UsageTotals>("chat_record_usage", {
-      cwd: props.cwd,
-      sessionId: props.sessionId,
-      tokens,
-      costUsd,
-    }).catch(() => null);
-    if (!totals) return;
-    setSpent(totals);
-    await applyBudget();
   }
 
   // A ceiling edited mid-session takes effect at once rather than at the next

@@ -71,6 +71,7 @@ type Sessions = Arc<Mutex<HashMap<String, Entry>>>;
 pub type Publish = Arc<dyn Fn(&str, serde_json::Value) + Send + Sync>;
 
 pub type OnBeat = Arc<dyn Fn() + Send + Sync>;
+pub type OnTurn = Arc<dyn Fn(&str, &str, u64, Option<f64>) + Send + Sync>;
 
 // A question or permission waits on the user, so its silence is not a stall.
 fn is_progress(event: &ChatEvent) -> bool {
@@ -110,6 +111,7 @@ struct Lifecycle {
     pulses: Arc<Mutex<Pulses>>,
     on_beat: Arc<std::sync::OnceLock<OnBeat>>,
     on_waiting: Arc<std::sync::OnceLock<OnBeat>>,
+    on_turn: Arc<std::sync::OnceLock<OnTurn>>,
 }
 
 impl Lifecycle {
@@ -195,9 +197,18 @@ impl Lifecycle {
                     serde_json::json!({ "turn_id": turn_id, "by": by }),
                 );
             }
-            ChatEvent::TurnCompleted { turn_id, outcome, .. } => {
+            ChatEvent::TurnCompleted {
+                turn_id,
+                outcome,
+                usage,
+                cost_usd,
+                ..
+            } => {
                 lock(&self.origins).remove(id);
                 if let Some(folder) = lock(&self.announced).get(id).and_then(|p| p.folder.clone()) {
+                    if let Some(on_turn) = self.on_turn.get() {
+                        on_turn(&folder, id, usage.total(), *cost_usd);
+                    }
                     crate::radar::committed(&folder);
                 }
                 self.note(
@@ -987,6 +998,10 @@ impl ChatHost {
 
     pub fn set_on_waiting(&self, waited: OnBeat) {
         let _ = self.lifecycle.on_waiting.set(waited);
+    }
+
+    pub fn set_on_turn(&self, turn: OnTurn) {
+        let _ = self.lifecycle.on_turn.set(turn);
     }
 
     pub fn waiting_permissions(&self) -> Vec<WaitingPermission> {
@@ -2797,6 +2812,45 @@ mod tests {
             matches!(replayed.as_slice(), [ChatEvent::SessionReady { .. }]),
             "ready clears \"Connecting\"; started is the replay's job: {replayed:?}"
         );
+    }
+
+    // An ACP load hands its history back before `SessionStarted`.
+    #[test]
+    fn a_live_turn_is_recorded_once_and_a_replayed_one_not_at_all() {
+        let host = ChatHost::at(temp_store());
+        let heard: Arc<Mutex<Vec<(String, String, u64)>>> = Arc::default();
+        let tap = heard.clone();
+        host.set_publisher(Arc::new(|_, _| {}));
+        host.set_on_turn(Arc::new(move |folder, id, tokens, _| {
+            lock(&tap).push((folder.to_string(), id.to_string(), tokens))
+        }));
+        let sink_out: Arc<Mutex<Option<Sink>>> = Arc::new(Mutex::new(None));
+        let out = sink_out.clone();
+        let at_repo = StartSpec {
+            cwd: "/repo".into(),
+            ..spec("s1")
+        };
+        host.spawn_plain("s1", "tab-a", Collector::default().emit(), at_repo, move || {
+            Box::new(Puppet {
+                sink_out: Some(out),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+        let sink = lock(&sink_out).clone().expect("the puppet published its sink");
+        let costing = |turn: &str, tokens: u64| {
+            let mut event = turn_done("s1", turn);
+            if let ChatEvent::TurnCompleted { usage, .. } = &mut event {
+                usage.input_tokens = tokens;
+            }
+            event
+        };
+
+        emit(&sink, costing("t0", 5));
+        emit(&sink, started("s1"));
+        emit(&sink, costing("t1", 7));
+
+        assert_eq!(*lock(&heard), vec![("/repo".to_string(), "s1".to_string(), 7)]);
     }
 
     /// A rewire before the handshake has nothing to say, and must not invent

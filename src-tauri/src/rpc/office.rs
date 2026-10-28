@@ -383,6 +383,10 @@ impl Office {
         }
     }
 
+    pub fn item_for_session(&self, session: &str) -> Option<String> {
+        self.autopilot.item_for_session(session)
+    }
+
     /// A chat's own rate limit frame, filed under the account it runs on, so
     /// the windows are known with no window open.
     pub fn rate_limit(&self, session: &str, event: &crate::chat::model::ChatEvent) {

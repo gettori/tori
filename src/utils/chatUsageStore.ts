@@ -20,3 +20,7 @@ export type UsageTotals = {
   session: SessionUsage;
   project: SessionUsage;
 };
+
+/** What the daemon sends once it has recorded a turn. */
+export const USAGE_CHANGED = "usage://changed";
+export type UsageChanged = { sessionId: string; cwd: string; totals: UsageTotals };

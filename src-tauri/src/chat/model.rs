@@ -726,6 +726,13 @@ pub struct Usage {
     pub thinking_tokens: u64,
 }
 
+impl Usage {
+    /// The figure a turn is recorded at, matching the panel's `turnTokens`.
+    pub fn total(&self) -> u64 {
+        self.input_tokens + self.output_tokens + self.cache_read_tokens + self.cache_write_tokens
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanItem {

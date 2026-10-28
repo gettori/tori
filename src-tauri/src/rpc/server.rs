@@ -520,6 +520,10 @@ pub struct BudgetParams {
     pub id: Option<String>,
     /// The folder whose usage to report, the session's folder when left out.
     pub folder: Option<String>,
+    /// An autopilot item whose sessions' spend to report as well.
+    pub item: Option<String>,
+    /// A pull request, by number or URL, whose head branch's spend to report as well.
+    pub pr: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
