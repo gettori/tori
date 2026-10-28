@@ -1416,6 +1416,9 @@ pub struct WorktreePrefs {
     /// Start the run command in a worktree created from the app once setup is done.
     #[serde(default)]
     pub run_on_create: bool,
+    /// How many of the worktree's ten ports are exported, 1 to 10. None is all ten.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ports: Option<u8>,
 }
 
 impl Default for WorktreePrefs {
@@ -1427,6 +1430,7 @@ impl Default for WorktreePrefs {
             run_command: String::new(),
             open_browser: true,
             run_on_create: false,
+            ports: None,
         }
     }
 }
@@ -3098,6 +3102,7 @@ mod tests {
                 run_command: "pnpm dev".into(),
                 open_browser: false,
                 run_on_create: true,
+                ports: Some(3),
             },
         );
         save_to(&p, &s).unwrap();

@@ -717,6 +717,7 @@ pub fn run() {
             worktree::branch_status,
             worktree::remove_worktree,
             run::run_start,
+            run::repo_run_at,
             run::run_stop,
             run::run_list,
             worktree::worktree_not_a_fork,

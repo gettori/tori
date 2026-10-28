@@ -74,10 +74,20 @@ pub fn entries_for(cwd: Option<&Path>) -> Vec<Vec<String>> {
 }
 
 pub(crate) fn entries_in(commands: &HashMap<String, Vec<String>>, cwd: &Path) -> Vec<Vec<String>> {
-    match project_list(commands, cwd) {
+    if let Some(list) = project_list(commands, cwd) {
+        return parse_entries(list.iter().map(String::as_str));
+    }
+    match repo_checks(cwd) {
         Some(list) => parse_entries(list.iter().map(String::as_str)),
         None => parse_entries(DEFAULTS.iter().copied()),
     }
+}
+
+fn repo_checks(cwd: &Path) -> Option<Vec<String>> {
+    let root = crate::ports::root_of(cwd)?;
+    crate::project_config::accepted(&root)?
+        .checks
+        .filter(|list| !list.is_empty())
 }
 
 /// The built-in list, for a reset that stays a draft until it is saved.
@@ -1370,6 +1380,33 @@ mod tests {
         for line in ["echo cargo test", "ls -la", "git status", "cat Cargo.toml", "rg cargo"] {
             assert!(!is_check(line), "{line}");
         }
+    }
+
+    #[test]
+    fn the_users_list_beats_the_repos_checks_and_those_beat_the_defaults() {
+        let wt = std::env::temp_dir().join(format!("tori-checks-tiers-{}", std::process::id()));
+        std::fs::create_dir_all(wt.join(".git")).unwrap();
+        std::fs::create_dir_all(wt.join("src")).unwrap();
+        let wt = std::fs::canonicalize(wt).unwrap();
+        let words = |line: &str| vec![line.split(' ').map(str::to_string).collect::<Vec<_>>()];
+        let none = HashMap::new();
+        assert_eq!(
+            entries_in(&none, &wt.join("src")),
+            parse_entries(DEFAULTS.iter().copied())
+        );
+
+        crate::project_config::seam_accepted(
+            &wt,
+            crate::project_config::Values {
+                checks: Some(vec!["just ci".into()]),
+                ..Default::default()
+            },
+        );
+        assert_eq!(entries_in(&none, &wt.join("src")), words("just ci"));
+
+        let mine = HashMap::from([(wt.to_string_lossy().into_owned(), vec!["make verify".to_string()])]);
+        assert_eq!(entries_in(&mine, &wt.join("src")), words("make verify"));
+        std::fs::remove_dir_all(&wt).ok();
     }
 
     #[test]

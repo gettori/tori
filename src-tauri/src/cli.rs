@@ -946,6 +946,9 @@ fn worktree_new(args: &[String]) -> Result<(), Failure> {
             .unwrap_or_default();
         writeln!(io::stderr().lock(), "setup {setup}{log}")?;
     }
+    if let Some(proposal) = made["proposal"].as_str().filter(|s| *s != "none") {
+        writeln!(io::stderr().lock(), "proposal {proposal}")?;
+    }
     Ok(writeln!(
         io::stdout().lock(),
         "{}",

@@ -38,10 +38,13 @@ fn registry_dir() -> PathBuf {
 /// `TORI_PORT` and `TORI_PORT_1` to `TORI_PORT_9` for a process starting in
 /// `cwd`, or nothing when `cwd` is in no checkout.
 pub fn env_for(cwd: &Path) -> Vec<(String, String)> {
-    let Some(base) = root_of(cwd).and_then(|root| block_for(&registry_dir(), &root, answers)) else {
+    let Some(root) = root_of(cwd) else {
         return Vec::new();
     };
-    (0..BLOCK)
+    let Some(base) = block_for(&registry_dir(), &root, answers) else {
+        return Vec::new();
+    };
+    (0..width(&root))
         .map(|i| {
             let name = if i == 0 {
                 "TORI_PORT".to_string()
@@ -51,6 +54,18 @@ pub fn env_for(cwd: &Path) -> Vec<(String, String)> {
             (name, (base + i).to_string())
         })
         .collect()
+}
+
+// The block stays ten wide whatever is exported, so a width change moves no port.
+fn width(root: &Path) -> u16 {
+    let user = crate::setup::settings_and_logs()
+        .0
+        .into_iter()
+        .filter(|(key, _)| std::fs::canonicalize(key).is_ok_and(|key| root.starts_with(key)))
+        .max_by_key(|(key, _)| key.len())
+        .and_then(|(_, prefs)| prefs.ports);
+    let repo = crate::project_config::accepted(root).and_then(|values| values.ports);
+    user.or(repo).map_or(BLOCK, |n| u16::from(n).clamp(1, BLOCK))
 }
 
 /// Free the block of a worktree that is gone. `root` must be the path
@@ -69,7 +84,7 @@ pub(crate) fn holds(root: &Path) -> bool {
     load(&registry_dir()).contains_key(&key(root))
 }
 
-fn root_of(cwd: &Path) -> Option<PathBuf> {
+pub(crate) fn root_of(cwd: &Path) -> Option<PathBuf> {
     let cwd = std::fs::canonicalize(cwd).ok()?;
     cwd.ancestors().find(|dir| is_checkout_root(dir)).map(Path::to_path_buf)
 }
@@ -461,6 +476,32 @@ mod tests {
         let base: u16 = env[0].1.parse().unwrap();
         assert_eq!(env[9].1, (base + 9).to_string());
         assert_eq!(env_for(&a), env);
+    }
+
+    #[test]
+    fn an_accepted_width_narrows_the_env_and_the_users_beats_it() {
+        let a = checkout("width");
+        crate::setup::seam(std::collections::HashMap::new(), a.join("logs"));
+        crate::project_config::seam_accepted(
+            &a,
+            crate::project_config::Values {
+                ports: Some(3),
+                ..Default::default()
+            },
+        );
+        let names = |env: Vec<(String, String)>| env.into_iter().map(|(name, _)| name).collect::<Vec<_>>();
+        assert_eq!(names(env_for(&a)), ["TORI_PORT", "TORI_PORT_1", "TORI_PORT_2"]);
+
+        let mut prefs = std::collections::HashMap::new();
+        prefs.insert(
+            a.to_string_lossy().into_owned(),
+            crate::settings::WorktreePrefs {
+                ports: Some(5),
+                ..Default::default()
+            },
+        );
+        crate::setup::seam(prefs, a.join("logs"));
+        assert_eq!(env_for(&a).len(), 5);
     }
 
     #[test]
