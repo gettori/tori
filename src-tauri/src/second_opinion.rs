@@ -580,6 +580,7 @@ fn drive(
             visible: false,
             background: false,
             spawner: None,
+            side_of: None,
         },
         Box::new(move |event| {
             if let Ok(tx) = tx.lock() {

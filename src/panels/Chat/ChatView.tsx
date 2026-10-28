@@ -14,6 +14,7 @@ import PlanCard from "./PlanCard";
 import UsageReadout from "./UsageReadout";
 import StatusStrip from "./StatusStrip";
 import ModeSelector from "./ModeSelector";
+import { planAsReply } from "./sideChats";
 import ConfigMirror from "./ConfigMirror";
 import FollowToggle from "./FollowToggle";
 import ModelPicker from "./ModelPicker";
@@ -309,6 +310,10 @@ export default function ChatView(props: {
   background?: boolean;
   /** The session that spawned this one, for a resume to link it back to. */
   spawner?: string;
+  /** The chat this one is a side chat of. Carried on every spawn, resumes
+   *  included, so the backend holds it read-only. */
+  sideOf?: string;
+  onSideChat?: () => void;
   /** A session this view watches but does not own, such as the autopilot's:
    *  unmounting leaves it running instead of closing it. */
   detach?: boolean;
@@ -319,12 +324,12 @@ export default function ChatView(props: {
   /** Open a fresh chat beside this one, the way out of every refusal: a new
    *  session id can never collide with the one that is already held. Returns
    *  the new session's id, so this one can seed it. */
-  onForkSession: () => string;
+  onForkSession?: () => string;
   /** Fork *this* session: a new id that replays this one's history. Distinct
    *  from `onForkSession`, which starts empty - that one is the escape hatch
    *  from a refused claim, where touching the contested session is the thing to
    *  avoid. */
-  onForkFrom: () => string;
+  onForkFrom?: () => string;
   /** Carry this conversation into a new chat whose files, and whose replayed
    *  history, stop at `promptTs`. Closes this tab: the rewind supersedes it, and
    *  leaving both open would leave two tabs claiming to be the same work. */
@@ -526,9 +531,10 @@ export default function ChatView(props: {
   // reads `items` in three places (its window memo, its stick-to-bottom tail
   // probe, and the load-earlier check), so an accessor would re-filter the
   // whole transcript three times for every streaming delta.
-  const shownItems = createMemo(() =>
-    visibleItems(state.items, settings.chatDefaults.showToriHooks, state.selectedLane),
-  );
+  const shownItems = createMemo(() => {
+    const shown = visibleItems(state.items, settings.chatDefaults.showToriHooks, state.selectedLane);
+    return props.sideOf ? planAsReply(shown) : shown;
+  });
 
   // The palette's Read Last Reply reads the chat in front. The row's rendered
   // text is what is read, so a reply the window has not drawn has nothing to
@@ -886,7 +892,7 @@ export default function ChatView(props: {
         // here is spent. Cleared per turn rather than never, which would grow
         // the map for as long as the panel is open.
         toolNames.clear();
-        void checkpointChatTurn(props.sessionId, props.cwd, turnTs);
+        if (!props.sideOf) void checkpointChatTurn(props.sessionId, props.cwd, turnTs);
       }
       if (ev.type === "turnCompleted") {
         // A queued message is about to start the next turn, so the work the
@@ -1007,6 +1013,7 @@ export default function ChatView(props: {
             visible: props.active,
             background: props.background ?? false,
             spawner: props.spawner ?? null,
+            sideOf: props.sideOf ?? null,
             onEvent: channel,
           }),
         )
@@ -1300,6 +1307,7 @@ export default function ChatView(props: {
       visible: props.active,
       spawner: props.spawner,
       doneAt: doneAt(),
+      side: props.sideOf,
     });
   });
 
@@ -2124,7 +2132,7 @@ export default function ChatView(props: {
       emitWith<ToastEvent>(TOAST, { message: "Type something first, or attach a file.", kind: "info" });
       return;
     }
-    seedForSend(composerKey(), props.onForkSession());
+    if (props.onForkSession) seedForSend(composerKey(), props.onForkSession());
   }
 
   /**
@@ -2385,9 +2393,13 @@ export default function ChatView(props: {
             >
               Go to it
             </Button>
-            <Button size="sm" onClick={() => props.onForkSession()}>
-              Start a new chat
-            </Button>
+            <Show when={props.onForkSession}>
+              {(start) => (
+                <Button size="sm" onClick={() => start()()}>
+                  Start a new chat
+                </Button>
+              )}
+            </Show>
           </div>
         )}
       </Show>
@@ -2399,9 +2411,13 @@ export default function ChatView(props: {
             <Button size="sm" variant="primary" onClick={() => endOrphan(orphan().childPid)}>
               End it
             </Button>
-            <Button size="sm" onClick={() => props.onForkSession()}>
-              Start a new chat
-            </Button>
+            <Show when={props.onForkSession}>
+              {(start) => (
+                <Button size="sm" onClick={() => start()()}>
+                  Start a new chat
+                </Button>
+              )}
+            </Show>
           </div>
         )}
       </Show>
@@ -2457,23 +2473,34 @@ export default function ChatView(props: {
                 >
                   {settings.chatDefaults.collapseWork ? "Show agent work" : "Collapse agent work"}
                 </Button>
-                <Button
-                  size="sm"
-                  tooltip="Open a new chat and send what is in the composer to it"
-                  onClick={onSendToNewSession}
-                >
-                  Send to a new chat
-                </Button>
+                <Show when={props.onForkSession}>
+                  <Button
+                    size="sm"
+                    tooltip="Open a new chat and send what is in the composer to it"
+                    onClick={onSendToNewSession}
+                  >
+                    Send to a new chat
+                  </Button>
+                </Show>
                 {/* Only once there is something to branch from. A fork of a
                     session with no turns is just a new chat, and offering it as
                     a fork would promise history that does not exist. */}
-                <Show when={state.started && state.items.length > 0}>
+                <Show when={props.onForkFrom && state.started && state.items.length > 0}>
                   <Button
                     size="sm"
                     tooltip="Branch this conversation into a new session, keeping everything up to here"
-                    onClick={() => props.onForkFrom()}
+                    onClick={() => props.onForkFrom?.()}
                   >
                     Fork this chat
+                  </Button>
+                </Show>
+                <Show when={props.onSideChat && state.started && state.items.length > 0}>
+                  <Button
+                    size="sm"
+                    tooltip="Ask about this session beside it, in a read-only copy that cannot change anything"
+                    onClick={() => props.onSideChat?.()}
+                  >
+                    Side chat
                   </Button>
                 </Show>
               </div>
@@ -2536,7 +2563,9 @@ export default function ChatView(props: {
           // cannot fork has no way to carry the conversation across, and offering
           // "rewind to here" there would promise the tree *and* the conversation
           // and deliver only the tree.
-          rewindTsFor={(turnId) => (tier().rewind === "fork" && !locked() ? (turnStamps()[turnId] ?? null) : null)}
+          rewindTsFor={(turnId) =>
+            tier().rewind === "fork" && !locked() && !props.sideOf ? (turnStamps()[turnId] ?? null) : null
+          }
           agentTurn={(turnId) => state.turns[turnId]?.agentInitiated === true}
           laneOpenedBy={(toolUseId) => laneOpenedBy(toolUseId)}
           blockedIn={blockedIn}
@@ -2693,14 +2722,16 @@ export default function ChatView(props: {
                   onSelectModel={onSelectModel}
                   onSelectEffort={onSelectEffort}
                 />
-                <ModeSelector
-                  mode={shownModeValue()}
-                  modes={offered().modes}
-                  pending={modePending(state)}
-                  refusals={state.refusedModes}
-                  disabled={refused() || state.ended}
-                  onSelect={onSelectMode}
-                />
+                <Show when={!props.sideOf}>
+                  <ModeSelector
+                    mode={shownModeValue()}
+                    modes={offered().modes}
+                    pending={modePending(state)}
+                    refusals={state.refusedModes}
+                    disabled={refused() || state.ended}
+                    onSelect={onSelectMode}
+                  />
+                </Show>
                 {/* Last, after the three Tori has controls of its own for: these
                   are the agent's, in the agent's own words, and their order is
                   the order it published them in. */}
