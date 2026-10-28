@@ -12,6 +12,10 @@ pub const SAMPLE_RATE: u32 = 24_000;
 // Kokoro takes 510 tokens a pass, but memory grows with the pass: 150 keeps
 // a read near 2 GB where full 510 token passes peak at 3.
 const PIECE_TOKENS: usize = 150;
+
+// The first piece of a read is synthesised before anything plays, and its
+// time grows with its length, so it ends at a clause break early on.
+const OPENING_TOKENS: usize = 60;
 const STYLE_WIDTH: usize = 256;
 const STYLE_ROWS: usize = 510;
 
@@ -77,9 +81,10 @@ impl Kokoro {
 }
 
 impl Voice for Kokoro {
-    fn pieces(&mut self, text: &str) -> Result<Vec<String>, String> {
+    fn pieces(&mut self, text: &str, opening: bool) -> Result<Vec<String>, String> {
         let phonemes = self.text.phonemes(text)?;
-        Ok(split(&phonemes, |c| self.vocab.contains_key(&c), PIECE_TOKENS))
+        let first = if opening { OPENING_TOKENS } else { 0 };
+        Ok(split(&phonemes, |c| self.vocab.contains_key(&c), PIECE_TOKENS, first))
     }
 
     fn synth(&mut self, piece: &str, voice: &str, rate: f32) -> Result<Vec<f32>, String> {

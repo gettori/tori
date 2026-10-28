@@ -46,6 +46,7 @@ export type OpenTerm = {
   // signed out. Set at open and never changed, so neither replaces the tab.
   rediscoverOnExit?: boolean;
   recheckAgentsOnExit?: boolean;
+  recheckSpeechOnExit?: boolean;
   // Sign-in tabs: the account a clean exit marks as through its first run.
   completeSignInOnExit?: { agentId: string; profileId: string };
   // Command tabs: a clean exit's toast offers to relaunch Tori.

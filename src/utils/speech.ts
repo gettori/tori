@@ -105,6 +105,15 @@ function listen() {
 
 export const voices = () => invoke<Voice[]>("speech_voices");
 
+// Loading the model takes seconds, so it starts when a reply is on screen
+// rather than on Read. Once a minute is plenty: a load keeps it for five.
+let warmedAt = -Infinity;
+export function warm(): void {
+  if (Date.now() - warmedAt < 60_000) return;
+  warmedAt = Date.now();
+  void invoke("speech_warm").catch(() => {});
+}
+
 export function read(chunks: Chunk[], from: string): Promise<unknown> {
   const next = chunks.filter((c) => c.text.trim());
   if (!next.length) return stop();

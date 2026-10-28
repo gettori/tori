@@ -5,6 +5,7 @@
 mod download;
 mod kokoro;
 mod queue;
+mod spoken;
 mod text;
 
 use std::num::NonZero;
@@ -151,6 +152,8 @@ pub struct SpeechStatus {
     model: Option<&'static str>,
     downloading: Option<Progress>,
     sizes: Vec<SizeInfo>,
+    espeak: bool,
+    brew: bool,
 }
 
 #[derive(Serialize)]
@@ -211,6 +214,13 @@ fn voice_or_default(dir: &Path, voice: Option<String>) -> String {
 }
 
 #[tauri::command]
+pub fn speech_warm(app: AppHandle, state: State<SpeechState>) {
+    if installed(&dir()).is_some() {
+        state.engine(&app).warm();
+    }
+}
+
+#[tauri::command]
 pub fn speech_stop(state: State<SpeechState>) {
     if let Some(engine) = state.engine.get() {
         engine.stop();
@@ -236,6 +246,8 @@ pub fn speech_status(state: State<SpeechState>) -> SpeechStatus {
                 bytes: download::manifest(s.id).unwrap().iter().map(|f| f.bytes).sum(),
             })
             .collect(),
+        espeak: crate::env::resolve_binary("espeak-ng").is_some(),
+        brew: crate::env::resolve_binary("brew").is_some(),
     }
 }
 

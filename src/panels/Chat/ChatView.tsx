@@ -232,7 +232,7 @@ import { UNATTRIBUTED_NOTICE } from "../../utils/attribution";
 import { BLOCKED_REASON, sendWithProbeGate, type SendResult } from "../../utils/safeSend";
 import { REWIND_BANNER, REWIND_CAVEAT, rewindSeed } from "./rewind";
 import { CaptainsCall, ReplyMark } from "../../components/Autopilot/ShellParts";
-import { offerLastReply, read, readSelection, readingBlockOf } from "../../utils/speech";
+import { offerLastReply, read, readSelection, readingBlockOf, warm } from "../../utils/speech";
 import { lastReply, speakableChunks } from "./speakable";
 import styles from "./Chat.module.css";
 
@@ -533,6 +533,9 @@ export default function ChatView(props: {
   // The palette's Read Last Reply reads the chat in front. The row's rendered
   // text is what is read, so a reply the window has not drawn has nothing to
   // offer.
+  createEffect(() => {
+    if (props.active && shownItems().some((it) => it.kind === "text")) warm();
+  });
   createEffect(() => {
     if (!props.active) return;
     onCleanup(

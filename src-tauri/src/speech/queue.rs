@@ -14,7 +14,7 @@ pub const IDLE: Duration = Duration::from_secs(5 * 60);
 const AHEAD: usize = 2;
 
 pub trait Voice: Send {
-    fn pieces(&mut self, text: &str) -> Result<Vec<String>, String>;
+    fn pieces(&mut self, text: &str, opening: bool) -> Result<Vec<String>, String>;
     fn synth(&mut self, piece: &str, voice: &str, rate: f32) -> Result<Vec<f32>, String>;
 }
 
@@ -81,6 +81,11 @@ impl<V> Models<V> {
     }
 }
 
+enum Work {
+    Read(Job),
+    Warm,
+}
+
 struct Job {
     read: u64,
     chunks: Vec<String>,
@@ -135,7 +140,7 @@ impl Shared {
 }
 
 pub struct Engine {
-    jobs: Sender<Job>,
+    jobs: Sender<Work>,
     out: Arc<dyn Out>,
     shared: Shared,
 }
@@ -174,11 +179,15 @@ impl Engine {
             rate,
             voice,
         };
-        if self.jobs.send(job).is_err() {
+        if self.jobs.send(Work::Read(job)).is_err() {
             self.shared.done(read);
             return Err("the speech engine has stopped".into());
         }
         Ok(read)
+    }
+
+    pub fn warm(&self) {
+        let _ = self.jobs.send(Work::Warm);
     }
 
     pub fn stop(&self) {
@@ -194,7 +203,7 @@ impl Engine {
 }
 
 fn synthesise<V: Voice>(
-    jobs: Receiver<Job>,
+    jobs: Receiver<Work>,
     items: SyncSender<Item>,
     mut models: Models<V>,
     shared: Shared,
@@ -202,7 +211,12 @@ fn synthesise<V: Voice>(
 ) {
     loop {
         let job = match jobs.recv_timeout(tick) {
-            Ok(job) => job,
+            Ok(Work::Read(job)) => job,
+            // A model that cannot load says so on the read that needs it.
+            Ok(Work::Warm) => {
+                let _ = models.get(Instant::now());
+                continue;
+            }
             Err(RecvTimeoutError::Timeout) => {
                 models.sweep(Instant::now());
                 continue;
@@ -223,7 +237,7 @@ fn run<V: Voice>(job: &Job, models: &mut Models<V>, items: &SyncSender<Item>, sh
     let voice = models.get(Instant::now())?;
     let last_chunk = job.chunks.len().saturating_sub(1);
     for (chunk, text) in job.chunks.iter().enumerate() {
-        let pieces = voice.pieces(text)?;
+        let pieces = voice.pieces(text, chunk == 0)?;
         let count = pieces.len().max(1);
         for i in 0..count {
             if shared.stale(job.read) {
@@ -300,7 +314,7 @@ mod tests {
     struct FakeVoice(Arc<Mutex<Vec<String>>>);
 
     impl Voice for FakeVoice {
-        fn pieces(&mut self, text: &str) -> Result<Vec<String>, String> {
+        fn pieces(&mut self, text: &str, _opening: bool) -> Result<Vec<String>, String> {
             Ok(text.split('|').filter(|p| !p.is_empty()).map(String::from).collect())
         }
         fn synth(&mut self, piece: &str, _voice: &str, _rate: f32) -> Result<Vec<f32>, String> {
@@ -352,13 +366,20 @@ mod tests {
         out: Arc<FakeOut>,
         synthesised: Arc<Mutex<Vec<String>>>,
         events: Arc<Mutex<Vec<Event>>>,
+        loads: Arc<AtomicU64>,
     }
 
     fn rig(out: Arc<FakeOut>) -> Rig {
         let synthesised = Arc::new(Mutex::new(Vec::new()));
         let events = Arc::new(Mutex::new(Vec::new()));
         let voice = synthesised.clone();
-        let models = Models::new(Box::new(move || Ok(FakeVoice(voice.clone()))), Default::default());
+        let loads = Arc::new(AtomicU64::new(0));
+        let counter = loads.clone();
+        let load = Box::new(move || {
+            counter.fetch_add(1, Ordering::SeqCst);
+            Ok(FakeVoice(voice.clone()))
+        });
+        let models = Models::new(load, Default::default());
         let log = events.clone();
         let emit: Emit = Arc::new(move |e| log.lock().unwrap().push(e));
         let engine = Engine::start(models, out.clone(), emit, Duration::from_millis(10));
@@ -367,6 +388,7 @@ mod tests {
             out,
             synthesised,
             events,
+            loads,
         }
     }
 
@@ -386,6 +408,21 @@ mod tests {
 
     fn events(r: &Rig) -> Vec<Event> {
         r.events.lock().unwrap().clone()
+    }
+
+    #[test]
+    fn a_warm_up_loads_the_model_once_and_the_read_after_it_loads_nothing() {
+        let r = rig(Arc::new(FakeOut::default()));
+        r.engine.warm();
+        until("the warm up", || r.loads.load(Ordering::SeqCst) == 1);
+        r.engine.warm();
+        let read = speak(&r, &["a"]);
+        until("the finish", || events(&r).contains(&Event::Finish { read, chunk: 0 }));
+        assert_eq!(r.loads.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            events(&r),
+            [Event::Start { read, chunk: 0 }, Event::Finish { read, chunk: 0 }]
+        );
     }
 
     #[test]
