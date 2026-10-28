@@ -1,8 +1,8 @@
 import { createResource } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { Play } from "lucide-solid";
-import { getVoices, isTtsError, previewVoice, speak } from "tauri-plugin-tts-api";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
+import { DEFAULT_VOICE, preview, voices as listVoices } from "../../../../utils/speech";
 import {
   Group,
   Row,
@@ -110,27 +110,20 @@ function PlaySound(props: { sound: keyof NotificationSettings; label: string }) 
   );
 }
 
-function previewSpeech(voice: string | null) {
-  const heard = voice ? previewVoice({ voiceId: voice, text: SAMPLE }) : speak({ text: SAMPLE });
-  heard.then(
-    (res) => !res.success && toast("That voice is not installed any more."),
-    (e) => toast(`Couldn't play the voice: ${isTtsError(e) ? e.message : String(e)}`),
-  );
-}
-
 const toast = (message: string) => emitWith<ToastEvent>(TOAST, { message, kind: "error" });
 
 export default function ChatPane(props: PaneProps) {
-  const [voices] = createResource(async () => {
-    const list = await getVoices().catch(() => {
-      toast("Couldn't list the installed voices, so only the system voice is offered.");
+  const [voices] = createResource(() =>
+    listVoices().catch(() => {
+      toast("Couldn't list the downloaded voices, so only Heart is offered.");
       return [];
-    });
-    return list.sort((a, b) => a.language.localeCompare(b.language) || a.name.localeCompare(b.name));
-  });
+    }),
+  );
   const voiceOptions = (): SelectOption[] => [
-    { value: "", label: "System voice" },
-    ...(voices() ?? []).map((v) => ({ value: v.id, label: `${v.name} (${v.language})` })),
+    { value: "", label: "Heart (en-US)" },
+    ...(voices() ?? [])
+      .filter((v) => v.id !== DEFAULT_VOICE)
+      .map((v) => ({ value: v.id, label: `${v.name} (${v.language})` })),
   ];
   return (
     <>
@@ -495,7 +488,7 @@ export default function ChatPane(props: PaneProps) {
               size="sm"
               icon={<Icon icon={Play} />}
               tooltip="Hear this voice"
-              onClick={() => previewSpeech(settings.speech.voice)}
+              onClick={() => void preview(settings.speech.voice, SAMPLE)}
             />
           </div>
         </Row>

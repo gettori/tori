@@ -106,7 +106,6 @@ use std::sync::Mutex;
 use tauri::menu::Menu;
 use tauri::tray::{TrayIcon, TrayIconBuilder};
 use tauri::{Emitter, Manager};
-use tauri_plugin_tts::TtsExt;
 
 /// Builds the menu-bar tray icon. Split out of `.setup()` so its failure path
 /// can be handled the same non-fatal way as the askpass bridge, without a
@@ -216,12 +215,11 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_tts::init())
-        // The red button only hides the window, and speech is native, so a
-        // reply being read would carry on with nothing left on screen to stop it.
+        // The red button only hides the window, and speech plays from this
+        // process, so a reply being read would carry on with nothing left on
+        // screen to stop it.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
-                let _ = window.tts().stop();
                 speech::stop(window.app_handle());
             }
         })
@@ -821,7 +819,6 @@ pub fn run() {
                 presence::raise_window(app);
             }
             if let tauri::RunEvent::Exit = event {
-                let _ = app.tts().stop();
                 credential::unpublish();
                 run::stop_all();
                 // And every debug adapter. A language server is a plain child

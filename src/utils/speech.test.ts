@@ -1,24 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
-type Handler = (e: { id?: string; error?: string }) => void;
-const handlers = new Map<string, Handler>();
+type SpeechEvent = { kind: string; read: number; chunk?: number; error?: string };
+let handler: ((e: { payload: SpeechEvent }) => void) | undefined;
 const speak = vi.fn();
 const stopEngine = vi.fn();
 let nextId = 0;
 
-vi.mock("tauri-plugin-tts-api", () => ({
-  MAX_TEXT_LENGTH: 10_000,
-  isTtsError: (e: unknown) => typeof e === "object" && e !== null && "code" in e && "message" in e,
-  onSpeechEvent: async (type: string, h: Handler) => {
-    handlers.set(type, h);
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: (cmd: string, args?: unknown) => (cmd === "speech_speak" ? speak(args) : stopEngine()),
+}));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: async (_name: string, h: typeof handler) => {
+    handler = h;
     return () => {};
   },
-  speak: (o: unknown) => speak(o),
-  getVoices: () => getVoices(),
-  stop: () => stopEngine(),
 }));
 
-const getVoices = vi.fn();
 const speechSettings = vi.hoisted(() => ({ speech: { rate: 1, voice: null as string | null } }));
 const saveSettings = vi.hoisted(() => vi.fn(async (_s: unknown) => {}));
 vi.mock("../panels/Settings/settingsStore", () => ({ settings: speechSettings, saveSettings }));
@@ -26,24 +23,25 @@ vi.mock("../panels/Settings/settingsStore", () => ({ settings: speechSettings, s
 const emitWith = vi.fn();
 vi.mock("./events", () => ({ TOAST: "toast", emitWith: (...a: unknown[]) => emitWith(...a) }));
 
-const { changeRate, read, readSelection, readingBlockOf, stop, reading, splitToFit } = await import("./speech");
+const { changeRate, preview, read, readSelection, readingBlockOf, stop, reading } = await import("./speech");
 
-const fire = (type: string, id?: string, error?: string) => handlers.get(`speech:${type}`)?.({ id, error });
-const texts = () => speak.mock.calls.map(([o]) => (o as { text: string }).text);
-const bytes = (s: string) => new TextEncoder().encode(s).length;
+type Speak = { chunks: string[]; rate: number; voice: string | null };
+const fire = (kind: string, read: number, chunk?: number, error?: string) =>
+  handler?.({ payload: { kind, read, chunk, error } });
+const calls = () => speak.mock.calls.map(([o]) => o as Speak);
+const lastId = () => speak.mock.results[speak.mock.results.length - 1].value as Promise<number>;
 
 describe("speech", () => {
   beforeEach(async () => {
     stopEngine.mockResolvedValue(undefined);
     await stop();
-    speak.mockReset().mockImplementation(async () => ({ success: true, utteranceId: `u${nextId++}` }));
+    speak.mockReset().mockImplementation(async () => nextId++);
     stopEngine.mockReset().mockResolvedValue(undefined);
     emitWith.mockReset();
-    getVoices.mockReset().mockResolvedValue([{ id: "daniel", name: "Daniel", language: "en-GB" }]);
     speechSettings.speech = { rate: 1, voice: null };
   });
 
-  it("queues every chunk up front, the first flushing and the rest appended", async () => {
+  it("hands every chunk over in one read, in order", async () => {
     await read(
       [
         { text: "one", block: 0 },
@@ -52,8 +50,7 @@ describe("speech", () => {
       ],
       "r1",
     );
-    expect(texts()).toEqual(["one", "two", "three"]);
-    expect(speak.mock.calls.map(([o]) => (o as { queueMode: string }).queueMode)).toEqual(["flush", "add", "add"]);
+    expect(calls().map((c) => c.chunks)).toEqual([["one", "two", "three"]]);
   });
 
   it("follows the start events block by block and goes idle after the last finish", async () => {
@@ -64,14 +61,15 @@ describe("speech", () => {
       ],
       "r1",
     );
-    const [a, b] = await Promise.all(speak.mock.results.map((r) => r.value as Promise<{ utteranceId: string }>));
+    const id = await lastId();
     expect(reading()).toEqual({ source: "r1", block: 0 });
-    fire("finish", a.utteranceId);
-    fire("start", b.utteranceId);
+    fire("start", id, 0);
+    fire("finish", id, 0);
+    fire("start", id, 1);
     expect(reading()).toEqual({ source: "r1", block: 1 });
     expect(readingBlockOf("r1")).toBe(1);
     expect(readingBlockOf("r2")).toBeUndefined();
-    fire("finish", b.utteranceId);
+    fire("finish", id, 1);
     expect(reading()).toBeNull();
   });
 
@@ -83,7 +81,7 @@ describe("speech", () => {
       ],
       "r1",
     );
-    const old = await (speak.mock.results[1].value as Promise<{ utteranceId: string }>);
+    const old = await lastId();
     await read(
       [
         { text: "new", block: 0 },
@@ -91,60 +89,66 @@ describe("speech", () => {
       ],
       "r2",
     );
-    fire("start", old.utteranceId);
-    fire("finish", old.utteranceId);
+    fire("start", old, 1);
+    fire("finish", old, 1);
+    fire("cancel", old);
     expect(reading()).toEqual({ source: "r2", block: 0 });
   });
 
   it("goes idle and toasts when the engine refuses", async () => {
-    speak.mockRejectedValueOnce({ code: "TTS_ENGINE_ERROR", message: "no engine" });
+    speak.mockRejectedValueOnce("No voice is downloaded");
     await read([{ text: "one" }], "r1");
     expect(reading()).toBeNull();
     expect(emitWith).toHaveBeenCalledWith(
       "toast",
-      expect.objectContaining({ kind: "error", message: expect.stringContaining("no engine") }),
+      expect.objectContaining({ kind: "error", message: expect.stringContaining("No voice is downloaded") }),
     );
   });
 
-  it("splits an 11,000 byte chunk into several under the cap", async () => {
-    const text = "This is a sentence of plain words. ".repeat(315);
-    expect(bytes(text)).toBeGreaterThan(11_000);
-    await read([{ text, block: 0 }], "r1");
-    expect(texts().length).toBeGreaterThan(1);
-    for (const t of texts()) expect(bytes(t)).toBeLessThanOrEqual(10_000);
-    expect(texts().join("")).toBe(text);
-  });
-
-  it("counts the cap in UTF-8 bytes, so a Bengali paragraph is split too", () => {
-    const text = "আমি বাংলায় কথা বলি। ".repeat(200).slice(0, 4000);
-    expect(text.length).toBe(4000);
-    const parts = splitToFit(text);
-    expect(parts.length).toBeGreaterThan(1);
-    for (const p of parts) expect(bytes(p)).toBeLessThanOrEqual(10_000);
-    expect(parts.join("")).toBe(text);
-  });
-
-  it("splits a 15,000 byte selection with no blank lines under the cap", async () => {
-    const text = "A line of a PDF page, no blank line after.\n".repeat(350);
-    expect(bytes(text)).toBeGreaterThan(15_000);
-    await readSelection(text);
-    expect(texts().length).toBeGreaterThan(1);
-    for (const t of texts()) expect(bytes(t)).toBeLessThanOrEqual(10_000);
-  });
-
-  it("speaks every chunk at the set rate and in the set voice", async () => {
-    speechSettings.speech = { rate: 1.4, voice: "daniel" };
+  it("goes idle and toasts on an error event mid read", async () => {
     await read([{ text: "one" }, { text: "two" }], "r1");
-    for (const [o] of speak.mock.calls) expect(o).toMatchObject({ rate: 1.4, voiceId: "daniel" });
+    fire("error", await lastId(), undefined, "no audio output");
+    expect(reading()).toBeNull();
+    expect(emitWith).toHaveBeenCalledWith(
+      "toast",
+      expect.objectContaining({ message: expect.stringContaining("no audio output") }),
+    );
   });
 
-  it("falls back to the system voice when the set one is no longer installed", async () => {
-    speechSettings.speech = { rate: 1, voice: "removed" };
-    await read([{ text: "one" }], "r1");
-    expect((speak.mock.calls[0][0] as { voiceId?: string }).voiceId).toBeUndefined();
+  it("goes idle when the engine cancels the read, as closing the window does", async () => {
+    await read([{ text: "one" }, { text: "two" }], "r1");
+    fire("cancel", await lastId());
+    expect(reading()).toBeNull();
   });
 
-  it("queues again from the chunk being spoken when the speed changes mid read", async () => {
+  it("previews a voice, naming the preview when it fails", async () => {
+    speak.mockRejectedValueOnce("No voice is downloaded");
+    await preview("am_michael", "a sample");
+    expect(calls()[0]).toMatchObject({ chunks: ["a sample"], voice: "am_michael" });
+    expect(emitWith).toHaveBeenCalledWith(
+      "toast",
+      expect.objectContaining({ message: expect.stringContaining("Couldn't play the voice") }),
+    );
+  });
+
+  it("leaves a long chunk whole for the engine to split", async () => {
+    const text = "This is a sentence of plain words. ".repeat(315);
+    await read([{ text, block: 0 }], "r1");
+    expect(calls()[0].chunks).toEqual([text]);
+  });
+
+  it("reads a selection paragraph by paragraph", async () => {
+    await readSelection("first\n\nsecond");
+    expect(calls()[0].chunks).toEqual(["first", "second"]);
+  });
+
+  it("reads at the set rate and in the set voice", async () => {
+    speechSettings.speech = { rate: 1.4, voice: "bf_emma" };
+    await read([{ text: "one" }, { text: "two" }], "r1");
+    expect(calls()[0]).toMatchObject({ rate: 1.4, voice: "bf_emma" });
+  });
+
+  it("reads again from the chunk being spoken when the speed changes mid read", async () => {
     await read(
       [
         { text: "one", block: 0 },
@@ -153,16 +157,31 @@ describe("speech", () => {
       ],
       "r1",
     );
-    const second = await (speak.mock.results[1].value as Promise<{ utteranceId: string }>);
-    fire("start", second.utteranceId);
+    fire("start", await lastId(), 1);
     speak.mockClear();
 
     await changeRate(1.5);
     expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({ speech: { rate: 1.5, voice: null } }));
-    expect(speak.mock.calls.map(([o]) => o)).toEqual([
-      expect.objectContaining({ text: "two", queueMode: "flush", rate: 1.5 }),
-      expect.objectContaining({ text: "three", queueMode: "add", rate: 1.5 }),
-    ]);
+    expect(calls()).toEqual([expect.objectContaining({ chunks: ["two", "three"], rate: 1.5 })]);
     expect(reading()).toEqual({ source: "r1", block: 1 });
+
+    const again = await lastId();
+    fire("start", again, 1);
+    expect(reading()).toEqual({ source: "r1", block: 2 });
+    fire("finish", again, 1);
+    expect(reading()).toBeNull();
+  });
+
+  it("stops the engine after a read still being handed over, and goes idle", async () => {
+    const order: string[] = [];
+    speak.mockImplementationOnce(async () => {
+      order.push("speak");
+      return nextId++;
+    });
+    stopEngine.mockImplementationOnce(async () => order.push("stop"));
+    void read([{ text: "one" }], "r1");
+    await stop();
+    expect(order).toEqual(["speak", "stop"]);
+    expect(reading()).toBeNull();
   });
 });
