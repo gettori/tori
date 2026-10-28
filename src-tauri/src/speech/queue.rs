@@ -16,6 +16,7 @@ const AHEAD: usize = 2;
 pub trait Voice: Send {
     fn pieces(&mut self, text: &str, opening: bool) -> Result<Vec<String>, String>;
     fn synth(&mut self, piece: &str, voice: &str, rate: f32) -> Result<Vec<f32>, String>;
+    fn sample_rate(&self) -> u32;
 }
 
 pub trait Out: Send + Sync {
@@ -89,6 +90,9 @@ enum Work {
 struct Job {
     read: u64,
     chunks: Vec<String>,
+    // Silence after each chunk, in milliseconds: a heading or a list item
+    // gets more of a break than Kokoro's own tail.
+    pauses: Vec<u32>,
     rate: f32,
     voice: String,
 }
@@ -167,7 +171,7 @@ impl Engine {
         Engine { jobs, out, shared }
     }
 
-    pub fn speak(&self, chunks: Vec<String>, rate: f32, voice: String) -> Result<u64, String> {
+    pub fn speak(&self, chunks: Vec<String>, pauses: Vec<u32>, rate: f32, voice: String) -> Result<u64, String> {
         let read = self.interrupt();
         if chunks.is_empty() {
             return Ok(read);
@@ -176,6 +180,7 @@ impl Engine {
         let job = Job {
             read,
             chunks,
+            pauses,
             rate,
             voice,
         };
@@ -243,11 +248,15 @@ fn run<V: Voice>(job: &Job, models: &mut Models<V>, items: &SyncSender<Item>, sh
             if shared.stale(job.read) {
                 return Ok(());
             }
-            let audio = match pieces.get(i) {
+            let mut audio = match pieces.get(i) {
                 Some(piece) => voice.synth(piece, &job.voice, job.rate)?,
                 None => Vec::new(),
             };
             let last = i == count - 1;
+            if last {
+                let pause = job.pauses.get(chunk).copied().unwrap_or(0) as usize;
+                audio.extend(std::iter::repeat_n(0.0, voice.sample_rate() as usize * pause / 1000));
+            }
             let item = Item {
                 read: job.read,
                 chunk,
@@ -320,6 +329,9 @@ mod tests {
         fn synth(&mut self, piece: &str, _voice: &str, _rate: f32) -> Result<Vec<f32>, String> {
             self.0.lock().unwrap().push(piece.into());
             Ok(piece.bytes().map(f32::from).collect())
+        }
+        fn sample_rate(&self) -> u32 {
+            1000
         }
     }
 
@@ -401,9 +413,31 @@ mod tests {
     }
 
     fn speak(r: &Rig, chunks: &[&str]) -> u64 {
+        speak_paused(r, chunks, &[])
+    }
+
+    fn speak_paused(r: &Rig, chunks: &[&str], pauses: &[u32]) -> u64 {
         r.engine
-            .speak(chunks.iter().map(|c| c.to_string()).collect(), 1.0, "af_heart".into())
+            .speak(
+                chunks.iter().map(|c| c.to_string()).collect(),
+                pauses.to_vec(),
+                1.0,
+                "af_heart".into(),
+            )
             .unwrap()
+    }
+
+    #[test]
+    fn a_chunks_pause_is_silence_after_its_last_piece() {
+        let r = rig(Arc::new(FakeOut::default()));
+        let read = speak_paused(&r, &["ab|cd", "ef"], &[5, 0]);
+        until("the last finish", || {
+            events(&r).contains(&Event::Finish { read, chunk: 1 })
+        });
+        let played = r.out.played();
+        assert_eq!(played[0], "ab");
+        assert_eq!(played[1], format!("cd{}", "\0".repeat(5)));
+        assert_eq!(played[2], "ef");
     }
 
     fn events(r: &Rig) -> Vec<Event> {
