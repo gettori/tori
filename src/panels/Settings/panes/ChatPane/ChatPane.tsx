@@ -1,5 +1,8 @@
+import { createResource } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { Play } from "lucide-solid";
+import { getVoices, isTtsError, previewVoice, speak } from "tauri-plugin-tts-api";
+import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import {
   Group,
   Row,
@@ -14,6 +17,7 @@ import {
   setCheckpoints,
   setConflictRadar,
   setSecretWatch,
+  setSpeech,
   setVerification,
   type PaneProps,
 } from "../../components/paneKit";
@@ -77,6 +81,12 @@ const NOTIFICATIONS = [
   "tray-count",
 ];
 const SAFETY = ["checkpoints"];
+const READ_ALOUD = ["read-aloud-voice", "read-aloud-rate"];
+
+const RATE_MIN = 0.5;
+const RATE_MAX = 2;
+const RATE_STEP = 0.1;
+const SAMPLE = "This is how a reply will sound when Tori reads it to you.";
 const SPENDING = ["max-concurrent-chats", "session-budget", "project-budget", "context-budget", "warn-at"];
 
 /** The stops the "Warn at" slider offers. 50% is as early as a warning is worth
@@ -100,7 +110,28 @@ function PlaySound(props: { sound: keyof NotificationSettings; label: string }) 
   );
 }
 
+function previewSpeech(voice: string | null) {
+  const heard = voice ? previewVoice({ voiceId: voice, text: SAMPLE }) : speak({ text: SAMPLE });
+  heard.then(
+    (res) => !res.success && toast("That voice is not installed any more."),
+    (e) => toast(`Couldn't play the voice: ${isTtsError(e) ? e.message : String(e)}`),
+  );
+}
+
+const toast = (message: string) => emitWith<ToastEvent>(TOAST, { message, kind: "error" });
+
 export default function ChatPane(props: PaneProps) {
+  const [voices] = createResource(async () => {
+    const list = await getVoices().catch(() => {
+      toast("Couldn't list the installed voices, so only the system voice is offered.");
+      return [];
+    });
+    return list.sort((a, b) => a.language.localeCompare(b.language) || a.name.localeCompare(b.name));
+  });
+  const voiceOptions = (): SelectOption[] => [
+    { value: "", label: "System voice" },
+    ...(voices() ?? []).map((v) => ({ value: v.id, label: `${v.name} (${v.language})` })),
+  ];
   return (
     <>
       <Group {...props} title="Sessions" ids={SESSIONS}>
@@ -447,6 +478,39 @@ export default function ChatPane(props: PaneProps) {
               aria-label="Warn at"
             />
             <span class={styles.numField}>{warnAtLabel(settings.budgets.warnAtFraction)}</span>
+          </div>
+        </Row>
+      </Group>
+
+      <Group {...props} title="Read aloud" ids={READ_ALOUD}>
+        <Row {...props} id="read-aloud-voice" label="Voice">
+          <div class={styles.control}>
+            <Select
+              options={voiceOptions()}
+              value={settings.speech.voice ?? ""}
+              onChange={(value) => setSpeech({ voice: value || null })}
+              aria-labelledby={rowLabelId("read-aloud-voice")}
+            />
+            <IconButton
+              size="sm"
+              icon={<Icon icon={Play} />}
+              tooltip="Hear this voice"
+              onClick={() => previewSpeech(settings.speech.voice)}
+            />
+          </div>
+        </Row>
+
+        <Row {...props} id="read-aloud-rate" label="Speed">
+          <div class={styles.control}>
+            <Slider
+              min={RATE_MIN}
+              max={RATE_MAX}
+              step={RATE_STEP}
+              value={settings.speech.rate}
+              onChange={(rate) => setSpeech({ rate })}
+              aria-label="Speed"
+            />
+            <span class={styles.numField}>{settings.speech.rate.toFixed(1)}x</span>
           </div>
         </Row>
       </Group>

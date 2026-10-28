@@ -712,6 +712,18 @@ export const SETTINGS: SettingEntry[] = [
     label: "Resume at reset",
     hint: "A claude chat that stopped on a usage limit continues by itself once the limit resets.",
   },
+  {
+    id: "read-aloud-voice",
+    section: "chat",
+    label: "Voice",
+    hint: "The voice Read aloud speaks in. System voice follows the one set in macOS. A voice since removed falls back to it.",
+  },
+  {
+    id: "read-aloud-rate",
+    section: "chat",
+    label: "Speed",
+    hint: "How fast Read aloud speaks.",
+  },
 
   {
     id: "autopilot-on",

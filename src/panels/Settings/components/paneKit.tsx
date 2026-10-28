@@ -42,6 +42,7 @@ import {
   type Typography,
   type ActiveLineHighlight,
   type EditorDefaults,
+  type Settings,
 } from "../settingsStore";
 import styles from "../Settings.module.css";
 import Tooltip from "../../../components/Tooltip/Tooltip";
@@ -109,6 +110,8 @@ export const setBlindEdits = (enabled: boolean) => saveSettings({ ...settings, b
 export const setVerification = (enabled: boolean) =>
   saveSettings({ ...settings, verification: { ...settings.verification, enabled } });
 export const setConflictRadar = (enabled: boolean) => saveSettings({ ...settings, conflictRadar: { enabled } });
+export const setSpeech = (patch: Partial<Settings["speech"]>) =>
+  saveSettings({ ...settings, speech: { ...settings.speech, ...patch } });
 export const setAgent = (h: Partial<Agent>) => saveSettings({ ...settings, agent: { ...settings.agent, ...h } });
 export const setAutopilot = (a: Partial<Omit<AutopilotSettings, "enabled">>) =>
   saveSettings({ ...settings, autopilot: { ...settings.autopilot, ...a } });
