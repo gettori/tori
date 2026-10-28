@@ -788,10 +788,9 @@ pub fn chat_session_detail(
 #[tauri::command]
 pub async fn chat_usage_totals(cwd: String, session_id: String) -> Result<usage::UsageTotals, String> {
     let file = usage::load(&usage::usage_path(&cwd));
-    let session = file.sessions.get(&session_id).cloned().unwrap_or_default();
     Ok(usage::UsageTotals {
         project: usage::project_total(&file),
-        session,
+        session: usage::folded_session_total(&file, &session_id),
     })
 }
 

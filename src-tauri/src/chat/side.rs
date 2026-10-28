@@ -27,10 +27,17 @@ pub fn chat_side_agents() -> Vec<String> {
 
 pub fn mark(session: &str, parent: &str, mode: &'static str) {
     sides().insert(session.to_string(), (parent.to_string(), mode));
+    super::usage::adopt(session, parent);
 }
 
 pub fn forget(session: &str) {
-    sides().remove(session);
+    if sides().remove(session).is_some() {
+        super::usage::forget_parent(session);
+    }
+}
+
+pub fn parent(session: &str) -> Option<String> {
+    sides().get(session).map(|(parent, _)| parent.clone())
 }
 
 pub fn is_side(session: &str) -> bool {
@@ -50,8 +57,12 @@ mod tests {
         assert!(!is_side("side-a"));
         mark("side-a", "parent-a", "plan");
         assert!(is_side("side-a"));
+        assert_eq!(parent("side-a").as_deref(), Some("parent-a"));
+        assert_eq!(super::super::usage::parent_of("side-a"), "parent-a");
         forget("side-a");
         assert!(!is_side("side-a"));
+        assert_eq!(parent("side-a"), None);
+        assert_eq!(super::super::usage::parent_of("side-a"), "side-a");
     }
 
     #[test]
