@@ -56,6 +56,7 @@ mod patch;
 mod perf_budgets;
 mod ports;
 mod presence;
+mod project_config;
 mod provenance;
 mod pty;
 mod radar;
@@ -539,6 +540,9 @@ pub fn run() {
             trust::untrusted_projects,
             trust::trust_project,
             trust::revoke_project,
+            project_config::proposal_for,
+            project_config::accept_proposal,
+            project_config::decline_proposal,
             dap::dap_start,
             dap::dap_connect,
             dap::dap_send,
