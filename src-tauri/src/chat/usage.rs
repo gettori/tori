@@ -264,6 +264,22 @@ pub fn item_total(index: &Index, item: &str) -> SessionUsage {
     out
 }
 
+// An item one of whose sessions reported no cost is left out, so a partial
+// sum never passes for what the item cost.
+pub fn item_costs(index: &Index) -> HashMap<String, f64> {
+    let mut costs: HashMap<&str, Option<f64>> = HashMap::new();
+    for s in sessions(index).filter(|s| s.turns > 0) {
+        if let Some(item) = s.item.as_deref() {
+            let total = costs.entry(item).or_insert(Some(0.0));
+            *total = total.zip(s.cost_usd).map(|(a, b)| a + b);
+        }
+    }
+    costs
+        .into_iter()
+        .filter_map(|(item, cost)| Some((item.to_string(), cost?)))
+        .collect()
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum SpendQuery {
@@ -491,6 +507,21 @@ mod tests {
         let answers = spend_for(&index, &queries, |_| "/r/.git".to_string());
         let costs: Vec<_> = answers.iter().map(|s| s.cost_usd).collect();
         assert_eq!(costs, [Some(4.5), Some(2.0), None]);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn an_items_cost_is_unknown_once_any_of_its_sessions_reported_none() {
+        let (dir, _) = machine("item-cost");
+        let acp = dir.join("acp.json");
+        record_turn(&acp, "acp", 0, None, &at("/r/.git", Some("b"), Some("i2"), 6)).unwrap();
+        record_turn(&acp, "claude", 10, Some(3.0), &at("/r/.git", Some("b"), Some("i2"), 7)).unwrap();
+        let index = load_dir(&dir);
+        let costs = item_costs(&index);
+        assert_eq!(
+            (costs.get("i1"), costs.get("i2"), costs.get("none")),
+            (Some(&4.5), None, None)
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 

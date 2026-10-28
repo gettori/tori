@@ -369,6 +369,7 @@ mod tests {
                     kind: IssueKind::ReviewRequest,
                     author: Some("ana".into()),
                     head_sha: Some(head.to_string()),
+                    body_len: None,
                 })
                 .collect(),
             complete,
