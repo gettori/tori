@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vite-plus/test";
-import { lastReplies, planAsReply, sideChatOffered, withSide, withoutSide, type Drawer } from "./sideChats";
+import {
+  lastReplies,
+  planAsReply,
+  restoredDrawer,
+  savedSides,
+  sideChatOffered,
+  withSide,
+  withoutSide,
+  type Drawer,
+} from "./sideChats";
 import type { ChatItem, ToolItem } from "./chatStore";
 
 const side = (n: number) => ({ tabId: `side:${n}`, sessionId: `s${n}` });
@@ -10,6 +19,38 @@ describe("offering a side chat", () => {
     expect(sideChatOffered(readOnly, "codex", true)).toBe(true);
     expect(sideChatOffered(readOnly, "codex", false)).toBe(false);
     expect(sideChatOffered(readOnly, "opencode", true)).toBe(false);
+  });
+});
+
+describe("restoring the side drawer", () => {
+  it("saves fork ids in order with the active one, and restores them as resumed tabs", () => {
+    const saved = savedSides({ sides: [side(1), side(2), side(3)], active: "side:2" });
+    expect(saved).toEqual({ sessions: ["s1", "s2", "s3"], active: 1 });
+    expect(savedSides({ sides: [], active: null })).toBeUndefined();
+
+    let n = 0;
+    const back = restoredDrawer(
+      saved!,
+      (id) => id !== "s1",
+      () => `n${++n}`,
+    );
+    expect(back.sides).toEqual([
+      { tabId: "side:n1", sessionId: "s2", restored: true, started: false },
+      { tabId: "side:n2", sessionId: "s3", restored: true, started: false },
+    ]);
+    expect(back.active).toBe("side:n1");
+  });
+
+  it("falls back to the last side when the active one is gone", () => {
+    const back = restoredDrawer(
+      { sessions: ["s1", "s2"], active: 1 },
+      (id) => id === "s1",
+      () => "x",
+    );
+    expect(back).toEqual({
+      sides: [{ tabId: "side:x", sessionId: "s1", restored: true, started: false }],
+      active: "side:x",
+    });
   });
 });
 
