@@ -14,8 +14,13 @@ vi.mock("tauri-plugin-tts-api", () => ({
     return () => {};
   },
   speak: (o: unknown) => speak(o),
+  getVoices: () => getVoices(),
   stop: () => stopEngine(),
 }));
+
+const getVoices = vi.fn();
+const speechSettings = vi.hoisted(() => ({ speech: { rate: 1, voice: null as string | null } }));
+vi.mock("../panels/Settings/settingsStore", () => ({ settings: speechSettings }));
 
 const emitWith = vi.fn();
 vi.mock("./events", () => ({ TOAST: "toast", emitWith: (...a: unknown[]) => emitWith(...a) }));
@@ -33,6 +38,8 @@ describe("speech", () => {
     speak.mockReset().mockImplementation(async () => ({ success: true, utteranceId: `u${nextId++}` }));
     stopEngine.mockReset().mockResolvedValue(undefined);
     emitWith.mockReset();
+    getVoices.mockReset().mockResolvedValue([{ id: "daniel", name: "Daniel", language: "en-GB" }]);
+    speechSettings.speech = { rate: 1, voice: null };
   });
 
   it("queues every chunk up front, the first flushing and the rest appended", async () => {
@@ -120,5 +127,17 @@ describe("speech", () => {
     await readSelection(text);
     expect(texts().length).toBeGreaterThan(1);
     for (const t of texts()) expect(bytes(t)).toBeLessThanOrEqual(10_000);
+  });
+
+  it("speaks every chunk at the set rate and in the set voice", async () => {
+    speechSettings.speech = { rate: 1.4, voice: "daniel" };
+    await read([{ text: "one" }, { text: "two" }], "r1");
+    for (const [o] of speak.mock.calls) expect(o).toMatchObject({ rate: 1.4, voiceId: "daniel" });
+  });
+
+  it("falls back to the system voice when the set one is no longer installed", async () => {
+    speechSettings.speech = { rate: 1, voice: "removed" };
+    await read([{ text: "one" }], "r1");
+    expect((speak.mock.calls[0][0] as { voiceId?: string }).voiceId).toBeUndefined();
   });
 });

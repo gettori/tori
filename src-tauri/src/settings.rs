@@ -986,6 +986,8 @@ pub struct Settings {
     pub verification: Verification,
     #[serde(default, deserialize_with = "lenient_conflict_radar")]
     pub conflict_radar: ConflictRadar,
+    #[serde(default, deserialize_with = "lenient_speech")]
+    pub speech: Speech,
     /// What each project does when your review is requested, keyed by project
     /// path. No entry is off.
     #[serde(default, deserialize_with = "lenient_map")]
@@ -1126,6 +1128,36 @@ fn lenient_conflict_radar<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Conf
     let raw = serde_json::Value::deserialize(d)?;
     let enabled = raw.get("enabled").and_then(|e| e.as_bool()).unwrap_or(true);
     Ok(ConflictRadar { enabled })
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Speech {
+    pub rate: f64,
+    pub voice: Option<String>,
+}
+
+impl Default for Speech {
+    fn default() -> Self {
+        Self { rate: 1.0, voice: None }
+    }
+}
+
+// Same reason as `lenient_secret_watch`. The rate is held to the range the
+// panel's slider offers, so a hand edit cannot leave it past either end.
+fn lenient_speech<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Speech, D::Error> {
+    let raw = serde_json::Value::deserialize(d)?;
+    let rate = raw
+        .get("rate")
+        .and_then(|r| r.as_f64())
+        .filter(|r| r.is_finite())
+        .map_or(1.0, |r| r.clamp(0.5, 2.0));
+    let voice = raw
+        .get("voice")
+        .and_then(|v| v.as_str())
+        .filter(|v| !v.is_empty())
+        .map(String::from);
+    Ok(Speech { rate, voice })
 }
 
 /// What a project does when a pull request asks for your review.
@@ -1792,6 +1824,26 @@ mod tests {
 
         std::fs::write(&p, r#"{"github":{"enabled":false}}"#).unwrap();
         assert!(!load_from(&p).forge.enabled, "the old github key still switches it off");
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn speech_defaults_to_the_system_voice_and_survives_a_round_trip() {
+        let p = tmp_file();
+        std::fs::write(&p, "{}").unwrap();
+        assert_eq!(
+            load_from(&p).speech,
+            Speech::default(),
+            "a file written before the block"
+        );
+
+        let mut s = load_from(&p);
+        s.speech = Speech {
+            rate: 1.5,
+            voice: Some("com.apple.voice.compact.en-GB.Daniel".into()),
+        };
+        save_to(&p, &s).unwrap();
+        assert_eq!(load_from(&p).speech, s.speech);
         let _ = std::fs::remove_file(&p);
     }
 
