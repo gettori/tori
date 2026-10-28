@@ -189,6 +189,9 @@ describe("asking the agent about the paused frame", () => {
       fireEvent.blur(control);
       await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
     }
+    // Kobalte's skip-delay timer (300 ms) is module level, so cleanup cannot
+    // clear it; if the file ends first it fires after jsdom is gone.
+    await new Promise((done) => setTimeout(done, 350));
 
     fireEvent.click(askButtons()[0]);
     await waitFor(() => expect(sends).toHaveLength(1));
