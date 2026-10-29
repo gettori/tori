@@ -2640,6 +2640,7 @@ export default function ChatView(props: {
               ? state.slashCommands
               : cachedCommands(catalogFor(props.agentId, resolvedProfile()))
           }
+          skills={state.skills}
           loadFiles={attachments.loadProjectFiles}
           prs={attachments.prs()}
           loadPrs={attachments.loadPrs}
