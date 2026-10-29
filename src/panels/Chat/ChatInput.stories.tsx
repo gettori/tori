@@ -998,6 +998,24 @@ export const WithAsk: Story = {
   },
 };
 
+const ASK: SocketAsk = {
+  id: "ask1",
+  session: "other-session",
+  question: "Merge PR 412 now or wait for CI?",
+  options: ["Merge", "Wait"],
+};
+
+/** Everything that stacks above the input, with the gaps between them. */
+export const WithAskPlanAndLanes: Story = {
+  args: { running: true, asks: [ASK], plan: PLAN, lanes: [LANE_RUNNING, LANE_DONE[0]] },
+};
+
+/** The folded pill sticks up past the input box, toward whatever sits above. */
+export const WithAskAndFoldedPlan: Story = {
+  args: { running: true, asks: [ASK], plan: PLAN },
+  play: WithPlanFolded.play,
+};
+
 export const KitchenSink: Story = {
   args: {
     running: true,

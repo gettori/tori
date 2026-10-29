@@ -2417,14 +2417,14 @@ button.diffHunkHeader:hover {
   font-size: var(--tori-text-md);
 }
 
-/* 8px to whatever follows, the rhythm the rows inside the composer keep. The
-   composer's padding would make it 16, and the lane strip has none at all. */
+/* 12px between everything stacked above the input. The composer's top padding
+   is that gap below the last of them; these give it between the rest, which
+   carry no margin of their own. */
+.ask + .ask,
+.ask + .planCard,
+.ask + .lanes,
 .planCard + .lanes {
-  margin-top: calc(8px * var(--ui-scale));
-}
-
-.planCard + .composer {
-  margin-top: calc(-8px * var(--ui-scale));
+  margin-top: calc(12px * var(--ui-scale));
 }
 
 .planHead {
@@ -2478,7 +2478,7 @@ button.diffHunkHeader:hover {
   /* In from the corner by the input's own inset, so it sits over the send
      button rather than hanging off the box's rounded edge. */
   right: calc(28px * var(--ui-scale));
-  top: calc(16px * var(--ui-scale));
+  top: calc(12px * var(--ui-scale));
   transform: translateY(-50%);
   display: inline-flex;
   gap: calc(4px * var(--ui-scale));
@@ -2773,7 +2773,7 @@ button.diffHunkHeader:hover {
   width: 100%;
   max-width: var(--chat-measure);
   margin-inline: auto;
-  padding: calc(16px * var(--ui-scale));
+  padding: calc(12px * var(--ui-scale)) calc(16px * var(--ui-scale)) calc(16px * var(--ui-scale));
 }
 
 /* The drop target is the whole composer, so an image can be dropped on the
