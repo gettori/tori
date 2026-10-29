@@ -1540,6 +1540,20 @@
   .acctToggle:hover {
     color: var(--fg-default);
   }
+  /* The chevron's hit area stretched over the whole head, the agent row's
+     pattern. The head's own controls sit above it and keep their clicks. */
+  .acctHead {
+    position: relative;
+  }
+  .acctToggle::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+  .acctHead :is(button, label):not(.acctToggle) {
+    position: relative;
+    z-index: 1;
+  }
 
   .acctBody {
     padding: 0 var(--tori-space-7) var(--tori-space-6);
