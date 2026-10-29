@@ -6,6 +6,7 @@ import { createSignal } from "solid-js";
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { wholeHistory } from "../../test/history";
 import { clearComposer, nextLabel, offerToComposer } from "../../utils/chatCompose";
+import { composerInput } from "./__fixtures__/composerInput";
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -162,7 +163,7 @@ function mount() {
 
 const steers = () => invokes.filter((i) => i.cmd === "chat_steer");
 const sends = () => invokes.filter((i) => i.cmd === "chat_send");
-const input = () => document.querySelector("textarea") as HTMLTextAreaElement;
+const input = () => composerInput();
 
 async function runningWithQueued(text: string) {
   mount();

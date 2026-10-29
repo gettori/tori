@@ -114,7 +114,7 @@ export default function AttachmentPreview(props: {
   return (
     <Dialog
       open={props.block !== null}
-      title={tip()?.title ?? ""}
+      title={tip()?.heading ?? ""}
       // A file's facts head its viewer. Anything else has only facts, which
       // the body shows, so saying them here as well would say them twice.
       description={fileRef() ? tip()?.lines?.join(", ") : undefined}

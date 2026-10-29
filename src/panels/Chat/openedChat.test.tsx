@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { wholeHistory } from "../../test/history";
+import { composerInput } from "./__fixtures__/composerInput";
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -158,7 +159,8 @@ function mount(started = false, background?: boolean) {
 
 /** Type into the composer and press Enter, the way a person starts one. */
 async function send(text: string) {
-  const box = await screen.findByRole("textbox");
+  await screen.findByRole("textbox");
+  const box = composerInput();
   fireEvent.input(box, { target: { value: text } });
   fireEvent.keyDown(box, { key: "Enter" });
 }

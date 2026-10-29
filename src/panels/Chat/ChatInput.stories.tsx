@@ -1,6 +1,7 @@
 import { For, Show, createSignal } from "solid-js";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { mockConvertFileSrc, mockIPC } from "@tauri-apps/api/mocks";
+import { EditorView } from "@codemirror/view";
 import Composer from "./Composer";
 import LaneStrip from "./LaneStrip";
 import PlanCard from "./PlanCard";
@@ -669,29 +670,28 @@ function ChatInput(props: ChatInputProps) {
   );
 }
 
-function textarea(canvas: HTMLElement): HTMLTextAreaElement {
-  return canvas.querySelector("textarea")!;
+function editor(canvas: HTMLElement): EditorView {
+  return EditorView.findFromDOM(canvas.querySelector<HTMLElement>(".cm-editor")!)!;
 }
 
 /** Focus the input with the caret at the end of the draft, which is what opens
  *  a completion menu for the token there and what the fence notice reads. */
 async function caretAtEnd({ canvasElement }: { canvasElement: HTMLElement }) {
-  const input = textarea(canvasElement);
-  input.focus();
-  input.setSelectionRange(input.value.length, input.value.length);
-  input.dispatchEvent(new Event("select", { bubbles: true }));
+  const view = editor(canvasElement);
+  view.focus();
+  view.dispatch({ selection: { anchor: view.state.doc.length } });
 }
 
 async function openStash({ canvasElement }: { canvasElement: HTMLElement }) {
-  const input = textarea(canvasElement);
-  input.focus();
-  input.dispatchEvent(new KeyboardEvent("keydown", { key: "s", metaKey: true, bubbles: true }));
+  const view = editor(canvasElement);
+  view.focus();
+  view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "s", metaKey: true, bubbles: true }));
 }
 
 async function dragOver({ canvasElement }: { canvasElement: HTMLElement }) {
   const data = new DataTransfer();
   data.items.add("screenshot.png", "text/plain");
-  textarea(canvasElement).dispatchEvent(new DragEvent("dragover", { dataTransfer: data, bubbles: true }));
+  editor(canvasElement).contentDOM.dispatchEvent(new DragEvent("dragover", { dataTransfer: data, bubbles: true }));
 }
 
 const meta = {
@@ -866,6 +866,27 @@ export const PreviewMissingFile: Story = {
   args: { attachments: [FILE_1], missing: [FILE_1_PATH] },
   play: previewChip("Composer.tsx"),
 };
+
+/** Markdown as it is typed: emphasis, inline code, and a fenced block in its
+ *  own language, with the held attachments drawn as chips in the sentence. */
+export const EditorMarkdownAndChips: Story = {
+  args: {
+    attachments: [IMAGE_1, FILE_1, PDF_1, PR_CHIP, SESSION_CHIP],
+    draft: [
+      "The **queue** jumps after a steer. Compare [Image 1] with [File 1], and check `pendingFor` against [PDF 1].",
+      "",
+      "```ts",
+      "const lanes = props.lanes.filter((l) => l.status === null);",
+      "// why does this run twice?",
+      "createEffect(() => setQueue(lanes.length));",
+      "```",
+      "",
+      "Then finish [PR 412] and pick up from [Session: Fix the lane strip timer].",
+    ].join("\n"),
+  },
+};
+
+export const EditorSlashCommand: Story = { args: { draft: "/compact keep the queue design notes" } };
 
 /** Tokens in the prose with no chip behind them (a chip removed, or typed by hand). */
 export const InlineTokensWithoutChips: Story = {
@@ -1099,6 +1120,11 @@ export const TooltipDoneSubagent: Story = {
 export const TooltipBackgroundTask: Story = {
   args: { tasks: TASKS },
   play: hover('[class*="laneStill"]'),
+};
+
+export const TooltipInlineChip: Story = {
+  args: { attachments: [IMAGE_1, PR_CHIP], draft: "Compare [Image 1] with what [PR 412] changed." },
+  play: hover('.cm-chip button[aria-label^="Preview [PR 412]"]'),
 };
 
 export const TooltipQueuedMessage: Story = {

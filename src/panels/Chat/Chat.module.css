@@ -2832,37 +2832,130 @@ button.diffHunkHeader:hover {
    resolves to a box that would swallow the pane the conversation is in: at zoom
    3 with a 24px terminal font, nine lines is over 1000px. It bites nowhere near
    default settings. */
-.input {
-  /* `flex: none`, emphatically not `flex: 1`. The box is a *column* flex
-     container, so `flex: 1` means `flex-basis: 0%` on the main (vertical) axis,
-     and a flex item whose basis is 0 ignores its own height: the textarea sat
-     at one row no matter how many rows it was given. */
-  flex: none;
+/* The composer's editor (composerField.ts). Three lines at rest and nine at
+   most, then it scrolls: sized in line heights, so a change of chat font size
+   or zoom re-flows it on its own. */
+.inputField {
+  --input-line: calc(var(--chat-font-size) * 1.5);
   min-width: 0;
-  max-height: 40vh;
-  overflow-y: auto;
-  resize: none;
-  border: none;
-  border-radius: var(--tori-radius-xl) var(--tori-radius-xl) 0 0;
-  padding: var(--input-pad-top) var(--input-pad-x) var(--input-pad-bottom);
-  background: transparent;
-  color: var(--fg-default);
-  font-family: inherit;
-  /* The same size the text will be once it is a bubble in the transcript. */
   font-size: var(--chat-font-size);
   line-height: 1.5;
 }
 
-.input::placeholder {
-  color: var(--fg-watermark);
+.inputField :global(.cm-editor) {
+  max-height: min(40vh, calc(9 * var(--input-line) + var(--input-pad-top) + var(--input-pad-bottom)));
+  border-radius: var(--tori-radius-xl) var(--tori-radius-xl) 0 0;
+  background: transparent;
+  color: var(--fg-default);
 }
 
-.input:focus {
+.inputField :global(.cm-editor.cm-focused) {
   outline: none;
 }
 
-.input:disabled {
+.inputField :global(.cm-scroller) {
+  font-family: inherit;
+  line-height: inherit;
+}
+
+.inputField :global(.cm-content) {
+  min-height: calc(3 * var(--input-line) + var(--input-pad-top) + var(--input-pad-bottom));
+  padding: var(--input-pad-top) 0 var(--input-pad-bottom);
+  caret-color: var(--fg-default);
+}
+
+.inputField :global(.cm-line) {
+  padding: 0 var(--input-pad-x);
+}
+
+.inputField :global(.cm-placeholder) {
+  color: var(--fg-watermark);
+}
+
+.inputField :global(.cm-editor:not(.cm-focused) .cm-selectionBackground),
+.inputField :global(.cm-selectionBackground),
+.inputField :global(.cm-content ::selection) {
+  background: var(--accent-subtle);
+}
+
+.inputField :global(.cm-content[contenteditable="false"]) {
   color: var(--fg-subtle);
+}
+
+/* A fenced block in the draft wears the code block's ground, inset to the
+   text's own margins with rounded ends, its fence lines a step quieter. */
+.inputField :global(.cm-line.cm-fence) {
+  margin: 0 var(--input-pad-x);
+  padding: 0 calc(10px * var(--ui-scale));
+  background: var(--canvas-default);
+  font-family: var(--tori-font-mono);
+  font-size: 0.92em;
+}
+
+.inputField :global(.cm-fenceEdge) {
+  color: var(--fg-subtle);
+}
+
+.inputField :global(.cm-fenceTop) {
+  padding-top: calc(4px * var(--ui-scale));
+  border-radius: var(--tori-radius-md) var(--tori-radius-md) 0 0;
+}
+
+.inputField :global(.cm-fenceBottom) {
+  padding-bottom: calc(4px * var(--ui-scale));
+  border-radius: 0 0 var(--tori-radius-md) var(--tori-radius-md);
+}
+
+/* Where a dragged token will land: the brand's caret, a touch wider than the
+   text caret so it reads as a target rather than as the caret itself. */
+.inputField :global(.cm-dropCursor) {
+  border-left: 2px solid var(--brand-default);
+}
+
+/* A leading slash command reads as the command, in the brand's own colour. */
+.inputField :global(.cm-command) {
+  color: var(--brand-strong);
+  font-weight: 500;
+}
+
+/* A token that names an attachment nobody is holding: typed by hand, or left
+   behind when its chip was removed. Dashed, because it is an outline of a chip
+   with nothing in it. */
+.inputField :global(.cm-ghostToken) {
+  border-bottom: 1px dashed var(--border-strong);
+  color: var(--fg-subtle);
+}
+
+/* An attachment named in the sentence. At rest it is the text it always was;
+   hovered, it shows the edge of the one piece it is and that it can be picked
+   up. The box is drawn by outline and shadow, never by padding or border, so
+   the text around it does not move when it appears. */
+.inlineChip {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--tori-radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  cursor: grab;
+}
+
+.inlineChip:hover {
+  background: var(--neutral-hover);
+  box-shadow: 0 0 0 calc(2px * var(--ui-scale)) var(--neutral-hover);
+  outline: 1px solid var(--border-strong);
+  outline-offset: calc(2px * var(--ui-scale));
+}
+
+.inlineChip:active {
+  cursor: grabbing;
+}
+
+.inlineChipMissing {
+  color: var(--danger-fg);
 }
 
 /* Aligned to the input's own left inset, so the attach button and the chips
