@@ -1080,129 +1080,136 @@ export default function Composer(props: {
     >
       <Show when={props.queue.length}>
         <div ref={queueStrip} class={`${styles.queue} ${props.parked ? styles.queueParked : ""}`}>
-          <span class={styles.queueLabel}>
-            {props.parked
-              ? `${props.queue.length} message${props.queue.length > 1 ? "s" : ""} held: ${props.restored ? "saved from last time" : "the turn was stopped"}`
-              : `Queued for the next turn`}
-          </span>
-          <For each={props.queue}>
-            {(q) => {
-              const text = () => queuedText(q);
-              const attached = () => q.blocks.filter((b) => b.type !== "text");
-              const named = () =>
-                text() ||
-                attached()
-                  .map((b) => tokenOf(b) ?? tileName(b))
-                  .join(" ");
-              const row = drag.rowProps(q.id);
-              return (
-                <div
-                  class={styles.queueItem}
-                  classList={{
-                    [styles.queueItemEditing]: props.editing === q.id,
-                    [styles.queueItemDragging]: drag.dragging() === q.id,
-                    [styles.queueItemOver]: drag.over() === q.id,
-                  }}
-                  onDragOver={row.onDragOver}
-                  onDrop={row.onDrop}
-                >
-                  <Show when={props.onReorderQueued && props.queue.length > 1}>
-                    <button
-                      type="button"
-                      class={styles.queueHandle}
-                      draggable={true}
-                      data-queue-handle={q.id}
-                      aria-label={`Move in the queue: ${named()}`}
-                      onDragStart={row.onDragStart}
-                      onDragEnd={row.onDragEnd}
-                      onKeyDown={(e) => {
-                        if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
-                        e.preventDefault();
-                        moveQueued(q.id, e.key === "ArrowUp" ? -1 : 1);
-                      }}
-                    >
-                      <Icon icon={GripVertical} size={12} aria-hidden="true" />
-                    </button>
-                  </Show>
-                  <Tooltip<HTMLSpanElement>
-                    as="span"
-                    class={styles.queueText}
-                    label={
-                      <Tip
-                        title={
-                          q.steering
-                            ? "Steering the running turn"
-                            : props.parked
-                              ? "Held after the turn was stopped"
-                              : "Queued for the next turn"
-                        }
-                        lines={attached().map((b) => tokenOf(b) ?? tileName(b))}
-                        excerpt={excerptOf(text(), 12)}
-                        hint={props.parked ? "Send now or discard the queue below" : "Drag the handle to reorder"}
-                      />
-                    }
+          {/* Its own line, with the held queue's decision at the end of it: the
+              messages are a grid of equal cells, and a label or two buttons in
+              among them would be cells of another width. */}
+          <div class={styles.queueHead}>
+            <span class={styles.queueLabel}>
+              {props.parked
+                ? `${props.queue.length} message${props.queue.length > 1 ? "s" : ""} held: ${props.restored ? "saved from last time" : "the turn was stopped"}`
+                : `Queued for the next turn`}
+            </span>
+            <Show when={props.parked}>
+              <div class={styles.queueActions}>
+                <Button size="sm" variant="primary" onClick={() => props.onSendQueued()}>
+                  Send now
+                </Button>
+                <Button size="sm" onClick={() => props.onDiscardQueued()}>
+                  Discard
+                </Button>
+              </div>
+            </Show>
+          </div>
+          <div class={styles.queueItems}>
+            <For each={props.queue}>
+              {(q) => {
+                const text = () => queuedText(q);
+                const attached = () => q.blocks.filter((b) => b.type !== "text");
+                const named = () =>
+                  text() ||
+                  attached()
+                    .map((b) => tokenOf(b) ?? tileName(b))
+                    .join(" ");
+                const row = drag.rowProps(q.id);
+                return (
+                  <div
+                    class={styles.queueItem}
+                    classList={{
+                      [styles.queueItemEditing]: props.editing === q.id,
+                      [styles.queueItemDragging]: drag.dragging() === q.id,
+                      [styles.queueItemOver]: drag.over() === q.id,
+                    }}
+                    onDragOver={row.onDragOver}
+                    onDrop={row.onDrop}
                   >
-                    <For each={attached()}>
-                      {(b) => {
-                        const src = thumbSrc(b);
-                        return src ? (
-                          <img class={styles.queueThumb} src={src} alt="" />
-                        ) : (
-                          <span class={styles.queueRef}>{tokenOf(b) ?? tileName(b)}</span>
-                        );
-                      }}
-                    </For>
-                    {text()}
-                  </Tooltip>
-                  <Show when={props.onEditQueued && !q.steering && props.editing !== q.id}>
+                    <Show when={props.onReorderQueued && props.queue.length > 1}>
+                      <button
+                        type="button"
+                        class={styles.queueHandle}
+                        draggable={true}
+                        data-queue-handle={q.id}
+                        aria-label={`Move in the queue: ${named()}`}
+                        onDragStart={row.onDragStart}
+                        onDragEnd={row.onDragEnd}
+                        onKeyDown={(e) => {
+                          if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+                          e.preventDefault();
+                          moveQueued(q.id, e.key === "ArrowUp" ? -1 : 1);
+                        }}
+                      >
+                        <Icon icon={GripVertical} size={12} aria-hidden="true" />
+                      </button>
+                    </Show>
+                    <Tooltip<HTMLSpanElement>
+                      as="span"
+                      class={styles.queueText}
+                      label={
+                        <Tip
+                          title={
+                            q.steering
+                              ? "Steering the running turn"
+                              : props.parked
+                                ? "Held after the turn was stopped"
+                                : "Queued for the next turn"
+                          }
+                          lines={attached().map((b) => tokenOf(b) ?? tileName(b))}
+                          excerpt={excerptOf(text(), 12)}
+                          hint={props.parked ? "Send now or discard the queue below" : "Drag the handle to reorder"}
+                        />
+                      }
+                    >
+                      <For each={attached()}>
+                        {(b) => {
+                          const src = thumbSrc(b);
+                          return src ? (
+                            <img class={styles.queueThumb} src={src} alt="" />
+                          ) : (
+                            <span class={styles.queueRef}>{tokenOf(b) ?? tileName(b)}</span>
+                          );
+                        }}
+                      </For>
+                      {text()}
+                    </Tooltip>
+                    <Show when={props.onEditQueued && !q.steering && props.editing !== q.id}>
+                      <Tooltip
+                        as="button"
+                        type="button"
+                        class={styles.queueAction}
+                        label="Edit in the composer"
+                        aria-label={`Edit: ${named()}`}
+                        onClick={() => props.onEditQueued?.(q.id)}
+                      >
+                        <Icon icon={Pencil} size={12} aria-hidden="true" />
+                      </Tooltip>
+                    </Show>
+                    <Show when={props.steering && props.onSteerQueued && props.editing !== q.id}>
+                      <Tooltip
+                        as="button"
+                        type="button"
+                        class={styles.queueAction}
+                        label="Steer this turn with it now"
+                        aria-label={`Steer now: ${named()}`}
+                        disabled={!!q.steering}
+                        onClick={() => props.onSteerQueued?.(q.id)}
+                      >
+                        <Icon icon={CornerDownRight} size={12} aria-hidden="true" />
+                      </Tooltip>
+                    </Show>
                     <Tooltip
                       as="button"
                       type="button"
-                      class={styles.queueAction}
-                      label="Edit in the composer"
-                      aria-label={`Edit: ${named()}`}
-                      onClick={() => props.onEditQueued?.(q.id)}
+                      class={`${styles.queueAction} ${styles.queueRemove}`}
+                      label="Remove from the queue"
+                      aria-label={`Remove from the queue: ${named()}`}
+                      onClick={() => props.onDropQueued(q.id)}
                     >
-                      <Icon icon={Pencil} size={12} aria-hidden="true" />
+                      <Icon icon={X} size={12} aria-hidden="true" />
                     </Tooltip>
-                  </Show>
-                  <Show when={props.steering && props.onSteerQueued && props.editing !== q.id}>
-                    <Tooltip
-                      as="button"
-                      type="button"
-                      class={styles.queueAction}
-                      label="Steer this turn with it now"
-                      aria-label={`Steer now: ${named()}`}
-                      disabled={!!q.steering}
-                      onClick={() => props.onSteerQueued?.(q.id)}
-                    >
-                      <Icon icon={CornerDownRight} size={12} aria-hidden="true" />
-                    </Tooltip>
-                  </Show>
-                  <Tooltip
-                    as="button"
-                    type="button"
-                    class={`${styles.queueAction} ${styles.queueRemove}`}
-                    label="Remove from the queue"
-                    aria-label={`Remove from the queue: ${named()}`}
-                    onClick={() => props.onDropQueued(q.id)}
-                  >
-                    <Icon icon={X} size={12} aria-hidden="true" />
-                  </Tooltip>
-                </div>
-              );
-            }}
-          </For>
-          <Show when={props.parked}>
-            <div class={styles.queueActions}>
-              <Button size="sm" variant="primary" onClick={() => props.onSendQueued()}>
-                Send now
-              </Button>
-              <Button size="sm" onClick={() => props.onDiscardQueued()}>
-                Discard
-              </Button>
-            </div>
-          </Show>
+                  </div>
+                );
+              }}
+            </For>
+          </div>
         </div>
       </Show>
       <Show when={props.editing}>

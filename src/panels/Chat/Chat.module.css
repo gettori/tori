@@ -3530,10 +3530,31 @@ button.attachmentBody:hover {
 
 .queue {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
   gap: calc(6px * var(--ui-scale));
-  padding-bottom: calc(8px * var(--ui-scale));
+  padding: 0 calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+}
+
+.queueHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(8px * var(--ui-scale));
+}
+
+/* The editing bar is one line, label then actions, like the head. */
+.queueEditBar {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* The attachment pills' grid, so a queued message is the same width and shape
+   as a note or a link waiting above it. */
+.queueItems {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(200px * var(--ui-scale)), 1fr));
+  gap: calc(6px * var(--ui-scale));
 }
 
 .queueLabel {
@@ -3548,17 +3569,18 @@ button.attachmentBody:hover {
 }
 
 .queueItem {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: calc(2px * var(--ui-scale));
-  max-width: calc(260px * var(--ui-scale));
+  min-width: 0;
   border: 1px solid var(--border-default);
   border-radius: var(--tori-radius-pill);
   padding: calc(2px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(2px * var(--ui-scale))
     calc(10px * var(--ui-scale));
-  background: var(--canvas-input);
+  background: var(--neutral-subtle);
   color: var(--fg-muted);
-  font-size: var(--tori-text-md);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
 }
 
 .queueItemEditing {
@@ -3579,6 +3601,7 @@ button.attachmentBody:hover {
 }
 
 .queueText {
+  flex: 1;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
