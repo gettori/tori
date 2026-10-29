@@ -9,6 +9,8 @@
 #
 # Add --yes to prepare to skip the prompt. Without a terminal the flag is
 # required, so a script or an agent never opens a release PR by accident.
+# Add --extension to ship the browser extension even when nothing it is built
+# from changed (.github/scripts/extension-ships.sh decides otherwise).
 # docs/RELEASING.md walks through all of it, including what to do when a step
 # fails halfway.
 #
@@ -27,7 +29,7 @@ RELEASES_REPO=gettori/tori
 BASE=main
 
 usage() {
-  echo "usage: scripts/release.sh prepare|status [--yes]" >&2
+  echo "usage: scripts/release.sh prepare|status [--yes] [--extension]" >&2
 }
 
 die() {
@@ -38,9 +40,11 @@ die() {
 cmd="${1:-}"
 [ $# -gt 0 ] && shift
 yes=0
+extension=0
 for arg in "$@"; do
   case "$arg" in
     --yes | -y) yes=1 ;;
+    --extension) extension=1 ;;
     *)
       usage
       exit 2
@@ -131,16 +135,20 @@ prepare() {
   # The notes are the `## Changelog` sections of the PRs merged since the last
   # tag, under anything written by hand under `## Unreleased`, unless somebody
   # already wrote the section under its version.
+  local last ext ext_now
+  last=$(git describe --tags --abbrev=0 "origin/$BASE" 2>/dev/null) ||
+    die "no tag reachable from origin/$BASE; the notes are collected from the PRs merged since the last one"
+  ext=$("$work/.github/scripts/extension-ships.sh" "$last" "$version" "origin/$BASE" $([ "$extension" = 1 ] && echo --force))
+  ext_now=$(node -p "require('$work/extension/package.json').version")
+
   local notes
   notes=$(mktemp)
   if ! grep -qx "## $version" "$work/CHANGELOG.md"; then
-    local last manual collected
-    last=$(git describe --tags --abbrev=0 "origin/$BASE" 2>/dev/null) ||
-      die "no tag reachable from origin/$BASE; the notes are collected from the PRs merged since the last one"
+    local manual collected
     manual=$(.github/scripts/changelog-section.sh Unreleased "$work/CHANGELOG.md" 2>/dev/null || true)
     collected=$(RELEASES_REPO=$RELEASES_REPO .github/scripts/changelog-from-prs.sh "$last" "origin/$BASE")
-    [ -n "$manual$collected" ] ||
-      die "nothing to release: no PR merged since $last has a '## Changelog' section with bullets, and '## Unreleased' is empty"
+    [ -n "$manual$collected$ext" ] ||
+      die "nothing to release: no PR merged since $last has a '## Changelog' section with bullets, '## Unreleased' is empty, and the extension is unchanged"
     printf '%s\n' "$manual" "$collected" | awk 'NF || started { print; started = 1 }' >"$notes"
     # Replaces the Unreleased section, or goes in before the first release
     # when there is none.
@@ -154,7 +162,31 @@ prepare() {
     ' "$work/CHANGELOG.md" >"$work/CHANGELOG.md.new"
     mv "$work/CHANGELOG.md.new" "$work/CHANGELOG.md"
   fi
+  # A section written by hand gets it too.
+  local bullet="- Browser extension $ext, rolling out on the Chrome Web Store."
+  if [ -n "$ext" ] && ! grep -qxF -- "$bullet" "$work/CHANGELOG.md"; then
+    awk -v want="## $version" -v line="$bullet" '
+      function add() {
+        if (!insec) return
+        if (content) { print line; printf "%s", blanks } else { print ""; print line; print "" }
+        blanks = ""; insec = 0
+      }
+      $0 == want { insec = 1; print; next }
+      insec && /^## / { add(); print; next }
+      insec && /^[[:space:]]*$/ { blanks = blanks $0 "\n"; next }
+      insec { printf "%s", blanks; blanks = ""; content = 1; print; next }
+      { print }
+      END { add() }
+    ' "$work/CHANGELOG.md" >"$work/CHANGELOG.md.new"
+    mv "$work/CHANGELOG.md.new" "$work/CHANGELOG.md"
+  fi
   (cd "$work" && .github/scripts/changelog-section.sh "$version" >"$notes")
+  # The PR body only: CHANGELOG.md says nothing about an unchanged extension.
+  if [ -n "$ext" ]; then
+    printf '\nBrowser extension: ships %s\n' "$ext" >>"$notes"
+  else
+    printf '\nBrowser extension: unchanged, stays %s\n' "$ext_now" >>"$notes"
+  fi
 
   echo "Tori $version (tag $tag, was $current)"
   echo "--- release notes ---"
@@ -169,9 +201,14 @@ prepare() {
   (cd "$work/src-tauri" && cargo update -q --package tori)
   (cd "$work/mobile/src-tauri" && cargo update -q --package tori-mobile)
   [ "$(version_in "$work")" = "$version" ] || die "the version did not land in all five files"
+  if [ -n "$ext" ]; then
+    sed -i '' "s/\"version\": \"$ext_now\"/\"version\": \"$ext\"/" "$work/extension/package.json"
+    [ "$(node -p "require('$work/extension/package.json').version")" = "$ext" ] ||
+      die "the extension version did not land in extension/package.json"
+  fi
 
   git -C "$work" add CHANGELOG.md package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock \
-    mobile/src-tauri/tauri.conf.json mobile/src-tauri/Cargo.toml mobile/src-tauri/Cargo.lock
+    mobile/src-tauri/tauri.conf.json mobile/src-tauri/Cargo.toml mobile/src-tauri/Cargo.lock extension/package.json
   git -C "$work" commit -q -m "Tori $version"
   git -C "$work" push -q origin "$branch"
 
