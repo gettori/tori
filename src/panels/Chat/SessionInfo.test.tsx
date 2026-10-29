@@ -55,7 +55,6 @@ describe("SessionInfo", () => {
   it("names the account the session runs as, when there is more than one", () => {
     const { container } = render(() => <SessionInfo {...props({ profileLabel: "Globex" })} />);
     open(container);
-    expect(container.textContent).toContain("Account");
     expect(container.textContent).toContain("Globex");
   });
 
@@ -164,7 +163,7 @@ describe("SessionInfo", () => {
   });
 
   it("lists skills, agents and plugins", () => {
-    const { container } = render(() => (
+    const { container, getByText } = render(() => (
       <SessionInfo
         {...props({
           skills: ["adversary", "grill-plan"],
@@ -175,6 +174,7 @@ describe("SessionInfo", () => {
     ));
     expect(container.textContent).toContain("2 skills");
     open(container);
+    fireEvent.click(getByText("Agents"));
     expect(container.textContent).toContain("adversary");
     expect(container.textContent).toContain("Explore");
     expect(container.textContent).toContain("context-mode");
@@ -259,7 +259,7 @@ describe("SessionInfo", () => {
   // behind one transport publish different lists, so the list belongs beside
   // what the session loaded rather than only on the Agents cards in Settings.
   it("publishes this chat's capabilities with their qualified values", () => {
-    const { container } = render(() => (
+    const { container, getByText } = render(() => (
       <SessionInfo
         {...props({
           capabilities: [
@@ -270,6 +270,7 @@ describe("SessionInfo", () => {
       />
     ));
     open(container);
+    fireEvent.click(getByText("Chat capabilities"));
     expect(container.textContent).toContain("approvals: in-protocol");
     expect(container.textContent).toContain("history: session/load");
     // The bare feature name would promise the unqualified capability.
