@@ -4,11 +4,17 @@
 
 mod dictation;
 mod download;
+#[cfg(target_arch = "aarch64")]
 mod kitten;
+#[cfg(target_arch = "aarch64")]
 mod kokoro;
+mod models;
 mod queue;
+#[cfg(target_arch = "aarch64")]
 mod runtime;
+#[cfg(target_arch = "aarch64")]
 mod spoken;
+#[cfg(target_arch = "aarch64")]
 mod text;
 
 use std::num::NonZero;
@@ -24,13 +30,14 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use dictation::capture::{self, Capture};
 use dictation::Dictation;
-use queue::{Engine, Models, Out};
+use models::{AVAILABLE, UNAVAILABLE};
+use queue::{Engine, Models, Out, Voice};
 
 const DEFAULT_VOICE: &str = "af_heart";
 
 fn default_voice(dir: &Path) -> &'static str {
     match installed(dir) {
-        Some(("fast", _)) => kitten::DEFAULT_VOICE,
+        Some(("fast", _)) => models::kitten::DEFAULT_VOICE,
         _ => DEFAULT_VOICE,
     }
 }
@@ -106,15 +113,7 @@ impl SpeechState {
     fn engine(&self, app: &AppHandle) -> &Engine {
         self.engine.get_or_init(|| {
             let app = app.clone();
-            let load = Box::new(|| {
-                let dir = dir();
-                let (size, model) = installed(&dir).ok_or("No voice is downloaded")?;
-                if size == "fast" {
-                    kitten::load(&dir)
-                } else {
-                    kokoro::load(&dir, &dir.join(model))
-                }
-            });
+            let load = Box::new(|| load_voice(&dir()));
             let models = Models::new(load, self.model_generation.clone());
             let emit = Arc::new(move |event: queue::Event| {
                 let _ = app.emit("speech", event);
@@ -130,6 +129,21 @@ impl SpeechState {
             )
         })
     }
+}
+
+#[cfg(target_arch = "aarch64")]
+fn load_voice(dir: &Path) -> Result<Box<dyn Voice>, String> {
+    let (size, model) = installed(dir).ok_or("No voice is downloaded")?;
+    Ok(Box::new(if size == "fast" {
+        kitten::load(dir)?
+    } else {
+        kokoro::load(dir, &dir.join(model))?
+    }))
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+fn load_voice(_: &Path) -> Result<Box<dyn Voice>, String> {
+    Err(UNAVAILABLE.into())
 }
 
 pub fn stop(app: &AppHandle) {
@@ -156,7 +170,7 @@ impl Out for Speakers {
             }
             let player = device.as_ref().unwrap().1.clone();
             let mono = NonZero::new(1).unwrap();
-            let rate = NonZero::new(kokoro::SAMPLE_RATE).unwrap();
+            let rate = NonZero::new(models::SAMPLE_RATE).unwrap();
             player.append(SamplesBuffer::new(mono, rate, samples));
             player
         };
@@ -254,7 +268,7 @@ impl From<String> for DictationError {
 
 fn voices(dir: &Path) -> Vec<SpeechVoice> {
     if let Some(("fast", _)) = installed(dir) {
-        return kitten::VOICES
+        return models::kitten::VOICES
             .iter()
             .map(|(id, name, _)| SpeechVoice {
                 id: id.to_string(),
@@ -293,6 +307,11 @@ pub fn speech_speak(
     rate: f32,
     voice: Option<String>,
 ) -> Result<u64, SpeakError> {
+    if !AVAILABLE {
+        return Err(SpeakError::Failed {
+            error: UNAVAILABLE.into(),
+        });
+    }
     let dir = dir();
     installed(&dir).ok_or(SpeakError::NotDownloaded)?;
     state
@@ -308,7 +327,7 @@ pub fn speech_speak(
 
 fn voice_or_default(dir: &Path, voice: Option<String>) -> String {
     let known = |v: &String| match installed(dir) {
-        Some(("fast", _)) => kitten::VOICES.iter().any(|(id, _, _)| id == v),
+        Some(("fast", _)) => models::kitten::VOICES.iter().any(|(id, _, _)| id == v),
         _ => dir.join("voices").join(format!("{v}.bin")).is_file(),
     };
     voice.filter(known).unwrap_or_else(|| default_voice(dir).into())
@@ -381,6 +400,9 @@ fn begin(slot: &Mutex<Option<Running>>, what: &str, size: &'static str, total: u
 }
 
 fn start(which: Download, app: AppHandle, slot: &Slot, changed: &Arc<AtomicU64>, size: String) -> Result<(), String> {
+    if !AVAILABLE {
+        return Err(UNAVAILABLE.into());
+    }
     let size = which
         .set
         .size(&size)
@@ -459,6 +481,9 @@ pub fn speech_delete(state: State<SpeechState>) -> Result<(), String> {
 // thread.
 #[tauri::command]
 pub async fn dictation_start(app: AppHandle, state: State<'_, SpeechState>) -> Result<(), DictationError> {
+    if !AVAILABLE {
+        return Err(DictationError::from(UNAVAILABLE.to_string()));
+    }
     download::DICTATION
         .installed(&dictation::dir())
         .ok_or(DictationError::NotDownloaded)?;
@@ -579,13 +604,16 @@ mod tests {
         assert_eq!(voice_or_default(&dir, Some("am_removed".into())), DEFAULT_VOICE);
         assert_eq!(voice_or_default(&dir, None), DEFAULT_VOICE);
         assert_eq!(
-            voice_or_default(&dir, Some(kitten::DEFAULT_VOICE.into())),
+            voice_or_default(&dir, Some(models::kitten::DEFAULT_VOICE.into())),
             DEFAULT_VOICE
         );
 
-        std::fs::write(dir.join(kitten::MODEL), []).unwrap();
-        std::fs::write(dir.join(kitten::VOICES_FILE), []).unwrap();
-        assert_eq!(voice_or_default(&dir, Some("bf_emma".into())), kitten::DEFAULT_VOICE);
+        std::fs::write(dir.join(models::kitten::MODEL), []).unwrap();
+        std::fs::write(dir.join(models::kitten::VOICES_FILE), []).unwrap();
+        assert_eq!(
+            voice_or_default(&dir, Some("bf_emma".into())),
+            models::kitten::DEFAULT_VOICE
+        );
         assert_eq!(voice_or_default(&dir, Some("expr-voice-3-m".into())), "expr-voice-3-m");
         assert_eq!(voices(&dir).len(), 8);
         assert_eq!(voices(&dir)[0].name, "Bella");

@@ -3,7 +3,9 @@
 // Parakeet's export attends over the whole clip at once.
 
 pub(super) mod capture;
+#[cfg(target_arch = "aarch64")]
 pub(super) mod moonshine;
+#[cfg(target_arch = "aarch64")]
 pub(super) mod parakeet;
 
 use std::path::{Path, PathBuf};
@@ -32,10 +34,17 @@ pub fn dir() -> PathBuf {
     dirs::data_dir().unwrap_or_default().join("tori/dictation")
 }
 
+#[cfg(not(target_arch = "aarch64"))]
+pub fn load(_: &Path) -> Result<Box<dyn Transcriber>, String> {
+    Err(super::models::UNAVAILABLE.into())
+}
+
+#[cfg(target_arch = "aarch64")]
 pub fn load(dir: &Path) -> Result<Box<dyn Transcriber>, String> {
-    if dir.join(moonshine::ENCODER).is_file() {
+    use super::models;
+    if dir.join(models::moonshine::ENCODER).is_file() {
         Ok(Box::new(moonshine::load(dir)?))
-    } else if dir.join(parakeet::ENCODER).is_file() {
+    } else if dir.join(models::parakeet::ENCODER).is_file() {
         Ok(Box::new(parakeet::load(dir)?))
     } else {
         Err("No dictation model is downloaded".into())
@@ -125,6 +134,7 @@ pub(super) mod tests {
         vec![0.0; (seconds * SAMPLE_RATE as f32) as usize]
     }
 
+    #[cfg(target_arch = "aarch64")]
     pub fn wav(path: &str) -> Vec<f32> {
         let bytes = std::fs::read(path).unwrap();
         let mut at = 12;
@@ -158,6 +168,7 @@ pub(super) mod tests {
         samples
     }
 
+    #[cfg(target_arch = "aarch64")]
     pub fn clip(engine: &str) -> (Vec<f32>, Option<String>) {
         let path = std::env::var("TORI_DICTATION_CLIP").unwrap();
         let said = std::fs::read_to_string(Path::new(&path).with_extension(format!("{engine}.txt")));

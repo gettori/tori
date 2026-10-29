@@ -236,6 +236,7 @@ import { UNATTRIBUTED_NOTICE } from "../../utils/attribution";
 import { BLOCKED_REASON, sendWithProbeGate, type SendResult } from "../../utils/safeSend";
 import { REWIND_BANNER, REWIND_CAVEAT, rewindSeed } from "./rewind";
 import { CaptainsCall, ReplyMark } from "../../components/Autopilot/ShellParts";
+import { LOCAL_SPEECH } from "../../utils/localSpeech";
 import { offerLastReply, read, readSelection, readingBlockOf, warm } from "../../utils/speech";
 import { lastReply, speakableChunks } from "./speakable";
 import styles from "./Chat.module.css";
@@ -552,10 +553,10 @@ export default function ChatView(props: {
   // text is what is read, so a reply the window has not drawn has nothing to
   // offer.
   createEffect(() => {
-    if (props.active && shownItems().some((it) => it.kind === "text")) warm();
+    if (LOCAL_SPEECH && props.active && shownItems().some((it) => it.kind === "text")) warm();
   });
   createEffect(() => {
-    if (!props.active) return;
+    if (!LOCAL_SPEECH || !props.active) return;
     onCleanup(
       offerLastReply(() => {
         const last = lastReply(shownItems(), transcriptEl);
@@ -2564,7 +2565,11 @@ export default function ChatView(props: {
           blockedIn={blockedIn}
           onOpenLane={(agentId) => edit((s) => selectLane(s, agentId))}
           onRewind={onRewind}
-          onRead={(body, itemId) => void read(speakableChunks(body), `${props.sessionId}:${itemId}`)}
+          onRead={
+            LOCAL_SPEECH
+              ? (body, itemId) => void read(speakableChunks(body), `${props.sessionId}:${itemId}`)
+              : undefined
+          }
           readingBlock={(itemId) => readingBlockOf(`${props.sessionId}:${itemId}`)}
           replyMark={props.cockpit ? ReplyMark : undefined}
           replyAction={props.sideOf ? sendableReply : undefined}
@@ -2581,7 +2586,7 @@ export default function ChatView(props: {
         root={() => transcriptEl}
         actions={[
           { label: "Quote", run: (text) => composer?.insertBlock(quoteBlock(text)) },
-          { label: "Read", run: (text) => void readSelection(text) },
+          ...(LOCAL_SPEECH ? [{ label: "Read", run: (text: string) => void readSelection(text) }] : []),
         ]}
       />
 

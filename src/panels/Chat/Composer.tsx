@@ -58,6 +58,7 @@ import {
   state as dictation,
   toggle as toggleDictation,
 } from "../../utils/dictation";
+import { LOCAL_SPEECH } from "../../utils/localSpeech";
 
 type NavRow =
   | { kind: "space"; key: string; space: NavSpace }
@@ -1564,31 +1565,33 @@ export default function Composer(props: {
               <Icon icon={SquarePen} />
             </Tooltip>
           </Show>
-          <Tooltip
-            as="button"
-            type="button"
-            class={styles.attachButton}
-            classList={{ [styles.micRecording]: dictation() === "recording" }}
-            label={
-              dictation() === "idle"
-                ? "Dictate a message"
-                : dictation() === "recording"
-                  ? "Stop and put the words in the message"
-                  : "Turning what you said into text"
-            }
-            aria-label={
-              dictation() === "idle" ? "Dictate" : dictation() === "recording" ? "Stop dictating" : "Transcribing"
-            }
-            aria-busy={dictation() === "transcribing"}
-            disabled={props.disabled || !!props.linked}
-            onClick={() => {
-              // Back to the box, so Escape reaches it while the wave covers it.
-              field?.focus();
-              void toggleDictation(insertSpoken);
-            }}
-          >
-            <Icon icon={AudioWaveform} />
-          </Tooltip>
+          <Show when={LOCAL_SPEECH}>
+            <Tooltip
+              as="button"
+              type="button"
+              class={styles.attachButton}
+              classList={{ [styles.micRecording]: dictation() === "recording" }}
+              label={
+                dictation() === "idle"
+                  ? "Dictate a message"
+                  : dictation() === "recording"
+                    ? "Stop and put the words in the message"
+                    : "Turning what you said into text"
+              }
+              aria-label={
+                dictation() === "idle" ? "Dictate" : dictation() === "recording" ? "Stop dictating" : "Transcribing"
+              }
+              aria-busy={dictation() === "transcribing"}
+              disabled={props.disabled || !!props.linked}
+              onClick={() => {
+                // Back to the box, so Escape reaches it while the wave covers it.
+                field?.focus();
+                void toggleDictation(insertSpoken);
+              }}
+            >
+              <Icon icon={AudioWaveform} />
+            </Tooltip>
+          </Show>
           {props.controls}
           <div class={styles.composerSpacer} />
           <Show when={approxTokens(text()) >= TOKEN_READOUT_FROM}>

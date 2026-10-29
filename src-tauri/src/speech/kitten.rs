@@ -4,23 +4,9 @@ use std::path::Path;
 use regex::Regex;
 
 use super::kokoro::{self, Config, Model, Styles, STYLE_WIDTH};
-
-pub const MODEL: &str = "kitten_tts_nano_v0_8.onnx";
-pub const VOICES_FILE: &str = "voices.npz";
-pub const DEFAULT_VOICE: &str = "expr-voice-2-f";
+use super::models::kitten::{MODEL, VOICES_FILE};
 
 const STYLE_ROWS: usize = 400;
-
-pub const VOICES: &[(&str, &str, f32)] = &[
-    ("expr-voice-2-f", "Bella", 0.8),
-    ("expr-voice-2-m", "Jasper", 0.8),
-    ("expr-voice-3-f", "Luna", 0.8),
-    ("expr-voice-3-m", "Bruno", 0.8),
-    ("expr-voice-4-f", "Rosie", 0.8),
-    ("expr-voice-4-m", "Hugo", 0.9),
-    ("expr-voice-5-f", "Kiki", 0.8),
-    ("expr-voice-5-m", "Leo", 0.8),
-];
 
 const PRIORS: &[(&str, f32)] = &[
     ("expr-voice-2-f", 0.8),
@@ -165,6 +151,7 @@ fn entries(zip: &[u8]) -> Result<Vec<(String, &[u8])>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::speech::models::kitten::VOICES;
     use crate::speech::text::Phonemizer;
 
     fn stored_zip(files: &[(&str, &[u8])]) -> Vec<u8> {
