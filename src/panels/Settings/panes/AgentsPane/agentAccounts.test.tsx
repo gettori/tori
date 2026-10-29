@@ -616,8 +616,8 @@ describe("the quota on an account card", () => {
 
   it("shows the two free windows on the titlebar and keeps the model one off", async () => {
     const { getByRole } = await expand(await open(mount()));
-    await waitFor(() => expect(getByRole("button", { name: /^5H$/ })).toBeTruthy());
-    expect(getByRole("button", { name: /^5H$/ }).getAttribute("aria-pressed")).toBe("true");
+    await waitFor(() => expect(getByRole("button", { name: /^5 Hour$/ })).toBeTruthy());
+    expect(getByRole("button", { name: /^5 Hour$/ }).getAttribute("aria-pressed")).toBe("true");
     expect(getByRole("button", { name: /^Week$/ }).getAttribute("aria-pressed")).toBe("true");
     expect(getByRole("button", { name: /^Model/ }).getAttribute("aria-pressed")).toBe("false");
   });
@@ -674,7 +674,7 @@ describe("the quota on an account card", () => {
     await waitFor(() => expect(getByRole("button", { name: /^Fable$/ })).toBeTruthy());
     const model = getByRole("button", { name: /^Fable$/ });
     const held = model.getAttribute("aria-pressed");
-    const other = getByRole("button", { name: /^Overage included$/ });
+    const other = getByRole("button", { name: /^Other$/ });
     // Off until it is asked for, and named as the qualifier it is rather than
     // as a model. Its card is on the screen either way.
     expect(other.getAttribute("aria-pressed")).toBe("false");
@@ -713,7 +713,7 @@ describe("the quota on an account card", () => {
       await open(mount({ health: { id: "codex", label: "Codex", program: "codex" } }), "Codex"),
     );
     await waitFor(() => expect(container.textContent).toContain("Tori reads no quota for Codex"));
-    expect(queryByRole("button", { name: /^5H$/ })).toBeNull();
+    expect(queryByRole("button", { name: /^5 Hour$/ })).toBeNull();
   });
 });
 

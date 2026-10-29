@@ -217,7 +217,7 @@ describe("limitTypeLabel", () => {
     // the strip's letters have been learned.
     expect(limitTypeChip("seven_day")).toBe("Week");
     expect(limitTypeChip("seven_day_fable")).toBe("Fable");
-    expect(limitTypeChip("five_hour")).toBe("5H");
+    expect(limitTypeChip("five_hour")).toBe("5 Hour");
   });
 
   it("passes an unknown one through rather than dropping it", () => {
@@ -250,7 +250,7 @@ describe("limitTypeLabel", () => {
     // A letter on the strip, a word on the settings chip, a phrase in a
     // sentence: the shapes each surface has room for, whatever it is scoped to.
     expect(limitTypeShort("seven_day_overage_included")).toBe("O");
-    expect(limitTypeChip("seven_day_overage_included")).toBe("Overage included");
+    expect(limitTypeChip("seven_day_overage_included")).toBe("Other");
     expect(limitTypeInline("seven_day_overage_included")).toBe("weekly overage included");
   });
 });

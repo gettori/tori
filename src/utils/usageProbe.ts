@@ -26,7 +26,10 @@ export type ProbeIdentity = {
   credits: ProbeCredits | null;
 };
 
-type ProbeAnswer = ProbeIdentity & { windows: QuotaReading[]; reachedType: string | null };
+/** One surface's share of the week, 0 to 1. Only the token read reports it. */
+export type Share = { key: string; name: string; share: number };
+
+type ProbeAnswer = ProbeIdentity & { windows: QuotaReading[]; reachedType: string | null; breakdown?: Share[] };
 
 /** Which command reads which agent, on which rung. A map rather than a switch
  *  because it is also the list of what the poll runs at all: a pair absent here
@@ -62,6 +65,7 @@ export function canPollUsage(agentId: string, profile: string | null = null): bo
 const TICK_MS = 60_000;
 
 const [identities, setIdentities] = createSignal<Record<AccountKey, ProbeIdentity>>({});
+const [breakdowns, setBreakdowns] = createSignal<Record<AccountKey, Share[]>>({});
 
 /** Why the last read failed, per account, or null when it did not. Kept because
  *  a rung that cannot answer has to say so: an expired token and a signed-out
@@ -101,6 +105,10 @@ export function usageReading(agentId: string, profile: string | null = null): bo
   return pending()[accountKey(agentId, profile)] === true;
 }
 
+export function usageBreakdown(agentId: string, profile: string | null): Share[] {
+  return breakdowns()[accountKey(agentId, profile)] ?? [];
+}
+
 export function usageIdentity(agentId: string, profile: string | null): ProbeIdentity | null {
   return identities()[accountKey(agentId, profile)] ?? null;
 }
@@ -131,6 +139,8 @@ async function runProbe(key: AccountKey, agentId: string, profile: string | null
       }));
     }
     recordReadings(agentId, profile, rung, answer.windows ?? []);
+    // Every token read answers for it, so an absent one is the plan having none.
+    if (rung === "token") setBreakdowns((prev) => ({ ...prev, [key]: answer.breakdown ?? [] }));
     failures[key] = 0;
     clock.blockedUntil = null;
     setReasons((prev) => ({ ...prev, [key]: null }));
@@ -213,6 +223,7 @@ export function seedUsageIdentityForTests(agentId: string, profile: string | nul
 
 export function resetUsageProbeForTests() {
   setIdentities({});
+  setBreakdowns({});
   setReasons({});
   setPending({});
   for (const key of Object.keys(clocks)) delete clocks[key];
