@@ -1,6 +1,5 @@
 import {
   For,
-  Index,
   Match,
   Show,
   Switch,
@@ -27,7 +26,6 @@ import {
   Volume2,
   Webhook,
 } from "lucide-solid";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   hasEarlier,
   turnBlindEdits,
@@ -42,15 +40,12 @@ import {
   type ToolItem,
   type TurnCheck,
 } from "./chatStore";
-import { attachmentKind } from "../../utils/chatCompose";
 import { VERDICT_LABEL, verdictDetail } from "../../utils/verification";
-import type { ContentBlock, PermissionMode, QuestionAnswer, RefTarget, SecretHit } from "../../utils/chatTypes";
+import type { PermissionMode, QuestionAnswer, SecretHit } from "../../utils/chatTypes";
 import { commandAround, secretLabel } from "../../utils/secretReads";
 import { mentionPath } from "../../utils/pathScope";
 import Popover from "../../components/Popover/Popover";
 import { openWorkspacePath, workspacePath } from "./openPath";
-import { openPrByNumber } from "../../utils/openPrTab";
-import { emitWith, NAVIGATE, SESSION_ACTION, type NavTarget, type SessionAction } from "../../utils/events";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
@@ -63,148 +58,10 @@ import type { Answer } from "./PermissionPrompt";
 import styles from "./Chat.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import Markdown from "./Markdown";
+import SentPrompt from "./SentPrompt";
 import { foldEdits, groupRuns, runLabel, thoughtLabel, type RunCache, type WorkRun } from "./toolRenderers";
 
 const VERDICT_ICON = { verified: CircleCheck, failed: CircleX, unverified: CircleDashed } as const;
-
-function blockText(blocks: readonly ContentBlock[]): string {
-  const typed = blocks.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n");
-  return blocks
-    .flatMap((b) => {
-      if (b.type === "text") return [b.text];
-      if (b.type === "ref") return typed.includes(b.label) ? [] : [b.label];
-      if (b.type !== "fileRef") return [];
-      if (!b.label) return [`@${b.path}`];
-      // A labelled attachment is drawn where the sentence names it. One the
-      // sentence never named still has to appear, or attaching a file and
-      // pressing Enter would leave a turn with no sign of what it carried.
-      return typed.includes(b.label) ? [] : [b.label];
-    })
-    .join("\n");
-}
-
-type PromptRef = { path: string } | { target: RefTarget };
-
-function refTitle(t: RefTarget): string {
-  switch (t.kind) {
-    case "pr":
-      return `${t.title} (${t.state})`;
-    case "session":
-      return `${t.title} (${t.agent})`;
-    case "project":
-      return `${t.folder} (${t.space})`;
-    case "space":
-      return t.projects.map((p) => p.name).join(", ");
-  }
-}
-
-function openRef(t: RefTarget, cwd: string) {
-  if (t.kind === "pr") void openPrByNumber(cwd, t.number);
-  else if (t.kind === "session") emitWith<SessionAction>(SESSION_ACTION, { sessionId: t.id, action: "open" });
-  else if (t.kind === "project") emitWith<NavTarget>(NAVIGATE, { project: t.folder });
-  else emitWith<NavTarget>(NAVIGATE, { space: t.name });
-}
-
-/** What this turn attached or referenced, by the token naming each. */
-function promptRefs(blocks: readonly ContentBlock[]): Map<string, PromptRef> {
-  const by = new Map<string, PromptRef>();
-  for (const b of blocks) {
-    if (b.type === "fileRef" && b.label) by.set(b.label, { path: b.path });
-    else if (b.type === "ref") by.set(b.label, { target: b.target });
-  }
-  return by;
-}
-
-/** Splits a prompt on this turn's own tokens, each kept as its own part. */
-function tokenSplit(labels: Iterable<string>): RegExp | null {
-  const alternatives = [...labels].map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  return alternatives.length ? new RegExp(`(${alternatives.join("|")})`) : null;
-}
-
-/**
- * The prompt, with every token naming one of this turn's own attachments drawn
- * as a chip.
- *
- * Only its own: a user who typed `[Image 9]` at an agent that never got one
- * meant those characters, and dressing them up as an attachment would claim
- * the turn carried something it did not.
- */
-function PromptText(props: { blocks: readonly ContentBlock[]; cwd: string }) {
-  const refs = createMemo(() => promptRefs(props.blocks));
-  const parts = createMemo(() => {
-    const text = blockText(props.blocks);
-    const split = tokenSplit(refs().keys());
-    return (split ? text.split(split) : [text]).filter((p) => p !== "");
-  });
-  return (
-    <Index each={parts()}>
-      {(part) => (
-        <Show when={refs().get(part())} fallback={part()}>
-          {(ref) => {
-            const r = ref();
-            if ("path" in r) {
-              return (
-                <span class={styles.promptChip} title={r.path}>
-                  {part()}
-                </span>
-              );
-            }
-            const t = r.target;
-            return (
-              <Tooltip
-                as="button"
-                type="button"
-                class={styles.promptChip}
-                label={refTitle(t)}
-                onClick={() => openRef(t, props.cwd)}
-              >
-                {part()}
-              </Tooltip>
-            );
-          }}
-        </Show>
-      )}
-    </Index>
-  );
-}
-
-/** `src` is null for an image a replay knows was sent but has no bytes for. */
-type PromptImage = { label: string | null; nth: number; src: string | null };
-
-function promptImages(blocks: readonly ContentBlock[]): PromptImage[] {
-  const found: PromptImage[] = [];
-  for (const b of blocks) {
-    const nth = found.length + 1;
-    if (b.type === "image") found.push({ label: null, nth, src: `data:${b.mediaType};base64,${b.data}` });
-    else if (b.type === "imageRef") found.push({ label: null, nth, src: null });
-    // An attached image is a path now, so the picture comes off disk. The same
-    // file the composer drew, drawn again from the same place.
-    else if (b.type === "fileRef" && b.label && attachmentKind(b.path) === "image") {
-      found.push({ label: b.label, nth, src: convertFileSrc(b.path) });
-    }
-  }
-  return found;
-}
-
-/** Above the text, which is the order they were sent in and the order the
- *  composer drew them in, so a chip does not move when it becomes a turn. A
- *  live turn still holds its bytes; a replayed one is numbered instead. */
-function PromptImages(props: { blocks: readonly ContentBlock[] }) {
-  const images = createMemo(() => promptImages(props.blocks));
-  return (
-    <Show when={images().length}>
-      <div class={styles.promptImages}>
-        <For each={images()}>
-          {(img) => (
-            <Show when={img.src} fallback={<span class={styles.promptImageGone}>[Image #{img.nth}]</span>}>
-              {(src) => <img class={styles.promptImage} src={src()} alt={`attached image ${img.label ?? img.nth}`} />}
-            </Show>
-          )}
-        </For>
-      </div>
-    </Show>
-  );
-}
 
 function ThinkingBlock(props: { text: string; live: boolean; thoughtMs: number }) {
   const [open, setOpen] = createSignal(false);
@@ -347,6 +204,8 @@ export default function MessageList(props: {
   streaming: boolean;
   sessionId: string;
   cwd: string;
+  /** The session's skills, coloured where a prompt names one. */
+  skills?: readonly string[];
   /** The scrolling root, for a caller that needs to know whether a selection
    *  sits inside this transcript. */
   ref?: (el: HTMLDivElement) => void;
@@ -814,11 +673,10 @@ export default function MessageList(props: {
                   </Tooltip>
                 )}
               </Show>
-              <PromptImages blocks={it().blocks} />
               <Show when={it().steer}>
                 <span class={styles.steerLabel}>Steer</span>
               </Show>
-              <PromptText blocks={it().blocks} cwd={props.cwd} />
+              <SentPrompt blocks={it().blocks} cwd={props.cwd} skills={props.skills ?? []} />
             </div>
           </div>
         )}
