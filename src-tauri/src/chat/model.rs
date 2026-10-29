@@ -1599,6 +1599,11 @@ pub enum ChatEvent {
         /// Captured frames say `rejected` while `status` says `allowed`.
         #[serde(default)]
         overage_status: Option<String>,
+        /// The account the session is claimed under, in the backend's spelling.
+        /// Filled where events leave Rust, never by an adapter: only the claim
+        /// knows which login the child runs as.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        profile: Option<String>,
     },
 
     /// What a turn that changed code ran to check it, sent just before its
@@ -2269,6 +2274,7 @@ mod tests {
                     },
                 ],
                 overage_status: Some("rejected".into()),
+                profile: None,
             },
             ChatEvent::TurnVerification {
                 session_id: "s1".into(),

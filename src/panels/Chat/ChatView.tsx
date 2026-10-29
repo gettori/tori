@@ -361,6 +361,14 @@ export default function ChatView(props: {
    *  reads instead of `props.profile`: the tab's value is what was *asked* for,
    *  and a resume can land on a different one. */
   const [resolvedProfile, setResolvedProfile] = createSignal<string | null>(props.profile);
+  /** Take the backend's claim as this session's account. Compared against the
+   *  signal and the tab separately: the tab record is not reactive, so the two
+   *  can disagree, and a view that only checked the tab kept a stale account. */
+  const adoptClaim = (claimed: string) => {
+    const resolved = asTabProfile(claimed);
+    if (resolved !== resolvedProfile()) setResolvedProfile(resolved);
+    if (resolved !== props.profile) props.onProfileResolved(resolved);
+  };
   // What the composer's contents are filed under. The **tab**, not the session:
   // this tab may have held what the user typed before it had a session id at
   // all, and a first send that never reaches one hands it straight back. See
@@ -888,9 +896,18 @@ export default function ChatView(props: {
       if (ev.type === "configOptions") recordConfirmed(ev.options);
       // Into the account's store, not just this session's: the quota belongs to
       // the login, and three chats on it are three views of one number. The
-      // account of record is the backend's resolved one, so a resumed session
-      // files under the profile its transcript is actually in.
+      // account of record is the claim the frame is stamped with. A view that
+      // disagrees is wrong, and has filed one login's quota under another.
       if (ev.type === "rateLimit") {
+        if (ev.profile !== undefined && asTabProfile(ev.profile) !== resolvedProfile()) {
+          console.warn("[usage] this chat's account disagreed with its session's claim", {
+            session: props.sessionId,
+            tab: props.tabId,
+            view: resolvedProfile(),
+            claim: ev.profile,
+          });
+          adoptClaim(ev.profile);
+        }
         recordReadings(props.agentId, resolvedProfile(), "sessions", readingsOf(rateLimitFrom(ev)));
       }
       // A real turn boundary, not one inferred from a re-read prompt count.
@@ -1037,14 +1054,8 @@ export default function ChatView(props: {
           // The account of record is the backend's answer, not the tab's guess:
           // a resume passing `null` runs under the transcript's own account, and
           // a tab that kept its `null` would file this session's quota readings
-          // under nobody. Kept locally as well as pushed to the tab, since the
-          // tab record is not reactive by design (mutated in place so `<For>`
-          // does not remount this whole surface).
-          const resolved = asTabProfile(res.profileId);
-          if (res.profileId !== null && resolved !== props.profile) {
-            setResolvedProfile(resolved);
-            props.onProfileResolved(resolved);
-          }
+          // under nobody.
+          if (res.profileId !== null) adoptClaim(res.profileId);
           if (res.untrusted && !props.background && noteRefused(props.cwd)) {
             askToTrust(props.cwd, "This project's own agent settings stay off until you trust it.");
           }

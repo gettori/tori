@@ -666,6 +666,9 @@ export type ChatEvent =
       windows: UsageWindow[];
       /// Whether overage spending is available, not whether a limit is hit.
       overageStatus: string | null;
+      /// The account the session is claimed under, in the backend's spelling.
+      /// Absent when no claim names one.
+      profile?: string;
     }
   /// What a turn that changed code ran to check it, sent just before its
   /// `turnCompleted`. Absent for a turn that changed no code.
@@ -907,6 +910,7 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
   usage: { required: ["sessionId", "turnId", "usage"], optional: ["extra"] },
   rateLimit: {
     required: ["sessionId", "status", "resetsAt", "limitType", "utilization", "windows", "overageStatus"],
+    optional: ["profile"],
   },
   turnVerification: { required: ["sessionId", "turnId", "verdict", "checks"], optional: ["settledLater"] },
   turnCompleted: {
