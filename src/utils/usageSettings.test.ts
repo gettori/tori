@@ -98,7 +98,9 @@ describe("which windows an account shows", () => {
     expect(chipFor("five_hour")).toBe("five_hour");
     expect(chipFor("seven_day")).toBe("seven_day");
     expect(chipFor("seven_day_fable")).toBe("model_week");
-    expect(chipFor("extra_usage")).toBe("model_week");
+    // Extra usage is an allowance, not a week. Under the model chip, a plan with
+    // no model week showed a chip called Extra that switched the model week.
+    expect(chipFor("extra_usage")).toBe("extra_usage");
     // A week scoped to something nobody can pick and run is not the model
     // switch: folded under it, lighting Fable put an overage bar on the strip.
     expect(chipFor("seven_day_overage_included")).toBe("week_other");
@@ -133,20 +135,22 @@ describe("the rung the chips imply", () => {
     expect(usageRungFor("claude", null)).toBe("token");
   });
 
-  // The chip authorises the first read. Once the Keychain has answered, reading
-  // it again asks nobody for anything, and dropping to a rung with no read path
-  // is how a titlebar row ends up stale with a live account behind it.
-  it("keeps the account token once that read has already answered", () => {
+  // The account's switch is the gate once it has been answered, in both
+  // directions: a past read does not keep the token on, and no chip turns it on.
+  it("reads the account token only behind the account's switch", () => {
     bench.usage = { claude: { accounts: { default: { windows: ["five_hour", "seven_day"] } } } };
-    expect(usageRungFor("claude", null)).toBe("sessions");
-
     seedUsageStoreForTests("claude", null, [
       { kind: "seven_day_fable", utilization: 0.28, resetsAt: null, status: null, reachedType: null, source: "token" },
     ]);
+    expect(usageRungFor("claude", null)).toBe("sessions");
 
+    bench.usage = { claude: { accounts: { default: { windows: ["five_hour"], readToken: true } } } };
     expect(usageRungFor("claude", null)).toBe("token");
-    // Per account, like everything else here: the other login was never read.
+    // Per account, like everything else here.
     expect(usageRungFor("claude", "work")).toBe("sessions");
+
+    bench.usage = { claude: { accounts: { default: { windows: ["model_week"], readToken: false } } } };
+    expect(usageRungFor("claude", null)).toBe("sessions");
   });
 
   it("still reads nothing for an account turned off, however it was read before", () => {

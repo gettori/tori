@@ -36,6 +36,19 @@ pub struct ProbeWindow {
     pub resets_at: Option<u64>,
     pub status: Option<String>,
     pub reached_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spend: Option<Spend>,
+}
+
+/// Money spent against an allowance, in the currency's major unit. Only extra
+/// usage carries it: a rate window is a share of a plan, not an amount.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Spend {
+    pub used: f64,
+    /// None when the allowance has no cap.
+    pub limit: Option<f64>,
+    pub currency: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -87,6 +100,7 @@ fn window_from(v: &Value, reached_type: Option<&str>) -> Option<ProbeWindow> {
         resets_at: w.get("resetsAt").and_then(Value::as_u64),
         status: None,
         reached_type: reached_type.map(str::to_string),
+        spend: None,
     })
 }
 

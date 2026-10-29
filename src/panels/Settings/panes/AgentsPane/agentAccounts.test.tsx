@@ -588,7 +588,12 @@ describe("the quota on an account card", () => {
             agent?: {
               usage?: Record<
                 string,
-                { accounts?: Record<string, { windows?: string[]; warnAt?: number; notify?: boolean }> }
+                {
+                  accounts?: Record<
+                    string,
+                    { windows?: string[]; warnAt?: number; notify?: boolean; readToken?: boolean }
+                  >;
+                }
               >;
             };
           };
@@ -628,19 +633,20 @@ describe("the quota on an account card", () => {
   // The chip is the permission. The stored list is what the backend's own gate
   // reads before it opens the login Keychain, so lighting it here is the whole
   // of the opt-in.
-  it("asks for the model window by storing the chip that authorises the read", async () => {
+  it("asks for the token read through the account's switch, not a chip", async () => {
     const { container, getByRole } = await expand(await open(mount()));
     // Nothing knows which model this account's week is scoped to until a read
     // lands, and the card says that rather than guessing a name.
     await waitFor(() => expect(getByRole("button", { name: /^Model/ })).toBeTruthy());
     expect(container.textContent).toContain("one model");
-    expect(container.textContent).toContain("needs the account token");
+    expect(container.textContent).toContain("needs Read usage from Anthropic");
 
+    // Behind the switch, so pressing the chip asks for nothing.
     fireEvent.click(getByRole("button", { name: /^Model/ }));
-    // The chip's own effect. That the rest of the list comes with it is the
-    // test above; what matters here is that the one key the backend gate reads
-    // is now in the file.
-    await waitFor(() => expect(savedWindows()?.windows).toContain("model_week"));
+    expect(savedWindows()).toBeUndefined();
+
+    fireEvent.click(getByRole("switch", { name: /Read Default usage from Anthropic/ }));
+    await waitFor(() => expect(savedWindows()?.readToken).toBe(true));
   });
 
   // Once a read has landed the chip stops asking and starts naming: the model

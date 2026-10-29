@@ -675,6 +675,21 @@ pub struct AccountUsage {
     pub warn_at: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notify: Option<bool>,
+    /// The account's own switch for reading its login token. No answer falls
+    /// back to the chips that used to be the opt-in, so a file written before
+    /// the switch keeps reading the way it did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_token: Option<bool>,
+}
+
+impl AccountUsage {
+    pub fn reads_token(&self) -> bool {
+        self.read_token.unwrap_or_else(|| {
+            self.windows
+                .as_ref()
+                .is_some_and(|w| w.iter().any(|k| k == MODEL_WEEK || k == WEEK_OTHER))
+        })
+    }
 }
 
 /// One agent's accounts, keyed by profile id (`"default"`, never absent).
@@ -685,21 +700,19 @@ pub struct UsageSettings {
     pub accounts: std::collections::BTreeMap<String, AccountUsage>,
 }
 
-/// Whether this account asked for a weekly window only the account token can
-/// answer.
+/// Whether this account has said Tori may read its login token.
 ///
 /// The gate on the one read that opens the login Keychain, asked here rather
 /// than trusted from the frontend: the custody exemption rests on the vault not
 /// being touched until the user has said so, and a settings file is the only
 /// record of them saying it.
-pub fn wants_token_window(agent: &str, profile_id: &str) -> bool {
+pub fn reads_token(agent: &str, profile_id: &str) -> bool {
     get_settings()
         .agent
         .usage
         .get(agent)
         .and_then(|u| u.accounts.get(profile_id))
-        .and_then(|a| a.windows.as_ref())
-        .is_some_and(|w| w.iter().any(|k| k == MODEL_WEEK || k == WEEK_OTHER))
+        .is_some_and(AccountUsage::reads_token)
 }
 
 /// How often the scheduled fetch runs, in minutes. Zero is off, and off means
@@ -2023,6 +2036,7 @@ mod tests {
                                 windows: Some(vec!["five_hour".into()]),
                                 warn_at: Some(0.6),
                                 notify: Some(true),
+                                read_token: None,
                             },
                         )]
                         .into(),
@@ -2515,6 +2529,7 @@ mod tests {
                             windows: Some(vec!["five_hour".into(), "seven_day".into(), MODEL_WEEK.into()]),
                             warn_at: Some(0.8),
                             notify: Some(false),
+                            read_token: None,
                         },
                     ),
                     (
@@ -2588,12 +2603,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        let asked = |u: &UsageSettings, id: &str| {
-            u.accounts
-                .get(id)
-                .and_then(|a| a.windows.as_ref())
-                .is_some_and(|w| w.iter().any(|k| k == MODEL_WEEK || k == WEEK_OTHER))
-        };
+        let asked = |u: &UsageSettings, id: &str| u.accounts.get(id).is_some_and(AccountUsage::reads_token);
         assert!(
             !asked(&u, "default"),
             "the five-hour chip is not consent to a vault read"

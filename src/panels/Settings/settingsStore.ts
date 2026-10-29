@@ -159,6 +159,9 @@ export type AccountUsage = {
   windows?: string[];
   warnAt?: number | null;
   notify?: boolean;
+  /** The account's own switch for reading its login token. Absent falls back to
+   *  the chips that used to be the opt-in. */
+  readToken?: boolean;
 };
 
 /** Mirrors `UsageSettings` in src-tauri/src/settings.rs: one agent's accounts,
