@@ -315,6 +315,13 @@ function toastError(e: unknown) {
   emitWith<ToastEvent>(TOAST, { message, kind: "error" });
 }
 
+/** A remote action that finished. Said out loud because nothing else on screen
+ *  moves when a fetch or a push lands with no news. */
+function toastDone(message: string, ok: boolean): boolean {
+  if (ok) emitWith<ToastEvent>(TOAST, { message, kind: "info" });
+  return ok;
+}
+
 // Which generation of membership each entered root is on. Doubles as the
 // membership set itself, and as the stale-answer guard: a read files its answer
 // only while the root it asked about is still the one it entered.
@@ -515,8 +522,8 @@ export function unstageAll(root: string): Promise<boolean> {
 
 /** Fire-and-forget: the answer arrives as `git://fetch-done`, which the store
  *  is already listening for. */
-export function fetchIn(root: string): Promise<boolean> {
-  return act(root, () => invoke("git_fetch", { repo: root }), refreshMeta);
+export async function fetchIn(root: string): Promise<boolean> {
+  return toastDone("Fetched.", await act(root, () => invoke("git_fetch", { repo: root }), refreshMeta));
 }
 
 /** Pull, waiting for the background op's own event. Separate from `fetchIn`
@@ -539,12 +546,15 @@ export async function pull(root: string, rebase = false, ffOnly = false): Promis
     toastError(error || "Pull failed");
     return false;
   }
-  return true;
+  return toastDone(rebase ? "Pulled with rebase." : "Pulled.", true);
 }
 
 /** Move the branch onto its upstream after a force push replaced what it had. */
-export function resetToUpstream(root: string): Promise<boolean> {
-  return act(root, () => invoke("git_reset_to_upstream", { projectPath: root }), refreshGit);
+export async function resetToUpstream(root: string): Promise<boolean> {
+  return toastDone(
+    "Reset to upstream.",
+    await act(root, () => invoke("git_reset_to_upstream", { projectPath: root }), refreshGit),
+  );
 }
 
 export async function merge(root: string, branch: string): Promise<IntegrateOutcome | null> {
@@ -711,7 +721,7 @@ export async function push(root: string, branch: string): Promise<boolean> {
     return false;
   }
   await refreshMeta(root);
-  return true;
+  return toastDone(`Pushed ${branch}.`, true);
 }
 
 /** `origin/<branch>` when this member and it have both moved, else null. */
@@ -791,7 +801,7 @@ export async function forcePush(root: string, branch: string, expected: string):
     return false;
   }
   await refreshMeta(root);
-  return true;
+  return toastDone(`Force pushed ${branch}.`, true);
 }
 
 /**
