@@ -18,6 +18,7 @@ const invoke = vi.hoisted(() =>
         sizes: [
           { id: "int8", bytes: 106_987_333 },
           { id: "full", bytes: 340_158_449 },
+          { id: "fast", bytes: 60_045_997 },
         ],
       };
     return undefined;
@@ -60,6 +61,8 @@ describe("the voice download dialog", () => {
     await read([{ text: "a reply" }], "r1");
     expect(await screen.findByRole("dialog")).toBeTruthy();
     expect((screen.getByRole("radio", { name: /Smaller, 107 MB/ }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getAllByRole("radio").map((r) => (r as HTMLInputElement).value)).toEqual(["int8", "full", "fast"]);
+    expect(screen.getByRole("radio", { name: /Fastest, 60 MB/ })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Download" }));
     await settled();

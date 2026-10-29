@@ -716,7 +716,7 @@ export const SETTINGS: SettingEntry[] = [
     id: "read-aloud-model",
     section: "chat",
     label: "Voice size",
-    hint: "The voice Read aloud downloads. Smaller loads faster, larger is a little clearer. Change swaps one for the other.",
+    hint: "The voice Read aloud downloads. Smaller and Larger are the natural voice, Fastest starts quickest. Change swaps one for another.",
   },
   {
     id: "read-aloud-pronunciation",
@@ -728,7 +728,7 @@ export const SETTINGS: SettingEntry[] = [
     id: "read-aloud-voice",
     section: "chat",
     label: "Voice",
-    hint: "The voice Read aloud speaks in. A voice since removed falls back to Heart, the default.",
+    hint: "The voice Read aloud speaks in. A voice since removed falls back to the default, Heart, or Bella on the Fastest voice.",
   },
   {
     id: "read-aloud-rate",

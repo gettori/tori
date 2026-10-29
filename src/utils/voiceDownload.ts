@@ -3,12 +3,20 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { OpenJob } from "./events";
 
-export type VoiceSize = "int8" | "full";
+export type VoiceSize = "int8" | "full" | "fast";
 
 export const SIZES: { id: VoiceSize; label: string; description: string }[] = [
-  { id: "int8", label: "Smaller", description: "Loads faster. Sounds nearly the same." },
-  { id: "full", label: "Larger", description: "A little clearer, slower to load." },
+  {
+    id: "int8",
+    label: "Smaller",
+    description: "The natural voice. Sounds nearly the same as Larger, and 28 voices to pick from.",
+  },
+  { id: "full", label: "Larger", description: "The natural voice at full quality. The same 28 voices." },
+  { id: "fast", label: "Fastest", description: "Starts quickest. Eight voices, and a little less natural." },
 ];
+
+export const defaultVoice = () =>
+  status().model === "fast" ? { id: "expr-voice-2-f", name: "Bella" } : { id: "af_heart", name: "Heart" };
 
 export type Progress = { size: VoiceSize; done: number; total: number };
 

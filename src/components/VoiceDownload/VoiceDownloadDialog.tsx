@@ -50,7 +50,8 @@ function Ask() {
       }
     >
       <div class={styles.msg}>
-        Read aloud speaks with a voice that runs on this Mac. It downloads once, and the text never leaves the Mac.
+        Read aloud speaks with a voice that runs on this Mac. Pick one to download. The text it reads never leaves the
+        Mac, and you can change the voice later in Settings.
       </div>
       <Show
         when={running()}

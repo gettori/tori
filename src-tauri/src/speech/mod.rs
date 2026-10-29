@@ -3,6 +3,7 @@
 // and then.
 
 mod download;
+mod kitten;
 mod kokoro;
 mod queue;
 mod spoken;
@@ -23,6 +24,13 @@ use queue::{Engine, Models, Out};
 
 const DEFAULT_VOICE: &str = "af_heart";
 
+fn default_voice(dir: &Path) -> &'static str {
+    match installed(dir) {
+        Some(("fast", _)) => kitten::DEFAULT_VOICE,
+        _ => DEFAULT_VOICE,
+    }
+}
+
 pub fn dir() -> PathBuf {
     #[cfg(debug_assertions)]
     if let Some(dir) = std::env::var_os("TORI_SPEECH_DIR") {
@@ -32,13 +40,7 @@ pub fn dir() -> PathBuf {
 }
 
 fn installed(dir: &Path) -> Option<(&'static str, &'static str)> {
-    if !dir.join("tokenizer.json").is_file() {
-        return None;
-    }
-    download::SIZES
-        .iter()
-        .find(|s| dir.join(s.file).is_file())
-        .map(|s| (s.id, s.file))
+    download::installed(dir).map(|s| (s.id, s.file))
 }
 
 #[derive(Clone, Serialize)]
@@ -76,8 +78,12 @@ impl SpeechState {
             let app = app.clone();
             let load = Box::new(|| {
                 let dir = dir();
-                let (_, model) = installed(&dir).ok_or("No voice is downloaded")?;
-                kokoro::load(&dir, &dir.join(model))
+                let (size, model) = installed(&dir).ok_or("No voice is downloaded")?;
+                if size == "fast" {
+                    kitten::load(&dir)
+                } else {
+                    kokoro::load(&dir, &dir.join(model))
+                }
             });
             let models = Models::new(load, self.model_generation.clone());
             let emit = Arc::new(move |event: queue::Event| {
@@ -170,6 +176,16 @@ pub enum SpeakError {
 }
 
 fn voices(dir: &Path) -> Vec<SpeechVoice> {
+    if let Some(("fast", _)) = installed(dir) {
+        return kitten::VOICES
+            .iter()
+            .map(|(id, name, _)| SpeechVoice {
+                id: id.to_string(),
+                name: name.to_string(),
+                language: "en-US",
+            })
+            .collect();
+    }
     let Ok(entries) = std::fs::read_dir(dir.join("voices")) else {
         return Vec::new();
     };
@@ -214,9 +230,11 @@ pub fn speech_speak(
 }
 
 fn voice_or_default(dir: &Path, voice: Option<String>) -> String {
-    voice
-        .filter(|v| dir.join("voices").join(format!("{v}.bin")).is_file())
-        .unwrap_or_else(|| DEFAULT_VOICE.into())
+    let known = |v: &String| match installed(dir) {
+        Some(("fast", _)) => kitten::VOICES.iter().any(|(id, _, _)| id == v),
+        _ => dir.join("voices").join(format!("{v}.bin")).is_file(),
+    };
+    voice.filter(known).unwrap_or_else(|| default_voice(dir).into())
 }
 
 #[tauri::command]
@@ -359,6 +377,17 @@ mod tests {
         assert_eq!(voice_or_default(&dir, Some("bf_emma".into())), "bf_emma");
         assert_eq!(voice_or_default(&dir, Some("am_removed".into())), DEFAULT_VOICE);
         assert_eq!(voice_or_default(&dir, None), DEFAULT_VOICE);
+        assert_eq!(
+            voice_or_default(&dir, Some(kitten::DEFAULT_VOICE.into())),
+            DEFAULT_VOICE
+        );
+
+        std::fs::write(dir.join(kitten::MODEL), []).unwrap();
+        std::fs::write(dir.join(kitten::VOICES_FILE), []).unwrap();
+        assert_eq!(voice_or_default(&dir, Some("bf_emma".into())), kitten::DEFAULT_VOICE);
+        assert_eq!(voice_or_default(&dir, Some("expr-voice-3-m".into())), "expr-voice-3-m");
+        assert_eq!(voices(&dir).len(), 8);
+        assert_eq!(voices(&dir)[0].name, "Bella");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }
