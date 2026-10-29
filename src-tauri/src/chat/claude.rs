@@ -1233,6 +1233,7 @@ impl ClaudeMapper {
             utilization: info["utilization"].as_f64(),
             windows: unified_windows(&info["unifiedWindows"]),
             overage_status: info["overageStatus"].as_str().map(str::to_string),
+            profile: None,
         }]
     }
 

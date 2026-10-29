@@ -1500,6 +1500,7 @@ impl ChatHost {
                             *output_truncated = truncated;
                         }
                     }
+                    ChatEvent::RateLimit { profile, .. } => *profile = registry.profile_of(&id),
                     _ => {}
                 }
                 // After the cut, so a replay of the log sees the same output

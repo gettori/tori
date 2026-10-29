@@ -831,6 +831,7 @@ mod tests {
             utilization: None,
             windows: vec![],
             overage_status: overage.map(String::from),
+            profile: None,
         };
         assert_eq!(
             rejected_until(&limit("rejected", Some(1_900_000_000), None)),
