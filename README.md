@@ -11,7 +11,7 @@
 </p>
 
 ```sh
-brew install --cask gettori/tap/tori
+curl -fsSL https://raw.githubusercontent.com/gettori/tori/main/install.sh | sh
 ```
 
 Tori is a macOS app for supervising the coding agents you already run. Every
@@ -126,17 +126,18 @@ in its environment, and how to keep a tmux auto-attach out of the tab, is in
 
 ## Install
 
-The brew line at the top installs the cask, and `brew upgrade --cask tori`
-keeps it current. Otherwise download the DMG for your Mac from the
-[Releases page](https://github.com/gettori/tori/releases)
+The line at the top picks the build for your Mac, checks its signature, puts
+it in Applications and opens it. With Homebrew, run
+`brew install --cask gettori/tap/tori` instead. Otherwise download the DMG for
+your Mac from the [Releases page](https://github.com/gettori/tori/releases)
 (`Tori_<version>_aarch64.dmg` on Apple Silicon, `Tori_<version>_x64.dmg` on
 Intel) and drag it into Applications. The app is signed and notarized, so it
-opens without a warning. **[docs/INSTALL.md](docs/INSTALL.md)** covers the
-phone app, updating and uninstalling.
+opens without a warning. However it got there, Tori updates itself from then
+on. **[docs/INSTALL.md](docs/INSTALL.md)** covers the phone app, updating and
+uninstalling.
 
-**Requirements:** macOS, on Apple Silicon or Intel (one DMG each). Tori is
-developed and tested on macOS 15; the bundle sets no minimum
-version, so older releases are untested rather than blocked. At least one agent
+**Requirements:** macOS 13.4 or later, on Apple Silicon or Intel (one DMG
+each). Tori is developed and tested on macOS 15. At least one agent
 CLI installed. Node.js if you want the bundled TypeScript language server to
 run.
 

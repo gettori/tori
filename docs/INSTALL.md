@@ -53,8 +53,8 @@ sold since about 2016.
 
 ## Requirements
 
-- **macOS.** Tori is developed and tested on macOS 15, and the bundle sets no
-  minimum version, so older releases are untested rather than blocked.
+- **macOS 13.4 or later.** Tori is developed and tested on macOS 15. It will
+  not open on anything older than 13.4.
 - **Apple Silicon or Intel**, each with its own DMG. Homebrew picks the right
   one.
 - **At least one agent CLI installed.** Claude Code ships supported; see ADAPTERS.md to add another.

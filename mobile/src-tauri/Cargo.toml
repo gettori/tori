@@ -1,6 +1,6 @@
 [package]
 name = "tori-mobile"
-version = "26.1022.0-alpha"
+version = "26.1022.0-beta"
 description = "Tori on a phone: the chats of a paired Tori, over its remote front"
 license = "Apache-2.0"
 edition = "2021"
