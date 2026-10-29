@@ -48,6 +48,7 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 - A waveform button on the composer, **Dictate a message**. Press it and a live waveform covers the box while you talk; press again and it ripples while the words are worked out, then they land at the caret. The first press offers a model to download: **Moonshine** (67 MB) or **Parakeet** (661 MB, by NVIDIA, CC BY 4.0). Escape drops a recording.
 - Settings > Chat > Dictation: **Model** with Change and Delete.
 - Tori asks for the microphone the first time you dictate. A refusal, or a microphone macOS gives only silence, stops the recording with a notice pointing at System Settings.
+- Read aloud and dictation run on Apple Silicon Macs only. On an Intel Mac their buttons and commands are not shown, and Settings > Chat says **Needs an Apple Silicon Mac** under each.
 - Settings > Chat > Spending: **Show what work costs**. Off hides the cost on a branch row, an autopilot card, the pull request panel and a waiting item's estimate. Limits still apply.
 - **New side chat** in the session menu opens a read-only copy of the chat in a drawer on the right. It knows everything the chat knows up to that point and works while the chat is mid-turn. Open several; each is a tab, **Side 1**, **Side 2** and so on.
 - A side chat cannot write files or change anything else. It runs in plan mode on Claude and read-only mode on Codex, has no mode picker, and is closed if the agent leaves that mode. Every permission ask is denied, Claude gets no shell commands at all, and only Tori's tools that read are allowed. Questions still reach you.
@@ -72,6 +73,8 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 - Picture, PDF and file attachments sit in a grid of same size tiles, notes and links in a grid of same size pills, never on the same row
 - Click an attachment to preview it. Pictures, PDFs and code open in a dialog, with Open in editor for files and Open on the forge for pull requests
 - Attachments, queued messages, subagents, background tasks, the plan and the ask card all have a tooltip that says what they are
+- A sent prompt shows the way the composer drew it, read only: attachment names in the text, its attachments above, and a preview on click
+- A picture's preview fits the picture, and a pasted picture no longer shows as a broken image
 - Queued messages use the same pill grid, with Send now and Discard on the line above
 - The plan card lines up with the input box, keeps the current step in view in a long plan, and shows the working spinner when folded
 - Typing `/` in the middle of a message offers your skills (Claude). Commands still work only at the start
