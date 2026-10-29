@@ -50,6 +50,7 @@ import Slider from "../../../../components/Slider/Slider";
 import styles from "../../Settings.module.css";
 import Switch from "../../../../components/Switch/Switch";
 import { warnAtLabel } from "../../../../utils/chatBudget";
+import { LOCAL_SPEECH } from "../../../../utils/localSpeech";
 
 /**
  * Chat, in four groups.
@@ -618,98 +619,116 @@ export default function ChatPane(props: PaneProps) {
       </Group>
 
       <Group {...props} title="Read aloud" ids={READ_ALOUD}>
-        <Row {...props} id="read-aloud-voice" label="Voice">
-          <div class={styles.control}>
-            <Select
-              class={styles.voiceSelect}
-              options={voiceOptions()}
-              value={voiceStatus().installed ? shownVoice() : ""}
-              onChange={(value) => setSpeech({ voice: value || null })}
-              disabled={!voiceStatus().installed}
-              aria-labelledby={rowLabelId("read-aloud-voice")}
-            />
-            <Show when={voiceStatus().installed}>
-              <IconButton
-                size="sm"
-                icon={<Icon icon={Play} />}
-                tooltip="Hear this voice"
-                onClick={() => void preview(settings.speech.voice, SAMPLE)}
+        <Show
+          when={LOCAL_SPEECH}
+          fallback={
+            <Row {...props} id="read-aloud-model" label="Voice model">
+              <span class={styles.modelSize}>Needs an Apple Silicon Mac</span>
+            </Row>
+          }
+        >
+          <Row {...props} id="read-aloud-voice" label="Voice">
+            <div class={styles.control}>
+              <Select
+                class={styles.voiceSelect}
+                options={voiceOptions()}
+                value={voiceStatus().installed ? shownVoice() : ""}
+                onChange={(value) => setSpeech({ voice: value || null })}
+                disabled={!voiceStatus().installed}
+                aria-labelledby={rowLabelId("read-aloud-voice")}
               />
-            </Show>
-          </div>
-        </Row>
+              <Show when={voiceStatus().installed}>
+                <IconButton
+                  size="sm"
+                  icon={<Icon icon={Play} />}
+                  tooltip="Hear this voice"
+                  onClick={() => void preview(settings.speech.voice, SAMPLE)}
+                />
+              </Show>
+            </div>
+          </Row>
 
-        <Row {...props} id="read-aloud-rate" label="Speed">
-          <div class={styles.control}>
-            <Slider
-              min={RATE_MIN}
-              max={RATE_MAX}
-              step={RATE_STEP}
-              value={settings.speech.rate}
-              onChange={(rate) => setSpeech({ rate })}
-              aria-label="Speed"
-            />
-            <span class={styles.numField}>{settings.speech.rate.toFixed(1)}x</span>
-          </div>
-        </Row>
-
-        <Row {...props} id="read-aloud-model" label="Voice model">
-          <ModelControl store={voiceDownloads} noun="voice model" onDelete={() => setConfirmingDelete(true)} />
-        </Row>
-
-        <Row {...props} id="read-aloud-pronunciation" label="Pronunciation" hint={pronunciationHint()}>
-          <div class={styles.control}>
-            <Show
-              when={voiceStatus().espeak}
-              fallback={
-                <Show when={voiceStatus().brew} fallback={<span class={styles.modelSize}>Not installed</span>}>
-                  <Button size="sm" onClick={() => void runEspeak("install")}>
-                    Install espeak-ng
-                  </Button>
-                </Show>
-              }
-            >
-              <span class={styles.modelName}>espeak-ng</span>
-              <IconButton
-                size="sm"
-                icon={<Icon icon={Trash2} />}
-                tooltip="Uninstall espeak-ng"
-                onClick={() => void runEspeak("uninstall")}
+          <Row {...props} id="read-aloud-rate" label="Speed">
+            <div class={styles.control}>
+              <Slider
+                min={RATE_MIN}
+                max={RATE_MAX}
+                step={RATE_STEP}
+                value={settings.speech.rate}
+                onChange={(rate) => setSpeech({ rate })}
+                aria-label="Speed"
               />
-            </Show>
-          </div>
-        </Row>
+              <span class={styles.numField}>{settings.speech.rate.toFixed(1)}x</span>
+            </div>
+          </Row>
 
-        <Show when={confirmingDelete()}>
-          <ConfirmDialog
-            title="Delete the voice?"
-            message="Read aloud needs it. Getting it back means downloading it again."
-            confirmLabel="Delete"
-            danger
-            onConfirm={removeVoice}
-            onCancel={() => setConfirmingDelete(false)}
-          />
+          <Row {...props} id="read-aloud-model" label="Voice model">
+            <ModelControl store={voiceDownloads} noun="voice model" onDelete={() => setConfirmingDelete(true)} />
+          </Row>
+
+          <Row {...props} id="read-aloud-pronunciation" label="Pronunciation" hint={pronunciationHint()}>
+            <div class={styles.control}>
+              <Show
+                when={voiceStatus().espeak}
+                fallback={
+                  <Show when={voiceStatus().brew} fallback={<span class={styles.modelSize}>Not installed</span>}>
+                    <Button size="sm" onClick={() => void runEspeak("install")}>
+                      Install espeak-ng
+                    </Button>
+                  </Show>
+                }
+              >
+                <span class={styles.modelName}>espeak-ng</span>
+                <IconButton
+                  size="sm"
+                  icon={<Icon icon={Trash2} />}
+                  tooltip="Uninstall espeak-ng"
+                  onClick={() => void runEspeak("uninstall")}
+                />
+              </Show>
+            </div>
+          </Row>
+
+          <Show when={confirmingDelete()}>
+            <ConfirmDialog
+              title="Delete the voice?"
+              message="Read aloud needs it. Getting it back means downloading it again."
+              confirmLabel="Delete"
+              danger
+              onConfirm={removeVoice}
+              onCancel={() => setConfirmingDelete(false)}
+            />
+          </Show>
         </Show>
       </Group>
 
       <Group {...props} title="Dictation" ids={DICTATION}>
-        <Row {...props} id="dictation-model" label="Model" hint={dictationHint()}>
-          <ModelControl
-            store={dictationDownloads}
-            noun="dictation model"
-            onDelete={() => setConfirmingModelDelete(true)}
-          />
-        </Row>
+        <Show
+          when={LOCAL_SPEECH}
+          fallback={
+            <Row {...props} id="dictation-model" label="Model">
+              <span class={styles.modelSize}>Needs an Apple Silicon Mac</span>
+            </Row>
+          }
+        >
+          <Row {...props} id="dictation-model" label="Model" hint={dictationHint()}>
+            <ModelControl
+              store={dictationDownloads}
+              noun="dictation model"
+              onDelete={() => setConfirmingModelDelete(true)}
+            />
+          </Row>
 
-        <Show when={confirmingModelDelete()}>
-          <ConfirmDialog
-            title="Delete the dictation model?"
-            message="Dictation needs it. Getting it back means downloading it again."
-            confirmLabel="Delete"
-            danger
-            onConfirm={removeModel}
-            onCancel={() => setConfirmingModelDelete(false)}
-          />
+          <Show when={confirmingModelDelete()}>
+            <ConfirmDialog
+              title="Delete the dictation model?"
+              message="Dictation needs it. Getting it back means downloading it again."
+              confirmLabel="Delete"
+              danger
+              onConfirm={removeModel}
+              onCancel={() => setConfirmingModelDelete(false)}
+            />
+          </Show>
         </Show>
       </Group>
     </>

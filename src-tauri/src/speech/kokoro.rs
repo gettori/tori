@@ -4,11 +4,10 @@ use std::path::{Path, PathBuf};
 use ort::session::Session;
 use ort::value::Tensor;
 
+use super::models::SAMPLE_RATE;
 use super::queue::Voice;
 use super::runtime;
 use super::text::{split, Phonemizer};
-
-pub const SAMPLE_RATE: u32 = 24_000;
 
 // Kokoro takes 510 tokens a pass, but memory grows with the pass: 150 keeps
 // a read near 2 GB where full 510 token passes peak at 3.

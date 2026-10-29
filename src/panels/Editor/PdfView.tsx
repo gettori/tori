@@ -15,6 +15,7 @@ import {
   scrollTopFor,
   type PageSize,
 } from "./pdfLayout";
+import { LOCAL_SPEECH } from "../../utils/localSpeech";
 import { readSelection as speakSelection } from "../../utils/speech";
 import styles from "./PdfView.module.css";
 
@@ -570,7 +571,7 @@ function PdfDocumentView(props: {
           root={() => scroller}
           actions={[
             { label: "Quote", run: (text) => void quote(text) },
-            { label: "Read", run: (text) => void readAloud(text) },
+            ...(LOCAL_SPEECH ? [{ label: "Read", run: (text: string) => void readAloud(text) }] : []),
           ]}
         />
       </Show>
