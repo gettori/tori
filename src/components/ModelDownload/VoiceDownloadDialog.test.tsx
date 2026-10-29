@@ -37,7 +37,7 @@ vi.mock("../../panels/Settings/settingsStore", () => ({
 }));
 
 const { read, stop } = await import("../../utils/speech");
-const { closeDialog } = await import("../../utils/voiceDownload");
+const { dismissAsk } = await import("../../utils/voiceDownload");
 const { default: VoiceDownloadDialog } = await import("./VoiceDownloadDialog");
 
 const landed = () => {
@@ -51,7 +51,7 @@ const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
 beforeEach(async () => {
   backend.installed = false;
   await stop();
-  closeDialog();
+  dismissAsk();
   invoke.mockClear();
   render(() => <VoiceDownloadDialog />);
 });

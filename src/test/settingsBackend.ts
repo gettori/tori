@@ -7,7 +7,7 @@ import { DEFAULT_SETTINGS } from "../panels/Settings/settingsStore";
 
 const LISTS = new Set(["lsp_health", "trusted_projects", "untrusted_projects", "speech_voices"]);
 
-const NO_VOICE = { installed: false, model: null, downloading: null, sizes: [] };
+const NOT_DOWNLOADED = { installed: false, model: null, downloading: null, sizes: [] };
 
 export const unstubbed = (cmd: string): unknown =>
-  cmd === "speech_status" ? NO_VOICE : LISTS.has(cmd) ? [] : DEFAULT_SETTINGS;
+  cmd === "speech_status" || cmd === "dictation_status" ? NOT_DOWNLOADED : LISTS.has(cmd) ? [] : DEFAULT_SETTINGS;

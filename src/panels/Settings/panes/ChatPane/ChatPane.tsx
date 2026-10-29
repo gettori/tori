@@ -15,6 +15,15 @@ import {
   sizeLabel,
   status as voiceStatus,
 } from "../../../../utils/voiceDownload";
+import {
+  CREDIT,
+  askToDownload as askForDictation,
+  cancelDownload as cancelDictationDownload,
+  deleteModel,
+  refresh as refreshDictation,
+  sizeLabel as dictationSizeLabel,
+  status as dictationStatus,
+} from "../../../../utils/dictationDownload";
 import ConfirmDialog from "../../../../components/Dialogs/ConfirmDialog";
 import {
   Group,
@@ -96,6 +105,7 @@ const NOTIFICATIONS = [
 ];
 const SAFETY = ["checkpoints"];
 const READ_ALOUD = ["read-aloud-model", "read-aloud-pronunciation", "read-aloud-voice", "read-aloud-rate"];
+const DICTATION = ["dictation-model"];
 
 const RATE_MIN = 0.5;
 const RATE_MAX = 2;
@@ -128,6 +138,7 @@ const toast = (message: string) => emitWith<ToastEvent>(TOAST, { message, kind: 
 
 export default function ChatPane(props: PaneProps) {
   void refreshVoice().catch((e) => toast(`Couldn't check the downloaded voice: ${String(e)}`));
+  void refreshDictation().catch((e) => toast(`Couldn't check the dictation model: ${String(e)}`));
   const [voices] = createResource(
     () => voiceStatus().model ?? false,
     () =>
@@ -146,6 +157,11 @@ export default function ChatPane(props: PaneProps) {
     void deleteVoice().catch((e) => toast(`Couldn't delete the voice: ${String(e)}`));
   };
   const downloading = () => voiceStatus().downloading;
+  const [confirmingModelDelete, setConfirmingModelDelete] = createSignal(false);
+  const removeModel = () => {
+    setConfirmingModelDelete(false);
+    void deleteModel().catch((e) => toast(`Couldn't delete the dictation model: ${String(e)}`));
+  };
   const voiceOptions = (): SelectOption[] => [
     { value: "", label: `${defaultVoice().name} (en-US)` },
     ...(voices() ?? [])
@@ -612,6 +628,66 @@ export default function ChatPane(props: PaneProps) {
             <span class={styles.numField}>{settings.speech.rate.toFixed(1)}x</span>
           </div>
         </Row>
+      </Group>
+
+      <Group {...props} title="Dictation" ids={DICTATION}>
+        <Row {...props} id="dictation-model" label="Model">
+          <div class={styles.control}>
+            <Show
+              when={dictationStatus().downloading}
+              fallback={
+                <Show
+                  when={dictationStatus().model}
+                  fallback={
+                    <>
+                      <span>Not downloaded</span>
+                      <Button size="sm" onClick={() => askForDictation()}>
+                        Download
+                      </Button>
+                    </>
+                  }
+                >
+                  {(size) => (
+                    <>
+                      <span>{dictationSizeLabel(size())}</span>
+                      <Show when={size() === "parakeet"}>
+                        <span>{CREDIT}</span>
+                      </Show>
+                      <Button size="sm" onClick={() => askForDictation()}>
+                        Change
+                      </Button>
+                      <Button size="sm" variant="danger" onClick={() => setConfirmingModelDelete(true)}>
+                        Delete
+                      </Button>
+                    </>
+                  )}
+                </Show>
+              }
+            >
+              {(p) => (
+                <>
+                  <span>
+                    Downloading, {mb(p().done)} of {mb(p().total)} MB
+                  </span>
+                  <Button size="sm" onClick={() => void cancelDictationDownload()}>
+                    Cancel
+                  </Button>
+                </>
+              )}
+            </Show>
+          </div>
+        </Row>
+
+        <Show when={confirmingModelDelete()}>
+          <ConfirmDialog
+            title="Delete the dictation model?"
+            message="Dictation needs it. Getting it back means downloading it again."
+            confirmLabel="Delete"
+            danger
+            onConfirm={removeModel}
+            onCancel={() => setConfirmingModelDelete(false)}
+          />
+        </Show>
       </Group>
     </>
   );

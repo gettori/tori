@@ -254,8 +254,8 @@ const KEPT = new Map<string, Kept>([
   [
     "panels/Settings/panes/ChatPane/ChatPane.tsx",
     {
-      count: 6,
-      reason: `five ${GROUP_HEADING}s, plus the \`ConfirmDialog\` heading Delete asks through before removing the downloaded voice`,
+      count: 8,
+      reason: `six ${GROUP_HEADING}s, plus the two \`ConfirmDialog\` headings Delete asks through before removing the downloaded voice or dictation model`,
     },
   ],
   ["panels/Settings/panes/EditorPane/EditorPane.tsx", { count: 2, reason: GROUP_HEADING }],
@@ -271,7 +271,7 @@ const KEPT = new Map<string, Kept>([
   ],
   ["components/Autopilot/DecisionCard.tsx", { count: 1, reason: TRUNCATION }],
   ["components/Dialogs/RebaseDialog.tsx", { count: 2, reason: `${HEADING}, plus one ${TRUNCATION}` }],
-  ["components/VoiceDownload/VoiceDownloadDialog.tsx", { count: 1, reason: HEADING }],
+  ["components/ModelDownload/ModelDownloadDialog.tsx", { count: 1, reason: HEADING }],
   [
     "panels/Editor/FilesPanel/ScriptsSection.tsx",
     {
