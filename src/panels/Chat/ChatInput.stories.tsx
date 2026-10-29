@@ -1122,9 +1122,14 @@ export const TooltipBackgroundTask: Story = {
   play: hover('[class*="laneStill"]'),
 };
 
-export const TooltipInlineChip: Story = {
-  args: { attachments: [IMAGE_1, PR_CHIP], draft: "Compare [Image 1] with what [PR 412] changed." },
-  play: hover('.cm-chip button[aria-label^="Preview [PR 412]"]'),
+/** Hovering a token in the text lights the attachment it names above. */
+export const InlineTokenPointsAtAttachment: Story = {
+  args: { attachments: [IMAGE_1, FILE_1, PR_CHIP], draft: "Compare [Image 1] with what [PR 412] changed." },
+  play: async ({ canvasElement }) => {
+    canvasElement
+      .querySelector('.cm-chip button[aria-label^="Preview [PR 412]"]')
+      ?.dispatchEvent(new MouseEvent("mouseenter"));
+  },
 };
 
 export const TooltipQueuedMessage: Story = {

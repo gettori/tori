@@ -1004,13 +1004,15 @@ export default function Composer(props: {
     const path = block.type === "fileRef" ? block.path : null;
     const missing = () => !!path && missingPaths().has(path);
     return (
-      <Tooltip
-        as="button"
+      <button
         type="button"
         class={styles.inlineChip}
         classList={{ [styles.inlineChipMissing]: missing() }}
-        label={<Tip {...attachmentTip(block, { missing: missing() })} />}
         aria-label={`Preview ${chipLabel(block)}`}
+        // No tooltip of its own: hovering lights the attachment it names above,
+        // which already says everything a tooltip would.
+        onMouseEnter={() => setPointing(p.a.id)}
+        onMouseLeave={() => setPointing(null)}
         // Out of the tab order: the field is one stop, and the chip's file is
         // reachable from its tile above.
         tabIndex={-1}
@@ -1024,13 +1026,15 @@ export default function Composer(props: {
         onClick={() => setPreviewing({ block, missing: missing() })}
       >
         {p.label}
-      </Tooltip>
+      </button>
     );
   };
 
   const tiles = createMemo(() => props.attachments.filter((a) => isTile(a.block)));
   const pills = createMemo(() => props.attachments.filter((a) => !isTile(a.block)));
   const [previewing, setPreviewing] = createSignal<{ block: ContentBlock; missing: boolean } | null>(null);
+  // The attachment a token in the text is being hovered for.
+  const [pointing, setPointing] = createSignal<string | null>(null);
   // Files gone from disk since they were attached, shared by a chip's tile and
   // its token in the text so the two never disagree.
   const [missingPaths, setMissingPaths] = createSignal<ReadonlySet<string>>(new Set());
@@ -1075,7 +1079,11 @@ export default function Composer(props: {
     return (
       <div
         class={styles.attachment}
-        classList={{ [styles.attachmentTile]: tile, [styles.attachmentMissing]: missing() }}
+        classList={{
+          [styles.attachmentTile]: tile,
+          [styles.attachmentMissing]: missing(),
+          [styles.attachmentPointed]: pointing() === p.a.id,
+        }}
       >
         {/* Two controls, because the chip means two things: look at it, or take
             it away. Cmd+click keeps the tile's other job of naming it in the
