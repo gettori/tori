@@ -136,6 +136,9 @@ export function recordReadings(
   });
   if (!changed) return;
   scheduleSave();
+  // A chat's frame is already recorded by the daemon, under the session's claim.
+  // Sending it again from here filed it a second time under this view's guess.
+  if (source === "sessions") return;
   // Rust decides whether a window moved; this is every sample.
   const readings = incoming.map(({ kind, utilization, resetsAt }) => ({ kind, utilization, resetsAt }));
   invoke("rpc_quota", { agent: agentId, profile, readings }).catch(() => {});
