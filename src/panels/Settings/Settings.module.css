@@ -764,7 +764,19 @@
   .agentRow:focus-visible {
     outline: none;
   }
+  /* The button's hit area stretched over the whole card, padding and gap
+     included: the box hovers as one thing, so all of it has to open. */
+  .agentRowWrap {
+    position: relative;
+  }
+  .agentRow::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
   .agentToggle {
+    position: relative;
+    z-index: 1;
     justify-self: end;
   }
   /* The logo, with the status dot on its corner. Spans both rows so the mark
