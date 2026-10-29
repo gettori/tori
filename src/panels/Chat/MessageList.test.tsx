@@ -1173,8 +1173,8 @@ describe("Read on a reply", () => {
     fireEvent.click(screen.getByRole("button", { name: "Read aloud" }));
     expect(onRead).toHaveBeenCalledWith(expect.any(HTMLElement), "t1");
     expect(speakableChunks(onRead.mock.calls[0][0])).toEqual([
-      { text: "First part.", block: 0 },
-      { text: "Second part.", block: 1 },
+      { text: "First part.", block: 0, pause: 0 },
+      { text: "Second part.", block: 1, pause: 0 },
     ]);
   });
 });
@@ -1209,6 +1209,6 @@ describe("the last reply", () => {
     const { container } = render(() => list());
     const last = lastReply(ITEMS, container);
     expect(last?.id).toBe("t3");
-    expect(speakableChunks(last!.body)).toEqual([{ text: "answer 3", block: 0 }]);
+    expect(speakableChunks(last!.body)).toEqual([{ text: "answer 3", block: 0, pause: 0 }]);
   });
 });

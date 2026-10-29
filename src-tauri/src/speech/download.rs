@@ -5,8 +5,15 @@ use std::time::Duration;
 
 use sha2::{Digest, Sha256};
 
-const BASE: &str =
+const KOKORO: &str =
     "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/1939ad2a8e416c0acfeecc08a694d14ef25f2231";
+const KITTEN: &str =
+    "https://huggingface.co/KittenML/kitten-tts-nano-0.8-fp32/resolve/7a1db645b1f3ab9420761d87428e042b9cec3f26";
+
+const KITTEN_VOICES: (&str, u64) = (
+    "8aa7cee235abb0739cb51e6559685f65a4dacd95568833d05699b1633f519b3f",
+    3_278_902,
+);
 
 pub const CANCELLED: &str = "cancelled";
 
@@ -15,20 +22,30 @@ pub struct Size {
     pub file: &'static str,
     sha256: &'static str,
     bytes: u64,
+    kitten: bool,
 }
 
-pub const SIZES: [Size; 2] = [
+pub const SIZES: [Size; 3] = [
     Size {
         id: "int8",
         file: "model_quantized.onnx",
         sha256: "fbae9257e1e05ffc727e951ef9b9c98418e6d79f1c9b6b13bd59f5c9028a1478",
         bytes: 92_361_116,
+        kitten: false,
     },
     Size {
         id: "full",
         file: "model.onnx",
         sha256: "8fbea51ea711f2af382e88c833d9e288c6dc82ce5e98421ea61c058ce21a34cb",
         bytes: 325_532_232,
+        kitten: false,
+    },
+    Size {
+        id: "fast",
+        file: super::kitten::MODEL,
+        sha256: "320564d2615f235de972ca27a7f39551c94185cfa24ca85b07a29084135f1e5e",
+        bytes: 56_767_095,
+        kitten: true,
     },
 ];
 
@@ -161,10 +178,10 @@ pub struct Pinned {
     pub bytes: u64,
 }
 
-fn pinned(path: String, from: &str, sha256: &str, bytes: u64) -> Pinned {
+fn pinned(base: &str, path: String, from: &str, sha256: &str, bytes: u64) -> Pinned {
     Pinned {
         path,
-        url: format!("{BASE}/{from}"),
+        url: format!("{base}/{from}"),
         sha256: sha256.into(),
         bytes,
     }
@@ -172,7 +189,20 @@ fn pinned(path: String, from: &str, sha256: &str, bytes: u64) -> Pinned {
 
 pub fn manifest(size: &str) -> Option<Vec<Pinned>> {
     let model = SIZES.iter().find(|s| s.id == size)?;
+    if model.kitten {
+        return Some(vec![
+            pinned(
+                KITTEN,
+                super::kitten::VOICES_FILE.into(),
+                super::kitten::VOICES_FILE,
+                KITTEN_VOICES.0,
+                KITTEN_VOICES.1,
+            ),
+            pinned(KITTEN, model.file.into(), model.file, model.sha256, model.bytes),
+        ]);
+    }
     let mut files = vec![pinned(
+        KOKORO,
         "tokenizer.json".into(),
         "tokenizer.json",
         TOKENIZER.0,
@@ -180,15 +210,30 @@ pub fn manifest(size: &str) -> Option<Vec<Pinned>> {
     )];
     files.extend(VOICES.iter().map(|(name, sha)| {
         let path = format!("voices/{name}.bin");
-        pinned(path.clone(), &path, sha, VOICE_BYTES)
+        pinned(KOKORO, path.clone(), &path, sha, VOICE_BYTES)
     }));
     files.push(pinned(
+        KOKORO,
         model.file.into(),
         &format!("onnx/{}", model.file),
         model.sha256,
         model.bytes,
     ));
     Some(files)
+}
+
+pub fn install_files(size: &Size) -> Vec<&'static str> {
+    if size.kitten {
+        vec![size.file, super::kitten::VOICES_FILE]
+    } else {
+        vec!["tokenizer.json", size.file]
+    }
+}
+
+pub fn installed(dir: &Path) -> Option<&'static Size> {
+    SIZES
+        .iter()
+        .find(|s| install_files(s).iter().all(|f| dir.join(f).is_file()))
 }
 
 pub type Fetch<'a> = &'a dyn Fn(&str) -> Result<Box<dyn Read>, String>;
@@ -286,19 +331,29 @@ fn swap_in(dir: &Path, staging: &Path, files: &[Pinned]) -> Result<(), String> {
         std::fs::create_dir_all(to.parent().unwrap()).map_err(|e| e.to_string())?;
         std::fs::rename(staging.join(&f.path), &to).map_err(|e| format!("cannot move {} into place: {e}", f.path))?;
     }
-    for size in &SIZES {
-        if !files.iter().any(|f| f.path == size.file) {
-            remove_file(&dir.join(size.file))?;
+    for other in every_file() {
+        if !files.iter().any(|f| f.path == other) {
+            remove_file(&dir.join(&other))?;
         }
     }
     Ok(())
 }
 
+fn every_file() -> Vec<String> {
+    let mut all: Vec<String> = SIZES
+        .iter()
+        .flat_map(|s| manifest(s.id).unwrap())
+        .map(|f| f.path)
+        .collect();
+    all.sort();
+    all.dedup();
+    all
+}
+
 pub fn remove(dir: &Path) -> Result<(), String> {
-    for size in &SIZES {
-        remove_file(&dir.join(size.file))?;
+    for file in every_file() {
+        remove_file(&dir.join(file))?;
     }
-    remove_file(&dir.join("tokenizer.json"))?;
     match std::fs::remove_dir_all(dir.join("voices")) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
         _ => Ok(()),
@@ -341,11 +396,14 @@ mod tests {
     }
 
     fn model(size: &str) -> Vec<(Pinned, Vec<u8>)> {
-        let file_name = SIZES.iter().find(|s| s.id == size).unwrap().file;
+        let size = SIZES.iter().find(|s| s.id == size).unwrap();
+        if size.kitten {
+            return vec![file("voices.npz", &[3; 200]), file(size.file, &[4; 500])];
+        }
         vec![
             file("tokenizer.json", b"{}"),
             file("voices/af_heart.bin", &[1; 300]),
-            file(file_name, &[2; 500]),
+            file(size.file, &[2; 500]),
         ]
     }
 
@@ -369,7 +427,7 @@ mod tests {
     }
 
     fn installed(dir: &Path) -> bool {
-        super::super::installed(dir).is_some()
+        super::installed(dir).is_some()
     }
 
     fn left(dir: &Path) -> Vec<String> {
@@ -404,6 +462,12 @@ mod tests {
             let model = files.last().unwrap();
             assert_eq!(model.path, size.file);
             assert_eq!(model.sha256, size.sha256);
+            if size.kitten {
+                assert!(model.url.ends_with(&format!("/{}", size.file)));
+                assert_eq!(files[0].path, "voices.npz");
+                assert_eq!(files.len(), 2);
+                continue;
+            }
             assert!(model.url.ends_with(&format!("/onnx/{}", size.file)));
             assert!(files.iter().any(|f| f.path == "tokenizer.json"));
             assert_eq!(files.iter().filter(|f| f.path.starts_with("voices/")).count(), 28);
@@ -416,7 +480,7 @@ mod tests {
         for size in &SIZES {
             let dir = temp_dir("bad_hash");
             let mut files = model(size.id);
-            files[2].0.sha256 = "0".repeat(64);
+            files.last_mut().unwrap().0.sha256 = "0".repeat(64);
             let err = run(&dir, &files, &|| false).unwrap_err();
             assert_eq!(err, format!("{}: checksum mismatch", size.file));
             assert_eq!(left(&dir), Vec::<String>::new());
@@ -471,7 +535,15 @@ mod tests {
         run(&dir, &model("int8"), &|| false).unwrap();
         run(&dir, &model("full"), &|| false).unwrap();
         assert_eq!(left(&dir), ["model.onnx", "tokenizer.json", "voices/af_heart.bin"]);
-        assert_eq!(super::super::installed(&dir).map(|(id, _)| id), Some("full"));
+        assert_eq!(super::installed(&dir).map(|s| s.id), Some("full"));
+        run(&dir, &model("fast"), &|| false).unwrap();
+        assert_eq!(left(&dir), [super::super::kitten::MODEL, "voices.npz"]);
+        assert_eq!(super::installed(&dir).map(|s| s.id), Some("fast"));
+        run(&dir, &model("int8"), &|| false).unwrap();
+        assert_eq!(
+            left(&dir),
+            ["model_quantized.onnx", "tokenizer.json", "voices/af_heart.bin"]
+        );
 
         remove(&dir).unwrap();
         assert_eq!(left(&dir), Vec::<String>::new());

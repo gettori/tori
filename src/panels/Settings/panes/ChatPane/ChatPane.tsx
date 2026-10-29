@@ -3,10 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { Play } from "lucide-solid";
 import { homeDir } from "@tauri-apps/api/path";
 import { emitWith, OPEN_JOB, TOAST, type OpenJob, type ToastEvent } from "../../../../utils/events";
-import { DEFAULT_VOICE, preview, voices as listVoices } from "../../../../utils/speech";
+import { preview, voices as listVoices } from "../../../../utils/speech";
 import {
   askToDownload,
   cancelDownload,
+  defaultVoice,
   deleteVoice,
   espeakJob,
   mb,
@@ -131,7 +132,7 @@ export default function ChatPane(props: PaneProps) {
     () => voiceStatus().model ?? false,
     () =>
       listVoices().catch(() => {
-        toast("Couldn't list the downloaded voices, so only Heart is offered.");
+        toast(`Couldn't list the downloaded voices, so only ${defaultVoice().name} is offered.`);
         return [];
       }),
   );
@@ -146,9 +147,9 @@ export default function ChatPane(props: PaneProps) {
   };
   const downloading = () => voiceStatus().downloading;
   const voiceOptions = (): SelectOption[] => [
-    { value: "", label: "Heart (en-US)" },
+    { value: "", label: `${defaultVoice().name} (en-US)` },
     ...(voices() ?? [])
-      .filter((v) => v.id !== DEFAULT_VOICE)
+      .filter((v) => v.id !== defaultVoice().id)
       .map((v) => ({ value: v.id, label: `${v.name} (${v.language})` })),
   ];
   return (

@@ -20,8 +20,6 @@ const speakError = (e: unknown) => (typeof e === "object" && e !== null && "kind
 
 export type Voice = { id: string; name: string; language: string };
 
-export const DEFAULT_VOICE = "af_heart";
-
 /** `pause` is extra silence after the chunk, in milliseconds. */
 export type Chunk = { text: string; block?: number; pause?: number };
 
