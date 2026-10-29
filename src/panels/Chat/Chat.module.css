@@ -2448,6 +2448,25 @@ button.diffHunkHeader:hover {
   cursor: default;
 }
 
+.micRecording {
+  width: auto;
+  gap: var(--tori-space-1);
+  padding: 0 var(--tori-space-2);
+  border-color: var(--danger-border);
+  color: var(--danger-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.micBusy {
+  animation: micSpin 1s linear infinite;
+}
+
+@keyframes micSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* The one primary action in the pane: the brand-gold send circle. */
 .sendButton {
   display: inline-flex;

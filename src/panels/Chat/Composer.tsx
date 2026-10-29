@@ -1,5 +1,17 @@
 import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, untrack, type JSX } from "solid-js";
-import { ArrowUp, Check, CornerDownRight, GripVertical, Pencil, Plus, Square, SquarePen, X } from "lucide-solid";
+import {
+  ArrowUp,
+  Check,
+  CornerDownRight,
+  GripVertical,
+  LoaderCircle,
+  Mic,
+  Pencil,
+  Plus,
+  Square,
+  SquarePen,
+  X,
+} from "lucide-solid";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
@@ -45,6 +57,13 @@ import { sessionTitle } from "../../utils/sessionMention";
 import { navLevel, type NavProject, type NavSpace, type NavUnit } from "../../utils/mentionNavigator";
 import styles from "./Chat.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
+import {
+  dropActive as dropDictation,
+  clockLabel,
+  seconds as dictationSeconds,
+  state as dictation,
+  toggle as toggleDictation,
+} from "../../utils/dictation";
 
 type NavRow =
   | { kind: "space"; key: string; space: NavSpace }
@@ -690,6 +709,13 @@ export default function Composer(props: {
     setInputText(`${before}${insert}${after}`, caret + insert.length - trail.length);
   }
 
+  function insertSpoken(spoken: string) {
+    const caret = input?.selectionStart ?? text().length;
+    const before = text().slice(0, caret);
+    const lead = before && !/\s$/.test(before) ? " " : "";
+    setInputText(`${before}${lead}${spoken}${text().slice(caret)}`, caret + lead.length + spoken.length);
+  }
+
   /** Put a block (a quote) in at the caret, starting on its own line. */
   function insertBlock(block: string) {
     const caret = input?.selectionStart ?? text().length;
@@ -967,6 +993,10 @@ export default function Composer(props: {
       if (input && insideFence(input.value, input.selectionStart ?? input.value.length)) return;
       e.preventDefault();
       submit(e.altKey && props.running);
+      return;
+    }
+    if (e.key === "Escape" && dropDictation()) {
+      e.preventDefault();
       return;
     }
     if (e.key === "Escape" && props.editing) {
@@ -1494,6 +1524,39 @@ export default function Composer(props: {
               <Icon icon={SquarePen} />
             </Tooltip>
           </Show>
+          <Tooltip
+            as="button"
+            type="button"
+            class={styles.attachButton}
+            classList={{ [styles.micRecording]: dictation() === "recording" }}
+            label={
+              dictation() === "idle"
+                ? "Dictate a message"
+                : dictation() === "recording"
+                  ? "Stop and put the words in the message"
+                  : "Turning what you said into text"
+            }
+            aria-label={
+              dictation() === "idle" ? "Dictate" : dictation() === "recording" ? "Stop dictating" : "Transcribing"
+            }
+            aria-busy={dictation() === "transcribing"}
+            disabled={props.disabled || !!props.linked}
+            onClick={() => void toggleDictation(insertSpoken)}
+          >
+            <Show
+              when={dictation() === "transcribing"}
+              fallback={
+                <>
+                  <Icon icon={Mic} />
+                  <Show when={dictation() === "recording"}>
+                    <span>{clockLabel(dictationSeconds())}</span>
+                  </Show>
+                </>
+              }
+            >
+              <Icon icon={LoaderCircle} class={styles.micBusy} />
+            </Show>
+          </Tooltip>
           {props.controls}
           <div class={styles.composerSpacer} />
           <Show when={approxTokens(text()) >= TOKEN_READOUT_FROM}>

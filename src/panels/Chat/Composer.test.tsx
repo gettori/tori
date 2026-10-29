@@ -9,7 +9,17 @@ import { onWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
 
 // The chip draws a stored file through the asset protocol, which needs the
 // Tauri internals the webview injects and jsdom has not.
-vi.mock("@tauri-apps/api/core", () => ({ convertFileSrc: (p: string) => `asset://${p}` }));
+const mic = vi.hoisted(() => ({ said: null as string | null, release: null as null | (() => void) }));
+vi.mock("@tauri-apps/api/core", () => ({
+  convertFileSrc: (p: string) => `asset://${p}`,
+  invoke: async (cmd: string) => {
+    if (cmd !== "dictation_stop") return undefined;
+    await new Promise<void>((resolve) => (mic.release = resolve));
+    return { kind: "text", text: mic.said };
+  },
+}));
+vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
+import { dropActive as dropDictation } from "../../utils/dictation";
 
 // The first mounted tests in the repo. Three phases shipped composer behaviour
 // that was reasoned rather than rendered; these are the things that reasoning
@@ -1575,5 +1585,54 @@ describe("the prompt stash", () => {
     expect(onDiscardStash).toHaveBeenCalledWith("new");
     fireEvent.keyDown(input, { key: "Escape" });
     expect(container.querySelector('[aria-label="Stashed drafts"]')).toBeNull();
+  });
+});
+
+describe("dictating into the box", () => {
+  afterEach(() => dropDictation());
+  const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("records on a press, transcribes on the next, and puts the words in after a space", async () => {
+    const { input, getByLabelText, queryByLabelText } = setup({ draft: "hello" });
+    input.setSelectionRange(5, 5);
+    fireEvent.click(getByLabelText("Dictate"));
+    await settled();
+    const stop = getByLabelText("Stop dictating");
+    expect(stop.textContent).toBe("0:00");
+
+    mic.said = "there, world";
+    fireEvent.click(stop);
+    await settled();
+    expect(getByLabelText("Transcribing").getAttribute("aria-busy")).toBe("true");
+    mic.release?.();
+    await settled();
+    expect(input.value).toBe("hello there, world");
+    expect(input.selectionStart).toBe("hello there, world".length);
+    expect(queryByLabelText("Dictate")).toBeTruthy();
+  });
+
+  it("adds no space at the start of the text or of a line", async () => {
+    const { input, getByLabelText } = setup({ draft: "first\n" });
+    input.setSelectionRange(6, 6);
+    fireEvent.click(getByLabelText("Dictate"));
+    await settled();
+    mic.said = "second";
+    fireEvent.click(getByLabelText("Stop dictating"));
+    await settled();
+    mic.release?.();
+    await settled();
+    expect(input.value).toBe("first\nsecond");
+  });
+
+  it("drops the recording on Escape instead of interrupting the turn", async () => {
+    const { input, getByLabelText, onInterrupt } = setup({ running: true });
+    fireEvent.click(getByLabelText("Dictate"));
+    await settled();
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(onInterrupt).not.toHaveBeenCalled();
+    expect(getByLabelText("Dictate")).toBeTruthy();
+
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(onInterrupt).toHaveBeenCalledTimes(1);
   });
 });

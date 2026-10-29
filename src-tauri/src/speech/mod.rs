@@ -22,6 +22,7 @@ use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use dictation::capture::{self, Capture};
 use dictation::Dictation;
 use queue::{Engine, Models, Out};
 
@@ -77,6 +78,7 @@ pub struct SpeechState {
     dictation: Arc<Dictation>,
     dictation_generation: Arc<AtomicU64>,
     dictation_download: Slot,
+    capture: Mutex<Option<Capture>>,
 }
 
 impl Default for SpeechState {
@@ -90,14 +92,15 @@ impl Default for SpeechState {
             dictation: Arc::new(Dictation::new(load, dictation_generation.clone())),
             dictation_generation,
             dictation_download: Arc::default(),
+            capture: Mutex::default(),
         }
     }
 }
 
 impl SpeechState {
-    fn dictation_with_tick(&self, app: &AppHandle) -> &Dictation {
+    fn dictation_with_tick(&self, app: &AppHandle) -> Arc<Dictation> {
         self.engine(app);
-        &self.dictation
+        self.dictation.clone()
     }
 
     fn engine(&self, app: &AppHandle) -> &Engine {
@@ -226,6 +229,27 @@ fn sizes(set: &download::Set) -> Vec<SizeInfo> {
 pub enum SpeakError {
     NotDownloaded,
     Failed { error: String },
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum Transcript {
+    Silent,
+    Text { text: String },
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum DictationError {
+    NotDownloaded,
+    Permission,
+    Failed { error: String },
+}
+
+impl From<String> for DictationError {
+    fn from(error: String) -> Self {
+        DictationError::Failed { error }
+    }
 }
 
 fn voices(dir: &Path) -> Vec<SpeechVoice> {
@@ -432,8 +456,51 @@ pub fn speech_delete(state: State<SpeechState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn dictation_transcribe(app: AppHandle, state: State<SpeechState>, samples: Vec<f32>) -> Result<String, String> {
-    state.dictation_with_tick(&app).transcribe(&samples)
+pub fn dictation_start(state: State<SpeechState>) -> Result<(), DictationError> {
+    download::DICTATION
+        .installed(&dictation::dir())
+        .ok_or(DictationError::NotDownloaded)?;
+    if capture::microphone_denied() {
+        return Err(DictationError::Permission);
+    }
+    let mut slot = state.capture.lock().unwrap();
+    if let Some(stale) = slot.take() {
+        capture::stop(stale, false)?;
+    }
+    *slot = Some(capture::start()?);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn dictation_stop(app: AppHandle, state: State<'_, SpeechState>) -> Result<Transcript, DictationError> {
+    let running = state
+        .capture
+        .lock()
+        .unwrap()
+        .take()
+        .ok_or_else(|| DictationError::from("nothing is recording".to_string()))?;
+    let dictation = state.dictation_with_tick(&app);
+    tauri::async_runtime::spawn_blocking(move || {
+        let clip = capture::stop(running, true)?;
+        if capture::microphone_denied() {
+            return Err(DictationError::Permission);
+        }
+        if capture::peak(&clip.samples) < capture::QUIET {
+            return Ok(Transcript::Silent);
+        }
+        let text = dictation.transcribe(&capture::to_engine_rate(&clip))?;
+        Ok(Transcript::Text { text })
+    })
+    .await
+    .map_err(|e| DictationError::from(e.to_string()))?
+}
+
+#[tauri::command]
+pub fn dictation_cancel(state: State<SpeechState>) -> Result<(), String> {
+    match state.capture.lock().unwrap().take() {
+        Some(running) => capture::stop(running, false).map(drop),
+        None => Ok(()),
+    }
 }
 
 #[tauri::command]
