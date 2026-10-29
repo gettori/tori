@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { wholeHistory } from "../../test/history";
+import { composerInput } from "./__fixtures__/composerInput";
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -310,7 +311,8 @@ describe("cancelling from the chat", () => {
 
   it("clears the arm when the user sends", async () => {
     await armed();
-    const box = await screen.findByRole("textbox");
+    await screen.findByRole("textbox");
+    const box = composerInput();
     fireEvent.input(box, { target: { value: "never mind" } });
     fireEvent.keyDown(box, { key: "Enter" });
     await waitFor(() => expect(armedFor("s-a")).toBeNull());

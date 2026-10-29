@@ -128,7 +128,7 @@ export default function PlanCard(props: { items: readonly PlanItem[] }) {
             class={styles.planHead}
             label={
               <Tip
-                title={`Plan, ${done()} of ${props.items.length} steps done`}
+                heading={`Plan, ${done()} of ${props.items.length} steps done`}
                 lines={[active() ? `Now: ${active()!.text}` : "No step in progress"]}
                 hint="Click to fold it into a pill on the input"
               />

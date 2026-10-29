@@ -1,4 +1,5 @@
 import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, untrack, type JSX } from "solid-js";
+import { render } from "solid-js/web";
 import {
   ArrowUp,
   AudioWaveform,
@@ -26,6 +27,7 @@ import type { StashEntry } from "./promptStash";
 import { ago } from "../../utils/relativeTime";
 import FileIcon from "../../seti/FileIcon";
 import AttachmentPreview from "./AttachmentPreview";
+import { createComposerField, type ComposerField } from "./composerField";
 import Tip, { excerptOf } from "./Tip";
 import { attachmentTip, isTile, thumbSrc, tileName, tileNote, tokenOf } from "./attachmentInfo";
 import { DRAG_ABS_PATH_MIME, DRAG_PATH_MIME, OPEN_IN_EDITOR, emitWith, type OpenInEditor } from "../../utils/events";
@@ -97,11 +99,6 @@ function navDesc(row: NavRow): string | null {
 // Sessions above files in a bare `@`, few enough that files stay in view;
 // `@session/` lists the rest.
 const MIXED_SESSIONS = 5;
-const MAX_ROWS = 9;
-// The floor is what the box returns to after every send, so it is the height
-// the composer is looked at for most of a session: a prompt worth writing is a
-// paragraph rather than a search box's line.
-const MIN_ROWS = 3;
 
 // A paste past either of these is a document, not a sentence: it becomes a
 // file chip so the box stays readable and the agent reads it off disk.
@@ -331,7 +328,8 @@ export default function Composer(props: {
   // file is still there: coming back from the tree is when one gets deleted.
   const [focusTick, setFocusTick] = createSignal(0);
   let picker: HTMLInputElement | undefined;
-  let input: HTMLTextAreaElement | undefined;
+  let field: ComposerField | undefined;
+  let fieldHost: HTMLDivElement | undefined;
   let filesRequested = false;
   let prsRequested = false;
   // The `@` the session list was last read for, so each new mention reads it
@@ -341,73 +339,6 @@ export default function Composer(props: {
   // A turn of nothing but a file reference is a real thing to send ("look at
   // this"), so an attachment is enough on its own.
   const hasContent = () => !!text().trim() || props.attachments.length > 0;
-
-  // Auto-grow: three lines at rest, nine at most, then it scrolls.
-  //
-  // The size is written as `rows`, not as a pixel height, because rows is
-  // denominated in line boxes: change the chat font size (or zoom) with a draft
-  // sitting in the composer and the box re-flows to suit on its own. A pixel
-  // height measured at the old font is simply wrong at the new one, and nothing
-  // would recompute it until the next keystroke.
-  //
-  // It still has to *measure*, because a prompt is mostly prose without hard
-  // newlines and only layout knows how many lines it soft-wrapped to.
-  //
-  // **It measures without collapsing the box first**, which it used to do on
-  // every keystroke: `rows = 1`, read, `rows = n`. Two forced layouts of the
-  // whole pane per character, and the transcript above resized twice in the
-  // same breath for a box that mostly was not changing size at all. The floor
-  // is where a box is if it is not overflowing, so `scrollHeight` against
-  // `clientHeight` answers "does it need to be taller" without moving
-  // anything. Only shrinking still has to measure small, and only from a box
-  // that is already taller than the floor - which is deleting, not typing.
-  function fit() {
-    if (!input) return;
-    const style = getComputedStyle(input);
-    const line = parseFloat(style.lineHeight);
-    const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
-    if (!Number.isFinite(line) || line <= 0) return;
-    const rowsForContent = () =>
-      Math.min(MAX_ROWS, Math.max(MIN_ROWS, Math.round((input!.scrollHeight - padding) / line)));
-    // Overflowing its box: grow to the content, from where it already is.
-    if (input.scrollHeight > input.clientHeight) {
-      input.rows = rowsForContent();
-      return;
-    }
-    // Not overflowing and at the floor: there is nothing smaller to be, so the
-    // measurement is the one that can be skipped outright. Below the floor is
-    // not a size the box is allowed to keep, so it comes back up rather than
-    // being left there.
-    if (input.rows <= MIN_ROWS) {
-      if (input.rows < MIN_ROWS) input.rows = MIN_ROWS;
-      return;
-    }
-    input.rows = MIN_ROWS;
-    input.rows = rowsForContent();
-  }
-
-  // Always, not only for a restored draft. The resting height is one rule's
-  // answer or it is two: the `rows` attribute decided the first paint and
-  // `fit` decided every paint after it, so a box those two disagreed about
-  // sat wrong until the first keystroke and then jumped.
-  onMount(fit);
-
-  // Re-wrap on a width change: how many lines a prompt takes is a property of
-  // how wide the box is, so a dragged divider or a zoom step leaves the height
-  // measured against a width that is gone. Width only - `fit` changes the
-  // height, and reacting to that would be a loop.
-  onMount(() => {
-    if (!input || typeof ResizeObserver === "undefined") return;
-    let width = input.clientWidth;
-    const ro = new ResizeObserver(() => {
-      const next = input?.clientWidth ?? 0;
-      if (next === width) return;
-      width = next;
-      fit();
-    });
-    ro.observe(input);
-    onCleanup(() => ro.disconnect());
-  });
 
   const scoped = createMemo(() => {
     const t = token();
@@ -499,10 +430,10 @@ export default function Composer(props: {
   // open because the caret walked away from its trigger would complete into the
   // wrong span.
   function syncToken() {
-    if (!input) return;
-    const at = input.selectionStart ?? input.value.length;
+    if (!field) return;
+    const at = field.caret();
     setCaret(at);
-    const next = activeToken(input.value, at);
+    const next = activeToken(field.value(), at);
     setToken(next);
     setMenuIndex(0);
     if (next?.kind === "file" && !filesRequested) {
@@ -527,11 +458,9 @@ export default function Composer(props: {
     setText(next);
     setHistoryIndex(-1);
     setCaret(caret);
-    if (!input) return;
-    input.value = next;
-    input.setSelectionRange(caret, caret);
-    input.focus();
-    fit();
+    if (!field) return;
+    field.set(next, caret);
+    field.focus();
   }
 
   function drill(t: CompletionToken, key: string) {
@@ -657,7 +586,7 @@ export default function Composer(props: {
    *  the word beside it. `at` is where a drop landed; without one it goes to
    *  the caret, which is where a click means. */
   function insertToken(token: string, at?: number) {
-    const caret = at ?? input?.selectionStart ?? text().length;
+    const caret = at ?? field?.caret() ?? text().length;
     const before = text().slice(0, caret);
     const after = text().slice(caret);
     const lead = before && !/\s$/.test(before) ? " " : "";
@@ -666,8 +595,27 @@ export default function Composer(props: {
     setInputText(`${before}${insert}${after}`, caret + insert.length - trail.length);
   }
 
+  /** Take a token out from where it sat and put it where it was dropped. */
+  function moveToken(token: string, from: number, at: number | undefined) {
+    if (at !== undefined && at >= from && at <= from + token.length) return;
+    // The gap it leaves closes up: one of the two spaces it sat between goes
+    // with it, or the one before it when it ended a sentence.
+    let start = from;
+    let end = from + token.length;
+    const before = text()[start - 1];
+    const after = text()[end];
+    if (before === " " && (after === " " || after === undefined || /[.,;:!?)]/.test(after))) start -= 1;
+    else if (start === 0 && after === " ") end += 1;
+    const without = text().slice(0, start) + text().slice(end);
+    const gone = end - start;
+    const target = at === undefined ? undefined : at > start ? at - gone : at;
+    setText(without);
+    field?.set(without, Math.min(target ?? without.length, without.length));
+    insertToken(token, target);
+  }
+
   function insertSpoken(spoken: string) {
-    const caret = input?.selectionStart ?? text().length;
+    const caret = field?.caret() ?? text().length;
     const before = text().slice(0, caret);
     const lead = before && !/\s$/.test(before) ? " " : "";
     setInputText(`${before}${lead}${spoken}${text().slice(caret)}`, caret + lead.length + spoken.length);
@@ -675,23 +623,18 @@ export default function Composer(props: {
 
   /** Put a block (a quote) in at the caret, starting on its own line. */
   function insertBlock(block: string) {
-    const caret = input?.selectionStart ?? text().length;
+    const caret = field?.caret() ?? text().length;
     const before = text().slice(0, caret);
     const lead = before && !before.endsWith("\n") ? "\n" : "";
     setInputText(`${before}${lead}${block}${text().slice(caret)}`, caret + lead.length + block.length);
   }
   onMount(() => props.handle?.({ insertBlock }));
 
-  // Where in the text a drop landed. Undefined when the browser cannot say or
-  // the point is outside the input, and then the caret is the answer: dropping
-  // a chip must put its token *somewhere*, and the caret is where the user was.
+  // Where in the text a drop landed. Undefined when the point is outside the
+  // text, and then the caret is the answer: dropping a chip must put its token
+  // *somewhere*, and the caret is where the user was.
   function caretAtPoint(e: DragEvent): number | undefined {
-    const doc = document as Document & {
-      caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
-    };
-    const pos = doc.caretPositionFromPoint?.(e.clientX, e.clientY);
-    if (pos && input && (pos.offsetNode === input || input.contains(pos.offsetNode))) return pos.offset;
-    return undefined;
+    return field?.posAt(e.clientX, e.clientY);
   }
 
   function onPaste(e: ClipboardEvent) {
@@ -712,7 +655,17 @@ export default function Composer(props: {
     void attachFiles([new File([pasted], "pasted.txt", { type: "text/plain" })]);
   }
 
+  // A drop beside the text (on the tiles, the queue, the bar). One on the text
+  // itself is taken by the field, which marks it handled on the way out.
   function onDrop(e: DragEvent) {
+    if (e.defaultPrevented) {
+      setDragging(false);
+      return;
+    }
+    takeDrop(e);
+  }
+
+  function takeDrop(e: DragEvent) {
     // One of this composer's own chips, going into the sentence. First,
     // because it carries no file and no path: read as either it would attach
     // the same thing again.
@@ -720,7 +673,11 @@ export default function Composer(props: {
     if (token) {
       e.preventDefault();
       setDragging(false);
-      insertToken(token, caretAtPoint(e));
+      const at = caretAtPoint(e);
+      const from = movingFrom;
+      movingFrom = null;
+      if (from !== null && text().startsWith(token, from)) moveToken(token, from, at);
+      else insertToken(token, at);
       return;
     }
     const files = [...(e.dataTransfer?.files ?? [])];
@@ -753,13 +710,6 @@ export default function Composer(props: {
     setHistoryIndex(-1);
     setCaret(0);
     closeMenu();
-    // The textarea grew with its content, so it has to be put back by hand -
-    // back to the *floor*, which is where an empty composer belongs. It used to
-    // go back to a single row, a height the box has at no other moment: every
-    // send left it short of its resting size until the next keystroke measured
-    // it and snapped it up again, which is the jump that reads as the composer
-    // resizing itself while you type.
-    if (input) input.rows = MIN_ROWS;
   }
 
   function submit(queue = false) {
@@ -782,12 +732,11 @@ export default function Composer(props: {
       () => {
         setHistoryIndex(-1);
         queueMicrotask(() => {
-          if (!input) return;
-          const end = input.value.length;
-          input.setSelectionRange(end, end);
+          if (!field) return;
+          const end = field.value().length;
+          field.select(end);
           setCaret(end);
-          fit();
-          input.focus();
+          field.focus();
         });
       },
       { defer: true },
@@ -822,11 +771,7 @@ export default function Composer(props: {
     const value = next === -1 ? "" : entries[next];
     setText(value);
     setCaret(value.length);
-    if (input) {
-      input.value = value;
-      input.setSelectionRange(value.length, value.length);
-      fit();
-    }
+    field?.set(value, value.length);
     return true;
   }
 
@@ -898,14 +843,14 @@ export default function Composer(props: {
     }
     if (!menuOpen() && e.key === "ArrowUp" && e.altKey && !e.metaKey && !e.ctrlKey) {
       const last = [...props.queue].reverse().find((q) => !q.steering);
-      const atStart = (input?.selectionStart ?? 0) === 0 && (input?.selectionEnd ?? 0) === 0;
+      const atStart = (field?.selection().to ?? 0) === 0;
       if (props.editing || !last || !atStart || !props.onEditQueued) return;
       e.preventDefault();
       props.onEditQueued(last.id);
       return;
     }
     if (!menuOpen() && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
-      const atStart = (input?.selectionStart ?? 0) === 0 && (input?.selectionEnd ?? 0) === 0;
+      const atStart = (field?.selection().to ?? 0) === 0;
       // Once a walk has started it continues, because recall leaves the caret at
       // the end of what it just put there: requiring the caret at 0 every time
       // would make Up work exactly once.
@@ -947,7 +892,7 @@ export default function Composer(props: {
     }
     if (e.key === "Enter" && !e.shiftKey) {
       // Inside an open fence the newline is the point; the textarea inserts it.
-      if (input && insideFence(input.value, input.selectionStart ?? input.value.length)) return;
+      if (field && insideFence(field.value(), field.caret())) return;
       e.preventDefault();
       submit(e.altKey && props.running);
       return;
@@ -967,9 +912,137 @@ export default function Composer(props: {
     }
   }
 
+  // Says what Enter will actually do, and quotes the measured delivery rather
+  // than letting a steer read as instant. The figure comes from the declared
+  // tier, so it cannot drift from what was measured; the fallback wording still
+  // refuses to promise immediacy.
+  const placeholderText = () =>
+    props.watching
+      ? // Never the steer wording outside main. A steer reaches the turn it
+        // names, and this box cannot reach the lane on screen.
+        `Watching ${props.watching}. What you type goes to the main agent`
+      : props.running
+        ? props.steering
+          ? (props.steerCost
+              ? `Steer this turn, picked up in ${props.steerCost}`
+              : "Steer this turn, picked up at its next step") + (props.onQueue ? ". Option+Enter queues" : "")
+          : "Type to queue for the next turn"
+        : "Reply, or @ a file · / for commands";
+
+  // The attachments a token in the text can be drawn as: every chip with a
+  // label the prose names it by.
+  const held = createMemo(() => {
+    const by = new Map<string, PendingBlock>();
+    for (const a of props.attachments) {
+      const label = a.block.type === "fileRef" ? a.block.label : a.block.type === "ref" ? a.block.label : null;
+      if (label) by.set(label, a);
+    }
+    return by;
+  });
+  // Where an inline chip being dragged sat, so dropping it moves it rather than
+  // naming the attachment a second time.
+  let movingFrom: number | null = null;
+
+  onMount(() => {
+    field = createComposerField({
+      parent: fieldHost!,
+      doc: text(),
+      placeholder: placeholderText(),
+      // One writer at a time: while a scratch tab holds the draft, typing here
+      // would be overwritten by the next save.
+      readOnly: !!props.linked || dictation() !== "idle",
+      disabled: props.disabled,
+      chipFor: (label) => {
+        const a = untrack(held).get(label);
+        if (!a) return null;
+        return { key: a.id, mount: (dom) => render(() => <InlineChip a={a} label={label} />, dom) };
+      },
+      onInput: (value) => {
+        setText(value);
+        setHistoryIndex(-1);
+        syncToken();
+      },
+      // A click or an arrow can move the caret out of the token that opened the
+      // menu without changing a character, so selection is watched too.
+      onSelect: syncToken,
+      onKeyDown: (e) => {
+        onKeyDown(e);
+        return e.defaultPrevented;
+      },
+      onPaste: (e) => {
+        onPaste(e);
+        return e.defaultPrevented;
+      },
+      onDrop: (e) => {
+        const types = e.dataTransfer?.types ?? [];
+        const ours = [ATTACHMENT_TOKEN_MIME, DRAG_ABS_PATH_MIME, DRAG_PATH_MIME, "Files", "text/plain"];
+        if (!ours.some((t) => types.includes(t))) return false;
+        takeDrop(e);
+        return true;
+      },
+      onFocus: () => setFocusTick((t) => t + 1),
+      onBlur: closeMenu,
+    });
+    onCleanup(() => field?.destroy());
+    // The draft is owned outside (per session, surviving a tab switch), so a
+    // change made there - a restored stash, a queued message taken back to edit -
+    // is written into the field. Typing round-trips to the same text and is
+    // left alone.
+    createEffect(() => {
+      const t = text();
+      if (field && field.value() !== t) field.set(t, t.length);
+    });
+    createEffect(() => field?.setPlaceholder(placeholderText()));
+    createEffect(() => field?.setReadOnly(!!props.linked || dictation() !== "idle", props.disabled));
+    createEffect(on(held, () => field?.refreshChips(), { defer: true }));
+  });
+
+  /** A token in the sentence that is one of the held attachments. It reads as
+   *  the text it is; hovering shows it is one piece that can be picked up. */
+  const InlineChip = (p: { a: PendingBlock; label: string }) => {
+    const block = p.a.block;
+    const path = block.type === "fileRef" ? block.path : null;
+    const missing = () => !!path && missingPaths().has(path);
+    return (
+      <Tooltip
+        as="button"
+        type="button"
+        class={styles.inlineChip}
+        classList={{ [styles.inlineChipMissing]: missing() }}
+        label={<Tip {...attachmentTip(block, { missing: missing() })} />}
+        aria-label={`Preview ${chipLabel(block)}`}
+        // Out of the tab order: the field is one stop, and the chip's file is
+        // reachable from its tile above.
+        tabIndex={-1}
+        draggable={true}
+        onDragStart={(e: DragEvent) => {
+          movingFrom = field?.view.posAtDOM(e.currentTarget as HTMLElement) ?? null;
+          e.dataTransfer?.setData(ATTACHMENT_TOKEN_MIME, p.label);
+          if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+        }}
+        onDragEnd={() => (movingFrom = null)}
+        onClick={() => setPreviewing({ block, missing: missing() })}
+      >
+        {p.label}
+      </Tooltip>
+    );
+  };
+
   const tiles = createMemo(() => props.attachments.filter((a) => isTile(a.block)));
   const pills = createMemo(() => props.attachments.filter((a) => !isTile(a.block)));
   const [previewing, setPreviewing] = createSignal<{ block: ContentBlock; missing: boolean } | null>(null);
+  // Files gone from disk since they were attached, shared by a chip's tile and
+  // its token in the text so the two never disagree.
+  const [missingPaths, setMissingPaths] = createSignal<ReadonlySet<string>>(new Set());
+  function markMissing(path: string, gone: boolean) {
+    if (untrack(missingPaths).has(path) === gone) return;
+    setMissingPaths((prev) => {
+      const next = new Set(prev);
+      if (gone) next.add(path);
+      else next.delete(path);
+      return next;
+    });
+  }
 
   // A component rather than a factory, so each chip owns its own `missing`
   // signal and the effect that keeps asking the disk about it.
@@ -985,7 +1058,7 @@ export default function Composer(props: {
     const tile = isTile(block);
     // Gone from disk since it was attached. The chip stays, because the
     // sentence still names it; both controls say why it is red.
-    const [missing, setMissing] = createSignal(false);
+    const missing = () => !!path && missingPaths().has(path);
     if (path && props.fileExists) {
       const ask = props.fileExists;
       createEffect(
@@ -993,7 +1066,7 @@ export default function Composer(props: {
           focusTick,
           () =>
             void ask(path)
-              .then((ok) => setMissing(!ok))
+              .then((ok) => markMissing(path, !ok))
               .catch(() => {}),
         ),
       );
@@ -1145,7 +1218,7 @@ export default function Composer(props: {
                       class={styles.queueText}
                       label={
                         <Tip
-                          title={
+                          heading={
                             q.steering
                               ? "Steering the running turn"
                               : props.parked
@@ -1411,52 +1484,7 @@ export default function Composer(props: {
       <Show when={props.notice}>{(notice) => <div class={styles.composerNotice}>{notice()}</div>}</Show>
       <div class={styles.composerBox}>
         <div class={styles.inputArea}>
-          <textarea
-            ref={input}
-            class={styles.input}
-            rows={MIN_ROWS}
-            // Says what Enter will actually do, and quotes the measured delivery
-            // rather than letting a steer read as instant. The figure comes from
-            // the declared tier, so it cannot drift from what was measured; the
-            // fallback wording still refuses to promise immediacy.
-            placeholder={
-              props.watching
-                ? // Never the steer wording outside main. A steer reaches the
-                  // turn it names, and this box cannot reach the lane on screen.
-                  `Watching ${props.watching}. What you type goes to the main agent`
-                : props.running
-                  ? props.steering
-                    ? (props.steerCost
-                        ? `Steer this turn, picked up in ${props.steerCost}`
-                        : "Steer this turn, picked up at its next step") +
-                      (props.onQueue ? ". Option+Enter queues" : "")
-                    : "Type to queue for the next turn"
-                  : "Reply, or @ a file · / for commands"
-            }
-            value={text()}
-            disabled={props.disabled}
-            // One writer at a time: while a scratch tab holds the draft, typing
-            // here would be overwritten by the next save.
-            readOnly={!!props.linked || dictation() !== "idle"}
-            // Spelling is marked, never rewritten: autocorrect would "fix" the
-            // identifiers and paths a prompt is full of.
-            spellcheck={true}
-            autocorrect="off"
-            autocapitalize="off"
-            onInput={(e) => {
-              setText(e.currentTarget.value);
-              setHistoryIndex(-1);
-              syncToken();
-              fit();
-            }}
-            onKeyDown={onKeyDown}
-            onPaste={onPaste}
-            // A click or an arrow can move the caret out of the token that opened
-            // the menu without changing a character, so selection is watched too.
-            onSelect={syncToken}
-            onFocus={() => setFocusTick((t) => t + 1)}
-            onBlur={closeMenu}
-          />
+          <div ref={fieldHost} class={styles.inputField} />
           <Show when={dictation() !== "idle"}>
             <DictationWave levels={dictationLevels()} busy={dictation() === "transcribing"} />
           </Show>
@@ -1525,7 +1553,7 @@ export default function Composer(props: {
             disabled={props.disabled || !!props.linked}
             onClick={() => {
               // Back to the box, so Escape reaches it while the wave covers it.
-              input?.focus();
+              field?.focus();
               void toggleDictation(insertSpoken);
             }}
           >

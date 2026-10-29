@@ -2,7 +2,7 @@ import { For, Show } from "solid-js";
 import styles from "./Chat.module.css";
 
 export type TipContent = {
-  title: string;
+  heading: string;
   lines?: readonly string[];
   /** Quoted content, kept in its own lines and font: a selection's code, a
    *  queued message. */
@@ -18,7 +18,7 @@ export type TipContent = {
 export default function Tip(props: TipContent) {
   return (
     <div class={styles.tip}>
-      <div class={styles.tipTitle}>{props.title}</div>
+      <div class={styles.tipTitle}>{props.heading}</div>
       <For each={props.lines ?? []}>{(line) => <div class={styles.tipLine}>{line}</div>}</For>
       <Show when={props.excerpt}>{(text) => <pre class={styles.tipExcerpt}>{text()}</pre>}</Show>
       <Show when={props.warn}>{(text) => <div class={styles.tipWarn}>{text()}</div>}</Show>

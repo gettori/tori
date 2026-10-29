@@ -34,7 +34,7 @@ export default function AskCard(props: { ask: SocketAsk; here: string }) {
               class={styles.askDraftMeta}
               label={
                 <Tip
-                  title={meta()?.title || name()}
+                  heading={meta()?.title || name()}
                   lines={[`Session ${props.ask.session.slice(0, 8)}`, ...(meta()?.cwd ? [meta()!.cwd] : [])]}
                   hint="Your answer goes back to that session, not this one"
                 />

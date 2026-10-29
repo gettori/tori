@@ -75,7 +75,7 @@ export function attachmentTip(block: ContentBlock, opts: { missing?: boolean } =
     else if (!block.label) lines.push("The whole file");
     if (block.label) lines.push(`${kind ? KIND_WORDS[kind] : "File"} attachment, ${block.label} in the message`);
     return {
-      title: tileName(block),
+      heading: tileName(block),
       lines,
       excerpt: excerptOf(block.text),
       warn: opts.missing ? "No file at this path any more. It was moved or deleted after it was attached." : null,
@@ -84,31 +84,35 @@ export function attachmentTip(block: ContentBlock, opts: { missing?: boolean } =
   }
   switch (block.type) {
     case "image":
-      return { title: "Pasted image", lines: [block.mediaType], hint: preview };
+      return { heading: "Pasted image", lines: [block.mediaType], hint: preview };
     case "imageRef":
-      return { title: "Image from an earlier turn" };
+      return { heading: "Image from an earlier turn" };
     case "text":
-      return { title: "Note to the agent", excerpt: excerptOf(block.text, 12), hint: preview };
+      return { heading: "Note to the agent", excerpt: excerptOf(block.text, 12), hint: preview };
     case "ref": {
       const t = block.target;
       switch (t.kind) {
         case "pr":
           return {
-            title: `${block.label} ${t.title}`,
+            heading: `${block.label} ${t.title}`,
             lines: [t.draft ? "Draft pull request" : `Pull request, ${t.state}`, `${t.head} into ${t.base}`],
             hint: `${preview}. The agent reads it through the forge`,
           };
         case "session":
           return {
-            title: t.title,
+            heading: t.title,
             lines: [`Session, ${t.agent}`, t.project],
             hint: `${preview}. The agent reads its transcript through Tori`,
           };
         case "project":
-          return { title: t.name, lines: [`Project in ${t.space}`, t.folder], hint: preview };
+          return { heading: t.name, lines: [`Project in ${t.space}`, t.folder], hint: preview };
         case "space": {
           const count = t.projects.length === 1 ? "1 project" : `${t.projects.length} projects`;
-          return { title: t.name, lines: [`Space, ${count}`, t.projects.map((p) => p.name).join(", ")], hint: preview };
+          return {
+            heading: t.name,
+            lines: [`Space, ${count}`, t.projects.map((p) => p.name).join(", ")],
+            hint: preview,
+          };
         }
       }
     }

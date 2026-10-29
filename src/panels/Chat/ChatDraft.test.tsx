@@ -53,6 +53,7 @@ import {
 } from "../../utils/chatCompose";
 import { clearDraftPick, draftPick, setDraftOption, setDraftPick } from "../../utils/chatDraftPick";
 import { __resetModelCatalogsForTests } from "../../utils/modelCatalog";
+import { composerInput } from "./__fixtures__/composerInput";
 
 // The draft is the state a chat is in before it costs anything: no child, no
 // session id, no claim. What these pin is the handover - that the first message
@@ -329,7 +330,7 @@ function setup(over: Partial<Parameters<typeof ChatDraft>[0]> = {}) {
       {...over}
     />
   ));
-  const input = result.container.querySelector("textarea") as HTMLTextAreaElement;
+  const input = composerInput(result.container);
   const pills = () => [...result.container.querySelectorAll("button")] as HTMLButtonElement[];
   const openPalette = () => {
     fireEvent.click(screen.getByLabelText("Model"));

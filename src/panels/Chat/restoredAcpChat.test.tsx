@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { wholeHistory } from "../../test/history";
+import { composerInput } from "./__fixtures__/composerInput";
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -160,7 +161,8 @@ function push(...frames: unknown[]) {
 /** Type into the composer and press Enter, which is what starts a restored tab:
  *  an inert one spawns nothing until asked ([[adr_lazy_tab_attachment]]). */
 async function send(text: string) {
-  const box = await screen.findByRole("textbox");
+  await screen.findByRole("textbox");
+  const box = composerInput();
   fireEvent.input(box, { target: { value: text } });
   fireEvent.keyDown(box, { key: "Enter" });
 }

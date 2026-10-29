@@ -20,6 +20,8 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 import { dropActive as dropDictation } from "../../utils/dictation";
+import { composerInput } from "./__fixtures__/composerInput";
+import { EditorView } from "@codemirror/view";
 
 // The first mounted tests in the repo. Three phases shipped composer behaviour
 // that was reasoned rather than rendered; these are the things that reasoning
@@ -66,7 +68,7 @@ function setup(over: Partial<Parameters<typeof Composer>[0]> = {}) {
       {...over}
     />
   ));
-  const input = result.container.querySelector("textarea") as HTMLTextAreaElement;
+  const input = composerInput(result.container);
   return {
     ...result,
     input,
@@ -87,112 +89,6 @@ const OPENS_EVERYTHING: AttachmentSource = { kinds: ["image", "pdf", "file"], ga
 // spy left standing breaks every later accessible-name lookup and axe scan:
 // they ask the returned style for `getPropertyValue`, which the stub has not.
 afterEach(() => vi.restoreAllMocks());
-
-// jsdom lays nothing out, so the box is handed the two numbers the arithmetic
-// reads: `clientHeight` is what the rows attribute currently buys it, and
-// `scrollHeight` is what the text needs. Everything else about the fit is
-// decided from those two.
-function stubMetrics(input: HTMLTextAreaElement, opts: { line: number; padding: number; needed: () => number }) {
-  Object.defineProperty(input, "clientHeight", {
-    get: () => input.rows * opts.line + opts.padding,
-    configurable: true,
-  });
-  Object.defineProperty(input, "scrollHeight", { get: opts.needed, configurable: true });
-  const style = {
-    lineHeight: `${opts.line}px`,
-    paddingTop: `${opts.padding / 2}px`,
-    paddingBottom: `${opts.padding / 2}px`,
-  };
-  vi.spyOn(window, "getComputedStyle").mockReturnValue(style as unknown as CSSStyleDeclaration);
-}
-
-/** Every value `rows` is set to, in order. The collapse this used to do shows
- *  up here as a 1 between two sensible numbers. */
-function watchRows(input: HTMLTextAreaElement) {
-  const seen: number[] = [];
-  let rows = input.rows;
-  Object.defineProperty(input, "rows", {
-    get: () => rows,
-    set: (v: number) => {
-      rows = v;
-      seen.push(v);
-    },
-    configurable: true,
-  });
-  return seen;
-}
-
-describe("the input's own height", () => {
-  it("grows without collapsing the box first", () => {
-    // The old fit set `rows = 1` before every measurement, which laid out the
-    // whole pane twice per keystroke and moved the transcript above with it.
-    const { input } = setup();
-    let needed = 200;
-    stubMetrics(input, { line: 20, padding: 20, needed: () => needed });
-    const seen = watchRows(input);
-
-    needed = 140; // six lines of content in a three-line box
-    fireEvent.input(input, { target: { value: "a\nb\nc\nd\ne\nf" } });
-
-    expect(seen).not.toContain(1);
-    expect(input.rows).toBe(6);
-  });
-
-  it("measures nothing at all while the text still fits", () => {
-    // The common case by far: typing along inside a box that is already the
-    // right size. Nothing is written, so nothing is laid out twice.
-    const { input } = setup();
-    stubMetrics(input, { line: 20, padding: 20, needed: () => 60 });
-    const seen = watchRows(input);
-
-    fireEvent.input(input, { target: { value: "hello" } });
-
-    expect(seen).toEqual([]);
-    expect(input.rows).toBe(3);
-  });
-
-  it("comes back to its resting height when a message goes, not below it", () => {
-    // The bug the whole of this describe exists around: sending put the box at
-    // one row, which is a height it has at no other moment. The next keystroke
-    // measured it and snapped it back up, and that jump is what reads as the
-    // composer resizing itself while you type.
-    const { input } = setup();
-    let needed = 140;
-    stubMetrics(input, { line: 20, padding: 20, needed: () => needed });
-    fireEvent.input(input, { target: { value: "a\nb\nc\nd\ne\nf" } });
-    expect(input.rows).toBe(6);
-
-    needed = 40;
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    expect(input.rows).toBe(3);
-  });
-
-  it("puts a box that is somehow under the floor back on it", () => {
-    // Belt for the same braces: whatever leaves it short - an older build's
-    // send, a hand-set attribute - the next fit is not allowed to agree with
-    // it. Nothing is measured at a size the box is not permitted to be.
-    const { input } = setup();
-    stubMetrics(input, { line: 20, padding: 20, needed: () => 40 });
-    input.rows = 1;
-
-    fireEvent.input(input, { target: { value: "a" } });
-
-    expect(input.rows).toBe(3);
-  });
-
-  it("still shrinks when the text does", () => {
-    const { input } = setup();
-    let needed = 140;
-    stubMetrics(input, { line: 20, padding: 20, needed: () => needed });
-    fireEvent.input(input, { target: { value: "a\nb\nc\nd\ne\nf" } });
-    expect(input.rows).toBe(6);
-
-    needed = 40;
-    fireEvent.input(input, { target: { value: "a" } });
-    expect(input.rows).toBe(3);
-  });
-});
 
 describe("Composer keys", () => {
   it("sends on Enter", () => {
@@ -748,13 +644,13 @@ function drag(el: Element): Record<string, string> {
   return data;
 }
 
-function drop(el: Element, init: { files?: File[]; data?: Record<string, string> }) {
+function drop(el: Element, init: { files?: File[]; data?: Record<string, string> }, at?: { x: number; y: number }) {
   const dataTransfer = {
     files: init.files ?? [],
-    types: Object.keys(init.data ?? {}),
+    types: [...(init.files?.length ? ["Files"] : []), ...Object.keys(init.data ?? {})],
     getData: (mime: string) => init.data?.[mime] ?? "",
   };
-  fireEvent.drop(el, { dataTransfer });
+  fireEvent.drop(el, { dataTransfer, clientX: at?.x ?? 0, clientY: at?.y ?? 0 });
 }
 
 // Thirty-one lines: one past the threshold.
@@ -790,7 +686,9 @@ describe("file uploads", () => {
 
   it("attaches a pasted file without swallowing an ordinary text paste", async () => {
     const { input, onAttachUploads } = setup();
-    expect(fireEvent.paste(input, pasteOf("hello"))).toBe(true);
+    fireEvent.paste(input, pasteOf("hello"));
+    // Pasted as text, by the editor's own paste.
+    expect(input.value).toBe("hello");
     expect(onAttachUploads).not.toHaveBeenCalled();
     fireEvent.paste(input, { clipboardData: { files: [imageFile("clip.png")] } });
     await vi.waitFor(() => expect(onAttachUploads).toHaveBeenCalled());
@@ -814,18 +712,21 @@ describe("file uploads", () => {
     expect(fireEvent.paste(input, pasteOf("x".repeat(3001)))).toBe(false);
     await vi.waitFor(() => expect(onAttachUploads).toHaveBeenCalled());
     const short = setup();
-    expect(fireEvent.paste(short.input, pasteOf("x".repeat(3000)))).toBe(true);
+    fireEvent.paste(short.input, pasteOf("x".repeat(3000)));
+    expect(short.input.value).toBe("x".repeat(3000));
     expect(short.onAttachUploads).not.toHaveBeenCalled();
   });
 
   it("pastes long text as text under an agent that takes no file uploads, and when turned off", () => {
     const noFiles = setup({ uploads: { kinds: ["image", "pdf"], gap: null } });
-    expect(fireEvent.paste(noFiles.input, pasteOf(LONG_PASTE))).toBe(true);
+    fireEvent.paste(noFiles.input, pasteOf(LONG_PASTE));
+    expect(noFiles.input.value).toBe(LONG_PASTE);
     expect(noFiles.onAttachUploads).not.toHaveBeenCalled();
     expect(noFiles.onAttachRejected).not.toHaveBeenCalled();
 
     const off = setup({ attachLongPastes: false });
-    expect(fireEvent.paste(off.input, pasteOf(LONG_PASTE))).toBe(true);
+    fireEvent.paste(off.input, pasteOf(LONG_PASTE));
+    expect(off.input.value).toBe(LONG_PASTE);
     expect(off.onAttachUploads).not.toHaveBeenCalled();
   });
 
@@ -1054,8 +955,8 @@ describe("an attachment chip", () => {
     const { container, getByText } = setup({ attachments: notes });
     expect(getByText("notes.pdf")).toBeTruthy();
     expect(getByText("[PDF 1]")).toBeTruthy();
-    expect(container.querySelector("img")).toBeNull();
-    expect(container.querySelector(".seti-icon")).not.toBeNull();
+    expect(container.querySelector("[class*='attachmentTile'] img")).toBeNull();
+    expect(container.querySelector("[class*='attachmentTile'] .seti-icon")).not.toBeNull();
   });
 
   it("previews the file when the body is clicked, and opens it in the editor from there", () => {
@@ -1251,32 +1152,31 @@ describe("dragging a chip into the sentence", () => {
   ];
 
   it("lands where it was dropped, between the two words", () => {
-    const { input, container, getByLabelText, onAttachPaths, onAttachUploads } = setup({ attachments: shot });
+    const { input, getByLabelText, onAttachPaths, onAttachUploads } = setup({ attachments: shot });
     type(input, "look here");
-    // What the browser answers for the point under the pointer. jsdom lays
-    // nothing out, so the offset is the thing being stubbed, not the geometry.
-    (document as unknown as { caretPositionFromPoint: unknown }).caretPositionFromPoint = () => ({
-      offsetNode: input,
-      offset: 5,
-    });
+    // Where the editor says the point under the pointer is. jsdom lays nothing
+    // out, so the box and the offset are stubbed, not the geometry.
+    vi.spyOn(input, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 400, 60));
+    vi.spyOn(EditorView.prototype, "posAtCoords").mockReturnValue(5);
     const dt = drag(getByLabelText("Preview [Image 1] shot.png"));
     // Only the private type: `text/plain` would make a drop on the terminal,
     // or on this composer's own path branch, read the token as a file path.
     expect(Object.keys(dt)).toEqual([ATTACHMENT_TOKEN_MIME]);
-    drop(container.firstElementChild!, { data: dt });
+    // On the text itself, where a field that marks its drops handled could
+    // swallow it before the composer saw it.
+    drop(input, { data: dt }, { x: 40, y: 10 });
 
     expect(input.value).toBe("look [Image 1] here");
     // The chip moved, it did not arrive: nothing was attached a second time.
     expect(onAttachPaths).not.toHaveBeenCalled();
     expect(onAttachUploads).not.toHaveBeenCalled();
-    delete (document as unknown as { caretPositionFromPoint?: unknown }).caretPositionFromPoint;
   });
 
   it("falls back to the caret where the browser cannot say where the drop landed", () => {
-    const { input, container, getByLabelText } = setup({ attachments: shot });
+    const { input, getByLabelText } = setup({ attachments: shot });
     type(input, "look here");
     input.setSelectionRange(4, 4);
-    drop(container.firstElementChild!, { data: drag(getByLabelText("Preview [Image 1] shot.png")) });
+    drop(input, { data: drag(getByLabelText("Preview [Image 1] shot.png")) });
     expect(input.value).toBe("look [Image 1] here");
   });
 
@@ -1392,7 +1292,7 @@ describe("draft and history", () => {
         onDiscardQueued={() => {}}
       />
     ));
-    const area = container.querySelector("textarea") as HTMLTextAreaElement;
+    const area = composerInput(container);
     expect(area.value).toBe("half a thought");
     fireEvent.input(area, { target: { value: "half a thought, continued" } });
     expect(draft()).toBe("half a thought, continued");
@@ -1426,7 +1326,7 @@ describe("draft and history", () => {
         onDiscardQueued={() => {}}
       />
     ));
-    expect((second.container.querySelector("textarea") as HTMLTextAreaElement).value).toBe("half a thought, continued");
+    expect(composerInput(second.container).value).toBe("half a thought, continued");
   });
 
   it("walks back through what was sent, and forward again to nothing", () => {

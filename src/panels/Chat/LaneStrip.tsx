@@ -138,7 +138,7 @@ export default function LaneStrip(props: {
       class={`${styles.lane} ${styles.laneStill}`}
       label={
         <Tip
-          title={laneLabel(p.task)}
+          heading={laneLabel(p.task)}
           lines={["Background shell task", `Running for ${elapsed(p.task, now())}`]}
           excerpt={excerptOf(p.task.prompt)}
           hint="Shell work has no transcript to open. It leaves this row when it ends."
@@ -165,7 +165,7 @@ export default function LaneStrip(props: {
                 class={`${styles.lane} ${styles.laneMore}`}
                 label={
                   <Tip
-                    title={showDone() ? "Fold the finished subagents" : "Finished subagents"}
+                    heading={showDone() ? "Fold the finished subagents" : "Finished subagents"}
                     lines={
                       showDone()
                         ? []
@@ -234,7 +234,7 @@ function shortcut(at: number): string | null {
 
 function mainTip(busy: boolean, reading: boolean): TipContent {
   return {
-    title: "Main agent",
+    heading: "Main agent",
     lines: [busy ? "Working on a turn" : "Idle", "What you type always goes here"],
     hint: reading ? "You are reading this transcript" : "Click to read the main transcript (Option+1)",
   };
@@ -258,7 +258,7 @@ function laneTip(lane: Lane, now: number, blocked: boolean, at: number): TipCont
   else lines.push(`Ended: ${lane.status}`);
   const key = shortcut(at);
   return {
-    title: laneLabel(lane),
+    heading: laneLabel(lane),
     lines,
     excerpt: excerptOf(lane.summary ?? lane.prompt),
     hint: key ? `Click to read its transcript (${key})` : "Click to read its transcript",
