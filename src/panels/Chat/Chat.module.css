@@ -3610,6 +3610,7 @@ button.attachmentBody:hover {
   max-width: 100%;
   max-height: 60vh;
   margin: 0 auto;
+  object-fit: contain;
   border-radius: var(--tori-radius-md);
 }
 

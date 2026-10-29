@@ -1,8 +1,7 @@
 import { For, Match, Show, Switch, createResource, type JSX } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import Dialog from "../../components/Dialog/Dialog";
 import Button from "../../components/Button/Button";
-import ImageView from "../Editor/ImageView";
 import PdfView from "../Editor/PdfView";
 import CodeBlock from "./CodeBlock";
 import { langOfPath } from "./highlight";
@@ -153,14 +152,16 @@ export default function AttachmentPreview(props: {
                 </p>
               )}
             </Match>
-            <Match when={block().type === "image" ? thumbSrc(block()) : null}>
-              {(src) => <img class={styles.previewImage} src={src()} alt="Pasted image" />}
-            </Match>
-            <Match when={kind() === "image" ? fileRef() : null}>
-              {(f) => (
-                <div class={styles.previewFrame}>
-                  <ImageView path={f().path} />
-                </div>
+            {/* Fitted to the dialog rather than the editor's full size viewer,
+                which scrolls a screenshot at its natural size. Open in editor
+                is the way to that. */}
+            <Match when={block().type === "image" || kind() === "image" ? block() : null}>
+              {(b) => (
+                <img
+                  class={styles.previewImage}
+                  src={thumbSrc(b()) ?? convertFileSrc(fileRef()!.path)}
+                  alt={tip()?.heading ?? "Image"}
+                />
               )}
             </Match>
             <Match when={kind() === "pdf" ? fileRef() : null}>
