@@ -252,6 +252,8 @@ const COMMANDS: SlashCommand[] = [
   { name: "plan", description: "", argumentHint: null, aliases: [] },
 ];
 
+const SKILLS = ["review", "simplify", "security-review"];
+
 function lane(agentId: string, extra: Partial<Lane> = {}): Lane {
   return {
     agentId,
@@ -442,6 +444,8 @@ type ChatInputProps = {
   config?: ChatConfigOption[];
   /** Without the session list and navigator, `@` offers project files only. */
   toriMcp?: boolean;
+  /** Which commands are skills, the only ones a mid-sentence `/` offers. */
+  skills?: string[];
 };
 
 function ChatInput(props: ChatInputProps) {
@@ -505,6 +509,7 @@ function ChatInput(props: ChatInputProps) {
             onDraftChange={setDraft}
             history={["Run the composer tests", "Why does the queue strip jump?"]}
             commands={COMMANDS}
+            skills={props.skills ?? SKILLS}
             loadFiles={() => Promise.resolve(FILES)}
             prs={PRS}
             loadPrs={() => {}}
@@ -905,6 +910,21 @@ export const InlineTokensMixedLayout: Story = {
 export const SlashCommands: Story = { args: { draft: "/" }, play: caretAtEnd };
 
 export const SlashCommandsFiltered: Story = { args: { draft: "/re" }, play: caretAtEnd };
+
+/** Mid-sentence, `/` offers only skills: the agent takes one there as leave to
+ *  load it, where a built-in like `/compact` would be words that do nothing. */
+export const SkillMidSentence: Story = { args: { draft: "Fix the queue, then /" }, play: caretAtEnd };
+
+/** A command at the start and a skill named mid-sentence, each in its colour. */
+export const CommandAndSkill: Story = {
+  args: { draft: "/compact then /review the queue, and /simplify it. `/review` in code stays code." },
+};
+
+/** An agent that does not say which commands are skills offers nothing there. */
+export const SkillMidSentenceUnknown: Story = {
+  args: { draft: "Fix the queue, then /", skills: [] },
+  play: caretAtEnd,
+};
 
 /** Bare `@`: recent sessions first, then project files. */
 export const MentionMixed: Story = { args: { draft: "Look at @" }, play: caretAtEnd };
