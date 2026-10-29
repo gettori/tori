@@ -3259,9 +3259,26 @@ button.diffHunkHeader:hover {
    comment, a diagnostic. Removable, and never sent on its own. */
 .attachments {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: calc(6px * var(--ui-scale));
   padding: 0 calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
+}
+
+/* Equal columns that fill the row, so a row of tiles ends flush with the input
+   box. The floor is what makes it six across at the full chat measure, and
+   fewer as the pane narrows rather than tiles shrinking past legibility. */
+.attachmentTiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(104px * var(--ui-scale)), 1fr));
+  gap: calc(6px * var(--ui-scale));
+}
+
+/* The same rule for the pills, three across at the full measure: wide enough
+   for a PR title or the start of a comment, with the rest in the tooltip. */
+.attachmentPills {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(200px * var(--ui-scale)), 1fr));
+  gap: calc(6px * var(--ui-scale));
 }
 
 /* A container, not a control: the chip means two things now (put the token in
@@ -3269,6 +3286,7 @@ button.diffHunkHeader:hover {
 .attachment {
   display: flex;
   align-items: center;
+  min-width: 0;
   max-width: 100%;
   border: 1px solid var(--border-default);
   border-radius: var(--tori-radius-pill);
@@ -3292,6 +3310,7 @@ button.diffHunkHeader:hover {
 
 .attachmentBody {
   display: flex;
+  flex: 1;
   align-items: center;
   gap: calc(6px * var(--ui-scale));
   min-width: 0;
@@ -3302,7 +3321,8 @@ button.diffHunkHeader:hover {
   color: var(--fg-muted);
   font-family: var(--tori-font-mono);
   font-size: var(--tori-text-sm);
-  cursor: default;
+  text-align: left;
+  cursor: pointer;
 }
 
 button.attachmentBody:hover {
@@ -3322,7 +3342,7 @@ button.attachmentBody:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: calc(40px * var(--ui-scale));
+  height: calc(64px * var(--ui-scale));
   overflow: hidden;
   border-bottom: 1px solid var(--border-default);
   background: var(--canvas-default);
@@ -3362,17 +3382,11 @@ button.attachmentBody:hover {
 
 /* A file is a preview, not a row: the picture at a size worth looking at, the
    name captioned under it, and the remove button in the corner where it costs
-   the picture nothing until it is wanted.
-
-   Sized by its caption between a floor and a ceiling, so `a.ts` does not get a
-   tile built for `adapter_request.yml` and neither one sets the strip's width. */
+   the picture nothing until it is wanted. Its width is the grid's column. */
 .attachmentTile {
   position: relative;
   flex-direction: column;
   align-items: stretch;
-  width: max-content;
-  min-width: calc(88px * var(--ui-scale));
-  max-width: calc(168px * var(--ui-scale));
   border-radius: var(--tori-radius-md);
 }
 
@@ -3383,21 +3397,14 @@ button.attachmentBody:hover {
   padding: 0;
 }
 
-/* It opens the file now. Drag still works, and the tooltip is what says so: a
-   grab cursor on the one control whose click does something else is a lie told
-   at exactly the moment the user is deciding. */
-.attachmentTile button.attachmentBody {
-  cursor: pointer;
-}
-
 /* The whole tile, not the caption strip: the picture keeps its own recessed
    field, so a hover painted under it alone would look like half a control. */
 .attachmentTile:hover {
   background: var(--neutral-hover);
 }
 
-/* Smaller than the pill's text: the caption sits under 40px of picture, and it
-   is what the tile is sized by, so it has to stay narrow enough to be one. */
+/* Smaller than the pill's text: a caption under a picture, in a column that is
+   only about a hundred pixels wide. */
 .attachmentTile .attachmentName {
   padding: calc(3px * var(--ui-scale)) calc(6px * var(--ui-scale)) 0;
   font-size: var(--tori-text-2xs);
@@ -3431,6 +3438,84 @@ button.attachmentBody:hover {
 .attachmentTile:hover .attachmentRemove,
 .attachmentTile:focus-within .attachmentRemove {
   opacity: 1;
+}
+
+/* The tooltip body shared by everything above the composer (Tip.tsx): a title,
+   then facts, then quoted content, then what clicking does. */
+.tip {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2px * var(--ui-scale));
+  white-space: normal;
+}
+
+.tipTitle {
+  color: var(--fg-default);
+  font-weight: 500;
+}
+
+.tipLine {
+  color: var(--fg-muted);
+  font-size: var(--tori-text-sm);
+}
+
+.tipExcerpt {
+  margin: calc(4px * var(--ui-scale)) 0 0;
+  padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  border-radius: var(--tori-radius-sm);
+  background: var(--canvas-default);
+  color: var(--fg-muted);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-xs);
+  white-space: pre-wrap;
+}
+
+.tipWarn {
+  color: var(--danger-fg);
+  font-size: var(--tori-text-sm);
+}
+
+.tipHint {
+  margin-top: calc(4px * var(--ui-scale));
+  color: var(--fg-subtle);
+  font-size: var(--tori-text-xs);
+}
+
+/* The attachment preview dialog (AttachmentPreview.tsx). The editor's image and
+   PDF views fill their parent, so they get a box with a height to fill. */
+.previewFrame {
+  display: flex;
+  flex-direction: column;
+  height: 60vh;
+  border-radius: var(--tori-radius-md);
+  overflow: hidden;
+}
+
+.previewImage {
+  display: block;
+  max-width: 100%;
+  max-height: 60vh;
+  margin: 0 auto;
+  border-radius: var(--tori-radius-md);
+}
+
+.previewProse {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: var(--tori-line-normal);
+}
+
+.previewNote {
+  margin: 0;
+  color: var(--fg-muted);
+}
+
+.previewFacts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--fg-muted);
+  line-height: var(--tori-line-normal);
 }
 
 /* What this agent can take, said where the file is about to land rather than

@@ -2,6 +2,7 @@ import { For, Show, createEffect, createMemo, createSignal, on } from "solid-js"
 import { Check, ChevronDown, Circle, LoaderCircle } from "lucide-solid";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import type { PlanItem } from "../../utils/chatTypes";
+import Tip from "./Tip";
 import styles from "./Chat.module.css";
 
 /**
@@ -121,7 +122,20 @@ export default function PlanCard(props: { items: readonly PlanItem[] }) {
           {/* The head is the fold, the way a tool call's row is: one control,
               on the thing it folds, rather than a separate affordance beside
               it. */}
-          <button type="button" class={styles.planHead} aria-expanded onClick={() => setOpen(false)}>
+          <Tooltip
+            as="button"
+            type="button"
+            class={styles.planHead}
+            label={
+              <Tip
+                title={`Plan, ${done()} of ${props.items.length} steps done`}
+                lines={[active() ? `Now: ${active()!.text}` : "No step in progress"]}
+                hint="Click to fold it into a pill on the input"
+              />
+            }
+            aria-expanded
+            onClick={() => setOpen(false)}
+          >
             <span class={styles.planCaret} aria-hidden="true">
               <ChevronDown size={16} />
             </span>
@@ -130,7 +144,7 @@ export default function PlanCard(props: { items: readonly PlanItem[] }) {
             {/* The in-flight step in the header too, so a glance at the card
                 still answers "what is it doing right now". */}
             <Show when={active()}>{(item) => <span class={styles.planActive}>{item().text}</span>}</Show>
-          </button>
+          </Tooltip>
           {rows(setList)}
         </div>
       </Show>

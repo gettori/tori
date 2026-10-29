@@ -1,6 +1,6 @@
 import { For, Show, createSignal } from "solid-js";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { mockConvertFileSrc } from "@tauri-apps/api/mocks";
+import { mockConvertFileSrc, mockIPC } from "@tauri-apps/api/mocks";
 import Composer from "./Composer";
 import LaneStrip from "./LaneStrip";
 import PlanCard from "./PlanCard";
@@ -50,9 +50,23 @@ const IMAGE_FILES: Record<string, string> = {
   [`${ROOT}/docs/diagram-with-a-really-long-file-name-that-will-not-fit.webp`]: shot(280, "diagram"),
 };
 
-// Image chips draw through the asset protocol, and the workshop has no Tauri
-// host behind it, so the protocol is answered with drawn placeholders.
+const SOURCE = Array.from(
+  { length: 80 },
+  (_, i) => `export function step${i + 1}(input: string): string {\n  return input.trim(); // line ${i * 3 + 2}\n}`,
+).join("\n");
+
+// The workshop has no Tauri host behind it: image chips draw through the asset
+// protocol, and the preview reads files, so both are answered here.
 function stubAssets() {
+  mockIPC((cmd, args) => {
+    if (cmd === "fs_read_file") {
+      const path = (args as { path: string }).path;
+      if (path.endsWith(".md")) return "# Notes\n\nA **markdown** file, previewed.\n\n- one\n- two\n";
+      if (path.endsWith(".txt")) return "2026-10-28 18:37:24 ERROR queue parked\n".repeat(40);
+      return SOURCE;
+    }
+    return null;
+  });
   mockConvertFileSrc("macos");
   const internals = (window as unknown as { __TAURI_INTERNALS__: { convertFileSrc: (p: string) => string } })
     .__TAURI_INTERNALS__;
@@ -828,6 +842,31 @@ export const AttachedEverything: Story = {
   },
 };
 
+function previewChip(name: string) {
+  return async ({ canvasElement }: { canvasElement: HTMLElement }) => {
+    canvasElement.querySelector<HTMLButtonElement>(`button[aria-label^="Preview"][aria-label*="${name}"]`)?.click();
+  };
+}
+
+/** Clicking a chip opens it in a dialog, by the viewer the editor uses for it. */
+export const PreviewImage: Story = { args: { attachments: [IMAGE_1, FILE_1] }, play: previewChip("screenshot") };
+
+export const PreviewSourceFile: Story = { args: { attachments: [IMAGE_1, FILE_1] }, play: previewChip("Composer.tsx") };
+
+export const PreviewSelection: Story = { args: { attachments: [SELECTION] }, play: previewChip("LaneStrip.tsx") };
+
+export const PreviewPullRequest: Story = { args: { attachments: [PR_CHIP] }, play: previewChip("PR 412") };
+
+export const PreviewNote: Story = {
+  args: { attachments: [chip("hunk", HUNK_REF), chip("hunk-text", HUNK_TEXT)] },
+  play: previewChip("never exits"),
+};
+
+export const PreviewMissingFile: Story = {
+  args: { attachments: [FILE_1], missing: [FILE_1_PATH] },
+  play: previewChip("Composer.tsx"),
+};
+
 /** Tokens in the prose with no chip behind them (a chip removed, or typed by hand). */
 export const InlineTokensWithoutChips: Story = {
   args: { draft: "See [Image 1] next to [File 2] and [PR 412]. Then [Session: Docs: composer page]." },
@@ -1014,6 +1053,57 @@ export const WithAskPlanAndLanes: Story = {
 export const WithAskAndFoldedPlan: Story = {
   args: { running: true, asks: [ASK], plan: PLAN },
   play: WithPlanFolded.play,
+};
+
+function hover(selector: string) {
+  return async ({ canvasElement }: { canvasElement: HTMLElement }) => {
+    const target = canvasElement.querySelector(selector);
+    if (!target) return;
+    for (const type of ["pointerenter", "pointerover", "pointermove"]) {
+      target.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerType: "mouse" }));
+    }
+  };
+}
+
+/** The tooltips, one open per story, for checking what each one says. */
+export const TooltipImageTile: Story = {
+  args: { attachments: [IMAGE_1, FILE_1] },
+  play: hover('button[aria-label^="Preview [Image 1]"]'),
+};
+
+export const TooltipSelectionTile: Story = {
+  args: { attachments: [SELECTION] },
+  play: hover('button[aria-label^="Preview @LaneStrip"]'),
+};
+
+export const TooltipMissingFile: Story = {
+  args: { attachments: [FILE_1], missing: [FILE_1_PATH] },
+  play: hover('button[aria-label^="Preview [File 1]"]'),
+};
+
+export const TooltipPullRequest: Story = {
+  args: { attachments: [PR_CHIP] },
+  play: hover('button[aria-label^="Preview [PR 412]"]'),
+};
+
+export const TooltipRunningSubagent: Story = {
+  args: { running: true, lanes: [{ ...LANE_RUNNING, activity: "Reading Composer.tsx" }] },
+  play: hover('[aria-label="Subagent lanes"] button:nth-child(2)'),
+};
+
+export const TooltipDoneSubagent: Story = {
+  args: { lanes: [LANE_DONE[0]] },
+  play: hover('[aria-label="Subagent lanes"] button:nth-child(2)'),
+};
+
+export const TooltipBackgroundTask: Story = {
+  args: { tasks: TASKS },
+  play: hover('[class*="laneStill"]'),
+};
+
+export const TooltipQueuedMessage: Story = {
+  args: { running: true, queue: [queued("q1", "Also run the lints\nand then the type check", [IMAGE_1.block])] },
+  play: hover('span[class*="queueText"]'),
 };
 
 export const KitchenSink: Story = {
