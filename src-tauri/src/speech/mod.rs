@@ -455,19 +455,27 @@ pub fn speech_delete(state: State<SpeechState>) -> Result<(), String> {
     Ok(())
 }
 
+// Async so the first press can wait on the microphone prompt off the main
+// thread.
 #[tauri::command]
-pub fn dictation_start(state: State<SpeechState>) -> Result<(), DictationError> {
+pub async fn dictation_start(app: AppHandle, state: State<'_, SpeechState>) -> Result<(), DictationError> {
     download::DICTATION
         .installed(&dictation::dir())
         .ok_or(DictationError::NotDownloaded)?;
-    if capture::microphone_denied() {
+    let allowed = tauri::async_runtime::spawn_blocking(capture::ask_for_microphone)
+        .await
+        .map_err(|e| DictationError::from(e.to_string()))?;
+    if !allowed {
         return Err(DictationError::Permission);
     }
     let mut slot = state.capture.lock().unwrap();
     if let Some(stale) = slot.take() {
         capture::stop(stale, false)?;
     }
-    *slot = Some(capture::start()?);
+    let level = Box::new(move |rms: f32| {
+        let _ = app.emit("dictation-level", rms);
+    });
+    *slot = Some(capture::start(level)?);
     Ok(())
 }
 
@@ -482,7 +490,7 @@ pub async fn dictation_stop(app: AppHandle, state: State<'_, SpeechState>) -> Re
     let dictation = state.dictation_with_tick(&app);
     tauri::async_runtime::spawn_blocking(move || {
         let clip = capture::stop(running, true)?;
-        if capture::microphone_denied() {
+        if capture::microphone_denied() || capture::withheld(&clip.samples) {
             return Err(DictationError::Permission);
         }
         if capture::peak(&clip.samples) < capture::QUIET {

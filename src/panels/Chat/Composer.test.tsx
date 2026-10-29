@@ -1593,21 +1593,24 @@ describe("dictating into the box", () => {
   const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
 
   it("records on a press, transcribes on the next, and puts the words in after a space", async () => {
-    const { input, getByLabelText, queryByLabelText } = setup({ draft: "hello" });
+    const { input, getByLabelText, queryByLabelText, queryByRole } = setup({ draft: "hello" });
     input.setSelectionRange(5, 5);
     fireEvent.click(getByLabelText("Dictate"));
     await settled();
-    const stop = getByLabelText("Stop dictating");
-    expect(stop.textContent).toBe("0:00");
+    expect(queryByRole("status")?.textContent).toBe("Listening. Press Escape to drop it");
+    expect(input.readOnly).toBe(true);
 
     mic.said = "there, world";
-    fireEvent.click(stop);
+    fireEvent.click(getByLabelText("Stop dictating"));
     await settled();
     expect(getByLabelText("Transcribing").getAttribute("aria-busy")).toBe("true");
+    expect(queryByRole("status")?.textContent).toBe("Turning what you said into text");
     mic.release?.();
     await settled();
     expect(input.value).toBe("hello there, world");
     expect(input.selectionStart).toBe("hello there, world".length);
+    expect(queryByRole("status")).toBeNull();
+    expect(input.readOnly).toBe(false);
     expect(queryByLabelText("Dictate")).toBeTruthy();
   });
 

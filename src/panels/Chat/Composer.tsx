@@ -1,11 +1,10 @@
 import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, untrack, type JSX } from "solid-js";
 import {
   ArrowUp,
+  AudioWaveform,
   Check,
   CornerDownRight,
   GripVertical,
-  LoaderCircle,
-  Mic,
   Pencil,
   Plus,
   Square,
@@ -57,10 +56,10 @@ import { sessionTitle } from "../../utils/sessionMention";
 import { navLevel, type NavProject, type NavSpace, type NavUnit } from "../../utils/mentionNavigator";
 import styles from "./Chat.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
+import DictationWave from "../../components/DictationWave/DictationWave";
 import {
   dropActive as dropDictation,
-  clockLabel,
-  seconds as dictationSeconds,
+  levels as dictationLevels,
   state as dictation,
   toggle as toggleDictation,
 } from "../../utils/dictation";
@@ -1434,51 +1433,57 @@ export default function Composer(props: {
       </Show>
       <Show when={props.notice}>{(notice) => <div class={styles.composerNotice}>{notice()}</div>}</Show>
       <div class={styles.composerBox}>
-        <textarea
-          ref={input}
-          class={styles.input}
-          rows={MIN_ROWS}
-          // Says what Enter will actually do, and quotes the measured delivery
-          // rather than letting a steer read as instant. The figure comes from
-          // the declared tier, so it cannot drift from what was measured; the
-          // fallback wording still refuses to promise immediacy.
-          placeholder={
-            props.watching
-              ? // Never the steer wording outside main. A steer reaches the
-                // turn it names, and this box cannot reach the lane on screen.
-                `Watching ${props.watching}. What you type goes to the main agent`
-              : props.running
-                ? props.steering
-                  ? (props.steerCost
-                      ? `Steer this turn, picked up in ${props.steerCost}`
-                      : "Steer this turn, picked up at its next step") + (props.onQueue ? ". Option+Enter queues" : "")
-                  : "Type to queue for the next turn"
-                : "Reply, or @ a file · / for commands"
-          }
-          value={text()}
-          disabled={props.disabled}
-          // One writer at a time: while a scratch tab holds the draft, typing
-          // here would be overwritten by the next save.
-          readOnly={!!props.linked}
-          // Spelling is marked, never rewritten: autocorrect would "fix" the
-          // identifiers and paths a prompt is full of.
-          spellcheck={true}
-          autocorrect="off"
-          autocapitalize="off"
-          onInput={(e) => {
-            setText(e.currentTarget.value);
-            setHistoryIndex(-1);
-            syncToken();
-            fit();
-          }}
-          onKeyDown={onKeyDown}
-          onPaste={onPaste}
-          // A click or an arrow can move the caret out of the token that opened
-          // the menu without changing a character, so selection is watched too.
-          onSelect={syncToken}
-          onFocus={() => setFocusTick((t) => t + 1)}
-          onBlur={closeMenu}
-        />
+        <div class={styles.inputArea}>
+          <textarea
+            ref={input}
+            class={styles.input}
+            rows={MIN_ROWS}
+            // Says what Enter will actually do, and quotes the measured delivery
+            // rather than letting a steer read as instant. The figure comes from
+            // the declared tier, so it cannot drift from what was measured; the
+            // fallback wording still refuses to promise immediacy.
+            placeholder={
+              props.watching
+                ? // Never the steer wording outside main. A steer reaches the
+                  // turn it names, and this box cannot reach the lane on screen.
+                  `Watching ${props.watching}. What you type goes to the main agent`
+                : props.running
+                  ? props.steering
+                    ? (props.steerCost
+                        ? `Steer this turn, picked up in ${props.steerCost}`
+                        : "Steer this turn, picked up at its next step") +
+                      (props.onQueue ? ". Option+Enter queues" : "")
+                    : "Type to queue for the next turn"
+                  : "Reply, or @ a file · / for commands"
+            }
+            value={text()}
+            disabled={props.disabled}
+            // One writer at a time: while a scratch tab holds the draft, typing
+            // here would be overwritten by the next save.
+            readOnly={!!props.linked || dictation() !== "idle"}
+            // Spelling is marked, never rewritten: autocorrect would "fix" the
+            // identifiers and paths a prompt is full of.
+            spellcheck={true}
+            autocorrect="off"
+            autocapitalize="off"
+            onInput={(e) => {
+              setText(e.currentTarget.value);
+              setHistoryIndex(-1);
+              syncToken();
+              fit();
+            }}
+            onKeyDown={onKeyDown}
+            onPaste={onPaste}
+            // A click or an arrow can move the caret out of the token that opened
+            // the menu without changing a character, so selection is watched too.
+            onSelect={syncToken}
+            onFocus={() => setFocusTick((t) => t + 1)}
+            onBlur={closeMenu}
+          />
+          <Show when={dictation() !== "idle"}>
+            <DictationWave levels={dictationLevels()} busy={dictation() === "transcribing"} />
+          </Show>
+        </div>
         <div class={styles.composerBar}>
           {/* A plain file input rather than a native dialog: the webview has one
               already, and it needs no extra Tauri permission to open. */}
@@ -1541,21 +1546,13 @@ export default function Composer(props: {
             }
             aria-busy={dictation() === "transcribing"}
             disabled={props.disabled || !!props.linked}
-            onClick={() => void toggleDictation(insertSpoken)}
+            onClick={() => {
+              // Back to the box, so Escape reaches it while the wave covers it.
+              input?.focus();
+              void toggleDictation(insertSpoken);
+            }}
           >
-            <Show
-              when={dictation() === "transcribing"}
-              fallback={
-                <>
-                  <Icon icon={Mic} />
-                  <Show when={dictation() === "recording"}>
-                    <span>{clockLabel(dictationSeconds())}</span>
-                  </Show>
-                </>
-              }
-            >
-              <Icon icon={LoaderCircle} class={styles.micBusy} />
-            </Show>
+            <Icon icon={AudioWaveform} />
           </Tooltip>
           {props.controls}
           <div class={styles.composerSpacer} />

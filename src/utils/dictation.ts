@@ -1,5 +1,6 @@
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { emitWith, TOAST, type ToastEvent } from "./events";
 import { askToDownload } from "./dictationDownload";
 
@@ -9,35 +10,69 @@ type DictationError = { kind: "notDownloaded" } | { kind: "permission" } | { kin
 type Transcript = { kind: "silent" } | { kind: "text"; text: string };
 
 export const PERMISSION_HELP =
-  "Tori can't use the microphone. Allow it under System Settings, Privacy & Security, Microphone.";
+  "Tori isn't getting sound from the microphone. Allow it under System Settings, Privacy & Security, Microphone.";
+
+// How long a recording may hear nothing but exact zeros before it is taken
+// for a microphone macOS is withholding.
+const WITHHELD_AFTER = 1500;
+
+export const BARS = 32;
+const silent = () => Array<number>(BARS).fill(0);
 
 const [state, setState] = createSignal<DictationState>("idle");
-const [seconds, setSeconds] = createSignal(0);
-export { state, seconds };
+const [levels, setLevels] = createSignal<number[]>(silent());
+export { state, levels };
 
-let clock: ReturnType<typeof setInterval> | null = null;
+let listening: Promise<unknown> | null = null;
+let heardSound = false;
+let withheldCheck: ReturnType<typeof setTimeout> | null = null;
+
+// RMS to a bar height: -50 dB is the floor of a quiet room, -10 dB a voice
+// close to the mic.
+export const height = (rms: number) => Math.min(1, Math.max(0, (20 * Math.log10(rms || 1e-9) + 50) / 40));
+
+function hear() {
+  listening ??= listen<number>("dictation-level", (e) => {
+    if (state() !== "recording") return;
+    if (e.payload > 0) heardSound = true;
+    setLevels((l) => [...l.slice(1), height(e.payload)]);
+  }).catch((e) => {
+    listening = null;
+    throw e;
+  });
+  return listening;
+}
+
 // Bumped by every stop and every drop, so a stop that was dropped while in
 // flight inserts nothing even when a newer stop is under way.
 let run = 0;
-
-export const clockLabel = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
 export async function toggle(insert: (text: string) => void): Promise<void> {
   if (state() === "transcribing") return;
   if (state() === "recording") return finish(insert);
   try {
+    await hear();
     await invoke("dictation_start");
   } catch (e) {
     return fail(e, "start dictating");
   }
-  const started = Date.now();
-  setSeconds(0);
+  setLevels(silent());
+  heardSound = false;
   setState("recording");
-  clock = setInterval(() => setSeconds(Math.floor((Date.now() - started) / 1000)), 1000);
+  withheldCheck = setTimeout(() => {
+    if (state() !== "recording" || heardSound) return;
+    dropActive();
+    emitWith<ToastEvent>(TOAST, { message: PERMISSION_HELP, kind: "error" });
+  }, WITHHELD_AFTER);
+}
+
+function clearWithheldCheck() {
+  if (withheldCheck) clearTimeout(withheldCheck);
+  withheldCheck = null;
 }
 
 async function finish(insert: (text: string) => void): Promise<void> {
-  stopClock();
+  clearWithheldCheck();
   setState("transcribing");
   const mine = ++run;
   try {
@@ -52,19 +87,12 @@ async function finish(insert: (text: string) => void): Promise<void> {
 }
 
 export function dropActive(): boolean {
+  clearWithheldCheck();
   if (state() === "idle") return false;
-  if (state() === "recording") {
-    stopClock();
-    void invoke("dictation_cancel").catch((e) => fail(e, "stop the microphone"));
-  }
+  if (state() === "recording") void invoke("dictation_cancel").catch((e) => fail(e, "stop the microphone"));
   run += 1;
   setState("idle");
   return true;
-}
-
-function stopClock() {
-  if (clock) clearInterval(clock);
-  clock = null;
 }
 
 function fail(e: unknown, what: string) {

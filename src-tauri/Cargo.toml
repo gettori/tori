@@ -118,6 +118,9 @@ objc2-foundation = { version = "0.3", features = ["NSUserDefaults", "NSString", 
 # sounds a session state plays. Both already in the tree under tauri; only the
 # features are new.
 objc2 = "0.6"
+# The completion handler AVCaptureDevice's microphone request answers through.
+# Already in the tree under objc2.
+block2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSImage", "NSResponder", "NSPasteboard", "NSSound"] }
 
 # 0.6.15 plus an `identifier` builder option; drop this once upstream has one.
