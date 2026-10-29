@@ -22,6 +22,33 @@ type Props = {
 export default function Resizer(props: Props): JSX.Element {
   const axis = () => props.axis ?? "x";
   const [dragging, setDragging] = createSignal(false);
+  let el!: HTMLDivElement;
+  let grip!: HTMLDivElement;
+  let hoverFrame = 0;
+  let hoverAt: PointerEvent | null = null;
+
+  // Centers the grip on the pointer along the edge, kept clear of both ends.
+  // Written straight to the element so following the pointer skips rendering.
+  function placeGrip(e: PointerEvent) {
+    const r = el.getBoundingClientRect();
+    const vertical = axis() === "x";
+    const pos = vertical ? e.clientY - r.top : e.clientX - r.left;
+    const len = vertical ? r.height : r.width;
+    const g = vertical ? grip.offsetHeight : grip.offsetWidth;
+    const inset = g / 8;
+    const at = Math.max(inset, Math.min(len - g - inset, pos - g / 2));
+    grip.style.transform = vertical ? `translateY(${at}px)` : `translateX(${at}px)`;
+  }
+
+  function onHoverMove(e: PointerEvent) {
+    if (document.body.classList.contains("dragging")) return;
+    hoverAt = e;
+    if (!hoverFrame)
+      hoverFrame = requestAnimationFrame(() => {
+        hoverFrame = 0;
+        if (hoverAt) placeGrip(hoverAt);
+      });
+  }
 
   function onPointerDown(e: PointerEvent) {
     e.preventDefault();
@@ -37,13 +64,16 @@ export default function Resizer(props: Props): JSX.Element {
     // panes (terminal, editor). One write per frame keeps the drag smooth.
     let frame = 0;
     let latest = start;
+    let last = e;
     function apply() {
       frame = 0;
+      placeGrip(last);
       const next = startVal + (latest - start) * sign;
       props.onInput(Math.max(min, Math.min(max, next)));
     }
     function onMove(ev: PointerEvent) {
       latest = horizontal ? ev.clientX : ev.clientY;
+      last = ev;
       if (!frame) frame = requestAnimationFrame(apply);
     }
     function onUp() {
@@ -65,6 +95,7 @@ export default function Resizer(props: Props): JSX.Element {
 
   return (
     <div
+      ref={el}
       class={styles.resizer}
       classList={{
         [styles.x]: axis() === "x",
@@ -75,6 +106,9 @@ export default function Resizer(props: Props): JSX.Element {
       role="separator"
       aria-orientation={axis() === "x" ? "vertical" : "horizontal"}
       onPointerDown={onPointerDown}
-    />
+      onPointerMove={onHoverMove}
+    >
+      <div ref={grip} class={styles.grip} />
+    </div>
   );
 }

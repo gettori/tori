@@ -1,13 +1,15 @@
-/* Shared drag handle for every pane divider. A wide, mostly transparent hit area
-   with a short brand line that glows on hover/drag (the sidebar-gutter look).
-   `.hairline` adds a faint full-length line at rest so dividers inside a single
-   card still read as a seam. Works on both axes for the future split panes. */
+/* Shared drag handle for every pane divider. A wide, transparent hit area with a
+   short grip pill centered on it: hidden at rest, shown following the pointer
+   along the edge on hover, brand gold while dragging, when
+   a faint line also traces the full edge. `.hairline` adds a full-length line
+   at rest so dividers inside a single card still read as a seam. */
 .resizer {
   flex: 0 0 calc(8px * var(--ui-scale));
   align-self: stretch;
   position: relative;
   background: transparent;
   z-index: 1;
+  touch-action: none;
 }
 
 .x {
@@ -18,13 +20,20 @@
   cursor: row-resize;
 }
 
-/* Rest-state seam for intra-card dividers. Fades out as the hover glow takes
-   over so the two never stack. */
+/* Takes no layout width, so the seam lands exactly where both panes' borders
+   end. The hit zone overlaps each pane by half its width instead. */
+.hairline.x {
+  margin: 0 calc(-4px * var(--ui-scale));
+}
+
+.hairline.y {
+  margin: calc(-4px * var(--ui-scale)) 0;
+}
+
 .hairline::before {
   content: "";
   position: absolute;
   background: var(--border-default);
-  transition: opacity var(--tori-duration-fast) var(--tori-ease);
 }
 
 .hairline.x::before {
@@ -43,41 +52,70 @@
   transform: translateY(-50%);
 }
 
-.hairline:hover::before,
-.hairline.dragging::before {
-  opacity: 0;
-}
-
-/* The hover glow: a short brand line, inset from the ends, lit on hover/drag. */
+/* The drag trail: the full edge in brand gold, shown only while dragging. */
 .resizer::after {
   content: "";
   position: absolute;
-  border-radius: 1px;
-  background: var(--brand-default);
+  background: var(--brand-strong);
   opacity: 0;
-  box-shadow:
-    0 0 6px var(--brand-default),
-    0 0 2px var(--brand-default);
-  transition: opacity var(--tori-duration-fast) var(--tori-ease);
+  transition: opacity 150ms var(--tori-ease);
 }
 
 .x::after {
-  top: calc(96px * var(--ui-scale));
-  bottom: calc(96px * var(--ui-scale));
+  top: 0;
+  bottom: 0;
   left: 50%;
-  width: calc(2px * var(--ui-scale));
+  width: 1px;
   transform: translateX(-50%);
 }
 
 .y::after {
-  left: calc(96px * var(--ui-scale));
-  right: calc(96px * var(--ui-scale));
+  left: 0;
+  right: 0;
   top: 50%;
-  height: calc(2px * var(--ui-scale));
+  height: 1px;
   transform: translateY(-50%);
 }
 
-.resizer:hover::after,
-.resizer.dragging::after {
+.dragging::after {
+  opacity: 0.45;
+}
+
+/* Placed along the edge by a transform written from the pointer, so following
+   it never relayouts. Not animated: the grip fades in and out where the pointer
+   is rather than sliding from elsewhere. */
+.grip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: calc(2px * var(--ui-scale));
+  background: var(--fg-muted);
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform;
+  transition:
+    background 150ms var(--tori-ease),
+    opacity 150ms var(--tori-ease);
+}
+
+.x .grip {
+  left: calc(50% - 2px * var(--ui-scale));
+  width: calc(4px * var(--ui-scale));
+  height: calc(32px * var(--ui-scale));
+}
+
+.y .grip {
+  top: calc(50% - 2px * var(--ui-scale));
+  width: calc(32px * var(--ui-scale));
+  height: calc(4px * var(--ui-scale));
+}
+
+/* No hover state on the other handles while one is being dragged. */
+:global(body:not(.dragging)) .resizer:hover .grip {
   opacity: 0.9;
+}
+
+.dragging .grip {
+  background: var(--brand-strong);
+  opacity: 1;
 }
