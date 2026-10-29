@@ -2403,27 +2403,38 @@ button.diffHunkHeader:hover {
 /* ---- plan card ----
    Pinned between the transcript and the composer: current state, not a
    transcript entry (see PlanCard.tsx). */
-/* The centred column the transcript and the composer share: without it the card
-   ran the full pane width and read as the window's, not the conversation's. */
+/* Framed at the input box's measure, the same family as the ask card and the
+   composer box under it. A rule across the whole column read as a divider in
+   the transcript rather than as something the composer is carrying. */
 .planCard {
   flex: 0 0 auto;
-  width: 100%;
-  max-width: var(--chat-measure);
-  margin-inline: auto;
-  border-top: 1px solid var(--border-default);
+  align-self: center;
+  width: calc(100% - 32px * var(--ui-scale));
+  max-width: calc(var(--chat-measure) - 32px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-xl);
   background: var(--canvas-card);
   font-size: var(--tori-text-md);
 }
 
-/* A button because it is the fold, the way a tool call's row is; the reset is
-   the button chrome and nothing more. */
+/* 8px to whatever follows, the rhythm the rows inside the composer keep. The
+   composer's padding would make it 16, and the lane strip has none at all. */
+.planCard + .lanes {
+  margin-top: calc(8px * var(--ui-scale));
+}
+
+.planCard + .composer {
+  margin-top: calc(-8px * var(--ui-scale));
+}
+
 .planHead {
   display: flex;
   align-items: center;
   gap: calc(8px * var(--ui-scale));
   width: 100%;
-  padding: calc(6px * var(--ui-scale)) calc(16px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
   border: none;
+  border-radius: var(--tori-radius-xl);
   background: transparent;
   color: var(--fg-muted);
   font: inherit;
@@ -2432,10 +2443,22 @@ button.diffHunkHeader:hover {
   cursor: pointer;
 }
 
+.planHead:hover .planCaret {
+  color: var(--fg-default);
+}
+
+/* A 12px slot for a 16px chevron, overflowing evenly, so it centres on the
+   step glyphs below and "Plan" starts where the step text does. */
 .planCaret {
   flex: none;
   display: inline-flex;
+  justify-content: center;
+  width: calc(12px * var(--ui-scale));
   color: var(--fg-subtle);
+}
+
+.planCaret > svg {
+  flex: none;
 }
 
 /* Folded: a pill straddling the composer's top-right edge. `height: 0` gives
@@ -2452,10 +2475,13 @@ button.diffHunkHeader:hover {
 
 .planPill {
   position: absolute;
-  right: calc(16px * var(--ui-scale));
+  /* In from the corner by the input's own inset, so it sits over the send
+     button rather than hanging off the box's rounded edge. */
+  right: calc(28px * var(--ui-scale));
   top: calc(16px * var(--ui-scale));
   transform: translateY(-50%);
   display: inline-flex;
+  gap: calc(4px * var(--ui-scale));
   align-items: center;
   height: calc(20px * var(--ui-scale));
   padding: 0 calc(8px * var(--ui-scale));
@@ -2475,11 +2501,12 @@ button.diffHunkHeader:hover {
 }
 
 .planTitle {
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  color: var(--fg-default);
+  font-weight: 500;
 }
 
 .planCount {
+  color: var(--fg-subtle);
   font-family: var(--tori-font-mono);
   font-variant-numeric: tabular-nums;
 }
@@ -2492,15 +2519,38 @@ button.diffHunkHeader:hover {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  color: var(--fg-default);
+  color: var(--fg-muted);
 }
 
+/* Positioned so a row's offsetTop is measured from the list, which is what
+   PlanCard scrolls by to keep the step in flight in view. */
 .planList {
+  position: relative;
   margin: 0;
-  padding: 0 calc(16px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  padding: 0 calc(12px * var(--ui-scale)) calc(8px * var(--ui-scale));
   list-style: none;
   max-height: calc(140px * var(--ui-scale));
   overflow-y: auto;
+}
+
+/* The scrollbar is an overlay on macOS and hides at rest, so a fade on the
+   edge with more behind it is what says the list goes on. */
+.planListBelow {
+  mask-image: linear-gradient(to bottom, currentColor calc(100% - 24px * var(--ui-scale)), transparent);
+}
+
+.planListAbove {
+  mask-image: linear-gradient(to bottom, transparent, currentColor calc(24px * var(--ui-scale)));
+}
+
+.planListAbove.planListBelow {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    currentColor calc(24px * var(--ui-scale)),
+    currentColor calc(100% - 24px * var(--ui-scale)),
+    transparent
+  );
 }
 
 .planItem {
@@ -2523,17 +2573,49 @@ button.diffHunkHeader:hover {
   min-width: 0;
 }
 
+/* Done steps step back rather than being struck through: a list half crossed
+   out is the loudest thing above the input, and the check already says it. */
 .planItem.completed {
-  color: var(--fg-muted);
-  text-decoration: line-through;
+  color: var(--fg-subtle);
+}
+
+.planItem.completed .planGlyph {
+  color: var(--success-fg);
 }
 
 .planItem.inProgress {
+  color: var(--fg-default);
+}
+
+.planItem.inProgress .planGlyph,
+.planPillGlyph {
   color: var(--status-progress);
+  animation: planSpin 1.2s linear infinite;
+}
+
+.planPillGlyph {
+  display: inline-flex;
 }
 
 .planItem.pending {
   color: var(--fg-muted);
+}
+
+.planItem.pending .planGlyph {
+  color: var(--fg-subtle);
+}
+
+@keyframes planSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .planItem.inProgress .planGlyph,
+  .planPillGlyph {
+    animation: none;
+  }
 }
 
 /* ---- composer ----

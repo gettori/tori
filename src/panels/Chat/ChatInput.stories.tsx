@@ -966,6 +966,25 @@ export const SubagentsAndBackgroundTasks: Story = {
 
 export const WithPlan: Story = { args: { running: true, plan: PLAN } };
 
+/** Folded to a pill on the composer's edge, the list a hover away. */
+export const WithPlanFolded: Story = {
+  args: { running: true, plan: PLAN },
+  play: async ({ canvasElement }) => {
+    canvasElement.querySelector<HTMLButtonElement>("[class*='planHead']")?.click();
+  },
+};
+
+/** Past about six steps the list scrolls inside the card. */
+export const WithLongPlan: Story = {
+  args: {
+    running: true,
+    plan: Array.from({ length: 14 }, (_, i) => ({
+      text: `Step ${i + 1}: ${i % 3 === 0 ? "a longer step that says more about what it is going to change and why" : "a short step"}`,
+      status: i < 8 ? ("completed" as const) : i === 8 ? ("inProgress" as const) : ("pending" as const),
+    })),
+  },
+};
+
 export const WithAsk: Story = {
   args: {
     asks: [

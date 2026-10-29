@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, on } from "solid-js";
 import { Check, ChevronDown, Circle, LoaderCircle } from "lucide-solid";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import type { PlanItem } from "../../utils/chatTypes";
@@ -33,8 +33,38 @@ export default function PlanCard(props: { items: readonly PlanItem[] }) {
   const [open, setOpen] = createSignal(true);
   const tally = () => `${done()}/${props.items.length}`;
 
-  const rows = () => (
-    <ul class={styles.planList}>
+  // The open card's list, which is the only one that scrolls. The tooltip draws
+  // the same rows from `rows()` but has nowhere to keep a step in view.
+  const [list, setList] = createSignal<HTMLUListElement>();
+  const [above, setAbove] = createSignal(false);
+  const [below, setBelow] = createSignal(false);
+  const activeAt = createMemo(() => props.items.findIndex((i) => i.status === "inProgress"));
+
+  function edges() {
+    const el = list();
+    if (!el) return;
+    setAbove(el.scrollTop > 0);
+    setBelow(el.scrollTop + el.clientHeight < el.scrollHeight - 1);
+  }
+
+  // The list opens at the top, so on a long plan the step in flight sat under
+  // the fold behind the finished ones. Two of those stay above it for context.
+  createEffect(
+    on([list, activeAt, () => props.items.length], ([el, at]) => {
+      if (!el) return;
+      const anchor = at >= 0 ? (el.children[Math.max(0, at - 2)] as HTMLElement | undefined) : undefined;
+      if (anchor) el.scrollTop = anchor.offsetTop;
+      edges();
+    }),
+  );
+
+  const rows = (ref?: (el: HTMLUListElement) => void) => (
+    <ul
+      ref={ref}
+      class={styles.planList}
+      classList={{ [styles.planListAbove]: !!ref && above(), [styles.planListBelow]: !!ref && below() }}
+      onScroll={ref ? edges : undefined}
+    >
       <For each={props.items}>
         {(item) => (
           <li class={`${styles.planItem} ${styles[item.status]}`}>
@@ -77,6 +107,11 @@ export default function PlanCard(props: { items: readonly PlanItem[] }) {
               aria-expanded={false}
               onClick={() => setOpen(true)}
             >
+              <Show when={active()}>
+                <span class={styles.planPillGlyph} aria-hidden="true">
+                  <LoaderCircle size={12} />
+                </span>
+              </Show>
               {tally()}
             </Tooltip>
           </div>
@@ -88,7 +123,7 @@ export default function PlanCard(props: { items: readonly PlanItem[] }) {
               it. */}
           <button type="button" class={styles.planHead} aria-expanded onClick={() => setOpen(false)}>
             <span class={styles.planCaret} aria-hidden="true">
-              <ChevronDown size={12} />
+              <ChevronDown size={16} />
             </span>
             <span class={styles.planTitle}>Plan</span>
             <span class={styles.planCount}>{tally()}</span>
@@ -96,7 +131,7 @@ export default function PlanCard(props: { items: readonly PlanItem[] }) {
                 still answers "what is it doing right now". */}
             <Show when={active()}>{(item) => <span class={styles.planActive}>{item().text}</span>}</Show>
           </button>
-          {rows()}
+          {rows(setList)}
         </div>
       </Show>
     </Show>
