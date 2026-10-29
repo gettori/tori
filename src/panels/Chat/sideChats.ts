@@ -20,7 +20,8 @@ export type Drawer = { sides: SideChat[]; active: string | null; closed: SideCha
 const EMPTY: Drawer = { sides: [], active: null, closed: [] };
 
 const [sideAgents, setSideAgents] = createSignal<readonly string[]>([]);
-void invoke<string[]>("chat_side_agents")
+void Promise.resolve()
+  .then(() => invoke<string[]>("chat_side_agents"))
   .then((ids) => setSideAgents(Array.isArray(ids) ? ids : []))
   .catch(() => {});
 

@@ -5,6 +5,7 @@ import type { ChatPlugin, PublishedCapability } from "../../utils/chatCapabiliti
 import { ChevronRight, Plus } from "lucide-solid";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
+import Tooltip from "../../components/Tooltip/Tooltip";
 import styles from "./Chat.module.css";
 
 /** One server as Claude's own config files declare it, across the three scopes
@@ -321,12 +322,13 @@ export default function SessionInfo(props: {
                       <button type="button" class={styles.detailsAdd} onClick={() => setAdding(true)}>
                         <Icon icon={Plus} />
                         <span class={styles.detailsName}>Add server</span>
-                        <span
+                        <Tooltip
+                          as="span"
                           class={styles.detailsCount}
-                          title="Written to this project's .mcp.json, the same file `claude mcp add --scope project` uses."
+                          label="Written to this project's .mcp.json, the same file `claude mcp add --scope project` uses."
                         >
                           .mcp.json
-                        </span>
+                        </Tooltip>
                       </button>
                     }
                   >
