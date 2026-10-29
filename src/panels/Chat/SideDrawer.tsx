@@ -6,21 +6,11 @@ import Tab from "../../components/Tab/Tab";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
 import Resizer from "../../components/Resizer/Resizer";
-import { clearComposer } from "../../utils/chatCompose";
-import { dropQueue } from "./queuePersist";
-import { clearDraftPick } from "../../utils/chatDraftPick";
-import { closeSide, drawerOf, markSideStarted, openSide, selectSide, type SideChat } from "./sideChats";
+import { closeSide, drawerOf, markSideStarted, openSide, selectSide, sideLabel } from "./sideChats";
 import styles from "./SideDrawer.module.css";
 
 const WIDTH_MIN = 320;
 const WIDTH_START = 440;
-
-/** What a side chat leaves behind in the webview once it is gone. */
-export function forgetSide(side: SideChat): void {
-  clearComposer(side.tabId);
-  void dropQueue(side.sessionId);
-  clearDraftPick(side.tabId);
-}
 
 /** The side chats of one chat tab, as tabs in a drawer on its right. */
 export default function SideDrawer(props: {
@@ -34,11 +24,6 @@ export default function SideDrawer(props: {
 }) {
   const [width, setWidth] = createSignal(WIDTH_START);
   const drawer = () => drawerOf(props.parentTab);
-  const label = (side: SideChat) => `Side ${drawer().sides.indexOf(side) + 1}`;
-  const close = (side: SideChat) => {
-    closeSide(props.parentTab, side.tabId);
-    forgetSide(side);
-  };
 
   return (
     <Show when={drawer().sides.length > 0}>
@@ -60,11 +45,11 @@ export default function SideDrawer(props: {
             />
           }
           renderTab={(side) => (
-            <Tab value={side.tabId} onClose={() => close(side)}>
-              {label(side)}
+            <Tab value={side.tabId} onClose={() => closeSide(props.parentTab, side.tabId)}>
+              {sideLabel(side)}
             </Tab>
           )}
-          renderMenuItem={(side) => <span class="tab-name">{label(side)}</span>}
+          renderMenuItem={(side) => <span class="tab-name">{sideLabel(side)}</span>}
         />
         <For each={drawer().sides}>
           {(side) => (
@@ -76,7 +61,7 @@ export default function SideDrawer(props: {
                 profile={props.profile}
                 cwd={props.cwd}
                 workspace={props.workspace}
-                title={label(side)}
+                title={sideLabel(side)}
                 resume={side.restored === true}
                 started={!side.restored || side.started}
                 onStart={() => markSideStarted(props.parentTab, side.tabId)}

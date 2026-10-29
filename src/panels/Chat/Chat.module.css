@@ -118,34 +118,162 @@
   top: 100%;
   right: calc(12px * var(--ui-scale));
   z-index: 1000;
-  min-width: calc(320px * var(--ui-scale));
-  max-width: calc(440px * var(--ui-scale));
-  max-height: 60vh;
-  margin-top: calc(6px * var(--ui-scale));
+  width: calc(300px * var(--ui-scale));
+  max-height: 70vh;
+  margin-top: calc(4px * var(--ui-scale));
   overflow-y: auto;
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
-  border-radius: var(--tori-radius-md);
+  border-radius: var(--tori-radius-xl);
   box-shadow: var(--shadow-md);
 }
 
-.menuBody {
+/* Rows, separator and heading follow the shared menu recipe (Menu.module.css).
+   Plain buttons rather than menu items: the session details below hold a form,
+   which a menu's typeahead would eat keys from. */
+.sessionMenu {
   display: flex;
   flex-direction: column;
-  gap: calc(12px * var(--ui-scale));
-  padding: calc(12px * var(--ui-scale));
+  padding: var(--tori-space-3);
 }
 
-.menuActions {
+.menuRow {
   display: flex;
-  flex-wrap: wrap;
-  gap: calc(8px * var(--ui-scale));
+  align-items: center;
+  gap: var(--tori-space-3);
+  width: 100%;
+  min-width: 0;
+  padding: var(--tori-space-3) var(--tori-space-4);
+  font: inherit;
+  font-size: var(--tori-text-lg);
+  color: var(--fg-default);
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--tori-radius-md);
+  cursor: pointer;
+  transition: background var(--tori-duration-fast) ease;
 }
 
-.menuNote {
+.menuRow:hover {
+  background: var(--neutral-hover);
+}
+
+.menuRow:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--brand-ring);
+}
+
+.menuRow > svg {
+  flex: none;
+  width: var(--control-icon);
+  height: var(--control-icon);
+  color: var(--fg-muted);
+}
+
+.menuRowLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menuRowHint {
+  flex: none;
   color: var(--fg-muted);
   font-size: var(--tori-text-md);
-  line-height: 1.4;
+}
+
+.menuDivider {
+  height: 1px;
+  margin: var(--tori-space-2) var(--tori-space-3);
+  border: 0;
+  background: var(--border-default);
+}
+
+.menuSection {
+  display: flex;
+  flex-direction: column;
+}
+
+.menuHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--control-height-xs);
+  padding: var(--tori-space-1) var(--tori-space-2) var(--tori-space-1) var(--tori-space-4);
+  font-size: var(--tori-text-md);
+  color: var(--fg-muted);
+}
+
+.sideRow {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* Revealed on the row, so a list of sides reads as names rather than as a
+   column of crosses. Still reachable by keyboard, which shows it on focus. */
+.sideRowRemove {
+  position: absolute;
+  right: var(--tori-space-2);
+  opacity: 0;
+  transition: opacity var(--tori-duration-fast) ease;
+}
+
+.sideRow:hover .sideRowRemove,
+.sideRowRemove:focus-visible {
+  opacity: 1;
+}
+
+.sideRow:hover .menuRowHint {
+  visibility: hidden;
+}
+
+.sideDot {
+  flex: none;
+  width: calc(7px * var(--ui-scale));
+  height: calc(7px * var(--ui-scale));
+  margin: 0 calc(4px * var(--ui-scale));
+  border: 1.5px solid var(--fg-muted);
+  border-radius: 50%;
+}
+
+.sideDotOpen {
+  background: var(--success-fg);
+  border-color: var(--success-fg);
+}
+
+.menuFooter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-2);
+  margin-top: var(--tori-space-2);
+  padding: var(--tori-space-3) var(--tori-space-4) var(--tori-space-1);
+  border-top: 1px solid var(--border-default);
+}
+
+.menuFooter:empty {
+  display: none;
+}
+
+.usageList {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--tori-space-1) var(--tori-space-4);
+  margin: 0;
+  font-size: var(--tori-text-md);
+}
+
+.usageList dt {
+  color: var(--fg-muted);
+}
+
+.usageList dd {
+  margin: 0;
+  color: var(--fg-default);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- the session figures in the status strip ----
@@ -1877,18 +2005,46 @@ button.diffHunkHeader:hover {
 }
 
 .sessionInfoToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--tori-space-3);
+  width: calc(100% + 2 * var(--tori-space-4));
+  margin: 0 calc(-1 * var(--tori-space-4));
+  padding: var(--tori-space-3) var(--tori-space-4);
+  font: inherit;
+  font-size: var(--tori-text-md);
+  color: var(--fg-default);
+  text-align: left;
   background: none;
   border: 0;
-  color: var(--fg-muted);
+  border-radius: var(--tori-radius-md);
   cursor: pointer;
-  font-size: var(--tori-text-md);
-  padding: 0;
-  text-align: left;
-  width: 100%;
 }
 
 .sessionInfoToggle:hover {
-  color: var(--fg-default);
+  background: var(--neutral-hover);
+}
+
+.sessionInfoToggle > svg {
+  flex: none;
+  width: var(--control-icon);
+  height: var(--control-icon);
+  color: var(--fg-muted);
+  transition: transform var(--tori-duration-fast) ease;
+}
+
+.sessionInfoToggle[aria-expanded="true"] > svg {
+  transform: rotate(90deg);
+}
+
+.sessionInfoTitle {
+  flex: 1;
+}
+
+.sessionInfoSummary {
+  display: flex;
+  gap: var(--tori-space-3);
+  color: var(--fg-muted);
 }
 
 .sessionInfoBody {

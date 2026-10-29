@@ -2,16 +2,22 @@ import { describe, it, expect } from "vite-plus/test";
 import {
   lastReplies,
   planAsReply,
+  nextSideNumber,
   restoredDrawer,
   savedSides,
   sideChatOffered,
   withSide,
+  withSideClosed,
+  withSideReopened,
   withoutSide,
   type Drawer,
+  type SideChat,
 } from "./sideChats";
 import type { ChatItem, ToolItem } from "./chatStore";
 
-const side = (n: number) => ({ tabId: `side:${n}`, sessionId: `s${n}` });
+const side = (n: number): SideChat => ({ tabId: `side:${n}`, sessionId: `s${n}`, n });
+const closed = (n: number): SideChat => ({ ...side(n), restored: true, started: false });
+const drawer = (over: Partial<Drawer> = {}): Drawer => ({ sides: [], active: null, closed: [], ...over });
 
 describe("offering a side chat", () => {
   it("needs both a known read-only mode and a fork", () => {
@@ -23,21 +29,22 @@ describe("offering a side chat", () => {
 });
 
 describe("restoring the side drawer", () => {
-  it("saves fork ids in order with the active one, and restores them as resumed tabs", () => {
-    const saved = savedSides({ sides: [side(1), side(2), side(3)], active: "side:2" });
-    expect(saved).toEqual({ sessions: ["s1", "s2", "s3"], active: 1 });
-    expect(savedSides({ sides: [], active: null })).toBeUndefined();
+  it("saves open and closed fork ids, and restores them as resumed sides", () => {
+    const saved = savedSides(drawer({ sides: [side(1), side(2), side(3)], active: "side:2", closed: [closed(4)] }));
+    expect(saved).toEqual({ sessions: ["s1", "s2", "s3"], active: 1, closed: ["s4"] });
+    expect(savedSides(drawer())).toBeUndefined();
 
-    let n = 0;
+    let k = 0;
     const back = restoredDrawer(
       saved!,
       (id) => id !== "s1",
-      () => `n${++n}`,
+      () => `n${++k}`,
     );
     expect(back.sides).toEqual([
-      { tabId: "side:n1", sessionId: "s2", restored: true, started: false },
-      { tabId: "side:n2", sessionId: "s3", restored: true, started: false },
+      { tabId: "side:n1", sessionId: "s2", n: 1, restored: true, started: false },
+      { tabId: "side:n2", sessionId: "s3", n: 2, restored: true, started: false },
     ]);
+    expect(back.closed).toEqual([{ tabId: "side:n3", sessionId: "s4", n: 3, restored: true, started: false }]);
     expect(back.active).toBe("side:n1");
   });
 
@@ -47,25 +54,42 @@ describe("restoring the side drawer", () => {
       (id) => id === "s1",
       () => "x",
     );
-    expect(back).toEqual({
-      sides: [{ tabId: "side:x", sessionId: "s1", restored: true, started: false }],
-      active: "side:x",
-    });
+    expect(back.active).toBe("side:x");
   });
 });
 
 describe("the side drawer", () => {
-  it("opens a side chat as the active tab", () => {
-    const drawer = withSide(withSide({ sides: [], active: null }, side(1)), side(2));
-    expect(drawer).toEqual({ sides: [side(1), side(2)], active: "side:2" });
+  it("opens a side chat as the active tab, in number order", () => {
+    expect(withSide(withSide(drawer(), side(2)), side(1))).toEqual(
+      drawer({ sides: [side(1), side(2)], active: "side:1" }),
+    );
+    expect(nextSideNumber(drawer({ sides: [side(1)], closed: [closed(3)] }))).toBe(4);
   });
 
   it("hands the active tab to the right neighbour, then the left, on close", () => {
-    const three: Drawer = { sides: [side(1), side(2), side(3)], active: "side:2" };
+    const three = drawer({ sides: [side(1), side(2), side(3)], active: "side:2" });
     expect(withoutSide(three, "side:2").active).toBe("side:3");
     expect(withoutSide({ ...three, active: "side:3" }, "side:3").active).toBe("side:2");
-    expect(withoutSide({ sides: [side(1)], active: "side:1" }, "side:1")).toEqual({ sides: [], active: null });
+    expect(withoutSide(drawer({ sides: [side(1)], active: "side:1" }), "side:1")).toEqual(drawer());
     expect(withoutSide(three, "side:1").active).toBe("side:2");
+  });
+
+  it("keeps a closed side listed to resume, and removes it from either list", () => {
+    const after = withSideClosed(drawer({ sides: [side(1), side(2)], active: "side:2" }), "side:2");
+    expect(after).toEqual(drawer({ sides: [side(1)], active: "side:1", closed: [closed(2)] }));
+    expect(withoutSide(after, "side:2")).toEqual(drawer({ sides: [side(1)], active: "side:1" }));
+  });
+
+  it("reopens a closed side by resuming it, or as a fresh fork when it never had a turn", () => {
+    const shut = drawer({ sides: [side(1)], active: "side:1", closed: [closed(2)] });
+    expect(withSideReopened(shut, "side:2", true, () => "new")).toEqual(
+      drawer({ sides: [side(1), closed(2)], active: "side:2" }),
+    );
+    expect(withSideReopened(shut, "side:2", false, () => "new").sides[1]).toEqual({
+      tabId: "side:2",
+      sessionId: "new",
+      n: 2,
+    });
   });
 });
 
