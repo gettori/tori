@@ -19,7 +19,7 @@ const invoke = vi.hoisted(() =>
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 
-const { toggle, dropActive, state, seconds, PERMISSION_HELP } = await import("./dictation");
+const { toggle, dropActive, state, PERMISSION_HELP } = await import("./dictation");
 const { TOAST, onWith } = await import("./events");
 
 const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -50,7 +50,6 @@ describe("dictation", () => {
     const insert = vi.fn();
     await toggle(insert);
     expect(state()).toBe("recording");
-    expect(seconds()).toBe(0);
 
     backend.stop = { kind: "text", text: "hello there" };
     const finishing = toggle(insert);

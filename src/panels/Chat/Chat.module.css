@@ -2360,6 +2360,14 @@ button.diffHunkHeader:hover {
   border-color: var(--border-strong);
 }
 
+/* The wave sits over the input while dictating, at the input's own size. */
+.inputArea {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--tori-radius-xl) var(--tori-radius-xl) 0 0;
+}
+
 /* Three lines at rest, nine at most, then it scrolls. The line counts live in
    `Composer`'s MIN_ROWS and MAX_ROWS, written to the `rows` attribute: rows is
    measured in line boxes, so both follow the chat font size and the zoom for
@@ -2449,22 +2457,8 @@ button.diffHunkHeader:hover {
 }
 
 .micRecording {
-  width: auto;
-  gap: var(--tori-space-1);
-  padding: 0 var(--tori-space-2);
   border-color: var(--danger-border);
   color: var(--danger-fg);
-  font-variant-numeric: tabular-nums;
-}
-
-.micBusy {
-  animation: micSpin 1s linear infinite;
-}
-
-@keyframes micSpin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 /* The one primary action in the pane: the brand-gold send circle. */
