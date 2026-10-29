@@ -10,6 +10,77 @@ matching section here fails the release rather than publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.1029.0-beta
+
+- `tori wait <id>` waits for a session and says why it came back: idle, asking, needs you, limited (with when the limit resets), ended or timeout. `tori session wait` still works and prints the same.
+- `tori check <id>` shows the verification verdict of a session's latest code turn, the checks it ran, and how many files and lines it changed overall, counting only its own files.
+- `tori handoff <id> --to <agent>` starts a new session of another agent in the same folder with a brief of the old one's work, and closes the old one once it's idle. A chat can hand itself over and still finish its turn.
+- `tori loop --prompt "..." <entries>` queues one autopilot ship item per entry, or one per line from stdin. `{item}` in the prompt is replaced by the entry. An entry already open is skipped.
+- The same four are MCP tools: `session_wait`, `session_check`, `session_handoff`, `autopilot_loop`. A worker gets `session_check` only.
+- Agents in Tori are told to use Tori's tools instead of the shell when there is one: `worktree_new` over `git worktree add`, the pull request tools over `gh pr`. Claude reads this when it connects to Tori's MCP server.
+- Install in the update notice now updates Tori in place for every install, not only Homebrew ones. It downloads the build for your Mac, checks it is signed by Tori's team, passes Gatekeeper and is the right version, and then offers Restart to update.
+- The update notice no longer goes missing: Tori checks on launch and every six hours, and a found update stays shown until you install or dismiss it.
+- New one line install: `curl -fsSL https://raw.githubusercontent.com/gettori/tori/main/install.sh | sh`. It picks Apple Silicon or Intel on its own, even from a terminal under Rosetta.
+- Tori moves from alpha to beta.
+- New **Permissions** tab in the Inbox: every waiting permission prompt in one place, grouped by project and command. **Always allow for all** answers every worker asking for the same command at once, **Deny** stays per prompt.
+- The phone app has the same **Permissions** tab. Its first Inbox tab now reads **Since**.
+- On Codex, OpenCode and the other ACP agents, **Always in this project** now sends the agent's own allow always answer, and **Allow once** sends allow once. Before, Tori sent whichever allow the agent listed first.
+- A branch's row in the sidebar shows what work on that branch has cost, across every worktree and the main checkout.
+- An autopilot worker's card shows what its item has cost so far, retries and second opinions included.
+- The pull request panel shows what the pull request's branch has cost.
+- Agents that report no cost (Codex, OpenCode and the other ACP agents) show their turns instead of dollars, with **no cost reported** on hover.
+- New setting **Stop an autopilot item after** in Settings > Chat > Spending. A project or a single item can set its own ceiling by telling the autopilot.
+- A queued or proposed item from an issue shows what it will likely cost under **Waiting at the dock**. It shows **no history yet** until five items of the same size have finished in the project.
+- `tori budget --item <id>` and `--pr <n|url>` print what an autopilot item, its issue and a pull request cost.
+- A turn that ends with no window open now counts toward the chat and project spend ceilings.
+- A repo can propose setup, run and teardown commands, a port count and verification commands for its worktrees in `.tori/project.json`. Nothing in it runs until you accept it, and Tori asks again when the file changes.
+- **Review** shows each field the repo proposes, and a diff against the version you last accepted. **Accept** offers **Run setup now**.
+- Project settings > Tooling > **Repo proposals** lists the files you haven't answered and the ones you declined, with **Review** and **Accept**.
+- Under a command you left empty, Project settings now lists the repo's accepted value with a **repo** mark and the worktrees that run it. Typing your own value overrides it.
+- Plain git repos now have the setup, run and teardown commands in Project settings > Tooling.
+- New **Ports per worktree** under Dev servers, to export fewer than ten ports.
+- `tori worktree new` prints `proposal <state>` on stderr when the new worktree has a file, or the project is untrusted.
+- `.tori/project.json` is checked against a schema in the editor.
+- **Read** on an assistant reply, on a selection in the chat or a PDF (the toolbar that used to hold only **Quote**), or from the command palette reads the text aloud. The paragraph being read is highlighted and a chip offers stop and speed.
+- The first Read offers a voice to download: **Smaller** (107 MB) or **Larger** (340 MB), the natural voice with 28 voices, or **Fastest** (60 MB), which starts quickest with eight voices. The Mac's own voices are no longer used.
+- Code in a reply is read the way a developer says it: file paths, versions, flags, key chords, units and the common tools and acronyms. Code blocks are skipped with a word. A word Tori does not know is spelled out, or said by espeak-ng once it is installed from the new **Pronunciation** row.
+- Settings > Chat > Read aloud: **Voice size**, **Pronunciation**, **Voice** with a play button, and **Speed**, which the chip's speed button shares.
+- A waveform button on the composer, **Dictate a message**. Press it and a live waveform covers the box while you talk; press again and it ripples while the words are worked out, then they land at the caret. The first press offers a model to download: **Moonshine** (67 MB) or **Parakeet** (661 MB, by NVIDIA, CC BY 4.0). Escape drops a recording.
+- Settings > Chat > Dictation: **Model** with Change and Delete.
+- Tori asks for the microphone the first time you dictate. A refusal, or a microphone macOS gives only silence, stops the recording with a notice pointing at System Settings.
+- Settings > Chat > Spending: **Show what work costs**. Off hides the cost on a branch row, an autopilot card, the pull request panel and a waiting item's estimate. Limits still apply.
+- **New side chat** in the session menu opens a read-only copy of the chat in a drawer on the right. It knows everything the chat knows up to that point and works while the chat is mid-turn. Open several; each is a tab, **Side 1**, **Side 2** and so on.
+- A side chat cannot write files or change anything else. It runs in plan mode on Claude and read-only mode on Codex, has no mode picker, and is closed if the agent leaves that mode. Every permission ask is denied, Claude gets no shell commands at all, and only Tori's tools that read are allowed. Questions still reach you.
+- **Send to chat** under a side chat's finished reply sends it to the main chat as your next message, starting with **From a side chat:**. If the main chat cannot take it, the reason shows next to the button.
+- What a side chat spends counts toward the main chat's spending limit and its autopilot item. Once the two together pass the limit, both stop.
+- Side chats count toward the number of chats running at once, but not toward the notice about two chats in one worktree.
+- The session menu lists a chat's side chats under **Side chats**. Closing a side chat ends it but keeps it there as **Closed**; click it to reopen it, still read-only. Hover and click **x** to remove it. Side chats, open and closed, come back after a relaunch.
+- Codex chats get side chats when Codex has said it can fork a session.
+- The session menu is now a list of rows with icons, like the other dropdowns. **Last turn** and **This chat** show the cost on two lines.
+- **Session details** opens beside the menu: the account, MCP servers with a status dot and how many are connected, skills grouped by plugin, plugins with versions, and agents and chat capabilities folded. The menu row already says how many servers need a sign-in.
+- The composer bar's buttons sit closer together.
+- Fixed: with more than one Claude account, the usage of one account could show under another, so both showed the same numbers.
+- **Read usage from Anthropic** on each Claude account in Settings > Agents reads that account's usage from Anthropic, so every window updates without a chat running. The login it reads lasts a few hours between refreshes, and any chat turn on that account refreshes it. macOS may ask to allow it.
+- **Extras** is its own chip and box now, showing what extra usage has spent of its cap, for example $2.44 of $100.00. Before, it sat under the model chip, so a plan without a model week showed an **Extra** chip that switched something else.
+- The chips in settings use full names, **5 Hour**, **Week**, the model name, **Other** and **Extras**. The titlebar keeps the letters 5H, W, F, O and E. Each chip's tooltip says what it measures.
+- A **Breakdown** box on the account shows how the week splits across Claude Code, Chats, Cowork and Other, when Anthropic reports it.
+- In Settings > Agents, clicking anywhere on an agent row opens it, and clicking anywhere on an account's head expands it.
+- **Fetch**, **Pull**, **Pull (Rebase)**, **Push**, **Force Push**, **Reset to Upstream** and **Stash All Changes** in the Changes menu show a toast when they finish.
+- The chat input is an editor now. Code blocks get highlighted in their own language, and bold, italic and inline code are styled as you type
+- Attachment names in the message (`[Image 1]`, `[PR 412]`) can be dragged anywhere in the text, even into the middle of a word. A caret shows where it lands, and hovering one highlights its attachment above the input
+- Backspace removes an attachment name in the message in one go
+- Picture, PDF and file attachments sit in a grid of same size tiles, notes and links in a grid of same size pills, never on the same row
+- Click an attachment to preview it. Pictures, PDFs and code open in a dialog, with Open in editor for files and Open on the forge for pull requests
+- Attachments, queued messages, subagents, background tasks, the plan and the ask card all have a tooltip that says what they are
+- Queued messages use the same pill grid, with Send now and Discard on the line above
+- The plan card lines up with the input box, keeps the current step in view in a long plan, and shows the working spinner when folded
+- Typing `/` in the middle of a message offers your skills (Claude). Commands still work only at the start
+- A `/command` at the start and a `/skill` in the middle show in the brand color
+- Settings > Chat: Read aloud now lists Voice and Speed first, and "Voice size" is renamed to "Voice model".
+- Voice model and dictation Model show the model name and its size, with icon buttons to change or delete it, and a cancel button while it downloads.
+- Pronunciation shows whether espeak-ng is installed, and its hint says what happens in that state.
+- The Voice picker shows the default voice when the saved one isn't in the current voice model, instead of showing blank.
+
 ## 26.1022.0-alpha
 
 - When a Claude account's login has expired, the chat error now has a **Sign in again** button, so you don't need to sign out and back in from Settings.
