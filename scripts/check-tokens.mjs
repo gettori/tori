@@ -81,6 +81,10 @@ const ALLOWLIST = new Map([
     "src/panels/Editor/editorFeatures.test.tsx",
     "buffer contents, not UI styling: the CSS colour-swatch test has to put a colour literal in the document, because a swatch appearing beside one is the whole feature. The literal is the input under test and never reaches a stylesheet",
   ],
+  [
+    "src/panels/Chat/ChatInput.stories.tsx",
+    "picture content, not UI styling: the workshop has no asset protocol, so image chips show drawn placeholder screenshots, and `#1234` is a pull request number typed into a draft",
+  ],
 ]);
 
 // Directory prefixes, for families of files where every member is exempt for the
