@@ -91,6 +91,38 @@ pub trait UsageApi {
 #[serde(rename_all = "camelCase")]
 pub struct TokenReading {
     pub windows: Vec<ProbeWindow>,
+    /// How this week's usage splits across surfaces. Not a limit, so not a
+    /// window: nothing fills it up and nothing resets it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub breakdown: Vec<Share>,
+}
+
+/// One surface's share of the week, 0 to 1 like every level here.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Share {
+    pub key: String,
+    pub name: String,
+    pub share: f64,
+}
+
+/// Measured 2026-10-28 on a Max account as `seven_day_breakdown.rows`, each a
+/// `key`, `display_name` and a 0 to 100 `percent`. Null on a Team account.
+fn breakdown_of(v: &serde_json::Value) -> Vec<Share> {
+    let rows = v
+        .get("seven_day_breakdown")
+        .and_then(|b| b.get("rows"))
+        .and_then(|r| r.as_array());
+    rows.into_iter()
+        .flatten()
+        .filter_map(|row| {
+            Some(Share {
+                key: row.get("key")?.as_str()?.to_string(),
+                name: row.get("display_name")?.as_str()?.to_string(),
+                share: row.get("percent")?.as_f64()? / 100.0,
+            })
+        })
+        .collect()
 }
 
 /// The access token, or why there is not one.
@@ -227,7 +259,10 @@ pub fn parse_usage(body: &str) -> TokenReading {
     }
 
     windows.sort_by(|a, b| a.kind.cmp(&b.kind));
-    TokenReading { windows }
+    TokenReading {
+        windows,
+        breakdown: breakdown_of(&v),
+    }
 }
 
 /// One read of one account's windows.

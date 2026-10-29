@@ -47,7 +47,7 @@ import {
   usageWarnAt,
   type WindowChip,
 } from "../../../../utils/usageSettings";
-import { pollUsage, usageReason } from "../../../../utils/usageProbe";
+import { pollUsage, usageBreakdown, usageReason, type Share } from "../../../../utils/usageProbe";
 import { temporalOf, windowsFor, type WindowReading } from "../../../../utils/usageStore";
 import { catalogFor, ensureModelCatalogsLoaded, forgetModelCatalogs } from "../../../../utils/modelCatalog";
 import { forgetProfileEnvs } from "../../../../utils/profileEnv";
@@ -238,6 +238,26 @@ function unreadNames(id: WindowChip, guess: string | null): { label: string; nam
   if (id === "model_week") return { label: guess ?? "Model", name: modelWeekLabel(guess) };
   if (id === "week_other") return { label: "Other", name: OTHER_WEEK_LABEL };
   return { label: limitTypeChip(id), name: limitTypeLabel(id) ?? id };
+}
+
+/** How the week splits across surfaces. A box like the windows beside it, with
+ *  no bar: a share is not a level anything fills up. */
+function BreakdownCard(props: { rows: Share[] }) {
+  return (
+    <div class={styles.winCard} data-band="none">
+      <div class={styles.winHead}>
+        <span class={styles.winName}>Breakdown</span>
+      </div>
+      <For each={props.rows}>
+        {(row) => (
+          <div class={styles.winHead}>
+            <span class={styles.winFoot}>{row.name}</span>
+            <span class={styles.winFoot}>{Math.round(row.share * 100)}%</span>
+          </div>
+        )}
+      </For>
+    </div>
+  );
 }
 
 /** What each chip measures, for a user who has never read a usage page. */
@@ -725,6 +745,9 @@ function AccountCard(props: {
                   />
                 )}
               </For>
+              <Show when={usageBreakdown(props.agentId, tab()).length > 0}>
+                <BreakdownCard rows={usageBreakdown(props.agentId, tab())} />
+              </Show>
             </div>
 
             {/* Beside the windows, never instead of them: a read that failed has

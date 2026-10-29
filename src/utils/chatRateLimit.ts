@@ -161,7 +161,7 @@ const DOT = " \u00b7 ";
 const NAMES: Record<string, { label: string; short: string; inline: string }> = {
   five_hour: { label: `Session${DOT}5h rolling`, short: "5H", inline: "rolling 5-hour" },
   seven_day: { label: `Week${DOT}all models`, short: "W", inline: "weekly all-model" },
-  extra_usage: { label: "Extra usage", short: "Extra", inline: "extra usage" },
+  extra_usage: { label: "Extra usage", short: "E", inline: "extra usage" },
 };
 
 /**
@@ -235,25 +235,26 @@ export function limitTypeLabel(limitType: string | null): string | null {
 }
 
 /** The same window, in the width the titlebar has: "5H", "W", "F". A window
- *  scoped to something that is not a model still gets its letter: the strip has
- *  room for one either way, and the bar beside it is what carries the meaning. */
+ *  scoped to something that is not a model is O for Other, the chip that governs
+ *  it: the card beside the strip is where its scope is spelled out. */
 export function limitTypeShort(limitType: string): string {
   const known = NAMES[limitType]?.short;
   if (known) return known;
   const model = scopedModel(limitType);
   if (model) return modelWeekShort(model);
-  const qualifier = weekQualifier(limitType);
-  return qualifier ? qualifier[0].toUpperCase() : limitType;
+  return weekQualifier(limitType) ? "O" : limitType;
 }
 
-/** The same window on a settings chip: "5H", "Week", "Fable". A word rather
- *  than the strip's letter, because a chip is the control that decides what the
- *  strip shows and has to be readable before the reader has learned the
- *  letters. */
+/** The same window on a settings chip: "5 Hour", "Week", "Fable", "Other",
+ *  "Extras". A word rather than the strip's letter, because a chip is the
+ *  control that decides what the strip shows and has to be readable before the
+ *  reader has learned the letters. */
 export function limitTypeChip(limitType: string): string {
+  if (limitType === "five_hour") return "5 Hour";
   if (limitType === "seven_day") return "Week";
-  const qualifier = weekQualifier(limitType);
-  return scopedModel(limitType) ?? (qualifier ? titled(qualifier) : limitTypeShort(limitType));
+  if (limitType === "extra_usage") return "Extras";
+  if (weekQualifier(limitType)) return "Other";
+  return scopedModel(limitType) ?? limitTypeShort(limitType);
 }
 
 /** The same window as a sentence carries it, lower case and singular. */
