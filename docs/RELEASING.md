@@ -99,11 +99,29 @@ reach Homebrew installs that way. Add `auto_updates true` to the template in
 `.github/scripts/update-cask.sh` from the release after it, so brew stops
 offering upgrades the app already makes itself. A failed build therefore leaves nothing behind: no tag, no draft.
 
-After `publish`, the `extension` job builds the store zip with
-`.github/scripts/extension-zip.sh`, uploads it to the Chrome Web Store item
-and submits it for review as a staged publish, with
-`.github/scripts/extension-upload.sh --submit`. A green job means the
-version is in review. When the store's approval email arrives, open the item
+The browser extension ships only on a release that changed it. Its version
+lives in `extension/package.json` and is the Tori release that last shipped
+it, without the stage suffix. `prepare` runs
+`.github/scripts/extension-ships.sh`, which looks for a change since the last
+tag under `extension/` (not `extension/store/` or `extension/package.json`),
+`src/utils/spaceTint.ts` or `src-tauri/icons/`. When there is one, `prepare`
+sets the extension to this release's version and adds a "Browser extension"
+line to the notes. The release PR's body ends with whether it ships either
+way. `pnpm-lock.yaml` is not counted, since it changes on nearly every
+release: when a dependency bump matters to the extension, run
+`scripts/release.sh prepare --extension` to ship it anyway. To see the
+decision without opening a PR (it prints `yes` or nothing):
+
+```sh
+.github/scripts/extension-ships.sh "$(git describe --tags --abbrev=0 origin/main)"
+```
+
+After `publish`, the `extension` job ships when `extension/package.json`
+holds this release's version, and skips the upload otherwise. Shipping, it
+builds the store zip with `.github/scripts/extension-zip.sh`, uploads it to
+the Chrome Web Store item and submits it for review as a staged publish, with
+`.github/scripts/extension-upload.sh --submit`. A green job that shipped
+means the version is in review. When the store's approval email arrives, open the item
 in the [Web Store dashboard](https://chrome.google.com/webstore/devconsole)
 and click **Publish**; nothing goes live without that click. A rejection
 also comes by email: fix the cause, then re-run the job, or submit the draft
@@ -116,7 +134,8 @@ A release can land while the previous version is still in review, or
 approved and waiting for Publish. The store may then refuse the upload or
 the submit and the job goes red, which is expected rather than broken.
 Publish the waiting version, or cancel its submission in the dashboard, and
-re-run the job; or let the next release carry the change.
+re-run the job; or carry the change in the next release with
+`prepare --extension`, since an unchanged extension does not ship on its own.
 
 Expect 25 minutes with warm caches, up to 45 after a quiet week.
 

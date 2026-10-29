@@ -10,8 +10,9 @@ const store = target === "store";
 const read = (path: string) => readFileSync(new URL(path, import.meta.url));
 const json = (path: string) => JSON.parse(read(path).toString());
 
-// Chrome takes up to four dot separated numbers, so the prerelease tag goes.
-const version = json("../package.json").version.split("-")[0];
+// Its own version, not the app's: scripts/release.sh moves it only on a release
+// that ships the extension, so an unchanged one never goes back to review.
+const version = json("./package.json").version;
 
 const ICONS: Record<string, string> = { "32": "32x32.png", "128": "128x128.png" };
 
