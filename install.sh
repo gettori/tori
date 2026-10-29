@@ -1,4 +1,6 @@
 #!/bin/sh
+# gettori.app/install redirects to this file on main, so moving or renaming it
+# breaks that URL.
 # The asset name and team id must match the in-app updater's (update.rs).
 # Everything runs from main() at the bottom, so a download cut off halfway
 # runs nothing.

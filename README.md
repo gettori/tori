@@ -11,7 +11,7 @@
 </p>
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/gettori/tori/main/install.sh | sh
+curl -fsSL https://gettori.app/install | sh
 ```
 
 Tori is a macOS app for supervising the coding agents you already run. Every
