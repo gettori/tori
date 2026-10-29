@@ -558,6 +558,48 @@ mod tests {
         assert_eq!(on.windows[0].reached_type.as_deref(), Some("spend_limit_reached"));
     }
 
+    fn capture(name: &str) -> String {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("dev/fixtures/usage")
+            .join(name);
+        std::fs::read_to_string(&path).expect("the committed capture")
+    }
+
+    /// Extra usage arrives in minor units beside its currency's decimal places,
+    /// so a Team account at $2.44 of a $100 cap reads as that, not 244 of 10000.
+    #[test]
+    fn extra_usage_carries_what_it_spent_of_its_cap() {
+        let reading = parse_usage(&capture("claude-oauth-usage-team.json"));
+        let extra = reading
+            .windows
+            .iter()
+            .find(|w| w.kind == "extra_usage")
+            .expect("switched on in the capture");
+        assert_eq!(
+            extra.spend,
+            Some(Spend {
+                used: 2.44,
+                limit: Some(100.0),
+                currency: "USD".into(),
+            })
+        );
+        assert!(reading.breakdown.is_empty(), "a Team account reports none");
+    }
+
+    #[test]
+    fn the_breakdown_is_a_share_per_surface_and_not_a_window() {
+        let reading = parse_usage(&capture("claude-oauth-usage-max.json"));
+        let names: Vec<&str> = reading.breakdown.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, ["Claude Code", "Chats", "Cowork", "Other"]);
+        // 100 on the wire, 1 here, the scale every level speaks.
+        assert_eq!(reading.breakdown[0].share, 1.0);
+        assert!(
+            reading.windows.iter().all(|w| w.kind != "extra_usage"),
+            "switched off on this account"
+        );
+    }
+
     /// Four failures, four sentences. Each one names something the user can act
     /// on, which is the difference between a reason and an error code.
     #[test]
