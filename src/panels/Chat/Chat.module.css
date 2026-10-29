@@ -2416,7 +2416,7 @@ button.diffHunkHeader:hover {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: calc(8px * var(--ui-scale));
+  gap: calc(4px * var(--ui-scale));
   padding: calc(12px * var(--ui-scale)) var(--input-pad-x);
 }
 

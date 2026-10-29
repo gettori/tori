@@ -2681,7 +2681,7 @@ export default function ChatView(props: {
           fileExists={(path) => invoke<boolean>("file_exists", { path })}
           handle={(h) => (composer = h)}
           linked={linkedName()}
-          onOpenInEditor={() => void openDraftInEditor(composerKey())}
+          onOpenInEditor={props.sideOf ? undefined : () => void openDraftInEditor(composerKey())}
           onUnlink={() => void unlinkScratch(composerKey(), { closeTab: true })}
           onAttachUploads={attachments.onAttachUploads}
           onAttachRejected={(reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" })}
@@ -2754,7 +2754,9 @@ export default function ChatView(props: {
                   disabled={refused() || state.ended}
                   onSet={applyConfigOption}
                 />
-                <FollowToggle />
+                <Show when={!props.sideOf}>
+                  <FollowToggle />
+                </Show>
               </>
             )
           }
