@@ -35,6 +35,7 @@ pub enum Event {
 }
 
 type Emit = Arc<dyn Fn(Event) + Send + Sync>;
+pub type Idle = Arc<dyn Fn(Instant) + Send + Sync>;
 type Loader<V> = Box<dyn Fn() -> Result<V, String> + Send>;
 
 pub struct Models<V> {
@@ -150,7 +151,13 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn start<V: Voice + 'static>(models: Models<V>, out: Arc<dyn Out>, emit: Emit, tick: Duration) -> Self {
+    pub fn start<V: Voice + 'static>(
+        models: Models<V>,
+        out: Arc<dyn Out>,
+        emit: Emit,
+        tick: Duration,
+        idle: Idle,
+    ) -> Self {
         let shared = Shared {
             current: Arc::default(),
             active: Arc::default(),
@@ -161,7 +168,7 @@ impl Engine {
         let synth = shared.clone();
         thread::Builder::new()
             .name("speech-synth".into())
-            .spawn(move || synthesise(job_rx, items, models, synth, tick))
+            .spawn(move || synthesise(job_rx, items, models, synth, tick, idle))
             .expect("spawn speech-synth");
         let (player, sink) = (shared.clone(), out.clone());
         thread::Builder::new()
@@ -213,6 +220,7 @@ fn synthesise<V: Voice>(
     mut models: Models<V>,
     shared: Shared,
     tick: Duration,
+    idle: Idle,
 ) {
     loop {
         let job = match jobs.recv_timeout(tick) {
@@ -223,7 +231,9 @@ fn synthesise<V: Voice>(
                 continue;
             }
             Err(RecvTimeoutError::Timeout) => {
-                models.sweep(Instant::now());
+                let now = Instant::now();
+                models.sweep(now);
+                idle(now);
                 continue;
             }
             Err(RecvTimeoutError::Disconnected) => return,
@@ -394,7 +404,7 @@ mod tests {
         let models = Models::new(load, Default::default());
         let log = events.clone();
         let emit: Emit = Arc::new(move |e| log.lock().unwrap().push(e));
-        let engine = Engine::start(models, out.clone(), emit, Duration::from_millis(10));
+        let engine = Engine::start(models, out.clone(), emit, Duration::from_millis(10), Arc::new(|_| {}));
         Rig {
             engine,
             out,
