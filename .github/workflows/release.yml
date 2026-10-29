@@ -368,6 +368,7 @@ jobs:
 
   # Nothing waits on this job, so a store failure leaves the release alone
   # and goes red here on its own. It submits staged; Publish stays a click.
+  # Ships only when `release.sh prepare` gave the extension this release's version.
   extension:
     needs: [gate, publish]
     if: >-
@@ -396,8 +397,22 @@ jobs:
           path: ${{ steps.zip.outputs.path }}
           if-no-files-found: error
 
+      - name: Decide whether this release ships the extension
+        id: ships
+        env:
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: |
+          extension=$(node -p "require('./extension/package.json').version")
+          if [ "$extension" = "${VERSION%%-*}" ]; then
+            echo "extension $extension ships with $VERSION"
+            echo "ship=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "extension unchanged at $extension: not uploading"
+            echo "ship=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Upload and submit to the Chrome Web Store
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.ships.outputs.ship == 'true'
         env:
           CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
           CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
