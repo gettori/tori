@@ -251,7 +251,13 @@ const KEPT = new Map<string, Kept>([
   ["panels/Settings/components/paneKit.tsx", { count: 2, reason: TRUNCATION }],
   ["panels/Settings/panes/AppearancePane/AppearancePane.tsx", { count: 2, reason: GROUP_HEADING }],
   ["panels/Settings/panes/AutopilotPane/AutopilotPane.tsx", { count: 2, reason: GROUP_HEADING }],
-  ["panels/Settings/panes/ChatPane/ChatPane.tsx", { count: 5, reason: GROUP_HEADING }],
+  [
+    "panels/Settings/panes/ChatPane/ChatPane.tsx",
+    {
+      count: 6,
+      reason: `five ${GROUP_HEADING}s, plus the \`ConfirmDialog\` heading Delete asks through before removing the downloaded voice`,
+    },
+  ],
   ["panels/Settings/panes/EditorPane/EditorPane.tsx", { count: 2, reason: GROUP_HEADING }],
   ["panels/Settings/panes/PanesPane/PanesPane.tsx", { count: 1, reason: GROUP_HEADING }],
   ["panels/Settings/panes/ProjectsPane/ProjectsPane.tsx", { count: 1, reason: GROUP_HEADING }],
@@ -265,6 +271,7 @@ const KEPT = new Map<string, Kept>([
   ],
   ["components/Autopilot/DecisionCard.tsx", { count: 1, reason: TRUNCATION }],
   ["components/Dialogs/RebaseDialog.tsx", { count: 2, reason: `${HEADING}, plus one ${TRUNCATION}` }],
+  ["components/VoiceDownload/VoiceDownloadDialog.tsx", { count: 1, reason: HEADING }],
   [
     "panels/Editor/FilesPanel/ScriptsSection.tsx",
     {
