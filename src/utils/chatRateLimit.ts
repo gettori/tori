@@ -71,7 +71,12 @@ export type QuotaReading = {
   status: string | null;
   /** Codex's `rateLimitReachedType`: which limit was hit, or null for none. */
   reachedType: string | null;
+  /** Money spent against an allowance, which only extra usage carries. */
+  spend?: Spend;
 };
+
+/** In the currency's major unit. `limit` is null for an allowance with no cap. */
+export type Spend = { used: number; limit: number | null; currency: string };
 
 export type QuotaState = "ok" | "approaching" | "reached" | "expired";
 

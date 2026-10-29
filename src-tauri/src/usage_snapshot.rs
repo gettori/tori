@@ -45,6 +45,8 @@ pub struct WindowReading {
     pub status: Option<String>,
     #[serde(default)]
     pub reached_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spend: Option<crate::usage_probe::Spend>,
     /// Epoch **milliseconds**: a local clock reading, not a source's.
     pub sampled_at: u64,
     pub source: String,
@@ -162,6 +164,7 @@ mod tests {
             resets_at,
             status: None,
             reached_type: None,
+            spend: None,
             sampled_at: NOW,
             source: "sessions".into(),
         }

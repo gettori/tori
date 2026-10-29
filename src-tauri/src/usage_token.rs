@@ -16,7 +16,7 @@ use sha2::{Digest, Sha256};
 
 use crate::sessions::parse_rfc3339_secs;
 use crate::settings::UsageSource;
-use crate::usage_probe::ProbeWindow;
+use crate::usage_probe::{ProbeWindow, Spend};
 
 /// The item `claude` writes for the login the user already had. A non-default
 /// `CLAUDE_CONFIG_DIR` gets its own item, suffixed with a hash of the raw
@@ -127,6 +127,7 @@ fn window(kind: &str, v: &serde_json::Value) -> Option<ProbeWindow> {
         // A locked window is the endpoint saying it refused, which outranks the
         // level by the same rule a Codex `rateLimitReachedType` does.
         reached_type: w.get("locked_reason").and_then(|r| r.as_str()).map(str::to_string),
+        spend: None,
     })
 }
 
@@ -144,6 +145,19 @@ fn scoped_kind(display_name: &str) -> String {
         })
         .collect();
     format!("seven_day_{slug}")
+}
+
+/// What extra usage has spent, in major units. The endpoint sends minor units
+/// with the currency's `decimal_places` beside them, measured 2026-10-28 as
+/// `used_credits: 244.0` and `monthly_limit: 10000` for $2.44 of $100.
+fn spend_of(extra: &serde_json::Value) -> Option<Spend> {
+    let currency = extra.get("currency").and_then(|c| c.as_str())?;
+    let scale = 10f64.powi(extra.get("decimal_places").and_then(|d| d.as_i64()).unwrap_or(2) as i32);
+    Some(Spend {
+        used: extra.get("used_credits").and_then(|u| u.as_f64())? / scale,
+        limit: extra.get("monthly_limit").and_then(|l| l.as_f64()).map(|l| l / scale),
+        currency: currency.to_string(),
+    })
 }
 
 /// Every window the endpoint reported.
@@ -187,6 +201,7 @@ pub fn parse_usage(body: &str) -> TokenReading {
                 .and_then(parse_rfc3339_secs),
             status: None,
             reached_type: None,
+            spend: None,
         });
     }
 
@@ -206,6 +221,7 @@ pub fn parse_usage(body: &str) -> TokenReading {
                     .get("spend_limit_reached")
                     .and_then(|r| r.as_bool())
                     .and_then(|hit| hit.then(|| "spend_limit_reached".to_string())),
+                spend: spend_of(extra),
             });
         }
     }
@@ -312,10 +328,9 @@ fn home_of(profile_id: &str) -> Option<String> {
 pub async fn usage_token_claude(profile: Option<String>) -> Result<TokenReading, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let id = profile.unwrap_or_else(|| crate::accounts::DEFAULT_PROFILE_ID.to_string());
-        // The chip is the opt-in, so the gate is whether this account asked for
-        // the window only this read can answer. Anything else is `Off`, which
+        // The account's own switch is the opt-in. Anything else is `Off`, which
         // returns before the vault is touched.
-        let source = if crate::settings::wants_token_window("claude", &id) {
+        let source = if crate::settings::reads_token("claude", &id) {
             UsageSource::Token
         } else {
             UsageSource::Off
@@ -584,6 +599,7 @@ mod tests {
                                 resets_at: w.resets_at,
                                 status: w.status.clone(),
                                 reached_type: w.reached_type.clone(),
+                                spend: w.spend.clone(),
                                 sampled_at: NOW,
                                 source: "token".to_string(),
                             },
