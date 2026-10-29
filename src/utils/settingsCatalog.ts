@@ -736,6 +736,12 @@ export const SETTINGS: SettingEntry[] = [
     label: "Speed",
     hint: "How fast Read aloud speaks. The speed on the reading chip changes this same setting.",
   },
+  {
+    id: "dictation-model",
+    section: "chat",
+    label: "Model",
+    hint: "The model dictation turns speech into text with, on this Mac. Moonshine is small and quick, Parakeet more accurate and ten times the download. Change swaps one for the other.",
+  },
 
   {
     id: "autopilot-on",
