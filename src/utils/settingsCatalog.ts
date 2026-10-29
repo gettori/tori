@@ -719,22 +719,10 @@ export const SETTINGS: SettingEntry[] = [
     hint: "A claude chat that stopped on a usage limit continues by itself once the limit resets.",
   },
   {
-    id: "read-aloud-model",
-    section: "chat",
-    label: "Voice size",
-    hint: "The voice Read aloud downloads. Smaller and Larger are the natural voice, Fastest starts quickest. Change swaps one for another.",
-  },
-  {
-    id: "read-aloud-pronunciation",
-    section: "chat",
-    label: "Pronunciation",
-    hint: "Without espeak-ng, a word Tori does not know is spelled out letter by letter. Install runs Homebrew in a terminal; without Homebrew, install espeak-ng yourself.",
-  },
-  {
     id: "read-aloud-voice",
     section: "chat",
     label: "Voice",
-    hint: "The voice Read aloud speaks in. A voice since removed falls back to the default, Heart, or Bella on the Fastest voice.",
+    hint: "The voice Read aloud speaks in. One the voice model does not have falls back to its default.",
   },
   {
     id: "read-aloud-rate",
@@ -743,10 +731,22 @@ export const SETTINGS: SettingEntry[] = [
     hint: "How fast Read aloud speaks. The speed on the reading chip changes this same setting.",
   },
   {
+    id: "read-aloud-model",
+    section: "chat",
+    label: "Voice model",
+    hint: "What Read aloud runs on this Mac. Smaller and Larger are the natural voice, Fastest starts quickest.",
+  },
+  {
+    id: "read-aloud-pronunciation",
+    section: "chat",
+    label: "Pronunciation",
+    hint: "Without espeak-ng, a word Tori does not know is spelled out letter by letter. Install runs Homebrew in a terminal; without Homebrew, install espeak-ng yourself.",
+  },
+  {
     id: "dictation-model",
     section: "chat",
     label: "Model",
-    hint: "The model dictation turns speech into text with, on this Mac. Moonshine is small and quick, Parakeet more accurate and ten times the download. Change swaps one for the other.",
+    hint: "Turns speech into text on this Mac. Moonshine is small and quick, Parakeet more accurate and ten times the download.",
   },
 
   {
