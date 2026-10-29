@@ -4,13 +4,15 @@ import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
 import { findSession } from "../../utils/sessionStore";
 import { answerAsk, type SocketAsk } from "../../utils/socketAsks";
 import ApprovalDraft from "./ApprovalDraft";
+import Tip from "./Tip";
+import Tooltip from "../../components/Tooltip/Tooltip";
 import styles from "./Chat.module.css";
 
 export default function AskCard(props: { ask: SocketAsk; here: string }) {
+  const meta = () => findSession(props.ask.session)?.session;
   const asker = () => {
     if (props.ask.session === props.here) return null;
-    const meta = findSession(props.ask.session)?.session;
-    return meta?.name || meta?.title || props.ask.session.slice(0, 8);
+    return meta()?.name || meta()?.title || props.ask.session.slice(0, 8);
   };
   const [text, setText] = createSignal("");
   const [sending, setSending] = createSignal(false);
@@ -25,7 +27,23 @@ export default function AskCard(props: { ask: SocketAsk; here: string }) {
   return (
     <div class={`${styles.banner} ${styles.ask}${props.ask.approval ? ` ${styles.askApproval}` : ""}`}>
       <span class={styles.bannerText}>
-        <Show when={asker()}>{(name) => <span class={styles.askDraftMeta}>{name()} asks: </span>}</Show>
+        <Show when={asker()}>
+          {(name) => (
+            <Tooltip<HTMLSpanElement>
+              as="span"
+              class={styles.askDraftMeta}
+              label={
+                <Tip
+                  title={meta()?.title || name()}
+                  lines={[`Session ${props.ask.session.slice(0, 8)}`, ...(meta()?.cwd ? [meta()!.cwd] : [])]}
+                  hint="Your answer goes back to that session, not this one"
+                />
+              }
+            >
+              {name()} asks:{" "}
+            </Tooltip>
+          )}
+        </Show>
         {props.ask.question}
       </span>
       <Show

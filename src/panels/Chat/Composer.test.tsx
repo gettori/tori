@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
-import { render, fireEvent } from "@solidjs/testing-library";
+import { render, fireEvent, screen } from "@solidjs/testing-library";
 import Composer, { ATTACHMENT_TOKEN_MIME, type ComposerHandle } from "./Composer";
 import { expectNoAxeViolations } from "../../test/axe";
 import type { AttachmentSource, PendingBlock } from "../../utils/chatCompose";
@@ -1042,7 +1042,7 @@ describe("an attachment chip", () => {
     const { container, getByText, getByLabelText } = setup({ attachments: shot });
     expect(getByText("shot.png")).toBeTruthy();
     expect(getByText("[Image 2]")).toBeTruthy();
-    expect(getByLabelText("Open [Image 2] shot.png")).toBeTruthy();
+    expect(getByLabelText("Preview [Image 2] shot.png")).toBeTruthy();
     // Off disk through the asset protocol, not out of the message: the bytes
     // are on the wire nowhere now.
     expect(container.querySelector("img")?.getAttribute("src")).toBe("asset:///store/1a2b-0/shot.png");
@@ -1058,12 +1058,16 @@ describe("an attachment chip", () => {
     expect(container.querySelector(".seti-icon")).not.toBeNull();
   });
 
-  it("opens the file when the body is clicked, and does not remove it", () => {
+  it("previews the file when the body is clicked, and opens it in the editor from there", () => {
     const opens: OpenInEditor[] = [];
     const off = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => opens.push(d));
     const { input, getByLabelText, onDropAttachment } = setup({ attachments: shot });
     type(input, "compare this");
-    fireEvent.click(getByLabelText("Open [Image 2] shot.png"));
+    fireEvent.click(getByLabelText("Preview [Image 2] shot.png"));
+    // Portalled to the body, so asked of the screen rather than the composer.
+    expect(screen.getByRole("dialog", { name: "shot.png" })).toBeTruthy();
+    expect(opens).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: "Open in editor" }));
     off();
     expect(opens).toEqual([{ path: "/store/1a2b-0/shot.png" }]);
     // The chip is a way into the file, not a way to edit the sentence: what
@@ -1078,7 +1082,7 @@ describe("an attachment chip", () => {
     const { input, getByLabelText } = setup({ attachments: notes });
     type(input, "read then answer");
     input.setSelectionRange(4, 4);
-    fireEvent.click(getByLabelText("Open [PDF 1] notes.pdf"), { metaKey: true });
+    fireEvent.click(getByLabelText("Preview [PDF 1] notes.pdf"), { metaKey: true });
     off();
     expect(input.value).toBe("read [PDF 1] then answer");
     expect(opens).toEqual([]);
@@ -1086,7 +1090,7 @@ describe("an attachment chip", () => {
 
   it("removes on Delete or Backspace, so the keyboard reaches what the button does", () => {
     const { getByLabelText, onDropAttachment } = setup({ attachments: shot });
-    fireEvent.keyDown(getByLabelText("Open [Image 2] shot.png"), { key: "Delete" });
+    fireEvent.keyDown(getByLabelText("Preview [Image 2] shot.png"), { key: "Delete" });
     expect(onDropAttachment).toHaveBeenCalledWith("att-1");
   });
 
@@ -1112,7 +1116,7 @@ describe("a chip whose file has gone", () => {
   ];
   // Asked by role and a tolerant name: the chip's name is built from adjacent
   // nodes, which jsdom joins without a separator.
-  const insert = (r: ReturnType<typeof setup>) => r.getByRole("button", { name: /^Open \[PDF 1\]/ });
+  const insert = (r: ReturnType<typeof setup>) => r.getByRole("button", { name: /^Preview \[PDF 1\]/ });
   const remove = (r: ReturnType<typeof setup>) => r.getByRole("button", { name: /^Remove \[PDF 1\]/ });
 
   it("is marked missing and says where the file was, on both of its controls", async () => {
@@ -1128,11 +1132,11 @@ describe("a chip whose file has gone", () => {
     const fileExists = vi.fn(async () => true);
     const r = setup({ attachments: notes, fileExists });
     await vi.waitFor(() => expect(fileExists).toHaveBeenCalledWith("/store/1a2b-1/notes.pdf"));
-    expect(insert(r).getAttribute("aria-label")).toBe("Open [PDF 1] notes.pdf");
+    expect(insert(r).getAttribute("aria-label")).toBe("Preview [PDF 1] notes.pdf");
     expect(r.container.querySelector("[class*='attachmentMissing']")).toBeNull();
 
     const unchecked = setup({ attachments: notes });
-    expect(insert(unchecked).getAttribute("aria-label")).toBe("Open [PDF 1] notes.pdf");
+    expect(insert(unchecked).getAttribute("aria-label")).toBe("Preview [PDF 1] notes.pdf");
   });
 
   // Coming back from the tree is when a mentioned file gets deleted.
@@ -1144,14 +1148,12 @@ describe("a chip whose file has gone", () => {
     await vi.waitFor(() => expect(fileExists).toHaveBeenCalledTimes(2));
   });
 
-  it("is not opened when it is gone: the toast says where it was", async () => {
-    const opens: OpenInEditor[] = [];
-    const off = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => opens.push(d));
+  it("previews as gone, with no way to open it: the preview says where it was", async () => {
     const r = setup({ attachments: notes, fileExists: async () => false });
     await vi.waitFor(() => expect(insert(r).getAttribute("aria-label")).toMatch(/No file/));
     fireEvent.click(insert(r));
-    off();
-    expect(opens).toEqual([]);
+    expect(screen.getByText(/No file at \/store\/1a2b-1\/notes\.pdf any more/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Open in editor" })).toBeNull();
   });
 
   it("still lets the message send", async () => {
@@ -1257,7 +1259,7 @@ describe("dragging a chip into the sentence", () => {
       offsetNode: input,
       offset: 5,
     });
-    const dt = drag(getByLabelText("Open [Image 1] shot.png"));
+    const dt = drag(getByLabelText("Preview [Image 1] shot.png"));
     // Only the private type: `text/plain` would make a drop on the terminal,
     // or on this composer's own path branch, read the token as a file path.
     expect(Object.keys(dt)).toEqual([ATTACHMENT_TOKEN_MIME]);
@@ -1274,7 +1276,7 @@ describe("dragging a chip into the sentence", () => {
     const { input, container, getByLabelText } = setup({ attachments: shot });
     type(input, "look here");
     input.setSelectionRange(4, 4);
-    drop(container.firstElementChild!, { data: drag(getByLabelText("Open [Image 1] shot.png")) });
+    drop(container.firstElementChild!, { data: drag(getByLabelText("Preview [Image 1] shot.png")) });
     expect(input.value).toBe("look [Image 1] here");
   });
 
@@ -1282,7 +1284,7 @@ describe("dragging a chip into the sentence", () => {
     const { container, getByLabelText } = setup({ attachments: shot });
     const composer = container.firstElementChild!;
     const before = composer.className;
-    const dt = drag(getByLabelText("Open [Image 1] shot.png"));
+    const dt = drag(getByLabelText("Preview [Image 1] shot.png"));
     fireEvent.dragOver(composer, { dataTransfer: { types: Object.keys(dt), getData: (m: string) => dt[m] ?? "" } });
     expect(composer.className).toBe(before);
   });
@@ -1479,7 +1481,8 @@ describe("Composer attachments", () => {
     const off = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => opens.push(d));
     const { input, getByLabelText } = setup({ attachments: chips });
     type(input, "why");
-    fireEvent.click(getByLabelText("Open @a.ts#L1-L4"), { metaKey: true });
+    fireEvent.click(getByLabelText("Preview @a.ts#L1-L4"), { metaKey: true });
+    fireEvent.click(screen.getByRole("button", { name: "Open in editor" }));
     off();
     expect(opens).toEqual([{ path: "/repo/a.ts", line: 1 }]);
     expect(input.value).toBe("why");

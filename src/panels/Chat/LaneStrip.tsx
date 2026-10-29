@@ -1,6 +1,9 @@
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 import type { Lane } from "./chatStore";
 import agentStyles from "../../components/Icon/agentMarks.module.css";
+import Tooltip from "../../components/Tooltip/Tooltip";
+import Tip, { excerptOf, type TipContent } from "./Tip";
+import { fmtTokens } from "../../utils/chatUsage";
 import styles from "./Chat.module.css";
 
 /** Finished lanes show inline up to this many, and fold behind one chip past it. */
@@ -91,11 +94,14 @@ export default function LaneStrip(props: {
   const Chip = (p: { lane: Lane | null; at: number }) => {
     const id = () => p.lane?.agentId ?? null;
     const blocked = () => p.lane !== null && props.blocked.has(p.lane.agentId);
+    const tip = () => (p.lane ? laneTip(p.lane, now(), blocked(), p.at) : mainTip(props.busy, props.selected === null));
     return (
-      <button
+      <Tooltip
+        as="button"
         type="button"
         class={styles.lane}
         classList={{ [styles.laneOn]: props.selected === id() }}
+        label={<Tip {...tip()} />}
         aria-pressed={props.selected === id()}
         onClick={() => props.onSelect(id())}
       >
@@ -119,7 +125,7 @@ export default function LaneStrip(props: {
             {`⌥${p.at + 1}`}
           </span>
         </Show>
-      </button>
+      </Tooltip>
     );
   };
 
@@ -127,11 +133,22 @@ export default function LaneStrip(props: {
   // that answers a click by doing nothing is worse than plain text. It still
   // reads aloud, because it is text inside a named group.
   const Task = (p: { task: Lane }) => (
-    <span class={`${styles.lane} ${styles.laneStill}`}>
+    <Tooltip<HTMLSpanElement>
+      as="span"
+      class={`${styles.lane} ${styles.laneStill}`}
+      label={
+        <Tip
+          title={laneLabel(p.task)}
+          lines={["Background shell task", `Running for ${elapsed(p.task, now())}`]}
+          excerpt={excerptOf(p.task.prompt)}
+          hint="Shell work has no transcript to open. It leaves this row when it ends."
+        />
+      }
+    >
       <span class={`${styles.laneDot} ${styles.laneBusy}`} aria-hidden="true" />
       <span class={styles.laneLabel}>{laneLabel(p.task)}</span>
       <span class={styles.laneFigure}>{elapsed(p.task, now())}</span>
-    </span>
+    </Tooltip>
   );
 
   return (
@@ -142,14 +159,28 @@ export default function LaneStrip(props: {
             <Chip lane={null} at={0} />
             <For each={shown()}>{(lane, at) => <Chip lane={lane} at={at() + 1} />}</For>
             <Show when={folds()}>
-              <button
+              <Tooltip
+                as="button"
                 type="button"
                 class={`${styles.lane} ${styles.laneMore}`}
+                label={
+                  <Tip
+                    title={showDone() ? "Fold the finished subagents" : "Finished subagents"}
+                    lines={
+                      showDone()
+                        ? []
+                        : done()
+                            .filter((l) => !shownDone().includes(l))
+                            .map(laneLabel)
+                    }
+                    hint={showDone() ? null : "Click to show them in the row"}
+                  />
+                }
                 aria-expanded={showDone()}
                 onClick={() => setShowDone(!showDone())}
               >
                 {showDone() ? "Hide done" : `+${done().length - shownDone().length} done`}
-              </button>
+              </Tooltip>
             </Show>
           </div>
         </Show>
@@ -188,9 +219,50 @@ function laneFigure(lane: Lane, now: number, blocked: boolean): string | null {
   return tokens >= 1000 ? `${Math.round(tokens / 1000)}k` : String(tokens);
 }
 
-function elapsed(lane: Lane, now: number): string {
-  const seconds = Math.max(0, Math.round((now - lane.startedAt) / 1000));
+function duration(ms: number): string {
+  const seconds = Math.max(0, Math.round(ms / 1000));
   return seconds >= 60 ? `${Math.floor(seconds / 60)}m${seconds % 60}s` : `${seconds}s`;
+}
+
+function elapsed(lane: Lane, now: number): string {
+  return duration(now - lane.startedAt);
+}
+
+function shortcut(at: number): string | null {
+  return at < 9 ? `Option+${at + 1}` : null;
+}
+
+function mainTip(busy: boolean, reading: boolean): TipContent {
+  return {
+    title: "Main agent",
+    lines: [busy ? "Working on a turn" : "Idle", "What you type always goes here"],
+    hint: reading ? "You are reading this transcript" : "Click to read the main transcript (Option+1)",
+  };
+}
+
+/** What the lane was asked, how it is going, and what it last did. */
+function laneTip(lane: Lane, now: number, blocked: boolean, at: number): TipContent {
+  const lines: string[] = [];
+  if (lane.agentType && lane.agentType !== lane.description) lines.push(`Subagent, ${lane.agentType}`);
+  if (blocked) lines.push("Waiting on you. The question is in the main transcript too");
+  else if (lane.status === null) {
+    lines.push(`Running for ${elapsed(lane, now)}`);
+    if (lane.activity) lines.push(`Now: ${lane.activity}`);
+    else if (lane.lastToolName) lines.push(`Last tool: ${lane.lastToolName}`);
+  } else if (lane.status === "completed") {
+    const u = lane.usage;
+    lines.push(
+      u ? `Done in ${duration(u.durationMs)}, ${fmtTokens(u.totalTokens)} tokens, ${u.toolUses} tool calls` : "Done",
+    );
+  } else if (lane.status === LAUNCHED) lines.push("Launched in the background. How it ended was not recorded");
+  else lines.push(`Ended: ${lane.status}`);
+  const key = shortcut(at);
+  return {
+    title: laneLabel(lane),
+    lines,
+    excerpt: excerptOf(lane.summary ?? lane.prompt),
+    hint: key ? `Click to read its transcript (${key})` : "Click to read its transcript",
+  };
 }
 
 /** What a backgrounded `Agent` call records on disk: it returned before the
