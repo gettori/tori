@@ -202,7 +202,7 @@ impl Phonemizer {
         Self::with_espeak(Box::new(run_espeak))
     }
 
-    fn with_espeak(espeak: Espeak) -> Self {
+    pub(super) fn with_espeak(espeak: Espeak) -> Self {
         let spelled: Vec<(&'static str, String)> = SPELLED
             .iter()
             .map(|w| {
