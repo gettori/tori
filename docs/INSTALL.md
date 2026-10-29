@@ -6,7 +6,7 @@ so it opens like any other app: no warning, no Settings detour.
 ## Install from a terminal
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/gettori/tori/main/install.sh | sh
+curl -fsSL https://gettori.app/install | sh
 ```
 
 The script picks the build for your Mac (Apple Silicon or Intel, even from a
