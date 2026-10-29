@@ -184,6 +184,7 @@ export function setWindowShown(
   const windows = shown ? CHIPS.filter((c) => c === chip || held.includes(c)) : held.filter((c) => c !== chip);
   // An account still answering through its chips has its switch written down
   // first, so putting out the chip that implied it does not turn the read off.
+  if (!offersModelWindow(agentId)) return patchAccount(agentId, profile, { windows });
   const readToken = entry(agentId, profile)?.readToken ?? readsToken(agentId, profile);
   return patchAccount(agentId, profile, { windows, readToken });
 }
