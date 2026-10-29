@@ -12,7 +12,7 @@ import { traceWork } from "./perfTrace";
 /** How many candidates a menu shows. Enough to scroll, few enough to scan. */
 export const MAX_COMPLETIONS = 12;
 
-export type CompletionKind = "file" | "command" | "pr";
+export type CompletionKind = "file" | "command" | "skill" | "pr";
 
 export type CompletionToken = {
   kind: CompletionKind;
@@ -28,9 +28,12 @@ export type CompletionToken = {
  * The completion token the caret sits in, or null.
  *
  * `@` triggers at a word boundary, because an email address or a decorator is
- * not a file mention. `/` triggers only at position 0: a slash command is the
- * whole message's opening, so completing one mid-sentence would offer to turn a
- * path like `src/utils` into a command.
+ * not a file mention. `/` at position 0 is a command, the message's opening.
+ * Anywhere else, at a word boundary, it is a skill: measured on claude 2.1.312,
+ * a `/skill` after plain text does not run as a command but is the user's
+ * permission for the agent to load it, and it did. A built-in has no such
+ * reading, which is why the two are told apart. A slash inside a word (`src/a`)
+ * or followed by another (`/Users/me`) is a path, never either.
  *
  * A token ends at the caret, never past it: typing into the middle of an already
  * accepted mention should not silently re-open a menu over it.
@@ -57,6 +60,13 @@ export function activeToken(text: string, caret: number): CompletionToken | null
   }
   if (slash === 0 && !/\s/.test(before.slice(1))) {
     candidates.push({ kind: "command", query: before.slice(1), start: 0, end: before.length });
+  } else if (
+    slash > 0 &&
+    /\s/.test(before[slash - 1]) &&
+    !/[\s/]/.test(before.slice(slash + 1)) &&
+    !insideFence(text, slash)
+  ) {
+    candidates.push({ kind: "skill", query: before.slice(slash + 1), start: slash, end: before.length });
   }
   // The one nearest the caret wins, so `/plan @sr` completes a file.
   return candidates.sort((a, b) => b.start - a.start)[0] ?? null;

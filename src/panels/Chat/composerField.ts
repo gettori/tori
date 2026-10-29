@@ -11,6 +11,7 @@ import {
   Compartment,
   EditorSelection,
   EditorState,
+  Facet,
   Prec,
   RangeSetBuilder,
   StateEffect,
@@ -30,6 +31,7 @@ export type ComposerFieldOptions = {
   placeholder: string;
   readOnly: boolean;
   disabled: boolean;
+  skills: readonly string[];
   /** The chip for a bracketed token, or null when nothing held answers to it. */
   chipFor: (label: string) => ChipSpec | null;
   /** The text changed by the user, never by `set`. */
@@ -60,10 +62,17 @@ export type ComposerField = {
   posAt: (x: number, y: number) => number | undefined;
   setPlaceholder: (text: string) => void;
   setReadOnly: (readOnly: boolean, disabled: boolean) => void;
+  setSkills: (names: readonly string[]) => void;
   /** Recompute which tokens are chips, after the held attachments changed. */
   refreshChips: () => void;
   destroy: () => void;
 };
+
+/** The session's skills by name, for the rich layer to colour a `/skill` named
+ *  mid-sentence the way it colours a command at the start. */
+export const skillNames = Facet.define<readonly string[], readonly string[]>({
+  combine: (values) => values.flat(),
+});
 
 /** Marks a transaction as the composer's own, so it is not reported back as
  *  typing. */
@@ -142,6 +151,7 @@ export function createComposerField(opts: ComposerFieldOptions): ComposerField {
   const placeholderSlot = new Compartment();
   const editableSlot = new Compartment();
   const richSlot = new Compartment();
+  const skillsSlot = new Compartment();
   // A drag that started inside the field is a move of its own text.
   let draggingOwn = false;
 
@@ -162,6 +172,7 @@ export function createComposerField(opts: ComposerFieldOptions): ComposerField {
         dropCursor(),
         placeholderSlot.of(placeholder(opts.placeholder)),
         editableSlot.of(editable(opts.readOnly, opts.disabled)),
+        skillsSlot.of(skillNames.of(opts.skills)),
         EditorView.contentAttributes.of({
           "aria-label": "Message",
           "aria-multiline": "true",
@@ -253,6 +264,9 @@ export function createComposerField(opts: ComposerFieldOptions): ComposerField {
     },
     setReadOnly(readOnly, disabled) {
       view.dispatch({ effects: editableSlot.reconfigure(editable(readOnly, disabled)) });
+    },
+    setSkills(names) {
+      view.dispatch({ effects: skillsSlot.reconfigure(skillNames.of(names)) });
     },
     refreshChips() {
       view.dispatch({ effects: refresh.of(null) });

@@ -202,6 +202,10 @@ export default function Composer(props: {
   disabled: boolean;
   /** This session's real command catalogue, from the `initialize` handshake. */
   commands: readonly SlashCommand[];
+  /** Which of those commands are skills, the only ones a `/` mid-sentence
+   *  offers. Absent or empty for an agent that does not say, and then a
+   *  mid-sentence `/` offers nothing rather than guessing. */
+  skills?: readonly string[];
   /** The project's file list, fetched on the first `@` and cached here: a chat
    *  that never mentions a file should not pay for the walk. */
   loadFiles: () => Promise<string[]>;
@@ -400,9 +404,19 @@ export default function Composer(props: {
         }));
     }
   });
+  // A skill the catalogue also lists keeps its description and hint; one it
+  // does not is still offered, by name alone.
+  const skillCommands = createMemo((): SlashCommand[] =>
+    (props.skills ?? []).map(
+      (name) =>
+        props.commands.find((c) => c.name === name) ?? { name, description: "", argumentHint: null, aliases: [] },
+    ),
+  );
   const commandHits = createMemo(() => {
     const t = token();
-    return t?.kind === "command" ? rank(props.commands, t.query, (c) => c.name) : [];
+    if (t?.kind === "command") return rank(props.commands, t.query, (c) => c.name);
+    if (t?.kind === "skill") return rank(skillCommands(), t.query, (c) => c.name);
+    return [];
   });
   const prMenu = createMemo(() => {
     const t = token();
@@ -952,6 +966,7 @@ export default function Composer(props: {
       // would be overwritten by the next save.
       readOnly: !!props.linked || dictation() !== "idle",
       disabled: props.disabled,
+      skills: props.skills ?? [],
       chipFor: (label) => {
         const a = untrack(held).get(label);
         if (!a) return null;
@@ -993,6 +1008,13 @@ export default function Composer(props: {
       if (field && field.value() !== t) field.set(t, t.length);
     });
     createEffect(() => field?.setPlaceholder(placeholderText()));
+    createEffect(
+      on(
+        () => props.skills,
+        (names) => field?.setSkills(names ?? []),
+        { defer: true },
+      ),
+    );
     createEffect(() => field?.setReadOnly(!!props.linked || dictation() !== "idle", props.disabled));
     createEffect(on(held, () => field?.refreshChips(), { defer: true }));
   });

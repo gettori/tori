@@ -35,10 +35,14 @@ describe("activeToken", () => {
     expect(activeToken("@src and more", 13)).toBeNull();
   });
 
-  it("completes a slash command only as the message's opening", () => {
+  it("completes a command at the message's opening and a skill anywhere else", () => {
     expect(activeToken("/pla", 4)).toEqual({ kind: "command", query: "pla", start: 0, end: 4 });
-    // Mid-sentence, a slash is a path separator, not a command.
+    expect(activeToken("then /rev", 9)).toEqual({ kind: "skill", query: "rev", start: 5, end: 9 });
+    // Inside a word, or followed by another slash, it is a path.
     expect(activeToken("look in src/uti", 15)).toBeNull();
+    expect(activeToken("look in /Users/me", 17)).toBeNull();
+    // Nor inside a code block, where a slash is code.
+    expect(activeToken("```\na /b", 9)).toBeNull();
   });
 
   it("prefers the token nearest the caret when both are present", () => {

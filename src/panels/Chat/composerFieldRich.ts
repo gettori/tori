@@ -9,6 +9,7 @@ import { RangeSetBuilder, type Extension } from "@codemirror/state";
 import { Decoration, ViewPlugin, keymap, type DecorationSet, type EditorView, type ViewUpdate } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
 import { toriHighlight } from "../Editor/syntaxStyle";
+import { skillNames } from "./composerField";
 
 // Prose stays prose: the marks that make it markdown recede, and what they mark
 // reads the way it will once the message is a bubble.
@@ -68,8 +69,12 @@ const fences = ViewPlugin.fromClass(
 
 const commandMark = Decoration.mark({ class: "cm-command" });
 const COMMAND = /^\/[a-z][\w:-]*(?=\s|$)/;
+// A slash at a word boundary, then a name that ends at a space or the end.
+const SKILL = /(?<=\s)\/([a-z][\w:-]*)(?=\s|$)/g;
 
-/** A slash command at the very start reads as the command it is. */
+/** A slash command at the very start reads as the command it is, and so does a
+ *  skill named mid-sentence, which the agent takes as leave to load it. Only a
+ *  real skill there, and never in code, the same rule the `/` menu keeps. */
 const command = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
@@ -77,11 +82,30 @@ const command = ViewPlugin.fromClass(
       this.decorations = this.build(view);
     }
     update(u: ViewUpdate) {
-      if (u.docChanged) this.decorations = this.build(u.view);
+      if (
+        u.docChanged ||
+        u.startState.facet(skillNames) !== u.state.facet(skillNames) ||
+        syntaxTree(u.startState) !== syntaxTree(u.state)
+      ) {
+        this.decorations = this.build(u.view);
+      }
     }
     build(view: EditorView): DecorationSet {
-      const m = COMMAND.exec(view.state.doc.sliceString(0, 64));
-      return m ? Decoration.set([commandMark.range(0, m[0].length)]) : Decoration.none;
+      const text = view.state.doc.toString();
+      const marks = [];
+      const lead = COMMAND.exec(text.slice(0, 64));
+      if (lead) marks.push(commandMark.range(0, lead[0].length));
+      const skills = new Set(view.state.facet(skillNames));
+      if (skills.size) {
+        const tree = syntaxTree(view.state);
+        for (const m of text.matchAll(SKILL)) {
+          if (!skills.has(m[1])) continue;
+          const node = tree.resolveInner(m.index, 1);
+          if (/Code|CodeText|CodeMark/.test(node.name) || node.parent?.name === "FencedCode") continue;
+          marks.push(commandMark.range(m.index, m.index + m[0].length));
+        }
+      }
+      return Decoration.set(marks, true);
     }
   },
   { decorations: (p) => p.decorations },

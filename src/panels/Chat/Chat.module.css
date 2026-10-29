@@ -2912,7 +2912,8 @@ button.diffHunkHeader:hover {
   border-left: 2px solid var(--brand-default);
 }
 
-/* A leading slash command reads as the command, in the brand's own colour. */
+/* A slash command at the start, or a skill named mid-sentence, in the brand's
+   own colour. */
 .inputField :global(.cm-command) {
   color: var(--brand-strong);
   font-weight: 500;
