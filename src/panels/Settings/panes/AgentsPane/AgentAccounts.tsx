@@ -768,8 +768,9 @@ function AccountCard(props: {
                 />
               </div>
               <div class={styles.hint}>
-                Reads this account's login from the Keychain, so every window updates without a chat running. macOS may
-                ask to allow it, and asks again after an update.
+                Reads this account's login from the Keychain, so windows update without a chat running. The login lasts
+                a few hours between refreshes, and any chat turn on this account refreshes it. macOS may ask to allow
+                it, and asks again after an update.
               </div>
             </Show>
 
