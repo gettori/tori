@@ -2946,8 +2946,6 @@ button.diffHunkHeader:hover {
 .inlineChip:hover {
   background: var(--neutral-hover);
   box-shadow: 0 0 0 calc(2px * var(--ui-scale)) var(--neutral-hover);
-  outline: 1px solid var(--border-strong);
-  outline-offset: calc(2px * var(--ui-scale));
 }
 
 .inlineChip:active {
@@ -3385,6 +3383,12 @@ button.diffHunkHeader:hover {
   border-radius: var(--tori-radius-pill);
   overflow: hidden;
   background: var(--neutral-subtle);
+}
+
+/* The attachment a token in the text is hovered for: its edge in the brand
+   colour, enough for the eye to go from the word to the thing it names. */
+.attachmentPointed {
+  border-color: var(--brand-default);
 }
 
 /* The file behind the chip is gone. The chip stays, since the sentence still
