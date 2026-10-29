@@ -4,10 +4,10 @@
 import { history, historyKeymap, standardKeymap } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
-import { languages } from "@codemirror/language-data";
 import { RangeSetBuilder, type Extension } from "@codemirror/state";
 import { Decoration, ViewPlugin, keymap, type DecorationSet, type EditorView, type ViewUpdate } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
+import { languageForFence } from "../Editor/languages";
 import { toriHighlight } from "../Editor/syntaxStyle";
 import { skillNames } from "./composerField";
 
@@ -115,7 +115,7 @@ export function richExtensions(): Extension {
   return [
     history(),
     keymap.of([...historyKeymap, ...standardKeymap]),
-    markdown({ base: markdownLanguage, codeLanguages: languages }),
+    markdown({ base: markdownLanguage, codeLanguages: languageForFence }),
     syntaxHighlighting(toriHighlight),
     syntaxHighlighting(prose),
     fences,
