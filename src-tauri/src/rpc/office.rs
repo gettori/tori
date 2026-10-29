@@ -537,6 +537,10 @@ impl Office {
                 super::pr_watch::session_deleted(&arg::<String>(args, "session")?);
                 Ok(json!({}))
             }
+            "forge.account_changed" => {
+                crate::forge::commands::reload_account(&arg::<String>(args, "id")?);
+                Ok(json!({}))
+            }
             "review.forget" => {
                 crate::review::forget_session(&arg::<String>(args, "id")?);
                 Ok(json!({}))

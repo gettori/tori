@@ -665,6 +665,7 @@ fn store_signed_in(
         auth::sign_in(&id, &secret, Some(login.clone()))?;
         Ok(id)
     })?;
+    auth::tell_daemon(&account_id);
     Ok(SignedIn { account_id, login })
 }
 
@@ -673,6 +674,7 @@ fn store_signed_in(
 pub fn forge_remove_account(account_id: String) -> Result<(), ForgeErrorDto> {
     auth::sign_out(&account_id)?;
     accounts::update(|file| Ok(accounts::remove_account(file, &account_id)))?;
+    auth::tell_daemon(&account_id);
     // The removal stands either way. Git asks the user on a host with no account.
     resync_global_config();
     // A pick left behind names no account, so resolution already ignores it.
@@ -1670,23 +1672,12 @@ pub fn restore_at_startup(enabled: bool) {
     let mut probe = Vec::new();
     let entries = accounts::all_accounts(&file)
         .map(|(_, account)| {
-            let token = token::load_secret(&account.id)
-                .unwrap_or_else(|e| {
-                    log_startup(&format!("forge: {e}"));
-                    None
-                })
-                .map(|secret| secret.access_token);
-            let rejected = account.rejected_at.is_some();
+            let entry = restored_entry(account);
             let unasked = account.provider == Provider::Github && account.scopes.is_none();
-            if token.is_some() && (account.login.is_none() || rejected || unasked) {
+            if entry.token.is_some() && (account.login.is_none() || entry.rejected || unasked) {
                 probe.push(account.id.clone());
             }
-            auth::Restored {
-                id: account.id.clone(),
-                token,
-                login: account.login.clone(),
-                rejected,
-            }
+            entry
         })
         .collect();
     auth::restore(entries, enabled);
@@ -1705,6 +1696,45 @@ pub fn restore_at_startup(enabled: bool) {
                 let _ = learn_login(&id);
             }
         });
+    }
+}
+
+/// The daemon's restore: the window migrated and probed at its own launch, so
+/// this installs the store and reads what is there. Non-fatal like the window's.
+pub fn restore_in_daemon(enabled: bool) {
+    if let Err(e) = token::install_store() {
+        log_startup(&format!("forge: {e}"));
+        return;
+    }
+    let file = accounts::load();
+    let entries = accounts::all_accounts(&file)
+        .map(|(_, account)| restored_entry(account))
+        .collect();
+    auth::restore(entries, enabled);
+}
+
+/// Re-reads one account after the window changed it: a sign-in, a sign-out, a
+/// renewal or a rejection that moved. Gone from the file means gone here.
+pub fn reload_account(id: &str) {
+    let file = accounts::load();
+    match accounts::find(&file, id) {
+        Some((_, account)) => auth::adopt(restored_entry(account)),
+        None => auth::forget(id),
+    }
+}
+
+fn restored_entry(account: &accounts::Account) -> auth::Restored {
+    let token = token::load_secret(&account.id)
+        .unwrap_or_else(|e| {
+            log_startup(&format!("forge: {e}"));
+            None
+        })
+        .map(|secret| secret.access_token);
+    auth::Restored {
+        id: account.id.clone(),
+        token,
+        login: account.login.clone(),
+        rejected: account.rejected_at.is_some(),
     }
 }
 
@@ -1740,6 +1770,7 @@ fn learn_login(account_id: &str) -> Result<String, ForgeError> {
         }
         Ok(())
     })?;
+    auth::tell_daemon(account_id);
     Ok(login)
 }
 
