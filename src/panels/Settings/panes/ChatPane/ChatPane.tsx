@@ -111,7 +111,14 @@ const RATE_MIN = 0.5;
 const RATE_MAX = 2;
 const RATE_STEP = 0.1;
 const SAMPLE = "This is how a reply will sound when Tori reads it to you.";
-const SPENDING = ["max-concurrent-chats", "session-budget", "project-budget", "context-budget", "warn-at"];
+const SPENDING = [
+  "show-spend",
+  "max-concurrent-chats",
+  "session-budget",
+  "project-budget",
+  "context-budget",
+  "warn-at",
+];
 
 /** The stops the "Warn at" slider offers. 50% is as early as a warning is worth
  *  having; the top stop is 100%, which is the off switch rather than a warning
@@ -404,6 +411,14 @@ export default function ChatPane(props: PaneProps) {
       </Group>
 
       <Group {...props} title="Spending" ids={SPENDING}>
+        <Row {...props} id="show-spend" label="Show what work costs">
+          <Switch
+            checked={settings.budgets.showSpend}
+            onChange={(showSpend) => setBudgets({ showSpend })}
+            aria-label="Show what work costs"
+          />
+        </Row>
+
         <Row
           {...props}
           id="max-concurrent-chats"

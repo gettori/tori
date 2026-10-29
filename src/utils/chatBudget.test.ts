@@ -6,7 +6,14 @@ import type { Budgets } from "../panels/Settings/settingsStore";
 /** Any fixed clock: nothing in the shared-threshold case below has a reset. */
 const NOW = 1_788_500_000_000;
 
-const NONE: Budgets = { sessionUsd: null, projectUsd: null, contextPercent: null, itemUsd: null, warnAtFraction: 0.8 };
+const NONE: Budgets = {
+  sessionUsd: null,
+  projectUsd: null,
+  contextPercent: null,
+  itemUsd: null,
+  warnAtFraction: 0.8,
+  showSpend: true,
+};
 const spend = (
   over: Partial<{ sessionUsd: number | null; projectUsd: number | null; contextPercent: number | null }> = {},
 ) => ({

@@ -629,6 +629,12 @@ export const SETTINGS: SettingEntry[] = [
     hint: "Lines shown before a tool's output folds. 0 shows all of it.",
   },
   {
+    id: "show-spend",
+    section: "chat",
+    label: "Show what work costs",
+    hint: "What a branch, a pull request and an autopilot item have cost, shown beside each, and an autopilot item's estimate. Off hides them; the limits below still apply.",
+  },
+  {
     id: "max-concurrent-chats",
     section: "chat",
     label: "Warn above",

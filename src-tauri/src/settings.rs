@@ -404,10 +404,17 @@ pub struct Budgets {
     /// Warn once at this fraction of whichever ceiling is in force.
     #[serde(default = "default_warn_at_fraction")]
     pub warn_at_fraction: f64,
+    /// Show what a branch, a pull request and an autopilot item have cost.
+    #[serde(default = "default_show_spend")]
+    pub show_spend: bool,
 }
 
 fn default_warn_at_fraction() -> f64 {
     0.8
+}
+
+fn default_show_spend() -> bool {
+    true
 }
 
 impl Default for Budgets {
@@ -418,6 +425,7 @@ impl Default for Budgets {
             context_percent: None,
             item_usd: None,
             warn_at_fraction: default_warn_at_fraction(),
+            show_spend: default_show_spend(),
         }
     }
 }
@@ -2134,6 +2142,7 @@ mod tests {
         assert_eq!(loaded.budgets.context_percent, None);
         assert_eq!(loaded.budgets.item_usd, None);
         assert_eq!(loaded.budgets.warn_at_fraction, 0.8);
+        assert!(loaded.budgets.show_spend);
 
         let mut s = loaded;
         s.budgets = Budgets {
@@ -2142,6 +2151,7 @@ mod tests {
             context_percent: Some(75.0),
             item_usd: Some(12.0),
             warn_at_fraction: 0.9,
+            show_spend: false,
         };
         save_to(&p, &s).unwrap();
         let back = load_from(&p);
@@ -2156,6 +2166,7 @@ mod tests {
             "contextPercent",
             "itemUsd",
             "warnAtFraction",
+            "showSpend",
         ] {
             assert!(raw.contains(key), "{key} missing from {raw}");
         }

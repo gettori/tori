@@ -309,6 +309,8 @@ export type Budgets = {
   itemUsd: number | null;
   /** Warn once at this fraction of whichever ceiling is in force. */
   warnAtFraction: number;
+  /** Show what a branch, a pull request and an autopilot item have cost. */
+  showSpend: boolean;
 };
 export type Settings = {
   appearance: Appearance;
@@ -475,7 +477,14 @@ export const DEFAULT_SETTINGS: Settings = {
     resumeAtReset: false,
     maxConcurrentChats: 4,
   },
-  budgets: { sessionUsd: null, projectUsd: null, contextPercent: null, itemUsd: null, warnAtFraction: 0.8 },
+  budgets: {
+    sessionUsd: null,
+    projectUsd: null,
+    contextPercent: null,
+    itemUsd: null,
+    warnAtFraction: 0.8,
+    showSpend: true,
+  },
   // The comfort defaults follow the tickets: the three that only cost a line of
   // pixels are on, the three cosmetic overlays are off (a stance nobody asked
   // for is worse than a switch), and the two behavioural ones are on because a

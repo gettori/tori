@@ -76,6 +76,7 @@ import { PR_TABS, prLayout, prTab, revealPrTab } from "../../../utils/prSections
 import { SECTION_MIN_H } from "../../../utils/sectionLayout";
 import { reloadPrList } from "../../../utils/prListStore";
 import { spendFor } from "../../../utils/spendStore";
+import { showSpend } from "../../../utils/usageSettings";
 import { projectPathFor, projectUnitFor } from "../../../utils/sessionActivity";
 import { prRelation } from "../../../utils/prRelation";
 import {
@@ -886,7 +887,9 @@ export default function PullsPanel(props: {
                       {prMetaParts(s().pr, summary()?.updatedAt ?? null, totals()).join(", ")}
                       <SpendFigure
                         usage={
-                          props.root ? spendFor({ kind: "branch", project: props.root, branch: s().pr.headRef }) : null
+                          props.root && showSpend()
+                            ? spendFor({ kind: "branch", project: props.root, branch: s().pr.headRef })
+                            : null
                         }
                         what="this pull request"
                         before=", "
