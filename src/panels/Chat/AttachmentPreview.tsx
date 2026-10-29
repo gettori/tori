@@ -7,7 +7,7 @@ import PdfView from "../Editor/PdfView";
 import CodeBlock from "./CodeBlock";
 import { langOfPath } from "./highlight";
 import { attachmentKind } from "../../utils/chatCompose";
-import type { ContentBlock } from "../../utils/chatTypes";
+import type { ContentBlock, RefTarget } from "../../utils/chatTypes";
 import { attachmentTip, thumbSrc } from "./attachmentInfo";
 import styles from "./Chat.module.css";
 
@@ -57,6 +57,13 @@ function factsOf(block: ContentBlock): string[] {
   return lines;
 }
 
+const OPEN_REF = {
+  pr: "Open pull request",
+  session: "Open session",
+  project: "Show project",
+  space: "Show space",
+} as const;
+
 function Facts(props: { lines: readonly string[] }) {
   return (
     <ul class={styles.previewFacts}>
@@ -76,6 +83,8 @@ export default function AttachmentPreview(props: {
   missing: boolean;
   onClose: () => void;
   onOpenInEditor: (path: string, line: number | null) => void;
+  /** Go to what a link names, inside Tori. */
+  onOpenRef?: (target: RefTarget) => void;
 }) {
   const fileRef = () => (props.block?.type === "fileRef" ? props.block : null);
   const kind = () => {
@@ -86,6 +95,18 @@ export default function AttachmentPreview(props: {
 
   const actions = (): JSX.Element => (
     <>
+      <Show when={props.onOpenRef && props.block?.type === "ref" ? props.block.target : null}>
+        {(t) => (
+          <Button
+            onClick={() => {
+              props.onOpenRef?.(t());
+              props.onClose();
+            }}
+          >
+            {OPEN_REF[t().kind]}
+          </Button>
+        )}
+      </Show>
       <Show when={props.block?.type === "ref" && props.block.target.kind === "pr" ? props.block.target : null}>
         {(pr) => (
           <Button onClick={() => void invoke("plugin:opener|open_url", { url: pr().url }).catch(() => {})}>

@@ -147,8 +147,6 @@ const KEPT = new Map<string, Kept>([
   ["panels/Chat/followEdits.test.tsx", { count: 1, reason: FIXTURE }],
   ["panels/Chat/ChatView.tsx", { count: 1, reason: HEADING }],
   ["panels/Chat/AttachmentPreview.tsx", { count: 1, reason: HEADING }],
-  ["panels/Chat/MessageList.test.tsx", { count: 2, reason: FIXTURE }],
-  ["panels/Chat/MessageList.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Chat/openedChat.test.tsx", { count: 1, reason: FIXTURE }],
   ["panels/Chat/restoredAcpChat.test.tsx", { count: 1, reason: FIXTURE }],
   ["panels/Chat/confirmedPick.test.tsx", { count: 1, reason: FIXTURE }],
@@ -388,8 +386,11 @@ const KEPT = new Map<string, Kept>([
  *  file's name and folder each get a line of their own.
  *
  *  **Up one** with the project settings tab, whose header carries the project's
- *  path, truncated from the left, beside the Worktrees section's own. */
-const RAW_ELEMENT_TITLES = 73;
+ *  path, truncated from the left, beside the Worktrees section's own.
+ *
+ *  **Down one** with a sent prompt's file chip, which previews like the
+ *  composer's instead of carrying its path. */
+const RAW_ELEMENT_TITLES = 72;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. The Changes
  *  panel's stash row is one: a click expands it to its files. */
@@ -531,8 +532,9 @@ describe("the title= guard", () => {
       // Down one span: the pull request detail view went, and the branch line
       // it truncated is drawn once now, in the panel that replaced it. Up one
       // for the project settings tab's path, and one for the run command row's
-      // running mark.
-      span: 56,
+      // running mark. Down one: a sent prompt's chip previews its attachment
+      // now, the way the composer's does, instead of naming its path.
+      span: 55,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });

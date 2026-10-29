@@ -159,7 +159,7 @@ function mount(started = false, background?: boolean) {
 
 /** Type into the composer and press Enter, the way a person starts one. */
 async function send(text: string) {
-  await screen.findByRole("textbox");
+  await screen.findByRole("textbox", { name: "Message" });
   const box = composerInput();
   fireEvent.input(box, { target: { value: text } });
   fireEvent.keyDown(box, { key: "Enter" });
@@ -186,7 +186,7 @@ describe("a restored chat opened to read", () => {
 
     await screen.findByText(/Could not read this session's earlier turns/);
     // Still an enhancement and not a precondition: the panel is usable.
-    expect(await screen.findByRole("textbox")).toBeTruthy();
+    expect(await screen.findByRole("textbox", { name: "Message" })).toBeTruthy();
   });
 
   it("starts on its own session id, resuming rather than beginning", async () => {
@@ -290,7 +290,7 @@ describe("a chat that is already started", () => {
     mount(true);
     await waitFor(() => expect(spawns()).toHaveLength(1));
     goLive();
-    await waitFor(() => expect(screen.getByRole("textbox")).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Message" })).toBeTruthy());
 
     await send("go");
 
