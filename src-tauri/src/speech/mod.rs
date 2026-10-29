@@ -2,10 +2,12 @@
 // it holds about 2 GB while loaded, too much to keep for a feature used now
 // and then.
 
+mod dictation;
 mod download;
 mod kitten;
 mod kokoro;
 mod queue;
+mod runtime;
 mod spoken;
 mod text;
 
@@ -20,6 +22,7 @@ use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use dictation::Dictation;
 use queue::{Engine, Models, Out};
 
 const DEFAULT_VOICE: &str = "af_heart";
@@ -65,14 +68,31 @@ enum DownloadEvent {
     Error { error: String },
 }
 
-#[derive(Default)]
 pub struct SpeechState {
     engine: OnceLock<Engine>,
     model_generation: Arc<AtomicU64>,
     download: Arc<Mutex<Option<Running>>>,
+    dictation: Arc<Dictation>,
+}
+
+impl Default for SpeechState {
+    fn default() -> Self {
+        let load = Box::new(|| dictation::load(&dictation::dir()));
+        SpeechState {
+            engine: OnceLock::new(),
+            model_generation: Arc::default(),
+            download: Arc::default(),
+            dictation: Arc::new(Dictation::new(load, Arc::default())),
+        }
+    }
 }
 
 impl SpeechState {
+    fn dictation_with_tick(&self, app: &AppHandle) -> &Dictation {
+        self.engine(app);
+        &self.dictation
+    }
+
     fn engine(&self, app: &AppHandle) -> &Engine {
         self.engine.get_or_init(|| {
             let app = app.clone();
@@ -89,7 +109,15 @@ impl SpeechState {
             let emit = Arc::new(move |event: queue::Event| {
                 let _ = app.emit("speech", event);
             });
-            Engine::start(models, Arc::new(Speakers::default()), emit, Duration::from_secs(30))
+            let dictation = self.dictation.clone();
+            let idle = Arc::new(move |now| dictation.sweep(now));
+            Engine::start(
+                models,
+                Arc::new(Speakers::default()),
+                emit,
+                Duration::from_secs(30),
+                idle,
+            )
         })
     }
 }
@@ -333,6 +361,11 @@ pub fn speech_download(app: AppHandle, state: State<SpeechState>, size: String) 
             e.to_string()
         })?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn dictation_transcribe(app: AppHandle, state: State<SpeechState>, samples: Vec<f32>) -> Result<String, String> {
+    state.dictation_with_tick(&app).transcribe(&samples)
 }
 
 #[tauri::command]
