@@ -2,8 +2,8 @@
 // sees it: Moonshine's decoder has 512 positions, about 78 s of speech, and
 // Parakeet's export attends over the whole clip at once.
 
-mod moonshine;
-mod parakeet;
+pub(super) mod moonshine;
+pub(super) mod parakeet;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicU64;

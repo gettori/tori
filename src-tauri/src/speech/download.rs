@@ -5,10 +5,16 @@ use std::time::Duration;
 
 use sha2::{Digest, Sha256};
 
+use super::dictation::{moonshine, parakeet};
+
 const KOKORO: &str =
     "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/1939ad2a8e416c0acfeecc08a694d14ef25f2231";
 const KITTEN: &str =
     "https://huggingface.co/KittenML/kitten-tts-nano-0.8-fp32/resolve/7a1db645b1f3ab9420761d87428e042b9cec3f26";
+const MOONSHINE: &str =
+    "https://huggingface.co/onnx-community/moonshine-base-ONNX/resolve/b1e9b6aae3c3c7298f10c3798393fdf38e8fbbad";
+const PARAKEET: &str =
+    "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v2-onnx/resolve/0bbb45a3365852604aef28b538a8f066f4ccaa85";
 
 const KITTEN_VOICES: (&str, u64) = (
     "8aa7cee235abb0739cb51e6559685f65a4dacd95568833d05699b1633f519b3f",
@@ -22,8 +28,34 @@ pub struct Size {
     pub file: &'static str,
     sha256: &'static str,
     bytes: u64,
-    kitten: bool,
 }
+
+impl Size {
+    fn kitten(&self) -> bool {
+        self.id == "fast"
+    }
+}
+
+pub struct Set {
+    pub sizes: &'static [Size],
+    manifest: fn(&Size) -> Vec<Pinned>,
+    install_files: fn(&Size) -> Vec<&'static str>,
+    subdirs: &'static [&'static str],
+}
+
+pub static VOICE: Set = Set {
+    sizes: &SIZES,
+    manifest: voice_manifest,
+    install_files: voice_files,
+    subdirs: &["voices"],
+};
+
+pub static DICTATION: Set = Set {
+    sizes: &DICTATION_SIZES,
+    manifest: dictation_manifest,
+    install_files: dictation_files,
+    subdirs: &[],
+};
 
 pub const SIZES: [Size; 3] = [
     Size {
@@ -31,21 +63,18 @@ pub const SIZES: [Size; 3] = [
         file: "model_quantized.onnx",
         sha256: "fbae9257e1e05ffc727e951ef9b9c98418e6d79f1c9b6b13bd59f5c9028a1478",
         bytes: 92_361_116,
-        kitten: false,
     },
     Size {
         id: "full",
         file: "model.onnx",
         sha256: "8fbea51ea711f2af382e88c833d9e288c6dc82ce5e98421ea61c058ce21a34cb",
         bytes: 325_532_232,
-        kitten: false,
     },
     Size {
         id: "fast",
         file: super::kitten::MODEL,
         sha256: "320564d2615f235de972ca27a7f39551c94185cfa24ca85b07a29084135f1e5e",
         bytes: 56_767_095,
-        kitten: true,
     },
 ];
 
@@ -53,6 +82,72 @@ const TOKENIZER: (&str, u64) = (
     "77a02c8e164413299b4b4c403b14f8e0e1c1b727db4d46a09d6327b861060a34",
     3_497,
 );
+
+pub const DICTATION_SIZES: [Size; 2] = [
+    Size {
+        id: "moonshine",
+        file: moonshine::ENCODER,
+        sha256: "1dd9ab0a7f987113d30affcba5a068d11c8f90fa0223caa3e491ade431ad9751",
+        bytes: 20_513_063,
+    },
+    Size {
+        id: "parakeet",
+        file: parakeet::ENCODER,
+        sha256: "3e0581fda6ab843888b51e56d7ee78b6d5bc3237ec113af1f732d1d5286aa155",
+        bytes: 652_184_014,
+    },
+];
+
+struct Companion {
+    path: &'static str,
+    repo_path: &'static str,
+    sha256: &'static str,
+    bytes: u64,
+}
+
+const MOONSHINE_FILES: [Companion; 2] = [
+    Companion {
+        path: moonshine::DECODER,
+        repo_path: "onnx/decoder_model_merged_quantized.onnx",
+        sha256: "cc9f3cd6698a369c6008b41aa60aa3fb3322e7f03c9bdf19d8e6b7200afca4f3",
+        bytes: 42_498_870,
+    },
+    Companion {
+        path: moonshine::TOKENIZER,
+        repo_path: "tokenizer.json",
+        sha256: "7b913404bdd039af4756783218af4440bc07fb7d6d8258d677e34f95b3ec416f",
+        bytes: 3_761_754,
+    },
+];
+
+const PARAKEET_FILES: [Companion; 3] = [
+    Companion {
+        path: parakeet::DECODER,
+        repo_path: parakeet::DECODER,
+        sha256: "a449f49acd68979d418651dd2dcb737cc0f1bf0225e009e29ee326354edbf7d3",
+        bytes: 8_998_286,
+    },
+    Companion {
+        path: parakeet::FEATURES,
+        repo_path: parakeet::FEATURES,
+        sha256: "a9fde1486ebfcc08f328d75ad4610c67835fea58c73ba57e3209a6f6cf019e9f",
+        bytes: 139_764,
+    },
+    Companion {
+        path: parakeet::VOCAB,
+        repo_path: parakeet::VOCAB,
+        sha256: "ec182b70dd42113aff6c5372c75cac58c952443eb22322f57bbd7f53977d497d",
+        bytes: 9_384,
+    },
+];
+
+fn companions(size: &Size) -> &'static [Companion] {
+    if size.id == "moonshine" {
+        &MOONSHINE_FILES
+    } else {
+        &PARAKEET_FILES
+    }
+}
 
 const VOICE_BYTES: u64 = 522_240;
 
@@ -187,10 +282,9 @@ fn pinned(base: &str, path: String, from: &str, sha256: &str, bytes: u64) -> Pin
     }
 }
 
-pub fn manifest(size: &str) -> Option<Vec<Pinned>> {
-    let model = SIZES.iter().find(|s| s.id == size)?;
-    if model.kitten {
-        return Some(vec![
+fn voice_manifest(model: &Size) -> Vec<Pinned> {
+    if model.kitten() {
+        return vec![
             pinned(
                 KITTEN,
                 super::kitten::VOICES_FILE.into(),
@@ -199,7 +293,7 @@ pub fn manifest(size: &str) -> Option<Vec<Pinned>> {
                 KITTEN_VOICES.1,
             ),
             pinned(KITTEN, model.file.into(), model.file, model.sha256, model.bytes),
-        ]);
+        ];
     }
     let mut files = vec![pinned(
         KOKORO,
@@ -219,21 +313,114 @@ pub fn manifest(size: &str) -> Option<Vec<Pinned>> {
         model.sha256,
         model.bytes,
     ));
-    Some(files)
+    files
 }
 
-pub fn install_files(size: &Size) -> Vec<&'static str> {
-    if size.kitten {
+fn voice_files(size: &Size) -> Vec<&'static str> {
+    if size.kitten() {
         vec![size.file, super::kitten::VOICES_FILE]
     } else {
         vec!["tokenizer.json", size.file]
     }
 }
 
-pub fn installed(dir: &Path) -> Option<&'static Size> {
-    SIZES
+fn dictation_manifest(model: &Size) -> Vec<Pinned> {
+    let (base, from) = if model.id == "moonshine" {
+        (MOONSHINE, format!("onnx/{}", model.file))
+    } else {
+        (PARAKEET, model.file.into())
+    };
+    let mut files: Vec<Pinned> = companions(model)
         .iter()
-        .find(|s| install_files(s).iter().all(|f| dir.join(f).is_file()))
+        .map(|c| pinned(base, c.path.into(), c.repo_path, c.sha256, c.bytes))
+        .collect();
+    files.push(pinned(base, model.file.into(), &from, model.sha256, model.bytes));
+    files
+}
+
+fn dictation_files(size: &Size) -> Vec<&'static str> {
+    let mut files: Vec<&'static str> = companions(size).iter().map(|c| c.path).collect();
+    files.push(size.file);
+    files
+}
+
+impl Set {
+    pub fn size(&self, id: &str) -> Option<&'static Size> {
+        self.sizes.iter().find(|s| s.id == id)
+    }
+
+    pub fn manifest(&self, id: &str) -> Option<Vec<Pinned>> {
+        self.size(id).map(self.manifest)
+    }
+
+    pub fn installed(&self, dir: &Path) -> Option<&'static Size> {
+        self.sizes
+            .iter()
+            .find(|s| (self.install_files)(s).iter().all(|f| dir.join(f).is_file()))
+    }
+
+    pub fn install(
+        &self,
+        dir: &Path,
+        files: &[Pinned],
+        fetch: Fetch,
+        cancelled: &dyn Fn() -> bool,
+        progress: &mut dyn FnMut(u64, u64),
+    ) -> Result<(), String> {
+        let staging = dir.join(".download");
+        let _ = std::fs::remove_dir_all(&staging);
+        let result =
+            fill(&staging, files, fetch, cancelled, progress).and_then(|()| self.swap_in(dir, &staging, files));
+        let _ = std::fs::remove_dir_all(&staging);
+        result
+    }
+
+    fn is_model(&self, path: &str) -> bool {
+        self.sizes.iter().any(|s| s.file == path)
+    }
+
+    // The model goes in last: its presence is what counts as installed, so a move
+    // that fails partway never looks like a finished download.
+    fn swap_in(&self, dir: &Path, staging: &Path, files: &[Pinned]) -> Result<(), String> {
+        let (models, rest): (Vec<&Pinned>, Vec<&Pinned>) = files.iter().partition(|f| self.is_model(&f.path));
+        for f in rest.into_iter().chain(models) {
+            let to = dir.join(&f.path);
+            std::fs::create_dir_all(to.parent().unwrap()).map_err(|e| e.to_string())?;
+            std::fs::rename(staging.join(&f.path), &to)
+                .map_err(|e| format!("cannot move {} into place: {e}", f.path))?;
+        }
+        for other in self.every_file() {
+            if !files.iter().any(|f| f.path == other) {
+                remove_file(&dir.join(&other))?;
+            }
+        }
+        Ok(())
+    }
+
+    fn every_file(&self) -> Vec<String> {
+        let mut all: Vec<String> = self
+            .sizes
+            .iter()
+            .flat_map(|s| (self.manifest)(s))
+            .map(|f| f.path)
+            .collect();
+        all.sort();
+        all.dedup();
+        all
+    }
+
+    pub fn remove(&self, dir: &Path) -> Result<(), String> {
+        for file in self.every_file() {
+            remove_file(&dir.join(file))?;
+        }
+        for sub in self.subdirs {
+            match std::fs::remove_dir_all(dir.join(sub)) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.to_string()),
+                _ => {}
+            }
+        }
+        Ok(())
+    }
 }
 
 pub type Fetch<'a> = &'a dyn Fn(&str) -> Result<Box<dyn Read>, String>;
@@ -257,20 +444,6 @@ pub fn fetch(url: &str) -> Result<Box<dyn Read>, String> {
         .call()
         .map_err(|e| e.to_string())?;
     Ok(Box::new(response.into_body().into_reader()))
-}
-
-pub fn install(
-    dir: &Path,
-    files: &[Pinned],
-    fetch: Fetch,
-    cancelled: &dyn Fn() -> bool,
-    progress: &mut dyn FnMut(u64, u64),
-) -> Result<(), String> {
-    let staging = dir.join(".download");
-    let _ = std::fs::remove_dir_all(&staging);
-    let result = fill(&staging, files, fetch, cancelled, progress).and_then(|()| swap_in(dir, &staging, files));
-    let _ = std::fs::remove_dir_all(&staging);
-    result
 }
 
 fn fill(
@@ -318,48 +491,6 @@ fn fill(
     Ok(())
 }
 
-fn is_model(path: &str) -> bool {
-    SIZES.iter().any(|s| s.file == path)
-}
-
-// The model goes in last: its presence is what counts as installed, so a move
-// that fails partway never looks like a finished download.
-fn swap_in(dir: &Path, staging: &Path, files: &[Pinned]) -> Result<(), String> {
-    let (models, rest): (Vec<&Pinned>, Vec<&Pinned>) = files.iter().partition(|f| is_model(&f.path));
-    for f in rest.into_iter().chain(models) {
-        let to = dir.join(&f.path);
-        std::fs::create_dir_all(to.parent().unwrap()).map_err(|e| e.to_string())?;
-        std::fs::rename(staging.join(&f.path), &to).map_err(|e| format!("cannot move {} into place: {e}", f.path))?;
-    }
-    for other in every_file() {
-        if !files.iter().any(|f| f.path == other) {
-            remove_file(&dir.join(&other))?;
-        }
-    }
-    Ok(())
-}
-
-fn every_file() -> Vec<String> {
-    let mut all: Vec<String> = SIZES
-        .iter()
-        .flat_map(|s| manifest(s.id).unwrap())
-        .map(|f| f.path)
-        .collect();
-    all.sort();
-    all.dedup();
-    all
-}
-
-pub fn remove(dir: &Path) -> Result<(), String> {
-    for file in every_file() {
-        remove_file(&dir.join(file))?;
-    }
-    match std::fs::remove_dir_all(dir.join("voices")) {
-        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
-        _ => Ok(()),
-    }
-}
-
 fn remove_file(path: &Path) -> Result<(), String> {
     match std::fs::remove_file(path) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
@@ -397,7 +528,7 @@ mod tests {
 
     fn model(size: &str) -> Vec<(Pinned, Vec<u8>)> {
         let size = SIZES.iter().find(|s| s.id == size).unwrap();
-        if size.kitten {
+        if size.kitten() {
             return vec![file("voices.npz", &[3; 200]), file(size.file, &[4; 500])];
         }
         vec![
@@ -407,7 +538,28 @@ mod tests {
         ]
     }
 
+    fn dictation_model(size: &str) -> Vec<(Pinned, Vec<u8>)> {
+        let size = DICTATION.size(size).unwrap();
+        let mut files: Vec<(Pinned, Vec<u8>)> = dictation_files(size)
+            .iter()
+            .take_while(|f| **f != size.file)
+            .enumerate()
+            .map(|(i, f)| file(f, &[i as u8; 100]))
+            .collect();
+        files.push(file(size.file, &[9; 500]));
+        files
+    }
+
     fn run(dir: &Path, files: &[(Pinned, Vec<u8>)], cancelled: &dyn Fn() -> bool) -> Result<Vec<(u64, u64)>, String> {
+        run_set(&VOICE, dir, files, cancelled)
+    }
+
+    fn run_set(
+        set: &Set,
+        dir: &Path,
+        files: &[(Pinned, Vec<u8>)],
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<Vec<(u64, u64)>, String> {
         let bodies = served(files);
         let fetch = move |url: &str| -> Result<Box<dyn Read>, String> {
             Ok(Box::new(std::io::Cursor::new(bodies.get(url).cloned().ok_or("404")?)))
@@ -422,12 +574,12 @@ mod tests {
             })
             .collect();
         let mut seen = Vec::new();
-        install(dir, &pinned, &fetch, cancelled, &mut |d, t| seen.push((d, t)))?;
+        set.install(dir, &pinned, &fetch, cancelled, &mut |d, t| seen.push((d, t)))?;
         Ok(seen)
     }
 
     fn installed(dir: &Path) -> bool {
-        super::installed(dir).is_some()
+        VOICE.installed(dir).is_some()
     }
 
     fn left(dir: &Path) -> Vec<String> {
@@ -458,11 +610,11 @@ mod tests {
     #[test]
     fn each_size_fetches_its_own_model_against_its_own_hash() {
         for size in &SIZES {
-            let files = manifest(size.id).unwrap();
+            let files = VOICE.manifest(size.id).unwrap();
             let model = files.last().unwrap();
             assert_eq!(model.path, size.file);
             assert_eq!(model.sha256, size.sha256);
-            if size.kitten {
+            if size.kitten() {
                 assert!(model.url.ends_with(&format!("/{}", size.file)));
                 assert_eq!(files[0].path, "voices.npz");
                 assert_eq!(files.len(), 2);
@@ -472,7 +624,45 @@ mod tests {
             assert!(files.iter().any(|f| f.path == "tokenizer.json"));
             assert_eq!(files.iter().filter(|f| f.path.starts_with("voices/")).count(), 28);
         }
-        assert!(manifest("half").is_none());
+        assert!(VOICE.manifest("half").is_none());
+    }
+
+    #[test]
+    fn each_dictation_model_fetches_its_own_files_against_their_hashes() {
+        let moonshine = DICTATION.manifest("moonshine").unwrap();
+        let paths: Vec<&str> = moonshine.iter().map(|f| f.path.as_str()).collect();
+        assert_eq!(
+            paths,
+            [
+                "decoder_model_merged_quantized.onnx",
+                "tokenizer.json",
+                "encoder_model_quantized.onnx"
+            ]
+        );
+        assert!(moonshine[0].url.ends_with("/onnx/decoder_model_merged_quantized.onnx"));
+        assert!(moonshine[1]
+            .url
+            .ends_with("b1e9b6aae3c3c7298f10c3798393fdf38e8fbbad/tokenizer.json"));
+        assert!(moonshine[2].url.ends_with("/onnx/encoder_model_quantized.onnx"));
+        assert_eq!(moonshine.iter().map(|f| f.bytes).sum::<u64>(), 66_773_687);
+
+        let parakeet = DICTATION.manifest("parakeet").unwrap();
+        let paths: Vec<&str> = parakeet.iter().map(|f| f.path.as_str()).collect();
+        assert_eq!(
+            paths,
+            [
+                "decoder_joint-model.int8.onnx",
+                "nemo128.onnx",
+                "vocab.txt",
+                "encoder-model.int8.onnx"
+            ]
+        );
+        assert!(parakeet.iter().all(|f| f.url == format!("{PARAKEET}/{}", f.path)));
+        assert_eq!(parakeet.iter().map(|f| f.bytes).sum::<u64>(), 661_331_448);
+        for f in moonshine.iter().chain(&parakeet) {
+            assert_eq!(f.sha256.len(), 64, "{}", f.path);
+        }
+        assert!(DICTATION.manifest("whisper").is_none());
     }
 
     #[test]
@@ -484,6 +674,16 @@ mod tests {
             let err = run(&dir, &files, &|| false).unwrap_err();
             assert_eq!(err, format!("{}: checksum mismatch", size.file));
             assert_eq!(left(&dir), Vec::<String>::new());
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        for size in &DICTATION_SIZES {
+            let dir = temp_dir("bad_dictation_hash");
+            let mut files = dictation_model(size.id);
+            files.last_mut().unwrap().0.sha256 = "0".repeat(64);
+            let err = run_set(&DICTATION, &dir, &files, &|| false).unwrap_err();
+            assert_eq!(err, format!("{}: checksum mismatch", size.file));
+            assert_eq!(left(&dir), Vec::<String>::new());
+            assert!(DICTATION.installed(&dir).is_none());
             std::fs::remove_dir_all(&dir).unwrap();
         }
     }
@@ -511,7 +711,9 @@ mod tests {
         let files = model("int8");
         let pinned: Vec<Pinned> = files.into_iter().map(|(p, _)| p).collect();
         let fetch = |_: &str| -> Result<Box<dyn Read>, String> { Ok(Box::new(Drops)) };
-        let err = install(&dir, &pinned, &fetch, &|| false, &mut |_, _| {}).unwrap_err();
+        let err = VOICE
+            .install(&dir, &pinned, &fetch, &|| false, &mut |_, _| {})
+            .unwrap_err();
         assert!(err.starts_with("download failed"), "{err}");
         assert!(!installed(&dir));
         assert_eq!(left(&dir), Vec::<String>::new());
@@ -535,18 +737,67 @@ mod tests {
         run(&dir, &model("int8"), &|| false).unwrap();
         run(&dir, &model("full"), &|| false).unwrap();
         assert_eq!(left(&dir), ["model.onnx", "tokenizer.json", "voices/af_heart.bin"]);
-        assert_eq!(super::installed(&dir).map(|s| s.id), Some("full"));
+        assert_eq!(VOICE.installed(&dir).map(|s| s.id), Some("full"));
         run(&dir, &model("fast"), &|| false).unwrap();
         assert_eq!(left(&dir), [super::super::kitten::MODEL, "voices.npz"]);
-        assert_eq!(super::installed(&dir).map(|s| s.id), Some("fast"));
+        assert_eq!(VOICE.installed(&dir).map(|s| s.id), Some("fast"));
         run(&dir, &model("int8"), &|| false).unwrap();
         assert_eq!(
             left(&dir),
             ["model_quantized.onnx", "tokenizer.json", "voices/af_heart.bin"]
         );
 
-        remove(&dir).unwrap();
+        VOICE.remove(&dir).unwrap();
         assert_eq!(left(&dir), Vec::<String>::new());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn switching_dictation_model_leaves_only_the_new_one() {
+        let dir = temp_dir("switch_dictation");
+        run_set(&DICTATION, &dir, &dictation_model("moonshine"), &|| false).unwrap();
+        assert_eq!(
+            left(&dir),
+            [
+                "decoder_model_merged_quantized.onnx",
+                "encoder_model_quantized.onnx",
+                "tokenizer.json"
+            ]
+        );
+        assert_eq!(DICTATION.installed(&dir).map(|s| s.id), Some("moonshine"));
+        run_set(&DICTATION, &dir, &dictation_model("parakeet"), &|| false).unwrap();
+        assert_eq!(
+            left(&dir),
+            [
+                "decoder_joint-model.int8.onnx",
+                "encoder-model.int8.onnx",
+                "nemo128.onnx",
+                "vocab.txt"
+            ]
+        );
+        assert_eq!(DICTATION.installed(&dir).map(|s| s.id), Some("parakeet"));
+        run_set(&DICTATION, &dir, &dictation_model("moonshine"), &|| false).unwrap();
+        assert_eq!(DICTATION.installed(&dir).map(|s| s.id), Some("moonshine"));
+
+        DICTATION.remove(&dir).unwrap();
+        assert_eq!(left(&dir), Vec::<String>::new());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_voice_and_a_dictation_model_download_at_once_into_their_own_folders() {
+        let voice_dir = temp_dir("both_voice");
+        let dictation_dir = temp_dir("both_dictation");
+        let (a, b) = (voice_dir.clone(), dictation_dir.clone());
+        let voice = std::thread::spawn(move || run(&a, &model("int8"), &|| false));
+        let dictation = std::thread::spawn(move || run_set(&DICTATION, &b, &dictation_model("moonshine"), &|| false));
+        voice.join().unwrap().unwrap();
+        dictation.join().unwrap().unwrap();
+        assert_eq!(VOICE.installed(&voice_dir).map(|s| s.id), Some("int8"));
+        assert_eq!(DICTATION.installed(&dictation_dir).map(|s| s.id), Some("moonshine"));
+        assert_eq!(left(&voice_dir).len(), 3);
+        assert_eq!(left(&dictation_dir).len(), 3);
+        std::fs::remove_dir_all(&voice_dir).unwrap();
+        std::fs::remove_dir_all(&dictation_dir).unwrap();
     }
 }

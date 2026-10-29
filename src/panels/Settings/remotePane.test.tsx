@@ -24,7 +24,7 @@ beforeEach(async () => {
       return { state: "listening", url: "ws://100.101.7.9:47821" };
     }
     if (cmd === "get_settings") return { ...DEFAULT_SETTINGS, remote: stored };
-    if (cmd === "speech_status") return unstubbed(cmd);
+    if (cmd === "speech_status" || cmd === "dictation_status") return unstubbed(cmd);
     return null;
   });
   await loadSettings();

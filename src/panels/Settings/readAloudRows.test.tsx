@@ -43,7 +43,7 @@ beforeEach(async () => {
   await loadWorkspaceSettings(null);
 });
 
-const paneProps = { shown: () => true, query: "" };
+const paneProps = { shown: (id: string) => id.startsWith("read-aloud"), query: "" };
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("the Read aloud settings group", () => {
