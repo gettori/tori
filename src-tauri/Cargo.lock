@@ -5635,6 +5635,7 @@ dependencies = [
  "async-io",
  "async-process",
  "base64 0.22.1",
+ "block2",
  "chrono",
  "croner",
  "dirs 5.0.1",

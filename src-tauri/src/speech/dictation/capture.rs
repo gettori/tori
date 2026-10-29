@@ -11,6 +11,9 @@ use super::SAMPLE_RATE;
 const LONGEST_SECONDS: usize = 15 * 60;
 pub const QUIET: f32 = 0.01;
 const TAPS_EACH_SIDE: usize = 32;
+const LEVELS_PER_SECOND: usize = 30;
+
+pub type Level = Box<dyn Fn(f32) + Send>;
 
 pub struct Clip {
     pub samples: Vec<f32>,
@@ -24,7 +27,7 @@ pub struct Capture {
 
 // The stream lives on its own thread from start to stop: cpal's stream is not
 // Send on every host, so it never leaves the thread that opened it.
-pub fn start() -> Result<Capture, String> {
+pub fn start(level: Level) -> Result<Capture, String> {
     let (ready_tx, ready_rx) = mpsc::channel();
     let (stop_tx, stop_rx) = mpsc::channel();
     let (done_tx, done_rx) = mpsc::channel();
@@ -32,7 +35,7 @@ pub fn start() -> Result<Capture, String> {
         .name("dictation-capture".into())
         .spawn(move || {
             let buffer: Arc<Mutex<Vec<f32>>> = Arc::default();
-            let (stream, rate) = match open(buffer.clone()) {
+            let (stream, rate) = match open(buffer.clone(), level) {
                 Ok(opened) => opened,
                 Err(e) => {
                     let _ = ready_tx.send(Err(e));
@@ -67,17 +70,20 @@ pub fn stop(capture: Capture, keep: bool) -> Result<Clip, String> {
         .map_err(|_| "the capture thread stopped".to_string())
 }
 
-fn open(buffer: Arc<Mutex<Vec<f32>>>) -> Result<(cpal::Stream, u32), String> {
+fn open(buffer: Arc<Mutex<Vec<f32>>>, level: Level) -> Result<(cpal::Stream, u32), String> {
     let device = cpal::default_host().default_input_device().ok_or("no microphone")?;
     let supported = device.default_input_config().map_err(|e| e.to_string())?;
     let channels = supported.channels() as usize;
     let rate = supported.sample_rate();
     let config = supported.config();
     let longest = LONGEST_SECONDS * rate as usize;
-    let keep = move |frames: &mut dyn Iterator<Item = f32>| {
+    let mut meter = Meter::new(rate as usize / LEVELS_PER_SECOND, level);
+    let mut keep = move |frames: &mut dyn Iterator<Item = f32>| {
         let mut buffer = buffer.lock().unwrap();
         let room = longest.saturating_sub(buffer.len());
+        let from = buffer.len();
         buffer.extend(frames.take(room));
+        meter.feed(&buffer[from..]);
     };
     let err = |e: cpal::Error| eprintln!("dictation capture: {e}");
     let stream = match supported.sample_format() {
@@ -117,6 +123,36 @@ fn open(buffer: Arc<Mutex<Vec<f32>>>) -> Result<(cpal::Stream, u32), String> {
     Ok((stream, rate))
 }
 
+struct Meter {
+    every: usize,
+    squares: f32,
+    count: usize,
+    level: Level,
+}
+
+impl Meter {
+    fn new(every: usize, level: Level) -> Self {
+        Meter {
+            every: every.max(1),
+            squares: 0.0,
+            count: 0,
+            level,
+        }
+    }
+
+    fn feed(&mut self, samples: &[f32]) {
+        for s in samples {
+            self.squares += s * s;
+            self.count += 1;
+            if self.count == self.every {
+                (self.level)((self.squares / self.count as f32).sqrt());
+                self.squares = 0.0;
+                self.count = 0;
+            }
+        }
+    }
+}
+
 fn mono(samples: impl Iterator<Item = f32>, channels: usize) -> impl Iterator<Item = f32> {
     let channels = channels.max(1);
     let mut frame = Vec::with_capacity(channels);
@@ -128,6 +164,12 @@ fn mono(samples: impl Iterator<Item = f32>, channels: usize) -> impl Iterator<It
         let sum: f32 = frame.drain(..).sum();
         Some(sum / channels as f32)
     })
+}
+
+// A real microphone never gives exact zeros, even in a silent room; macOS does,
+// when it has not let this app listen and has not asked either.
+pub fn withheld(samples: &[f32]) -> bool {
+    !samples.is_empty() && samples.iter().all(|s| *s == 0.0)
 }
 
 pub fn peak(samples: &[f32]) -> f32 {
@@ -176,24 +218,59 @@ fn sinc(x: f64) -> f64 {
 }
 
 #[cfg(target_os = "macos")]
-pub fn microphone_denied() -> bool {
+mod permission {
+    use objc2::runtime::Bool;
     use objc2::{class, msg_send};
     use objc2_foundation::NSString;
 
     #[link(name = "AVFoundation", kind = "framework")]
     unsafe extern "C" {}
 
+    const NOT_DETERMINED: isize = 0;
     const RESTRICTED: isize = 1;
     const DENIED: isize = 2;
-    let audio = NSString::from_str("soun");
-    let status: isize = unsafe { msg_send![class!(AVCaptureDevice), authorizationStatusForMediaType: &*audio] };
-    matches!(status, RESTRICTED | DENIED)
+
+    fn status() -> isize {
+        let audio = NSString::from_str("soun");
+        unsafe { msg_send![class!(AVCaptureDevice), authorizationStatusForMediaType: &*audio] }
+    }
+
+    pub fn denied() -> bool {
+        matches!(status(), RESTRICTED | DENIED)
+    }
+
+    // macOS lists an app under Privacy & Security only once it has asked, so
+    // the first press asks rather than waiting for capture to maybe prompt.
+    // A dev build is not asked: macOS puts the question to the app that
+    // launched it, and one without a microphone entry is killed for asking.
+    pub fn ask() -> bool {
+        if status() != NOT_DETERMINED || cfg!(debug_assertions) {
+            return !denied();
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        let answered = block2::RcBlock::new(move |granted: Bool| {
+            let _ = tx.send(granted.as_bool());
+        });
+        let audio = NSString::from_str("soun");
+        let _: () = unsafe {
+            msg_send![class!(AVCaptureDevice), requestAccessForMediaType: &*audio, completionHandler: &*answered]
+        };
+        rx.recv().unwrap_or(false)
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn microphone_denied() -> bool {
-    false
+mod permission {
+    pub fn denied() -> bool {
+        false
+    }
+
+    pub fn ask() -> bool {
+        true
+    }
 }
+
+pub use permission::{ask as ask_for_microphone, denied as microphone_denied};
 
 #[cfg(test)]
 mod tests {
