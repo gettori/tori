@@ -3170,6 +3170,56 @@ mod tests {
         assert!(!host.set_visible("never-existed", false));
     }
 
+    /// A quota frame leaves carrying the account its session is claimed by, so
+    /// whatever shows it files it under the login that reported it rather than
+    /// under its own idea of which login that was.
+    #[test]
+    fn a_rate_limit_frame_leaves_stamped_with_the_claimed_account() {
+        let host = ChatHost::at(temp_store());
+        let seen = Collector::default();
+        host.registry.claim(
+            "s-acct",
+            Claim {
+                surface: Surface::Chat,
+                tab_id: "tab-a".into(),
+                child_pid: None,
+                tori_pid: std::process::id(),
+                agent: "claude".into(),
+                profile: "work".into(),
+            },
+        );
+        let holder: Arc<Mutex<Option<Sink>>> = Arc::default();
+        let out = holder.clone();
+        host.spawn_plain("s-acct", "tab-a", seen.emit(), spec("s-acct"), move || {
+            Box::new(Puppet {
+                sink_out: Some(out),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+        let sink = lock(&holder).clone().expect("the puppet published its sink");
+        emit(&sink, started("s-acct"));
+        emit(
+            &sink,
+            ChatEvent::RateLimit {
+                session_id: "s-acct".into(),
+                status: "allowed".into(),
+                resets_at: None,
+                limit_type: Some("five_hour".into()),
+                utilization: Some(0.2),
+                windows: vec![],
+                overage_status: None,
+                profile: None,
+            },
+        );
+
+        let stamped = seen.events().into_iter().find_map(|e| match e {
+            ChatEvent::RateLimit { profile, .. } => Some(profile),
+            _ => None,
+        });
+        assert_eq!(stamped, Some(Some("work".to_string())));
+    }
+
     /// A non-fatal error is information, not a death sentence: one unparseable
     /// line must not take a working session down.
     #[test]
