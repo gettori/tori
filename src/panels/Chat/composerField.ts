@@ -117,7 +117,7 @@ const ghost = Decoration.mark({ class: "cm-ghostToken" });
 
 type Tokens = { chips: DecorationSet; ghosts: DecorationSet };
 
-function chipField(chipFor: (label: string) => ChipSpec | null) {
+function chipField(chipFor: (label: string) => ChipSpec | null, withGhosts: boolean) {
   const build = (state: EditorState): Tokens => {
     const chips = new RangeSetBuilder<Decoration>();
     const ghosts = new RangeSetBuilder<Decoration>();
@@ -126,7 +126,7 @@ function chipField(chipFor: (label: string) => ChipSpec | null) {
       const to = from + m[0].length;
       const spec = chipFor(m[0]);
       if (spec) chips.add(from, to, Decoration.replace({ widget: new ChipWidget(m[0], spec) }));
-      else if (LABEL.test(m[0])) ghosts.add(from, to, ghost);
+      else if (withGhosts && LABEL.test(m[0])) ghosts.add(from, to, ghost);
     }
     return { chips: chips.finish(), ghosts: ghosts.finish() };
   };
@@ -182,7 +182,7 @@ export function createComposerField(opts: ComposerFieldOptions): ComposerField {
           autocorrect: "off",
           autocapitalize: "off",
         }),
-        chipField(opts.chipFor),
+        chipField(opts.chipFor, true),
         // Highest, so the composer's keys (send, menus, recall) are answered
         // before any keymap the rich layer brings.
         Prec.highest(
@@ -270,6 +270,68 @@ export function createComposerField(opts: ComposerFieldOptions): ComposerField {
     },
     refreshChips() {
       view.dispatch({ effects: refresh.of(null) });
+    },
+    destroy() {
+      destroyed = true;
+      view.destroy();
+    },
+  };
+}
+
+export type PromptFieldOptions = {
+  parent: HTMLElement;
+  doc: string;
+  skills: readonly string[];
+  chipFor: (label: string) => ChipSpec | null;
+};
+
+export type PromptField = {
+  set: (text: string) => void;
+  setSkills: (names: readonly string[]) => void;
+  destroy: () => void;
+};
+
+/** A sent prompt, drawn by the composer's own field with editing taken away,
+ *  so a message looks the same on both sides of send. */
+export function createPromptField(opts: PromptFieldOptions): PromptField {
+  const richSlot = new Compartment();
+  const skillsSlot = new Compartment();
+  const view = new EditorView({
+    parent: opts.parent,
+    state: EditorState.create({
+      doc: opts.doc,
+      extensions: [
+        EditorView.lineWrapping,
+        EditorState.readOnly.of(true),
+        EditorView.editable.of(false),
+        skillsSlot.of(skillNames.of(opts.skills)),
+        EditorView.contentAttributes.of({ "aria-label": "Prompt", "aria-readonly": "true" }),
+        // No ghosts: a replayed turn names images it no longer holds the bytes
+        // for, and dashing those would say the turn never carried them.
+        chipField(opts.chipFor, false),
+        // A sent prompt is a record, so its text cannot be dragged out as a
+        // move. Copying a selection still works.
+        EditorView.domEventHandlers({ dragstart: (e) => (e.preventDefault(), true) }),
+        richSlot.of([]),
+      ],
+    }),
+  });
+
+  let destroyed = false;
+  void import("./composerFieldRich").then(
+    (m) => {
+      if (!destroyed) view.dispatch({ effects: richSlot.reconfigure(m.highlighting()) });
+    },
+    () => {},
+  );
+
+  return {
+    set(text) {
+      if (text === view.state.doc.toString()) return;
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
+    },
+    setSkills(names) {
+      view.dispatch({ effects: skillsSlot.reconfigure(skillNames.of(names)) });
     },
     destroy() {
       destroyed = true;

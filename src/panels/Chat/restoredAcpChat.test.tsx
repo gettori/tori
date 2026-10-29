@@ -161,7 +161,7 @@ function push(...frames: unknown[]) {
 /** Type into the composer and press Enter, which is what starts a restored tab:
  *  an inert one spawns nothing until asked ([[adr_lazy_tab_attachment]]). */
 async function send(text: string) {
-  await screen.findByRole("textbox");
+  await screen.findByRole("textbox", { name: "Message" });
   const box = composerInput();
   fireEvent.input(box, { target: { value: text } });
   fireEvent.keyDown(box, { key: "Enter" });

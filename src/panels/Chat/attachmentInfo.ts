@@ -24,13 +24,14 @@ export function thumbSrc(block: ContentBlock): string | null {
 /** Whether the chip is a tile with a preview box, or a pill of text. The two
  *  never share a row, so this is also which grid it goes in. */
 export function isTile(block: ContentBlock): boolean {
-  return block.type === "fileRef" || block.type === "image";
+  return block.type === "fileRef" || block.type === "image" || block.type === "imageRef";
 }
 
 /** What a tile is captioned by. A tile is looked at rather than read, so the
  *  file's own name leads and the label goes under it. */
 export function tileName(block: ContentBlock): string {
   if (block.type === "image") return "Pasted image";
+  if (block.type === "imageRef") return "Earlier image";
   if (block.type !== "fileRef") return chipLabel(block);
   return block.path.split("/").pop() || block.path;
 }
@@ -64,8 +65,9 @@ function dirOf(path: string): string {
 
 const KIND_WORDS = { image: "Image", pdf: "PDF", file: "File" } as const;
 
-/** Everything worth knowing about a chip before clicking it. */
-export function attachmentTip(block: ContentBlock, opts: { missing?: boolean } = {}): TipContent {
+/** Everything worth knowing about a chip before clicking it. `nameable` is
+ *  false for a sent prompt's chip, which no longer goes into any message. */
+export function attachmentTip(block: ContentBlock, opts: { missing?: boolean; nameable?: boolean } = {}): TipContent {
   const preview = "Click to preview";
   if (block.type === "fileRef") {
     const kind = attachmentKind(block.path);
@@ -79,7 +81,8 @@ export function attachmentTip(block: ContentBlock, opts: { missing?: boolean } =
       lines,
       excerpt: excerptOf(block.text),
       warn: opts.missing ? "No file at this path any more. It was moved or deleted after it was attached." : null,
-      hint: block.label ? `${preview}. Cmd+click or drag to name it in the message` : preview,
+      hint:
+        block.label && opts.nameable !== false ? `${preview}. Cmd+click or drag to name it in the message` : preview,
     };
   }
   switch (block.type) {

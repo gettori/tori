@@ -311,7 +311,7 @@ describe("cancelling from the chat", () => {
 
   it("clears the arm when the user sends", async () => {
     await armed();
-    await screen.findByRole("textbox");
+    await screen.findByRole("textbox", { name: "Message" });
     const box = composerInput();
     fireEvent.input(box, { target: { value: "never mind" } });
     fireEvent.keyDown(box, { key: "Enter" });

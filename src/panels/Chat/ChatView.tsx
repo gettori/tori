@@ -2538,6 +2538,7 @@ export default function ChatView(props: {
           streaming={running()}
           sessionId={props.sessionId}
           cwd={props.cwd}
+          skills={state.skills}
           anchorTurnId={anchorTurn()}
           onAnchor={setAnchorTurn}
           // The catalogue's display name when the resolved id matches one, the

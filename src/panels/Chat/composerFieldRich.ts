@@ -111,14 +111,17 @@ const command = ViewPlugin.fromClass(
   { decorations: (p) => p.decorations },
 );
 
-export function richExtensions(): Extension {
+/** The look alone, for a field nobody types in. */
+export function highlighting(): Extension {
   return [
-    history(),
-    keymap.of([...historyKeymap, ...standardKeymap]),
     markdown({ base: markdownLanguage, codeLanguages: languageForFence }),
     syntaxHighlighting(toriHighlight),
     syntaxHighlighting(prose),
     fences,
     command,
   ];
+}
+
+export function richExtensions(): Extension {
+  return [history(), keymap.of([...historyKeymap, ...standardKeymap]), highlighting()];
 }

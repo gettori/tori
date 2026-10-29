@@ -15,21 +15,15 @@ import {
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
 import { queuedText, type QueuedInput } from "./chatStore";
-import {
-  checkAttachment,
-  chipLabel,
-  readAsBytes,
-  type AttachmentSource,
-  type PendingBlock,
-} from "../../utils/chatCompose";
+import { checkAttachment, readAsBytes, type AttachmentSource, type PendingBlock } from "../../utils/chatCompose";
 import type { ComposerAttachments, UploadFile } from "./composerAttachments";
 import type { StashEntry } from "./promptStash";
 import { ago } from "../../utils/relativeTime";
-import FileIcon from "../../seti/FileIcon";
 import AttachmentPreview from "./AttachmentPreview";
 import { createComposerField, type ComposerField } from "./composerField";
 import Tip, { excerptOf } from "./Tip";
-import { attachmentTip, isTile, thumbSrc, tileName, tileNote, tokenOf } from "./attachmentInfo";
+import { thumbSrc, tileName, tokenOf } from "./attachmentInfo";
+import { ATTACHMENT_TOKEN_MIME, AttachmentChip, AttachmentGrid, InlineChip } from "./AttachmentChip";
 import { DRAG_ABS_PATH_MIME, DRAG_PATH_MIME, OPEN_IN_EDITOR, emitWith, type OpenInEditor } from "../../utils/events";
 import {
   activeToken,
@@ -124,14 +118,7 @@ export type ComposerHandle = {
   insertBlock: (text: string) => void;
 };
 
-/**
- * A chip of this composer's own, on its way into the sentence.
- *
- * Private, and checked before the path MIMEs: the tree marks its drags with
- * `text/plain` as well, and a chip read as a path would attach the same file a
- * second time under a second number.
- */
-export const ATTACHMENT_TOKEN_MIME = "application/x-tori-attachment-token";
+export { ATTACHMENT_TOKEN_MIME };
 
 /** What is about to land, said before it is refused rather than after. */
 function dropHint(uploads: AttachmentSource): string {
@@ -971,7 +958,7 @@ export default function Composer(props: {
       chipFor: (label) => {
         const a = untrack(held).get(label);
         if (!a) return null;
-        return { key: a.id, mount: (dom) => render(() => <InlineChip a={a} label={label} />, dom) };
+        return { key: a.id, mount: (dom) => render(() => <ComposerInlineChip a={a} label={label} />, dom) };
       },
       onInput: (value) => {
         setText(value);
@@ -1020,41 +1007,27 @@ export default function Composer(props: {
     createEffect(on(held, () => field?.refreshChips(), { defer: true }));
   });
 
-  /** A token in the sentence that is one of the held attachments. It reads as
-   *  the text it is; hovering shows it is one piece that can be picked up. */
-  const InlineChip = (p: { a: PendingBlock; label: string }) => {
+  const ComposerInlineChip = (p: { a: PendingBlock; label: string }) => {
     const block = p.a.block;
     const path = block.type === "fileRef" ? block.path : null;
     const missing = () => !!path && missingPaths().has(path);
     return (
-      <button
-        type="button"
-        class={styles.inlineChip}
-        classList={{ [styles.inlineChipMissing]: missing() }}
-        aria-label={`Preview ${chipLabel(block)}`}
-        // No tooltip of its own: hovering lights the attachment it names above,
-        // which already says everything a tooltip would.
-        onMouseEnter={() => setPointing(p.a.id)}
-        onMouseLeave={() => setPointing(null)}
-        // Out of the tab order: the field is one stop, and the chip's file is
-        // reachable from its tile above.
-        tabIndex={-1}
-        draggable={true}
-        onDragStart={(e: DragEvent) => {
+      <InlineChip
+        label={p.label}
+        block={block}
+        missing={missing()}
+        onPoint={(on) => setPointing(on ? p.a.id : null)}
+        onPreview={() => setPreviewing({ block, missing: missing() })}
+        onDragStart={(e) => {
           movingFrom = field?.view.posAtDOM(e.currentTarget as HTMLElement) ?? null;
           e.dataTransfer?.setData(ATTACHMENT_TOKEN_MIME, p.label);
           if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
         }}
         onDragEnd={() => (movingFrom = null)}
-        onClick={() => setPreviewing({ block, missing: missing() })}
-      >
-        {p.label}
-      </button>
+      />
     );
   };
 
-  const tiles = createMemo(() => props.attachments.filter((a) => isTile(a.block)));
-  const pills = createMemo(() => props.attachments.filter((a) => !isTile(a.block)));
   const [previewing, setPreviewing] = createSignal<{ block: ContentBlock; missing: boolean } | null>(null);
   // The attachment a token in the text is being hovered for.
   const [pointing, setPointing] = createSignal<string | null>(null);
@@ -1075,14 +1048,7 @@ export default function Composer(props: {
   // signal and the effect that keeps asking the disk about it.
   const Chip = (p: { a: PendingBlock }) => {
     const block = p.a.block;
-    // A tile is its picture, or its Seti icon in the same box, above its name.
-    // A pill is prose (a hunk comment, a diagnostic) or a link with no file.
-    const src = thumbSrc(block);
     const path = block.type === "fileRef" ? block.path : null;
-    const token = tokenOf(block);
-    const name = tileName(block);
-    const note = tileNote(block);
-    const tile = isTile(block);
     // Gone from disk since it was attached. The chip stays, because the
     // sentence still names it; both controls say why it is red.
     const missing = () => !!path && missingPaths().has(path);
@@ -1098,65 +1064,15 @@ export default function Composer(props: {
         ),
       );
     }
-    const reason = () => (missing() && path ? `. No file at ${path}` : "");
     return (
-      <div
-        class={styles.attachment}
-        classList={{
-          [styles.attachmentTile]: tile,
-          [styles.attachmentMissing]: missing(),
-          [styles.attachmentPointed]: pointing() === p.a.id,
-        }}
-      >
-        {/* Two controls, because the chip means two things: look at it, or take
-            it away. Cmd+click keeps the tile's other job of naming it in the
-            sentence, for one that has a token to name it by. */}
-        <Tooltip
-          as="button"
-          type="button"
-          class={styles.attachmentBody}
-          label={<Tip {...attachmentTip(block, { missing: missing() })} />}
-          aria-label={`Preview ${chipLabel(block)}${reason()}`}
-          draggable={token !== null}
-          onDragStart={(e: DragEvent) => {
-            if (!token) return;
-            e.dataTransfer?.setData(ATTACHMENT_TOKEN_MIME, token);
-            if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
-          }}
-          onClick={(e: MouseEvent) => {
-            if (e.metaKey && token) insertToken(token);
-            else setPreviewing({ block, missing: missing() });
-          }}
-          // The keyboard's way to the remove button's job, on the control the
-          // focus is already on.
-          onKeyDown={(e: KeyboardEvent) => {
-            if (e.key !== "Delete" && e.key !== "Backspace") return;
-            e.preventDefault();
-            props.onDropAttachment(p.a.id);
-          }}
-        >
-          <Show when={tile} fallback={<span class={styles.attachmentName}>{name}</span>}>
-            <span class={styles.attachmentPreview}>
-              {src ? <img class={styles.attachmentThumb} src={src} alt="" /> : <FileIcon name={name} />}
-            </span>
-            <span class={styles.attachmentName}>{name}</span>
-            <Show when={note}>
-              <span class={styles.attachmentNote}>{note}</span>
-            </Show>
-          </Show>
-        </Tooltip>
-        <button
-          type="button"
-          class={styles.attachmentRemove}
-          // Named after the action and after which attachment: an image chip's
-          // own content is a picture, so without this the button answers to
-          // nothing.
-          aria-label={`Remove ${chipLabel(block)}${reason()}`}
-          onClick={() => props.onDropAttachment(p.a.id)}
-        >
-          <Icon icon={X} size={12} aria-hidden="true" />
-        </button>
-      </div>
+      <AttachmentChip
+        block={block}
+        missing={missing()}
+        pointed={pointing() === p.a.id}
+        onPreview={() => setPreviewing({ block, missing: missing() })}
+        onRemove={() => props.onDropAttachment(p.a.id)}
+        onInsert={insertToken}
+      />
     );
   };
 
@@ -1485,22 +1401,7 @@ export default function Composer(props: {
           </For>
         </div>
       </Show>
-      <Show when={props.attachments.length}>
-        {/* Tiles and pills in grids of their own, so the two shapes never share
-            a row and every cell in a row is the same width. */}
-        <div class={styles.attachments}>
-          <Show when={tiles().length}>
-            <div class={styles.attachmentTiles}>
-              <For each={tiles()}>{(a) => <Chip a={a} />}</For>
-            </div>
-          </Show>
-          <Show when={pills().length}>
-            <div class={styles.attachmentPills}>
-              <For each={pills()}>{(a) => <Chip a={a} />}</For>
-            </div>
-          </Show>
-        </div>
-      </Show>
+      <AttachmentGrid items={props.attachments} chip={(a) => <Chip a={a as PendingBlock} />} />
       <AttachmentPreview
         block={previewing()?.block ?? null}
         missing={previewing()?.missing ?? false}

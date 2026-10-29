@@ -443,52 +443,57 @@
   padding: 0.1em 0.35em;
 }
 
-/* What a prompt attached, above what it asked. Wrapped rather than laid out in
-   a row, because a turn can carry ten and the bubble is already capped. */
-.promptImages {
+/* A sent prompt's attachments (SentPrompt.tsx). The bubble is as wide as its
+   text, so the composer's fill-the-row grid would collapse to one column in it:
+   here each cell keeps the width it has in the composer and the row wraps. */
+.userBubble .attachments {
+  padding: calc(4px * var(--ui-scale)) 0 calc(6px * var(--ui-scale));
+}
+
+.userBubble .attachmentTiles,
+.userBubble .attachmentPills {
   display: flex;
   flex-wrap: wrap;
-  gap: calc(6px * var(--ui-scale));
-  margin-bottom: calc(6px * var(--ui-scale));
 }
 
-/* Shown, not summarised: a chip reading "image" says nothing about which one,
-   and the composer already made the same choice one line above. Capped in
-   height because a screenshot is taller than the sentence that asks about it. */
-.promptImage {
-  display: block;
-  max-width: 100%;
-  max-height: calc(180px * var(--ui-scale));
-  border: 1px solid var(--border-default);
-  border-radius: var(--tori-radius-md);
+.userBubble .attachmentTile {
+  width: calc(104px * var(--ui-scale));
 }
 
-/* A token in the sentence that names something this turn carried. Drawn the
-   way the composer drew it, so the prompt reads the same on both sides of
-   send. A token naming nothing the turn holds stays plain text. */
-.promptChip {
-  border-radius: var(--tori-radius-sm);
-  padding: 0.1em 0.35em;
-  background: var(--neutral-hover);
-  font-family: var(--tori-font-mono);
-  font-size: 0.9em;
+.userBubble .attachmentPills .attachment {
+  width: calc(200px * var(--ui-scale));
 }
 
-/* A reference opens what it names, so it is a button drawn as the same chip. */
-button.promptChip {
-  border: 0;
-  color: inherit;
+/* The composer's field with editing off, sized by its text alone: no rows at
+   rest, no scroll, no inset beyond the bubble's own. */
+.promptField {
+  --input-pad-x: 0px;
+}
+
+.promptField :global(.cm-editor) {
+  background: transparent;
+  color: var(--fg-default);
+}
+
+.promptField :global(.cm-editor.cm-focused) {
+  outline: none;
+}
+
+.promptField :global(.cm-scroller) {
+  font-family: inherit;
   line-height: inherit;
-  cursor: pointer;
 }
 
-/* A replayed image, whose bytes the transcript reader left on disk. Numbered
-   the way the CLI writes one, and muted, because it is a note about the turn
-   rather than part of what was asked. */
-.promptImageGone {
-  color: var(--fg-subtle);
-  font-family: var(--tori-font-mono);
-  font-size: var(--tori-text-sm);
+.promptField :global(.cm-content) {
+  padding: 0;
+}
+
+.promptField :global(.cm-line) {
+  padding: 0;
+}
+
+.promptField :global(.cm-content ::selection) {
+  background: var(--accent-subtle);
 }
 
 /* A steer: the same person's message, delivered into the turn above it rather
@@ -502,7 +507,7 @@ button.promptChip {
   font-size: calc(var(--chat-font-size) - 1px);
 }
 .steerLabel {
-  margin-right: calc(6px * var(--ui-scale));
+  display: block;
   color: var(--fg-subtle);
   font-size: calc(var(--chat-font-size) - 2px);
 }
@@ -2884,7 +2889,8 @@ button.diffHunkHeader:hover {
 
 /* A fenced block in the draft wears the code block's ground, inset to the
    text's own margins with rounded ends, its fence lines a step quieter. */
-.inputField :global(.cm-line.cm-fence) {
+.inputField :global(.cm-line.cm-fence),
+.promptField :global(.cm-line.cm-fence) {
   margin: 0 var(--input-pad-x);
   padding: 0 calc(10px * var(--ui-scale));
   background: var(--canvas-default);
@@ -2892,16 +2898,19 @@ button.diffHunkHeader:hover {
   font-size: 0.92em;
 }
 
-.inputField :global(.cm-fenceEdge) {
+.inputField :global(.cm-fenceEdge),
+.promptField :global(.cm-fenceEdge) {
   color: var(--fg-subtle);
 }
 
-.inputField :global(.cm-fenceTop) {
+.inputField :global(.cm-fenceTop),
+.promptField :global(.cm-fenceTop) {
   padding-top: calc(4px * var(--ui-scale));
   border-radius: var(--tori-radius-md) var(--tori-radius-md) 0 0;
 }
 
-.inputField :global(.cm-fenceBottom) {
+.inputField :global(.cm-fenceBottom),
+.promptField :global(.cm-fenceBottom) {
   padding-bottom: calc(4px * var(--ui-scale));
   border-radius: 0 0 var(--tori-radius-md) var(--tori-radius-md);
 }
@@ -2914,7 +2923,8 @@ button.diffHunkHeader:hover {
 
 /* A slash command at the start, or a skill named mid-sentence, in the brand's
    own colour. */
-.inputField :global(.cm-command) {
+.inputField :global(.cm-command),
+.promptField :global(.cm-command) {
   color: var(--brand-strong);
   font-weight: 500;
 }
@@ -2951,6 +2961,12 @@ button.diffHunkHeader:hover {
 
 .inlineChip:active {
   cursor: grabbing;
+}
+
+/* A sent prompt's token previews but is never picked up. */
+.inlineChipFixed,
+.inlineChipFixed:active {
+  cursor: pointer;
 }
 
 .inlineChipMissing {

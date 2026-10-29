@@ -48,9 +48,11 @@ function turn(n: number): ChatItem[] {
 
 const ITEMS: ChatItem[] = [1, 2, 3].flatMap(turn);
 
-// A reference chip is a button whose text is its token, and what it names is its tooltip.
-const chips = (container: HTMLElement) =>
-  [...container.querySelectorAll("button")].filter((b) => b.textContent?.startsWith("["));
+// A token in the sent text that names one of the turn's attachments.
+const chips = (container: HTMLElement) => [...container.querySelectorAll<HTMLButtonElement>(".cm-chip button")];
+
+// What the turn carried, drawn above its text the way the composer drew it.
+const tiles = (container: HTMLElement) => [...container.querySelectorAll(`.${chatStyles.attachment}`)];
 
 function described(chip: HTMLElement): string {
   chip.focus();
@@ -119,7 +121,7 @@ describe("a prompt shows what it attached", () => {
     expect(container.textContent).not.toContain("[image]");
   });
 
-  it("numbers a replayed image it has no bytes for", () => {
+  it("keeps a tile for a replayed image it has no bytes for", () => {
     const items: ChatItem[] = [
       {
         kind: "user",
@@ -130,15 +132,34 @@ describe("a prompt shows what it attached", () => {
     ];
     const { container } = render(() => list({ items }));
     expect(container.querySelector("img")).toBeNull();
-    expect(container.textContent).toContain("[Image #1]");
-    expect(container.textContent).toContain("[Image #2]");
+    expect(tiles(container)).toHaveLength(2);
     expect(container.textContent).toContain("compare these");
   });
 
   it("keeps an image-only prompt visible", () => {
     const items: ChatItem[] = [{ kind: "user", id: "u1", blocks: [{ type: "imageRef" }], steer: false }];
     const { container } = render(() => list({ items }));
-    expect(container.textContent).toContain("[Image #1]");
+    expect(tiles(container)).toHaveLength(1);
+  });
+
+  // A record of what was sent: it previews, and nothing takes it away or moves it.
+  it("offers no remove and no drag", () => {
+    const shot = { type: "fileRef" as const, path: "/s/a.png", startLine: null, endLine: null, text: null };
+    const items: ChatItem[] = [
+      {
+        kind: "user",
+        id: "u1",
+        blocks: [
+          { ...shot, label: "[Image 1]" },
+          { type: "text", text: "see [Image 1]" },
+        ],
+        steer: false,
+      },
+    ];
+    const { container } = render(() => list({ items }));
+    expect(screen.queryByRole("button", { name: /^Remove/ })).toBeNull();
+    expect(container.querySelector('[draggable="true"]')).toBeNull();
+    expect(container.querySelector('[contenteditable="true"]')).toBeNull();
   });
 });
 
@@ -192,23 +213,23 @@ describe("a prompt that references a pull request", () => {
   for (const [name, items] of paths) {
     it(`draws the ${name} token as one chip and no Tori row`, () => {
       const { container } = render(() => list({ items: items() }));
-      const found = chips(container);
-      expect(found.map((c) => c.textContent)).toEqual(["[PR 7]"]);
-      expect(described(found[0])).toBe("Seven (merged)");
+      expect(chips(container).map((c) => c.textContent)).toEqual(["[PR 7]"]);
+      expect(tiles(container)).toHaveLength(1);
       expect(container.textContent).toContain("why did [PR 7] land?");
       expect(container.textContent).not.toContain("ref-pr");
     });
   }
 
-  it("opens the pull request it names", async () => {
+  it("opens the pull request it names, from its preview", async () => {
     const { container } = render(() => list({ items: paths[0][1]() }));
     fireEvent.click(chips(container)[0]);
+    fireEvent.click(await screen.findByRole("button", { name: "Open pull request" }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("forge_get_pr", { projectPath: "/tmp", number: 7 }));
   });
 });
 
 describe("a prompt that references a session", () => {
-  it("opens the session it names", () => {
+  it("opens the session it names, from its preview", async () => {
     const blocks: ContentBlock[] = [
       {
         type: "ref",
@@ -222,13 +243,13 @@ describe("a prompt that references a session", () => {
     const { container } = render(() => list({ items: [{ kind: "user", id: "u1", blocks, steer: false }] }));
     const chip = chips(container)[0];
     expect(chip.textContent).toBe("[Session: Fix login]");
-    expect(described(chip)).toBe("Fix login (codex)");
     fireEvent.click(chip);
+    fireEvent.click(await screen.findByRole("button", { name: "Open session" }));
     expect(opened).toEqual([{ sessionId: "abc", action: "open" }]);
     off();
   });
 
-  it("shows a project or a space chip's target in the sidebar", () => {
+  it("shows a project or a space chip's target in the sidebar", async () => {
     const blocks: ContentBlock[] = [
       {
         type: "ref",
@@ -246,10 +267,10 @@ describe("a prompt that references a session", () => {
     const off = onWith<NavTarget>(NAVIGATE, (t) => shown.push(t));
     const { container } = render(() => list({ items: [{ kind: "user", id: "u1", blocks, steer: false }] }));
     const [project, space] = chips(container);
-    expect(described(project)).toBe("/p/tori (Work)");
-    expect(described(space)).toBe("tori");
     fireEvent.click(project);
+    fireEvent.click(await screen.findByRole("button", { name: "Show project" }));
     fireEvent.click(space);
+    fireEvent.click(await screen.findByRole("button", { name: "Show space" }));
     expect(shown).toEqual([{ project: "/p/tori" }, { space: "Work" }]);
     off();
   });
@@ -270,14 +291,21 @@ describe("a prompt that names what it attached", () => {
       { kind: "user", id: "u1", blocks: [shot, { type: "text", text: "what is in [Image 1]?" }], steer: false },
     ];
     const { container } = render(() => list({ items }));
-    const chips = container.querySelectorAll('span[title="/store/1a2b-0/shot.png"]');
-    expect(chips).toHaveLength(1);
-    expect(chips[0].textContent).toBe("[Image 1]");
+    expect(chips(container).map((c) => c.textContent)).toEqual(["[Image 1]"]);
     expect(container.querySelector("img")?.getAttribute("src")).toBe("asset:///store/1a2b-0/shot.png");
     // The path itself is not printed beside the sentence any more: the token
     // names it and the picture shows it.
     expect(container.textContent).toContain("what is in [Image 1]?");
     expect(container.textContent).not.toContain("@/store");
+  });
+
+  it("lights the tile its token names on hover", () => {
+    const items: ChatItem[] = [
+      { kind: "user", id: "u1", blocks: [shot, { type: "text", text: "what is in [Image 1]?" }], steer: false },
+    ];
+    const { container } = render(() => list({ items }));
+    fireEvent.mouseEnter(chips(container)[0]);
+    expect(tiles(container)[0].classList.contains(chatStyles.attachmentPointed)).toBe(true);
   });
 
   // The user meant those characters. Dressing them up would claim the turn
@@ -288,20 +316,22 @@ describe("a prompt that names what it attached", () => {
     ];
     const { container } = render(() => list({ items }));
     expect(container.textContent).toContain("what about [Image 9]?");
-    expect(container.querySelector("span[title]")).toBeNull();
+    expect(chips(container)).toHaveLength(0);
+    expect(container.querySelector(".cm-ghostToken")).toBeNull();
   });
 
   // Attach a file, press Enter, type nothing: the turn still has to show what
   // it carried, which is the whole complaint this work started from.
-  it("names an attachment the sentence never mentioned", () => {
+  it("shows an attachment the sentence never mentioned", () => {
     const pdf = { ...shot, path: "/store/1a2b-1/spec.pdf", label: "[PDF 1]" };
     const items: ChatItem[] = [{ kind: "user", id: "u1", blocks: [pdf], steer: false }];
     const { container } = render(() => list({ items }));
+    expect(tiles(container)).toHaveLength(1);
+    expect(container.textContent).toContain("spec.pdf");
     expect(container.textContent).toContain("[PDF 1]");
-    expect(container.querySelector('span[title="/store/1a2b-1/spec.pdf"]')).toBeTruthy();
   });
 
-  it("still prints an unlabelled reference as the path it is", () => {
+  it("shows an unlabelled reference as a tile with its lines", () => {
     const items: ChatItem[] = [
       {
         kind: "user",
@@ -311,7 +341,8 @@ describe("a prompt that names what it attached", () => {
       },
     ];
     const { container } = render(() => list({ items }));
-    expect(container.textContent).toContain("@/repo/a.ts");
+    expect(container.textContent).toContain("a.ts");
+    expect(container.textContent).toContain("L1-L4");
   });
 });
 

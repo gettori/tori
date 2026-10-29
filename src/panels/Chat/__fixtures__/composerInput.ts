@@ -11,7 +11,10 @@ import { EditorView } from "@codemirror/view";
  * listens.
  */
 export function composerInput(root: ParentNode = document): HTMLTextAreaElement {
-  const editor = root.querySelector<HTMLElement>(".cm-editor");
+  // By its label: a sent prompt in the transcript is drawn by an editor too.
+  const editor = root
+    .querySelector<HTMLElement>('.cm-content[aria-label="Message"]')
+    ?.closest<HTMLElement>(".cm-editor");
   if (!editor) throw new Error("no composer field in this tree");
   const view = EditorView.findFromDOM(editor)!;
   const el = view.contentDOM;
