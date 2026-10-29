@@ -183,7 +183,10 @@ export type Requirement =
   | "runLive"
   | "heldSelection"
   | "frontChat"
-  | "reading";
+  | "reading"
+  /** This Mac can run Read aloud. Hides when unmet, since an Intel Mac never
+   *  can. */
+  | "localSpeech";
 
 export type Command = {
   id: string;
@@ -627,21 +630,21 @@ export const COMMANDS: Command[] = [
     label: "Read Selection Aloud",
     group: "session",
     run: () => emit(READ_SELECTION),
-    requires: ["heldSelection"],
+    requires: ["localSpeech", "heldSelection"],
   },
   {
     id: "read-last-reply",
     label: "Read Last Reply Aloud",
     group: "session",
     run: () => emit(READ_LAST_REPLY),
-    requires: ["frontChat"],
+    requires: ["localSpeech", "frontChat"],
   },
   {
     id: "stop-reading",
     label: "Stop Reading Aloud",
     group: "session",
     run: () => emit(STOP_READING),
-    requires: ["reading"],
+    requires: ["localSpeech", "reading"],
   },
 
   // --- Editor -------------------------------------------------------------

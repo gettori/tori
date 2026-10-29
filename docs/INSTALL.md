@@ -56,7 +56,7 @@ sold since about 2016.
 - **macOS 13.4 or later.** Tori is developed and tested on macOS 15. It will
   not open on anything older than 13.4.
 - **Apple Silicon or Intel**, each with its own DMG. Homebrew picks the right
-  one.
+  one. Read aloud and dictation run on Apple Silicon only.
 - **At least one agent CLI installed.** Claude Code ships supported; see ADAPTERS.md to add another.
   Tori drives the agents you already have; it does not bundle one. After first
   launch, Settings > Agents shows which ones it found.

@@ -39,6 +39,7 @@ import FileIcon from "../../seti/FileIcon";
 import SymbolIcon from "../SymbolIcon/SymbolIcon";
 import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
 import { heldSelection } from "../SelectionToolbar/SelectionToolbar";
+import { LOCAL_SPEECH } from "../../utils/localSpeech";
 import { frontReply, reading } from "../../utils/speech";
 import styles from "./Omnibox.module.css";
 
@@ -132,6 +133,8 @@ function unmetReason(req: Requirement): string | null {
       return frontReply() ? null : "No chat in front";
     case "reading":
       return reading() ? null : "Nothing is being read";
+    case "localSpeech":
+      return LOCAL_SPEECH ? null : "Needs an Apple Silicon Mac";
   }
 }
 
@@ -150,6 +153,7 @@ const HIDES_WHEN_UNMET = new Set<Requirement>([
   "typeDefinitionProvider",
   "runCommand",
   "heldSelection",
+  "localSpeech",
 ]);
 
 /** Whether a command should not be listed at all right now. */

@@ -53,9 +53,7 @@ globset = "0.4"
 rusqlite = { version = "0.31", features = ["bundled"] }
 tauri-plugin-clipboard-manager = "2.3.2"
 # espeak-ng is GPL, and misaki-rs only uses it behind its default features.
-# ort is pinned exactly because 2.0 is still a release candidate.
 misaki-rs = { version = "0.6.0", default-features = false }
-ort = { version = "=2.0.0-rc.15" }
 rodio = { version = "0.23", default-features = false, features = ["playback"] }
 # The forge token store. `keyring-core` rather than the all-in-one `keyring`
 # crate on that crate's own advice: it says an application that wants to choose
@@ -93,6 +91,11 @@ tungstenite = { version = "0.30", default-features = false, features = ["handsha
 # file under half the tree.
 libc = "0.2"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+
+# ort ships no ONNX Runtime for Intel Macs, so the local voice and dictation
+# are Apple Silicon only. Pinned exactly because 2.0 is still a release candidate.
+[target.'cfg(target_arch = "aarch64")'.dependencies]
+ort = { version = "=2.0.0-rc.15" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # The notification plugin's desktop send never reports a click, so a needs-you

@@ -19,6 +19,20 @@ pub trait Voice: Send {
     fn sample_rate(&self) -> u32;
 }
 
+impl Voice for Box<dyn Voice> {
+    fn pieces(&mut self, text: &str, opening: bool) -> Result<Vec<String>, String> {
+        (**self).pieces(text, opening)
+    }
+
+    fn synth(&mut self, piece: &str, voice: &str, rate: f32) -> Result<Vec<f32>, String> {
+        (**self).synth(piece, voice, rate)
+    }
+
+    fn sample_rate(&self) -> u32 {
+        (**self).sample_rate()
+    }
+}
+
 pub trait Out: Send + Sync {
     fn play(&self, samples: Vec<f32>, stale: &dyn Fn() -> bool) -> Result<(), String>;
     fn stop(&self);

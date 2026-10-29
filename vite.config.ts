@@ -137,6 +137,8 @@ export default defineConfig(async ({ command }) => ({
 
   plugins: lazyPlugins(() => [solid(), pdfjsData(), ...(command === "build" ? [traceCoreImports()] : [])]),
 
+  envPrefix: ["VITE_", "TAURI_ENV_ARCH"],
+
   // The syntax worker loads each grammar by dynamic import, and an iife worker
   // cannot split chunks.
   worker: { format: "es" as const },

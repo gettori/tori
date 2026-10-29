@@ -3,13 +3,9 @@ use std::path::Path;
 use ort::session::Session;
 use ort::value::{DynValue, Tensor};
 
+use super::super::models::parakeet::{DECODER, ENCODER, FEATURES, VOCAB};
 use super::super::runtime;
 use super::Transcriber;
-
-pub const ENCODER: &str = "encoder-model.int8.onnx";
-pub const DECODER: &str = "decoder_joint-model.int8.onnx";
-pub const FEATURES: &str = "nemo128.onnx";
-pub const VOCAB: &str = "vocab.txt";
 
 const WIDTH: usize = 1024;
 const STATE: [usize; 3] = [2, 1, 640];

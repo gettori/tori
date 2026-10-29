@@ -13,12 +13,14 @@ OUT="${4:?$usage}"
 
 [ -d "$APP" ] || { echo "error: no app at $APP" >&2; exit 1; }
 
+# Stdout carries only the tarball's path, which the workflow reads back, so
+# what these tools print goes to stderr.
 if [ -n "${APPLE_API_KEY:-}" ]; then
-  xcrun stapler staple "$APP"
-  xcrun stapler validate "$APP"
-  spctl --assess --type execute "$APP"
+  xcrun stapler staple "$APP" >&2
+  xcrun stapler validate "$APP" >&2
+  spctl --assess --type execute "$APP" >&2
 fi
-codesign --verify --deep --strict "$APP"
+codesign --verify --deep --strict "$APP" >&2
 
 mkdir -p "$OUT"
 tarball="$OUT/Tori_${VERSION}_${ARCH}.app.tar.gz"

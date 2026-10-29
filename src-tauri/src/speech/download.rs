@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use sha2::{Digest, Sha256};
 
-use super::dictation::{moonshine, parakeet};
+use super::models::{kitten, moonshine, parakeet};
 
 const KOKORO: &str =
     "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/1939ad2a8e416c0acfeecc08a694d14ef25f2231";
@@ -72,7 +72,7 @@ pub const SIZES: [Size; 3] = [
     },
     Size {
         id: "fast",
-        file: super::kitten::MODEL,
+        file: kitten::MODEL,
         sha256: "320564d2615f235de972ca27a7f39551c94185cfa24ca85b07a29084135f1e5e",
         bytes: 56_767_095,
     },
@@ -287,8 +287,8 @@ fn voice_manifest(model: &Size) -> Vec<Pinned> {
         return vec![
             pinned(
                 KITTEN,
-                super::kitten::VOICES_FILE.into(),
-                super::kitten::VOICES_FILE,
+                kitten::VOICES_FILE.into(),
+                kitten::VOICES_FILE,
                 KITTEN_VOICES.0,
                 KITTEN_VOICES.1,
             ),
@@ -318,7 +318,7 @@ fn voice_manifest(model: &Size) -> Vec<Pinned> {
 
 fn voice_files(size: &Size) -> Vec<&'static str> {
     if size.kitten() {
-        vec![size.file, super::kitten::VOICES_FILE]
+        vec![size.file, kitten::VOICES_FILE]
     } else {
         vec!["tokenizer.json", size.file]
     }
@@ -739,7 +739,7 @@ mod tests {
         assert_eq!(left(&dir), ["model.onnx", "tokenizer.json", "voices/af_heart.bin"]);
         assert_eq!(VOICE.installed(&dir).map(|s| s.id), Some("full"));
         run(&dir, &model("fast"), &|| false).unwrap();
-        assert_eq!(left(&dir), [super::super::kitten::MODEL, "voices.npz"]);
+        assert_eq!(left(&dir), [super::kitten::MODEL, "voices.npz"]);
         assert_eq!(VOICE.installed(&dir).map(|s| s.id), Some("fast"));
         run(&dir, &model("int8"), &|| false).unwrap();
         assert_eq!(

@@ -3,12 +3,9 @@ use std::path::Path;
 use ort::session::{Session, SessionInputValue};
 use ort::value::{DynValue, Tensor};
 
+use super::super::models::moonshine::{DECODER, ENCODER, TOKENIZER};
 use super::super::runtime;
 use super::{Transcriber, SAMPLE_RATE};
-
-pub const ENCODER: &str = "encoder_model_quantized.onnx";
-pub const DECODER: &str = "decoder_model_merged_quantized.onnx";
-pub const TOKENIZER: &str = "tokenizer.json";
 
 const START: i64 = 1;
 const END: i64 = 2;
