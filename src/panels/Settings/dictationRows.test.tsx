@@ -39,11 +39,12 @@ const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 describe("the Dictation settings group", () => {
   it("shows the downloaded model with Change and Delete, and offers Download once it is gone", async () => {
     render(() => <ChatPane {...paneProps} />);
-    expect(await screen.findByText("Moonshine, 67 MB")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Change" })).toBeTruthy();
+    expect(await screen.findByText("Moonshine")).toBeTruthy();
+    expect(screen.getByText("67 MB")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Change the dictation model" })).toBeTruthy();
     expect(screen.queryByText(/Parakeet by NVIDIA/)).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete the dictation model" }));
     const confirm = await screen.findByRole("dialog");
     expect(within(confirm).getByText("Delete the dictation model?")).toBeTruthy();
     expect(invoke).not.toHaveBeenCalledWith("dictation_delete");
@@ -52,13 +53,14 @@ describe("the Dictation settings group", () => {
     expect(invoke).toHaveBeenCalledWith("dictation_delete");
     expect(await screen.findByText("Not downloaded")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Download" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Change" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Change the dictation model" })).toBeNull();
   });
 
   it("credits NVIDIA while Parakeet is the downloaded model", async () => {
     dictation.model = "parakeet";
     render(() => <ChatPane {...paneProps} />);
-    expect(await screen.findByText("Parakeet, 661 MB")).toBeTruthy();
-    expect(screen.getByText("Parakeet by NVIDIA, CC BY 4.0")).toBeTruthy();
+    expect(await screen.findByText("Parakeet")).toBeTruthy();
+    expect(screen.getByText("661 MB")).toBeTruthy();
+    expect(screen.getByText(/Parakeet by NVIDIA, CC BY 4\.0\./)).toBeTruthy();
   });
 });

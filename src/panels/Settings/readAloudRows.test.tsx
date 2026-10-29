@@ -78,11 +78,12 @@ describe("the Read aloud settings group", () => {
     expect(screen.getByText(/The speed on the reading chip changes this same setting/)).toBeTruthy();
   });
 
-  it("shows the downloaded size with Delete, and offers Download once it is gone", async () => {
+  it("shows the downloaded model and size with Delete, and offers Download once it is gone", async () => {
     render(() => <ChatPane {...paneProps} />);
-    expect(await screen.findByText("Smaller, 107 MB")).toBeTruthy();
+    expect(await screen.findByText("Smaller")).toBeTruthy();
+    expect(screen.getByText("107 MB")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete the voice model" }));
     const confirm = await screen.findByRole("dialog");
     expect(invoke).not.toHaveBeenCalledWith("speech_delete");
     fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
@@ -97,7 +98,7 @@ describe("the Read aloud settings group", () => {
     const jobs: OpenJob[] = [];
     const off = onWith<OpenJob>(OPEN_JOB, (j) => jobs.push(j));
     render(() => <ChatPane {...paneProps} />);
-    expect(await screen.findByText("Words Tori does not know are spelled out")).toBeTruthy();
+    expect(await screen.findByText(/spelled out letter by letter\. Install runs Homebrew/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Install espeak-ng" }));
     await macrotask();
@@ -105,7 +106,7 @@ describe("the Read aloud settings group", () => {
 
     voice.espeak = true;
     await runExitEffects(jobs[0], 0);
-    fireEvent.click(await screen.findByRole("button", { name: "Uninstall" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Uninstall espeak-ng" }));
     await macrotask();
     expect(jobs[1]).toMatchObject({ program: "brew", args: ["uninstall", "espeak-ng"], recheckSpeechOnExit: true });
     off();
@@ -114,7 +115,7 @@ describe("the Read aloud settings group", () => {
   it("names espeak-ng with no button when Homebrew is missing", async () => {
     voice.brew = false;
     render(() => <ChatPane {...paneProps} />);
-    expect(await screen.findByText(/spelled out\. Install espeak-ng to fix that\./)).toBeTruthy();
+    expect(await screen.findByText(/Homebrew is not on this Mac, so install espeak-ng yourself\./)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Install espeak-ng" })).toBeNull();
   });
 });

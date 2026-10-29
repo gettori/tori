@@ -1,29 +1,27 @@
 import { Show, createResource, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { Play } from "lucide-solid";
+import { ArrowLeftRight, Play, Trash2, X } from "lucide-solid";
 import { homeDir } from "@tauri-apps/api/path";
 import { emitWith, OPEN_JOB, TOAST, type OpenJob, type ToastEvent } from "../../../../utils/events";
 import { preview, voices as listVoices } from "../../../../utils/speech";
 import {
-  askToDownload,
-  cancelDownload,
   defaultVoice,
   deleteVoice,
   espeakJob,
   mb,
   refresh as refreshVoice,
-  sizeLabel,
   status as voiceStatus,
+  voiceDownloads,
 } from "../../../../utils/voiceDownload";
 import {
   CREDIT,
-  askToDownload as askForDictation,
-  cancelDownload as cancelDictationDownload,
   deleteModel,
+  dictationDownloads,
   refresh as refreshDictation,
-  sizeLabel as dictationSizeLabel,
   status as dictationStatus,
 } from "../../../../utils/dictationDownload";
+import type { DownloadStatus, DownloadStore } from "../../../../utils/modelDownload";
+import { SETTINGS } from "../../../../utils/settingsCatalog";
 import ConfirmDialog from "../../../../components/Dialogs/ConfirmDialog";
 import {
   Group,
@@ -104,7 +102,7 @@ const NOTIFICATIONS = [
   "tray-count",
 ];
 const SAFETY = ["checkpoints"];
-const READ_ALOUD = ["read-aloud-model", "read-aloud-pronunciation", "read-aloud-voice", "read-aloud-rate"];
+const READ_ALOUD = ["read-aloud-voice", "read-aloud-rate", "read-aloud-model", "read-aloud-pronunciation"];
 const DICTATION = ["dictation-model"];
 
 const RATE_MIN = 0.5;
@@ -141,6 +139,76 @@ function PlaySound(props: { sound: keyof NotificationSettings; label: string }) 
   );
 }
 
+/** A downloaded model as its name and size, with icon actions to swap or
+ *  delete it, its progress while it downloads, and Download when it is gone. */
+function ModelControl<Id extends string>(props: {
+  store: DownloadStore<Id, DownloadStatus<Id>>;
+  noun: string;
+  onDelete: () => void;
+}) {
+  const status = () => props.store.status();
+  const name = (id: Id) => props.store.sizes.find((s) => s.id === id)?.label ?? id;
+  const size = (id: Id) => {
+    const bytes = status().sizes.find((s) => s.id === id)?.bytes;
+    return bytes ? `${mb(bytes)} MB` : "";
+  };
+  return (
+    <div class={styles.control}>
+      <Show
+        when={status().downloading}
+        fallback={
+          <Show
+            when={status().model}
+            fallback={
+              <>
+                <span class={styles.modelSize}>Not downloaded</span>
+                <Button size="sm" onClick={() => props.store.askToDownload()}>
+                  Download
+                </Button>
+              </>
+            }
+          >
+            {(id) => (
+              <>
+                <span class={styles.modelName}>{name(id())}</span>
+                <span class={styles.modelSize}>{size(id())}</span>
+                <IconButton
+                  size="sm"
+                  icon={<Icon icon={ArrowLeftRight} />}
+                  tooltip={`Change the ${props.noun}`}
+                  onClick={() => props.store.askToDownload()}
+                />
+                <IconButton
+                  size="sm"
+                  icon={<Icon icon={Trash2} />}
+                  tooltip={`Delete the ${props.noun}`}
+                  onClick={props.onDelete}
+                />
+              </>
+            )}
+          </Show>
+        }
+      >
+        {(p) => (
+          <>
+            <span class={styles.modelSize}>
+              {mb(p().done)} of {mb(p().total)} MB
+            </span>
+            <IconButton
+              size="sm"
+              icon={<Icon icon={X} />}
+              tooltip="Cancel the download"
+              onClick={() => void props.store.cancelDownload()}
+            />
+          </>
+        )}
+      </Show>
+    </div>
+  );
+}
+
+const catalogHint = (id: string) => SETTINGS.find((s) => s.id === id)?.hint ?? "";
+
 const toast = (message: string) => emitWith<ToastEvent>(TOAST, { message, kind: "error" });
 
 export default function ChatPane(props: PaneProps) {
@@ -163,7 +231,6 @@ export default function ChatPane(props: PaneProps) {
     setConfirmingDelete(false);
     void deleteVoice().catch((e) => toast(`Couldn't delete the voice: ${String(e)}`));
   };
-  const downloading = () => voiceStatus().downloading;
   const [confirmingModelDelete, setConfirmingModelDelete] = createSignal(false);
   const removeModel = () => {
     setConfirmingModelDelete(false);
@@ -175,6 +242,23 @@ export default function ChatPane(props: PaneProps) {
       .filter((v) => v.id !== defaultVoice().id)
       .map((v) => ({ value: v.id, label: `${v.name} (${v.language})` })),
   ];
+  // The picker renders an unknown value as blank, and the engine already falls
+  // back to the default for a voice this model lacks, so show the default too.
+  // Not while the list loads, or a saved voice would flash as the default.
+  const shownVoice = () => {
+    const saved = settings.speech.voice ?? "";
+    if (voices.loading || voiceOptions().some((o) => o.value === saved)) return saved;
+    return "";
+  };
+  const pronunciationHint = () => {
+    if (voiceStatus().espeak) return "espeak-ng sounds out the words Tori's voice does not know.";
+    const without = "Without espeak-ng, a word Tori does not know is spelled out letter by letter.";
+    return voiceStatus().brew
+      ? `${without} Install runs Homebrew in a terminal.`
+      : `${without} Homebrew is not on this Mac, so install espeak-ng yourself.`;
+  };
+  const dictationHint = () =>
+    dictationStatus().model === "parakeet" ? `${catalogHint("dictation-model")} ${CREDIT}.` : undefined;
   return (
     <>
       <Group {...props} title="Sessions" ids={SESSIONS}>
@@ -534,92 +618,17 @@ export default function ChatPane(props: PaneProps) {
       </Group>
 
       <Group {...props} title="Read aloud" ids={READ_ALOUD}>
-        <Row {...props} id="read-aloud-model" label="Voice size">
-          <div class={styles.control}>
-            <Show
-              when={downloading()}
-              fallback={
-                <Show when={voiceStatus().model} fallback={<span>Not downloaded</span>}>
-                  {(size) => (
-                    <>
-                      <span>{sizeLabel(size())}</span>
-                      <Button size="sm" onClick={() => askToDownload()}>
-                        Change
-                      </Button>
-                      <Button size="sm" variant="danger" onClick={() => setConfirmingDelete(true)}>
-                        Delete
-                      </Button>
-                    </>
-                  )}
-                </Show>
-              }
-            >
-              {(p) => (
-                <>
-                  <span>
-                    Downloading, {mb(p().done)} of {mb(p().total)} MB
-                  </span>
-                  <Button size="sm" onClick={() => void cancelDownload()}>
-                    Cancel
-                  </Button>
-                </>
-              )}
-            </Show>
-          </div>
-        </Row>
-        <Row {...props} id="read-aloud-pronunciation" label="Pronunciation">
-          <div class={styles.control}>
-            <Show
-              when={voiceStatus().espeak}
-              fallback={
-                <>
-                  <Show
-                    when={voiceStatus().brew}
-                    fallback={<span>Words Tori does not know are spelled out. Install espeak-ng to fix that.</span>}
-                  >
-                    <span>Words Tori does not know are spelled out</span>
-                    <Button size="sm" onClick={() => void runEspeak("install")}>
-                      Install espeak-ng
-                    </Button>
-                  </Show>
-                </>
-              }
-            >
-              <span>espeak-ng says the words Tori does not know</span>
-              <Button size="sm" onClick={() => void runEspeak("uninstall")}>
-                Uninstall
-              </Button>
-            </Show>
-          </div>
-        </Row>
-
-        <Show when={confirmingDelete()}>
-          <ConfirmDialog
-            title="Delete the voice?"
-            message="Read aloud needs it. Getting it back means downloading it again."
-            confirmLabel="Delete"
-            danger
-            onConfirm={removeVoice}
-            onCancel={() => setConfirmingDelete(false)}
-          />
-        </Show>
-
         <Row {...props} id="read-aloud-voice" label="Voice">
           <div class={styles.control}>
-            <Show
-              when={voiceStatus().installed}
-              fallback={
-                <Button size="sm" disabled={!!downloading()} onClick={() => askToDownload()}>
-                  Download
-                </Button>
-              }
-            >
-              <Select
-                options={voiceOptions()}
-                value={settings.speech.voice ?? ""}
-                onChange={(value) => setSpeech({ voice: value || null })}
-                aria-labelledby={rowLabelId("read-aloud-voice")}
-              />
+            <Select
+              class={styles.voiceSelect}
+              options={voiceOptions()}
+              value={voiceStatus().installed ? shownVoice() : ""}
+              onChange={(value) => setSpeech({ voice: value || null })}
+              disabled={!voiceStatus().installed}
+              aria-labelledby={rowLabelId("read-aloud-voice")}
+            />
+            <Show when={voiceStatus().installed}>
               <IconButton
                 size="sm"
                 icon={<Icon icon={Play} />}
@@ -643,54 +652,53 @@ export default function ChatPane(props: PaneProps) {
             <span class={styles.numField}>{settings.speech.rate.toFixed(1)}x</span>
           </div>
         </Row>
-      </Group>
 
-      <Group {...props} title="Dictation" ids={DICTATION}>
-        <Row {...props} id="dictation-model" label="Model">
+        <Row {...props} id="read-aloud-model" label="Voice model">
+          <ModelControl store={voiceDownloads} noun="voice model" onDelete={() => setConfirmingDelete(true)} />
+        </Row>
+
+        <Row {...props} id="read-aloud-pronunciation" label="Pronunciation" hint={pronunciationHint()}>
           <div class={styles.control}>
             <Show
-              when={dictationStatus().downloading}
+              when={voiceStatus().espeak}
               fallback={
-                <Show
-                  when={dictationStatus().model}
-                  fallback={
-                    <>
-                      <span>Not downloaded</span>
-                      <Button size="sm" onClick={() => askForDictation()}>
-                        Download
-                      </Button>
-                    </>
-                  }
-                >
-                  {(size) => (
-                    <>
-                      <span>{dictationSizeLabel(size())}</span>
-                      <Show when={size() === "parakeet"}>
-                        <span>{CREDIT}</span>
-                      </Show>
-                      <Button size="sm" onClick={() => askForDictation()}>
-                        Change
-                      </Button>
-                      <Button size="sm" variant="danger" onClick={() => setConfirmingModelDelete(true)}>
-                        Delete
-                      </Button>
-                    </>
-                  )}
+                <Show when={voiceStatus().brew} fallback={<span class={styles.modelSize}>Not installed</span>}>
+                  <Button size="sm" onClick={() => void runEspeak("install")}>
+                    Install espeak-ng
+                  </Button>
                 </Show>
               }
             >
-              {(p) => (
-                <>
-                  <span>
-                    Downloading, {mb(p().done)} of {mb(p().total)} MB
-                  </span>
-                  <Button size="sm" onClick={() => void cancelDictationDownload()}>
-                    Cancel
-                  </Button>
-                </>
-              )}
+              <span class={styles.modelName}>espeak-ng</span>
+              <IconButton
+                size="sm"
+                icon={<Icon icon={Trash2} />}
+                tooltip="Uninstall espeak-ng"
+                onClick={() => void runEspeak("uninstall")}
+              />
             </Show>
           </div>
+        </Row>
+
+        <Show when={confirmingDelete()}>
+          <ConfirmDialog
+            title="Delete the voice?"
+            message="Read aloud needs it. Getting it back means downloading it again."
+            confirmLabel="Delete"
+            danger
+            onConfirm={removeVoice}
+            onCancel={() => setConfirmingDelete(false)}
+          />
+        </Show>
+      </Group>
+
+      <Group {...props} title="Dictation" ids={DICTATION}>
+        <Row {...props} id="dictation-model" label="Model" hint={dictationHint()}>
+          <ModelControl
+            store={dictationDownloads}
+            noun="dictation model"
+            onDelete={() => setConfirmingModelDelete(true)}
+          />
         </Row>
 
         <Show when={confirmingModelDelete()}>

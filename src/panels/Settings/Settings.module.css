@@ -390,6 +390,23 @@
      takes the full width beneath them, so the row still reads left to right at
      the top and top to bottom below it. Markup order is label, hint, control:
      the control places itself on the next free row, so it has to come last. */
+  /* What is on disk, read as a value rather than a button label. */
+  .modelName {
+    white-space: nowrap;
+    font-size: var(--tori-text-sm);
+    color: var(--fg-default);
+  }
+  .modelSize {
+    white-space: nowrap;
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-xs);
+    color: var(--fg-muted);
+  }
+  .voiceSelect {
+    flex: 1;
+    min-width: 0;
+  }
+
   .rowStack .control {
     grid-column: 1 / -1;
     grid-row: auto;
