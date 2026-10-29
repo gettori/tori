@@ -46,6 +46,19 @@ function descriptionFor(path: string): LanguageDescription | null {
   );
 }
 
+/** The language a fenced block's info string names (`ts`, `rust`, `zsh`), for
+ *  markdown's nested highlighting in the chat composer. The same overrides a
+ *  path gets: the eager packs first, then the shell names language-data does
+ *  not claim, then language-data by name or alias. */
+export function languageForFence(info: string): Language | LanguageDescription | null {
+  const name = info.trim().split(/\s/)[0].toLowerCase();
+  if (!name) return null;
+  const pack = syncPack(name);
+  if (pack) return pack.language;
+  if (SHELL_SUFFIXES.includes(name)) return LanguageDescription.matchLanguageName(languages, "shell");
+  return LanguageDescription.matchLanguageName(languages, name, true);
+}
+
 async function packFor(path: string): Promise<LanguageSupport | null> {
   return syncPack(suffix(path)) ?? (await descriptionFor(path)?.load()) ?? null;
 }
