@@ -939,6 +939,7 @@ export default function ReviewPanel(props: {
         // left behind would attach itself to whatever gets committed next.
         setMessage("");
         await Promise.all([refreshStatus(root), loadStashes()]);
+        emitWith<ToastEvent>(TOAST, { message: "Stashed changes.", kind: "info" });
       }),
     );
   }
