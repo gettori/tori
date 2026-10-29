@@ -19,8 +19,6 @@ import type { UnifiedTabKind } from "../tabs/unifiedTabs";
 
 /** Smallest a pane may be dragged to, in design px at `--ui-scale` 1. */
 export const PANE_MIN = 180;
-/** One Resizer's thickness (Resizer.module.css .resizer). */
-const GUTTER = 8;
 
 export type PaneRoles = {
   /** What an empty pane's trailing cluster belongs to. */
@@ -61,8 +59,8 @@ function Split(props: { node: PaneSplit; roles: PaneRoles; filler: boolean }) {
 
   const visible = () => props.node.children.filter((c) => !hiddenNode(c));
   const floor = () => props.roles.px(PANE_MIN);
-  // What the sized children share, once the gutters between them are gone.
-  const avail = () => Math.max(0, box() - props.roles.px(GUTTER) * Math.max(0, visible().length - 1));
+  // What the sized children share: all of it, as hairline Resizers take no width.
+  const avail = () => box();
   // Room a single child may take: everything but its siblings' floors.
   const ceiling = () => Math.max(floor(), avail() - floor() * Math.max(0, visible().length - 1));
   // Sizes are read as a share of the visible children, but the model stores a
