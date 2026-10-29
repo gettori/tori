@@ -789,6 +789,7 @@ pub fn run() {
             speech::speech_download,
             speech::speech_download_cancel,
             speech::speech_delete,
+            speech::dictation_transcribe,
             workspace_settings::get_workspace_settings,
             workspace_settings::set_workspace_settings,
             settings::settings_watch_start,
