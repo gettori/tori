@@ -119,9 +119,7 @@
   right: calc(12px * var(--ui-scale));
   z-index: 1000;
   width: calc(300px * var(--ui-scale));
-  max-height: 70vh;
   margin-top: calc(4px * var(--ui-scale));
-  overflow-y: auto;
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
   border-radius: var(--tori-radius-xl);
@@ -266,14 +264,19 @@
   font-size: var(--tori-text-md);
 }
 
+.usageList + .sessionInfo {
+  padding-top: var(--tori-space-2);
+  border-top: 1px solid var(--border-default);
+}
+
 .usageList dt {
   color: var(--fg-muted);
 }
 
 .usageList dd {
   margin: 0;
+  font-family: var(--tori-font-mono);
   color: var(--fg-default);
-  font-variant-numeric: tabular-nums;
 }
 
 /* ---- the session figures in the status strip ----
@@ -2008,20 +2011,21 @@ button.diffHunkHeader:hover {
   display: flex;
   align-items: center;
   gap: var(--tori-space-3);
-  width: calc(100% + 2 * var(--tori-space-4));
-  margin: 0 calc(-1 * var(--tori-space-4));
-  padding: var(--tori-space-3) var(--tori-space-4);
+  width: calc(100% + 2 * var(--tori-space-3));
+  margin: 0 calc(-1 * var(--tori-space-3));
+  padding: var(--tori-space-3);
   font: inherit;
-  font-size: var(--tori-text-md);
   color: var(--fg-default);
   text-align: left;
   background: none;
   border: 0;
   border-radius: var(--tori-radius-md);
   cursor: pointer;
+  transition: background var(--tori-duration-fast) ease;
 }
 
-.sessionInfoToggle:hover {
+.sessionInfoToggle:hover,
+.sessionInfoToggle[aria-expanded="true"] {
   background: var(--neutral-hover);
 }
 
@@ -2030,55 +2034,258 @@ button.diffHunkHeader:hover {
   width: var(--control-icon);
   height: var(--control-icon);
   color: var(--fg-muted);
-  transition: transform var(--tori-duration-fast) ease;
 }
 
-.sessionInfoToggle[aria-expanded="true"] > svg {
-  transform: rotate(90deg);
+.sessionInfoText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--tori-space-1);
+  min-width: 0;
 }
 
 .sessionInfoTitle {
-  flex: 1;
+  font-size: var(--tori-text-lg);
 }
 
 .sessionInfoSummary {
   display: flex;
-  gap: var(--tori-space-3);
+  flex-wrap: wrap;
+  align-items: center;
   color: var(--fg-muted);
-}
-
-.sessionInfoBody {
-  display: flex;
-  flex-direction: column;
   font-size: var(--tori-text-md);
-  gap: calc(10px * var(--ui-scale));
-  padding-top: calc(8px * var(--ui-scale));
 }
 
-.sessionInfoBody h4 {
-  color: var(--fg-subtle);
-  font-size: var(--tori-text-md);
-  font-weight: 600;
-  margin: 0 0 calc(2px * var(--ui-scale));
-}
-
-.sessionInfoBody ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.sessionInfoBody p,
-.sessionInfoBody li {
+.sessionInfoSummary > span + span::before {
+  content: "\00b7";
+  margin: 0 var(--tori-space-2);
   color: var(--fg-muted);
-  margin: 0;
-  /* Skill and server lists are long and unbroken; without this the panel
-     forces the whole transcript column wider. */
-  overflow-wrap: anywhere;
 }
 
 .sessionInfoBad {
   color: var(--danger-fg);
+}
+
+.sessionInfoWarn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tori-space-2);
+  color: var(--attention-fg);
+}
+
+/* Session details opens beside the menu rather than inside it: it is a long
+   read, and unfolding it in place would push the menu's actions off screen. */
+.detailsPanel {
+  position: absolute;
+  top: 0;
+  right: calc(100% + var(--tori-space-4));
+  display: flex;
+  flex-direction: column;
+  width: calc(320px * var(--ui-scale));
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: var(--tori-space-3);
+  font-size: var(--tori-text-md);
+  cursor: default;
+  background: var(--canvas-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-xl);
+  box-shadow: var(--shadow-md);
+}
+
+.detailsAccount {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-2);
+  padding: var(--tori-space-2) var(--tori-space-3) var(--tori-space-4);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.detailsAccountLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--tori-space-3);
+  font-size: var(--tori-text-lg);
+}
+
+.detailsPlan {
+  padding: var(--tori-space-1) var(--tori-space-3);
+  font-size: var(--tori-text-sm);
+  color: var(--attention-fg);
+  background: color-mix(in srgb, var(--attention-fg) 16%, transparent);
+  border-radius: var(--tori-radius-sm);
+}
+
+.detailsSection {
+  display: flex;
+  flex-direction: column;
+  padding: var(--tori-space-3) 0;
+}
+
+.detailsSection + .detailsSection {
+  border-top: 1px solid var(--border-default);
+}
+
+.detailsHeading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: var(--tori-space-2) var(--tori-space-3);
+  font-weight: 600;
+  color: var(--fg-default);
+}
+
+.detailsCount {
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
+  font-weight: 400;
+  color: var(--fg-muted);
+}
+
+.detailsServer {
+  display: flex;
+  flex-direction: column;
+}
+
+.detailsRow {
+  display: flex;
+  align-items: center;
+  gap: var(--tori-space-3);
+  min-height: var(--control-height-sm);
+  padding: var(--tori-space-1) var(--tori-space-3);
+  border-radius: var(--tori-radius-md);
+}
+
+.detailsName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detailsMuted {
+  color: var(--fg-muted);
+}
+
+.detailsDot {
+  flex: none;
+  width: calc(7px * var(--ui-scale));
+  height: calc(7px * var(--ui-scale));
+  background: var(--fg-subtle);
+  border-radius: 50%;
+}
+
+.sessionInfoWarn > .detailsDot,
+.detailsDotWarn {
+  background: var(--attention-fg);
+}
+
+.detailsDotOk {
+  background: var(--success-fg);
+}
+
+.detailsDotBad {
+  background: var(--danger-fg);
+}
+
+.detailsPill {
+  padding: 0 var(--tori-space-3);
+  font-size: var(--tori-text-sm);
+  line-height: calc(18px * var(--ui-scale));
+  color: var(--attention-fg);
+  border: 1px solid color-mix(in srgb, var(--attention-fg) 60%, transparent);
+  border-radius: var(--tori-radius-sm);
+}
+
+.detailsError {
+  padding: 0 var(--tori-space-3) var(--tori-space-2) calc(var(--tori-space-3) * 2 + 7px * var(--ui-scale));
+  font-size: var(--tori-text-sm);
+  color: var(--danger-fg);
+  overflow-wrap: anywhere;
+}
+
+/* Shown on the row, so a list of servers reads as names. */
+.detailsRemove {
+  opacity: 0;
+}
+
+.detailsRow:hover .detailsRemove,
+.detailsRemove:focus-visible {
+  opacity: 1;
+}
+
+.detailsAdd,
+.detailsFold {
+  display: flex;
+  align-items: center;
+  gap: var(--tori-space-3);
+  width: 100%;
+  padding: var(--tori-space-2) var(--tori-space-3);
+  font: inherit;
+  color: var(--fg-muted);
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--tori-radius-md);
+  cursor: pointer;
+}
+
+.detailsFold {
+  color: var(--fg-default);
+}
+
+.detailsAdd:hover,
+.detailsFold:hover {
+  background: var(--neutral-hover);
+}
+
+.detailsAdd > svg,
+.detailsFold > svg {
+  flex: none;
+  width: var(--control-icon);
+  height: var(--control-icon);
+  color: var(--fg-muted);
+  transition: transform var(--tori-duration-fast) ease;
+}
+
+.detailsFold[aria-expanded="true"] > svg {
+  transform: rotate(90deg);
+}
+
+.detailsFoldLabel {
+  flex: 1;
+}
+
+.detailsChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tori-space-2);
+  padding: var(--tori-space-1) var(--tori-space-3) var(--tori-space-3)
+    calc(var(--tori-space-3) * 2 + var(--control-icon));
+}
+
+.detailsChip {
+  padding: 0 var(--tori-space-2);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
+  color: var(--fg-muted);
+  background: var(--neutral-subtle);
+  border-radius: var(--tori-radius-sm);
+}
+
+.detailsForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-2);
+  padding: var(--tori-space-2) var(--tori-space-3);
+}
+
+.detailsFormActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--tori-space-2);
 }
 
 .banner,
