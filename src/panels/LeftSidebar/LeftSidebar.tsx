@@ -15,6 +15,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { isLocked } from "../../utils/autopilotStore";
 import { extensionConnected, openPort, portsAt } from "../../utils/portsStore";
 import { spendFor } from "../../utils/spendStore";
+import { showSpend } from "../../utils/usageSettings";
 import { spendView } from "../../utils/spend";
 import { tearingDown } from "../../utils/teardowns";
 import { runAt, runnable, startRun, stopRun } from "../../utils/runStore";
@@ -2856,7 +2857,8 @@ export default function LeftSidebar(props: {
     // readings of the same fact, and computing it twice is how they drift.
     const rollup = () => bubbleForUnits([u]);
     const sync = () => syncFor(u.folderPath, u.branch);
-    const spent = () => (u.branch ? spendFor({ kind: "branch", project: p.path, branch: u.branch }) : null);
+    const spent = () =>
+      u.branch && showSpend() ? spendFor({ kind: "branch", project: p.path, branch: u.branch }) : null;
     // While an agent holds this row, the row is about the agent. Half of these
     // marks are being rewritten as you read them, since an executing agent is
     // writing files and may be committing, and "uncommitted changes" during an
