@@ -23,8 +23,8 @@ export default function UsageReadout(props: { summary: UsageSummary }) {
   return (
     <Show when={turn()}>
       {(t) => (
-        <span
-          class={styles.menuNote}
+        <dl
+          class={styles.usageList}
           title={
             `Last turn: ${fmtTokens(t().tokens)} tokens` +
             (t().cost === null ? "" : `, ${fmtCost(t().cost!)}`) +
@@ -40,10 +40,19 @@ export default function UsageReadout(props: { summary: UsageSummary }) {
               : `\nCounts only the turns this chat watched finish, so a resumed session's earlier turns are not included.`)
           }
         >
-          {fmtTokens(t().tokens)} tok
-          <Show when={t().cost !== null}> · {fmtCost(t().cost!)}</Show>
-          <Show when={session().cost !== null}> · {fmtCost(session().cost!)} session</Show>
-        </span>
+          <dt>Last turn</dt>
+          <dd>
+            {fmtTokens(t().tokens)} tokens
+            <Show when={t().cost !== null}> · {fmtCost(t().cost!)}</Show>
+          </dd>
+          <dt>This chat</dt>
+          <dd>
+            <Show when={session().cost !== null} fallback={`${fmtTokens(session().tokens)} tokens`}>
+              {fmtCost(session().cost!)}
+            </Show>
+            {` · ${session().turns} turn${session().turns === 1 ? "" : "s"}`}
+          </dd>
+        </dl>
       )}
     </Show>
   );

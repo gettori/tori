@@ -2,7 +2,9 @@ import { For, Show, createMemo, createResource, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import type { ChatAccount, McpServer } from "../../utils/chatTypes";
 import type { ChatPlugin, PublishedCapability } from "../../utils/chatCapabilities";
+import { ChevronRight } from "lucide-solid";
 import Button from "../../components/Button/Button";
+import Icon from "../../components/Icon/Icon";
 import styles from "./Chat.module.css";
 
 /** One server as Claude's own config files declare it, across the three scopes
@@ -146,12 +148,15 @@ export default function SessionInfo(props: {
     <Show when={!empty()}>
       <div class={styles.sessionInfo}>
         <button type="button" class={styles.sessionInfoToggle} aria-expanded={open()} onClick={() => setOpen(!open())}>
-          Session
-          <Show when={props.mcpServers.length}>{(n) => <span> · {n()} MCP</span>}</Show>
-          {/* Surfaced in the summary because a broken server is the whole
-              reason someone opens this. */}
-          <Show when={broken().length}>{(n) => <span class={styles.sessionInfoBad}> · {n()} not connected</span>}</Show>
-          <Show when={props.skills.length}>{(n) => <span> · {n()} skills</span>}</Show>
+          <Icon icon={ChevronRight} />
+          <span class={styles.sessionInfoTitle}>Session details</span>
+          <span class={styles.sessionInfoSummary}>
+            <Show when={props.mcpServers.length}>{(n) => <span>{n()} MCP</span>}</Show>
+            {/* Surfaced in the summary because a broken server is the whole
+                reason someone opens this. */}
+            <Show when={broken().length}>{(n) => <span class={styles.sessionInfoBad}>{n()} not connected</span>}</Show>
+            <Show when={props.skills.length}>{(n) => <span>{n()} skills</span>}</Show>
+          </span>
         </button>
         <Show when={open()}>
           <div class={styles.sessionInfoBody}>

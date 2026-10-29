@@ -6,14 +6,18 @@ import { invoke } from "@tauri-apps/api/core";
 import type { ChatItem, ToolItem, TurnRecord } from "./chatStore";
 import { canFork } from "../../utils/agentForks";
 import type { SavedSides } from "../../utils/tabPersist";
+import { findSession } from "../../utils/sessionStore";
+import { clearComposer } from "../../utils/chatCompose";
+import { clearDraftPick } from "../../utils/chatDraftPick";
+import { dropQueue } from "./queuePersist";
 
-export type SideChat = { tabId: string; sessionId: string } & (
+export type SideChat = { tabId: string; sessionId: string; n: number } & (
   | { restored?: false }
   | { restored: true; started: boolean }
 );
-export type Drawer = { sides: SideChat[]; active: string | null };
+export type Drawer = { sides: SideChat[]; active: string | null; closed: SideChat[] };
 
-const EMPTY: Drawer = { sides: [], active: null };
+const EMPTY: Drawer = { sides: [], active: null, closed: [] };
 
 const [sideAgents, setSideAgents] = createSignal<readonly string[]>([]);
 void invoke<string[]>("chat_side_agents")
@@ -28,17 +32,42 @@ export function canSideChat(agentId: string, profile: string | null): boolean {
   return sideChatOffered(sideAgents(), agentId, canFork(agentId, profile));
 }
 
+export function sideLabel(side: SideChat): string {
+  return `Side ${side.n}`;
+}
+
+export function nextSideNumber(drawer: Drawer): number {
+  return Math.max(0, ...drawer.sides.map((s) => s.n), ...drawer.closed.map((s) => s.n)) + 1;
+}
+
 export function withSide(drawer: Drawer, side: SideChat): Drawer {
-  return { sides: [...drawer.sides, side], active: side.tabId };
+  return { ...drawer, sides: [...drawer.sides, side].sort((a, b) => a.n - b.n), active: side.tabId };
 }
 
 export function withoutSide(drawer: Drawer, tabId: string): Drawer {
   const at = drawer.sides.findIndex((s) => s.tabId === tabId);
-  if (at === -1) return drawer;
+  if (at === -1) return { ...drawer, closed: drawer.closed.filter((s) => s.tabId !== tabId) };
   const sides = drawer.sides.filter((s) => s.tabId !== tabId);
-  if (drawer.active !== tabId) return { sides, active: drawer.active };
+  if (drawer.active !== tabId) return { ...drawer, sides };
   const next = sides[at] ?? sides[at - 1] ?? null;
-  return { sides, active: next?.tabId ?? null };
+  return { ...drawer, sides, active: next?.tabId ?? null };
+}
+
+// Closing ends the fork's process but keeps it listed, to resume later.
+export function withSideClosed(drawer: Drawer, tabId: string): Drawer {
+  const side = drawer.sides.find((s) => s.tabId === tabId);
+  if (!side) return drawer;
+  const closed: SideChat = { tabId, sessionId: side.sessionId, n: side.n, restored: true, started: false };
+  return { ...withoutSide(drawer, tabId), closed: [...drawer.closed, closed].sort((a, b) => a.n - b.n) };
+}
+
+// A side closed before its first turn has no transcript to resume, so it comes
+// back as a fresh fork under the same number.
+export function withSideReopened(drawer: Drawer, tabId: string, resumable: boolean, fresh: () => string): Drawer {
+  const side = drawer.closed.find((s) => s.tabId === tabId);
+  if (!side) return drawer;
+  const back: SideChat = resumable ? side : { tabId, sessionId: fresh(), n: side.n };
+  return withSide({ ...drawer, closed: drawer.closed.filter((s) => s.tabId !== tabId) }, back);
 }
 
 const [drawers, setDrawers] = createStore<Record<string, Drawer>>({});
@@ -48,13 +77,37 @@ export function drawerOf(parentTab: string): Drawer {
 }
 
 export function openSide(parentTab: string): SideChat {
-  const side = { tabId: `side:${crypto.randomUUID()}`, sessionId: crypto.randomUUID() };
-  setDrawers(parentTab, withSide(drawerOf(parentTab), side));
+  const drawer = drawerOf(parentTab);
+  const side = { tabId: `side:${crypto.randomUUID()}`, sessionId: crypto.randomUUID(), n: nextSideNumber(drawer) };
+  setDrawers(parentTab, withSide(drawer, side));
   return side;
 }
 
 export function closeSide(parentTab: string, tabId: string): void {
-  setDrawers(parentTab, withoutSide(drawerOf(parentTab), tabId));
+  setDrawers(parentTab, withSideClosed(drawerOf(parentTab), tabId));
+}
+
+export function reopenSide(parentTab: string, tabId: string): void {
+  const side = drawerOf(parentTab).closed.find((s) => s.tabId === tabId);
+  const resumable = !!side && !!findSession(side.sessionId);
+  setDrawers(
+    parentTab,
+    withSideReopened(drawerOf(parentTab), tabId, resumable, () => crypto.randomUUID()),
+  );
+}
+
+// What a side chat leaves behind in the webview once it is gone.
+function forget(side: SideChat): void {
+  clearComposer(side.tabId);
+  void dropQueue(side.sessionId);
+  clearDraftPick(side.tabId);
+}
+
+export function removeSide(parentTab: string, tabId: string): void {
+  const drawer = drawerOf(parentTab);
+  const side = [...drawer.sides, ...drawer.closed].find((s) => s.tabId === tabId);
+  setDrawers(parentTab, withoutSide(drawer, tabId));
+  if (side) forget(side);
 }
 
 export function selectSide(parentTab: string, tabId: string): void {
@@ -69,35 +122,40 @@ export function markSideStarted(parentTab: string, tabId: string): void {
 }
 
 export function savedSides(drawer: Drawer): SavedSides | undefined {
-  if (!drawer.sides.length) return undefined;
+  if (!drawer.sides.length && !drawer.closed.length) return undefined;
   return {
     sessions: drawer.sides.map((s) => s.sessionId),
     active: drawer.sides.findIndex((s) => s.tabId === drawer.active),
+    ...(drawer.closed.length ? { closed: drawer.closed.map((s) => s.sessionId) } : {}),
   };
 }
 
 export function restoredDrawer(saved: SavedSides, exists: (sessionId: string) => boolean, fresh: () => string): Drawer {
-  const kept = saved.sessions.map((sessionId, i) => ({ sessionId, i })).filter(({ sessionId }) => exists(sessionId));
-  const sides: SideChat[] = kept.map(({ sessionId }) => ({
+  let n = 0;
+  const restore = (sessionId: string): SideChat => ({
     tabId: `side:${fresh()}`,
     sessionId,
+    n: ++n,
     restored: true,
     started: false,
-  }));
+  });
+  const kept = saved.sessions.map((sessionId, i) => ({ sessionId, i })).filter(({ sessionId }) => exists(sessionId));
+  const sides = kept.map(({ sessionId }) => restore(sessionId));
+  const closed = (saved.closed ?? []).filter(exists).map(restore);
   const active = sides[kept.findIndex(({ i }) => i === saved.active)] ?? sides[sides.length - 1];
-  return { sides, active: active?.tabId ?? null };
+  return { sides, active: active?.tabId ?? null, closed };
 }
 
 export function restoreSides(parentTab: string, saved: SavedSides, exists: (sessionId: string) => boolean): void {
   const drawer = restoredDrawer(saved, exists, () => crypto.randomUUID());
-  if (drawer.sides.length) setDrawers(parentTab, drawer);
+  if (drawer.sides.length || drawer.closed.length) setDrawers(parentTab, drawer);
 }
 
-/** The parent tab closed. Returns its side chats, for the caller to clean up after. */
-export function dropSides(parentTab: string): SideChat[] {
-  const gone = drawerOf(parentTab).sides;
+// The parent tab closed, so its side chats go too.
+export function dropSides(parentTab: string): void {
+  const drawer = drawerOf(parentTab);
   setDrawers(produce((all) => void delete all[parentTab]));
-  return gone;
+  [...drawer.sides, ...drawer.closed].forEach(forget);
 }
 
 function planOf(it: ToolItem): string | null {

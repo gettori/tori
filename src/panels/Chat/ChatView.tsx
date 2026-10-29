@@ -18,6 +18,7 @@ import { lastReplies, planAsReply } from "./sideChats";
 import SendReply from "./SendReply";
 import ConfigMirror from "./ConfigMirror";
 import FollowToggle from "./FollowToggle";
+import SessionMenu from "./SessionMenu";
 import ModelPicker from "./ModelPicker";
 import { lockedProvider } from "./agentPaletteData";
 import { pendingCard, setPendingCard } from "../../utils/pendingCard";
@@ -2457,80 +2458,48 @@ export default function ChatView(props: {
           agentId={props.agentId}
           onReconnect={() => reconnect?.()}
           menu={
-            <div class={styles.menuBody}>
-              <div class={styles.menuActions}>
-                <Button
-                  size="sm"
-                  tooltip={
-                    showDiff()
-                      ? "Back to the turn-by-turn transcript"
-                      : "See every file this session changed, as one diff per file"
-                  }
-                  onClick={() => setShowDiff(!showDiff())}
-                >
-                  {showDiff() ? "Show transcript" : "Show changes as a diff"}
-                </Button>
-                <Button
-                  size="sm"
-                  tooltip={
-                    settings.chatDefaults.collapseWork
-                      ? "Show thinking, tool calls and hooks in the transcript again, in every chat"
-                      : "Fold thinking, tool calls and hooks into one line between replies, in every chat"
-                  }
-                  onClick={() =>
-                    void saveSettings({
-                      ...settings,
-                      chatDefaults: { ...settings.chatDefaults, collapseWork: !settings.chatDefaults.collapseWork },
-                    })
-                  }
-                >
-                  {settings.chatDefaults.collapseWork ? "Show agent work" : "Collapse agent work"}
-                </Button>
-                <Show when={props.onForkSession}>
-                  <Button
-                    size="sm"
-                    tooltip="Open a new chat and send what is in the composer to it"
-                    onClick={onSendToNewSession}
-                  >
-                    Send to a new chat
-                  </Button>
-                </Show>
-                {/* Only once there is something to branch from. A fork of a
-                    session with no turns is just a new chat, and offering it as
-                    a fork would promise history that does not exist. */}
-                <Show when={props.onForkFrom && state.started && state.items.length > 0}>
-                  <Button
-                    size="sm"
-                    tooltip="Branch this conversation into a new session, keeping everything up to here"
-                    onClick={() => props.onForkFrom?.()}
-                  >
-                    Fork this chat
-                  </Button>
-                </Show>
-                <Show when={props.onSideChat && state.started && state.items.length > 0}>
-                  <Button
-                    size="sm"
-                    tooltip="Ask about this session beside it, in a read-only copy that cannot change anything"
-                    onClick={() => props.onSideChat?.()}
-                  >
-                    Side chat
-                  </Button>
-                </Show>
-              </div>
-              <UsageReadout summary={usageSummary({ ...state, promptsInTranscript: promptCount() })} />
-              <SessionInfo
-                mcpServers={state.mcpServers}
-                skills={state.skills}
-                agents={state.agents}
-                plugins={state.plugins}
-                account={state.account}
-                capabilities={publishedCapabilities(tier(), state.capabilities)}
-                cwd={props.cwd}
-                agentId={props.agentId}
-                profile={resolvedProfile()}
-                profileLabel={profileLabel(props.agentId, resolvedProfile())}
-              />
-            </div>
+            <SessionMenu
+              showDiff={showDiff()}
+              onToggleDiff={() => setShowDiff(!showDiff())}
+              collapseWork={settings.chatDefaults.collapseWork}
+              onToggleCollapse={() =>
+                void saveSettings({
+                  ...settings,
+                  chatDefaults: { ...settings.chatDefaults, collapseWork: !settings.chatDefaults.collapseWork },
+                })
+              }
+              onSendToNew={props.onForkSession ? onSendToNewSession : undefined}
+              // Only once there is something to branch from. A fork of a session
+              // with no turns is just a new chat, and offering it as a fork would
+              // promise history that does not exist.
+              onFork={props.onForkFrom && state.started && state.items.length > 0 ? props.onForkFrom : undefined}
+              sides={
+                props.onSideChat
+                  ? {
+                      parentTab: props.tabId,
+                      canOpen: state.started && state.items.length > 0,
+                      onNew: props.onSideChat,
+                    }
+                  : undefined
+              }
+              footer={
+                <>
+                  <UsageReadout summary={usageSummary({ ...state, promptsInTranscript: promptCount() })} />
+                  <SessionInfo
+                    mcpServers={state.mcpServers}
+                    skills={state.skills}
+                    agents={state.agents}
+                    plugins={state.plugins}
+                    account={state.account}
+                    capabilities={publishedCapabilities(tier(), state.capabilities)}
+                    cwd={props.cwd}
+                    agentId={props.agentId}
+                    profile={resolvedProfile()}
+                    profileLabel={profileLabel(props.agentId, resolvedProfile())}
+                  />
+                </>
+              }
+            />
           }
         />
       </Show>

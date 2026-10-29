@@ -11,7 +11,7 @@ import TerminalView, { type PtyExit } from "./TerminalView";
 import ChatView from "../Chat/ChatView";
 import ChatDraft from "../Chat/ChatDraft";
 import { dropQueue } from "../Chat/queuePersist";
-import SideDrawer, { forgetSide } from "../Chat/SideDrawer";
+import SideDrawer from "../Chat/SideDrawer";
 import sideStyles from "../Chat/SideDrawer.module.css";
 import { canSideChat, drawerOf, dropSides, openSide, restoreSides, savedSides } from "../Chat/sideChats";
 import Dropdown from "../../components/Menu/Dropdown";
@@ -2367,7 +2367,7 @@ export default function Terminal(props: {
       if (t.sessionId) void dropQueue(t.sessionId);
       clearDraftError(id);
       clearDraftPick(id);
-      dropSides(id).forEach(forgetSide);
+      dropSides(id);
     }
     // Closing the active tab hands the slot to its right neighbor, then the
     // left (plan phase 5's unified policy; the fallback used to be the first
