@@ -245,6 +245,13 @@ impl AuthStore {
         self.accounts.remove(id);
     }
 
+    /// One account as another process left it in the keychain and the file,
+    /// replacing whatever this store held for it.
+    pub fn adopt(&mut self, entry: Restored) {
+        let core = AuthCore::restored(entry.token, entry.login, entry.rejected, self.enabled);
+        self.accounts.insert(entry.id, core);
+    }
+
     pub fn set_enabled(&mut self, enabled: bool) {
         self.enabled = enabled;
         for core in self.accounts.values_mut() {
@@ -299,6 +306,7 @@ pub fn note_login(id: &str, login: String) {
 pub fn note_refreshed(id: &str, token: String) {
     let flip = with(|s| s.note_refreshed(id, token));
     record(id, flip);
+    tell_daemon(id);
 }
 
 /// The renewal itself was refused, which is the one failure that ends a
@@ -320,11 +328,31 @@ fn record(id: &str, flip: Option<Flip>) {
         super::accounts::note_rejection(file, id, suspect, now);
         Ok(())
     });
+    tell_daemon(id);
+}
+
+// The daemon fills a store of its own from the same keychain and file, so this
+// goes after both are written, or it re-reads the account as it was.
+pub(super) fn tell_daemon(id: &str) {
+    if !crate::rpc::in_daemon() {
+        crate::rpc::office_tell("forge.account_changed", serde_json::json!({ "id": id }));
+    }
 }
 
 /// Restores every account's credential from the keychain at startup.
 pub fn restore(entries: Vec<Restored>, enabled: bool) {
     *AUTH.lock().unwrap() = Some(AuthStore::restored(entries, enabled));
+}
+
+/// Takes one account as the keychain and the file have it now, in place of
+/// whatever the store held. The keychain is untouched.
+pub fn adopt(entry: Restored) {
+    with(|s| s.adopt(entry));
+}
+
+/// Drops one account from the store. The keychain is untouched.
+pub fn forget(id: &str) {
+    with(|s| s.sign_out(id));
 }
 
 /// Stores the secret and takes the account out of suspicion.

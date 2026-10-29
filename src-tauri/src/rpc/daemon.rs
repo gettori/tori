@@ -1073,6 +1073,9 @@ pub fn run() -> i32 {
         }
         Ok(Start::Started(started)) => {
             host_chats(&started.daemon);
+            // Before the method table serves anything, so the first forge call
+            // finds the credential. The window does the same in its setup.
+            crate::forge::commands::restore_in_daemon(crate::settings::get_settings().forge.enabled);
             host_office(&started.daemon);
             // After the socket answers, so a window never waits on a slow
             // login shell. Every spawn waits on this capture instead.
