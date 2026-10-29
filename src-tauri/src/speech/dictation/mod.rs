@@ -2,6 +2,7 @@
 // sees it: Moonshine's decoder has 512 positions, about 78 s of speech, and
 // Parakeet's export attends over the whole clip at once.
 
+pub(super) mod capture;
 pub(super) mod moonshine;
 pub(super) mod parakeet;
 
