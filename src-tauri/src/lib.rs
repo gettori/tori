@@ -250,6 +250,13 @@ pub fn run() {
                 Err(e) => eprintln!("tori: askpass bridge failed to start: {e}"),
             }
 
+            // The scope's `$HOME/**` never matches a dot directory, so this build's
+            // own attachments (`~/.config/tori-dev` in a debug build) are granted
+            // by path, or every pasted picture draws as a broken image.
+            if let Err(e) = app.asset_protocol_scope().allow_directory(attachments::dir(), true) {
+                eprintln!("tori: could not open the attachments to the webview: {e}");
+            }
+
             setup::set_publisher(app.handle().clone());
             run::at_launch();
 
