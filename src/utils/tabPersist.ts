@@ -31,7 +31,7 @@ const MAX_DRAFT_TEXT = 16_000;
 // progress views, and re-running a clone on relaunch would be destructive.
 export type PersistedKind = "shell" | "agent" | "chat";
 
-export type SavedSides = { sessions: string[]; active: number };
+export type SavedSides = { sessions: string[]; active: number; closed?: string[] };
 
 export type PersistedTab = {
   // The frontend tab id this entry was written from. Absent on anything a build
@@ -168,7 +168,7 @@ export function toStore(
       ...(t.spawner ? { spawner: t.spawner } : {}),
       ...(draft && t.text && t.text.length <= MAX_DRAFT_TEXT ? { text: t.text } : {}),
       ...(keepPick && t.pick && (hasPick(t.pick) || hasOptionPick(t.pick)) ? { pick: t.pick } : {}),
-      ...(t.kind === "chat" && t.sides?.sessions.length ? { sides: t.sides } : {}),
+      ...(t.kind === "chat" && t.sides ? { sides: t.sides } : {}),
     });
   }
   return out;
@@ -227,11 +227,18 @@ const optionValuesField = (v: unknown): Record<string, ChatConfigValue> => {
 function chatFields(t: PersistedTab): Pick<PersistedTab, "text" | "pick" | "sides"> {
   const p = t.pick as Partial<DraftPick> | undefined;
   const sides = t.sides as Partial<SavedSides> | undefined;
-  const sessions = Array.isArray(sides?.sessions)
-    ? sides.sessions.filter((s): s is string => typeof s === "string" && !!s)
-    : [];
+  const ids = (v: unknown) => (Array.isArray(v) ? v.filter((s): s is string => typeof s === "string" && !!s) : []);
+  const sessions = ids(sides?.sessions);
+  const closed = ids(sides?.closed);
   return {
-    sides: sessions.length ? { sessions, active: typeof sides?.active === "number" ? sides.active : -1 } : undefined,
+    sides:
+      sessions.length || closed.length
+        ? {
+            sessions,
+            active: typeof sides?.active === "number" ? sides.active : -1,
+            ...(closed.length ? { closed } : {}),
+          }
+        : undefined,
     text: typeof t.text === "string" && t.text.length <= MAX_DRAFT_TEXT ? t.text : undefined,
     pick:
       p && typeof p === "object"

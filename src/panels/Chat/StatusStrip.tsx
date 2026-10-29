@@ -153,7 +153,14 @@ export default function StatusStrip(props: {
         onClick={() => setMenuOpen(!menuOpen())}
       />
       <Show when={menuOpen()}>
-        <div class={styles.stripMenu}>{props.menu}</div>
+        <div
+          class={styles.stripMenu}
+          onClick={(e) => {
+            if ((e.target as HTMLElement).closest("[data-closes-menu]")) setMenuOpen(false);
+          }}
+        >
+          {props.menu}
+        </div>
       </Show>
     </div>
   );
