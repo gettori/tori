@@ -27,6 +27,7 @@ import {
   resetsAtMs,
   scopedModel,
   type QuotaState,
+  type Spend,
 } from "../../../../utils/chatRateLimit";
 import {
   chipFor,
@@ -34,6 +35,8 @@ import {
   modelWindowLabel,
   needsToken,
   offersModelWindow,
+  readsToken,
+  setReadToken,
   setUsageNotify,
   setUsageWarnAt,
   setWindowShown,
@@ -237,13 +240,35 @@ function unreadNames(id: WindowChip, guess: string | null): { label: string; nam
   return { label: limitTypeChip(id), name: limitTypeLabel(id) ?? id };
 }
 
+/** What each chip measures, for a user who has never read a usage page. */
+function chipMeaning(id: WindowChip, model: string | null): string {
+  switch (id) {
+    case "five_hour":
+      return "The rolling 5-hour session limit.";
+    case "seven_day":
+      return "The weekly limit across all models.";
+    case "model_week":
+      return `A separate weekly limit for ${model ?? "one model"}, on plans that have one.`;
+    case "week_other":
+      return "A weekly limit for something other than a model, such as Cowork, on plans that have one.";
+    case "extra_usage":
+      return "Credits spent once the plan's limits run out, up to the cap set for the account.";
+  }
+}
+
+function spendLine(spend: Spend): string {
+  const money = (n: number) =>
+    new Intl.NumberFormat(undefined, { style: "currency", currency: spend.currency }).format(n);
+  return spend.limit === null ? `${money(spend.used)} spent` : `${money(spend.used)} of ${money(spend.limit)}`;
+}
+
 function chipsFor(agentId: string, profile: string | null): Chip[] {
   const readings = windowsFor(agentId, profile);
   // Every account of an agent offers the same chips, read or not: which windows
   // show is the user's call, and a chip that appeared only after its read could
   // never be used to ask for that read.
   const ids: WindowChip[] = offersModelWindow(agentId)
-    ? ["five_hour", "seven_day", "model_week", "week_other"]
+    ? ["five_hour", "seven_day", "model_week", "week_other", "extra_usage"]
     : ["five_hour", "seven_day"];
   return ids.map((id) => {
     // The scoped weekly window first, where a deep read returned more than one
@@ -307,12 +332,16 @@ function WindowChips(props: {
    *  below already says; marking those "n/a" too would be noise on every fresh
    *  install. */
   const locked = (c: Chip) => needsToken(c.id) && c.reading === null;
-  const why = (c: Chip) =>
-    !locked(c)
-      ? `Show the ${limitTypeLabel(c.reading ? c.reading.kind : c.id)} window in the titlebar`
-      : tokenAlreadyRead(props.agentId, props.profile)
-        ? `This account's token reports no ${c.label} window.`
-        : `Tori reads this account's token from the login Keychain to see its ${c.label} window.`;
+  /** Locked and nothing to unlock it with: lighting it would ask for a read the
+   *  account's switch refuses. */
+  const blocked = (c: Chip) => locked(c) && !readsToken(props.agentId, props.profile);
+  const model = () => modelWindowLabel(props.agentId, props.profile);
+  const why = (c: Chip) => {
+    const what = chipMeaning(c.id, model());
+    if (blocked(c)) return `${what} Turn on Read usage from Anthropic to see it.`;
+    if (locked(c) && tokenAlreadyRead(props.agentId, props.profile)) return `${what} This account's plan has none.`;
+    return `${what} ${c.lit ? "Shown" : "Not shown"} in the titlebar.`;
+  };
 
   return (
     <div class={styles.chipRow}>
@@ -325,7 +354,8 @@ function WindowChips(props: {
             classList={{ [styles.chipOn]: c.lit, [styles.chipIdle]: locked(c) }}
             label={why(c)}
             aria-pressed={c.lit}
-            onClick={() => props.onAsk(c.id, !c.lit)}
+            aria-disabled={blocked(c)}
+            onClick={() => !blocked(c) && props.onAsk(c.id, !c.lit)}
           >
             {c.label}
             <Show when={locked(c)}>
@@ -411,9 +441,9 @@ function AccountCard(props: {
   const warnAt = () => usageWarnAt(props.agentId, tab());
   const notify = () => usageNotify(props.agentId, tab());
 
-  // The read follows the press. Turning the model window on raises a Keychain
-  // prompt, and a prompt that arrives minutes later on a background tick is one
-  // nobody connects to what they just did.
+  // The read follows the press, here and on the Anthropic switch. A Keychain
+  // prompt that arrives minutes later on a background tick is one nobody
+  // connects to what they just did.
   const askWindow = (chip: WindowChip, on: boolean) =>
     void setWindowShown(props.agentId, tab(), chip, on).then(() => {
       if (on) pollUsage(props.agentId, "manual", tab());
@@ -682,11 +712,15 @@ function AccountCard(props: {
                     now={props.now}
                     dim={b.dim}
                     note={
-                      !needsToken(b.chip) || b.reading !== null
-                        ? null
-                        : tokenAlreadyRead(props.agentId, tab())
-                          ? "not reported for this account"
-                          : "needs the account token"
+                      b.reading?.spend
+                        ? spendLine(b.reading.spend)
+                        : !needsToken(b.chip) || b.reading !== null
+                          ? null
+                          : !readsToken(props.agentId, tab())
+                            ? "needs Read usage from Anthropic"
+                            : tokenAlreadyRead(props.agentId, tab())
+                              ? "not on this account's plan"
+                              : "not read yet"
                     }
                   />
                 )}
@@ -696,6 +730,25 @@ function AccountCard(props: {
             {/* Beside the windows, never instead of them: a read that failed has
                 to say so while whatever a cheaper rung filled stays on screen. */}
             <Show when={usageReason(props.agentId, tab())}>{(why) => <div class={styles.hint}>{why()}</div>}</Show>
+
+            <Show when={offersModelWindow(props.agentId)}>
+              <div class={styles.acctRow}>
+                <span class={styles.label}>Read usage from Anthropic</span>
+                <Switch
+                  checked={readsToken(props.agentId, tab())}
+                  onChange={(on) =>
+                    void setReadToken(props.agentId, tab(), on).then(() => {
+                      if (on) pollUsage(props.agentId, "manual", tab());
+                    })
+                  }
+                  aria-label={`Read ${p().label} usage from Anthropic`}
+                />
+              </div>
+              <div class={styles.hint}>
+                Reads this account's login from the Keychain, so every window updates without a chat running. macOS may
+                ask to allow it, and asks again after an update.
+              </div>
+            </Show>
 
             <div class={styles.acctRow}>
               <span class={styles.label}>Titlebar preview</span>

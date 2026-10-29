@@ -5,15 +5,13 @@
 // accounts on one machine have two five-hour windows, on two plans, and a
 // per-agent answer could only ever describe one of them.
 //
-// **The chips are the whole control.** There is no source ladder any more. Which
-// windows an account shows is also how deep Tori reads for it: nothing lit means
-// nothing is read, the two generic windows come off the rung the adapter offers
-// for free, and the weekly windows past those two (one scoped to a model, one to
-// whatever else the endpoint scopes a week to) are what only the account token
-// can answer. Lighting either of those is the opt-in, and they are the only two.
-// It is bought rather than rented: an account already read on the token rung
-// keeps reading there when the chip goes out, since the Keychain that read
-// would open is one it has already opened.
+// **The chips say what is drawn, the account's switch says what is read.**
+// Nothing lit means nothing is read. With the switch off, the two generic
+// windows come off the rung the adapter offers for free, which for Claude means
+// a chat has to run. With it on, Tori reads the account's login token and gets
+// every window, a chat or not, including the three only that read can answer.
+// The switch used to be implied by lighting one of those chips, and an account
+// that never touched the switch still answers that way.
 //
 // **The absence of an answer is not "off".** An account nobody has answered for
 // shows the two generic windows, because that reading costs nothing and needs no
@@ -34,13 +32,13 @@ import { saveSettings, settings, type AccountUsage, type UsageSource } from "../
  * the name arrives only with the first successful read, and the setting has to
  * exist before that read to authorise it.
  */
-export type WindowChip = "five_hour" | "seven_day" | "model_week" | "week_other";
+export type WindowChip = "five_hour" | "seven_day" | "model_week" | "week_other" | "extra_usage";
 
 /** What an account shows when nobody has said otherwise: the two windows every
  *  source reports for free. */
 export const GENERIC_CHIPS: WindowChip[] = ["five_hour", "seven_day"];
 
-const CHIPS: WindowChip[] = [...GENERIC_CHIPS, "model_week", "week_other"];
+const CHIPS: WindowChip[] = [...GENERIC_CHIPS, "model_week", "week_other", "extra_usage"];
 
 /**
  * Which chip governs a window kind.
@@ -48,10 +46,11 @@ const CHIPS: WindowChip[] = [...GENERIC_CHIPS, "model_week", "week_other"];
  * Everything a deep read adds beyond the two generic windows arrives on the same
  * rung, but not under the same switch: a week scoped to a model is a thing you
  * pick and run, and a week scoped to overage is not. Folded together, lighting
- * Fable put an overage bar in the titlebar nobody asked for.
+ * Fable put an overage bar in the titlebar nobody asked for, and on a plan with
+ * no model week the model chip was named after extra usage instead.
  */
 export function chipFor(kind: string): WindowChip {
-  if (kind === "five_hour" || kind === "seven_day") return kind;
+  if (kind === "five_hour" || kind === "seven_day" || kind === "extra_usage") return kind;
   return weekQualifier(kind) === null ? "model_week" : "week_other";
 }
 
@@ -108,30 +107,27 @@ export function tokenAlreadyRead(agentId: string, profile: string | null): boole
 
 /** The chips only the account token can answer. */
 export function needsToken(chip: WindowChip): boolean {
-  return chip === "model_week" || chip === "week_other";
+  return chip === "model_week" || chip === "week_other" || chip === "extra_usage";
+}
+
+/** Whether Tori may read this account's login token. Mirrors `reads_token` in
+ *  src-tauri/src/settings.rs, which is the gate; this only decides what to ask. */
+export function readsToken(agentId: string, profile: string | null): boolean {
+  const own = entry(agentId, profile)?.readToken;
+  if (own !== undefined) return own;
+  return (entry(agentId, profile)?.windows ?? []).some((c) => c === "model_week" || c === "week_other");
 }
 
 /**
  * Which rung reads this account, derived rather than stored.
  *
- * The token rung is reached through the model chip, even on an adapter that
- * declares it first: it is the one read that opens the login Keychain, and a
- * user who asked for the five-hour bar did not ask for that.
- *
- * **That gates the first read, not every one after it.** An account already read
- * on this rung keeps it whatever the chips show, because the chips say what the
- * titlebar draws and this says whether Tori may ask at all. Held to the chip,
- * turning a bar off dropped the account to a rung with no read path at all, and
- * its row sat in the titlebar going stale on numbers no trigger could refresh.
+ * The token rung only behind the account's own switch, even on an adapter that
+ * declares it first: it is the one read that opens the login Keychain.
  */
 export function usageRungFor(agentId: string, profile: string | null): UsageSource {
   const rungs = declaredRungs(agentId);
-  const windows = accountWindows(agentId, profile);
-  if (rungs.length === 0 || windows.length === 0) return "off";
-  const deep = windows.some(needsToken);
-  if (rungs.includes("token") && (deep || tokenAlreadyRead(agentId, profile))) {
-    return "token";
-  }
+  if (rungs.length === 0 || accountWindows(agentId, profile).length === 0) return "off";
+  if (rungs.includes("token") && readsToken(agentId, profile)) return "token";
   return rungs.find((r) => r !== "token") ?? "off";
 }
 
@@ -186,7 +182,14 @@ export function setWindowShown(
 ): Promise<void> {
   const held = accountWindows(agentId, profile);
   const windows = shown ? CHIPS.filter((c) => c === chip || held.includes(c)) : held.filter((c) => c !== chip);
-  return patchAccount(agentId, profile, { windows });
+  // An account still answering through its chips has its switch written down
+  // first, so putting out the chip that implied it does not turn the read off.
+  const readToken = entry(agentId, profile)?.readToken ?? readsToken(agentId, profile);
+  return patchAccount(agentId, profile, { windows, readToken });
+}
+
+export function setReadToken(agentId: string, profile: string | null, on: boolean): Promise<void> {
+  return patchAccount(agentId, profile, { readToken: on });
 }
 
 /** Move this account's threshold, or hand it back to the shared one with null. */
