@@ -20,9 +20,9 @@ import styles from "./Chat.module.css";
 // The status strip closes its menu on a click that lands on one of these.
 const CLOSES = { "data-closes-menu": "" };
 
-function MenuButton(props: { icon: LucideIcon; tooltip: string; onClick: () => void; children: JSX.Element }) {
+function MenuButton(props: { icon: LucideIcon; hint: string; onClick: () => void; children: JSX.Element }) {
   return (
-    <Tooltip as="button" type="button" class={styles.menuRow} label={props.tooltip} onClick={props.onClick} {...CLOSES}>
+    <Tooltip as="button" type="button" class={styles.menuRow} label={props.hint} onClick={props.onClick} {...CLOSES}>
       <Icon icon={props.icon} />
       <span class={styles.menuRowLabel}>{props.children}</span>
     </Tooltip>
@@ -101,7 +101,7 @@ export default function SessionMenu(props: {
     <div class={styles.sessionMenu}>
       <MenuButton
         icon={props.showDiff ? ScrollText : FileDiff}
-        tooltip={
+        hint={
           props.showDiff
             ? "Back to the turn-by-turn transcript"
             : "See every file this session changed, as one diff per file"
@@ -112,7 +112,7 @@ export default function SessionMenu(props: {
       </MenuButton>
       <MenuButton
         icon={props.collapseWork ? UnfoldVertical : FoldVertical}
-        tooltip={
+        hint={
           props.collapseWork
             ? "Show thinking, tool calls and hooks in the transcript again, in every chat"
             : "Fold thinking, tool calls and hooks into one line between replies, in every chat"
@@ -127,7 +127,7 @@ export default function SessionMenu(props: {
           {(send) => (
             <MenuButton
               icon={MessageSquarePlus}
-              tooltip="Open a new chat and send what is in the composer to it"
+              hint="Open a new chat and send what is in the composer to it"
               onClick={() => send()()}
             >
               Send to a new chat
@@ -138,7 +138,7 @@ export default function SessionMenu(props: {
           {(fork) => (
             <MenuButton
               icon={GitFork}
-              tooltip="Branch this conversation into a new session, keeping everything up to here"
+              hint="Branch this conversation into a new session, keeping everything up to here"
               onClick={() => fork()()}
             >
               Fork this chat
@@ -148,7 +148,7 @@ export default function SessionMenu(props: {
         <Show when={props.sides?.canOpen && !hasSides()}>
           <MenuButton
             icon={MessagesSquare}
-            tooltip="Ask about this session beside it, in a read-only copy that cannot change anything"
+            hint="Ask about this session beside it, in a read-only copy that cannot change anything"
             onClick={() => props.sides?.onNew()}
           >
             New side chat

@@ -164,6 +164,10 @@ const KEPT = new Map<string, Kept>([
     "panels/Autopilot/Cockpit.tsx",
     { count: 1, reason: "the title *prop* of ChatView, the session name it shows; not hover text" },
   ],
+  [
+    "panels/Chat/SideDrawer.tsx",
+    { count: 1, reason: "the title *prop* of ChatView, the side chat's name it shows; not hover text" },
+  ],
   ["panels/Chat/SessionStats.tsx", { count: 6, reason: TRUNCATION }],
   ["panels/Chat/UsageReadout.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Editor/CallsPanel.tsx", { count: 1, reason: ROW_ONCLICK }],
@@ -518,6 +522,8 @@ describe("the title= guard", () => {
     expect(Object.fromEntries([...byTag].sort())).toEqual({
       code: 1,
       div: 12,
+      // The usage readout's breakdown moved from a span to the `dl` it now is.
+      dl: 1,
       img: 1,
       li: 1,
       p: 1,
@@ -525,7 +531,7 @@ describe("the title= guard", () => {
       // it truncated is drawn once now, in the panel that replaced it. Up one
       // for the project settings tab's path, and one for the run command row's
       // running mark.
-      span: 57,
+      span: 56,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });
