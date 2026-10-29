@@ -147,6 +147,9 @@ export function usageWarnAt(agentId: string, profile: string | null): number {
   return typeof own === "number" ? own : (settings.budgets?.warnAtFraction ?? 1);
 }
 
+// Off hides every cost figure, and asks the daemon for none of them.
+export const showSpend = () => settings.budgets?.showSpend !== false;
+
 /** Whether a reached or approaching window may reach the OS. Defaults on, and
  *  quiet by construction: the send path suppresses itself while the window is
  *  focused, so this governs only what happens while you are away. */
