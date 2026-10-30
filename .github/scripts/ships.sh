@@ -58,15 +58,25 @@ case "$COMPONENT" in
   *) die "unknown component $COMPONENT (macos, android or extension)" ;;
 esac
 
-if [ -z "$SINCE" ]; then
+# Without a tag for the version the component carries, its last release never
+# finished, so the newest tag reachable stands in.
+baseline_tag() {
+  local version pattern tag
   version=$(node -p "require('./$versioned').version")
   # The extension carries the version without its stage suffix, hence -*.
   for pattern in "$COMPONENT-v$version" "v$version"; do
-    SINCE=$(git tag -l "$pattern" "$pattern-*" | head -1)
-    [ -n "$SINCE" ] && break
+    tag=$(git tag -l "$pattern" "$pattern-*" | head -1)
+    if [ -n "$tag" ]; then
+      echo "$tag"
+      return
+    fi
   done
-  [ -n "$SINCE" ] || die "no tag carries $COMPONENT $version ($COMPONENT-v$version or v$version); pass the baseline tag"
-fi
+  git describe --tags --abbrev=0 --match "$COMPONENT-v*" HEAD 2>/dev/null ||
+    git describe --tags --abbrev=0 --match "v*" HEAD 2>/dev/null ||
+    die "no $COMPONENT-v* or v* tag reachable; pass the baseline tag"
+}
+
+[ -n "$SINCE" ] || SINCE=$(baseline_tag)
 git rev-parse -q --verify "$SINCE^{commit}" >/dev/null || die "no such tag or commit: $SINCE"
 
 ships() {
