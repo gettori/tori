@@ -64,8 +64,9 @@ sold since about 2016.
 
 ## Updating
 
-Tori checks GitHub's latest release on launch and every six hours, and shows a
-dismissible notice in the title bar when it is newer. **Install** downloads the
+Tori checks GitHub for the newest release with a build for your Mac on launch
+and every six hours, and shows a dismissible notice in the title bar when it
+is newer. **Install** downloads the
 build for your Mac, checks it is signed by Tori's team, passes Gatekeeper and
 is the version the release names, and puts it in place of the running app.
 **Restart to update** then opens it. Tori's daemon moves to the new version

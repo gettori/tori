@@ -12,7 +12,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use tauri::Emitter;
 
-const LATEST_API: &str = "https://api.github.com/repos/gettori/tori/releases/latest";
+const RELEASES_API: &str = "https://api.github.com/repos/gettori/tori/releases";
+const PAGE: usize = 30;
+const PAGES: u32 = 5;
 const RELEASES_PAGE: &str = "https://github.com/gettori/tori/releases";
 
 const TEAM_ID: &str = "C328TXY8Q3";
@@ -53,20 +55,16 @@ pub struct UpdateInfo {
 struct Found {
     tag: String,
     version: String,
-    url: Option<String>,
+    url: String,
     #[serde(default)]
     size: u64,
 }
 
 impl Found {
     fn info(&self) -> UpdateInfo {
-        let blocked = match &self.url {
-            None => Some("This release has no update for this Mac; download it from the release page.".to_string()),
-            Some(_) => replaceable_bundle().err(),
-        };
         UpdateInfo {
             version: self.version.clone(),
-            blocked,
+            blocked: replaceable_bundle().err(),
         }
     }
 }
@@ -239,31 +237,55 @@ struct GithubAsset {
     size: u64,
 }
 
+// Releases were tagged `v<version>` before each platform got its own prefix.
+fn macos_version(tag: &str) -> Option<&str> {
+    let tag = tag.trim();
+    tag.strip_prefix("macos-v").or_else(|| tag.strip_prefix('v'))
+}
+
 fn found_in(release: &GithubRelease, current: &str, arch: &str) -> Option<Found> {
-    if !is_newer(&release.tag_name, current) {
+    let version = macos_version(&release.tag_name)?;
+    if !is_newer(version, current) {
         return None;
     }
-    let version = release.tag_name.trim_start_matches('v').to_string();
     let name = format!("Tori_{version}_{arch}.app.tar.gz");
-    let asset = release.assets.iter().find(|a| a.name == name);
+    let asset = release.assets.iter().find(|a| a.name == name)?;
     Some(Found {
         tag: release.tag_name.clone(),
-        url: asset.map(|a| a.browser_download_url.clone()),
-        size: asset.map_or(0, |a| a.size),
-        version,
+        version: version.to_string(),
+        url: asset.browser_download_url.clone(),
+        size: asset.size,
     })
 }
 
-fn fetch_latest() -> Option<GithubRelease> {
-    let mut response = ureq::get(LATEST_API)
-        .header("User-Agent", "tori-update-check")
-        .header("Accept", "application/vnd.github+json")
-        .config()
-        .timeout_global(Some(Duration::from_secs(10)))
-        .build()
-        .call()
-        .ok()?;
-    response.body_mut().read_json().ok()
+fn newest(releases: &[GithubRelease], current: &str, arch: &str) -> Option<Found> {
+    releases
+        .iter()
+        .filter_map(|release| found_in(release, current, arch))
+        .max_by_key(|found| parse_semver(&found.version))
+}
+
+// GitHub lists newest first, so the first page with a macOS tag holds the
+// newest macOS release.
+fn fetch_releases() -> Option<Vec<GithubRelease>> {
+    let mut releases = Vec::new();
+    for page in 1..=PAGES {
+        let mut response = ureq::get(format!("{RELEASES_API}?per_page={PAGE}&page={page}"))
+            .header("User-Agent", "tori-update-check")
+            .header("Accept", "application/vnd.github+json")
+            .config()
+            .timeout_global(Some(Duration::from_secs(10)))
+            .build()
+            .call()
+            .ok()?;
+        let mut got: Vec<GithubRelease> = response.body_mut().read_json().ok()?;
+        let last = got.len() < PAGE || got.iter().any(|r| macos_version(&r.tag_name).is_some());
+        releases.append(&mut got);
+        if last {
+            break;
+        }
+    }
+    Some(releases)
 }
 
 fn remember(found: Option<Found>) -> Option<Found> {
@@ -292,10 +314,10 @@ pub async fn check_for_update(app: tauri::AppHandle) -> Option<UpdateInfo> {
     // a hang mid-check still leaves a deadline behind and cannot turn into a
     // request on every launch. A success upgrades it to the full interval below.
     write_throttle(&path, RETRY_INTERVAL_SECS, held.found.as_ref());
-    match fetch_latest() {
+    match fetch_releases() {
         None => remember(still_newer(held.found)).map(|f| f.info()),
-        Some(release) => {
-            let found = found_in(&release, &current, ASSET_ARCH);
+        Some(releases) => {
+            let found = newest(&releases, &current, ASSET_ARCH);
             write_throttle(&path, CHECK_INTERVAL_SECS, found.as_ref());
             remember(found).map(|f| f.info())
         }
@@ -315,10 +337,10 @@ pub enum ManualCheck {
 #[tauri::command]
 pub async fn check_for_update_now(app: tauri::AppHandle) -> ManualCheck {
     let current = app.package_info().version.to_string();
-    let Some(release) = fetch_latest() else {
+    let Some(releases) = fetch_releases() else {
         return ManualCheck::Failed;
     };
-    let found = found_in(&release, &current, ASSET_ARCH);
+    let found = newest(&releases, &current, ASSET_ARCH);
     write_throttle(&throttle_path(), CHECK_INTERVAL_SECS, found.as_ref());
     match remember(found) {
         Some(found) => ManualCheck::Newer(found.info()),
@@ -342,17 +364,13 @@ pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
         .ok()
         .and_then(|f| f.clone())
         .ok_or_else(|| "No update to install.".to_string())?;
-    let url = found
-        .url
-        .clone()
-        .ok_or_else(|| "This release has no update for this Mac.".to_string())?;
     let bundle = replaceable_bundle()?;
     if INSTALLING.swap(true, Ordering::SeqCst) {
         return Err("An update is already installing.".to_string());
     }
     let done = crate::exec::blocking("install_update", move || {
         let mut last = 0;
-        install(&url, found.size, &found.version, &bundle, |received, total| {
+        install(&found.url, found.size, &found.version, &bundle, |received, total| {
             let percent = received * 100 / total.max(1);
             if percent != last {
                 last = percent;
@@ -561,10 +579,7 @@ mod tests {
         );
         let found = found_in(&latest, "26.1022.0-alpha", "x64").unwrap();
         assert_eq!(found.version, "26.1030.0-beta");
-        assert_eq!(
-            found.url.as_deref(),
-            Some("https://example.test/Tori_26.1030.0-beta_x64.app.tar.gz")
-        );
+        assert_eq!(found.url, "https://example.test/Tori_26.1030.0-beta_x64.app.tar.gz");
         assert_eq!(
             found_in(&latest, "26.1030.0-beta", "x64"),
             None,
@@ -573,11 +588,48 @@ mod tests {
     }
 
     #[test]
-    fn a_release_without_this_macs_asset_is_found_but_not_installable() {
-        let older_pipeline = release("v26.1030.0-beta", &["Tori_26.1030.0-beta_aarch64.dmg"]);
-        let found = found_in(&older_pipeline, "26.1022.0-alpha", "aarch64").unwrap();
-        assert_eq!(found.url, None);
-        assert!(found.info().blocked.is_some());
+    fn a_tag_names_a_macos_release_with_or_without_the_prefix() {
+        assert_eq!(macos_version("v26.1030.0-beta"), Some("26.1030.0-beta"));
+        assert_eq!(macos_version("macos-v26.1101.0"), Some("26.1101.0"));
+        assert_eq!(macos_version("android-v26.1101.0"), None);
+        assert_eq!(macos_version("extension-v26.1101.0"), None);
+    }
+
+    #[test]
+    fn the_newest_macos_release_wins_over_a_newer_release_of_another_platform() {
+        let releases = [
+            release("android-v26.1103.0", &["Tori_26.1103.0.apk"]),
+            release("extension-v26.1103.0", &["tori-extension-26.1103.0.zip"]),
+            release("v26.1030.0-beta", &["Tori_26.1030.0-beta_aarch64.app.tar.gz"]),
+            release("macos-v26.1102.0", &["Tori_26.1102.0_aarch64.app.tar.gz"]),
+        ];
+        let found = newest(&releases, "26.1030.0-beta", "aarch64").unwrap();
+        assert_eq!(found.tag, "macos-v26.1102.0");
+        assert_eq!(found.version, "26.1102.0");
+        assert_eq!(found.url, "https://example.test/Tori_26.1102.0_aarch64.app.tar.gz");
+    }
+
+    #[test]
+    fn a_release_without_this_macs_asset_is_passed_over() {
+        let releases = [
+            release(
+                "v26.1030.0-beta",
+                &[
+                    "Tori_26.1030.0-beta_aarch64.app.tar.gz",
+                    "Tori_26.1030.0-beta_x64.app.tar.gz",
+                ],
+            ),
+            release("macos-v26.1102.0", &["Tori_26.1102.0_aarch64.app.tar.gz"]),
+        ];
+        assert_eq!(
+            newest(&releases, "26.1022.0-alpha", "x64").unwrap().tag,
+            "v26.1030.0-beta"
+        );
+        assert_eq!(
+            newest(&releases, "26.1022.0-alpha", "aarch64").unwrap().tag,
+            "macos-v26.1102.0"
+        );
+        assert_eq!(newest(&releases, "26.1030.0-beta", "x64"), None);
     }
 
     #[test]
@@ -666,7 +718,7 @@ mod tests {
         let found = Found {
             tag: "v26.1030.0-beta".into(),
             version: "26.1030.0-beta".into(),
-            url: Some("https://example.test/a".into()),
+            url: "https://example.test/a".into(),
             size: 7,
         };
         write_throttle(&path, CHECK_INTERVAL_SECS, Some(&found));
