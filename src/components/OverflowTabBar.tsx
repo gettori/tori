@@ -115,6 +115,7 @@ export default function OverflowTabBar<T>(props: {
    * and keep every event they had.
    */
   function onPress(e: Event) {
+    notePress(e);
     gesture.mark(e);
     if (gesture.live()) e.stopPropagation();
   }
@@ -190,10 +191,10 @@ export default function OverflowTabBar<T>(props: {
     props.onActivate(next);
   }
 
-  // Read on the way down, before the trigger's own handler selects: by the
-  // time the press bubbles, a tab it just activated already reads as active.
+  // Read in `onPress`, before the click that selects: by the time a click
+  // bubbles, a tab it just activated already reads as active.
   let pressedActive = false;
-  function notePress(e: PointerEvent) {
+  function notePress(e: Event) {
     pressedActive = !!(e.target as Element).closest('[role="tab"][aria-selected="true"]');
   }
   function onListClick(e: MouseEvent) {
@@ -239,11 +240,7 @@ export default function OverflowTabBar<T>(props: {
           stays the one flex row it was, with `+N` and the trailing action
           beside the tabs rather than inside them. */}
       <TabRow position={positionOf}>
-        <Tabs.List
-          class="otab-list"
-          ref={(el: HTMLDivElement) => el.addEventListener("pointerdown", notePress, true)}
-          onClick={onListClick}
-        >
+        <Tabs.List class="otab-list" onClick={onListClick}>
           <For each={visible()}>{(t) => props.renderTab(t)}</For>
         </Tabs.List>
       </TabRow>
