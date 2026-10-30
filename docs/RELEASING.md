@@ -102,19 +102,25 @@ offering upgrades the app already makes itself. A failed build therefore leaves 
 The browser extension ships only on a release that changed it. Its version
 lives in `extension/package.json` and is the Tori release that last shipped
 it, without the stage suffix. `prepare` runs
-`.github/scripts/extension-ships.sh`, which looks for a change since the last
-tag under `extension/` (not `extension/store/` or `extension/package.json`),
-`src/utils/spaceTint.ts` or `src-tauri/icons/`. When there is one, `prepare`
-sets the extension to this release's version and adds a "Browser extension"
-line to the notes. The release PR's body ends with whether it ships either
-way. `pnpm-lock.yaml` is not counted, since it changes on nearly every
-release: when a dependency bump matters to the extension, run
-`scripts/release.sh prepare --extension` to ship it anyway. To see the
-decision without opening a PR (it prints `yes` or nothing):
+`.github/scripts/ships.sh extension` in the release worktree. That builds the
+extension, which lists what the build was made from (every module it bundled,
+through `scripts/bundled-inputs.ts`, plus its manifests, icons and config),
+diffs those against the tag of the version the extension carries, and checks
+that the version of every package it bundles is in that tag's
+`pnpm-lock.yaml`. When anything differs, `prepare` sets the extension to this
+release's version and adds a "Browser extension" line to the notes. The
+release PR's body ends with whether it ships either way;
+`scripts/release.sh prepare --extension` ships it regardless. To see the
+decision without opening a PR (it prints `extension` or nothing, and says why
+on stderr):
 
 ```sh
-.github/scripts/extension-ships.sh "$(git describe --tags --abbrev=0 origin/main)"
+.github/scripts/ships.sh extension
 ```
+
+The same script answers `macos` and `android` the same way, from their
+crates' `cargo metadata` and `Cargo.lock` as well as their vite builds;
+`prepare` does not ask it about them yet.
 
 After `publish`, the `extension` job ships when `extension/package.json`
 holds this release's version, and skips the upload otherwise. Shipping, it

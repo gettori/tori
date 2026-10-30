@@ -2,6 +2,7 @@ import { defineConfig, type Plugin, lazyPlugins } from "vite-plus";
 import solid from "vite-plugin-solid";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { bundledInputs } from "./scripts/bundled-inputs";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
@@ -135,13 +136,18 @@ export default defineConfig(async ({ command }) => ({
     },
   },
 
-  plugins: lazyPlugins(() => [solid(), pdfjsData(), ...(command === "build" ? [traceCoreImports()] : [])]),
+  plugins: lazyPlugins(() => [
+    solid(),
+    pdfjsData(),
+    bundledInputs("desktop"),
+    ...(command === "build" ? [traceCoreImports()] : []),
+  ]),
 
   envPrefix: ["VITE_", "TAURI_ENV_ARCH"],
 
   // The syntax worker loads each grammar by dynamic import, and an iife worker
   // cannot split chunks.
-  worker: { format: "es" as const },
+  worker: { format: "es" as const, plugins: () => [bundledInputs("desktop")] },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
