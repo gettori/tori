@@ -3,23 +3,25 @@
 # Merging that PR is the last human step; the Release workflow
 # (.github/workflows/release.yml) builds, signs, tags and publishes from it.
 #
-#   scripts/release.sh prepare   open the release PR: version bump + changelog
+#   scripts/release.sh prepare   open the release PR: version bumps + changelog
 #   (merge the PR on GitHub, the workflow does the rest)
 #   scripts/release.sh status    say where the release stands
 #
 # Add --yes to prepare to skip the prompt. Without a terminal the flag is
 # required, so a script or an agent never opens a release PR by accident.
-# Add --extension to ship the browser extension even when nothing it is built
-# from changed (.github/scripts/ships.sh decides otherwise).
+# Add --force <macos|android|extension> to ship a component even when nothing
+# it is built from changed (.github/scripts/ships.sh decides otherwise).
 # docs/RELEASING.md walks through all of it, including what to do when a step
 # fails halfway.
 #
 # `prepare` can run from any checkout: it works in a throwaway worktree of
 # origin/main and leaves yours alone. The version is YY.MDD.patch from today's
 # UTC date; the patch is the next free number for that date. The stage suffix
-# (-alpha, -beta, none) is carried over from the current version in
+# (-alpha, -beta, none) is carried over from the desktop's version in
 # src-tauri/tauri.conf.json, so editing the suffix there is how a release
-# changes stage. The notes are the `## Changelog` sections of the PRs merged
+# changes stage. Each component (macOS, Android, the browser extension) keeps
+# the version of the release that last shipped it and moves to this one only
+# when it ships. The notes are the `## Changelog` sections of the PRs merged
 # since the last tag, under anything written by hand under `## Unreleased`.
 #
 # Needs `gh` logged in with write access to this repo.
@@ -27,9 +29,10 @@ set -euo pipefail
 
 RELEASES_REPO=gettori/tori
 BASE=main
+COMPONENTS="macos android extension"
 
 usage() {
-  echo "usage: scripts/release.sh prepare|status [--yes] [--extension]" >&2
+  echo "usage: scripts/release.sh prepare|status [--yes] [--force macos|android|extension]..." >&2
 }
 
 die() {
@@ -40,16 +43,28 @@ die() {
 cmd="${1:-}"
 [ $# -gt 0 ] && shift
 yes=0
-extension=0
-for arg in "$@"; do
-  case "$arg" in
+force=""
+while [ $# -gt 0 ]; do
+  case "$1" in
     --yes | -y) yes=1 ;;
-    --extension) extension=1 ;;
+    --force)
+      case "${2:-}" in
+        macos | android | extension)
+          force="$force $2"
+          shift
+          ;;
+        *)
+          usage
+          exit 2
+          ;;
+      esac
+      ;;
     *)
       usage
       exit 2
       ;;
   esac
+  shift
 done
 
 cd "$(git rev-parse --show-toplevel)"
@@ -62,19 +77,97 @@ confirm() {
   [ "$answer" = y ] || die "aborted"
 }
 
-# The desktop and the phone app share one version, so five files carry it.
-# Prints it, or fails when they disagree.
-version_in() {
-  local dir=$1 conf pkg crate mconf mcrate
-  conf=$(node -p "require('$dir/src-tauri/tauri.conf.json').version")
-  pkg=$(node -p "require('$dir/package.json').version")
-  crate=$(grep -m1 '^version = ' "$dir/src-tauri/Cargo.toml" | cut -d'"' -f2)
-  mconf=$(node -p "require('$dir/mobile/src-tauri/tauri.conf.json').version")
-  mcrate=$(grep -m1 '^version = ' "$dir/mobile/src-tauri/Cargo.toml" | cut -d'"' -f2)
-  if [ "$pkg" != "$conf" ] || [ "$crate" != "$conf" ] || [ "$mconf" != "$conf" ] || [ "$mcrate" != "$conf" ]; then
-    die "version drift: tauri.conf.json=$conf package.json=$pkg Cargo.toml=$crate mobile/tauri.conf.json=$mconf mobile/Cargo.toml=$mcrate"
+label() {
+  case "$1" in
+    macos) echo "macOS" ;;
+    android) echo "Android" ;;
+    extension) echo "browser extension" ;;
+  esac
+}
+
+# The files that carry a component's version; the first is where it is read.
+version_files() {
+  case "$1" in
+    macos) printf '%s\n' src-tauri/tauri.conf.json package.json src-tauri/Cargo.toml ;;
+    android) printf '%s\n' mobile/src-tauri/tauri.conf.json mobile/src-tauri/Cargo.toml ;;
+    extension) printf '%s\n' extension/package.json ;;
+  esac
+}
+
+read_version() {
+  case "$1" in
+    *.toml) grep -m1 '^version = ' | cut -d'"' -f2 ;;
+    *) node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version" ;;
+  esac
+}
+
+version_of() {
+  local dir=$1 component=$2 file version distinct seen=""
+  while IFS= read -r file; do
+    version=$(read_version "$file" <"$dir/$file")
+    seen="$seen$file=$version"$'\n'
+  done < <(version_files "$component")
+  distinct=$(printf '%s' "$seen" | cut -d= -f2 | sort -u | wc -l | tr -d ' ')
+  [ "$distinct" -eq 1 ] || die "$(label "$component") version drift: $(printf '%s' "$seen" | tr '\n' ' ')"
+  echo "$version"
+}
+
+version_at() {
+  local ref=$1 component=$2 file
+  file=$(version_files "$component" | head -1)
+  git show "$ref:$file" | read_version "$file"
+}
+
+# Chrome reads four numbers at most, so the extension drops the stage suffix.
+version_for() {
+  local component=$1 release=$2
+  case "$component" in
+    extension) echo "${release%%-*}" ;;
+    *) echo "$release" ;;
+  esac
+}
+
+at_release() {
+  local component=$1 version=$2 release=$3
+  [ "$version" = "$(version_for "$component" "$release")" ]
+}
+
+set_version() {
+  local dir=$1 component=$2 from=$3 to=$4 file
+  while IFS= read -r file; do
+    case "$file" in
+      *.toml)
+        sed -i '' "s/^version = \"$from\"/version = \"$to\"/" "$dir/$file"
+        (cd "$dir/$(dirname "$file")" && cargo update -q --package "$(grep -m1 '^name = ' Cargo.toml | cut -d'"' -f2)")
+        ;;
+      *) sed -i '' "s/\"version\": \"$from\"/\"version\": \"$to\"/" "$dir/$file" ;;
+    esac
+  done < <(version_files "$component")
+  [ "$(version_of "$dir" "$component")" = "$to" ] || die "the $(label "$component") version did not land in every file"
+}
+
+component_line() {
+  local component=$1 version=$2 release=$3 state=$4 name
+  name=$(label "$component")
+  if [ "$state" != ships ]; then
+    echo "$name unchanged at $version"
+  elif [ "$component" = extension ]; then
+    echo "$name $(version_for "$component" "$release") ships, rolling out on the Chrome Web Store"
+  else
+    echo "$name $release ships"
   fi
-  printf '%s\n' "$conf"
+}
+
+released_version() {
+  awk '!found && /^## [0-9]/ { sub(/^## /, ""); print; found = 1 }'
+}
+
+# The stage is the desktop's: editing the suffix in src-tauri/tauri.conf.json
+# is how a release changes it.
+stage_suffix() {
+  local desktop
+  desktop=$(version_of "$1" macos)
+  case "$desktop" in *-*) echo "-${desktop#*-}" ;; esac
 }
 
 open_release_pr() {
@@ -111,9 +204,11 @@ prepare() {
   trap cleanup EXIT
   git worktree add -q --detach "$work" "origin/$BASE"
 
-  local current suffix="" yy mdd patch version tag
-  current=$(version_in "$work")
-  case "$current" in *-*) suffix="-${current#*-}" ;; esac
+  local component current suffix yy mdd patch version tag
+  for component in $COMPONENTS; do version_of "$work" "$component" >/dev/null; done
+  current=$(released_version <"$work/CHANGELOG.md")
+  [ -n "$current" ] || die "CHANGELOG.md has no versioned section"
+  suffix=$(stage_suffix "$work")
   yy=$(date -u +%y)
   mdd=$(($(date -u +%-m) * 100 + $(date -u +%-d)))
   # The patch namespace is shared across suffixes: an alpha and a stable cut the
@@ -132,27 +227,26 @@ prepare() {
   fi
   git -C "$work" switch -q -c "$branch"
 
+  local out flag ships=""
+  for component in $COMPONENTS; do
+    flag=""
+    case " $force " in *" $component "*) flag=--force ;; esac
+    out=$("$work/.github/scripts/ships.sh" "$component" $flag)
+    [ -z "$out" ] || ships="$ships $component"
+  done
+  [ -n "$ships" ] || die "nothing to release: no component changed since the release it carries; --force <component> ships one anyway"
+
   # The notes are the `## Changelog` sections of the PRs merged since the last
   # tag, under anything written by hand under `## Unreleased`, unless somebody
   # already wrote the section under its version.
-  local last ships ext="" ext_now
+  local last notes
   last=$(git describe --tags --abbrev=0 "origin/$BASE" 2>/dev/null) ||
     die "no tag reachable from origin/$BASE; the notes are collected from the PRs merged since the last one"
-  ships=$("$work/.github/scripts/ships.sh" extension $([ "$extension" = 1 ] && echo --force))
-  if [ -n "$ships" ]; then
-    # Chrome reads four numbers at most, so the stage suffix goes.
-    ext="${version%%-*}"
-  fi
-  ext_now=$(node -p "require('$work/extension/package.json').version")
-
-  local notes
   notes=$(mktemp)
   if ! grep -qx "## $version" "$work/CHANGELOG.md"; then
     local manual collected
     manual=$(.github/scripts/changelog-section.sh Unreleased "$work/CHANGELOG.md" 2>/dev/null || true)
     collected=$(RELEASES_REPO=$RELEASES_REPO .github/scripts/changelog-from-prs.sh "$last" "origin/$BASE")
-    [ -n "$manual$collected$ext" ] ||
-      die "nothing to release: no PR merged since $last has a '## Changelog' section with bullets, '## Unreleased' is empty, and the extension is unchanged"
     printf '%s\n' "$manual" "$collected" | awk 'NF || started { print; started = 1 }' >"$notes"
     # Replaces the Unreleased section, or goes in before the first release
     # when there is none.
@@ -166,9 +260,19 @@ prepare() {
     ' "$work/CHANGELOG.md" >"$work/CHANGELOG.md.new"
     mv "$work/CHANGELOG.md.new" "$work/CHANGELOG.md"
   fi
-  # A section written by hand gets it too.
-  local bullet="- Browser extension $ext, rolling out on the Chrome Web Store."
-  if [ -n "$ext" ] && ! grep -qxF -- "$bullet" "$work/CHANGELOG.md"; then
+  # The section is the body of every component's release, so it says what the
+  # others did.
+  local now lines="" bullet="" line state
+  for component in $COMPONENTS; do
+    state=stays
+    case " $ships " in *" $component "*) state=ships ;; esac
+    now=$(version_of "$work" "$component")
+    line=$(component_line "$component" "$now" "$version" "$state")
+    lines="$lines${lines:+$'\n'}$line"
+    bullet="$bullet${bullet:+; }$line"
+  done
+  bullet="- $bullet."
+  if ! grep -qxF -- "$bullet" "$work/CHANGELOG.md"; then
     awk -v want="## $version" -v line="$bullet" '
       function add() {
         if (!insec) return
@@ -185,12 +289,7 @@ prepare() {
     mv "$work/CHANGELOG.md.new" "$work/CHANGELOG.md"
   fi
   (cd "$work" && .github/scripts/changelog-section.sh "$version" >"$notes")
-  # The PR body only: CHANGELOG.md says nothing about an unchanged extension.
-  if [ -n "$ext" ]; then
-    printf '\nBrowser extension: ships %s\n' "$ext" >>"$notes"
-  else
-    printf '\nBrowser extension: unchanged, stays %s\n' "$ext_now" >>"$notes"
-  fi
+  printf '\n%s\n' "$lines" >>"$notes"
 
   echo "Tori $version (tag $tag, was $current)"
   echo "--- release notes ---"
@@ -198,18 +297,10 @@ prepare() {
   echo "---------------------"
   confirm "Open the release PR for Tori $version?"
 
-  sed -i '' "s/\"version\": \"$current\"/\"version\": \"$version\"/" \
-    "$work/package.json" "$work/src-tauri/tauri.conf.json" "$work/mobile/src-tauri/tauri.conf.json"
-  sed -i '' "s/^version = \"$current\"/version = \"$version\"/" \
-    "$work/src-tauri/Cargo.toml" "$work/mobile/src-tauri/Cargo.toml"
-  (cd "$work/src-tauri" && cargo update -q --package tori)
-  (cd "$work/mobile/src-tauri" && cargo update -q --package tori-mobile)
-  [ "$(version_in "$work")" = "$version" ] || die "the version did not land in all five files"
-  if [ -n "$ext" ]; then
-    sed -i '' "s/\"version\": \"$ext_now\"/\"version\": \"$ext\"/" "$work/extension/package.json"
-    [ "$(node -p "require('$work/extension/package.json').version")" = "$ext" ] ||
-      die "the extension version did not land in extension/package.json"
-  fi
+  for component in $ships; do
+    now=$(version_of "$work" "$component")
+    set_version "$work" "$component" "$now" "$(version_for "$component" "$version")"
+  done
 
   git -C "$work" add CHANGELOG.md package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock \
     mobile/src-tauri/tauri.conf.json mobile/src-tauri/Cargo.toml mobile/src-tauri/Cargo.lock extension/package.json
@@ -239,8 +330,8 @@ release_run() {
 
 status() {
   git fetch -q --tags origin "$BASE"
-  local version tag subject state pr last ahead run
-  version=$(git show "origin/$BASE:src-tauri/tauri.conf.json" | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")
+  local version tag subject state pr last ahead run component now lines=""
+  version=$(git show "origin/$BASE:CHANGELOG.md" | released_version)
   tag="v$version"
   subject=$(git log -1 --format=%s "origin/$BASE")
   state=$(release_state "$tag")
@@ -248,9 +339,18 @@ status() {
   last=$(git describe --tags --abbrev=0 "origin/$BASE" 2>/dev/null || true)
   ahead=$(git rev-list --count "${last:+$last..}origin/$BASE")
   run=$(release_run "$(git rev-parse "origin/$BASE")")
+  for component in $COMPONENTS; do
+    now=$(version_at "origin/$BASE" "$component")
+    if at_release "$component" "$now" "$version"; then
+      lines="$lines${lines:+, }$(component_line "$component" "$now" "$version" ships)"
+    else
+      lines="$lines${lines:+, }$(component_line "$component" "$now" "$version" stays)"
+    fi
+  done
 
   echo "$BASE is at $version, tip \"$subject\""
   echo "release $tag: $state"
+  echo "components: $lines"
   echo "last tag on $BASE: ${last:-none}, $ahead commits since"
   echo "open release PR: ${pr:-none}"
   echo "Release workflow for the tip: ${run:-not started}"
