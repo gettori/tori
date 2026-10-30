@@ -10,7 +10,7 @@
 # Add --yes to prepare to skip the prompt. Without a terminal the flag is
 # required, so a script or an agent never opens a release PR by accident.
 # Add --extension to ship the browser extension even when nothing it is built
-# from changed (.github/scripts/extension-ships.sh decides otherwise).
+# from changed (.github/scripts/ships.sh decides otherwise).
 # docs/RELEASING.md walks through all of it, including what to do when a step
 # fails halfway.
 #
@@ -135,10 +135,14 @@ prepare() {
   # The notes are the `## Changelog` sections of the PRs merged since the last
   # tag, under anything written by hand under `## Unreleased`, unless somebody
   # already wrote the section under its version.
-  local last ext ext_now
+  local last ships ext="" ext_now
   last=$(git describe --tags --abbrev=0 "origin/$BASE" 2>/dev/null) ||
     die "no tag reachable from origin/$BASE; the notes are collected from the PRs merged since the last one"
-  ext=$("$work/.github/scripts/extension-ships.sh" "$last" "$version" "origin/$BASE" $([ "$extension" = 1 ] && echo --force))
+  ships=$("$work/.github/scripts/ships.sh" extension $([ "$extension" = 1 ] && echo --force))
+  if [ -n "$ships" ]; then
+    # Chrome reads four numbers at most, so the stage suffix goes.
+    ext="${version%%-*}"
+  fi
   ext_now=$(node -p "require('$work/extension/package.json').version")
 
   local notes

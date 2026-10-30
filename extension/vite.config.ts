@@ -1,6 +1,7 @@
 import { defineConfig, type Plugin } from "vite-plus";
 import solid from "vite-plugin-solid";
 import { readFileSync } from "node:fs";
+import { bundledInputs } from "../scripts/bundled-inputs";
 
 // @ts-expect-error process is a nodejs global
 const target: string = process.env.TORI_TARGET ?? "chrome";
@@ -14,7 +15,7 @@ const json = (path: string) => JSON.parse(read(path).toString());
 // that ships the extension, so an unchanged one never goes back to review.
 const version = json("./package.json").version;
 
-const ICONS: Record<string, string> = { "32": "32x32.png", "128": "128x128.png" };
+const ICONS: Record<string, string> = { "32": "../src-tauri/icons/32x32.png", "128": "../src-tauri/icons/128x128.png" };
 
 const manifest = (): Plugin => ({
   name: "tori-extension-manifest",
@@ -39,7 +40,7 @@ const manifest = (): Plugin => ({
     if (store) delete merged.key;
     this.emitFile({ type: "asset", fileName: "manifest.json", source: JSON.stringify(merged, null, 2) });
     for (const [size, file] of Object.entries(ICONS)) {
-      this.emitFile({ type: "asset", fileName: `icons/${size}.png`, source: read(`../src-tauri/icons/${file}`) });
+      this.emitFile({ type: "asset", fileName: `icons/${size}.png`, source: read(file) });
     }
   },
 });
@@ -47,7 +48,7 @@ const manifest = (): Plugin => ({
 export default defineConfig(({ mode }) => {
   if (store && mode === "development") throw new Error("the store build talks to the release host only");
   return {
-    plugins: [solid(), manifest()],
+    plugins: [solid(), manifest(), bundledInputs("extension", ["manifests", ...Object.values(ICONS)])],
     publicDir: false,
     define: {
       __HOST__: JSON.stringify(mode === "development" ? "app.gettori.tori_dev" : "app.gettori.tori"),
