@@ -98,8 +98,19 @@ Only when all three have passed does the `publish` job tag the commit
 `v<version>`, create the GitHub release as a draft with all seven files,
 confirm each is attached, publish it as the latest release, and point the
 Homebrew cask at the two DMGs. A release is never marked a prerelease, whatever
-its stage suffix: the in-app updater and `install.sh` read GitHub's latest
-release, which skips prereleases.
+its stage suffix, and macOS is always the latest release: builds up to
+26.1030.0 read GitHub's latest release, which skips prereleases, and read only
+a `v<version>` tag.
+
+The first release after 26.1030.0 is the bridge to per-platform tags: its
+in-app updater takes the newest `macos-v<version>` or `v<version>` release
+that carries the Mac's asset, `install.sh` takes the newest release with
+either tag, and `.github/scripts/update-cask.sh` finds its version under
+either. The switch to tagging macOS `macos-v<version>` waits two weeks
+of releases after the bridge is published, so no earlier than 2026-11-13, for
+the builds before it to pick the bridge up through the old path. An install
+that skips every release of the hold cannot see a `macos-v` release and is
+installed again by hand.
 
 The cask does not yet say `auto_updates true`. Builds up to 26.1022 update only
 through `brew upgrade`, so the first release with the in-app updater has to

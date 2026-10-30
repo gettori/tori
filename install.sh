@@ -46,10 +46,17 @@ main() {
   trap 'rm -rf "$work"' EXIT
 
   curl -fsSL -H "Accept: application/vnd.github+json" \
-    "https://api.github.com/repos/$REPO/releases/latest" -o "$work/release.json" ||
+    "https://api.github.com/repos/$REPO/releases" -o "$work/releases.json" ||
     die "could not reach GitHub"
-  tag=$(field tag_name "$work/release.json") || die "GitHub did not name a latest release"
-  version=${tag#v}
+  # Releases were tagged v<version> before each platform got its own prefix.
+  i=0
+  while tag=$(field "$i.tag_name" "$work/releases.json"); do
+    case $tag in macos-v* | v*) break ;; esac
+    i=$((i + 1))
+  done
+  [ -n "$tag" ] || die "GitHub lists no macOS release"
+  version=${tag#macos-}
+  version=${version#v}
 
   if [ -d "$DEST" ] && [ "$(field CFBundleShortVersionString "$DEST/Contents/Info.plist")" = "$version" ]; then
     say "Tori $version is already installed."

@@ -17,15 +17,25 @@ VERSION="${1:?usage: update-cask.sh <published version, without the v>}"
 : "${TAP_TOKEN:?TAP_TOKEN is not set}"
 RELEASES_REPO="${RELEASES_REPO:-gettori/tori}"
 TAP_REPO="${TAP_REPO:-gettori/homebrew-tap}"
-tag="v$VERSION"
-
-if [ "$(gh release view "$tag" --repo "$RELEASES_REPO" --json isDraft -q .isDraft)" = true ]; then
-  echo "error: $tag is still a draft; publish it first, brew cannot download draft assets" >&2
-  exit 1
-fi
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+
+# Releases were tagged v<version> before each platform got its own prefix.
+for tag in "macos-v$VERSION" "v$VERSION"; do
+  draft=$(gh release view "$tag" --repo "$RELEASES_REPO" --json isDraft -q .isDraft 2>"$work/gh.err") && break
+  tag=""
+done
+if [ -z "$tag" ]; then
+  echo "error: no release macos-v$VERSION or v$VERSION on $RELEASES_REPO ($(tail -1 "$work/gh.err"))" >&2
+  exit 1
+fi
+if [ "$draft" = true ]; then
+  echo "error: $tag is still a draft; publish it first, brew cannot download draft assets" >&2
+  exit 1
+fi
+prefix=${tag%"$VERSION"}
+
 gh release download "$tag" --repo "$RELEASES_REPO" --pattern '*.dmg' --dir "$work/dmg"
 
 sha_for() {
@@ -51,7 +61,7 @@ cask "tori" do
   sha256 arm:   "$arm_sha",
          intel: "$intel_sha"
 
-  url "https://github.com/${RELEASES_REPO}/releases/download/v#{version}/Tori_#{version}_#{arch}.dmg"
+  url "https://github.com/${RELEASES_REPO}/releases/download/${prefix}#{version}/Tori_#{version}_#{arch}.dmg"
   name "Tori"
   desc "Cockpit for the coding agents you already run"
   homepage "https://gettori.app"
