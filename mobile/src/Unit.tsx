@@ -10,7 +10,7 @@ import { ago } from "../../src/utils/relativeTime";
 import { bucketByLastActive } from "../../src/utils/sessionBuckets";
 import type { Crew } from "./Autopilot";
 import { REFUSED_CODE, RpcError, type RemoteClient } from "./remote";
-import { DOT, Offline, PhaseMark } from "./Root";
+import { DOT, ConnectionBanner, PhaseMark } from "./Root";
 import { GitCounts, PushTop, watchGit, watchSync } from "./Screens";
 import {
   PHASE_LABEL,
@@ -227,7 +227,7 @@ export default function UnitScreen(props: {
           </button>
         }
       />
-      <Offline client={props.client} />
+      <ConnectionBanner client={props.client} />
       <Show when={error()}>
         <p class={styles.banner}>{error()}</p>
       </Show>

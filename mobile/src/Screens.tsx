@@ -11,7 +11,7 @@ import { ago } from "../../src/utils/relativeTime";
 import type { Crew } from "./Autopilot";
 import { ProjectMark } from "./icons";
 import type { RemoteClient } from "./remote";
-import { Chevron, DOT, Offline, StateMark } from "./Root";
+import { Chevron, DOT, ConnectionBanner, StateMark } from "./Root";
 import { SessionList, unitSessions } from "./Unit";
 import {
   agentHolds,
@@ -229,7 +229,7 @@ export function ProjectScreen(props: {
   return (
     <div class={styles.glow}>
       <PushTop back={props.space} space onBack={props.onBack} />
-      <Offline client={props.client} />
+      <ConnectionBanner client={props.client} />
       <div class={styles.scroll}>
         <div class={styles.projectHead}>
           <ProjectMark client={props.client} project={props.project} big />
@@ -287,7 +287,7 @@ export function TopicScreen(props: {
   return (
     <div class={styles.glow}>
       <PushTop back="Topics" onBack={props.onBack} />
-      <Offline client={props.client} />
+      <ConnectionBanner client={props.client} />
       <div class={styles.scroll}>
         <h1 class={styles.screenTitle}>{props.topic.name}</h1>
         <h2 class={styles.label}>

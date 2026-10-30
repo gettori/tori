@@ -73,6 +73,7 @@ function PairingCard() {
 
 const noClient = {
   status: () => "open",
+  update: () => null,
   request: () => new Promise(() => {}),
   subscribe: () => () => {},
 } as unknown as RemoteClient;

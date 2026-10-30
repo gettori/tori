@@ -313,3 +313,20 @@ answers "update the Tori extension", above it "update Tori".
   whose host reads the new protocol, together with
   `extension/store/listing.md` (twice, plus the dashboard copy) and
   tori-web's `docs/browser/extension` page.
+
+## Phone protocol
+
+The phone app sends its `PROTOCOL` (`mobile/src/remote.ts`) with every
+`caller` call, and the daemon answers which side to update when that falls
+outside `MIN_PHONE_PROTOCOL..=PHONE_PROTOCOL` (`src-tauri/src/rpc/phone.rs`).
+The app then shows "Tori on your Mac is too old for this app: update Tori" or
+"This app is too old for Tori on your Mac: update the app". A missing number
+on either side counts as 0, the protocol every build from before the check
+speaks, so all three start at 0.
+
+- A breaking change to what the app sends or reads raises `PROTOCOL` and
+  `PHONE_PROTOCOL` together, and the daemon keeps serving the old shape.
+- `MIN_PHONE_PROTOCOL` rises only in a release whose notes tell phone users to
+  update the app, never on its own. The APK is sideloaded and never updates
+  itself, so a floor raised with a release cuts off every phone nobody updated
+  by hand.
