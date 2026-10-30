@@ -18,11 +18,11 @@ use super::server::{
     CheckParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, DigestLookedParams, DigestParams,
     DraftParams, HandoffParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams,
     IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, LoopParams, MintParams,
-    ModeParams, ModelParams, NeedsYouSeenParams, OpenParams, PendingParams, PortParams, PrCheckLogParams,
-    PrCreateParams, PrGetParams, PrMergeParams, PrPushParams, PrWatchParams, ProjectIconParams, ProjectSetParams,
-    PromptRef, ProvenanceParams, RevealParams, ReviewMarkParams, ReviewSubmitParams, ScheduleAddParams,
-    ScheduleIdParams, SessionAnswerParams, SetupParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams,
-    UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, DEFAULT_LOG_LIMIT,
+    ModeParams, ModelParams, NeedsYouSeenParams, OpenParams, PendingParams, PlanSetParams, PortParams,
+    PrCheckLogParams, PrCreateParams, PrGetParams, PrMergeParams, PrPushParams, PrWatchParams, ProjectIconParams,
+    ProjectSetParams, PromptRef, ProvenanceParams, RevealParams, ReviewMarkParams, ReviewSubmitParams,
+    ScheduleAddParams, ScheduleIdParams, SessionAnswerParams, SetupParams, SpawnParams, SteerParams, TailParams,
+    TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, DEFAULT_LOG_LIMIT,
 };
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
@@ -2249,6 +2249,12 @@ impl Backend for DaemonBackend {
             }),
         );
         self.wait_for_answer(&ask.id, params.timeout)
+    }
+
+    fn plan_set(&self, session: &str, params: PlanSetParams) -> Result<Value, RpcError> {
+        let shown = params.items.len();
+        self.chats.host.set_plan(session, params.items).map_err(refused)?;
+        Ok(json!({ "shown": shown }))
     }
 
     fn ask_wait(&self, params: AskWaitParams) -> Result<Value, RpcError> {
