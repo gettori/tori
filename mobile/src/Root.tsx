@@ -5,7 +5,7 @@ import { CheckMark, QuestionMark, WorkingMark } from "../../src/components/Icon/
 import StatusBubble from "../../src/panels/LeftSidebar/StatusBubble";
 import { fallbackColor, rgbTriple } from "../../src/utils/spaceTint";
 import { ProjectMark } from "./icons";
-import type { RemoteClient } from "./remote";
+import { OLD_APP, OLD_TORI, type RemoteClient } from "./remote";
 import {
   inUnit,
   matches,
@@ -59,14 +59,23 @@ export function PhaseMark(props: { phase: Phase }) {
   );
 }
 
-export function Offline(props: { client: RemoteClient }) {
+export function ConnectionBanner(props: { client: RemoteClient }) {
   const status = () => props.client.status();
   return (
-    <Show when={status() === "offline" || status() === "connecting"}>
-      <p class={styles.banner} role="status">
-        {status() === "offline" ? "Offline, reconnecting" : "Connecting to Tori"}
-      </p>
-    </Show>
+    <Switch>
+      <Match when={status() === "offline" || status() === "connecting"}>
+        <p class={styles.banner} role="status">
+          {status() === "offline" ? "Offline, reconnecting" : "Connecting to Tori"}
+        </p>
+      </Match>
+      <Match when={props.client.update()}>
+        {(update) => (
+          <p class={styles.banner} role="status">
+            {update() === "tori" ? OLD_TORI : OLD_APP}
+          </p>
+        )}
+      </Match>
+    </Switch>
   );
 }
 
@@ -231,7 +240,7 @@ export default function Root(props: {
           />
         </label>
       </Show>
-      <Offline client={props.client} />
+      <ConnectionBanner client={props.client} />
       <Show when={props.notice}>
         <p class={styles.banner}>{props.notice}</p>
       </Show>

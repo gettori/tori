@@ -7,12 +7,13 @@ use serde_json::{json, Value};
 
 use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
+use super::phone::{self, MIN_PHONE_PROTOCOL, PHONE_PROTOCOL};
 use super::server::{
     params, AllowGroupParams, AskAnswerParams, AskParams, AskWaitParams, AttachmentWriteParams, Backend, BudgetParams,
-    CheckParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, DigestLookedParams, DigestParams,
-    DraftParams, HandoffParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams,
-    IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, LoopParams, MintParams,
-    ModeParams, ModelParams, NeedsYouSeenParams, OpenParams, PendingParams, PlanSetParams, PortParams,
+    CallerParams, CheckParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, DigestLookedParams,
+    DigestParams, DraftParams, HandoffParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams,
+    IssueGetParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, LoopParams,
+    MintParams, ModeParams, ModelParams, NeedsYouSeenParams, OpenParams, PendingParams, PlanSetParams, PortParams,
     PrCheckLogParams, PrCreateParams, PrGetParams, PrMergeParams, PrPushParams, PrWatchParams, ProjectIconParams,
     ProjectSetParams, PromptRef, ProvenanceParams, RevealParams, ReviewMarkParams, ReviewSubmitParams,
     ScheduleAddParams, ScheduleIdParams, SessionAnswerParams, SetupParams, SpawnParams, SteerParams, TailParams,
@@ -155,15 +156,20 @@ pub static METHODS: &[Method] = &[
     Method {
         name: "caller",
         description: "Who is calling: the session or terminal tab this connection belongs to, and its agent, account and folder.",
-        params: no_params,
+        params: schema::<CallerParams>,
         callers: ANYONE_DEVICES_AND_BROWSER,
         refusal: None,
         outward: false,
         read_only: true,
-        call: |b, p, _| {
+        call: |b, p, v| {
+            let CallerParams { protocol } = params(v)?;
             let mut me = b.caller(p)?;
             if let Some(me) = me.as_object_mut() {
                 me.insert("kind".into(), json!(b.kind(p).name()));
+                if matches!(p, Principal::Device(_)) {
+                    let update = phone::update(protocol, MIN_PHONE_PROTOCOL..=PHONE_PROTOCOL);
+                    me.insert("update".into(), json!(update));
+                }
             }
             Ok(me)
         },
