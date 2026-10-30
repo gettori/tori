@@ -1,6 +1,6 @@
 [package]
 name = "tori"
-version = "26.1029.0-beta"
+version = "26.1030.0-beta"
 description = "Dev workflow manager: session tree + Claude terminal + editor"
 authors = ["skarif"]
 license = "Apache-2.0"
