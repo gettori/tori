@@ -18,7 +18,6 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 - New MCP tool `plan_set`: a chat sends its whole plan, each step pending, in progress or completed, and it replaces the card. An empty list hides it.
 - Clicking the selected tab under Changes or Files in the right sidebar collapses or expands that section, same as the chevron.
 - Selected text in the composer is easy to see now: it uses the same highlight as the rest of the chat.
-- Browser extension 26.1030.0, rolling out on the Chrome Web Store.
 
 ## 26.1029.0-beta
 
