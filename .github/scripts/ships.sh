@@ -27,6 +27,8 @@ COMPONENT="${args[0]:?usage: ships.sh <macos|android|extension> [since-tag] [--f
 SINCE="${args[1]:-}"
 
 cd "$(dirname "$0")/../.."
+# shellcheck source=.github/scripts/components.sh
+. .github/scripts/components.sh
 
 die() {
   echo "error: $*" >&2
@@ -39,21 +41,18 @@ case "$COMPONENT" in
     dir=.
     crate=src-tauri
     platforms="aarch64-apple-darwin x86_64-apple-darwin"
-    versioned=src-tauri/tauri.conf.json
     ;;
   android)
     build=mobile
     dir=mobile
     crate=mobile/src-tauri
     platforms=aarch64-linux-android
-    versioned=mobile/src-tauri/tauri.conf.json
     ;;
   extension)
     build=extension
     dir=extension
     crate=""
     platforms=""
-    versioned=extension/package.json
     ;;
   *) die "unknown component $COMPONENT (macos, android or extension)" ;;
 esac
@@ -61,16 +60,11 @@ esac
 # Without a tag for the version the component carries, its last release never
 # finished, so the newest tag reachable stands in.
 baseline_tag() {
-  local version pattern tag
-  version=$(node -p "require('./$versioned').version")
-  # The extension carries the version without its stage suffix, hence -*.
-  for pattern in "$COMPONENT-v$version" "v$version"; do
-    tag=$(git tag -l "$pattern" "$pattern-*" | head -1)
-    if [ -n "$tag" ]; then
-      echo "$tag"
-      return
-    fi
-  done
+  local file version
+  file=$(version_files "$COMPONENT" | head -1)
+  # shellcheck disable=SC2094 # the name only picks the parser
+  version=$(read_version "$file" <"$file")
+  released_tag "$COMPONENT" "$version" <<<"$(git tag -l)" && return
   git describe --tags --abbrev=0 --match "$COMPONENT-v*" HEAD 2>/dev/null ||
     git describe --tags --abbrev=0 --match "v*" HEAD 2>/dev/null ||
     die "no $COMPONENT-v* or v* tag reachable; pass the baseline tag"

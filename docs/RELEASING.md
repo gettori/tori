@@ -72,10 +72,14 @@ commit it runs on.
 ## 3. The Release workflow
 
 Merging pushes the release commit to `main`, and `.github/workflows/release.yml`
-runs on every push to `main`. Its first job decides whether this push is a
-release: the version in `tauri.conf.json` has a `## <version>` section in the
-changelog and no `v<version>` tag yet. An ordinary merge fails that test in a
-few seconds and the run ends there. A release commit goes on to, in parallel:
+runs on every push to `main`. Its first job, `scripts/release.sh gate`, takes
+the release version from the first versioned section of `CHANGELOG.md` and
+picks each component that carries that version and has no tag for it yet:
+`macos-v<version>`, `android-v<version>`, `extension-v<version>`, or the
+`v<version>` that releases before per-platform tags carried. An ordinary merge
+moves no version, so the run ends there in a few seconds. Run the same command
+in a checkout to see what a commit would build. The picked components build in
+parallel:
 
 - **macOS, twice**, one job per architecture (`aarch64-apple-darwin` on the
   runner's own arch, `x86_64-apple-darwin` cross-compiled on the same runner).
@@ -93,30 +97,34 @@ few seconds and the run ends there. A release commit goes on to, in parallel:
   one; the wait gives up after four.
 - **Android**, arm64 only, on Linux. It writes the keystore from secrets,
   builds, checks the APK is signed, and names it `Tori_<version>.apk`.
+- **The browser extension**, the store zip (see below).
 
-Only when all three have passed does the `publish` job tag the commit
-`v<version>`, create the GitHub release as a draft with all seven files,
-confirm each is attached, publish it as the latest release, and point the
-Homebrew cask at the two DMGs. A release is never marked a prerelease, whatever
-its stage suffix, and macOS is always the latest release: builds up to
-26.1030.0 read GitHub's latest release, which skips prereleases, and read only
-a `v<version>` tag.
+Each component is published by its own job once its own build has passed, so
+one that fails leaves nothing of itself behind, no tag and no draft, and holds
+back no other. macOS is tagged `macos-v<version>`, drafted with its six files,
+checked that each is attached, published as GitHub's latest release, and the
+Homebrew cask is pointed at its two DMGs. Android is tagged
+`android-v<version>` and published the same way with its APK, but not as the
+latest, so the releases page leads with the Mac. Neither is ever marked a
+prerelease, whatever its stage suffix, since GitHub cannot make a prerelease
+its latest release. The extension is tagged `extension-v<version>` and goes to
+the store; it gets no GitHub release.
 
-The first release after 26.1030.0 is the bridge to per-platform tags: its
-in-app updater takes the newest `macos-v<version>` or `v<version>` release
-that carries the Mac's asset, `install.sh` takes the newest release with
-either tag, and `.github/scripts/update-cask.sh` finds its version under
-either. The switch to tagging macOS `macos-v<version>` waits two weeks
-of releases after the bridge is published, so no earlier than 2026-11-13, for
-the builds before it to pick the bridge up through the old path. An install
-that skips every release of the hold cannot see a `macos-v` release and is
-installed again by hand.
+Releases up to the bridge, the first after 26.1030.0, were tagged
+`v<version>` and carried every component's files. The bridge taught the
+in-app updater (the newest `macos-v<version>` or `v<version>` release with the
+Mac's asset), `install.sh` (the newest release with either tag) and
+`.github/scripts/update-cask.sh` both tag forms, and per-platform tags began
+two weeks of releases after it, no earlier than 2026-11-13. Builds up to
+26.1030.0 read only GitHub's latest release and only a `v` tag, so an install
+that skipped every release of those two weeks never sees a `macos-v` release
+and is installed again by hand.
 
 The cask does not yet say `auto_updates true`. Builds up to 26.1022 update only
 through `brew upgrade`, so the first release with the in-app updater has to
 reach Homebrew installs that way. Add `auto_updates true` to the template in
 `.github/scripts/update-cask.sh` from the release after it, so brew stops
-offering upgrades the app already makes itself. A failed build therefore leaves nothing behind: no tag, no draft.
+offering upgrades the app already makes itself.
 
 A component ships only on a release that changed it, and keeps the version of
 the release that last shipped it: macOS in `package.json`,
@@ -140,17 +148,16 @@ why on stderr):
 .github/scripts/ships.sh extension
 ```
 
-After `publish`, the `extension` job ships when `extension/package.json`
-holds this release's version, and skips the upload otherwise. Shipping, it
-builds the store zip with `.github/scripts/extension-zip.sh`, uploads it to
-the Chrome Web Store item and submits it for review as a staged publish, with
+The `extension` job builds the store zip with
+`.github/scripts/extension-zip.sh`, tags the commit, uploads the zip to the
+Chrome Web Store item and submits it for review as a staged publish, with
 `.github/scripts/extension-upload.sh --submit`. A green job that shipped
 means the version is in review. When the store's approval email arrives, open the item
 in the [Web Store dashboard](https://chrome.google.com/webstore/devconsole)
 and click **Publish**; nothing goes live without that click. A rejection
 also comes by email: fix the cause, then re-run the job, or submit the draft
-by hand from the dashboard. Nothing waits on this job: if it goes red, the
-release is already out, and the job's log names the step that failed
+by hand from the dashboard. Nothing else waits on this job: if it goes red,
+the other components are out regardless, and the job's log names the step that failed
 (token request, upload, status check or submit). Re-run that job alone once
 the cause is fixed.
 
@@ -212,16 +219,19 @@ CWS_CLIENT_ID=... CWS_CLIENT_SECRET=... CWS_REFRESH_TOKEN=... CWS_PUBLISHER_ID=.
 It prints `uploadState: SUCCEEDED` with the version, or names the step that
 failed. The version has to be above the item's published one.
 
-A ruleset on tags `v*` that blocks deletion and non-fast-forward updates is
-worth adding. It must not block creation, since the workflow creates the tag
+A ruleset on tags `v*` and `*-v*` that blocks deletion and non-fast-forward
+updates is worth adding. It must not block creation, since the workflow creates the tag
 with `github.token`.
 
 ## Rehearsing
 
 The workflow can be dispatched by hand from any branch the environment allows.
-A dispatched run builds everything a real one does, uploads the DMGs, the
-tarballs, the APK and the extension zip as run artifacts, and publishes
-nothing: no tag, no release, no cask, no store upload. Download the DMG onto
+A dispatched run builds what the gate picks for that commit, or every
+component when dispatched with `all`, uploads the DMGs, the tarballs, the APK
+and the extension zip as run artifacts, and publishes nothing: each publish job
+stops before its tag, so no tag, no release, no cask, no store upload. On a
+release branch the gate picks what the release ships; anywhere else nothing is
+due, so dispatch with `all`. Download the DMG onto
 a Mac that has never seen Tori and
 check `spctl -a -vv /Applications/Tori.app` says
 `accepted, source=Notarized Developer ID`; the app then opens without a
@@ -250,23 +260,24 @@ Run `scripts/release.sh status`. Then:
 | `prepare` failed before the PR | nothing, or a `release/<version>` branch on GitHub | delete that branch if it exists, run `prepare` again |
 | `prepare` names a merged PR with no `## Changelog` | nothing | `gh pr edit <number> --body-file <file>` with the section added, run `prepare` again |
 | The release PR is wrong | an open PR | close it, delete its branch, fix `main`, run `prepare` again |
-| A build job failed | nothing: the tag is made only after every build | fix the cause in an ordinary PR; merging it runs the release again, from the fix commit, under the same version |
+| A build job failed | nothing of that component, since its tag is made only after its own build; the others may be out | fix the cause in an ordinary PR; merging it builds again, from the fix commit and under the same version, only what is not out |
 | `packs-catalog --check` failed | nothing | the index on gettori.app is missing, expired, or signed with a key this build does not trust: run gettori/packs' Publish workflow, or ship the key first (gettori/packs MAINTAINING.md), then re-run the failed jobs |
 | Notarization was refused | nothing | the run prints Apple's log, which names the file; fix and re-run |
-| `publish` failed after tagging | the tag and maybe a draft release | re-run the failed jobs from the run page; the draft is replaced |
-| `publish` failed at the cask | a published release, the old cask | dispatch the `Update cask` workflow with the version |
-| Something merged after the release PR, before its run finished | nothing yet | once the tag exists the gate ignores every later push, so a release that succeeded is unaffected; if its run had failed, the next merge ships under that version with the extra change unlisted, so either accept that or run `prepare` again for a new version |
+| A publish job failed after tagging | that component's tag and maybe a draft release | re-run the failed jobs from the run page; the draft is replaced |
+| `publish-macos` failed at the cask | a published release, the old cask | dispatch the `Update cask` workflow with the version |
+| Something merged after the release PR, before its run finished | nothing yet | once a component's tag exists the gate skips it on every later push, so what was released is unaffected; a component whose build had failed ships on the next merge under that version with the extra change unlisted, so either accept that or run `prepare` again for a new version |
 
 A tag that has been pushed is never moved. If a published release is bad, cut
 the next one.
 
 ## Packs
 
-Every release carries `tori validate-pack` and `tori packs-index`, and
+Every macOS release carries `tori validate-pack` and `tori packs-index`, and
 gettori/packs runs them in CI from the release's
 `tori-cli-<version>-macos-<arm64|x64>.tar.gz`, a tarball holding the app's
-own binary as `tori`. Packs CI pins that asset by tag in its
-`tori-support.json`, so a missing asset breaks packs CI for that release. A
+own binary as `tori`. Packs CI takes that asset from the newest macOS release
+and from each release its `tori-support.json` names, under either tag form,
+so a missing asset breaks packs CI for that release. A
 release that changes what a loader accepts is also a change to what packs CI
 accepts:
 

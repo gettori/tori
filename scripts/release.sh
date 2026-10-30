@@ -6,11 +6,14 @@
 #   scripts/release.sh prepare   open the release PR: version bumps + changelog
 #   (merge the PR on GitHub, the workflow does the rest)
 #   scripts/release.sh status    say where the release stands
+#   scripts/release.sh gate      the components this commit releases, as the
+#                                Release workflow's first job reads them
 #
 # Add --yes to prepare to skip the prompt. Without a terminal the flag is
 # required, so a script or an agent never opens a release PR by accident.
 # Add --force <macos|android|extension> to ship a component even when nothing
 # it is built from changed (.github/scripts/ships.sh decides otherwise).
+# Add --all to gate to build every component, as a rehearsal can.
 # docs/RELEASING.md walks through all of it, including what to do when a step
 # fails halfway.
 #
@@ -32,7 +35,7 @@ BASE=main
 COMPONENTS="macos android extension"
 
 usage() {
-  echo "usage: scripts/release.sh prepare|status [--yes] [--force macos|android|extension]..." >&2
+  echo "usage: scripts/release.sh prepare|status|gate [--yes] [--force macos|android|extension]... [--all]" >&2
 }
 
 die() {
@@ -44,9 +47,11 @@ cmd="${1:-}"
 [ $# -gt 0 ] && shift
 yes=0
 force=""
+all=false
 while [ $# -gt 0 ]; do
   case "$1" in
     --yes | -y) yes=1 ;;
+    --all) all=true ;;
     --force)
       case "${2:-}" in
         macos | android | extension)
@@ -68,6 +73,8 @@ while [ $# -gt 0 ]; do
 done
 
 cd "$(git rev-parse --show-toplevel)"
+# shellcheck source=.github/scripts/components.sh
+. .github/scripts/components.sh
 
 confirm() {
   [ "$yes" = 1 ] && return 0
@@ -85,22 +92,6 @@ label() {
   esac
 }
 
-# The files that carry a component's version; the first is where it is read.
-version_files() {
-  case "$1" in
-    macos) printf '%s\n' src-tauri/tauri.conf.json package.json src-tauri/Cargo.toml ;;
-    android) printf '%s\n' mobile/src-tauri/tauri.conf.json mobile/src-tauri/Cargo.toml ;;
-    extension) printf '%s\n' extension/package.json ;;
-  esac
-}
-
-read_version() {
-  case "$1" in
-    *.toml) grep -m1 '^version = ' | cut -d'"' -f2 ;;
-    *) node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version" ;;
-  esac
-}
-
 version_of() {
   local dir=$1 component=$2 file version distinct seen=""
   while IFS= read -r file; do
@@ -108,7 +99,7 @@ version_of() {
     seen="$seen$file=$version"$'\n'
   done < <(version_files "$component")
   distinct=$(printf '%s' "$seen" | cut -d= -f2 | sort -u | wc -l | tr -d ' ')
-  [ "$distinct" -eq 1 ] || die "$(label "$component") version drift: $(printf '%s' "$seen" | tr '\n' ' ')"
+  [ "$distinct" -eq 1 ] || die "$(label "$component") version drift: $(printf '%s' "$seen" | paste -sd ' ' -)"
   echo "$version"
 }
 
@@ -116,15 +107,6 @@ version_at() {
   local ref=$1 component=$2 file
   file=$(version_files "$component" | head -1)
   git show "$ref:$file" | read_version "$file"
-}
-
-# Chrome reads four numbers at most, so the extension drops the stage suffix.
-version_for() {
-  local component=$1 release=$2
-  case "$component" in
-    extension) echo "${release%%-*}" ;;
-    *) echo "$release" ;;
-  esac
 }
 
 at_release() {
@@ -175,11 +157,12 @@ open_release_pr() {
     -q '[.[] | select(.headRefName | startswith("release/"))][0] | select(.) | "#\(.number) \(.url)"'
 }
 
-# none, draft or published.
+# The extension's tag gets no GitHub release: the store is where it goes.
 release_state() {
   local draft
+  case "$1" in extension-v*) echo tagged && return ;; esac
   draft=$(gh release view "$1" --repo "$RELEASES_REPO" --json isDraft -q .isDraft 2>/dev/null) || {
-    echo none
+    echo "no GitHub release found"
     return
   }
   if [ "$draft" = true ]; then echo draft; else echo published; fi
@@ -204,7 +187,7 @@ prepare() {
   trap cleanup EXIT
   git worktree add -q --detach "$work" "origin/$BASE"
 
-  local component current suffix yy mdd patch version tag
+  local component current suffix yy mdd patch version
   for component in $COMPONENTS; do version_of "$work" "$component" >/dev/null; done
   current=$(released_version <"$work/CHANGELOG.md")
   [ -n "$current" ] || die "CHANGELOG.md has no versioned section"
@@ -213,12 +196,11 @@ prepare() {
   mdd=$(($(date -u +%-m) * 100 + $(date -u +%-d)))
   # The patch namespace is shared across suffixes: an alpha and a stable cut the
   # same day get distinct patches, so neither tag ever collides.
-  patch=$(git tag -l "v$yy.$mdd.*" |
-    sed -E "s/^v$yy\.$mdd\.([0-9]+).*/\1/" |
+  patch=$(git tag -l "v$yy.$mdd.*" "*-v$yy.$mdd.*" |
+    sed -E "s/^([a-z]+-)?v$yy\.$mdd\.([0-9]+).*/\2/" |
     sort -n | tail -1)
   patch=$((${patch:--1} + 1))
   version="$yy.$mdd.$patch$suffix"
-  tag="v$version"
   branch="release/$version"
 
   if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
@@ -291,7 +273,7 @@ prepare() {
   (cd "$work" && .github/scripts/changelog-section.sh "$version" >"$notes")
   printf '\n%s\n' "$lines" >>"$notes"
 
-  echo "Tori $version (tag $tag, was $current)"
+  echo "Tori $version (was $current)"
   echo "--- release notes ---"
   cat "$notes"
   echo "---------------------"
@@ -330,53 +312,84 @@ release_run() {
 
 status() {
   git fetch -q --tags origin "$BASE"
-  local version tag subject state pr last ahead run component now lines=""
+  local version subject pr last ahead run tags component now tag state lines="" pending=""
   version=$(git show "origin/$BASE:CHANGELOG.md" | released_version)
-  tag="v$version"
   subject=$(git log -1 --format=%s "origin/$BASE")
-  state=$(release_state "$tag")
   pr=$(open_release_pr)
   last=$(git describe --tags --abbrev=0 "origin/$BASE" 2>/dev/null || true)
   ahead=$(git rev-list --count "${last:+$last..}origin/$BASE")
   run=$(release_run "$(git rev-parse "origin/$BASE")")
+  tags=$(git tag -l)
   for component in $COMPONENTS; do
     now=$(version_at "origin/$BASE" "$component")
-    if at_release "$component" "$now" "$version"; then
-      lines="$lines${lines:+, }$(component_line "$component" "$now" "$version" ships)"
-    else
-      lines="$lines${lines:+, }$(component_line "$component" "$now" "$version" stays)"
+    if ! at_release "$component" "$now" "$version"; then
+      lines="$lines$(component_line "$component" "$now" "$version" stays)"$'\n'
+      continue
     fi
+    if tag=$(released_tag "$component" "$now" <<<"$tags"); then
+      state="$tag $(release_state "$tag")"
+    else
+      state="not tagged yet"
+    fi
+    case "$state" in *" tagged" | *" published") ;; *) pending="$pending${pending:+, }$(label "$component")" ;; esac
+    lines="$lines$(component_line "$component" "$now" "$version" ships): $state"$'\n'
   done
 
   echo "$BASE is at $version, tip \"$subject\""
-  echo "release $tag: $state"
-  echo "components: $lines"
+  printf '%s' "$lines"
   echo "last tag on $BASE: ${last:-none}, $ahead commits since"
   echo "open release PR: ${pr:-none}"
   echo "Release workflow for the tip: ${run:-not started}"
   if [ -n "$pr" ]; then
     echo "next: merge the release PR; the Release workflow takes it from there"
-  elif [ "$state" = published ] && [ "$last" = "$tag" ] && [ "$ahead" -eq 0 ]; then
+  elif [ -z "$pending" ] && [ "$ahead" -eq 0 ]; then
     echo "next: nothing to release"
-  elif [ "$state" = published ]; then
+  elif [ -z "$pending" ]; then
     echo "next: scripts/release.sh prepare, when the $ahead commit(s) since $last are ready to ship"
-  elif grep -qx "## $version" <(git show "origin/$BASE:CHANGELOG.md"); then
+  else
     case "${run%% *}" in
-      success) echo "next: nothing; the run finished but $tag is $state, so look at the run" ;;
-      failure | cancelled) echo "next: fix the cause in an ordinary PR; merging it runs the release again" ;;
+      success) echo "next: nothing; the run finished but $pending is not out, so look at the run" ;;
+      failure | cancelled) echo "next: fix the cause in an ordinary PR; merging it builds what is not out yet" ;;
       "") echo "next: wait for the Release workflow to start, or dispatch it by hand" ;;
       *) echo "next: wait for the Release workflow" ;;
     esac
-  elif [ "$ahead" -gt 0 ]; then
-    echo "next: scripts/release.sh prepare"
-  else
-    echo "next: nothing to release"
   fi
+}
+
+# --- gate ------------------------------------------------------------------
+
+# A release that failed halfway builds again only what no tag covers yet.
+gate() {
+  local release tags component version tag ship any=false
+  release=$(released_version <CHANGELOG.md)
+  [ -n "$release" ] || die "CHANGELOG.md has no versioned section"
+  tags=$(git ls-remote --tags --refs origin | sed 's|.*refs/tags/||')
+  echo "version=$release"
+  for component in $COMPONENTS; do
+    version=$(version_of . "$component")
+    ship=false
+    if $all; then
+      ship=true
+      echo "$(label "$component") $version: building, as --all asks" >&2
+    elif ! at_release "$component" "$version" "$release"; then
+      echo "$(label "$component") unchanged at $version" >&2
+    elif tag=$(released_tag "$component" "$version" <<<"$tags"); then
+      echo "$(label "$component") $version: already released as $tag" >&2
+    else
+      ship=true
+      echo "$(label "$component") $version: building" >&2
+    fi
+    echo "$component=$ship"
+    echo "${component}_version=$version"
+    [ "$ship" = false ] || any=true
+  done
+  echo "release=$any"
 }
 
 case "$cmd" in
   prepare) prepare ;;
   status) status ;;
+  gate) gate ;;
   *)
     usage
     exit 2
