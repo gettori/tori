@@ -135,8 +135,8 @@ export default function FilesPanel(props: {
   const tab = (): FilesTab | undefined =>
     shownTabs().some((t) => t.id === filesTab()) ? filesTab() : shownTabs()[0]?.id;
 
-  /** A tab always opens the section: only the chevron closes it, so a click
-   *  on the tab you are on is never a surprise collapse. */
+  /** Another tab always opens the section; the one you are on toggles it,
+   *  the same as the chevron. */
   function showTab(id: FilesTab) {
     setFilesTab(id);
     filesLayout.setOpen("views", true);
@@ -306,6 +306,7 @@ export default function FilesPanel(props: {
               activeId={tab() ?? null}
               idOf={(t) => t.id}
               onActivate={(id) => showTab(id as FilesTab)}
+              onReselect={() => filesLayout.setOpen("views", !viewsOpen())}
               onReorder={(next) => setTabOrder([...next, ...tabOrder().filter((t) => !next.includes(t))])}
               renderTab={(t) => (
                 <Tab quiet value={t.id} id={`files-tab-${t.id}`}>

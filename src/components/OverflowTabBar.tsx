@@ -26,6 +26,8 @@ export default function OverflowTabBar<T>(props: {
   activeId: string | null;
   idOf: (t: T) => string;
   onActivate: (id: string) => void;
+  /** A click on the tab that was already active, which `onActivate` never hears. */
+  onReselect?: (id: string) => void;
   onReorder: (next: T[]) => void;
   /** The tab's markup. Called twice per tab: once for the row on screen, and
    *  once with `ghost` set for the inert measuring copy.
@@ -188,6 +190,18 @@ export default function OverflowTabBar<T>(props: {
     props.onActivate(next);
   }
 
+  // Read on the way down, before the trigger's own handler selects: by the
+  // time the press bubbles, a tab it just activated already reads as active.
+  let pressedActive = false;
+  function notePress(e: PointerEvent) {
+    pressedActive = !!(e.target as Element).closest('[role="tab"][aria-selected="true"]');
+  }
+  function onListClick(e: MouseEvent) {
+    const reselected = pressedActive && !!(e.target as Element).closest('[role="tab"]');
+    pressedActive = false;
+    if (reselected && props.activeId) props.onReselect?.(props.activeId);
+  }
+
   return (
     // Root sits *inside* the bar rather than above it, so the planned single
     // merged editor+terminal strip is one bar over a mixed item list and a
@@ -225,7 +239,11 @@ export default function OverflowTabBar<T>(props: {
           stays the one flex row it was, with `+N` and the trailing action
           beside the tabs rather than inside them. */}
       <TabRow position={positionOf}>
-        <Tabs.List class="otab-list">
+        <Tabs.List
+          class="otab-list"
+          ref={(el: HTMLDivElement) => el.addEventListener("pointerdown", notePress, true)}
+          onClick={onListClick}
+        >
           <For each={visible()}>{(t) => props.renderTab(t)}</For>
         </Tabs.List>
       </TabRow>

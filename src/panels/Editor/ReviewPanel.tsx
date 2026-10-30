@@ -1339,8 +1339,8 @@ export default function ReviewPanel(props: {
   const historyOpen = () => changesLayout.open("history");
   const historyHeight = () => changesLayout.size("history") * chromeScale();
 
-  /** A tab always opens the section: only the chevron closes it, so a click
-   *  on the tab you are on is never a surprise collapse. */
+  /** Another tab always opens the section; the one you are on toggles it,
+   *  the same as the chevron. */
   function showHistory(tab: HistoryTab) {
     setHistoryTab(tab);
     changesLayout.setOpen("history", true);
@@ -1905,6 +1905,7 @@ export default function ReviewPanel(props: {
               activeId={tab() ?? null}
               idOf={(t) => t.id}
               onActivate={(id) => showHistory(id as HistoryTab)}
+              onReselect={() => changesLayout.setOpen("history", !historyOpen())}
               onReorder={(next) => setTabOrder([...next, ...tabOrder().filter((t) => !next.includes(t))])}
               renderTab={(t) => (
                 <Tab
