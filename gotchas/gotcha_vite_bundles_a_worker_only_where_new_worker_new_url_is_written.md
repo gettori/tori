@@ -1,7 +1,7 @@
 ---
 summary: pass a worker to a helper as a factory, never a URL: Vite only bundles new Worker(new URL(...)) written at the call site
 status: current
-updated: 2026-10-05
+updated: 2026-10-31
 source: plan "Move syntax highlighting off the main thread, then move whatever else measures slow" (personal/tori, branch `off-the-main-thread`), ticket gettori/tickets#7; `src/utils/startWorker.ts`, `src/panels/Chat/highlight.ts`; commit 2c6d0fee
 ---
 
@@ -13,3 +13,4 @@ Do not hand a shared helper a `URL` and let it call `new Worker(url)`: Vite find
 
 - [[component_chat_highlighter]]: the helper that takes a factory
 - [[lesson_a_url_import_is_transformed_in_dev_and_copied_at_build]]: the other worker serving trap
+- [[gotcha_a_vite_worker_is_its_own_build_so_a_plugin_misses_its_modules]] the other worker trap

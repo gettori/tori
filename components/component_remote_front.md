@@ -1,7 +1,7 @@
 ---
 summary: the WebSocket front, run by the daemon so it listens with the app quit: one picked IP, device credentials, awake only when used
 status: current
-updated: 2026-10-15
+updated: 2026-10-31
 source: gettori/tori#213 on branch orchestrator; commits 5ea1f124, 06a2bf55 and the Phase 3 commit; gettori/tori#214 pairing plan on branch orchestrator; src-tauri/src/rpc/{ws,remote,devices,pairing,awake}.rs; src/panels/Settings/panes/RemotePane/RemotePane.tsx; dev/remote-probe.html; gettori/tickets#24 phase remote-in-daemon, commit fe065148, src-tauri/src/rpc/office.rs
 ---
 
@@ -24,7 +24,7 @@ It owns listening on one address, proving a connection is a paired device, pairi
 
 ## Interface
 
-- `auth.rs`'s `Credential::Remote { devices, pairing }` is what the front accepts. A first frame `pair {code, name}` answers `{id, name, credential}` and closes; `auth` is the only way into a served connection. Otherwise: a device credential authenticates as `Principal::Device(id)`, and the process token and child tokens are refused by construction. `CallerKind::Device` is admitted on the reads, `projects.list`, `caller`, `session.steer`, `session.interrupt`, `session.pending` and `ask.answer`, subscribes to `sessions` and `session:<id>` only, and steers as `TurnBy::Local`, as typed. `device.mint {name}` is Local only.
+- `auth.rs`'s `Credential::Remote { devices, pairing }` is what the front accepts. A first frame `pair {code, name}` answers `{id, name, credential}` and closes; `auth` is the only way into a served connection. Otherwise: a device credential authenticates as `Principal::Device(id)`, and the process token and child tokens are refused by construction. `CallerKind::Device` is admitted on the reads, `projects.list`, `caller`, `session.steer`, `session.interrupt`, `session.pending` and `ask.answer`, subscribes to `sessions` and `session:<id>` only, and steers as `TurnBy::Local`, as typed. `device.mint {name}` is Local only. A device's `caller` takes `{protocol}` and its answer carries `update` (`app`, `tori` or null, from `rpc/phone.rs`), which the app shows as the side to update in its connection banner ([[adr_each_component_releases_on_its_own_tag]]).
 - Tauri commands `remote_set`, `remote_status`, `remote_interfaces`, and for pairing `pairing_start` (QR SVG from the `qrcode` crate), `pairing_cancel`, `devices_list`, `device_revoke`. `remote://devices` carries `{ended: used | burned | cancelled | null}` to the pane on a pair, a burn, a cancel or a revoke. `remote_set` is the only writer of `settings.remote` (`set_settings` carries it over from disk, like `autopilot.enabled`) and applies it; The daemon applies it at start, so Remote on listens with the app quit; quitting the app no longer stops it.
 - `RemotePane` serialises its `remote_set` calls, reloads the store after each, and drops a change equal to what is stored ([[gotcha_a_switch_fires_onchange_when_a_reload_moves_checked]]).
 - `RemotePane` has a Pair a device row (the QR, the code, the URL, a countdown) and a Paired devices list with Revoke. Leaving the pane cancels a live code.

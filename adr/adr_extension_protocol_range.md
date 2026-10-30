@@ -1,7 +1,7 @@
 ---
 summary: host reads MIN_PROTOCOL..=PROTOCOL both ways, and the floor rises only once the store version is public, never by release count
 status: current
-updated: 2026-10-20
+updated: 2026-10-31
 source: "Browser: store release and onboarding, gettori/tickets#89 planning and two adversary passes (branch `browser-extension`, commit 24465fe8); `src-tauri/src/browser_host.rs` (`mismatch`, `MIN_PROTOCOL`); `extension/src/tab.ts` (`PROTOCOL`); `docs/RELEASING.md` Browser extension protocol"
 ---
 
@@ -27,4 +27,4 @@ The two halves update on different clocks. The store updates the extension withi
 - `MIN_TORI`, the oldest Tori the extension claims to work with, moves when the extension's own `PROTOCOL` rises above what an older Tori's host reads, not with `MIN_PROTOCOL`.
 - The refusal is reported to the daemon so Settings names the side to update; a call that gets past `permit` clears it, because reaching the daemon proves the protocol matched.
 
-Related: [[component_browser_extension]], [[component_release_pipeline]].
+Related: [[component_browser_extension]], [[component_release_pipeline]], [[adr_each_component_releases_on_its_own_tag]] (the phone's range: the daemon answers the side to update instead of refusing, and the floor follows release notes, since a sideloaded APK never updates itself).
