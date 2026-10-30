@@ -10,6 +10,16 @@ matching section here fails the release rather than publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.1030.0-beta
+
+- Dictation now asks for the microphone the first time you use it. Before, macOS refused it without asking, Tori never showed up under System Settings > Privacy & Security > Microphone, and there was no way to allow it.
+- Pull request tools answered by the daemon (`pr_create`, `pr_push`, `pr_merge`, `review_submit`, watching a pull request) no longer say not signed in with a GitHub account signed in. Signing in or out in the window reaches the daemon without a restart.
+- Claude chats show their plan above the composer now, same as Codex and the other ACP agents. Claude publishes it through Tori's new `plan_set` tool and updates it as each step starts and finishes.
+- New MCP tool `plan_set`: a chat sends its whole plan, each step pending, in progress or completed, and it replaces the card. An empty list hides it.
+- Clicking the selected tab under Changes or Files in the right sidebar collapses or expands that section, same as the chevron.
+- Selected text in the composer is easy to see now: it uses the same highlight as the rest of the chat.
+- Browser extension 26.1030.0, rolling out on the Chrome Web Store.
+
 ## 26.1029.0-beta
 
 - `tori wait <id>` waits for a session and says why it came back: idle, asking, needs you, limited (with when the limit resets), ended or timeout. `tori session wait` still works and prints the same.
