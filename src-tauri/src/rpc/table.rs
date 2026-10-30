@@ -12,11 +12,11 @@ use super::server::{
     CheckParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, DigestLookedParams, DigestParams,
     DraftParams, HandoffParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams,
     IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, LoopParams, MintParams,
-    ModeParams, ModelParams, NeedsYouSeenParams, OpenParams, PendingParams, PortParams, PrCheckLogParams,
-    PrCreateParams, PrGetParams, PrMergeParams, PrPushParams, PrWatchParams, ProjectIconParams, ProjectSetParams,
-    PromptRef, ProvenanceParams, RevealParams, ReviewMarkParams, ReviewSubmitParams, ScheduleAddParams,
-    ScheduleIdParams, SessionAnswerParams, SetupParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams,
-    UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, UNITS_GIT_MAX,
+    ModeParams, ModelParams, NeedsYouSeenParams, OpenParams, PendingParams, PlanSetParams, PortParams,
+    PrCheckLogParams, PrCreateParams, PrGetParams, PrMergeParams, PrPushParams, PrWatchParams, ProjectIconParams,
+    ProjectSetParams, PromptRef, ProvenanceParams, RevealParams, ReviewMarkParams, ReviewSubmitParams,
+    ScheduleAddParams, ScheduleIdParams, SessionAnswerParams, SetupParams, SpawnParams, SteerParams, TailParams,
+    TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, UNITS_GIT_MAX,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -587,6 +587,19 @@ pub static METHODS: &[Method] = &[
         call: |b, p, v| match p {
             Principal::Session(Caller::Chat(session)) => b.ask_create(session, params(v)?),
             _ => Err(RpcError::new(INTERNAL_ERROR, "ask.create reached with a caller its row does not admit")),
+        },
+    },
+    Method {
+        name: "plan.set",
+        description: "Show your plan in the calling chat's plan card, above the composer. Send every step each time, in order, each pending, inProgress or completed; the list replaces the last one. An empty list hides the card.",
+        params: schema::<PlanSetParams>,
+        callers: CHATS,
+        refusal: Some("the plan card shows in a chat panel, so only a chat session has one"),
+        outward: false,
+        read_only: false,
+        call: |b, p, v| match p {
+            Principal::Session(Caller::Chat(session)) => b.plan_set(session, params(v)?),
+            _ => Err(RpcError::new(INTERNAL_ERROR, "plan.set reached with a caller its row does not admit")),
         },
     },
     Method {
