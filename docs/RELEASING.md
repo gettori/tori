@@ -27,8 +27,10 @@ either finishes or stops with one `error:` line that says what to fix.
   changed anything, merge that in an ordinary PR. `src-tauri/packs.lock` names
   the gettori/packs commit the release embeds.
 - To change stage (alpha to beta, beta to stable), change the suffix of
-  `version` in `src-tauri/tauri.conf.json` and the four files that mirror it,
-  in an ordinary PR. The script carries whatever suffix it finds.
+  `version` in `src-tauri/tauri.conf.json`, `package.json` and
+  `src-tauri/Cargo.toml` (then `cargo update --package tori` in `src-tauri`
+  for the lockfile), in an ordinary PR. The script carries whatever suffix the
+  desktop has; the other components take it when they next ship.
 
 ## 1. Prepare
 
@@ -39,20 +41,26 @@ scripts/release.sh prepare
 Run it from any checkout, on any branch, clean or not. It works in a throwaway
 worktree of `origin/main` and leaves yours alone. It:
 
-1. picks the version, `YY.MDD.patch` from today's UTC date plus the current
-   suffix (the second release of a day gets patch 1),
-2. collects the `## Changelog` section of every PR merged into `main` since
+1. picks the version, `YY.MDD.patch` from today's UTC date plus the desktop's
+   current suffix (the second release of a day gets patch 1),
+2. asks `.github/scripts/ships.sh` which components changed since the release
+   each one carries: macOS, Android, the browser extension (see below),
+3. collects the `## Changelog` section of every PR merged into `main` since
    the last tag and writes them as `## <version>` in the changelog, under
-   whatever `## Unreleased` held,
-3. writes the version into the five files that carry it and both lockfiles,
-4. commits that as `Tori <version>` on a branch `release/<version>`, pushes it,
+   whatever `## Unreleased` held, with a last line naming what ships and what
+   stays,
+4. writes the version into the files of each component that ships: the three
+   macOS files and `src-tauri/Cargo.lock`, the two Android files and
+   `mobile/src-tauri/Cargo.lock`, `extension/package.json` without the suffix,
+5. commits that as `Tori <version>` on a branch `release/<version>`, pushes it,
    and opens the pull request with the notes as its body.
 
 It shows the version and the notes and asks before it pushes anything.
 
 It refuses when a release PR is already open, when the branch already exists,
 when a merged PR has no usable `## Changelog` section (it names the PR and the
-`gh pr edit` that fixes it), or when there is nothing to release.
+`gh pr edit` that fixes it), when a component's version files disagree, or
+when no component changed (`--force <component>` ships one anyway).
 
 ## 2. Merge
 
@@ -99,28 +107,27 @@ reach Homebrew installs that way. Add `auto_updates true` to the template in
 `.github/scripts/update-cask.sh` from the release after it, so brew stops
 offering upgrades the app already makes itself. A failed build therefore leaves nothing behind: no tag, no draft.
 
-The browser extension ships only on a release that changed it. Its version
-lives in `extension/package.json` and is the Tori release that last shipped
-it, without the stage suffix. `prepare` runs
-`.github/scripts/ships.sh extension` in the release worktree. That builds the
-extension, which lists what the build was made from (every module it bundled,
-through `scripts/bundled-inputs.ts`, plus its manifests, icons and config),
-diffs those against the tag of the version the extension carries, and checks
-that the version of every package it bundles is in that tag's
-`pnpm-lock.yaml`. When anything differs, `prepare` sets the extension to this
-release's version and adds a "Browser extension" line to the notes. The
-release PR's body ends with whether it ships either way;
-`scripts/release.sh prepare --extension` ships it regardless. To see the
-decision without opening a PR (it prints `extension` or nothing, and says why
-on stderr):
+A component ships only on a release that changed it, and keeps the version of
+the release that last shipped it: macOS in `package.json`,
+`src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`; Android in
+`mobile/src-tauri/tauri.conf.json` and `mobile/src-tauri/Cargo.toml`; the
+browser extension in `extension/package.json`, without the stage suffix.
+`prepare` runs `.github/scripts/ships.sh <component>` for each in the release
+worktree. That builds the component's web half, which lists what the build was
+made from (every module it bundled, through `scripts/bundled-inputs.ts`, plus
+the config, public files, manifests and icons it reads), takes the crate's
+`cargo metadata` for the Rust half, diffs those against the tag of the version
+the component carries, and checks that the version of every package it bundles
+is in that tag's `pnpm-lock.yaml` or `Cargo.lock`. When anything differs,
+`prepare` moves that component to this release's version. The last line of the
+notes names what ships and what stays, and the PR body ends with the same;
+`scripts/release.sh prepare --force <component>` ships one regardless. To see
+a decision without opening a PR (it prints the component or nothing, and says
+why on stderr):
 
 ```sh
 .github/scripts/ships.sh extension
 ```
-
-The same script answers `macos` and `android` the same way, from their
-crates' `cargo metadata` and `Cargo.lock` as well as their vite builds;
-`prepare` does not ask it about them yet.
 
 After `publish`, the `extension` job ships when `extension/package.json`
 holds this release's version, and skips the upload otherwise. Shipping, it
@@ -141,7 +148,8 @@ approved and waiting for Publish. The store may then refuse the upload or
 the submit and the job goes red, which is expected rather than broken.
 Publish the waiting version, or cancel its submission in the dashboard, and
 re-run the job; or carry the change in the next release with
-`prepare --extension`, since an unchanged extension does not ship on its own.
+`prepare --force extension`, since an unchanged extension does not ship on its
+own.
 
 Expect 25 minutes with warm caches, up to 45 after a quiet week.
 
