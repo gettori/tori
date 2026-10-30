@@ -338,8 +338,8 @@ jobs:
       # push above somehow did not land.
       - name: Create the release
         run: |
-          # Never a prerelease, whatever the stage suffix: the in-app updater
-          # and install.sh read GitHub's latest release, which skips prereleases.
+          # Never a prerelease, whatever the stage suffix: builds up to 26.1030.0
+          # read GitHub's latest release, which skips prereleases.
           flags=(--draft --verify-tag)
           # The artifacts keep their dmg/ and cli/ folders, so by file, not
           # by assets/*, which would hand gh two directories.
