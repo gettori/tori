@@ -1,9 +1,7 @@
 # Build, sign, notarize and publish a release when the release commit lands on
-# main. The trigger is the merge of the PR `scripts/release.sh prepare` opened:
-# the `gate` job reads the version from tauri.conf.json and goes ahead only
-# when CHANGELOG.md has that version's section and no tag names it yet. A
-# stage-suffix bump in an ordinary PR has no section, so it never fires; a fix
-# merged after a failed run fires again, since the tag is still missing.
+# main, the merge of the PR `scripts/release.sh prepare` opened. An ordinary
+# merge moves no component's version, so the gate builds nothing; a fix merged
+# after a failed run builds again only what no tag covers yet.
 #
 # Version scheme: YY.MDD.patch with a stage suffix while unstable, e.g.
 # 26.824.0-alpha is the Aug 24 2026 alpha, 26.1205.0 a Dec 5 stable. The
@@ -15,20 +13,23 @@
 # the size. Android is arm64 only, which is every phone that can pair with a
 # Mac; armv7 and x86 would quadruple that job for nobody.
 #
-# The tag is made last, after every build has passed, so a failed build leaves
-# nothing behind and the next push to main simply tries again. A tag pushed
-# with github.token starts no workflow, which is why this one is not `on: tags`.
+# A tag pushed with github.token starts no workflow, which is why this one is
+# not `on: tags`.
 #
 # Secrets live on the `release` environment, limited to main, so a workflow on
 # a PR branch never sees them. docs/RELEASING.md lists them and where each
-# comes from. The manual trigger is a rehearsal: it builds everything the same
-# way, uploads the artifacts, and publishes nothing.
+# comes from.
 name: Release
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      all:
+        description: "Build every component, not only the ones this commit releases"
+        type: boolean
+        default: false
 
 # Two release commits merged back to back would otherwise race for the tag.
 concurrency:
@@ -44,33 +45,28 @@ jobs:
     outputs:
       release: ${{ steps.decide.outputs.release }}
       version: ${{ steps.decide.outputs.version }}
+      macos: ${{ steps.decide.outputs.macos }}
+      macos_version: ${{ steps.decide.outputs.macos_version }}
+      android: ${{ steps.decide.outputs.android }}
+      android_version: ${{ steps.decide.outputs.android_version }}
+      extension: ${{ steps.decide.outputs.extension }}
+      extension_version: ${{ steps.decide.outputs.extension_version }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Decide whether this commit is a release
+      - name: Decide which components this commit releases
         id: decide
         env:
-          GH_TOKEN: ${{ github.token }}
+          ALL: ${{ inputs.all }}
         run: |
-          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          echo "version=$version" >> "$GITHUB_OUTPUT"
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            echo "rehearsal: building $version from $GITHUB_REF_NAME, publishing nothing"
-            echo "release=true" >> "$GITHUB_OUTPUT"
-            exit 0
+            echo "rehearsal from $GITHUB_REF_NAME: publishing nothing"
           fi
-          if ! grep -qx "## $version" CHANGELOG.md; then
-            echo "CHANGELOG.md has no '## $version' section: not a release commit"
-            echo "release=false" >> "$GITHUB_OUTPUT"
-            exit 0
+          if [ "$ALL" = true ]; then
+            scripts/release.sh gate --all >> "$GITHUB_OUTPUT"
+          else
+            scripts/release.sh gate >> "$GITHUB_OUTPUT"
           fi
-          if git ls-remote --exit-code --tags origin "v$version" >/dev/null; then
-            echo "v$version is already tagged: nothing to do"
-            echo "release=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "release commit for $version: building"
-          echo "release=true" >> "$GITHUB_OUTPUT"
 
       # The body comes from here, so a missing section fails in seconds, not
       # after a full compile.
@@ -80,7 +76,7 @@ jobs:
 
   macos:
     needs: gate
-    if: needs.gate.outputs.release == 'true'
+    if: needs.gate.outputs.macos == 'true'
     # The runner's Xcode decides the SDK the app links against, and macOS
     # draws an app linked before SDK 26 with the old window chrome and
     # scrollbars. check-bundle.sh fails the build if that slips.
@@ -101,7 +97,7 @@ jobs:
             dmg_arch: x64
             cli_arch: x64
     env:
-      VERSION: ${{ needs.gate.outputs.version }}
+      VERSION: ${{ needs.gate.outputs.macos_version }}
       BUNDLE: src-tauri/target/${{ matrix.target }}/release/bundle
       # Only the key's path is job-wide. The notary credentials are given to the
       # notarize steps alone, deliberately kept from `tauri build`: with them in
@@ -110,11 +106,6 @@ jobs:
       APPLE_API_KEY_PATH: /tmp/tori-notary-key.p8
     steps:
       - uses: actions/checkout@v4
-
-      - name: Check the version agrees with the app
-        run: |
-          conf=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          [ "$conf" = "$VERSION" ] || { echo "gate says $VERSION, tauri.conf.json says $conf" >&2; exit 1; }
 
       - name: Write the notary key
         run: printf '%s' "$APPLE_API_KEY_CONTENT" > "$APPLE_API_KEY_PATH"
@@ -219,11 +210,11 @@ jobs:
 
   android:
     needs: gate
-    if: needs.gate.outputs.release == 'true'
+    if: needs.gate.outputs.android == 'true'
     runs-on: ubuntu-latest
     environment: release
     env:
-      VERSION: ${{ needs.gate.outputs.version }}
+      VERSION: ${{ needs.gate.outputs.android_version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -306,76 +297,75 @@ jobs:
           path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
 
-  publish:
-    needs: [gate, macos, android]
-    if: github.event_name == 'push'
+  # Needs only its own build, so a component that does not ship, or fails,
+  # never holds this one back.
+  publish-macos:
+    needs: [gate, macos]
     runs-on: ubuntu-latest
     environment: release
     env:
-      VERSION: ${{ needs.gate.outputs.version }}
+      VERSION: ${{ needs.gate.outputs.macos_version }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
         with:
+          pattern: macos-*
           path: assets
           merge-multiple: true
 
       - name: Extract the release notes
-        run: .github/scripts/changelog-section.sh "$VERSION" > release-notes.md
+        run: .github/scripts/changelog-section.sh "${{ needs.gate.outputs.version }}" > release-notes.md
 
-      # Only now, with every artifact in hand. A ruleset on v* may block
-      # deleting or moving a tag; it must not block creating one.
-      - name: Tag the release commit
+      - name: Tag and publish the release
+        if: github.event_name == 'push'
         run: |
-          git tag "v$VERSION" "$GITHUB_SHA"
-          git push origin "v$VERSION"
-
-      # Drafted first so a failed upload never leaves a live release without
-      # its assets; published only after every one is confirmed present.
-      # --verify-tag: gh must not invent a tag on the default branch if the
-      # push above somehow did not land.
-      - name: Create the release
-        run: |
-          # Never a prerelease, whatever the stage suffix: builds up to 26.1030.0
-          # read GitHub's latest release, which skips prereleases.
-          flags=(--draft --verify-tag)
-          # The artifacts keep their dmg/ and cli/ folders, so by file, not
-          # by assets/*, which would hand gh two directories.
-          files=()
-          while IFS= read -r f; do files+=("$f"); done < <(find assets -type f | sort)
-          [ ${#files[@]} -eq 7 ] || { echo "expected 7 assets, found ${#files[@]}:" >&2; printf '  %s\n' "${files[@]}" >&2; exit 1; }
-          gh release create "v$VERSION" \
-            --repo "$GITHUB_REPOSITORY" \
-            "${flags[@]}" \
-            --title "Tori v$VERSION" \
-            --notes-file release-notes.md \
-            "${files[@]}"
-          want=$(printf '%s\n' "${files[@]}" | xargs -n1 basename | sort)
-          have=$(gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' | sort)
-          if [ "$want" != "$have" ]; then
-            echo "the draft is missing an asset; have:" >&2
-            echo "$have" >&2
-            exit 1
-          fi
-          gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+          .github/scripts/publish.sh "macos-v$VERSION" "Tori v$VERSION for macOS" release-notes.md true assets \
+            "Tori_${VERSION}_aarch64.dmg" "Tori_${VERSION}_x64.dmg" \
+            "Tori_${VERSION}_aarch64.app.tar.gz" "Tori_${VERSION}_x64.app.tar.gz" \
+            "tori-cli-$VERSION-macos-arm64.tar.gz" "tori-cli-$VERSION-macos-x64.tar.gz"
 
       - name: Point the Homebrew cask at it
+        if: github.event_name == 'push'
         env:
           TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
         run: .github/scripts/update-cask.sh "$VERSION"
 
-  # Nothing waits on this job, so a store failure leaves the release alone
-  # and goes red here on its own. It submits staged; Publish stays a click.
-  # Ships only when `release.sh prepare` gave the extension this release's version.
-  extension:
-    needs: [gate, publish]
-    if: >-
-      !cancelled() && needs.gate.outputs.release == 'true' &&
-      (needs.publish.result == 'success' || github.event_name == 'workflow_dispatch')
+  publish-android:
+    needs: [gate, android]
     runs-on: ubuntu-latest
     environment: release
+    env:
+      VERSION: ${{ needs.gate.outputs.android_version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: android
+          path: assets
+
+      - name: Extract the release notes
+        run: .github/scripts/changelog-section.sh "${{ needs.gate.outputs.version }}" > release-notes.md
+
+      # GitHub's latest release stays the Mac's, so the releases page leads
+      # with a DMG.
+      - name: Tag and publish the release
+        if: github.event_name == 'push'
+        run: .github/scripts/publish.sh "android-v$VERSION" "Tori v$VERSION for Android" release-notes.md false assets "Tori_$VERSION.apk"
+
+  # Nothing else waits on this job, so a store failure goes red here on its
+  # own. It submits staged; Publish stays a click. The tag gets no GitHub
+  # release, since the store is where the extension is installed from.
+  extension:
+    needs: gate
+    if: needs.gate.outputs.extension == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    env:
+      VERSION: ${{ needs.gate.outputs.extension_version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -397,22 +387,14 @@ jobs:
           path: ${{ steps.zip.outputs.path }}
           if-no-files-found: error
 
-      - name: Decide whether this release ships the extension
-        id: ships
-        env:
-          VERSION: ${{ needs.gate.outputs.version }}
+      - name: Tag the release commit
+        if: github.event_name == 'push'
         run: |
-          extension=$(node -p "require('./extension/package.json').version")
-          if [ "$extension" = "${VERSION%%-*}" ]; then
-            echo "extension $extension ships with $VERSION"
-            echo "ship=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "extension unchanged at $extension: not uploading"
-            echo "ship=false" >> "$GITHUB_OUTPUT"
-          fi
+          git tag "extension-v$VERSION" "$GITHUB_SHA"
+          git push origin "extension-v$VERSION"
 
       - name: Upload and submit to the Chrome Web Store
-        if: github.event_name == 'push' && steps.ships.outputs.ship == 'true'
+        if: github.event_name == 'push'
         env:
           CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
           CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
