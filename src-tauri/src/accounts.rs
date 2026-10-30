@@ -181,6 +181,14 @@ pub fn profiles_for_with(file: &AccountsFile, adapter_id: &str, default_present:
     out
 }
 
+/// An agent's accounts as a phone's picker shows them: never a home or a token.
+pub fn picker_rows(file: &AccountsFile, adapter_id: &str) -> Vec<serde_json::Value> {
+    profiles_for(file, adapter_id)
+        .into_iter()
+        .map(|p| serde_json::json!({ "id": p.id, "label": p.label, "email": p.email }))
+        .collect()
+}
+
 /// Look up one profile, including the synthetic default.
 pub fn profile(file: &AccountsFile, adapter_id: &str, profile_id: &str) -> Option<Profile> {
     profiles_for(file, adapter_id).into_iter().find(|p| p.id == profile_id)
@@ -1265,6 +1273,27 @@ mod tests {
             managed: true,
             command: None,
         }
+    }
+
+    #[test]
+    fn a_picker_row_carries_no_home_or_command() {
+        let mut file = AccountsFile::default();
+        file.adapters.insert(
+            "x".into(),
+            vec![Profile {
+                email: Some("me@example.com".into()),
+                command: Some("x-work".into()),
+                ..added("work", "/private/homes/work")
+            }],
+        );
+        let rows = picker_rows(&file, "x");
+        assert_eq!(rows.len(), 2, "the default and the added one");
+        for row in &rows {
+            let mut keys: Vec<&str> = row.as_object().unwrap().keys().map(String::as_str).collect();
+            keys.sort_unstable();
+            assert_eq!(keys, ["email", "id", "label"], "{row}");
+        }
+        assert_eq!(rows[1]["email"], "me@example.com");
     }
 
     // --- the default profile ---

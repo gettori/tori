@@ -11,6 +11,6 @@ describe("updateFrom", () => {
   it("reads a Tori that answers no update as protocol 0", () => {
     expect(updateFrom({ kind: "device" }, 0)).toBe(null);
     expect(updateFrom({ kind: "device" }, 1)).toBe("tori");
-    expect(updateFrom(null, PROTOCOL)).toBe(null);
+    expect(updateFrom(null, PROTOCOL)).toBe("tori");
   });
 });

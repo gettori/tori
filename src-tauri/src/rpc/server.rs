@@ -197,6 +197,20 @@ pub struct SetupParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct AgentsListParams {
+    /// A folder whose last chat's agent and account to answer as `remembered`.
+    pub folder: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AccountsListParams {
+    /// The agent whose accounts to list, as `session.spawn` takes it.
+    pub agent: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ProjectIconParams {
     /// A project's `path` from `projects.list`.
     pub path: String,
@@ -924,6 +938,8 @@ pub trait Backend: Send + Sync {
     fn sessions_list(&self, params: ListParams) -> Result<Value, RpcError>;
     fn projects_list(&self) -> Result<Value, RpcError>;
     fn project_icon(&self, params: ProjectIconParams) -> Result<Value, RpcError>;
+    fn accounts_list(&self, params: AccountsListParams) -> Result<Value, RpcError>;
+    fn agents_list(&self, params: AgentsListParams) -> Result<Value, RpcError>;
     fn ports_list(&self) -> Result<Value, RpcError>;
     fn worktree_at(&self, params: PortParams) -> Result<Value, RpcError>;
     fn session_tail(&self, params: TailParams) -> Result<Value, RpcError>;
@@ -1035,12 +1051,6 @@ pub(super) fn subscribe(
         return Err(RpcError::new(
             REFUSED,
             "the browser extension subscribes to nothing yet",
-        ));
-    }
-    if channel == Channel::Accounts && kind == CallerKind::Device {
-        return Err(RpcError::new(
-            REFUSED,
-            "a device subscribes to sessions, session:<id>, chat:<id> and autopilot only",
         ));
     }
     // The stream is for a person watching a chat; an agent reads a session with session.tail.
@@ -1389,6 +1399,12 @@ pub mod tests {
         }
         fn project_icon(&self, p: ProjectIconParams) -> Result<Value, RpcError> {
             Ok(json!({ "path": p.path }))
+        }
+        fn agents_list(&self, _: AgentsListParams) -> Result<Value, RpcError> {
+            Ok(json!({ "agents": [{ "id": "claude", "label": "Claude" }], "remembered": null }))
+        }
+        fn accounts_list(&self, p: AccountsListParams) -> Result<Value, RpcError> {
+            Ok(json!([{ "id": "default", "label": p.agent, "email": null }]))
         }
         fn session_tail(&self, p: TailParams) -> Result<Value, RpcError> {
             Ok(json!([{ "id": p.id }]))
@@ -2224,7 +2240,7 @@ pub mod tests {
     }
 
     #[test]
-    fn a_device_reads_and_drives_chats_and_the_autopilot_switch() {
+    fn a_device_reads_and_drives_chats_starts_work_and_the_autopilot_switch() {
         let open: Vec<&str> = table::METHODS
             .iter()
             .filter(|m| m.callers.contains(&CallerKind::Device))
@@ -2257,9 +2273,14 @@ pub mod tests {
                 "units.git",
                 "units.sync",
                 "units.pr",
+                "worktree.new",
+                "issues.assigned",
+                "issues.get",
                 "session.spawn",
                 "ask.answer",
                 "projects.list",
+                "agents.list",
+                "accounts.list",
                 "project.icon",
                 "autopilot.state",
                 "autopilot.log",
@@ -2274,6 +2295,23 @@ pub mod tests {
                 0,
                 &device,
                 &request("session.spawn", json!({"folder": "/p", "agent": "claude"}))
+            )
+            .is_ok());
+        assert!(server
+            .dispatch(
+                0,
+                &device,
+                &request(
+                    "session.spawn",
+                    json!({"project": "/p", "new_worktree": "b", "agent": "claude", "background": true})
+                )
+            )
+            .is_ok());
+        assert!(server
+            .dispatch(
+                0,
+                &device,
+                &request("worktree.new", json!({"project": "/p", "branch": "b"}))
             )
             .is_ok());
         let worker = Principal::Session(Caller::Chat(WORKER.into()));
@@ -2343,7 +2381,7 @@ pub mod tests {
     }
 
     #[test]
-    fn a_device_subscribes_to_everything_but_accounts() {
+    fn a_device_subscribes_to_sessions_chats_accounts_and_the_autopilot() {
         let server = stub_server();
         let device = Principal::Device("d1".into());
         let subscribe = |topic: &str| server.dispatch(0, &device, &request("subscribe", json!({ "topic": topic })));
@@ -2351,7 +2389,7 @@ pub mod tests {
         assert!(subscribe("session:s1").is_ok());
         assert!(subscribe("chat:s1").is_ok());
         assert!(subscribe("autopilot").is_ok());
-        assert_eq!(subscribe("accounts").unwrap_err().code, REFUSED);
+        assert!(subscribe("accounts").is_ok());
         assert!(server
             .dispatch(
                 0,
