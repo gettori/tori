@@ -1,7 +1,7 @@
 ---
 summary: MV3 extension that reaches the daemon through tori as a native host; per tab worktree, picks, error count, DevTools panel
 status: current
-updated: 2026-10-21
+updated: 2026-10-31
 source: "Browser: page errors in the extension, gettori/tickets#91 (branch `browser-extension`, commits 57d30b0a, 14c2e5e1, bbf66e60); Browser: store release and onboarding, gettori/tickets#89 (branch `browser-extension`, commits 24465fe8, 49ba065f, 5fd3c397, 800655f7, e22ab1de, 46651e5a); earlier slices on the same branch from 05e0bd4f; `extension/`, `src-tauri/src/browser_host.rs`, `src-tauri/src/rpc/browsers.rs`, `src-tauri/src/rpc/hub.rs`; gettori/web#8"
 ---
 
@@ -60,7 +60,7 @@ Only native messaging to the Tori on the same Mac. `fetch` reads a screenshot ba
 
 ## Connections
 
-- [[component_release_pipeline]]: the `extension` job uploads and submits each release.
+- [[component_release_pipeline]]: the `extension` job tags `extension-v<version>`, then uploads and submits each release that ships the extension.
 - [[lesson_store_review_needs_its_legal_pages_live_before_the_merge]]: the ordering the first submission forced.
 - [[gotcha_a_testing_oauth_app_mints_refresh_tokens_that_die_in_7_days]]
 
