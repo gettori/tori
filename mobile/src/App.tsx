@@ -213,6 +213,10 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
   const barred = () => !top() || ["project", "topic", "unit"].includes(top()!.screen);
   const openUnit = (unit: Unit, back: string) => go({ screen: "unit", unit, back });
   const openSession = (row: SessionRow) => go({ screen: "chat", row });
+  const projectOf = (unit: Unit) =>
+    tree()
+      ?.spaces.flatMap((s) => s.projects)
+      .find((p) => p.units.some((u) => u.folder === unit.folder))?.path ?? null;
   const units = () =>
     tree()?.spaces.flatMap((s) => s.projects.flatMap((p) => p.units.map((unit) => ({ unit, project: p.name })))) ?? [];
   const markSeen = (params: { session?: string; folder?: string | null; branch?: string | null }) =>
@@ -293,6 +297,7 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
             <UnitScreen
               client={props.client}
               unit={view.unit}
+              project={projectOf(view.unit)}
               back={view.back}
               live={live}
               crew={crew}
