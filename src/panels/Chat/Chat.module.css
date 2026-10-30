@@ -492,10 +492,6 @@
   padding: 0;
 }
 
-.promptField :global(.cm-content ::selection) {
-  background: var(--accent-subtle);
-}
-
 /* A steer: the same person's message, delivered into the turn above it rather
    than opening one of its own. Inset from the right edge and tightened so it
    reads as an aside within that turn, not as the next thing asked. */
@@ -2875,12 +2871,6 @@ button.diffHunkHeader:hover {
 
 .inputField :global(.cm-placeholder) {
   color: var(--fg-watermark);
-}
-
-.inputField :global(.cm-editor:not(.cm-focused) .cm-selectionBackground),
-.inputField :global(.cm-selectionBackground),
-.inputField :global(.cm-content ::selection) {
-  background: var(--accent-subtle);
 }
 
 .inputField :global(.cm-content[contenteditable="false"]) {
