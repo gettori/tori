@@ -46,6 +46,7 @@ function client(answers: Record<string, unknown>) {
   const request = vi.fn(async (method: string) => answers[method] ?? null);
   const fake = {
     status: () => "open",
+    update: () => null,
     generation: () => 1,
     request,
     subscribe: () => () => {},

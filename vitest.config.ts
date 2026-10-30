@@ -64,7 +64,7 @@ export default defineConfig({
         test: {
           name: "unit",
           environment: "node",
-          include: ["src/**/*.test.ts", "extension/src/**/*.test.ts"],
+          include: ["src/**/*.test.ts", "extension/src/**/*.test.ts", "mobile/src/**/*.test.ts"],
           server: inlineSolid,
         },
       },

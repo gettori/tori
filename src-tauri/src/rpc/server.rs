@@ -90,6 +90,13 @@ pub struct MintParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct CallerParams {
+    /// A phone's protocol number.
+    pub protocol: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct InterruptParams {
     /// The live chat session whose turn to stop.
     pub id: String,

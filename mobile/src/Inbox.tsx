@@ -19,7 +19,7 @@ import {
 import { byPlace, type PermissionRow } from "../../src/utils/permissionGroups";
 import { signalLabel, type ReviewItem } from "../../src/utils/reviewSignals";
 import type { RemoteClient } from "./remote";
-import { DOT, Offline } from "./Root";
+import { DOT, ConnectionBanner } from "./Root";
 import { PushTop } from "./Screens";
 import type { SessionRow } from "./tree";
 import mobile from "./mobile.module.css";
@@ -438,7 +438,7 @@ export default function InboxScreen(props: {
   return (
     <div class={styles.glow}>
       <PushTop back="Back" onBack={props.onBack} />
-      <Offline client={props.client} />
+      <ConnectionBanner client={props.client} />
       <div class={styles.scroll}>
         <h1 class={styles.screenTitle}>Inbox</h1>
         <SegmentedControl<Tab>

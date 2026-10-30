@@ -4,6 +4,15 @@ export type Saved = { url: string; credential: string; id: string; name: string 
 
 export type Status = "connecting" | "open" | "offline" | "revoked";
 
+// Raised with PHONE_PROTOCOL in src-tauri/src/rpc/phone.rs on a breaking
+// change to what the app sends or reads.
+export const PROTOCOL = 0;
+
+export const OLD_TORI = "Tori on your Mac is too old for this app: update Tori";
+export const OLD_APP = "This app is too old for Tori on your Mac: update the app";
+
+export type Update = "tori" | "app";
+
 type Frame = {
   id?: number | null;
   method?: string;
@@ -36,6 +45,13 @@ export class RpcError extends Error {
   ) {
     super(message);
   }
+}
+
+// A Tori from before the check answers no update, and speaks protocol 0 only.
+export function updateFrom(answer: unknown, own = PROTOCOL): Update | null {
+  if (answer === null || typeof answer !== "object" || !("update" in answer)) return own > 0 ? "tori" : null;
+  const update = answer.update;
+  return update === "app" || update === "tori" ? update : null;
 }
 
 export function loadSaved(): Saved | null {
@@ -105,8 +121,10 @@ export function pair(url: string, code: string, name: string): Promise<Saved> {
 export class RemoteClient {
   readonly status: () => Status;
   readonly generation: () => number;
+  readonly update: () => Update | null;
   private setStatus: (s: Status) => void;
   private setGeneration: (n: number) => void;
+  private setUpdate: (u: Update | null) => void;
   private socket: WebSocket | null = null;
   private nextId = 1;
   private pending = new Map<
@@ -126,10 +144,13 @@ export class RemoteClient {
   ) {
     const [status, setStatus] = createSignal<Status>("connecting");
     const [generation, setGeneration] = createSignal(0);
+    const [update, setUpdate] = createSignal<Update | null>(null);
     this.status = status;
     this.generation = generation;
+    this.update = update;
     this.setStatus = setStatus;
     this.setGeneration = setGeneration;
+    this.setUpdate = setUpdate;
     this.connect();
   }
 
@@ -157,7 +178,7 @@ export class RemoteClient {
 
   wake() {
     if (this.stopped) return;
-    if (this.status() === "open") return void this.request("caller").catch(() => {});
+    if (this.status() === "open" && this.socket) return this.check(this.socket);
     if (this.retry) clearTimeout(this.retry);
     const stale = this.socket;
     this.socket = null;
@@ -179,6 +200,13 @@ export class RemoteClient {
     if (this.retry) clearTimeout(this.retry);
     const socket = this.socket;
     if (socket) this.drop(socket);
+  }
+
+  private check(socket: WebSocket) {
+    this.send(socket, "caller", { protocol: PROTOCOL }).then(
+      (answer) => this.setUpdate(updateFrom(answer)),
+      () => this.setUpdate(null),
+    );
   }
 
   private send(socket: WebSocket, method: string, params: unknown, replyMs = REPLY_MS): Promise<unknown> {
@@ -208,7 +236,8 @@ export class RemoteClient {
         () => {
           this.retryMs = 1000;
           this.setStatus("open");
-          this.probe = setInterval(() => void this.send(socket, "caller", null).catch(() => {}), PROBE_MS);
+          this.check(socket);
+          this.probe = setInterval(() => this.check(socket), PROBE_MS);
           void this.send(socket, "visible", { visible: this.shown }).catch(() => {});
           for (const topic of this.topics.keys()) void this.send(socket, "subscribe", { topic }).catch(() => {});
           this.setGeneration(this.generation() + 1);
@@ -259,6 +288,7 @@ export class RemoteClient {
       waiting.reject(new Error("the connection to Tori closed"));
     }
     this.pending.clear();
+    this.setUpdate(null);
     if (this.stopped) return;
     this.setStatus("offline");
     this.retry = setTimeout(() => this.connect(), this.retryMs);
