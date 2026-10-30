@@ -9,24 +9,14 @@ import { syncMarks } from "../../src/utils/branchSync";
 import { ago } from "../../src/utils/relativeTime";
 import { bucketByLastActive } from "../../src/utils/sessionBuckets";
 import type { Crew } from "./Autopilot";
-import { REFUSED_CODE, RpcError, type RemoteClient } from "./remote";
+import NewSheet, { type Started } from "./NewSheet";
+import type { RemoteClient } from "./remote";
 import { DOT, ConnectionBanner, PhaseMark } from "./Root";
 import { GitCounts, PushTop, watchGit, watchSync } from "./Screens";
-import {
-  PHASE_LABEL,
-  agentHolds,
-  atUnit,
-  newest,
-  phaseOf,
-  sessionLabel,
-  type SessionRow,
-  type Topic,
-  type Unit,
-} from "./tree";
+import { PHASE_LABEL, agentHolds, atUnit, phaseOf, sessionLabel, type SessionRow, type Topic, type Unit } from "./tree";
 import styles from "./shell.module.css";
 
 const EARLIER_LIMIT = 100;
-const FALLBACK_AGENT = "claude";
 
 export function AgentMark(props: { agent: string | undefined; size: number }) {
   return (
@@ -172,6 +162,7 @@ export function SessionList(props: {
 export default function UnitScreen(props: {
   client: RemoteClient;
   unit: Unit;
+  project: string | null;
   back: string;
   live: () => SessionRow[];
   crew: () => Crew;
@@ -182,37 +173,18 @@ export default function UnitScreen(props: {
   const { here, earlier } = unitSessions(props.client, () => [props.unit], props.live);
   const git = watchGit(props.client, () => [props.unit.folder]);
   const sync = watchSync(props.client, () => [props.unit]);
-  const [spawning, setSpawning] = createSignal(false);
-  const [error, setError] = createSignal<string | null>(null);
 
-  const spawn = (agent: string) =>
-    props.client.request<{ id: string; agent: string }>("session.spawn", { folder: props.unit.folder, agent });
-
-  // The desktop's remembered agent is not on the socket, so the last one used
-  // here stands in; a refusal means it has no chat surface.
-  const startNew = async () => {
-    const remembered = newest([...here(), ...(earlier() ?? [])])?.agent ?? FALLBACK_AGENT;
-    setSpawning(true);
-    setError(null);
-    try {
-      const started = await spawn(remembered).catch((e: unknown) => {
-        if (e instanceof RpcError && e.code === REFUSED_CODE && remembered !== FALLBACK_AGENT)
-          return spawn(FALLBACK_AGENT);
-        throw e;
-      });
-      props.onOpen({
-        id: started.id,
-        agent: started.agent,
-        cwd: props.unit.folder,
-        live: true,
-        last_active: Math.floor(Date.now() / 1000),
-        home: { project: "", folder: props.unit.folder, branch: props.unit.branch },
-      });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSpawning(false);
-    }
+  const [sheet, setSheet] = createSignal(false);
+  const started = (s: Started) => {
+    setSheet(false);
+    props.onOpen({
+      id: s.id,
+      agent: s.agent,
+      cwd: s.folder,
+      live: true,
+      last_active: Math.floor(Date.now() / 1000),
+      home: { project: "", folder: s.folder, branch: s.folder === props.unit.folder ? props.unit.branch : null },
+    });
   };
 
   return (
@@ -221,16 +193,13 @@ export default function UnitScreen(props: {
         back={props.back}
         onBack={props.onBack}
         end={
-          <button class={styles.newPill} disabled={spawning()} onClick={() => void startNew()}>
+          <button class={styles.newPill} onClick={() => setSheet(true)}>
             <Icon icon={Plus} size={13} strokeWidth={2.6} />
             New
           </button>
         }
       />
       <ConnectionBanner client={props.client} />
-      <Show when={error()}>
-        <p class={styles.banner}>{error()}</p>
-      </Show>
       <div class={styles.scroll}>
         <div class={styles.unitHead}>
           <span class={styles.headTitle}>{props.unit.label}</span>
@@ -252,6 +221,15 @@ export default function UnitScreen(props: {
           onOpen={props.onOpen}
         />
       </div>
+      <Show when={sheet()}>
+        <NewSheet
+          client={props.client}
+          unit={props.unit}
+          project={props.project}
+          onStarted={started}
+          onDone={() => setSheet(false)}
+        />
+      </Show>
     </div>
   );
 }

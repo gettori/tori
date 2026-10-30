@@ -9,15 +9,16 @@ use super::auth::{Caller, Principal};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
 use super::phone::{self, MIN_PHONE_PROTOCOL, PHONE_PROTOCOL};
 use super::server::{
-    params, AllowGroupParams, AskAnswerParams, AskParams, AskWaitParams, AttachmentWriteParams, Backend, BudgetParams,
-    CallerParams, CheckParams, CheckpointDiffParams, CheckpointParams, CheckpointsParams, DigestLookedParams,
-    DigestParams, DraftParams, HandoffParams, HistoryParams, HoldResolveParams, InfoParams, InterruptParams,
-    IssueGetParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams, LogParams, LoopParams,
-    MintParams, ModeParams, ModelParams, NeedsYouSeenParams, OpenParams, PendingParams, PlanSetParams, PortParams,
-    PrCheckLogParams, PrCreateParams, PrGetParams, PrMergeParams, PrPushParams, PrWatchParams, ProjectIconParams,
-    ProjectSetParams, PromptRef, ProvenanceParams, RevealParams, ReviewMarkParams, ReviewSubmitParams,
-    ScheduleAddParams, ScheduleIdParams, SessionAnswerParams, SetupParams, SpawnParams, SteerParams, TailParams,
-    TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, UNITS_GIT_MAX,
+    params, AccountsListParams, AgentsListParams, AllowGroupParams, AskAnswerParams, AskParams, AskWaitParams,
+    AttachmentWriteParams, Backend, BudgetParams, CallerParams, CheckParams, CheckpointDiffParams, CheckpointParams,
+    CheckpointsParams, DigestLookedParams, DigestParams, DraftParams, HandoffParams, HistoryParams, HoldResolveParams,
+    InfoParams, InterruptParams, IssueGetParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams,
+    LogParams, LoopParams, MintParams, ModeParams, ModelParams, NeedsYouSeenParams, OpenParams, PendingParams,
+    PlanSetParams, PortParams, PrCheckLogParams, PrCreateParams, PrGetParams, PrMergeParams, PrPushParams,
+    PrWatchParams, ProjectIconParams, ProjectSetParams, PromptRef, ProvenanceParams, RevealParams, ReviewMarkParams,
+    ReviewSubmitParams, ScheduleAddParams, ScheduleIdParams, SessionAnswerParams, SetupParams, SpawnParams,
+    SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams,
+    WorktreeParams, UNITS_GIT_MAX,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,7 +63,7 @@ const ANYONE: &[CallerKind] = &[
 const NOT_WORKERS: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerKind::Chat];
 // A person at a shell, an outside client or a paired phone; no agent session can start a spend.
 const NOT_SESSIONS_AND_DEVICES: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerKind::Device];
-// A paired device reads and drives chats; it spawns only a plain chat and never writes or acts outward.
+// A paired device never acts outward.
 const ANYONE_AND_DEVICES: &[CallerKind] = &[
     CallerKind::Local,
     CallerKind::Terminal,
@@ -430,7 +431,7 @@ pub static METHODS: &[Method] = &[
         name: "worktree.new",
         description: "Create a git worktree on a new branch and return its path. With an issue key, the unit remembers the issue. With pr, the worktree is on that pull request's head commit, forks included, on a branch named like the pull request's own (pr-<number> for a fork or a name already in use), and branch and head_sha are returned. setup says how the project's setup command went in the new worktree: none (no command, or a worktree no setup ran in since Tori started), skipped (a fork's head, which never runs it), running, done or failed, with its output in setup_log. When the project waits on setup this answers once the command exits, or running after 240 s; call again with the same branch or pr to keep waiting.",
         params: schema::<WorktreeParams>,
-        callers: ANYONE,
+        callers: ANYONE_AND_DEVICES,
         refusal: None,
         outward: false,
         read_only: false,
@@ -440,7 +441,7 @@ pub static METHODS: &[Method] = &[
         name: "issues.assigned",
         description: "Open issues assigned to you in a project's repo, then open pull requests waiting on your review, each with its kind.",
         params: schema::<IssuesAssignedParams>,
-        callers: ANYONE,
+        callers: ANYONE_AND_DEVICES,
         refusal: None,
         outward: false,
         read_only: true,
@@ -450,7 +451,7 @@ pub static METHODS: &[Method] = &[
         name: "issues.get",
         description: "One issue: its title, body, url, the branch name suggested for it, and the project folder it was read in. Takes the issue's URL, and then finds the project by its origin.",
         params: schema::<IssueGetParams>,
-        callers: ANYONE,
+        callers: ANYONE_AND_DEVICES,
         refusal: None,
         outward: false,
         read_only: true,
@@ -514,7 +515,7 @@ pub static METHODS: &[Method] = &[
     },
     Method {
         name: "session.spawn",
-        description: "Start a new agent session in Tori, optionally in a new worktree, with a first message and attached files. A paired device passes a folder and a chat agent, and nothing else that reaches beyond them.",
+        description: "Start a new agent session in Tori, optionally in a new worktree, with a first message and attached files. A paired device passes a chat agent and the folder, or the project a new worktree goes in, and attaches no files.",
         params: schema::<SpawnParams>,
         callers: NOT_WORKERS_AND_DEVICES,
         refusal: None,
@@ -730,6 +731,26 @@ pub static METHODS: &[Method] = &[
         outward: false,
         read_only: true,
         call: |b, _, _| b.projects_list(),
+    },
+    Method {
+        name: "agents.list",
+        description: "The agents that run as a chat, each id and label, as session.spawn takes them, and with a folder the agent and account its last chat ran as, or null.",
+        params: schema::<AgentsListParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: None,
+        outward: false,
+        read_only: true,
+        call: |b, _, v| b.agents_list(params(v)?),
+    },
+    Method {
+        name: "accounts.list",
+        description: "An agent's accounts as a picker shows them: id, label and the signed-in email when known.",
+        params: schema::<AccountsListParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: None,
+        outward: false,
+        read_only: true,
+        call: |b, _, v| b.accounts_list(params(v)?),
     },
     Method {
         name: "project.icon",

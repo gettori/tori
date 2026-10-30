@@ -721,6 +721,29 @@ li + li > .item {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-default) 22%, transparent);
 }
 
+.field textarea {
+  min-height: 96px;
+  padding: 12px 14px;
+  color: var(--fg-default);
+  background: var(--canvas-input);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  outline: none;
+  font: inherit;
+  font-size: 16px;
+  resize: none;
+}
+
+.field textarea:focus {
+  border-color: var(--brand-default);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-default) 22%, transparent);
+}
+
+.sheetBody .item[aria-pressed="true"] {
+  color: var(--brand-default);
+  font-weight: 600;
+}
+
 .field input.mono {
   font-family: var(--tori-font-mono);
   font-size: 14px;
