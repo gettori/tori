@@ -21,7 +21,7 @@ use super::approval::{self, CaptureServer};
 use super::mirror::Mirror;
 use super::model::{
     cap_output, ChatCommand, ChatConfigKind, ChatConfigValue, ChatEvent, ChatModeInfo, ChatModelInfo, ChatQuestion,
-    ContentBlock, PermissionDecision, PermissionMode, PermissionScope, QuestionAnswer,
+    ContentBlock, PermissionDecision, PermissionMode, PermissionScope, PlanItem, QuestionAnswer,
 };
 use super::ownership::Registry;
 use super::pacing::{monotonic_clock, Pacer, HIDDEN_RELEASE_MS};
@@ -106,6 +106,9 @@ struct Lifecycle {
     // Who sent the turn about to start. A steer into a running turn starts
     // none, so only a send leaves one, and a turn's end clears it.
     origins: Arc<Mutex<HashMap<String, TurnBy>>>,
+    // The turn each session is in, for events Tori raises on a session's
+    // behalf: one stamped with a turn the panel has not seen opens a phantom.
+    open: Arc<Mutex<HashMap<String, String>>>,
     // Until its `SessionStarted`, what a session emits is its conversation
     // handed back (an ACP load or reload), not new work, so it is not announced.
     replaying: Arc<Mutex<HashSet<String>>>,
@@ -186,6 +189,7 @@ impl Lifecycle {
                 agent_initiated,
                 ..
             } => {
+                lock(&self.open).insert(id.to_string(), turn_id.clone());
                 let pending = lock(&self.origins).remove(id);
                 let by = if *agent_initiated {
                     TurnBy::Agent
@@ -206,6 +210,7 @@ impl Lifecycle {
                 ..
             } => {
                 lock(&self.origins).remove(id);
+                lock(&self.open).remove(id);
                 if let Some(folder) = lock(&self.announced).get(id).and_then(|p| p.folder.clone()) {
                     if let Some(on_turn) = self.on_turn.get() {
                         on_turn(&folder, id, usage.total(), *cost_usd);
@@ -260,6 +265,7 @@ impl Lifecycle {
         crate::rpc::revoke(&crate::rpc::auth::Caller::Chat(id.to_string()));
         super::side::forget(id);
         lock(&self.origins).remove(id);
+        lock(&self.open).remove(id);
         lock(&self.replaying).remove(id);
         lock(&self.pulses).forget(id);
         self.beat();
@@ -867,6 +873,27 @@ impl ChatHost {
     /// session this host never started.
     pub fn publish(&self, session_id: &str, kind: &str, fields: serde_json::Value) {
         self.lifecycle.note(session_id, kind, fields);
+    }
+
+    pub fn set_plan(&self, session_id: &str, items: Vec<PlanItem>) -> Result<(), String> {
+        let Some(turn_id) = self.open_turn(session_id) else {
+            return Err(format!(
+                "session {session_id} is not in a turn, so its plan card has no turn to belong to"
+            ));
+        };
+        (self.emitter())(
+            session_id,
+            ChatEvent::PlanUpdate {
+                session_id: session_id.to_string(),
+                turn_id,
+                items,
+            },
+        );
+        Ok(())
+    }
+
+    fn open_turn(&self, session_id: &str) -> Option<String> {
+        lock(&self.lifecycle.open).get(session_id).cloned()
     }
 
     /// Set once, when the app socket comes up. A host with none publishes nothing.
@@ -4237,6 +4264,75 @@ mod tests {
             permission_denials: vec![],
             extra: Default::default(),
         }
+    }
+
+    #[test]
+    fn a_session_is_in_a_turn_from_its_start_to_its_end() {
+        let host = ChatHost::at(temp_store());
+        let holder: Arc<Mutex<Option<Sink>>> = Arc::default();
+        let out = holder.clone();
+        host.spawn_plain(
+            "s-open",
+            "tab",
+            Collector::default().emit(),
+            spec("s-open"),
+            move || {
+                Box::new(Puppet {
+                    sink_out: Some(out),
+                    ..Default::default()
+                })
+            },
+        )
+        .unwrap();
+        let sink = lock(&holder).clone().unwrap();
+
+        emit(&sink, started("s-open"));
+        assert_eq!(host.open_turn("s-open"), None);
+        emit(&sink, turn_started("s-open", "turn-3", false));
+        assert_eq!(host.open_turn("s-open").as_deref(), Some("turn-3"));
+        emit(&sink, turn_completed("s-open", "turn-3"));
+        assert_eq!(host.open_turn("s-open"), None);
+    }
+
+    #[test]
+    fn a_plan_is_shown_under_the_turn_it_was_set_in_and_refused_outside_one() {
+        let host = ChatHost::at(temp_store());
+        let seen = Collector::default();
+        let holder: Arc<Mutex<Option<Sink>>> = Arc::default();
+        let out = holder.clone();
+        host.spawn_plain("s-plan", "tab", seen.emit(), spec("s-plan"), move || {
+            Box::new(Puppet {
+                sink_out: Some(out),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+        let sink = lock(&holder).clone().unwrap();
+        let items = vec![PlanItem {
+            text: "write it".into(),
+            status: super::super::model::PlanItemStatus::InProgress,
+        }];
+        let plans = || {
+            seen.events()
+                .into_iter()
+                .filter(|e| matches!(e, ChatEvent::PlanUpdate { .. }))
+                .collect::<Vec<_>>()
+        };
+
+        emit(&sink, started("s-plan"));
+        assert!(host.set_plan("s-plan", items.clone()).is_err());
+        assert!(plans().is_empty());
+
+        emit(&sink, turn_started("s-plan", "turn-1", false));
+        host.set_plan("s-plan", items.clone()).unwrap();
+        assert_eq!(
+            plans(),
+            [ChatEvent::PlanUpdate {
+                session_id: "s-plan".into(),
+                turn_id: "turn-1".into(),
+                items,
+            }]
+        );
     }
 
     #[test]

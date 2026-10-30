@@ -19,9 +19,10 @@ import styles from "./Chat.module.css";
  * scrolls the transcript away, and "what is it doing and how far in" is the
  * question a plan answers - which is worthless if it has scrolled off.
  *
- * Whose plan: any agent that publishes one, which is every ACP agent. Claude's
- * build carries no todo tool at all (measured on 2.1.251: no `TodoWrite` in
- * `system/init`), so it has nothing to publish rather than a shape this refuses.
+ * Whose plan: any agent that publishes one. Every ACP agent does natively.
+ * Claude's build carries no todo tool at all (measured on 2.1.251: no
+ * `TodoWrite` in `system/init`), so it publishes through Tori's `plan_set`
+ * instead, and the card cannot tell the two apart.
  */
 export default function PlanCard(props: { items: readonly PlanItem[] }) {
   const done = createMemo(() => props.items.filter((i) => i.status === "completed").length);

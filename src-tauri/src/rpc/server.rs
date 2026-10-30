@@ -549,6 +549,13 @@ pub struct AskParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct PlanSetParams {
+    /// Every step of the plan in order, each `pending`, `inProgress` or `completed`. Empty hides the card.
+    pub items: Vec<crate::chat::model::PlanItem>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct TopicPromoteParams {
     /// The member to give a worktree: its name, its repository, or the folder it reads from.
     pub member: String,
@@ -947,6 +954,7 @@ pub trait Backend: Send + Sync {
     fn window_open(&self, params: OpenParams) -> Result<Value, RpcError>;
     fn budget(&self, principal: &Principal, params: BudgetParams) -> Result<Value, RpcError>;
     fn ask_create(&self, session: &str, params: AskParams) -> Result<Value, RpcError>;
+    fn plan_set(&self, session: &str, params: PlanSetParams) -> Result<Value, RpcError>;
     fn topic_member_promote(&self, session: &str, params: TopicPromoteParams) -> Result<Value, RpcError>;
     fn ask_wait(&self, params: AskWaitParams) -> Result<Value, RpcError>;
     fn ask_answer(&self, principal: &Principal, params: AskAnswerParams) -> Result<Value, RpcError>;
@@ -1500,6 +1508,9 @@ pub mod tests {
         fn ask_create(&self, _: &str, p: AskParams) -> Result<Value, RpcError> {
             Ok(json!({ "question": p.question }))
         }
+        fn plan_set(&self, _: &str, p: PlanSetParams) -> Result<Value, RpcError> {
+            Ok(json!({ "items": p.items.len() }))
+        }
         fn ask_wait(&self, p: AskWaitParams) -> Result<Value, RpcError> {
             Ok(json!({ "id": p.id }))
         }
@@ -1964,6 +1975,20 @@ pub mod tests {
         let chat = Principal::Session(Caller::Chat("s1".into()));
         assert!(server
             .dispatch(0, &chat, &request("ask.create", json!({"question": "q"})))
+            .is_ok());
+    }
+
+    #[test]
+    fn only_a_chat_session_may_set_a_plan() {
+        let server = stub_server();
+        let plan = || request("plan.set", json!({"items": [{"text": "a", "status": "pending"}]}));
+        for caller in [Principal::Local, Principal::Session(Caller::Terminal("t1".into()))] {
+            let err = server.dispatch(0, &caller, &plan()).unwrap_err();
+            assert_eq!(err.code, REFUSED, "{caller:?}");
+            assert!(err.message.contains("plan card"), "{}", err.message);
+        }
+        assert!(server
+            .dispatch(0, &Principal::Session(Caller::Chat("s1".into())), &plan())
             .is_ok());
     }
 

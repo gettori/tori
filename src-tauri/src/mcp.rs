@@ -21,7 +21,9 @@ const INSTRUCTIONS: &str = "Tori runs this session. Where Tori has a tool for an
 worktree_new to make a worktree (not git worktree add), session_spawn to start another agent, \
 pr_create, pr_push, review_submit and pr_merge for pull requests (not gh pr), ask_create to ask the user. \
 Tori's tools keep its sidebar, the project's setup command, approvals and checkpoints in step, and the shell skips them. \
-A tool that refuses says why: follow that rather than doing the same thing from the shell.";
+A tool that refuses says why: follow that rather than doing the same thing from the shell. \
+Working through a plan of several steps, publish it with plan_set and send it again as each step starts and finishes, \
+then send an empty list when it is done. Only the main agent does this, never a subagent.";
 
 pub type Connect = Arc<dyn Fn() -> Result<Client, ClientError> + Send + Sync>;
 type Out = Arc<Mutex<dyn Write + Send>>;
