@@ -37,6 +37,7 @@ import { syntheticId } from "../../../utils/syntheticTabs";
 import { collapseDirs, isDirOpen, nextSessionKey, setDirOpen } from "../../../utils/treeExpanded";
 import { editorDefaults } from "../../Settings/settingsStore";
 import styles from "./FileTree.module.css";
+import { afterPaint } from "../../../utils/afterPaint";
 
 type Entry = { name: string; path: string; is_dir: boolean; ignored: boolean };
 
@@ -611,8 +612,10 @@ function TreeNode(props: {
     if (props.entry.is_dir && target.startsWith(`${props.entry.path}/`)) {
       setTransient(true);
     } else if (props.entry.path === target) {
+      // After the switch that asked for it has painted: the scroll reads the
+      // tree's layout, which inside the switch flushes everything it changed.
       // Guarded: jsdom has no layout, so it does not implement this.
-      row?.scrollIntoView?.({ block: "nearest" });
+      afterPaint(() => row?.isConnected && row.scrollIntoView?.({ block: "nearest" }));
       // Arriving ends the walk. Leaving the target set would outlive the reveal:
       // collapsing an ancestor unmounts these rows, and remounting them would
       // replay the cascade and re-open the chain the user just closed.
