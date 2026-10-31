@@ -772,6 +772,20 @@ fn record_origin(project: &str, branch: &str, origin: crate::unit_origins::UnitO
         .map(|()| session)
 }
 
+// The prompt a chat wrote for the session it spawns, the one a from-line may
+// name it as the sender of.
+fn spawners_prompt(principal: &Principal, prompt: Option<&str>) -> Option<String> {
+    let Principal::Session(Caller::Chat(_)) = principal else {
+        return None;
+    };
+    prompt.filter(|p| !p.trim().is_empty()).map(str::to_string)
+}
+
+// The daemon's map first, then the record on disk, which outlives a restart.
+fn known_spawner(states: &SessionStates, id: &str, stored: impl FnOnce(&str) -> Option<String>) -> Option<String> {
+    states.spawner_of(id).or_else(|| stored(id))
+}
+
 fn origin_at(cwd: &str) -> Option<crate::unit_origins::UnitOrigin> {
     origin_at_in(cwd, &crate::config::discovered_project_dirs())
 }
@@ -800,11 +814,10 @@ fn live_facts(backend: &DaemonBackend) -> LiveFacts<'_> {
 
 impl reach::Facts for LiveFacts<'_> {
     fn spawner_of(&self, id: &str) -> Option<String> {
-        self.backend
-            .desk
-            .states
-            .spawner_of(id)
-            .map(|s| super::current_spawner(&s))
+        known_spawner(&self.backend.desk.states, id, |id| {
+            crate::session_spawners::get(id).map(|s| s.spawner)
+        })
+        .map(|s| super::current_spawner(&s))
     }
     fn autopilot(&self) -> Option<String> {
         self.backend.runner.status().session
@@ -1238,7 +1251,18 @@ impl DaemonBackend {
         Ok(port_units(&config.spaces))
     }
 
-    pub fn spawn(&self, principal: &Principal, params: SpawnParams, read_only: bool) -> Result<Value, RpcError> {
+    // `own_prompt`: the prompt is the caller's own words, so the spawned chat
+    // may show it as sent by the caller. A handoff's brief is Tori's.
+    pub fn spawn(
+        &self,
+        principal: &Principal,
+        params: SpawnParams,
+        read_only: bool,
+        own_prompt: bool,
+    ) -> Result<Value, RpcError> {
+        let prompt = own_prompt
+            .then(|| spawners_prompt(principal, params.prompt.as_deref()))
+            .flatten();
         if let Some(item) = &params.item {
             spawn_past_ceiling(item, super::office::item_ceiling_state(&self.autopilot, item))?;
         }
@@ -1332,6 +1356,13 @@ impl DaemonBackend {
         let spawned = crate::chat::commands::spawn_session(host, request, Box::new(|_| {})).map_err(refused)?;
         if spawned.spawned.is_none() {
             return Err(refused(format!("the session id was refused: {:?}", spawned.ownership)));
+        }
+        // Before the first message, so the chat finds who sent it the moment
+        // it opens.
+        if let Principal::Session(Caller::Chat(spawner)) = principal {
+            if let Err(e) = crate::session_spawners::record(&id, spawner, prompt.as_deref()) {
+                eprintln!("tori: {id} was spawned by {spawner}, but remembering that failed: {e}");
+            }
         }
         if !first.is_empty() {
             host.deliver(&id, first, false, TurnBy::Local).map_err(refused)?;
@@ -2263,7 +2294,7 @@ impl Backend for DaemonBackend {
             background: Some(states.is_background(&old)),
             ..Default::default()
         };
-        let spawned = self.spawn(&as_spawner, spawn, false)?;
+        let spawned = self.spawn(&as_spawner, spawn, false, false)?;
         let new = spawned["id"].as_str().unwrap_or_default().to_string();
         states.note_handoff(&old, &new);
         self.close_when_idle(old.clone());
@@ -2621,7 +2652,7 @@ impl Backend for DaemonBackend {
     }
 
     fn session_spawn(&self, principal: &Principal, params: SpawnParams) -> Result<Value, RpcError> {
-        self.spawn(principal, params, false)
+        self.spawn(principal, params, false, true)
     }
 
     fn window_open(&self, params: OpenParams) -> Result<Value, RpcError> {
@@ -3638,6 +3669,32 @@ mod tests {
         let found = origin_at_in(&repo, std::slice::from_ref(&dir)).map(|o| o.session);
         assert_eq!(found.as_deref(), Some("maker"));
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn only_a_chats_own_prompt_is_recorded_for_its_spawn() {
+        let chat = Principal::Session(Caller::Chat("s1".into()));
+        assert_eq!(spawners_prompt(&chat, Some("hi")), Some("hi".into()));
+        assert_eq!(spawners_prompt(&chat, Some("  ")), None);
+        assert_eq!(spawners_prompt(&chat, None), None);
+        assert_eq!(
+            spawners_prompt(&Principal::Session(Caller::Terminal("t1".into())), Some("hi")),
+            None
+        );
+        assert_eq!(spawners_prompt(&Principal::Device("d1".into()), Some("hi")), None);
+    }
+
+    #[test]
+    fn a_worker_keeps_its_spawner_after_the_daemon_forgets_it() {
+        let states = SessionStates::default();
+        let stored = |id: &str| (id == "w1").then(|| "s1".to_string());
+        assert_eq!(known_spawner(&states, "w1", stored), Some("s1".into()));
+        states.mark_worker("w2", "s2");
+        assert_eq!(
+            known_spawner(&states, "w2", |_| Some("stale".into())),
+            Some("s2".into())
+        );
+        assert_eq!(known_spawner(&states, "nobody", |_| None), None);
     }
 
     #[test]

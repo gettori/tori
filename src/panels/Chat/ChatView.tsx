@@ -1,4 +1,15 @@
-import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, untrack } from "solid-js";
+import {
+  For,
+  Show,
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  on,
+  onCleanup,
+  onMount,
+  untrack,
+} from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -1412,6 +1423,10 @@ export default function ChatView(props: {
 
   // The second chat on a worktree: say once, per worktree, that the two share
   // one working tree and that checkpoint attribution suffers for it.
+  const [firstPrompt] = createResource(
+    () => props.sessionId,
+    (session) => invoke<{ sender: string; text: string } | null>("session_first_prompt", { session }).catch(() => null),
+  );
   const multiChatNotice = () => shouldNotice(chatsInFolder(props.workspace).length, props.workspace, noticed());
 
   // Too many at once, said in the chat that put the count past the line rather
@@ -2626,6 +2641,7 @@ export default function ChatView(props: {
           blockedIn={blockedIn}
           onOpenLane={(agentId) => edit((s) => selectLane(s, agentId))}
           onOpenSession={(session) => emitWith<NavTarget>(NAVIGATE, { session })}
+          firstPrompt={firstPrompt()}
           onOpenWorktree={(folder, session) => emitWith<NavTarget>(NAVIGATE, { folder, session: session ?? undefined })}
           onRewind={onRewind}
           onRead={

@@ -80,6 +80,7 @@ function list(
     verifications?: Record<string, TurnCheck>;
     showVerification?: boolean;
     onOpenSession?: (id: string) => void;
+    firstPrompt?: { sender: string; text: string } | null;
   } = {},
 ) {
   return (
@@ -1265,5 +1266,30 @@ describe("a prompt another session sent", () => {
     render(() => list({ items: [from("steer")] }));
     expect(screen.getByText("another session")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "another session" })).toBeNull();
+  });
+});
+
+describe("the prompt a chat was spawned with", () => {
+  const user = (id: string, text: string): ChatItem => ({
+    kind: "user",
+    id,
+    blocks: [{ type: "text", text }],
+    steer: false,
+  });
+
+  it("names its sender on the matching prompt, wherever it sits, and only once", () => {
+    const items = [user("u1", "earlier, unrelated"), user("u2", "say hi"), user("u3", "say hi")];
+    const { container } = render(() => list({ items, firstPrompt: { sender: "s9", text: "say hi" } }));
+    const marked = [...container.querySelectorAll(`.${chatStyles.promptFrom}`)];
+    expect(marked).toHaveLength(1);
+    expect(marked[0].closest(`.${chatStyles.userBubble}`)?.textContent).toContain("say hi");
+    expect(container.textContent?.indexOf("from another session")).toBeGreaterThan(
+      container.textContent?.indexOf("earlier, unrelated") ?? 0,
+    );
+  });
+
+  it("marks nothing in a chat a person started", () => {
+    const { container } = render(() => list({ items: [user("u1", "say hi")] }));
+    expect(container.querySelector(`.${chatStyles.promptFrom}`)).toBeNull();
   });
 });
