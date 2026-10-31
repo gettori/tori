@@ -423,6 +423,22 @@ export function hookFailed(it: Pick<HookItem, "exitCode">): boolean {
 // refused steer loses nothing, and the flush and a second press skip it.
 export type QueuedInput = { id: string; blocks: ContentBlock[]; held?: true; steering?: true };
 
+function clearPlan(s: ChatState) {
+  s.plan = [];
+  s.planTurnId = null;
+}
+
+/** Why the plan on screen is not the agent's current word: no turn is running,
+ *  or one is and has not touched it. Null while it is live, or when there is
+ *  none. Agents are told to keep it current and do not always, so the card says
+ *  so rather than spinning on a step nothing is working on. */
+export type PlanStale = "stopped" | "notUpdated";
+export function planStale(s: Pick<ChatState, "plan" | "planTurnId" | "activeTurnId">): PlanStale | null {
+  if (!s.plan.length) return null;
+  if (s.activeTurnId === null) return "stopped";
+  return s.activeTurnId === s.planTurnId ? null : "notUpdated";
+}
+
 export function queuedText(q: Pick<QueuedInput, "blocks">): string {
   return q.blocks.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n");
 }
@@ -603,6 +619,9 @@ export type ChatState = {
   agents: string[];
   plugins: ChatPlugin[];
   plan: PlanItem[];
+  /** The turn that last sent `plan`, so the card can tell a list the agent is
+   *  keeping from one it left behind. */
+  planTurnId: string | null;
   /** Tokens the conversation is holding right now, or null before anything has
    *  measured it.
    *
@@ -715,6 +734,7 @@ export function initialChat(sessionId: string, answerQuestionsInline = true): Ch
     agents: [],
     plugins: [],
     plan: [],
+    planTurnId: null,
     contextTokens: null,
     lastTurnUsage: null,
     lastCostUsd: null,
@@ -1625,6 +1645,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
     case "planUpdate":
       touchTurn(s, ev.turnId);
       s.plan = ev.items;
+      s.planTurnId = ev.items.length ? ev.turnId : null;
       return;
     case "usage": {
       touchTurn(s, ev.turnId);
@@ -1656,6 +1677,10 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       };
       if (s.activeTurnId === ev.turnId) s.activeTurnId = null;
       s.awaitingTurn = false;
+      // Every step done is a finished plan whose agent forgot to take it down.
+      // Unfinished steps stay: a turn that waits on a job or a question ends
+      // with its plan open on purpose.
+      if (s.plan.length && s.plan.every((i) => i.status === "completed")) clearPlan(s);
       // The main agent's bubbles only. A background subagent runs on past the
       // turn that launched it, and closing its lane here would cut whatever it
       // is midway through saying.
@@ -1715,6 +1740,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
     }
     case "sessionEnded": {
       s.ended = true;
+      clearPlan(s);
       s.activeTurnId = null;
       s.awaitingTurn = false;
       settleLanes(s, "cancelled");

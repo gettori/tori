@@ -13,6 +13,7 @@ import {
   isRunning,
   settleBackfill,
   turnModel,
+  planStale,
   type ChatState,
 } from "../../src/panels/Chat/chatStore";
 import { parseChatEvent, type ChatConfigOption, type ChatEffortLevel, type ChatEvent } from "../../src/utils/chatTypes";
@@ -642,7 +643,7 @@ export default function Chat(props: {
       <Pending client={props.client} session={id} rows={pending()} onSettled={() => void refetchPending()} />
       <Show when={view.chat.plan.length > 0}>
         <div class={shell.plan}>
-          <PlanCard items={view.chat.plan} />
+          <PlanCard items={view.chat.plan} stale={planStale(view.chat)} />
         </div>
       </Show>
       <Show when={gauge()}>

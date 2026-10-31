@@ -228,6 +228,7 @@ import {
   laneOf,
   toolCallsSeen,
   visibleItems,
+  planStale,
   type ChatItem,
   type ChatState,
   type QueuedInput,
@@ -2663,7 +2664,7 @@ export default function ChatView(props: {
       <For each={asksFor(props.sessionId)}>{(ask) => <AskCard ask={ask} here={props.sessionId} />}</For>
       <PendingRequests sessionId={props.sessionId} />
 
-      <PlanCard items={state.plan} />
+      <PlanCard items={state.plan} stale={planStale(state)} />
 
       <LaneStrip
         lanes={laneStrip(state)}

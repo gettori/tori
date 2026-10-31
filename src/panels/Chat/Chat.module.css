@@ -2634,6 +2634,16 @@ button.diffHunkHeader:hover {
   color: var(--fg-subtle);
 }
 
+/* A plan nobody is working on: the steps stay readable, the spinner stops, so
+   the card no longer claims progress the agent is not making. */
+.planStale .planList {
+  opacity: 0.6;
+}
+
+.planStale .planItem.inProgress .planGlyph {
+  animation: none;
+}
+
 @keyframes planSpin {
   to {
     transform: rotate(360deg);
