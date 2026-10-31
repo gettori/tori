@@ -27,7 +27,7 @@ describe("PendingRequests", () => {
     const { findByText, queryByText } = render(() => <PendingRequests sessionId="me" />);
     fireEvent.click(await findByText("Accept"));
     await waitFor(() => expect(queryByText(/please rebase/)).toBeNull());
-    expect(calls).toContainEqual(["chat_request_accept", { session: "me", id: "req-1" }]);
+    expect(calls).toContainEqual(["chat_request_accept", { session: "me", id: "req-1", link: false }]);
   });
 
   it("discards a message without delivering it", async () => {
@@ -36,5 +36,13 @@ describe("PendingRequests", () => {
     await waitFor(() => expect(queryByText(/please rebase/)).toBeNull());
     expect(calls).toContainEqual(["chat_request_discard", { session: "me", id: "req-1" }]);
     expect(calls.some(([c]) => c === "chat_request_accept")).toBe(false);
+  });
+
+  it("links the two chats when a person presses Link, delivering once", async () => {
+    const { findByText, queryByText } = render(() => <PendingRequests sessionId="me" />);
+    fireEvent.click(await findByText("Link"));
+    await waitFor(() => expect(queryByText(/please rebase/)).toBeNull());
+    const accepts = calls.filter(([c]) => c === "chat_request_accept");
+    expect(accepts).toEqual([["chat_request_accept", { session: "me", id: "req-1", link: true }]]);
   });
 });

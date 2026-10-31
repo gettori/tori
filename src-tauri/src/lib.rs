@@ -70,6 +70,7 @@ mod scratch;
 mod search;
 mod second_opinion;
 mod secret_watch;
+mod session_links;
 mod sessions;
 mod settings;
 mod setup;
@@ -701,6 +702,8 @@ pub fn run() {
             rpc::chat_requests_list,
             rpc::chat_request_accept,
             rpc::chat_request_discard,
+            rpc::session_links_of,
+            rpc::session_unlink,
             rpc::autopilot_start,
             rpc::remote_set,
             rpc::remote_status,

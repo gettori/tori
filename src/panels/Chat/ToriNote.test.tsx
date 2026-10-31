@@ -24,3 +24,11 @@ describe("a pull request watch's wake", () => {
     expect(toriLabel(note!, () => null)).toBe("Tori: news on the pull requests you watch");
   });
 });
+
+describe("a message a person accepted with Link", () => {
+  it("records in the transcript who it linked this chat with", () => {
+    const note = toriNote([{ type: "text", text: `<tori kind="linked" from="s2">\nplease rebase\n</tori>` }]);
+    expect(note?.from).toBe("s2");
+    expect(toriLabel(note!, (id) => (id === "s2" ? "Fix login" : null))).toBe("Linked with Fix login by you");
+  });
+});

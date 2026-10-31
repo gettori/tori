@@ -42,6 +42,8 @@ export function toriLabel(note: ToriNote, sessionName: (id: string) => string | 
       return "Tori continued after the usage limit reset";
     case "steer":
       return `From ${(note.from && sessionName(note.from)) || "another session"}`;
+    case "linked":
+      return `Linked with ${(note.from && sessionName(note.from)) || "another session"} by you`;
     default:
       return "From Tori";
   }
