@@ -10,6 +10,7 @@
 // hands the result back on `sessions://dots`. A chat's own status is still read
 // here, raw, because the revert guard has to see a turn start on the same tick;
 // Rust takes only a spend ceiling stop from it.
+import type { UnitOrigin } from "./unitOrigin";
 import type { PrState } from "./forgeTypes";
 import { createSignal, createMemo, createEffect, createRoot } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
@@ -52,6 +53,7 @@ export type ForgeUnit = {
    *  is never read into a poll that has not run. */
   prKnown?: boolean;
   pullRequest?: { number: number; state: PrState; title: string } | null;
+  madeBy?: UnitOrigin;
 };
 
 // --- fed inputs -------------------------------------------------------------
