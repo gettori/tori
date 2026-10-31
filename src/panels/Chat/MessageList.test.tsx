@@ -79,6 +79,7 @@ function list(
     showBlindEdits?: boolean;
     verifications?: Record<string, TurnCheck>;
     showVerification?: boolean;
+    onOpenSession?: (id: string) => void;
   } = {},
 ) {
   return (
@@ -1244,15 +1245,25 @@ describe("the last reply", () => {
   });
 });
 
-describe("a message accepted with Link", () => {
-  it("stays in the transcript as a row saying who this chat was linked with", () => {
-    const linked: ChatItem = {
-      kind: "user",
-      id: "u-linked",
-      blocks: [{ type: "text", text: `<tori kind="linked" from="s2">\nplease rebase\n</tori>` }],
-      steer: false,
-    };
-    render(() => list({ items: [linked] }));
-    expect(screen.getByText("Linked with another session by you")).toBeTruthy();
+describe("a prompt another session sent", () => {
+  const from = (kind: string): ChatItem => ({
+    kind: "user",
+    id: `u-${kind}`,
+    blocks: [{ type: "text", text: `<tori kind="${kind}" from="s2">\nplease rebase\n</tori>` }],
+    steer: false,
+  });
+
+  it("shows as a prompt naming its sender, which opens it", () => {
+    const open = vi.fn();
+    render(() => list({ items: [from("steer"), from("linked")], onOpenSession: open }));
+    expect(screen.getAllByText("please rebase")).toHaveLength(2);
+    fireEvent.click(screen.getAllByRole("button", { name: "another session" })[0]);
+    expect(open).toHaveBeenCalledWith("s2");
+  });
+
+  it("names the sender as plain text where there is nowhere to go", () => {
+    render(() => list({ items: [from("steer")] }));
+    expect(screen.getByText("another session")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "another session" })).toBeNull();
   });
 });

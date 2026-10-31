@@ -2,7 +2,6 @@ import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMou
 import { createStore, produce } from "solid-js/store";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import OriginBanner from "./OriginBanner";
 import LinksBanner from "./LinksBanner";
 import PendingRequests from "./PendingRequests";
 import MessageList from "./MessageList";
@@ -2426,7 +2425,6 @@ export default function ChatView(props: {
         </div>
       </Show>
 
-      <OriginBanner workspace={props.workspace} sessionId={props.sessionId} />
       <LinksBanner sessionId={props.sessionId} />
 
       {/* The one part of a rewind that could not be undone: the fork carries the
@@ -2627,6 +2625,7 @@ export default function ChatView(props: {
           laneOpenedBy={(toolUseId) => laneOpenedBy(toolUseId)}
           blockedIn={blockedIn}
           onOpenLane={(agentId) => edit((s) => selectLane(s, agentId))}
+          onOpenSession={(session) => emitWith<NavTarget>(NAVIGATE, { session })}
           onOpenWorktree={(folder, session) => emitWith<NavTarget>(NAVIGATE, { folder, session: session ?? undefined })}
           onRewind={onRewind}
           onRead={
