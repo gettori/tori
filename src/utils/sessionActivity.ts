@@ -169,6 +169,10 @@ export function unitAt(folder: string): ForgeUnit | null {
   return forgeUnits().find((u) => u.folderPath === folder) ?? null;
 }
 
+export function unitGone(folder: string): boolean {
+  return forgeUnits().length > 0 && !unitAt(folder);
+}
+
 /// The branch-unit of `root`'s project that carries `branch`, or null.
 export function projectUnitFor(root: string, branch: string): ForgeUnit | null {
   const projectPath = projectPathFor(root);

@@ -1233,6 +1233,15 @@ code.secretReason {
   white-space: nowrap;
 }
 
+.worktreeRow {
+  display: flex;
+  align-items: center;
+  gap: calc(10px * var(--ui-scale));
+  min-height: calc(20px * var(--ui-scale));
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-md);
+}
+
 /* A blocked call must not read as work in progress. */
 .toolBlocked {
   border-color: var(--brand-default);
