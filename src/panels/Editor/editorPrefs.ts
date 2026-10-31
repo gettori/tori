@@ -131,7 +131,17 @@ const FEATURE_EXTENSIONS: Record<EditorFeature, () => Extension> = {
  * here, it belongs in `makeState` with a rebuild.
  */
 export function editorPrefExtensions(prefs: EditorDefaults, overrides: EditorPrefOverrides = {}): Extension[] {
-  return activeEditorFeatures(prefs, overrides).map((f) => FEATURE_EXTENSIONS[f]());
+  return activeEditorFeatures(prefs, overrides).map(featureExtension);
+}
+
+// Built once and handed out again: every swap reconfigures with these, and a
+// fresh copy carries fresh themes, which makes CodeMirror remount its styles
+// (a restyle of the whole window) and grow its stylesheet on every tab switch.
+const built = new Map<EditorFeature, Extension>();
+function featureExtension(f: EditorFeature): Extension {
+  let ext = built.get(f);
+  if (!ext) built.set(f, (ext = FEATURE_EXTENSIONS[f]()));
+  return ext;
 }
 
 /** How one buffer indents: the columns a level takes, how wide a tab is drawn,
