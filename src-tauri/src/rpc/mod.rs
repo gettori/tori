@@ -673,8 +673,18 @@ pub fn chat_requests_list(session: String) -> Result<Vec<crate::chat_requests::R
 }
 
 #[tauri::command(async)]
-pub fn chat_request_accept(session: String, id: String) -> Result<bool, String> {
-    office_call_as("requests.accept", json!({ "session": session, "id": id }))
+pub fn chat_request_accept(session: String, id: String, link: Option<bool>) -> Result<bool, String> {
+    office_call_as("requests.accept", json!({ "session": session, "id": id, "link": link }))
+}
+
+#[tauri::command(async)]
+pub fn session_links_of(session: String) -> Vec<String> {
+    crate::session_links::links_of(&session)
+}
+
+#[tauri::command(async)]
+pub fn session_unlink(a: String, b: String) -> Result<(), String> {
+    office_call_as::<Value>("links.unlink", json!({ "a": a, "b": b })).map(drop)
 }
 
 #[tauri::command(async)]

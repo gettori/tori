@@ -831,6 +831,9 @@ impl reach::Facts for LiveFacts<'_> {
     fn granted_read(&self, reader: &str, target: &str) -> bool {
         crate::read_grants::granted(reader, target)
     }
+    fn linked(&self, a: &str, b: &str) -> bool {
+        crate::session_links::linked(a, b)
+    }
 }
 
 trait SteerSink {
@@ -872,7 +875,7 @@ fn route_steer(
 
 // Taken before it is delivered, so a second press finds nothing; put back if
 // the delivery fails, and named in the error if even that fails.
-fn accept_with(sink: &impl SteerSink, target: &str, id: &str) -> Result<bool, RpcError> {
+fn accept_with(sink: &impl SteerSink, target: &str, id: &str, link: bool) -> Result<bool, RpcError> {
     let Some(request) = crate::chat_requests::take(target, id).map_err(refused)? else {
         return Ok(false);
     };
@@ -882,11 +885,19 @@ fn accept_with(sink: &impl SteerSink, target: &str, id: &str) -> Result<bool, Rp
             sink.revive(target)?;
         }
         let mid_turn = sink.mid_turn(target);
-        let text = super::events::from_tori("steer", Some(&request.from), &request.text);
+        let kind = if link { "linked" } else { "steer" };
+        let text = super::events::from_tori(kind, Some(&request.from), &request.text);
         let blocks = sink.blocks(target, text, &request.attach)?;
         sink.deliver(target, blocks, mid_turn, TurnBy::Session(request.from.clone()))
     })();
     let Err(failed) = delivered else {
+        if link {
+            crate::session_links::link(target, &request.from).map_err(|e| {
+                refused(format!(
+                    "the message was delivered, but linking the two chats failed: {e}"
+                ))
+            })?;
+        }
         return Ok(true);
     };
     let crate::chat_requests::Request { from, text, attach, .. } = request;
@@ -1574,13 +1585,22 @@ impl DaemonBackend {
         Some(session)
     }
 
-    pub fn accept_request(&self, target: &str, id: &str) -> Result<bool, RpcError> {
+    pub fn accept_request(&self, target: &str, id: &str, link: bool) -> Result<bool, RpcError> {
         if super::is_locked(&self.desk.states, &self.autopilot, &self.runner, target) {
             return Err(refused(super::LOCKED.to_string()));
         }
-        let accepted = accept_with(&LiveSink(self), target, id);
+        let accepted = accept_with(&LiveSink(self), target, id, link);
         self.desk.ui.emit("requests://changed", json!({ "session": target }));
+        if link {
+            self.desk.ui.emit("links://changed", json!({}));
+        }
         accepted
+    }
+
+    pub fn unlink_sessions(&self, a: &str, b: &str) -> Result<(), RpcError> {
+        crate::session_links::unlink(a, b).map_err(refused)?;
+        self.desk.ui.emit("links://changed", json!({}));
+        Ok(())
     }
 
     pub fn discard_request(&self, target: &str, id: &str) -> Result<bool, RpcError> {
@@ -3444,6 +3464,7 @@ mod tests {
         fail: bool,
         revived: std::cell::RefCell<Vec<String>>,
         delivered: std::cell::RefCell<Vec<(String, TurnBy)>>,
+        texts: std::cell::RefCell<Vec<String>>,
         queued: std::cell::RefCell<Vec<(String, String)>>,
     }
 
@@ -3459,6 +3480,7 @@ mod tests {
             self.busy.contains(id)
         }
         fn blocks(&self, _: &str, text: String, _: &[String]) -> Result<Vec<ContentBlock>, RpcError> {
+            self.texts.borrow_mut().push(text.clone());
             Ok(vec![ContentBlock::Text { text }])
         }
         fn deliver(&self, id: &str, _: Vec<ContentBlock>, _: bool, by: TurnBy) -> Result<(), RpcError> {
@@ -3546,12 +3568,27 @@ mod tests {
         requests_scratch("once");
         let id = crate::chat_requests::add("acc-t", "acc-f", "please".into(), vec![]).unwrap();
         let sink = FakeSink::default();
-        assert!(accept_with(&sink, "acc-t", &id).unwrap());
-        assert!(!accept_with(&sink, "acc-t", &id).unwrap());
+        assert!(accept_with(&sink, "acc-t", &id, false).unwrap());
+        assert!(!accept_with(&sink, "acc-t", &id, false).unwrap());
         assert_eq!(
             *sink.delivered.borrow(),
             vec![("acc-t".to_string(), TurnBy::Session("acc-f".into()))]
         );
+    }
+
+    #[test]
+    fn a_link_delivers_once_marks_the_record_and_links_the_two_chats() {
+        requests_scratch("link");
+        let dir = std::env::temp_dir().join(format!("tori-accept-links-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::session_links::seam(dir.join("session_links.json"));
+        let id = crate::chat_requests::add("lnk-t", "lnk-f", "hello".into(), vec![]).unwrap();
+        let sink = FakeSink::default();
+        assert!(accept_with(&sink, "lnk-t", &id, true).unwrap());
+        assert!(!accept_with(&sink, "lnk-t", &id, true).unwrap());
+        assert_eq!(sink.delivered.borrow().len(), 1);
+        assert!(sink.texts.borrow()[0].starts_with("<tori kind=\"linked\" from=\"lnk-f\">"));
+        assert!(crate::session_links::linked("lnk-t", "lnk-f"));
     }
 
     #[test]
@@ -3562,7 +3599,7 @@ mod tests {
             fail: true,
             ..Default::default()
         };
-        assert!(accept_with(&sink, "acc-t2", &id).is_err());
+        assert!(accept_with(&sink, "acc-t2", &id, false).is_err());
         let back = crate::chat_requests::list("acc-t2").unwrap();
         assert_eq!(back.iter().map(|r| r.text.as_str()).collect::<Vec<_>>(), vec!["please"]);
     }

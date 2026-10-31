@@ -1012,6 +1012,7 @@ pub fn delete_session(path: String, agent: String) -> Result<(), String> {
         for (what, forgot) in [
             ("its waiting messages", crate::chat_requests::forget(&id)),
             ("its read grants", crate::read_grants::forget(&id)),
+            ("its links", crate::session_links::forget(&id)),
         ] {
             if let Err(e) = forgot {
                 eprintln!("tori: {id} was deleted, but forgetting {what} failed: {e}");
