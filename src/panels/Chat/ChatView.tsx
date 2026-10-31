@@ -3,6 +3,7 @@ import { createStore, produce } from "solid-js/store";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import OriginBanner from "./OriginBanner";
+import PendingRequests from "./PendingRequests";
 import MessageList from "./MessageList";
 import SelectionToolbar, { quoteBlock } from "../../components/SelectionToolbar/SelectionToolbar";
 import { mirrorSaved, openDraftInEditor, scratchTabClosed, unlinkScratch } from "./composerScratch";
@@ -2658,6 +2659,7 @@ export default function ChatView(props: {
         )}
       </Show>
       <For each={asksFor(props.sessionId)}>{(ask) => <AskCard ask={ask} here={props.sessionId} />}</For>
+      <PendingRequests sessionId={props.sessionId} />
 
       <PlanCard items={state.plan} />
 

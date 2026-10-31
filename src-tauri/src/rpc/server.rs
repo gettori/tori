@@ -1106,8 +1106,8 @@ pub trait Backend: Send + Sync {
     fn agents_list(&self, params: AgentsListParams) -> Result<Value, RpcError>;
     fn ports_list(&self) -> Result<Value, RpcError>;
     fn worktree_at(&self, params: PortParams) -> Result<Value, RpcError>;
-    fn session_tail(&self, params: TailParams) -> Result<Value, RpcError>;
-    fn session_history(&self, params: HistoryParams) -> Result<Value, RpcError>;
+    fn session_tail(&self, principal: &Principal, params: TailParams) -> Result<Value, RpcError>;
+    fn session_history(&self, principal: &Principal, params: HistoryParams) -> Result<Value, RpcError>;
     fn session_interrupt(&self, principal: &Principal, params: InterruptParams) -> Result<Value, RpcError>;
     fn session_rename(&self, params: RenameParams) -> Result<Value, RpcError>;
     fn session_close(&self, principal: &Principal, params: CloseParams) -> Result<Value, RpcError>;
@@ -1585,10 +1585,10 @@ pub mod tests {
         fn accounts_list(&self, p: AccountsListParams) -> Result<Value, RpcError> {
             Ok(json!([{ "id": "default", "label": p.agent, "email": null }]))
         }
-        fn session_tail(&self, p: TailParams) -> Result<Value, RpcError> {
+        fn session_tail(&self, _: &Principal, p: TailParams) -> Result<Value, RpcError> {
             Ok(json!([{ "id": p.id }]))
         }
-        fn session_history(&self, p: HistoryParams) -> Result<Value, RpcError> {
+        fn session_history(&self, _: &Principal, p: HistoryParams) -> Result<Value, RpcError> {
             Ok(json!({ "events": [], "next": p.before }))
         }
         fn session_rename(&self, p: RenameParams) -> Result<Value, RpcError> {

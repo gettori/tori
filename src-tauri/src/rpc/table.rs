@@ -158,7 +158,7 @@ pub static METHODS: &[Method] = &[
         refusal: None,
         outward: false,
         read_only: true,
-        call: |b, _, v| b.session_tail(params(v)?),
+        call: |b, p, v| b.session_tail(p, params(v)?),
     },
     Method {
         name: "caller",
@@ -189,7 +189,7 @@ pub static METHODS: &[Method] = &[
         refusal: None,
         outward: false,
         read_only: true,
-        call: |b, _, v| b.session_history(params(v)?),
+        call: |b, p, v| b.session_history(p, params(v)?),
     },
     Method {
         name: "session.interrupt",
