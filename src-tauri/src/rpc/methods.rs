@@ -15,15 +15,16 @@ use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::server::{
     AccountsListParams, AgentsListParams, AllowGroupParams, AskAnswerParams, AskParams, AskWaitParams,
-    AttachmentWriteParams, Backend, Before, BudgetParams, CheckParams, CheckpointDiffParams, CheckpointParams,
-    CheckpointsParams, DigestLookedParams, DigestParams, DraftParams, HandoffParams, HistoryParams, HoldResolveParams,
-    InfoParams, InterruptParams, IssueGetParams, IssuesAssignedParams, ItemUpdateParams, LinkBranchParams, ListParams,
-    LogParams, LoopParams, MintParams, ModeParams, ModelParams, NeedsYouSeenParams, OpenParams, PendingParams,
-    PlanSetParams, PortParams, PrCheckLogParams, PrCreateParams, PrGetParams, PrMergeParams, PrPushParams,
-    PrWatchParams, ProjectIconParams, ProjectSetParams, PromptRef, ProvenanceParams, RevealParams, ReviewMarkParams,
-    ReviewSubmitParams, ScheduleAddParams, ScheduleIdParams, SessionAnswerParams, SetupParams, SpawnParams,
-    SteerParams, TailParams, TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams,
-    WorktreeParams, DEFAULT_LOG_LIMIT,
+    AttachmentWriteParams, Backend, Before, BranchAttachParams, BudgetParams, CheckParams, CheckpointDiffParams,
+    CheckpointParams, CheckpointsParams, CloseParams, DigestLookedParams, DigestParams, DraftParams, HandoffParams,
+    HistoryParams, HoldResolveParams, InfoParams, InterruptParams, IssueGetParams, IssuesAssignedParams,
+    ItemUpdateParams, LinkBranchParams, ListParams, LogParams, LoopParams, MintParams, ModeParams, ModelParams,
+    NeedsYouSeenParams, OpenParams, PendingParams, PlanSetParams, PortParams, PrCheckLogParams, PrCreateParams,
+    PrGetParams, PrMergeParams, PrPushParams, PrWatchParams, ProjectIconParams, ProjectSetParams, PromptRef,
+    ProvenanceParams, RenameParams, RevealParams, ReviewMarkParams, ReviewSubmitParams, ScheduleAddParams,
+    ScheduleIdParams, SessionAnswerParams, SetupParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams,
+    UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, WorktreeRemoveParams,
+    DEFAULT_LOG_LIMIT,
 };
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
@@ -1683,6 +1684,72 @@ impl Backend for DaemonBackend {
         may_steer(principal, locked, self.runner.status().session.as_deref())?;
         host.interrupt(&params.id).map_err(refused)?;
         Ok(json!({ "interrupted": params.id }))
+    }
+
+    fn session_rename(&self, params: RenameParams) -> Result<Value, RpcError> {
+        crate::sessions::rename(&self.desk.ui, params.id.clone(), params.name).map_err(refused)?;
+        self.composer.changed();
+        Ok(json!({ "renamed": params.id }))
+    }
+
+    fn session_close(&self, principal: &Principal, params: CloseParams) -> Result<Value, RpcError> {
+        let host = &self.chats.host;
+        if !host.is_live(&params.id) {
+            return Err(RpcError::new(
+                INVALID_PARAMS,
+                format!("no live chat session {}", params.id),
+            ));
+        }
+        let locked = super::is_locked(&self.desk.states, &self.autopilot, &self.runner, &params.id);
+        may_steer(principal, locked, self.runner.status().session.as_deref())?;
+        host.close(&params.id, super::events::EndReason::Closed)
+            .map_err(refused)?;
+        Ok(json!({ "closed": params.id }))
+    }
+
+    fn worktree_remove(&self, params: WorktreeRemoveParams) -> Result<Value, RpcError> {
+        if same_folder(&params.folder, &params.project) {
+            return Err(refused(format!(
+                "{} is the project's own checkout, not a worktree",
+                params.folder
+            )));
+        }
+        let folder = Path::new(&params.folder);
+        if crate::worktree::tree_dirty(folder).map_err(refused)? {
+            return Err(refused(
+                "This worktree has uncommitted changes; commit or discard them first.".into(),
+            ));
+        }
+        let live = self.composer.sessions_list(&ListParams {
+            cwd: Some(params.folder.clone()),
+            live: Some(true),
+            limit: Some(1),
+        });
+        if live.as_array().is_some_and(|rows| !rows.is_empty()) {
+            return Err(refused("This worktree has a live session; close it first.".into()));
+        }
+        if self.screen.attached() {
+            self.screen.request(
+                "worktree.remove",
+                json!({ "project": params.project, "folder": params.folder }),
+            )?;
+        } else {
+            crate::worktree::remove_keeping_branch(&self.desk.ui, &params.project, &params.folder, false)
+                .map_err(refused)?;
+        }
+        self.composer.projects.evict(Path::new(&params.project));
+        Ok(json!({ "removed": params.folder }))
+    }
+
+    fn branch_attach(&self, params: BranchAttachParams) -> Result<Value, RpcError> {
+        crate::config::attach_existing_branch(
+            &self.composer.projects,
+            &self.desk.ui,
+            &params.project,
+            params.branch.clone(),
+        )
+        .map_err(refused)?;
+        Ok(json!({ "attached": params.branch }))
     }
 
     fn session_tail(&self, params: TailParams) -> Result<Value, RpcError> {

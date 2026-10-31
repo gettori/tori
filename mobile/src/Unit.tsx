@@ -1,6 +1,6 @@
 import { For, Show, createResource, createSignal, onCleanup } from "solid-js";
 import { Dynamic } from "solid-js/web";
-import { Plus } from "lucide-solid";
+import { Ellipsis, Plus } from "lucide-solid";
 import Icon from "../../src/components/Icon/Icon";
 import { WheelGlyph } from "../../src/components/Autopilot/Wheel";
 import { agentMark } from "../../src/components/Icon/agentMarks";
@@ -8,6 +8,7 @@ import SyncMarks from "../../src/components/SyncMarks/SyncMarks";
 import { syncMarks } from "../../src/utils/branchSync";
 import { ago } from "../../src/utils/relativeTime";
 import { bucketByLastActive } from "../../src/utils/sessionBuckets";
+import AskSheet, { type Ask } from "./AskSheet";
 import type { Crew } from "./Autopilot";
 import NewSheet, { type Started } from "./NewSheet";
 import type { RemoteClient } from "./remote";
@@ -17,6 +18,8 @@ import { PHASE_LABEL, agentHolds, atUnit, phaseOf, sessionLabel, type SessionRow
 import styles from "./shell.module.css";
 
 const EARLIER_LIMIT = 100;
+// The Mac runs the project's teardown command first, up to two minutes.
+const REMOVE_REPLY_MS = 160_000;
 
 export function AgentMark(props: { agent: string | undefined; size: number }) {
   return (
@@ -169,12 +172,30 @@ export default function UnitScreen(props: {
   autopilotOn: boolean;
   onOpen: (row: SessionRow) => void;
   onBack: () => void;
+  onRemoved: () => void;
 }) {
   const { here, earlier } = unitSessions(props.client, () => [props.unit], props.live);
   const git = watchGit(props.client, () => [props.unit.folder]);
   const sync = watchSync(props.client, () => [props.unit]);
 
   const [sheet, setSheet] = createSignal(false);
+  const [menu, setMenu] = createSignal(false);
+  const [ask, setAsk] = createSignal<Ask | null>(null);
+  const removable = () => props.unit.kind === "worktree" && props.project !== null;
+  const remove = () => {
+    setMenu(false);
+    const branch = props.unit.branch;
+    setAsk({
+      title: `Remove worktree \u201c${props.unit.label}\u201d?`,
+      message: `${branch ? `The branch ${branch} stays. ` : ""}A worktree with uncommitted changes or a live session is not removed from the phone.`,
+      confirm: "Remove worktree",
+      danger: true,
+      run: () =>
+        props.client
+          .request("worktree.remove", { project: props.project, folder: props.unit.folder }, REMOVE_REPLY_MS)
+          .then(props.onRemoved),
+    });
+  };
   const started = (s: Started) => {
     setSheet(false);
     props.onOpen({
@@ -193,10 +214,27 @@ export default function UnitScreen(props: {
         back={props.back}
         onBack={props.onBack}
         end={
-          <button class={styles.newPill} onClick={() => setSheet(true)}>
-            <Icon icon={Plus} size={13} strokeWidth={2.6} />
-            New
-          </button>
+          <>
+            <button class={styles.newPill} onClick={() => setSheet(true)}>
+              <Icon icon={Plus} size={13} strokeWidth={2.6} />
+              New
+            </button>
+            <Show when={removable()}>
+              <span class={styles.menuAnchor}>
+                <button class={styles.more} aria-label="More" aria-expanded={menu()} onClick={() => setMenu(!menu())}>
+                  <Icon icon={Ellipsis} size={20} strokeWidth={2} />
+                </button>
+                <Show when={menu()}>
+                  <span class={styles.menuDim} onClick={() => setMenu(false)} />
+                  <span class={styles.menu} role="menu">
+                    <button role="menuitem" onClick={remove}>
+                      Remove worktree
+                    </button>
+                  </span>
+                </Show>
+              </span>
+            </Show>
+          </>
         }
       />
       <ConnectionBanner client={props.client} />
@@ -221,6 +259,7 @@ export default function UnitScreen(props: {
           onOpen={props.onOpen}
         />
       </div>
+      <Show when={ask()}>{(open) => <AskSheet ask={open()} onDone={() => setAsk(null)} />}</Show>
       <Show when={sheet()}>
         <NewSheet
           client={props.client}

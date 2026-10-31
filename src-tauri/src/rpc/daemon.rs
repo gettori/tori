@@ -765,12 +765,20 @@ struct DaemonScreen(Weak<Daemon>);
 
 // `window.open` waits on the webview, which may still be loading.
 const SCREEN_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+// A removal runs the project's teardown command first, which may take its whole limit.
+const REMOVE_WAIT: std::time::Duration =
+    crate::setup::TEARDOWN_LIMIT.saturating_add(std::time::Duration::from_secs(30));
 
 impl super::methods::Screen for DaemonScreen {
     fn request(&self, method: &str, params: Value) -> Result<Value, RpcError> {
         let window = self.0.upgrade().and_then(|d| d.window());
         let window = window.ok_or_else(|| RpcError::new(REFUSED, NO_WINDOW))?;
-        window.call("screen", json!({ "method": method, "params": params }), SCREEN_WAIT)
+        let wait = if method == "worktree.remove" {
+            REMOVE_WAIT
+        } else {
+            SCREEN_WAIT
+        };
+        window.call("screen", json!({ "method": method, "params": params }), wait)
     }
 
     fn attached(&self) -> bool {

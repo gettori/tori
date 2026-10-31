@@ -3159,6 +3159,7 @@ export default function LeftSidebar(props: {
   let unlistenSessions: UnlistenFn | undefined;
   let unlistenNavOpen: UnlistenFn | undefined;
   let unlistenNavDraft: UnlistenFn | undefined;
+  let unlistenNavPurge: UnlistenFn | undefined;
   let unlistenTopics: UnlistenFn | undefined;
   let unlistenPrWatches: UnlistenFn | undefined;
   let unlistenFetchDone: UnlistenFn | undefined;
@@ -3198,6 +3199,10 @@ export default function LeftSidebar(props: {
     unlistenNavDraft = await listen<{ folder: string; text: string; attach: string[] }>(
       "nav://draft",
       (e) => void draftFromBrowser(e.payload),
+    );
+    // A worktree the phone removes: its tabs close here first, as on a Remove worktree.
+    unlistenNavPurge = await listen<PurgeUnderPath>("nav://purge", (e) =>
+      emitWith<PurgeUnderPath>(PURGE_UNDER_PATH, e.payload),
     );
     // Window refocus re-probes so a dot clears promptly after e.g. a Ctrl+C
     // exit-to-shell that happened while the window was unfocused (its own
@@ -3261,6 +3266,7 @@ export default function LeftSidebar(props: {
     unlistenSessions?.();
     unlistenNavOpen?.();
     unlistenNavDraft?.();
+    unlistenNavPurge?.();
     unlistenFetchDone?.();
     unlistenBaseChanged?.();
     unlistenRadar?.();

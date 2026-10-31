@@ -878,8 +878,7 @@ pub fn adopt(path: &str) -> Result<(), String> {
 pub fn adopt_path(path: String) -> Result<(), String> {
     // Load-modify-save on the sessions-store store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("sessions-store");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _store = crate::exec::cross_process_store_lock("sessions-store")?;
     adopt(&path)
 }
 
@@ -889,8 +888,7 @@ pub fn adopt_path(path: String) -> Result<(), String> {
 pub fn seed_adopted(folders: Vec<String>) -> Result<(), String> {
     // Load-modify-save on the sessions-store store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("sessions-store");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _store = crate::exec::cross_process_store_lock("sessions-store")?;
     let mut state = load_adopted();
     if do_seed(&mut state, &folders) {
         save_adopted(&state)?;
@@ -956,12 +954,8 @@ fn save_overlay(map: &HashMap<String, Overlay>) -> Result<(), String> {
     std::fs::write(path, json).map_err(|e| e.to_string())
 }
 
-#[tauri::command(async)]
-pub fn set_session_name(app: AppHandle, id: String, name: Option<String>) -> Result<(), String> {
-    // Load-modify-save on the sessions-store store: serialized behind a named
-    // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("sessions-store");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+pub fn rename(ui: &crate::ui::Ui, id: String, name: Option<String>) -> Result<(), String> {
+    let _store = crate::exec::cross_process_store_lock("sessions-store")?;
     let mut map = load_overlay();
     map.entry(id).or_default().name = name.filter(|n| !n.trim().is_empty());
     save_overlay(&map)?;
@@ -969,7 +963,13 @@ pub fn set_session_name(app: AppHandle, id: String, name: Option<String>) -> Res
     // fires no filesystem event. Notify explicitly so every listener refreshes,
     // not just the caller: the sidebar tree AND the terminal tab titles, which
     // otherwise keep the name they were created with (an un-refreshed rename).
-    let _ = app.emit("sessions://changed", SessionsChanged::all());
+    ui.emit("sessions://changed", SessionsChanged::all());
+    Ok(())
+}
+
+#[tauri::command(async)]
+pub fn set_session_name(app: AppHandle, id: String, name: Option<String>) -> Result<(), String> {
+    rename(&crate::ui::Ui::from(&app), id, name)?;
     crate::rpc::sessions_changed();
     Ok(())
 }
@@ -987,8 +987,7 @@ pub fn set_session_name(app: AppHandle, id: String, name: Option<String>) -> Res
 pub fn delete_session(path: String, agent: String) -> Result<(), String> {
     // Load-modify-save on the sessions-store store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("sessions-store");
-    let guard = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let guard = crate::exec::cross_process_store_lock("sessions-store")?;
     // Both stores name a session's file by its id.
     let id = Path::new(&path).file_stem().map(|s| s.to_string_lossy().into_owned());
     let deleted = match agents::parser_kind_for(&agent) {
