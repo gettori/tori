@@ -2226,6 +2226,18 @@ pub mod tests {
     }
 
     #[test]
+    fn a_chat_cannot_make_or_break_a_session_link() {
+        let server = stub_server();
+        let chat = Principal::Session(Caller::Chat("s1".into()));
+        for name in ["session.link", "session.unlink", "links.link", "links.unlink"] {
+            let err = server
+                .dispatch(0, &chat, &request(name, json!({"a": "s1", "b": "s2"})))
+                .unwrap_err();
+            assert_eq!(err.code, METHOD_NOT_FOUND, "{name}");
+        }
+    }
+
+    #[test]
     fn only_a_chat_session_may_set_a_plan() {
         let server = stub_server();
         let plan = || request("plan.set", json!({"items": [{"text": "a", "status": "pending"}]}));

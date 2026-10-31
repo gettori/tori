@@ -1243,3 +1243,16 @@ describe("the last reply", () => {
     expect(speakableChunks(last!.body)).toEqual([{ text: "answer 3", block: 0, pause: 0 }]);
   });
 });
+
+describe("a message accepted with Link", () => {
+  it("stays in the transcript as a row saying who this chat was linked with", () => {
+    const linked: ChatItem = {
+      kind: "user",
+      id: "u-linked",
+      blocks: [{ type: "text", text: `<tori kind="linked" from="s2">\nplease rebase\n</tori>` }],
+      steer: false,
+    };
+    render(() => list({ items: [linked] }));
+    expect(screen.getByText("Linked with another session by you")).toBeTruthy();
+  });
+});

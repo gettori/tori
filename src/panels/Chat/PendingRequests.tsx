@@ -17,10 +17,11 @@ function PendingRequest(props: { request: ChatRequest; sessionId: string; onDone
     const meta = findSession(props.request.from)?.session;
     return meta?.name || meta?.title || props.request.from.slice(0, 8);
   };
-  const act = (command: "chat_request_accept" | "chat_request_discard", failed: string) => {
+  const act = (command: "chat_request_accept" | "chat_request_discard", failed: string, link = false) => {
     if (busy()) return;
     setBusy(true);
-    chatCall<boolean>(command, { session: props.sessionId, id: props.request.id })
+    const args = { session: props.sessionId, id: props.request.id };
+    chatCall<boolean>(command, command === "chat_request_accept" ? { ...args, link } : args)
       .catch((e) => emitWith<ToastEvent>(TOAST, { message: `${failed}: ${String(e)}`, kind: "error" }))
       .finally(() => {
         setBusy(false);
@@ -35,6 +36,13 @@ function PendingRequest(props: { request: ChatRequest; sessionId: string; onDone
       </span>
       <Button size="sm" disabled={busy()} onClick={() => act("chat_request_accept", "The message was not delivered")}>
         Accept
+      </Button>
+      <Button
+        size="sm"
+        disabled={busy()}
+        onClick={() => act("chat_request_accept", "The message was not delivered", true)}
+      >
+        Link
       </Button>
       <Button size="sm" disabled={busy()} onClick={() => act("chat_request_discard", "The message was not discarded")}>
         Discard

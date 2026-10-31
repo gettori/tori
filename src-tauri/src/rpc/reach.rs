@@ -20,6 +20,7 @@ pub trait Facts {
     fn made_by(&self, cwd: &str) -> Option<String>;
     fn topic_of(&self, cwd: &str) -> Option<String>;
     fn granted_read(&self, reader: &str, target: &str) -> bool;
+    fn linked(&self, a: &str, b: &str) -> bool;
 }
 
 fn made(f: &impl Facts, maker: &str, of: &str) -> bool {
@@ -39,7 +40,7 @@ pub fn related(f: &impl Facts, caller: &str, target: &str, reach: Reach) -> bool
     let handed = f.handed_to(target).as_deref() == Some(caller) || f.handed_to(caller).as_deref() == Some(target);
     let topic = |id: &str| f.cwd(id).and_then(|cwd| f.topic_of(&cwd));
     let same_topic = topic(caller).is_some_and(|t| topic(target).as_deref() == Some(t.as_str()));
-    handed || same_topic || (reach == Reach::Read && f.granted_read(caller, target))
+    handed || same_topic || f.linked(caller, target) || (reach == Reach::Read && f.granted_read(caller, target))
 }
 
 pub fn may_read(f: &impl Facts, principal: &Principal, target: &str) -> Result<(), String> {
@@ -98,7 +99,7 @@ pub enum Verdict {
 }
 
 pub fn steer_verdict(f: &impl Facts, caller: &str, target: &str, mid_turn: bool) -> Verdict {
-    let down = owns(f, caller, target);
+    let down = owns(f, caller, target) || f.linked(caller, target);
     let joins = mid_turn && related(f, caller, target, Reach::Steer);
     if (down || joins) && !over_cap(caller, target) {
         Verdict::Deliver
@@ -122,6 +123,7 @@ pub(crate) mod fake {
         pub makers: HashMap<&'static str, &'static str>,
         pub topics: HashMap<&'static str, &'static str>,
         pub grants: HashSet<(&'static str, &'static str)>,
+        pub links: HashSet<(&'static str, &'static str)>,
     }
 
     impl Facts for Fake {
@@ -148,6 +150,11 @@ pub(crate) mod fake {
         }
         fn granted_read(&self, reader: &str, target: &str) -> bool {
             self.grants.iter().any(|(r, t)| *r == reader && *t == target)
+        }
+        fn linked(&self, a: &str, b: &str) -> bool {
+            self.links
+                .iter()
+                .any(|(x, y)| (*x == a && *y == b) || (*x == b && *y == a))
         }
     }
 }
@@ -223,6 +230,30 @@ mod tests {
         };
         assert!(!related(&f, "a", "b", Reach::Steer));
         assert!(!related(&f, "a", "b", Reach::Read));
+    }
+
+    #[test]
+    fn linked_chats_reach_each_other_and_unlinked_ones_do_not() {
+        let f = Fake {
+            links: [("a", "b")].into(),
+            ..Default::default()
+        };
+        assert!(both_ways(&f, "a", "b"));
+        assert!(related(&f, "b", "a", Reach::Read));
+        assert!(!related(&f, "a", "c", Reach::Steer));
+    }
+
+    #[test]
+    fn a_linked_chat_starts_a_turn_in_an_idle_peer_until_the_cap() {
+        let f = Fake {
+            links: [("lk-a", "lk-b")].into(),
+            ..Default::default()
+        };
+        for _ in 0..LOOP_CAP {
+            assert_eq!(steer_verdict(&f, "lk-b", "lk-a", false), Verdict::Deliver);
+            note_agent_steer("lk-b", "lk-a");
+        }
+        assert_eq!(steer_verdict(&f, "lk-a", "lk-b", false), Verdict::Queue);
     }
 
     #[test]
