@@ -12,6 +12,7 @@ import InboxScreen, { watchDigest, watchInbox, watchNeedsYou, watchPermissions }
 import { setSpaceName, showWheel, spaceName } from "./prefs";
 import Root, { type RootTab } from "./Root";
 import { ProjectScreen, TopicScreen } from "./Screens";
+import { setChatCall } from "../../src/panels/Chat/chatCalls";
 import { SpacesSheet, TopicForm } from "./Organize";
 import SettingsSheet from "./SettingsSheet";
 import UnitScreen from "./Unit";
@@ -180,7 +181,20 @@ function watchTree(client: RemoteClient) {
   return [tree, () => void refetch()] as const;
 }
 
+function toSessionCallOp(command: string, args: Record<string, unknown>) {
+  const { sessionId, cwd: _cwd, ...rest } = args;
+  const snake = Object.fromEntries(
+    Object.entries(rest).map(([key, value]) => [key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`), value]),
+  );
+  return { id: sessionId, op: command.replace(/^chat_/, ""), args: snake };
+}
+
+function routeChatCallsOverLink(client: RemoteClient) {
+  setChatCall((command, args) => client.request("session.call", toSessionCallOp(command, args)));
+}
+
 function Paired(props: { client: RemoteClient; notice: string | null; onDisconnect: () => void }) {
+  routeChatCallsOverLink(props.client);
   const [live, relist] = liveRows(props.client);
   const [tree, reloadTree] = watchTree(props.client);
   const [organize, setOrganize] = createSignal<"spaces" | "topic" | null>(null);
@@ -336,7 +350,8 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
             const current = () => {
               const found = live().find((r) => r.id === row.id);
               if (found) seen = true;
-              return found ?? (seen ? { ...row, live: false } : row);
+              if (found) return row.forkOf ? { ...found, forkOf: row.forkOf } : found;
+              return seen ? { ...row, live: false } : row;
             };
             return (
               <Chat
@@ -344,6 +359,7 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
                 session={current}
                 onBack={back}
                 onChanged={() => void relist()}
+                onOpen={openSession}
                 onUnit={units().some(({ unit }) => inUnit(row.home, unit)) ? () => openHome(current()) : undefined}
               />
             );

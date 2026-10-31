@@ -12,6 +12,8 @@ export type SessionRow = {
   dot?: string;
   last_active: number;
   home?: Home;
+  /** The session a fork was made from, read until the fork has a transcript of its own. */
+  forkOf?: string;
 };
 
 export type UnitGit = { added: number; deleted: number; ahead: number | null; behind: number | null };

@@ -1,8 +1,8 @@
 import { For, Show, Switch, Match, createEffect, createMemo, createSignal, createResource } from "solid-js";
 import { ChevronRight, EyeOff, KeyRound } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
-import { invoke } from "@tauri-apps/api/core";
 import { parseDiffHunks } from "../../utils/diffHunks";
+import { chatCall } from "./chatCalls";
 import { hunkFingerprint } from "../../utils/hunkFingerprint";
 import { mentionPath } from "../../utils/pathScope";
 import PermissionPrompt, { type Answer } from "./PermissionPrompt";
@@ -128,7 +128,7 @@ export default function ToolCallCard(props: {
   const [diffs, { refetch }] = createResource(
     () => (showTree() && settled() && isEditCall(props.card) ? props.card.toolUseId : null),
     async (toolUseId) =>
-      await invoke<ToolDiff[]>("chat_tool_diff", {
+      await chatCall<ToolDiff[]>("chat_tool_diff", {
         sessionId: props.sessionId,
         toolUseId,
         cwd: props.cwd,
@@ -140,7 +140,7 @@ export default function ToolCallCard(props: {
   const [fullOutput] = createResource(
     () => (open() && wantFull() ? props.card.toolUseId : null),
     async (toolUseId) =>
-      await invoke<string | null>("chat_tool_output", {
+      await chatCall<string | null>("chat_tool_output", {
         sessionId: props.sessionId,
         toolUseId,
       }).catch(() => null),

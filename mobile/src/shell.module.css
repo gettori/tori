@@ -1179,6 +1179,7 @@ li + li > .item {
 
 .composerRow {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-width: 0;
@@ -1848,4 +1849,64 @@ li + li > .item {
   color: inherit;
   background: none;
   border: none;
+}
+
+.plan {
+  margin: 0 12px;
+}
+
+.gauge {
+  margin: 4px 20px 0;
+  font-size: 12px;
+  color: var(--fg-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.slashes {
+  display: flex;
+  flex-direction: column;
+  max-height: 30dvh;
+  overflow-y: auto;
+}
+
+.slashes button {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-height: 40px;
+  padding: 0 4px;
+  color: var(--fg-default);
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+}
+
+.slashHint {
+  overflow: hidden;
+  color: var(--fg-subtle);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.diff {
+  margin: 0 12px 16px;
+  padding: 10px;
+  overflow-x: auto;
+  font-family: var(--tori-font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre;
+  background: var(--m-chip);
+  border-radius: 12px;
+}
+
+.diff [data-line="add"] {
+  color: var(--diff-added);
+}
+
+.diff [data-line="del"] {
+  color: var(--diff-deleted);
 }

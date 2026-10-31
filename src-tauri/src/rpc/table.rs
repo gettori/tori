@@ -21,8 +21,8 @@ use super::server::{
     UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, WorktreeRemoveParams, UNITS_GIT_MAX,
 };
 use super::server::{
-    AttemptNewParams, SpaceOrderParams, SpaceParams, TopicIdParams, TopicMemberAddParams, TopicMemberOrderParams,
-    TopicMemberParams, TopicNewParams, TopicRenameParams,
+    AttemptNewParams, ChatCallParams, SpaceOrderParams, SpaceParams, TopicIdParams, TopicMemberAddParams,
+    TopicMemberOrderParams, TopicMemberParams, TopicNewParams, TopicRenameParams,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -210,6 +210,16 @@ pub static METHODS: &[Method] = &[
         outward: false,
         read_only: false,
         call: |b, _, v| b.session_rename(params(v)?),
+    },
+    Method {
+        name: "session.call",
+        description: "What the chat panel reads and does on a chat: a tool call's diff or full output, the session's diff, reverting one hunk a tool call wrote, or setting one of the agent's config options.",
+        params: schema::<ChatCallParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: None,
+        outward: false,
+        read_only: false,
+        call: |b, p, v| b.session_call(p, params(v)?),
     },
     Method {
         name: "session.close",
@@ -617,7 +627,7 @@ pub static METHODS: &[Method] = &[
         name: "checkpoints.list",
         description: "A session's checkpoints, oldest first, each numbered with the turn the other checkpoint methods take.",
         params: schema::<CheckpointsParams>,
-        callers: ANYONE,
+        callers: ANYONE_AND_DEVICES,
         refusal: None,
         outward: false,
         read_only: true,
@@ -627,7 +637,7 @@ pub static METHODS: &[Method] = &[
         name: "checkpoint.diff",
         description: "The files a session's turn, or run of turns, changed and their unified diff.",
         params: schema::<CheckpointDiffParams>,
-        callers: ANYONE,
+        callers: ANYONE_AND_DEVICES,
         refusal: None,
         outward: false,
         read_only: true,
@@ -653,7 +663,7 @@ pub static METHODS: &[Method] = &[
         name: "checkpoint.revert",
         description: "Revert a session's folder to one of its turn checkpoints.",
         params: schema::<CheckpointParams>,
-        callers: ANYONE,
+        callers: ANYONE_AND_DEVICES,
         refusal: None,
         outward: false,
         read_only: false,
