@@ -200,7 +200,14 @@ import {
   Square,
 } from "lucide-solid";
 import { BranchMark, WorktreeMark } from "../../components/Icon/gitMarks";
-import { attemptFolderName, groupAttempts, samePath, type AttemptGroup, type AttemptRecord } from "./attempts";
+import {
+  attemptFolderName,
+  branchStem,
+  groupAttempts,
+  samePath,
+  type AttemptGroup,
+  type AttemptRecord,
+} from "./attempts";
 import { groupStacks, type StackEntry } from "./stacks";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import TopicList from "./TopicList";
@@ -2144,19 +2151,6 @@ export default function LeftSidebar(props: {
   }
 
   // --- fan-out ---
-
-  // A branch stem from the goal, so three attempts at one question read as one
-  // family in `git branch` too. Kept to the characters `attempt_folder` accepts
-  // verbatim, since the folder is derived from the branch.
-  function branchStem(goal: string): string {
-    const slug = goal
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 24)
-      .replace(/-+$/, "");
-    return slug || "attempt";
-  }
 
   // Fan out: create N attempts at one task, each its own worktree on its own
   // branch, with the dependency directories cloned in.

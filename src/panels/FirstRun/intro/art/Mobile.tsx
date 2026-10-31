@@ -184,6 +184,8 @@ export default function MobileArt() {
           onUnit={() => {}}
           onSession={() => {}}
           onSettings={() => {}}
+          onSpaces={() => {}}
+          onNewTopic={() => {}}
         />
         <BottomBar
           spaces={PHONE_SPACES}

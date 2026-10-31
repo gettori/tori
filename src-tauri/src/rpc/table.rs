@@ -20,6 +20,10 @@ use super::server::{
     ScheduleIdParams, SessionAnswerParams, SetupParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams,
     UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, WorktreeRemoveParams, UNITS_GIT_MAX,
 };
+use super::server::{
+    AttemptNewParams, SpaceOrderParams, SpaceParams, TopicIdParams, TopicMemberAddParams, TopicMemberOrderParams,
+    TopicMemberParams, TopicNewParams, TopicRenameParams,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CallerKind {
@@ -103,6 +107,7 @@ const NOT_WORKERS_DEVICES_AND_BROWSER: &[CallerKind] = &[
 const LOCAL_AND_DEVICES: &[CallerKind] = &[CallerKind::Local, CallerKind::Device];
 const CHATS: &[CallerKind] = &[CallerKind::Chat];
 const BROWSER: &[CallerKind] = &[CallerKind::Browser];
+
 const DEVICES_AND_BROWSER: &[CallerKind] = &[CallerKind::Device, CallerKind::Browser];
 const WATCH_REFUSAL: &str =
     "a watch wakes its chat with a new turn, so only a chat you drive can hold one; an autopilot worker's pull request already reaches the autopilot";
@@ -235,6 +240,106 @@ pub static METHODS: &[Method] = &[
         outward: false,
         read_only: false,
         call: |b, _, v| b.branch_attach(params(v)?),
+    },
+    Method {
+        name: "space.new",
+        description: "Make a space: a folder in Tori's base folder, with its icon and colour.",
+        params: schema::<SpaceParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: None,
+        outward: false,
+        read_only: false,
+        call: |b, _, v| b.space_new(params(v)?),
+    },
+    Method {
+        name: "space.edit",
+        description: "Set a space's icon and colour.",
+        params: schema::<SpaceParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: None,
+        outward: false,
+        read_only: false,
+        call: |b, _, v| b.space_edit(params(v)?),
+    },
+    Method {
+        name: "space.order",
+        description: "Set the order the spaces show in.",
+        params: schema::<SpaceOrderParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: None,
+        outward: false,
+        read_only: false,
+        call: |b, _, v| b.space_order(params(v)?),
+    },
+    Method {
+        name: "topic.new",
+        description: "Make a Topic over several repositories, each a worktree on one branch or a reference.",
+        params: schema::<TopicNewParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: None,
+        outward: false,
+        read_only: false,
+        call: |b, _, v| b.topic_new(params(v)?),
+    },
+    Method {
+        name: "topic.rename",
+        description: "Rename a Topic.",
+        params: schema::<TopicRenameParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: None,
+        outward: false,
+        read_only: false,
+        call: |b, _, v| b.topic_rename(params(v)?),
+    },
+    Method {
+        name: "topic.delete",
+        description: "Delete a Topic's record. Its worktrees and branches stay as they are.",
+        params: schema::<TopicIdParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: None,
+        outward: false,
+        read_only: false,
+        call: |b, _, v| b.topic_delete(params(v)?),
+    },
+    Method {
+        name: "topic.member.add",
+        description: "Add a repository to a Topic, or move a worktree the user already has into it.",
+        params: schema::<TopicMemberAddParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: None,
+        outward: false,
+        read_only: false,
+        call: |b, _, v| b.topic_member_add(params(v)?),
+    },
+    Method {
+        name: "topic.member.order",
+        description: "Set the order a Topic's members show in.",
+        params: schema::<TopicMemberOrderParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: None,
+        outward: false,
+        read_only: false,
+        call: |b, _, v| b.topic_member_order(params(v)?),
+    },
+    Method {
+        name: "topic.promote",
+        description: "Give a Topic's reference member its own worktree on the Topic branch, as the sidebar's Promote does.",
+        params: schema::<TopicMemberParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: None,
+        outward: false,
+        read_only: false,
+        call: |b, _, v| b.topic_promote(params(v)?),
+    },
+    Method {
+        name: "attempt.new",
+        description: "Make one attempt in a fan out: a worktree on its own branch, grouped with the others of its goal.",
+        params: schema::<AttemptNewParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: None,
+        outward: false,
+        read_only: false,
+        call: |b, _, v| b.attempt_new(params(v)?),
     },
     Method {
         name: "session.steer",

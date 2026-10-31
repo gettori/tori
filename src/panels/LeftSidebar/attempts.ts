@@ -98,3 +98,16 @@ export function groupAttempts<U extends UnitLike>(
 export function attemptFolderName(path: string): string {
   return normalizePath(path).split("/").filter(Boolean).pop() ?? path;
 }
+
+// A branch stem from the goal, so three attempts at one question read as one
+// family in `git branch` too. Kept to the characters `attempt_folder` accepts
+// verbatim, since the folder is derived from the branch.
+export function branchStem(goal: string): string {
+  const slug = goal
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 24)
+    .replace(/-+$/, "");
+  return slug || "attempt";
+}

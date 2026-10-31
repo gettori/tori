@@ -199,6 +199,8 @@ export default function Root(props: {
   onUnit: (unit: Unit, back: string) => void;
   onSession: (row: SessionRow) => void;
   onSettings: () => void;
+  onSpaces: () => void;
+  onNewTopic: () => void;
 }) {
   const [searching, setSearching] = createSignal(false);
   const [query, setQuery] = createSignal("");
@@ -211,7 +213,9 @@ export default function Root(props: {
         <span class={styles.titles}>
           <Show when={props.tab === "projects"} fallback={<span class={styles.bigTitle}>Topics</span>}>
             <span class={styles.bigTitle}>{props.space?.name ?? "Tori"}</span>
-            <span class={styles.rootLabel}>{DOT} Spaces</span>
+            <button class={`${styles.rootLabel} ${styles.spacesLink}`} onClick={() => props.onSpaces()}>
+              {DOT} Spaces
+            </button>
           </Show>
         </span>
         <button
@@ -314,6 +318,11 @@ export default function Root(props: {
                       </li>
                     )}
                   </For>
+                  <li>
+                    <button class={`${styles.item} ${styles.setting}`} onClick={() => props.onNewTopic()}>
+                      <span class={styles.text}>New Topic</span>
+                    </button>
+                  </li>
                 </ul>
               </Match>
             </Switch>

@@ -1,5 +1,5 @@
 import { For, Match, Show, Switch, createResource, createSignal, onCleanup, type JSX } from "solid-js";
-import { ChevronLeft, Folder, Tag } from "lucide-solid";
+import { ChevronLeft, Ellipsis, Folder, Tag } from "lucide-solid";
 import Icon from "../../src/components/Icon/Icon";
 import { BranchMark, WorktreeMark } from "../../src/components/Icon/gitMarks";
 import SyncMarks from "../../src/components/SyncMarks/SyncMarks";
@@ -10,6 +10,8 @@ import type { BranchSync } from "../../src/utils/gitActions";
 import { ago } from "../../src/utils/relativeTime";
 import AskSheet, { type Ask } from "./AskSheet";
 import type { Crew } from "./Autopilot";
+import { ChoiceSheet, type Choice } from "./Organize";
+import { branchStem } from "../../src/panels/LeftSidebar/attempts";
 import { ProjectMark } from "./icons";
 import type { RemoteClient } from "./remote";
 import { Chevron, DOT, ConnectionBanner, StateMark } from "./Root";
@@ -36,6 +38,8 @@ import styles from "./shell.module.css";
 // link can take longer than the default reply window.
 const GIT_REPLY_MS = 30_000;
 const GIT_FOLDERS_MAX = 64;
+// Each attempt clones the project's dependency folders before it answers.
+const ATTEMPT_REPLY_MS = 60_000;
 const MINUS = "\u2212";
 // The desktop polls the forge every two minutes; the phone asks no more often.
 const SYNC_EVERY_MS = 30_000;
@@ -220,6 +224,37 @@ export function ProjectScreen(props: {
   onChanged: () => void;
 }) {
   const [ask, setAsk] = createSignal<Ask | null>(null);
+  const [fanOut, setFanOut] = createSignal<string | null>(null);
+  const fan = () =>
+    setAsk({
+      title: "Fan out: what are these attempts for?",
+      message: "Recorded with the group, so a promotion later can still say what was being attempted.",
+      input: { label: "Goal", value: "" },
+      confirm: "Next",
+      run: async (goal) => {
+        if (!goal) throw new Error("Say what the attempts are for.");
+        setFanOut(goal);
+      },
+    });
+  const makeAttempts = async (goal: string, count: number) => {
+    const stem = branchStem(goal);
+    const groupId = `${stem}-${Date.now().toString(36)}`;
+    let made = 0;
+    try {
+      for (let i = 1; i <= count; i++) {
+        await props.client.request(
+          "attempt.new",
+          { project: props.project.path, group_id: groupId, goal, branch: `${stem}-${i}` },
+          ATTEMPT_REPLY_MS,
+        );
+        made++;
+      }
+    } catch (e) {
+      throw new Error(`Created ${made} of ${count} attempts. ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      props.onChanged();
+    }
+  };
   const attach = () =>
     setAsk({
       title: "Attach a branch",
@@ -267,6 +302,15 @@ export function ProjectScreen(props: {
             )}
           </For>
         </ul>
+        <Show when={props.project.units.some((unit) => unit.kind === "worktree" || unit.kind === "plain")}>
+          <ul class={styles.group}>
+            <li>
+              <button class={`${styles.item} ${styles.setting}`} onClick={fan}>
+                <span class={styles.text}>Fan out</span>
+              </button>
+            </li>
+          </ul>
+        </Show>
         <Show when={props.project.units.some((unit) => unit.kind === "plain")}>
           <ul class={styles.group}>
             <li>
@@ -278,6 +322,17 @@ export function ProjectScreen(props: {
         </Show>
       </div>
       <Show when={ask()}>{(open) => <AskSheet ask={open()} onDone={() => setAsk(null)} />}</Show>
+      <Show when={!ask() && fanOut()}>
+        {(goal) => (
+          <ChoiceSheet
+            title="How many attempts?"
+            message={goal()}
+            choices={["2", "3", "4"].map((n) => ({ label: n, value: n }))}
+            onPick={(n) => makeAttempts(goal(), Number(n))}
+            onDone={() => setFanOut(null)}
+          />
+        )}
+      </Show>
     </div>
   );
 }
@@ -299,7 +354,82 @@ export function TopicScreen(props: {
   onUnit: (unit: Unit) => void;
   onOpen: (row: SessionRow) => void;
   onBack: () => void;
+  onChanged: () => void;
 }) {
+  const [menu, setMenu] = createSignal(false);
+  const [ask, setAsk] = createSignal<Ask | null>(null);
+  const [choice, setChoice] = createSignal<Parameters<typeof ChoiceSheet>[0] | null>(null);
+  const id = () => props.topic.id;
+  const call = (method: string, params: object) => props.client.request(method, params).then(props.onChanged);
+  const done = { onDone: () => setChoice(null) };
+  const open = (action: () => void) => () => {
+    setMenu(false);
+    action();
+  };
+  const rename = () =>
+    setAsk({
+      title: "Rename Topic",
+      input: { label: "Name", value: props.topic.name },
+      confirm: "Rename",
+      run: (name) => call("topic.rename", { topic_id: id(), name }),
+    });
+  const remove = () =>
+    setAsk({
+      title: `Delete Topic \u201c${props.topic.name}\u201d?`,
+      message: "Only the Topic goes. Its worktrees and branches stay as they are.",
+      confirm: "Delete Topic",
+      danger: true,
+      run: () => call("topic.delete", { topic_id: id() }).then(props.onBack),
+    });
+  const addRepo = () => {
+    const inTopic = new Set(props.topic.members.map((m) => m.repoPath));
+    const repos: Choice[] = (props.tree?.spaces.flatMap((s) => s.projects) ?? [])
+      .filter((p) => !inTopic.has(p.path))
+      .map((p) => ({ label: p.name, meta: p.path, value: p.path }));
+    let repoPath: string | null = null;
+    const asMode = (repo: string) => ({
+      title: "As a worktree or a reference?",
+      message: "Reference is read only: the repository's own checkout.",
+      choices: [
+        { label: "Worktree", meta: `On ${props.topic.branch}`, value: "worktree" },
+        { label: "Reference", value: "reference" },
+      ],
+      ...done,
+      onPick: (mode: string) => call("topic.member.add", { topic_id: id(), repo_path: repo, mode }),
+    });
+    setChoice({
+      title: `Add repository to ${props.topic.name}`,
+      choices: repos,
+      onPick: async (picked) => {
+        repoPath = picked;
+      },
+      onDone: () => setChoice(repoPath ? asMode(repoPath) : null),
+    });
+  };
+  const promote = () =>
+    setChoice({
+      title: "Promote a member",
+      message: "A reference member gets its own worktree on the Topic branch.",
+      choices: members()
+        .filter(({ member }) => member.worktreePath === null)
+        .map(({ member }) => ({ label: member.displayName, value: member.repoPath })),
+      ...done,
+      onPick: (repoPath) => call("topic.promote", { topic_id: id(), repo_path: repoPath }),
+    });
+  const moveUp = () =>
+    setChoice({
+      title: "Move a member up",
+      choices: members()
+        .slice(1)
+        .map(({ member }) => ({ label: member.displayName, value: member.repoPath })),
+      ...done,
+      onPick: (repoPath) => {
+        const order = members().map(({ member }) => member.repoPath);
+        const at = order.indexOf(repoPath);
+        [order[at - 1], order[at]] = [order[at], order[at - 1]];
+        return call("topic.member.order", { topic_id: id(), repo_paths: order });
+      },
+    });
   const members = () =>
     [...props.topic.members]
       .sort((a, b) => a.order - b.order)
@@ -308,7 +438,37 @@ export function TopicScreen(props: {
   const where = (row: SessionRow) => members().find((m) => atUnit(row, m.unit))?.member.displayName;
   return (
     <div class={styles.glow}>
-      <PushTop back="Topics" onBack={props.onBack} />
+      <PushTop
+        back="Topics"
+        onBack={props.onBack}
+        end={
+          <span class={styles.menuAnchor}>
+            <button class={styles.more} aria-label="More" aria-expanded={menu()} onClick={() => setMenu(!menu())}>
+              <Icon icon={Ellipsis} size={20} strokeWidth={2} />
+            </button>
+            <Show when={menu()}>
+              <span class={styles.menuDim} onClick={() => setMenu(false)} />
+              <span class={styles.menu} role="menu">
+                <button role="menuitem" onClick={open(rename)}>
+                  Rename
+                </button>
+                <button role="menuitem" onClick={open(addRepo)}>
+                  Add a repository
+                </button>
+                <button role="menuitem" onClick={open(promote)}>
+                  Promote a member
+                </button>
+                <button role="menuitem" disabled={members().length < 2} onClick={open(moveUp)}>
+                  Move a member up
+                </button>
+                <button role="menuitem" onClick={open(remove)}>
+                  Delete Topic
+                </button>
+              </span>
+            </Show>
+          </span>
+        }
+      />
       <ConnectionBanner client={props.client} />
       <div class={styles.scroll}>
         <h1 class={styles.screenTitle}>{props.topic.name}</h1>
@@ -337,6 +497,10 @@ export function TopicScreen(props: {
           onOpen={props.onOpen}
         />
       </div>
+      <Show when={ask()}>{(a) => <AskSheet ask={a()} onDone={() => setAsk(null)} />}</Show>
+      <Show when={choice()} keyed>
+        {(c) => <ChoiceSheet {...c} />}
+      </Show>
     </div>
   );
 }

@@ -45,7 +45,7 @@ pub enum MemberState {
 
 /// What the user asked a member to be. `state` is what git says it is, and
 /// the two stay apart so a demoted member can still reconcile.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum MemberMode {
     /// The repo's own checkout, read for context. No worktree, no branch.
@@ -695,7 +695,7 @@ fn pending_member(repo: &str, mode: MemberMode, order: u32) -> Member {
 }
 
 /// One repo a creating call adds, and what it should be.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NewMember {
     pub repo_path: String,

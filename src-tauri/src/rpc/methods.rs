@@ -26,6 +26,10 @@ use super::server::{
     UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, WorktreeRemoveParams,
     DEFAULT_LOG_LIMIT,
 };
+use super::server::{
+    AttemptNewParams, SpaceOrderParams, SpaceParams, TopicIdParams, TopicMemberAddParams, TopicMemberOrderParams,
+    TopicMemberParams, TopicNewParams, TopicRenameParams,
+};
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
 use crate::accounts::DEFAULT_PROFILE_ID;
@@ -1031,6 +1035,10 @@ pub struct DaemonBackend {
 }
 
 impl DaemonBackend {
+    fn topic_office(&self, op: &str, args: Value) -> Result<Value, RpcError> {
+        crate::topics::commands::office(&self.desk, &self.composer.projects, op, &args).map_err(refused)
+    }
+
     fn port_units(&self) -> Result<Vec<PortUnit>, RpcError> {
         let config =
             crate::config::get_config_body(&self.composer.projects).map_err(|e| RpcError::new(INTERNAL_ERROR, e))?;
@@ -1750,6 +1758,108 @@ impl Backend for DaemonBackend {
         )
         .map_err(refused)?;
         Ok(json!({ "attached": params.branch }))
+    }
+
+    fn space_new(&self, params: SpaceParams) -> Result<Value, RpcError> {
+        let root = crate::config::base_folder().map_err(refused)?;
+        let path = crate::config::add_space_in(&self.desk.ui, root, params.name, params.icon, params.color)
+            .map_err(refused)?;
+        Ok(json!({ "path": path }))
+    }
+
+    fn space_edit(&self, params: SpaceParams) -> Result<Value, RpcError> {
+        let config =
+            crate::config::get_config_body(&self.composer.projects).map_err(|e| RpcError::new(INTERNAL_ERROR, e))?;
+        if !config.spaces.iter().any(|space| space.name == params.name) {
+            return Err(RpcError::new(INVALID_PARAMS, format!("no space {}", params.name)));
+        }
+        crate::config::set_space_meta_in(&self.desk.ui, params.name.clone(), params.icon, params.color)
+            .map_err(refused)?;
+        Ok(json!({ "space": params.name }))
+    }
+
+    fn space_order(&self, params: SpaceOrderParams) -> Result<Value, RpcError> {
+        crate::config::set_space_order_in(&self.desk.ui, params.names).map_err(refused)?;
+        Ok(json!({}))
+    }
+
+    fn topic_new(&self, params: TopicNewParams) -> Result<Value, RpcError> {
+        let members = serde_json::to_value(params.members).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))?;
+        self.topic_office(
+            "create_topic",
+            json!({ "name": params.name, "branch": params.branch, "members": members }),
+        )
+    }
+
+    fn topic_rename(&self, params: TopicRenameParams) -> Result<Value, RpcError> {
+        self.topic_office(
+            "rename_topic",
+            json!({ "topic_id": params.topic_id, "name": params.name }),
+        )
+    }
+
+    fn topic_delete(&self, params: TopicIdParams) -> Result<Value, RpcError> {
+        self.topic_office("delete_topic", json!({ "topic_id": params.topic_id }))
+    }
+
+    fn topic_member_add(&self, params: TopicMemberAddParams) -> Result<Value, RpcError> {
+        self.topic_office(
+            "add_member",
+            json!({
+                "topic_id": params.topic_id,
+                "repo_path": params.repo_path,
+                "mode": params.mode,
+                "worktree_path": params.worktree_path,
+            }),
+        )
+    }
+
+    fn topic_member_order(&self, params: TopicMemberOrderParams) -> Result<Value, RpcError> {
+        self.topic_office(
+            "reorder_members",
+            json!({ "topic_id": params.topic_id, "repo_paths": params.repo_paths }),
+        )
+    }
+
+    fn topic_promote(&self, params: TopicMemberParams) -> Result<Value, RpcError> {
+        let topics = crate::unit_home::topics();
+        let from = topics
+            .iter()
+            .find(|t| t.id == params.topic_id)
+            .and_then(|t| t.members.iter().find(|m| m.repo_path == params.repo_path))
+            .and_then(crate::topics::member_root)
+            .map(str::to_string);
+        let promoted = self.topic_office(
+            "promote_member",
+            json!({ "topic_id": params.topic_id, "repo_path": params.repo_path }),
+        )?;
+        let to = serde_json::from_value::<crate::topics::Topic>(promoted.clone())
+            .ok()
+            .and_then(|t| {
+                t.members
+                    .iter()
+                    .find(|m| m.repo_path == params.repo_path)
+                    .and_then(crate::topics::member_root)
+                    .map(str::to_string)
+            });
+        // The sidebar's own promote moves the Topic's tabs itself; this one
+        // happened behind its back.
+        self.desk.ui.emit(
+            "topics://promoted",
+            json!({ "topic": promoted, "from": from, "to": to }),
+        );
+        Ok(promoted)
+    }
+
+    fn attempt_new(&self, params: AttemptNewParams) -> Result<Value, RpcError> {
+        let ui = self.desk.ui.clone();
+        let root = params.project.clone();
+        let create = crate::exec::git_write("create_attempt", root.clone(), move || {
+            crate::attempts::create_attempt_body(&ui, root, params.group_id, params.goal, params.branch)
+        });
+        let made = tauri::async_runtime::block_on(create).map_err(refused)?;
+        self.composer.projects.evict(Path::new(&params.project));
+        to_json(made)
     }
 
     fn session_tail(&self, params: TailParams) -> Result<Value, RpcError> {
