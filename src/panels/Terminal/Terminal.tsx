@@ -2547,7 +2547,7 @@ export default function Terminal(props: {
   // The same shared resource the editor reads, not a second one: `list_topics`
   // is fetched once per generation module-wide, so two panels asking cannot end
   // up drawing two different member sets during a refetch.
-  const topicId = () => (props.selected?.kind === "topic" ? (props.selected.topicId ?? null) : null);
+  const topicId = createMemo(() => (props.selected?.kind === "topic" ? (props.selected.topicId ?? null) : null));
   const members = createTopicMembers(topicId);
 
   /** Which member a tab's shell is sitting in. A terminal has no file, so the

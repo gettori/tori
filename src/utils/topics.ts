@@ -289,6 +289,25 @@ export function selectionRoot(
   return sel.folderPath || null;
 }
 
+/** Whether two selections name the same thing, field for field. The selection
+ *  signal compares with this, so a click that selects what is already selected
+ *  (a chat tab focusing the session it shows) wakes nothing downstream. */
+export function sameSelection(a: Selection | null, b: Selection | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]) as Set<keyof Selection>;
+  for (const k of keys) {
+    const x = a[k];
+    const y = b[k];
+    if (Array.isArray(x) && Array.isArray(y)) {
+      if (x.length !== y.length || x.some((v, i) => v !== y[i])) return false;
+    } else if (x !== y) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /** Does `folder` own a cwd for attribution: at or under it, but never under
  *  the folder's own `.tori/worktrees/`, where its Topic worktrees live and
  *  which the member folder claims by prefix instead. The same rule as the

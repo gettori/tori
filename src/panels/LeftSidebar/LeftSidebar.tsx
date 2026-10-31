@@ -12,6 +12,7 @@ import {
   untrack,
 } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { afterPaint } from "../../utils/afterPaint";
 import { isLocked } from "../../utils/autopilotStore";
 import { extensionConnected, openPort, portsAt } from "../../utils/portsStore";
 import { spendFor } from "../../utils/spendStore";
@@ -1158,6 +1159,9 @@ export default function LeftSidebar(props: {
   // can't be resolved.
   async function focusFromTerminalTab(d: TerminalTabFocused) {
     if (d.sessionId) {
+      // A tab click is on the path of a switch the user is watching, so the
+      // listing is fetched only for a session the store does not hold yet.
+      if (selectFromStore(d.sessionId)) return;
       await fetchSessions(d.folderPath);
       if (await selectSessionById(d.sessionId)) return;
     }
@@ -1267,7 +1271,9 @@ export default function LeftSidebar(props: {
   // nothing left to click to fix it.
   onCleanup(onWith<SessionAction>(SESSION_ACTION, (d) => void runSessionAction(d)));
   onCleanup(onWith<NavTarget>(NAVIGATE, (t) => void navigateTo(t)));
-  onCleanup(onWith<TerminalTabFocused>(TERMINAL_TAB_FOCUSED, (d) => void focusFromTerminalTab(d)));
+  // The tab draws first: selecting its session wakes everything that reads the
+  // selection, and that work would otherwise land inside the tab's first frame.
+  onCleanup(onWith<TerminalTabFocused>(TERMINAL_TAB_FOCUSED, (d) => afterPaint(() => void focusFromTerminalTab(d))));
   // "Delete the branch" from the Pull Requests panel, after it landed one.
   //
   // Routed here rather than done there because this is where the guards live: a
