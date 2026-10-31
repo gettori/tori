@@ -6,7 +6,7 @@ export type Status = "connecting" | "open" | "offline" | "revoked";
 
 // Raised with PHONE_PROTOCOL in src-tauri/src/rpc/phone.rs on a breaking
 // change to what the app sends or reads.
-export const PROTOCOL = 4;
+export const PROTOCOL = 5;
 
 export const OLD_TORI = "Tori on your Mac is too old for this app: update Tori";
 export const OLD_APP = "This app is too old for Tori on your Mac: update the app";
