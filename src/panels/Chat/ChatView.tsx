@@ -2,6 +2,9 @@ import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMou
 import { createStore, produce } from "solid-js/store";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import OriginBanner from "./OriginBanner";
+import LinksBanner from "./LinksBanner";
+import PendingRequests from "./PendingRequests";
 import MessageList from "./MessageList";
 import SelectionToolbar, { quoteBlock } from "../../components/SelectionToolbar/SelectionToolbar";
 import { mirrorSaved, openDraftInEditor, scratchTabClosed, unlinkScratch } from "./composerScratch";
@@ -136,6 +139,8 @@ import type { AccountsView } from "../Settings/panes/AgentsPane/AgentAccounts";
 import { capNotice, markNoticed, noticed, pastCap, shouldNotice, MULTI_CHAT_NOTICE } from "../../utils/chatConcurrency";
 import {
   emitWith,
+  NAVIGATE,
+  type NavTarget,
   onWith,
   AGENT_FILES_WRITTEN,
   EDITOR_FILE_SAVED,
@@ -223,6 +228,7 @@ import {
   laneOf,
   toolCallsSeen,
   visibleItems,
+  planStale,
   type ChatItem,
   type ChatState,
   type QueuedInput,
@@ -2420,6 +2426,9 @@ export default function ChatView(props: {
         </div>
       </Show>
 
+      <OriginBanner workspace={props.workspace} sessionId={props.sessionId} />
+      <LinksBanner sessionId={props.sessionId} />
+
       {/* The one part of a rewind that could not be undone: the fork carries the
           original's whole context, so the agent remembers the turns that are no
           longer above it. Persistent rather than dismissable - the gap lasts as
@@ -2618,6 +2627,7 @@ export default function ChatView(props: {
           laneOpenedBy={(toolUseId) => laneOpenedBy(toolUseId)}
           blockedIn={blockedIn}
           onOpenLane={(agentId) => edit((s) => selectLane(s, agentId))}
+          onOpenWorktree={(folder) => emitWith<NavTarget>(NAVIGATE, { folder })}
           onRewind={onRewind}
           onRead={
             LOCAL_SPEECH
@@ -2652,8 +2662,9 @@ export default function ChatView(props: {
         )}
       </Show>
       <For each={asksFor(props.sessionId)}>{(ask) => <AskCard ask={ask} here={props.sessionId} />}</For>
+      <PendingRequests sessionId={props.sessionId} />
 
-      <PlanCard items={state.plan} />
+      <PlanCard items={state.plan} stale={planStale(state)} />
 
       <LaneStrip
         lanes={laneStrip(state)}

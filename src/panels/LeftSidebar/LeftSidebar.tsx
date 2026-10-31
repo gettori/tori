@@ -48,6 +48,7 @@ import {
   type UnitIssue,
 } from "../../utils/issues";
 import ChangeOriginDialog from "../../components/Dialogs/ChangeOriginDialog";
+import { loadOrigin, madeByLine, type UnitOrigin } from "../../utils/unitOrigin";
 import NewProjectDialog from "../../components/Dialogs/NewProjectDialog";
 import { claimProjectFolder, projectJob, type NewProjectMode } from "../../utils/newProject";
 import SpaceDialog, { type SpaceDialogMode } from "../../components/Dialogs/SpaceDialog";
@@ -161,6 +162,7 @@ import {
   pickForgeAccount,
   mergeWatched,
   prWatchProjects,
+  cardProjects,
   type PrWatchPolled,
   noteWatchedProjects,
   pollNow,
@@ -198,6 +200,7 @@ import {
   GitPullRequest,
   Play,
   Square,
+  Bot,
 } from "lucide-solid";
 import { BranchMark, WorktreeMark } from "../../components/Icon/gitMarks";
 import {
@@ -295,6 +298,7 @@ type BranchUnit = {
   kind: string; // "worktree" | "plain" | "plain-dir" | "incomplete"
   isCurrent: boolean;
   issue?: UnitIssue;
+  madeBy?: UnitOrigin;
 };
 type Branch = { name: string; current: boolean };
 // `icon`/`iconFile` are what the user chose (a Lucide name, or an image in the
@@ -861,6 +865,7 @@ export default function LeftSidebar(props: {
               pullRequest: st?.pullRequest
                 ? { number: st.pullRequest.number, state: st.pullRequest.state, title: st.pullRequest.title }
                 : null,
+              madeBy: u.madeBy,
             };
           }),
         ),
@@ -3015,6 +3020,22 @@ export default function LeftSidebar(props: {
                 </Tooltip>
               )}
             </Show>
+            <Show when={u.madeBy}>
+              {(origin) => (
+                <Tooltip
+                  as="button"
+                  type="button"
+                  class={rows.madeByMark}
+                  aria-label="Made by an agent"
+                  label={madeByLine(origin())}
+                  data-made-by={origin().session}
+                  onPointerEnter={() => loadOrigin(origin())}
+                  onFocus={() => loadOrigin(origin())}
+                >
+                  <Icon icon={Bot} />
+                </Tooltip>
+              )}
+            </Show>
             <SyncMarks marks={marks()} label={<TooltipLines lead={storyLead()} rest={storyRest()} />} />
             <For each={topicsAt(u.folderPath)}>
               {(f) => (
@@ -3365,6 +3386,7 @@ export default function LeftSidebar(props: {
         apiCanServe(seen[p.path] ?? null, hosts),
       ),
       prWatchProjects(prWatchPolled()),
+      cardProjects().filter((p) => apiCanServe(seen[p.path] ?? null, hosts)),
     ]);
     noteWatchedProjects(watched);
     // The opening tick. `startForgePolling` deliberately does not fire one at

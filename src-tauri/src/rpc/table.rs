@@ -158,7 +158,7 @@ pub static METHODS: &[Method] = &[
         refusal: None,
         outward: false,
         read_only: true,
-        call: |b, _, v| b.session_tail(params(v)?),
+        call: |b, p, v| b.session_tail(p, params(v)?),
     },
     Method {
         name: "caller",
@@ -189,7 +189,7 @@ pub static METHODS: &[Method] = &[
         refusal: None,
         outward: false,
         read_only: true,
-        call: |b, _, v| b.session_history(params(v)?),
+        call: |b, p, v| b.session_history(p, params(v)?),
     },
     Method {
         name: "session.interrupt",
@@ -1099,6 +1099,15 @@ pub fn find(name: &str) -> Option<&'static Method> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // A link is a person's say-so; a method here would hand it to any agent.
+    #[test]
+    fn no_method_makes_or_breaks_a_session_link() {
+        let touches =
+            |n: &str| n.starts_with("session.link") || n.starts_with("session.unlink") || n.starts_with("links.");
+        let found: Vec<&str> = METHODS.iter().map(|m| m.name).filter(|n| touches(n)).collect();
+        assert!(found.is_empty(), "{found:?}");
+    }
 
     #[test]
     fn the_watch_tools_are_offered_only_while_the_setting_is_on() {

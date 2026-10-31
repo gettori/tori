@@ -541,6 +541,19 @@ impl Office {
                 crate::forge::commands::reload_account(&arg::<String>(args, "id")?);
                 Ok(json!({}))
             }
+            "requests.accept" => {
+                let (session, id): (String, String) = (arg(args, "session")?, arg(args, "id")?);
+                let link = arg::<Option<bool>>(args, "link")?.unwrap_or(false);
+                to(self.backend.accept_request(&session, &id, link).map(|done| json!(done)))
+            }
+            "requests.discard" => {
+                let (session, id): (String, String) = (arg(args, "session")?, arg(args, "id")?);
+                to(self.backend.discard_request(&session, &id).map(|done| json!(done)))
+            }
+            "links.unlink" => {
+                let (a, b): (String, String) = (arg(args, "a")?, arg(args, "b")?);
+                to(self.backend.unlink_sessions(&a, &b).map(|()| json!({})))
+            }
             "review.forget" => {
                 crate::review::forget_session(&arg::<String>(args, "id")?);
                 Ok(json!({}))

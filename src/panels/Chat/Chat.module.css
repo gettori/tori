@@ -1233,6 +1233,15 @@ code.secretReason {
   white-space: nowrap;
 }
 
+.worktreeRow {
+  display: flex;
+  align-items: center;
+  gap: calc(10px * var(--ui-scale));
+  min-height: calc(20px * var(--ui-scale));
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-md);
+}
+
 /* A blocked call must not read as work in progress. */
 .toolBlocked {
   border-color: var(--brand-default);
@@ -2354,6 +2363,25 @@ button.diffHunkHeader:hover {
   line-height: 1.4;
 }
 
+/* Where a worktree came from is a fact, not a warning, so it does not take the
+   attention hue every other banner wears. */
+.bannerQuiet {
+  color: var(--fg-muted);
+}
+
+.originLink {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.originLink:hover {
+  text-decoration: underline;
+}
+
 /* Sits on the composer, so it takes the input box's measure rather than the
    banner's edge to edge: the chat measure less the composer's own inset. */
 .ask {
@@ -2604,6 +2632,16 @@ button.diffHunkHeader:hover {
 
 .planItem.pending .planGlyph {
   color: var(--fg-subtle);
+}
+
+/* A plan nobody is working on: the steps stay readable, the spinner stops, so
+   the card no longer claims progress the agent is not making. */
+.planStale .planList {
+  opacity: 0.6;
+}
+
+.planStale .planItem.inProgress .planGlyph {
+  animation: none;
 }
 
 @keyframes planSpin {
