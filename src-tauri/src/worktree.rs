@@ -952,6 +952,7 @@ pub(crate) fn do_remove_worktree(repo_path: &str, worktree_path: &str, force: bo
     }
     // Canonical now, while the folder is still there to resolve.
     let root = std::fs::canonicalize(worktree_path).ok();
+    let branch = crate::git::current_branch(worktree_path);
     match move_to_trash(repo_path, Path::new(worktree_path)) {
         Some(trashed) => {
             std::thread::spawn(move || std::fs::remove_dir_all(trashed));
@@ -961,6 +962,11 @@ pub(crate) fn do_remove_worktree(repo_path: &str, worktree_path: &str, force: bo
     prune_worktrees(repo_path);
     if let Some(root) = root {
         crate::ports::release(&root);
+    }
+    if let Some(branch) = branch {
+        if let Err(e) = crate::unit_origins::forget(repo_path, &branch) {
+            eprintln!("tori: {branch} was removed, but forgetting who made it failed: {e}");
+        }
     }
     Ok(())
 }
@@ -1810,6 +1816,43 @@ mod tests {
         do_remove_worktree(&repo_s, &wt.to_string_lossy(), true).unwrap();
         assert!(!crate::setup::signal_group(pgid, 0), "the run outlived its worktree");
         assert_eq!(std::fs::read_to_string(&order).unwrap(), "stopped\nteardown\n");
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn removing_a_worktree_forgets_who_made_it() {
+        let tmp = std::fs::canonicalize(unique_tmp()).unwrap();
+        let repo = tmp.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        git(&repo, &["init", "-q"]);
+        git(&repo, &["config", "user.email", "t@t"]);
+        git(&repo, &["config", "user.name", "t"]);
+        git(&repo, &["commit", "-q", "--allow-empty", "-m", "init"]);
+        let cont = tmp.join("cont");
+        std::fs::create_dir_all(&cont).unwrap();
+        let repo_s = repo.to_string_lossy().into_owned();
+        crate::setup::seam(Default::default(), tmp.join("logs"));
+        crate::unit_origins::seam(tmp.join("unit_origins.json"));
+        let made_by = |at: u64| crate::unit_origins::UnitOrigin {
+            session: "s1".into(),
+            workspace: repo_s.clone(),
+            at,
+        };
+        let recorded = || {
+            crate::unit_origins::OriginStore::current()
+                .for_repo(&repo_s)
+                .is_some_and(|o| o.contains_key("fix-a"))
+        };
+
+        let wt = create_worktree_in(&repo_s, "fix-a", &cont, None).unwrap();
+        crate::unit_origins::record(&repo_s, "fix-a", made_by(crate::unit_origins::now())).unwrap();
+        assert!(recorded());
+        do_remove_worktree(&repo_s, &wt.to_string_lossy(), true).unwrap();
+        assert!(!recorded(), "the record outlived its worktree");
+
+        create_worktree_in(&repo_s, "fix-a", &cont, None).unwrap();
+        assert!(!recorded(), "a remade branch inherited the old origin");
 
         std::fs::remove_dir_all(&tmp).ok();
     }

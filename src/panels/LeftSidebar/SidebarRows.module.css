@@ -541,6 +541,22 @@
   color: var(--brand-strong);
 }
 
+.row .madeByMark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  margin-left: calc(4px * var(--ui-scale));
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  cursor: default;
+}
+.row .madeByMark svg {
+  width: calc(12px * var(--ui-scale));
+  height: calc(12px * var(--ui-scale));
+}
+
 .row .topicChip,
 .row .topicChip:hover:not(:disabled) {
   flex: none;

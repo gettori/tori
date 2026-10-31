@@ -140,6 +140,7 @@ mod tests {
             kind: ProjectKind::Worktree,
             is_current: false,
             issue: None,
+            made_by: None,
         }
     }
 

@@ -751,6 +751,26 @@ fn steered(principal: &Principal, text: String) -> (TurnBy, String) {
     }
 }
 
+// Only a chat has a transcript a person could follow back to.
+fn made_by_of(principal: &Principal, cwd: impl FnOnce() -> Option<String>) -> Option<crate::unit_origins::UnitOrigin> {
+    let Principal::Session(Caller::Chat(session)) = principal else {
+        return None;
+    };
+    Some(crate::unit_origins::UnitOrigin {
+        session: session.clone(),
+        workspace: cwd().unwrap_or_default(),
+        at: crate::unit_origins::now(),
+    })
+}
+
+fn record_origin(project: &str, branch: &str, origin: crate::unit_origins::UnitOrigin) -> Option<String> {
+    let session = origin.session.clone();
+    crate::unit_origins::record(project, branch, origin)
+        .inspect_err(|e| eprintln!("tori: {branch} was made by {session}, but remembering that failed: {e}"))
+        .ok()
+        .map(|()| session)
+}
+
 fn answers_for(caller: &Principal, spawner: Option<String>, session: &str) -> Result<(), RpcError> {
     match (caller, spawner) {
         (Principal::Session(Caller::Chat(caller)), Some(spawner)) if *caller == spawner => Ok(()),
@@ -1058,16 +1078,19 @@ impl DaemonBackend {
         let attach = params.attach.unwrap_or_default();
         attachable(principal, &attach, &crate::attachments::dir())?;
         let folder = match params.new_worktree {
-            Some(branch) => self.create_worktree(
-                principal,
-                WorktreeParams {
-                    branch,
-                    project: params.project.clone(),
-                    from: params.from,
-                    issue: None,
-                    pr: None,
-                },
-            )?,
+            Some(branch) => {
+                self.create_worktree(
+                    principal,
+                    WorktreeParams {
+                        branch,
+                        project: params.project.clone(),
+                        from: params.from,
+                        issue: None,
+                        pr: None,
+                    },
+                )?
+                .0
+            }
             None => or_callers(params.folder, || me.cwd.clone(), "folder")?,
         };
         // Left out everywhere, the webview picks the folder's remembered agent and account.
@@ -1363,12 +1386,30 @@ impl DaemonBackend {
         or_callers(given, callers, "project")
     }
 
-    fn create_worktree(&self, principal: &Principal, params: WorktreeParams) -> Result<String, RpcError> {
+    fn create_worktree(
+        &self,
+        principal: &Principal,
+        params: WorktreeParams,
+    ) -> Result<(String, Option<String>), RpcError> {
         let project = self.project(principal, params.project)?;
-        let create = crate::worktree::create_worktree_for(self.desk.ui.clone(), project, params.branch, params.from);
-        tauri::async_runtime::block_on(create)
-            .map(|made| made.path)
-            .map_err(refused)
+        let branch = params.branch.trim().to_string();
+        let create =
+            crate::worktree::create_worktree_for(self.desk.ui.clone(), project.clone(), branch.clone(), params.from);
+        let made = tauri::async_runtime::block_on(create).map_err(refused)?;
+        let made_by = made
+            .created
+            .then(|| self.remember_origin(principal, &project, &branch))
+            .flatten();
+        Ok((made.path, made_by))
+    }
+
+    // A worktree that exists either way is worth more than its origin, so a
+    // failed write is logged rather than failing the call.
+    fn remember_origin(&self, principal: &Principal, project: &str, branch: &str) -> Option<String> {
+        let origin = made_by_of(principal, || self.identity(principal).cwd)?;
+        let session = record_origin(project, branch, origin)?;
+        self.desk.ui.emit("config://changed", ());
+        Some(session)
     }
 
     fn remember_issue(&self, project: &str, branch: &str, issue: &Issue, path: &str) -> Result<(), RpcError> {
@@ -2249,12 +2290,16 @@ impl Backend for DaemonBackend {
             }
             let head = crate::worktree::review_head(&project, number).map_err(forge_refused)?;
             let askpass = self.git_askpass()?;
+            let existed = crate::worktree::review_worktree(&project, &head).is_some();
             let checkout = crate::worktree::checkout_review(&self.desk.ui, &askpass, &project, &head);
             let (path, branch) = tauri::async_runtime::block_on(checkout).map_err(refused)?;
+            let made_by = (!existed)
+                .then(|| self.remember_origin(principal, &project, &branch))
+                .flatten();
             let (sha, fork) = (head.sha, head.fork);
             let setup = setup_fields(&project, Path::new(&path), fork, crate::setup::WAIT_CAP);
             return Ok(with_fields(
-                json!({ "path": path, "branch": branch, "head_sha": sha }),
+                json!({ "path": path, "branch": branch, "head_sha": sha, "made_by": made_by }),
                 setup,
             ));
         }
@@ -2272,12 +2317,12 @@ impl Backend for DaemonBackend {
             issue: None,
             pr: None,
         };
-        let path = self.create_worktree(principal, created)?;
+        let (path, made_by) = self.create_worktree(principal, created)?;
         if let Some(issue) = issue {
             self.remember_issue(&project, &branch, &issue, &path)?;
         }
         let setup = setup_fields(&project, Path::new(&path), false, crate::setup::WAIT_CAP);
-        Ok(with_fields(json!({ "path": path }), setup))
+        Ok(with_fields(json!({ "path": path, "made_by": made_by }), setup))
     }
 
     fn checkpoints_list(&self, params: CheckpointsParams) -> Result<Value, RpcError> {
@@ -3209,6 +3254,52 @@ mod tests {
             "{}",
             refused.message
         );
+    }
+
+    #[test]
+    fn only_a_chat_caller_leaves_an_origin() {
+        let cwd = || Some("/p/main".to_string());
+        let chat = made_by_of(&Principal::Session(Caller::Chat("s1".into())), cwd).unwrap();
+        assert_eq!((chat.session.as_str(), chat.workspace.as_str()), ("s1", "/p/main"));
+        assert!(made_by_of(&Principal::Session(Caller::Terminal("t1".into())), cwd).is_none());
+        assert!(made_by_of(&Principal::Device("d1".into()), cwd).is_none());
+        assert!(made_by_of(&Principal::Local, cwd).is_none());
+    }
+
+    #[test]
+    fn a_store_that_cannot_be_written_leaves_no_origin_and_no_error() {
+        let dir = std::env::temp_dir().join(format!("tori-rpc-origin-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let git = |args: &[&str]| {
+            assert!(std::process::Command::new("git")
+                .arg("-C")
+                .arg(&dir)
+                .args(args)
+                .status()
+                .unwrap()
+                .success());
+        };
+        git(&["init", "-q", "-b", "main"]);
+        git(&[
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "i",
+        ]);
+        git(&["branch", "fix-a"]);
+        let blocker = dir.join("blocker");
+        std::fs::write(&blocker, "").unwrap();
+        crate::unit_origins::seam(blocker.join("unit_origins.json"));
+        let origin = made_by_of(&Principal::Session(Caller::Chat("s1".into())), || None).unwrap();
+
+        assert_eq!(record_origin(&dir.to_string_lossy(), "fix-a", origin), None);
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
