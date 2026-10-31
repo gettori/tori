@@ -713,6 +713,15 @@ fn must_exist(attach: &[String]) -> Result<(), RpcError> {
     }
 }
 
+// A browser or a phone naming a path would read any file on the Mac.
+fn attachable(principal: &Principal, attach: &[String], store: &Path) -> Result<(), RpcError> {
+    must_exist(attach)?;
+    match principal {
+        Principal::Browser(_) | Principal::Device(_) => stored_by_attachment_write(attach, store),
+        _ => Ok(()),
+    }
+}
+
 fn stored_by_attachment_write(attach: &[String], store: &Path) -> Result<(), RpcError> {
     let store = store.canonicalize().unwrap_or_else(|_| store.to_path_buf());
     match attach.iter().find(|path| {
@@ -800,11 +809,7 @@ fn fill_picks(given: Picks, contract: Option<&Contract>, me: &Identity, caller: 
     }
 }
 
-// An attachment named by path would read any file on the Mac.
 fn device_may_spawn(params: &SpawnParams, is_chat: impl Fn(&str) -> bool) -> Result<(), RpcError> {
-    if params.attach.as_ref().is_some_and(|files| !files.is_empty()) {
-        return Err(refused("a device's spawn attaches no files".into()));
-    }
     let named = match params.new_worktree {
         Some(_) => params.project.is_some(),
         None => params.folder.is_some(),
@@ -1042,9 +1047,7 @@ impl DaemonBackend {
         }
         let me = self.identity(principal);
         let attach = params.attach.unwrap_or_default();
-        if let Some(missing) = attach.iter().find(|path| !Path::new(path).is_file()) {
-            return Err(RpcError::new(INVALID_PARAMS, format!("no file {missing}")));
-        }
+        attachable(principal, &attach, &crate::attachments::dir())?;
         let folder = match params.new_worktree {
             Some(branch) => self.create_worktree(
                 principal,
@@ -1738,10 +1741,7 @@ impl Backend for DaemonBackend {
             Some(SessionState::Working | SessionState::NeedsYou)
         );
         let attach = params.attach.unwrap_or_default();
-        must_exist(&attach)?;
-        if let Principal::Browser(_) = principal {
-            stored_by_attachment_write(&attach, &crate::attachments::dir())?;
-        }
+        attachable(principal, &attach, &crate::attachments::dir())?;
         let (by, text) = steered(principal, params.text);
         let blocks = if attach.is_empty() {
             vec![ContentBlock::Text { text }]
@@ -2939,7 +2939,7 @@ mod tests {
     }
 
     #[test]
-    fn the_browser_attaches_only_what_attachment_write_stored() {
+    fn a_browser_or_a_device_attaches_only_what_attachment_write_stored() {
         let root = std::env::temp_dir().join(format!("tori-attachable-{}", std::process::id()));
         let store = root.join("attachments");
         std::fs::create_dir_all(store.join("h1")).unwrap();
@@ -2951,7 +2951,9 @@ mod tests {
         let sneaky = format!("{}/attachments/h1/../../secret.txt", root.display());
         assert!(stored_by_attachment_write(std::slice::from_ref(&inside), &store).is_ok());
         assert_eq!(
-            stored_by_attachment_write(&[outside], &store).unwrap_err().code,
+            stored_by_attachment_write(std::slice::from_ref(&outside), &store)
+                .unwrap_err()
+                .code,
             REFUSED
         );
         assert_eq!(stored_by_attachment_write(&[sneaky], &store).unwrap_err().code, REFUSED);
@@ -2959,6 +2961,15 @@ mod tests {
             must_exist(&[format!("{inside}.gone")]).unwrap_err().code,
             INVALID_PARAMS
         );
+        let device = Principal::Device("d1".into());
+        assert!(attachable(&device, std::slice::from_ref(&inside), &store).is_ok());
+        assert_eq!(
+            attachable(&device, std::slice::from_ref(&outside), &store)
+                .unwrap_err()
+                .code,
+            REFUSED
+        );
+        assert!(attachable(&Principal::Local, &[outside], &store).is_ok());
     }
 
     #[test]
@@ -3916,10 +3927,6 @@ mod tests {
         }
         let refusals = [
             SpawnParams {
-                attach: Some(vec!["/etc/hosts".into()]),
-                ..plain()
-            },
-            SpawnParams {
                 agent: Some("pty-only".into()),
                 ..plain()
             },
@@ -3949,14 +3956,6 @@ mod tests {
                 "{params:?}"
             );
         }
-        assert!(device_may_spawn(
-            &SpawnParams {
-                attach: Some(vec![]),
-                ..plain()
-            },
-            is_chat
-        )
-        .is_ok());
     }
 
     #[test]

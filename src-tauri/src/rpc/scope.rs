@@ -203,7 +203,7 @@ mod tests {
     }
 
     #[test]
-    fn attachment_write_is_the_browsers_alone() {
+    fn attachment_write_is_the_browsers_and_the_phones_alone() {
         let params = json!({ "name": "a.png", "data": "" });
         assert!(browser("attachment.write", params.clone(), None).is_ok());
         use crate::rpc::auth::Caller;
@@ -212,7 +212,6 @@ mod tests {
             Principal::Session(Caller::Terminal("t1".into())),
             Principal::Session(Caller::Chat("s1".into())),
             Principal::Session(Caller::Chat(crate::rpc::server::tests::WORKER.into())),
-            Principal::Device("d1".into()),
         ];
         for principal in others {
             let req = Request {

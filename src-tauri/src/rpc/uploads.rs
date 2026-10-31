@@ -1,4 +1,4 @@
-//! `attachment.write`: a file the browser sends in base64 chunks, since one
+//! `attachment.write`: a file a browser or a phone sends in base64 chunks, since one
 //! socket frame holds 256 KB.
 
 use std::collections::HashMap;
