@@ -652,8 +652,13 @@ describe("replaying the captured fixture", () => {
     expect(s.started).toBe(true);
     expect(s.tools).toEqual(["Bash", "Edit"]);
     expect(s.mcpServers.map((m) => m.name)).toEqual(["ctx"]);
-    expect(s.plan.length).toBeGreaterThan(0);
     expect(s.contextTokens).not.toBeNull();
+  });
+
+  it("keeps an unfinished plan past its turn and takes it down when the session ends", () => {
+    const ended = FIXTURE.findIndex((e) => e.type === "sessionEnded");
+    expect(replay(FIXTURE.slice(0, ended)).plan.length).toBeGreaterThan(0);
+    expect(replay(FIXTURE).plan).toEqual([]);
   });
 
   // The commands are the one session fact that is not settled by the init. An
