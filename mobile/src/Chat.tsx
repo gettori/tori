@@ -12,6 +12,7 @@ import {
   type ChatState,
 } from "../../src/panels/Chat/chatStore";
 import { parseChatEvent, type ChatEvent } from "../../src/utils/chatTypes";
+import AskSheet, { type Ask } from "./AskSheet";
 import { createAttachments, labels } from "./attach";
 import Pending, { type PendingRow } from "./Pending";
 import type { RemoteClient } from "./remote";
@@ -154,7 +155,15 @@ function Levers(props: {
   );
 }
 
-function ChatMenu(props: { running: boolean; onStop: () => void; onCopy: () => void; onUnit?: () => void }) {
+function ChatMenu(props: {
+  running: boolean;
+  live: boolean;
+  onStop: () => void;
+  onRename: () => void;
+  onClose: () => void;
+  onCopy: () => void;
+  onUnit?: () => void;
+}) {
   const [open, setOpen] = createSignal(false);
   const run = (action: () => void) => () => {
     setOpen(false);
@@ -171,6 +180,14 @@ function ChatMenu(props: { running: boolean; onStop: () => void; onCopy: () => v
           <button role="menuitem" disabled={!props.running} onClick={run(props.onStop)}>
             Stop
           </button>
+          <button role="menuitem" onClick={run(props.onRename)}>
+            Rename
+          </button>
+          <Show when={props.live}>
+            <button role="menuitem" onClick={run(props.onClose)}>
+              Close session
+            </button>
+          </Show>
           <button role="menuitem" onClick={run(props.onCopy)}>
             Copy session id
           </button>
@@ -233,6 +250,7 @@ export default function Chat(props: {
   session: () => SessionRow;
   onBack: () => void;
   onUnit?: () => void;
+  onChanged?: () => void;
   levers?: boolean;
 }) {
   const id = props.session().id;
@@ -246,6 +264,29 @@ export default function Chat(props: {
   const [draft, setDraft] = createSignal("");
   const [sending, setSending] = createSignal(false);
   const attached = createAttachments(props.client, (message) => setView("error", message));
+  const [ask, setAsk] = createSignal<Ask | null>(null);
+  const [chatAgents] = createResource(() =>
+    props.client
+      .request<{ agents: { id: string }[] }>("agents.list", {})
+      .then((listed) => new Set(listed.agents.map((a) => a.id))),
+  );
+  // An ended chat resumes on the next message; an ended terminal session cannot.
+  const resumable = () => props.session().live || chatAgents()?.has(props.session().agent ?? "") === true;
+  const changed = () => props.onChanged?.();
+  const rename = () =>
+    setAsk({
+      title: "Rename session",
+      input: { label: "Name", value: props.session().name ?? props.session().title ?? "" },
+      confirm: "Rename",
+      run: (name) => props.client.request("session.rename", { id, name: name || null }).then(changed),
+    });
+  const close = () =>
+    setAsk({
+      title: "Close this session?",
+      message: "It moves to this worktree's history. A message there resumes it.",
+      confirm: "Close session",
+      run: () => props.client.request("session.close", { id }).then(changed),
+    });
   // An earlier page lands before the history but after nothing live, so the
   // two are kept apart and the chat is refolded from both.
   let history: ChatEvent[] = [];
@@ -398,7 +439,10 @@ export default function Chat(props: {
         </span>
         <ChatMenu
           running={isRunning(view.chat)}
+          live={props.session().live === true}
           onStop={() => void send("session.interrupt")}
+          onRename={rename}
+          onClose={close}
           onCopy={() => void copy(id)}
           onUnit={props.onUnit}
         />
@@ -420,7 +464,8 @@ export default function Chat(props: {
         />
       </div>
       <Pending client={props.client} session={id} rows={pending()} onSettled={() => void refetchPending()} />
-      <Show when={props.session().live}>
+      <Show when={ask()}>{(open) => <AskSheet ask={open()} onDone={() => setAsk(null)} />}</Show>
+      <Show when={resumable()}>
         <form
           class={shell.composer}
           onSubmit={(e) => {
@@ -446,13 +491,15 @@ export default function Chat(props: {
           <textarea
             class={shell.composerInput}
             rows={1}
-            placeholder={isRunning(view.chat) ? "Steer the running turn" : "Message"}
+            placeholder={
+              isRunning(view.chat) ? "Steer the running turn" : props.session().live ? "Message" : "Message to resume"
+            }
             value={draft()}
             onInput={(e) => setDraft(e.currentTarget.value)}
           />
           <span class={shell.composerRow}>
             <AttachMenu onFiles={(files) => void attached.add(files)} />
-            <Show when={props.levers !== false}>
+            <Show when={props.levers !== false && props.session().live}>
               <Levers
                 client={props.client}
                 id={id}

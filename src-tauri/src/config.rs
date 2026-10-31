@@ -334,8 +334,10 @@ fn save_attached(state: &AttachedState) -> Result<(), String> {
 }
 
 pub(crate) fn forget_attached(repo: &Path) {
-    let lock = crate::exec::named_lock("config");
-    let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _g = match crate::exec::cross_process_store_lock("config") {
+        Ok(lock) => lock,
+        Err(e) => return eprintln!("tori: {} stays attached: {e}", repo.display()),
+    };
     let mut state = load_attached();
     if state.0.remove(&norm(&repo.to_string_lossy())).is_some() {
         let _ = save_attached(&state);
@@ -984,8 +986,7 @@ fn do_seed_attached(state: &mut AttachedState, key: &str, locals: &HashSet<Strin
 pub fn seed_attached(repo: String) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("config");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _store = crate::exec::cross_process_store_lock("config")?;
     let path = PathBuf::from(&repo);
     let locals = local_branches(&path);
     let seed = default_branch(&path).or_else(|| current_branch(&path));
@@ -996,28 +997,36 @@ pub fn seed_attached(repo: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Attach an existing local `branch` to `repo`'s visible set.
-/// Order: write store → evict cache → emit `config://changed`.
-#[tauri::command(async)]
-pub fn attach_branch(app: AppHandle, index: State<ProjectIndex>, repo: String, branch: String) -> Result<(), String> {
+pub fn attach_existing_branch(
+    index: &ProjectIndex,
+    ui: &crate::ui::Ui,
+    repo: &str,
+    branch: String,
+) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("config");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _store = crate::exec::cross_process_store_lock("config")?;
     // This one also writes to the repository, so it queues with every
     // other git write on the same common dir.
-    let repo_lock = crate::exec::repo_lock(&repo);
+    let repo_lock = crate::exec::repo_lock(repo);
     let _repo = repo_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let path = PathBuf::from(&repo);
-    if !local_branches(&path).contains(&branch) {
+    if !local_branches(Path::new(repo)).contains(&branch) {
         return Err(format!("No local branch \"{branch}\"."));
     }
     let mut state = load_attached();
-    state.0.entry(norm(&repo)).or_default().branches.insert(branch);
+    state.0.entry(norm(repo)).or_default().branches.insert(branch);
     save_attached(&state)?;
-    index.evict(&path);
-    let _ = app.emit("config://changed", ());
+    index.evict(Path::new(repo));
+    // The other process's cache, when the daemon attached it; the window's webview ignores it.
+    ui.emit(crate::topics::EVICT_EVENT, [repo]);
+    ui.emit("config://changed", ());
     Ok(())
+}
+
+/// Attach an existing local `branch` to `repo`'s visible set.
+#[tauri::command(async)]
+pub fn attach_branch(app: AppHandle, index: State<ProjectIndex>, repo: String, branch: String) -> Result<(), String> {
+    attach_existing_branch(&index, &crate::ui::Ui::from(&app), &repo, branch)
 }
 
 /// Create `branch` at `base` (HEAD when the caller named none) and attach it.
@@ -1035,8 +1044,7 @@ pub fn new_branch(
 ) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("config");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _store = crate::exec::cross_process_store_lock("config")?;
     // This one also writes to the repository, so it queues with every
     // other git write on the same common dir.
     let repo_lock = crate::exec::repo_lock(&repo);
@@ -1087,8 +1095,7 @@ pub fn new_branch(
 pub fn detach_branch(app: AppHandle, index: State<ProjectIndex>, repo: String, branch: String) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("config");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _store = crate::exec::cross_process_store_lock("config")?;
     // This one also writes to the repository, so it queues with every
     // other git write on the same common dir.
     let repo_lock = crate::exec::repo_lock(&repo);
@@ -1111,8 +1118,7 @@ pub fn detach_branch(app: AppHandle, index: State<ProjectIndex>, repo: String, b
 pub fn delete_branch(app: AppHandle, index: State<ProjectIndex>, repo: String, branch: String) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("config");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _store = crate::exec::cross_process_store_lock("config")?;
     // This one also writes to the repository, so it queues with every
     // other git write on the same common dir.
     let repo_lock = crate::exec::repo_lock(&repo);
@@ -1175,8 +1181,7 @@ pub fn attach_remote_branch(
 ) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("config");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _store = crate::exec::cross_process_store_lock("config")?;
     // This one also writes to the repository, so it queues with every
     // other git write on the same common dir.
     let repo_lock = crate::exec::repo_lock(&repo);
@@ -1276,8 +1281,7 @@ fn clear_root(text: &str) -> Result<String, String> {
 pub fn set_root(app: AppHandle, path: String) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("config");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _store = crate::exec::cross_process_store_lock("config")?;
     let p = path.trim().trim_end_matches('/').to_string();
     if p.is_empty() {
         return Err("Empty path".into());
@@ -1294,8 +1298,7 @@ pub fn set_root(app: AppHandle, path: String) -> Result<(), String> {
 pub fn remove_root(app: AppHandle) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("config");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _store = crate::exec::cross_process_store_lock("config")?;
     let serialized = clear_root(&ensure_config()?)?;
     std::fs::write(config_path(), serialized).map_err(|e| e.to_string())?;
     let _ = app.emit("config://changed", ());
@@ -1463,8 +1466,7 @@ fn current_icon_file(path: &str) -> Option<String> {
 pub fn set_project_icon(app: AppHandle, path: String, icon: Option<String>) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("config");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _store = crate::exec::cross_process_store_lock("config")?;
     let icon = icon.as_deref().map(str::trim).filter(|s| !s.is_empty());
     let previous = current_icon_file(&path);
     write_project_meta(&path, icon, None)?;
@@ -1481,8 +1483,7 @@ pub fn set_project_icon(app: AppHandle, path: String, icon: Option<String>) -> R
 pub fn set_project_icon_file(app: AppHandle, path: String, source: String) -> Result<String, String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("config");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _store = crate::exec::cross_process_store_lock("config")?;
     let stored = crate::icons::store_icon(&path, Path::new(&source))?;
     let previous = current_icon_file(&path);
     write_project_meta(&path, None, Some(&stored))?;
@@ -1512,8 +1513,7 @@ pub fn add_space(
 ) -> Result<String, String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("config");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _store = crate::exec::cross_process_store_lock("config")?;
     let n = valid_name(&name)?;
     let dir = PathBuf::from(expand_tilde(&root)).join(&n);
     if dir.exists() {
@@ -1537,8 +1537,7 @@ pub fn add_space(
 pub fn set_space_meta(app: AppHandle, name: String, icon: Option<String>, color: Option<String>) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("config");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _store = crate::exec::cross_process_store_lock("config")?;
     let icon = icon.as_deref().map(str::trim).filter(|s| !s.is_empty());
     let color = color.as_deref().map(str::trim).filter(|s| !s.is_empty());
     write_space_meta(&name, icon, color)?;
@@ -1569,8 +1568,7 @@ fn write_space_order(text: &str, names: &[String]) -> Result<String, String> {
 pub fn set_space_order(app: AppHandle, names: Vec<String>) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("config");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _store = crate::exec::cross_process_store_lock("config")?;
     let serialized = write_space_order(&ensure_config()?, &names)?;
     std::fs::write(config_path(), serialized).map_err(|e| e.to_string())?;
     let _ = app.emit("config://changed", ());
@@ -1582,8 +1580,7 @@ pub fn set_space_order(app: AppHandle, names: Vec<String>) -> Result<(), String>
 pub fn add_folder(app: AppHandle, space_path: String, name: String) -> Result<String, String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("config");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _store = crate::exec::cross_process_store_lock("config")?;
     let n = valid_name(&name)?;
     let dir = PathBuf::from(&space_path).join(&n);
     if dir.exists() {
@@ -1601,8 +1598,7 @@ pub fn add_folder(app: AppHandle, space_path: String, name: String) -> Result<St
 pub fn rediscover(app: AppHandle) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("config");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _store = crate::exec::cross_process_store_lock("config")?;
     app.emit("config://changed", ()).map_err(|e| e.to_string())
 }
 
@@ -1613,8 +1609,7 @@ pub fn rediscover(app: AppHandle) -> Result<(), String> {
 pub fn cleanup_incomplete(app: AppHandle, path: String) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("config");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _store = crate::exec::cross_process_store_lock("config")?;
     let p = PathBuf::from(&path);
     removable_stub(&p)?;
     std::fs::remove_dir_all(&p).map_err(|e| e.to_string())?;
@@ -1664,8 +1659,7 @@ fn do_delete_space(root: Option<&str>, path: &str) -> Result<PathBuf, String> {
 pub fn delete_space(app: AppHandle, path: String) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("config");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _store = crate::exec::cross_process_store_lock("config")?;
     let text = ensure_config()?;
     let raw: RawConfig = toml::from_str(&text).map_err(|e| e.to_string())?;
     let dir = do_delete_space(raw.discovery.roots.first().map(|s| s.as_str()), &path)?;
@@ -1710,8 +1704,7 @@ fn do_remove_folder(root: Option<&str>, path: &str) -> Result<PathBuf, String> {
 pub fn remove_folder(app: AppHandle, path: String) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("config");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _store = crate::exec::cross_process_store_lock("config")?;
     let text = ensure_config()?;
     let raw: RawConfig = toml::from_str(&text).map_err(|e| e.to_string())?;
     let dir = do_remove_folder(raw.discovery.roots.first().map(|s| s.as_str()), &path)?;
@@ -1736,8 +1729,7 @@ pub fn remove_folder(app: AppHandle, path: String) -> Result<(), String> {
 pub fn remove_project(app: AppHandle, path: String) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("config");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _store = crate::exec::cross_process_store_lock("config")?;
     let text = ensure_config()?;
     let raw: RawConfig = toml::from_str(&text).map_err(|e| e.to_string())?;
     let dir = do_remove_folder(raw.discovery.roots.first().map(|s| s.as_str()), &path)?;

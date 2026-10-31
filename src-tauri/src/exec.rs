@@ -259,6 +259,46 @@ pub fn named_lock(name: &'static str) -> Arc<Mutex<()>> {
     map.entry(name).or_default().clone()
 }
 
+static STORE_LOCKS: OnceLock<Mutex<HashMap<&'static str, &'static Mutex<()>>>> = OnceLock::new();
+
+pub struct StoreLock {
+    _file: std::fs::File,
+    _held: std::sync::MutexGuard<'static, ()>,
+}
+
+/// [`named_lock`] across processes: the window and the daemon each write
+/// `"config"` and `"sessions-store"`.
+pub fn cross_process_store_lock(name: &'static str) -> Result<StoreLock, String> {
+    store_lock_at(name, &crate::owned_state::config_dir().join(format!("{name}.lock")))
+}
+
+// The flock is on a sidecar nothing renames: a store is replaced by a rename,
+// which would leave a lock on the store itself held on the old file.
+fn store_lock_at(name: &'static str, path: &std::path::Path) -> Result<StoreLock, String> {
+    let mutex = {
+        let locks = STORE_LOCKS.get_or_init(Default::default);
+        let mut map = locks.lock().unwrap_or_else(PoisonError::into_inner);
+        *map.entry(name).or_insert_with(|| Box::leak(Box::default()))
+    };
+    let held = mutex.lock().unwrap_or_else(PoisonError::into_inner);
+    let file = path
+        .parent()
+        .map_or(Ok(()), std::fs::create_dir_all)
+        .and_then(|()| {
+            std::fs::OpenOptions::new()
+                .create(true)
+                .truncate(false)
+                .write(true)
+                .open(path)
+        })
+        .and_then(|file| file.lock().map(|()| file))
+        .map_err(|e| format!("locking {name} at {}: {e}", path.display()))?;
+    Ok(StoreLock {
+        _file: file,
+        _held: held,
+    })
+}
+
 /// Drop the cached common dir for `path`. For `git_init`/`bare_init`, which
 /// change the answer after the cache has already learned "not a repo".
 pub fn forget_common_dir(path: &str) {
@@ -270,6 +310,57 @@ pub fn forget_common_dir(path: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn append(store: &std::path::Path, edit: &str) {
+        let before = std::fs::read_to_string(store).unwrap_or_default();
+        let temp = store.with_extension(format!("tmp-{edit}"));
+        std::fs::write(&temp, before + edit).unwrap();
+        std::fs::rename(temp, store).unwrap();
+    }
+
+    #[test]
+    fn a_store_lock_keeps_another_process_out_between_a_read_and_its_write() {
+        const CHILD: &str = "TORI_STORE_LOCK_CHILD";
+        if let Ok(dir) = std::env::var(CHILD) {
+            let dir = std::path::Path::new(&dir);
+            std::fs::write(dir.join("child-ready"), "").unwrap();
+            let _lock = store_lock_at("store-lock-test", &dir.join("store.lock")).unwrap();
+            append(&dir.join("store"), "b");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("tori-store-lock-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = dir.join("store");
+        std::fs::write(&store, "").unwrap();
+        let held = store_lock_at("store-lock-test", &dir.join("store.lock")).unwrap();
+        let before = std::fs::read_to_string(&store).unwrap();
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "exec::tests::a_store_lock_keeps_another_process_out_between_a_read_and_its_write",
+            ])
+            .env(CHILD, &dir)
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let ready = std::time::Instant::now();
+        while !dir.join("child-ready").exists() {
+            assert!(
+                ready.elapsed() < std::time::Duration::from_secs(30),
+                "the second writer never started"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        // The child is past its marker; give it the moment it needs to block on the lock.
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let temp = store.with_extension("tmp-a");
+        std::fs::write(&temp, before + "a").unwrap();
+        std::fs::rename(temp, &store).unwrap();
+        drop(held);
+        assert!(child.wait().unwrap().success());
+        assert_eq!(std::fs::read_to_string(&store).unwrap(), "ab");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     fn git(dir: &std::path::Path, args: &[&str]) -> std::process::Output {
         Command::new("git")

@@ -1005,10 +1005,14 @@ pub fn sweep_trash() {
 /// confirm dialog has warned about it.
 #[tauri::command(async)]
 pub fn remove_worktree(app: AppHandle, repo_path: String, worktree_path: String, force: bool) -> Result<(), String> {
-    let lock = crate::exec::repo_lock(&repo_path);
+    remove_keeping_branch(&Ui::from(&app), &repo_path, &worktree_path, force)
+}
+
+pub fn remove_keeping_branch(ui: &Ui, repo_path: &str, worktree_path: &str, force: bool) -> Result<(), String> {
+    let lock = crate::exec::repo_lock(repo_path);
     let _repo = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    do_remove_worktree(&repo_path, &worktree_path, force)?;
-    let _ = app.emit("config://changed", ());
+    do_remove_worktree(repo_path, worktree_path, force)?;
+    ui.emit("config://changed", ());
     Ok(())
 }
 

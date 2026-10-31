@@ -167,21 +167,25 @@ function liveRows(client: RemoteClient) {
       setRows(rows().map((row) => (row.id === ev.id ? { ...row, dot: ev.dot } : row)));
     }),
   );
-  return rows;
+  return [rows, relist] as const;
 }
 
 function watchTree(client: RemoteClient) {
-  const [tree] = createResource<Tree, number>(
+  const [tree, { refetch }] = createResource<Tree, number>(
     () => client.generation() || undefined,
     // A failed load keeps the last tree: the reconnect that follows refetches.
     (_, info) => client.request<Tree>("projects.list").catch(() => info.value ?? { spaces: [], topics: [] }),
   );
-  return tree;
+  return [tree, () => void refetch()] as const;
 }
 
 function Paired(props: { client: RemoteClient; notice: string | null; onDisconnect: () => void }) {
-  const live = liveRows(props.client);
-  const tree = watchTree(props.client);
+  const [live, relist] = liveRows(props.client);
+  const [tree, reloadTree] = watchTree(props.client);
+  const fresh = (project: Project) =>
+    tree()
+      ?.spaces.flatMap((s) => s.projects)
+      .find((p) => p.path === project.path) ?? project;
   const autopilot = watchRunner(props.client);
   const { runner, decisions, crew } = autopilot;
   const inbox = watchInbox(props.client);
@@ -267,13 +271,14 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
           {(project) => (
             <ProjectScreen
               client={props.client}
-              project={project}
+              project={fresh(project)}
               space={space()?.name ?? ""}
               topics={tree()?.topics ?? []}
               live={live}
               crew={crew}
               onUnit={(unit) => openUnit(unit, project.name)}
               onBack={back}
+              onChanged={reloadTree}
             />
           )}
         </Match>
@@ -304,6 +309,10 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
               autopilotOn={(runner()?.state ?? "off") !== "off"}
               onOpen={openSession}
               onBack={back}
+              onRemoved={() => {
+                reloadTree();
+                back();
+              }}
             />
           )}
         </Match>
@@ -326,6 +335,7 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
                 client={props.client}
                 session={current}
                 onBack={back}
+                onChanged={() => void relist()}
                 onUnit={units().some(({ unit }) => inUnit(row.home, unit)) ? () => openHome(current()) : undefined}
               />
             );
