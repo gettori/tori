@@ -2,6 +2,7 @@ import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMou
 import { createStore, produce } from "solid-js/store";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import OriginBanner from "./OriginBanner";
 import MessageList from "./MessageList";
 import SelectionToolbar, { quoteBlock } from "../../components/SelectionToolbar/SelectionToolbar";
 import { mirrorSaved, openDraftInEditor, scratchTabClosed, unlinkScratch } from "./composerScratch";
@@ -2421,6 +2422,8 @@ export default function ChatView(props: {
           </Button>
         </div>
       </Show>
+
+      <OriginBanner workspace={props.workspace} sessionId={props.sessionId} />
 
       {/* The one part of a rewind that could not be undone: the fork carries the
           original's whole context, so the agent remembers the turns that are no
