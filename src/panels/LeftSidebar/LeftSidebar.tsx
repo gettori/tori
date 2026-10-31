@@ -48,7 +48,7 @@ import {
   type UnitIssue,
 } from "../../utils/issues";
 import ChangeOriginDialog from "../../components/Dialogs/ChangeOriginDialog";
-import { loadOrigin, madeByLine, type UnitOrigin } from "../../utils/unitOrigin";
+import type { UnitOrigin } from "../../utils/unitOrigin";
 import NewProjectDialog from "../../components/Dialogs/NewProjectDialog";
 import { claimProjectFolder, projectJob, type NewProjectMode } from "../../utils/newProject";
 import SpaceDialog, { type SpaceDialogMode } from "../../components/Dialogs/SpaceDialog";
@@ -200,7 +200,6 @@ import {
   GitPullRequest,
   Play,
   Square,
-  Bot,
 } from "lucide-solid";
 import { BranchMark, WorktreeMark } from "../../components/Icon/gitMarks";
 import {
@@ -3022,22 +3021,6 @@ export default function LeftSidebar(props: {
                   }}
                 >
                   {issue().display}
-                </Tooltip>
-              )}
-            </Show>
-            <Show when={u.madeBy}>
-              {(origin) => (
-                <Tooltip
-                  as="button"
-                  type="button"
-                  class={rows.madeByMark}
-                  aria-label="Made by an agent"
-                  label={madeByLine(origin())}
-                  data-made-by={origin().session}
-                  onPointerEnter={() => loadOrigin(origin())}
-                  onFocus={() => loadOrigin(origin())}
-                >
-                  <Icon icon={Bot} />
                 </Tooltip>
               )}
             </Show>
