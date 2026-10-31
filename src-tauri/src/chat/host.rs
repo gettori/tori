@@ -1619,6 +1619,11 @@ impl ChatHost {
         let Some(transport) = lock(&self.sessions).get(&session_id).map(|e| e.transport.clone()) else {
             return Err(format!("no live chat session {session_id}"));
         };
+        if let ChatCommand::SendTurn { blocks, .. } | ChatCommand::Steer { blocks, .. } = command {
+            if let Err(e) = crate::read_grants::grant_referenced(&session_id, blocks) {
+                eprintln!("tori: {session_id} was handed a session reference it may not be able to read: {e}");
+            }
+        }
         let mut t = lock(&transport);
         match command {
             ChatCommand::SendTurn { blocks, .. } => t.send(blocks),

@@ -16,6 +16,7 @@ mod blind_edit;
 mod browser_host;
 mod catalog_probe;
 mod chat;
+mod chat_requests;
 mod checkpoint;
 mod cli;
 mod config;
@@ -60,6 +61,7 @@ mod project_config;
 mod provenance;
 mod pty;
 mod radar;
+mod read_grants;
 mod review;
 mod review_rule;
 mod rpc;
@@ -696,6 +698,9 @@ pub fn run() {
             rpc::window_listening,
             rpc::daemon_stop,
             rpc::rpc_ask_answer,
+            rpc::chat_requests_list,
+            rpc::chat_request_accept,
+            rpc::chat_request_discard,
             rpc::autopilot_start,
             rpc::remote_set,
             rpc::remote_status,

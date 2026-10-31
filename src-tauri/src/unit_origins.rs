@@ -137,6 +137,14 @@ pub fn attach_unless_reused(units: &mut [BranchUnit], origins: Option<&RepoOrigi
     }
 }
 
+pub fn made_by_unless_reused(repo: &str, branch: &str, folder: &str) -> Option<UnitOrigin> {
+    OriginStore::current()
+        .for_repo(repo)?
+        .get(branch)
+        .filter(|o| !born_after(folder, o.at))
+        .cloned()
+}
+
 pub fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
