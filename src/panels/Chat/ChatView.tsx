@@ -2627,7 +2627,7 @@ export default function ChatView(props: {
           laneOpenedBy={(toolUseId) => laneOpenedBy(toolUseId)}
           blockedIn={blockedIn}
           onOpenLane={(agentId) => edit((s) => selectLane(s, agentId))}
-          onOpenWorktree={(folder) => emitWith<NavTarget>(NAVIGATE, { folder })}
+          onOpenWorktree={(folder, session) => emitWith<NavTarget>(NAVIGATE, { folder, session: session ?? undefined })}
           onRewind={onRewind}
           onRead={
             LOCAL_SPEECH

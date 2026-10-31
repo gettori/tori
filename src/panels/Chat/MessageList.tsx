@@ -258,7 +258,7 @@ export default function MessageList(props: {
    *  what a blocked row does. */
   blockedIn?: (item: ChatItem) => string | null;
   onOpenLane?: (agentId: string) => void;
-  onOpenWorktree?: (folder: string) => void;
+  onOpenWorktree?: (folder: string, session: string | null) => void;
   /** Fetch the page before the first item, for a caller that holds only the
    *  latest pages. Asked for once every held item is already shown. */
   onFetchEarlier?: () => void;
