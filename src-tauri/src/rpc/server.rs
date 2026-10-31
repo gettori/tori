@@ -104,6 +104,40 @@ pub struct InterruptParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct RenameParams {
+    /// The session to name.
+    pub id: String,
+    /// The new name; null or blank goes back to the session's title.
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CloseParams {
+    /// The live chat session to end. It stays in the worktree's history.
+    pub id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorktreeRemoveParams {
+    /// The project the worktree belongs to.
+    pub project: String,
+    /// The worktree's folder. Its branch is kept.
+    pub folder: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BranchAttachParams {
+    /// The project to show the branch in.
+    pub project: String,
+    /// An existing local branch, by name.
+    pub branch: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SteerParams {
     /// The live chat session to send to.
     pub id: String,
@@ -945,6 +979,10 @@ pub trait Backend: Send + Sync {
     fn session_tail(&self, params: TailParams) -> Result<Value, RpcError>;
     fn session_history(&self, params: HistoryParams) -> Result<Value, RpcError>;
     fn session_interrupt(&self, principal: &Principal, params: InterruptParams) -> Result<Value, RpcError>;
+    fn session_rename(&self, params: RenameParams) -> Result<Value, RpcError>;
+    fn session_close(&self, principal: &Principal, params: CloseParams) -> Result<Value, RpcError>;
+    fn worktree_remove(&self, params: WorktreeRemoveParams) -> Result<Value, RpcError>;
+    fn branch_attach(&self, params: BranchAttachParams) -> Result<Value, RpcError>;
     fn caller(&self, principal: &Principal) -> Result<Value, RpcError>;
     fn session_steer(&self, principal: &Principal, params: SteerParams) -> Result<Value, RpcError>;
     fn session_wait(&self, params: WaitParams) -> Result<Value, RpcError>;
@@ -1411,6 +1449,18 @@ pub mod tests {
         }
         fn session_history(&self, p: HistoryParams) -> Result<Value, RpcError> {
             Ok(json!({ "events": [], "next": p.before }))
+        }
+        fn session_rename(&self, p: RenameParams) -> Result<Value, RpcError> {
+            Ok(json!({ "renamed": p.id }))
+        }
+        fn session_close(&self, _: &Principal, p: CloseParams) -> Result<Value, RpcError> {
+            Ok(json!({ "closed": p.id }))
+        }
+        fn worktree_remove(&self, p: WorktreeRemoveParams) -> Result<Value, RpcError> {
+            Ok(json!({ "removed": p.folder }))
+        }
+        fn branch_attach(&self, p: BranchAttachParams) -> Result<Value, RpcError> {
+            Ok(json!({ "attached": p.branch }))
         }
         fn session_interrupt(&self, _: &Principal, p: InterruptParams) -> Result<Value, RpcError> {
             Ok(json!({ "interrupted": p.id }))
@@ -2254,6 +2304,10 @@ pub mod tests {
                 "caller",
                 "session.history",
                 "session.interrupt",
+                "session.rename",
+                "session.close",
+                "worktree.remove",
+                "branch.attach",
                 "session.steer",
                 "session.pending",
                 "session.answer",
@@ -2325,6 +2379,18 @@ pub mod tests {
                 )
             )
             .is_ok());
+        for (method, params) in [
+            ("session.rename", json!({"id": "s1", "name": "triage"})),
+            ("session.close", json!({"id": "s1"})),
+            ("worktree.remove", json!({"project": "/p", "folder": "/p/b"})),
+            ("branch.attach", json!({"project": "/p", "branch": "b"})),
+        ] {
+            assert!(
+                server.dispatch(0, &device, &request(method, params)).is_ok(),
+                "{method}"
+            );
+        }
+        assert!(!open.iter().any(|m| m.contains("delete")));
         let worker = Principal::Session(Caller::Chat(WORKER.into()));
         for method in [
             "session.info",

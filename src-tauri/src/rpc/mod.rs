@@ -347,6 +347,18 @@ fn screen(app: &AppHandle) -> window::Answers {
                     .map(|_| json!({}))
                     .map_err(|e| frame::RpcError::new(frame::INTERNAL_ERROR, e.to_string()))
             }
+            // Here, not in the daemon: the worktree's dev servers and editor
+            // tabs belong to this process.
+            "worktree.remove" => {
+                let (project, folder) = (params["project"].as_str(), params["folder"].as_str());
+                let (Some(project), Some(folder)) = (project, folder) else {
+                    return Err(frame::RpcError::new(frame::INVALID_PARAMS, "project and folder"));
+                };
+                let _ = app.emit("nav://purge", json!({ "path": folder }));
+                crate::worktree::remove_keeping_branch(&crate::ui::Ui::from(&app), project, folder, false)
+                    .map(|()| json!({}))
+                    .map_err(|e| frame::RpcError::new(frame::REFUSED, e))
+            }
             _ => Err(frame::RpcError::new(
                 frame::REFUSED,
                 format!("the window answers no {method}"),

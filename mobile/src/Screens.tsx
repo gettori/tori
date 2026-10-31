@@ -1,4 +1,4 @@
-import { For, Match, Show, Switch, createResource, onCleanup, type JSX } from "solid-js";
+import { For, Match, Show, Switch, createResource, createSignal, onCleanup, type JSX } from "solid-js";
 import { ChevronLeft, Folder, Tag } from "lucide-solid";
 import Icon from "../../src/components/Icon/Icon";
 import { BranchMark, WorktreeMark } from "../../src/components/Icon/gitMarks";
@@ -8,6 +8,7 @@ import { syncMarks } from "../../src/utils/branchSync";
 import type { UnitStatus } from "../../src/utils/forgeTypes";
 import type { BranchSync } from "../../src/utils/gitActions";
 import { ago } from "../../src/utils/relativeTime";
+import AskSheet, { type Ask } from "./AskSheet";
 import type { Crew } from "./Autopilot";
 import { ProjectMark } from "./icons";
 import type { RemoteClient } from "./remote";
@@ -216,7 +217,18 @@ export function ProjectScreen(props: {
   crew: () => Crew;
   onUnit: (unit: Unit) => void;
   onBack: () => void;
+  onChanged: () => void;
 }) {
+  const [ask, setAsk] = createSignal<Ask | null>(null);
+  const attach = () =>
+    setAsk({
+      title: "Attach a branch",
+      message: "An existing local branch, by name. It shows here as on the Mac.",
+      input: { label: "Branch", value: "" },
+      confirm: "Attach",
+      run: (branch) =>
+        props.client.request("branch.attach", { project: props.project.path, branch }).then(props.onChanged),
+    });
   const git = watchGit(props.client, () => props.project.units.map((unit) => unit.folder));
   const sync = watchSync(props.client, () => props.project.units);
   const pr = watchPr(props.client, () => props.project);
@@ -255,7 +267,17 @@ export function ProjectScreen(props: {
             )}
           </For>
         </ul>
+        <Show when={props.project.units.some((unit) => unit.kind === "plain")}>
+          <ul class={styles.group}>
+            <li>
+              <button class={`${styles.item} ${styles.setting}`} onClick={attach}>
+                <span class={styles.text}>Attach a branch</span>
+              </button>
+            </li>
+          </ul>
+        </Show>
       </div>
+      <Show when={ask()}>{(open) => <AskSheet ask={open()} onDone={() => setAsk(null)} />}</Show>
     </div>
   );
 }
