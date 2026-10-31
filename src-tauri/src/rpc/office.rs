@@ -592,7 +592,7 @@ impl Office {
                 };
                 let spawned = self
                     .backend
-                    .spawn(&super::auth::Principal::Local, params, true)
+                    .spawn(&super::auth::Principal::Local, params, true, false)
                     .map_err(|e| e.message)?;
                 Ok(spawned["id"].clone())
             }

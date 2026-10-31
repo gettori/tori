@@ -32,6 +32,7 @@ import {
   turnSecretRows,
   turnSecrets,
   windowed,
+  queuedText,
   WINDOW_STEP,
   type ChatItem,
   type QuestionItem,
@@ -275,6 +276,8 @@ export default function MessageList(props: {
   onOpenLane?: (agentId: string) => void;
   onOpenWorktree?: (folder: string, session: string | null) => void;
   onOpenSession?: (id: string) => void;
+  /** The prompt this chat was spawned with and the chat that wrote it. */
+  firstPrompt?: { sender: string; text: string } | null;
   /** Fetch the page before the first item, for a caller that holds only the
    *  latest pages. Asked for once every held item is already shown. */
   onFetchEarlier?: () => void;
@@ -396,6 +399,13 @@ export default function MessageList(props: {
   // answer. Folded at render time rather than in the store, because what folded
   // is still its own call: its own approval, its own revert, its own id.
   const folded = createMemo(() => foldEdits(shown()));
+  // The first prompt matching the one this chat was spawned with: by text, so
+  // it is found wherever it sits in the loaded pages, and only once.
+  const spawnedWith = createMemo(() => {
+    const text = props.firstPrompt?.text.trim();
+    if (!text) return null;
+    return props.items.find((i) => i.kind === "user" && queuedText(i).trim() === text)?.id ?? null;
+  });
 
   const runCache: RunCache = new Map();
   // Null while the setting is off: grouping reads every call's state, and a
@@ -777,7 +787,13 @@ export default function MessageList(props: {
       </Match>
       <Match when={p.item.kind === "user" && p.item}>
         {(it) => {
-          const peer = createMemo(() => peerNote(it().blocks));
+          const peer = createMemo(
+            () =>
+              peerNote(it().blocks) ??
+              (it().id === spawnedWith() && props.firstPrompt
+                ? { from: props.firstPrompt.sender, blocks: it().blocks }
+                : null),
+          );
           return (
             <div class={styles.userRow} classList={{ [styles.steerRow]: it().steer }}>
               <div class={styles.userBubble}>
