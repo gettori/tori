@@ -109,7 +109,7 @@ pub struct SteerParams {
     pub id: String,
     /// The message, delivered as a steer mid turn or as the next turn otherwise.
     pub text: String,
-    /// Files sent with it, as the agent's first message would carry them. The browser's must be paths
+    /// Files sent with it, as the agent's first message would carry them. A browser's or a device's must be paths
     /// `attachment.write` answered.
     pub attach: Option<Vec<String>>,
 }
@@ -505,7 +505,7 @@ pub struct SpawnParams {
     pub folder: Option<String>,
     /// The first message of the new session.
     pub prompt: Option<String>,
-    /// Paths of files attached to the first message.
+    /// Paths of files attached to the first message. A device's must be paths `attachment.write` answered.
     pub attach: Option<Vec<String>>,
     /// Start in a new worktree on this new branch instead of `folder`.
     pub new_worktree: Option<String>,
@@ -2277,6 +2277,7 @@ pub mod tests {
                 "issues.assigned",
                 "issues.get",
                 "session.spawn",
+                "attachment.write",
                 "ask.answer",
                 "projects.list",
                 "agents.list",
@@ -2312,6 +2313,16 @@ pub mod tests {
                 0,
                 &device,
                 &request("worktree.new", json!({"project": "/p", "branch": "b"}))
+            )
+            .is_ok());
+        assert!(server
+            .dispatch(
+                0,
+                &device,
+                &request(
+                    "attachment.write",
+                    json!({"name": "shot.png", "data": "cG5n", "last": true})
+                )
             )
             .is_ok());
         let worker = Principal::Session(Caller::Chat(WORKER.into()));

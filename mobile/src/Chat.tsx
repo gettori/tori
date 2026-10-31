@@ -1,6 +1,6 @@
 import { For, Show, createEffect, createResource, createSignal, on, onCleanup } from "solid-js";
 import { createStore, produce } from "solid-js/store";
-import { ArrowUp, ChevronLeft, Ellipsis } from "lucide-solid";
+import { ArrowUp, ChevronLeft, Ellipsis, Paperclip, X } from "lucide-solid";
 import Icon from "../../src/components/Icon/Icon";
 import MessageList from "../../src/panels/Chat/MessageList";
 import {
@@ -12,6 +12,7 @@ import {
   type ChatState,
 } from "../../src/panels/Chat/chatStore";
 import { parseChatEvent, type ChatEvent } from "../../src/utils/chatTypes";
+import { createAttachments, labels } from "./attach";
 import Pending, { type PendingRow } from "./Pending";
 import type { RemoteClient } from "./remote";
 import { DOT, PhaseMark } from "./Root";
@@ -186,6 +187,47 @@ function ChatMenu(props: { running: boolean; onStop: () => void; onCopy: () => v
   );
 }
 
+function AttachMenu(props: { onFiles: (files: File[]) => void }) {
+  const [open, setOpen] = createSignal(false);
+  const pick = (accept: string, capture?: boolean) => () => {
+    setOpen(false);
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = !capture;
+    if (accept) input.accept = accept;
+    if (capture) input.setAttribute("capture", "environment");
+    input.onchange = () => props.onFiles([...(input.files ?? [])]);
+    input.click();
+  };
+  return (
+    <span class={shell.menuAnchor}>
+      <button
+        type="button"
+        class={shell.chip}
+        aria-label="Attach"
+        aria-expanded={open()}
+        onClick={() => setOpen(!open())}
+      >
+        <Icon icon={Paperclip} size={14} strokeWidth={2.2} />
+      </button>
+      <Show when={open()}>
+        <span class={shell.menuDim} onClick={() => setOpen(false)} />
+        <span class={`${shell.menu} ${shell.menuUp}`} role="menu">
+          <button type="button" role="menuitem" onClick={pick("image/*")}>
+            Photo library
+          </button>
+          <button type="button" role="menuitem" onClick={pick("image/*", true)}>
+            Camera
+          </button>
+          <button type="button" role="menuitem" onClick={pick("")}>
+            File
+          </button>
+        </span>
+      </Show>
+    </span>
+  );
+}
+
 export default function Chat(props: {
   client: RemoteClient;
   session: () => SessionRow;
@@ -203,6 +245,7 @@ export default function Chat(props: {
   const [pending, setPending] = createSignal<PendingRow[]>([]);
   const [draft, setDraft] = createSignal("");
   const [sending, setSending] = createSignal(false);
+  const attached = createAttachments(props.client, (message) => setView("error", message));
   // An earlier page lands before the history but after nothing live, so the
   // two are kept apart and the chat is refolded from both.
   let history: ChatEvent[] = [];
@@ -289,8 +332,15 @@ export default function Chat(props: {
   const send = async (method: "session.steer" | "session.interrupt") => {
     setSending(true);
     try {
-      await props.client.request(method, method === "session.steer" ? { id, text: draft().trim() } : { id });
-      if (method === "session.steer") setDraft("");
+      const attach = attached.paths();
+      await props.client.request(
+        method,
+        method === "session.steer" ? { id, text: draft().trim(), attach: attach.length ? attach : undefined } : { id },
+      );
+      if (method === "session.steer") {
+        setDraft("");
+        attached.clear();
+      }
     } catch (e) {
       setView("error", String(e instanceof Error ? e.message : e));
     } finally {
@@ -316,6 +366,8 @@ export default function Chat(props: {
       void refetchPending();
     }),
   );
+
+  const sendable = () => !sending() && !attached.uploading() && (draft().trim() !== "" || attached.files().length > 0);
 
   const phase = (): Phase => {
     const row = phaseOf(props.session());
@@ -373,9 +425,24 @@ export default function Chat(props: {
           class={shell.composer}
           onSubmit={(e) => {
             e.preventDefault();
-            if (draft().trim()) void send("session.steer");
+            if (sendable()) void send("session.steer");
           }}
         >
+          <Show when={attached.files().length}>
+            <span class={shell.attached}>
+              <For each={attached.files()}>
+                {(file, i) => (
+                  <span class={shell.chip} data-uploading={file.path === null}>
+                    <span>{labels(attached.files())[i()]}</span>
+                    <span class={shell.attachedName}>{file.path === null ? "Uploading" : file.name}</span>
+                    <button type="button" aria-label={`Remove ${file.name}`} onClick={() => attached.remove(file.id)}>
+                      <Icon icon={X} size={12} strokeWidth={2.4} />
+                    </button>
+                  </span>
+                )}
+              </For>
+            </span>
+          </Show>
           <textarea
             class={shell.composerInput}
             rows={1}
@@ -384,6 +451,7 @@ export default function Chat(props: {
             onInput={(e) => setDraft(e.currentTarget.value)}
           />
           <span class={shell.composerRow}>
+            <AttachMenu onFiles={(files) => void attached.add(files)} />
             <Show when={props.levers !== false}>
               <Levers
                 client={props.client}
@@ -393,7 +461,7 @@ export default function Chat(props: {
                 onError={(message) => setView("error", message)}
               />
             </Show>
-            <button type="submit" class={shell.send} aria-label="Send" disabled={sending() || !draft().trim()}>
+            <button type="submit" class={shell.send} aria-label="Send" disabled={!sendable()}>
               <Icon icon={ArrowUp} size={17} strokeWidth={2.6} />
             </button>
           </span>

@@ -103,6 +103,7 @@ const NOT_WORKERS_DEVICES_AND_BROWSER: &[CallerKind] = &[
 const LOCAL_AND_DEVICES: &[CallerKind] = &[CallerKind::Local, CallerKind::Device];
 const CHATS: &[CallerKind] = &[CallerKind::Chat];
 const BROWSER: &[CallerKind] = &[CallerKind::Browser];
+const DEVICES_AND_BROWSER: &[CallerKind] = &[CallerKind::Device, CallerKind::Browser];
 const WATCH_REFUSAL: &str =
     "a watch wakes its chat with a new turn, so only a chat you drive can hold one; an autopilot worker's pull request already reaches the autopilot";
 
@@ -515,7 +516,7 @@ pub static METHODS: &[Method] = &[
     },
     Method {
         name: "session.spawn",
-        description: "Start a new agent session in Tori, optionally in a new worktree, with a first message and attached files. A paired device passes a chat agent and the folder, or the project a new worktree goes in, and attaches no files.",
+        description: "Start a new agent session in Tori, optionally in a new worktree, with a first message and attached files. A paired device passes a chat agent and the folder, or the project a new worktree goes in, and attaches only files attachment.write stored.",
         params: schema::<SpawnParams>,
         callers: NOT_WORKERS_AND_DEVICES,
         refusal: None,
@@ -565,9 +566,9 @@ pub static METHODS: &[Method] = &[
     },
     Method {
         name: "attachment.write",
-        description: "Write a file into Tori's attachments in base64 chunks, for session.steer's and chat.draft's attach.",
+        description: "Write a file into Tori's attachments in base64 chunks, for the attach of session.steer, session.spawn and chat.draft.",
         params: schema::<AttachmentWriteParams>,
-        callers: BROWSER,
+        callers: DEVICES_AND_BROWSER,
         refusal: None,
         outward: false,
         read_only: false,
