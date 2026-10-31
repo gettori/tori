@@ -162,6 +162,7 @@ import {
   pickForgeAccount,
   mergeWatched,
   prWatchProjects,
+  cardProjects,
   type PrWatchPolled,
   noteWatchedProjects,
   pollNow,
@@ -3384,6 +3385,7 @@ export default function LeftSidebar(props: {
         apiCanServe(seen[p.path] ?? null, hosts),
       ),
       prWatchProjects(prWatchPolled()),
+      cardProjects().filter((p) => apiCanServe(seen[p.path] ?? null, hosts)),
     ]);
     noteWatchedProjects(watched);
     // The opening tick. `startForgePolling` deliberately does not fire one at
