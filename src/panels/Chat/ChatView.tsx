@@ -13,7 +13,7 @@ import {
 import { createStore, produce } from "solid-js/store";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import LinksBanner from "./LinksBanner";
+import { createRelatedSessions } from "./relatedSessions";
 import PendingRequests from "./PendingRequests";
 import MessageList from "./MessageList";
 import SelectionToolbar, { quoteBlock } from "../../components/SelectionToolbar/SelectionToolbar";
@@ -1421,12 +1421,17 @@ export default function ChatView(props: {
     ),
   );
 
-  // The second chat on a worktree: say once, per worktree, that the two share
-  // one working tree and that checkpoint attribution suffers for it.
+  const related = createRelatedSessions(
+    () => props.sessionId,
+    () => state.items,
+  );
   const [firstPrompt] = createResource(
     () => props.sessionId,
     (session) => invoke<{ sender: string; text: string } | null>("session_first_prompt", { session }).catch(() => null),
   );
+
+  // The second chat on a worktree: say once, per worktree, that the two share
+  // one working tree and that checkpoint attribution suffers for it.
   const multiChatNotice = () => shouldNotice(chatsInFolder(props.workspace).length, props.workspace, noticed());
 
   // Too many at once, said in the chat that put the count past the line rather
@@ -2440,8 +2445,6 @@ export default function ChatView(props: {
         </div>
       </Show>
 
-      <LinksBanner sessionId={props.sessionId} />
-
       {/* The one part of a rewind that could not be undone: the fork carries the
           original's whole context, so the agent remembers the turns that are no
           longer above it. Persistent rather than dismissable - the gap lasts as
@@ -2690,6 +2693,13 @@ export default function ChatView(props: {
         mark={providerMarkKey(state.model, props.agentId)}
         onSelect={(agentId) => edit((s) => selectLane(s, agentId))}
         active={props.active}
+        sessions={related()}
+        onOpenSession={(session) => emitWith<NavTarget>(NAVIGATE, { session })}
+        onUnlink={(other) =>
+          void invoke("session_unlink", { a: props.sessionId, b: other }).catch((e) =>
+            emitWith<ToastEvent>(TOAST, { message: `The chats were not unlinked: ${String(e)}`, kind: "error" }),
+          )
+        }
       />
 
       <Show

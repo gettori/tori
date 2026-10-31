@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
 import LaneStrip from "./LaneStrip";
 import type { Lane } from "./chatStore";
+import type { RelatedSession } from "./SessionChips";
 
 function lane(over: Partial<Lane> = {}): Lane {
   return {
@@ -227,5 +228,39 @@ describe("the lane strip", () => {
   it("stays clean with two lanes on screen", async () => {
     const { container } = render(() => strip({ lanes: [lane({ agentId: "a1" }), lane({ agentId: "a2" })] }));
     await expectNoAxeViolations(container);
+  });
+});
+
+describe("the related sessions in the strip", () => {
+  const related = (id: string, over: Partial<RelatedSession> = {}): RelatedSession => ({
+    id,
+    name: id,
+    side: "to",
+    relation: "spawned",
+    state: "idle",
+    project: null,
+    branch: null,
+    lastAt: 0,
+    ...over,
+  });
+  const sessions = [
+    related("c1", { lastAt: 3 }),
+    related("c2", { lastAt: 2 }),
+    related("friend", { relation: "linked", lastAt: 1 }),
+  ];
+
+  it("shows even with no lanes, and opens the session a chip names", () => {
+    const open = vi.fn();
+    const { container } = render(() => strip({ lanes: [], sessions, onOpenSession: open }));
+    fireEvent.click(container.querySelector("[data-related-session='c1']")!);
+    expect(open).toHaveBeenCalledWith("c1");
+  });
+
+  it("unlinks from the +N list", async () => {
+    const unlink = vi.fn();
+    const { getByText } = render(() => strip({ lanes: [], sessions, onUnlink: unlink }));
+    fireEvent.click(getByText("+1"));
+    fireEvent.click(await screen.findByRole("button", { name: "Unlink" }));
+    expect(unlink).toHaveBeenCalledWith("friend");
   });
 });

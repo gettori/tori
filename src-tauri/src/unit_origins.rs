@@ -145,6 +145,19 @@ pub fn made_by_unless_reused(repo: &str, branch: &str, folder: &str) -> Option<U
         .cloned()
 }
 
+pub fn made_by(session: &str) -> Vec<(String, String)> {
+    OriginStore::current()
+        .0
+        .into_iter()
+        .flat_map(|(repo, branches)| {
+            branches
+                .into_iter()
+                .filter(|(_, o)| o.session == session)
+                .map(move |(branch, _)| (repo.clone(), branch))
+        })
+        .collect()
+}
+
 pub fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
