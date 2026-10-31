@@ -42,7 +42,7 @@ import {
   type TurnCheck,
 } from "./chatStore";
 import { VERDICT_LABEL, verdictDetail } from "../../utils/verification";
-import type { ContentBlock, PermissionMode, QuestionAnswer, SecretHit } from "../../utils/chatTypes";
+import type { PermissionMode, QuestionAnswer, SecretHit } from "../../utils/chatTypes";
 import { commandAround, secretLabel } from "../../utils/secretReads";
 import { mentionPath } from "../../utils/pathScope";
 import Popover from "../../components/Popover/Popover";
@@ -56,6 +56,7 @@ import ToolCallCard, { type HunkRef } from "./ToolCallCard";
 import QuestionCard from "./QuestionCard";
 import ToriNoteRow from "./ToriNote";
 import PromptFrom from "./PromptFrom";
+import { peerPrompt } from "./relatedSessions";
 import { findSession } from "../../utils/sessionStore";
 import { toriNote } from "../../utils/toriNote";
 import type { Answer } from "./PermissionPrompt";
@@ -190,6 +191,11 @@ function PendingNotice(props: { text: string; since: number }) {
   );
 }
 
+const sessionName = (id: string) => {
+  const meta = findSession(id)?.session;
+  return meta?.name || meta?.title || "another session";
+};
+
 /**
  * The transcript.
  *
@@ -203,19 +209,6 @@ function PendingNotice(props: { text: string; since: number }) {
  * scroll down again, which is what makes reading an earlier turn mid-stream
  * possible.
  */
-// A prompt another session sent arrives wrapped as a Tori note, so the agent
-// knows it is a peer's; the transcript shows it as the prompt it is.
-function peerNote(blocks: ContentBlock[]): { from: string; blocks: ContentBlock[] } | null {
-  const note = toriNote(blocks);
-  if (!note?.from || (note.kind !== "steer" && note.kind !== "linked")) return null;
-  return { from: note.from, blocks: [{ type: "text", text: note.body }] };
-}
-
-const sessionName = (id: string) => {
-  const meta = findSession(id)?.session;
-  return meta?.name || meta?.title || "another session";
-};
-
 export default function MessageList(props: {
   items: readonly ChatItem[];
   streaming: boolean;
@@ -782,14 +775,14 @@ export default function MessageList(props: {
           it, and reading it as an ordinary prompt would suggest the reply
           below answers only that. It opens no turn group: `turnOpeners`
           counts assistant-side rows only. */}
-      <Match when={p.item.kind === "user" && !peerNote(p.item.blocks) && toriNote(p.item.blocks)}>
+      <Match when={p.item.kind === "user" && !peerPrompt(p.item.blocks) && toriNote(p.item.blocks)}>
         {(note) => <ToriNoteRow note={note()} />}
       </Match>
       <Match when={p.item.kind === "user" && p.item}>
         {(it) => {
           const peer = createMemo(
             () =>
-              peerNote(it().blocks) ??
+              peerPrompt(it().blocks) ??
               (it().id === spawnedWith() && props.firstPrompt
                 ? { from: props.firstPrompt.sender, blocks: it().blocks }
                 : null),

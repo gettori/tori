@@ -1628,6 +1628,81 @@ impl DaemonBackend {
         accepted
     }
 
+    pub fn relations(&self, me: &str) -> Value {
+        let history = self.agent_of(me).map_or_else(Vec::new, |agent| {
+            read_history(me, &history_source(me, &agent), &agent, None)
+        });
+        let facts = super::relations::Facts {
+            spawner: known_spawner(&self.desk.states, me, |id| {
+                crate::session_spawners::get(id).map(|s| s.spawner)
+            }),
+            spawned: self.spawned_by(me),
+            maker_of_mine: self
+                .session_cwd(me)
+                .ok()
+                .as_deref()
+                .and_then(origin_at)
+                .map(|o| o.session),
+            in_my_worktrees: self.sessions_in_worktrees_made_by(me),
+            links: crate::session_links::links_of(me),
+            steered: super::relations::steer_targets(&history),
+            prompted_by: super::relations::prompt_senders(&history),
+        };
+        let related = super::relations::relations_of(me, facts);
+        // One read of where every session works, rather than one per row.
+        let mut cwds: HashMap<String, String> = listed_sessions(&self.composer.index, None)
+            .into_iter()
+            .map(|m| (m.id, m.cwd))
+            .collect();
+        cwds.extend(self.chats.host.live_sessions());
+        let rows: Vec<Value> = related
+            .into_iter()
+            .map(|r| {
+                let cwd = cwds.get(&r.id).filter(|c| !c.is_empty());
+                json!({ "id": r.id, "side": r.side, "relation": r.relation, "cwd": cwd })
+            })
+            .collect();
+        Value::Array(rows)
+    }
+
+    fn spawned_by(&self, me: &str) -> Vec<String> {
+        let states = &self.desk.states;
+        let mut ids = crate::session_spawners::children_of(me);
+        ids.extend(
+            states
+                .spawned()
+                .into_iter()
+                .filter(|id| states.spawner_of(id).as_deref() == Some(me)),
+        );
+        ids
+    }
+
+    fn sessions_in_worktrees_made_by(&self, me: &str) -> Vec<String> {
+        let folders: Vec<String> = crate::unit_origins::made_by(me)
+            .into_iter()
+            .filter_map(|(repo, branch)| {
+                crate::worktree::list_worktrees_body(repo)
+                    .ok()?
+                    .into_iter()
+                    .find(|w| w.branch == branch)
+                    .map(|w| w.path)
+            })
+            .collect();
+        let mut ids: Vec<String> = folders
+            .iter()
+            .flat_map(|f| listed_sessions(&self.composer.index, Some(f)).into_iter().map(|m| m.id))
+            .collect();
+        ids.extend(
+            self.chats
+                .host
+                .live_sessions()
+                .into_iter()
+                .filter(|(_, cwd)| folders.iter().any(|f| same_folder(cwd, f)))
+                .map(|(id, _)| id),
+        );
+        ids
+    }
+
     pub fn unlink_sessions(&self, a: &str, b: &str) -> Result<(), RpcError> {
         crate::session_links::unlink(a, b).map_err(refused)?;
         self.desk.ui.emit("links://changed", json!({}));

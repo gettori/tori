@@ -83,6 +83,14 @@ pub fn get(child: &str) -> Option<Spawn> {
     current().0.get(child).cloned()
 }
 
+pub fn children_of(spawner: &str) -> Vec<String> {
+    current()
+        .0
+        .into_iter()
+        .filter_map(|(child, s)| (s.spawner == spawner).then_some(child))
+        .collect()
+}
+
 pub fn record(child: &str, spawner: &str, prompt: Option<&str>) -> Result<(), String> {
     change(|s| {
         s.0.insert(
@@ -127,6 +135,17 @@ mod tests {
         );
         forget("child").unwrap();
         assert_eq!(get("child"), None);
+    }
+
+    #[test]
+    fn a_spawner_finds_its_children() {
+        scratch("children");
+        record("a", "parent", None).unwrap();
+        record("b", "parent", None).unwrap();
+        record("c", "other", None).unwrap();
+        let mut kids = children_of("parent");
+        kids.sort();
+        assert_eq!(kids, vec!["a".to_string(), "b".to_string()]);
     }
 
     #[test]

@@ -550,6 +550,7 @@ impl Office {
                 let (session, id): (String, String) = (arg(args, "session")?, arg(args, "id")?);
                 to(self.backend.discard_request(&session, &id).map(|done| json!(done)))
             }
+            "relations" => Ok(self.backend.relations(&arg::<String>(args, "session")?)),
             "links.unlink" => {
                 let (a, b): (String, String) = (arg(args, "a")?, arg(args, "b")?);
                 to(self.backend.unlink_sessions(&a, &b).map(|()| json!({})))

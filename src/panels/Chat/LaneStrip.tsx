@@ -4,6 +4,7 @@ import agentStyles from "../../components/Icon/agentMarks.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import Tip, { excerptOf, type TipContent } from "./Tip";
 import { fmtTokens } from "../../utils/chatUsage";
+import SessionChips, { type RelatedSession } from "./SessionChips";
 import styles from "./Chat.module.css";
 
 /** Finished lanes show inline up to this many, and fold behind one chip past it. */
@@ -35,6 +36,11 @@ export default function LaneStrip(props: {
   /** Whether this chat is the one on screen. The `Opt+N` binding is only armed
    *  for it, or every open chat would answer the same keystroke. */
   active: boolean;
+  /** Other sessions this chat is tied to. Destinations, unlike lanes, so they
+   *  are their own group. */
+  sessions?: readonly RelatedSession[];
+  onOpenSession?: (id: string) => void;
+  onUnlink?: (id: string) => void;
 }) {
   // Ticks only while something is running, so an idle chat costs nothing. The
   // figure is what this panel has watched, the same basis the status strip's
@@ -152,7 +158,7 @@ export default function LaneStrip(props: {
   );
 
   return (
-    <Show when={props.lanes.length > 0 || props.tasks.length > 0}>
+    <Show when={props.lanes.length > 0 || props.tasks.length > 0 || (props.sessions?.length ?? 0) > 0}>
       <div class={styles.lanes}>
         <Show when={props.lanes.length > 0}>
           <div class={styles.laneGroup} role="group" aria-label="Subagent lanes">
@@ -192,6 +198,7 @@ export default function LaneStrip(props: {
             <For each={props.tasks}>{(task) => <Task task={task} />}</For>
           </div>
         </Show>
+        <SessionChips sessions={props.sessions ?? []} onOpen={props.onOpenSession} onUnlink={props.onUnlink} />
       </div>
     </Show>
   );

@@ -147,10 +147,10 @@ const plan = (...items: [string, PlanItem["status"]][]): PlanItem[] =>
   items.map(([text, status]) => ({ text, status }));
 const PLAN = plan(["Read the store", "completed"], ["Gate session_steer", "inProgress"], ["Write the card", "pending"]);
 
-function Section(props: { title: string; detail: string; children: JSX.Element }) {
+function Section(props: { heading: string; detail: string; children: JSX.Element }) {
   return (
     <section style={{ display: "flex", "flex-direction": "column", gap: "8px", "margin-bottom": "32px" }}>
-      <h3 style={{ margin: 0, "font-size": "14px" }}>{props.title}</h3>
+      <h3 style={{ margin: 0, "font-size": "14px" }}>{props.heading}</h3>
       <p style={{ margin: 0, color: "var(--fg-muted)", "font-size": "12px" }}>{props.detail}</p>
       {props.children}
     </section>
@@ -252,22 +252,20 @@ function Strip(props: { sessions: RelatedSession[]; withLanes?: boolean; openLis
     if (props.openList) row?.querySelector<HTMLButtonElement>("button[aria-expanded]")?.click();
   });
   return (
-    <div style={{ display: "flex", "flex-direction": "column", gap: "6px" }}>
-      {props.withLanes ? (
-        <LaneStrip
-          lanes={[lane("a1", "Find the login tests", null)]}
-          selected={null}
-          blocked={new Set()}
-          onSelect={() => {}}
-          tasks={[]}
-          busy
-          mark={null}
-          active={false}
-        />
-      ) : null}
-      <div ref={row} class={styles.lanes}>
-        <SessionChips sessions={props.sessions} onOpen={() => {}} onUnlink={() => {}} />
-      </div>
+    <div ref={row}>
+      <LaneStrip
+        lanes={props.withLanes ? [lane("a1", "Find the login tests", null)] : []}
+        selected={null}
+        blocked={new Set()}
+        onSelect={() => {}}
+        tasks={[]}
+        busy
+        mark={null}
+        active={false}
+        sessions={props.sessions}
+        onOpenSession={() => {}}
+        onUnlink={() => {}}
+      />
     </div>
   );
 }
@@ -290,7 +288,7 @@ function KitchenSink() {
   return (
     <div style={{ width: "760px", padding: "24px", background: "var(--canvas-default)" }}>
       <Section
-        title="Session chips, above the input"
+        heading="Session chips, above the input"
         detail="Their own group in the strip beside main, subagents and background tasks. From: sessions that reached this chat. To: sessions this chat reached. Two a side, live and waiting first, the rest behind +N."
       >
         <State label="Beside main and a subagent: a chat an agent started in a worktree it made">
@@ -315,7 +313,7 @@ function KitchenSink() {
       </Section>
 
       <Section
-        title="Prompts from another session"
+        heading="Prompts from another session"
         detail="On the right like your own, marked with who sent it; the name opens that chat."
       >
         <Prompt text="Can you add a test for the redirect?" />
@@ -326,7 +324,7 @@ function KitchenSink() {
       </Section>
 
       <Section
-        title="Parent: the worktree card"
+        heading="Parent: the worktree card"
         detail="In the transcript of the chat that made the worktree, in place of the generic tool card."
       >
         {CARDS.map(([label, card]) => (
@@ -340,13 +338,16 @@ function KitchenSink() {
       </Section>
 
       <Section
-        title="Waiting messages"
+        heading="Waiting messages"
         detail="A steer from a chat this one is not related to, or past the loop cap, above the composer."
       >
         <PendingRequests sessionId="child-1" />
       </Section>
 
-      <Section title="Plan card" detail="Live while the agent's turn keeps it; dimmed with a reason when it does not.">
+      <Section
+        heading="Plan card"
+        detail="Live while the agent's turn keeps it; dimmed with a reason when it does not."
+      >
         <State label="Live">
           <PlanCard items={PLAN} />
         </State>
