@@ -1067,8 +1067,13 @@ export default function CodeEditor(props: {
     onOpen: (turn) => emitWith<RevealTurn>(REVEAL_TURN, { sessionId: turn.session_id, promptTs: turn.prompt_ts }),
   };
 
+  // One copy for the editor's life, for the same reason as the preference
+  // extensions: a fresh gutter and plugin per swap rebuilds both for nothing.
+  let blame: Extension | undefined;
+  const blameOn = () => (blame ??= blameExtension(turnLink));
+
   function syncBlame() {
-    view?.dispatch({ effects: blameConf.reconfigure(props.blame ? blameExtension(turnLink) : []) });
+    view?.dispatch({ effects: blameConf.reconfigure(props.blame ? blameOn() : []) });
     void refreshBlame();
     void refreshAgentLines();
   }
