@@ -1468,9 +1468,14 @@ export default function LeftSidebar(props: {
     }
   });
 
+  // Latest request wins: a worktree made and then recorded raises two changes
+  // in a row, and the older answer landing last would drop what the newer saw.
+  let configSeq = 0;
   async function loadConfig() {
+    const mine = ++configSeq;
     try {
       const cfg = await invoke<ResolvedConfig>("get_config");
+      if (mine !== configSeq) return;
       setConfig(cfg);
       try {
         localStorage.setItem(LS_CONFIG, JSON.stringify(cfg));
@@ -1554,7 +1559,7 @@ export default function LeftSidebar(props: {
         setAttempts(map);
       })();
     } catch (e) {
-      setError(String(e));
+      if (mine === configSeq) setError(String(e));
     }
   }
 
