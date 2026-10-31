@@ -14,7 +14,8 @@
 }
 
 /* A column in a pane that is showing something else (a terminal tab): out of
-   the way, still mounted, so its buffers and scroll survive the trip. */
+   the way, still mounted, so its buffers and scroll survive the trip. Measured
+   against content-visibility: hidden, which WebKit made slower, not faster. */
 .editorMain.hidden {
   display: none;
 }

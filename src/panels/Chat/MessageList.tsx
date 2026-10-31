@@ -564,13 +564,14 @@ export default function MessageList(props: {
   onCleanup(() => props.onAnchor?.(visibleTurn()));
 
   /** Put the tail back on screen in the next frame, before it lays out: once
-   *  however many rows landed, and never as a layout of its own. */
+   *  however many rows landed, and never as a layout of its own. Asked again
+   *  there, since a reader can scroll up inside the frame it waited for. */
   let pinFrame = 0;
   const pin = () => {
     if (pinFrame) return;
     pinFrame = requestAnimationFrame(() => {
       pinFrame = 0;
-      scroller?.scrollTo({ top: scroller.scrollHeight });
+      if (stuck()) scroller?.scrollTo({ top: scroller.scrollHeight });
     });
   };
   onCleanup(() => cancelAnimationFrame(pinFrame));
