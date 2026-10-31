@@ -677,6 +677,21 @@ pub fn chat_request_accept(session: String, id: String, link: Option<bool>) -> R
     office_call_as("requests.accept", json!({ "session": session, "id": id, "link": link }))
 }
 
+#[derive(serde::Serialize)]
+pub struct FirstPrompt {
+    sender: String,
+    text: String,
+}
+
+#[tauri::command(async)]
+pub fn session_first_prompt(session: String) -> Option<FirstPrompt> {
+    let spawn = crate::session_spawners::get(&session)?;
+    Some(FirstPrompt {
+        sender: spawn.spawner,
+        text: spawn.prompt?,
+    })
+}
+
 #[tauri::command(async)]
 pub fn session_links_of(session: String) -> Vec<String> {
     crate::session_links::links_of(&session)
