@@ -31,6 +31,7 @@ pub mod pr_rules;
 pub mod pr_wake;
 pub mod pr_watch;
 pub mod quotas;
+pub mod reach;
 pub mod remote;
 pub mod runner;
 mod scope;
@@ -664,6 +665,21 @@ pub fn rpc_asks_pending() -> Result<Vec<Value>, String> {
 #[tauri::command(async)]
 pub fn rpc_ask_answer(id: String, answer: String) -> Result<bool, String> {
     office_call_as("asks.answer", json!({ "id": id, "answer": answer }))
+}
+
+#[tauri::command(async)]
+pub fn chat_requests_list(session: String) -> Result<Vec<crate::chat_requests::Request>, String> {
+    crate::chat_requests::list(&session)
+}
+
+#[tauri::command(async)]
+pub fn chat_request_accept(session: String, id: String) -> Result<bool, String> {
+    office_call_as("requests.accept", json!({ "session": session, "id": id }))
+}
+
+#[tauri::command(async)]
+pub fn chat_request_discard(session: String, id: String) -> Result<bool, String> {
+    office_call_as("requests.discard", json!({ "session": session, "id": id }))
 }
 
 pub fn publish_checkpoint(session_id: &str, folder: &str, turn: usize, prompt_ts: u64) {

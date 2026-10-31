@@ -13,6 +13,7 @@ use super::asks::{Ask, Asks, By, NotAnswered, Waited};
 use super::auth::{Caller, Principal};
 use super::events::{project_of, same_folder, TurnBy};
 use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
+use super::reach;
 use super::server::{
     AccountsListParams, AgentsListParams, AllowGroupParams, AskAnswerParams, AskParams, AskWaitParams,
     AttachmentWriteParams, Backend, Before, BranchAttachParams, BudgetParams, CheckParams, CheckpointDiffParams,
@@ -771,6 +772,167 @@ fn record_origin(project: &str, branch: &str, origin: crate::unit_origins::UnitO
         .map(|()| session)
 }
 
+fn origin_at(cwd: &str) -> Option<crate::unit_origins::UnitOrigin> {
+    origin_at_in(cwd, &crate::config::discovered_project_dirs())
+}
+
+fn origin_at_in(cwd: &str, projects: &[std::path::PathBuf]) -> Option<crate::unit_origins::UnitOrigin> {
+    let project = project_of(cwd, projects)?;
+    let branch = crate::git::current_branch(cwd)?;
+    crate::unit_origins::made_by_unless_reused(&project, &branch, cwd)
+}
+
+// One per check: a check asks a session's folder and the Topic list several
+// times, and each answer is an index or a file read.
+struct LiveFacts<'a> {
+    backend: &'a DaemonBackend,
+    cwds: std::cell::RefCell<HashMap<String, Option<String>>>,
+    topics: std::cell::OnceCell<Vec<crate::topics::Topic>>,
+}
+
+fn live_facts(backend: &DaemonBackend) -> LiveFacts<'_> {
+    LiveFacts {
+        backend,
+        cwds: Default::default(),
+        topics: Default::default(),
+    }
+}
+
+impl reach::Facts for LiveFacts<'_> {
+    fn spawner_of(&self, id: &str) -> Option<String> {
+        self.backend
+            .desk
+            .states
+            .spawner_of(id)
+            .map(|s| super::current_spawner(&s))
+    }
+    fn autopilot(&self) -> Option<String> {
+        self.backend.runner.status().session
+    }
+    fn is_item(&self, id: &str) -> bool {
+        self.backend.autopilot.state_for_session(id).is_some()
+    }
+    fn handed_to(&self, id: &str) -> Option<String> {
+        self.backend.desk.states.handed_to(id)
+    }
+    fn cwd(&self, id: &str) -> Option<String> {
+        let mut cwds = self.cwds.borrow_mut();
+        cwds.entry(id.to_string())
+            .or_insert_with(|| self.backend.session_cwd(id).ok())
+            .clone()
+    }
+    fn made_by(&self, cwd: &str) -> Option<String> {
+        origin_at(cwd).map(|o| o.session)
+    }
+    fn topic_of(&self, cwd: &str) -> Option<String> {
+        let topics = self.topics.get_or_init(crate::unit_home::topics);
+        crate::unit_home::topic_of(topics, cwd).map(|t| t.id.clone())
+    }
+    fn granted_read(&self, reader: &str, target: &str) -> bool {
+        crate::read_grants::granted(reader, target)
+    }
+}
+
+trait SteerSink {
+    fn is_live(&self, id: &str) -> bool;
+    fn revive(&self, id: &str) -> Result<(), RpcError>;
+    fn mid_turn(&self, id: &str) -> bool;
+    fn blocks(&self, target: &str, text: String, attach: &[String]) -> Result<Vec<ContentBlock>, RpcError>;
+    fn deliver(&self, id: &str, blocks: Vec<ContentBlock>, mid_turn: bool, by: TurnBy) -> Result<(), RpcError>;
+    fn queue(&self, target: &str, from: &str, text: String, attach: Vec<String>) -> Result<Value, RpcError>;
+}
+
+fn route_steer(
+    f: &impl reach::Facts,
+    sink: &impl SteerSink,
+    principal: &Principal,
+    target: &str,
+    text: String,
+    attach: Vec<String>,
+) -> Result<Value, RpcError> {
+    match principal {
+        Principal::Session(Caller::Chat(from)) => {
+            if reach::steer_verdict(f, from, target, sink.mid_turn(target)) == reach::Verdict::Queue {
+                return sink.queue(target, from, text, attach);
+            }
+            reach::note_agent_steer(from, target);
+        }
+        Principal::Session(Caller::Terminal(_)) => {}
+        Principal::Local | Principal::Device(_) | Principal::Browser(_) => reach::person_spoke(target),
+    }
+    if !sink.is_live(target) {
+        sink.revive(target)?;
+    }
+    let mid_turn = sink.mid_turn(target);
+    let (by, text) = steered(principal, text);
+    let blocks = sink.blocks(target, text, &attach)?;
+    sink.deliver(target, blocks, mid_turn, by)?;
+    Ok(json!({ "delivered": if mid_turn { "steer" } else { "send" } }))
+}
+
+// Taken before it is delivered, so a second press finds nothing; put back if
+// the delivery fails, and named in the error if even that fails.
+fn accept_with(sink: &impl SteerSink, target: &str, id: &str) -> Result<bool, RpcError> {
+    let Some(request) = crate::chat_requests::take(target, id).map_err(refused)? else {
+        return Ok(false);
+    };
+    reach::person_spoke(target);
+    let delivered = (|| {
+        if !sink.is_live(target) {
+            sink.revive(target)?;
+        }
+        let mid_turn = sink.mid_turn(target);
+        let text = super::events::from_tori("steer", Some(&request.from), &request.text);
+        let blocks = sink.blocks(target, text, &request.attach)?;
+        sink.deliver(target, blocks, mid_turn, TurnBy::Session(request.from.clone()))
+    })();
+    let Err(failed) = delivered else {
+        return Ok(true);
+    };
+    let crate::chat_requests::Request { from, text, attach, .. } = request;
+    match crate::chat_requests::add(target, &from, text.clone(), attach) {
+        Ok(_) => Err(failed),
+        Err(put) => Err(refused(format!(
+            "{}, and it could not be put back ({put}). It said: {text}",
+            failed.message
+        ))),
+    }
+}
+
+struct LiveSink<'a>(&'a DaemonBackend);
+
+impl SteerSink for LiveSink<'_> {
+    fn is_live(&self, id: &str) -> bool {
+        self.0.chats.host.is_live(id)
+    }
+    fn revive(&self, id: &str) -> Result<(), RpcError> {
+        self.0.revive(id)
+    }
+    // A session waiting on a prompt is still inside its turn.
+    fn mid_turn(&self, id: &str) -> bool {
+        matches!(
+            self.0.desk.states.snapshot().get(id),
+            Some(SessionState::Working | SessionState::NeedsYou)
+        )
+    }
+    fn blocks(&self, target: &str, text: String, attach: &[String]) -> Result<Vec<ContentBlock>, RpcError> {
+        if attach.is_empty() {
+            return Ok(vec![ContentBlock::Text { text }]);
+        }
+        let agent = self
+            .0
+            .agent_of(target)
+            .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no session {target}")))?;
+        crate::chat::pick::first_message(&agent, Some(&text), attach).map_err(refused)
+    }
+    fn deliver(&self, id: &str, blocks: Vec<ContentBlock>, mid_turn: bool, by: TurnBy) -> Result<(), RpcError> {
+        self.0.chats.host.deliver(id, blocks, mid_turn, by).map_err(refused)
+    }
+    fn queue(&self, target: &str, from: &str, text: String, attach: Vec<String>) -> Result<Value, RpcError> {
+        self.0.queue_request(target, from, text, attach)
+    }
+}
+
 fn answers_for(caller: &Principal, spawner: Option<String>, session: &str) -> Result<(), RpcError> {
     match (caller, spawner) {
         (Principal::Session(Caller::Chat(caller)), Some(spawner)) if *caller == spawner => Ok(()),
@@ -1412,6 +1574,31 @@ impl DaemonBackend {
         Some(session)
     }
 
+    pub fn accept_request(&self, target: &str, id: &str) -> Result<bool, RpcError> {
+        if super::is_locked(&self.desk.states, &self.autopilot, &self.runner, target) {
+            return Err(refused(super::LOCKED.to_string()));
+        }
+        let accepted = accept_with(&LiveSink(self), target, id);
+        self.desk.ui.emit("requests://changed", json!({ "session": target }));
+        accepted
+    }
+
+    pub fn discard_request(&self, target: &str, id: &str) -> Result<bool, RpcError> {
+        let taken = crate::chat_requests::take(target, id).map_err(refused)?.is_some();
+        self.desk.ui.emit("requests://changed", json!({ "session": target }));
+        Ok(taken)
+    }
+
+    fn queue_request(&self, target: &str, from: &str, text: String, attach: Vec<String>) -> Result<Value, RpcError> {
+        let id = crate::chat_requests::add(target, from, text, attach).map_err(refused)?;
+        self.desk.ui.emit("requests://changed", json!({ "session": target }));
+        Ok(json!({
+            "delivered": "queued",
+            "request": id,
+            "note": format!("{target} is not yours to start or is not related to you, so a person decides whether it gets this. Tell the user if it matters."),
+        }))
+    }
+
     fn remember_issue(&self, project: &str, branch: &str, issue: &Issue, path: &str) -> Result<(), RpcError> {
         crate::issues::store::record(project, branch, issue.into()).map_err(|e| {
             refused(format!(
@@ -1714,14 +1901,16 @@ impl Backend for DaemonBackend {
         to_json(image)
     }
 
-    fn session_history(&self, params: HistoryParams) -> Result<Value, RpcError> {
+    fn session_history(&self, principal: &Principal, params: HistoryParams) -> Result<Value, RpcError> {
+        reach::may_read(&live_facts(self), principal, &params.id).map_err(refused)?;
+        let from = reach::fork_source(principal, &params.id, params.from);
         let agent = match params.agent {
             Some(agent) => agent,
             None => self
                 .agent_of(&params.id)
                 .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no session {}", params.id)))?,
         };
-        let source = match (history_source(&params.id, &agent), &params.from) {
+        let source = match (history_source(&params.id, &agent), &from) {
             (HistorySource::Missing, Some(from)) => history_source(from, &agent),
             (own, _) => own,
         };
@@ -1938,7 +2127,8 @@ impl Backend for DaemonBackend {
         to_json(made)
     }
 
-    fn session_tail(&self, params: TailParams) -> Result<Value, RpcError> {
+    fn session_tail(&self, principal: &Principal, params: TailParams) -> Result<Value, RpcError> {
+        reach::may_read(&live_facts(self), principal, &params.id).map_err(refused)?;
         let agent = match params.agent {
             Some(agent) => agent,
             None => self
@@ -1960,7 +2150,9 @@ impl Backend for DaemonBackend {
             Principal::Device(id) => json!({ "kind": "device", "id": id }),
             Principal::Browser(id) => json!({ "kind": "browser", "id": id }),
         };
-        Ok(json!({ "caller": caller, "identity": self.identity(principal) }))
+        let identity = self.identity(principal);
+        let made_by = identity.cwd.as_deref().and_then(origin_at);
+        Ok(json!({ "caller": caller, "identity": identity, "made_by": made_by }))
     }
 
     fn session_steer(&self, principal: &Principal, params: SteerParams) -> Result<Value, RpcError> {
@@ -1985,27 +2177,16 @@ impl Backend for DaemonBackend {
                 params.id
             )));
         }
-        if !host.is_live(&params.id) {
-            self.revive(&params.id)?;
-        }
-        // A session waiting on a prompt is still inside its turn.
-        let mid_turn = matches!(
-            self.desk.states.snapshot().get(&params.id),
-            Some(SessionState::Working | SessionState::NeedsYou)
-        );
         let attach = params.attach.unwrap_or_default();
         attachable(principal, &attach, &crate::attachments::dir())?;
-        let (by, text) = steered(principal, params.text);
-        let blocks = if attach.is_empty() {
-            vec![ContentBlock::Text { text }]
-        } else {
-            let agent = self
-                .agent_of(&params.id)
-                .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no session {}", params.id)))?;
-            crate::chat::pick::first_message(&agent, Some(&text), &attach).map_err(refused)?
-        };
-        host.deliver(&params.id, blocks, mid_turn, by).map_err(refused)?;
-        Ok(json!({ "delivered": if mid_turn { "steer" } else { "send" } }))
+        route_steer(
+            &live_facts(self),
+            &LiveSink(self),
+            principal,
+            &params.id,
+            params.text,
+            attach,
+        )
     }
 
     fn session_wait(&self, params: WaitParams) -> Result<Value, RpcError> {
@@ -3254,6 +3435,172 @@ mod tests {
             "{}",
             refused.message
         );
+    }
+
+    #[derive(Default)]
+    struct FakeSink {
+        live: HashSet<&'static str>,
+        busy: HashSet<&'static str>,
+        fail: bool,
+        revived: std::cell::RefCell<Vec<String>>,
+        delivered: std::cell::RefCell<Vec<(String, TurnBy)>>,
+        queued: std::cell::RefCell<Vec<(String, String)>>,
+    }
+
+    impl SteerSink for FakeSink {
+        fn is_live(&self, id: &str) -> bool {
+            self.live.contains(id)
+        }
+        fn revive(&self, id: &str) -> Result<(), RpcError> {
+            self.revived.borrow_mut().push(id.into());
+            Ok(())
+        }
+        fn mid_turn(&self, id: &str) -> bool {
+            self.busy.contains(id)
+        }
+        fn blocks(&self, _: &str, text: String, _: &[String]) -> Result<Vec<ContentBlock>, RpcError> {
+            Ok(vec![ContentBlock::Text { text }])
+        }
+        fn deliver(&self, id: &str, _: Vec<ContentBlock>, _: bool, by: TurnBy) -> Result<(), RpcError> {
+            if self.fail {
+                return Err(refused("the agent is gone".into()));
+            }
+            self.delivered.borrow_mut().push((id.into(), by));
+            Ok(())
+        }
+        fn queue(&self, target: &str, from: &str, _: String, _: Vec<String>) -> Result<Value, RpcError> {
+            self.queued.borrow_mut().push((target.into(), from.into()));
+            Ok(json!({ "delivered": "queued" }))
+        }
+    }
+
+    fn chat(id: &str) -> Principal {
+        Principal::Session(Caller::Chat(id.into()))
+    }
+
+    #[test]
+    fn a_steer_to_an_unrelated_chat_queues_and_neither_revives_nor_delivers() {
+        let sink = FakeSink::default();
+        let f = reach::fake::Fake::default();
+        let reply = route_steer(&f, &sink, &chat("rs-a"), "rs-b", "hi".into(), vec![]).unwrap();
+        assert_eq!(reply["delivered"], "queued");
+        assert_eq!(*sink.queued.borrow(), vec![("rs-b".to_string(), "rs-a".to_string())]);
+        assert!(sink.revived.borrow().is_empty() && sink.delivered.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_steer_to_an_idle_worker_revives_and_delivers_as_its_spawner() {
+        let sink = FakeSink::default();
+        let f = reach::fake::Fake {
+            spawners: [("rs-w", "rs-s")].into(),
+            ..Default::default()
+        };
+        route_steer(&f, &sink, &chat("rs-s"), "rs-w", "go".into(), vec![]).unwrap();
+        assert_eq!(*sink.revived.borrow(), vec!["rs-w".to_string()]);
+        assert_eq!(
+            *sink.delivered.borrow(),
+            vec![("rs-w".to_string(), TurnBy::Session("rs-s".into()))]
+        );
+    }
+
+    #[test]
+    fn the_sixth_agent_steer_queues_until_a_person_steers_either_chat() {
+        let sink = FakeSink {
+            live: ["cap-w"].into(),
+            busy: ["cap-w"].into(),
+            ..Default::default()
+        };
+        let f = reach::fake::Fake {
+            spawners: [("cap-w", "cap-s")].into(),
+            ..Default::default()
+        };
+        for _ in 0..reach::LOOP_CAP {
+            route_steer(&f, &sink, &chat("cap-s"), "cap-w", "x".into(), vec![]).unwrap();
+        }
+        assert_eq!(sink.delivered.borrow().len(), 5);
+        route_steer(&f, &sink, &chat("cap-s"), "cap-w", "x".into(), vec![]).unwrap();
+        assert_eq!(sink.queued.borrow().len(), 1, "the sixth waits");
+
+        route_steer(&f, &sink, &Principal::Device("d1".into()), "cap-w", "me".into(), vec![]).unwrap();
+        route_steer(&f, &sink, &chat("cap-s"), "cap-w", "x".into(), vec![]).unwrap();
+        assert_eq!(sink.delivered.borrow().len(), 7, "a person's steer reset the count");
+    }
+
+    #[test]
+    fn a_person_steers_any_chat() {
+        let sink = FakeSink::default();
+        let f = reach::fake::Fake::default();
+        route_steer(&f, &sink, &Principal::Local, "anyone", "hi".into(), vec![]).unwrap();
+        assert_eq!(sink.delivered.borrow().len(), 1);
+        assert!(sink.queued.borrow().is_empty());
+    }
+
+    fn requests_scratch(name: &str) {
+        let dir = std::env::temp_dir().join(format!("tori-accept-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::chat_requests::seam(dir);
+    }
+
+    #[test]
+    fn an_accept_delivers_once_as_the_sender_however_often_it_is_pressed() {
+        requests_scratch("once");
+        let id = crate::chat_requests::add("acc-t", "acc-f", "please".into(), vec![]).unwrap();
+        let sink = FakeSink::default();
+        assert!(accept_with(&sink, "acc-t", &id).unwrap());
+        assert!(!accept_with(&sink, "acc-t", &id).unwrap());
+        assert_eq!(
+            *sink.delivered.borrow(),
+            vec![("acc-t".to_string(), TurnBy::Session("acc-f".into()))]
+        );
+    }
+
+    #[test]
+    fn a_failed_accept_puts_the_message_back() {
+        requests_scratch("back");
+        let id = crate::chat_requests::add("acc-t2", "acc-f", "please".into(), vec![]).unwrap();
+        let sink = FakeSink {
+            fail: true,
+            ..Default::default()
+        };
+        assert!(accept_with(&sink, "acc-t2", &id).is_err());
+        let back = crate::chat_requests::list("acc-t2").unwrap();
+        assert_eq!(back.iter().map(|r| r.text.as_str()).collect::<Vec<_>>(), vec!["please"]);
+    }
+
+    #[test]
+    fn the_caller_learns_which_chat_made_its_worktree() {
+        let dir = std::env::temp_dir().join(format!("tori-caller-made-by-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let git = |args: &[&str]| {
+            assert!(std::process::Command::new("git")
+                .arg("-C")
+                .arg(&dir)
+                .args(args)
+                .status()
+                .unwrap()
+                .success());
+        };
+        git(&["init", "-q", "-b", "main"]);
+        git(&[
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "i",
+        ]);
+        crate::unit_origins::seam(dir.join("unit_origins.json"));
+        let repo = dir.to_string_lossy().into_owned();
+        let origin = made_by_of(&chat("maker"), || Some("/p/main".into())).unwrap();
+        crate::unit_origins::record(&repo, "main", origin).unwrap();
+
+        let found = origin_at_in(&repo, std::slice::from_ref(&dir)).map(|o| o.session);
+        assert_eq!(found.as_deref(), Some("maker"));
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

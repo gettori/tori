@@ -108,8 +108,16 @@ impl Served {
                 host.note_for_next_turn(&id()?, arg(p, "text")?);
                 Ok(Value::Null)
             }
-            "send" => reply(host.send(&id()?, arg(p, "blocks")?)?),
-            "steer" => reply(host.steer(&id()?, arg(p, "blocks")?)?),
+            "send" | "steer" => {
+                let session = id()?;
+                crate::rpc::reach::person_spoke(&session);
+                let blocks = arg(p, "blocks")?;
+                if method == "send" {
+                    reply(host.send(&session, blocks)?)
+                } else {
+                    reply(host.steer(&session, blocks)?)
+                }
+            }
             "settle" => reply(host.settle(&id()?, &arg::<String>(p, "id")?, &arg::<Vec<String>>(p, "answers")?)?),
             "set_visible" => reply(host.set_visible(&id()?, arg(p, "visible")?)),
             "close" => reply(host.close(
