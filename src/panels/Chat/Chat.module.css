@@ -2363,6 +2363,25 @@ button.diffHunkHeader:hover {
   line-height: 1.4;
 }
 
+/* Where a worktree came from is a fact, not a warning, so it does not take the
+   attention hue every other banner wears. */
+.bannerQuiet {
+  color: var(--fg-muted);
+}
+
+.originLink {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.originLink:hover {
+  text-decoration: underline;
+}
+
 /* Sits on the composer, so it takes the input box's measure rather than the
    banner's edge to edge: the chat measure less the composer's own inset. */
 .ask {

@@ -865,6 +865,7 @@ export default function LeftSidebar(props: {
               pullRequest: st?.pullRequest
                 ? { number: st.pullRequest.number, state: st.pullRequest.state, title: st.pullRequest.title }
                 : null,
+              madeBy: u.madeBy,
             };
           }),
         ),

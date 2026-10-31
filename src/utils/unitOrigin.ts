@@ -13,13 +13,21 @@ export function loadOrigin(origin: UnitOrigin): void {
   void trackFolders([origin.workspace]);
 }
 
-/** "Made by {session} in {project} / {branch}", "another session" until the
- *  parent's folder is loaded or when the session is gone. */
-export function madeByLine(origin: UnitOrigin): string {
+/** The parent's name, "another session" until its folder is loaded or once
+ *  it is gone, and where it was working, "{project} / {branch}". */
+export function madeByParts(origin: UnitOrigin): { name: string; where: string } {
   const meta = findSession(origin.session)?.session;
-  const name = meta?.name || meta?.title || "another session";
   const unit = unitAt(origin.workspace);
   const project = lastSegment(unit?.projectPath ?? origin.workspace);
   const branch = unit?.branch ?? meta?.branch;
-  return branch ? `Made by ${name} in ${project} / ${branch}` : `Made by ${name} in ${project}`;
+  return {
+    name: meta?.name || meta?.title || "another session",
+    where: branch ? `${project} / ${branch}` : project,
+  };
+}
+
+/** "Made by {session} in {project} / {branch}". */
+export function madeByLine(origin: UnitOrigin): string {
+  const { name, where } = madeByParts(origin);
+  return `Made by ${name} in ${where}`;
 }
