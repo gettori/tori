@@ -5243,6 +5243,7 @@ diff --git a/f b/f
             kind,
             is_current: false,
             issue: None,
+            made_by: None,
         }
     }
 

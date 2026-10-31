@@ -228,6 +228,7 @@ impl ForgeUnit {
             kind: self.kind,
             is_current: self.is_current,
             issue: None,
+            made_by: None,
         }
     }
 }
