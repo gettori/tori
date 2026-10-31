@@ -12,6 +12,7 @@ import InboxScreen, { watchDigest, watchInbox, watchNeedsYou, watchPermissions }
 import { setSpaceName, showWheel, spaceName } from "./prefs";
 import Root, { type RootTab } from "./Root";
 import { ProjectScreen, TopicScreen } from "./Screens";
+import { SpacesSheet, TopicForm } from "./Organize";
 import SettingsSheet from "./SettingsSheet";
 import UnitScreen from "./Unit";
 import { RemoteClient, forget, loadSaved, pair, parsePairLink, type Saved } from "./remote";
@@ -182,6 +183,8 @@ function watchTree(client: RemoteClient) {
 function Paired(props: { client: RemoteClient; notice: string | null; onDisconnect: () => void }) {
   const [live, relist] = liveRows(props.client);
   const [tree, reloadTree] = watchTree(props.client);
+  const [organize, setOrganize] = createSignal<"spaces" | "topic" | null>(null);
+  const allProjects = () => tree()?.spaces.flatMap((s) => s.projects) ?? [];
   const fresh = (project: Project) =>
     tree()
       ?.spaces.flatMap((s) => s.projects)
@@ -264,6 +267,8 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
             onUnit={openUnit}
             onSession={openSession}
             onSettings={() => go({ screen: "settings" })}
+            onSpaces={() => setOrganize("spaces")}
+            onNewTopic={() => setOrganize("topic")}
           />
         }
       >
@@ -286,7 +291,7 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
           {(topic) => (
             <TopicScreen
               client={props.client}
-              topic={topic}
+              topic={tree()?.topics.find((t) => t.id === topic.id) ?? topic}
               tree={tree()}
               live={live}
               crew={crew}
@@ -294,6 +299,7 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
               onUnit={(unit) => openUnit(unit, topic.name)}
               onOpen={openSession}
               onBack={back}
+              onChanged={reloadTree}
             />
           )}
         </Match>
@@ -313,6 +319,8 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
                 reloadTree();
                 back();
               }}
+              topics={tree()?.topics ?? []}
+              onChanged={reloadTree}
             />
           )}
         </Match>
@@ -400,6 +408,22 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
       </Show>
       <Show when={sheet()}>
         <SettingsSheet client={props.client} onDone={back} onDisconnect={props.onDisconnect} />
+      </Show>
+      <Show when={organize() === "spaces"}>
+        <SpacesSheet
+          client={props.client}
+          spaces={tree()?.spaces ?? []}
+          onChanged={reloadTree}
+          onDone={() => setOrganize(null)}
+        />
+      </Show>
+      <Show when={organize() === "topic"}>
+        <TopicForm
+          client={props.client}
+          projects={allProjects()}
+          onSaved={reloadTree}
+          onDone={() => setOrganize(null)}
+        />
       </Show>
     </div>
   );

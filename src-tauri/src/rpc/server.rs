@@ -129,6 +129,95 @@ pub struct WorktreeRemoveParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct SpaceParams {
+    /// The space's name; a new space is a folder of that name in Tori's base folder.
+    pub name: String,
+    /// An icon name from Tori's icon set; null wears the space's initials.
+    pub icon: Option<String>,
+    /// A swatch name; null derives the hue from the space's name.
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SpaceOrderParams {
+    /// Every space's name, in the order the sidebar shows them.
+    pub names: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TopicNewParams {
+    /// The Topic's name.
+    pub name: String,
+    /// The branch every worktree member is made on.
+    pub branch: String,
+    /// The repositories in it, each a worktree or a reference to its own checkout.
+    pub members: Vec<crate::topics::NewMember>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TopicRenameParams {
+    /// The Topic's id.
+    pub topic_id: String,
+    /// Its new name.
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TopicIdParams {
+    /// The Topic's id.
+    pub topic_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TopicMemberAddParams {
+    /// The Topic's id.
+    pub topic_id: String,
+    /// The repository to add.
+    pub repo_path: String,
+    /// A worktree on the Topic branch, or a reference to the repository's own checkout.
+    pub mode: Option<crate::topics::MemberMode>,
+    /// A worktree the user already has, moved into the Topic as it is.
+    pub worktree_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TopicMemberOrderParams {
+    /// The Topic's id.
+    pub topic_id: String,
+    /// Every member's repository, in the order to show them.
+    pub repo_paths: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TopicMemberParams {
+    /// The Topic's id.
+    pub topic_id: String,
+    /// The member's repository.
+    pub repo_path: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AttemptNewParams {
+    /// The project the attempt branches from.
+    pub project: String,
+    /// The group the attempt joins; one fan out shares one id.
+    pub group_id: String,
+    /// What the group is trying to do, in the user's words.
+    pub goal: String,
+    /// The attempt's new branch.
+    pub branch: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct BranchAttachParams {
     /// The project to show the branch in.
     pub project: String,
@@ -983,6 +1072,16 @@ pub trait Backend: Send + Sync {
     fn session_close(&self, principal: &Principal, params: CloseParams) -> Result<Value, RpcError>;
     fn worktree_remove(&self, params: WorktreeRemoveParams) -> Result<Value, RpcError>;
     fn branch_attach(&self, params: BranchAttachParams) -> Result<Value, RpcError>;
+    fn space_new(&self, params: SpaceParams) -> Result<Value, RpcError>;
+    fn space_edit(&self, params: SpaceParams) -> Result<Value, RpcError>;
+    fn space_order(&self, params: SpaceOrderParams) -> Result<Value, RpcError>;
+    fn topic_new(&self, params: TopicNewParams) -> Result<Value, RpcError>;
+    fn topic_rename(&self, params: TopicRenameParams) -> Result<Value, RpcError>;
+    fn topic_delete(&self, params: TopicIdParams) -> Result<Value, RpcError>;
+    fn topic_member_add(&self, params: TopicMemberAddParams) -> Result<Value, RpcError>;
+    fn topic_member_order(&self, params: TopicMemberOrderParams) -> Result<Value, RpcError>;
+    fn topic_promote(&self, params: TopicMemberParams) -> Result<Value, RpcError>;
+    fn attempt_new(&self, params: AttemptNewParams) -> Result<Value, RpcError>;
     fn caller(&self, principal: &Principal) -> Result<Value, RpcError>;
     fn session_steer(&self, principal: &Principal, params: SteerParams) -> Result<Value, RpcError>;
     fn session_wait(&self, params: WaitParams) -> Result<Value, RpcError>;
@@ -1461,6 +1560,36 @@ pub mod tests {
         }
         fn branch_attach(&self, p: BranchAttachParams) -> Result<Value, RpcError> {
             Ok(json!({ "attached": p.branch }))
+        }
+        fn space_new(&self, p: SpaceParams) -> Result<Value, RpcError> {
+            Ok(json!({ "space": p.name }))
+        }
+        fn space_edit(&self, p: SpaceParams) -> Result<Value, RpcError> {
+            Ok(json!({ "space": p.name }))
+        }
+        fn space_order(&self, p: SpaceOrderParams) -> Result<Value, RpcError> {
+            Ok(json!({ "order": p.names }))
+        }
+        fn topic_new(&self, p: TopicNewParams) -> Result<Value, RpcError> {
+            Ok(json!({ "topic": p.name }))
+        }
+        fn topic_rename(&self, p: TopicRenameParams) -> Result<Value, RpcError> {
+            Ok(json!({ "topic": p.name }))
+        }
+        fn topic_delete(&self, p: TopicIdParams) -> Result<Value, RpcError> {
+            Ok(json!({ "deleted": p.topic_id }))
+        }
+        fn topic_member_add(&self, p: TopicMemberAddParams) -> Result<Value, RpcError> {
+            Ok(json!({ "added": p.repo_path }))
+        }
+        fn topic_member_order(&self, p: TopicMemberOrderParams) -> Result<Value, RpcError> {
+            Ok(json!({ "order": p.repo_paths }))
+        }
+        fn topic_promote(&self, p: TopicMemberParams) -> Result<Value, RpcError> {
+            Ok(json!({ "promoted": p.repo_path }))
+        }
+        fn attempt_new(&self, p: AttemptNewParams) -> Result<Value, RpcError> {
+            Ok(json!({ "branch": p.branch }))
         }
         fn session_interrupt(&self, _: &Principal, p: InterruptParams) -> Result<Value, RpcError> {
             Ok(json!({ "interrupted": p.id }))
@@ -2308,6 +2437,16 @@ pub mod tests {
                 "session.close",
                 "worktree.remove",
                 "branch.attach",
+                "space.new",
+                "space.edit",
+                "space.order",
+                "topic.new",
+                "topic.rename",
+                "topic.delete",
+                "topic.member.add",
+                "topic.member.order",
+                "topic.promote",
+                "attempt.new",
                 "session.steer",
                 "session.pending",
                 "session.answer",
@@ -2384,13 +2523,37 @@ pub mod tests {
             ("session.close", json!({"id": "s1"})),
             ("worktree.remove", json!({"project": "/p", "folder": "/p/b"})),
             ("branch.attach", json!({"project": "/p", "branch": "b"})),
+            ("space.new", json!({"name": "work", "icon": "rocket", "color": null})),
+            ("space.edit", json!({"name": "work", "icon": null, "color": "teal"})),
+            ("space.order", json!({"names": ["work", "home"]})),
+            (
+                "topic.new",
+                json!({"name": "t", "branch": "b", "members": [{"repoPath": "/p", "mode": "reference"}]}),
+            ),
+            ("topic.rename", json!({"topic_id": "t1", "name": "u"})),
+            ("topic.delete", json!({"topic_id": "t1"})),
+            (
+                "topic.member.add",
+                json!({"topic_id": "t1", "repo_path": "/p", "worktree_path": "/p/b"}),
+            ),
+            (
+                "topic.member.order",
+                json!({"topic_id": "t1", "repo_paths": ["/q", "/p"]}),
+            ),
+            ("topic.promote", json!({"topic_id": "t1", "repo_path": "/p"})),
+            (
+                "attempt.new",
+                json!({"project": "/p", "group_id": "g", "goal": "try", "branch": "try-1"}),
+            ),
         ] {
             assert!(
                 server.dispatch(0, &device, &request(method, params)).is_ok(),
                 "{method}"
             );
         }
-        assert!(!open.iter().any(|m| m.contains("delete")));
+        // A delete has no undo, so it stays on the Mac; a Topic's is only its record.
+        assert!(!open.iter().any(|m| m.contains("delete") && *m != "topic.delete"));
+        assert!(!open.contains(&"attempt.promote"));
         let worker = Principal::Session(Caller::Chat(WORKER.into()));
         for method in [
             "session.info",

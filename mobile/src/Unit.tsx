@@ -10,6 +10,7 @@ import { ago } from "../../src/utils/relativeTime";
 import { bucketByLastActive } from "../../src/utils/sessionBuckets";
 import AskSheet, { type Ask } from "./AskSheet";
 import type { Crew } from "./Autopilot";
+import { ChoiceSheet } from "./Organize";
 import NewSheet, { type Started } from "./NewSheet";
 import type { RemoteClient } from "./remote";
 import { DOT, ConnectionBanner, PhaseMark } from "./Root";
@@ -173,6 +174,8 @@ export default function UnitScreen(props: {
   onOpen: (row: SessionRow) => void;
   onBack: () => void;
   onRemoved: () => void;
+  topics: Topic[];
+  onChanged: () => void;
 }) {
   const { here, earlier } = unitSessions(props.client, () => [props.unit], props.live);
   const git = watchGit(props.client, () => [props.unit.folder]);
@@ -182,6 +185,8 @@ export default function UnitScreen(props: {
   const [menu, setMenu] = createSignal(false);
   const [ask, setAsk] = createSignal<Ask | null>(null);
   const removable = () => props.unit.kind === "worktree" && props.project !== null;
+  const [moving, setMoving] = createSignal(false);
+  const homeTopics = () => props.topics.filter((t) => !t.members.some((m) => m.worktreePath === props.unit.folder));
   const remove = () => {
     setMenu(false);
     const branch = props.unit.branch;
@@ -227,6 +232,15 @@ export default function UnitScreen(props: {
                 <Show when={menu()}>
                   <span class={styles.menuDim} onClick={() => setMenu(false)} />
                   <span class={styles.menu} role="menu">
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setMenu(false);
+                        setMoving(true);
+                      }}
+                    >
+                      Move to Topic
+                    </button>
                     <button role="menuitem" onClick={remove}>
                       Remove worktree
                     </button>
@@ -260,6 +274,23 @@ export default function UnitScreen(props: {
         />
       </div>
       <Show when={ask()}>{(open) => <AskSheet ask={open()} onDone={() => setAsk(null)} />}</Show>
+      <Show when={moving()}>
+        <ChoiceSheet
+          title={`Move ${props.unit.label} to a Topic`}
+          message="The worktree joins the Topic as it is, on its own branch."
+          choices={homeTopics().map((t) => ({ label: t.name, meta: t.branch, value: t.id }))}
+          onPick={(topicId) =>
+            props.client
+              .request("topic.member.add", {
+                topic_id: topicId,
+                repo_path: props.project,
+                worktree_path: props.unit.folder,
+              })
+              .then(props.onChanged)
+          }
+          onDone={() => setMoving(false)}
+        />
+      </Show>
       <Show when={sheet()}>
         <NewSheet
           client={props.client}
