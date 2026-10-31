@@ -68,6 +68,8 @@ pub struct HistoryParams {
     pub before: Option<Before>,
     /// At most this many turns (default 10). A page never holds more than 500 events.
     pub limit: Option<usize>,
+    /// The session this one forked from, read while the fork has no transcript of its own yet.
+    pub from: Option<String>,
 }
 
 /// Where a page ends. A prompt timestamp ends it before that prompt's turn. An
@@ -214,6 +216,43 @@ pub struct AttemptNewParams {
     pub goal: String,
     /// The attempt's new branch.
     pub branch: String,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatOp {
+    ToolDiff,
+    ToolOutput,
+    SessionDiff,
+    RevertToolHunk,
+    SetConfigOption,
+    UsageTotals,
+}
+
+impl ChatOp {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::ToolDiff => "tool_diff",
+            Self::ToolOutput => "tool_output",
+            Self::SessionDiff => "session_diff",
+            Self::RevertToolHunk => "revert_tool_hunk",
+            Self::SetConfigOption => "set_config_option",
+            Self::UsageTotals => "usage_totals",
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ChatCallParams {
+    /// The chat session.
+    pub id: String,
+    /// What to read or do; `usage_totals` is the session's and its project's spend, as the chat strip shows it.
+    pub op: ChatOp,
+    /// The op's own arguments: `tool_use_id`; and `path`, `hunk_index` and `fingerprint` for a
+    /// hunk revert; `config_id` and `value` for a config option. The session's folder is Tori's.
+    #[serde(default)]
+    pub args: serde_json::Map<String, Value>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -648,6 +687,8 @@ pub struct SpawnParams {
     pub effort: Option<String>,
     /// The autopilot item this worker is for. Refused when that item is already past its spend ceiling.
     pub item: Option<String>,
+    /// A session to fork: the new one carries its conversation on, on its agent.
+    pub fork: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -1073,6 +1114,7 @@ pub trait Backend: Send + Sync {
     fn worktree_remove(&self, params: WorktreeRemoveParams) -> Result<Value, RpcError>;
     fn branch_attach(&self, params: BranchAttachParams) -> Result<Value, RpcError>;
     fn space_new(&self, params: SpaceParams) -> Result<Value, RpcError>;
+    fn session_call(&self, principal: &Principal, params: ChatCallParams) -> Result<Value, RpcError>;
     fn space_edit(&self, params: SpaceParams) -> Result<Value, RpcError>;
     fn space_order(&self, params: SpaceOrderParams) -> Result<Value, RpcError>;
     fn topic_new(&self, params: TopicNewParams) -> Result<Value, RpcError>;
@@ -1560,6 +1602,9 @@ pub mod tests {
         }
         fn branch_attach(&self, p: BranchAttachParams) -> Result<Value, RpcError> {
             Ok(json!({ "attached": p.branch }))
+        }
+        fn session_call(&self, _: &Principal, p: ChatCallParams) -> Result<Value, RpcError> {
+            Ok(json!({ "op": p.op.name(), "id": p.id }))
         }
         fn space_new(&self, p: SpaceParams) -> Result<Value, RpcError> {
             Ok(json!({ "space": p.name }))
@@ -2071,7 +2116,7 @@ pub mod tests {
     fn every_spawn_param_is_optional_and_described() {
         let schema = schemars::schema_for!(SpawnParams).to_value();
         let properties = schema["properties"].as_object().unwrap();
-        assert_eq!(properties.len(), 13);
+        assert_eq!(properties.len(), 14);
         for (name, field) in properties {
             assert!(
                 field["description"].as_str().is_some_and(|d| !d.is_empty()),
@@ -2434,6 +2479,7 @@ pub mod tests {
                 "session.history",
                 "session.interrupt",
                 "session.rename",
+                "session.call",
                 "session.close",
                 "worktree.remove",
                 "branch.attach",
@@ -2469,6 +2515,9 @@ pub mod tests {
                 "worktree.new",
                 "issues.assigned",
                 "issues.get",
+                "checkpoints.list",
+                "checkpoint.diff",
+                "checkpoint.revert",
                 "session.spawn",
                 "attachment.write",
                 "ask.answer",
@@ -2541,6 +2590,20 @@ pub mod tests {
                 json!({"topic_id": "t1", "repo_paths": ["/q", "/p"]}),
             ),
             ("topic.promote", json!({"topic_id": "t1", "repo_path": "/p"})),
+            (
+                "session.call",
+                json!({"id": "s1", "op": "revert_tool_hunk", "args": {"tool_use_id": "t", "path": "a.rs", "hunk_index": 0, "fingerprint": "f"}}),
+            ),
+            (
+                "session.call",
+                json!({"id": "s1", "op": "set_config_option", "args": {"config_id": "c", "value": true}}),
+            ),
+            ("checkpoint.diff", json!({"id": "s1", "turn": 1})),
+            ("checkpoint.revert", json!({"id": "s1", "turn": 1})),
+            (
+                "session.spawn",
+                json!({"folder": "/p", "agent": "claude", "fork": "s1"}),
+            ),
             (
                 "attempt.new",
                 json!({"project": "/p", "group_id": "g", "goal": "try", "branch": "try-1"}),

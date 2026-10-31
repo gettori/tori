@@ -27,8 +27,8 @@ use super::server::{
     DEFAULT_LOG_LIMIT,
 };
 use super::server::{
-    AttemptNewParams, SpaceOrderParams, SpaceParams, TopicIdParams, TopicMemberAddParams, TopicMemberOrderParams,
-    TopicMemberParams, TopicNewParams, TopicRenameParams,
+    AttemptNewParams, ChatCallParams, ChatOp, SpaceOrderParams, SpaceParams, TopicIdParams, TopicMemberAddParams,
+    TopicMemberOrderParams, TopicMemberParams, TopicNewParams, TopicRenameParams,
 };
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
@@ -1103,6 +1103,15 @@ impl DaemonBackend {
         let first =
             crate::chat::pick::first_message(&picked.agent, params.prompt.as_deref(), &attach).map_err(refused)?;
         let mode = mode.or_else(|| read_only.then(|| read_only_mode(&picked.agent)).flatten());
+        if let Some(from) = &params.fork {
+            let source = listed_sessions(&self.composer.index, None)
+                .into_iter()
+                .find(|m| &m.id == from)
+                .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no session {from} to fork")))?;
+            if source.agent != picked.agent {
+                return Err(refused(format!("a fork runs on its session's agent, {}", source.agent)));
+            }
+        }
         let id = super::runner::new_session_id();
         let tab = format!("chat:{}", super::runner::new_session_id());
         record_spawn(&self.desk.states, principal, &id, background);
@@ -1112,7 +1121,7 @@ impl DaemonBackend {
             agent_id: picked.agent.clone(),
             cwd: folder.clone(),
             resume: false,
-            fork_from: None,
+            fork_from: params.fork.clone(),
             profile: crate::chat::pick::tab_profile(&picked.profile),
             model,
             mode,
@@ -1671,7 +1680,11 @@ impl Backend for DaemonBackend {
                 .agent_of(&params.id)
                 .ok_or_else(|| RpcError::new(INVALID_PARAMS, format!("no session {}", params.id)))?,
         };
-        let read = read_cached(&params.id, &history_source(&params.id, &agent), &agent);
+        let source = match (history_source(&params.id, &agent), &params.from) {
+            (HistorySource::Missing, Some(from)) => history_source(from, &agent),
+            (own, _) => own,
+        };
+        let read = read_cached(&params.id, &source, &agent);
         let (events, prompts) = &*read;
         let limit = params.limit.unwrap_or(DEFAULT_HISTORY_TURNS);
         let (range, next) = history_page(prompts, events.len(), params.before.as_ref(), limit);
@@ -1692,6 +1705,28 @@ impl Backend for DaemonBackend {
         may_steer(principal, locked, self.runner.status().session.as_deref())?;
         host.interrupt(&params.id).map_err(refused)?;
         Ok(json!({ "interrupted": params.id }))
+    }
+
+    fn session_call(&self, principal: &Principal, params: ChatCallParams) -> Result<Value, RpcError> {
+        let cwd = self.session_cwd(&params.id)?;
+        match params.op {
+            ChatOp::UsageTotals => {
+                let file = crate::chat::usage::load(&crate::chat::usage::usage_path(&cwd));
+                return to_json(crate::chat::usage::UsageTotals {
+                    project: crate::chat::usage::project_total(&file),
+                    session: crate::chat::usage::folded_session_total(&file, &params.id),
+                });
+            }
+            ChatOp::RevertToolHunk | ChatOp::SetConfigOption => {
+                let locked = super::is_locked(&self.desk.states, &self.autopilot, &self.runner, &params.id);
+                may_steer(principal, locked, self.runner.status().session.as_deref())?;
+            }
+            ChatOp::ToolDiff | ChatOp::ToolOutput | ChatOp::SessionDiff => {}
+        }
+        let mut args = params.args;
+        args.insert("session_id".into(), json!(params.id));
+        args.insert("cwd".into(), json!(cwd));
+        self.chats.call(params.op.name(), &Value::Object(args)).map_err(refused)
     }
 
     fn session_rename(&self, params: RenameParams) -> Result<Value, RpcError> {

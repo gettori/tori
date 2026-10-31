@@ -8,18 +8,23 @@ export type Ask = {
   confirm: string;
   danger?: boolean;
   run: (value: string) => Promise<unknown>;
+  onClose?: () => void;
 };
 
 export default function AskSheet(props: { ask: Ask; onDone: () => void }) {
   const [value, setValue] = createSignal(props.ask.input?.value ?? "");
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
+  const done = () => {
+    props.ask.onClose?.();
+    props.onDone();
+  };
   const go = async () => {
     setBusy(true);
     setError(null);
     try {
       await props.ask.run(value().trim());
-      props.onDone();
+      done();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -28,12 +33,12 @@ export default function AskSheet(props: { ask: Ask; onDone: () => void }) {
   };
   return (
     <>
-      <div class={styles.dim} onClick={() => props.onDone()} />
+      <div class={styles.dim} onClick={done} />
       <section class={styles.sheet} role="dialog" aria-label={props.ask.title}>
         <span class={styles.grabber} />
         <header class={styles.sheetHead}>
           <span class={styles.sheetTitle}>{props.ask.title}</span>
-          <button class={styles.done} onClick={() => props.onDone()}>
+          <button class={styles.done} onClick={done}>
             Cancel
           </button>
         </header>
