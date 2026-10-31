@@ -50,6 +50,7 @@ import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
 import { speakableBlocks } from "./speakable";
+import WorktreeCard, { isWorktreeCard } from "./WorktreeCard";
 import ToolCallCard, { type HunkRef } from "./ToolCallCard";
 import QuestionCard from "./QuestionCard";
 import ToriNoteRow from "./ToriNote";
@@ -257,6 +258,7 @@ export default function MessageList(props: {
    *  what a blocked row does. */
   blockedIn?: (item: ChatItem) => string | null;
   onOpenLane?: (agentId: string) => void;
+  onOpenWorktree?: (folder: string) => void;
   /** Fetch the page before the first item, for a caller that holds only the
    *  latest pages. Asked for once every held item is already shown. */
   onFetchEarlier?: () => void;
@@ -900,6 +902,14 @@ export default function MessageList(props: {
               inLane={props.blockedIn?.(it()) ?? null}
               onOpenLane={props.onOpenLane}
             />
+          </>
+        )}
+      </Match>
+      <Match when={p.item.kind === "tool" && !folded().hidden.has(p.item.id) && isWorktreeCard(p.item) && p.item}>
+        {(it) => (
+          <>
+            <TurnAnchor itemId={it().id} off={p.unanchored} />
+            <WorktreeCard card={it()} cwd={props.cwd} onOpenWorktree={props.onOpenWorktree} />
           </>
         )}
       </Match>

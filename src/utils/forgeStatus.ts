@@ -76,6 +76,37 @@ export function prWatchProjects(polled: readonly PrWatchPolled[]): WatchedProjec
   return polled.map((p) => ({ path: p.project, units: [{ branch: p.branch, visible: false }] }));
 }
 
+const [cardWatches, setCardWatches] = createSignal<ReadonlyMap<string, number>>(new Map());
+const watchKey = (project: string, branch: string) => `${project}\n${branch}`;
+
+// Polling covers the active space only, so a card showing a pull request from
+// another space would otherwise never see it change.
+export function watchFromCard(project: string, branch: string): () => void {
+  const key = watchKey(project, branch);
+  const bump = (by: number) =>
+    setCardWatches((prev) => {
+      const next = new Map(prev);
+      const n = (next.get(key) ?? 0) + by;
+      if (n > 0) next.set(key, n);
+      else next.delete(key);
+      return next;
+    });
+  bump(1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    bump(-1);
+  };
+}
+
+export function cardProjects(): WatchedProject[] {
+  return [...cardWatches().keys()].map((key) => {
+    const [path, branch] = key.split("\n");
+    return { path, units: [{ branch, visible: true }] };
+  });
+}
+
 /** One entry per project, its branches unioned; a branch any list shows is
  *  shown. */
 export function mergeWatched(lists: readonly (readonly WatchedProject[])[]): WatchedProject[] {

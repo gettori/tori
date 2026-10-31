@@ -136,6 +136,8 @@ import type { AccountsView } from "../Settings/panes/AgentsPane/AgentAccounts";
 import { capNotice, markNoticed, noticed, pastCap, shouldNotice, MULTI_CHAT_NOTICE } from "../../utils/chatConcurrency";
 import {
   emitWith,
+  NAVIGATE,
+  type NavTarget,
   onWith,
   AGENT_FILES_WRITTEN,
   EDITOR_FILE_SAVED,
@@ -2618,6 +2620,7 @@ export default function ChatView(props: {
           laneOpenedBy={(toolUseId) => laneOpenedBy(toolUseId)}
           blockedIn={blockedIn}
           onOpenLane={(agentId) => edit((s) => selectLane(s, agentId))}
+          onOpenWorktree={(folder) => emitWith<NavTarget>(NAVIGATE, { folder })}
           onRewind={onRewind}
           onRead={
             LOCAL_SPEECH
