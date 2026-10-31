@@ -1817,3 +1817,35 @@ li + li > .item {
 .reviewSignal[data-kind="sensitivePath"] {
   color: var(--danger-fg);
 }
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 20px 16px;
+}
+
+.swatch {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  font-size: 12px;
+  color: rgb(var(--tint, 147 161 181));
+  background: var(--m-chip);
+  border: 2px solid transparent;
+  border-radius: 12px;
+}
+
+.swatch[aria-pressed="true"] {
+  border-color: var(--fg-default);
+}
+
+.spacesLink {
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+}

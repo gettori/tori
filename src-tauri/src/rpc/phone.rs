@@ -8,7 +8,7 @@ use serde::Serialize;
 // Raised with `PROTOCOL` in mobile/src/remote.ts on a breaking change to what
 // the app sends or reads. Builds from before the check send no number, so the
 // protocol they already speak is 0.
-pub const PHONE_PROTOCOL: u64 = 3;
+pub const PHONE_PROTOCOL: u64 = 4;
 // Raised only in a release whose notes tell phone users to update the app: a
 // sideloaded APK never updates itself, so a floor raised with the release cuts
 // off every phone nobody updated by hand.

@@ -216,13 +216,13 @@ pub async fn create_attempt(
     branch: String,
 ) -> Result<CreatedAttempt, String> {
     crate::exec::git_write("create_attempt", root.clone(), move || {
-        create_attempt_body(app, root, group_id, goal, branch)
+        create_attempt_body(&crate::ui::Ui::from(&app), root, group_id, goal, branch)
     })
     .await
 }
 
 pub(crate) fn create_attempt_body(
-    app: AppHandle,
+    ui: &crate::ui::Ui,
     root: String,
     group_id: String,
     goal: String,
@@ -267,7 +267,7 @@ pub(crate) fn create_attempt_body(
             goal,
         },
     )?;
-    let _ = app.emit("config://changed", ());
+    ui.emit("config://changed", ());
     Ok(CreatedAttempt {
         path: target_str,
         branch,

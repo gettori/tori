@@ -1511,6 +1511,25 @@ pub fn add_space(
     icon: Option<String>,
     color: Option<String>,
 ) -> Result<String, String> {
+    add_space_in(&crate::ui::Ui::from(&app), root, name, icon, color)
+}
+
+pub fn base_folder() -> Result<String, String> {
+    let raw: RawConfig = toml::from_str(&ensure_config()?).map_err(|e| e.to_string())?;
+    raw.discovery
+        .roots
+        .into_iter()
+        .next()
+        .ok_or_else(|| "No base folder configured".into())
+}
+
+pub fn add_space_in(
+    ui: &crate::ui::Ui,
+    root: String,
+    name: String,
+    icon: Option<String>,
+    color: Option<String>,
+) -> Result<String, String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
     let _store = crate::exec::cross_process_store_lock("config")?;
@@ -1525,7 +1544,7 @@ pub fn add_space(
     if icon.is_some() || color.is_some() {
         write_space_meta(&n, icon, color)?;
     }
-    let _ = app.emit("config://changed", ()); // explicit re-discovery
+    ui.emit("config://changed", ()); // explicit re-discovery
     Ok(dir.to_string_lossy().into_owned())
 }
 
@@ -1535,13 +1554,22 @@ pub fn add_space(
 /// reload).
 #[tauri::command(async)]
 pub fn set_space_meta(app: AppHandle, name: String, icon: Option<String>, color: Option<String>) -> Result<(), String> {
+    set_space_meta_in(&crate::ui::Ui::from(&app), name, icon, color)
+}
+
+pub fn set_space_meta_in(
+    ui: &crate::ui::Ui,
+    name: String,
+    icon: Option<String>,
+    color: Option<String>,
+) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
     let _store = crate::exec::cross_process_store_lock("config")?;
     let icon = icon.as_deref().map(str::trim).filter(|s| !s.is_empty());
     let color = color.as_deref().map(str::trim).filter(|s| !s.is_empty());
     write_space_meta(&name, icon, color)?;
-    let _ = app.emit("config://changed", ());
+    ui.emit("config://changed", ());
     Ok(())
 }
 
@@ -1566,12 +1594,16 @@ fn write_space_order(text: &str, names: &[String]) -> Result<String, String> {
 /// Persist the user-chosen order of spaces (by name). Write store → emit.
 #[tauri::command(async)]
 pub fn set_space_order(app: AppHandle, names: Vec<String>) -> Result<(), String> {
+    set_space_order_in(&crate::ui::Ui::from(&app), names)
+}
+
+pub fn set_space_order_in(ui: &crate::ui::Ui, names: Vec<String>) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
     let _store = crate::exec::cross_process_store_lock("config")?;
     let serialized = write_space_order(&ensure_config()?, &names)?;
     std::fs::write(config_path(), serialized).map_err(|e| e.to_string())?;
-    let _ = app.emit("config://changed", ());
+    ui.emit("config://changed", ());
     Ok(())
 }
 
