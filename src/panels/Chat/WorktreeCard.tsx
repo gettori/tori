@@ -10,24 +10,38 @@ import styles from "./Chat.module.css";
 const lastSegment = (path: string) => path.slice(path.lastIndexOf("/") + 1) || path;
 const text = (v: unknown) => (typeof v === "string" && v ? v : null);
 
+// An agent makes a worktree with worktree_new, or with session_spawn's
+// new_worktree when it wants a chat there in the same call.
+function makesWorktree(card: ToolItem): boolean {
+  const call = toriCall(card);
+  return call?.tool === "worktree_new" || (call?.tool === "session_spawn" && !!text(call.args.new_worktree));
+}
+
+// worktree_new answers with `path`, session_spawn with `folder`.
+const madeAt = (reply: Record<string, unknown> | null) => text(reply?.path) ?? text(reply?.folder);
+
 // A call waiting on approval, refused or failed keeps the generic card, which
 // is where the prompt and the error live.
 export function isWorktreeCard(card: ToolItem): boolean {
-  if (toriCall(card)?.tool !== "worktree_new") return false;
-  return card.state === "running" || (card.state === "ok" && !!text(toriReply(card.output)?.path));
+  if (!makesWorktree(card)) return false;
+  return card.state === "running" || (card.state === "ok" && !!madeAt(toriReply(card.output)));
 }
 
 export default function WorktreeCard(props: {
   card: ToolItem;
   cwd: string;
-  onOpenWorktree?: (folder: string) => void;
+  onOpenWorktree?: (folder: string, session: string | null) => void;
 }) {
   const args = () => toriCall(props.card)?.args ?? {};
   const reply = createMemo(() => toriReply(props.card.output));
   const running = () => props.card.state === "running";
-  const path = () => text(reply()?.path);
+  const path = () => madeAt(reply());
   const branch = () =>
-    text(reply()?.branch) ?? text(args().branch) ?? (args().pr === undefined ? null : `pr-${String(args().pr)}`);
+    text(reply()?.branch) ??
+    text(args().branch) ??
+    text(args().new_worktree) ??
+    (args().pr === undefined ? null : `pr-${String(args().pr)}`);
+  const chat = () => (toriCall(props.card)?.tool === "session_spawn" ? text(reply()?.id) : null);
   const unit = () => {
     const p = path();
     return p ? unitAt(p) : null;
@@ -61,10 +75,13 @@ export default function WorktreeCard(props: {
         <span class={styles.toolName}>{running() ? "Making worktree" : "Worktree"}</span>
         <span class={styles.toolArg}>{branch()}</span>
         <Show when={project()}>{(name) => <span class={styles.toolSummary}>{name()}</span>}</Show>
+        <Show when={chat()}>
+          <span class={styles.toolSummary}>with a chat</span>
+        </Show>
         <Show when={live()}>{(said) => <span class={styles.toolState}>{said()}</span>}</Show>
         <Show when={props.onOpenWorktree && !removed() && path()}>
           {(folder) => (
-            <Button size="sm" onClick={() => props.onOpenWorktree?.(folder())}>
+            <Button size="sm" onClick={() => props.onOpenWorktree?.(folder(), chat())}>
               Open
             </Button>
           )}

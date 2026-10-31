@@ -62,7 +62,22 @@ describe("WorktreeCard", () => {
     const open = vi.fn();
     const { getByText } = render(() => <WorktreeCard card={card()} cwd="/p/main" onOpenWorktree={open} />);
     fireEvent.click(getByText("Open"));
-    expect(open).toHaveBeenCalledWith("/p/fix-a");
+    expect(open).toHaveBeenCalledWith("/p/fix-a", null);
+  });
+
+  it("draws a session_spawn that made a worktree, and opens the chat it started there", () => {
+    noteForgeUnits([main, unit()]);
+    const spawned = card({
+      name: "mcp__tori__session_spawn",
+      input: { new_worktree: "fix-a", prompt: "hi" },
+      output: JSON.stringify({ id: "child-1", folder: "/p/fix-a", agent: "claude", background: false }),
+    });
+    const open = vi.fn();
+    const { container, getByText } = render(() => <WorktreeCard card={spawned} cwd="/p/main" onOpenWorktree={open} />);
+    expect(container.textContent).toContain("fix-a");
+    expect(container.textContent).toContain("with a chat");
+    fireEvent.click(getByText("Open"));
+    expect(open).toHaveBeenCalledWith("/p/fix-a", "child-1");
   });
 
   it("offers no Open without a handler", () => {
