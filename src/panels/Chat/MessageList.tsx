@@ -204,6 +204,9 @@ export default function MessageList(props: {
   streaming: boolean;
   sessionId: string;
   cwd: string;
+  /** False while the chat sits behind another tab, where pinning the tail would
+   *  force a layout of the whole window for a list nobody can see. */
+  active?: boolean;
   /** The session's skills, coloured where a prompt names one. */
   skills?: readonly string[];
   /** The scrolling root, for a caller that needs to know whether a selection
@@ -560,17 +563,35 @@ export default function MessageList(props: {
 
   onCleanup(() => props.onAnchor?.(visibleTurn()));
 
-  /** Put the tail back on screen, after the DOM has the row Solid just wrote. */
-  const pin = () => queueMicrotask(() => scroller?.scrollTo({ top: scroller.scrollHeight }));
+  /** Put the tail back on screen in the next frame, before it lays out: once
+   *  however many rows landed, and never as a layout of its own. */
+  let pinFrame = 0;
+  const pin = () => {
+    if (pinFrame) return;
+    pinFrame = requestAnimationFrame(() => {
+      pinFrame = 0;
+      scroller?.scrollTo({ top: scroller.scrollHeight });
+    });
+  };
+  onCleanup(() => cancelAnimationFrame(pinFrame));
 
   // Re-pin after the DOM has the new content, and only while pinned.
   createEffect(
     on(
       () => [shown().length, shown()[shown().length - 1]?.id, tailLength()] as const,
       () => {
-        if (!stuck() || !scroller) return;
+        if (!stuck() || !scroller || props.active === false) return;
         pin();
       },
+    ),
+  );
+  createEffect(
+    on(
+      () => props.active,
+      (active) => {
+        if (active !== false && stuck()) pin();
+      },
+      { defer: true },
     ),
   );
 

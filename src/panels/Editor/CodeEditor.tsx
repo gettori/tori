@@ -2061,9 +2061,13 @@ export default function CodeEditor(props: {
       handOff(path, "source", fractionOfLine(v.state.doc.lineAt(cursor).number, v.state.doc.lines));
     }
     if (focused) {
-      v.focus();
       view = v;
       shown = path;
+      // After the rest of this click's handlers: focusing here would restyle
+      // the window before they change it, and the frame then restyles it again.
+      queueMicrotask(() => {
+        if (token === rec.swaps && rec.path === path && v.dom.isConnected) v.focus();
+      });
     }
     props.onDirty(path, buf.state.sliceDoc() !== buf.savedText);
     // Where this buffer was left, for the trail above the editor. Reported here
