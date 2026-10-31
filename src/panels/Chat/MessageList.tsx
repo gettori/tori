@@ -297,6 +297,83 @@ export default function MessageList(props: {
       { defer: true },
     ),
   );
+
+  // Earlier rows load as the reader nears the top, a screen ahead of them. An
+  // observer rather than a scroll handler, which would read layout on every
+  // scroll event; it also never fires for a chat behind another tab.
+  const [loading, setLoading] = createSignal(false);
+  // Not until the reader has scrolled up: a short chat shows its top row on
+  // open, and paging its history in unasked would be a fetch nobody wanted.
+  let armed = false;
+  let earlierRow: HTMLElement | undefined;
+  let watcher: IntersectionObserver | undefined;
+  const canLoadEarlier = () => hasEarlier(props.items, limit()) || !!props.onFetchEarlier;
+
+  // A page that never arrives must not leave the row stuck saying so.
+  const LOADING_GIVE_UP_MS = 5000;
+  let giveUp: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(giveUp));
+
+  function loadEarlier() {
+    if (loading() || !canLoadEarlier()) return;
+    if (scroller) keep = { first: shown()[0]?.id, fromBottom: scroller.scrollHeight - scroller.scrollTop };
+    setLoading(true);
+    clearTimeout(giveUp);
+    giveUp = setTimeout(() => setLoading(false), LOADING_GIVE_UP_MS);
+    if (!hasEarlier(props.items, limit())) props.onFetchEarlier?.();
+    setLimit(limit() + WINDOW_STEP);
+  }
+
+  // A fresh observation reports where the row is now. Asked after each page
+  // lands, so a page too short to push the row out of reach fetches the next,
+  // and once the reader arms, for a row that was already in reach before.
+  function lookAgain() {
+    if (!watcher || !earlierRow) return;
+    watcher.unobserve(earlierRow);
+    watcher.observe(earlierRow);
+  }
+
+  onMount(() => {
+    if (!scroller || typeof IntersectionObserver === "undefined") return;
+    watcher = new IntersectionObserver(
+      (entries) => {
+        if (armed && entries.some((e) => e.isIntersecting)) loadEarlier();
+      },
+      { root: scroller, rootMargin: "100% 0px 0px 0px" },
+    );
+    if (earlierRow) watcher.observe(earlierRow);
+    onCleanup(() => watcher?.disconnect());
+  });
+
+  createEffect(
+    on(
+      () => shown()[0]?.id,
+      () => {
+        if (!loading()) return;
+        clearTimeout(giveUp);
+        setLoading(false);
+        lookAgain();
+      },
+      { defer: true },
+    ),
+  );
+
+  function watchEarlierRow(el: HTMLElement) {
+    earlierRow = el;
+    watcher?.observe(el);
+    onCleanup(() => {
+      watcher?.unobserve(el);
+      if (earlierRow === el) earlierRow = undefined;
+    });
+  }
+
+  function onListScroll() {
+    setStuck(atBottom());
+    if (!armed && !stuck()) {
+      armed = true;
+      lookAgain();
+    }
+  }
   // Three cards saying `Edit MessageList.tsx` in a row are three copies of one
   // answer. Folded at render time rather than in the store, because what folded
   // is still its own call: its own approval, its own revert, its own id.
@@ -893,19 +970,14 @@ export default function MessageList(props: {
         scroller = el;
         props.ref?.(el);
       }}
-      onScroll={() => setStuck(atBottom())}
+      onScroll={onListScroll}
     >
-      <Show when={hasEarlier(props.items, limit()) || props.onFetchEarlier}>
-        <div class={styles.loadEarlier}>
-          <Button
-            size="sm"
-            onClick={() => {
-              if (scroller) keep = { first: shown()[0]?.id, fromBottom: scroller.scrollHeight - scroller.scrollTop };
-              if (!hasEarlier(props.items, limit())) props.onFetchEarlier?.();
-              setLimit(limit() + WINDOW_STEP);
-            }}
-          >
-            Load earlier
+      <Show when={canLoadEarlier()}>
+        {/* Kept as a button: it is how a keyboard or a screen reader reaches
+            earlier rows, and how a page that failed to arrive is asked again. */}
+        <div class={styles.loadEarlier} ref={watchEarlierRow}>
+          <Button size="sm" onClick={loadEarlier}>
+            {loading() ? "Loading earlier…" : "Load earlier"}
           </Button>
         </div>
       </Show>
