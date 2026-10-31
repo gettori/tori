@@ -502,6 +502,34 @@
 .steerRow .userBubble {
   font-size: calc(var(--chat-font-size) - 1px);
 }
+.promptFrom {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  margin-bottom: calc(4px * var(--ui-scale));
+  color: var(--fg-subtle);
+  font-size: var(--tori-text-xs);
+}
+
+.promptFromName {
+  color: var(--fg-muted);
+  font-weight: 500;
+}
+
+.promptFromLink {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: 500;
+  color: var(--accent-fg);
+  cursor: pointer;
+}
+
+.promptFromLink:hover {
+  text-decoration: underline;
+}
+
 .steerLabel {
   display: block;
   color: var(--fg-subtle);
@@ -2789,6 +2817,86 @@ button.diffHunkHeader:hover {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.sessionGlyph {
+  flex: none;
+  display: inline-flex;
+  color: var(--fg-subtle);
+}
+
+.sessionList {
+  display: flex;
+  flex-direction: column;
+  gap: calc(10px * var(--ui-scale));
+  min-width: calc(260px * var(--ui-scale));
+  max-width: calc(360px * var(--ui-scale));
+  max-height: calc(320px * var(--ui-scale));
+  overflow-y: auto;
+  padding: calc(8px * var(--ui-scale));
+}
+
+.sessionListTitle {
+  margin: 0 0 calc(4px * var(--ui-scale));
+  color: var(--fg-subtle);
+  font-size: var(--tori-text-xs);
+  font-weight: 500;
+}
+
+.sessionRow {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+}
+
+.sessionRowOpen {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  min-width: 0;
+  padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  border: 0;
+  border-radius: calc(6px * var(--ui-scale));
+  background: transparent;
+  color: var(--fg-default);
+  font: inherit;
+  font-size: var(--tori-text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sessionRowOpen:hover:not(:disabled) {
+  background: var(--neutral-hover);
+}
+
+.sessionRowOpen:disabled {
+  cursor: default;
+}
+
+.sessionWhere {
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--fg-subtle);
+  font-size: var(--tori-text-xs);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sessionUnlink {
+  flex: none;
+  padding: calc(2px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: calc(6px * var(--ui-scale));
+  background: transparent;
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: var(--tori-text-xs);
+  cursor: pointer;
+}
+
+.sessionUnlink:hover {
+  color: var(--fg-default);
 }
 
 .laneFigure {
