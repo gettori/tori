@@ -5,7 +5,7 @@ import { forgetWorkspace as forgetLayout, moveWorkspaceLayouts } from "./layout/
 import { forgetWorkspace as forgetPlacement, moveWorkspacePlacements } from "./layout/tabPlacement";
 import LeftSidebar, { type Selection } from "./panels/LeftSidebar/LeftSidebar";
 import SidebarStatus from "./panels/LeftSidebar/SidebarStatus";
-import { topicSelection, selectionRoot, workspaceKey, type Topic } from "./utils/topics";
+import { sameSelection, topicSelection, selectionRoot, workspaceKey, type Topic } from "./utils/topics";
 import { ensureShellsWorkspace } from "./layout/shellsWorkspace";
 import Dock from "./layout/Dock";
 import { dockOpen, resetDock, setFocusedSurface, showDock } from "./layout/dockStore";
@@ -431,7 +431,7 @@ function App() {
   const dockMax = () => Math.max(px(DOCK_MIN), bodyH() - px(WORKSPACE_PAD) - px(GUTTER) - px(WORK_MIN));
   const dockH = () => Math.min(Math.max(dock(), px(DOCK_MIN)), dockMax());
 
-  const [selected, setSelected] = createSignal<Selection | null>(loadSelection());
+  const [selected, setSelected] = createSignal<Selection | null>(loadSelection(), { equals: sameSelection });
   // The tree the shell renders. Two same-shape worktrees are two envelope
   // objects and PaneTree keys children by reference, so a switch between them
   // would dispose live subtrees; handing the drawn nodes back makes it a no-op.

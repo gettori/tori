@@ -268,6 +268,22 @@ type CheckpointFile = { path: string; shared_with?: string[]; unattributed?: boo
  */
 const FIRST_SEND_DEADLINE_MS = 60_000;
 
+/** The host's own pace for a hidden session (`HIDDEN_RELEASE_MS` in pacing.rs). */
+const HIDDEN_APPLY_MS = 250;
+
+/** Events that only change what the transcript draws. Their side effects read
+ *  the event and never the state, so a hidden chat can apply them late. */
+const RENDER_ONLY = new Set<ChatEvent["type"]>([
+  "textDelta",
+  "thinkingDelta",
+  "toolCallStarted",
+  "toolCallProgress",
+  "toolCallCompleted",
+  "fileEdit",
+  "subagentUpdate",
+  "usage",
+]);
+
 /**
  * One chat session: the transport's events folded into `chatStore`, rendered,
  * and the composer's input sent back.
@@ -523,6 +539,35 @@ export default function ChatView(props: {
   }
 
   const edit = (fn: (s: ChatState) => void) => setState(produce(fn));
+
+  // A hidden chat's render-only events, folded in one write per window. The host
+  // already merges its token deltas; this does the same for tool calls, so a chat
+  // behind another tab stops re-rendering per event. Side effects never wait here.
+  let held: ChatEvent[] = [];
+  let heldTimer: ReturnType<typeof setTimeout> | undefined;
+  function applyHeld() {
+    clearTimeout(heldTimer);
+    heldTimer = undefined;
+    if (!held.length) return;
+    const events = held;
+    held = [];
+    edit((s) => {
+      for (const ev of events) applyEvent(s, ev);
+    });
+  }
+  function holdForScreen(ev: ChatEvent) {
+    held.push(ev);
+    heldTimer ??= setTimeout(applyHeld, HIDDEN_APPLY_MS);
+  }
+  onCleanup(() => clearTimeout(heldTimer));
+  createEffect(
+    on(
+      () => props.active,
+      (active) => {
+        if (active) applyHeld();
+      },
+    ),
+  );
 
   // The level this session opened on is in force from the first frame: it rode
   // the argv the child was started with, and nothing on the wire will ever
@@ -844,6 +889,7 @@ export default function ChatView(props: {
         if (clearsNotice && s.items.length === 1) resetTranscript(s);
       };
       if (fold.as !== "live") {
+        applyHeld();
         edit((s) => {
           dropNotice(s);
           // The backfill above drew Tori's own log of this conversation. The
@@ -871,10 +917,16 @@ export default function ChatView(props: {
         });
         return;
       }
-      edit((s) => {
-        dropNotice(s);
-        applyEvent(s, ev);
-      });
+      if (!props.active && RENDER_ONLY.has(ev.type)) {
+        holdForScreen(ev);
+      } else {
+        // Anything else may read the state right after, so what was held lands first.
+        applyHeld();
+        edit((s) => {
+          dropNotice(s);
+          applyEvent(s, ev);
+        });
+      }
       // Under the account the session actually ran as, which is the cache the
       // next draft on it reads.
       if (ev.type === "sessionReady" || ev.type === "sessionStarted") {
@@ -2536,6 +2588,7 @@ export default function ChatView(props: {
           items={shownItems()}
           onFetchEarlier={earlier() ? fetchEarlier : undefined}
           streaming={running()}
+          active={props.active}
           sessionId={props.sessionId}
           cwd={props.cwd}
           skills={state.skills}

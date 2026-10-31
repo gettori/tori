@@ -572,7 +572,9 @@ export default function Editor(props: {
   );
   // The store key, not the folder: a Topic is one workspace over several
   // member folders, so its tabs live under `topic:<id>` while `root()` moves.
-  const ws = () => workspaceKey(props.selected);
+  // Memos of strings, so picking another session in the same folder changes
+  // nothing that keys on the folder.
+  const ws = createMemo(() => workspaceKey(props.selected));
   const tabs = () => tabsByWs()[ws()] ?? [];
   // One report for every way a tab can go (close, force close, purge), taken
   // from the union across workspaces: a switch only hides tabs and reports none.
@@ -965,12 +967,12 @@ export default function Editor(props: {
   // The session/branch-unit working folder is the anchor for the editor, file
   // tree, gutter, review surface, fs watcher, and LSP, not the project container.
   // For a Topic it is the active member, and null (never "") with none present.
-  const root = () => selectionRoot(props.selected);
+  const root = createMemo(() => selectionRoot(props.selected));
 
   // Inside a Topic the file tree draws one section per member, unusable ones
   // included, so a member with no worktree has somewhere to say so and a Retry
   // to offer. A branch unit reads no Topic record at all.
-  const topicId = () => (props.selected?.kind === "topic" ? (props.selected.topicId ?? null) : null);
+  const topicId = createMemo(() => (props.selected?.kind === "topic" ? (props.selected.topicId ?? null) : null));
   const members = createTopicMembers(topicId);
 
   // Which member a tab's file sits in, for the surfaces that have to name the
