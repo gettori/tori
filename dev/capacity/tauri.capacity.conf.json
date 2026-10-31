@@ -1,0 +1,5 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Tori Capacity",
+  "identifier": "app.gettori.tori.capacity"
+}

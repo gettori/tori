@@ -1,0 +1,52 @@
+[
+  {
+    "name": "switch.worktree.settled.p95",
+    "unit": "ms",
+    "ratio": 1.5,
+    "floor": 50,
+    "reason": "clicking another worktree until its file tree and git status are both on screen"
+  },
+  {
+    "name": "switch.worktree.paint.p95",
+    "unit": "ms",
+    "ratio": 1.5,
+    "floor": 30,
+    "reason": "the click until the window shows the new worktree at all, the point where a click reads as ignored"
+  },
+  {
+    "name": "switch.tab.paint.p95",
+    "unit": "ms",
+    "ratio": 1.5,
+    "floor": 30,
+    "reason": "the buffers are already in memory, so a tab switch only pays for the frames and the handler"
+  },
+  {
+    "name": "frames.p90",
+    "unit": "ms",
+    "ratio": 1.5,
+    "floor": 8,
+    "reason": "one frame in ten getting slower is where typing and scrolling start to stutter"
+  },
+  {
+    "name": "frames.p99",
+    "unit": "ms",
+    "ratio": 1.5,
+    "floor": 30,
+    "reason": "the occasional freeze, a dropped keystroke echo the user notices"
+  },
+  {
+    "name": "invoke.queue.p95",
+    "unit": "ms",
+    "ratio": 1.5,
+    "floor": 20,
+    "reason": "how long a command waits before the backend starts it; a growing queue means the IPC thread is the bottleneck"
+  },
+  {
+    "name": "cpu",
+    "unit": "%",
+    "ratio": 1.5,
+    "floor": 15,
+    "window": "idle",
+    "reason": "Tori's own CPU with every agent quiet, summed over its processes; growth here is per-session work that never stops, like a poll"
+  }
+]

@@ -184,6 +184,9 @@ export async function installTrace(): Promise<void> {
   // driver exists to make the degraded state reproducible without one.
   if (config.recipe === "work") {
     void import("./perfWorkRecipe").then((m) => m.startWorkRecipe());
+  } else if (config.recipe === "capacity" || config.recipe === "capacity:census") {
+    const census = config.recipe === "capacity:census";
+    void import("./perfCapacityRecipe").then((m) => m.startCapacityRecipe(census));
   } else if (config.recipe) {
     void import("./perfRecipe").then((m) => m.startRecipe(config.recipe as string));
   }
