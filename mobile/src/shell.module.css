@@ -1125,6 +1125,13 @@ li + li > .item {
   box-shadow: 0 14px 40px rgb(0 0 0 / 35%);
 }
 
+.menuUp {
+  top: auto;
+  right: auto;
+  bottom: 40px;
+  left: 0;
+}
+
 .menu button {
   min-height: 48px;
   padding: 0 16px;
@@ -1204,6 +1211,34 @@ li + li > .item {
   color: var(--brand-default);
   background: none;
   border-color: color-mix(in srgb, var(--brand-default) 45%, transparent);
+}
+
+.attached {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip > .attachedName {
+  flex: 0 1 auto;
+  max-width: 40vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg-muted);
+}
+
+.chip[data-uploading="true"] {
+  opacity: 0.6;
+}
+
+.chip > button {
+  display: grid;
+  place-items: center;
+  flex: none;
+  padding: 0;
+  color: var(--fg-muted);
+  background: none;
+  border: none;
 }
 
 .chip select {

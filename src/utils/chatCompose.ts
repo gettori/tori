@@ -498,7 +498,7 @@ const KIND_NAMES: Record<AttachmentKind, string> = { image: "Image", pdf: "PDF",
 // written before the capitalisation still name their attachments.
 const LABEL_TOKENS = /\[(image|pdf|file) (\d+)\]/gi;
 
-function attachmentLabel(kind: AttachmentKind, n: number): string {
+export function attachmentLabel(kind: AttachmentKind, n: number): string {
   return `[${KIND_NAMES[kind]} ${n}]`;
 }
 
