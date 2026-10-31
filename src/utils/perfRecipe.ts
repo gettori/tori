@@ -59,7 +59,7 @@ type Unit = { label: string; folderPath: string; branch: string | null; kind: st
 type Config = {
   spaces: { name: string; projects: { name: string; path: string; branchUnits: Unit[] }[] }[];
 };
-type Target = { sel: Record<string, unknown>; unit: Unit };
+export type Target = { sel: Record<string, unknown>; unit: Unit };
 
 /** What the recipe needs from the app: somewhere to put the selection, and the
  *  selected workspace's pane count. App registers it on mount, because neither
@@ -167,7 +167,7 @@ function parse(spec: string): [number, number, number] {
   return [at(0, 6), at(1, 4), at(2, 3)];
 }
 
-async function enumerate(limit: number): Promise<Target[]> {
+export async function enumerate(limit: number): Promise<Target[]> {
   let cfg: Config;
   try {
     cfg = await invoke<Config>("get_config");
@@ -197,7 +197,7 @@ async function enumerate(limit: number): Promise<Target[]> {
   return out.slice(0, limit);
 }
 
-async function visit(u: Target): Promise<void> {
+export async function visit(u: Target): Promise<void> {
   // Armed before the trigger: a warm switch can settle inside the same task.
   const settled = nextSpan();
   // Re-selecting the worktree already shown opens no span, so there is nothing
@@ -236,7 +236,7 @@ function stream(folderPath: string, i: number): void {
  *  right-hand mode tabs are also `[role="tab"]`, and those are not tab
  *  switches. Re-queried every iteration, because activating a tab re-renders
  *  the strip and a node captured beforehand is detached by the next click. */
-async function clickTabs(count: number): Promise<void> {
+export async function clickTabs(count: number): Promise<void> {
   const strip = () => [...document.querySelectorAll<HTMLElement>('.unified-strip [role="tab"]')];
   traceNote("tab-count", { tabs: strip().length });
   for (let i = 0; i < count; i++) {
