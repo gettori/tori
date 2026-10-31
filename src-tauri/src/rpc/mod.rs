@@ -32,6 +32,7 @@ pub mod pr_wake;
 pub mod pr_watch;
 pub mod quotas;
 pub mod reach;
+pub mod relations;
 pub mod remote;
 pub mod runner;
 mod scope;
@@ -693,8 +694,8 @@ pub fn session_first_prompt(session: String) -> Option<FirstPrompt> {
 }
 
 #[tauri::command(async)]
-pub fn session_links_of(session: String) -> Vec<String> {
-    crate::session_links::links_of(&session)
+pub fn session_relations(session: String) -> Result<Value, String> {
+    office_call_as("relations", json!({ "session": session }))
 }
 
 #[tauri::command(async)]

@@ -2391,12 +2391,6 @@ button.diffHunkHeader:hover {
   line-height: 1.4;
 }
 
-/* A link between two chats is a fact, not a warning, so it does not take the
-   attention hue every other banner wears. */
-.bannerQuiet {
-  color: var(--fg-muted);
-}
-
 /* Sits on the composer, so it takes the input box's measure rather than the
    banner's edge to edge: the chat measure less the composer's own inset. */
 .ask {

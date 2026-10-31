@@ -704,7 +704,7 @@ pub fn run() {
             rpc::chat_request_accept,
             rpc::chat_request_discard,
             rpc::session_first_prompt,
-            rpc::session_links_of,
+            rpc::session_relations,
             rpc::session_unlink,
             rpc::autopilot_start,
             rpc::remote_set,
