@@ -2,6 +2,7 @@ import { For, Show, createEffect, createMemo, createSignal, on } from "solid-js"
 import { Check, ChevronDown, Circle, LoaderCircle } from "lucide-solid";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import type { PlanItem } from "../../utils/chatTypes";
+import type { PlanStale } from "./chatStore";
 import Tip from "./Tip";
 import styles from "./Chat.module.css";
 
@@ -24,7 +25,12 @@ import styles from "./Chat.module.css";
  * `TodoWrite` in `system/init`), so it publishes through Tori's `plan_set`
  * instead, and the card cannot tell the two apart.
  */
-export default function PlanCard(props: { items: readonly PlanItem[] }) {
+const STALE: Record<PlanStale, string> = {
+  stopped: "Agent stopped here",
+  notUpdated: "Not updated this turn",
+};
+
+export default function PlanCard(props: { items: readonly PlanItem[]; stale?: PlanStale | null }) {
   const done = createMemo(() => props.items.filter((i) => i.status === "completed").length);
   // The one in flight, if any. Named rather than counted: with the list
   // collapsed this is the only line worth a row of its own.
@@ -109,7 +115,7 @@ export default function PlanCard(props: { items: readonly PlanItem[] }) {
               aria-expanded={false}
               onClick={() => setOpen(true)}
             >
-              <Show when={active()}>
+              <Show when={active() && !props.stale}>
                 <span class={styles.planPillGlyph} aria-hidden="true">
                   <LoaderCircle size={12} />
                 </span>
@@ -119,7 +125,7 @@ export default function PlanCard(props: { items: readonly PlanItem[] }) {
           </div>
         }
       >
-        <div class={styles.planCard}>
+        <div class={styles.planCard} classList={{ [styles.planStale]: !!props.stale }}>
           {/* The head is the fold, the way a tool call's row is: one control,
               on the thing it folds, rather than a separate affordance beside
               it. */}
@@ -130,7 +136,10 @@ export default function PlanCard(props: { items: readonly PlanItem[] }) {
             label={
               <Tip
                 heading={`Plan, ${done()} of ${props.items.length} steps done`}
-                lines={[active() ? `Now: ${active()!.text}` : "No step in progress"]}
+                lines={[
+                  ...(props.stale ? [STALE[props.stale]] : []),
+                  active() ? `Now: ${active()!.text}` : "No step in progress",
+                ]}
                 hint="Click to fold it into a pill on the input"
               />
             }
@@ -144,7 +153,12 @@ export default function PlanCard(props: { items: readonly PlanItem[] }) {
             <span class={styles.planCount}>{tally()}</span>
             {/* The in-flight step in the header too, so a glance at the card
                 still answers "what is it doing right now". */}
-            <Show when={active()}>{(item) => <span class={styles.planActive}>{item().text}</span>}</Show>
+            <Show
+              when={props.stale}
+              fallback={<Show when={active()}>{(item) => <span class={styles.planActive}>{item().text}</span>}</Show>}
+            >
+              {(why) => <span class={styles.planActive}>{STALE[why()]}</span>}
+            </Show>
           </Tooltip>
           {rows(setList)}
         </div>
