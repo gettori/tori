@@ -23,6 +23,12 @@ val keystoreProperties = Properties().apply {
 }
 val signRelease = keystoreProperties.getProperty("storeFile") != null
 
+// Push needs the Firebase project's config. Without it the app still builds,
+// with push unavailable.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     compileSdk = 36
     signingConfigs {
@@ -87,6 +93,8 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
+    implementation(platform("com.google.firebase:firebase-bom:35.1.0"))
+    implementation("com.google.firebase:firebase-messaging")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.4")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")
