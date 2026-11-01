@@ -8,6 +8,7 @@ version_files() {
     macos) printf '%s\n' src-tauri/tauri.conf.json package.json src-tauri/Cargo.toml ;;
     android) printf '%s\n' mobile/src-tauri/tauri.conf.json mobile/src-tauri/Cargo.toml ;;
     extension) printf '%s\n' extension/package.json ;;
+    relay) printf '%s\n' relay/package.json ;;
   esac
 }
 
@@ -28,12 +29,14 @@ version_for() {
 }
 
 # Releases before each platform got its own prefix were tagged v<release>, and
-# the extension's version is that release's without the stage suffix.
+# the extension's version is that release's without the stage suffix. The relay
+# came after the prefixes, so only its own tag counts.
 released_tag() {
   local component=$1 version=$2 tag
   while IFS= read -r tag; do
     case "$tag" in
-      "$component-v$version" | "v$version") ;;
+      "$component-v$version") ;;
+      "v$version") [ "$component" != relay ] || continue ;;
       "v$version"-*) [ "$component" = extension ] || continue ;;
       *) continue ;;
     esac

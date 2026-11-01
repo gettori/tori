@@ -51,6 +51,8 @@ jobs:
       android_version: ${{ steps.decide.outputs.android_version }}
       extension: ${{ steps.decide.outputs.extension }}
       extension_version: ${{ steps.decide.outputs.extension_version }}
+      relay: ${{ steps.decide.outputs.relay }}
+      relay_version: ${{ steps.decide.outputs.relay_version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -401,3 +403,36 @@ jobs:
           CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
           CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
         run: .github/scripts/extension-upload.sh --submit "${{ steps.zip.outputs.path }}"
+
+  # Deployed before it is tagged, so a failed deploy leaves no tag and the next
+  # run tries again. A rehearsal only checks that it bundles.
+  relay:
+    needs: gate
+    if: needs.gate.outputs.relay == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    env:
+      VERSION: ${{ needs.gate.outputs.relay_version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+
+      - name: Bundle without deploying
+        if: github.event_name == 'workflow_dispatch'
+        run: pnpm --dir relay run deploy:dry
+
+      - name: Deploy to Cloudflare
+        if: github.event_name == 'push'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: pnpm --dir relay run deploy
+
+      - name: Tag the release commit
+        if: github.event_name == 'push'
+        run: |
+          git tag "relay-v$VERSION" "$GITHUB_SHA"
+          git push origin "relay-v$VERSION"

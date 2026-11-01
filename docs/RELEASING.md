@@ -44,7 +44,8 @@ worktree of `origin/main` and leaves yours alone. It:
 1. picks the version, `YY.MDD.patch` from today's UTC date plus the desktop's
    current suffix (the second release of a day gets patch 1),
 2. asks `.github/scripts/ships.sh` which components changed since the release
-   each one carries: macOS, Android, the browser extension (see below),
+   each one carries: macOS, Android, the browser extension, the push relay
+   (see below),
 3. collects the `## Changelog` section of every PR merged into `main` since
    the last tag and writes them as `## <version>` in the changelog, under
    whatever `## Unreleased` held, with a last line naming what ships and what
@@ -52,6 +53,7 @@ worktree of `origin/main` and leaves yours alone. It:
 4. writes the version into the files of each component that ships: the three
    macOS files and `src-tauri/Cargo.lock`, the two Android files and
    `mobile/src-tauri/Cargo.lock`, `extension/package.json` without the suffix,
+   `relay/package.json`,
 5. commits that as `Tori <version>` on a branch `release/<version>`, pushes it,
    and opens the pull request with the notes as its body.
 
@@ -75,8 +77,9 @@ Merging pushes the release commit to `main`, and `.github/workflows/release.yml`
 runs on every push to `main`. Its first job, `scripts/release.sh gate`, takes
 the release version from the first versioned section of `CHANGELOG.md` and
 picks each component that carries that version and has no tag for it yet:
-`macos-v<version>`, `android-v<version>`, `extension-v<version>`, or the
-`v<version>` that releases before per-platform tags carried. An ordinary merge
+`macos-v<version>`, `android-v<version>`, `extension-v<version>`,
+`relay-v<version>`, or the `v<version>` that releases before per-platform tags
+carried (never for the relay, which came after them). An ordinary merge
 moves no version, so the run ends there in a few seconds. Run the same command
 in a checkout to see what a commit would build. The picked components build in
 parallel:
@@ -98,6 +101,7 @@ parallel:
 - **Android**, arm64 only, on Linux. It writes the keystore from secrets,
   builds, checks the APK is signed, and names it `Tori_<version>.apk`.
 - **The browser extension**, the store zip (see below).
+- **The push relay**, the Cloudflare Worker in `relay/` (see below).
 
 Each component is published by its own job once its own build has passed, so
 one that fails leaves nothing of itself behind, no tag and no draft, and holds
@@ -108,7 +112,8 @@ Homebrew cask is pointed at its two DMGs. Android is tagged
 latest, so the releases page leads with the Mac. Neither is ever marked a
 prerelease, whatever its stage suffix, since GitHub cannot make a prerelease
 its latest release. The extension is tagged `extension-v<version>` and goes to
-the store; it gets no GitHub release.
+the store; it gets no GitHub release. The relay is deployed to Cloudflare and
+then tagged `relay-v<version>`; it gets no GitHub release either.
 
 Releases up to the bridge, the first after 26.1030.0, were tagged
 `v<version>` and carried every component's files. The bridge taught the
@@ -130,7 +135,8 @@ A component ships only on a release that changed it, and keeps the version of
 the release that last shipped it: macOS in `package.json`,
 `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`; Android in
 `mobile/src-tauri/tauri.conf.json` and `mobile/src-tauri/Cargo.toml`; the
-browser extension in `extension/package.json`, without the stage suffix.
+browser extension in `extension/package.json`, without the stage suffix; the
+push relay in `relay/package.json`.
 `prepare` runs `.github/scripts/ships.sh <component>` for each in the release
 worktree. That builds the component's web half, which lists what the build was
 made from (every module it bundled, through `scripts/bundled-inputs.ts`, plus
@@ -138,7 +144,10 @@ the config, public files, manifests and icons it reads), takes the crate's
 `cargo metadata` for the Rust half, diffs those against the tag of the version
 the component carries, and checks that the version of every package it bundles
 is in that tag's `pnpm-lock.yaml` or `Cargo.lock`. When anything differs,
-`prepare` moves that component to this release's version. The last line of the
+`prepare` moves that component to this release's version. The relay bundles
+nothing from the rest of the repo and pins its wrangler in its own
+`package.json`, so it ships when anything under `relay/` differs from its tag.
+The last line of the
 notes names what ships and what stays, and the PR body ends with the same;
 `scripts/release.sh prepare --force <component>` ships one regardless. To see
 a decision without opening a PR (it prints the component or nothing, and says
@@ -169,6 +178,12 @@ re-run the job; or carry the change in the next release with
 `prepare --force extension`, since an unchanged extension does not ship on its
 own.
 
+The `relay` job deploys `relay/` to `relay.gettori.app` with
+`pnpm --dir relay run deploy`, then tags the commit. A failed deploy leaves no
+tag, so re-running the job tries again. The Worker's own secrets
+(`HANDLE_KEY`, `FCM_SERVICE_ACCOUNT`) live in Cloudflare and are set once with
+`wrangler secret put`; the deploy never touches them.
+
 Expect 25 minutes with warm caches, up to 45 after a quiet week.
 
 `scripts/release.sh status` shows the run and says what, if anything, is next.
@@ -193,6 +208,7 @@ from. A workflow run from a PR branch never sees them.
 | `CWS_CLIENT_SECRET` | that client's secret | same page |
 | `CWS_REFRESH_TOKEN` | a refresh token for the account that owns the store item | OAuth 2.0 Playground: gear icon, use your own client ID and secret, authorize scope `https://www.googleapis.com/auth/chromewebstore`, exchange the code, copy the refresh token |
 | `CWS_PUBLISHER_ID` | the publisher the item belongs to | Web Store developer dashboard, Publisher, Settings |
+| `CLOUDFLARE_API_TOKEN` | deploys the push relay | Cloudflare, My Profile, API Tokens, Create Token: the Edit Cloudflare Workers template, limited to the account and the `gettori.app` zone |
 
 The API key is only the notary service's login; nothing goes to the App
 Store. Notarization itself has no fee beyond the developer membership. The
@@ -229,7 +245,8 @@ The workflow can be dispatched by hand from any branch the environment allows.
 A dispatched run builds what the gate picks for that commit, or every
 component when dispatched with `all`, uploads the DMGs, the tarballs, the APK
 and the extension zip as run artifacts, and publishes nothing: each publish job
-stops before its tag, so no tag, no release, no cask, no store upload. On a
+stops before its tag, so no tag, no release, no cask, no store upload. The
+relay job only bundles the Worker with `wrangler deploy --dry-run`. On a
 release branch the gate picks what the release ships; anywhere else nothing is
 due, so dispatch with `all`. Download the DMG onto
 a Mac that has never seen Tori and

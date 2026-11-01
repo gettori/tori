@@ -9,7 +9,7 @@
 # Lockfiles stay out of the file diff since they move on nearly every release;
 # the versions the build used are checked against the tag's lockfile instead.
 #
-#   .github/scripts/ships.sh <macos|android|extension> [since-tag] [--force]
+#   .github/scripts/ships.sh <macos|android|extension|relay> [since-tag] [--force]
 #
 # Judges the checkout it lives in: the working tree is built and diffed.
 set -euo pipefail
@@ -23,7 +23,7 @@ for arg in "$@"; do
     *) args+=("$arg") ;;
   esac
 done
-COMPONENT="${args[0]:?usage: ships.sh <macos|android|extension> [since-tag] [--force]}"
+COMPONENT="${args[0]:?usage: ships.sh <macos|android|extension|relay> [since-tag] [--force]}"
 SINCE="${args[1]:-}"
 
 cd "$(dirname "$0")/../.."
@@ -54,7 +54,8 @@ case "$COMPONENT" in
     crate=""
     platforms=""
     ;;
-  *) die "unknown component $COMPONENT (macos, android or extension)" ;;
+  relay) ;;
+  *) die "unknown component $COMPONENT (macos, android, extension or relay)" ;;
 esac
 
 # Without a tag for the version the component carries, its last release never
@@ -81,6 +82,15 @@ ships() {
 
 if $force; then
   ships "--force"
+fi
+
+# The relay bundles nothing from the rest of the repo and pins its wrangler in
+# relay/package.json, so its folder is all it is built from.
+if [ "$COMPONENT" = relay ]; then
+  hit=$(git diff --name-only "$SINCE" -- relay | head -1)
+  [ -z "$hit" ] || ships "$hit differs from $SINCE"
+  echo "$COMPONENT: unchanged since $SINCE" >&2
+  exit 0
 fi
 
 tmp=$(mktemp -d)

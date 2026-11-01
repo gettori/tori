@@ -11,7 +11,7 @@
 #
 # Add --yes to prepare to skip the prompt. Without a terminal the flag is
 # required, so a script or an agent never opens a release PR by accident.
-# Add --force <macos|android|extension> to ship a component even when nothing
+# Add --force <macos|android|extension|relay> to ship a component even when nothing
 # it is built from changed (.github/scripts/ships.sh decides otherwise).
 # Add --all to gate to build every component, as a rehearsal can.
 # docs/RELEASING.md walks through all of it, including what to do when a step
@@ -22,9 +22,9 @@
 # UTC date; the patch is the next free number for that date. The stage suffix
 # (-alpha, -beta, none) is carried over from the desktop's version in
 # src-tauri/tauri.conf.json, so editing the suffix there is how a release
-# changes stage. Each component (macOS, Android, the browser extension) keeps
-# the version of the release that last shipped it and moves to this one only
-# when it ships. The notes are the `## Changelog` sections of the PRs merged
+# changes stage. Each component (macOS, Android, the browser extension, the
+# push relay) keeps the version of the release that last shipped it and moves
+# to this one only when it ships. The notes are the `## Changelog` sections of the PRs merged
 # since the last tag, under anything written by hand under `## Unreleased`.
 #
 # Needs `gh` logged in with write access to this repo.
@@ -32,10 +32,10 @@ set -euo pipefail
 
 RELEASES_REPO=gettori/tori
 BASE=main
-COMPONENTS="macos android extension"
+COMPONENTS="macos android extension relay"
 
 usage() {
-  echo "usage: scripts/release.sh prepare|status|gate [--yes] [--force macos|android|extension]... [--all]" >&2
+  echo "usage: scripts/release.sh prepare|status|gate [--yes] [--force macos|android|extension|relay]... [--all]" >&2
 }
 
 die() {
@@ -54,7 +54,7 @@ while [ $# -gt 0 ]; do
     --all) all=true ;;
     --force)
       case "${2:-}" in
-        macos | android | extension)
+        macos | android | extension | relay)
           force="$force $2"
           shift
           ;;
@@ -89,6 +89,7 @@ label() {
     macos) echo "macOS" ;;
     android) echo "Android" ;;
     extension) echo "browser extension" ;;
+    relay) echo "push relay" ;;
   esac
 }
 
@@ -157,10 +158,11 @@ open_release_pr() {
     -q '[.[] | select(.headRefName | startswith("release/"))][0] | select(.) | "#\(.number) \(.url)"'
 }
 
-# The extension's tag gets no GitHub release: the store is where it goes.
+# The extension's and the relay's tags get no GitHub release: the store and
+# Cloudflare are where they go.
 release_state() {
   local draft
-  case "$1" in extension-v*) echo tagged && return ;; esac
+  case "$1" in extension-v* | relay-v*) echo tagged && return ;; esac
   draft=$(gh release view "$1" --repo "$RELEASES_REPO" --json isDraft -q .isDraft 2>/dev/null) || {
     echo "no GitHub release found"
     return
@@ -285,7 +287,8 @@ prepare() {
   done
 
   git -C "$work" add CHANGELOG.md package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock \
-    mobile/src-tauri/tauri.conf.json mobile/src-tauri/Cargo.toml mobile/src-tauri/Cargo.lock extension/package.json
+    mobile/src-tauri/tauri.conf.json mobile/src-tauri/Cargo.toml mobile/src-tauri/Cargo.lock extension/package.json \
+    relay/package.json
   git -C "$work" commit -q -m "Tori $version"
   git -C "$work" push -q origin "$branch"
 
