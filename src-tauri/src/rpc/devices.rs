@@ -18,6 +18,17 @@ pub struct Device {
     // replaces its entry instead of adding a second.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     install: Option<String>,
+    // In this 0600 file and not the Keychain: the daemon reads it with no
+    // window open, which the Keychain refuses a dev build, and the key only
+    // hides metadata.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    push: Option<Push>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Push {
+    pub handle: String,
+    pub key: String,
 }
 
 pub struct Devices {
@@ -64,6 +75,7 @@ impl Devices {
             created_ms: crate::owned_state::now_ms(),
             hash: hash(&credential),
             install: install.map(str::to_string),
+            push: None,
         };
         let mut list = self.lock();
         let before = list.clone();
@@ -94,6 +106,29 @@ impl Devices {
         let text = serde_json::to_string_pretty(&*list).map_err(|e| e.to_string())?;
         if let Err(e) = crate::owned_state::write_private(&self.path, &text) {
             list.insert(at, removed);
+            return Err(e);
+        }
+        Ok(true)
+    }
+
+    /// Sets or clears where a device's alerts go. `false` when no device has
+    /// that id.
+    pub fn set_push(&self, id: &str, push: Option<Push>) -> Result<bool, String> {
+        self.writable()?;
+        let mut list = self.lock();
+        let Some(device) = list.iter_mut().find(|d| d.id == id) else {
+            return Ok(false);
+        };
+        // Every connect sends it, so an unchanged pair is not a write.
+        if device.push == push {
+            return Ok(true);
+        }
+        let before = std::mem::replace(&mut device.push, push);
+        let text = serde_json::to_string_pretty(&*list).map_err(|e| e.to_string())?;
+        if let Err(e) = crate::owned_state::write_private(&self.path, &text) {
+            if let Some(device) = list.iter_mut().find(|d| d.id == id) {
+                device.push = before;
+            }
             return Err(e);
         }
         Ok(true)

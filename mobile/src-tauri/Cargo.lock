@@ -3269,6 +3269,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-plugin-tori-push"
+version = "0.1.0"
+dependencies = [
+ "tauri",
+ "tauri-plugin",
+]
+
+[[package]]
 name = "tauri-runtime"
 version = "2.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3627,6 +3635,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-deep-link",
+ "tauri-plugin-tori-push",
 ]
 
 [[package]]

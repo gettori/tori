@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
+use base64::Engine;
 use serde::Serialize;
 use serde_json::{json, Value};
 
@@ -22,10 +23,10 @@ use super::server::{
     ItemUpdateParams, LinkBranchParams, ListParams, LogParams, LoopParams, MintParams, ModeParams, ModelParams,
     NeedsYouSeenParams, OpenParams, PendingParams, PlanSetParams, PortParams, PrCheckLogParams, PrCreateParams,
     PrGetParams, PrMergeParams, PrPushParams, PrWatchParams, ProjectIconParams, ProjectSetParams, PromptRef,
-    ProvenanceParams, RenameParams, RevealParams, ReviewMarkParams, ReviewSubmitParams, ScheduleAddParams,
-    ScheduleIdParams, SessionAnswerParams, SetupParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams,
-    UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, WorktreeRemoveParams,
-    DEFAULT_LOG_LIMIT,
+    ProvenanceParams, PushSetParams, RenameParams, RevealParams, ReviewMarkParams, ReviewSubmitParams,
+    ScheduleAddParams, ScheduleIdParams, SessionAnswerParams, SetupParams, SpawnParams, SteerParams, TailParams,
+    TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams,
+    WorktreeRemoveParams, DEFAULT_LOG_LIMIT,
 };
 use super::server::{
     AttemptNewParams, ChatCallParams, ChatOp, SpaceOrderParams, SpaceParams, TopicIdParams, TopicMemberAddParams,
@@ -1241,6 +1242,17 @@ pub struct DaemonBackend {
 }
 
 impl DaemonBackend {
+    fn set_push(&self, principal: &Principal, push: Option<super::devices::Push>) -> Result<Value, RpcError> {
+        let Principal::Device(id) = principal else {
+            return Err(refused("only a paired phone sets where its alerts go".to_string()));
+        };
+        match self.devices.set_push(id, push) {
+            Ok(true) => Ok(json!({})),
+            Ok(false) => Err(RpcError::new(INVALID_PARAMS, format!("no device {id}"))),
+            Err(e) => Err(RpcError::new(INTERNAL_ERROR, e)),
+        }
+    }
+
     fn topic_office(&self, op: &str, args: Value) -> Result<Value, RpcError> {
         crate::topics::commands::office(&self.desk, &self.composer.projects, op, &args).map_err(refused)
     }
@@ -2506,6 +2518,28 @@ impl Backend for DaemonBackend {
 
     fn digest_list(&self, params: DigestParams) -> Result<Value, RpcError> {
         to_json(crate::digest::read(params.since))
+    }
+
+    fn push_set(&self, principal: &Principal, params: PushSetParams) -> Result<Value, RpcError> {
+        let key = base64::engine::general_purpose::STANDARD
+            .decode(&params.key)
+            .map_err(|_| RpcError::new(INVALID_PARAMS, "key is not base64"))?;
+        if key.len() != 32 {
+            return Err(RpcError::new(INVALID_PARAMS, "key is not 32 bytes"));
+        }
+        let url_safe = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '_';
+        if params.handle.is_empty() || params.handle.len() > 1024 || !params.handle.chars().all(url_safe) {
+            return Err(RpcError::new(INVALID_PARAMS, "handle is not one the relay issues"));
+        }
+        let push = super::devices::Push {
+            handle: params.handle,
+            key: params.key,
+        };
+        self.set_push(principal, Some(push))
+    }
+
+    fn push_clear(&self, principal: &Principal) -> Result<Value, RpcError> {
+        self.set_push(principal, None)
     }
 
     fn digest_looked(&self, params: DigestLookedParams) -> Result<Value, RpcError> {

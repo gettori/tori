@@ -419,6 +419,15 @@ pub struct ReviewMarkParams {
     pub to_ts: u64,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PushSetParams {
+    /// The relay's sealed handle for this phone's FCM token, from its `/register`.
+    pub handle: String,
+    /// The 32 byte key, base64, this phone opens its alerts with.
+    pub key: String,
+}
+
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NeedsYouSeenParams {
@@ -1144,6 +1153,8 @@ pub trait Backend: Send + Sync {
     fn needs_you_seen(&self, params: NeedsYouSeenParams) -> Result<Value, RpcError>;
     fn digest_list(&self, params: DigestParams) -> Result<Value, RpcError>;
     fn digest_looked(&self, params: DigestLookedParams) -> Result<Value, RpcError>;
+    fn push_set(&self, principal: &Principal, params: PushSetParams) -> Result<Value, RpcError>;
+    fn push_clear(&self, principal: &Principal) -> Result<Value, RpcError>;
     fn radar_list(&self) -> Result<Value, RpcError>;
     fn units_sync(&self, params: UnitsSyncParams) -> Result<Value, RpcError>;
     fn units_pr(&self, params: UnitsPrParams) -> Result<Value, RpcError>;
@@ -1709,6 +1720,12 @@ pub mod tests {
         }
         fn digest_looked(&self, p: DigestLookedParams) -> Result<Value, RpcError> {
             Ok(json!({ "at": p.at }))
+        }
+        fn push_set(&self, _: &Principal, p: PushSetParams) -> Result<Value, RpcError> {
+            Ok(json!({ "handle": p.handle }))
+        }
+        fn push_clear(&self, _: &Principal) -> Result<Value, RpcError> {
+            Ok(json!({}))
         }
         fn radar_list(&self) -> Result<Value, RpcError> {
             Ok(json!({ "enabled": true, "units": [] }))
@@ -2520,6 +2537,8 @@ pub mod tests {
                 "needs_you.seen",
                 "digest.list",
                 "digest.looked",
+                "push.set",
+                "push.clear",
                 "radar.list",
                 "units.git",
                 "units.sync",

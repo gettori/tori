@@ -16,9 +16,10 @@ use super::server::{
     ItemUpdateParams, LinkBranchParams, ListParams, LogParams, LoopParams, MintParams, ModeParams, ModelParams,
     NeedsYouSeenParams, OpenParams, PendingParams, PlanSetParams, PortParams, PrCheckLogParams, PrCreateParams,
     PrGetParams, PrMergeParams, PrPushParams, PrWatchParams, ProjectIconParams, ProjectSetParams, PromptRef,
-    ProvenanceParams, RenameParams, RevealParams, ReviewMarkParams, ReviewSubmitParams, ScheduleAddParams,
-    ScheduleIdParams, SessionAnswerParams, SetupParams, SpawnParams, SteerParams, TailParams, TopicPromoteParams,
-    UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams, WorktreeRemoveParams, UNITS_GIT_MAX,
+    ProvenanceParams, PushSetParams, RenameParams, RevealParams, ReviewMarkParams, ReviewSubmitParams,
+    ScheduleAddParams, ScheduleIdParams, SessionAnswerParams, SetupParams, SpawnParams, SteerParams, TailParams,
+    TopicPromoteParams, UnitsGitParams, UnitsPrParams, UnitsSyncParams, WaitParams, WorktreeParams,
+    WorktreeRemoveParams, UNITS_GIT_MAX,
 };
 use super::server::{
     AttemptNewParams, ChatCallParams, SpaceOrderParams, SpaceParams, TopicIdParams, TopicMemberAddParams,
@@ -106,6 +107,7 @@ const NOT_WORKERS_DEVICES_AND_BROWSER: &[CallerKind] = &[
 // What a phone's screens read and switch, kept off every agent's tool list.
 const LOCAL_AND_DEVICES: &[CallerKind] = &[CallerKind::Local, CallerKind::Device];
 const CHATS: &[CallerKind] = &[CallerKind::Chat];
+const DEVICES: &[CallerKind] = &[CallerKind::Device];
 const BROWSER: &[CallerKind] = &[CallerKind::Browser];
 
 const DEVICES_AND_BROWSER: &[CallerKind] = &[CallerKind::Device, CallerKind::Browser];
@@ -530,6 +532,26 @@ pub static METHODS: &[Method] = &[
         outward: false,
         read_only: false,
         call: |b, _, v| b.digest_looked(params(v)?),
+    },
+    Method {
+        name: "push.set",
+        description: "Where to reach this phone with the app closed: the relay's `handle` for it and the `key` its alerts are sealed with. Replaces any earlier pair.",
+        params: schema::<PushSetParams>,
+        callers: DEVICES,
+        refusal: Some("only a paired phone sets where its alerts go"),
+        outward: false,
+        read_only: false,
+        call: |b, p, v| b.push_set(p, params(v)?),
+    },
+    Method {
+        name: "push.clear",
+        description: "Stop sending this phone alerts while its app is closed.",
+        params: no_params,
+        callers: DEVICES,
+        refusal: Some("only a paired phone sets where its alerts go"),
+        outward: false,
+        read_only: false,
+        call: |b, p, _| b.push_clear(p),
     },
     Method {
         name: "radar.list",
