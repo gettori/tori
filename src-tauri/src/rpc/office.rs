@@ -247,6 +247,7 @@ pub fn start(parts: Parts) -> Arc<Office> {
     let moved = desk.ui.clone();
     super::pr_watch::on_polled_moved(Box::new(move || moved.emit("pr_watch://changed", ())));
     let devices = Arc::new(super::devices::Devices::open(super::devices_path()));
+    composer.set_phones(devices.clone());
     let paired = desk.ui.clone();
     let pairing = Arc::new(super::pairing::Pairing::new(Box::new(move |ended| {
         paired.emit(DEVICES_EVENT, json!({ "ended": ended }));

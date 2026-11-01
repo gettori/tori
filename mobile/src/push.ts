@@ -8,6 +8,7 @@ export const OLD_MAC = "Tori on your Mac is too old for alerts with the app clos
 const NO_SHELL = "Alerts with the app closed need the Android app.";
 
 type Pair = { on: boolean; handle?: string; key?: string };
+export type Tap = { session: string; project: string; folder: string | null; branch: string | null };
 
 const [alerts, setAlerts] = createSignal(false);
 const [alertsNote, setAlertsNote] = createSignal<string | null>(null);
@@ -58,6 +59,11 @@ export async function turnOn(client: RemoteClient) {
   } finally {
     turningOn = false;
   }
+}
+
+export async function takeTap(): Promise<Tap | null> {
+  const opened = await native<{ tap: Tap | null }>("opened").catch(() => null);
+  return opened?.tap ?? null;
 }
 
 export async function turnOff(client: RemoteClient) {
