@@ -28,6 +28,15 @@ version_for() {
   esac
 }
 
+# Tauri's default code, major*1000000 + minor*1000 + patch, lets MDD spill
+# into the year and goes backwards every 1 January; Play and Android both
+# refuse a lower code.
+android_version_code() {
+  local core=${1%%-*} yy mdd patch
+  IFS=. read -r yy mdd patch <<<"$core"
+  echo $((yy * 10000000 + mdd * 1000 + patch))
+}
+
 # Releases before each platform got its own prefix were tagged v<release>, and
 # the extension's version is that release's without the stage suffix. The relay
 # came after the prefixes, so only its own tag counts.

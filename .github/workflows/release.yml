@@ -241,7 +241,7 @@ jobs:
       - uses: nttld/setup-ndk@v1
         id: ndk
         with:
-          ndk-version: r27c
+          ndk-version: r28c
 
       - run: rustup toolchain install
       - run: rustup target add aarch64-linux-android
@@ -272,10 +272,10 @@ jobs:
           keyPassword=$ANDROID_KEY_PASSWORD
           EOF
 
-      - name: Build and sign the APK
+      - name: Build and sign the APK and the AAB
         env:
           NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
-        run: cd mobile && pnpm tauri android build --apk --target aarch64
+        run: cd mobile && pnpm tauri android build --apk --aab --target aarch64
 
       # One flavor, so one APK; anything else means the target list changed
       # without this step. Renamed to the asset name the docs give.
@@ -293,10 +293,44 @@ jobs:
           mv "${apks[0]}" "mobile/Tori_$VERSION.apk"
           echo "path=mobile/Tori_$VERSION.apk" >> "$GITHUB_OUTPUT"
 
+      # Play rejects native code that is not 16 KB aligned for apps targeting
+      # Android 15 and later; r28 is the first NDK whose linker defaults to it.
+      - name: Check the AAB is signed and 16 KB aligned, and name it
+        id: aab
+        env:
+          NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          shopt -s nullglob
+          aabs=(mobile/src-tauri/gen/android/app/build/outputs/bundle/*Release/app-*-release.aab)
+          if [ ${#aabs[@]} -ne 1 ]; then
+            echo "expected one release AAB, found ${#aabs[@]}: ${aabs[*]-none}" >&2
+            exit 1
+          fi
+          # jarsigner exits 0 on an unsigned file too, so the verdict is read.
+          jarsigner -verify "${aabs[0]}" | tee "$RUNNER_TEMP/jarsigner.txt"
+          grep -qx 'jar verified.' "$RUNNER_TEMP/jarsigner.txt"
+          libs="$RUNNER_TEMP/aab-libs"
+          unzip -q -o "${aabs[0]}" 'base/lib/*.so' -d "$libs"
+          sos=("$libs"/base/lib/*/*.so)
+          [ ${#sos[@]} -gt 0 ] || { echo "no native libraries in the AAB" >&2; exit 1; }
+          readelf=$(ls "$NDK_HOME"/toolchains/llvm/prebuilt/*/bin/llvm-readelf | head -1)
+          for so in "${sos[@]}"; do
+            for align in $("$readelf" -lW "$so" | awk '$1 == "LOAD" { print $NF }'); do
+              if [ $((align)) -lt 16384 ]; then
+                echo "$so has a LOAD segment aligned to $align, below 16 KB" >&2
+                exit 1
+              fi
+            done
+          done
+          mv "${aabs[0]}" "mobile/Tori_$VERSION.aab"
+          echo "path=mobile/Tori_$VERSION.aab" >> "$GITHUB_OUTPUT"
+
       - uses: actions/upload-artifact@v4
         with:
           name: android
-          path: ${{ steps.apk.outputs.path }}
+          path: |
+            ${{ steps.apk.outputs.path }}
+            ${{ steps.aab.outputs.path }}
           if-no-files-found: error
 
   # Needs only its own build, so a component that does not ship, or fails,
@@ -357,6 +391,31 @@ jobs:
       - name: Tag and publish the release
         if: github.event_name == 'push'
         run: .github/scripts/publish.sh "android-v$VERSION" "Tori v$VERSION for Android" release-notes.md false assets "Tori_$VERSION.apk"
+
+  # Beside publish-android rather than after it, so a Play failure leaves the
+  # GitHub release alone. Push only: a dispatch builds an unbumped version
+  # whose versionCode Play already has.
+  publish-play:
+    needs: [gate, android]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: release
+    env:
+      VERSION: ${{ needs.gate.outputs.android_version }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: android
+          path: assets
+
+      - name: Upload to Google Play
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: app.gettori.tori.mobile
+          releaseFiles: assets/Tori_${{ env.VERSION }}.aab
+          track: ${{ vars.PLAY_TRACK || 'alpha' }}
+          status: ${{ vars.PLAY_STATUS || 'draft' }}
 
   # Nothing else waits on this job, so a store failure goes red here on its
   # own. It submits staged; Publish stays a click. The tag gets no GitHub

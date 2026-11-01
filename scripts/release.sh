@@ -127,6 +127,13 @@ set_version() {
     esac
   done < <(version_files "$component")
   [ "$(version_of "$dir" "$component")" = "$to" ] || die "the $(label "$component") version did not land in every file"
+  if [ "$component" = android ]; then
+    local code
+    code=$(android_version_code "$to")
+    sed -i '' -E "s/\"versionCode\": [0-9]+/\"versionCode\": $code/" "$dir/mobile/src-tauri/tauri.conf.json"
+    [ "$(node -p "require('$dir/mobile/src-tauri/tauri.conf.json').bundle.android.versionCode")" = "$code" ] ||
+      die "the Android versionCode did not land in mobile/src-tauri/tauri.conf.json"
+  fi
 }
 
 component_line() {
