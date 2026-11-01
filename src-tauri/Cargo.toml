@@ -43,6 +43,8 @@ dirs = "5"
 portable-pty = "0.8"
 json5 = "0.4"
 ureq = { version = "3", features = ["json"] }
+# Already in the tree through rustls, so it adds no weight.
+ring = "0.17"
 regex = "1"
 # An autopilot schedule is a 5-field cron in the Mac's local time; `croner`
 # walks DST gaps and repeats, which a hand-rolled matcher would get wrong.
