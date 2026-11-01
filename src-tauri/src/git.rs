@@ -2522,10 +2522,25 @@ pub fn push_commit(repo: &str, remote: &str, branch: &str, sha: &str, sock: &Pat
     let _bridge = crate::credential::bridge(&mut cmd, repo, remote, &op_id);
     cmd.args(["push", SKIP_HOOKS, remote, &format!("{sha}:refs/heads/{branch}")]);
     match crate::git_health::run(&mut cmd) {
-        Ok(o) if o.status.success() => Ok(()),
+        Ok(o) if o.status.success() => {
+            track_pushed(repo, remote, branch);
+            Ok(())
+        }
         Ok(o) => Err(String::from_utf8_lossy(&o.stderr).trim().to_string()),
         Err(e) => Err(e),
     }
+}
+
+// A branch made from origin/main tracks origin/main, so once its head lives on
+// <remote>/<branch> the sidebar would count the pull request's own commits as
+// unpushed. Written as config, since the tracking ref may not be fetched yet.
+fn track_pushed(repo: &str, remote: &str, branch: &str) {
+    let local = format!("refs/heads/{branch}");
+    if git_capture(repo, &["rev-parse", "--verify", "--quiet", &local]).is_err() {
+        return;
+    }
+    let _ = git_capture(repo, &["config", &format!("branch.{branch}.remote"), remote]);
+    let _ = git_capture(repo, &["config", &format!("branch.{branch}.merge"), &local]);
 }
 
 /// Background `git push` through the askpass bridge, a sibling of `git_fetch`:
