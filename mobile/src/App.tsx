@@ -14,6 +14,7 @@ import Root, { type RootTab } from "./Root";
 import { ProjectScreen, TopicScreen } from "./Screens";
 import { setChatCall } from "../../src/panels/Chat/chatCalls";
 import { SpacesSheet, TopicForm } from "./Organize";
+import { syncAlerts, turnOff } from "./push";
 import SettingsSheet from "./SettingsSheet";
 import UnitScreen from "./Unit";
 import { RemoteClient, forget, loadSaved, pair, parsePairLink, type Saved } from "./remote";
@@ -464,6 +465,13 @@ export default function App() {
     }),
   );
 
+  createEffect(
+    on(
+      () => client()?.generation() ?? 0,
+      (n) => n > 0 && void syncAlerts(client()!),
+    ),
+  );
+
   const opened = (urls: string[] | null) => {
     const found = urls?.map(parsePairLink).find((l) => l !== null);
     if (!found) return;
@@ -495,6 +503,8 @@ export default function App() {
   });
 
   const disconnect = () => {
+    const leaving = client();
+    if (leaving) void turnOff(leaving);
     forget();
     setNotice(null);
     setSaved(null);

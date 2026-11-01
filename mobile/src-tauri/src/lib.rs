@@ -2,6 +2,7 @@
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_tori_push::init())
         .run(tauri::generate_context!())
         .expect("error while running Tori mobile");
 }

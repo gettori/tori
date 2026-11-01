@@ -1,0 +1,14 @@
+[package]
+name = "tauri-plugin-tori-push"
+version = "0.1.0"
+description = "Tori's phone alerts with the app closed: the FCM token, the relay handle and the key alerts are sealed with"
+license = "Apache-2.0"
+edition = "2021"
+publish = false
+links = "tauri-plugin-tori-push"
+
+[dependencies]
+tauri = "2"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }

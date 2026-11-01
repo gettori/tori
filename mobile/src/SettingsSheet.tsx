@@ -1,5 +1,6 @@
 import { WheelGlyph } from "../../src/components/Autopilot/Wheel";
 import { setShowWheel, setTheme, showWheel, theme } from "./prefs";
+import { alerts, alertsNote, turnOff, turnOn } from "./push";
 import type { RemoteClient } from "./remote";
 import styles from "./shell.module.css";
 
@@ -47,6 +48,23 @@ export default function SettingsSheet(props: { client: RemoteClient; onDone: () 
           </ul>
           <p class={styles.footnote}>
             Disconnect forgets this Tori on the phone. Remove the phone under Settings, Remote on the Mac too.
+          </p>
+
+          <h2 class={styles.label}>Alerts</h2>
+          <ul class={styles.group}>
+            <li>
+              <button
+                class={`${styles.item} ${styles.setting}`}
+                onClick={() => void (alerts() ? turnOff(props.client) : turnOn(props.client))}
+              >
+                <span class={styles.text}>Alerts when closed</span>
+                <span class={styles.toggle} role="switch" aria-checked={alerts()} />
+              </button>
+            </li>
+          </ul>
+          <p class={styles.footnote}>
+            {alertsNote() ??
+              "A notification when a session needs you or finishes, even with the app closed. It travels through Google and Tori's relay, which see only that an alert was sent, never what it says."}
           </p>
 
           <h2 class={styles.label}>Appearance</h2>
