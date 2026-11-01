@@ -134,6 +134,23 @@ impl Devices {
         Ok(true)
     }
 
+    pub fn pushes(&self) -> Vec<(String, Push)> {
+        self.lock()
+            .iter()
+            .filter_map(|d| d.push.clone().map(|p| (d.id.clone(), p)))
+            .collect()
+    }
+
+    /// The relay's 410 can arrive after the phone handed over a new pair, which
+    /// must survive it.
+    pub fn drop_push_if_handle(&self, id: &str, handle: &str) -> Result<bool, String> {
+        let current = self.lock().iter().find(|d| d.id == id).and_then(|d| d.push.clone());
+        match current {
+            Some(push) if push.handle == handle => self.set_push(id, None),
+            _ => Ok(false),
+        }
+    }
+
     pub fn list(&self) -> Vec<Device> {
         self.lock().clone()
     }

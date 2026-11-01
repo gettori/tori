@@ -5656,6 +5656,7 @@ dependencies = [
  "qrcode",
  "quick-xml 0.42.0",
  "regex",
+ "ring",
  "rodio",
  "rusqlite",
  "schemars 1.2.1",

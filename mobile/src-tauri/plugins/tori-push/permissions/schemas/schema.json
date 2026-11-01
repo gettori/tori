@@ -280,6 +280,18 @@
           "markdownDescription": "Denies the enable command without any pre-configured scope."
         },
         {
+          "description": "Enables the opened command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-opened",
+          "markdownDescription": "Enables the opened command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the opened command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-opened",
+          "markdownDescription": "Denies the opened command without any pre-configured scope."
+        },
+        {
           "description": "Enables the state command without any pre-configured scope.",
           "type": "string",
           "const": "allow-state",
@@ -292,10 +304,10 @@
           "markdownDescription": "Denies the state command without any pre-configured scope."
         },
         {
-          "description": "Turn alerts with the app closed on and off, and read whether they are on\n#### This default permission set includes:\n\n- `allow-enable`\n- `allow-disable`\n- `allow-state`",
+          "description": "Turn alerts with the app closed on and off, read whether they are on, and pick up a tapped alert\n#### This default permission set includes:\n\n- `allow-enable`\n- `allow-disable`\n- `allow-state`\n- `allow-opened`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Turn alerts with the app closed on and off, and read whether they are on\n#### This default permission set includes:\n\n- `allow-enable`\n- `allow-disable`\n- `allow-state`"
+          "markdownDescription": "Turn alerts with the app closed on and off, read whether they are on, and pick up a tapped alert\n#### This default permission set includes:\n\n- `allow-enable`\n- `allow-disable`\n- `allow-state`\n- `allow-opened`"
         }
       ]
     }

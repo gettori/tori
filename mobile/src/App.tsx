@@ -14,7 +14,7 @@ import Root, { type RootTab } from "./Root";
 import { ProjectScreen, TopicScreen } from "./Screens";
 import { setChatCall } from "../../src/panels/Chat/chatCalls";
 import { SpacesSheet, TopicForm } from "./Organize";
-import { syncAlerts, turnOff } from "./push";
+import { syncAlerts, takeTap, turnOff, type Tap } from "./push";
 import SettingsSheet from "./SettingsSheet";
 import UnitScreen from "./Unit";
 import { RemoteClient, forget, loadSaved, pair, parsePairLink, type Saved } from "./remote";
@@ -156,10 +156,14 @@ function Pair(props: {
 
 function liveRows(client: RemoteClient) {
   const [rows, setRows] = createSignal<SessionRow[]>([]);
+  const [listed, setListed] = createSignal(false);
   const relist = () =>
     client
       .request<SessionRow[]>("sessions.list", { live: true, limit: LIVE_LIMIT })
-      .then(setRows)
+      .then((r) => {
+        setRows(r);
+        setListed(true);
+      })
       .catch(() => {});
   createEffect(on(client.generation, (n) => n > 0 && void relist()));
   onCleanup(
@@ -170,7 +174,7 @@ function liveRows(client: RemoteClient) {
       setRows(rows().map((row) => (row.id === ev.id ? { ...row, dot: ev.dot } : row)));
     }),
   );
-  return [rows, relist] as const;
+  return [rows, relist, listed] as const;
 }
 
 function watchTree(client: RemoteClient) {
@@ -196,7 +200,7 @@ function routeChatCallsOverLink(client: RemoteClient) {
 
 function Paired(props: { client: RemoteClient; notice: string | null; onDisconnect: () => void }) {
   routeChatCallsOverLink(props.client);
-  const [live, relist] = liveRows(props.client);
+  const [live, relist, listed] = liveRows(props.client);
   const [tree, reloadTree] = watchTree(props.client);
   const [organize, setOrganize] = createSignal<"spaces" | "topic" | null>(null);
   const allProjects = () => tree()?.spaces.flatMap((s) => s.projects) ?? [];
@@ -257,6 +261,28 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
     markSeen({ folder: e.folder, branch: e.branch });
     openUnit(found.unit, found.project);
   };
+  // A tapped alert waits for the first session list, so the chat it opens has
+  // its row and not just an id.
+  const [tapped, setTapped] = createSignal<Tap | null>(null);
+  const pickUp = () => void takeTap().then((t) => t && setTapped(t));
+  const opening = () => {
+    const t = tapped();
+    return t && (t.project ? `Opening a session in ${t.project}...` : "Opening the session...");
+  };
+  onMount(pickUp);
+  const shown = () => document.visibilityState === "visible" && pickUp();
+  document.addEventListener("visibilitychange", shown);
+  onCleanup(() => document.removeEventListener("visibilitychange", shown));
+  createEffect(() => {
+    const t = tapped();
+    if (!t || !listed()) return;
+    setTapped(null);
+    const home = { project: t.project, folder: t.folder ?? "", branch: t.branch };
+    openSession(
+      live().find((row) => row.id === t.session) ?? { id: t.session, cwd: t.folder ?? "", home, last_active: 0 },
+    );
+  });
+
   // From a chat reached through its worktree, the worktree is one step back.
   const openHome = (row: SessionRow) => {
     const found = units().find(({ unit }) => inUnit(row.home, unit));
@@ -276,7 +302,7 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
             space={space()}
             tab={tab()}
             live={live}
-            notice={props.notice}
+            notice={opening() ?? props.notice}
             onProject={(project) => go({ screen: "project", project })}
             onTopic={(topic) => go({ screen: "topic", topic })}
             onUnit={openUnit}

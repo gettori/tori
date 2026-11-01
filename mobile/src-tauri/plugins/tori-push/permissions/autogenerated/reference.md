@@ -1,12 +1,13 @@
 ## Default Permission
 
-Turn alerts with the app closed on and off, and read whether they are on
+Turn alerts with the app closed on and off, read whether they are on, and pick up a tapped alert
 
 #### This default permission set includes the following:
 
 - `allow-enable`
 - `allow-disable`
 - `allow-state`
+- `allow-opened`
 
 ## Permission Table
 
@@ -65,6 +66,32 @@ Enables the enable command without any pre-configured scope.
 <td>
 
 Denies the enable command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`tori-push:allow-opened`
+
+</td>
+<td>
+
+Enables the opened command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`tori-push:deny-opened`
+
+</td>
+<td>
+
+Denies the opened command without any pre-configured scope.
 
 </td>
 </tr>

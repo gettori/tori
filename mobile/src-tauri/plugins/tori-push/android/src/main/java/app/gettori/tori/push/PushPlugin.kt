@@ -2,7 +2,9 @@ package app.gettori.tori.push
 
 import android.Manifest
 import android.app.Activity
+import android.content.Intent
 import android.os.Build
+import android.webkit.WebView
 import app.tauri.PermissionState
 import app.tauri.annotation.Command
 import app.tauri.annotation.Permission
@@ -18,6 +20,40 @@ import kotlin.concurrent.thread
 @TauriPlugin(permissions = [Permission(strings = [Manifest.permission.POST_NOTIFICATIONS], alias = "notifications")])
 class PushPlugin(private val activity: Activity) : Plugin(activity) {
   private val store = PushStore(activity)
+  private var tapped: JSObject? = null
+
+  override fun load(webView: WebView) {
+    super.load(webView)
+    stashTap(activity.intent)
+  }
+
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    stashTap(intent)
+  }
+
+  // The extras are removed, since a rotation or a resume delivers the intent
+  // again and would open the same session twice.
+  private fun stashTap(intent: Intent?) {
+    val session = intent?.getStringExtra(SESSION_EXTRA) ?: return
+    tapped = JSObject().apply {
+      put("session", session)
+      put("folder", intent.getStringExtra(FOLDER_EXTRA))
+      put("branch", intent.getStringExtra(BRANCH_EXTRA))
+      put("project", intent.getStringExtra(PROJECT_EXTRA) ?: "")
+    }
+    intent.removeExtra(SESSION_EXTRA)
+    intent.removeExtra(FOLDER_EXTRA)
+    intent.removeExtra(BRANCH_EXTRA)
+    intent.removeExtra(PROJECT_EXTRA)
+  }
+
+  @Command
+  fun opened(invoke: Invoke) {
+    val tap = tapped
+    tapped = null
+    invoke.resolve(JSObject().apply { put("tap", tap ?: org.json.JSONObject.NULL) })
+  }
 
   // Every connect asks, so a token refresh the service could not register is
   // registered here before the Mac is handed a handle FCM no longer accepts.

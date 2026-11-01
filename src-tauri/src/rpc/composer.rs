@@ -57,6 +57,9 @@ pub struct Composer {
     pilot: AtomicBool,
     nudges: Mutex<Sender<Nudge>>,
     item_over: std::sync::OnceLock<ItemOver>,
+    phones: std::sync::OnceLock<Arc<super::devices::Devices>>,
+    // Sessions a phone was told about, so only those get a `cleared`.
+    pushed: Mutex<HashSet<String>>,
 }
 
 /// How far past its item's spend ceiling a session is, computed in Rust since
@@ -83,6 +86,8 @@ impl Composer {
             pilot: AtomicBool::new(false),
             nudges: Mutex::new(tx),
             item_over: std::sync::OnceLock::new(),
+            phones: std::sync::OnceLock::new(),
+            pushed: Mutex::default(),
         });
         let weak = Arc::downgrade(&composer);
         std::thread::spawn(move || {
@@ -194,6 +199,10 @@ impl Composer {
 
     pub fn item_over(&self, session: &str) -> Option<String> {
         self.item_over.get().and_then(|over| over(session))
+    }
+
+    pub fn set_phones(&self, devices: Arc<super::devices::Devices>) {
+        let _ = self.phones.set(devices);
     }
 
     pub fn set_item_over(&self, over: ItemOver) {
@@ -448,6 +457,7 @@ impl Composer {
             self.sources.tell("needs_you.changed", json!({}));
         }
         let quiet: HashSet<String> = relayed.union(&watched).cloned().collect();
+        self.push(&live, &edges, &quiet);
         let withdraw = edges.cleared.clone();
         let alerts = match edges.rose.is_empty() && edges.finished.is_empty() {
             true => crate::presence::Alerts::default(),
@@ -474,6 +484,45 @@ impl Composer {
         if !quiet_tick {
             self.sources.tell("present", shown);
         }
+    }
+
+    // The Mac's banner switches do not apply: a phone's alerts are their own
+    // switch, on the phone.
+    fn push(&self, live: &[crate::presence::Live], edges: &crate::presence::Edges, quiet: &HashSet<String>) {
+        let Some(devices) = self.phones.get() else { return };
+        let loud = |id: &&String| !quiet.contains(*id);
+        let rose: Vec<&String> = edges.rose.iter().filter(loud).collect();
+        let finished: Vec<&String> = edges.finished.iter().filter(loud).collect();
+        let mut pushed = lock(&self.pushed);
+        let cleared: Vec<&String> = edges.cleared.iter().filter(|id| pushed.remove(*id)).collect();
+        if rose.is_empty() && finished.is_empty() && cleared.is_empty() {
+            return;
+        }
+        if !crate::settings::get_settings().remote.enabled {
+            return;
+        }
+        let alert = |id: &String, kind: &'static str| {
+            live.iter().find(|l| &l.id == id).map(|l| super::push::Alert {
+                kind,
+                project: l.project.clone(),
+                session: l.id.clone(),
+                folder: Some(l.folder.clone()).filter(|f| !f.is_empty()),
+                branch: l.branch.clone(),
+            })
+        };
+        let mut alerts = Vec::new();
+        for id in cleared {
+            alerts.push(super::push::Alert::cleared(id));
+        }
+        for id in rose {
+            let reason = live.iter().find(|l| &l.id == id).and_then(|l| l.reason);
+            alerts.extend(alert(id, super::push::kind_of(reason)));
+        }
+        for id in finished {
+            alerts.extend(alert(id, "done"));
+        }
+        pushed.extend(alerts.iter().filter(|a| a.kind != "cleared").map(|a| a.session.clone()));
+        super::push::send(devices.clone(), alerts);
     }
 }
 
