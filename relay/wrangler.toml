@@ -1,0 +1,35 @@
+# The push relay. Secrets (HANDLE_KEY, FCM_SERVICE_ACCOUNT) are set with
+# `wrangler secret put` and never live in this file; .dev.vars holds local ones.
+name = "tori-relay"
+# An identifier, not a credential: deploying still needs a token for it.
+account_id = "cf1fad450df41b193ad1367e306d1a3a"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+workers_dev = false
+routes = [{ pattern = "relay.gettori.app", custom_domain = true }]
+
+# Limits count per Cloudflare location and are approximate, so they stop a
+# flood, not a careful abuser. One Mac sends for a handful of sessions.
+[[ratelimits]]
+name = "HANDLE_LIMIT"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 30
+  period = 60
+
+[[ratelimits]]
+name = "SEND_IP_LIMIT"
+namespace_id = "1002"
+
+  [ratelimits.simple]
+  limit = 120
+  period = 60
+
+[[ratelimits]]
+name = "REGISTER_IP_LIMIT"
+namespace_id = "1003"
+
+  [ratelimits.simple]
+  limit = 10
+  period = 60

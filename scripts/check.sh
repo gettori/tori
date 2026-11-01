@@ -4,8 +4,8 @@
 # `scripts/check.sh all` locally is passing CI. The `dco` sign-off check is not
 # here: it lives in dco.yml and only has meaning on a pull request from outside.
 #
-#   scripts/check.sh ts      lockfile, type check (desktop, mobile and
-#                            extension), format, lint, token guard and vitest,
+#   scripts/check.sh ts      lockfile, type check (desktop, mobile, extension
+#                            and relay), format, lint, token guard and vitest,
 #                            the three vite builds
 #   scripts/check.sh rust    format, clippy, desktop crate tests, mobile crate
 #                            check
@@ -31,6 +31,8 @@ ts() {
   pnpm --dir mobile typecheck
   step "type check (extension)"
   pnpm --dir extension typecheck
+  step "type check (relay)"
+  pnpm --dir relay typecheck
   step "format"
   pnpm exec vp fmt --check
   step "lint"

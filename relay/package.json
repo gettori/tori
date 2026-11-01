@@ -1,0 +1,10 @@
+{
+  "name": "tori-relay",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm dlx wrangler@4.156.0 dev",
+    "deploy": "pnpm dlx wrangler@4.156.0 deploy",
+    "typecheck": "../node_modules/.bin/tsc -p tsconfig.json"
+  }
+}
