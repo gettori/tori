@@ -38,8 +38,9 @@ HANDLE_KEY=<32 random bytes, base64>
 FCM_SERVICE_ACCOUNT='<the service account JSON on one line>'
 ```
 
-Production is `relay.gettori.app`. `.github/workflows/relay.yml` deploys it when
-`relay/` changes on main, after approval on the `relay` environment. The
+Production is `relay.gettori.app`. It ships with a Tori release when anything
+under `relay/` changed since its last `relay-v` tag: the Release workflow
+deploys it and tags it (see `docs/RELEASING.md`). The
 production secrets are set once with `wrangler secret put HANDLE_KEY` and
 `wrangler secret put FCM_SERVICE_ACCOUNT`. Rotating `HANDLE_KEY` invalidates
 every handle already handed out.
