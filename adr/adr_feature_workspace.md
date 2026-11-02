@@ -1,8 +1,8 @@
 ---
 summary: a Feature is a shared branch plus a sidecar record reconciled against git that never drops a member, even a broken one
 status: current
-updated: 2026-10-11
-source: "Features: design the multi-repo workspace and open the epic (personal/tori, branch `feature-workspace`, issue #151, children #152 to #160), `src/App.tsx:278`, `src/panels/Editor/Editor.tsx:371,777`, `src-tauri/src/attempts.rs:116`, `src-tauri/src/worktree.rs:203`"
+updated: 2026-11-03
+source: "Features: design the multi-repo workspace and open the epic (personal/tori, branch `feature-workspace`, issue #151, children #152 to #160), `src/App.tsx:278`, `src/panels/Editor/Editor.tsx:371,777`, `src-tauri/src/attempts.rs:116`, `src-tauri/src/worktree.rs:203`; Topics inside a space (personal/tori, branch `space-topic`, commits f53a6865, faa781a6, ec29f1c8, 00dea72a, ac6d9313, dd15b1a8, dc5dd445), `src-tauri/src/topics.rs:264`, `src/utils/topics.ts:71`, `src/panels/LeftSidebar/LeftSidebar.tsx:1460`"
 ---
 
 # ADR: A Feature is a shared branch plus a sidecar record, selected as its own workspace
@@ -26,6 +26,7 @@ Issue #151 asks for a cross-repository working context: one Git worktree per mem
 - **Fan out the single-root commands and merge in TS.** `grep_project`, `git_status`, `list_project_files`, `fs_watch_start` stay single-root; the panels invoke per member and merge, with per-member truncation, backend capability and replace targets. Rejected: multi-root Rust commands, since the panels need per-member sections anyway.
 - **Removal detaches and offers, never deletes silently.** Removing a member or deleting a Feature drops the record, then offers worktree removal per member behind the existing dirty and unpushed guards. Rejected: record and worktrees living and dying together.
 - **No Feature-level settings overlay.** `loadWorkspaceSettings(activeRoot)` stays per member. Revisit if a real case appears.
+- **2026-11-03: a Topic can belong to one space.** Scope is a space name on the record; absent means global. Rejected: scope derived from the members (adding a member from another space would silently move the Topic, and "move to global" would mean nothing), and a space path (both keys break on a folder rename, and the frontend keys everything by name). The office refuses a member outside the space, not only the UI, so the phone or RPC cannot write a record the sidebar draws in the wrong tree. See the scope paragraph in [[concept_feature_workspace]].
 
 ## Consequences
 
@@ -33,6 +34,7 @@ Issue #151 asks for a cross-repository working context: one Git worktree per mem
 - `gitActions.ts` stops being a one-slot store; the map of slots is what makes the Feature list's change count possible.
 - Every walker that skips the attempts dir must also skip `.tori/worktrees`, or a plain repo's search and quick-open double-list the Feature's files.
 - Deleting a Space that contains a member leaves a `repo-missing` member with a Locate action, by design.
+- Since 2026-11-03, deleting a space also deletes its own Topics, while a global Topic's members in it stay `repo-missing` as above. Renaming a space's folder outside Tori leaves its Topics listed in Topics with a note offering Keep in Topics or Delete.
 
 ## Related
 
