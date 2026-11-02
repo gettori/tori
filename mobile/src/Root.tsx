@@ -1,5 +1,5 @@
 import { For, Match, Show, Switch, createSignal } from "solid-js";
-import { ChevronRight, Search, Settings, Tag } from "lucide-solid";
+import { ChevronRight, Plus, Search, Settings, Tag } from "lucide-solid";
 import Icon from "../../src/components/Icon/Icon";
 import { CheckMark, QuestionMark, WorkingMark } from "../../src/components/Icon/statusMarks";
 import StatusBubble from "../../src/panels/LeftSidebar/StatusBubble";
@@ -8,6 +8,9 @@ import { ProjectMark } from "./icons";
 import { OLD_APP, OLD_TORI, type RemoteClient } from "./remote";
 import {
   inUnit,
+  spaceTopics,
+  topicSpaces,
+  topicsTabTopics,
   matches,
   unitCounts,
   projectRows,
@@ -99,6 +102,34 @@ function ProjectItem(props: { client: RemoteClient; project: Project; live: Sess
     </li>
   );
 }
+
+function TopicItem(props: { topic: Topic; meta: string; live: SessionRow[]; onOpen: () => void }) {
+  return (
+    <li>
+      <button class={styles.item} onClick={() => props.onOpen()}>
+        <span
+          class={`${styles.tile} ${styles.tagTile}`}
+          style={{ "--tint": rgbTriple(fallbackColor(props.topic.name)) }}
+        >
+          <Icon icon={Tag} size={16} strokeWidth={2} />
+        </span>
+        <span class={styles.text}>
+          <span class={styles.name}>{props.topic.name}</span>
+          <span class={styles.meta}>{props.meta}</span>
+        </span>
+        <StateMark rows={props.live.filter((row) => row.home?.topic === props.topic.id)} />
+        <span class={styles.count}>{props.topic.members.length}</span>
+        <Chevron />
+      </button>
+    </li>
+  );
+}
+
+const memberNames = (topic: Topic) =>
+  [...topic.members]
+    .sort((a, b) => a.order - b.order)
+    .map((m) => m.displayName)
+    .join(", ");
 
 function SessionItem(props: { row: SessionRow; meta: string; onOpen: () => void }) {
   return (
@@ -205,13 +236,22 @@ export default function Root(props: {
   const [searching, setSearching] = createSignal(false);
   const [query, setQuery] = createSignal("");
   const homeless = () => props.live().filter((row) => !row.home);
-  const topics = () => props.tree?.topics ?? [];
+  const topics = () => (props.tree ? topicsTabTopics(props.tree) : []);
+  const ownTopics = () => (props.tree && props.space ? spaceTopics(props.tree, props.space.name) : []);
 
   return (
     <div class={styles.glow}>
       <header class={styles.top}>
         <span class={styles.titles}>
-          <Show when={props.tab === "projects"} fallback={<span class={styles.bigTitle}>Topics</span>}>
+          <Show
+            when={props.tab === "projects"}
+            fallback={
+              <>
+                <span class={styles.bigTitle}>Topics</span>
+                <span class={styles.rootLabel}>{DOT} all spaces</span>
+              </>
+            }
+          >
             <span class={styles.bigTitle}>{props.space?.name ?? "Tori"}</span>
             <button class={`${styles.rootLabel} ${styles.spacesLink}`} onClick={() => props.onSpaces()}>
               {DOT} Spaces
@@ -266,6 +306,38 @@ export default function Root(props: {
                 )}
               </Match>
               <Match when={props.tab === "projects"}>
+                <Show when={props.space}>
+                  {(space) => (
+                    <>
+                      <h2 class={`${styles.label} ${styles.labelRow}`}>
+                        <span>
+                          Topics {DOT} {ownTopics().length}
+                        </span>
+                        <button
+                          class={styles.labelAdd}
+                          aria-label={`New Topic in ${space().name}`}
+                          onClick={() => props.onNewTopic()}
+                        >
+                          <Icon icon={Plus} size={16} strokeWidth={2} />
+                        </button>
+                      </h2>
+                      <Show when={ownTopics().length > 0}>
+                        <ul class={styles.group}>
+                          <For each={ownTopics()}>
+                            {(topic) => (
+                              <TopicItem
+                                topic={topic}
+                                meta={memberNames(topic)}
+                                live={props.live()}
+                                onOpen={() => props.onTopic(topic)}
+                              />
+                            )}
+                          </For>
+                        </ul>
+                      </Show>
+                    </>
+                  )}
+                </Show>
                 <h2 class={styles.label}>
                   Projects {DOT} {props.space?.projects.length ?? 0}
                 </h2>
@@ -300,22 +372,12 @@ export default function Root(props: {
                 <ul class={styles.group}>
                   <For each={topics()} fallback={<li class={styles.empty}>No topics yet</li>}>
                     {(topic) => (
-                      <li>
-                        <button class={styles.item} onClick={() => props.onTopic(topic)}>
-                          <span
-                            class={`${styles.tile} ${styles.tagTile}`}
-                            style={{ "--tint": rgbTriple(fallbackColor(topic.name)) }}
-                          >
-                            <Icon icon={Tag} size={16} strokeWidth={2} />
-                          </span>
-                          <span class={styles.text}>
-                            <span class={styles.name}>{topic.name}</span>
-                            <span class={styles.meta}>{topic.members.map((m) => m.displayName).join(", ")}</span>
-                          </span>
-                          <span class={styles.count}>{topic.members.length}</span>
-                          <Chevron />
-                        </button>
-                      </li>
+                      <TopicItem
+                        topic={topic}
+                        meta={topicSpaces(tree(), topic).join(` ${DOT} `)}
+                        live={props.live()}
+                        onOpen={() => props.onTopic(topic)}
+                      />
                     )}
                   </For>
                   <li>

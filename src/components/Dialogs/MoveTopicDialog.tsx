@@ -7,28 +7,9 @@ import Dialog from "../Dialog/Dialog";
 import Icon from "../Icon/Icon";
 import SpaceMark from "../SpaceMark/SpaceMark";
 import { spaceOfMember, type SpaceTint } from "../../utils/topicMembers";
-import type { Topic } from "../../utils/topics";
+import { refusedReason, type Topic } from "../../utils/topics";
 
 type MoveSpace = SpaceTint & { icon?: string | null };
-
-function listed(names: string[]): string {
-  return names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-}
-
-export function refusedReason(topic: Pick<Topic, "members">, space: string, spaces: SpaceTint[]): string | null {
-  const from = new Map<string, string[]>();
-  for (const m of [...topic.members].sort((a, b) => a.order - b.order)) {
-    const home = spaceOfMember(m, spaces)?.name ?? "";
-    if (home === space) continue;
-    from.set(home, [...(from.get(home) ?? []), m.displayName]);
-  }
-  if (!from.size) return null;
-  return [...from]
-    .map(
-      ([home, names]) => `${listed(names)} ${names.length > 1 ? "are" : "is"} ${home ? `in ${home}` : "in no space"}`,
-    )
-    .join("; ");
-}
 
 function Row(r: {
   name: string;
@@ -86,7 +67,8 @@ export default function MoveTopicDialog(props: {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 
-  const reason = (space: string) => refusedReason(props.topic, space, props.spaces);
+  const reason = (space: string) =>
+    refusedReason(props.topic, space, (m) => spaceOfMember(m, props.spaces)?.name ?? null);
   const canMove = () => !busy() && target() !== current() && (!target() || !reason(target()));
 
   const values = () => ["", ...props.spaces.map((g) => g.name)];

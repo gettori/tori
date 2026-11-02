@@ -8,6 +8,7 @@ import { syncMarks } from "../../src/utils/branchSync";
 import type { UnitStatus } from "../../src/utils/forgeTypes";
 import type { BranchSync } from "../../src/utils/gitActions";
 import { ago } from "../../src/utils/relativeTime";
+import { refusedReason } from "../../src/utils/topics";
 import AskSheet, { type Ask } from "./AskSheet";
 import type { Crew } from "./Autopilot";
 import { ChoiceSheet, type Choice } from "./Organize";
@@ -25,6 +26,7 @@ import {
   unitCounts,
   unitsHeading,
   rollupOf,
+  spaceOfRepo,
   type Project,
   type SessionRow,
   type Topic,
@@ -381,9 +383,12 @@ export function TopicScreen(props: {
       danger: true,
       run: () => call("topic.delete", { topic_id: id() }).then(props.onBack),
     });
+  const scope = () => props.tree?.spaces.find((s) => s.name === props.topic.space);
   const addRepo = () => {
     const inTopic = new Set(props.topic.members.map((m) => m.repoPath));
-    const repos: Choice[] = (props.tree?.spaces.flatMap((s) => s.projects) ?? [])
+    const offered = scope() ? [scope()!] : (props.tree?.spaces ?? []);
+    const repos: Choice[] = offered
+      .flatMap((s) => s.projects)
       .filter((p) => !inTopic.has(p.path))
       .map((p) => ({ label: p.name, meta: p.path, value: p.path }));
     let repoPath: string | null = null;
@@ -404,6 +409,31 @@ export function TopicScreen(props: {
         repoPath = picked;
       },
       onDone: () => setChoice(repoPath ? asMode(repoPath) : null),
+    });
+  };
+  const moveTo = () => {
+    const spaces = props.tree?.spaces ?? [];
+    const now = props.topic.space ?? "";
+    const homeOf = (m: { repoPath: string }) => spaceOfRepo(spaces, m.repoPath)?.name ?? null;
+    const place = (value: string, label: string, note: { refused: string | null } | { hint: string }): Choice => {
+      const refused = "refused" in note ? note.refused : null;
+      const current = value === now;
+      return {
+        label,
+        value,
+        meta: current ? "Current" : (refused ?? ("hint" in note ? note.hint : undefined)),
+        disabled: current || !!refused,
+      };
+    };
+    setChoice({
+      title: `Move ${props.topic.name}`,
+      message: `Now in ${now || "Topics"}`,
+      choices: [
+        place("", "Topics", { hint: "Any space's projects" }),
+        ...spaces.map((s) => place(s.name, s.name, { refused: refusedReason(props.topic, s.name, homeOf) })),
+      ],
+      ...done,
+      onPick: (space) => call("topic.space", { topic_id: id(), space: space || null }),
     });
   };
   const promote = () =>
@@ -439,7 +469,7 @@ export function TopicScreen(props: {
   return (
     <div class={styles.glow}>
       <PushTop
-        back="Topics"
+        back={scope()?.name ?? "Topics"}
         onBack={props.onBack}
         end={
           <span class={styles.menuAnchor}>
@@ -454,6 +484,9 @@ export function TopicScreen(props: {
                 </button>
                 <button role="menuitem" onClick={open(addRepo)}>
                   Add a repository
+                </button>
+                <button role="menuitem" onClick={open(moveTo)}>
+                  Move to
                 </button>
                 <button role="menuitem" onClick={open(promote)}>
                   Promote a member
@@ -472,6 +505,7 @@ export function TopicScreen(props: {
       <ConnectionBanner client={props.client} />
       <div class={styles.scroll}>
         <h1 class={styles.screenTitle}>{props.topic.name}</h1>
+        <p class={styles.screenSub}>{props.topic.space ?? "Topics"}</p>
         <h2 class={styles.label}>
           Members {DOT} {members().length}
         </h2>
