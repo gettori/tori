@@ -126,6 +126,8 @@ pub struct Topic {
     pub created_at: u64,
     #[serde(default)]
     pub promotion: Promotion,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub space: Option<String>,
     /// Where the Topic's chats run. Filled on the way out, never stored: the
     /// folder follows from where the record lives.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -139,19 +141,28 @@ struct TopicFile {
     topics: Vec<Topic>,
 }
 
+pub type SpaceRoots = dyn Fn(&str) -> Option<Vec<PathBuf>> + Send + Sync;
+
 /// The file the records live in. A handle rather than a fixed path so every
 /// rule below runs against a temp store in tests.
 pub struct Store {
     path: PathBuf,
+    spaces: Box<SpaceRoots>,
 }
 
 impl Store {
     pub fn default_location() -> Self {
-        Self::at(crate::owned_state::config_dir().join("topics.json"))
+        Self::at(
+            crate::owned_state::config_dir().join("topics.json"),
+            crate::config::space_roots,
+        )
     }
 
-    pub fn at(path: impl Into<PathBuf>) -> Self {
-        Self { path: path.into() }
+    pub fn at(path: impl Into<PathBuf>, spaces: impl Fn(&str) -> Option<Vec<PathBuf>> + Send + Sync + 'static) -> Self {
+        Self {
+            path: path.into(),
+            spaces: Box::new(spaces),
+        }
     }
 
     /// Lenient like every other owned store: a missing or corrupt file is an
@@ -229,6 +240,52 @@ fn canon(path: &str) -> PathBuf {
 
 fn same_path(a: &str, b: &str) -> bool {
     canon(a) == canon(b)
+}
+
+#[cfg(test)]
+pub fn no_space(_: &str) -> Option<Vec<PathBuf>> {
+    None
+}
+
+fn under_typed_or_resolved(repo: &str, root: &Path) -> bool {
+    Path::new(repo).starts_with(root) || canon(repo).starts_with(root)
+}
+
+pub fn outside_space<'a>(repos: impl IntoIterator<Item = &'a str>, roots: &[PathBuf]) -> Option<&'a str> {
+    repos
+        .into_iter()
+        .find(|repo| !roots.iter().any(|root| under_typed_or_resolved(repo, root)))
+}
+
+fn no_such_space(space: &str) -> String {
+    format!("Tori has no space named \"{space}\"")
+}
+
+fn check_scope<'a>(store: &Store, space: &str, repos: impl IntoIterator<Item = &'a str>) -> Result<(), String> {
+    let roots = (store.spaces)(space).ok_or_else(|| no_such_space(space))?;
+    match outside_space(repos, &roots) {
+        Some(repo) => Err(format!("{} is not in {space}", repo_display_name(repo))),
+        None => Ok(()),
+    }
+}
+
+/// A space Tori can no longer find checks nothing, so a member can still be
+/// repaired after the folder was renamed outside Tori.
+fn refuse_outside_known_space(store: &Store, topic: &Topic, repo: &str) -> Result<(), String> {
+    let Some(space) = topic.space.as_deref() else {
+        return Ok(());
+    };
+    let Some(roots) = (store.spaces)(space) else {
+        return Ok(());
+    };
+    match outside_space([repo], &roots) {
+        Some(_) => Err(format!(
+            "{} is not in {space}, and {} holds {space}'s projects only. Use Move to... on the Topic to list it in Topics first.",
+            repo_display_name(repo),
+            topic.name
+        )),
+        None => Ok(()),
+    }
 }
 
 /// Every Topic as the file holds it, homes filled, nothing asked of git.
@@ -468,6 +525,17 @@ pub fn rename_topic(store: &Store, topic_id: &str, name: &str) -> Result<(), Str
     })
 }
 
+pub fn set_space(store: &Store, topic_id: &str, space: Option<&str>) -> Result<(), String> {
+    store.mutate(|file| {
+        let topic = topic_mut(file, topic_id)?;
+        if let Some(space) = space {
+            check_scope(store, space, topic.members.iter().map(|m| m.repo_path.as_str()))?;
+        }
+        topic.space = space.map(str::to_string);
+        Ok(())
+    })
+}
+
 pub fn set_promotion(store: &Store, topic_id: &str, promotion: Promotion) -> Result<(), String> {
     store.mutate(|file| {
         topic_mut(file, topic_id)?.promotion = promotion;
@@ -553,6 +621,7 @@ pub fn relocate_member(store: &Store, topic_id: &str, repo_path: &str, new_repo_
         .iter()
         .find(|m| same_path(&m.repo_path, repo_path))
         .ok_or_else(|| format!("{repo_path} is not a member of {}", topic.name))?;
+    refuse_outside_known_space(store, &topic, new_repo_path)?;
     // Every member but this one: re-pointing a member at the repo it already
     // has is a harmless no-op, while landing on another member's repo would
     // check the same branch out twice.
@@ -585,7 +654,9 @@ pub fn relocate_member(store: &Store, topic_id: &str, repo_path: &str, new_repo_
     }
 
     store.mutate(|file| {
-        let member = member_mut(topic_mut(file, topic_id)?, repo_path)?;
+        let topic = topic_mut(file, topic_id)?;
+        refuse_outside_known_space(store, topic, new_repo_path)?;
+        let member = member_mut(topic, repo_path)?;
         member.repo_path = new_repo_path.to_string();
         member.worktree_path = worktree_path;
         Ok(())
@@ -931,7 +1002,7 @@ pub fn create_topic(
             worktree_path: None,
         })
         .collect();
-    create_topic_with(store, name, branch, &members, on_step)
+    create_topic_with(store, name, branch, None, &members, on_step)
 }
 
 /// `create_topic` with a mode per repo. A reference creates nothing in git, so
@@ -940,6 +1011,7 @@ pub fn create_topic_with(
     store: &Store,
     name: &str,
     branch: &str,
+    space: Option<&str>,
     members: &[NewMember],
     on_step: &dyn Fn(&Topic),
 ) -> Result<Topic, String> {
@@ -956,6 +1028,9 @@ pub fn create_topic_with(
         if repos[..i].iter().any(|seen| same_repo(seen, repo)) {
             return Err(format!("{repo} is listed twice"));
         }
+    }
+    if let Some(space) = space {
+        check_scope(store, space, repos.iter().map(|r| r.as_str()))?;
     }
 
     let id = new_id(&branch);
@@ -974,6 +1049,7 @@ pub fn create_topic_with(
                 .collect(),
             created_at: crate::owned_state::now_ms(),
             promotion: Promotion::default(),
+            space: space.map(str::to_string),
             home: None,
         });
         Ok(())
@@ -1024,6 +1100,7 @@ pub fn add_member_as(
         if topic.members.iter().any(|m| same_repo(&m.repo_path, repo)) {
             return Err(format!("{repo} is already a member of {}", topic.name));
         }
+        refuse_outside_known_space(store, topic, repo)?;
         let order = topic.members.len() as u32;
         topic.members.push(pending_member(repo, mode, order));
         Ok(topic.branch.clone())
@@ -1060,6 +1137,7 @@ pub fn move_worktree_in(
         let topic = topic_mut(file, topic_id)?;
         let existing = topic.members.iter().position(|m| same_repo(&m.repo_path, repo));
         let Some(i) = existing else {
+            refuse_outside_known_space(store, topic, repo)?;
             let order = topic.members.len() as u32;
             let mut member = pending_member(repo, MemberMode::Worktree, order);
             keep_branch(&mut member, w);
@@ -1198,8 +1276,13 @@ pub mod commands {
     }
 
     #[tauri::command]
-    pub async fn create_topic(name: String, branch: String, members: Vec<NewMember>) -> Result<Topic, String> {
-        let call = serde_json::json!({ "name": name, "branch": branch, "members": members });
+    pub async fn create_topic(
+        name: String,
+        branch: String,
+        space: Option<String>,
+        members: Vec<NewMember>,
+    ) -> Result<Topic, String> {
+        let call = serde_json::json!({ "name": name, "branch": branch, "space": space, "members": members });
         blocking("create_topic", move || {
             crate::rpc::office_call_as("topics.create_topic", call)
         })
@@ -1211,9 +1294,17 @@ pub mod commands {
         index: &ProjectIndex,
         name: String,
         branch: String,
+        space: Option<String>,
         members: Vec<NewMember>,
     ) -> Result<Topic, String> {
-        let topic = super::create_topic_with(&Store::default_location(), &name, &branch, &members, &step(desk))?;
+        let topic = super::create_topic_with(
+            &Store::default_location(),
+            &name,
+            &branch,
+            space.as_deref(),
+            &members,
+            &step(desk),
+        )?;
         settle(desk, index, &topic);
         Ok(topic)
     }
@@ -1477,6 +1568,22 @@ pub mod commands {
     }
 
     #[tauri::command]
+    pub async fn set_topic_space(topic_id: String, space: Option<String>) -> Result<Topic, String> {
+        let call = serde_json::json!({ "topic_id": topic_id, "space": space });
+        blocking("set_topic_space", move || {
+            crate::rpc::office_call_as("topics.set_topic_space", call)
+        })
+        .await
+    }
+
+    fn set_topic_space_in(desk: &Desk, topic_id: String, space: Option<String>) -> Result<Topic, String> {
+        let store = Store::default_location();
+        announce(desk, &store, &topic_id, || {
+            super::set_space(&store, &topic_id, space.as_deref())
+        })
+    }
+
+    #[tauri::command]
     pub async fn set_topic_promotion(topic_id: String, promotion: super::Promotion) -> Result<Topic, String> {
         let call = serde_json::json!({ "topic_id": topic_id, "promotion": promotion });
         blocking("set_topic_promotion", move || {
@@ -1532,6 +1639,7 @@ pub mod commands {
                 index,
                 arg(args, "name")?,
                 arg(args, "branch")?,
+                arg(args, "space")?,
                 arg(args, "members")?,
             )
             .map(|v| serde_json::json!(v)),
@@ -1579,6 +1687,9 @@ pub mod commands {
             .map(|v| serde_json::json!(v)),
             "rename_topic" => {
                 rename_topic_in(desk, arg(args, "topic_id")?, arg(args, "name")?).map(|v| serde_json::json!(v))
+            }
+            "set_topic_space" => {
+                set_topic_space_in(desk, arg(args, "topic_id")?, arg(args, "space")?).map(|v| serde_json::json!(v))
             }
             "set_topic_promotion" => set_topic_promotion_in(desk, arg(args, "topic_id")?, arg(args, "promotion")?)
                 .map(|v| serde_json::json!(v)),
@@ -1651,12 +1762,13 @@ mod tests {
             members,
             created_at: 1,
             promotion: Promotion::default(),
+            space: None,
             home: None,
         }
     }
 
     fn store_with(tmp: &Path, topics: Vec<Topic>) -> Store {
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
         store.save(&TopicFile { topics }).unwrap();
         store
     }
@@ -1664,7 +1776,7 @@ mod tests {
     #[test]
     fn round_trips_and_tolerates_an_empty_file_and_unknown_fields() {
         let tmp = unique_tmp();
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
         assert!(store.load().topics.is_empty(), "a missing file is an empty set");
 
         std::fs::write(&store.path, "").unwrap();
@@ -1894,7 +2006,7 @@ mod tests {
         // Both folder names the picker would try are taken in b.
         std::fs::create_dir_all(tmp.join("b/.tori/worktrees/x")).unwrap();
         std::fs::create_dir_all(tmp.join("b/.tori/worktrees/feat-x")).unwrap();
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
 
         let f = create_topic(&store, "X", "feat/x", &[a.clone(), b.clone(), c.clone()], &|_| {}).unwrap();
         assert_eq!(f.branch, "feat/x");
@@ -2007,7 +2119,7 @@ mod tests {
         let b = tmp.join("b");
         let b_s = repo(&b);
         git(&b, &["checkout", "-q", "-b", "feat/x"]);
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
 
         let f = create_topic(&store, "X", "feat/x", &[a_s.clone(), b_s.clone()], &|_| {}).unwrap();
         assert_eq!(f.members[0].state, MemberState::Present);
@@ -2035,7 +2147,7 @@ mod tests {
         let tmp = unique_tmp();
         let a = tmp.join("a");
         let a_s = repo(&a);
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
         let f = create_topic(&store, "X", "feat/x", std::slice::from_ref(&a_s), &|_| {}).unwrap();
         let wt = f.members[0].worktree_path.clone().unwrap();
 
@@ -2060,7 +2172,7 @@ mod tests {
     fn create_topic_takes_the_branch_exactly_as_typed() {
         let tmp = unique_tmp();
         let a = repo(&tmp.join("a"));
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
         let head = |wt: &str| {
             let out = Command::new("git")
                 .arg("-C")
@@ -2096,7 +2208,7 @@ mod tests {
     fn create_topic_refuses_a_branch_git_would_not_take() {
         let tmp = unique_tmp();
         let a = repo(&tmp.join("a"));
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
 
         for bad in ["bug login", "@{-1}", "-x", "  "] {
             assert!(
@@ -2117,7 +2229,7 @@ mod tests {
         // repo's unit row wears a chip pointing back at each of them.
         let tmp = unique_tmp();
         let a = repo(&tmp.join("a"));
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
 
         let auth = create_topic(&store, "auth", "auth", std::slice::from_ref(&a), &|_| {}).unwrap();
         let billing = create_topic(&store, "billing", "billing", std::slice::from_ref(&a), &|_| {}).unwrap();
@@ -2143,7 +2255,7 @@ mod tests {
         let tmp = unique_tmp();
         let a = repo(&tmp.join("a"));
         let b = repo(&tmp.join("b"));
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
         let f = create_topic(&store, "X", "feat/x", &[a.clone(), b.clone()], &|_| {}).unwrap();
 
         let plain = tmp.join("not-a-repo");
@@ -2170,7 +2282,7 @@ mod tests {
         let tmp = unique_tmp();
         let old = tmp.join("api");
         let old_s = repo(&old);
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
         let f = create_topic(&store, "X", "feat/x", std::slice::from_ref(&old_s), &|_| {}).unwrap();
         let old_wt = f.members[0].worktree_path.clone().unwrap();
         assert!(old_wt.starts_with(&old_s), "the plain layout puts it inside the repo");
@@ -2201,7 +2313,7 @@ mod tests {
         let wt = tmp.join("elsewhere");
         let wt_s = wt.to_string_lossy().into_owned();
         git(&old, &["worktree", "add", "-q", "-b", "feat/x", &wt_s]);
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
         let f = create_topic(&store, "X", "feat/x", std::slice::from_ref(&old_s), &|_| {}).unwrap();
         assert_eq!(f.members[0].worktree_path.as_deref(), Some(wt_s.as_str()), "adopted");
 
@@ -2226,7 +2338,7 @@ mod tests {
         let tmp = unique_tmp();
         let a = repo(&tmp.join("a"));
         let b = repo(&tmp.join("b"));
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
         let seen = RefCell::new(Vec::<Vec<MemberState>>::new());
         let record = |f: &Topic| {
             seen.borrow_mut()
@@ -2328,7 +2440,7 @@ mod tests {
     #[test]
     fn a_record_from_before_modes_loads_as_worktree_members() {
         let tmp = unique_tmp();
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
         std::fs::write(
             &store.path,
             r#"{"topics":[{"id":"f","name":"f","branch":"feat/f","members":[{"repoPath":"/r/a","worktreePath":"/r/a/.tori/worktrees/f","state":{"kind":"present"}}]}]}"#,
@@ -2344,7 +2456,7 @@ mod tests {
     fn a_reference_reconciles_present_on_the_repos_own_checkout() {
         let tmp = unique_tmp();
         let a = repo(&tmp.join("a"));
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
         let branches = git_out(&a, &["branch", "--list"]);
         let worktrees = git_out(&a, &["worktree", "list"]);
 
@@ -2353,7 +2465,7 @@ mod tests {
             mode: MemberMode::Reference,
             worktree_path: None,
         }];
-        let t = create_topic_with(&store, "X", "feat/x", &members, &|_| {}).unwrap();
+        let t = create_topic_with(&store, "X", "feat/x", None, &members, &|_| {}).unwrap();
         let m = &t.members[0];
         assert_eq!(m.state, MemberState::Present);
         assert_eq!(m.worktree_path, None, "a reference never records a worktree");
@@ -2375,7 +2487,7 @@ mod tests {
     fn a_container_without_its_default_checkout_is_named_and_retry_checks_it_out() {
         let tmp = unique_tmp();
         let cont = container(&tmp, "cont");
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
 
         let worktrees = git_out(&cont, &["worktree", "list"]);
         let members = [NewMember {
@@ -2383,7 +2495,7 @@ mod tests {
             mode: MemberMode::Reference,
             worktree_path: None,
         }];
-        let t = create_topic_with(&store, "X", "feat/x", &members, &|_| {}).unwrap();
+        let t = create_topic_with(&store, "X", "feat/x", None, &members, &|_| {}).unwrap();
         assert_eq!(t.members[0].state, MemberState::CheckoutMissing);
         assert_eq!(
             git_out(&cont, &["worktree", "list"]),
@@ -2419,7 +2531,7 @@ mod tests {
             mode: MemberMode::Reference,
             worktree_path: None,
         }];
-        create_topic_with(store, "X", "feat/x", &members, &|_| {}).unwrap()
+        create_topic_with(store, "X", "feat/x", None, &members, &|_| {}).unwrap()
     }
 
     fn commit(dir: &str, file: &str) -> String {
@@ -2433,7 +2545,7 @@ mod tests {
     fn the_promotion_policy_round_trips_and_defaults_to_ask() {
         let tmp = unique_tmp();
         let (_, a) = cloned(&tmp, "a");
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
         let t = reference_topic(&store, &a);
         assert_eq!(t.promotion, Promotion::Ask);
         set_promotion(&store, &t.id, Promotion::Never).unwrap();
@@ -2447,7 +2559,7 @@ mod tests {
     fn a_chat_asking_for_a_worktree_gets_what_the_policy_says() {
         let tmp = unique_tmp();
         let (_, a) = cloned(&tmp, "a");
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
         let t = reference_topic(&store, &a);
         let web = member_named(&t, &a).unwrap().clone();
         let run = |promotion, answer: bool| {
@@ -2478,7 +2590,7 @@ mod tests {
         let tmp = unique_tmp();
         let (_, a) = cloned(&tmp, "a");
         commit(&a, "local-only.txt");
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
         let t = reference_topic(&store, &a);
 
         let t = promote_member(&store, &t.id, &a).unwrap();
@@ -2499,7 +2611,7 @@ mod tests {
     fn promote_tracks_a_topic_branch_that_already_exists_on_origin() {
         let tmp = unique_tmp();
         let (src, a) = cloned(&tmp, "a");
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
         let t = reference_topic(&store, &a);
         // Pushed after the clone, so only the fetch promote runs can see it.
         git(Path::new(&src), &["checkout", "-qb", "feat/x"]);
@@ -2519,7 +2631,7 @@ mod tests {
     fn promote_refuses_a_topic_branch_checked_out_in_place_and_stays_a_reference() {
         let tmp = unique_tmp();
         let (_, a) = cloned(&tmp, "a");
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
         let t = reference_topic(&store, &a);
         git(Path::new(&a), &["checkout", "-qb", "feat/x"]);
         let worktrees = git_out(&a, &["worktree", "list"]);
@@ -2537,7 +2649,7 @@ mod tests {
     fn demote_keeps_the_branch_so_promote_picks_the_work_back_up() {
         let tmp = unique_tmp();
         let (_, a) = cloned(&tmp, "a");
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
         let t = reference_topic(&store, &a);
         let t = promote_member(&store, &t.id, &a).unwrap();
         let wt = t.members[0].worktree_path.clone().unwrap();
@@ -2562,7 +2674,7 @@ mod tests {
     fn a_worktree_made_outside_promote_on_the_topic_branch_is_adopted_and_no_other_is() {
         let tmp = unique_tmp();
         let (_, a) = cloned(&tmp, "a");
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
         let t = reference_topic(&store, &a);
         let other = tmp.join("other").to_string_lossy().into_owned();
         git(Path::new(&a), &["worktree", "add", "-q", "-b", "feat/y", &other]);
@@ -2596,7 +2708,7 @@ mod tests {
         let tmp = unique_tmp();
         let (_, a) = cloned(&tmp, "a");
         let b = repo(&tmp.join("b"));
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
         let t = reference_topic(&store, &a);
         let home = crate::topic_home::home_dir(&store.path, &t.id);
         assert_eq!(t.home.as_deref(), Some(home.to_string_lossy().as_ref()));
@@ -2637,7 +2749,7 @@ mod tests {
         use std::cell::RefCell;
         let tmp = unique_tmp();
         let (_, a) = cloned(&tmp, "a");
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
         let t = reference_topic(&store, &a);
         let home = t.home.clone().unwrap();
         let before = crate::topic_home::told(&load_topic(&store, &t.id).unwrap());
@@ -2746,7 +2858,7 @@ mod tests {
         std::fs::write(wt.join("a.txt"), "dirty\n").unwrap();
         std::fs::write(wt.join("new.txt"), "untracked\n").unwrap();
         let other = repo(&tmp.join("o"));
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
         let t = create_topic(&store, "T", "feat/t", &[other], &|_| {}).unwrap();
 
         let status = git_out(&wt_str, &["status", "--porcelain"]);
@@ -2803,7 +2915,7 @@ mod tests {
         let wt = tmp.join("wt");
         let wt_str = wt.to_string_lossy().into_owned();
         git(&r, &["worktree", "add", "-q", "-b", "fix-x", &wt_str]);
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
 
         let t = create_topic(&store, "Worktree", "feat/w", std::slice::from_ref(&repo_path), &|_| {}).unwrap();
         let err = move_worktree_in(&store, &t.id, &repo_path, &wt_str).unwrap_err();
@@ -2847,13 +2959,13 @@ mod tests {
         let wt = tmp.join("wt");
         let wt_str = wt.to_string_lossy().into_owned();
         git(&r, &["worktree", "add", "-q", "--detach", &wt_str]);
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
         let members = [NewMember {
             repo_path: repo_path.clone(),
             mode: MemberMode::Worktree,
             worktree_path: Some(wt_str),
         }];
-        let t = create_topic_with(&store, "T", "feat/t", &members, &|_| {}).unwrap();
+        let t = create_topic_with(&store, "T", "feat/t", None, &members, &|_| {}).unwrap();
 
         assert!(matches!(&t.members[0].state, MemberState::Failed { reason } if reason.contains("not on a branch")));
         assert_eq!(retry_member(&store, &t.id, &repo_path).unwrap_err(), KEEPS_BRANCH);
@@ -2870,7 +2982,7 @@ mod tests {
         let wt_str = wt.to_string_lossy().into_owned();
         git(&r, &["worktree", "add", "-q", "-b", "fix-x", &wt_str]);
         let other = repo(&tmp.join("o"));
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), no_space);
         let members = [
             NewMember {
                 repo_path: repo_path.clone(),
@@ -2883,7 +2995,7 @@ mod tests {
                 worktree_path: None,
             },
         ];
-        let t = create_topic_with(&store, "T", "feat/t", &members, &|_| {}).unwrap();
+        let t = create_topic_with(&store, "T", "feat/t", None, &members, &|_| {}).unwrap();
 
         assert!(t.members.iter().all(|m| m.state == MemberState::Present));
         assert!(t.members[0].keeps_branch);
@@ -2895,6 +3007,161 @@ mod tests {
             "",
             "no Topic branch in the moved repo"
         );
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    fn spaced_store(tmp: &Path, root: &Path) -> Store {
+        let root = root.to_path_buf();
+        Store::at(tmp.join("topics.json"), move |name| {
+            crate::config::space_roots_in(&root, name, &[])
+        })
+    }
+
+    fn referencing(repos: &[&String]) -> Vec<NewMember> {
+        repos
+            .iter()
+            .map(|r| NewMember {
+                repo_path: r.to_string(),
+                mode: MemberMode::Reference,
+                worktree_path: None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_topic_keeps_its_space_and_an_old_record_reads_as_global() {
+        let tmp = unique_tmp();
+        let store = Store::at(tmp.join("topics.json"), no_space);
+        let scoped = Topic {
+            space: Some("saga".into()),
+            ..topic("scoped", vec![member("/r/a", None, MemberState::Present)])
+        };
+        let global = topic("global", vec![member("/r/b", None, MemberState::Present)]);
+        store
+            .save(&TopicFile {
+                topics: vec![scoped.clone(), global.clone()],
+            })
+            .unwrap();
+        assert_eq!(store.load().topics, vec![scoped, global]);
+        let text = std::fs::read_to_string(&store.path).unwrap();
+        assert_eq!(text.matches("\"space\"").count(), 1, "a global Topic writes no space");
+
+        std::fs::write(
+            &store.path,
+            r#"{"topics":[{"id":"x","name":"X","branch":"feat/x","members":[{"repoPath":"/r"}]}]}"#,
+        )
+        .unwrap();
+        assert_eq!(store.load().topics[0].space, None);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn outside_space_names_the_first_repo_not_under_the_space() {
+        let tmp = unique_tmp();
+        let root = tmp.join("root");
+        for d in ["saga/api", "craft/cms", "elsewhere/linked"] {
+            std::fs::create_dir_all(root.join(d)).unwrap();
+        }
+        std::os::unix::fs::symlink(root.join("elsewhere/linked"), root.join("saga/linked")).unwrap();
+        std::os::unix::fs::symlink(&root, tmp.join("root-link")).unwrap();
+
+        let roots = crate::config::space_roots_in(&tmp.join("root-link"), "saga", &[]).unwrap();
+        let api = root.join("saga/api");
+        let cms = root.join("craft/cms");
+        let linked = root.join("elsewhere/linked");
+        let (api, cms, linked) = (api.to_str().unwrap(), cms.to_str().unwrap(), linked.to_str().unwrap());
+
+        assert_eq!(outside_space([api], &roots), None, "inside, through a symlinked root");
+        assert_eq!(
+            outside_space([linked], &roots),
+            None,
+            "a project symlinked in from elsewhere"
+        );
+        assert_eq!(outside_space([api, cms], &roots), Some(cms));
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn a_space_topic_refuses_an_unknown_space_and_any_repo_outside_it() {
+        let tmp = unique_tmp();
+        let root = tmp.join("root");
+        let api = repo(&root.join("saga/api"));
+        let web = repo(&root.join("saga/web"));
+        let cms = repo(&root.join("craft/cms"));
+        let store = spaced_store(&tmp, &root);
+
+        let err = create_topic_with(&store, "X", "feat/x", Some("nope"), &referencing(&[&api]), &|_| {}).unwrap_err();
+        assert!(err.contains("no space named \"nope\""), "{err}");
+        let err = create_topic_with(
+            &store,
+            "X",
+            "feat/x",
+            Some("saga"),
+            &referencing(&[&api, &cms]),
+            &|_| {},
+        )
+        .unwrap_err();
+        assert_eq!(err, "cms is not in saga");
+        assert!(recorded(&store).is_empty(), "a refused create writes nothing");
+
+        let fresh = repo(&root.join("fresh/f"));
+        let t = create_topic_with(&store, "F", "feat/f", Some("fresh"), &referencing(&[&fresh]), &|_| {}).unwrap();
+        assert_eq!(t.space.as_deref(), Some("fresh"), "a space made a moment ago is found");
+
+        let t = create_topic_with(&store, "X", "feat/x", Some("saga"), &referencing(&[&api]), &|_| {}).unwrap();
+        assert_eq!(t.space.as_deref(), Some("saga"));
+
+        let err = add_member_as(&store, &t.id, &cms, MemberMode::Reference, &|_| {}).unwrap_err();
+        assert!(
+            err.starts_with("cms is not in saga") && err.contains("Move to"),
+            "{err}"
+        );
+        let wt = tmp.join("cms-wt");
+        git(
+            Path::new(&cms),
+            &["worktree", "add", "-q", "-b", "fix-cms", wt.to_str().unwrap()],
+        );
+        let err = move_worktree_in(&store, &t.id, &cms, wt.to_str().unwrap()).unwrap_err();
+        assert!(err.starts_with("cms is not in saga"), "{err}");
+        let err = relocate_member(&store, &t.id, &api, &cms).unwrap_err();
+        assert!(err.starts_with("cms is not in saga"), "{err}");
+        add_member_as(&store, &t.id, &web, MemberMode::Reference, &|_| {}).unwrap();
+
+        let err = set_space(&store, &t.id, Some("craft")).unwrap_err();
+        assert_eq!(err, "api is not in craft");
+        let err = set_space(&store, &t.id, Some("nope")).unwrap_err();
+        assert!(err.contains("no space named"), "{err}");
+        assert_eq!(
+            load_topic(&store, &t.id).unwrap().space.as_deref(),
+            Some("saga"),
+            "a refused move writes nothing"
+        );
+
+        set_space(&store, &t.id, None).unwrap();
+        add_member_as(&store, &t.id, &cms, MemberMode::Reference, &|_| {}).unwrap();
+        let err = set_space(&store, &t.id, Some("saga")).unwrap_err();
+        assert_eq!(err, "cms is not in saga");
+        assert_eq!(load_topic(&store, &t.id).unwrap().space, None);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn a_topic_whose_space_is_gone_still_takes_and_relocates_members() {
+        let tmp = unique_tmp();
+        let root = tmp.join("root");
+        let api = repo(&root.join("saga/api"));
+        let cms = repo(&root.join("craft/cms"));
+        let store = spaced_store(&tmp, &root);
+        let t = create_topic_with(&store, "X", "feat/x", Some("saga"), &referencing(&[&api]), &|_| {}).unwrap();
+
+        std::fs::rename(root.join("saga"), root.join("saga-renamed")).unwrap();
+        let moved = root.join("saga-renamed/api").to_string_lossy().into_owned();
+        relocate_member(&store, &t.id, &api, &moved).unwrap();
+        add_member_as(&store, &t.id, &cms, MemberMode::Reference, &|_| {}).unwrap();
+        let t = load_topic(&store, &t.id).unwrap();
+        assert_eq!(t.space.as_deref(), Some("saga"), "the record keeps naming the space");
+        assert_eq!(t.members.len(), 2);
         std::fs::remove_dir_all(&tmp).ok();
     }
 }

@@ -30,7 +30,7 @@ use super::server::{
 };
 use super::server::{
     AttemptNewParams, ChatCallParams, ChatOp, SpaceOrderParams, SpaceParams, TopicIdParams, TopicMemberAddParams,
-    TopicMemberOrderParams, TopicMemberParams, TopicNewParams, TopicRenameParams,
+    TopicMemberOrderParams, TopicMemberParams, TopicNewParams, TopicRenameParams, TopicSpaceParams,
 };
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
@@ -2190,7 +2190,7 @@ impl Backend for DaemonBackend {
         let members = serde_json::to_value(params.members).map_err(|e| RpcError::new(INTERNAL_ERROR, e.to_string()))?;
         self.topic_office(
             "create_topic",
-            json!({ "name": params.name, "branch": params.branch, "members": members }),
+            json!({ "name": params.name, "branch": params.branch, "space": params.space, "members": members }),
         )
     }
 
@@ -2198,6 +2198,13 @@ impl Backend for DaemonBackend {
         self.topic_office(
             "rename_topic",
             json!({ "topic_id": params.topic_id, "name": params.name }),
+        )
+    }
+
+    fn topic_space(&self, params: TopicSpaceParams) -> Result<Value, RpcError> {
+        self.topic_office(
+            "set_topic_space",
+            json!({ "topic_id": params.topic_id, "space": params.space }),
         )
     }
 

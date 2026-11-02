@@ -154,8 +154,21 @@ pub struct TopicNewParams {
     pub name: String,
     /// The branch every worktree member is made on.
     pub branch: String,
+    /// The space whose tree lists it; every member must be one of its projects.
+    /// Leave it out for a Topic listed in Topics, open to any space's projects.
+    #[serde(default)]
+    pub space: Option<String>,
     /// The repositories in it, each a worktree or a reference to its own checkout.
     pub members: Vec<crate::topics::NewMember>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TopicSpaceParams {
+    /// The Topic's id.
+    pub topic_id: String,
+    /// The space to list it in, which must hold every member; null lists it in Topics.
+    pub space: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -1128,6 +1141,7 @@ pub trait Backend: Send + Sync {
     fn space_order(&self, params: SpaceOrderParams) -> Result<Value, RpcError>;
     fn topic_new(&self, params: TopicNewParams) -> Result<Value, RpcError>;
     fn topic_rename(&self, params: TopicRenameParams) -> Result<Value, RpcError>;
+    fn topic_space(&self, params: TopicSpaceParams) -> Result<Value, RpcError>;
     fn topic_delete(&self, params: TopicIdParams) -> Result<Value, RpcError>;
     fn topic_member_add(&self, params: TopicMemberAddParams) -> Result<Value, RpcError>;
     fn topic_member_order(&self, params: TopicMemberOrderParams) -> Result<Value, RpcError>;
@@ -1631,6 +1645,9 @@ pub mod tests {
         }
         fn topic_rename(&self, p: TopicRenameParams) -> Result<Value, RpcError> {
             Ok(json!({ "topic": p.name }))
+        }
+        fn topic_space(&self, p: TopicSpaceParams) -> Result<Value, RpcError> {
+            Ok(json!({ "space": p.space }))
         }
         fn topic_delete(&self, p: TopicIdParams) -> Result<Value, RpcError> {
             Ok(json!({ "deleted": p.topic_id }))
@@ -2517,6 +2534,7 @@ pub mod tests {
                 "space.order",
                 "topic.new",
                 "topic.rename",
+                "topic.space",
                 "topic.delete",
                 "topic.member.add",
                 "topic.member.order",
@@ -2610,7 +2628,13 @@ pub mod tests {
                 "topic.new",
                 json!({"name": "t", "branch": "b", "members": [{"repoPath": "/p", "mode": "reference"}]}),
             ),
+            (
+                "topic.new",
+                json!({"name": "t", "branch": "b", "space": "work", "members": [{"repoPath": "/p"}]}),
+            ),
             ("topic.rename", json!({"topic_id": "t1", "name": "u"})),
+            ("topic.space", json!({"topic_id": "t1", "space": "work"})),
+            ("topic.space", json!({"topic_id": "t1", "space": null})),
             ("topic.delete", json!({"topic_id": "t1"})),
             (
                 "topic.member.add",
