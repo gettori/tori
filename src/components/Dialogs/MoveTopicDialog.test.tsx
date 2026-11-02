@@ -14,7 +14,9 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
-const { default: MoveTopicDialog, refusedReason } = await import("./MoveTopicDialog");
+const { default: MoveTopicDialog } = await import("./MoveTopicDialog");
+const { refusedReason } = await import("../../utils/topics");
+const { spaceOfMember } = await import("../../utils/topicMembers");
 
 const SPACES = [
   {
@@ -57,15 +59,16 @@ beforeEach(() => {
 });
 
 describe("refusedReason", () => {
+  const homeOf = (m: Member) => spaceOfMember(m, SPACES)?.name ?? null;
   it("names the members outside the space by the one space they are in", () => {
     const t = topic([member("/s/api", 0), member("/s/web", 1)]);
-    expect(refusedReason(t, "craft", SPACES)).toBe("api and web are in saga");
+    expect(refusedReason(t, "craft", homeOf)).toBe("api and web are in saga");
   });
 
   it("groups the members by space when they come from several", () => {
     const t = topic([member("/s/api", 0), member("/c/cms", 1), member("/s/web", 2)]);
-    expect(refusedReason(t, "lab", SPACES)).toBe("api and web are in saga; cms is in craft");
-    expect(refusedReason(t, "saga", SPACES)).toBe("cms is in craft");
+    expect(refusedReason(t, "lab", homeOf)).toBe("api and web are in saga; cms is in craft");
+    expect(refusedReason(t, "saga", homeOf)).toBe("cms is in craft");
   });
 });
 

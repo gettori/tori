@@ -19,7 +19,7 @@ import SettingsSheet from "./SettingsSheet";
 import UnitScreen from "./Unit";
 import { RemoteClient, forget, loadSaved, pair, parsePairLink, type Saved } from "./remote";
 import type { NeedsYouEvent } from "../../src/utils/needsYouSignals";
-import { inUnit, type Project, type SessionRow, type Topic, type Tree, type Unit } from "./tree";
+import { inUnit, joinableTopics, type Project, type SessionRow, type Topic, type Tree, type Unit } from "./tree";
 import shell from "./shell.module.css";
 
 const PHONE_NAME = "Phone";
@@ -203,7 +203,6 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
   const [live, relist, listed] = liveRows(props.client);
   const [tree, reloadTree] = watchTree(props.client);
   const [organize, setOrganize] = createSignal<"spaces" | "topic" | null>(null);
-  const allProjects = () => tree()?.spaces.flatMap((s) => s.projects) ?? [];
   const fresh = (project: Project) =>
     tree()
       ?.spaces.flatMap((s) => s.projects)
@@ -360,7 +359,7 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
                 reloadTree();
                 back();
               }}
-              topics={tree()?.topics ?? []}
+              topics={tree() ? joinableTopics(tree()!, projectOf(view.unit)) : []}
               onChanged={reloadTree}
             />
           )}
@@ -463,7 +462,8 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
       <Show when={organize() === "topic"}>
         <TopicForm
           client={props.client}
-          projects={allProjects()}
+          spaces={tree()?.spaces ?? []}
+          space={space()?.name}
           onSaved={reloadTree}
           onDone={() => setOrganize(null)}
         />
