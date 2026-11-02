@@ -1,11 +1,23 @@
-import { createSignal, createEffect, createMemo, on, onMount, onCleanup, lazy, Suspense, Show } from "solid-js";
+import {
+  createSignal,
+  createEffect,
+  createMemo,
+  on,
+  onMount,
+  onCleanup,
+  lazy,
+  Suspense,
+  Show,
+  untrack,
+} from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { forgetWorkspace as forgetLayout, moveWorkspaceLayouts } from "./layout/layoutStore";
 import { forgetWorkspace as forgetPlacement, moveWorkspacePlacements } from "./layout/tabPlacement";
 import LeftSidebar, { type Selection } from "./panels/LeftSidebar/LeftSidebar";
 import SidebarStatus from "./panels/LeftSidebar/SidebarStatus";
-import { sameSelection, topicSelection, selectionRoot, workspaceKey, type Topic } from "./utils/topics";
+import { sameSelection, topicSelection, selectionRoot, workspaceKey } from "./utils/topics";
+import { topics, topicsReloaded, watchTopics } from "./utils/topicStore";
 import { ensureShellsWorkspace } from "./layout/shellsWorkspace";
 import Dock from "./layout/Dock";
 import { dockOpen, resetDock, setFocusedSurface, showDock } from "./layout/dockStore";
@@ -523,22 +535,21 @@ function App() {
     });
   }
 
-  // A stored Topic Selection is a snapshot; the record is truth. Re-resolved
-  // at startup and whenever the tree changes, so a member that came or went is
-  // reflected and a deleted Topic no longer keeps an empty workspace open.
-  // Latest request wins: a burst of config changes must not let an older
-  // listing, resolving later, overwrite the newer one.
-  let resolveSeq = 0;
-  async function resolveTopicSelection() {
-    if (selected()?.kind !== "topic") return;
-    const mine = ++resolveSeq;
-    const list = (await invoke<Topic[] | null>("list_topics").catch(() => null)) ?? [];
-    const sel = selected();
-    if (mine !== resolveSeq || sel?.kind !== "topic") return;
+  const topicSelected = createMemo(() => selected()?.kind === "topic");
+  createEffect(() => {
+    if (topicSelected()) onCleanup(watchTopics());
+  });
+  // A stored Topic Selection is a snapshot; the record is truth. Only a reload
+  // re-resolves it: an applied record can be mid-promote, and the sidebar
+  // moves the active root itself once the promote lands.
+  createEffect(() => {
+    if (!topicsReloaded()) return;
+    const list = untrack(topics);
+    const sel = untrack(selected);
+    if (sel?.kind !== "topic") return;
     const topic = list.find((f) => f.id === sel.topicId);
     setSelected(topic ? topicSelection(topic, sel.activeRoot) : null);
-  }
-  let unlistenConfig: UnlistenFn | undefined;
+  });
   let unlistenMenu: UnlistenFn | undefined;
   let unlistenSetup: UnlistenFn | undefined;
   // A menu item stays enabled whatever the state, so a click the command cannot
@@ -550,7 +561,6 @@ function App() {
     else c?.run?.();
   };
   onMount(async () => {
-    void resolveTopicSelection();
     // The quota windows the last run knew, so the strip opens with them rather
     // than blank until the first turn of the day. The fired dedupe keys come
     // back with them, which is what stops a restart inside an already-announced
@@ -558,13 +568,11 @@ function App() {
     void loadUsageStore().then(watchQuotaNotifications);
     watchUsageProbe();
     void announceCrash();
-    unlistenConfig = await listen("config://changed", () => void resolveTopicSelection());
     unlistenMenu = await listen<string>("menu://command", (e) => runFromMenu(e.payload));
     invoke("set_app_menu", { spec: menuSpec() }).catch((e) => console.error("menu bar not set:", e));
     unlistenSetup = await watchSetup();
   });
   onCleanup(() => {
-    unlistenConfig?.();
     unlistenMenu?.();
     unlistenSetup?.();
   });

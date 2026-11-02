@@ -152,11 +152,6 @@ export type RevealDock = { tabId: string };
 // the tab model it opens into.
 export const NEW_DOCK_SHELL = "tori:new-dock-shell";
 
-// Open the New Topic dialog. On the bus because the button that asks now sits
-// in the sidebar's own head row, and the dialog belongs to the Topic list
-// under it; lifting the dialog instead would move its five sibling dialogs too.
-export const NEW_TOPIC = "tori:new-topic";
-
 // Make a space the active one, by name. Emitted by the first-run modal when
 // the user picks the space Tori should open on. The sidebar owns the active
 // space and reads its persisted name once at mount, so writing the storage key
