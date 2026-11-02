@@ -1,23 +1,29 @@
-import { createSignal, onMount, Show } from "solid-js";
+import { createSignal, onMount, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { Search, Tag } from "lucide-solid";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
-import Select from "../Select/Select";
+import Icon from "../Icon/Icon";
+import MemberChip from "../MemberChip/MemberChip";
 import SegmentedControl from "../SegmentedControl/SegmentedControl";
+import SpaceMark from "../SpaceMark/SpaceMark";
 import NewTopicDialog from "./NewTopicDialog";
 import type { RepoSpace } from "./RepoChecklist";
 import { samePath } from "../../panels/LeftSidebar/attempts";
+import { matchesTopic } from "../../panels/LeftSidebar/TopicRows";
 import { chatsInFolder } from "../../utils/chatSessions";
-import { byName, isReference, type Topic } from "../../utils/topics";
+import { tintedMembers, type SpaceTint } from "../../utils/topicMembers";
+import { byName, inSpace, isReference, listsInTopics, type Topic } from "../../utils/topics";
 
-const TOPIC_LABEL = "move-topic-label";
+const PICK_NAME = "move-topic-pick";
 
 type Tab = "existing" | "new";
 const TABS = [
   { value: "existing" as const, label: "Existing" },
   { value: "new" as const, label: "New" },
 ];
+type Where = "space" | "global";
 
 /** Take a worktree the user already has into a Topic, on the branch it is on:
  *  an existing one, or a new one started from it (`NewTopicDialog` with the
@@ -31,15 +37,30 @@ export default function MoveToTopicDialog(props: {
   /** The worktree as its Spaces row names it. */
   label: string;
   branch: string | null;
+  space: string;
   topics: Topic[];
-  spaces: RepoSpace[];
+  spaces: (RepoSpace & SpaceTint)[];
   onDone: (topic: Topic) => void;
   onCancel: () => void;
 }) {
-  const [tab, setTab] = createSignal<Tab>(props.topics.length > 0 ? "existing" : "new");
+  const own = () => props.topics.filter((t) => inSpace(t, props.space)).sort(byName);
+  const global = () =>
+    props.topics
+      .filter((t) =>
+        listsInTopics(
+          t,
+          props.spaces.map((g) => g.name),
+        ),
+      )
+      .sort(byName);
+  const offered = () => [...own(), ...global()];
+
+  const [tab, setTab] = createSignal<Tab>(offered().length > 0 ? "existing" : "new");
+  const [where, setWhere] = createSignal<Where>("space");
   const [refusal, setRefusal] = createSignal<string | null>(null);
   const [checked, setChecked] = createSignal(false);
   const [topicId, setTopicId] = createSignal("");
+  const [query, setQuery] = createSignal("");
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 
@@ -52,8 +73,16 @@ export default function MoveToTopicDialog(props: {
       .finally(() => setChecked(true));
   });
 
-  const sorted = () => [...props.topics].sort(byName);
-  const picked = () => props.topics.find((t) => t.id === topicId());
+  const scope = () => props.spaces.find((g) => g.name === props.space);
+  const groups = () =>
+    [
+      { label: `In ${props.space}`, topics: own() },
+      { label: "Topics", topics: global() },
+    ]
+      .map((g) => ({ ...g, topics: g.topics.filter((t) => matchesTopic(t, query())) }))
+      .filter((g) => g.topics.length > 0);
+
+  const picked = () => offered().find((t) => t.id === topicId());
   const existing = () => picked()?.members.find((m) => samePath(m.repoPath, props.repoPath));
   const taken = () => {
     const t = picked();
@@ -94,6 +123,29 @@ export default function MoveToTopicDialog(props: {
   };
   const chatHint = () => <Show when={chatNote()}>{(note) => <div class={styles.hint}>{note()}</div>}</Show>;
 
+  const whereControl = () => (
+    <div>
+      <SegmentedControl
+        aria-label="Where"
+        options={[
+          {
+            value: "space" as const,
+            label: props.space,
+            icon: <SpaceMark name={props.space} icon={scope()?.icon} color={scope()?.color} size="sm" />,
+          },
+          { value: "global" as const, label: "Topics", icon: <Icon icon={Tag} /> },
+        ]}
+        value={where()}
+        onChange={setWhere}
+      />
+      <div class={styles.hint}>
+        {where() === "space"
+          ? `Lives in ${props.space}'s tree. Can hold ${props.space}'s projects only.`
+          : "Listed in Topics. Can hold projects from any space."}
+      </div>
+    </div>
+  );
+
   // Both stay mounted and only one is open, so a tab switch keeps what was
   // typed on New: its state lives in the component, not in the dialog's content.
   const onNew = () => checked() && !refusal() && tab() === "new";
@@ -109,7 +161,7 @@ export default function MoveToTopicDialog(props: {
           <>
             <Button onClick={() => props.onCancel()}>Cancel</Button>
             <Button variant="primary" disabled={!canMove()} onClick={() => void move()}>
-              {busy() ? "Working…" : "Move to Topic"}
+              {busy() ? "Working…" : "Move"}
             </Button>
           </>
         }
@@ -123,23 +175,61 @@ export default function MoveToTopicDialog(props: {
         </Show>
         <Show when={checked() && !refusal()}>
           {tabs()}
-          <Show when={props.topics.length > 0} fallback={<div class={styles.msg}>No Topics yet.</div>}>
-            <div>
-              <div id={TOPIC_LABEL} class={styles.label}>
-                Topic
-              </div>
-              <Select
-                options={sorted().map((t) => ({ value: t.id, label: t.name }))}
-                value={topicId()}
-                placeholder="Pick a Topic"
-                onChange={setTopicId}
-                aria-labelledby={TOPIC_LABEL}
+          <Show when={offered().length > 0} fallback={<div class={styles.msg}>No Topics yet.</div>}>
+            <div class={styles.topicFilter}>
+              <Icon icon={Search} class={styles.topicFilterIcon} />
+              <input
+                type="search"
+                aria-label="Search Topics"
+                placeholder="Search Topics"
+                value={query()}
+                onInput={(e) => setQuery(e.currentTarget.value)}
+                autocapitalize="off"
+                autocorrect="off"
+                spellcheck={false}
               />
-              <Show when={taken()}>{(why) => <div class={styles.hint}>{why()}</div>}</Show>
-              <Show when={!taken() && existing()}>
-                {(m) => <div class={styles.hint}>Replaces the reference to {m().displayName}</div>}
-              </Show>
             </div>
+            <Show when={groups().length > 0} fallback={<div class={styles.pickedEmpty}>No Topic matches.</div>}>
+              <For each={groups()}>
+                {(group) => (
+                  <div role="radiogroup" aria-label={`${group.label}, ${group.topics.length}`} class={styles.moveGroup}>
+                    <div class={styles.repoGroupLabel} aria-hidden="true">
+                      {group.label} <span class={styles.repoGroupCount}>{group.topics.length}</span>
+                    </div>
+                    <For each={group.topics}>
+                      {(t) => (
+                        <label class={styles.moveRow} data-picked={topicId() === t.id ? "" : undefined}>
+                          <input
+                            type="radio"
+                            name={PICK_NAME}
+                            value={t.id}
+                            checked={topicId() === t.id}
+                            onChange={() => setTopicId(t.id)}
+                          />
+                          <span class={styles.moveName}>{t.name}</span>
+                          <span class={styles.moveChips}>
+                            <For each={tintedMembers(t, props.spaces)}>
+                              {(m) => (
+                                <MemberChip
+                                  icon={m.icon}
+                                  chipStyle={m.style}
+                                  reference={isReference(m.member)}
+                                  decorative
+                                />
+                              )}
+                            </For>
+                          </span>
+                        </label>
+                      )}
+                    </For>
+                  </div>
+                )}
+              </For>
+            </Show>
+            <Show when={taken()}>{(why) => <div class={styles.hint}>{why()}</div>}</Show>
+            <Show when={!taken() && existing()}>
+              {(m) => <div class={styles.hint}>Replaces the reference to {m().displayName}</div>}
+            </Show>
             <div class={styles.msg}>The worktree keeps its branch and its changes. Nothing in git changes.</div>
             {chatHint()}
           </Show>
@@ -149,10 +239,13 @@ export default function MoveToTopicDialog(props: {
         open={onNew()}
         spaces={props.spaces}
         topics={props.topics}
+        space={where() === "space" ? props.space : undefined}
         pinned={{ repoPath: props.repoPath, worktreePath: props.worktreePath, branch: props.branch }}
+        confirmLabel="Create and move"
         header={
           <>
             {tabs()}
+            {whereControl()}
             {chatHint()}
           </>
         }

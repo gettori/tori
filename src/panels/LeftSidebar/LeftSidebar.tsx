@@ -224,7 +224,8 @@ import {
   isReference,
   tabUnderFolder,
   inSpace,
-  isGlobal,
+  listsInTopics,
+  spaceGone,
   type Topic,
 } from "../../utils/topics";
 import { dockOpen } from "../../layout/dockStore";
@@ -693,7 +694,7 @@ export default function LeftSidebar(props: {
   } | null>(null);
 
   // The worktree a "Move to topic" was asked for.
-  const [moveReq, setMoveReq] = createSignal<{ p: Project; u: BranchUnit } | null>(null);
+  const [moveReq, setMoveReq] = createSignal<{ g: Space; p: Project; u: BranchUnit } | null>(null);
 
   // The branch removal confirmation (plain-repo branch units). Mirrors wtReq:
   // unpushed/hasRemote fill in async from `branch_status`, `busy` gates the buttons.
@@ -2624,7 +2625,7 @@ export default function LeftSidebar(props: {
     if (checkedOut) items.push(secondOpinionItem(u.folderPath));
     if (u.kind === "worktree") {
       items.push({ separator: true });
-      items.push({ label: "Move to topic…", onClick: () => setMoveReq({ p, u }) });
+      items.push({ label: "Move to topic…", onClick: () => setMoveReq({ g, p, u }) });
       items.push({ label: "Remove worktree", warn: true, onClick: () => openRemoveWorktree(p, u) });
     }
     // Plain branch-unit: checkout always; detach/delete only off the current
@@ -3197,9 +3198,9 @@ export default function LeftSidebar(props: {
   });
   const shownSpaceTopics = createMemo(() => spaceTopics().filter((t) => matchesTopic(t, query())));
   const topicsGroupSpace = () => (shownSpaceTopics().length > 0 ? activeSpace() : null);
-  // Before the config loads no space is known, so none is taken for gone.
-  const goneSpace = (name: string | undefined) => !!name && !!config() && !visibleSpaces().some((g) => g.name === name);
-  const inTopicsMode = (t: Topic) => isGlobal(t) || goneSpace(t.space);
+  const knownSpaces = () => (config() ? visibleSpaces().map((g) => g.name) : null);
+  const goneSpace = (name: string | undefined) => spaceGone(name, knownSpaces());
+  const inTopicsMode = (t: Topic) => listsInTopics(t, knownSpaces());
   const counted = (shown: number, all: number) => (q() ? `${shown} of ${all}` : `${all}`);
 
   let unlistenConfig: UnlistenFn | undefined;
@@ -4059,6 +4060,7 @@ export default function LeftSidebar(props: {
             worktreePath={req().u.folderPath}
             label={req().u.label}
             branch={req().u.branch}
+            space={req().g.name}
             topics={topics()}
             spaces={visibleSpaces()}
             onDone={(topic) => {

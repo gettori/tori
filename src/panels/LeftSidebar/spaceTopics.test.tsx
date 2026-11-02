@@ -70,6 +70,10 @@ vi.mock("@tauri-apps/api/core", () => ({
         branch: String(args.branch),
         home: "/home/new",
       });
+    if (cmd === "add_member") {
+      const t = (bridge.topics as ReturnType<typeof topic>[]).find((t) => t.id === args.topicId)!;
+      return Promise.resolve({ ...t, members: [...t.members, member(LAB, "lab", String(args.worktreePath))] });
+    }
     if (cmd === "list_sessions" || cmd === "list_project_attempts" || cmd === "sessions_running")
       return Promise.resolve([]);
     if (cmd === "folder_historical") return Promise.resolve(false);
@@ -252,5 +256,33 @@ describe("Topics in a space's tree", () => {
     expect(screen.getByText("Ship")).toBeTruthy();
     expect(localStorage.getItem("tori.sidebar-mode.v1")).toBe("spaces");
     off();
+  });
+
+  describe("moving a worktree into a Topic", () => {
+    const asReference = (t: ReturnType<typeof topic>) => ({
+      ...t,
+      members: [{ ...member(REPO, "repo"), mode: "reference" }],
+    });
+    beforeEach(() => {
+      bridge.topics = [asReference(PAY), asReference(AUTH)];
+    });
+
+    const moveMain = async (into: string) => {
+      localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:work/repo"]));
+      const { sel } = mount();
+      fireEvent.contextMenu(await screen.findByText("main"));
+      pointerClick(await screen.findByText("Move to topic…"));
+      fireEvent.click(await screen.findByRole("radio", { name: into }));
+      fireEvent.click(screen.getByRole("button", { name: "Move" }));
+      return sel;
+    };
+
+    it("lands on a space Topic in its space's tree", async () => {
+      const sel = await moveMain("Pay");
+      await waitFor(() => expect(sel()?.topicId).toBe("pay"));
+      expect(localStorage.getItem("tori.sidebar-mode.v1")).toBe("spaces");
+      expect(localStorage.getItem("tori.active-space.v1")).toBe("work");
+      expect(spacesTree().getByText("Pay")).toBeTruthy();
+    });
   });
 });
