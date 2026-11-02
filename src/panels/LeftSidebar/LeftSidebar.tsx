@@ -1457,13 +1457,18 @@ export default function LeftSidebar(props: {
   // delete (so no agent writes into a vanishing cwd), then remove the folder and
   // clear the selection if it pointed inside. Routes by mode: a space calls
   // `delete_space`, a plain folder `remove_folder`, a git project `remove_project`.
+  async function discardSpaceTopics(space: string) {
+    for (const t of topics().filter((t) => inSpace(t, space))) await topicActions.discard(t);
+  }
+
   async function confirmDeleteSpace() {
     const req = deleteReq();
     if (!req) return;
     setDeleteReq(null);
-    emitWith<PurgeUnderPath>(PURGE_UNDER_PATH, { path: req.path });
     const cmd = req.mode === "folder" ? "remove_folder" : req.mode === "project" ? "remove_project" : "delete_space";
     try {
+      if (req.mode === "space") await discardSpaceTopics(req.name);
+      emitWith<PurgeUnderPath>(PURGE_UNDER_PATH, { path: req.path });
       await invoke(cmd, { path: req.path });
       dropSelectionUnder((f) => isUnderPath(f, req.path));
       await loadConfig();
@@ -4023,6 +4028,8 @@ export default function LeftSidebar(props: {
                 ? "Remove project"
                 : undefined
           }
+          topics={deleteReq()!.mode === "space" ? topics() : undefined}
+          spaces={config()?.spaces}
           onConfirm={() => confirmDeleteSpace()}
           onCancel={() => setDeleteReq(null)}
         />

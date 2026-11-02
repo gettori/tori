@@ -373,23 +373,11 @@ export function createTopicActions(host: TopicActionsHost) {
   async function remove(topic: Topic, members: MemberRisk[]) {
     setDeleteReq(null);
     try {
-      await invoke("delete_topic", { topicId: topic.id });
+      await discard(topic);
     } catch (e) {
       setError(String(e));
       return;
     }
-    dropTopic(topic.id);
-    // The member roots go with the key: the three debug stores key on one, and
-    // `delete_topic` has already taken the record they could be read back
-    // from. Same rule as `tintedMember.key`, so the sweep names the folder the
-    // panels wrote under.
-    purgeWorkspace(
-      topicKey(topic.id),
-      // Never a reference's folder: that is the user's own checkout, and the
-      // keys under it belong to its Spaces unit as much as to this Topic.
-      topic.members.filter((m) => !isReference(m)).map((m) => m.worktreePath ?? m.repoPath),
-    );
-    host.onDeleted?.(topic);
     const left = withStatuses(members).filter((m): m is SweepMember => !!m.worktreePath);
     if (!left.length) return;
     setSweepReq({ topic, members: left, busy: false, failures: {}, running: {} });
@@ -402,6 +390,19 @@ export function createTopicActions(host: TopicActionsHost) {
           setSweepReq((r) => (r && r.topic.id === topic.id ? { ...r, running: { ...r.running, [m.repoPath]: n } } : r)),
         );
     }
+  }
+
+  async function discard(topic: Topic) {
+    await invoke("delete_topic", { topicId: topic.id });
+    dropTopic(topic.id);
+    // The debug stores key on member roots, not on the Topic key.
+    purgeWorkspace(
+      topicKey(topic.id),
+      // Never a reference's folder: that is the user's own checkout, and the
+      // keys under it belong to its Spaces unit as much as to this Topic.
+      topic.members.filter((m) => !isReference(m)).map((m) => m.worktreePath ?? m.repoPath),
+    );
+    host.onDeleted?.(topic);
   }
 
   // Every row through the same purge-then-remove helper as Remove repository,
@@ -515,6 +516,7 @@ export function createTopicActions(host: TopicActionsHost) {
     renameMember,
     confirmRemoveWorktree,
     remove,
+    discard,
     sweep,
     openDelete,
     keepInTopics: (topic: Topic) => void mutate("set_topic_space", { topicId: topic.id, space: null }),
