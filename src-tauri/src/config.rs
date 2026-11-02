@@ -729,6 +729,41 @@ pub(crate) fn discovery_root() -> Option<PathBuf> {
         .map(|r| PathBuf::from(expand_tilde(r)))
 }
 
+pub(crate) fn space_roots(name: &str) -> Option<Vec<PathBuf>> {
+    let raw = read_raw_config();
+    let root = PathBuf::from(expand_tilde(raw.discovery.roots.first()?));
+    space_roots_in(&root, name, &raw.discovery.ignore)
+}
+
+pub(crate) fn space_roots_in(root: &Path, name: &str, ignore: &[String]) -> Option<Vec<PathBuf>> {
+    let mut parts = Path::new(name).components();
+    if !matches!(
+        (parts.next(), parts.next()),
+        (Some(std::path::Component::Normal(_)), None)
+    ) || skipped(name, ignore)
+    {
+        return None;
+    }
+    let space = root.join(name);
+    if !space.is_dir() {
+        return None;
+    }
+    let mut dirs = vec![space.clone()];
+    match std::fs::read_dir(&space) {
+        Ok(entries) => dirs.extend(
+            entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.is_dir() && !skipped(&basename(p), ignore)),
+        ),
+        Err(e) => eprintln!("tori: cannot list space {}: {e}", space.display()),
+    }
+    // A project symlinked in from elsewhere still counts as the space's.
+    let resolved: Vec<PathBuf> = dirs.iter().filter_map(|d| d.canonicalize().ok()).collect();
+    dirs.extend(resolved);
+    Some(dirs)
+}
+
 pub(crate) fn discovered_project_dirs() -> Vec<PathBuf> {
     let raw = read_raw_config();
     match raw.discovery.roots.first() {

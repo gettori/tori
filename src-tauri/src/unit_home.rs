@@ -287,6 +287,7 @@ pub(crate) mod tests {
             ],
             created_at: 0,
             promotion: Default::default(),
+            space: None,
             home: Some("/cfg/topics/auth-1".into()),
         }
     }

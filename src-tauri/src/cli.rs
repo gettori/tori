@@ -396,7 +396,12 @@ fn project_lines(tree: &Value) -> Vec<String> {
         }
     }
     for topic in list(tree, "topics") {
-        lines.push(join(vec!["topic".into(), text(&topic, "name"), text(&topic, "branch")]));
+        lines.push(join(vec![
+            "topic".into(),
+            text(&topic, "name"),
+            text(&topic, "branch"),
+            text(&topic, "space"),
+        ]));
         for member in list(&topic, "members") {
             let at = member.get("worktreePath").and_then(Value::as_str).unwrap_or("");
             let cells = vec![
@@ -2268,7 +2273,7 @@ mod tests {
             ]}]}],
             "topics": [{ "name": "auth", "branch": "auth", "members": [
                 { "displayName": "repo", "worktreePath": "/w/repo/.tori/worktrees/auth", "state": { "kind": "present" } },
-            ]}],
+            ]}, { "name": "billing", "branch": "billing", "space": "work", "members": [] }],
         });
         assert_eq!(
             project_lines(&tree),
@@ -2279,6 +2284,7 @@ mod tests {
                 "    feat  plain",
                 "topic  auth  auth",
                 "  repo  /w/repo/.tori/worktrees/auth  present",
+                "topic  billing  billing  work",
             ]
         );
     }

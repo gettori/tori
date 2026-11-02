@@ -672,13 +672,13 @@ mod tests {
     }
 
     fn store(tmp: &Path) -> Store {
-        Store::at(tmp.join("topics.json"))
+        Store::at(tmp.join("topics.json"), crate::topics::no_space)
     }
 
     fn store_with(tmp: &Path, topics: Vec<Topic>) -> Store {
         let path = tmp.join("topics.json");
         std::fs::write(&path, serde_json::json!({ "topics": topics }).to_string()).unwrap();
-        Store::at(path)
+        Store::at(path, crate::topics::no_space)
     }
 
     fn topic(id: &str, member: Member) -> Topic {
@@ -689,6 +689,7 @@ mod tests {
             members: vec![member],
             created_at: 1,
             promotion: Promotion::default(),
+            space: None,
             home: None,
         }
     }
