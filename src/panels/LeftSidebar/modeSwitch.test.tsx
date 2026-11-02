@@ -37,7 +37,15 @@ const AUTH = {
   name: "Auth",
   branch: "feat/auth",
   createdAt: 1,
-  members: [{ repoPath: WORK, displayName: "proj", worktreePath: WAVE, state: { kind: "present" }, order: 0 }],
+  members: [
+    {
+      repoPath: WORK,
+      displayName: "proj",
+      worktreePath: `${WORK}/.tori/worktrees/auth`,
+      state: { kind: "present" },
+      order: 0,
+    },
+  ],
 };
 
 vi.mock("@tauri-apps/api/core", () => ({

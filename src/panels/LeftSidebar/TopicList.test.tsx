@@ -3,7 +3,9 @@ import { render, screen, waitFor, fireEvent, within, cleanup } from "@solidjs/te
 import { pointerClick } from "../../test/menus";
 import { expectNoAxeViolations } from "../../test/axe";
 import { Toast } from "../../lib/toast";
+import { splitProps, type ComponentProps } from "solid-js";
 import { LAST_MEMBER, topicKey, type Topic, type Member, type MemberState } from "../../utils/topics";
+import type { TopicActions, TopicActionsHost } from "./topicActions";
 
 function member(repoPath: string, order: number, state: MemberState = { kind: "present" }): Member {
   return {
@@ -208,7 +210,29 @@ const asReference = (m: Member): Member => ({
 });
 const keepsBranch = (m: Member, branch = "fix-x"): Member => ({ ...m, keepsBranch: true, branch });
 const { enterRoots } = await import("../../utils/gitActions");
-const { emit, NEW_TOPIC } = await import("../../utils/events");
+const { createTopicActions } = await import("./topicActions");
+
+type HostProps = {
+  onSelect?: TopicActionsHost["onSelect"];
+  onDeleted?: TopicActionsHost["onDeleted"];
+  countRunning?: (path: string) => Promise<number>;
+  onExpanded?: (ids: string[]) => void;
+  onActions?: (actions: TopicActions) => void;
+};
+
+// The list as the sidebar hosts it: the actions made from the host's callbacks.
+function Listed(props: Omit<ComponentProps<typeof TopicList>, "actions"> & HostProps) {
+  const [host, rest] = splitProps(props, ["onSelect", "onDeleted", "countRunning", "onExpanded", "onActions"]);
+  const actions = createTopicActions({
+    activeId: () => rest.activeId,
+    onSelect: (topic, moved) => host.onSelect?.(topic, moved),
+    onDeleted: (topic) => host.onDeleted?.(topic),
+    countRunning: (path) => host.countRunning?.(path),
+    onExpanded: (ids) => host.onExpanded?.(ids),
+  });
+  host.onActions?.(actions);
+  return <TopicList {...rest} actions={actions} />;
+}
 
 const SPACES = [
   {
@@ -248,7 +272,7 @@ describe("TopicList", () => {
 
   it("renders one row per Topic and filters by name or member", async () => {
     const [query, setQuery] = (await import("solid-js")).createSignal("");
-    render(() => <TopicList spaces={SPACES} query={query()} />);
+    render(() => <Listed spaces={SPACES} query={query()} />);
     await screen.findByText("Auth");
     expect(screen.getByText("Payments")).toBeTruthy();
     setQuery("ledger");
@@ -260,14 +284,14 @@ describe("TopicList", () => {
 
   it("reads a null answer as no Topics and opens the dialog from the empty state", async () => {
     bridge.topics = null;
-    render(() => <TopicList spaces={SPACES} query="" />);
+    render(() => <Listed spaces={SPACES} query="" />);
     await screen.findByText("No Topics yet.");
     fireEvent.click(screen.getByRole("button", { name: "Create a Topic" }));
     expect(await screen.findByRole("dialog", { name: "New Topic" })).toBeTruthy();
   });
 
   it("applies a topics://changed payload without a refetch", async () => {
-    render(() => <TopicList spaces={SPACES} query="" />);
+    render(() => <Listed spaces={SPACES} query="" />);
     await screen.findByText("Payments");
     await waitFor(() => expect(bridge.handlers.has("topics://changed")).toBe(true));
     expect(listCalls()).toBe(1);
@@ -302,7 +326,7 @@ describe("TopicList", () => {
   // The repair lives on the member row now, so it is reached through the
   // disclosure rather than an actions strip under the chips (#159 phase 3).
   it("wires Retry to retry_member and applies the answer", async () => {
-    render(() => <TopicList spaces={SPACES} query="" />);
+    render(() => <Listed spaces={SPACES} query="" />);
     fireEvent.click(await screen.findByRole("button", { name: "Show members of Payments" }));
     fireEvent.click(await screen.findByRole("button", { name: "Retry ledger" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Retry ledger" })).toBeNull());
@@ -320,7 +344,7 @@ describe("TopicList", () => {
     ];
     async function press(state: MemberState, name: string) {
       bridge.topics = broken(state);
-      render(() => <TopicList spaces={SPACES} query="" />);
+      render(() => <Listed spaces={SPACES} query="" />);
       fireEvent.click(await screen.findByRole("button", { name: "Show members of Auth" }));
       fireEvent.click(await screen.findByRole("button", { name }));
     }
@@ -371,6 +395,7 @@ describe("TopicList", () => {
   });
 
   it("closes the dialog on creation and toasts the member that failed", async () => {
+    let actions: TopicActions | undefined;
     bridge.topics = [];
     bridge.created = {
       id: "search-1",
@@ -382,13 +407,11 @@ describe("TopicList", () => {
     render(() => (
       <>
         <ToastRegion />
-        <TopicList spaces={SPACES} query="" />
+        <Listed spaces={SPACES} query="" onActions={(a) => (actions = a)} />
       </>
     ));
-    // The button is the sidebar's now, one component up; this list answers the
-    // event it emits, and the listener is up before the first fetch resolves.
     await screen.findByText("No Topics yet.");
-    emit(NEW_TOPIC);
+    actions!.openNew();
     const dialog = await screen.findByRole("dialog", { name: "New Topic" });
     fireEvent.input(screen.getByRole("textbox", { name: "Name" }), { target: { value: "Search" } });
     fireEvent.click(screen.getByRole("checkbox", { name: "api" }));
@@ -417,7 +440,7 @@ describe("TopicList", () => {
   // The count is the git slot map's, and the editor only enters the open
   // Topic's roots, so every other row sums to nothing without being told to.
   it("sets what a chat gets when it needs a worktree, asking by default", async () => {
-    render(() => <TopicList spaces={SPACES} query="" />);
+    render(() => <Listed spaces={SPACES} query="" />);
     await screen.findByText("Auth");
     fireEvent.contextMenu(row("Auth"));
     expect((await screen.findByText("Ask me first")).closest("[role=menuitem]")?.textContent).toContain("Current");
@@ -435,7 +458,7 @@ describe("TopicList", () => {
   });
 
   it("renames from the context menu", async () => {
-    render(() => <TopicList spaces={SPACES} query="" />);
+    render(() => <Listed spaces={SPACES} query="" />);
     await screen.findByText("Auth");
     fireEvent.contextMenu(row("Auth"));
     pointerClick(await screen.findByText("Rename…"));
@@ -462,7 +485,7 @@ describe("TopicList", () => {
   });
 
   it("opens Add repository with the members left out", async () => {
-    render(() => <TopicList spaces={SPACES} query="" />);
+    render(() => <Listed spaces={SPACES} query="" />);
     await screen.findByText("Payments");
     fireEvent.contextMenu(row("Payments"));
     pointerClick(await screen.findByText("Add repository…"));
@@ -472,7 +495,7 @@ describe("TopicList", () => {
   });
 
   it("deletes the record after a confirm that lists every member, and never a worktree", async () => {
-    render(() => <TopicList spaces={SPACES} query="" />);
+    render(() => <Listed spaces={SPACES} query="" />);
     await screen.findByText("Payments");
     fireEvent.contextMenu(row("Payments"));
     pointerClick(await screen.findByText("Delete…"));
@@ -501,7 +524,7 @@ describe("TopicList", () => {
       fireEvent.click(within(sweepRow(repoPath)).getByRole("button", { name: what }));
 
     async function confirmDelete(onDeleted?: () => void) {
-      render(() => <TopicList spaces={SPACES} query="" onDeleted={onDeleted} />);
+      render(() => <Listed spaces={SPACES} query="" onDeleted={onDeleted} />);
       await screen.findByText("Auth");
       fireEvent.contextMenu(row("Auth"));
       pointerClick(await screen.findByText("Delete…"));
@@ -633,9 +656,7 @@ describe("TopicList", () => {
     // PTYs under the worktree, and only the sweep asks, since only it removes.
     it("says what a removal will stop, per row", async () => {
       bridge.running = { [AUTH_WEB]: 2 };
-      render(() => (
-        <TopicList spaces={SPACES} query="" countRunning={(p) => Promise.resolve(bridge.running[p] ?? 0)} />
-      ));
+      render(() => <Listed spaces={SPACES} query="" countRunning={(p) => Promise.resolve(bridge.running[p] ?? 0)} />);
       await screen.findByText("Auth");
       fireEvent.contextMenu(row("Auth"));
       pointerClick(await screen.findByText("Delete…"));
@@ -699,7 +720,7 @@ describe("TopicList", () => {
     const memberRow = (repoPath: string) => document.querySelector<HTMLElement>(`[data-member="${repoPath}"]`)!;
 
     async function openOn(topicName: string, repoPath: string) {
-      render(() => <TopicList spaces={SPACES} query="" />);
+      render(() => <Listed spaces={SPACES} query="" />);
       await screen.findByText(topicName);
       await expand(topicName);
       fireEvent.contextMenu(memberRow(repoPath));
@@ -809,7 +830,7 @@ describe("TopicList", () => {
       const onMoved = (e: Event) => moved.push((e as CustomEvent).detail);
       window.addEventListener(ROOT_MOVED, onMoved);
       try {
-        render(() => <TopicList spaces={SPACES} query="" activeId="auth-1" onSelect={onSelect} />);
+        render(() => <Listed spaces={SPACES} query="" activeId="auth-1" onSelect={onSelect} />);
         await screen.findByText("Auth");
         await expand("Auth");
         fireEvent.contextMenu(memberRow("/w/web"));
@@ -846,7 +867,7 @@ describe("TopicList", () => {
     it("shows the branch a worktree moved in is on, and no Recreate when it goes missing", async () => {
       const gone = { ...keepsBranch(AUTH.members[1]), state: { kind: "worktree-missing" } as MemberState };
       bridge.topics = [{ ...AUTH, members: [keepsBranch(AUTH.members[0]), gone] }, PAY];
-      render(() => <TopicList spaces={SPACES} query="" />);
+      render(() => <Listed spaces={SPACES} query="" />);
       await screen.findByText("Auth");
       await expand("Auth");
 
@@ -861,7 +882,7 @@ describe("TopicList", () => {
       const onMoved = (e: Event) => moved.push((e as CustomEvent).detail);
       window.addEventListener(ROOT_MOVED, onMoved);
       try {
-        render(() => <TopicList spaces={SPACES} query="" activeId="auth-1" onSelect={onSelect} />);
+        render(() => <Listed spaces={SPACES} query="" activeId="auth-1" onSelect={onSelect} />);
         await screen.findByText("Auth");
         await waitFor(() => expect(bridge.handlers.has("topics://promoted")).toBe(true));
         bridge.handlers.get("topics://promoted")!({

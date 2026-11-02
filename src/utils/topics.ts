@@ -54,9 +54,18 @@ export type Topic = {
   createdAt: number;
   /** Absent on a record the backend wrote before the setting existed. */
   promotion?: Promotion;
+  space?: string;
   /** The folder the Topic's chats run in. Filled by the backend on every read. */
   home?: string;
 };
+
+export function isGlobal(topic: Pick<Topic, "space">): boolean {
+  return !topic.space;
+}
+
+export function inSpace(topic: Pick<Topic, "space">, space: string): boolean {
+  return topic.space === space;
+}
 
 /** The order Topics are listed in, the order `projects.list` serves them in,
  *  so a client drawing from the socket lists them the way the sidebar does. */
@@ -203,7 +212,7 @@ export function topicSelection(topic: Topic, storedActiveRoot?: string | null): 
     roots,
     activeRoot,
     home: topic.home ?? null,
-    spaceName: "",
+    spaceName: topic.space ?? "",
     projectName: topic.name,
     projectPath: activeRoot ?? "",
     folderPath: activeRoot ?? "",

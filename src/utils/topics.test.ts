@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+  inSpace,
+  isGlobal,
   topicSelection,
   topicSlug,
   isTopicKey,
@@ -147,6 +149,22 @@ describe("topicSelection", () => {
     const sel = topicSelection(research);
     expect(sel.roots).toEqual(["/r/api", "/r/web"]);
     expect(sel.activeRoot).toBe("/r/api");
+  });
+
+  it("names the space a space Topic lives in, and none for a global one", () => {
+    expect(topicSelection({ ...TOPIC, space: "saga" }).spaceName).toBe("saga");
+    expect(topicSelection(TOPIC).spaceName).toBe("");
+  });
+});
+
+describe("a Topic's scope", () => {
+  it("is global without a space and in its space only with one", () => {
+    expect(isGlobal(TOPIC)).toBe(true);
+    expect(inSpace(TOPIC, "saga")).toBe(false);
+    const scoped = { ...TOPIC, space: "saga" };
+    expect(isGlobal(scoped)).toBe(false);
+    expect(inSpace(scoped, "saga")).toBe(true);
+    expect(inSpace(scoped, "craft")).toBe(false);
   });
 });
 
