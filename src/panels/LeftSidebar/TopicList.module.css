@@ -20,3 +20,36 @@
   font-size: var(--tori-text-sm);
   color: var(--danger-fg);
 }
+
+.goneNote {
+  display: flex;
+  gap: var(--tori-space-3);
+  margin: calc(2px * var(--ui-scale)) 0 calc(6px * var(--ui-scale)) calc(40px * var(--ui-scale));
+  padding: calc(9px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-md);
+  background: var(--neutral-subtle);
+  font-size: var(--tori-text-sm);
+  color: var(--fg-muted);
+}
+.goneNote p {
+  margin: 0;
+}
+.goneNote strong {
+  font-weight: 600;
+  color: var(--fg-default);
+}
+.goneIcon {
+  flex: 0 0 auto;
+  color: var(--attention-fg);
+}
+.goneBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-3);
+  min-width: 0;
+}
+.goneActions {
+  display: flex;
+  gap: var(--tori-space-2);
+}

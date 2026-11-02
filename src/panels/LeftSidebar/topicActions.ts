@@ -30,6 +30,7 @@ export type TopicActionsHost = {
    *  follow it rather than fall back to the first member. */
   onSelect?: (topic: Topic, moved?: { from: string; to: string }) => void;
   onCreated?: (topic: Topic) => void;
+  onMoved?: (topic: Topic) => void;
   /** The selected Topic was deleted; the shell drops the selection. */
   onDeleted?: (topic: Topic) => void;
   /** The sidebar owns the live-tab list, so it answers this rather than the
@@ -61,6 +62,7 @@ export function createTopicActions(host: TopicActionsHost) {
   const [error, setError] = createSignal<string | null>(null);
   const [dialog, setDialog] = createSignal<DialogReq | null>(null);
   const [renameReq, setRenameReq] = createSignal<Topic | null>(null);
+  const [moveReq, setMoveReq] = createSignal<Topic | null>(null);
   // The delete confirm and the sweep that follows it, both carrying the same
   // per-member risk rows: the confirm fetches them, the sweep inherits them
   // rather than asking git the same question twice in a row.
@@ -183,6 +185,12 @@ export function createTopicActions(host: TopicActionsHost) {
     const trimmed = name.trim();
     if (!trimmed || trimmed === topic.name) return;
     await mutate("rename_topic", { topicId: topic.id, name: trimmed });
+  }
+
+  function moved(topic: Topic) {
+    setMoveReq(null);
+    applyTopic(topic);
+    host.onMoved?.(topic);
   }
 
   async function renameMember(topic: Topic, member: Member, name: string) {
@@ -434,6 +442,7 @@ export function createTopicActions(host: TopicActionsHost) {
 
   const menu = (topic: Topic): MenuItem[] => [
     { label: "Rename…", onClick: () => setRenameReq(topic) },
+    { label: "Move to…", onClick: () => setMoveReq(topic) },
     { label: "Add repository…", onClick: () => setDialog({ topic }) },
     { separator: true },
     { heading: "When a chat needs a worktree" },
@@ -486,6 +495,9 @@ export function createTopicActions(host: TopicActionsHost) {
     openNew: (space?: string) => setDialog(space ? { space } : {}),
     renameReq,
     setRenameReq,
+    moveReq,
+    setMoveReq,
+    moved,
     memberRenameReq,
     setMemberRenameReq,
     deleteReq,
@@ -504,6 +516,8 @@ export function createTopicActions(host: TopicActionsHost) {
     confirmRemoveWorktree,
     remove,
     sweep,
+    openDelete,
+    keepInTopics: (topic: Topic) => void mutate("set_topic_space", { topicId: topic.id, space: null }),
     menu,
     memberMenu,
   };
