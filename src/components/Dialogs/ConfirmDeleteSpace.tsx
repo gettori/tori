@@ -4,6 +4,9 @@ import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
 import Icon from "../Icon/Icon";
+import MemberChip from "../MemberChip/MemberChip";
+import { spaceOfMember, tintedMembers, type SpaceTint } from "../../utils/topicMembers";
+import { byName, inSpace, isReference, type Topic } from "../../utils/topics";
 
 // The visible "Type <name> to confirm" line is also the field's accessible name
 // (the `aria-labelledby` convention `NewProjectDialog` set in #99), so the two
@@ -29,6 +32,8 @@ function formatBytes(n: number): string {
   }
   return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
+
+const members = (n: number) => `${n} ${n === 1 ? "member" : "members"}`;
 
 const KIND_GLYPH = { repo: FolderGit2, folder: Folder, file: FileText } as const;
 
@@ -67,6 +72,8 @@ export default function ConfirmDeleteSpace(props: {
   // space (defaults keep the space wording).
   title?: string;
   confirmLabel?: string;
+  topics?: readonly Topic[];
+  spaces?: SpaceTint[];
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -77,6 +84,21 @@ export default function ConfirmDeleteSpace(props: {
   // At-risk first, then whatever order the preview arrived in (the backend
   // sorts by name). A stable sort, so the tail keeps that order.
   const rows = createMemo(() => [...props.entries].sort((a, b) => Number(b.unpushed) - Number(a.unpushed)));
+  const deleted = createMemo(() => (props.topics ?? []).filter((t) => inSpace(t, props.spaceName)).sort(byName));
+  const losing = createMemo(() => {
+    const spaces = props.spaces ?? [];
+    const here = (t: Topic) => t.members.filter((m) => spaceOfMember(m, spaces)?.name === props.spaceName);
+    return (props.topics ?? [])
+      .filter((t) => !inSpace(t, props.spaceName) && here(t).length > 0)
+      .sort(byName)
+      .map((t) => {
+        const lost = here(t);
+        const chips = tintedMembers(t, spaces).map((m) => ({ ...m, lost: lost.includes(m.member) }));
+        const names = chips.filter((m) => m.lost).map((m) => m.label);
+        const empty = lost.length === t.members.length ? " \u00b7 left empty" : "";
+        return { topic: t, chips, note: `Loses ${names.join(", ")}${empty}` };
+      });
+  });
   const unpushedCount = () => props.entries.filter((e) => e.unpushed).length;
 
   // A plain folder has no git to be behind on, so the third panel reports the
@@ -188,6 +210,59 @@ export default function ConfirmDeleteSpace(props: {
             </div>
           </div>
         </div>
+
+        <Show when={deleted().length > 0}>
+          <div class={styles.spaceField}>
+            <div class={styles.spaceLabel}>
+              Topics deleted with it <span class={styles.repoGroupCount}>{deleted().length}</span>
+            </div>
+            <div class={`${styles.contentsPanel} ${styles.contents}`}>
+              <For each={deleted()}>
+                {(t) => (
+                  <div class={styles.contentsRow}>
+                    <span class={styles.topicRowName}>{t.name}</span>
+                    <span class={styles.rowBadges}>
+                      <span class={styles.rowNote}>{members(t.members.length)}</span>
+                    </span>
+                  </div>
+                )}
+              </For>
+            </div>
+          </div>
+        </Show>
+
+        <Show when={losing().length > 0}>
+          <div class={styles.spaceField}>
+            <div class={styles.spaceLabel}>
+              Global Topics that lose members <span class={styles.repoGroupCount}>{losing().length}</span>
+            </div>
+            <div class={`${styles.contentsPanel} ${styles.contents}`}>
+              <For each={losing()}>
+                {(row) => (
+                  <div class={styles.contentsRow}>
+                    <span class={styles.lossText}>
+                      <span class={styles.topicRowName}>{row.topic.name}</span>
+                      <span class={styles.rowNote}>{row.note}</span>
+                    </span>
+                    <span class={styles.rowBadges}>
+                      <For each={row.chips}>
+                        {(m) => (
+                          <MemberChip
+                            icon={m.icon}
+                            chipStyle={m.style}
+                            reference={isReference(m.member)}
+                            classList={{ [styles.lostChip]: m.lost }}
+                            decorative
+                          />
+                        )}
+                      </For>
+                    </span>
+                  </div>
+                )}
+              </For>
+            </div>
+          </div>
+        </Show>
 
         <div class={styles.spaceField}>
           <div id={CONFIRM_LABEL} class={styles.spaceLabel}>
