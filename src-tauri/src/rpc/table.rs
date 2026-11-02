@@ -23,7 +23,7 @@ use super::server::{
 };
 use super::server::{
     AttemptNewParams, ChatCallParams, SpaceOrderParams, SpaceParams, TopicIdParams, TopicMemberAddParams,
-    TopicMemberOrderParams, TopicMemberParams, TopicNewParams, TopicRenameParams,
+    TopicMemberOrderParams, TopicMemberParams, TopicNewParams, TopicRenameParams, TopicSpaceParams,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -302,6 +302,16 @@ pub static METHODS: &[Method] = &[
         outward: false,
         read_only: false,
         call: |b, _, v| b.topic_rename(params(v)?),
+    },
+    Method {
+        name: "topic.space",
+        description: "List a Topic in a space's tree, which must hold every member, or in Topics with a null space.",
+        params: schema::<TopicSpaceParams>,
+        callers: LOCAL_AND_DEVICES,
+        refusal: None,
+        outward: false,
+        read_only: false,
+        call: |b, _, v| b.topic_space(params(v)?),
     },
     Method {
         name: "topic.delete",

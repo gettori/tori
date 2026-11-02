@@ -2047,13 +2047,13 @@ mod tests {
         )
         .unwrap();
         let root_s = root.to_string_lossy().into_owned();
-        let store = Store::at(tmp.join("topics.json"));
+        let store = Store::at(tmp.join("topics.json"), crate::topics::no_space);
         let members = [NewMember {
             repo_path: root_s.clone(),
             mode: MemberMode::Reference,
             worktree_path: None,
         }];
-        let topic = create_topic_with(&store, "X", "feat/x", &members, &|_| {}).unwrap();
+        let topic = create_topic_with(&store, "X", "feat/x", None, &members, &|_| {}).unwrap();
         let home = topic.home.clone().unwrap();
 
         let launch = crate::topic_home::launch_for(&store, &home).expect("a home chat");
