@@ -5,7 +5,8 @@ import { PICKER_ICONS, resolveIcon } from "../../src/components/Icon/iconRegistr
 import { SPACE_COLORS, spaceHueRgb } from "../../src/utils/spaceTint";
 import { spaceInitials } from "../../src/utils/names";
 import type { RemoteClient } from "./remote";
-import type { Project, Space } from "./tree";
+import { topicSlug } from "../../src/utils/topics";
+import type { Space } from "./tree";
 import styles from "./shell.module.css";
 
 const ICON_SHELF = 18;
@@ -212,7 +213,7 @@ export function SpacesSheet(props: {
   );
 }
 
-export type Choice = { label: string; meta?: string; value: string };
+export type Choice = { label: string; meta?: string; value: string; disabled?: boolean };
 
 export function ChoiceSheet(props: {
   title: string;
@@ -234,7 +235,7 @@ export function ChoiceSheet(props: {
             <li>
               <button
                 class={styles.item}
-                disabled={busy()}
+                disabled={busy() || choice.disabled}
                 onClick={() =>
                   void attempt(setBusy, setError, async () => {
                     await props.onPick(choice.value);
@@ -261,15 +262,23 @@ type Mode = "worktree" | "reference";
 
 export function TopicForm(props: {
   client: RemoteClient;
-  projects: Project[];
+  spaces: Space[];
+  space: string | undefined;
   onSaved: () => void;
   onDone: () => void;
 }) {
   const [name, setName] = createSignal("");
-  const [branch, setBranch] = createSignal("");
+  const [where, setWhere] = createSignal<"space" | "global">(props.space ? "space" : "global");
   const [picked, setPicked] = createSignal<Record<string, Mode>>({});
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
+  const groups = () =>
+    where() === "space"
+      ? props.spaces
+          .filter((g) => g.name === props.space)
+          .map((g) => ({ label: `Projects in ${g.name}`, projects: g.projects }))
+      : props.spaces.map((g) => ({ label: g.name, projects: g.projects }));
+  const offered = () => new Set(groups().flatMap((g) => g.projects.map((p) => p.path)));
   const toggle = (path: string, mode: Mode | null) =>
     setPicked((prev) => {
       const next = { ...prev };
@@ -277,19 +286,28 @@ export function TopicForm(props: {
       else delete next[path];
       return next;
     });
-  const members = () => Object.entries(picked()).map(([repoPath, mode]) => ({ repoPath, mode }));
+  const members = () =>
+    Object.entries(picked())
+      .filter(([repoPath]) => offered().has(repoPath))
+      .map(([repoPath, mode]) => ({ repoPath, mode }));
+  const branch = () => topicSlug(name());
   const needsBranch = () => members().some((m) => m.mode === "worktree");
-  const ready = () => name().trim() !== "" && members().length > 0 && (!needsBranch() || branch().trim() !== "");
+  const ready = () => name().trim() !== "" && members().length > 0 && (!needsBranch() || branch() !== "");
   const save = () =>
     attempt(setBusy, setError, async () => {
-      await props.client.request("topic.new", { name: name().trim(), branch: branch().trim(), members: members() });
+      await props.client.request("topic.new", {
+        name: name().trim(),
+        branch: branch(),
+        members: members(),
+        ...(where() === "space" && props.space ? { space: props.space } : {}),
+      });
       props.onSaved();
       props.onDone();
     });
   return (
     <Sheet
       title="New Topic"
-      action={{ label: "Create Topic", busy: busy(), disabled: !ready(), run: () => void save() }}
+      action={{ label: "Create", busy: busy(), disabled: !ready(), run: () => void save() }}
       error={error()}
       onDone={props.onDone}
     >
@@ -298,42 +316,67 @@ export function TopicForm(props: {
           Name
           <input value={name()} onInput={(e) => setName(e.currentTarget.value)} />
         </label>
-        <label class={styles.field}>
-          Branch
-          <input class={styles.mono} value={branch()} onInput={(e) => setBranch(e.currentTarget.value)} />
-        </label>
       </div>
-      <h2 class={styles.label}>Repositories</h2>
-      <ul class={styles.group}>
-        <For each={props.projects}>
-          {(project) => (
-            <li>
-              <div class={`${styles.item} ${styles.setting}`}>
-                <span class={styles.text}>{project.name}</span>
-                <span class={styles.segments}>
-                  <button aria-pressed={!picked()[project.path]} onClick={() => toggle(project.path, null)}>
-                    Off
-                  </button>
-                  <button
-                    aria-pressed={picked()[project.path] === "worktree"}
-                    onClick={() => toggle(project.path, "worktree")}
-                  >
-                    Worktree
-                  </button>
-                  <button
-                    aria-pressed={picked()[project.path] === "reference"}
-                    onClick={() => toggle(project.path, "reference")}
-                  >
-                    Reference
-                  </button>
-                </span>
-              </div>
-            </li>
-          )}
-        </For>
-      </ul>
+      <Show when={props.space}>
+        {(space) => (
+          <>
+            <h2 class={styles.label}>Where</h2>
+            <div class={styles.typedBody}>
+              <span class={styles.segments} role="group" aria-label="Where">
+                <button aria-pressed={where() === "space"} onClick={() => setWhere("space")}>
+                  {space()}
+                </button>
+                <button aria-pressed={where() === "global"} onClick={() => setWhere("global")}>
+                  Topics
+                </button>
+              </span>
+              <p class={styles.footnote}>
+                {where() === "space"
+                  ? `Lives in ${space()}'s tree. Can hold ${space()}'s projects only.`
+                  : "Listed in Topics. Can hold projects from any space."}
+              </p>
+            </div>
+          </>
+        )}
+      </Show>
+      <For each={groups()}>
+        {(group) => (
+          <>
+            <h2 class={styles.label}>{group.label}</h2>
+            <ul class={styles.group}>
+              <For each={group.projects} fallback={<li class={styles.empty}>No projects</li>}>
+                {(project) => (
+                  <li>
+                    <div class={`${styles.item} ${styles.setting}`}>
+                      <span class={styles.text}>{project.name}</span>
+                      <span class={styles.segments} role="group" aria-label={project.name}>
+                        <button aria-pressed={!picked()[project.path]} onClick={() => toggle(project.path, null)}>
+                          Off
+                        </button>
+                        <button
+                          aria-pressed={picked()[project.path] === "worktree"}
+                          onClick={() => toggle(project.path, "worktree")}
+                        >
+                          Worktree
+                        </button>
+                        <button
+                          aria-pressed={picked()[project.path] === "reference"}
+                          onClick={() => toggle(project.path, "reference")}
+                        >
+                          Reference
+                        </button>
+                      </span>
+                    </div>
+                  </li>
+                )}
+              </For>
+            </ul>
+          </>
+        )}
+      </For>
       <p class={styles.footnote}>
-        A worktree member gets its own worktree on the branch. Reference is read only: the repository's own checkout.
+        A worktree member gets its own worktree on <span class={styles.mono}>{branch() || "the Topic branch"}</span>.
+        Reference is read only: the repository's own checkout.
       </p>
     </Sheet>
   );

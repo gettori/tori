@@ -1,4 +1,5 @@
 import { rollupStatuses, statusFromDot, type Rollup } from "../../src/utils/sessionStatus";
+import { listsInTopics } from "../../src/utils/topics";
 
 export type Home = { project: string; folder: string; branch: string | null; topic?: string };
 
@@ -49,7 +50,14 @@ export type TopicMember = {
   order: number;
 };
 
-export type Topic = { id: string; name: string; branch: string; members: TopicMember[]; home?: string };
+export type Topic = {
+  id: string;
+  name: string;
+  branch: string;
+  members: TopicMember[];
+  home?: string;
+  space?: string;
+};
 
 export type Tree = { spaces: Space[]; topics: Topic[] };
 
@@ -130,4 +138,32 @@ export function projectRows(project: Project, live: SessionRow[]): SessionRow[] 
 
 export function matches(text: string | null | undefined, query: string): boolean {
   return !!text && text.toLowerCase().includes(query.toLowerCase());
+}
+
+const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
+
+export function spaceOfRepo(spaces: Space[], repoPath: string): Space | undefined {
+  return spaces.find((s) => s.projects.some((p) => p.path === repoPath));
+}
+
+export function spaceTopics(tree: Tree, space: string): Topic[] {
+  return tree.topics.filter((t) => t.space === space).sort(byName);
+}
+
+export function topicsTabTopics(tree: Tree): Topic[] {
+  const known = tree.spaces.map((s) => s.name);
+  return tree.topics.filter((t) => listsInTopics(t, known)).sort(byName);
+}
+
+export function topicSpaces(tree: Tree, topic: Topic): string[] {
+  const names = [...topic.members]
+    .sort((a, b) => a.order - b.order)
+    .map((m) => spaceOfRepo(tree.spaces, m.repoPath)?.name)
+    .filter((n): n is string => !!n);
+  return [...new Set(names)];
+}
+
+export function joinableTopics(tree: Tree, repoPath: string | null): Topic[] {
+  const space = repoPath ? spaceOfRepo(tree.spaces, repoPath)?.name : undefined;
+  return [...(space ? spaceTopics(tree, space) : []), ...topicsTabTopics(tree)];
 }

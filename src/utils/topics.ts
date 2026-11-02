@@ -85,6 +85,30 @@ export function byName(a: Pick<Topic, "name">, b: Pick<Topic, "name">): number {
   return x < y ? -1 : x > y ? 1 : a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 }
 
+function listed(names: string[]): string {
+  return names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+export function refusedReason<M extends Pick<Member, "repoPath" | "displayName" | "order">>(
+  topic: { members: readonly M[] },
+  space: string,
+  homeOf: (member: M) => string | null,
+): string | null {
+  const from = new Map<string | null, string[]>();
+  for (const m of [...topic.members].sort((a, b) => a.order - b.order)) {
+    const home = homeOf(m);
+    if (home === space) continue;
+    from.set(home, [...(from.get(home) ?? []), m.displayName]);
+  }
+  if (!from.size) return null;
+  return [...from]
+    .map(
+      ([home, names]) =>
+        `${listed(names)} ${names.length > 1 ? "are" : "is"} ${home === null ? "in no space" : `in ${home}`}`,
+    )
+    .join("; ");
+}
+
 /** The branch a creation dialog suggests for a Topic name: every character
  *  outside `[A-Za-z0-9._-]` becomes `-`, lowercased, runs of `-` collapsed,
  *  edges trimmed. Empty when nothing usable remains. */
