@@ -439,6 +439,48 @@
   gap: var(--tori-space-2);
   flex: 0 0 auto;
 }
+button.moveRow {
+  width: 100%;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+.moveGlyph {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--fg-muted);
+}
+.moveText {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.moveNote {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tori-space-2);
+  font-size: var(--tori-text-sm);
+  color: var(--fg-muted);
+}
+.moveCurrent {
+  flex: 0 0 auto;
+  font-size: var(--tori-text-sm);
+  color: var(--fg-subtle);
+}
+.moveRefused {
+  cursor: not-allowed;
+}
+.moveRefused:hover {
+  background: none;
+}
+.moveRefused .moveGlyph {
+  opacity: 0.55;
+}
+.moveRefused .moveName {
+  color: var(--fg-muted);
+}
 .pickedEmpty {
   font-size: var(--tori-text-md);
   color: var(--fg-subtle);

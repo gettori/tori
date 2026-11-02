@@ -3335,6 +3335,7 @@ export default function LeftSidebar(props: {
       selectTopic(f, moved && current === moved.from ? moved.to : current);
     },
     onCreated: (f) => openTopic(f, null),
+    onMoved: (f) => openTopic(f, props.selected?.topicId === f.id ? (props.selected.activeRoot ?? null) : null),
     onDeleted: (f) => {
       if (props.selected?.kind === "topic" && props.selected.topicId === f.id) props.onSelect(null);
     },
@@ -3715,7 +3716,7 @@ export default function LeftSidebar(props: {
         activeRoot={activeTopicRoot()}
         onOpenMember={(f, root) => selectTopic(f, root)}
         topicStatus={topicStatus}
-        shows={inTopicsMode}
+        listing={(t) => (!inTopicsMode(t) ? null : goneSpace(t.space) ? "gone" : "listed")}
         actions={topicActions}
       />
 

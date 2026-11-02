@@ -26,6 +26,7 @@ export default function TopicRows(props: {
   onOpenMember?: (topic: Topic, root: string) => void;
   topicStatus?: (topic: Topic) => Rollup | null;
   fallback?: JSX.Element;
+  note?: (topic: Topic) => JSX.Element;
 }) {
   const visible = createMemo(() => [...props.topics].sort(byName).filter((t) => matchesTopic(t, props.query)));
   const actions = () => props.actions;
@@ -63,6 +64,7 @@ export default function TopicRows(props: {
               onReorder={(repoPaths) => void actions().reorder(f, repoPaths)}
               expanded={!!actions().expanded()[f.id]}
               onExpand={(open) => actions().setExpanded((prev) => ({ ...prev, [f.id]: open }))}
+              note={props.note?.(f)}
             />
           )}
         </For>

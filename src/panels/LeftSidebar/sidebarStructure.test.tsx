@@ -104,6 +104,8 @@ const bridge = vi.hoisted(() => ({
   // test; empty is a tree nothing has answered for, which is every test here
   // that predates the state line.
   sync: {} as Record<string, unknown>,
+  topics: [] as unknown[],
+  configGate: null as Promise<void> | null,
 }));
 
 vi.mock("../../components/Toasts/Toasts", async (orig) => ({
@@ -121,8 +123,9 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     if (cmd === "get_config") {
       bridge.configReads += 1;
-      return Promise.resolve(config);
+      return (bridge.configGate ?? Promise.resolve()).then(() => config);
     }
+    if (cmd === "list_topics") return Promise.resolve(bridge.topics);
     if (cmd === "list_sessions") {
       if (args.folder === `${REPO}/feat`) return Promise.resolve([onFeat]);
       if (args.folder === NOTES) return Promise.resolve([inNotes]);
@@ -701,5 +704,58 @@ describe("what a branch row says about its remote", () => {
     await waitFor(async () => expect((await marks("feat")).length).toBe(1));
 
     await expectNoAxeViolations(container);
+  });
+});
+
+describe("a Topic whose space Tori cannot find", () => {
+  const ORPHAN = {
+    id: "orphan",
+    name: "Orphan",
+    branch: "feat/orphan",
+    space: "saga",
+    createdAt: 0,
+    members: [
+      {
+        repoPath: REPO,
+        displayName: "repo",
+        mode: "reference",
+        worktreePath: null,
+        state: { kind: "present" },
+        order: 0,
+      },
+    ],
+  };
+  const NOTE = /which Tori can't find/;
+
+  beforeEach(() => {
+    resetSessionStoreForTests();
+    resetSessionActivityForTests();
+    bridge.handlers = {};
+    bridge.sync = {};
+    bridge.configReads = 0;
+    bridge.topics = [ORPHAN];
+    bridge.configGate = null;
+    localStorage.clear();
+    localStorage.setItem("tori.active-space.v1", "work");
+    localStorage.setItem("tori.sidebar-mode.v1", "topics");
+  });
+
+  it("lists in Topics mode with a note offering to keep it or delete it", async () => {
+    mount();
+    const note = (await screen.findByText(NOTE)).closest("div")!;
+    expect(note.textContent).toContain("From saga, which Tori can't find.");
+    expect(within(note).getByRole("button", { name: "Keep in Topics" })).toBeTruthy();
+    expect(within(note).getByRole("button", { name: "Delete" })).toBeTruthy();
+  });
+
+  it("shows nothing before the config has said which spaces exist", async () => {
+    let release!: () => void;
+    bridge.configGate = new Promise((r) => (release = r));
+    mount();
+    await waitFor(() => expect(bridge.configReads).toBeGreaterThan(0));
+    expect(screen.queryByText(NOTE)).toBeNull();
+    expect(screen.queryByText("Orphan")).toBeNull();
+    release();
+    expect(await screen.findByText(NOTE)).toBeTruthy();
   });
 });

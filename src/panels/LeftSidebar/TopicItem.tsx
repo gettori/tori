@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal, createUniqueId } from "solid-js";
+import { For, Show, createMemo, createSignal, createUniqueId, type JSX } from "solid-js";
 import { Ellipsis, Lock } from "lucide-solid";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
@@ -67,6 +67,7 @@ export default function TopicItem(props: {
    *  `onExpand`, which is what the stories and the standalone tests use. */
   expanded?: boolean;
   onExpand?: (open: boolean) => void;
+  note?: JSX.Element;
 }) {
   const [own, setOwn] = createSignal(false);
   const open = () => (props.onExpand ? !!props.expanded : own());
@@ -244,6 +245,7 @@ export default function TopicItem(props: {
           </span>
         </Show>
       </div>
+      {props.note}
       <Show when={open()}>
         <div id={listId} role="group" aria-label={`Members of ${props.topic.name}`}>
           <For each={members()}>

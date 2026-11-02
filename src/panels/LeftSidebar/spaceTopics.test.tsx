@@ -74,6 +74,10 @@ vi.mock("@tauri-apps/api/core", () => ({
       const t = (bridge.topics as ReturnType<typeof topic>[]).find((t) => t.id === args.topicId)!;
       return Promise.resolve({ ...t, members: [...t.members, member(LAB, "lab", String(args.worktreePath))] });
     }
+    if (cmd === "set_topic_space") {
+      const t = (bridge.topics as ReturnType<typeof topic>[]).find((t) => t.id === args.topicId)!;
+      return Promise.resolve({ ...t, space: args.space ?? undefined });
+    }
     if (cmd === "list_sessions" || cmd === "list_project_attempts" || cmd === "sessions_running")
       return Promise.resolve([]);
     if (cmd === "folder_historical") return Promise.resolve(false);
@@ -256,6 +260,20 @@ describe("Topics in a space's tree", () => {
     expect(screen.getByText("Ship")).toBeTruthy();
     expect(localStorage.getItem("tori.sidebar-mode.v1")).toBe("spaces");
     off();
+  });
+
+  it("opens a Topic moved into a space in that space's tree", async () => {
+    localStorage.setItem("tori.sidebar-mode.v1", "topics");
+    const { sel } = mount();
+    fireEvent.contextMenu(await screen.findByText("Auth"));
+    pointerClick(await screen.findByText("Move to…"));
+    fireEvent.click(await screen.findByRole("radio", { name: /^work/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Move to work" }));
+
+    await waitFor(() => expect(sel()?.topicId).toBe("auth"));
+    expect(localStorage.getItem("tori.sidebar-mode.v1")).toBe("spaces");
+    expect(localStorage.getItem("tori.active-space.v1")).toBe("work");
+    expect(spacesTree().getByText("Auth")).toBeTruthy();
   });
 
   describe("moving a worktree into a Topic", () => {

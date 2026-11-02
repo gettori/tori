@@ -1,9 +1,12 @@
 import { Show, onCleanup } from "solid-js";
 import { type SpaceTint } from "./TopicItem";
 import TopicRows from "./TopicRows";
+import { TriangleAlert } from "lucide-solid";
 import Button from "../../components/Button/Button";
+import Icon from "../../components/Icon/Icon";
 import NewTopicDialog from "../../components/Dialogs/NewTopicDialog";
 import PromptModal from "../../components/Dialogs/PromptModal";
+import MoveTopicDialog from "../../components/Dialogs/MoveTopicDialog";
 import ConfirmDeleteTopic from "../../components/Dialogs/ConfirmDeleteTopic";
 import TopicWorktreeSweepDialog from "../../components/Dialogs/TopicWorktreeSweepDialog";
 import WorktreeRemoveDialog from "../../components/Dialogs/WorktreeRemoveDialog";
@@ -16,6 +19,30 @@ import styles from "./TopicList.module.css";
 
 const dialogScope = (req: DialogReq) =>
   "topic" in req ? { topic: req.topic, space: req.topic.space } : { space: req.space };
+
+function GoneSpaceNote(props: { topic: Topic; actions: TopicActions }) {
+  return (
+    <div class={styles.goneNote}>
+      <Icon icon={TriangleAlert} class={styles.goneIcon} />
+      <div class={styles.goneBody}>
+        <p>
+          From <strong>{props.topic.space}</strong>, which Tori can't find. Its folder was renamed or deleted outside
+          Tori.
+        </p>
+        <div class={styles.goneActions}>
+          <Button size="sm" onClick={() => props.actions.keepInTopics(props.topic)}>
+            Keep in Topics
+          </Button>
+          <Button size="sm" variant="danger" onClick={() => props.actions.openDelete(props.topic)}>
+            Delete
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export type TopicListing = "listed" | "gone" | null;
 
 /** What the list needs from a Space: the tint for a chip and the projects for
  *  the creation checklist. The sidebar's own `Space` satisfies it as is. */
@@ -35,7 +62,9 @@ export default function TopicList(props: {
   /** Open a Topic on one of its members. */
   onOpenMember?: (topic: Topic, root: string) => void;
   topicStatus?: (topic: Topic) => Rollup | null;
-  shows?: (topic: Topic) => boolean;
+  /** Whether a Topic lists here, and whether it is here only because Tori no
+   *  longer finds its space. Absent lists every Topic. */
+  listing?: (topic: Topic) => TopicListing;
   actions: TopicActions;
 }) {
   onCleanup(watchTopics());
@@ -45,6 +74,8 @@ export default function TopicList(props: {
     setDialog,
     renameReq,
     setRenameReq,
+    moveReq,
+    setMoveReq,
     memberRenameReq,
     setMemberRenameReq,
     wtReq,
@@ -55,7 +86,7 @@ export default function TopicList(props: {
     setSweepReq,
   } = actions;
   const error = () => actions.error() ?? topicsError();
-  const listed = () => (props.shows ? topics().filter(props.shows) : topics());
+  const listed = () => (props.listing ? topics().filter((t) => props.listing!(t)) : topics());
 
   return (
     <div class={styles.list} classList={{ [props.class ?? ""]: !!props.class }} hidden={props.hidden} data-topic-list>
@@ -69,6 +100,11 @@ export default function TopicList(props: {
         activeRoot={props.activeRoot}
         onOpenMember={props.onOpenMember}
         topicStatus={props.topicStatus}
+        note={(t) => (
+          <Show when={props.listing?.(t) === "gone"}>
+            <GoneSpaceNote topic={t} actions={actions} />
+          </Show>
+        )}
         fallback={
           <div class="tree-empty">
             <Show when={listed().length === 0} fallback={<p>No Topic matches the filter.</p>}>
@@ -102,6 +138,17 @@ export default function TopicList(props: {
             okLabel="Rename"
             onSubmit={(v) => void actions.rename(f(), v)}
             onCancel={() => setRenameReq(null)}
+          />
+        )}
+      </Show>
+
+      <Show when={moveReq()}>
+        {(f) => (
+          <MoveTopicDialog
+            topic={topics().find((t) => t.id === f().id) ?? f()}
+            spaces={props.spaces}
+            onDone={actions.moved}
+            onCancel={() => setMoveReq(null)}
           />
         )}
       </Show>
