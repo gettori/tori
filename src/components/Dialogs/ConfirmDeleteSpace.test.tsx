@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vite-plus/test";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
 import ConfirmDeleteSpace from "./ConfirmDeleteSpace";
+import type { Member, Topic } from "../../utils/topics";
 
 // Characterization test for the space deletion, written against the hand-rolled
 // implementation and kept green across the migration onto `components/Dialog`
@@ -259,6 +260,65 @@ describe("ConfirmDeleteSpace", () => {
       fireEvent.pointerDown(screen.getByRole("dialog"));
 
       expect(onCancel).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("the Topics it takes with it", () => {
+    const SPACES = [
+      {
+        name: "work",
+        projects: [
+          { name: "web", path: "/w/web" },
+          { name: "api", path: "/w/api" },
+        ],
+      },
+      { name: "side", projects: [{ name: "lab", path: "/s/lab" }] },
+    ];
+    const member = (repoPath: string, order: number): Member => ({
+      repoPath,
+      displayName: repoPath.split("/").pop()!,
+      mode: "reference",
+      worktreePath: null,
+      state: { kind: "present" },
+      order,
+    });
+    const topic = (id: string, members: Member[], space?: string): Topic => ({
+      id,
+      name: id,
+      branch: `feat/${id}`,
+      members,
+      createdAt: 0,
+      ...(space ? { space } : {}),
+    });
+    const section = (label: RegExp) => screen.getByText(label).closest("div")!.parentElement!.textContent ?? "";
+
+    it("lists the space's own Topics and the global ones that lose members", () => {
+      open({
+        spaces: SPACES,
+        topics: [
+          topic("Cart", [member("/w/web", 0), member("/w/api", 1)], "work"),
+          topic("Bench", [member("/s/lab", 0)], "side"),
+          topic("Launch", [member("/s/lab", 0), member("/w/web", 1), member("/w/api", 2)]),
+          topic("Lab notes", [member("/s/lab", 0)]),
+        ],
+      });
+
+      const gone = section(/Topics deleted with it/);
+      expect(gone).toContain("Cart");
+      expect(gone).toContain("2 members");
+      expect(gone).not.toContain("Bench");
+      const losing = section(/Global Topics that lose members/);
+      expect(losing).toContain("Launch");
+      expect(losing).toContain("Loses web, api");
+      expect(losing).not.toContain("left empty");
+      expect(losing).not.toContain("Lab notes");
+    });
+
+    it("says when a global Topic is left with no members", () => {
+      open({ spaces: SPACES, topics: [topic("Docs", [member("/w/web", 0)])] });
+
+      expect(section(/Global Topics that lose members/)).toContain("Loses web \u00b7 left empty");
+      expect(screen.queryByText(/Topics deleted with it/)).toBeNull();
     });
   });
 });

@@ -980,6 +980,30 @@ button.moveRow {
   border: 1px solid color-mix(in srgb, var(--danger-fg) 45%, transparent);
   border-radius: var(--tori-radius-sm);
 }
+.topicRowName {
+  font-size: var(--tori-text-md);
+  color: var(--fg-default);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lossText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.contentsRow .lostChip {
+  opacity: 0.4;
+  outline: 1px dashed currentColor;
+  outline-offset: -1px;
+  background-image: linear-gradient(
+    to top right,
+    transparent calc(50% - 0.5px),
+    currentColor calc(50% - 0.5px),
+    currentColor calc(50% + 0.5px),
+    transparent calc(50% + 0.5px)
+  );
+}
 .rowNote {
   font-size: var(--tori-text-xs);
   color: var(--fg-muted);
