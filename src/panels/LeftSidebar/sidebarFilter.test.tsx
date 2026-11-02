@@ -58,7 +58,7 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promis
 const { default: LeftSidebar } = await import("./LeftSidebar");
 const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
 const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
-const { emit, on: onEvent, FOCUS_SEARCH, NEW_TOPIC, TOGGLE_SIDEBAR_MODE } = await import("../../utils/events");
+const { emit, FOCUS_SEARCH, TOGGLE_SIDEBAR_MODE } = await import("../../utils/events");
 
 const mount = () => render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={[]} />);
 const toggle = () => screen.getByRole("button", { name: "Filter" });
@@ -87,12 +87,7 @@ describe("the sidebar filter", () => {
     expect(noToggle()).toBeNull();
   });
 
-  // The one thing the column makes, moved out of the Topic list and into the
-  // row the filter shares: the list owns the dialog, the head owns the button,
-  // and the bus is what joins them.
   it("offers a New Topic button in Topics mode only, before the filter", async () => {
-    const asked: number[] = [];
-    const off = onEvent(NEW_TOPIC, () => asked.push(1));
     mount();
     await waitFor(() => expect(screen.getByText("proj")).toBeTruthy());
     expect(screen.queryByRole("button", { name: "New Topic" })).toBeNull();
@@ -104,8 +99,7 @@ describe("the sidebar filter", () => {
     expect(add.compareDocumentPosition(toggle()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     fireEvent.click(add);
-    expect(asked).toHaveLength(1);
-    off();
+    expect(await screen.findByRole("dialog", { name: "New Topic" })).toBeTruthy();
   });
 
   it("takes the caret when it opens", async () => {

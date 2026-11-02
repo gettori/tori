@@ -64,7 +64,6 @@ import {
   NAVIGATE,
   type NavTarget,
   TOGGLE_SIDEBAR_MODE,
-  NEW_TOPIC,
   SESSIONS_REFRESH,
   DRAG_ABS_PATH_MIME,
   OPEN_JOB,
@@ -213,8 +212,9 @@ import {
 import { groupStacks, type StackEntry } from "./stacks";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import TopicList from "./TopicList";
+import { createTopicActions } from "./topicActions";
+import { applyTopic, topics, watchTopics } from "../../utils/topicStore";
 import {
-  noteTopics,
   topicKey,
   topicSelection,
   chatRoot,
@@ -432,25 +432,7 @@ export default function LeftSidebar(props: {
   // probes every project with git. The side effects in `loadConfig` run only on
   // the fresh result, never on this copy.
   const [config, setConfig] = createSignal<ResolvedConfig | null>(loadCachedConfig());
-  // Every Topic record, for the "in <Topic>" chip on a member unit row.
-  // Latest request wins, as in `TopicList`.
-  const [topics, setTopics] = createSignal<Topic[]>([]);
-  createEffect(() => noteTopics(topics()));
-  let topicsSeq = 0;
-  async function loadTopics() {
-    const mine = ++topicsSeq;
-    const list = (await invoke<Topic[] | null>("list_topics").catch(() => null)) ?? [];
-    if (mine === topicsSeq) setTopics(list);
-  }
-  function applyTopic(topic: Topic) {
-    setTopics((prev) => {
-      const i = prev.findIndex((f) => f.id === topic.id);
-      if (i < 0) return [...prev, topic];
-      const next = prev.slice();
-      next[i] = topic;
-      return next;
-    });
-  }
+  onCleanup(watchTopics());
 
   // Errors surface as auto-dismissing toasts (bottom-right) rather than a banner
   // pinned above the tree. setError keeps its old signature so all call sites are
@@ -2828,6 +2810,14 @@ export default function LeftSidebar(props: {
     props.onSelect(topicSelection(f, preferredRoot));
   }
 
+  function openTopic(f: Topic, root: string | null) {
+    selectTopic(f, root);
+    const g = f.space ? config()?.spaces.find((g) => g.name === f.space) : undefined;
+    if (!g) return setMode("topics");
+    setMode("spaces");
+    setActiveSpaceName(g.name);
+  }
+
   const gkey = (g: Space, p: Project, groupId: string) => `a:${g.name}/${p.name}/${groupId}`;
   // Collapsed, not open: a stack starts open, and the set keeps its one meaning
   // of "the user changed this from its default".
@@ -3036,8 +3026,7 @@ export default function LeftSidebar(props: {
                   data-topic-chip={f.id}
                   onClick={(e: MouseEvent) => {
                     e.stopPropagation();
-                    selectTopic(f, u.folderPath);
-                    setMode("topics");
+                    openTopic(f, u.folderPath);
                   }}
                 />
               )}
@@ -3163,7 +3152,6 @@ export default function LeftSidebar(props: {
   let unlistenNavOpen: UnlistenFn | undefined;
   let unlistenNavDraft: UnlistenFn | undefined;
   let unlistenNavPurge: UnlistenFn | undefined;
-  let unlistenTopics: UnlistenFn | undefined;
   let unlistenPrWatches: UnlistenFn | undefined;
   let unlistenFetchDone: UnlistenFn | undefined;
   let unlistenBaseChanged: UnlistenFn | undefined;
@@ -3176,12 +3164,7 @@ export default function LeftSidebar(props: {
     await invoke("config_watch_start").catch(() => {});
     await invoke("sessions_watch_start").catch(() => {});
     await loadConfig();
-    void loadTopics();
-    unlistenConfig = await listen("config://changed", () => {
-      void loadConfig();
-      void loadTopics();
-    });
-    unlistenTopics = await listen<Topic>("topics://changed", (e) => applyTopic(e.payload));
+    unlistenConfig = await listen("config://changed", () => void loadConfig());
     unlistenPrWatches = await listen("pr_watch://changed", readPrWatches);
     unlistenSessions = await listen<SessionsChanged | null>("sessions://changed", (e) => {
       // No explicit tail re-read: the tail-state effect now triggers on the
@@ -3264,7 +3247,6 @@ export default function LeftSidebar(props: {
   });
   onCleanup(() => {
     unlistenConfig?.();
-    unlistenTopics?.();
     unlistenPrWatches?.();
     unlistenSessions?.();
     unlistenNavOpen?.();
@@ -3286,6 +3268,18 @@ export default function LeftSidebar(props: {
   createEffect(() => noteForgeEnabled(appSettings.forge?.enabled ?? true));
 
   const [expandedTopics, setExpandedTopics] = createSignal<string[]>([]);
+  const topicActions = createTopicActions({
+    activeId: () => (props.selected?.kind === "topic" ? props.selected.topicId : null),
+    onSelect: (f, moved) => {
+      const current = props.selected?.topicId === f.id ? (props.selected.activeRoot ?? null) : null;
+      selectTopic(f, moved && current === moved.from ? moved.to : current);
+    },
+    onDeleted: (f) => {
+      if (props.selected?.kind === "topic" && props.selected.topicId === f.id) props.onSelect(null);
+    },
+    countRunning: countRunningAgents,
+    onExpanded: setExpandedTopics,
+  });
   const watchedTopics = createMemo(() => {
     const open = props.selected?.kind === "topic" ? props.selected.topicId : null;
     const listed = mode() === "topics" ? expandedTopics() : [];
@@ -3624,7 +3618,7 @@ export default function LeftSidebar(props: {
             aria-label="New Topic"
             tooltip="New Topic"
             icon={<Icon icon={Plus} />}
-            onClick={() => emit(NEW_TOPIC)}
+            onClick={() => topicActions.openNew()}
           />
         </Show>
         {/* Only while the field is shut: open, the field is the affordance and
@@ -3642,8 +3636,8 @@ export default function LeftSidebar(props: {
         </Show>
       </div>
 
-      {/* Hidden rather than unmounted, unlike the Spaces tree: this list owns
-          its records, so a remount refetches them and redraws every row. */}
+      {/* Hidden rather than unmounted, unlike the Spaces tree: it hosts the
+          Topic dialogs, which a Topic row in either mode opens. */}
       <TopicList
         hidden={mode() !== "topics"}
         class={styles.topicList}
@@ -3652,16 +3646,8 @@ export default function LeftSidebar(props: {
         activeId={props.selected?.kind === "topic" ? props.selected.topicId : null}
         activeRoot={props.selected?.kind === "topic" ? (props.selected.activeRoot ?? null) : null}
         onOpenMember={(f, root) => selectTopic(f, root)}
-        countRunning={countRunningAgents}
-        onExpanded={setExpandedTopics}
         topicStatus={(f) => bubbleFor((s) => s.home?.topic === f.id)}
-        onSelect={(f, moved) => {
-          const current = props.selected?.topicId === f.id ? (props.selected.activeRoot ?? null) : null;
-          selectTopic(f, moved && current === moved.from ? moved.to : current);
-        }}
-        onDeleted={(f) => {
-          if (props.selected?.kind === "topic" && props.selected.topicId === f.id) props.onSelect(null);
-        }}
+        actions={topicActions}
       />
 
       <Show when={mode() === "spaces"}>
@@ -3975,8 +3961,7 @@ export default function LeftSidebar(props: {
                 to: topicKey(topic.id),
                 home: chatRoot(topicSelection(topic)),
               });
-              selectTopic(topic, root);
-              setMode("topics");
+              openTopic(topic, root);
               const draft = created ? newTopicDraft(topic) : null;
               if (draft) emitWith<DraftIntoNew>(DRAFT_INTO_NEW, draft);
             }}
