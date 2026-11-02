@@ -117,6 +117,43 @@ const fireFetch = (name: string, payload: unknown) => {
   for (const fn of handlers[name] ?? []) fn({ payload });
 };
 
+const { applyTopic } = await import("../../utils/topicStore");
+
+describe("Toolbar for a Topic in a space", () => {
+  const member = (repoPath: string, displayName: string, worktreePath: string) => ({
+    repoPath,
+    displayName,
+    worktreePath,
+    state: { kind: "present" as const },
+    order: 0,
+  });
+  beforeEach(() =>
+    applyTopic({
+      id: "f1",
+      name: "Auth",
+      branch: "feat/auth",
+      createdAt: 1,
+      space: "work",
+      members: [member("/w/api", "api", A), member("/w/web", "web", B)],
+    }),
+  );
+
+  it("leads with the space and ends on the member it shows", () => {
+    render(() => <Toolbar selected={{ ...topicSel(B), spaceName: "work" } as never} />);
+    expect(crumbs()).toEqual(["work", "Auth", "web"]);
+  });
+
+  it("stops at the Topic when no member is showing", () => {
+    render(() => <Toolbar selected={{ ...topicSel(A), activeRoot: null, spaceName: "work" } as never} />);
+    expect(crumbs()).toEqual(["work", "Auth"]);
+  });
+
+  it("keeps Topics and the name alone for a global Topic", () => {
+    render(() => <Toolbar selected={topicSel(A) as never} />);
+    expect(crumbs()).toEqual(["Topics", "Auth"]);
+  });
+});
+
 describe("Toolbar for a Topic", () => {
   it("shows Topics and the Topic's name, with no member to switch to", async () => {
     await loadSync({ [A]: upstream({ behind: 3 }) });

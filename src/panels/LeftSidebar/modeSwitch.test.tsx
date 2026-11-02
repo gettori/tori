@@ -151,4 +151,68 @@ describe("switching between Spaces and Topics", () => {
     await waitFor(() => expect(screen.getByText("Auth")).toBeTruthy());
     expect(onSelect).not.toHaveBeenCalled();
   });
+
+  describe("a Topic in a space", () => {
+    const PAY = {
+      ...AUTH,
+      id: "f2",
+      name: "Pay",
+      branch: "feat/pay",
+      space: "work",
+      members: [{ ...AUTH.members[0], worktreePath: `${WORK}/.tori/worktrees/pay` }],
+    };
+    const openPay = async () => {
+      await waitFor(() => expect(screen.getByText("Pay")).toBeTruthy());
+      click("Pay");
+      fireEvent.click(document.querySelector<HTMLElement>(`[data-member="${WORK}"]`)!);
+    };
+
+    beforeEach(() => {
+      bridge.topics = [AUTH, PAY];
+    });
+
+    it("comes back to it on returning to its space", async () => {
+      const { sel } = mount();
+      await openPay();
+      await waitFor(() => expect(sel()?.topicId).toBe("f2"));
+
+      segment("Topics");
+      await waitFor(() => expect(screen.getByText("Auth")).toBeTruthy());
+      click("Auth");
+      fireEvent.click(document.querySelector<HTMLElement>(`[data-member="${WORK}"]`)!);
+      await waitFor(() => expect(sel()?.topicId).toBe("f1"));
+
+      segment("work");
+      await waitFor(() => expect(sel()?.topicId).toBe("f2"));
+    });
+
+    it("is not what Topics mode comes back to", async () => {
+      const { sel, onSelect } = mount();
+      await openPay();
+      await waitFor(() => expect(sel()?.topicId).toBe("f2"));
+      onSelect.mockClear();
+
+      segment("Topics");
+      await waitFor(() => expect(screen.getByText("Auth")).toBeTruthy());
+      expect(onSelect).not.toHaveBeenCalled();
+      expect(screen.queryByText("Pay")).toBeNull();
+    });
+
+    it("is dropped from its space's memory once it has moved out", async () => {
+      localStorage.setItem("tori.sidebar-mode.v1", "topics");
+      localStorage.setItem(
+        "tori.selection-memory.v1",
+        JSON.stringify({ spaces: { work: { kind: "topic", topicId: "f2", spaceName: "work", folderPath: "" } } }),
+      );
+      bridge.topics = [AUTH, { ...PAY, space: undefined }];
+      const { sel, onSelect } = mount();
+      await waitFor(() => expect(screen.getByText("Pay")).toBeTruthy());
+      await screen.findByRole("button", { name: "work" });
+
+      segment("work");
+      await waitFor(() => expect(screen.getByText("main")).toBeTruthy());
+      expect(onSelect).not.toHaveBeenCalled();
+      expect(sel()).toBeNull();
+    });
+  });
 });

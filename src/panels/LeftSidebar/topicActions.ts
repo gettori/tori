@@ -29,6 +29,7 @@ export type TopicActionsHost = {
   /** `moved` names a member root that changed folder, so the active root can
    *  follow it rather than fall back to the first member. */
   onSelect?: (topic: Topic, moved?: { from: string; to: string }) => void;
+  onCreated?: (topic: Topic) => void;
   /** The selected Topic was deleted; the shell drops the selection. */
   onDeleted?: (topic: Topic) => void;
   /** The sidebar owns the live-tab list, so it answers this rather than the
@@ -51,11 +52,14 @@ function loadExpanded(): Record<string, boolean> {
 
 export type TopicActions = ReturnType<typeof createTopicActions>;
 
+/** Add repositories to a Topic, or make one, in a space or global. */
+export type DialogReq = { topic: Topic } | { space?: string };
+
 /** One instance per window, so a row in Topics mode and one in a space's tree
  *  open the same dialog and see the same open rows. */
 export function createTopicActions(host: TopicActionsHost) {
   const [error, setError] = createSignal<string | null>(null);
-  const [dialog, setDialog] = createSignal<{ topic?: Topic } | null>(null);
+  const [dialog, setDialog] = createSignal<DialogReq | null>(null);
   const [renameReq, setRenameReq] = createSignal<Topic | null>(null);
   // The delete confirm and the sweep that follows it, both carrying the same
   // per-member risk rows: the confirm fetches them, the sweep inherits them
@@ -141,12 +145,13 @@ export function createTopicActions(host: TopicActionsHost) {
   // not build stays on the chip as a badge and gets one toast naming it, with
   // Retry running every failed member again.
   function settled(topic: Topic) {
-    const created = !dialog()?.topic;
+    const req = dialog();
+    const created = !!req && !("topic" in req);
     if (created) setExpanded((prev) => ({ ...prev, [topic.id]: true }));
     setDialog(null);
     applyTopic(topic);
     if (created) {
-      host.onSelect?.(topic);
+      host.onCreated?.(topic);
       const draft = newTopicDraft(topic);
       if (draft) emitWith<DraftIntoNew>(DRAFT_INTO_NEW, draft);
     }
@@ -478,7 +483,7 @@ export function createTopicActions(host: TopicActionsHost) {
     error,
     dialog,
     setDialog,
-    openNew: () => setDialog({}),
+    openNew: (space?: string) => setDialog(space ? { space } : {}),
     renameReq,
     setRenameReq,
     memberRenameReq,

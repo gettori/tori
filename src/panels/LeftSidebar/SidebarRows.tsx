@@ -6,6 +6,7 @@ import {
   Ellipsis,
   GitBranch,
   Layers,
+  Plus,
   SquareStack,
   type LucideIcon,
 } from "lucide-solid";
@@ -291,4 +292,50 @@ export function TrunkRow(props: { name: string }) {
  *  rows, so it takes their shape and none of their affordances. */
 export function EmptyRow(props: { children: JSX.Element }) {
   return <div class={`${styles.row} ${styles.dim} ${styles.sub1}`}>{props.children}</div>;
+}
+
+/** The heading over one kind of row in a space's tree: `TOPICS 2` over its
+ *  Topics, `PROJECTS 5` over its projects. With `onToggle` the label is the
+ *  group's disclosure; `onAdd` puts a `+` at the right edge, shown on hover. */
+export function GroupHead(props: {
+  label: string;
+  count: string;
+  open?: boolean;
+  onToggle?: () => void;
+  end?: JSX.Element;
+  addLabel?: string;
+  onAdd?: () => void;
+}) {
+  const title = () => (
+    <>
+      <span class={styles.groupLabel}>{props.label}</span>
+      <span class={styles.groupCount}>{props.count}</span>
+    </>
+  );
+  return (
+    <div class={styles.groupHead} data-group-head={props.label}>
+      <Show when={props.onToggle} fallback={<span class={styles.groupTitle}>{title()}</span>}>
+        <button
+          type="button"
+          class={styles.groupTitle}
+          aria-expanded={props.open === true}
+          onClick={() => props.onToggle?.()}
+        >
+          <Icon icon={props.open ? ChevronDown : ChevronRight} class={styles.groupChevron} />
+          {title()}
+        </button>
+      </Show>
+      <span class={styles.rowEnd}>{props.end}</span>
+      <Show when={props.onAdd}>
+        <IconButton
+          size="xs"
+          class={styles.groupAdd}
+          icon={<Icon icon={Plus} />}
+          aria-label={props.addLabel}
+          tooltip={props.addLabel}
+          onClick={() => props.onAdd?.()}
+        />
+      </Show>
+    </div>
+  );
 }

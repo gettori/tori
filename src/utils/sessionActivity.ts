@@ -67,7 +67,8 @@ export function noteLiveTabs(tabs: readonly LiveTab[]) {
   setLiveTabs(tabs);
 }
 
-/** folderPath -> owning space and project, rebuilt whenever the config does. */
+/** Workspace (a folder, or a space Topic's `topic:<id>`) -> owning space and
+ *  project, rebuilt whenever the config or the Topics do. */
 export function noteFolderOwners(owners: Record<string, FolderOwner>) {
   setFolderOwners(owners);
 }

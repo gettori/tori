@@ -3,6 +3,8 @@ import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
 import Icon from "../Icon/Icon";
 import { ChevronRight } from "lucide-solid";
 import SyncChip from "../SyncChip/SyncChip";
+import { topics } from "../../utils/topicStore";
+import { memberRoot } from "../../utils/topics";
 import styles from "./Toolbar.module.css";
 
 // Where you are: the breadcrumb to the selected worktree. The trail ends at the
@@ -10,11 +12,17 @@ import styles from "./Toolbar.module.css";
 // session title, and its figures sit in the chat's status strip beside the
 // conversation they describe.
 //
-// A Topic spans several repos, so its trail stops at the Topic: which member
-// the panels below show is the sidebar's to say.
+// A global Topic spans several repos, so its trail stops at the Topic: which
+// member the panels below show is the sidebar's to say.
 export default function Toolbar(props: { selected: Selection | null }) {
   const sel = () => props.selected;
   const isTopic = () => sel()?.kind === "topic";
+  const member = () => {
+    const s = sel();
+    if (!s?.spaceName || !s.activeRoot) return null;
+    const topic = topics().find((t) => t.id === s.topicId);
+    return topic?.members.find((m) => memberRoot(m) === s.activeRoot)?.displayName ?? null;
+  };
 
   return (
     <div class={styles.toolbar}>
@@ -40,9 +48,19 @@ export default function Toolbar(props: { selected: Selection | null }) {
               }
             >
               <nav class={styles.tbCrumb} aria-label="location">
-                <span class={`${styles.crumb} dim`}>Topics</span>
+                <span class={`${styles.crumb} dim`}>{sel()!.spaceName || "Topics"}</span>
                 <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
-                <span class={`${styles.crumb} ${styles.leaf}`}>{sel()!.topicName ?? sel()!.projectName}</span>
+                <span class={styles.crumb} classList={{ dim: !!member(), [styles.leaf]: !member() }}>
+                  {sel()!.topicName ?? sel()!.projectName}
+                </span>
+                <Show when={member()}>
+                  {(name) => (
+                    <>
+                      <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
+                      <span class={`${styles.crumb} ${styles.leaf}`}>{name()}</span>
+                    </>
+                  )}
+                </Show>
               </nav>
             </Show>
           </div>

@@ -6,8 +6,12 @@ import styles from "./Dialogs.module.css";
  *  the projects to offer. */
 export type RepoSpace = {
   name: string;
-  projects: { name: string; path: string }[];
+  icon?: string;
+  color?: string;
+  projects: { name: string; path: string; branchUnits?: { branch: string | null; isCurrent: boolean }[] }[];
 };
+
+const checkedOut = (p: RepoSpace["projects"][number]) => p.branchUnits?.find((u) => u.isCurrent)?.branch ?? null;
 
 /** One checkbox group per Space, in rail order, reporting the checked repo
  *  paths in that order regardless of click order.
@@ -19,6 +23,9 @@ export default function RepoChecklist(props: {
   onChange: (paths: string[]) => void;
   exclude?: string[];
   filter?: string;
+  /** One space's projects only: the group reads `Projects in <space>` with how
+   *  many are picked, and each row names the branch a worktree starts from. */
+  scoped?: boolean;
 }) {
   const ordered = () => {
     const excluded = new Set(props.exclude ?? []);
@@ -45,16 +52,29 @@ export default function RepoChecklist(props: {
   const groups = createMemo(() =>
     shown().map((g) => ({
       space: g,
-      options: g.projects.map((p) => ({ value: p.path, label: p.name })),
+      options: g.projects.map((p) => {
+        const from = props.scoped ? checkedOut(p) : null;
+        return { value: p.path, label: p.name, description: from ? `from ${from}` : undefined };
+      }),
     })),
   );
+  const unfilteredProjects = (g: RepoSpace) => ordered().find((o) => o.name === g.name)?.projects ?? [];
+  const total = (g: RepoSpace) => unfilteredProjects(g).length;
+  const pickedIn = (g: RepoSpace) => props.value.filter((v) => unfilteredProjects(g).some((p) => p.path === v)).length;
 
   return (
     <div class={styles.repoChecklist} data-repo-checklist>
       <For each={groups()}>
         {({ space, options }) => (
           <CheckboxGroup
-            label={<span class={styles.repoGroupLabel}>{space.name}</span>}
+            label={
+              <Show when={props.scoped} fallback={<span class={styles.repoGroupLabel}>{space.name}</span>}>
+                <span class={styles.repoGroupLabel}>Projects in {space.name}</span>{" "}
+                <span class={styles.repoGroupCount}>
+                  {pickedIn(space)} of {total(space)}
+                </span>
+              </Show>
+            }
             options={options}
             value={props.value.filter((v) => space.projects.some((p) => p.path === v))}
             onChange={(picked) => changeGroup(space, picked)}
