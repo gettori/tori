@@ -557,3 +557,60 @@
   width: calc(14px * var(--ui-scale));
   height: calc(14px * var(--ui-scale));
 }
+
+.groupHead {
+  display: flex;
+  align-items: center;
+  gap: var(--tori-space-3);
+  height: calc(28px * var(--ui-scale));
+  margin: 0 0 0 var(--tree-inset);
+  padding: 0 calc(4px * var(--ui-scale)) 0 calc(9px * var(--ui-scale));
+}
+
+.groupHead:not(:first-child) {
+  margin-top: calc(8px * var(--ui-scale));
+}
+
+.groupTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tori-space-3);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: default;
+}
+button.groupTitle {
+  cursor: pointer;
+}
+
+.groupChevron {
+  width: calc(10px * var(--ui-scale));
+  height: calc(10px * var(--ui-scale));
+  color: var(--fg-subtle);
+}
+
+.groupLabel {
+  font-size: var(--tori-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.groupCount {
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-xs);
+  color: var(--fg-subtle);
+}
+
+/* Opacity rather than display, so the button stays a tab stop. */
+.groupHead .groupAdd:not(:focus-visible) {
+  opacity: 0;
+}
+.groupHead:hover .groupAdd {
+  opacity: 1;
+}

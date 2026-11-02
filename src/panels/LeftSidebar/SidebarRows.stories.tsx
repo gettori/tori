@@ -12,7 +12,18 @@ import type { SyncMark } from "../../utils/branchSync";
 import StatusBubble from "./StatusBubble";
 import type { UnitStatus } from "../../utils/forgeTypes";
 import BranchLine from "./BranchLine";
-import { BranchRow, EmptyRow, GroupRow, MoreRow, ProjectRow, TrunkRow, attemptGroup, stackGroup } from "./SidebarRows";
+import TopicItem from "./TopicItem";
+import {
+  BranchRow,
+  EmptyRow,
+  GroupHead,
+  GroupRow,
+  MoreRow,
+  ProjectRow,
+  TrunkRow,
+  attemptGroup,
+  stackGroup,
+} from "./SidebarRows";
 import rows from "./SidebarRows.module.css";
 
 const MENU: MenuItem[] = [
@@ -586,6 +597,55 @@ export const AColumn: Story = {
         </ProjectRow>
         <ProjectRow name="infra" icon={<ProjectIcon seed="/w/infra" />} disclosure menu={MENU} />
         <ProjectRow name="notes" icon={<Icon icon={Folder} />} menu={MENU} end={bubble({ idle: 2 })} />
+      </Tree>
+    ),
+  ],
+};
+
+const TOPIC_SPACES = [{ name: "work", color: "Sky", projects: [{ path: "/w/api" }, { path: "/w/web" }] }];
+const spaceTopic = (id: string, name: string, repos: string[]) => ({
+  id,
+  name,
+  branch: `feat/${id}`,
+  createdAt: 1,
+  space: "work",
+  members: repos.map((repoPath, order) => ({
+    repoPath,
+    displayName: repoPath.split("/").pop()!,
+    worktreePath: `${repoPath}/.tori/worktrees/${id}`,
+    state: { kind: "present" as const },
+    order,
+  })),
+});
+
+export const TopicsGroup: Story = {
+  decorators: [
+    () => (
+      <Tree>
+        <GroupHead label="Topics" count="2" open onToggle={() => {}} addLabel="New Topic in work" onAdd={() => {}} />
+        <ul style={{ "list-style": "none", margin: 0, padding: 0 }}>
+          <TopicItem
+            topic={spaceTopic("checkout", "Checkout", ["/w/api", "/w/web"])}
+            spaces={TOPIC_SPACES}
+            onRepair={() => {}}
+          />
+          <TopicItem topic={spaceTopic("retry", "Retry", ["/w/api"])} spaces={TOPIC_SPACES} onRepair={() => {}} />
+        </ul>
+        <GroupHead label="Projects" count="2" />
+        <ProjectRow name="api" icon={<ProjectIcon seed="/w/api" />} disclosure menu={MENU} />
+        <ProjectRow name="web" icon={<ProjectIcon seed="/w/web" />} disclosure menu={MENU} />
+      </Tree>
+    ),
+  ],
+};
+
+export const TopicsGroupClosed: Story = {
+  decorators: [
+    () => (
+      <Tree>
+        <GroupHead label="Topics" count="2" open={false} onToggle={() => {}} end={bubble({ executing: 1 })} />
+        <GroupHead label="Projects" count="2" />
+        <ProjectRow name="api" icon={<ProjectIcon seed="/w/api" />} disclosure menu={MENU} />
       </Tree>
     ),
   ],

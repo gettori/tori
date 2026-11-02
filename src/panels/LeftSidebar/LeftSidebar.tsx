@@ -181,7 +181,7 @@ import ProjectIcon from "../../components/Icon/ProjectIcon";
 import { resolveIcon } from "../../components/Icon/iconRegistry";
 import { spaceHue, spaceHueRgb, applySpaceTint } from "../../utils/spaceTint";
 import { shortHome, spaceInitials } from "../../utils/names";
-import { rememberSelection, rememberedUnit, rememberedTopic } from "../../utils/selectionMemory";
+import { rememberSelection, rememberedInSpace, rememberedTopic } from "../../utils/selectionMemory";
 import {
   Folder,
   Ellipsis,
@@ -199,6 +199,7 @@ import {
   GitPullRequest,
   Play,
   Square,
+  LayoutGrid,
 } from "lucide-solid";
 import { BranchMark, WorktreeMark } from "../../components/Icon/gitMarks";
 import {
@@ -222,6 +223,8 @@ import {
   isShellsKey,
   isReference,
   tabUnderFolder,
+  inSpace,
+  isGlobal,
   type Topic,
 } from "../../utils/topics";
 import { dockOpen } from "../../layout/dockStore";
@@ -230,7 +233,18 @@ import { prWatchMenu, type PrWatchRow } from "../../utils/prWatchMenu";
 import StatusBubble, { CountBubble } from "./StatusBubble";
 import { latestUnreviewed, runSecondOpinion, secondOpinionRunning } from "../../utils/secondOpinion";
 import SpaceTile, { ModeTile, TileProbe } from "./SpaceTile";
-import { BranchRow, EmptyRow, GroupRow, MoreRow, ProjectRow, TrunkRow, attemptGroup, stackGroup } from "./SidebarRows";
+import {
+  BranchRow,
+  EmptyRow,
+  GroupHead,
+  GroupRow,
+  MoreRow,
+  ProjectRow,
+  TrunkRow,
+  attemptGroup,
+  stackGroup,
+} from "./SidebarRows";
+import TopicRows, { matchesTopic } from "./TopicRows";
 import rows from "./SidebarRows.module.css";
 import styles from "./LeftSidebar.module.css";
 
@@ -526,7 +540,12 @@ export default function LeftSidebar(props: {
 
   // Every selection is also the bookmark for the way back to it: its space, or
   // the Topic slot.
-  createEffect(() => rememberSelection(props.selected));
+  // A Topic whose space is gone lists in Topics mode, so that is where it is
+  // remembered.
+  createEffect(() => {
+    const s = props.selected;
+    rememberSelection(s?.kind === "topic" && goneSpace(s.spaceName) ? { ...s, spaceName: "" } : s);
+  });
 
   // Which unit of `p` a folder means. A worktree owns its folder, but a plain
   // repo's branch-units all share the repository's, so there the branch is the
@@ -537,12 +556,18 @@ export default function LeftSidebar(props: {
     return (branch ? here.find((u) => unitLabel(u) === branch) : undefined) ?? here.find((u) => u.isCurrent) ?? here[0];
   }
 
-  // Re-read from the live tree, so a folder that is gone restores nothing
-  // rather than a ghost. No `ensureBranch`: navigating must not check anything
-  // out behind a click that only said "show me that".
-  function restoreUnit(g: Space): boolean {
-    const back = rememberedUnit(g.name);
+  // No `ensureBranch`: navigating must not check anything out behind a click
+  // that only said "show me that".
+  function restoreInSpace(g: Space): boolean {
+    const back = rememberedInSpace(g.name);
     if (!back) return false;
+    if (back.kind === "topic") {
+      const f = topics().find((f) => f.id === back.topicId);
+      if (!f || !inSpace(f, g.name)) return false;
+      if (props.selected?.kind === "topic" && props.selected.topicId === f.id) return true;
+      selectTopic(f, back.activeRoot ?? null);
+      return true;
+    }
     const p = g.projects.find((p) => unitAt(p, back.folderPath, back.branch));
     const u = p && unitAt(p, back.folderPath, back.branch);
     if (!p || !u) return false;
@@ -568,7 +593,7 @@ export default function LeftSidebar(props: {
   function restoreTopic(): boolean {
     const back = rememberedTopic();
     const f = back?.topicId ? topics().find((f) => f.id === back.topicId) : null;
-    if (!f) return false;
+    if (!f || !inTopicsMode(f)) return false;
     if (props.selected?.kind === "topic" && props.selected.topicId === f.id) return true;
     selectTopic(f, back!.activeRoot ?? null);
     return true;
@@ -580,7 +605,7 @@ export default function LeftSidebar(props: {
   function switchSpace(g: Space) {
     if (activeSpaceName() === g.name) return;
     setActiveSpaceName(g.name);
-    if (!restoreUnit(g)) props.onSelect(null);
+    if (!restoreInSpace(g)) props.onSelect(null);
   }
 
   // The strip lights one thing at a time, so a space tile answers for both axes:
@@ -599,7 +624,7 @@ export default function LeftSidebar(props: {
     if (next === "topics") restoreTopic();
     else {
       const g = activeSpace();
-      if (g) restoreUnit(g);
+      if (g) restoreInSpace(g);
     }
   }
 
@@ -805,17 +830,23 @@ export default function LeftSidebar(props: {
   // composition, and none of them should have to mount a sidebar for it. What
   // stays here is feeding it the four things it cannot derive.
   createEffect(() => noteLiveTabs(props.liveTabs ?? []));
-  createEffect(() =>
+  // A space Topic's chats run under its workspace key, so the key is what
+  // carries the space to them; a global Topic's chats belong to no space.
+  createEffect(() => {
+    const known = new Set((config()?.spaces ?? []).map((g) => g.name));
     noteFolderOwners(
-      Object.fromEntries(
-        (config()?.spaces ?? []).flatMap((g) =>
+      Object.fromEntries([
+        ...(config()?.spaces ?? []).flatMap((g) =>
           g.projects.flatMap((p) =>
             p.branchUnits.map((u) => [u.folderPath, { spaceName: g.name, projectName: p.name }]),
           ),
         ),
-      ),
-    ),
-  );
+        ...topics()
+          .filter((t) => t.space && known.has(t.space))
+          .map((t) => [topicKey(t.id), { spaceName: t.space!, projectName: t.name }]),
+      ]),
+    );
+  });
   // The forge's half of the needs-you pipeline: every branch-unit and whether
   // its pull request wants looking at.
   //
@@ -2378,18 +2409,26 @@ export default function LeftSidebar(props: {
     </span>
   );
 
-  // Three groups, in the order the rows are reached for: the two creation paths
-  // together at the top, the space's own edit under them, and the destructive
-  // row alone at the bottom rather than one row above a benign one.
+  // In the order the rows are reached for: the creation paths at the top, the
+  // space's own edit under them, and the destructive row alone at the bottom
+  // rather than one row above a benign one.
   //
-  // Both creation rows name their target, which is the whole of what "New…" and
-  // "Add new space" failed to do while sitting next to each other: one of them
-  // creates inside this space, the other creates a sibling of it, and the old
-  // labels read as near-synonyms.
+  // Both "New in" and "New space" name their target, which is the whole of what
+  // "New…" and "Add new space" failed to do while sitting next to each other:
+  // one of them creates inside this space, the other creates a sibling of it,
+  // and the old labels read as near-synonyms.
   const spaceMenu = (g: Space): MenuItem[] => [
     { heading: spaceMenuHead(g) },
     { separator: true },
     { label: `New in “${g.name}”`, onClick: () => openNewProject(g) },
+    { separator: true },
+    {
+      label: "New Topic",
+      icon: LayoutGrid,
+      note: `Groups worktrees from ${g.name}'s projects`,
+      onClick: () => topicActions.openNew(g.name),
+    },
+    { separator: true },
     { label: "New space", onClick: () => addSpace() },
     { separator: true },
     { label: "Edit space", onClick: () => editSpace(g) },
@@ -3147,6 +3186,22 @@ export default function LeftSidebar(props: {
     return !q() || p.name.toLowerCase().includes(q());
   }
 
+  const tkey = (g: Space) => `t:${g.name}`;
+  const spaceTopicsCollapsed = () => {
+    const g = activeSpace();
+    return !!g && expanded().has(tkey(g));
+  };
+  const spaceTopics = createMemo(() => {
+    const g = activeSpace();
+    return g ? topics().filter((t) => inSpace(t, g.name)) : [];
+  });
+  const shownSpaceTopics = createMemo(() => spaceTopics().filter((t) => matchesTopic(t, query())));
+  const topicsGroupSpace = () => (shownSpaceTopics().length > 0 ? activeSpace() : null);
+  // Before the config loads no space is known, so none is taken for gone.
+  const goneSpace = (name: string | undefined) => !!name && !!config() && !visibleSpaces().some((g) => g.name === name);
+  const inTopicsMode = (t: Topic) => isGlobal(t) || goneSpace(t.space);
+  const counted = (shown: number, all: number) => (q() ? `${shown} of ${all}` : `${all}`);
+
   let unlistenConfig: UnlistenFn | undefined;
   let unlistenSessions: UnlistenFn | undefined;
   let unlistenNavOpen: UnlistenFn | undefined;
@@ -3267,13 +3322,18 @@ export default function LeftSidebar(props: {
   // next launch.
   createEffect(() => noteForgeEnabled(appSettings.forge?.enabled ?? true));
 
+  const activeTopicId = () => (props.selected?.kind === "topic" ? (props.selected.topicId ?? null) : null);
+  const activeTopicRoot = () => (props.selected?.kind === "topic" ? (props.selected.activeRoot ?? null) : null);
+  const topicStatus = (f: Topic) => bubbleFor((s) => s.home?.topic === f.id);
+
   const [expandedTopics, setExpandedTopics] = createSignal<string[]>([]);
   const topicActions = createTopicActions({
-    activeId: () => (props.selected?.kind === "topic" ? props.selected.topicId : null),
+    activeId: activeTopicId,
     onSelect: (f, moved) => {
       const current = props.selected?.topicId === f.id ? (props.selected.activeRoot ?? null) : null;
       selectTopic(f, moved && current === moved.from ? moved.to : current);
     },
+    onCreated: (f) => openTopic(f, null),
     onDeleted: (f) => {
       if (props.selected?.kind === "topic" && props.selected.topicId === f.id) props.onSelect(null);
     },
@@ -3282,9 +3342,13 @@ export default function LeftSidebar(props: {
   });
   const watchedTopics = createMemo(() => {
     const open = props.selected?.kind === "topic" ? props.selected.topicId : null;
-    const listed = mode() === "topics" ? expandedTopics() : [];
+    const openRows = expandedTopics();
+    const g = activeSpace();
+    const onScreen = (t: Topic) =>
+      openRows.includes(t.id) &&
+      (mode() === "topics" ? inTopicsMode(t) : !!g && inSpace(t, g.name) && !spaceTopicsCollapsed());
     return topics()
-      .filter((t) => t.id === open || listed.includes(t.id))
+      .filter((t) => t.id === open || onScreen(t))
       .map((topic) => ({ topic, visible: true }));
   });
 
@@ -3532,6 +3596,9 @@ export default function LeftSidebar(props: {
       isActive()
         ? bubbleFor((s) => {
             if (s.spaceName !== g.name) return false;
+            const topic = s.home?.topic;
+            if (topic && spaceTopics().some((t) => t.id === topic))
+              return !shownSpaceTopics().some((t) => t.id === topic);
             const p = g.projects.find((p) => p.branchUnits.some((u) => u.folderPath === s.folderPath));
             return p != null && !projectVisible(p);
           })
@@ -3643,15 +3710,51 @@ export default function LeftSidebar(props: {
         class={styles.topicList}
         spaces={visibleSpaces()}
         query={query()}
-        activeId={props.selected?.kind === "topic" ? props.selected.topicId : null}
-        activeRoot={props.selected?.kind === "topic" ? (props.selected.activeRoot ?? null) : null}
+        activeId={activeTopicId()}
+        activeRoot={activeTopicRoot()}
         onOpenMember={(f, root) => selectTopic(f, root)}
-        topicStatus={(f) => bubbleFor((s) => s.home?.topic === f.id)}
+        topicStatus={topicStatus}
+        shows={inTopicsMode}
         actions={topicActions}
       />
 
       <Show when={mode() === "spaces"}>
-        <OverlayScroll class={styles.treeScroll} onContextMenu={onSpaceAreaMenu}>
+        <OverlayScroll class={styles.treeScroll} onContextMenu={onSpaceAreaMenu} data-spaces-tree>
+          <Show when={topicsGroupSpace()}>
+            {(g) => {
+              const open = () => !spaceTopicsCollapsed();
+              return (
+                <>
+                  <GroupHead
+                    label="Topics"
+                    count={counted(shownSpaceTopics().length, spaceTopics().length)}
+                    open={open()}
+                    onToggle={() => toggle(tkey(g()))}
+                    end={statusBubble(() =>
+                      open() ? null : bubbleFor((s) => shownSpaceTopics().some((t) => t.id === s.home?.topic)),
+                    )}
+                    addLabel={`New Topic in ${g().name}`}
+                    onAdd={() => topicActions.openNew(g().name)}
+                  />
+                  <Show when={open()}>
+                    <TopicRows
+                      topics={spaceTopics()}
+                      query={query()}
+                      spaces={visibleSpaces()}
+                      actions={topicActions}
+                      activeId={activeTopicId()}
+                      activeRoot={activeTopicRoot()}
+                      onOpenMember={(f, root) => selectTopic(f, root)}
+                      topicStatus={topicStatus}
+                    />
+                  </Show>
+                  <Show when={activeProjects().length > 0}>
+                    <GroupHead label="Projects" count={counted(activeProjects().length, g().projects.length)} />
+                  </Show>
+                </>
+              );
+            }}
+          </Show>
           <For each={activeProjects()}>
             {(p) => {
               const g = activeSpace()!;
@@ -3781,7 +3884,14 @@ export default function LeftSidebar(props: {
           </For>
 
           <Show when={(config()?.spaces ?? []).length > 0 && activeProjects().length === 0}>
-            <Show when={!q() && activeSpace()} fallback={<EmptyRow>no matches in this space</EmptyRow>}>
+            <Show
+              when={!q() && activeSpace()}
+              fallback={
+                <Show when={shownSpaceTopics().length === 0}>
+                  <EmptyRow>no matches in this space</EmptyRow>
+                </Show>
+              }
+            >
               {(g) => (
                 <div class="tree-empty">
                   <p>This space has no projects yet. Press Add to create, clone or add one.</p>

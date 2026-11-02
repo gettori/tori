@@ -143,6 +143,14 @@
   white-space: pre-wrap;
   margin: 0;
 }
+.titleLed {
+  display: flex;
+  align-items: center;
+  gap: var(--tori-space-4);
+}
+.lead {
+  display: contents;
+}
 .titleHidden {
   position: absolute;
   width: 1px;

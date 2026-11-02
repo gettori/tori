@@ -275,4 +275,56 @@ describe("NewTopicDialog", () => {
     expect(box("web").checked).toBe(false);
     expect(bridge.calls.some((c) => c.cmd === "add_member")).toBe(false);
   });
+
+  describe("in a space", () => {
+    const TWO = [
+      {
+        name: "work",
+        projects: [
+          { name: "api", path: "/w/api", branchUnits: [{ branch: "main", isCurrent: true }] },
+          { name: "web", path: "/w/web", branchUnits: [{ branch: "dev", isCurrent: true }] },
+        ],
+      },
+      { name: "side", projects: [{ name: "lab", path: "/s/lab" }] },
+    ];
+
+    it("offers only that space's projects, counted, each with the branch it starts from", () => {
+      open({ spaces: TWO, space: "work" });
+      expect(screen.getByRole("dialog", { name: "New Topic in work" })).toBeTruthy();
+      expect(screen.queryByRole("checkbox", { name: "lab" })).toBeNull();
+      expect(screen.getByText("from main")).toBeTruthy();
+      expect(screen.getByText("from dev")).toBeTruthy();
+      const group = screen.getByRole("group", { name: /Projects in work/ });
+      expect(group.textContent).toContain("0 of 2");
+      fireEvent.click(box("api"));
+      expect(group.textContent).toContain("1 of 2");
+      expect(
+        screen.getByText(
+          "Only work's projects can join. For projects from several spaces, make the Topic from Topics.",
+        ),
+      ).toBeTruthy();
+    });
+
+    it("creates the Topic in the space", async () => {
+      const { onDone } = open({ spaces: TWO, space: "work" });
+      fireEvent.input(name(), { target: { value: "Pay" } });
+      fireEvent.click(box("web"));
+      await waitFor(() => expect(done().disabled).toBe(false));
+      fireEvent.click(done());
+      await waitFor(() => expect(onDone).toHaveBeenCalled());
+      expect(bridge.calls.find((c) => c.cmd === "create_topic")!.args).toEqual({
+        name: "Pay",
+        branch: "pay",
+        members: [{ repoPath: "/w/web", mode: "reference" }],
+        space: "work",
+      });
+    });
+
+    it("adds to a space Topic from its space only", () => {
+      open({ spaces: TWO, topic: { ...EXISTING, space: "work" }, space: "work" });
+      expect(screen.getByRole("dialog", { name: "Add repository to Auth" })).toBeTruthy();
+      expect(box("web")).toBeTruthy();
+      expect(screen.queryByRole("checkbox", { name: "lab" })).toBeNull();
+    });
+  });
 });

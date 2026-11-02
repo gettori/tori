@@ -360,6 +360,16 @@
   text-transform: uppercase;
   color: var(--fg-subtle);
 }
+.topicScopeNote {
+  margin: 0;
+  font-size: var(--tori-text-sm);
+  color: var(--fg-muted);
+}
+.repoGroupCount {
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-xs);
+  color: var(--fg-muted);
+}
 /* The checkbox root is the one `[data-checked]` element holding the input;
    Kobalte stamps the same attribute on the box and the label inside it. The
    negative margin keeps a highlighted row's text in line with its neighbours. */

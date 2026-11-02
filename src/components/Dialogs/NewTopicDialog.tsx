@@ -7,6 +7,7 @@ import Dialog from "../Dialog/Dialog";
 import Icon from "../Icon/Icon";
 import SegmentedControl from "../SegmentedControl/SegmentedControl";
 import RepoChecklist, { type RepoSpace } from "./RepoChecklist";
+import SpaceMark from "../SpaceMark/SpaceMark";
 import { topicSlug, type MemberMode, type Topic } from "../../utils/topics";
 
 const NAME_LABEL = "topic-name-label";
@@ -39,6 +40,9 @@ export default function NewTopicDialog(props: {
   topics: Topic[];
   /** When set, the dialog adds repositories to this Topic instead. */
   topic?: Topic;
+  /** The space the Topic lives in: only its projects are offered, and a new
+   *  Topic is created in it. */
+  space?: string;
   pinned?: { repoPath: string; worktreePath: string; branch: string | null };
   header?: JSX.Element;
   open?: boolean;
@@ -67,6 +71,14 @@ export default function NewTopicDialog(props: {
     ...(props.pinned ? [props.pinned.repoPath] : []),
   ];
   const picked = () => (props.pinned ? [props.pinned.repoPath, ...checked()] : checked());
+
+  const scope = () => (props.space ? props.spaces.find((g) => g.name === props.space) : undefined);
+  // A space Tori can no longer find offers every project, as the daemon then
+  // checks nothing either.
+  const offered = () => {
+    const g = scope();
+    return g ? [g] : props.spaces;
+  };
 
   const repoName = (path: string) =>
     props.spaces.flatMap((g) => g.projects).find((p) => p.path === path)?.name ?? path.split("/").pop() ?? path;
@@ -182,7 +194,12 @@ export default function NewTopicDialog(props: {
             ? { repoPath, mode: "worktree" as const, worktreePath: props.pinned!.worktreePath }
             : { repoPath, mode: modeOf(repoPath) },
         );
-        topic = await invoke<Topic>("create_topic", { name: name().trim(), branch: branch(), members });
+        topic = await invoke<Topic>("create_topic", {
+          name: name().trim(),
+          branch: branch(),
+          members,
+          ...(props.space ? { space: props.space } : {}),
+        });
       }
       props.onDone(topic);
     } catch (e) {
@@ -235,7 +252,18 @@ export default function NewTopicDialog(props: {
   return (
     <Dialog
       open={props.open ?? true}
-      title={props.topic ? `Add repository to ${props.topic.name}` : "New Topic"}
+      title={
+        props.topic
+          ? `Add repository to ${props.topic.name}`
+          : props.space
+            ? `New Topic in ${props.space}`
+            : "New Topic"
+      }
+      lead={
+        <Show when={!props.topic && props.space}>
+          {(name) => <SpaceMark name={name()} icon={scope()?.icon} color={scope()?.color} />}
+        </Show>
+      }
       size="wide"
       onClose={() => props.onCancel()}
       initialFocus={() => nameInput}
@@ -325,12 +353,20 @@ export default function NewTopicDialog(props: {
               />
             </div>
             <RepoChecklist
-              spaces={props.spaces}
+              spaces={offered()}
               value={checked()}
               onChange={setChecked}
               exclude={exclude()}
               filter={filter()}
+              scoped={!!scope()}
             />
+            <Show when={scope()}>
+              {(g) => (
+                <p class={styles.topicScopeNote}>
+                  Only {g().name}'s projects can join. For projects from several spaces, make the Topic from Topics.
+                </p>
+              )}
+            </Show>
           </div>
           <section class={styles.topicPicked} aria-labelledby={PICKED_LABEL}>
             <div class={styles.pickedHead}>
