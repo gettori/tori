@@ -15,6 +15,13 @@
   line-height: 1;
 }
 
+.mark.sm {
+  width: calc(16px * var(--ui-scale));
+  height: calc(16px * var(--ui-scale));
+  border-radius: calc(5px * var(--ui-scale));
+  font-size: calc(9px * var(--ui-scale));
+}
+
 .mark svg {
   width: 60%;
   height: 60%;

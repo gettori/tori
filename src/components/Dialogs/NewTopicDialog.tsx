@@ -45,13 +45,14 @@ export default function NewTopicDialog(props: {
   space?: string;
   pinned?: { repoPath: string; worktreePath: string; branch: string | null };
   header?: JSX.Element;
+  confirmLabel?: string;
   open?: boolean;
   onDone: (topic: Topic) => void;
   onCancel: () => void;
 }) {
   const [name, setName] = createSignal("");
   const [typedBranch, setTypedBranch] = createSignal<string | null>(null);
-  const [checked, setChecked] = createSignal<string[]>([]);
+  const [ticked, setChecked] = createSignal<string[]>([]);
   // Repos that get a worktree now. Everything else is attached as a reference,
   // which touches nothing in git, so only these rows have a branch to probe.
   const [worktrees, setWorktrees] = createSignal<ReadonlySet<string>>(new Set());
@@ -78,6 +79,11 @@ export default function NewTopicDialog(props: {
   const offered = () => {
     const g = scope();
     return g ? [g] : props.spaces;
+  };
+
+  const checked = () => {
+    const allowed = new Set(offered().flatMap((g) => g.projects.map((p) => p.path)));
+    return ticked().filter((r) => allowed.has(r));
   };
 
   const repoName = (path: string) =>
@@ -274,7 +280,7 @@ export default function NewTopicDialog(props: {
           </span>
           <Button onClick={() => props.onCancel()}>Cancel</Button>
           <Button variant="primary" disabled={!canConfirm()} onClick={() => void confirm()}>
-            {busy() ? "Working\u2026" : adding() ? "Add to Topic" : "Create Topic"}
+            {busy() ? "Working\u2026" : adding() ? "Add to Topic" : (props.confirmLabel ?? "Create Topic")}
           </Button>
         </>
       }

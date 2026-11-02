@@ -67,6 +67,16 @@ export function inSpace(topic: Pick<Topic, "space">, space: string): boolean {
   return topic.space === space;
 }
 
+/** `known` is null until the spaces are known, and then no space is gone. */
+export function spaceGone(space: string | undefined, known: readonly string[] | null): boolean {
+  return !!space && !!known && !known.includes(space);
+}
+
+/** A global Topic, or one whose space is gone: either takes any repo. */
+export function listsInTopics(topic: Pick<Topic, "space">, known: readonly string[] | null): boolean {
+  return isGlobal(topic) || spaceGone(topic.space, known);
+}
+
 /** The order Topics are listed in, the order `projects.list` serves them in,
  *  so a client drawing from the socket lists them the way the sidebar does. */
 export function byName(a: Pick<Topic, "name">, b: Pick<Topic, "name">): number {
