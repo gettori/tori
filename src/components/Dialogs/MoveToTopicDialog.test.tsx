@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent, within } from "@solidjs/testing-library";
-import { pointerClick } from "../../test/menus";
 import type { Member, Topic } from "../../utils/topics";
 
 const bridge = vi.hoisted(() => ({
@@ -31,6 +30,7 @@ const SPACES = [
       { name: "web", path: REPO },
     ],
   },
+  { name: "side", projects: [{ name: "lab", path: "/s/lab" }] },
 ];
 const WT = "/w/web-fix";
 
@@ -42,17 +42,20 @@ const member = (repoPath: string, mode: "worktree" | "reference"): Member => ({
   state: { kind: "present" },
   order: 0,
 });
-const topic = (id: string, name: string, members: Member[]): Topic => ({
+const topic = (id: string, name: string, members: Member[], space?: string): Topic => ({
   id,
   name,
   branch: `feat/${id}`,
   members,
   createdAt: 0,
+  ...(space ? { space } : {}),
 });
 
 const AUTH = topic("auth", "Auth", [member("/w/api", "worktree")]);
 const PAY = topic("pay", "Payments", [member(REPO, "worktree")]);
 const DOCS = topic("docs", "Docs", [member(REPO, "reference")]);
+const CART = topic("cart", "Cart", [member("/w/api", "worktree")], "work");
+const BENCH = topic("bench", "Bench", [member("/s/lab", "worktree")], "side");
 
 function mount(topics: Topic[]) {
   const onDone = vi.fn();
@@ -62,6 +65,7 @@ function mount(topics: Topic[]) {
       worktreePath={WT}
       label="web-fix"
       branch="fix-x"
+      space="work"
       topics={topics}
       spaces={SPACES}
       onDone={onDone}
@@ -70,11 +74,19 @@ function mount(topics: Topic[]) {
   ));
   return onDone;
 }
-const moveButton = () => screen.getByRole("button", { name: "Move to Topic" }) as HTMLButtonElement;
+const moveButton = () => screen.getByRole("button", { name: "Move" }) as HTMLButtonElement;
 async function pick(name: string) {
-  pointerClick(await screen.findByLabelText("Topic"));
-  pointerClick(await screen.findByRole("option", { name }));
+  fireEvent.click(await screen.findByRole("radio", { name }));
 }
+const groupNames = () => screen.queryAllByRole("radiogroup").map((g) => g.getAttribute("aria-label"));
+const choices = (group: string) =>
+  within(screen.getByRole("radiogroup", { name: group }))
+    .getAllByRole("radio")
+    .map((r) => r.closest("label")!.textContent);
+const openNew = async () => {
+  await waitFor(() => expect(screen.getByRole("group", { name: "Move to" })).toBeTruthy());
+  fireEvent.click(within(screen.getByRole("group", { name: "Move to" })).getByRole("button", { name: "New" }));
+};
 
 describe("MoveToTopicDialog", () => {
   beforeEach(() => {
@@ -123,14 +135,14 @@ describe("MoveToTopicDialog", () => {
     await waitFor(() => expect(screen.getByRole("group", { name: "Move to" })).toBeTruthy());
     fireEvent.click(within(screen.getByRole("group", { name: "Move to" })).getByRole("button", { name: "New" }));
 
-    const dialog = await screen.findByRole("dialog", { name: "New Topic" });
+    const dialog = await screen.findByRole("dialog", { name: "New Topic in work" });
     const branch = within(dialog).getByRole("textbox", { name: "Branch" }) as HTMLInputElement;
     expect(branch.value).toBe("fix-x");
     expect(within(dialog).queryByRole("checkbox", { name: "web" })).toBeNull();
     expect(dialog.textContent).toContain("This worktree, on fix-x");
     fireEvent.input(within(dialog).getByRole("textbox", { name: "Name" }), { target: { value: "Fix X" } });
     fireEvent.click(within(dialog).getByRole("checkbox", { name: "api" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Create Topic" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create and move" }));
 
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(AUTH));
     expect(bridge.calls.find((c) => c.cmd === "create_topic")!.args).toEqual({
@@ -140,6 +152,7 @@ describe("MoveToTopicDialog", () => {
         { repoPath: REPO, mode: "worktree", worktreePath: WT },
         { repoPath: "/w/api", mode: "reference" },
       ],
+      space: "work",
     });
     expect(bridge.calls.some((c) => c.cmd === "probe_topic_branch" && c.args.repoPath === REPO)).toBe(false);
   });
@@ -149,19 +162,19 @@ describe("MoveToTopicDialog", () => {
     const switchTo = async (tab: string) =>
       fireEvent.click(within(await screen.findByRole("group", { name: "Move to" })).getByRole("button", { name: tab }));
     await switchTo("New");
-    const dialog = await screen.findByRole("dialog", { name: "New Topic" });
+    const dialog = await screen.findByRole("dialog", { name: "New Topic in work" });
     fireEvent.input(within(dialog).getByRole("textbox", { name: "Name" }), { target: { value: "Fix X" } });
     await switchTo("Existing");
     await screen.findByRole("dialog", { name: "Move web-fix to a Topic" });
     await switchTo("New");
 
-    const again = await screen.findByRole("dialog", { name: "New Topic" });
+    const again = await screen.findByRole("dialog", { name: "New Topic in work" });
     expect((within(again).getByRole("textbox", { name: "Name" }) as HTMLInputElement).value).toBe("Fix X");
   });
 
   it("opens on New when there is no Topic to move into", async () => {
     mount([]);
-    expect(await screen.findByRole("dialog", { name: "New Topic" })).toBeTruthy();
+    expect(await screen.findByRole("dialog", { name: "New Topic in work" })).toBeTruthy();
   });
 
   it("says up front why a worktree cannot be moved at all", async () => {
@@ -172,8 +185,66 @@ describe("MoveToTopicDialog", () => {
       "textContent",
       "web-fix is on main, the repository's default branch",
     );
-    expect(screen.queryByLabelText("Topic")).toBeNull();
+    expect(screen.queryByRole("radio")).toBeNull();
     expect(screen.queryByRole("group", { name: "Move to" })).toBeNull();
     expect(moveButton().disabled).toBe(true);
+  });
+
+  it("lists the space's Topics, then the global ones, and none from another space", async () => {
+    mount([AUTH, BENCH, CART, PAY]);
+    await screen.findByRole("radio", { name: "Cart" });
+    expect(groupNames()).toEqual(["In work, 1", "Topics, 2"]);
+    expect(choices("In work, 1")).toEqual(["Cart"]);
+    expect(choices("Topics, 2")).toEqual(["Auth", "Payments"]);
+    expect(screen.queryByRole("radio", { name: "Bench" })).toBeNull();
+  });
+
+  it("searches both groups and drops a group the search empties", async () => {
+    mount([AUTH, CART]);
+    fireEvent.input(await screen.findByRole("searchbox", { name: "Search Topics" }), { target: { value: "car" } });
+    await waitFor(() => expect(groupNames()).toEqual(["In work, 1"]));
+    fireEvent.input(screen.getByRole("searchbox", { name: "Search Topics" }), { target: { value: "zzz" } });
+    await waitFor(() => expect(groupNames()).toEqual([]));
+    expect(screen.getByText("No Topic matches.")).toBeTruthy();
+  });
+
+  it("hides the header of a group with no Topics", async () => {
+    mount([CART]);
+    await screen.findByRole("radio", { name: "Cart" });
+    expect(groupNames()).toEqual(["In work, 1"]);
+  });
+
+  it("says there are no Topics when neither group has any", async () => {
+    mount([BENCH]);
+    await screen.findByRole("dialog", { name: "New Topic in work" });
+    fireEvent.click(within(screen.getByRole("group", { name: "Move to" })).getByRole("button", { name: "Existing" }));
+    expect(await screen.findByText("No Topics yet.")).toBeTruthy();
+  });
+
+  it("makes the new Topic in the worktree's space by default, or global when asked", async () => {
+    bridge.answer = AUTH;
+    const onDone = mount([AUTH]);
+    await openNew();
+    const where = () => within(screen.getByRole("group", { name: "Where" }));
+    expect(where().getByRole("button", { name: "work" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText("Lives in work's tree. Can hold work's projects only.")).toBeTruthy();
+    expect(screen.queryByRole("checkbox", { name: "lab" })).toBeNull();
+
+    fireEvent.click(where().getByRole("button", { name: "Topics" }));
+    const dialog = await screen.findByRole("dialog", { name: "New Topic" });
+    expect(screen.getByText("Listed in Topics. Can hold projects from any space.")).toBeTruthy();
+    fireEvent.input(within(dialog).getByRole("textbox", { name: "Name" }), { target: { value: "Wide" } });
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "lab" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create and move" }));
+
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(bridge.calls.find((c) => c.cmd === "create_topic")!.args).toEqual({
+      name: "Wide",
+      branch: "fix-x",
+      members: [
+        { repoPath: REPO, mode: "worktree", worktreePath: WT },
+        { repoPath: "/s/lab", mode: "reference" },
+      ],
+    });
   });
 });

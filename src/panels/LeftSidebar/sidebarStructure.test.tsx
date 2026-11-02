@@ -391,7 +391,7 @@ describe("the sidebar levels that outlive the session rows", () => {
     mount(["p:work/repo"]);
     fireEvent.contextMenu(await row("feat"));
     pointerClick(await screen.findByText("Move to topic…"));
-    expect(await screen.findByRole("dialog", { name: "New Topic" })).toBeTruthy();
+    expect(await screen.findByRole("dialog", { name: "New Topic in work" })).toBeTruthy();
     expect(screen.getByRole("group", { name: "Move to" })).toBeTruthy();
   });
 
