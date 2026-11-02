@@ -13,6 +13,8 @@ export interface DialogProps {
    *  without taking it out of the accessibility tree. */
   title: string;
   titleHidden?: boolean;
+  /** A glyph before the title, such as the space a dialog acts in. */
+  lead?: JSX.Element;
   description?: string;
   size?: DialogSize;
   /** What to focus when the dialog opens. Defaults to the panel itself. */
@@ -134,7 +136,15 @@ export default function Dialog(props: DialogProps) {
         >
           <DialogSurface.Provider value={surface}>
             <div class={props.titleHidden && !props.description ? styles.headHidden : styles.head}>
-              <Primitive.Title class={props.titleHidden ? styles.titleHidden : styles.title}>
+              <Primitive.Title
+                class={props.titleHidden ? styles.titleHidden : styles.title}
+                classList={{ [styles.titleLed]: !!props.lead }}
+              >
+                <Show when={props.lead}>
+                  <span class={styles.lead} aria-hidden="true">
+                    {props.lead}
+                  </span>
+                </Show>
                 {props.title}
               </Primitive.Title>
               <Show when={props.description}>

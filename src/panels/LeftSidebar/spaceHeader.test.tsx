@@ -117,6 +117,18 @@ describe("the active space header", () => {
     expect(screen.getByText("Delete space")).toBeTruthy();
   });
 
+  it("makes a Topic in this space from its own row in the menu", async () => {
+    mount();
+    await waitFor(() => expect(header()).toBeTruthy());
+    pointerClick(menuButton());
+    const row = await screen.findByRole("menuitem", { name: /New Topic/ });
+    expect(row.textContent).toContain("Groups worktrees from work's projects");
+    pointerClick(row);
+    expect(await screen.findByRole("dialog", { name: "New Topic in work" })).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "proj" })).toBeTruthy();
+    expect(screen.queryByRole("checkbox", { name: "lab" })).toBeNull();
+  });
+
   it("keeps the menu reachable without a pointer", async () => {
     mount();
     await waitFor(() => expect(header()).toBeTruthy());

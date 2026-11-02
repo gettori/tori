@@ -1,6 +1,6 @@
-// What each way into the sidebar was last left on: a unit per space, and the
-// one Topic. Hints, never truth: the caller re-reads the live tree or the
-// Topic list and drops an entry whose folder or record is gone.
+// What each way into the sidebar was last left on: a unit or a space Topic per
+// space, and the one global Topic. Hints, never truth: the caller re-reads the
+// live tree or the Topic list and drops an entry whose folder or record is gone.
 import type { Selection } from "../panels/LeftSidebar/LeftSidebar";
 
 const KEY = "tori.selection-memory.v1";
@@ -22,7 +22,7 @@ function read(): Memory {
     const spaces: Record<string, Selection> = {};
     for (const [space, v] of Object.entries(parsed.spaces ?? {})) {
       const s = sel(v);
-      if (s && s.folderPath) spaces[space] = s;
+      if (s && (s.folderPath || s.kind === "topic")) spaces[space] = s;
     }
     return { spaces, topic: sel(parsed.topic) };
   } catch {
@@ -39,27 +39,29 @@ function write(next: Memory) {
   }
 }
 
-/** Record a selection under the way back to it: its space, or the Topic slot.
- *  A Topic spans members and has no space, so the two never collide. */
+/** Record a selection under the way back to it: its space, or the Topic slot
+ *  for a global Topic, which has no space. */
 export function rememberSelection(s: Selection | null) {
   if (!s) return;
   const mem = read();
   if (s.kind === "topic") {
     if (!s.topicId) return;
-    write({ ...mem, topic: s });
+    if (s.spaceName) write({ ...mem, spaces: { ...mem.spaces, [s.spaceName]: s } });
+    else write({ ...mem, topic: s });
     return;
   }
   if (!s.spaceName || !s.folderPath) return;
   write({ ...mem, spaces: { ...mem.spaces, [s.spaceName]: s } });
 }
 
-/** The unit `space` was last left on, or null when it has never been opened. */
-export function rememberedUnit(space: string): Selection | null {
+/** The unit or Topic `space` was last left on, or null when it has never been
+ *  opened. */
+export function rememberedInSpace(space: string): Selection | null {
   if (!space) return null;
   return read().spaces[space] ?? null;
 }
 
-/** The Topic last selected, in either mode. */
+/** The global Topic last selected. */
 export function rememberedTopic(): Selection | null {
   return read().topic;
 }

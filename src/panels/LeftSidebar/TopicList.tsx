@@ -11,8 +11,11 @@ import type { RepoSpace } from "../../components/Dialogs/RepoChecklist";
 import { type Topic } from "../../utils/topics";
 import { topics, topicsError, watchTopics } from "../../utils/topicStore";
 import type { Rollup } from "../../utils/sessionStatus";
-import type { TopicActions } from "./topicActions";
+import type { DialogReq, TopicActions } from "./topicActions";
 import styles from "./TopicList.module.css";
+
+const dialogScope = (req: DialogReq) =>
+  "topic" in req ? { topic: req.topic, space: req.topic.space } : { space: req.space };
 
 /** What the list needs from a Space: the tint for a chip and the projects for
  *  the creation checklist. The sidebar's own `Space` satisfies it as is. */
@@ -32,6 +35,7 @@ export default function TopicList(props: {
   /** Open a Topic on one of its members. */
   onOpenMember?: (topic: Topic, root: string) => void;
   topicStatus?: (topic: Topic) => Rollup | null;
+  shows?: (topic: Topic) => boolean;
   actions: TopicActions;
 }) {
   onCleanup(watchTopics());
@@ -51,12 +55,13 @@ export default function TopicList(props: {
     setSweepReq,
   } = actions;
   const error = () => actions.error() ?? topicsError();
+  const listed = () => (props.shows ? topics().filter(props.shows) : topics());
 
   return (
     <div class={styles.list} classList={{ [props.class ?? ""]: !!props.class }} hidden={props.hidden} data-topic-list>
       <Show when={error()}>{(msg) => <p class={styles.error}>{msg()}</p>}</Show>
       <TopicRows
-        topics={topics()}
+        topics={listed()}
         query={props.query}
         spaces={props.spaces}
         actions={actions}
@@ -66,7 +71,7 @@ export default function TopicList(props: {
         topicStatus={props.topicStatus}
         fallback={
           <div class="tree-empty">
-            <Show when={topics().length === 0} fallback={<p>No Topic matches the filter.</p>}>
+            <Show when={listed().length === 0} fallback={<p>No Topic matches the filter.</p>}>
               <p>No Topics yet.</p>
               <Button size="sm" variant="ghost" onClick={() => setDialog({})}>
                 Create a Topic
@@ -81,7 +86,7 @@ export default function TopicList(props: {
           <NewTopicDialog
             spaces={props.spaces}
             topics={topics()}
-            topic={req().topic}
+            {...dialogScope(req())}
             onDone={actions.settled}
             onCancel={() => setDialog(null)}
           />

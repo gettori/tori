@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { pointerClick } from "../../test/menus";
 import type { Selection } from "./LeftSidebar";
 
 const WORK = "/root/work/proj";
@@ -96,5 +97,21 @@ describe("the sidebar's Topic actions", () => {
     mount();
     fireEvent.click(await screen.findByRole("button", { name: "New Topic" }));
     await waitFor(() => expect(dialogs("New Topic")).toHaveLength(1));
+  });
+
+  it("opens one dialog for a row in a space's tree and one in Topics mode", async () => {
+    bridge.topics = [AUTH, { ...AUTH, id: "f2", name: "Pay", branch: "feat/pay", space: "work" }];
+    localStorage.setItem("tori.sidebar-mode.v1", "spaces");
+    mount();
+    fireEvent.contextMenu(await screen.findByText("Pay"));
+    pointerClick(await screen.findByText("Add repository…"));
+    await waitFor(() => expect(dialogs("Add repository to Pay")).toHaveLength(1));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(dialogs("Add repository to Pay")).toHaveLength(0));
+
+    fireEvent.click(screen.getByRole("button", { name: "Topics" }));
+    fireEvent.contextMenu(await screen.findByText("Auth"));
+    pointerClick(await screen.findByText("Add repository…"));
+    await waitFor(() => expect(dialogs("Add repository to Auth")).toHaveLength(1));
   });
 });
