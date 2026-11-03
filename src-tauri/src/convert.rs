@@ -624,7 +624,7 @@ pub mod commands {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::topics::{Member, MemberState, Promotion, Topic};
+    use crate::topics::{Member, MemberState, Topic};
     use std::process::Command;
 
     fn tmp() -> PathBuf {
