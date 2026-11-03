@@ -194,9 +194,9 @@ describe("MoveToTopicDialog", () => {
   it("lists the space's Topics, then the global ones, and none from another space", async () => {
     mount([AUTH, BENCH, CART, PAY]);
     await screen.findByRole("radio", { name: "Cart" });
-    expect(groupNames()).toEqual(["In work, 1", "Global, 2"]);
+    expect(groupNames()).toEqual(["In work, 1", "Home, 2"]);
     expect(choices("In work, 1")).toEqual(["Cart"]);
-    expect(choices("Global, 2")).toEqual(["Auth", "Payments"]);
+    expect(choices("Home, 2")).toEqual(["Auth", "Payments"]);
     expect(screen.queryByRole("radio", { name: "Bench" })).toBeNull();
   });
 
@@ -231,9 +231,9 @@ describe("MoveToTopicDialog", () => {
     expect(screen.getByText("Lives in work's tree. Can hold work's projects only.")).toBeTruthy();
     expect(screen.queryByRole("checkbox", { name: "lab" })).toBeNull();
 
-    fireEvent.click(where().getByRole("button", { name: "Global" }));
+    fireEvent.click(where().getByRole("button", { name: "Home" }));
     const dialog = await screen.findByRole("dialog", { name: "New Topic" });
-    expect(screen.getByText("Listed in Global. Can hold projects from any space.")).toBeTruthy();
+    expect(screen.getByText("Listed in Home. Can hold projects from any space.")).toBeTruthy();
     fireEvent.input(within(dialog).getByRole("textbox", { name: "Name" }), { target: { value: "Wide" } });
     fireEvent.click(within(dialog).getByRole("checkbox", { name: "lab" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Create and move" }));
@@ -264,7 +264,7 @@ describe("MoveToTopicDialog", () => {
       />
     ));
     await screen.findByRole("radio", { name: "Auth" });
-    expect(groupNames()).toEqual(["Global, 2"]);
+    expect(groupNames()).toEqual(["Home, 2"]);
     await openNew();
     expect(screen.queryByRole("group", { name: "Where" })).toBeNull();
   });

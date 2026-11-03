@@ -190,7 +190,7 @@ import {
   Ellipsis,
   Search,
   Tag,
-  Globe,
+  House,
   Plus,
   TriangleAlert,
   SquareTerminal,
@@ -2612,7 +2612,7 @@ export default function LeftSidebar(props: {
       onClick: () => void attachFolder(),
     },
     { separator: true },
-    { label: "Edit icon and colour", note: "Global is built in. It can't be renamed or deleted.", onClick: editGlobal },
+    { label: "Edit icon and colour", note: "Home is built in. It can't be renamed or deleted.", onClick: editGlobal },
   ];
 
   // A project with a working tree git can branch from: a plain repo or a
@@ -4245,7 +4245,7 @@ export default function LeftSidebar(props: {
       <Show when={config()}>
         <div class={styles.spaceBar} classList={{ [styles.rail]: railed() }}>
           <TileProbe
-            glyph={Globe}
+            glyph={House}
             ref={(el) => (probeEl = el)}
             nameRef={(el) => (probeNameEl = el)}
             textRef={(el) => (probeTextEl = el)}

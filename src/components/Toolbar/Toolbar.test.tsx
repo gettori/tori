@@ -153,7 +153,7 @@ describe("Toolbar for a Topic in a space", () => {
 
   it("keeps Topics and the name alone for a global Topic", () => {
     render(() => <Toolbar selected={topicSel(A) as never} />);
-    expect(crumbs()).toEqual(["Global", "Auth"]);
+    expect(crumbs()).toEqual(["Home", "Auth"]);
   });
 });
 
@@ -161,7 +161,7 @@ describe("Toolbar for a Topic", () => {
   it("shows Topics and the Topic's name, with no member to switch to", async () => {
     await loadSync({ [A]: upstream({ behind: 3 }) });
     render(() => <Toolbar selected={topicSel(A) as never} />);
-    expect(crumbs()).toEqual(["Global", "Auth"]);
+    expect(crumbs()).toEqual(["Home", "Auth"]);
     expect(screen.queryByRole("group", { name: "Topic members" })).toBeNull();
     expect(syncChip()).toBeNull();
   });
@@ -286,7 +286,7 @@ describe("Toolbar for a chat", () => {
 
   it("reads Global then the chat, with no sync chip", () => {
     render(() => <Toolbar selected={chatSel("Stale name") as never} />);
-    expect(crumbs()).toEqual(["Global", "New chat"]);
+    expect(crumbs()).toEqual(["Home", "New chat"]);
     expect(syncChip()).toBeNull();
   });
 
@@ -306,6 +306,6 @@ describe("Toolbar for a chat", () => {
     const { ensureChatsRoot } = await import("../../utils/chats");
     await ensureChatsRoot();
     render(() => <Toolbar selected={chatSel("New chat") as never} />);
-    await waitFor(() => expect(crumbs()).toEqual(["Global", "Plan a trip"]));
+    await waitFor(() => expect(crumbs()).toEqual(["Home", "Plan a trip"]));
   });
 });

@@ -1,6 +1,6 @@
 import { createSignal, For, Show, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { Ban, Globe } from "lucide-solid";
+import { Ban, House } from "lucide-solid";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
@@ -132,7 +132,7 @@ export default function MoveTopicDialog(props: {
       <div role="radiogroup" aria-label="Move to" class={styles.moveGroup} onKeyDown={onArrow}>
         <Row
           name={GLOBAL_NAME}
-          glyph={<Icon icon={Globe} />}
+          glyph={<Icon icon={House} />}
           note="Any space's projects"
           picked={target() === ""}
           current={current() === ""}

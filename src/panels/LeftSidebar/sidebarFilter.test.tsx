@@ -90,10 +90,10 @@ describe("the sidebar filter", () => {
   it("offers Global's menu beside its name, like a space's", async () => {
     mount();
     await waitFor(() => expect(screen.getByText("proj")).toBeTruthy());
-    expect(screen.queryByRole("button", { name: "Actions for Global" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Actions for Home" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Global" }));
-    const menu = await screen.findByRole("button", { name: "Actions for Global" });
+    fireEvent.click(screen.getByRole("button", { name: "Home" }));
+    const menu = await screen.findByRole("button", { name: "Actions for Home" });
     expect(menu.compareDocumentPosition(toggle()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     pointerClick(menu);

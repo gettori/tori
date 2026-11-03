@@ -1,6 +1,6 @@
 import { createSignal, onMount, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { Globe, Search } from "lucide-solid";
+import { House, Search } from "lucide-solid";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
@@ -137,7 +137,7 @@ export default function MoveToTopicDialog(props: {
             label: props.space!,
             icon: <SpaceMark name={props.space!} icon={scope()?.icon} color={scope()?.color} size="sm" />,
           },
-          { value: "global" as const, label: GLOBAL_NAME, icon: <Icon icon={Globe} /> },
+          { value: "global" as const, label: GLOBAL_NAME, icon: <Icon icon={House} /> },
         ]}
         value={where()}
         onChange={setWhere}

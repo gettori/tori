@@ -76,7 +76,7 @@ describe("RepoChecklist", () => {
       },
     });
     render(() => <RepoChecklist spaces={spaces} value={[]} onChange={() => {}} />);
-    expect(screen.getByRole("group", { name: "Global" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Home" })).toBeTruthy();
     expect(box("acme-site")).toBeTruthy();
     expect(screen.queryByRole("checkbox", { name: "thesis" })).toBeNull();
   });

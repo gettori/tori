@@ -1,10 +1,10 @@
-export const GLOBAL_NAME = "Global";
+export const GLOBAL_NAME = "Home";
 
 // Spaces are keyed by their folder's name, and no folder name can contain a
 // slash, so no space on disk can ever collide with this one.
 export const GLOBAL_KEY = "/global";
 
-export const GLOBAL_ICON = "Globe";
+export const GLOBAL_ICON = "House";
 export const GLOBAL_COLOR = "Teal";
 
 export const spaceLabel = (name: string) => (name === GLOBAL_KEY ? GLOBAL_NAME : name);

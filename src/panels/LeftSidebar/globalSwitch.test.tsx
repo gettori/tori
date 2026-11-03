@@ -105,7 +105,7 @@ describe("switching between a space and Global", () => {
     click("wave-3");
     await waitFor(() => expect(sel()?.folderPath).toBe(WAVE));
 
-    segment("Global");
+    segment("Home");
     await waitFor(() => expect(screen.getByText("Auth")).toBeTruthy());
     click("Auth");
     fireEvent.click(document.querySelector<HTMLElement>(`[data-member="${WORK}"]`)!);
@@ -115,7 +115,7 @@ describe("switching between a space and Global", () => {
     await waitFor(() => expect(sel()?.folderPath).toBe(WAVE));
     expect(sel()?.kind).toBe("unit");
 
-    segment("Global");
+    segment("Home");
     await waitFor(() => expect(sel()?.topicId).toBe("f1"));
   });
 
@@ -125,7 +125,7 @@ describe("switching between a space and Global", () => {
     click("wave-3");
     await waitFor(() => expect(sel()?.folderPath).toBe(WAVE));
 
-    segment("Global");
+    segment("Home");
     await waitFor(() => expect(screen.getByText("Auth")).toBeTruthy());
     expect(sel()).toBeNull();
   });
@@ -140,7 +140,7 @@ describe("switching between a space and Global", () => {
     click("wave-3");
     await waitFor(() => expect(sel()?.folderPath).toBe(WAVE));
 
-    segment("Global");
+    segment("Home");
     await waitFor(() => expect(screen.getByText("Auth")).toBeTruthy());
     expect(onSelect).toHaveBeenLastCalledWith(null);
   });
@@ -169,7 +169,7 @@ describe("switching between a space and Global", () => {
       await openPay();
       await waitFor(() => expect(sel()?.topicId).toBe("f2"));
 
-      segment("Global");
+      segment("Home");
       await waitFor(() => expect(screen.getByText("Auth")).toBeTruthy());
       click("Auth");
       fireEvent.click(document.querySelector<HTMLElement>(`[data-member="${WORK}"]`)!);
@@ -184,7 +184,7 @@ describe("switching between a space and Global", () => {
       await openPay();
       await waitFor(() => expect(sel()?.topicId).toBe("f2"));
 
-      segment("Global");
+      segment("Home");
       await waitFor(() => expect(screen.getByText("Auth")).toBeTruthy());
       expect(sel()).toBeNull();
       expect(screen.queryByText("Pay")).toBeNull();

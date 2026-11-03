@@ -307,7 +307,7 @@ describe("ConfirmDeleteSpace", () => {
       expect(gone).toContain("Cart");
       expect(gone).toContain("2 members");
       expect(gone).not.toContain("Bench");
-      const losing = section(/Global Topics that lose members/);
+      const losing = section(/Home Topics that lose members/);
       expect(losing).toContain("Launch");
       expect(losing).toContain("Loses web, api");
       expect(losing).not.toContain("left empty");
@@ -317,7 +317,7 @@ describe("ConfirmDeleteSpace", () => {
     it("says when a global Topic is left with no members", () => {
       open({ spaces: SPACES, topics: [topic("Docs", [member("/w/web", 0)])] });
 
-      expect(section(/Global Topics that lose members/)).toContain("Loses web \u00b7 left empty");
+      expect(section(/Home Topics that lose members/)).toContain("Loses web \u00b7 left empty");
       expect(screen.queryByText(/Topics deleted with it/)).toBeNull();
     });
   });

@@ -178,7 +178,7 @@ describe("Topics in a space's tree", () => {
   it("keeps a space's Topics out of Global and a global one in it", async () => {
     mount();
     await screen.findByText("Pay");
-    fireEvent.click(screen.getByRole("button", { name: "Global" }));
+    fireEvent.click(screen.getByRole("button", { name: "Home" }));
     await screen.findByText("Auth");
     expect(screen.queryByText("Pay")).toBeNull();
     expect(screen.queryByText("Bench")).toBeNull();
@@ -233,7 +233,7 @@ describe("Topics in a space's tree", () => {
     await waitFor(() => expect(screen.getByText("Pay").closest("li")?.querySelector('[title="Idle"]')).toBeTruthy());
     expect(workTile().querySelector('[title="1 idle"]')).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Global" }));
+    fireEvent.click(screen.getByRole("button", { name: "Home" }));
     await waitFor(() => expect(workTile().querySelector('[title="1 idle"]')).toBeTruthy());
   });
 

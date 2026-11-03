@@ -31,7 +31,7 @@ function GoneSpaceNote(props: { topic: Topic; actions: TopicActions }) {
         </p>
         <div class={styles.goneActions}>
           <Button size="sm" onClick={() => props.actions.keepInGlobal(props.topic)}>
-            Keep in Global
+            Keep in Home
           </Button>
           <Button size="sm" variant="danger" onClick={() => props.actions.openDelete(props.topic)}>
             Delete

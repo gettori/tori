@@ -113,7 +113,7 @@ function TopicsSidebar() {
         <div class={sidebar.treeHead}>
           <span class={sidebar.headStrut} aria-hidden="true" />
           <div class={sidebar.spaceHeader}>
-            <span class={sidebar.spaceHeaderName}>Global</span>
+            <span class={sidebar.spaceHeaderName}>Home</span>
           </div>
           <Button
             class={sidebar.headAdd}
@@ -138,7 +138,7 @@ function TopicsSidebar() {
         </div>
         <div class={sidebar.spaceBar}>
           <div class={sidebar.stripNav}>
-            <SpaceTile name="Global" icon="Globe" color="Teal" fixed active nameWidth="56px" />
+            <SpaceTile name="Home" icon="House" color="Teal" fixed active nameWidth="56px" />
             <div class={sidebar.spaceDivider} />
             <div class={sidebar.spaceScroll}>
               <SpaceTile name="work" color="Sky" />
