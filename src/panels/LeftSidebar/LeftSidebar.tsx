@@ -3406,6 +3406,11 @@ export default function LeftSidebar(props: {
     const g = activeSpace();
     return !!g && expanded().has(tkey(g));
   };
+  const spkey = (g: Group) => `sp:${g.name}`;
+  const spaceProjectsCollapsed = () => {
+    const g = activeSpace();
+    return !!g && expanded().has(spkey(g));
+  };
   const spaceTopics = createMemo(() => {
     const g = activeSpace();
     return g ? topics().filter((t) => inSpace(t, g.name)) : [];
@@ -4246,7 +4251,18 @@ export default function LeftSidebar(props: {
                     />
                   </Show>
                   <Show when={activeProjects().length > 0}>
-                    <GroupHead label="Projects" count={counted(activeProjects().length, g().projects.length)} />
+                    <GroupHead
+                      label="Projects"
+                      count={counted(activeProjects().length, g().projects.length)}
+                      filtered={!!q()}
+                      open={!spaceProjectsCollapsed()}
+                      onToggle={() => toggle(spkey(g()))}
+                      end={statusBubble(() =>
+                        spaceProjectsCollapsed()
+                          ? bubbleForUnits(activeProjects().flatMap((p) => p.branchUnits))
+                          : null,
+                      )}
+                    />
                   </Show>
                 </>
               );
@@ -4257,8 +4273,10 @@ export default function LeftSidebar(props: {
             when={topicsGroupSpace()}
             fallback={<For each={activeProjects()}>{(p) => projectNode(activeSpace()!, p)}</For>}
           >
-            <For each={spaceFold.shown()}>{(p) => projectNode(activeSpace()!, p)}</For>
-            {spaceFold.row()}
+            <Show when={!spaceProjectsCollapsed()}>
+              <For each={spaceFold.shown()}>{(p) => projectNode(activeSpace()!, p)}</For>
+              {spaceFold.row()}
+            </Show>
           </Show>
 
           <Show when={(config()?.spaces ?? []).length > 0 && activeProjects().length === 0}>
