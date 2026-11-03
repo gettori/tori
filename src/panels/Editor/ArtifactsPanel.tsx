@@ -11,10 +11,10 @@ import { chatById } from "../../utils/chats";
 import { isEditingNow } from "../../utils/editingNow";
 import { isUnderPath } from "../../utils/pathScope";
 import { emitWith, OPEN_IN_EDITOR, type FsChanged, type OpenInEditor } from "../../utils/events";
-import styles from "./ArtefactsPanel.module.css";
+import styles from "./ArtifactsPanel.module.css";
 
-export type Artefact = { path: string; name: string; size: number; modified: number };
-type Artefacts = { made: Artefact[]; added: Artefact[] };
+export type Artifact = { path: string; name: string; size: number; modified: number };
+type Artifacts = { made: Artifact[]; added: Artifact[] };
 
 const KINDS: [RegExp, string, LucideIcon][] = [
   [/\.(md|markdown)$/i, "Markdown", FileText],
@@ -26,21 +26,21 @@ const KINDS: [RegExp, string, LucideIcon][] = [
   [/\.(json|ya?ml|toml|html?|css|[jt]sx?|py|rs|go|sh|sql)$/i, "Code", FileCode],
 ];
 
-export function artefactKind(name: string): { label: string; icon: LucideIcon } {
+export function artifactKind(name: string): { label: string; icon: LucideIcon } {
   const hit = KINDS.find(([re]) => re.test(name));
   if (hit) return { label: hit[1], icon: hit[2] };
   const ext = name.includes(".") ? name.split(".").pop()!.toUpperCase() : "";
   return { label: ext || "File", icon: File };
 }
 
-export default function ArtefactsPanel(props: { chatId: string; root: string; activePath?: string | null }) {
-  const [list, setList] = createSignal<Artefacts>({ made: [], added: [] });
+export default function ArtifactsPanel(props: { chatId: string; root: string; activePath?: string | null }) {
+  const [list, setList] = createSignal<Artifacts>({ made: [], added: [] });
   const [madeOpen, setMadeOpen] = createSignal(true);
   const [addedOpen, setAddedOpen] = createSignal(true);
   const transcripts = () => (chatById(props.chatId)?.sessions ?? []).map((s) => s.path);
 
   async function refresh() {
-    const next = await invoke<Artefacts | null>("chat_artefacts", {
+    const next = await invoke<Artifacts | null>("chat_artifacts", {
       chatId: props.chatId,
       transcripts: transcripts(),
     }).catch(() => null);
@@ -74,8 +74,8 @@ export default function ArtefactsPanel(props: { chatId: string; root: string; ac
 
   const total = () => list().made.length + list().added.length;
 
-  const row = (a: Artefact) => {
-    const kind = artefactKind(a.name);
+  const row = (a: Artifact) => {
+    const kind = artifactKind(a.name);
     const writing = () => isEditingNow(a.path);
     return (
       <li>
@@ -84,7 +84,7 @@ export default function ArtefactsPanel(props: { chatId: string; root: string; ac
           class={styles.row}
           classList={{ [styles.sel]: props.activePath === a.path }}
           aria-current={props.activePath === a.path ? "true" : undefined}
-          data-artefact={a.path}
+          data-artifact={a.path}
           onClick={() => emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: a.path })}
         >
           <span class={styles.iconBox}>
@@ -106,7 +106,7 @@ export default function ArtefactsPanel(props: { chatId: string; root: string; ac
     );
   };
 
-  const group = (label: string, items: () => Artefact[], open: () => boolean, toggle: () => void) => (
+  const group = (label: string, items: () => Artifact[], open: () => boolean, toggle: () => void) => (
     <Show when={items().length > 0}>
       <GroupHead label={label} count={String(items().length)} open={open()} onToggle={toggle} />
       <Show when={open()}>
@@ -118,9 +118,9 @@ export default function ArtefactsPanel(props: { chatId: string; root: string; ac
   );
 
   return (
-    <div class={styles.panel} data-artefacts>
+    <div class={styles.panel} data-artifacts>
       <div class={styles.head}>
-        <span class={styles.title}>Artefacts</span>
+        <span class={styles.title}>Artifacts</span>
         <span class={styles.count}>{total()}</span>
       </div>
       <Show
