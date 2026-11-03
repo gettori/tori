@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, fireEvent, waitFor, within } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
 import type { Topic } from "../../utils/topics";
+import { allSpaces } from "../../utils/globalSpace";
 
 type Probe = { valid: boolean; local: boolean; remote: boolean; hasWorktree: boolean };
 const CLEAR: Probe = { valid: true, local: false, remote: false, hasWorktree: false };
@@ -324,5 +325,13 @@ describe("NewTopicDialog", () => {
       expect(box("web")).toBeTruthy();
       expect(screen.queryByRole("checkbox", { name: "lab" })).toBeNull();
     });
+  });
+
+  it("offers Global's attached folders for a Topic in Global", async () => {
+    open({
+      spaces: allSpaces({ spaces: SPACES, global: { projects: [{ name: "acme-site", path: "/c/acme-site" }] } }),
+    });
+    expect(await screen.findByRole("checkbox", { name: "acme-site" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Global" })).toBeTruthy();
   });
 });

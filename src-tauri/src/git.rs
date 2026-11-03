@@ -2377,8 +2377,8 @@ fn quiet_sweep(
     // projects, and one sweep covers few enough containers that the scan costs
     // nothing next to the subprocess at the end of it.
     let mut containers: Vec<(PathBuf, Vec<String>)> = Vec::new();
-    for unit in config
-        .spaces
+    let spaces = config.project_groups();
+    for unit in spaces
         .iter()
         .flat_map(|space| &space.projects)
         .flat_map(|project| &project.branch_units)

@@ -1,5 +1,6 @@
 import { rollupStatuses, statusFromDot, type Rollup } from "../../src/utils/sessionStatus";
 import { listsInGlobal } from "../../src/utils/topics";
+import { GLOBAL_COLOR, GLOBAL_ICON, GLOBAL_KEY, spaceLabel } from "../../src/utils/globalSpace";
 
 export type Home = { project: string; folder: string; branch: string | null; topic?: string };
 
@@ -39,7 +40,9 @@ export type Unit = {
 
 export type Project = { name: string; path: string; icon?: string | null; image?: string | null; units: Unit[] };
 
-export type Space = { name: string; path: string; icon: string | null; color: string | null; projects: Project[] };
+export type ProjectGroup = { name: string; icon: string | null; color: string | null; projects: Project[] };
+
+export type Space = ProjectGroup & { path: string };
 
 export type TopicMember = {
   repoPath: string;
@@ -59,7 +62,27 @@ export type Topic = {
   space?: string;
 };
 
-export type Tree = { spaces: Space[]; topics: Topic[] };
+export type Tree = {
+  spaces: Space[];
+  global?: { icon: string | null; color: string | null; projects: Project[] } | null;
+  topics: Topic[];
+};
+
+/** Global owns no folder, so a group carries no path. */
+export function projectGroups(tree: Tree | undefined): ProjectGroup[] {
+  const spaces: ProjectGroup[] = tree?.spaces ?? [];
+  const global = tree?.global;
+  if (!global?.projects.length) return spaces;
+  return [
+    ...spaces,
+    {
+      name: GLOBAL_KEY,
+      icon: global.icon ?? GLOBAL_ICON,
+      color: global.color ?? GLOBAL_COLOR,
+      projects: global.projects,
+    },
+  ];
+}
 
 type Kind = "worktree" | "plain" | "plain-dir";
 
@@ -142,7 +165,7 @@ export function matches(text: string | null | undefined, query: string): boolean
 
 const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
 
-export function spaceOfRepo(spaces: Space[], repoPath: string): Space | undefined {
+export function spaceOfRepo<G extends ProjectGroup>(spaces: G[], repoPath: string): G | undefined {
   return spaces.find((s) => s.projects.some((p) => p.path === repoPath));
 }
 
@@ -158,8 +181,9 @@ export function topicsTabTopics(tree: Tree): Topic[] {
 export function topicSpaces(tree: Tree, topic: Topic): string[] {
   const names = [...topic.members]
     .sort((a, b) => a.order - b.order)
-    .map((m) => spaceOfRepo(tree.spaces, m.repoPath)?.name)
-    .filter((n): n is string => !!n);
+    .map((m) => spaceOfRepo(projectGroups(tree), m.repoPath)?.name)
+    .filter((n): n is string => !!n)
+    .map(spaceLabel);
   return [...new Set(names)];
 }
 

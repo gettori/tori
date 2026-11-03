@@ -33,7 +33,9 @@ import {
   type Tree,
   type Unit,
   type UnitGit,
+  projectGroups,
 } from "./tree";
+import { spaceLabel } from "../../src/utils/globalSpace";
 import styles from "./shell.module.css";
 
 // Git runs once per folder on the Mac; a project with many worktrees on a slow
@@ -342,7 +344,9 @@ export function ProjectScreen(props: {
 export function memberUnit(tree: Tree | undefined, topic: Topic, member: Topic["members"][number]): Unit {
   const folder = member.worktreePath ?? member.checkout?.path ?? member.repoPath;
   const branch = member.worktreePath ? topic.branch : (member.checkout?.branch ?? null);
-  const known = tree?.spaces.flatMap((s) => s.projects.flatMap((p) => p.units)).find((u) => u.folder === folder);
+  const known = projectGroups(tree)
+    .flatMap((s) => s.projects.flatMap((p) => p.units))
+    .find((u) => u.folder === folder);
   return known ?? { label: member.displayName, folder, branch, kind: "worktree", isCurrent: false };
 }
 
@@ -386,7 +390,7 @@ export function TopicScreen(props: {
   const scope = () => props.tree?.spaces.find((s) => s.name === props.topic.space);
   const addRepo = () => {
     const inTopic = new Set(props.topic.members.map((m) => m.repoPath));
-    const offered = scope() ? [scope()!] : (props.tree?.spaces ?? []);
+    const offered = scope() ? [scope()!] : projectGroups(props.tree);
     const repos: Choice[] = offered
       .flatMap((s) => s.projects)
       .filter((p) => !inTopic.has(p.path))
@@ -414,7 +418,11 @@ export function TopicScreen(props: {
   const moveTo = () => {
     const spaces = props.tree?.spaces ?? [];
     const now = props.topic.space ?? "";
-    const homeOf = (m: { repoPath: string }) => spaceOfRepo(spaces, m.repoPath)?.name ?? null;
+    const homes = projectGroups(props.tree);
+    const homeOf = (m: { repoPath: string }) => {
+      const home = spaceOfRepo(homes, m.repoPath)?.name;
+      return home ? spaceLabel(home) : null;
+    };
     const place = (value: string, label: string, note: { refused: string | null } | { hint: string }): Choice => {
       const refused = "refused" in note ? note.refused : null;
       const current = value === now;

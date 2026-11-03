@@ -94,7 +94,7 @@ describe("the sidebar's Topic actions", () => {
 
   it("opens the New Topic dialog the Topic list hosts from the head row", async () => {
     mount();
-    fireEvent.click(await screen.findByRole("button", { name: "New Topic" }));
+    fireEvent.click(await screen.findByRole("button", { name: "New Topic in Global" }));
     await waitFor(() => expect(dialogs("New Topic")).toHaveLength(1));
   });
 

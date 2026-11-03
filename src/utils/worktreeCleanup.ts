@@ -14,6 +14,7 @@ import { mergedHeads, onForgeReport } from "./forgeStatus";
 import { isUnderPath } from "./pathScope";
 import { runAt } from "./runStore";
 import { cleanupVerdict, type CleanupFacts } from "./worktreeCleanupVerdict";
+import { allSpaces } from "./globalSpace";
 
 export type CleanupInputs = {
   selectedRoot: () => string | null;
@@ -21,7 +22,8 @@ export type CleanupInputs = {
   openPaths: () => readonly string[];
 };
 
-type ConfigProjects = { spaces: { projects: { path: string; branchUnits: { kind: string }[] }[] }[] };
+type ConfigProject = { path: string; branchUnits: { kind: string }[] };
+type ConfigProjects = { spaces: { name: string; projects: ConfigProject[] }[]; global?: { projects: ConfigProject[] } };
 type AutopilotRow = { state: string; worktree?: string | null };
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -31,7 +33,7 @@ const enabled = () => settings.git.cleanupAfterMerge || settings.git.cleanupAfte
 
 async function everyProject(): Promise<string[]> {
   const cfg = await invoke<ConfigProjects | null>("get_config").catch(() => null);
-  const paths = (cfg?.spaces ?? [])
+  const paths = allSpaces(cfg)
     .flatMap((s) => s.projects)
     .filter((p) => p.branchUnits.some((u) => u.kind === "worktree" || u.kind === "plain"))
     .map((p) => p.path);

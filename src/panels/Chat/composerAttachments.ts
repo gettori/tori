@@ -29,6 +29,7 @@ import type { SessionMeta } from "../../utils/sessionStore";
 import { refLabel, refName, sessionRef, sessionTitle } from "../../utils/sessionMention";
 import { projectRef, spaceRef, type NavProject, type NavSpace } from "../../utils/mentionNavigator";
 import { samePath } from "../LeftSidebar/attempts";
+import { GLOBAL_KEY, GLOBAL_NAME, allSpaces } from "../../utils/globalSpace";
 
 /** A pasted or dropped file, as the composer read it. */
 export type UploadFile = { name: string; bytes: Uint8Array };
@@ -170,7 +171,12 @@ export function composerAttachments(
         const root = (await invoke<string | null>("project_of_folder", { folder }).catch(() => null)) ?? folder;
         setProject(root);
         setListed(await invoke<SessionMeta[]>("list_sessions", { folder: root, inclusive: true }).catch(() => []));
-        if (toriMcp()) setSpaces((await invoke<{ spaces: NavSpace[] }>("get_config").catch(() => null))?.spaces ?? []);
+        if (toriMcp()) {
+          const cfg = await invoke<{ spaces: NavSpace[] }>("get_config").catch(() => null);
+          // A mention keys a space by its folder's basename, and Global has no
+          // folder, so its key stands in.
+          setSpaces(allSpaces(cfg).map((g) => ("path" in g ? g : { ...g, name: GLOBAL_NAME, path: GLOBAL_KEY })));
+        }
       })(),
     onAttachSession: (s, at) =>
       attachRef("Session", sessionTitle(s), s.id, (label) => sessionRef(s, label, at ?? project() ?? s.cwd)),

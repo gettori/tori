@@ -1,6 +1,7 @@
 import { For, Show, createMemo } from "solid-js";
 import CheckboxGroup from "../CheckboxGroup/CheckboxGroup";
 import styles from "./Dialogs.module.css";
+import { spaceLabel } from "../../utils/globalSpace";
 
 /** The slice of a Space the checklist needs: its name for the group label and
  *  the projects to offer. */
@@ -8,7 +9,12 @@ export type RepoSpace = {
   name: string;
   icon?: string;
   color?: string;
-  projects: { name: string; path: string; branchUnits?: { branch: string | null; isCurrent: boolean }[] }[];
+  projects: {
+    name: string;
+    path: string;
+    availability?: "ok" | "missing";
+    branchUnits?: { branch: string | null; isCurrent: boolean }[];
+  }[];
 };
 
 const checkedOut = (p: RepoSpace["projects"][number]) => p.branchUnits?.find((u) => u.isCurrent)?.branch ?? null;
@@ -30,7 +36,10 @@ export default function RepoChecklist(props: {
   const ordered = () => {
     const excluded = new Set(props.exclude ?? []);
     return props.spaces
-      .map((g) => ({ ...g, projects: g.projects.filter((p) => !excluded.has(p.path)) }))
+      .map((g) => ({
+        ...g,
+        projects: g.projects.filter((p) => !excluded.has(p.path) && p.availability !== "missing"),
+      }))
       .filter((g) => g.projects.length > 0);
   };
 
@@ -68,8 +77,8 @@ export default function RepoChecklist(props: {
         {({ space, options }) => (
           <CheckboxGroup
             label={
-              <Show when={props.scoped} fallback={<span class={styles.repoGroupLabel}>{space.name}</span>}>
-                <span class={styles.repoGroupLabel}>Projects in {space.name}</span>{" "}
+              <Show when={props.scoped} fallback={<span class={styles.repoGroupLabel}>{spaceLabel(space.name)}</span>}>
+                <span class={styles.repoGroupLabel}>Projects in {spaceLabel(space.name)}</span>{" "}
                 <span class={styles.repoGroupCount}>
                   {pickedIn(space)} of {total(space)}
                 </span>

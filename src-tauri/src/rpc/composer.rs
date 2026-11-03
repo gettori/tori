@@ -356,7 +356,7 @@ impl Composer {
         let tabs: HashSet<String> = tabs.into_iter().filter(|t| t.handed_on).map(|t| t.tab).collect();
         let projects = OnceCell::new();
         let place_of = |folder: &str| Place {
-            project: events::project_of(folder, projects.get_or_init(crate::config::discovered_project_dirs)),
+            project: events::project_of(folder, projects.get_or_init(crate::config::project_dirs)),
             folder: Some(folder.to_string()),
         };
         let alive = |id: &str, held: &Held| match held.source {

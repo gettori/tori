@@ -6,12 +6,13 @@ import { WheelGlyph } from "../../src/components/Autopilot/Wheel";
 import { spaceInitials } from "../../src/utils/names";
 import type { Runner } from "./Autopilot";
 import { StateMark, type RootTab } from "./Root";
-import { projectRows, type SessionRow, type Space } from "./tree";
+import { projectRows, type ProjectGroup, type SessionRow } from "./tree";
+import { spaceLabel } from "../../src/utils/globalSpace";
 import styles from "./shell.module.css";
 
 export default function BottomBar(props: {
-  spaces: Space[];
-  space: Space | undefined;
+  spaces: ProjectGroup[];
+  space: ProjectGroup | undefined;
   tab: RootTab;
   live: () => SessionRow[];
   showWheel: boolean;
@@ -19,11 +20,11 @@ export default function BottomBar(props: {
   decisions: () => number;
   inboxCount: () => number;
   onInbox: () => void;
-  onSpace: (space: Space) => void;
+  onSpace: (space: ProjectGroup) => void;
   onTopics: () => void;
   onWheel: () => void;
 }) {
-  const rows = (space: Space) => space.projects.flatMap((project) => projectRows(project, props.live()));
+  const rows = (space: ProjectGroup) => space.projects.flatMap((project) => projectRows(project, props.live()));
   const on = () => (props.runner()?.state ?? "off") !== "off";
   return (
     <>
@@ -41,14 +42,17 @@ export default function BottomBar(props: {
                   }
                   class={styles.barItem}
                   aria-current={current()}
-                  aria-label={space.name}
+                  aria-label={spaceLabel(space.name)}
                   onClick={() => props.onSpace(space)}
                 >
-                  <Show when={glyph()} fallback={<span class={styles.initial}>{spaceInitials(space.name)}</span>}>
+                  <Show
+                    when={glyph()}
+                    fallback={<span class={styles.initial}>{spaceInitials(spaceLabel(space.name))}</span>}
+                  >
                     {(g) => <Icon icon={g()} size={19} strokeWidth={1.9} />}
                   </Show>
                   <Show when={current()}>
-                    <span class={styles.spaceName}>{space.name}</span>
+                    <span class={styles.spaceName}>{spaceLabel(space.name)}</span>
                   </Show>
                   <Show when={!current()}>
                     <StateMark rows={rows(space)} tile />

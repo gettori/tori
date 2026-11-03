@@ -121,6 +121,11 @@ const KEPT = new Map<string, Kept>([
   ["components/Dialogs/InitGitDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/NewTopicDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/MoveToTopicDialog.tsx", { count: 1, reason: HEADING }],
+  [
+    "components/Dialogs/AttachFolderDialog.tsx",
+    { count: 3, reason: `${HEADING}, plus two ${TRUNCATION}: the picked folder and a worktree's path` },
+  ],
+  ["components/Dialogs/DetachConfirm.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/MoveTopicDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/NewProjectDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/PickerModal.test.tsx", { count: 2, reason: FIXTURE }],
@@ -316,8 +321,8 @@ const KEPT = new Map<string, Kept>([
   [
     "panels/LeftSidebar/SidebarRows.tsx",
     {
-      count: 3,
-      reason: `one ${ROW_ONCLICK} - a fan-out group's header, whose goal is longer than the column - plus ${TRUNCATION} on its attempt-count badge and on a branch row's icon slot, which now carries the one state its glyph draws and its label does not (a stub's dashed folder). All three came from LeftSidebar.tsx`,
+      count: 4,
+      reason: `one ${ROW_ONCLICK} - a fan-out group's header, whose goal is longer than the column - plus ${TRUNCATION} on its attempt-count badge, on a branch row's icon slot, which now carries the one state its glyph draws and its label does not (a stub's dashed folder), and on an attached folder's name, which the full path stands behind`,
     },
   ],
   [
@@ -392,7 +397,7 @@ const KEPT = new Map<string, Kept>([
  *
  *  **Down one** with a sent prompt's file chip, which previews like the
  *  composer's instead of carrying its path. */
-const RAW_ELEMENT_TITLES = 72;
+const RAW_ELEMENT_TITLES = 75;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. The Changes
  *  panel's stash row is one: a click expands it to its files. */
@@ -536,7 +541,7 @@ describe("the title= guard", () => {
       // for the project settings tab's path, and one for the run command row's
       // running mark. Down one: a sent prompt's chip previews its attachment
       // now, the way the composer's does, instead of naming its path.
-      span: 55,
+      span: 58,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });

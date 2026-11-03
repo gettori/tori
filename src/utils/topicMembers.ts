@@ -10,6 +10,7 @@ import { memberRoot, memberState, rootOf, type Member, type MemberStateSummary, 
 import { spaceHue, spaceHueRgb } from "./spaceTint";
 import { isSyntheticId } from "./syntheticTabs";
 import type { ProjectIconSource } from "../components/Icon/ProjectIcon";
+import { GLOBAL_KEY, allSpaces } from "./globalSpace";
 
 /** The slice of a project a member needs: the path that says which repo belongs
  *  to which Space, the name Docs looks its folder up by, the branch units that
@@ -54,6 +55,7 @@ export type TintedMember = {
   /** How this member's *repo* is laid out, which is what says whether it has a
    *  `.shared/` folder to offer. See `projectUnitKind`. */
   kind: string | undefined;
+  attached?: boolean;
 };
 
 /** One member root, as the surfaces that draw a section per member take it.
@@ -202,6 +204,7 @@ export function tintedMember(member: Member, spaces: SpaceTint[]): TintedMember 
     style: space && hue ? { "--chip-hue": hue, "--chip-rgb": spaceHueRgb(space.name, space.color) } : undefined,
     icon: { seed: member.repoPath, icon: project?.icon, iconFile: project?.iconFile, favicon: project?.favicon },
     kind: projectUnitKind(project),
+    attached: space?.name === GLOBAL_KEY,
   };
 }
 
@@ -288,9 +291,9 @@ function readAt(at: number) {
       topics: invoke<Topic[] | null>("list_topics")
         .catch(() => null)
         .then((list) => list ?? []),
-      spaces: invoke<{ spaces: SpaceTint[] } | null>("get_config")
+      spaces: invoke<{ spaces: SpaceTint[]; global?: { projects: SpaceProject[] } } | null>("get_config")
         .catch(() => null)
-        .then((cfg) => cfg?.spaces ?? []),
+        .then((cfg) => allSpaces(cfg)),
     };
   }
   return reads;

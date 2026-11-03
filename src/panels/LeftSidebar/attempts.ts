@@ -30,8 +30,9 @@ export type UnitLike = { folderPath: string };
 
 export type AttemptMember<U extends UnitLike> = {
   attempt: AttemptRecord;
-  /// The branch-unit git already reported for this path, when there is one.
-  unit: U | undefined;
+  /// The branch-unit git reported for this path, or the stand-in built from
+  /// the record when git lists none (every attempt of a plain repo).
+  unit: U;
 };
 
 export type AttemptGroup<U extends UnitLike> = {
@@ -67,6 +68,7 @@ function normalizePath(p: string): string {
 export function groupAttempts<U extends UnitLike>(
   units: readonly U[],
   attempts: readonly AttemptRecord[],
+  standIn: (attempt: AttemptRecord) => U,
 ): { units: U[]; groups: AttemptGroup<U>[] } {
   if (attempts.length === 0) return { units: [...units], groups: [] };
 
@@ -86,7 +88,7 @@ export function groupAttempts<U extends UnitLike>(
     }
     group.members.push({
       attempt,
-      unit: units.find((u) => samePath(attempt.path, u.folderPath)),
+      unit: units.find((u) => samePath(attempt.path, u.folderPath)) ?? standIn(attempt),
     });
   }
   return { units: ordinary, groups };

@@ -19,11 +19,13 @@ import {
   type Phase,
   type Project,
   type SessionRow,
-  type Space,
+  type ProjectGroup,
   type Topic,
   type Tree,
   type Unit,
+  projectGroups,
 } from "./tree";
+import { spaceLabel } from "../../src/utils/globalSpace";
 import styles from "./shell.module.css";
 
 export type RootTab = "projects" | "topics";
@@ -155,7 +157,7 @@ function Results(props: {
   onUnit: (unit: Unit, back: string) => void;
   onSession: (row: SessionRow) => void;
 }) {
-  const projects = () => props.tree.spaces.flatMap((space) => space.projects);
+  const projects = () => projectGroups(props.tree).flatMap((space) => space.projects);
   const found = () => projects().filter((p) => matches(p.name, props.query));
   const units = () =>
     projects().flatMap((project) =>
@@ -221,7 +223,7 @@ function Results(props: {
 export default function Root(props: {
   client: RemoteClient;
   tree: Tree | undefined;
-  space: Space | undefined;
+  space: ProjectGroup | undefined;
   tab: RootTab;
   live: () => SessionRow[];
   notice: string | null;
@@ -252,7 +254,7 @@ export default function Root(props: {
               </>
             }
           >
-            <span class={styles.bigTitle}>{props.space?.name ?? "Tori"}</span>
+            <span class={styles.bigTitle}>{props.space ? spaceLabel(props.space.name) : "Tori"}</span>
             <button class={`${styles.rootLabel} ${styles.spacesLink}`} onClick={() => props.onSpaces()}>
               {DOT} Spaces
             </button>

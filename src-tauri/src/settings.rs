@@ -1649,6 +1649,13 @@ pub fn forget_default_profile(adapter_id: &str, profile_id: &str) {
     forget_default_profile_in(&settings_path(), adapter_id, profile_id);
 }
 
+/// Move every per-project preference from a folder that moved.
+pub fn rekey_project(old: &str, new: &str) -> Result<(), String> {
+    let store = crate::exec::named_lock("settings");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    crate::attached_folder::rekey_file(&settings_path(), old, new)
+}
+
 fn keep_rust_owned(settings: &mut Settings, on_disk: Settings) {
     settings.forge.picks = on_disk.forge.picks;
     settings.autopilot.enabled = on_disk.autopilot.enabled;

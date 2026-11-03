@@ -20,6 +20,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 const { default: MoveToTopicDialog } = await import("./MoveToTopicDialog");
+import { allSpaces } from "../../utils/globalSpace";
 
 const REPO = "/w/web";
 const SPACES = [
@@ -246,5 +247,25 @@ describe("MoveToTopicDialog", () => {
         { repoPath: "/s/lab", mode: "reference" },
       ],
     });
+  });
+
+  it("moves an attached folder's worktree into Global's Topics, with no space to pick", async () => {
+    const acme = "/c/acme-site";
+    render(() => (
+      <MoveToTopicDialog
+        repoPath={acme}
+        worktreePath={`${acme}/.tori/worktrees/fix`}
+        label="fix"
+        branch="fix"
+        topics={[AUTH, CART, PAY]}
+        spaces={allSpaces({ spaces: SPACES, global: { projects: [{ name: "acme-site", path: acme }] } })}
+        onDone={() => {}}
+        onCancel={() => {}}
+      />
+    ));
+    await screen.findByRole("radio", { name: "Auth" });
+    expect(groupNames()).toEqual(["Global, 2"]);
+    await openNew();
+    expect(screen.queryByRole("group", { name: "Where" })).toBeNull();
   });
 });

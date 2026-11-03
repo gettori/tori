@@ -3,6 +3,7 @@
 // `.searchInput` basis, guarded in scripts/check-tokens.mjs), so what is left
 // here is when it exists at all and what closing it does.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
+import { pointerClick } from "../../test/menus";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 
 const WORK = "/root/work/proj";
@@ -86,18 +87,19 @@ describe("the sidebar filter", () => {
     expect(noToggle()).toBeNull();
   });
 
-  it("offers a New Topic button in Global only, before the filter", async () => {
+  it("offers an Add button in Global only, before the filter", async () => {
     mount();
     await waitFor(() => expect(screen.getByText("proj")).toBeTruthy());
-    expect(screen.queryByRole("button", { name: "New Topic" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add to Global" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Global" }));
-    const [add] = await screen.findAllByRole("button", { name: "New Topic" });
+    const add = await screen.findByRole("button", { name: "Add to Global" });
     // Before the filter in the DOM, which is also the order a keyboard reaches
     // them in.
     expect(add.compareDocumentPosition(toggle()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-    fireEvent.click(add);
+    pointerClick(add);
+    pointerClick(await screen.findByRole("menuitem", { name: "New topic" }));
     expect(await screen.findByRole("dialog", { name: "New Topic" })).toBeTruthy();
   });
 

@@ -3,6 +3,8 @@ import { render, screen, fireEvent } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
 import { expectNoAxeViolations } from "../../test/axe";
 import RepoChecklist from "./RepoChecklist";
+import { allSpaces } from "../../utils/globalSpace";
+import type { RepoSpace } from "./RepoChecklist";
 
 const SPACES = [
   {
@@ -61,5 +63,21 @@ describe("RepoChecklist", () => {
     expect(screen.queryByRole("checkbox", { name: "api" })).toBeNull();
     expect(screen.queryByRole("group", { name: "infra" })).toBeNull();
     expect(box("web")).toBeTruthy();
+  });
+
+  it("lists Global's attached folders as one more group, leaving out a missing one", () => {
+    const spaces = allSpaces<RepoSpace>({
+      spaces: SPACES,
+      global: {
+        projects: [
+          { name: "acme-site", path: "/c/acme-site" },
+          { name: "thesis", path: "/Volumes/Archive/thesis", availability: "missing" },
+        ],
+      },
+    });
+    render(() => <RepoChecklist spaces={spaces} value={[]} onChange={() => {}} />);
+    expect(screen.getByRole("group", { name: "Global" })).toBeTruthy();
+    expect(box("acme-site")).toBeTruthy();
+    expect(screen.queryByRole("checkbox", { name: "thesis" })).toBeNull();
   });
 });

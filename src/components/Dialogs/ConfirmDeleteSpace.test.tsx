@@ -321,4 +321,10 @@ describe("ConfirmDeleteSpace", () => {
       expect(screen.queryByText(/Topics deleted with it/)).toBeNull();
     });
   });
+
+  it("tags a removed project's folder as deleted, and a space's not at all", () => {
+    open({ kind: "project", spaceName: "web", path: "~/Tori/saga/web" });
+    expect(screen.getByText("Deleted")).toBeTruthy();
+    expect(screen.getByText("And everything in it, including .git")).toBeTruthy();
+  });
 });

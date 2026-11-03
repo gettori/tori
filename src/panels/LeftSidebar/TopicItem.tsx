@@ -18,7 +18,7 @@ import type { Rollup } from "../../utils/sessionStatus";
 import StatusBubble from "./StatusBubble";
 import BranchLine from "./BranchLine";
 import type { UnitStatus } from "../../utils/forgeTypes";
-import { BranchRow, IconChevron } from "./SidebarRows";
+import { AliasBadge, BranchRow, IconChevron } from "./SidebarRows";
 import rows from "./SidebarRows.module.css";
 import styles from "./TopicItem.module.css";
 
@@ -264,6 +264,9 @@ export default function TopicItem(props: {
                         <span class={styles.memberLock} data-reference>
                           <Icon icon={Lock} />
                         </span>
+                      </Show>
+                      <Show when={m.attached && !isReference(m.member)}>
+                        <AliasBadge />
                       </Show>
                     </span>
                   }

@@ -6,23 +6,23 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
-use crate::config::{BranchUnit, Project, ProjectIndex, ProjectKind, Space};
+use crate::config::{BranchUnit, Project, ProjectGroup, ProjectIndex, ProjectKind};
 use crate::topics::Topic;
 
 // The sidebar lists every tracked folder in one burst, and each listing wants
 // the tree, so a resolve is shared for a moment rather than repeated per folder.
 const FRESH: Duration = Duration::from_secs(2);
-static SPACES: Mutex<Option<(Instant, Arc<Vec<Space>>)>> = Mutex::new(None);
+static SPACES: Mutex<Option<(Instant, Arc<Vec<ProjectGroup>>)>> = Mutex::new(None);
 
 /// The configured tree, resolved at most once per `FRESH`.
-pub fn spaces(index: &ProjectIndex) -> Arc<Vec<Space>> {
+pub fn spaces(index: &ProjectIndex) -> Arc<Vec<ProjectGroup>> {
     let mut held = SPACES.lock().unwrap_or_else(|e| e.into_inner());
     if let Some((_, spaces)) = held.as_ref().filter(|(at, _)| at.elapsed() < FRESH) {
         return spaces.clone();
     }
     let spaces = Arc::new(
         crate::config::get_config_body(index)
-            .map(|c| c.spaces)
+            .map(|c| c.project_groups())
             .unwrap_or_default(),
     );
     *held = Some((Instant::now(), spaces.clone()));
@@ -98,7 +98,7 @@ pub fn belongs_to_unit(branch: Option<&str>, unit: &BranchUnit, siblings: &[&Bra
 /// folder nor a Topic holds the session. The most specific folder wins, so a
 /// worktree nested inside its repo claims its own sessions. A Topic's session
 /// also carries the Topic, and lands on its home when no unit holds it.
-pub fn home_of(spaces: &[Space], topics: &[Topic], cwd: &str, branch: Option<&str>) -> Option<Home> {
+pub fn home_of(spaces: &[ProjectGroup], topics: &[Topic], cwd: &str, branch: Option<&str>) -> Option<Home> {
     let topic = topic_of(topics, cwd);
     let home = unit_of(spaces, cwd, branch).or_else(|| {
         topic.map(|t| Home {
@@ -114,7 +114,7 @@ pub fn home_of(spaces: &[Space], topics: &[Topic], cwd: &str, branch: Option<&st
     })
 }
 
-fn deepest<'a>(spaces: &'a [Space], cwd: &str) -> Option<(&'a Project, &'a str)> {
+fn deepest<'a>(spaces: &'a [ProjectGroup], cwd: &str) -> Option<(&'a Project, &'a str)> {
     spaces
         .iter()
         .flat_map(|s| &s.projects)
@@ -125,11 +125,11 @@ fn deepest<'a>(spaces: &'a [Space], cwd: &str) -> Option<(&'a Project, &'a str)>
 
 /// The folder of the unit a session in `cwd` belongs to: the deepest one
 /// holding it, so a worktree nested inside its repo owns its own sessions.
-pub fn unit_folder(spaces: &[Space], cwd: &str) -> Option<String> {
+pub fn unit_folder(spaces: &[ProjectGroup], cwd: &str) -> Option<String> {
     deepest(spaces, cwd).map(|(_, folder)| folder.to_string())
 }
 
-fn unit_of(spaces: &[Space], cwd: &str, branch: Option<&str>) -> Option<Home> {
+fn unit_of(spaces: &[ProjectGroup], cwd: &str, branch: Option<&str>) -> Option<Home> {
     let (project, folder) = deepest(spaces, cwd)?;
     let siblings: Vec<&BranchUnit> = project
         .branch_units
@@ -146,7 +146,7 @@ fn unit_of(spaces: &[Space], cwd: &str, branch: Option<&str>) -> Option<Home> {
 }
 
 /// The name of the project one of whose units lives at `folder`, or empty.
-pub fn project_name(spaces: &[Space], folder: &str) -> String {
+pub fn project_name(spaces: &[ProjectGroup], folder: &str) -> String {
     spaces
         .iter()
         .flat_map(|s| &s.projects)
@@ -236,11 +236,9 @@ pub(crate) mod tests {
             icon_file: None,
             favicon: None,
         };
-        let spaces = [Space {
+        let spaces = [ProjectGroup {
             name: "s".into(),
-            path: "/p".into(),
             projects: vec![project],
-            icon: None,
             color: None,
         }];
         let home = |cwd, branch| home_of(&spaces, &[], cwd, branch).map(|h| (h.folder, h.branch));
@@ -258,6 +256,37 @@ pub(crate) mod tests {
         );
         assert_eq!(home("/p/repo/.tori/worktrees/auth", Some("auth")), None);
         assert_eq!(home("/elsewhere", None), None);
+    }
+
+    #[test]
+    fn an_attached_folder_is_a_home_through_project_groups() {
+        let mut wt = unit(ProjectKind::Worktree, Some("main"), false);
+        wt.folder_path = "/elsewhere/lib-main".into();
+        let config = crate::config::ResolvedConfig {
+            path: String::new(),
+            roots: vec![],
+            spaces: vec![],
+            global: crate::config::GlobalSpace {
+                projects: vec![crate::config::AttachedProject {
+                    availability: Default::default(),
+                    project: crate::config::Project {
+                        name: "lib".into(),
+                        path: "/clients/lib.git".into(),
+                        branch_units: vec![wt],
+                        icon: None,
+                        icon_file: None,
+                        favicon: None,
+                    },
+                }],
+                icon: None,
+                color: None,
+            },
+        };
+        let home = home_of(&config.project_groups(), &[], "/elsewhere/lib-main/src", Some("main")).unwrap();
+        assert_eq!(
+            (home.project.as_str(), home.folder.as_str()),
+            ("/clients/lib.git", "/elsewhere/lib-main")
+        );
     }
 
     pub(crate) fn topic() -> Topic {
@@ -305,11 +334,9 @@ pub(crate) mod tests {
             icon_file: None,
             favicon: None,
         };
-        let spaces = [Space {
+        let spaces = [ProjectGroup {
             name: "s".into(),
-            path: "/p".into(),
             projects: vec![web],
-            icon: None,
             color: None,
         }];
         let topics = [topic()];
@@ -333,11 +360,9 @@ pub(crate) mod tests {
             icon_file: None,
             favicon: None,
         };
-        let spaces = [Space {
+        let spaces = [ProjectGroup {
             name: "s".into(),
-            path: "/p".into(),
             projects: vec![api],
-            icon: None,
             color: None,
         }];
         let unit_home = home_of(&spaces, &topics, "/p/api/.tori/worktrees/auth", Some("auth")).unwrap();

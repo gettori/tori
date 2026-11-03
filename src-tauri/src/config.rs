@@ -19,6 +19,8 @@ use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 
+use crate::exec::StoreLock;
+
 #[derive(Deserialize, Default)]
 struct RawConfig {
     #[serde(default)]
@@ -40,6 +42,15 @@ struct RawConfig {
     // keyed by nothing and never appears in `space` or `space_order`.
     #[serde(default)]
     global: GlobalMeta,
+    #[serde(default)]
+    attached_folder: Vec<AttachedFolderEntry>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct AttachedFolderEntry {
+    pub path: String,
+    #[serde(default)]
+    pub name: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -100,6 +111,15 @@ pub enum ProjectKind {
     Converting,
 }
 
+/// Whether an attached folder is on disk.
+#[derive(Serialize, Clone, Copy, PartialEq, Debug, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Availability {
+    #[default]
+    Ok,
+    Missing,
+}
+
 /// One selectable unit under a project: a worktree folder, a branch of a plain
 /// repo, the folder itself (plain-dir), or a cleanable stub (incomplete).
 #[derive(Serialize, Clone)]
@@ -141,6 +161,14 @@ pub struct Project {
     pub favicon: Option<String>,
 }
 
+/// A project Global lists from outside the base folder.
+#[derive(Serialize, Clone)]
+pub struct AttachedProject {
+    #[serde(flatten)]
+    pub project: Project,
+    pub availability: Availability,
+}
+
 #[derive(Serialize, Clone)]
 pub struct Space {
     pub name: String,
@@ -161,7 +189,7 @@ pub struct Space {
 /// folder, so nothing can mkdir, clone or delete under it.
 #[derive(Serialize, Clone, Default)]
 pub struct GlobalSpace {
-    pub projects: Vec<Project>,
+    pub projects: Vec<AttachedProject>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -175,6 +203,40 @@ pub struct ResolvedConfig {
     pub roots: Vec<String>,
     pub spaces: Vec<Space>,
     pub global: GlobalSpace,
+}
+
+pub const GLOBAL_NAME: &str = "Global";
+
+/// One space's projects, for the readers that only walk projects. No `path`:
+/// Global is one of these and owns no folder.
+#[derive(Clone)]
+pub struct ProjectGroup {
+    pub name: String,
+    pub color: Option<String>,
+    pub projects: Vec<Project>,
+}
+
+impl ResolvedConfig {
+    /// The named spaces, then Global when it lists any project.
+    pub fn project_groups(&self) -> Vec<ProjectGroup> {
+        let mut groups: Vec<ProjectGroup> = self
+            .spaces
+            .iter()
+            .map(|s| ProjectGroup {
+                name: s.name.clone(),
+                color: s.color.clone(),
+                projects: s.projects.clone(),
+            })
+            .collect();
+        if !self.global.projects.is_empty() {
+            groups.push(ProjectGroup {
+                name: GLOBAL_NAME.to_string(),
+                color: self.global.color.clone(),
+                projects: self.global.projects.iter().map(|a| a.project.clone()).collect(),
+            });
+        }
+        groups
+    }
 }
 
 #[derive(Serialize, Clone)]
@@ -236,6 +298,19 @@ fn basename(p: &Path) -> String {
     p.file_name()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default()
+}
+
+pub(crate) fn attached_name(name: Option<&str>, path: &Path) -> String {
+    match name.map(str::trim).filter(|n| !n.is_empty()) {
+        Some(name) => name.to_string(),
+        None => {
+            let base = basename(path);
+            base.strip_suffix(".git")
+                .filter(|b| !b.is_empty())
+                .unwrap_or(&base)
+                .to_string()
+        }
+    }
 }
 
 // No project is seeded: a fresh config has no roots, which the UI detects as a
@@ -604,9 +679,8 @@ struct HeadStamp {
     linked_dir: SystemTime,
 }
 
-/// The gitdir is `.git` for a plain repo and `.bare` for a worktree container.
 fn head_stamp(path: &Path) -> HeadStamp {
-    let Some(gitdir) = [path.join(".git"), path.join(".bare")]
+    let Some(gitdir) = [path.join(".git"), path.join(".bare"), path.to_path_buf()]
         .into_iter()
         .find(|d| d.join("HEAD").exists())
     else {
@@ -788,19 +862,32 @@ pub(crate) fn space_roots_in(root: &Path, name: &str, ignore: &[String]) -> Opti
     Some(dirs)
 }
 
-pub(crate) fn discovered_project_dirs() -> Vec<PathBuf> {
+pub(crate) fn project_dirs() -> Vec<PathBuf> {
     let raw = read_raw_config();
-    match raw.discovery.roots.first() {
+    let mut dirs = match raw.discovery.roots.first() {
         Some(root) => project_dirs_under(Path::new(&expand_tilde(root)), &raw.discovery.ignore),
         None => Vec::new(),
-    }
+    };
+    dirs.extend(attached_dirs_in(&raw).into_iter().filter(|d| d.is_dir()));
+    dirs
 }
 
-/// The discovered project `folder` sits in, the deepest when they nest, or
-/// None outside every project. Walks the discovery root without probing.
+fn attached_dirs_in(raw: &RawConfig) -> Vec<PathBuf> {
+    raw.attached_folder
+        .iter()
+        .map(|entry| PathBuf::from(expand_tilde(entry.path.trim_end_matches('/'))))
+        .collect()
+}
+
+pub(crate) fn attached_dirs() -> Vec<PathBuf> {
+    attached_dirs_in(&read_raw_config())
+}
+
+/// The project `folder` sits in, the deepest when they nest, or None outside
+/// every project. Lists the project folders without probing.
 #[tauri::command]
 pub fn project_of_folder(folder: String) -> Option<String> {
-    crate::rpc::events::project_of(&folder, &discovered_project_dirs())
+    crate::rpc::events::project_of(&folder, &project_dirs())
 }
 
 fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
@@ -815,24 +902,33 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
 
     let unit_issues = crate::issues::store::IssueStore::load();
     let unit_origins = crate::unit_origins::OriginStore::current();
-    let mut add_project = |spaces: &mut Vec<Space>, gi: usize, ppath: PathBuf| {
+    let mut probe = |ppath: PathBuf, name: String| -> Option<Project> {
         let canon = ppath.canonicalize().unwrap_or_else(|_| ppath.clone());
         if !seen.insert(canon) {
-            return; // reachable more than once: keep the first
+            return None; // reachable more than once: keep the first
+        }
+        if !ppath.is_dir() {
+            return Some(Project {
+                name,
+                path: ppath.to_string_lossy().into_owned(),
+                branch_units: Vec::new(),
+                icon: None,
+                icon_file: None,
+                favicon: None,
+            });
         }
         seen_paths.insert(ppath.clone());
         let mut branch_units = cached_probe(index, &ppath);
         crate::issues::store::attach(&mut branch_units, unit_issues.for_repo(&ppath.to_string_lossy()));
         crate::unit_origins::attach_unless_reused(&mut branch_units, unit_origins.for_repo(&ppath.to_string_lossy()));
-        let project = Project {
-            name: basename(&ppath),
+        Some(Project {
+            name,
             path: ppath.to_string_lossy().into_owned(),
             favicon: project_favicon(&ppath, &branch_units),
             branch_units,
             icon: None,
             icon_file: None,
-        };
-        spaces[gi].projects.push(project);
+        })
     };
 
     // Roots scanned as <root>/<space>/<project>; empty space dirs registered.
@@ -851,11 +947,24 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
                 for p in projects.flatten() {
                     let ppath = p.path();
                     if ppath.is_dir() && !skip(&basename(&ppath)) {
-                        add_project(&mut spaces, gi, ppath);
+                        let name = basename(&ppath);
+                        spaces[gi].projects.extend(probe(ppath, name));
                     }
                 }
             }
         }
+    }
+
+    // After the roots, so a folder that is also discovered stays in its space.
+    let mut global_projects: Vec<AttachedProject> = Vec::new();
+    for entry in &raw.attached_folder {
+        let ppath = PathBuf::from(expand_tilde(entry.path.trim_end_matches('/')));
+        let name = attached_name(entry.name.as_deref(), &ppath);
+        let availability = match ppath.is_dir() {
+            true => Availability::Ok,
+            false => Availability::Missing,
+        };
+        global_projects.extend(probe(ppath, name).map(|project| AttachedProject { project, availability }));
     }
 
     // Overlay per-space metadata (icon, colour) from `[[space]]` tables, keyed by
@@ -879,20 +988,23 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
     // symlink must still match the discovered project), then matched through one
     // map so a config with many entries stays linear rather than metas × projects.
     if !raw.project_meta.is_empty() {
-        let mut by_path: HashMap<PathBuf, (usize, usize)> = HashMap::new();
-        for (gi, g) in spaces.iter().enumerate() {
-            for (pi, p) in g.projects.iter().enumerate() {
-                let pp = PathBuf::from(&p.path);
-                by_path.insert(pp.canonicalize().unwrap_or(pp), (gi, pi));
-            }
-        }
-        for meta in &raw.project_meta {
-            let want = PathBuf::from(expand_tilde(&meta.path));
-            let want = want.canonicalize().unwrap_or(want);
-            let Some(&(gi, pi)) = by_path.get(&want) else {
-                continue; // an entry for a project that is no longer discovered
+        let metas: HashMap<PathBuf, &ProjectMeta> = raw
+            .project_meta
+            .iter()
+            .map(|meta| {
+                let want = PathBuf::from(expand_tilde(&meta.path));
+                (want.canonicalize().unwrap_or(want), meta)
+            })
+            .collect();
+        let every = spaces
+            .iter_mut()
+            .flat_map(|g| g.projects.iter_mut())
+            .chain(global_projects.iter_mut().map(|a| &mut a.project));
+        for p in every {
+            let pp = PathBuf::from(&p.path);
+            let Some(meta) = metas.get(&pp.canonicalize().unwrap_or(pp)) else {
+                continue;
             };
-            let p = &mut spaces[gi].projects[pi];
             p.icon = meta
                 .icon
                 .as_deref()
@@ -916,6 +1028,7 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
         g.projects
             .sort_by_cached_key(|p| (p.name.to_lowercase(), p.name.clone()));
     }
+    global_projects.sort_by_cached_key(|a| (a.project.name.to_lowercase(), a.project.name.clone()));
 
     // Apply the user's space order (stable): a listed space sorts by its index in
     // `space_order`; an unlisted one keeps discovery order (all share the max key,
@@ -934,7 +1047,7 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
             .map(str::to_string)
     };
     let global = GlobalSpace {
-        projects: Vec::new(),
+        projects: global_projects,
         icon: trimmed(&raw.global.icon),
         color: trimmed(&raw.global.color),
     };
@@ -1317,12 +1430,11 @@ pub fn config_watch_start(app: AppHandle, state: State<ConfigWatch>) -> Result<(
 /// Native macOS folder picker (dependency-free, via osascript). Returns the
 /// chosen folder, or None when the user cancels (so the UI can stay put).
 #[tauri::command(async)]
-pub fn pick_folder() -> Result<Option<String>, String> {
+pub fn pick_folder(prompt: Option<String>) -> Result<Option<String>, String> {
+    let prompt = prompt.unwrap_or_else(|| "Choose a base folder for your projects".into());
+    let quoted = prompt.replace('\\', "\\\\").replace('"', "\\\"");
     let out = Command::new("osascript")
-        .args([
-            "-e",
-            "POSIX path of (choose folder with prompt \"Choose a base folder for your projects\")",
-        ])
+        .args(["-e", &format!("POSIX path of (choose folder with prompt \"{quoted}\")")])
         .output()
         .map_err(|e| e.to_string())?;
     if !out.status.success() {
@@ -1698,6 +1810,98 @@ pub fn set_global_meta_in(ui: &crate::ui::Ui, icon: Option<String>, color: Optio
     std::fs::write(config_path(), serialized).map_err(|e| e.to_string())?;
     ui.emit("config://changed", ());
     Ok(())
+}
+
+fn same_folder(entry: &toml_edit::Table, path: &str) -> bool {
+    entry
+        .get("path")
+        .and_then(|v| v.as_str())
+        .is_some_and(|p| expand_tilde(p.trim_end_matches('/')) == path.trim_end_matches('/'))
+}
+
+fn upsert_attached_folder(text: &str, path: &str, name: Option<&str>) -> Result<String, String> {
+    use toml_edit::{value, ArrayOfTables, Document, Item, Table};
+    let mut doc: Document = text.parse().map_err(|e: toml_edit::TomlError| e.to_string())?;
+    if doc.get("attached_folder").is_none() {
+        doc["attached_folder"] = Item::ArrayOfTables(ArrayOfTables::new());
+    }
+    let tables = doc["attached_folder"]
+        .as_array_of_tables_mut()
+        .ok_or("`attached_folder` is not an array of tables")?;
+    if !tables.iter().any(|t| same_folder(t, path)) {
+        let mut t = Table::new();
+        t["path"] = value(path);
+        if let Some(name) = name {
+            t["name"] = value(name);
+        }
+        tables.push(t);
+    }
+    Ok(doc.to_string())
+}
+
+fn drop_attached_folder(text: &str, path: &str) -> Result<String, String> {
+    use toml_edit::Document;
+    let mut doc: Document = text.parse().map_err(|e: toml_edit::TomlError| e.to_string())?;
+    if let Some(tables) = doc.get_mut("attached_folder").and_then(|i| i.as_array_of_tables_mut()) {
+        tables.retain(|t| !same_folder(t, path));
+        if tables.is_empty() {
+            doc.remove("attached_folder");
+        }
+    }
+    Ok(doc.to_string())
+}
+
+// The project's own icon moves with it; anything else keyed by the path is a
+// JSON store that `attached_folder::relocate_attached_folder` moves.
+fn move_attached_folder(text: &str, old: &str, new: &str) -> Result<String, String> {
+    use toml_edit::{value, Document};
+    let mut doc: Document = text.parse().map_err(|e: toml_edit::TomlError| e.to_string())?;
+    let mut found = false;
+    for key in ["attached_folder", "project_meta"] {
+        let Some(tables) = doc.get_mut(key).and_then(|i| i.as_array_of_tables_mut()) else {
+            continue;
+        };
+        for t in tables.iter_mut().filter(|t| same_folder(t, old)) {
+            t["path"] = value(new);
+            found |= key == "attached_folder";
+        }
+    }
+    match found {
+        true => Ok(doc.to_string()),
+        false => Err(format!("{old} is not attached")),
+    }
+}
+
+/// Every attached folder with the name its row shows.
+pub(crate) fn attached_entries() -> Vec<(PathBuf, String)> {
+    read_raw_config()
+        .attached_folder
+        .iter()
+        .map(|entry| {
+            let path = PathBuf::from(expand_tilde(entry.path.trim_end_matches('/')));
+            let name = attached_name(entry.name.as_deref(), &path);
+            (path, name)
+        })
+        .collect()
+}
+
+pub(crate) fn write_attached_folder(_: &StoreLock, path: &str, name: Option<&str>) -> Result<(), String> {
+    let serialized = upsert_attached_folder(&ensure_config()?, path, name)?;
+    std::fs::write(config_path(), serialized).map_err(|e| e.to_string())
+}
+
+pub(crate) fn remove_attached_folder(_: &StoreLock, path: &str) -> Result<(), String> {
+    let serialized = drop_attached_folder(&ensure_config()?, path)?;
+    std::fs::write(config_path(), serialized).map_err(|e| e.to_string())
+}
+
+pub(crate) fn relocate_attached_entry(_: &StoreLock, old: &str, new: &str) -> Result<(), String> {
+    let serialized = move_attached_folder(&ensure_config()?, old, new)?;
+    std::fs::write(config_path(), serialized).map_err(|e| e.to_string())
+}
+
+pub(crate) fn rekey_attached_branches(_: &StoreLock, old: &str, new: &str) -> Result<(), String> {
+    crate::attached_folder::rekey_file(&attached_path(), old, new)
 }
 
 /// Set the top-level `space_order` array (root-space names) via `toml_edit`,
@@ -2252,6 +2456,7 @@ mod tests {
             project_meta: Vec::new(),
             space_order: Vec::new(),
             global: GlobalMeta::default(),
+            attached_folder: Vec::new(),
         }
     }
 
@@ -2266,6 +2471,97 @@ mod tests {
             .iter()
             .find(|p| p.name == proj)
             .unwrap_or_else(|| panic!("project {grp}/{proj} missing"))
+    }
+
+    #[test]
+    fn attached_folders_resolve_into_global_by_layout_and_availability() {
+        let tmp = unique_tmp();
+        let root = tmp.join("root");
+        let web = root.join("work").join("web");
+        std::fs::create_dir_all(&web).unwrap();
+        let notes = tmp.join("notes");
+        std::fs::create_dir_all(&notes).unwrap();
+        let site = tmp.join("site");
+        init_repo(&site, "main");
+        let seed = tmp.join("seed");
+        init_repo(&seed, "main");
+        let lib = tmp.join("lib.git");
+        git(
+            &tmp,
+            &["clone", "-q", "--bare", &seed.to_string_lossy(), &lib.to_string_lossy()],
+        );
+        let outside = tmp.join("elsewhere").join("lib-main");
+        git(&lib, &["worktree", "add", "-q", &outside.to_string_lossy(), "main"]);
+        let entry = |path: &Path, name: Option<&str>| AttachedFolderEntry {
+            path: path.to_string_lossy().into_owned(),
+            name: name.map(str::to_string),
+        };
+        let mut cfg = raw(&[&root.to_string_lossy()], &[]);
+        cfg.attached_folder = vec![
+            entry(&notes, None),
+            entry(&site, Some("acme-site")),
+            entry(&lib, None),
+            entry(&tmp.join("unplugged"), None),
+            entry(&web, None),
+        ];
+
+        let resolved = resolve(cfg, &ProjectIndex::default());
+        let global = &resolved.global.projects;
+        let names: Vec<&str> = global.iter().map(|a| a.project.name.as_str()).collect();
+        assert_eq!(
+            names,
+            ["acme-site", "lib", "notes", "unplugged"],
+            "web stays in its space"
+        );
+
+        let by = |name: &str| global.iter().find(|a| a.project.name == name).unwrap();
+        assert_eq!(by("notes").project.branch_units[0].kind, ProjectKind::PlainDir);
+        assert_eq!(by("acme-site").project.branch_units[0].kind, ProjectKind::Plain);
+        assert_eq!(by("acme-site").project.branch_units[0].branch.as_deref(), Some("main"));
+        let lib_units = &by("lib").project.branch_units;
+        assert_eq!(lib_units.len(), 1);
+        assert_eq!(lib_units[0].kind, ProjectKind::Worktree);
+        assert!(lib_units[0].folder_path.ends_with("elsewhere/lib-main"));
+        assert_eq!(by("unplugged").availability, Availability::Missing);
+        assert!(by("unplugged").project.branch_units.is_empty());
+        assert!(global
+            .iter()
+            .filter(|a| a.project.name != "unplugged")
+            .all(|a| a.availability == Availability::Ok));
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn attaching_detaching_and_relocating_edit_only_their_entries() {
+        let text =
+            "# mine\n[discovery]\nroots = [\"~/Tori\"]\n\n[[project_meta]]\npath = \"/old/site\"\nicon = \"Rocket\"\n";
+        let attached = upsert_attached_folder(text, "/old/site", Some("acme-site")).unwrap();
+        let again = upsert_attached_folder(&attached, "/old/site/", None).unwrap();
+        assert_eq!(
+            again.matches("[[attached_folder]]").count(),
+            1,
+            "attaching twice adds one entry"
+        );
+
+        let moved = move_attached_folder(&attached, "/old/site", "/new/site").unwrap();
+        let raw: RawConfig = toml::from_str(&moved).unwrap();
+        assert_eq!(raw.attached_folder[0].path, "/new/site");
+        assert_eq!(raw.attached_folder[0].name.as_deref(), Some("acme-site"));
+        assert_eq!(raw.project_meta[0].path, "/new/site", "the icon moves with the folder");
+        assert!(move_attached_folder(text, "/old/site", "/new/site").is_err());
+
+        let dir = unique_tmp().join("site");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.to_string_lossy().into_owned();
+        let detached = drop_attached_folder(&upsert_attached_folder(text, &path, None).unwrap(), &path).unwrap();
+        assert!(dir.is_dir(), "detaching leaves the folder in place");
+        assert!(!detached.contains("attached_folder"));
+        assert!(
+            detached.starts_with("# mine"),
+            "the rest of the file is kept: {detached}"
+        );
+        std::fs::remove_dir_all(dir.parent().unwrap()).ok();
     }
 
     #[test]

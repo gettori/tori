@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
-import { rememberSelection, rememberedInSpace, rememberedTopic } from "./selectionMemory";
+import { rememberSelection, rememberedInSpace, rememberedGlobal } from "./selectionMemory";
 import type { Selection } from "../panels/LeftSidebar/LeftSidebar";
 
 const unit = (spaceName: string, folderPath: string): Selection => ({
@@ -35,11 +35,11 @@ describe("selection memory", () => {
     });
   });
 
-  it("keeps a space Topic under its space and a global one in the Topic slot", () => {
+  it("keeps a space Topic under its space and a global one in Global's slot", () => {
     rememberSelection(topic("global", ""));
     rememberSelection(topic("pay", "work"));
     expect(rememberedInSpace("work")?.topicId).toBe("pay");
-    expect(rememberedTopic()?.topicId).toBe("global");
+    expect(rememberedGlobal()?.topicId).toBe("global");
   });
 
   it("lets a unit and a space Topic take turns in one space's slot", () => {
@@ -48,6 +48,6 @@ describe("selection memory", () => {
     expect(rememberedInSpace("work")?.kind).toBe("unit");
     rememberSelection(topic("pay", "work"));
     expect(rememberedInSpace("work")?.kind).toBe("topic");
-    expect(rememberedTopic()).toBeNull();
+    expect(rememberedGlobal()).toBeNull();
   });
 });

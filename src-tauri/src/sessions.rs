@@ -874,6 +874,11 @@ pub fn adopt(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+pub(crate) fn rekey_adopted(old: &str, new: &str) -> Result<(), String> {
+    let _store = crate::exec::cross_process_store_lock("sessions-store")?;
+    crate::attached_folder::rekey_file(&adopted_path(), old, new)
+}
+
 #[tauri::command(async)]
 pub fn adopt_path(path: String) -> Result<(), String> {
     // Load-modify-save on the sessions-store store: serialized behind a named

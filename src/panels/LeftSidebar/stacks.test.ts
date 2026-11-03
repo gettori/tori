@@ -42,8 +42,8 @@ describe("groupStacks", () => {
 
   it("lets an attempt stay in its fan-out group even when it is also a layer", () => {
     const units = [unit("a1", [5, 1, 3]), unit("a2", [5, 2, 3]), unit("try-1", [5, 3, 3])];
-    const split = groupAttempts(units, [{ path: "/repo/try-1", groupId: "g", goal: "faster" }]);
+    const split = groupAttempts(units, [{ path: "/repo/try-1", groupId: "g", goal: "faster" }], () => units[2]);
     expect(shape(group(split.units))).toEqual([["a2", "a1"]]);
-    expect(split.groups[0].members[0].unit?.label).toBe("try-1");
+    expect(split.groups[0].members[0].unit.label).toBe("try-1");
   });
 });
