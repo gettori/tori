@@ -5,7 +5,7 @@ import styles from "./Dialog.module.css";
 
 /** How wide the panel is. `confirm` and `sheet` are fixed ladders on
  *  `--ui-scale`; `wide` grows with the viewport (see Dialog.module.css). */
-export type DialogSize = "confirm" | "sheet" | "wide";
+export type DialogSize = "confirm" | "sheet" | "table" | "wide";
 
 export interface DialogProps {
   open: boolean;
