@@ -355,8 +355,10 @@ button.moreRow {
   opacity: 0;
 }
 
-.row.project:hover .projectIconArt,
-.row.project[data-expanded] .projectIconArt {
+/* Only a slot with a chevron to show trades its art for it: a plain folder
+   or a missing one has nothing to disclose, so its icon stays. */
+.row.project:hover .projectIcon:has(.iconChevron) .projectIconArt,
+.row.project[data-expanded] .projectIcon:has(.iconChevron) .projectIconArt {
   opacity: 0;
 }
 
