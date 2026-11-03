@@ -120,6 +120,12 @@
 .sheet {
   width: min(calc(480px * var(--ui-scale)), calc(100vw - calc(48px * var(--ui-scale))));
 }
+/* A short table of rows with a few tick columns beside them (Delete Topic):
+   wider than a form column, but a fixed width, since its columns do not gain
+   anything from a wider window. */
+.table {
+  width: min(calc(680px * var(--ui-scale)), calc(100vw - calc(48px * var(--ui-scale))));
+}
 .wide {
   width: clamp(calc(680px * var(--ui-scale)), 52vw, calc(1040px * var(--ui-scale)));
   max-width: calc(100vw - calc(48px * var(--ui-scale)));

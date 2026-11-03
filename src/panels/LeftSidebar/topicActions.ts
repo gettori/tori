@@ -18,6 +18,8 @@ import {
   LAST_MEMBER,
 } from "../../utils/topics";
 import { applyTopic, dropTopic, onPromoted, topicsReloaded } from "../../utils/topicStore";
+import { finishedPr } from "../../utils/prRelation";
+import { syncFor } from "../../utils/branchSync";
 import { moveKey } from "../../utils/dragReorder";
 import { pull } from "../../utils/gitActions";
 import { emitWith, ROOT_MOVED, DRAFT_INTO_NEW, type RootMoved, type DraftIntoNew } from "../../utils/events";
@@ -340,8 +342,16 @@ export function createTopicActions(host: TopicActionsHost) {
         dirty: null,
         unpushed: null,
         keepsBranch: m.keepsBranch,
-        branch: m.keepsBranch ? (m.branch ?? null) : topic.branch,
+        branch: isReference(m) ? (m.checkout?.branch ?? null) : m.keepsBranch ? (m.branch ?? null) : topic.branch,
+        reference: isReference(m),
+        merged: !isReference(m) && isMerged(m, topic.branch),
       }));
+
+  const isMerged = (m: Member, branch: string) => {
+    const root = memberRoot(m);
+    const b = m.keepsBranch ? (m.branch ?? branch) : branch;
+    return finishedPr(root, b, syncFor(root, b))?.state === "merged";
+  };
 
   // What git said about each member's worktree, by repo path. Kept beside the two
   // signals rather than only in them: the confirm closes before `delete_topic`
