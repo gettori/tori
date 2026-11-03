@@ -1,19 +1,12 @@
-import { For } from "solid-js";
+import { createSignal } from "solid-js";
+import { homeDir } from "@tauri-apps/api/path";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
-import { RiskTags, SweepControls, createSweep, type SweepChoice, type SweepMember } from "./ConfirmDeleteTopic";
+import { SweepTable, createSweep, sweepSummary, type SweepChoice, type SweepMember } from "./ConfirmDeleteTopic";
 
-// What happens to the worktrees a deleted Topic leaves behind, one row per
-// repository. `WorktreeRemoveDialog` asks the same question for a single
-// worktree; this is the N-row form, and the difference is not only the count.
-//
-// **The branch checkbox follows the evidence on its own row.** The single-
-// worktree dialog defaults local-delete on, which is calibrated for one tree
-// whose warning is in the same dialog and impossible to miss. Over N rows the
-// warning belongs where the choice is made, so a row git calls clean arrives
-// checked and a row with uncommitted or unpushed work arrives unchecked, with
-// its tags beside it.
+// The retry for worktrees a Topic's delete could not remove, in the same table
+// the Delete Topic confirm draws, with git's reason on each row.
 
 export type { SweepChoice, SweepMember } from "./ConfirmDeleteTopic";
 
@@ -33,48 +26,37 @@ export default function TopicWorktreeSweepDialog(props: {
   onClose: () => void;
 }) {
   const sweep = createSweep(() => props.members);
-  const removing = sweep.removing;
-  const apply = () => props.onApply(sweep.choices());
+  const n = () => sweep.removing().length;
+  const [home, setHome] = createSignal("");
+  void homeDir()
+    .then((h) => setHome(h.replace(/\/$/, "")))
+    .catch(() => {});
 
   return (
     <Dialog
       open
-      size="sheet"
+      size="table"
       title={`${props.topicName} is deleted. Its worktrees?`}
       onClose={() => props.onClose()}
       actions={
         <>
+          <span class={styles.sweepSummary}>{sweepSummary(sweep)}</span>
           <Button onClick={() => props.onClose()}>Keep all</Button>
-          <Button variant="warn" disabled={props.busy || removing().length === 0} onClick={apply}>
-            {props.busy ? "Removing…" : `Remove ${removing().length} worktree${removing().length === 1 ? "" : "s"}`}
+          <Button variant="warn" disabled={props.busy || n() === 0} onClick={() => props.onApply(sweep.choices())}>
+            {props.busy ? "Removing…" : `Remove ${n()} worktree${n() === 1 ? "" : "s"}`}
           </Button>
         </>
       }
     >
-      <div class={styles.msg}>
-        A kept worktree stays on its branch and shows up in Spaces as an ordinary branch of its repository. Nothing here
-        is undone by closing this.
-      </div>
-
-      <div class={styles.delEntries}>
-        <For each={props.members}>
-          {(m) => (
-            <div class={styles.sweepRow} data-sweep={m.repoPath}>
-              <div class={styles.delEntry}>
-                <span class={styles.delEntryName}>{m.label}</span>
-                <RiskTags member={m} />
-              </div>
-              <SweepControls
-                member={m}
-                sweep={sweep}
-                branch={props.branch}
-                running={props.running?.[m.repoPath]}
-                failure={props.failures?.[m.repoPath]}
-              />
-            </div>
-          )}
-        </For>
-      </div>
+      <div class={styles.msg}>These could not be removed. Anything you leave unticked stays in its repository.</div>
+      <SweepTable
+        members={props.members}
+        sweep={sweep}
+        branch={props.branch}
+        home={home()}
+        running={props.running}
+        failures={props.failures}
+      />
     </Dialog>
   );
 }

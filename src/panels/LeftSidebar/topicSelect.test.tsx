@@ -163,7 +163,7 @@ describe("selecting a Topic", () => {
     const { onSelect } = await mounted(topicSel);
     fireEvent.contextMenu(row("Auth"));
     pointerClick(await screen.findByText("Delete…"));
-    await screen.findByRole("dialog", { name: "Delete Auth?" });
+    await screen.findByRole("dialog", { name: "Delete \u201CAuth\u201D?" });
     fireEvent.click(screen.getByRole("button", { name: "Delete Topic" }));
     await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "delete_topic")).toBe(true));
     await waitFor(() => expect(onSelect).toHaveBeenCalledWith(null));
@@ -189,7 +189,7 @@ describe("selecting a Topic", () => {
     await mounted(topicSel);
     fireEvent.contextMenu(row("Auth"));
     pointerClick(await screen.findByText("Delete…"));
-    await screen.findByRole("dialog", { name: "Delete Auth?" });
+    await screen.findByRole("dialog", { name: "Delete \u201CAuth\u201D?" });
     fireEvent.click(screen.getByRole("button", { name: "Delete Topic" }));
     await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "delete_topic")).toBe(true));
 
