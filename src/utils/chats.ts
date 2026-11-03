@@ -133,8 +133,6 @@ const HOUR = 3_600_000;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-export const OLDER_AFTER = 7 * 24 * HOUR;
-
 export function chatTime(at: number, now: number): string {
   const ago = now - at;
   if (ago < HOUR) return "now";
