@@ -208,7 +208,9 @@ export default function TopicList(props: {
             topicName={req().topic.name}
             branch={req().topic.branch}
             members={req().members}
-            onConfirm={() => void actions.remove(req().topic, req().members)}
+            running={req().running}
+            busy={req().busy}
+            onConfirm={(choices) => void actions.remove(req().topic, req().members, choices)}
             onCancel={() => setDeleteReq(null)}
           />
         )}
