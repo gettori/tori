@@ -72,6 +72,7 @@ unresolved path therefore makes the whole payload `None`.
 
 ## Related
 
+- [[concept_chats]] - a chat is a folder, so every session anchored there is the chat.
 - [[gotcha_mtime_cache_must_key_on_dir_mtime_and_head]] — why `isCurrent` refreshes after a checkout.
 - [[gotcha_gitbranch_is_recorded_at_session_creation]] — why a plain-repo session can mismatch the checkout (the badge).
 - [[gotcha_size_alone_cannot_tell_an_append_from_a_replacement]] - the resume-by-offset trap.

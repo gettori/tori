@@ -23,6 +23,7 @@ A new chat tab is pure client state with no spawned harness, any chat-capable ag
 ## Related
 
 - [[adr_harness_breadth]] - the growth axis this serves
+- [[concept_chats]] - a project-less chat is a draft in its own folder until first send
 - [[adr_native_chat_surface]] - the surface it reshapes
 - [[component_chat_panel]] - where the draft state lives
 - [[component_catalog_probe]] - the pre-spawn data source
