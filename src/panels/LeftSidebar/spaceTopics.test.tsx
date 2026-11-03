@@ -160,7 +160,7 @@ describe("Topics in a space's tree", () => {
 
     const topics = head("Topics")!;
     const projects = head("Projects")!;
-    expect(topics.textContent).toContain("2");
+    expect(topics.textContent).toBe("Topics");
     expect(projects.textContent).toContain("1");
     expect(before(topics, pay)).toBe(true);
     expect(before(pay, projects)).toBe(true);
@@ -196,6 +196,26 @@ describe("Topics in a space's tree", () => {
     await filter("nothing-matches");
     await waitFor(() => expect(head("Topics")).toBeNull());
     expect(screen.getByText("no matches in this space")).toBeTruthy();
+  });
+
+  it("lists six Topics and folds the rest, keeping an open one in place", async () => {
+    const names = ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8"];
+    bridge.topics = names.map((n) => topic(n.toLowerCase(), n, "work", [member(REPO, "repo")]));
+    mount();
+    await screen.findByText("T1");
+    const shown = () =>
+      [...document.querySelectorAll<HTMLElement>("[data-spaces-tree] [data-topic]")].map((t) => t.dataset.topic);
+    expect(shown()).toEqual(["t1", "t2", "t3", "t4", "t5", "t6"]);
+    const more = spacesTree().getByRole("button", { name: "2 more Topics" });
+    expect(more.closest("[class*=projectCard]")).toBeTruthy();
+    expect(more.closest("[class*=branchNode]")).toBeNull();
+
+    fireEvent.click(more);
+    await waitFor(() => expect(shown()).toHaveLength(8));
+    fireEvent.click(spacesTree().getByRole("button", { name: "Show members of T7" }));
+    fireEvent.click(spacesTree().getByRole("button", { name: "Show less" }));
+    await waitFor(() => expect(shown()).toEqual(["t1", "t2", "t3", "t4", "t5", "t6", "t7"]));
+    expect(spacesTree().getByRole("button", { name: "1 more Topic" })).toBeTruthy();
   });
 
   it("remembers a collapsed group per space", async () => {

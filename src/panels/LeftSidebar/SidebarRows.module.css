@@ -217,6 +217,15 @@
   color: var(--fg-muted);
 }
 
+button.moreRow {
+  width: 100%;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
 /* Selected branch: the hover pill's geometry held in a brand wash that fades
    out to the right, with the same left bar the settings rail marks its active
    category with (`.railItemActive::before`). The bar covers the rail rather
@@ -568,7 +577,7 @@
 }
 
 .groupHead:not(:first-child) {
-  margin-top: calc(8px * var(--ui-scale));
+  margin-top: calc(16px * var(--ui-scale));
 }
 
 .groupTitle {
@@ -598,7 +607,7 @@ button.groupTitle {
   font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--fg-muted);
+  color: var(--fg-subtle);
 }
 
 .groupCount {

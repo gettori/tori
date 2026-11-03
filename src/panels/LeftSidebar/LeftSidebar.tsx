@@ -109,7 +109,7 @@ import { syntheticId } from "../../utils/syntheticTabs";
 import { openProjectSettings, projectShown } from "../../utils/projectSettings";
 import { projectUntrusted } from "../../utils/projectTrust";
 import { noteCheckpointTicks } from "../../utils/checkpoints";
-import { rollupStatuses, type LiveSessionStatus, type Rollup } from "../../utils/sessionStatus";
+import { needsYouOrWorking, rollupStatuses, type LiveSessionStatus, type Rollup } from "../../utils/sessionStatus";
 import { liveChatIds } from "../../utils/chatSessions";
 import { findAdapter } from "../../utils/agents";
 import { asTabProfile } from "../../utils/agentHealth";
@@ -218,6 +218,7 @@ import { groupStacks, type StackEntry } from "./stacks";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import TopicList from "./TopicList";
 import ChatList from "./ChatList";
+import { GROUP_CAP, capList, moreLabel } from "./capList";
 import {
   NEW_CHAT_NAME,
   chatIdOf,
@@ -257,6 +258,7 @@ import { GLOBAL_COLOR, GLOBAL_ICON, GLOBAL_KEY, GLOBAL_NAME, allSpaces, spaceLab
 import {
   BranchRow,
   EmptyRow,
+  FoldRow,
   GroupHead,
   GroupRow,
   MoreRow,
@@ -265,7 +267,7 @@ import {
   attemptGroup,
   stackGroup,
 } from "./SidebarRows";
-import TopicRows, { matchesTopic } from "./TopicRows";
+import TopicRows, { matchesTopic, type TopicFold } from "./TopicRows";
 import rows from "./SidebarRows.module.css";
 import styles from "./LeftSidebar.module.css";
 
@@ -404,7 +406,7 @@ type StackGroup = Extract<StackEntry<BranchUnit>, { kind: "stack" }>;
 // what a card can hold without becoming a wall, and it covers a repo's usual
 // working set; everything past it is one click away, and never hidden from the
 // rollups (the truncation row reports for what it hides).
-const BRANCH_CAP = 6;
+const BRANCH_CAP = GROUP_CAP;
 
 const LS_EXPANDED = "tori.expanded.v1";
 const LS_ACTIVE_SPACE = "tori.active-space.v1";
@@ -3312,7 +3314,7 @@ export default function LeftSidebar(props: {
     // 20th branch would surface nowhere.
     return (
       <MoreRow
-        count={hidden().length}
+        label={open() ? "Show less" : moreLabel(hidden().length, ["branch", "branches"])}
         open={open()}
         onClick={() => toggle(key)}
         end={statusBubble(() => (open() ? null : bubbleForUnits(hidden())))}
@@ -3422,11 +3424,47 @@ export default function LeftSidebar(props: {
   const counted = (shown: number, all: number) => (q() ? `${shown} of ${all}` : `${all}`);
   const gckey = `gc:${GLOBAL_KEY}`;
   const globalChatsCollapsed = () => expanded().has(gckey);
+  const gcmkey = `gcm:${GLOBAL_KEY}`;
+  const gcokey = `gco:${GLOBAL_KEY}`;
   const shownChats = createMemo(() => {
     const needle = q();
     return needle ? chats().filter((c) => (c.name ?? NEW_CHAT_NAME).toLowerCase().includes(needle)) : chats();
   });
   const chatStatus = (c: Chat) => bubbleFor((s) => s.folderPath === chatKey(c.id));
+
+  function projectFold(g: () => Group | null, list: () => Project[], key: () => string) {
+    const capped = () => !q();
+    const open = () => expanded().has(key());
+    const kept = (p: Project) => {
+      const at = g();
+      return (
+        (!!at && expanded().has(pkey(at, p))) ||
+        p.branchUnits.some(unitSelected) ||
+        needsYouOrWorking(bubbleForUnits(p.branchUnits))
+      );
+    };
+    const split = createMemo(() =>
+      capped() && !open() ? capList(list(), GROUP_CAP, kept) : { shown: list(), hidden: [] as Project[] },
+    );
+    const folds = () => capped() && (open() ? list().length > GROUP_CAP : split().hidden.length > 0);
+    const row = () => (
+      <Show when={folds()}>
+        <FoldRow
+          label={open() ? "Show less" : moreLabel(split().hidden.length, ["project", "projects"])}
+          open={open()}
+          end={statusBubble(() => (open() ? null : bubbleForUnits(split().hidden.flatMap((p) => p.branchUnits))))}
+          onClick={() => toggle(key())}
+        />
+      </Show>
+    );
+    return { shown: () => split().shown, row };
+  }
+  const globalFold = projectFold(
+    () => globalAsSpace(),
+    globalProjects,
+    () => `pm:${GLOBAL_KEY}`,
+  );
+  const spaceFold = projectFold(activeSpace, activeProjects, () => `pm:${activeSpace()?.name ?? ""}`);
 
   let unlistenConfig: UnlistenFn | undefined;
   let unlistenSessions: UnlistenFn | undefined;
@@ -3558,6 +3596,13 @@ export default function LeftSidebar(props: {
   const activeTopicId = () => (props.selected?.kind === "topic" ? (props.selected.topicId ?? null) : null);
   const activeTopicRoot = () => (props.selected?.kind === "topic" ? (props.selected.activeRoot ?? null) : null);
   const topicStatus = (f: Topic) => bubbleFor((s) => s.home?.topic === f.id);
+  const topicFold = (key: string): TopicFold => ({
+    get open() {
+      return expanded().has(key);
+    },
+    onToggle: () => toggle(key),
+    rollupOf: (ts) => bubbleFor((s) => ts.some((t) => t.id === s.home?.topic)),
+  });
 
   const [expandedTopics, setExpandedTopics] = createSignal<string[]>([]);
   const topicActions = createTopicActions({
@@ -3857,14 +3902,9 @@ export default function LeftSidebar(props: {
     const showAll = () => expanded().has(mkey(g, p));
     const shown = () => {
       const all = entries();
-      if (showAll() || all.length <= BRANCH_CAP) return { units: all, hidden: [] as BranchUnit[] };
-      const units: (BranchUnit | number)[] = [];
-      const hidden: BranchUnit[] = [];
-      for (const [i, e] of all.entries()) {
-        if (i < BRANCH_CAP || unitsOf(e).some(unitSelected)) units.push(e);
-        else hidden.push(...unitsOf(e));
-      }
-      return { units, hidden };
+      if (showAll()) return { units: all, hidden: [] as BranchUnit[] };
+      const cut = capList(all, BRANCH_CAP, (e) => unitsOf(e).some(unitSelected));
+      return { units: cut.shown, hidden: cut.hidden.flatMap(unitsOf) };
     };
     // Show the control only when it has something to say. Open, that is
     // "the list is longer than the cap"; closed, "something is actually
@@ -4099,6 +4139,7 @@ export default function LeftSidebar(props: {
         activeRoot={activeTopicRoot()}
         onOpenMember={(f, root) => selectTopic(f, root)}
         topicStatus={topicStatus}
+        fold={topicFold(`tm:${GLOBAL_KEY}`)}
         listing={(t) => (!inGlobalTree(t) ? null : goneSpace(t.space) ? "gone" : "listed")}
         actions={topicActions}
         lead={
@@ -4106,11 +4147,16 @@ export default function LeftSidebar(props: {
             <ChatList
               chats={shownChats()}
               count={counted(shownChats().length, chats().length)}
+              filtered={!!q()}
               open={!globalChatsCollapsed()}
               onToggle={() => toggle(gckey)}
+              moreOpen={expanded().has(gcmkey)}
+              onToggleMore={() => toggle(gcmkey)}
+              olderOpen={expanded().has(gcokey)}
+              onToggleOlder={() => toggle(gcokey)}
               selectedId={selectedChatId()}
               status={chatStatus}
-              end={() => bubbleFor((s) => shownChats().some((c) => s.folderPath === chatKey(c.id)))}
+              rollupOf={(cs) => bubbleFor((s) => cs.some((c) => s.folderPath === chatKey(c.id)))}
               menu={chatMenu}
               onOpen={openChat}
               onAdd={() => void startChat()}
@@ -4122,6 +4168,7 @@ export default function LeftSidebar(props: {
           <GroupHead
             label="Topics"
             count={counted(shownGlobalTopics().length, globalTopics().length)}
+            filtered={!!q()}
             open={!globalTopicsCollapsed()}
             onToggle={() => toggle(gtkey)}
             end={statusBubble(() =>
@@ -4139,6 +4186,7 @@ export default function LeftSidebar(props: {
               <GroupHead
                 label="Projects"
                 count={counted(globalProjects().length, config()?.global?.projects.length ?? 0)}
+                filtered={!!q()}
                 open={!globalProjectsCollapsed()}
                 onToggle={() => toggle(gpkey)}
                 end={statusBubble(() =>
@@ -4148,9 +4196,10 @@ export default function LeftSidebar(props: {
                 onAdd={() => void attachFolder()}
               />
               <Show when={!globalProjectsCollapsed()}>
-                <For each={globalProjects()} fallback={<EmptyRow>no matches in {GLOBAL_NAME}</EmptyRow>}>
+                <For each={globalFold.shown()} fallback={<EmptyRow>no matches in {GLOBAL_NAME}</EmptyRow>}>
                   {(p) => projectNode(globalAsSpace(), p)}
                 </For>
+                {globalFold.row()}
               </Show>
             </Show>
           </>
@@ -4177,6 +4226,7 @@ export default function LeftSidebar(props: {
                   <GroupHead
                     label="Topics"
                     count={counted(shownSpaceTopics().length, spaceTopics().length)}
+                    filtered={!!q()}
                     open={open()}
                     onToggle={() => toggle(tkey(g()))}
                     end={statusBubble(() =>
@@ -4195,6 +4245,7 @@ export default function LeftSidebar(props: {
                       activeRoot={activeTopicRoot()}
                       onOpenMember={(f, root) => selectTopic(f, root)}
                       topicStatus={topicStatus}
+                      fold={topicFold(`tm:${g().name}`)}
                     />
                   </Show>
                   <Show when={activeProjects().length > 0}>
@@ -4204,7 +4255,14 @@ export default function LeftSidebar(props: {
               );
             }}
           </Show>
-          <For each={activeProjects()}>{(p) => projectNode(activeSpace()!, p)}</For>
+          {/* A space without Topics has no Projects heading to fold under. */}
+          <Show
+            when={topicsGroupSpace()}
+            fallback={<For each={activeProjects()}>{(p) => projectNode(activeSpace()!, p)}</For>}
+          >
+            <For each={spaceFold.shown()}>{(p) => projectNode(activeSpace()!, p)}</For>
+            {spaceFold.row()}
+          </Show>
 
           <Show when={(config()?.spaces ?? []).length > 0 && activeProjects().length === 0}>
             <Show

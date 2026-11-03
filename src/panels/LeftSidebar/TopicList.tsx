@@ -1,6 +1,6 @@
 import { Show, onCleanup, type JSX } from "solid-js";
 import { type SpaceTint } from "./TopicItem";
-import TopicRows from "./TopicRows";
+import TopicRows, { type TopicFold } from "./TopicRows";
 import { TriangleAlert } from "lucide-solid";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
@@ -65,6 +65,7 @@ export default function TopicList(props: {
    *  longer finds its space. Absent lists every Topic. */
   listing?: (topic: Topic) => TopicListing;
   actions: TopicActions;
+  fold?: TopicFold;
   lead?: JSX.Element;
   onContextMenu?: (e: MouseEvent) => void;
   head?: JSX.Element;
@@ -115,6 +116,7 @@ export default function TopicList(props: {
             activeRoot={props.activeRoot}
             onOpenMember={props.onOpenMember}
             topicStatus={props.topicStatus}
+            fold={props.fold}
             note={(t) => (
               <Show when={props.listing?.(t) === "gone"}>
                 <GoneSpaceNote topic={t} actions={actions} />

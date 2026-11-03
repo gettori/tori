@@ -221,8 +221,9 @@ export function BranchRow(props: {
 }
 
 /**
- * The truncation control at the foot of a long branch list: "N more branches"
- * while the list is cut, "Show less" once it is open.
+ * The truncation control at the foot of a long list of rail rows (branches,
+ * chats): "N more branches" while the list is cut, "Show less" once it is
+ * open, or the chats' "Older".
  *
  * Rendered as a branch node rather than as a footer beside them, so the rail
  * runs through it and stops on it: it is an item in the list, not a caption
@@ -230,23 +231,53 @@ export function BranchRow(props: {
  * label x for free.
  */
 export function MoreRow(props: {
-  count: number;
+  label: string;
   open: boolean;
-  /** The rollup for the branches this row is hiding, when it is hiding any. */
+  /** The rollup for the rows this one is hiding, when it is hiding any. */
   end?: JSX.Element;
   onClick?: () => void;
 }) {
   return (
     <div class={`node ${styles.branchNode}`}>
-      <div class={`${styles.row} ${styles.branch} ${styles.sub1} ${styles.moreRow}`} onClick={() => props.onClick?.()}>
+      <button
+        type="button"
+        class={`${styles.row} ${styles.branch} ${styles.sub1} ${styles.moreRow}`}
+        aria-expanded={props.open}
+        onClick={() => props.onClick?.()}
+      >
         <span class={styles.rowIcon}>
           <Icon icon={props.open ? ChevronUp : Ellipsis} />
         </span>
-        <span class={styles.label}>
-          {props.open ? "Show less" : `${props.count} more branch${props.count === 1 ? "" : "es"}`}
-        </span>
+        <span class={styles.label}>{props.label}</span>
         {props.end}
-      </div>
+      </button>
+    </div>
+  );
+}
+
+/** `MoreRow`'s look at the foot of a capped list of cards (Topics, projects).
+ *  Those lists have no rail, so it sits at card depth with none through it. */
+export function FoldRow(props: {
+  label: string;
+  open: boolean;
+  /** The rollup for what this row is hiding, when it is hiding anything. */
+  end?: JSX.Element;
+  onClick?: () => void;
+}) {
+  return (
+    <div class={styles.projectCard} data-no-window-drag>
+      <button
+        type="button"
+        class={`${styles.row} ${styles.moreRow}`}
+        aria-expanded={props.open}
+        onClick={() => props.onClick?.()}
+      >
+        <span class={styles.rowIcon}>
+          <Icon icon={props.open ? ChevronUp : Ellipsis} />
+        </span>
+        <span class={styles.label}>{props.label}</span>
+        <span class={styles.rowEnd}>{props.end}</span>
+      </button>
     </div>
   );
 }
@@ -328,13 +359,15 @@ export function EmptyRow(props: { children: JSX.Element }) {
   return <div class={`${styles.row} ${styles.dim} ${styles.sub1}`}>{props.children}</div>;
 }
 
-/** The heading over one kind of row in a space's tree: `TOPICS 2` over its
+/** The heading over one kind of row in a space's tree: `TOPICS` over its
  *  Topics, `PROJECTS 5` over its projects. With `onToggle` the label is the
- *  group's disclosure; `onAdd` puts a `+` at the right edge, shown on hover. */
+ *  group's disclosure, and the count shows only while the group is shut or a
+ *  filter narrows it; `onAdd` puts a `+` at the right edge, shown on hover. */
 export function GroupHead(props: {
   label: string;
   count: string;
   open?: boolean;
+  filtered?: boolean;
   onToggle?: () => void;
   end?: JSX.Element;
   addLabel?: string;
@@ -343,7 +376,9 @@ export function GroupHead(props: {
   const title = () => (
     <>
       <span class={styles.groupLabel}>{props.label}</span>
-      <span class={styles.groupCount}>{props.count}</span>
+      <Show when={!props.onToggle || !props.open || props.filtered}>
+        <span class={styles.groupCount}>{props.count}</span>
+      </Show>
     </>
   );
   return (

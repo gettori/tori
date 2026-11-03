@@ -16,6 +16,7 @@ import TopicItem from "./TopicItem";
 import {
   BranchRow,
   EmptyRow,
+  FoldRow,
   GroupHead,
   GroupRow,
   MoreRow,
@@ -393,7 +394,7 @@ export const Truncated: Story = {
             menu={MENU}
           />
           <BranchRow label="release/26.9" icon={<BranchMark active={false} />} menu={MENU} />
-          <MoreRow count={14} open={false} end={bubble({ executing: 1, idle: 3 })} />
+          <MoreRow label="14 more branches" open={false} end={bubble({ executing: 1, idle: 3 })} />
         </ProjectRow>
       </Tree>
     ),
@@ -420,7 +421,7 @@ export const Untruncated: Story = {
             menu={MENU}
             end={bubble({ idle: 3 })}
           />
-          <MoreRow count={14} open={true} />
+          <MoreRow label="Show less" open={true} />
         </ProjectRow>
       </Tree>
     ),
@@ -653,6 +654,20 @@ export const TopicsGroup: Story = {
         <GroupHead label="Projects" count="2" />
         <ProjectRow name="api" icon={<ProjectIcon seed="/w/api" />} disclosure menu={MENU} />
         <ProjectRow name="web" icon={<ProjectIcon seed="/w/web" />} disclosure menu={MENU} />
+      </Tree>
+    ),
+  ],
+};
+
+export const GroupFolds: Story = {
+  decorators: [
+    () => (
+      <Tree>
+        <GroupHead label="Projects" count="9" open onToggle={() => {}} />
+        <ProjectRow name="api" icon={<ProjectIcon seed="/w/api" />} disclosure menu={MENU} />
+        <ProjectRow name="web" icon={<ProjectIcon seed="/w/web" />} disclosure menu={MENU} />
+        <FoldRow label="7 more projects" open={false} end={bubble({ executing: 1 })} />
+        <FoldRow label="Show less" open />
       </Tree>
     ),
   ],

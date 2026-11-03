@@ -1,9 +1,12 @@
 import { For, Show, createMemo, type JSX } from "solid-js";
 import TopicItem from "./TopicItem";
+import { FoldRow } from "./SidebarRows";
+import StatusBubble from "./StatusBubble";
+import { GROUP_CAP, capList, moreLabel } from "./capList";
 import type { TopicSpace } from "./TopicList";
 import type { TopicActions } from "./topicActions";
 import { byName, isReference, memberBranch, memberPrBranch, memberRoot, type Topic } from "../../utils/topics";
-import type { Rollup } from "../../utils/sessionStatus";
+import { needsYouOrWorking, type Rollup } from "../../utils/sessionStatus";
 import { syncFor } from "../../utils/branchSync";
 import { finishedPr } from "../../utils/prRelation";
 import { forgePause, unitStatus } from "../../utils/forgeStatus";
@@ -16,6 +19,12 @@ export function matchesTopic(topic: Topic, query: string): boolean {
   );
 }
 
+export type TopicFold = {
+  open: boolean;
+  onToggle: () => void;
+  rollupOf: (topics: readonly Topic[]) => Rollup | null;
+};
+
 export default function TopicRows(props: {
   topics: readonly Topic[];
   query: string;
@@ -27,14 +36,23 @@ export default function TopicRows(props: {
   topicStatus?: (topic: Topic) => Rollup | null;
   fallback?: JSX.Element;
   note?: (topic: Topic) => JSX.Element;
+  fold?: TopicFold;
 }) {
   const visible = createMemo(() => [...props.topics].sort(byName).filter((t) => matchesTopic(t, props.query)));
   const actions = () => props.actions;
+  const kept = (t: Topic) =>
+    props.activeId === t.id || !!actions().expanded()[t.id] || needsYouOrWorking(props.topicStatus?.(t) ?? null);
+  // A filter lists every match: a fold would hide the very rows it found.
+  const capped = () => !!props.fold && !props.query.trim();
+  const split = createMemo(() =>
+    capped() && !props.fold!.open ? capList(visible(), GROUP_CAP, kept) : { shown: visible(), hidden: [] as Topic[] },
+  );
+  const folds = () => capped() && (props.fold!.open ? visible().length > GROUP_CAP : split().hidden.length > 0);
 
   return (
     <Show when={visible().length > 0} fallback={props.fallback}>
       <ul class={styles.items} data-no-window-drag>
-        <For each={visible()}>
+        <For each={split().shown}>
           {(f) => (
             <TopicItem
               topic={f}
@@ -69,6 +87,16 @@ export default function TopicRows(props: {
           )}
         </For>
       </ul>
+      <Show when={folds()}>
+        <FoldRow
+          label={props.fold!.open ? "Show less" : moreLabel(split().hidden.length, ["Topic", "Topics"])}
+          open={props.fold!.open}
+          end={
+            <StatusBubble rollup={() => (props.fold?.open !== false ? null : props.fold.rollupOf(split().hidden))} />
+          }
+          onClick={() => props.fold?.onToggle()}
+        />
+      </Show>
     </Show>
   );
 }
