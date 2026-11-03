@@ -18,6 +18,7 @@ export default function ChatList(props: {
   status: (c: Chat) => Rollup | null;
   menu: (c: Chat) => MenuItem[];
   onOpen: (c: Chat) => void;
+  onAdd: () => void;
   end?: () => Rollup | null;
 }) {
   const [now, setNow] = createSignal(Date.now());
@@ -34,6 +35,8 @@ export default function ChatList(props: {
         open={props.open}
         onToggle={props.onToggle}
         end={<StatusBubble rollup={() => (props.open ? null : (props.end?.() ?? null))} />}
+        addLabel={NEW_CHAT_NAME}
+        onAdd={props.onAdd}
       />
       <Show when={props.open}>
         <div class={rows.projectCard}>

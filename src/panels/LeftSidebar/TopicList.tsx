@@ -65,6 +65,7 @@ export default function TopicList(props: {
    *  longer finds its space. Absent lists every Topic. */
   listing?: (topic: Topic) => TopicListing;
   actions: TopicActions;
+  lead?: JSX.Element;
   head?: JSX.Element;
   collapsed?: boolean;
   tail?: JSX.Element;
@@ -94,6 +95,7 @@ export default function TopicList(props: {
   return (
     <div class={styles.list} classList={{ [props.class ?? ""]: !!props.class }} hidden={props.hidden} data-topic-list>
       <Show when={error()}>{(msg) => <p class={styles.error}>{msg()}</p>}</Show>
+      {props.lead}
       <Show when={listed().length > 0} fallback={props.empty}>
         {props.head}
         <Show when={!props.collapsed}>

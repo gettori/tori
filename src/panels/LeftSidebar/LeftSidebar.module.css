@@ -150,44 +150,6 @@
   text-transform: capitalize;
 }
 
-.newChat {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: calc(8px * var(--ui-scale));
-  height: calc(32px * var(--ui-scale));
-  margin: 0 calc(10px * var(--ui-scale)) calc(6px * var(--ui-scale));
-  padding: 0 calc(9px * var(--ui-scale));
-  border: 1px solid var(--border-default);
-  border-radius: var(--tori-radius-md);
-  background: var(--neutral-subtle);
-  color: var(--fg-default);
-  font: inherit;
-  cursor: pointer;
-}
-
-.newChat:hover {
-  background: var(--neutral-hover);
-}
-
-.newChat :global(svg) {
-  width: calc(15px * var(--ui-scale));
-  height: calc(15px * var(--ui-scale));
-}
-
-.newChatLabel {
-  flex: 1;
-  text-align: left;
-  font-size: var(--tori-text-sm);
-  font-weight: 600;
-}
-
-.newChatKey {
-  font-family: var(--tori-font-mono);
-  font-size: var(--tori-text-2xs);
-  color: var(--fg-subtle);
-}
-
 .globalEmpty {
   margin: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
   padding: calc(14px * var(--ui-scale));
