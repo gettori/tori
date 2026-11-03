@@ -141,10 +141,10 @@ describe("the active space header", () => {
   it("names Global with its own menu, on the button and on a right-click", async () => {
     mount();
     await waitFor(() => expect(header()).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "Global" }));
-    await waitFor(() => expect(header()!.textContent!.trim()).toBe("Global"));
+    fireEvent.click(screen.getByRole("button", { name: "Home" }));
+    await waitFor(() => expect(header()!.textContent!.trim()).toBe("Home"));
     expect(screen.queryByRole("button", { name: "Actions for work" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Actions for Global" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Actions for Home" })).toBeTruthy();
     expect(rightClick(header()!)).toBe(true);
     expect(await screen.findByText("Edit icon and colour")).toBeTruthy();
     expect(screen.queryByText("Delete space")).toBeNull();

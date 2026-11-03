@@ -94,7 +94,7 @@ describe("the sidebar's Topic actions", () => {
 
   it("opens the New Topic dialog the Topic list hosts from the head row", async () => {
     mount();
-    fireEvent.click(await screen.findByRole("button", { name: "New Topic in Global" }));
+    fireEvent.click(await screen.findByRole("button", { name: "New Topic in Home" }));
     await waitFor(() => expect(dialogs("New Topic")).toHaveLength(1));
   });
 
@@ -108,7 +108,7 @@ describe("the sidebar's Topic actions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(dialogs("Add repository to Pay")).toHaveLength(0));
 
-    fireEvent.click(screen.getByRole("button", { name: "Global" }));
+    fireEvent.click(screen.getByRole("button", { name: "Home" }));
     fireEvent.contextMenu(await screen.findByText("Auth"));
     pointerClick(await screen.findByText("Add repository…"));
     await waitFor(() => expect(dialogs("Add repository to Auth")).toHaveLength(1));

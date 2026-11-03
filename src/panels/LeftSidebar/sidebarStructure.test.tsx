@@ -743,7 +743,7 @@ describe("a Topic whose space Tori cannot find", () => {
     mount();
     const note = (await screen.findByText(NOTE)).closest("div")!;
     expect(note.textContent).toContain("From saga, which Tori can't find.");
-    expect(within(note).getByRole("button", { name: "Keep in Global" })).toBeTruthy();
+    expect(within(note).getByRole("button", { name: "Keep in Home" })).toBeTruthy();
     expect(within(note).getByRole("button", { name: "Delete" })).toBeTruthy();
   });
 
