@@ -244,6 +244,9 @@ export const EDITOR_GOTO_LINE = "tori:editor-goto-line";
 // own.
 export const EDITOR_NEW_SCRATCH = "tori:editor-new-scratch";
 export const NEW_CHAT = "tori:new-chat";
+// A chat made outside the sidebar, for it to select.
+export const OPEN_CHAT = "tori:open-chat";
+export type OpenChat = { id: string };
 export const EDITOR_SAVE_AS = "tori:editor-save-as";
 
 // Reports back out of the editor, for a caller that put a file there and needs

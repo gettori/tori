@@ -98,6 +98,8 @@ import {
   ACTIVATE_SPACE,
   type ActivateSpace,
   NEW_CHAT,
+  OPEN_CHAT,
+  type OpenChat,
 } from "../../utils/events";
 import { fetchRootIfStale } from "../../utils/remoteSync";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
@@ -1312,6 +1314,12 @@ export default function LeftSidebar(props: {
   // The tab draws first: selecting its session wakes everything that reads the
   // selection, and that work would otherwise land inside the tab's first frame.
   onCleanup(onWith<TerminalTabFocused>(TERMINAL_TAB_FOCUSED, (d) => afterPaint(() => void focusFromTerminalTab(d))));
+  onCleanup(
+    onWith<OpenChat>(OPEN_CHAT, ({ id }) => {
+      const c = chats().find((c) => c.id === id);
+      if (c) openChat(c);
+    }),
+  );
   // "Delete the branch" from the Pull Requests panel, after it landed one.
   //
   // Routed here rather than done there because this is where the guards live: a
