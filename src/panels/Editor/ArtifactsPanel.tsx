@@ -41,7 +41,7 @@ export default function ArtifactsPanel(props: { chatId: string; root: string; ac
 
   async function refresh() {
     const next = await invoke<Artifacts | null>("chat_artifacts", {
-      chatId: props.chatId,
+      folder: chatById(props.chatId)?.folder ?? props.root,
       transcripts: transcripts(),
     }).catch(() => null);
     if (next) setList(next);

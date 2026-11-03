@@ -137,7 +137,9 @@ const before = (a: Node, b: Node) => !!(a.compareDocumentPosition(b) & Node.DOCU
 const filter = async (text: string) => {
   const toggle = screen.queryByRole("button", { name: "Filter" });
   if (toggle) fireEvent.click(toggle);
-  fireEvent.input(await screen.findByRole("textbox", { name: "Filter projects" }), { target: { value: text } });
+  fireEvent.input(await screen.findByRole("textbox", { name: "Filter chats, topics and projects" }), {
+    target: { value: text },
+  });
 };
 
 describe("Topics in a space's tree", () => {
@@ -167,12 +169,12 @@ describe("Topics in a space's tree", () => {
     expect(before(projects, screen.getByText("repo", { selector: "[class*=label]" }))).toBe(true);
   });
 
-  it("draws no group, and no projects heading, for a space without Topics", async () => {
+  it("heads a space's projects even without Topics, and draws no Topics group", async () => {
     bridge.topics = [AUTH];
     mount();
     await screen.findByText("repo");
     expect(head("Topics")).toBeNull();
-    expect(head("Projects")).toBeNull();
+    expect(head("Projects")).toBeTruthy();
   });
 
   it("keeps a space's Topics out of Global and a global one in it", async () => {

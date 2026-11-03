@@ -1,17 +1,19 @@
-// Chats: sessions with no project, run in a folder Tori owns (`chats/<id>`).
+// Chats: sessions with no project, run in a folder Tori owns
+// (`chats/<space>/<id>`, Home's under `.home`).
 // Every session spawned there (the first send, forks, rewinds, handoffs) keeps
 // that cwd, so the folder is the chat and its newest session names the row.
 import { createMemo, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import type { Selection } from "../panels/LeftSidebar/LeftSidebar";
 import { sessions, trackFolders, type SessionMeta } from "./sessionStore";
-import { GLOBAL_KEY } from "./globalSpace";
 import { asTabProfile } from "./agentHealth";
 
 export const NEW_CHAT_NAME = "New chat";
 
 export type Chat = {
   id: string;
+  /** The space it was made in, null for Home. */
+  space: string | null;
   folder: string;
   /** Newest first. Empty for a chat made this run and not yet sent to. */
   sessions: SessionMeta[];
@@ -32,45 +34,50 @@ export async function ensureChatsRoot(): Promise<string | null> {
 
 // A chat whose folder exists but whose first send has not landed yet: nothing
 // lists it, so the row is kept from here until a session shows up.
-const [fresh, setFresh] = createSignal<Record<string, { folder: string; at: number }>>({});
+type Pending = { space: string | null; folder: string; at: number };
+const [fresh, setFresh] = createSignal<Record<string, Pending>>({});
 
-export function chatIdOf(cwd: string, chatsRoot: string): string | null {
+const HOME_DIR = ".home";
+
+/** Which chat a cwd under the chats root belongs to, and its space. */
+export function chatPlace(cwd: string, chatsRoot: string): { id: string; space: string | null } | null {
   const base = chatsRoot.replace(/\/+$/, "");
   if (!cwd.startsWith(`${base}/`)) return null;
-  return cwd.slice(base.length + 1).split("/")[0] || null;
+  const [dir, id] = cwd.slice(base.length + 1).split("/");
+  return dir && id ? { id, space: dir === HOME_DIR ? null : dir } : null;
 }
 
-export function groupChats(
-  list: readonly SessionMeta[],
-  chatsRoot: string,
-  pending: Record<string, { folder: string; at: number }>,
-): Chat[] {
+export const chatIdOf = (cwd: string, chatsRoot: string) => chatPlace(cwd, chatsRoot)?.id ?? null;
+
+export function groupChats(list: readonly SessionMeta[], chatsRoot: string, pending: Record<string, Pending>): Chat[] {
   const base = chatsRoot.replace(/\/+$/, "");
-  const byId = new Map<string, SessionMeta[]>();
+  const byId = new Map<string, { space: string | null; rows: SessionMeta[] }>();
   for (const s of list) {
-    const id = chatIdOf(s.cwd, chatsRoot);
-    if (id) byId.set(id, [...(byId.get(id) ?? []), s]);
+    const at = chatPlace(s.cwd, chatsRoot);
+    if (at) byId.set(at.id, { space: at.space, rows: [...(byId.get(at.id)?.rows ?? []), s] });
   }
   const out: Chat[] = [];
-  for (const [id, rows] of byId) {
+  for (const [id, { space, rows }] of byId) {
     const sorted = [...rows].sort((a, b) => b.last_active - a.last_active);
     const newest = sorted[0];
     out.push({
       id,
-      folder: `${base}/${id}`,
+      space,
+      folder: `${base}/${space ?? HOME_DIR}/${id}`,
       sessions: sorted,
       name: newest.name || newest.title || null,
       updated: newest.last_active * 1000,
     });
   }
   for (const [id, p] of Object.entries(pending)) {
-    if (!byId.has(id)) out.push({ id, folder: p.folder, sessions: [], name: null, updated: p.at });
+    if (!byId.has(id)) out.push({ id, space: p.space, folder: p.folder, sessions: [], name: null, updated: p.at });
   }
   return out.sort((a, b) => b.updated - a.updated);
 }
 
 const sameChat = (a: Chat, b: Chat) =>
   a.folder === b.folder &&
+  a.space === b.space &&
   a.name === b.name &&
   a.updated === b.updated &&
   a.sessions.length === b.sessions.length &&
@@ -94,23 +101,29 @@ export function chatById(id: string | null | undefined): Chat | null {
   return (id && chats().find((c) => c.id === id)) || null;
 }
 
-export async function newChat(): Promise<Chat> {
+export async function newChat(space: string | null = null): Promise<Chat> {
   await ensureChatsRoot();
-  const made = await invoke<{ id: string; folder: string }>("chat_new");
+  const made = await invoke<{ id: string; folder: string }>("chat_new", { space });
   const at = Date.now();
-  setFresh((m) => ({ ...m, [made.id]: { folder: made.folder, at } }));
-  return { id: made.id, folder: made.folder, sessions: [], name: null, updated: at };
+  setFresh((m) => ({ ...m, [made.id]: { space, folder: made.folder, at } }));
+  return { id: made.id, space, folder: made.folder, sessions: [], name: null, updated: at };
 }
 
 export function forgetChat(id: string) {
   setFresh(({ [id]: _, ...rest }) => rest);
 }
 
-export function chatSelection(chat: Pick<Chat, "id" | "folder" | "name">, session?: SessionMeta): Selection {
+/** `spaceName` is where the chat lists, which the sidebar decides: a chat
+ *  whose space is gone lists in Home. */
+export function chatSelection(
+  chat: Pick<Chat, "id" | "folder" | "name">,
+  spaceName: string,
+  session?: SessionMeta,
+): Selection {
   return {
     kind: "chat",
     chatId: chat.id,
-    spaceName: GLOBAL_KEY,
+    spaceName,
     projectName: chat.name ?? NEW_CHAT_NAME,
     projectPath: chat.folder,
     folderPath: chat.folder,
