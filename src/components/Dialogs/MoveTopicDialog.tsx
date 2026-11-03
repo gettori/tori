@@ -8,7 +8,7 @@ import Icon from "../Icon/Icon";
 import SpaceMark from "../SpaceMark/SpaceMark";
 import { spaceOfMember, type SpaceTint } from "../../utils/topicMembers";
 import { refusedReason, type Topic } from "../../utils/topics";
-import { GLOBAL_NAME } from "../../utils/globalSpace";
+import { GLOBAL_NAME, spaceLabel } from "../../utils/globalSpace";
 
 type MoveSpace = SpaceTint & { icon?: string | null };
 
@@ -60,6 +60,8 @@ function Row(r: {
 export default function MoveTopicDialog(props: {
   topic: Topic;
   spaces: MoveSpace[];
+  /** Every space's projects, Global's included, for saying where a member is from. */
+  homes: SpaceTint[];
   onDone: (topic: Topic) => void;
   onCancel: () => void;
 }) {
@@ -69,7 +71,10 @@ export default function MoveTopicDialog(props: {
   const [error, setError] = createSignal<string | null>(null);
 
   const reason = (space: string) =>
-    refusedReason(props.topic, space, (m) => spaceOfMember(m, props.spaces)?.name ?? null);
+    refusedReason(props.topic, space, (m) => {
+      const home = spaceOfMember(m, props.homes)?.name;
+      return home ? spaceLabel(home) : null;
+    });
   const canMove = () => !busy() && target() !== current() && (!target() || !reason(target()));
 
   const values = () => ["", ...props.spaces.map((g) => g.name)];

@@ -121,7 +121,7 @@ pub struct Joined<'a> {
     pub states: &'a SessionStates,
     pub levers: &'a dyn Fn(&str) -> Option<Levers>,
     pub dot: &'a dyn Fn(&str) -> (super::dots::Dot, super::dots::Certainty, bool),
-    pub spaces: &'a dyn Fn() -> (Arc<Vec<crate::config::Space>>, Vec<crate::topics::Topic>),
+    pub spaces: &'a dyn Fn() -> (Arc<Vec<crate::config::ProjectGroup>>, Vec<crate::topics::Topic>),
 }
 
 pub fn sessions_rows(indexed: Vec<SessionMeta>, params: &ListParams, from: Joined) -> Vec<Value> {
@@ -788,7 +788,7 @@ fn known_spawner(states: &SessionStates, id: &str, stored: impl FnOnce(&str) -> 
 }
 
 fn origin_at(cwd: &str) -> Option<crate::unit_origins::UnitOrigin> {
-    origin_at_in(cwd, &crate::config::discovered_project_dirs())
+    origin_at_in(cwd, &crate::config::project_dirs())
 }
 
 fn origin_at_in(cwd: &str, projects: &[std::path::PathBuf]) -> Option<crate::unit_origins::UnitOrigin> {
@@ -1260,7 +1260,7 @@ impl DaemonBackend {
     fn port_units(&self) -> Result<Vec<PortUnit>, RpcError> {
         let config =
             crate::config::get_config_body(&self.composer.projects).map_err(|e| RpcError::new(INTERNAL_ERROR, e))?;
-        Ok(port_units(&config.spaces))
+        Ok(port_units(&config.project_groups()))
     }
 
     // `own_prompt`: the prompt is the caller's own words, so the spawned chat
@@ -1305,7 +1305,7 @@ impl DaemonBackend {
         // Left out everywhere, the webview picks the folder's remembered agent and account.
         let project = params
             .project
-            .or_else(|| project_of(&folder, &crate::config::discovered_project_dirs()));
+            .or_else(|| project_of(&folder, &crate::config::project_dirs()));
         if let Some(project) = &project {
             wait_for_setup(project, Path::new(&folder), crate::setup::WAIT_CAP);
         }
@@ -1597,7 +1597,7 @@ impl DaemonBackend {
         let callers = || {
             self.identity(principal)
                 .cwd
-                .and_then(|cwd| project_of(&cwd, &crate::config::discovered_project_dirs()))
+                .and_then(|cwd| project_of(&cwd, &crate::config::project_dirs()))
         };
         or_callers(given, callers, "project")
     }
@@ -1862,10 +1862,7 @@ impl DaemonBackend {
             (Some(project), named) => (project, named.map_or(key, |(_, n)| n)),
             (None, Some((repo, n))) => {
                 let origin = |dir: &str| crate::git::remote_url(dir, "origin").ok().flatten();
-                (
-                    project_for_repo(&repo, &crate::config::discovered_project_dirs(), origin)?,
-                    n,
-                )
+                (project_for_repo(&repo, &crate::config::project_dirs(), origin)?, n)
             }
             (None, None) => (self.project(principal, None)?, key),
         };
@@ -1901,46 +1898,59 @@ impl DaemonBackend {
 /// The tree the sidebar draws, in the order it draws it: spaces in `space_order`
 /// with their icon, colour, projects and branch units as resolved, then topics by
 /// name with their members in `order`.
-fn projects_tree(spaces: &[crate::config::Space], mut topics: Vec<crate::topics::Topic>) -> Value {
-    let spaces: Vec<Value> = spaces
+fn projects_tree(
+    spaces: &[crate::config::Space],
+    global: &crate::config::GlobalSpace,
+    mut topics: Vec<crate::topics::Topic>,
+) -> Value {
+    let projects_json = |projects: &[crate::config::Project]| -> Vec<Value> {
+        projects
+            .iter()
+            .map(|p| {
+                let units: Vec<Value> = p
+                    .branch_units
+                    .iter()
+                    .map(|u| {
+                        json!({
+                            "label": u.label,
+                            "folder": u.folder_path,
+                            "branch": u.branch,
+                            "kind": u.kind,
+                            "isCurrent": u.is_current,
+                            "issue": u.issue.as_ref().map(|i| &i.key),
+                        })
+                    })
+                    .collect();
+                let image = crate::icons::shown_image(p.icon.as_deref(), p.icon_file.as_deref(), p.favicon.as_deref());
+                json!({
+                    "name": p.name,
+                    "path": p.path,
+                    "icon": p.icon,
+                    "image": image.and_then(crate::icons::image_version),
+                    "units": units,
+                })
+            })
+            .collect()
+    };
+    let listed: Vec<Value> = spaces
         .iter()
         .map(|space| {
-            let projects: Vec<Value> = space
-                .projects
-                .iter()
-                .map(|p| {
-                    let units: Vec<Value> = p
-                        .branch_units
-                        .iter()
-                        .map(|u| {
-                            json!({
-                                "label": u.label,
-                                "folder": u.folder_path,
-                                "branch": u.branch,
-                                "kind": u.kind,
-                                "isCurrent": u.is_current,
-                                "issue": u.issue.as_ref().map(|i| &i.key),
-                            })
-                        })
-                        .collect();
-                    let image = crate::icons::shown_image(p.icon.as_deref(), p.icon_file.as_deref(), p.favicon.as_deref());
-                    json!({
-                        "name": p.name,
-                        "path": p.path,
-                        "icon": p.icon,
-                        "image": image.and_then(crate::icons::image_version),
-                        "units": units,
-                    })
-                })
-                .collect();
-            json!({ "name": space.name, "path": space.path, "icon": space.icon, "color": space.color, "projects": projects })
+            json!({ "name": space.name, "path": space.path, "icon": space.icon, "color": space.color, "projects": projects_json(&space.projects) })
         })
         .collect();
+    let on_disk: Vec<crate::config::Project> = global
+        .projects
+        .iter()
+        .filter(|a| a.availability == crate::config::Availability::Ok)
+        .map(|a| a.project.clone())
+        .collect();
+    let global = (!on_disk.is_empty())
+        .then(|| json!({ "icon": global.icon, "color": global.color, "projects": projects_json(&on_disk) }));
     topics.sort_by_cached_key(|t| (t.name.to_lowercase(), t.name.clone()));
     for topic in &mut topics {
         topic.members.sort_by_key(|m| m.order);
     }
-    json!({ "spaces": spaces, "topics": topics })
+    json!({ "spaces": listed, "global": global, "topics": topics })
 }
 
 #[derive(Serialize)]
@@ -1955,7 +1965,7 @@ struct PortUnit {
 
 // One unit per folder: a plain repo's branches share its folder, and only the
 // checked-out one is serving from it.
-fn port_units(spaces: &[crate::config::Space]) -> Vec<PortUnit> {
+fn port_units(spaces: &[crate::config::ProjectGroup]) -> Vec<PortUnit> {
     let mut units: Vec<PortUnit> = Vec::new();
     let mut at: HashMap<String, usize> = HashMap::new();
     for (space, project) in spaces.iter().flat_map(|s| s.projects.iter().map(move |p| (s, p))) {
@@ -2001,7 +2011,7 @@ impl Backend for DaemonBackend {
         let config =
             crate::config::get_config_body(&self.composer.projects).map_err(|e| RpcError::new(INTERNAL_ERROR, e))?;
         let topics = crate::topics::list_topics(&crate::topics::Store::default_location());
-        Ok(projects_tree(&config.spaces, topics))
+        Ok(projects_tree(&config.spaces, &config.global, topics))
     }
 
     fn agents_list(&self, params: AgentsListParams) -> Result<Value, RpcError> {
@@ -2374,7 +2384,7 @@ impl Backend for DaemonBackend {
             id: old.clone(),
             title,
             agent,
-            project: project_of(&cwd, &crate::config::discovered_project_dirs()).unwrap_or_default(),
+            project: project_of(&cwd, &crate::config::project_dirs()).unwrap_or_default(),
         };
         let brief = handoff_brief(&handed, &events, &pending, &check, params.note.as_deref());
         let states = &self.desk.states;
@@ -2469,10 +2479,7 @@ impl Backend for DaemonBackend {
 
     fn permissions_pending(&self) -> Result<Value, RpcError> {
         let waiting = self.chats.host.waiting_permissions();
-        to_json(super::permissions::rows(
-            waiting,
-            &crate::config::discovered_project_dirs(),
-        ))
+        to_json(super::permissions::rows(waiting, &crate::config::project_dirs()))
     }
 
     fn permissions_allow_group(&self, params: AllowGroupParams) -> Result<Value, RpcError> {
@@ -2969,7 +2976,7 @@ impl Backend for DaemonBackend {
             (Some(project), _) => project,
             (None, Some((repo, _))) => {
                 let origin = |dir: &str| crate::git::remote_url(dir, "origin").ok().flatten();
-                let dirs = crate::config::discovered_project_dirs();
+                let dirs = crate::config::project_dirs();
                 match project_for_repo(&repo, &dirs, origin) {
                     Ok(project) => project,
                     Err(none) => {
@@ -4560,6 +4567,7 @@ mod tests {
                 space("work", Some("Briefcase"), Some("teal")),
                 space("plain", None, None),
             ],
+            &Default::default(),
             vec![],
         );
         assert_eq!(

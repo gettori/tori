@@ -50,6 +50,7 @@ export type TopicSpace = SpaceTint & RepoSpace;
 
 export default function TopicList(props: {
   spaces: TopicSpace[];
+  targets?: TopicSpace[];
   query: string;
   class?: string;
   hidden?: boolean;
@@ -66,6 +67,7 @@ export default function TopicList(props: {
   actions: TopicActions;
   head?: JSX.Element;
   collapsed?: boolean;
+  tail?: JSX.Element;
   empty?: JSX.Element;
 }) {
   onCleanup(watchTopics());
@@ -117,6 +119,7 @@ export default function TopicList(props: {
           />
         </Show>
       </Show>
+      {props.tail}
 
       <Show when={dialog()}>
         {(req) => (
@@ -147,7 +150,8 @@ export default function TopicList(props: {
         {(f) => (
           <MoveTopicDialog
             topic={topics().find((t) => t.id === f().id) ?? f()}
-            spaces={props.spaces}
+            spaces={props.targets ?? props.spaces}
+            homes={props.spaces}
             onDone={actions.moved}
             onCancel={() => setMoveReq(null)}
           />

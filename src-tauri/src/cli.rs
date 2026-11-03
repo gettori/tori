@@ -1316,7 +1316,8 @@ struct TreeUnit {
 fn tree_units(tree: &Value) -> Vec<TreeUnit> {
     let list = |v: &Value, key: &str| v.get(key).and_then(Value::as_array).cloned().unwrap_or_default();
     let mut units = Vec::new();
-    for space in list(tree, "spaces") {
+    let global = std::iter::once(tree["global"].clone()).filter(|g| g.is_object());
+    for space in list(tree, "spaces").into_iter().chain(global) {
         for project in list(&space, "projects") {
             for unit in list(&project, "units") {
                 units.push(TreeUnit {

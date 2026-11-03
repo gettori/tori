@@ -520,6 +520,9 @@ export function createTopicActions(host: TopicActionsHost) {
     sweep,
     openDelete,
     keepInGlobal: (topic: Topic) => void mutate("set_topic_space", { topicId: topic.id, space: null }),
+    /** Take a repo out of a Topic without offering its worktree: the folder is
+     *  being forgotten, and its worktree stays where it is. */
+    dropRepo: (topic: Topic, repoPath: string) => mutate("remove_member", { topicId: topic.id, repoPath }),
     menu,
     memberMenu,
   };

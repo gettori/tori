@@ -19,7 +19,17 @@ import SettingsSheet from "./SettingsSheet";
 import UnitScreen from "./Unit";
 import { RemoteClient, forget, loadSaved, pair, parsePairLink, type Saved } from "./remote";
 import type { NeedsYouEvent } from "../../src/utils/needsYouSignals";
-import { inUnit, joinableTopics, type Project, type SessionRow, type Topic, type Tree, type Unit } from "./tree";
+import {
+  inUnit,
+  joinableTopics,
+  projectGroups,
+  type Project,
+  type SessionRow,
+  type Topic,
+  type Tree,
+  type Unit,
+} from "./tree";
+import { GLOBAL_KEY, spaceLabel } from "../../src/utils/globalSpace";
 import shell from "./shell.module.css";
 
 const PHONE_NAME = "Phone";
@@ -204,8 +214,8 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
   const [tree, reloadTree] = watchTree(props.client);
   const [organize, setOrganize] = createSignal<"spaces" | "topic" | null>(null);
   const fresh = (project: Project) =>
-    tree()
-      ?.spaces.flatMap((s) => s.projects)
+    projectGroups(tree())
+      .flatMap((s) => s.projects)
       .find((p) => p.path === project.path) ?? project;
   const autopilot = watchRunner(props.client);
   const { runner, decisions, crew } = autopilot;
@@ -215,7 +225,7 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
   const digest = watchDigest(props.client);
   const [tab, setTab] = createSignal<RootTab>("projects");
   const [stack, setStack] = createSignal<View[]>([]);
-  const space = () => tree()?.spaces.find((s) => s.name === spaceName()) ?? tree()?.spaces[0];
+  const space = () => projectGroups(tree()).find((s) => s.name === spaceName()) ?? tree()?.spaces[0];
   const hue = () => (space() ? rgbTriple(spaceHue(space()!.name, space()!.color)) : undefined);
 
   // Each screen is a history entry carrying its depth, so Android's back gesture
@@ -239,11 +249,11 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
   const openUnit = (unit: Unit, back: string) => go({ screen: "unit", unit, back });
   const openSession = (row: SessionRow) => go({ screen: "chat", row });
   const projectOf = (unit: Unit) =>
-    tree()
-      ?.spaces.flatMap((s) => s.projects)
+    projectGroups(tree())
+      .flatMap((s) => s.projects)
       .find((p) => p.units.some((u) => u.folder === unit.folder))?.path ?? null;
   const units = () =>
-    tree()?.spaces.flatMap((s) => s.projects.flatMap((p) => p.units.map((unit) => ({ unit, project: p.name })))) ?? [];
+    projectGroups(tree()).flatMap((s) => s.projects.flatMap((p) => p.units.map((unit) => ({ unit, project: p.name }))));
   const markSeen = (params: { session?: string; folder?: string | null; branch?: string | null }) =>
     void props.client.request("needs_you.seen", params).catch(() => {});
   // A pull request row belongs to a branch, so it opens the worktree.
@@ -317,7 +327,7 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
             <ProjectScreen
               client={props.client}
               project={fresh(project)}
-              space={space()?.name ?? ""}
+              space={spaceLabel(space()?.name ?? "")}
               topics={tree()?.topics ?? []}
               live={live}
               crew={crew}
@@ -427,7 +437,7 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
       </Switch>
       <Show when={barred()}>
         <BottomBar
-          spaces={tree()?.spaces ?? []}
+          spaces={projectGroups(tree())}
           space={space()}
           tab={tab()}
           live={live}
@@ -462,8 +472,8 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
       <Show when={organize() === "topic"}>
         <TopicForm
           client={props.client}
-          spaces={tree()?.spaces ?? []}
-          space={space()?.name}
+          spaces={projectGroups(tree())}
+          space={space()?.name === GLOBAL_KEY ? undefined : space()?.name}
           onSaved={reloadTree}
           onDone={() => setOrganize(null)}
         />

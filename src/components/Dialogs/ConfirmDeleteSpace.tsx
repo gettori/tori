@@ -5,6 +5,7 @@ import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
 import Icon from "../Icon/Icon";
 import MemberChip from "../MemberChip/MemberChip";
+import PathBox from "./PathBox";
 import { spaceOfMember, tintedMembers, type SpaceTint } from "../../utils/topicMembers";
 import { byName, inSpace, isReference, type Topic } from "../../utils/topics";
 
@@ -140,6 +141,14 @@ export default function ConfirmDeleteSpace(props: {
           This deletes the folder <span class={styles.consequencePath}>{props.path}</span> and everything below it from
           disk. It cannot be undone.
         </div>
+
+        <Show when={props.kind !== "space"}>
+          <PathBox
+            path={props.path}
+            detail={props.kind === "project" ? "And everything in it, including .git" : "And everything in it"}
+            fate="deleted"
+          />
+        </Show>
 
         <div class={styles.statRow}>
           <div class={styles.stat}>

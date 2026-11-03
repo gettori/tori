@@ -614,3 +614,65 @@ button.groupTitle {
 .groupHead:hover .groupAdd {
   opacity: 1;
 }
+
+.aliasBadge {
+  position: absolute;
+  left: calc(-4px * var(--ui-scale));
+  bottom: calc(-4px * var(--ui-scale));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(12px * var(--ui-scale));
+  height: calc(12px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: 50%;
+  background: var(--canvas-default);
+  color: var(--fg-muted);
+  pointer-events: none;
+}
+
+.aliasBadge :global(svg) {
+  width: calc(8px * var(--ui-scale));
+  height: calc(8px * var(--ui-scale));
+  stroke-width: 3.2;
+}
+
+/* In the marks' place rather than on a second line, so the row keeps its
+   height. */
+.attachedPath {
+  display: none;
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-2xs);
+  color: var(--fg-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row.attached:hover .attachedPath {
+  display: inline;
+}
+
+.row.attached:hover .rowEnd > :not(.attachedPath) {
+  display: none;
+}
+
+.row.missing .projectIconArt {
+  opacity: 0.45;
+  outline: 1px dashed var(--fg-subtle);
+  outline-offset: 1px;
+  border-radius: var(--tori-radius-sm);
+}
+
+.row.missing .aliasBadge {
+  opacity: 0.45;
+}
+
+.row.missing .label {
+  color: var(--fg-subtle);
+}
+
+.missingMark {
+  display: inline-flex;
+  color: var(--attention-fg);
+}

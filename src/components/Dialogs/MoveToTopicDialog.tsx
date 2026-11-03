@@ -38,13 +38,16 @@ export default function MoveToTopicDialog(props: {
   /** The worktree as its Spaces row names it. */
   label: string;
   branch: string | null;
-  space: string;
+  space?: string;
   topics: Topic[];
   spaces: (RepoSpace & SpaceTint)[];
   onDone: (topic: Topic) => void;
   onCancel: () => void;
 }) {
-  const own = () => props.topics.filter((t) => inSpace(t, props.space)).sort(byName);
+  const own = () => {
+    const space = props.space;
+    return space ? props.topics.filter((t) => inSpace(t, space)).sort(byName) : [];
+  };
   const global = () =>
     props.topics
       .filter((t) =>
@@ -57,7 +60,7 @@ export default function MoveToTopicDialog(props: {
   const offered = () => [...own(), ...global()];
 
   const [tab, setTab] = createSignal<Tab>(offered().length > 0 ? "existing" : "new");
-  const [where, setWhere] = createSignal<Where>("space");
+  const [where, setWhere] = createSignal<Where>(props.space ? "space" : "global");
   const [refusal, setRefusal] = createSignal<string | null>(null);
   const [checked, setChecked] = createSignal(false);
   const [topicId, setTopicId] = createSignal("");
@@ -131,8 +134,8 @@ export default function MoveToTopicDialog(props: {
         options={[
           {
             value: "space" as const,
-            label: props.space,
-            icon: <SpaceMark name={props.space} icon={scope()?.icon} color={scope()?.color} size="sm" />,
+            label: props.space!,
+            icon: <SpaceMark name={props.space!} icon={scope()?.icon} color={scope()?.color} size="sm" />,
           },
           { value: "global" as const, label: GLOBAL_NAME, icon: <Icon icon={Globe} /> },
         ]}
@@ -246,7 +249,7 @@ export default function MoveToTopicDialog(props: {
         header={
           <>
             {tabs()}
-            {whereControl()}
+            <Show when={props.space}>{whereControl()}</Show>
             {chatHint()}
           </>
         }
