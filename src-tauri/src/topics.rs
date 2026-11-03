@@ -124,8 +124,6 @@ pub struct Topic {
     pub members: Vec<Member>,
     #[serde(default)]
     pub created_at: u64,
-    #[serde(default)]
-    pub promotion: Promotion,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub space: Option<String>,
     /// Where the Topic's chats run. Filled on the way out, never stored: the
@@ -536,13 +534,6 @@ pub fn set_space(store: &Store, topic_id: &str, space: Option<&str>) -> Result<(
     })
 }
 
-pub fn set_promotion(store: &Store, topic_id: &str, promotion: Promotion) -> Result<(), String> {
-    store.mutate(|file| {
-        topic_mut(file, topic_id)?.promotion = promotion;
-        Ok(())
-    })
-}
-
 /// The member a chat names: its repository, the folder it opens as, or its
 /// name.
 pub fn member_named<'a>(topic: &'a Topic, named: &str) -> Result<&'a Member, String> {
@@ -557,22 +548,23 @@ pub fn member_named<'a>(topic: &'a Topic, named: &str) -> Result<&'a Member, Str
         .ok_or_else(|| format!("{named} is not a member of {}", topic.name))
 }
 
-/// A chat's request for a worktree, settled by the Topic's policy: `ask`
+/// A chat's request for a worktree, settled by the `policy` in Settings: `ask`
 /// puts the question to the user and says whether they agreed, `promote`
 /// does the work.
 pub fn promote_for_chat(
     topic: &Topic,
     member: &Member,
+    policy: Promotion,
     ask: impl FnOnce(&str) -> Result<bool, String>,
     promote: impl FnOnce() -> Result<Topic, String>,
 ) -> Result<Topic, String> {
     if member.mode == MemberMode::Worktree {
         return Err(format!("{} already has a worktree for this Topic", member.display_name));
     }
-    match topic.promotion {
+    match policy {
         Promotion::Never => Err(format!(
-            "The Topic {} does not let a chat create worktrees. Ask the user to create one for {}.",
-            topic.name, member.display_name
+            "Tori is set not to let a chat create worktrees. Ask the user to create one for {} in the Topic {}.",
+            member.display_name, topic.name
         )),
         Promotion::Auto => promote(),
         Promotion::Ask => {
@@ -1048,7 +1040,6 @@ pub fn create_topic_with(
                 .map(|(i, m)| pending_member(&m.repo_path, m.mode, i as u32))
                 .collect(),
             created_at: crate::owned_state::now_ms(),
-            promotion: Promotion::default(),
             space: space.map(str::to_string),
             home: None,
         });
@@ -1584,22 +1575,6 @@ pub mod commands {
     }
 
     #[tauri::command]
-    pub async fn set_topic_promotion(topic_id: String, promotion: super::Promotion) -> Result<Topic, String> {
-        let call = serde_json::json!({ "topic_id": topic_id, "promotion": promotion });
-        blocking("set_topic_promotion", move || {
-            crate::rpc::office_call_as("topics.set_topic_promotion", call)
-        })
-        .await
-    }
-
-    fn set_topic_promotion_in(desk: &Desk, topic_id: String, promotion: super::Promotion) -> Result<Topic, String> {
-        let store = Store::default_location();
-        announce_and_tell(desk, &store, &topic_id, || {
-            super::set_promotion(&store, &topic_id, promotion)
-        })
-    }
-
-    #[tauri::command]
     pub async fn delete_topic(topic_id: String) -> Result<(), String> {
         let call = serde_json::json!({ "topic_id": topic_id });
         blocking("delete_topic", move || {
@@ -1691,8 +1666,6 @@ pub mod commands {
             "set_topic_space" => {
                 set_topic_space_in(desk, arg(args, "topic_id")?, arg(args, "space")?).map(|v| serde_json::json!(v))
             }
-            "set_topic_promotion" => set_topic_promotion_in(desk, arg(args, "topic_id")?, arg(args, "promotion")?)
-                .map(|v| serde_json::json!(v)),
             "delete_topic" => delete_topic_in(arg(args, "topic_id")?).map(|v| serde_json::json!(v)),
             _ => Err(format!("no Topic call {op}")),
         }
@@ -1761,7 +1734,6 @@ mod tests {
             branch: format!("feat/{id}"),
             members,
             created_at: 1,
-            promotion: Promotion::default(),
             space: None,
             home: None,
         }
@@ -2542,32 +2514,19 @@ mod tests {
     }
 
     #[test]
-    fn the_promotion_policy_round_trips_and_defaults_to_ask() {
-        let tmp = unique_tmp();
-        let (_, a) = cloned(&tmp, "a");
-        let store = Store::at(tmp.join("topics.json"), no_space);
-        let t = reference_topic(&store, &a);
-        assert_eq!(t.promotion, Promotion::Ask);
-        set_promotion(&store, &t.id, Promotion::Never).unwrap();
-        assert_eq!(recorded(&store)[0].promotion, Promotion::Never);
-        assert!(std::fs::read_to_string(store.path())
-            .unwrap()
-            .contains("\"promotion\": \"never\""));
-    }
-
-    #[test]
     fn a_chat_asking_for_a_worktree_gets_what_the_policy_says() {
         let tmp = unique_tmp();
         let (_, a) = cloned(&tmp, "a");
         let store = Store::at(tmp.join("topics.json"), no_space);
         let t = reference_topic(&store, &a);
         let web = member_named(&t, &a).unwrap().clone();
-        let run = |promotion, answer: bool| {
+        let run = |policy, answer: bool| {
             let asked = std::cell::Cell::new(false);
             let promoted = std::cell::Cell::new(false);
             let out = promote_for_chat(
-                &Topic { promotion, ..t.clone() },
+                &t,
                 &web,
+                policy,
                 |_| {
                     asked.set(true);
                     Ok(answer)

@@ -799,7 +799,7 @@ pub static METHODS: &[Method] = &[
     },
     Method {
         name: "topic.member.promote",
-        description: "Give a member of the calling chat's Topic a worktree on the Topic branch, so the chat can change it; a reference member is read only until then. By the Topic's setting the user is asked first, it happens at once, or it is refused. Returns the worktree's path.",
+        description: "Give a member of the calling chat's Topic a worktree on the Topic branch, so the chat can change it; a reference member is read only until then. By the user's setting the user is asked first, it happens at once, or it is refused. Returns the worktree's path.",
         params: schema::<TopicPromoteParams>,
         callers: &[CallerKind::Chat, CallerKind::Worker],
         refusal: Some("only a chat runs in a Topic, and the question shows in its panel"),

@@ -348,6 +348,12 @@ export const SETTINGS: SettingEntry[] = [
     hint: "List a Topic's worktrees under their repository in Spaces too. Off, they live only in their Topic.",
   },
   {
+    id: "topic-promotion",
+    section: "git",
+    label: "When a chat needs a worktree",
+    hint: "What happens when a chat in a Topic wants to change a repository it can only read. Ask me first asks you each time, Create it makes the Topic's worktree at once, and Refuse tells the chat to ask you to make one. Applies to every Topic, and to chats already running.",
+  },
+  {
     id: "cleanup-after-merge",
     section: "git",
     label: "Remove worktrees after merge",
