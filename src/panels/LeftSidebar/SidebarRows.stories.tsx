@@ -169,6 +169,25 @@ export const PlainFolder: Story = {
   },
 };
 
+export const Attached: Story = {
+  args: {
+    name: "acme-site",
+    icon: <ProjectIcon seed="/Users/me/Documents/clients/acme-site" />,
+    attached: { parent: "~/Documents/clients", full: "~/Documents/clients/acme-site" },
+    end: bubble({ executing: 1 }),
+  },
+};
+
+export const Missing: Story = {
+  args: {
+    name: "thesis",
+    icon: <ProjectIcon seed="/Volumes/Archive/thesis" />,
+    disclosure: false,
+    attached: { parent: "/Volumes/Archive", full: "/Volumes/Archive/thesis" },
+    missing: true,
+  },
+};
+
 /** A container whose worktrees did not all get their shared files. Warning hue,
  *  because this is about the project's setup and not about anything running in
  *  it, and it doubles as the one path to that page that is not a right-click. */

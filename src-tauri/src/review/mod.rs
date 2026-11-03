@@ -482,7 +482,7 @@ fn inbox(
     spans: &Mutex<SpanCache>,
     scopes: &Mutex<scope::ScopeCache>,
 ) -> Vec<ReviewItem> {
-    let projects = crate::config::discovered_project_dirs();
+    let projects = crate::config::project_dirs();
     let mut waiting: HashMap<String, bool> = HashMap::new();
     let mut items = Vec::new();
     for session in &sessions {

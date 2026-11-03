@@ -6,7 +6,8 @@ import { SPACE_COLORS, spaceHueRgb } from "../../src/utils/spaceTint";
 import { spaceInitials } from "../../src/utils/names";
 import type { RemoteClient } from "./remote";
 import { topicSlug } from "../../src/utils/topics";
-import type { Space } from "./tree";
+import type { ProjectGroup, Space } from "./tree";
+import { spaceLabel } from "../../src/utils/globalSpace";
 import styles from "./shell.module.css";
 
 const ICON_SHELF = 18;
@@ -262,7 +263,7 @@ type Mode = "worktree" | "reference";
 
 export function TopicForm(props: {
   client: RemoteClient;
-  spaces: Space[];
+  spaces: ProjectGroup[];
   space: string | undefined;
   onSaved: () => void;
   onDone: () => void;
@@ -277,7 +278,7 @@ export function TopicForm(props: {
       ? props.spaces
           .filter((g) => g.name === props.space)
           .map((g) => ({ label: `Projects in ${g.name}`, projects: g.projects }))
-      : props.spaces.map((g) => ({ label: g.name, projects: g.projects }));
+      : props.spaces.map((g) => ({ label: spaceLabel(g.name), projects: g.projects }));
   const offered = () => new Set(groups().flatMap((g) => g.projects.map((p) => p.path)));
   const toggle = (path: string, mode: Mode | null) =>
     setPicked((prev) => {

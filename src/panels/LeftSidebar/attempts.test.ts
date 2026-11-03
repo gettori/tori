@@ -4,6 +4,7 @@ import { attemptFolderName, groupAttempts, samePath, type AttemptRecord } from "
 type Unit = { folderPath: string; label: string };
 
 const unit = (folderPath: string, label: string): Unit => ({ folderPath, label });
+const standIn = (a: AttemptRecord) => unit(a.path, attemptFolderName(a.path));
 const attempt = (path: string, groupId: string, goal = "make the parser faster"): AttemptRecord => ({
   path,
   groupId,
@@ -28,7 +29,7 @@ describe("groupAttempts", () => {
       attempt("/repo/.tori-attempts/try-3", "g1"),
     ];
 
-    const { units: ordinary, groups } = groupAttempts(units, attempts);
+    const { units: ordinary, groups } = groupAttempts(units, attempts, standIn);
 
     expect(ordinary.map((u) => u.label)).toEqual(["main"]);
     expect(groups).toHaveLength(1);
@@ -43,7 +44,7 @@ describe("groupAttempts", () => {
       attempt("/repo/.tori-attempts/c", "g1", "first question"),
     ];
 
-    const { groups } = groupAttempts([], attempts);
+    const { groups } = groupAttempts([], attempts, standIn);
 
     expect(groups.map((g) => g.groupId)).toEqual(["g1", "g2"]);
     expect(groups[0].members).toHaveLength(2);
@@ -57,16 +58,17 @@ describe("groupAttempts", () => {
     const { units: ordinary, groups } = groupAttempts(
       [unit("/repo", "main")],
       [attempt("/repo/.tori-attempts/try-1", "g1"), attempt("/repo/.tori-attempts/try-2", "g1")],
+      standIn,
     );
 
     expect(ordinary.map((u) => u.label)).toEqual(["main"]);
-    expect(groups[0].members.map((m) => m.unit)).toEqual([undefined, undefined]);
+    expect(groups[0].members.map((m) => m.unit.label)).toEqual(["try-1", "try-2"]);
     expect(groups[0].members.map((m) => attemptFolderName(m.attempt.path))).toEqual(["try-1", "try-2"]);
   });
 
   it("leaves a project with no attempts exactly as it was", () => {
     const units = [unit("/repo/main", "main"), unit("/repo/feature", "feature")];
-    const { units: ordinary, groups } = groupAttempts(units, []);
+    const { units: ordinary, groups } = groupAttempts(units, [], standIn);
 
     expect(ordinary).toEqual(units);
     expect(groups).toEqual([]);
@@ -83,8 +85,9 @@ describe("groupAttempts", () => {
     const { units: ordinary, groups } = groupAttempts(
       [unit("/private/var/repo/.tori-attempts/try-1", "try-1")],
       [attempt("/var/repo/.tori-attempts/try-1", "g1")],
+      standIn,
     );
     expect(ordinary).toEqual([]);
-    expect(groups[0].members[0].unit?.label).toBe("try-1");
+    expect(groups[0].members[0].unit.label).toBe("try-1");
   });
 });

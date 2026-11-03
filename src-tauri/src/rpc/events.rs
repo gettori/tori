@@ -22,7 +22,7 @@ impl Place {
             return Self::default();
         }
         Self {
-            project: project_of(folder, &crate::config::discovered_project_dirs()),
+            project: project_of(folder, &crate::config::project_dirs()),
             folder: Some(folder.to_string()),
         }
     }
@@ -51,14 +51,18 @@ pub enum TurnBy {
 }
 
 // The deepest project holding `cwd`: a worktree sits inside its project's
-// folder, and `create_worktree` wants the project, not the worktree.
+// folder, and `create_worktree` wants the project, not the worktree. A worktree
+// of an attached bare clone can sit anywhere, so it is found through its repo.
 pub fn project_of(cwd: &str, projects: &[PathBuf]) -> Option<String> {
+    let holding = |at: &Path| {
+        projects
+            .iter()
+            .filter(|project| at.starts_with(project))
+            .max_by_key(|project| project.components().count())
+            .map(|project| project.to_string_lossy().into_owned())
+    };
     let cwd = Path::new(cwd);
-    projects
-        .iter()
-        .filter(|project| cwd.starts_with(project))
-        .max_by_key(|project| project.components().count())
-        .map(|project| project.to_string_lossy().into_owned())
+    holding(cwd).or_else(|| holding(&crate::attached_folder::repo_of_linked_worktree(cwd)?))
 }
 
 /// Text Tori writes into a chat itself, marked so the chat shows it as Tori's

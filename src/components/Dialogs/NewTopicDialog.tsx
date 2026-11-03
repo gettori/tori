@@ -2,6 +2,7 @@ import { createSignal, createEffect, on, onCleanup, For, Show, type JSX } from "
 import { invoke } from "@tauri-apps/api/core";
 import { Search, TriangleAlert } from "lucide-solid";
 import styles from "./Dialogs.module.css";
+import { spaceLabel } from "../../utils/globalSpace";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
 import Icon from "../Icon/Icon";
@@ -385,7 +386,7 @@ export default function NewTopicDialog(props: {
               <div class={styles.spaceWarning} role="note">
                 <Icon icon={TriangleAlert} class={styles.collisionIcon} />
                 <span>
-                  Repositories from {spanned().length} Spaces: {spanned().join(", ")}
+                  Repositories from {spanned().length} Spaces: {spanned().map(spaceLabel).join(", ")}
                 </span>
               </div>
             </Show>

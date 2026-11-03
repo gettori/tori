@@ -117,6 +117,12 @@ fn record_in(file: &Path, repo: &str, branch: &str, issue: UnitIssue) -> Result<
     store.save_to(file)
 }
 
+pub(crate) fn rekey(old: &str, new: &str) -> Result<(), String> {
+    let lock = crate::exec::named_lock("unit_issues");
+    let _held = lock.lock().unwrap_or_else(|e| e.into_inner());
+    crate::attached_folder::rekey_file(&store_path(), old, new)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,5 +1,6 @@
 import { Show, type JSX } from "solid-js";
 import {
+  ArrowUpRight,
   ChevronDown,
   ChevronRight,
   ChevronUp,
@@ -8,6 +9,7 @@ import {
   Layers,
   Plus,
   SquareStack,
+  TriangleAlert,
   type LucideIcon,
 } from "lucide-solid";
 import ContextMenu from "../../components/Menu/ContextMenu";
@@ -17,6 +19,16 @@ import { type MenuItem } from "../../components/Menu/rows";
 import Icon from "../../components/Icon/Icon";
 import type { DragRowProps } from "../../utils/dragReorder";
 import styles from "./SidebarRows.module.css";
+
+/** The mark on a project tile that says the folder was attached from
+ *  elsewhere, worn wherever the project is drawn. */
+export function AliasBadge() {
+  return (
+    <span class={styles.aliasBadge} role="img" aria-label="Attached folder">
+      <Icon icon={ArrowUpRight} />
+    </span>
+  );
+}
 
 /** Trailing disclosure chevron for sidebar rows: a Lucide chevron-down pinned
  *  to the row's right edge that flips to a chevron-up (rotate 180°) when
@@ -60,6 +72,8 @@ export function ProjectRow(props: {
   editing?: boolean;
   /** The trailing mark cluster: drift, forge door, rollup. */
   end?: JSX.Element;
+  attached?: { parent: string; full: string };
+  missing?: boolean;
   menu?: MenuItem[];
   onClick?: () => void;
   onDragStart?: (e: DragEvent) => void;
@@ -69,6 +83,7 @@ export function ProjectRow(props: {
     <div class={`node ${styles.projectCard}`} data-no-window-drag>
       <ContextMenu
         class={`${styles.row} ${styles.project} ${props.editing ? styles.editing : ""}`.trim()}
+        classList={{ [styles.missing]: !!props.missing, [styles.attached]: !!props.attached }}
         onClick={() => props.onClick?.()}
         items={props.menu ?? []}
         draggable={true}
@@ -79,9 +94,28 @@ export function ProjectRow(props: {
           <Show when={props.disclosure}>
             <IconChevron open={props.open === true} />
           </Show>
+          <Show when={props.attached}>
+            <AliasBadge />
+          </Show>
         </span>
-        <span class={styles.label}>{props.name}</span>
-        <span class={styles.rowEnd}>{props.end}</span>
+        <span class={styles.label} title={props.attached?.full}>
+          {props.name}
+        </span>
+        <Show
+          when={!props.missing}
+          fallback={
+            <span class={styles.rowEnd}>
+              <span class={styles.missingMark} role="img" aria-label="Folder missing">
+                <Icon icon={TriangleAlert} />
+              </span>
+            </span>
+          }
+        >
+          <span class={styles.rowEnd}>
+            {props.end}
+            <Show when={props.attached}>{(a) => <span class={styles.attachedPath}>{a().parent}</span>}</Show>
+          </span>
+        </Show>
         <Show when={props.menu?.length}>
           {/* Stops the click so opening the menu does not also toggle the row. */}
           <span class={styles.rowMenu} onClick={(e) => e.stopPropagation()}>

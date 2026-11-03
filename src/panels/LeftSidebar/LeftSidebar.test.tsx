@@ -277,7 +277,7 @@ describe("the space strip and the Global space", () => {
     expect(localStorage.getItem("tori.active-space.v1")).toBe("/global");
     expect(screen.queryByText("repo")).toBeNull();
     expect((first.container.querySelector("[data-topic-list]") as HTMLElement).hidden).toBe(false);
-    await screen.findByText("Topics that cross spaces show up here.");
+    await screen.findByText("Folders you attach and Topics that cross spaces show up here.");
     await expectNoAxeViolations(first.container);
     first.unmount();
 
@@ -319,7 +319,8 @@ describe("the space strip and the Global space", () => {
       await waitFor(() => expect(pressed("Global")).toBe(true));
       expect(screen.getByText("Global", { selector: "[class*=spaceHeaderName]" })).toBeTruthy();
       expect(screen.getByRole("button", { name: "Filter" })).toBeTruthy();
-      expect(screen.getAllByRole("button", { name: "New Topic" })).toHaveLength(2);
+      expect(screen.getByRole("button", { name: "Add to Global" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Attach folder…" })).toBeTruthy();
     } finally {
       config.spaces = spaces;
     }

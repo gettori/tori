@@ -49,7 +49,7 @@ const topic = (members: Member[], space?: string): Topic => ({
 
 function mount(t: Topic) {
   const onDone = vi.fn();
-  render(() => <MoveTopicDialog topic={t} spaces={SPACES} onDone={onDone} onCancel={() => {}} />);
+  render(() => <MoveTopicDialog topic={t} spaces={SPACES} homes={SPACES} onDone={onDone} onCancel={() => {}} />);
   return onDone;
 }
 

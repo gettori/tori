@@ -24,7 +24,7 @@ pub fn tab_boxed(level: ExecutionLevel) -> bool {
 pub const SHELL_CHECK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 pub fn level_for(cwd: &str) -> ExecutionLevel {
-    let project = crate::rpc::events::project_of(cwd, &crate::config::discovered_project_dirs());
+    let project = crate::rpc::events::project_of(cwd, &crate::config::project_dirs());
     crate::settings::execution_level(project.as_deref().unwrap_or(cwd))
 }
 

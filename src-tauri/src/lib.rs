@@ -6,6 +6,7 @@ mod agent_plugins;
 mod agents;
 mod app_menu;
 mod askpass;
+mod attached_folder;
 mod attachments;
 mod attempts;
 mod auth;
@@ -447,6 +448,10 @@ pub fn run() {
             icons::pick_icon_file,
             config::set_space_meta,
             config::set_global_meta,
+            attached_folder::inspect_folder,
+            attached_folder::attach_folder,
+            attached_folder::detach_folder,
+            attached_folder::relocate_attached_folder,
             config::set_space_order,
             config::add_folder,
             config::delete_space,

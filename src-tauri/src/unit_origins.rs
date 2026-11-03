@@ -199,6 +199,11 @@ fn record_in(file: &Path, repo: &str, branch: &str, origin: UnitOrigin) -> Resul
     store.save_to(file)
 }
 
+pub(crate) fn rekey(old: &str, new: &str) -> Result<(), String> {
+    let _held = crate::exec::cross_process_store_lock("unit_origins")?;
+    crate::attached_folder::rekey_file(&store_path(), old, new)
+}
+
 pub fn forget(repo: &str, branch: &str) -> Result<(), String> {
     let recorded = OriginStore::current()
         .for_repo(repo)

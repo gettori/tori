@@ -86,8 +86,17 @@ fn scope(path: &Path, root: Option<&Path>) -> PathBuf {
     path.to_path_buf()
 }
 
+fn attached_scope(path: &Path, attached: &[PathBuf]) -> Option<PathBuf> {
+    attached
+        .iter()
+        .filter(|a| path.starts_with(a))
+        .max_by_key(|a| a.components().count())
+        .cloned()
+}
+
 pub(crate) fn scope_of(path: &Path) -> PathBuf {
-    scope(path, crate::config::discovery_root().as_deref())
+    attached_scope(path, &crate::config::attached_dirs())
+        .unwrap_or_else(|| scope(path, crate::config::discovery_root().as_deref()))
 }
 
 fn gate_at(
@@ -138,19 +147,19 @@ fn revoke_at(file: &Path, discover: impl FnOnce() -> Vec<PathBuf>, path: &str) -
 /// discovered.
 pub fn seed() {
     let _guard = lock();
-    load_or_seed(&store_path(), crate::config::discovered_project_dirs);
+    load_or_seed(&store_path(), crate::config::project_dirs);
 }
 
 /// Refuse a server that runs project code in a project the user has not
 /// trusted. Called before anything is spawned.
 pub fn gate(server: &LspServer, project: &Path) -> Result<(), String> {
-    gate_at(&store_path(), crate::config::discovered_project_dirs, server, project)
+    gate_at(&store_path(), crate::config::project_dirs, server, project)
 }
 
 /// Refuse a debug run in a project the user has not trusted. Unlike a server,
 /// no debugger is exempt: the debuggee is the project's own code.
 pub fn gate_project(project: &Path) -> Result<(), String> {
-    gate_project_at(&store_path(), crate::config::discovered_project_dirs, project)
+    gate_project_at(&store_path(), crate::config::project_dirs, project)
 }
 
 fn trusted_folder_at(owned: &Path, trusted: impl FnOnce(&Path) -> bool, folder: &Path) -> bool {
@@ -178,7 +187,7 @@ pub fn allows_git(repo: &Path) -> bool {
 #[tauri::command(async)]
 pub fn trusted_projects() -> Vec<String> {
     let _guard = lock();
-    load_or_seed(&store_path(), crate::config::discovered_project_dirs).trusted
+    load_or_seed(&store_path(), crate::config::project_dirs).trusted
 }
 
 /// Every discovered project the store does not cover, where servers that run
@@ -186,8 +195,8 @@ pub fn trusted_projects() -> Vec<String> {
 #[tauri::command(async)]
 pub fn untrusted_projects() -> Vec<String> {
     let _guard = lock();
-    let store = load_or_seed(&store_path(), crate::config::discovered_project_dirs);
-    crate::config::discovered_project_dirs()
+    let store = load_or_seed(&store_path(), crate::config::project_dirs);
+    crate::config::project_dirs()
         .into_iter()
         .filter(|p| !covers(&store, p))
         .map(|p| p.to_string_lossy().into_owned())
@@ -203,12 +212,19 @@ fn reprobe(app: &tauri::AppHandle, index: &crate::config::ProjectIndex) {
 }
 
 pub(crate) fn trust(path: &str) -> Result<String, String> {
+    let path = Path::new(path);
+    let scoped = attached_scope(path, &crate::config::attached_dirs());
     trust_at(
         &store_path(),
-        crate::config::discovered_project_dirs,
+        crate::config::project_dirs,
         crate::config::discovery_root().as_deref(),
-        Path::new(path),
+        scoped.as_deref().unwrap_or(path),
     )
+}
+
+pub(crate) fn rekey(old: &str, new: &str) -> Result<(), String> {
+    let _guard = lock();
+    crate::attached_folder::rekey_file(&store_path(), old, new)
 }
 
 /// Trust the project `path` belongs to, returning the path that was trusted.
@@ -230,7 +246,7 @@ pub fn revoke_project(
     index: tauri::State<crate::config::ProjectIndex>,
     path: String,
 ) -> Result<(), String> {
-    revoke_at(&store_path(), crate::config::discovered_project_dirs, &path)?;
+    revoke_at(&store_path(), crate::config::project_dirs, &path)?;
     reprobe(&app, &index);
     Ok(())
 }

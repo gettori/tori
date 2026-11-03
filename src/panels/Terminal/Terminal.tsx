@@ -209,6 +209,7 @@ import styles from "./Terminal.module.css";
 import patterns from "../../styles/patterns.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import { moveDeep, movedPath } from "../../utils/moveWorkspace";
+import { spaceLabel } from "../../utils/globalSpace";
 
 // Mirrors src-tauri/src/sessions.rs's `TailState` (session_tail_state).
 type TailState = "working" | "done" | "blocked-candidate";
@@ -781,7 +782,7 @@ export default function Terminal(props: {
     const sel = props.selected;
     if (sel && workspaceKey(sel) === ws) {
       if (sel.kind === "topic") return [sel.topicName ?? sel.projectName, sel.branch];
-      return [sel.spaceName, sel.projectName, sel.branch];
+      return [spaceLabel(sel.spaceName), sel.projectName, sel.branch];
     }
     return ws.split("/").filter(Boolean).slice(-2);
   };
