@@ -141,7 +141,7 @@ describe("a project card truncates a long branch list", () => {
 
     await waitFor(() => expect(screen.getByText("wt-01")).toBeTruthy());
     expect(visibleLabels()).toEqual(["wt-01", "wt-02", "wt-03", "wt-04", "wt-05", "wt-06"]);
-    expect(screen.getByText("4 more branches")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "4 more branches" })).toBeTruthy();
     expect(screen.queryByText("Show less")).toBeNull();
   });
 

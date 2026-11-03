@@ -19,6 +19,9 @@ const config = {
   global: { projects: [] },
 };
 
+const NOW = Date.now();
+const DAY = 24 * 3_600_000;
+
 const row = (id: string, chat: string, title: string, at: number) => ({
   id,
   path: `/t/${id}.jsonl`,
@@ -26,8 +29,8 @@ const row = (id: string, chat: string, title: string, at: number) => ({
   branch: "",
   title,
   name: null,
-  last_active: at,
-  created_at: at,
+  last_active: NOW - 100_000 + at,
+  created_at: NOW - 100_000 + at,
   agent: "claude",
 });
 
@@ -104,7 +107,7 @@ describe("Global's chats", () => {
     await waitFor(() => expect(chatRows()).toHaveLength(2));
     expect(chatRows().map((r) => r.dataset.chat)).toEqual(["c2", "c1"]);
     expect(chatRows()[1].textContent).toContain("Plan a trip, rewound");
-    expect(screen.getByText("Chats").closest("[data-group-head]")?.textContent).toContain("2");
+    expect(screen.getByText("Chats").closest("[data-group-head]")?.textContent).toBe("Chats");
   });
 
   it("shows the working spinner on a chat whose session is running", async () => {
@@ -136,6 +139,58 @@ describe("Global's chats", () => {
     expect(fresh.getAttribute("aria-current")).toBe("true");
     expect(within(fresh).getByText("New chat")).toBeTruthy();
     forgetChat("c9");
+  });
+
+  it("lists the newest six, folds the rest, and folds week-old chats under Older", async () => {
+    bridge.rows = [
+      ...Array.from({ length: 9 }, (_, i) => row(`r${i + 1}`, `n${i + 1}`, `Recent ${i + 1}`, 9_000 - i * 1_000)),
+      row("o1", "old1", "Old 1", -8 * DAY),
+      row("o2", "old2", "Old 2", -9 * DAY),
+    ];
+    const { sel } = mount();
+    await waitFor(() => expect(chatRows()).toHaveLength(6));
+    expect(chatRows().map((r) => r.dataset.chat)).toEqual(["n1", "n2", "n3", "n4", "n5", "n6"]);
+    const more = screen.getByRole("button", { name: "3 more chats" });
+    const older = screen.getByRole("button", { name: "Older" });
+    expect(more.compareDocumentPosition(older) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.click(more);
+    await waitFor(() => expect(chatRows()).toHaveLength(9));
+    fireEvent.click(chatRows()[7]);
+    await waitFor(() => expect(sel()?.chatId).toBe("n8"));
+    fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+    await waitFor(() =>
+      expect(chatRows().map((r) => r.dataset.chat)).toEqual(["n1", "n2", "n3", "n4", "n5", "n6", "n8"]),
+    );
+    expect(screen.getByRole("button", { name: "2 more chats" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Older" }));
+    await waitFor(() => expect(chatRows()).toHaveLength(9));
+    expect(
+      chatRows()
+        .slice(7)
+        .map((r) => r.dataset.chat),
+    ).toEqual(["old1", "old2"]);
+
+    fireEvent.click(chatRows()[8]);
+    await waitFor(() => expect(sel()?.chatId).toBe("old2"));
+    fireEvent.click(screen.getByRole("button", { name: "Older" }));
+    await waitFor(() => expect(chatRows()).toHaveLength(7));
+    expect(chatRows().map((r) => r.dataset.chat)).toEqual(["n1", "n2", "n3", "n4", "n5", "n6", "old2"]);
+  });
+
+  it("lists every chat a filter matches, with no fold", async () => {
+    bridge.rows = [
+      ...Array.from({ length: 9 }, (_, i) => row(`r${i + 1}`, `n${i + 1}`, `Trip ${i + 1}`, 9_000 - i * 1_000)),
+      row("o1", "old1", "Trip old", -8 * DAY),
+      row("x1", "other", "Groceries", 500),
+    ];
+    mount();
+    await waitFor(() => expect(chatRows()).toHaveLength(6));
+    fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+    fireEvent.input(await screen.findByRole("textbox", { name: /^Filter/ }), { target: { value: "trip" } });
+    await waitFor(() => expect(chatRows()).toHaveLength(10));
+    expect(screen.queryByRole("button", { name: /more chats|Older|Show less/ })).toBeNull();
   });
 
   it("deletes a chat whole: every session, then the folder, then its workspace", async () => {
