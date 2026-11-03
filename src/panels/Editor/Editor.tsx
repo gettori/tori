@@ -82,6 +82,7 @@ import type { RevertOutcome } from "./CheckpointTimeline";
 import SearchPanel from "./SearchPanel";
 import DebugPanel from "./DebugPanel";
 import SessionPanel from "./SessionPanel";
+import ArtefactsPanel from "./ArtefactsPanel";
 import MarkdownPreview from "./MarkdownPreview";
 import FileHistory from "./FileHistory";
 import LocalHistory from "./LocalHistory";
@@ -389,7 +390,7 @@ import patterns from "../../styles/patterns.module.css";
 // its `<For>` is referentially keyed, and fresh literals would tear down and
 // rebuild every tab's DOM on any unrelated signal change
 // (gotchas#reordering-a-referentially-keyed-for-must-preserve-object-identity).
-type RightMode = "files" | "changes" | "pulls" | "problems" | "calls" | "session" | "search" | "debug";
+type RightMode = "files" | "changes" | "pulls" | "problems" | "calls" | "session" | "search" | "debug" | "artefacts";
 type ModeTab = { mode: RightMode; label: string; icon: LucideIcon };
 /** The modes that answer for the member `activeRoot` points at, rather than for
  *  the whole Topic (Changes, Search, Problems) or for the file in front
@@ -406,6 +407,7 @@ const RIGHT_MODE_TABS: Record<RightMode, ModeTab> = {
   search: { mode: "search", label: "Search", icon: Search },
   debug: { mode: "debug", label: "Debug", icon: Bug },
   session: { mode: "session", label: "Session", icon: MessagesSquare },
+  artefacts: { mode: "artefacts", label: "Artefacts", icon: FileStack },
 };
 
 function tabId(t: FileTab): string {
@@ -714,10 +716,14 @@ export default function Editor(props: {
     "calls",
     "debug",
     "session",
+    "artefacts",
   ]);
   // Files/Changes/Search are always offered; the rest need their target to exist.
   function modeAvailable(m: RightMode): boolean {
+    if (chatId()) return m === "artefacts";
     switch (m) {
+      case "artefacts":
+        return false;
       case "session":
         return !!props.selected?.sessionId;
       // Only worth a tab when something is actually wrong; an always-present
@@ -973,6 +979,7 @@ export default function Editor(props: {
   // included, so a member with no worktree has somewhere to say so and a Retry
   // to offer. A branch unit reads no Topic record at all.
   const topicId = createMemo(() => (props.selected?.kind === "topic" ? (props.selected.topicId ?? null) : null));
+  const chatId = createMemo(() => (props.selected?.kind === "chat" ? (props.selected.chatId ?? null) : null));
   const members = createTopicMembers(topicId);
 
   // Which member a tab's file sits in, for the surfaces that have to name the
@@ -1448,6 +1455,11 @@ export default function Editor(props: {
   // A selection without an available Session tab falls back to Files, so the
   // pane is never stuck on a mode the current selection can't show.
   createEffect(() => {
+    if (chatId()) {
+      if (rightMode() !== "artefacts") setRightMode("artefacts");
+      return;
+    }
+    if (rightMode() === "artefacts") setRightMode("files");
     if (rightMode() === "session" && !props.selected?.sessionId) setRightMode("files");
     // The Problems tab disappears once the last diagnostic clears.
     if (rightMode() === "problems" && !problemsHere()) setRightMode("files");
@@ -3590,6 +3602,9 @@ export default function Editor(props: {
             <Match when={rightMode() === "debug"}>
               {focusMemberLine()}
               <DebugPanel root={focusRoot()} selected={props.selected} />
+            </Match>
+            <Match when={rightMode() === "artefacts" && chatId()}>
+              {(id) => <ArtefactsPanel chatId={id()} root={root() ?? ""} activePath={shownFileId()} />}
             </Match>
             <Match when={rightMode() === "session" && props.selected?.sessionId}>
               {focusMemberLine()}

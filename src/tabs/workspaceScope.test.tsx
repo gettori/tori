@@ -78,6 +78,7 @@ const { ensureEnvelope, resetPaneLayoutModel, seedOnePane } = await import("../l
 const { resetTabPlacement } = await import("../layout/tabPlacement");
 const { ensureShellsWorkspace, shellsPane } = await import("../layout/shellsWorkspace");
 const { paneTabs } = await import("./paneTabs");
+const { tabsByWs, setTabsByWs } = await import("../panels/Editor/editorTabStore");
 const { SHELLS_KEY } = await import("../utils/topics");
 type OpenTerm = import("../panels/Terminal/terminalTabStore").OpenTerm;
 type Selection = import("../panels/LeftSidebar/LeftSidebar").Selection;
@@ -212,6 +213,21 @@ describe("workspace-scoped active", () => {
     expect(paneTabs(WS1, "main").map((t) => t.id)).toEqual(before);
     expect(activeWorkspace()).toBe(WS1);
     expect(activeIds()).toEqual(["sh:1"]);
+  });
+
+  it("a chat is a workspace of its own whose pane holds its chat and the files it opens", async () => {
+    const CHAT = "/cfg/chats/c1";
+    const chatSel = { ...selection, kind: "chat", chatId: "c1", folderPath: CHAT, projectPath: CHAT } as Selection;
+    render(() => <Terminal selected={chatSel} onOpenChange={() => {}} />);
+    await waitFor(() => expect(activeWorkspace()).toBe("chat:c1"));
+    visit({ ...tab("chat:1", "chat:c1", "chat"), cwd: CHAT });
+    setTabsByWs({ ...tabsByWs(), "chat:c1": [{ path: `${CHAT}/plan.md`, name: "plan.md" }] });
+    await waitFor(() =>
+      expect(paneTabs("chat:c1", "main").map((t) => t.id)).toEqual(
+        expect.arrayContaining(["chat:1", `${CHAT}/plan.md`]),
+      ),
+    );
+    expect(paneTabs(WS1, "main")).toEqual([]);
   });
 
   // The dock is a second group on screen, not a place the window goes: opening,

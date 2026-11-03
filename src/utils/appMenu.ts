@@ -19,6 +19,7 @@ const LAYOUT: [string, (string | MenuEntry)[]][] = [
   [
     "File",
     [
+      "chat-new",
       "editor-new-scratch",
       "omnibox",
       SEPARATOR,

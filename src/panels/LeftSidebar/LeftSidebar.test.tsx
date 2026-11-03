@@ -277,7 +277,7 @@ describe("the space strip and the Global space", () => {
     expect(localStorage.getItem("tori.active-space.v1")).toBe("/global");
     expect(screen.queryByText("repo")).toBeNull();
     expect((first.container.querySelector("[data-topic-list]") as HTMLElement).hidden).toBe(false);
-    await screen.findByText("Folders you attach and Topics that cross spaces show up here.");
+    await screen.findByText("Chats you start, folders you attach and Topics that cross spaces show up here.");
     await expectNoAxeViolations(first.container);
     first.unmount();
 

@@ -18,6 +18,7 @@ mod browser_host;
 mod catalog_probe;
 mod chat;
 mod chat_requests;
+mod chats;
 mod checkpoint;
 mod cli;
 mod config;
@@ -257,10 +258,13 @@ pub fn run() {
             }
 
             // The scope's `$HOME/**` never matches a dot directory, so this build's
-            // own attachments (`~/.config/tori-dev` in a debug build) are granted
-            // by path, or every pasted picture draws as a broken image.
+            // own attachments and chats (`~/.config/tori-dev` in a debug build) are
+            // granted by path, or every pasted picture draws as a broken image.
             if let Err(e) = app.asset_protocol_scope().allow_directory(attachments::dir(), true) {
                 eprintln!("tori: could not open the attachments to the webview: {e}");
+            }
+            if let Err(e) = app.asset_protocol_scope().allow_directory(chats::root(), true) {
+                eprintln!("tori: could not open the chats to the webview: {e}");
             }
 
             setup::set_publisher(app.handle().clone());
@@ -651,6 +655,10 @@ pub fn run() {
             checkpoint::checkpoint_revert_file,
             checkpoint::checkpoint_revert_tree,
             checkpoint::checkpoint_prune,
+            chats::chats_root,
+            chats::chat_new,
+            chats::chat_delete,
+            chats::chat_artefacts,
             local_history::local_history_note,
             local_history::local_history_list,
             local_history::local_history_read,

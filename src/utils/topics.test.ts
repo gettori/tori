@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+  chatRoot,
   inSpace,
+  isChatKey,
   isGlobal,
   topicSelection,
   topicSlug,
@@ -185,6 +187,14 @@ describe("workspaceKey and selectionRoot", () => {
     expect(selectionRoot(null)).toBeNull();
   });
 
+  it("keys a chat by its id and roots it at its folder", () => {
+    const chat = { kind: "chat" as const, chatId: "c1", folderPath: "/cfg/chats/c1", activeRoot: undefined };
+    expect(workspaceKey(chat)).toBe("chat:c1");
+    expect(isChatKey(workspaceKey(chat))).toBe(true);
+    expect(selectionRoot(chat)).toBe("/cfg/chats/c1");
+    expect(chatRoot(chat)).toBe("/cfg/chats/c1");
+  });
+
   it("keys the dock's group by its one constant", () => {
     expect(isShellsKey(SHELLS_KEY)).toBe(true);
     // A path or a Topic key never reads as Shells, and the two synthetic
@@ -236,6 +246,12 @@ describe("tabUnderFolder", () => {
     expect(tabUnderFolder(topicTab(cwd), "/w/api")).toBe(false);
     expect(tabUnderFolder(topicTab(cwd), "/w/api/.tori/worktrees/auth")).toBe(true);
     expect(tabUnderFolder({ workspace: "topic:f1" }, "/w/api")).toBe(false);
+  });
+
+  it("counts a chat tab by where it runs, never by its key", () => {
+    const chatTab = { workspace: "chat:c1", cwd: "/cfg/chats/c1" };
+    expect(tabUnderFolder(chatTab, "/cfg/chats")).toBe(true);
+    expect(tabUnderFolder(chatTab, "/w/api")).toBe(false);
   });
 
   it("keeps the workspace prefix rule for a unit tab", () => {

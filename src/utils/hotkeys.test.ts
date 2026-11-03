@@ -39,6 +39,7 @@ describe("the canonical binding table", () => {
     // the Cmd+/ sheet move together, because both read BINDINGS.
     expect(BINDINGS.map((b) => b.id).sort()).toEqual(
       [
+        "chat-new",
         "close-tab",
         "command-palette",
         "debug-start",
@@ -97,7 +98,7 @@ describe("the canonical binding table", () => {
     // Mac laptop. The Editor group used to drop out of the sheet entirely for
     // having no key-carrying command in it.
     //
-    // Cmd+N joins them because it is the one editor action with no buffer to
+    // Cmd+Shift+N joins them because it is the one editor action with no buffer to
     // hold its key: CM6's keymap cannot bind "open a new buffer" when there is
     // no buffer open, which is exactly when it is wanted.
     const editor = bindingsByGroup().find((g) => g.group === "editor");

@@ -243,6 +243,7 @@ export const EDITOR_GOTO_LINE = "tori:editor-goto-line";
 // comes from `liveBuffers`, which is how the pane reaches a buffer it does not
 // own.
 export const EDITOR_NEW_SCRATCH = "tori:editor-new-scratch";
+export const NEW_CHAT = "tori:new-chat";
 export const EDITOR_SAVE_AS = "tori:editor-save-as";
 
 // Reports back out of the editor, for a caller that put a file there and needs

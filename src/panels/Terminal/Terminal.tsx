@@ -102,6 +102,7 @@ import {
 import { runExitEffects } from "../../utils/jobExit";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import {
+  isChatKey,
   isTopicKey,
   isShellsKey,
   selectionRoot,
@@ -2745,7 +2746,10 @@ export default function Terminal(props: {
     // clips overflow and would hide a menu rendered inside it.
     const [menuOpen, setMenuOpen] = createSignal(false);
     return (
-      <>
+      // A chat is one conversation in one folder: another launch there would be
+      // a second chat wearing the first one's row, and it has no history apart
+      // from its own row.
+      <Show when={!isChatKey(activeWorkspace())}>
         <div class={styles.termNewSplit}>
           {/* Main half: a new chat, which is a draft and so costs nothing until
             it is written in. A plus rather than a terminal icon, because the
@@ -2889,7 +2893,7 @@ export default function Terminal(props: {
             </span>
           </Show>
         </Tooltip>
-      </>
+      </Show>
     );
   };
 

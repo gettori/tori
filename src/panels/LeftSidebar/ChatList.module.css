@@ -1,0 +1,63 @@
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chat {
+  border-radius: var(--tori-radius-md);
+}
+
+.icon {
+  color: var(--fg-subtle);
+}
+
+.icon :global(svg) {
+  width: calc(13px * var(--ui-scale));
+  height: calc(13px * var(--ui-scale));
+}
+
+.chat .name.untitled {
+  font-style: italic;
+  color: var(--fg-subtle);
+}
+
+.time {
+  font-size: var(--tori-text-xs);
+  color: var(--fg-subtle);
+}
+
+/* The hover swaps the time for the menu, so the row keeps one trailing item
+   and its width never jumps. */
+.menu {
+  display: none;
+  flex: none;
+}
+
+.chat:hover .end,
+.chat[data-expanded] .end {
+  display: none;
+}
+
+.chat:hover .menu,
+.chat[data-expanded] .menu,
+.menu:has([data-expanded]) {
+  display: inline-flex;
+}
+
+/* Declared after the row's :hover so a hovered selected chat keeps the gold. */
+.chat.sel {
+  background:
+    linear-gradient(var(--brand-bar), var(--brand-bar)) left center / var(--tori-border-thick) calc(100% - 8px)
+      no-repeat,
+    linear-gradient(to right, var(--brand-subtle), transparent);
+}
+
+.chat.sel .name {
+  color: var(--fg-default);
+  font-weight: 600;
+}
+
+.chat.sel .icon {
+  color: var(--brand-default);
+}
