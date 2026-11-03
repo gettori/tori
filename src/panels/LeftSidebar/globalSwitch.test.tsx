@@ -1,6 +1,3 @@
-// The Spaces/Topics switch is how you browse, not which work is open, so it
-// restores that mode's last selection and otherwise leaves it alone. A space
-// switch clears instead, because it is a different context, not a different list.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
@@ -91,7 +88,7 @@ function mount() {
 const click = (name: string) => fireEvent.click(screen.getByText(name));
 const segment = (name: string) => fireEvent.click(screen.getByRole("button", { name }));
 
-describe("switching between Spaces and Topics", () => {
+describe("switching between a space and Global", () => {
   beforeEach(() => {
     resetSessionStoreForTests();
     resetSessionActivityForTests();
@@ -99,17 +96,16 @@ describe("switching between Spaces and Topics", () => {
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
     localStorage.setItem("tori.active-space.v1", "work");
-    localStorage.setItem("tori.sidebar-mode.v1", "spaces");
     localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:work/proj"]));
   });
 
-  it("comes back to what each mode was last on", async () => {
+  it("comes back to what each was last on", async () => {
     const { sel } = mount();
     await waitFor(() => expect(screen.getByText("wave-3")).toBeTruthy());
     click("wave-3");
     await waitFor(() => expect(sel()?.folderPath).toBe(WAVE));
 
-    segment("Topics");
+    segment("Global");
     await waitFor(() => expect(screen.getByText("Auth")).toBeTruthy());
     click("Auth");
     fireEvent.click(document.querySelector<HTMLElement>(`[data-member="${WORK}"]`)!);
@@ -119,24 +115,22 @@ describe("switching between Spaces and Topics", () => {
     await waitFor(() => expect(sel()?.folderPath).toBe(WAVE));
     expect(sel()?.kind).toBe("unit");
 
-    segment("Topics");
+    segment("Global");
     await waitFor(() => expect(sel()?.topicId).toBe("f1"));
   });
 
-  it("leaves the selection alone when the other mode has nothing remembered", async () => {
-    const { sel, onSelect } = mount();
+  it("clears the selection when Global has nothing remembered", async () => {
+    const { sel } = mount();
     await waitFor(() => expect(screen.getByText("wave-3")).toBeTruthy());
     click("wave-3");
     await waitFor(() => expect(sel()?.folderPath).toBe(WAVE));
-    onSelect.mockClear();
 
-    segment("Topics");
+    segment("Global");
     await waitFor(() => expect(screen.getByText("Auth")).toBeTruthy());
-    expect(onSelect).not.toHaveBeenCalled();
-    expect(sel()?.folderPath).toBe(WAVE);
+    expect(sel()).toBeNull();
   });
 
-  it("leaves the selection alone when the remembered Topic is gone", async () => {
+  it("clears the selection when Global's remembered Topic is gone", async () => {
     localStorage.setItem(
       "tori.selection-memory.v1",
       JSON.stringify({ spaces: {}, topic: { kind: "topic", topicId: "deleted", folderPath: WAVE } }),
@@ -145,11 +139,10 @@ describe("switching between Spaces and Topics", () => {
     await waitFor(() => expect(screen.getByText("wave-3")).toBeTruthy());
     click("wave-3");
     await waitFor(() => expect(sel()?.folderPath).toBe(WAVE));
-    onSelect.mockClear();
 
-    segment("Topics");
+    segment("Global");
     await waitFor(() => expect(screen.getByText("Auth")).toBeTruthy());
-    expect(onSelect).not.toHaveBeenCalled();
+    expect(onSelect).toHaveBeenLastCalledWith(null);
   });
 
   describe("a Topic in a space", () => {
@@ -176,7 +169,7 @@ describe("switching between Spaces and Topics", () => {
       await openPay();
       await waitFor(() => expect(sel()?.topicId).toBe("f2"));
 
-      segment("Topics");
+      segment("Global");
       await waitFor(() => expect(screen.getByText("Auth")).toBeTruthy());
       click("Auth");
       fireEvent.click(document.querySelector<HTMLElement>(`[data-member="${WORK}"]`)!);
@@ -186,20 +179,19 @@ describe("switching between Spaces and Topics", () => {
       await waitFor(() => expect(sel()?.topicId).toBe("f2"));
     });
 
-    it("is not what Topics mode comes back to", async () => {
-      const { sel, onSelect } = mount();
+    it("is not what Global comes back to", async () => {
+      const { sel } = mount();
       await openPay();
       await waitFor(() => expect(sel()?.topicId).toBe("f2"));
-      onSelect.mockClear();
 
-      segment("Topics");
+      segment("Global");
       await waitFor(() => expect(screen.getByText("Auth")).toBeTruthy());
-      expect(onSelect).not.toHaveBeenCalled();
+      expect(sel()).toBeNull();
       expect(screen.queryByText("Pay")).toBeNull();
     });
 
     it("is dropped from its space's memory once it has moved out", async () => {
-      localStorage.setItem("tori.sidebar-mode.v1", "topics");
+      localStorage.setItem("tori.active-space.v1", "/global");
       localStorage.setItem(
         "tori.selection-memory.v1",
         JSON.stringify({ spaces: { work: { kind: "topic", topicId: "f2", spaceName: "work", folderPath: "" } } }),
@@ -211,7 +203,7 @@ describe("switching between Spaces and Topics", () => {
 
       segment("work");
       await waitFor(() => expect(screen.getByText("main")).toBeTruthy());
-      expect(onSelect).not.toHaveBeenCalled();
+      expect(onSelect.mock.calls.every(([s]) => s === null)).toBe(true);
       expect(sel()).toBeNull();
     });
   });

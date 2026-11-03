@@ -140,7 +140,6 @@ describe("a Topic worktree in Spaces", () => {
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
     localStorage.setItem("tori.active-space.v1", "work");
-    localStorage.setItem("tori.sidebar-mode.v1", "spaces");
     localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:work/api"]));
   });
 
@@ -239,7 +238,6 @@ describe("hiding Topic worktrees in Spaces", () => {
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
     localStorage.setItem("tori.active-space.v1", "work");
-    localStorage.setItem("tori.sidebar-mode.v1", "spaces");
     localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:work/api"]));
   });
 

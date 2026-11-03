@@ -129,7 +129,6 @@ describe("deleting a space", () => {
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
     localStorage.setItem("tori.active-space.v1", "work");
-    localStorage.setItem("tori.sidebar-mode.v1", "spaces");
   });
 
   it("deletes the space's own Topics, and only those, before the space", async () => {

@@ -136,8 +136,7 @@ describe("Remove repository", () => {
     bridge.members = [member(REPO_A, "api", WT_A, 0), member(REPO_B, "web", WT_B, 1)];
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("tori.active-space.v1", "work");
-    localStorage.setItem("tori.sidebar-mode.v1", "topics");
+    localStorage.setItem("tori.active-space.v1", "/global");
   });
 
   it("keeps the worktree and leaves it out of the record", async () => {

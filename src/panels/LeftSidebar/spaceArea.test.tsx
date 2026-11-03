@@ -71,7 +71,6 @@ describe("the space's empty area", () => {
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
     localStorage.setItem("tori.active-space.v1", "work");
-    localStorage.setItem("tori.sidebar-mode.v1", "spaces");
   });
 
   it("opens the space's own menu on a right-click", async () => {
@@ -127,7 +126,6 @@ describe("a space with nothing in it", () => {
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
     localStorage.setItem("tori.active-space.v1", "blank");
-    localStorage.setItem("tori.sidebar-mode.v1", "spaces");
   });
 
   it("says so, and offers the way to fill it", async () => {

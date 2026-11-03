@@ -89,8 +89,7 @@ describe("the sidebar's Topic actions", () => {
     bridge.topics = [AUTH];
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("tori.active-space.v1", "work");
-    localStorage.setItem("tori.sidebar-mode.v1", "topics");
+    localStorage.setItem("tori.active-space.v1", "/global");
   });
 
   it("opens the New Topic dialog the Topic list hosts from the head row", async () => {
@@ -99,9 +98,9 @@ describe("the sidebar's Topic actions", () => {
     await waitFor(() => expect(dialogs("New Topic")).toHaveLength(1));
   });
 
-  it("opens one dialog for a row in a space's tree and one in Topics mode", async () => {
+  it("opens one dialog for a row in a space's tree and one in Global", async () => {
     bridge.topics = [AUTH, { ...AUTH, id: "f2", name: "Pay", branch: "feat/pay", space: "work" }];
-    localStorage.setItem("tori.sidebar-mode.v1", "spaces");
+    localStorage.setItem("tori.active-space.v1", "work");
     mount();
     fireEvent.contextMenu(await screen.findByText("Pay"));
     pointerClick(await screen.findByText("Add repository…"));
@@ -109,7 +108,7 @@ describe("the sidebar's Topic actions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(dialogs("Add repository to Pay")).toHaveLength(0));
 
-    fireEvent.click(screen.getByRole("button", { name: "Topics" }));
+    fireEvent.click(screen.getByRole("button", { name: "Global" }));
     fireEvent.contextMenu(await screen.findByText("Auth"));
     pointerClick(await screen.findByText("Add repository…"));
     await waitFor(() => expect(dialogs("Add repository to Auth")).toHaveLength(1));

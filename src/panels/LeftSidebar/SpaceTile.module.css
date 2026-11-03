@@ -105,12 +105,6 @@
      equals padding plus glyph, so a squeezed-out name leaves the same square. */
 }
 
-/* Topics is not a space and has no hue of its own, so when lit it takes the
-   brand rather than a colour it would have to invent. */
-.modeTile.active {
-  color: var(--brand-default);
-}
-
 /* Always in the DOM at zero width, because this element IS the animation: the
    tile is shrink-to-fit and follows it. Mounting it with the pill would give
    the opening something to animate and the closing nothing, so the name would

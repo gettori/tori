@@ -58,7 +58,7 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promis
 const { default: LeftSidebar } = await import("./LeftSidebar");
 const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
 const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
-const { emit, FOCUS_SEARCH, TOGGLE_SIDEBAR_MODE } = await import("../../utils/events");
+const { emit, FOCUS_SEARCH } = await import("../../utils/events");
 
 const mount = () => render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={[]} />);
 const toggle = () => screen.getByRole("button", { name: "Filter" });
@@ -72,7 +72,6 @@ describe("the sidebar filter", () => {
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
     localStorage.setItem("tori.active-space.v1", "work");
-    localStorage.setItem("tori.sidebar-mode.v1", "spaces");
   });
 
   it("costs the header nothing until it is asked for", async () => {
@@ -87,13 +86,13 @@ describe("the sidebar filter", () => {
     expect(noToggle()).toBeNull();
   });
 
-  it("offers a New Topic button in Topics mode only, before the filter", async () => {
+  it("offers a New Topic button in Global only, before the filter", async () => {
     mount();
     await waitFor(() => expect(screen.getByText("proj")).toBeTruthy());
     expect(screen.queryByRole("button", { name: "New Topic" })).toBeNull();
 
-    emit(TOGGLE_SIDEBAR_MODE);
-    const add = await screen.findByRole("button", { name: "New Topic" });
+    fireEvent.click(screen.getByRole("button", { name: "Global" }));
+    const [add] = await screen.findAllByRole("button", { name: "New Topic" });
     // Before the filter in the DOM, which is also the order a keyboard reaches
     // them in.
     expect(add.compareDocumentPosition(toggle()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

@@ -76,7 +76,7 @@ describe("MoveTopicDialog", () => {
   it("offers Topics first, then every space, and marks where the Topic is now", () => {
     mount(topic([member("/s/api", 0)], "saga"));
     expect(screen.getByText("Now in saga")).toBeTruthy();
-    const named = ["Topics", "saga", "craft", "lab"].map((n) =>
+    const named = ["Global", "saga", "craft", "lab"].map((n) =>
       screen.getByRole("radio", { name: new RegExp(`^${n}`) }),
     );
     expect(screen.getAllByRole("radio")).toEqual(named);
@@ -107,8 +107,8 @@ describe("MoveTopicDialog", () => {
   it("sends null to list a space Topic in Topics", async () => {
     bridge.answer = topic([member("/s/api", 0)]);
     const onDone = mount(topic([member("/s/api", 0)], "saga"));
-    fireEvent.click(screen.getByRole("radio", { name: /^Topics/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Move to Topics" }));
+    fireEvent.click(screen.getByRole("radio", { name: /^Global/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Move to Global" }));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     expect(bridge.calls).toEqual([{ cmd: "set_topic_space", args: { topicId: "t1", space: null } }]);
   });
