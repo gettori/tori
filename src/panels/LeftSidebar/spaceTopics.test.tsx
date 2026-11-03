@@ -161,7 +161,7 @@ describe("Topics in a space's tree", () => {
     const topics = head("Topics")!;
     const projects = head("Projects")!;
     expect(topics.textContent).toBe("Topics");
-    expect(projects.textContent).toContain("1");
+    expect(projects.textContent).toBe("Projects");
     expect(before(topics, pay)).toBe(true);
     expect(before(pay, projects)).toBe(true);
     expect(before(projects, screen.getByText("repo", { selector: "[class*=label]" }))).toBe(true);
