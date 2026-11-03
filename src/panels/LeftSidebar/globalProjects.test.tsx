@@ -114,6 +114,45 @@ describe("Global's attached folders", () => {
     localStorage.setItem("tori.active-space.v1", "/global");
   });
 
+  describe("past six", () => {
+    const eight = Array.from({ length: 8 }, (_, i) => {
+      const path = `/Users/me/p${i + 1}`;
+      return { name: `p${i + 1}`, path, branchUnits: [unit("main", path, "plain-dir")], availability: "ok" };
+    });
+    const saved = { global: config.global.projects, work: config.spaces[0].projects };
+    const projectNames = (tree = "[data-topic-list]") =>
+      [...document.querySelectorAll<HTMLElement>(`${tree} [class*=_project_] [class*=label]`)].map(
+        (l) => l.textContent,
+      );
+    beforeEach(() => {
+      config.global.projects = eight;
+      config.spaces[0].projects = eight;
+      return () => {
+        config.global.projects = saved.global;
+        config.spaces[0].projects = saved.work;
+      };
+    });
+
+    it("lists six projects and folds the rest, keeping the selected project's card", async () => {
+      const { sel } = mount();
+      await screen.findByText("p1");
+      expect(projectNames()).toEqual(["p1", "p2", "p3", "p4", "p5", "p6"]);
+      fireEvent.click(screen.getByRole("button", { name: "2 more projects" }));
+      fireEvent.click(await screen.findByText("p8"));
+      await waitFor(() => expect(sel()?.folderPath).toBe("/Users/me/p8"));
+      fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+      await waitFor(() => expect(projectNames()).toEqual(["p1", "p2", "p3", "p4", "p5", "p6", "p8"]));
+      expect(screen.getByRole("button", { name: "1 more project" })).toBeTruthy();
+    });
+
+    it("lists every project in a space with no Topics", async () => {
+      localStorage.setItem("tori.active-space.v1", "work");
+      mount();
+      await waitFor(() => expect(projectNames("[data-spaces-tree]")).toHaveLength(8));
+      expect(screen.queryByRole("button", { name: /more projects/ })).toBeNull();
+    });
+  });
+
   it("lists them under Projects, the missing one with its note and only Locate and Detach", async () => {
     mount();
     expect(await screen.findByText("acme-site")).toBeTruthy();

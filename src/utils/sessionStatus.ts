@@ -155,6 +155,9 @@ export type Rollup = {
   running: number;
 };
 
+export const needsYouOrWorking = (r: Rollup | null) =>
+  !!r && r.waitingForApproval + r.waitingForAnswer + r.prAttention + r.executing > 0;
+
 // Pure: aggregate counts of every detectable state across a set of sessions
 // (a branch unit's, a project's, or a space's), for a collapsed/hidden ancestor
 // row's badge.
