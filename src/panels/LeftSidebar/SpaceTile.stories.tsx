@@ -110,7 +110,7 @@ export const TheStrip: Story = {
   decorators: [
     () => (
       <Strip>
-        <SpaceTile name="Global" icon="Globe" color="Teal" fixed />
+        <SpaceTile name="Home" icon="House" color="Teal" fixed />
         <div style={{ width: "1px", "align-self": "stretch", margin: "2px", background: "var(--border-default)" }} />
         <SpaceTile name="work" color="Sky" menu={MENU} active nameWidth="44px" />
         <SpaceTile name="side" color="Rose" menu={MENU} rollup={rollup({ idle: 1 })} />
@@ -127,7 +127,7 @@ export const GlobalLit: Story = {
   decorators: [
     () => (
       <Strip>
-        <SpaceTile name="Global" icon="Globe" color="Teal" fixed active nameWidth="52px" />
+        <SpaceTile name="Home" icon="House" color="Teal" fixed active nameWidth="52px" />
         <div style={{ width: "1px", "align-self": "stretch", margin: "2px", background: "var(--border-default)" }} />
         <SpaceTile name="work" color="Sky" menu={MENU} rollup={rollup({ executing: 1 })} />
         <SpaceTile name="side" color="Rose" menu={MENU} />

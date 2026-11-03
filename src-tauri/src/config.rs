@@ -205,7 +205,7 @@ pub struct ResolvedConfig {
     pub global: GlobalSpace,
 }
 
-pub const GLOBAL_NAME: &str = "Global";
+pub const GLOBAL_NAME: &str = "Home";
 
 /// One space's projects, for the readers that only walk projects. No `path`:
 /// Global is one of these and owns no folder.

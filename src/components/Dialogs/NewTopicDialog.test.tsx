@@ -300,7 +300,7 @@ describe("NewTopicDialog", () => {
       fireEvent.click(box("api"));
       expect(group.textContent).toContain("1 of 2");
       expect(
-        screen.getByText("Only work's projects can join. For projects from several spaces, make the Topic in Global."),
+        screen.getByText("Only work's projects can join. For projects from several spaces, make the Topic in Home."),
       ).toBeTruthy();
     });
 
@@ -332,6 +332,6 @@ describe("NewTopicDialog", () => {
       spaces: allSpaces({ spaces: SPACES, global: { projects: [{ name: "acme-site", path: "/c/acme-site" }] } }),
     });
     expect(await screen.findByRole("checkbox", { name: "acme-site" })).toBeTruthy();
-    expect(screen.getByRole("group", { name: "Global" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Home" })).toBeTruthy();
   });
 });

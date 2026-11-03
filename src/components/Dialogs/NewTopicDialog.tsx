@@ -370,7 +370,7 @@ export default function NewTopicDialog(props: {
             <Show when={scope()}>
               {(g) => (
                 <p class={styles.topicScopeNote}>
-                  Only {g().name}'s projects can join. For projects from several spaces, make the Topic in Global.
+                  Only {g().name}'s projects can join. For projects from several spaces, make the Topic in Home.
                 </p>
               )}
             </Show>

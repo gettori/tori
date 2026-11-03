@@ -598,7 +598,7 @@ export const COMMANDS: Command[] = [
     id: "chat-new",
     keys: ["⌘", "N"],
     label: "New Chat",
-    sub: "A chat in Global, with no project.",
+    sub: "A chat in Home, with no project.",
     group: "session",
     scope: "window",
     match: cmd("n"),

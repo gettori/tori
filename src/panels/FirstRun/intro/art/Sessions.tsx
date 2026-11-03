@@ -182,7 +182,7 @@ function Sidebar() {
       </div>
       <div class={sidebar.spaceBar}>
         <div class={sidebar.stripNav}>
-          <SpaceTile name="Global" icon="Globe" color="Teal" fixed />
+          <SpaceTile name="Home" icon="House" color="Teal" fixed />
           <div class={sidebar.spaceDivider} />
           <div class={sidebar.spaceScroll}>
             <SpaceTile name="work" color="Sky" active />

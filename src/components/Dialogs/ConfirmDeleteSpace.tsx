@@ -243,7 +243,7 @@ export default function ConfirmDeleteSpace(props: {
         <Show when={losing().length > 0}>
           <div class={styles.spaceField}>
             <div class={styles.spaceLabel}>
-              Global Topics that lose members <span class={styles.repoGroupCount}>{losing().length}</span>
+              Home Topics that lose members <span class={styles.repoGroupCount}>{losing().length}</span>
             </div>
             <div class={`${styles.contentsPanel} ${styles.contents}`}>
               <For each={losing()}>

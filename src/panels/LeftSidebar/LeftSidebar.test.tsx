@@ -264,7 +264,7 @@ describe("the space strip and the Global space", () => {
     const { container } = sidebar();
     await screen.findByText("repo");
     expect(pressed("work")).toBe(true);
-    expect(pressed("Global")).toBe(false);
+    expect(pressed("Home")).toBe(false);
     expect((container.querySelector("[data-topic-list]") as HTMLElement).hidden).toBe(true);
     await expectNoAxeViolations(container);
   });
@@ -272,8 +272,8 @@ describe("the space strip and the Global space", () => {
   it("persists Global across a remount and unmounts the space's tree there", async () => {
     const first = sidebar();
     await screen.findByText("repo");
-    fireEvent.click(segment("Global"));
-    await waitFor(() => expect(pressed("Global")).toBe(true));
+    fireEvent.click(segment("Home"));
+    await waitFor(() => expect(pressed("Home")).toBe(true));
     expect(localStorage.getItem("tori.active-space.v1")).toBe("/global");
     expect(screen.queryByText("repo")).toBeNull();
     expect((first.container.querySelector("[data-topic-list]") as HTMLElement).hidden).toBe(false);
@@ -282,7 +282,7 @@ describe("the space strip and the Global space", () => {
     first.unmount();
 
     const second = sidebar();
-    await waitFor(() => expect(pressed("Global")).toBe(true));
+    await waitFor(() => expect(pressed("Home")).toBe(true));
     expect((second.container.querySelector("[data-topic-list]") as HTMLElement).hidden).toBe(false);
     expect(screen.queryByText("repo")).toBeNull();
   });
@@ -290,7 +290,7 @@ describe("the space strip and the Global space", () => {
   it("keeps Global first, ahead of the spaces, and out of the reorder drag", async () => {
     sidebar();
     await screen.findByText("repo");
-    const global = segment("Global");
+    const global = segment("Home");
     expect(global.getAttribute("draggable")).toBe("false");
     expect(segment("work").getAttribute("draggable")).toBe("true");
     expect(global.compareDocumentPosition(segment("work")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -299,16 +299,16 @@ describe("the space strip and the Global space", () => {
   it("offers what Global holds and its look on its menu, never Rename or Delete, saved through its own command", async () => {
     sidebar();
     await screen.findByText("repo");
-    fireEvent.contextMenu(segment("Global"));
+    fireEvent.contextMenu(segment("Home"));
     const rows = await screen.findAllByRole("menuitem");
     expect(rows.map((r) => r.textContent)).toEqual([
       "New chat",
       "New topic",
       "Attach folder…Use a folder from anywhere on disk. Nothing is moved.",
-      "Edit icon and colourGlobal is built in. It can't be renamed or deleted.",
+      "Edit icon and colourHome is built in. It can't be renamed or deleted.",
     ]);
     pointerClick(rows[3]!);
-    await screen.findByRole("dialog", { name: "Edit “Global”" });
+    await screen.findByRole("dialog", { name: "Edit “Home”" });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "set_global_meta")).toBe(true));
     expect(bridge.calls.some((c) => c.cmd === "set_space_meta")).toBe(false);
@@ -319,10 +319,10 @@ describe("the space strip and the Global space", () => {
     config.spaces = [];
     try {
       sidebar();
-      await waitFor(() => expect(pressed("Global")).toBe(true));
-      expect(screen.getByText("Global", { selector: "[class*=spaceHeaderName]" })).toBeTruthy();
+      await waitFor(() => expect(pressed("Home")).toBe(true));
+      expect(screen.getByText("Home", { selector: "[class*=spaceHeaderName]" })).toBeTruthy();
       expect(screen.getByRole("button", { name: "Filter" })).toBeTruthy();
-      expect(screen.getByRole("button", { name: "Actions for Global" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Actions for Home" })).toBeTruthy();
       expect(screen.getByRole("button", { name: "Attach folder…" })).toBeTruthy();
     } finally {
       config.spaces = spaces;
