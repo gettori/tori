@@ -121,6 +121,7 @@ const KEPT = new Map<string, Kept>([
   ["components/Dialogs/InitGitDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/NewTopicDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/MoveToTopicDialog.tsx", { count: 1, reason: HEADING }],
+  ["components/Dialogs/MoveTopicDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/NewProjectDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/PickerModal.test.tsx", { count: 2, reason: FIXTURE }],
   ["components/Dialogs/ServerMessageDialog.tsx", { count: 1, reason: HEADING }],
@@ -221,6 +222,7 @@ const KEPT = new Map<string, Kept>([
   ["panels/LeftSidebar/needsYou.test.tsx", { count: 1, reason: FIXTURE }],
   ["panels/LeftSidebar/rollupAttribution.test.tsx", { count: 2, reason: FIXTURE }],
   ["panels/LeftSidebar/sidebarStructure.test.tsx", { count: 4, reason: FIXTURE }],
+  ["panels/LeftSidebar/spaceTopics.test.tsx", { count: 5, reason: FIXTURE }],
   [
     "panels/Settings/panes/AdvancedPane/AdvancedPane.tsx",
     {
