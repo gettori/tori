@@ -52,6 +52,8 @@ import {
   type OpenShellAt,
   NEW_SESSION,
   NEW_CHAT_AT,
+  OPEN_CHAT,
+  type OpenChat,
   DRAFT_INTO_NEW,
   PURGE_UNDER_PATH,
   PURGE_WORKSPACE,
@@ -101,7 +103,9 @@ import {
 } from "../../utils/agentHealth";
 import { runExitEffects } from "../../utils/jobExit";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
+import { NEW_CHAT_NAME, newChat as makeChat } from "../../utils/chats";
 import {
+  chatKey,
   isChatKey,
   isTopicKey,
   isShellsKey,
@@ -1917,6 +1921,28 @@ export default function Terminal(props: {
     });
   }
 
+  // A chat with no project sends to a chat of its own, not to a second session
+  // in this one. The tab id is minted first so the caller can seed it, and the
+  // tab opens once the chat's folder exists, so it cannot spawn ahead of it.
+  function sendToNewChat(t: OpenTerm): string {
+    const tabId = chatId();
+    makeChat()
+      .then((c) => {
+        emitWith<OpenChat>(OPEN_CHAT, { id: c.id });
+        openChatTab(
+          chatKey(c.id),
+          c.folder,
+          NEW_CHAT_NAME,
+          t.program,
+          t.profile ?? null,
+          { sessionId: crypto.randomUUID() },
+          tabId,
+        );
+      })
+      .catch((e) => emitWith<ToastEvent>(TOAST, { message: `Could not start a chat: ${e}`, kind: "error" }));
+    return tabId;
+  }
+
   // A fork stays on the account it came from: the transcript it replays lives
   // in that account's home.
   async function askWhy(ev: AskWhy) {
@@ -2693,15 +2719,17 @@ export default function Terminal(props: {
             onStart={() => advanceTabState(t, "live")}
             active={active()}
             onForkSession={() =>
-              spawnChat(
-                t.workspace,
-                t.cwd,
-                t.workspace.split("/").pop() || "chat",
-                t.program,
-                undefined,
-                undefined,
-                t.profile,
-              )
+              isChatKey(t.workspace)
+                ? sendToNewChat(t)
+                : spawnChat(
+                    t.workspace,
+                    t.cwd,
+                    t.workspace.split("/").pop() || "chat",
+                    t.program,
+                    undefined,
+                    undefined,
+                    t.profile,
+                  )
             }
             onForkFrom={() =>
               spawnChat(

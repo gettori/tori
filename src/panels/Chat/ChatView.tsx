@@ -147,6 +147,7 @@ import { agentRefusal } from "../../utils/projectAgents";
 import { loginJob, loginNote } from "../../utils/signIn";
 import type { AccountsView } from "../Settings/panes/AgentsPane/AgentAccounts";
 import { capNotice, markNoticed, noticed, pastCap, shouldNotice, MULTI_CHAT_NOTICE } from "../../utils/chatConcurrency";
+import { isChatKey } from "../../utils/topics";
 import {
   emitWith,
   NAVIGATE,
@@ -1431,8 +1432,10 @@ export default function ChatView(props: {
   );
 
   // The second chat on a worktree: say once, per worktree, that the two share
-  // one working tree and that checkpoint attribution suffers for it.
-  const multiChatNotice = () => shouldNotice(chatsInFolder(props.workspace).length, props.workspace, noticed());
+  // one working tree and that checkpoint attribution suffers for it. A chat
+  // with no project shares no worktree with anyone.
+  const multiChatNotice = () =>
+    !isChatKey(props.workspace) && shouldNotice(chatsInFolder(props.workspace).length, props.workspace, noticed());
 
   // Too many at once, said in the chat that put the count past the line rather
   // than in all of them. Unlike the notice above this is not dismissible: the
