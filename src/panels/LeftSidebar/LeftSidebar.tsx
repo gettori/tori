@@ -194,7 +194,6 @@ import {
   Plus,
   TriangleAlert,
   SquareTerminal,
-  SquarePen,
   Unlink,
   Plug,
   ShieldAlert,
@@ -2606,7 +2605,7 @@ export default function LeftSidebar(props: {
   const globalMenu = (): MenuItem[] => [
     { heading: spaceMenuHead(globalLook()) },
     { separator: true },
-    { label: "New chat", icon: SquarePen, onClick: () => void startChat() },
+    { label: "New chat", onClick: () => void startChat() },
     { label: "New topic", onClick: () => topicActions.openNew() },
     { separator: true },
     {
