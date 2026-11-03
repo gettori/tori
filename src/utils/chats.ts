@@ -60,7 +60,7 @@ export function groupChats(
       folder: `${base}/${id}`,
       sessions: sorted,
       name: newest.name || newest.title || null,
-      updated: newest.last_active,
+      updated: newest.last_active * 1000,
     });
   }
   for (const [id, p] of Object.entries(pending)) {

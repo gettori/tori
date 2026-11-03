@@ -19,7 +19,7 @@ const config = {
   global: { projects: [] },
 };
 
-const NOW = Date.now();
+const NOW_S = Math.floor(Date.now() / 1000);
 
 const row = (id: string, chat: string, title: string, at: number) => ({
   id,
@@ -28,8 +28,8 @@ const row = (id: string, chat: string, title: string, at: number) => ({
   branch: "",
   title,
   name: null,
-  last_active: NOW - 100_000 + at,
-  created_at: NOW - 100_000 + at,
+  last_active: NOW_S - 10_000 + at,
+  created_at: NOW_S - 10_000 + at,
   agent: "claude",
 });
 
@@ -106,6 +106,7 @@ describe("Global's chats", () => {
     await waitFor(() => expect(chatRows()).toHaveLength(2));
     expect(chatRows().map((r) => r.dataset.chat)).toEqual(["c2", "c1"]);
     expect(chatRows()[1].textContent).toContain("Plan a trip, rewound");
+    expect(chatRows()[0].querySelector("time")!.dateTime).toBe(new Date((NOW_S - 7_000) * 1000).toISOString());
     expect(screen.getByText("Chats").closest("[data-group-head]")?.textContent).toBe("Chats");
   });
 
