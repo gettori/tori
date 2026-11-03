@@ -24,7 +24,7 @@ const NOW_S = Math.floor(Date.now() / 1000);
 const row = (id: string, chat: string, title: string, at: number) => ({
   id,
   path: `/t/${id}.jsonl`,
-  cwd: `${ROOT}/${chat}`,
+  cwd: `${ROOT}/.home/${chat}`,
   branch: "",
   title,
   name: null,
@@ -45,7 +45,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "get_config") return Promise.resolve(config);
     if (cmd === "list_topics") return Promise.resolve([]);
     if (cmd === "chats_root") return Promise.resolve(ROOT);
-    if (cmd === "chat_new") return Promise.resolve({ id: "c9", folder: `${ROOT}/c9` });
+    if (cmd === "chat_new") return Promise.resolve({ id: "c9", folder: `${ROOT}/${args.space ?? ".home"}/c9` });
     if (cmd === "list_sessions") return Promise.resolve(args?.folder === ROOT && args?.inclusive ? bridge.rows : []);
     if (cmd === "list_project_attempts" || cmd === "sessions_running") return Promise.resolve([]);
     if (cmd === "folder_historical") return Promise.resolve(false);
@@ -120,7 +120,7 @@ describe("Global's chats", () => {
     expect(chatRows()[1].querySelector("time")).toBeTruthy();
   });
 
-  it("starts a chat on Cmd+N from a named space: Global, a selected New chat row, a draft in its folder", async () => {
+  it("starts a chat on Cmd+N in the space on screen: a selected New chat row, a draft in its folder", async () => {
     localStorage.setItem("tori.active-space.v1", "work");
     const { sel } = mount();
     await screen.findByText("repo");
@@ -133,8 +133,9 @@ describe("Global's chats", () => {
 
     await waitFor(() => expect(sel()?.kind).toBe("chat"));
     off();
-    expect(sel()).toMatchObject({ chatId: "c9", folderPath: `${ROOT}/c9`, spaceName: "/global" });
-    expect(drafts).toEqual([{ workspace: "chat:c9", root: `${ROOT}/c9`, projectName: "New chat" }]);
+    expect(called("chat_new")[0].args).toEqual({ space: "work" });
+    expect(sel()).toMatchObject({ chatId: "c9", folderPath: `${ROOT}/work/c9`, spaceName: "work" });
+    expect(drafts).toEqual([{ workspace: "chat:c9", root: `${ROOT}/work/c9`, projectName: "New chat" }]);
     const fresh = await waitFor(() => chatRows().find((r) => r.dataset.chat === "c9")!);
     expect(fresh.getAttribute("aria-current")).toBe("true");
     expect(within(fresh).getByText("New chat")).toBeTruthy();
@@ -190,7 +191,7 @@ describe("Global's chats", () => {
     await waitFor(() => expect(called("chat_delete")).toHaveLength(1));
     off();
     expect(called("delete_session").map((c) => c.args.path)).toEqual(["/t/s3.jsonl", "/t/s1.jsonl"]);
-    expect(called("chat_delete")[0].args).toEqual({ chatId: "c1" });
+    expect(called("chat_delete")[0].args).toEqual({ folder: `${ROOT}/.home/c1` });
     expect(purged).toEqual([{ workspace: "chat:c1", roots: [] }]);
     expect(sel()).toBeNull();
   });

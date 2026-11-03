@@ -74,6 +74,8 @@ export default function ConfirmDeleteSpace(props: {
   title?: string;
   confirmLabel?: string;
   topics?: readonly Topic[];
+  /** The names of the space's chats, which go with it. */
+  chats?: readonly string[];
   spaces?: SpaceTint[];
   onConfirm: () => void;
   onCancel: () => void;
@@ -233,6 +235,23 @@ export default function ConfirmDeleteSpace(props: {
                     <span class={styles.rowBadges}>
                       <span class={styles.rowNote}>{members(t.members.length)}</span>
                     </span>
+                  </div>
+                )}
+              </For>
+            </div>
+          </div>
+        </Show>
+
+        <Show when={(props.chats ?? []).length > 0}>
+          <div class={styles.spaceField}>
+            <div class={styles.spaceLabel}>
+              Chats deleted with it <span class={styles.repoGroupCount}>{props.chats!.length}</span>
+            </div>
+            <div class={`${styles.contentsPanel} ${styles.contents}`}>
+              <For each={props.chats}>
+                {(name) => (
+                  <div class={styles.contentsRow}>
+                    <span class={styles.topicRowName}>{name}</span>
                   </div>
                 )}
               </For>
