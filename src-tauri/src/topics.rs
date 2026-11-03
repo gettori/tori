@@ -280,7 +280,7 @@ fn refuse_outside_known_space(store: &Store, topic: &Topic, repo: &str) -> Resul
     };
     match outside_space([repo], &roots) {
         Some(_) => Err(format!(
-            "{} is not in {space}, and {} holds {space}'s projects only. Use Move to... on the Topic to list it in Topics first.",
+            "{} is not in {space}, and {} holds {space}'s projects only. Use Move to... on the Topic to list it in Global first.",
             repo_display_name(repo),
             topic.name
         )),
