@@ -517,29 +517,27 @@ describe("TopicList", () => {
     expect(screen.getByText("Auth")).toBeTruthy();
   });
 
-  // #159 phase 4. The confirm shows the blast radius per member, the sweep that
-  // follows offers each worktree, and the two are sequential on purpose: a sweep
-  // opened before the delete could be answered for a Topic that stayed.
+  // #159 phase 4. The confirm shows the blast radius per member and offers each
+  // worktree in the same step. The record still goes first: removing worktrees
+  // for a delete that is then refused would strand a Topic without them.
   describe("deleting a Topic", () => {
     const AUTH_API = "/w/api/.tori/worktrees/auth";
     const AUTH_WEB = "/w/web/.tori/worktrees/auth";
-    const sweepRow = (repoPath: string) => document.querySelector<HTMLElement>(`[data-sweep="${repoPath}"]`)!;
+    const wtRow = (repoPath: string) =>
+      document.querySelector<HTMLElement>(`[data-member="${repoPath}"], [data-sweep="${repoPath}"]`)!;
+    const removeBox = (repoPath: string) =>
+      within(wtRow(repoPath)).queryByRole<HTMLInputElement>("checkbox", { name: /^Remove worktree/ });
     const branchBox = (repoPath: string) =>
-      sweepRow(repoPath).querySelector<HTMLInputElement>('input[type="checkbox"]')!;
-    const choose = (repoPath: string, what: "Keep" | "Remove") =>
-      fireEvent.click(within(sweepRow(repoPath)).getByRole("button", { name: what }));
+      within(wtRow(repoPath)).queryByRole<HTMLInputElement>("checkbox", { name: /Also delete branch/ });
+    const choose = (repoPath: string) => fireEvent.click(removeBox(repoPath)!);
+    const removed = () => bridge.calls.filter((c) => c.cmd.startsWith("remove_worktree"));
 
-    async function confirmDelete(onDeleted?: () => void) {
-      render(() => <Listed spaces={SPACES} query="" onDeleted={onDeleted} />);
+    async function confirmDelete(onDeleted?: () => void, countRunning?: (p: string) => Promise<number>) {
+      render(() => <Listed spaces={SPACES} query="" onDeleted={onDeleted} countRunning={countRunning} />);
       await screen.findByText("Auth");
       fireEvent.contextMenu(row("Auth"));
       pointerClick(await screen.findByText("Delete…"));
       return screen.findByRole("dialog", { name: "Delete Auth?" });
-    }
-    async function toSweep(onDeleted?: () => void) {
-      await confirmDelete(onDeleted);
-      fireEvent.click(screen.getByRole("button", { name: "Delete Topic" }));
-      return screen.findByRole("dialog", { name: /Its worktrees/ });
     }
 
     it("tags the member git says has work at risk, and only that one", async () => {
@@ -556,167 +554,158 @@ describe("TopicList", () => {
     // reach the row, so the box follows that row's own evidence.
     it("arms the branch checkbox on a clean row and disarms it on a dirty one", async () => {
       bridge.wtStatus = { [AUTH_API]: { dirty: true, unpushed: false } };
-      await toSweep();
+      await confirmDelete();
 
-      await waitFor(() => expect(sweepRow("/w/api").textContent).toContain("uncommitted changes"));
-      expect(branchBox("/w/api").checked).toBe(false);
-      expect(branchBox("/w/web").checked).toBe(true);
-      // And it is inert until that row is actually being removed.
-      expect(branchBox("/w/web").disabled).toBe(true);
-      choose("/w/web", "Remove");
-      expect(branchBox("/w/web").disabled).toBe(false);
+      await waitFor(() => expect(wtRow("/w/api").textContent).toContain("uncommitted changes"));
+      // Not there at all until that row is actually being removed.
+      expect(branchBox("/w/web")).toBeNull();
+      choose("/w/api");
+      choose("/w/web");
+      expect(branchBox("/w/api")!.checked).toBe(false);
+      expect(branchBox("/w/web")!.checked).toBe(true);
     });
 
-    it("purges the workspace before it offers the worktrees, and offers nothing on a failed delete", async () => {
+    it("purges the workspace before it removes a worktree, and removes nothing on a failed delete", async () => {
       const order: string[] = [];
-      // Recorded from inside the purge, not after the await: the question is
-      // what had already happened at that moment, and a sweep already on screen
-      // would be a sweep answered for a Topic the delete had not finished.
-      const onPurge = () => order.push(document.querySelector("[data-sweep]") ? "sweep" : "purge");
+      const onPurge = () => order.push(removed().length ? "removed" : "purge");
       window.addEventListener(PURGE_WORKSPACE, onPurge);
       try {
-        await toSweep(() => order.push("deleted"));
+        await confirmDelete(() => order.push("deleted"));
+        choose("/w/web");
+        fireEvent.click(screen.getByRole("button", { name: "Delete Topic and 1 worktree" }));
+        await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
       } finally {
         window.removeEventListener(PURGE_WORKSPACE, onPurge);
       }
       expect(order).toEqual(["purge", "deleted"]);
-      expect(document.querySelector("[data-sweep]")).toBeTruthy();
+      expect(removed().map((c) => c.args.worktreePath)).toEqual([AUTH_WEB]);
 
       cleanup();
+      bridge.calls.length = 0;
       bridge.topics = [AUTH, PAY];
       bridge.failDelete = true;
       await confirmDelete();
-      fireEvent.click(screen.getByRole("button", { name: "Delete Topic" }));
+      choose("/w/web");
+      fireEvent.click(screen.getByRole("button", { name: "Delete Topic and 1 worktree" }));
 
       await screen.findByText(/delete refused/);
-      expect(screen.queryByRole("dialog", { name: /Its worktrees/ })).toBeNull();
+      expect(removed()).toEqual([]);
       // The record is still there, so nothing purged it either.
       expect(screen.getByText("Auth")).toBeTruthy();
     });
 
-    it("sweeps only the worktrees the Topic owns, never a reference member's checkout", async () => {
+    it("offers only the worktrees the Topic owns, never a reference member's checkout", async () => {
       bridge.topics = [{ ...AUTH, members: [AUTH.members[0], asReference(AUTH.members[1])] }, PAY];
       const purged: string[] = [];
       const onPurge = (e: Event) => purged.push(...((e as CustomEvent<{ roots?: string[] }>).detail.roots ?? []));
       window.addEventListener(PURGE_WORKSPACE, onPurge);
       try {
-        await toSweep();
+        await confirmDelete();
+        expect(removeBox("/w/api")).toBeTruthy();
+        expect(removeBox("/w/web")).toBeNull();
+        fireEvent.click(screen.getByRole("button", { name: "Delete Topic" }));
+        await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
       } finally {
         window.removeEventListener(PURGE_WORKSPACE, onPurge);
       }
-      expect(sweepRow("/w/api")).toBeTruthy();
-      expect(document.querySelector('[data-sweep="/w/web"]')).toBeNull();
       expect(purged).not.toContain("/w/web");
       expect(bridge.calls.some((c) => c.cmd === "worktree_status" && c.args.path === "/w/web")).toBe(false);
     });
 
     it("has no accessibility violations", async () => {
       bridge.wtStatus = { [AUTH_API]: { dirty: true, unpushed: true } };
-      const dialog = await toSweep();
-      await waitFor(() => expect(sweepRow("/w/api").textContent).toContain("uncommitted changes"));
-      choose("/w/web", "Remove");
+      const dialog = await confirmDelete();
+      await waitFor(() => expect(wtRow("/w/api").textContent).toContain("uncommitted changes"));
+      choose("/w/web");
 
       await expectNoAxeViolations(dialog);
     });
 
-    // The confirm closes before `delete_topic` answers and the sweep opens
-    // after, so a status resolving in between has no dialog to land on. It has
-    // to be kept anyway, or that row reaches the sweep stuck on "checking...".
-    it("carries a status that answered while neither dialog was open", async () => {
-      bridge.wtStatus = { [AUTH_API]: { dirty: true, unpushed: false } };
-      bridge.holdStatus = () => {};
+    it("stays open, busy, until the delete and its removals are done", async () => {
       bridge.holdDelete = () => {};
       await confirmDelete();
-      expect(screen.getByRole("dialog").textContent).toContain("checking…");
+      choose("/w/web");
+      fireEvent.click(screen.getByRole("button", { name: "Delete Topic and 1 worktree" }));
 
-      // The confirm is gone and the sweep is not there yet: git answering here
-      // is the case, and it is the whole duration of `delete_topic` wide.
-      fireEvent.click(screen.getByRole("button", { name: "Delete Topic" }));
-      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-      bridge.holdStatus!();
-      await tick();
+      expect(await screen.findByRole("button", { name: "Deleting…" })).toBeTruthy();
+      expect(removed()).toEqual([]);
       bridge.holdDelete!();
-
-      await screen.findByRole("dialog", { name: /Its worktrees/ });
-      await waitFor(() => expect(sweepRow("/w/api").textContent).toContain("uncommitted changes"));
-      expect(branchBox("/w/api").checked).toBe(false);
-    });
-
-    it("does not reopen itself when a row fails after the dialog was dismissed", async () => {
-      bridge.refuse = new Set([AUTH_API]);
-      bridge.holdRemove = () => {};
-      await toSweep();
-      choose("/w/api", "Remove");
-      fireEvent.click(screen.getByRole("button", { name: "Remove 1 worktree" }));
-
-      fireEvent.click(screen.getByRole("button", { name: "Keep all" }));
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-      bridge.holdRemove!();
-
-      await waitFor(() => expect(bridge.calls.some((c) => c.cmd.startsWith("remove_worktree"))).toBe(true));
-      await tick();
-      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(removed().map((c) => c.args.worktreePath)).toEqual([AUTH_WEB]);
     });
 
     // The one consequence git has nothing to say about: removal tears down the
-    // PTYs under the worktree, and only the sweep asks, since only it removes.
+    // PTYs under the worktree, so the row that can remove it says so.
     it("says what a removal will stop, per row", async () => {
       bridge.running = { [AUTH_WEB]: 2 };
-      render(() => <Listed spaces={SPACES} query="" countRunning={(p) => Promise.resolve(bridge.running[p] ?? 0)} />);
-      await screen.findByText("Auth");
-      fireEvent.contextMenu(row("Auth"));
-      pointerClick(await screen.findByText("Delete…"));
-      await screen.findByRole("dialog", { name: "Delete Auth?" });
-      // Not on the confirm: it removes nothing, so it has nothing to stop.
-      expect(screen.getByRole("dialog").textContent).not.toContain("terminal tab");
-      fireEvent.click(screen.getByRole("button", { name: "Delete Topic" }));
-
-      await screen.findByRole("dialog", { name: /Its worktrees/ });
-      await waitFor(() => expect(sweepRow("/w/web").textContent).toContain("2 terminal tabs running here"));
-      expect(sweepRow("/w/api").textContent).not.toContain("terminal tab");
+      await confirmDelete(undefined, (p) => Promise.resolve(bridge.running[p] ?? 0));
+      await waitFor(() => expect(wtRow("/w/web").textContent).toContain("2 terminal tabs running here"));
+      expect(wtRow("/w/api").textContent).not.toContain("terminal tab");
     });
 
     it("removes the rows it was told to and keeps the rest", async () => {
-      await toSweep();
-      choose("/w/web", "Remove");
-      fireEvent.click(screen.getByRole("button", { name: "Remove 1 worktree" }));
+      await confirmDelete();
+      expect(within(wtRow("/w/web")).getByRole("checkbox", { name: "Remove worktree auth" })).toBeTruthy();
+      choose("/w/web");
+      fireEvent.click(screen.getByRole("button", { name: "Delete Topic and 1 worktree" }));
 
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-      const removed = bridge.calls.filter((c) => c.cmd.startsWith("remove_worktree"));
-      expect(removed.map((c) => c.args.worktreePath)).toEqual([AUTH_WEB]);
+      expect(removed().map((c) => c.args.worktreePath)).toEqual([AUTH_WEB]);
       // Clean row, so the branch went with it.
-      expect(removed[0].cmd).toBe("remove_worktree_and_branch");
-      expect(removed[0].args).toMatchObject({ branch: "feat/auth", force: true });
+      expect(removed()[0].cmd).toBe("remove_worktree_and_branch");
+      expect(removed()[0].args).toMatchObject({ branch: "feat/auth", force: true });
     });
 
     it("never offers the branch of a worktree moved in, and removes only the worktree", async () => {
       bridge.topics = [{ ...AUTH, members: [AUTH.members[0], keepsBranch(AUTH.members[1])] }, PAY];
-      const dialog = await toSweep();
+      const dialog = await confirmDelete();
       expect(dialog.textContent).toContain("stays on its branch");
+      choose("/w/api");
+      choose("/w/web");
       expect(branchBox("/w/web")).toBeNull();
       expect(branchBox("/w/api")).toBeTruthy();
-      choose("/w/web", "Remove");
-      fireEvent.click(screen.getByRole("button", { name: "Remove 1 worktree" }));
+      choose("/w/api");
+      fireEvent.click(screen.getByRole("button", { name: "Delete Topic and 1 worktree" }));
 
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-      const removed = bridge.calls.filter((c) => c.cmd.startsWith("remove_worktree"));
-      expect(removed.map((c) => c.cmd)).toEqual(["remove_worktree"]);
-      expect(removed[0].args).toMatchObject({ worktreePath: AUTH_WEB });
+      expect(removed().map((c) => c.cmd)).toEqual(["remove_worktree"]);
+      expect(removed()[0].args).toMatchObject({ worktreePath: AUTH_WEB });
       expect(bridge.calls.some((c) => c.cmd === "delete_remote_branch")).toBe(false);
     });
 
-    it("keeps going when one row refuses, and leaves that row on screen", async () => {
+    it("keeps going when one row refuses, and offers that row again on its own", async () => {
       bridge.refuse = new Set([AUTH_API]);
-      await toSweep();
-      choose("/w/api", "Remove");
-      choose("/w/web", "Remove");
-      fireEvent.click(screen.getByRole("button", { name: "Remove 2 worktrees" }));
+      await confirmDelete();
+      choose("/w/api");
+      choose("/w/web");
+      fireEvent.click(screen.getByRole("button", { name: "Delete Topic and 2 worktrees" }));
 
-      await waitFor(() => expect(sweepRow("/w/api").textContent).toContain("worktree is locked"));
-      const removed = bridge.calls.filter((c) => c.cmd.startsWith("remove_worktree"));
-      expect(removed.map((c) => c.args.worktreePath).sort()).toEqual([AUTH_API, AUTH_WEB].sort());
-      // Only the one that failed is still asking.
-      expect(sweepRow("/w/web")).toBeNull();
+      await screen.findByRole("dialog", { name: /Its worktrees/ });
+      await waitFor(() => expect(wtRow("/w/api").textContent).toContain("worktree is locked"));
+      expect(
+        removed()
+          .map((c) => c.args.worktreePath)
+          .sort(),
+      ).toEqual([AUTH_API, AUTH_WEB].sort());
+      expect(document.querySelector('[data-sweep="/w/web"]')).toBeNull();
+    });
+
+    it("does not reopen the retry when a row fails after it was dismissed", async () => {
+      bridge.refuse = new Set([AUTH_API]);
+      await confirmDelete();
+      choose("/w/api");
+      fireEvent.click(screen.getByRole("button", { name: "Delete Topic and 1 worktree" }));
+      await screen.findByRole("dialog", { name: /Its worktrees/ });
+
+      bridge.holdRemove = () => {};
+      choose("/w/api");
+      fireEvent.click(screen.getByRole("button", { name: "Remove 1 worktree" }));
+      fireEvent.click(screen.getByRole("button", { name: "Keep all" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      bridge.holdRemove!();
+
+      await tick();
+      expect(screen.queryByRole("dialog")).toBeNull();
     });
   });
 

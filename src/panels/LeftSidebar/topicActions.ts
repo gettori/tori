@@ -66,7 +66,12 @@ export function createTopicActions(host: TopicActionsHost) {
   // The delete confirm and the sweep that follows it, both carrying the same
   // per-member risk rows: the confirm fetches them, the sweep inherits them
   // rather than asking git the same question twice in a row.
-  const [deleteReq, setDeleteReq] = createSignal<{ topic: Topic; members: MemberRisk[] } | null>(null);
+  const [deleteReq, setDeleteReq] = createSignal<{
+    topic: Topic;
+    members: MemberRisk[];
+    running: Record<string, number>;
+    busy: boolean;
+  } | null>(null);
   const [sweepReq, setSweepReq] = createSignal<{
     topic: Topic;
     members: SweepMember[];
@@ -351,7 +356,7 @@ export function createTopicActions(host: TopicActionsHost) {
   // asked nothing: its row shows its state instead.
   function openDelete(topic: Topic) {
     statuses = {};
-    setDeleteReq({ topic, members: risks(topic) });
+    setDeleteReq({ topic, members: risks(topic), running: {}, busy: false });
     const fold = (repoPath: string, s: { dirty: boolean; unpushed: boolean }) => {
       statuses[repoPath] = s;
       const same = (r: { topic: Topic } | null) => !!r && r.topic.id === topic.id;
@@ -360,36 +365,36 @@ export function createTopicActions(host: TopicActionsHost) {
     };
     for (const m of risks(topic)) {
       if (!m.worktreePath) continue;
+      void host
+        .countRunning?.(m.worktreePath)
+        ?.then((n) =>
+          setDeleteReq((r) =>
+            r && r.topic.id === topic.id ? { ...r, running: { ...r.running, [m.repoPath]: n } } : r,
+          ),
+        );
       invoke<{ dirty: boolean; unpushed: boolean }>("worktree_status", { path: m.worktreePath })
         .then((s) => fold(m.repoPath, { dirty: s.dirty, unpushed: s.unpushed }))
         .catch(() => fold(m.repoPath, { dirty: false, unpushed: false }));
     }
   }
 
-  // The record is gone; so is every store keyed by it, before the selection
-  // changes, so nothing persists the key back on the way out. Only then are the
-  // worktrees offered: a sweep opened before the delete could be answered for a
-  // Topic the delete then refused to remove.
-  async function remove(topic: Topic, members: MemberRisk[]) {
-    setDeleteReq(null);
+  // The record goes first, and only then the worktrees chosen in the same
+  // dialog: removing them before a delete that is then refused would leave a
+  // Topic pointing at worktrees that are gone. A removal that fails reopens on
+  // its own row in the sweep, with git's reason.
+  async function remove(topic: Topic, members: MemberRisk[], choices: SweepChoice[]) {
+    setDeleteReq((r) => (r ? { ...r, busy: true } : r));
     try {
       await discard(topic);
     } catch (e) {
+      setDeleteReq(null);
       setError(String(e));
       return;
     }
-    const left = withStatuses(members).filter((m): m is SweepMember => !!m.worktreePath);
-    if (!left.length) return;
-    setSweepReq({ topic, members: left, busy: false, failures: {}, running: {} });
-    // Asked once the sweep exists rather than with the confirm: the count is
-    // about what a removal stops, and the confirm removes nothing.
-    for (const m of left) {
-      void host
-        .countRunning?.(m.worktreePath)
-        ?.then((n) =>
-          setSweepReq((r) => (r && r.topic.id === topic.id ? { ...r, running: { ...r.running, [m.repoPath]: n } } : r)),
-        );
-    }
+    const failures = await removeWorktrees(topic.branch, choices);
+    setDeleteReq(null);
+    const stuck = withStatuses(members).filter((m): m is SweepMember => !!m.worktreePath && !!failures[m.repoPath]);
+    if (stuck.length) setSweepReq({ topic, members: stuck, busy: false, failures, running: {} });
   }
 
   async function discard(topic: Topic) {
@@ -407,16 +412,13 @@ export function createTopicActions(host: TopicActionsHost) {
 
   // Every row through the same purge-then-remove helper as Remove repository,
   // concurrently and settled rather than raced: one repo refusing must not keep
-  // the others' worktrees. What failed stays on screen with git's reason.
-  async function sweep(choices: SweepChoice[]) {
-    const req = sweepReq();
-    if (!req) return;
-    setSweepReq({ ...req, busy: true, failures: {} });
+  // the others' worktrees. Answers why each failed one did, by repo path.
+  async function removeWorktrees(branch: string, choices: SweepChoice[]): Promise<Record<string, string>> {
     const results = await Promise.allSettled(
       choices.map((c) =>
         removeMemberWorktree(
           { repoPath: c.repoPath, worktreePath: c.worktreePath },
-          { branch: req.topic.branch, deleteBranch: c.deleteBranch },
+          { branch, deleteBranch: c.deleteBranch },
         ),
       ),
     );
@@ -424,6 +426,16 @@ export function createTopicActions(host: TopicActionsHost) {
     results.forEach((r, i) => {
       if (r.status === "rejected") failures[choices[i].repoPath] = String(r.reason);
     });
+    return failures;
+  }
+
+  // The retry for what the delete could not remove. What failed again stays on
+  // screen with git's reason.
+  async function sweep(choices: SweepChoice[]) {
+    const req = sweepReq();
+    if (!req) return;
+    setSweepReq({ ...req, busy: true, failures: {} });
+    const failures = await removeWorktrees(req.topic.branch, choices);
     const stuck = req.members.filter((m) => failures[m.repoPath]);
     // "Keep all" stays live while the removals run, so a dismissed dialog must
     // not be reopened by a row that failed after the user had walked away.

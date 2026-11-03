@@ -71,7 +71,7 @@ const ATTACHED = [
 const member = (repoPath: string, order: number) => ({
   repoPath,
   displayName: repoPath.split("/").pop()!,
-  worktreePath: null,
+  worktreePath: `${repoPath}/.tori/worktrees/topic`,
   state: { kind: "present" },
   order,
 });
