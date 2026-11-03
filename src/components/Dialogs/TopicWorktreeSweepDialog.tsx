@@ -1,10 +1,8 @@
-import { createSignal, For, Show } from "solid-js";
+import { For } from "solid-js";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
-import Checkbox from "../Checkbox/Checkbox";
 import Dialog from "../Dialog/Dialog";
-import SegmentedControl from "../SegmentedControl/SegmentedControl";
-import { RiskTags, type MemberRisk } from "./ConfirmDeleteTopic";
+import { RiskTags, SweepControls, createSweep, type SweepChoice, type SweepMember } from "./ConfirmDeleteTopic";
 
 // What happens to the worktrees a deleted Topic leaves behind, one row per
 // repository. `WorktreeRemoveDialog` asks the same question for a single
@@ -17,20 +15,7 @@ import { RiskTags, type MemberRisk } from "./ConfirmDeleteTopic";
 // checked and a row with uncommitted or unpushed work arrives unchecked, with
 // its tags beside it.
 
-/** A member the sweep can actually act on. Narrower than `MemberRisk` by the one
- *  field that matters here: a row with no worktree has nothing to offer, so the
- *  caller filters rather than every row asserting. */
-export type SweepMember = MemberRisk & { worktreePath: string };
-
-/** One row's answer. Only the rows being removed are handed back: a Keep row is
- *  the absence of an instruction, not an instruction. */
-export type SweepChoice = {
-  repoPath: string;
-  worktreePath: string;
-  deleteBranch: boolean;
-};
-
-type Answer = { remove: boolean; branch: boolean | null };
+export type { SweepChoice, SweepMember } from "./ConfirmDeleteTopic";
 
 export default function TopicWorktreeSweepDialog(props: {
   topicName: string;
@@ -47,28 +32,9 @@ export default function TopicWorktreeSweepDialog(props: {
   onApply: (choices: SweepChoice[]) => void;
   onClose: () => void;
 }) {
-  // Held here rather than per row: the status fills in async, which replaces the
-  // member objects, and a `<For>` keys on those. A row's own signal would reset
-  // itself the moment git answered about it.
-  const [answers, setAnswers] = createSignal<Record<string, Answer>>({});
-  const at = (m: MemberRisk): Answer => answers()[m.repoPath] ?? { remove: false, branch: null };
-  const set = (m: MemberRisk, next: Partial<Answer>) =>
-    setAnswers((prev) => ({ ...prev, [m.repoPath]: { ...at(m), ...next } }));
-
-  const clean = (m: MemberRisk) => m.dirty === false && m.unpushed === false;
-  // Untouched means "whatever the evidence says", so a status that lands after
-  // the dialog opened still moves the default; an explicit tick outranks it.
-  const branchOn = (m: MemberRisk) => !m.keepsBranch && (at(m).branch ?? clean(m));
-  const removing = () => props.members.filter((m) => at(m).remove);
-
-  const apply = () =>
-    props.onApply(
-      removing().map((m) => ({
-        repoPath: m.repoPath,
-        worktreePath: m.worktreePath,
-        deleteBranch: branchOn(m),
-      })),
-    );
+  const sweep = createSweep(() => props.members);
+  const removing = sweep.removing;
+  const apply = () => props.onApply(sweep.choices());
 
   return (
     <Dialog
@@ -98,36 +64,13 @@ export default function TopicWorktreeSweepDialog(props: {
                 <span class={styles.delEntryName}>{m.label}</span>
                 <RiskTags member={m} />
               </div>
-              <Show when={props.running?.[m.repoPath]}>
-                {(n) => (
-                  <div class={styles.sweepRunning}>
-                    {n()} terminal tab{n() === 1 ? "" : "s"} running here; removal stops {n() === 1 ? "it" : "them"}
-                  </div>
-                )}
-              </Show>
-              <div class={styles.sweepChoice}>
-                <SegmentedControl
-                  size="sm"
-                  aria-label={`${m.label} worktree`}
-                  value={at(m).remove ? "remove" : "keep"}
-                  onChange={(v) => set(m, { remove: v === "remove" })}
-                  options={[
-                    { value: "keep", label: "Keep" },
-                    { value: "remove", label: "Remove" },
-                  ]}
-                />
-                {/* A worktree moved in keeps a branch Tori never made. */}
-                <Show when={!m.keepsBranch}>
-                  <Checkbox
-                    class={styles.wtCheck}
-                    checked={branchOn(m)}
-                    disabled={!at(m).remove}
-                    onChange={(v) => set(m, { branch: v })}
-                    label={`Delete ${m.branch ?? props.branch}`}
-                  />
-                </Show>
-              </div>
-              <Show when={props.failures?.[m.repoPath]}>{(why) => <div class={styles.sweepError}>{why()}</div>}</Show>
+              <SweepControls
+                member={m}
+                sweep={sweep}
+                branch={props.branch}
+                running={props.running?.[m.repoPath]}
+                failure={props.failures?.[m.repoPath]}
+              />
             </div>
           )}
         </For>
