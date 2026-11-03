@@ -95,6 +95,10 @@ export function MenuRow(props: {
       // A refused row must not close the menu on its way to doing nothing.
       closeOnSelect={props.refusing ? false : props.closeOnSelect}
       onSelect={() => !props.refusing && props.onClick?.()}
+      // Kobalte selects on Enter's keydown; left to run, its keypress then
+      // clicks whatever the row's action focused, which for a confirm dialog is
+      // the confirm button.
+      onKeyDown={(e: KeyboardEvent) => e.key === "Enter" && e.preventDefault()}
     >
       {props.children}
     </Primitive.Item>
