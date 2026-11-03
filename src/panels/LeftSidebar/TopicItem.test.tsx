@@ -71,27 +71,6 @@ describe("TopicItem", () => {
     expect(outside.className).toContain(chipStyles.neutral);
   });
 
-  describe("the chips at rest", () => {
-    const quiet = (container: HTMLElement) =>
-      container.querySelector("[data-chip]")!.parentElement!.hasAttribute("data-quiet");
-
-    it("keeps their room but goes quiet on a row nobody is looking at", () => {
-      const { container } = mount(topic([member("/w/api", 0), member("/w/web", 1)]));
-      expect(container.querySelectorAll("[data-chip]").length).toBe(2);
-      expect(quiet(container)).toBe(true);
-    });
-
-    it("shows them on the selected row", () => {
-      const { container } = mount(topic([member("/w/api", 0)]), () => {}, { active: true });
-      expect(quiet(container)).toBe(false);
-    });
-
-    it("shows them while a member needs repair", () => {
-      const { container } = mount(topic([member("/w/api", 0), member("/w/web", 1, { kind: "worktree-missing" })]));
-      expect(quiet(container)).toBe(false);
-    });
-  });
-
   // The repair moved onto the member row (#159 phase 3). It was an actions strip
   // under the chips, which named the member in the button and still left the
   // seventh one, hidden behind the `+N`, with nothing to press.

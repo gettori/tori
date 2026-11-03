@@ -75,15 +75,6 @@
   margin-right: var(--tori-space-4);
 }
 
-.chips[data-quiet] {
-  visibility: hidden;
-}
-.item:hover .chips[data-quiet],
-.item:focus-within .chips[data-quiet],
-.item[data-expanded] .chips[data-quiet] {
-  visibility: visible;
-}
-
 /* The chip box and its neutral fallback live in MemberChip now; what stays here
    is the state badge it carries, which only this surface draws. */
 

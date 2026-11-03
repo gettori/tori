@@ -109,8 +109,6 @@ export default function TopicItem(props: {
   // The head carries the selection only while no member row can: a collapsed
   // Topic, or an open one whose active member has no row to light.
   const headSelected = () => !!props.active && (!open() || !members().some((m) => memberOpen(m.member)));
-  const memberNeedsRepair = () => members().some((m) => m.state.action != null);
-  const chipsHiddenAtRest = () => !props.active && !memberNeedsRepair();
 
   const drag = createDragReorder({
     keys: () => members().map((m) => m.member.repoPath),
@@ -155,7 +153,7 @@ export default function TopicItem(props: {
         </span>
         <span class={rows.rowEnd}>
           <Show when={!open()}>
-            <span class={styles.chips} data-quiet={chipsHiddenAtRest() ? "" : undefined}>
+            <span class={styles.chips}>
               <For each={shown()}>
                 {(m) => {
                   // Memoized, not bare accessors: the chip reads each of them in
