@@ -22,7 +22,7 @@ pub struct NewChat {
 }
 
 #[derive(Debug, Serialize, PartialEq)]
-pub struct Artefact {
+pub struct Artifact {
     path: String,
     name: String,
     size: u64,
@@ -30,9 +30,9 @@ pub struct Artefact {
 }
 
 #[derive(Debug, Serialize, Default)]
-pub struct Artefacts {
-    made: Vec<Artefact>,
-    added: Vec<Artefact>,
+pub struct Artifacts {
+    made: Vec<Artifact>,
+    added: Vec<Artifact>,
 }
 
 /// The id is joined onto the root, so anything but a plain name is refused
@@ -78,14 +78,14 @@ fn delete_in(root: &Path, id: &str) -> Result<(), String> {
 }
 
 #[tauri::command(async)]
-pub fn chat_artefacts(chat_id: String, transcripts: Vec<String>) -> Result<Artefacts, String> {
-    artefacts_in(&root(), &chat_id, &transcripts, &crate::attachments::dir())
+pub fn chat_artifacts(chat_id: String, transcripts: Vec<String>) -> Result<Artifacts, String> {
+    artifacts_in(&root(), &chat_id, &transcripts, &crate::attachments::dir())
 }
 
-fn artefacts_in(root: &Path, id: &str, transcripts: &[String], attachments: &Path) -> Result<Artefacts, String> {
+fn artifacts_in(root: &Path, id: &str, transcripts: &[String], attachments: &Path) -> Result<Artifacts, String> {
     let mut made = Vec::new();
     walk(&folder_of(root, id)?, &mut made);
-    let mut added: Vec<Artefact> = Vec::new();
+    let mut added: Vec<Artifact> = Vec::new();
     for transcript in transcripts {
         for holder in crate::attachments::holders_named_by(Path::new(transcript), attachments) {
             let mut files = Vec::new();
@@ -100,12 +100,12 @@ fn artefacts_in(root: &Path, id: &str, transcripts: &[String], attachments: &Pat
     for list in [&mut made, &mut added] {
         list.sort_by_key(|a| std::cmp::Reverse(a.modified));
     }
-    Ok(Artefacts { made, added })
+    Ok(Artifacts { made, added })
 }
 
 /// Dot entries are the agent's own state (`.claude`), not something it made
 /// for the user. Symlinks are skipped so a link to `/` cannot be walked.
-fn walk(dir: &Path, out: &mut Vec<Artefact>) {
+fn walk(dir: &Path, out: &mut Vec<Artifact>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -128,7 +128,7 @@ fn walk(dir: &Path, out: &mut Vec<Artefact>) {
             .ok()
             .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
             .map_or(0, |d| d.as_millis() as u64);
-        out.push(Artefact {
+        out.push(Artifact {
             path: entry.path().to_string_lossy().into_owned(),
             name,
             size: meta.len(),
@@ -147,7 +147,7 @@ mod tests {
         dir
     }
 
-    fn names(list: &[Artefact]) -> Vec<&str> {
+    fn names(list: &[Artifact]) -> Vec<&str> {
         list.iter().map(|a| a.name.as_str()).collect()
     }
 
@@ -178,7 +178,7 @@ mod tests {
     }
 
     #[test]
-    fn artefacts_list_the_folder_without_dot_entries_and_the_attachments_its_sessions_name() {
+    fn artifacts_list_the_folder_without_dot_entries_and_the_attachments_its_sessions_name() {
         let root = temp_root("list");
         let chat = new_in(&root).unwrap();
         let folder = PathBuf::from(&chat.folder);
@@ -200,7 +200,7 @@ mod tests {
         let fork = root.join("fork.jsonl");
         std::fs::write(&fork, format!("{{\"text\":\"{}\"}}", named.display())).unwrap();
 
-        let got = artefacts_in(
+        let got = artifacts_in(
             &root,
             &chat.id,
             &[transcript.display().to_string(), fork.display().to_string()],

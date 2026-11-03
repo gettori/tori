@@ -12,7 +12,7 @@ const bridge = vi.hoisted(() => ({
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
-    if (cmd === "chat_artefacts") return Promise.resolve(bridge.answer);
+    if (cmd === "chat_artifacts") return Promise.resolve(bridge.answer);
     return Promise.resolve(null);
   },
 }));
@@ -23,11 +23,11 @@ vi.mock("@tauri-apps/api/event", () => ({
   },
 }));
 
-const { default: ArtefactsPanel } = await import("./ArtefactsPanel");
+const { default: ArtifactsPanel } = await import("./ArtifactsPanel");
 const { onWith, OPEN_IN_EDITOR } = await import("../../utils/events");
 
 const file = (path: string, size: number) => ({ path, name: path.split("/").pop(), size, modified: 1 });
-const lists = () => bridge.calls.filter((c) => c.cmd === "chat_artefacts").length;
+const lists = () => bridge.calls.filter((c) => c.cmd === "chat_artifacts").length;
 
 beforeEach(() => {
   bridge.calls.length = 0;
@@ -35,13 +35,13 @@ beforeEach(() => {
   bridge.answer = { made: [], added: [] };
 });
 
-describe("ArtefactsPanel", () => {
+describe("ArtifactsPanel", () => {
   it("lists what the chat made and what was added, and opens a row as a file tab", async () => {
     bridge.answer = {
       made: [file(`${ROOT}/plan.md`, 1200), file(`${ROOT}/rows.csv`, 2_200_000)],
       added: [file("/cfg/attachments/h1/brief.pdf", 30)],
     };
-    render(() => <ArtefactsPanel chatId="c1" root={ROOT} />);
+    render(() => <ArtifactsPanel chatId="c1" root={ROOT} />);
     const made = await screen.findByRole("list", { name: "Made in this chat" });
     expect(made.textContent).toContain("plan.md");
     expect(made.textContent).toContain("Markdown · 1.2 KB");
@@ -56,7 +56,7 @@ describe("ArtefactsPanel", () => {
   });
 
   it("re-lists when the chat's folder changes, and only then", async () => {
-    render(() => <ArtefactsPanel chatId="c1" root={ROOT} />);
+    render(() => <ArtifactsPanel chatId="c1" root={ROOT} />);
     await screen.findByText("Nothing here yet");
     await waitFor(() => expect(bridge.listeners["fs://changed"]?.length).toBe(1));
     const before = lists();

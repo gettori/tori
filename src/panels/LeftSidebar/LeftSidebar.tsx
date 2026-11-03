@@ -2494,7 +2494,7 @@ export default function LeftSidebar(props: {
   const selectedChatId = () => (props.selected?.kind === "chat" ? (props.selected.chatId ?? null) : null);
 
   // A chat opens on its newest session, or on the one a tab or a notification
-  // named, so the panels that follow a session (Artefacts' writing mark) have one.
+  // named, so the panels that follow a session (Artifacts' writing mark) have one.
   function openChat(c: Chat, session = c.sessions[0]) {
     setActiveSpaceName(GLOBAL_KEY);
     if (selectedChatId() === c.id && (!session || props.selected?.sessionId === session.id)) return;
