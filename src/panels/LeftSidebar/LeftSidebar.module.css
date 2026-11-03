@@ -56,19 +56,6 @@
   min-height: calc(40px * var(--ui-scale));
 }
 
-/* The one thing this column makes, in a filled box beside the bare filter
-   glyph: the pair reads as add-then-find, and the fill is what says which of
-   the two acts rather than reveals. */
-.headAdd {
-  margin-left: auto;
-  color: var(--fg-muted);
-  background: var(--neutral-subtle);
-}
-
-.headAdd:hover {
-  color: var(--fg-default);
-}
-
 /* Holds the right edge while the field is closed, and gives way to it when it
    opens, since a growing field leaves no free space for the auto margin.
    General sibling rather than adjacent: the field sits between the two while
@@ -76,10 +63,6 @@
 .searchToggle {
   margin-left: auto;
   color: var(--fg-subtle);
-}
-
-.headAdd ~ .searchToggle {
-  margin-left: 0;
 }
 
 .searchToggle:hover {

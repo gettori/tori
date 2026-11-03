@@ -2601,10 +2601,20 @@ export default function LeftSidebar(props: {
     { label: "Delete space", danger: true, onClick: () => openDeleteSpace(g) },
   ];
 
-  // Global has no folder to make things in and no name to change, so its menu
-  // is how it looks and why that is all.
+  // Global has no folder to make projects in and no name to change, so its
+  // menu makes what Global holds and edits how it looks.
   const globalMenu = (): MenuItem[] => [
     { heading: spaceMenuHead(globalLook()) },
+    { separator: true },
+    { label: "New chat", icon: SquarePen, onClick: () => void startChat() },
+    { label: "New topic", onClick: () => topicActions.openNew() },
+    { separator: true },
+    {
+      label: "Attach folder…",
+      icon: FolderInput,
+      note: "Use a folder from anywhere on disk. Nothing is moved.",
+      onClick: () => void attachFolder(),
+    },
     { separator: true },
     { label: "Edit icon and colour", note: "Global is built in. It can't be renamed or deleted.", onClick: editGlobal },
   ];
@@ -3404,17 +3414,6 @@ export default function LeftSidebar(props: {
   const globalTopicsCollapsed = () => expanded().has(gtkey);
   const gpkey = `gp:${GLOBAL_KEY}`;
   const globalProjectsCollapsed = () => expanded().has(gpkey);
-  const globalAddMenu = (): MenuItem[] => [
-    { label: "New chat", icon: SquarePen, onClick: () => void startChat() },
-    { label: "New topic", onClick: () => topicActions.openNew() },
-    { separator: true },
-    {
-      label: "Attach folder…",
-      icon: FolderInput,
-      note: "Use a folder from anywhere on disk. Nothing is moved.",
-      onClick: () => void attachFolder(),
-    },
-  ];
   const globalTopics = createMemo(() => topics().filter(inGlobalTree));
   const shownGlobalTopics = createMemo(() => globalTopics().filter((t) => matchesTopic(t, query())));
   const counted = (shown: number, all: number) => (q() ? `${shown} of ${all}` : `${all}`);
@@ -4019,6 +4018,17 @@ export default function LeftSidebar(props: {
         <Show when={inGlobal() || activeSpace()}>
           <div class={styles.spaceHeader} onContextMenu={inGlobal() ? undefined : onSpaceAreaMenu}>
             <span class={styles.spaceHeaderName}>{headingName()}</span>
+            <Show when={inGlobal()}>
+              <Dropdown as="span" wrapper class={styles.spaceHeaderMenu} items={globalMenu()} placement="bottom-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class={styles.spaceHeaderMenuBtn}
+                  tooltip={`Actions for ${GLOBAL_NAME}`}
+                  icon={<Icon icon={Ellipsis} />}
+                />
+              </Dropdown>
+            </Show>
             <Show when={activeSpace()}>
               {(g) => (
                 <Dropdown
@@ -4057,18 +4067,6 @@ export default function LeftSidebar(props: {
             onInput={(e) => setQuery(e.currentTarget.value)}
             onKeyDown={(e) => e.key === "Escape" && closeSearch()}
           />
-        </Show>
-        <Show when={inGlobal()}>
-          <Dropdown as="span" wrapper items={globalAddMenu()} placement="bottom-end">
-            <Button
-              class={styles.headAdd}
-              variant="ghost"
-              size="md"
-              aria-label={`Add to ${GLOBAL_NAME}`}
-              tooltip={`Add to ${GLOBAL_NAME}`}
-              icon={<Icon icon={Plus} />}
-            />
-          </Dropdown>
         </Show>
         {/* Only while the field is shut: open, the field is the affordance and
             the icon would be a second one beside it, in the space it wants. */}

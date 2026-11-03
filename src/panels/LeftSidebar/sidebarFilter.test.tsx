@@ -87,18 +87,16 @@ describe("the sidebar filter", () => {
     expect(noToggle()).toBeNull();
   });
 
-  it("offers an Add button in Global only, before the filter", async () => {
+  it("offers Global's menu beside its name, like a space's", async () => {
     mount();
     await waitFor(() => expect(screen.getByText("proj")).toBeTruthy());
-    expect(screen.queryByRole("button", { name: "Add to Global" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Actions for Global" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Global" }));
-    const add = await screen.findByRole("button", { name: "Add to Global" });
-    // Before the filter in the DOM, which is also the order a keyboard reaches
-    // them in.
-    expect(add.compareDocumentPosition(toggle()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const menu = await screen.findByRole("button", { name: "Actions for Global" });
+    expect(menu.compareDocumentPosition(toggle()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-    pointerClick(add);
+    pointerClick(menu);
     pointerClick(await screen.findByRole("menuitem", { name: "New topic" }));
     expect(await screen.findByRole("dialog", { name: "New Topic" })).toBeTruthy();
   });
