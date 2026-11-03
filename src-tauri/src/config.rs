@@ -2027,6 +2027,9 @@ pub fn delete_space(app: AppHandle, path: String) -> Result<(), String> {
     let raw: RawConfig = toml::from_str(&text).map_err(|e| e.to_string())?;
     let dir = do_delete_space(raw.discovery.roots.first().map(|s| s.as_str()), &path)?;
     std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
+    if let Some(name) = dir.file_name().and_then(|n| n.to_str()) {
+        crate::chats::delete_space_chats(name)?;
+    }
     let _ = app.emit("config://changed", ());
     Ok(())
 }

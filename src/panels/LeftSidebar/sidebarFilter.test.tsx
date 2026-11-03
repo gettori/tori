@@ -64,7 +64,7 @@ const { emit, FOCUS_SEARCH } = await import("../../utils/events");
 const mount = () => render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={[]} />);
 const toggle = () => screen.getByRole("button", { name: "Filter" });
 const noToggle = () => screen.queryByRole("button", { name: "Filter" });
-const field = () => screen.queryByPlaceholderText(/Filter projects/) as HTMLInputElement | null;
+const field = () => screen.queryByPlaceholderText(/Filter chats, topics and projects/) as HTMLInputElement | null;
 
 describe("the sidebar filter", () => {
   beforeEach(() => {

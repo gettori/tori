@@ -136,17 +136,34 @@ const CHAT_TITLES = [
 ];
 
 // `last_active` in epoch seconds, the unit the host sends.
-const CHAT_SESSIONS = CHAT_TITLES.map((title, i) => ({
-  id: `chat-s${i}`,
-  path: `/transcripts/chat-s${i}.jsonl`,
-  cwd: `${CHATS}/c${i}`,
+const WORK_CHAT_TITLES = [
+  "Why does the api cold start take 4s",
+  "Draft the incident write-up",
+  "Compare queue libraries for the worker",
+  "Summarise last sprint's PR comments",
+  "Name the new billing service",
+  "Explain the payments retry flow",
+  "Review the terraform plan output",
+  "Write release notes for 3.2",
+];
+
+// Home's chats live under `.home`, a space's under its name.
+const chatSession = (dir: string, title: string, i: number, at: number) => ({
+  id: `chat-${dir}-${i}`,
+  path: `/transcripts/chat-${dir}-${i}.jsonl`,
+  cwd: `${CHATS}/${dir}/c-${dir}-${i}`,
   branch: "",
   title,
   name: null,
-  last_active: NOW_S - i * 7 * HOUR_S,
-  created_at: NOW_S - i * 7 * HOUR_S,
+  last_active: at,
+  created_at: at,
   agent: "claude",
-}));
+});
+
+const CHAT_SESSIONS = [
+  ...CHAT_TITLES.map((t, i) => chatSession(".home", t, i, NOW_S - i * 7 * HOUR_S)),
+  ...WORK_CHAT_TITLES.map((t, i) => chatSession("work", t, i, NOW_S - i * 5 * HOUR_S)),
+];
 
 const CONFIG = {
   path: "/Users/me/.config/tori/tori.toml",
@@ -179,9 +196,9 @@ function stubHost() {
 const BUSY = [8, 13];
 const LIVE_TABS = BUSY.map((i) => ({
   id: `tab-${i}`,
-  workspace: `chat:c${i}`,
+  workspace: `chat:c-.home-${i}`,
   kind: "agent",
-  sessionId: `chat-s${i}`,
+  sessionId: `chat-.home-${i}`,
   agent: "claude",
   state: "live",
 }));
@@ -191,7 +208,7 @@ function Sidebar(props: { space: string }) {
   stubHost();
   const [sel, setSel] = createSignal<Selection | null>(null);
   setTimeout(
-    () => noteDots(BUSY.map((i) => ({ id: `chat-s${i}`, dot: "working", certainty: "inferred", home: null }))),
+    () => noteDots(BUSY.map((i) => ({ id: `chat-.home-${i}`, dot: "working", certainty: "inferred", home: null }))),
     800,
   );
   return (
@@ -214,5 +231,6 @@ type Story = StoryObj<typeof meta>;
  *  its cap, two busy chats kept past it. */
 export const Home: Story = {};
 
-/** A named space with 9 Topics and 14 projects, one of them with ten branches. */
+/** A named space with 8 chats, 9 Topics and 14 projects, one of them with ten
+ *  branches. */
 export const Space: Story = { args: { space: "work" } };

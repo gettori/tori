@@ -141,7 +141,7 @@ describe("a space with nothing in it", () => {
     mount();
     await waitFor(() => expect(screen.getByText("proj")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Filter" }));
-    fireEvent.input(screen.getByPlaceholderText(/Filter projects/), { target: { value: "zzz" } });
+    fireEvent.input(screen.getByPlaceholderText(/Filter chats, topics and projects/), { target: { value: "zzz" } });
     await waitFor(() => expect(screen.getByText("no matches in this space")).toBeTruthy());
     expect(screen.queryByRole("button", { name: "Add" })).toBeNull();
   });

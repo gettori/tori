@@ -103,8 +103,9 @@ import {
 } from "../../utils/agentHealth";
 import { runExitEffects } from "../../utils/jobExit";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
-import { NEW_CHAT_NAME, newChat as makeChat } from "../../utils/chats";
+import { NEW_CHAT_NAME, chatById, newChat as makeChat } from "../../utils/chats";
 import {
+  CHAT_KEY_PREFIX,
   chatKey,
   isChatKey,
   isTopicKey,
@@ -1926,7 +1927,7 @@ export default function Terminal(props: {
   // tab opens once the chat's folder exists, so it cannot spawn ahead of it.
   function sendToNewChat(t: OpenTerm): string {
     const tabId = chatId();
-    makeChat()
+    makeChat(chatById(t.workspace.slice(CHAT_KEY_PREFIX.length))?.space ?? null)
       .then((c) => {
         emitWith<OpenChat>(OPEN_CHAT, { id: c.id });
         openChatTab(

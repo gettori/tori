@@ -498,7 +498,7 @@ export default function LeftSidebar(props: {
   }
   /** The tree is showing Global. With no named space it is all there is. */
   const inGlobal = () => activeSpaceName() === GLOBAL_KEY || (!!config() && !hasSpaces());
-  const filterNoun = () => (inGlobal() ? "topics, folders and chats" : "projects");
+  const filterNoun = () => (inGlobal() ? "topics, folders and chats" : "chats, topics and projects");
   /** What the tree's heading says, which is whatever the strip has lit. */
   const headingName = () => (inGlobal() ? GLOBAL_NAME : (activeSpace()?.name ?? "Spaces"));
   const globalLook = () => ({
@@ -574,6 +574,12 @@ export default function LeftSidebar(props: {
   function restoreInSpace(g: Group): boolean {
     const back = rememberedInSpace(g.name);
     if (!back) return false;
+    if (back.kind === "chat") {
+      const c = chats().find((c) => c.id === back.chatId);
+      if (!c || chatSpace(c) !== g.name) return false;
+      props.onSelect(chatSelection(c, g.name));
+      return true;
+    }
     if (back.kind === "topic") {
       const f = topics().find((f) => f.id === back.topicId);
       if (!f || !inSpace(f, g.name)) return false;
@@ -611,8 +617,9 @@ export default function LeftSidebar(props: {
     const back = rememberedGlobal();
     if (back?.kind === "chat") {
       const c = chats().find((c) => c.id === back.chatId);
-      if (c) props.onSelect(chatSelection(c));
-      return !!c;
+      if (!c || chatSpace(c) !== GLOBAL_KEY) return false;
+      props.onSelect(chatSelection(c, GLOBAL_KEY));
+      return true;
     }
     if (back && back.kind !== "topic") return restoreUnit(globalAsSpace(), back);
     const f = back?.topicId ? topics().find((f) => f.id === back.topicId) : null;
@@ -1546,7 +1553,15 @@ export default function LeftSidebar(props: {
     setDeleteReq(null);
     const cmd = req.mode === "folder" ? "remove_folder" : req.mode === "project" ? "remove_project" : "delete_space";
     try {
-      if (req.mode === "space") await discardSpaceTopics(req.name);
+      if (req.mode === "space") {
+        await discardSpaceTopics(req.name);
+        for (const c of chats().filter((c) => c.space === req.name)) {
+          for (const s of c.sessions) await tearDownSession(s);
+          purgeWorkspace(chatKey(c.id));
+          forgetChat(c.id);
+          if (selectedChatId() === c.id) props.onSelect(null);
+        }
+      }
       emitWith<PurgeUnderPath>(PURGE_UNDER_PATH, { path: req.path });
       await invoke(cmd, { path: req.path });
       dropSelectionUnder((f) => isUnderPath(f, req.path));
@@ -2503,10 +2518,15 @@ export default function LeftSidebar(props: {
 
   // A chat opens on its newest session, or on the one a tab or a notification
   // named, so the panels that follow a session (Artifacts' writing mark) have one.
+  // Where a chat lists: its own space, or Home when it has none or its space
+  // is gone, the same rule a Topic follows.
+  const chatSpace = (c: Chat) => (c.space && !goneSpace(c.space) ? c.space : GLOBAL_KEY);
+  const chatAtKey = (key: string) => chats().find((c) => chatKey(c.id) === key);
+
   function openChat(c: Chat, session = c.sessions[0]) {
-    setActiveSpaceName(GLOBAL_KEY);
+    setActiveSpaceName(chatSpace(c));
     if (selectedChatId() === c.id && (!session || props.selected?.sessionId === session.id)) return;
-    props.onSelect(chatSelection(c, session));
+    props.onSelect(chatSelection(c, chatSpace(c), session));
   }
 
   // A chat picked before its first send has no session yet; it takes the first
@@ -2518,9 +2538,9 @@ export default function LeftSidebar(props: {
     if (c?.sessions.length) untrack(() => openChat(c));
   });
 
-  async function startChat() {
+  async function startChat(space: string | null) {
     try {
-      const c = await newChat();
+      const c = await newChat(space);
       openChat(c);
       emitWith<DraftIntoNew>(DRAFT_INTO_NEW, { workspace: chatKey(c.id), root: c.folder, projectName: NEW_CHAT_NAME });
     } catch (e) {
@@ -2547,7 +2567,7 @@ export default function LeftSidebar(props: {
     if (!ok) return;
     try {
       for (const s of c.sessions) await tearDownSession(s);
-      await invoke("chat_delete", { chatId: c.id });
+      await invoke("chat_delete", { folder: c.folder });
       purgeWorkspace(chatKey(c.id));
       forgetChat(c.id);
       if (selectedChatId() === c.id) props.onSelect(null);
@@ -2593,6 +2613,7 @@ export default function LeftSidebar(props: {
   const spaceMenu = (g: Space): MenuItem[] => [
     { heading: spaceMenuHead(g) },
     { separator: true },
+    { label: "New chat", onClick: () => void startChat(g.name) },
     { label: `New in “${g.name}”`, onClick: () => openNewProject(g) },
     { separator: true },
     {
@@ -2613,7 +2634,7 @@ export default function LeftSidebar(props: {
   const globalMenu = (): MenuItem[] => [
     { heading: spaceMenuHead(globalLook()) },
     { separator: true },
-    { label: "New chat", onClick: () => void startChat() },
+    { label: "New chat", onClick: () => void startChat(null) },
     { label: "New topic", onClick: () => topicActions.openNew() },
     { separator: true },
     {
@@ -3429,12 +3450,45 @@ export default function LeftSidebar(props: {
   const counted = (shown: number, all: number) => (q() ? `${shown} of ${all}` : `${all}`);
   const gckey = `gc:${GLOBAL_KEY}`;
   const globalChatsCollapsed = () => expanded().has(gckey);
-  const gcmkey = `gcm:${GLOBAL_KEY}`;
-  const shownChats = createMemo(() => {
+  const matchChats = (list: readonly Chat[]) => {
     const needle = q();
-    return needle ? chats().filter((c) => (c.name ?? NEW_CHAT_NAME).toLowerCase().includes(needle)) : chats();
+    return needle ? list.filter((c) => (c.name ?? NEW_CHAT_NAME).toLowerCase().includes(needle)) : [...list];
+  };
+  const homeChats = createMemo(() => chats().filter((c) => chatSpace(c) === GLOBAL_KEY));
+  const shownChats = createMemo(() => matchChats(homeChats()));
+  const spaceChats = createMemo(() => {
+    const g = activeSpace();
+    return g ? chats().filter((c) => chatSpace(c) === g.name) : [];
   });
+  const shownSpaceChats = createMemo(() => matchChats(spaceChats()));
   const chatStatus = (c: Chat) => bubbleFor((s) => s.folderPath === chatKey(c.id));
+
+  // A space's Chats group, Home's included: `space` keys its remembered open
+  // states and is where its + makes the next chat.
+  function chatGroup(space: () => string, all: () => Chat[]) {
+    const shown = createMemo(() => matchChats(all()));
+    const ckey = () => `gc:${space()}`;
+    const mkey = () => `gcm:${space()}`;
+    return (
+      <Show when={all().length > 0}>
+        <ChatList
+          chats={shown()}
+          count={counted(shown().length, all().length)}
+          filtered={!!q()}
+          open={!expanded().has(ckey())}
+          onToggle={() => toggle(ckey())}
+          moreOpen={expanded().has(mkey())}
+          onToggleMore={() => toggle(mkey())}
+          selectedId={selectedChatId()}
+          status={chatStatus}
+          rollupOf={(cs) => bubbleFor((s) => cs.some((c) => s.folderPath === chatKey(c.id)))}
+          menu={chatMenu}
+          onOpen={openChat}
+          onAdd={() => void startChat(space() === GLOBAL_KEY ? null : space())}
+        />
+      </Show>
+    );
+  }
 
   function projectFold(g: () => Group | null, list: () => Project[], key: () => string) {
     const capped = () => !q();
@@ -3485,7 +3539,7 @@ export default function LeftSidebar(props: {
   let offNewChat: (() => void) | undefined;
   onMount(async () => {
     offActivateSpace = onWith<ActivateSpace>(ACTIVATE_SPACE, ({ name }) => setActiveSpaceName(name));
-    offNewChat = onEvent(NEW_CHAT, () => void startChat());
+    offNewChat = onEvent(NEW_CHAT, () => void startChat(inGlobal() ? null : (activeSpace()?.name ?? null)));
     void ensureChatsRoot();
     await invoke("config_watch_start").catch(() => {});
     await invoke("sessions_watch_start").catch(() => {});
@@ -3865,8 +3919,11 @@ export default function LeftSidebar(props: {
       rollup={() => {
         const shown = inGlobal() && !props.railOnly;
         return bubbleFor((s) => {
-          if (isChatKey(s.folderPath))
+          if (isChatKey(s.folderPath)) {
+            const c = chatAtKey(s.folderPath);
+            if (c && chatSpace(c) !== GLOBAL_KEY) return false;
             return !shown || globalChatsCollapsed() || !shownChats().some((c) => chatKey(c.id) === s.folderPath);
+          }
           const t = s.home?.topic ? globalTopics().find((t) => t.id === s.home!.topic) : undefined;
           if (t) return !shown || globalTopicsCollapsed() || !matchesTopic(t, query());
           if (s.spaceName !== GLOBAL_KEY) return false;
@@ -4027,17 +4084,23 @@ export default function LeftSidebar(props: {
     // down to its rail, nothing of it is rendered, so all of its sessions
     // bubble to the tile.
     const isActive = () => !inGlobal() && !props.railOnly && activeSpace()?.name === g.name;
+    const chatHere = (s: LiveSessionStatus) => {
+      const c = chatAtKey(s.folderPath);
+      return !!c && chatSpace(c) === g.name;
+    };
+    const inThis = (s: LiveSessionStatus) => (isChatKey(s.folderPath) ? chatHere(s) : s.spaceName === g.name);
     return () =>
       isActive()
         ? bubbleFor((s) => {
-            if (s.spaceName !== g.name) return false;
+            if (!inThis(s)) return false;
+            if (isChatKey(s.folderPath)) return !shownSpaceChats().some((c) => chatKey(c.id) === s.folderPath);
             const topic = s.home?.topic;
             if (topic && spaceTopics().some((t) => t.id === topic))
               return !shownSpaceTopics().some((t) => t.id === topic);
             const p = g.projects.find((p) => p.branchUnits.some((u) => u.folderPath === s.folderPath));
             return p != null && !projectVisible(p);
           })
-        : bubbleFor((s) => s.spaceName === g.name);
+        : bubbleFor(inThis);
   }
 
   return (
@@ -4146,25 +4209,7 @@ export default function LeftSidebar(props: {
         fold={topicFold(`tm:${GLOBAL_KEY}`)}
         listing={(t) => (!inGlobalTree(t) ? null : goneSpace(t.space) ? "gone" : "listed")}
         actions={topicActions}
-        lead={
-          <Show when={chats().length > 0}>
-            <ChatList
-              chats={shownChats()}
-              count={counted(shownChats().length, chats().length)}
-              filtered={!!q()}
-              open={!globalChatsCollapsed()}
-              onToggle={() => toggle(gckey)}
-              moreOpen={expanded().has(gcmkey)}
-              onToggleMore={() => toggle(gcmkey)}
-              selectedId={selectedChatId()}
-              status={chatStatus}
-              rollupOf={(cs) => bubbleFor((s) => cs.some((c) => s.folderPath === chatKey(c.id)))}
-              menu={chatMenu}
-              onOpen={openChat}
-              onAdd={() => void startChat()}
-            />
-          </Show>
-        }
+        lead={chatGroup(() => GLOBAL_KEY, homeChats)}
         collapsed={globalTopicsCollapsed()}
         head={
           <GroupHead
@@ -4207,7 +4252,7 @@ export default function LeftSidebar(props: {
           </>
         }
         empty={
-          <Show when={!config()?.global?.projects.length && !chats().length}>
+          <Show when={!config()?.global?.projects.length && !homeChats().length}>
             <div class={`tree-empty ${styles.globalEmpty}`}>
               <p>Chats you start, folders you attach and Topics that cross spaces show up here.</p>
               <Button size="sm" icon={<Icon icon={FolderInput} />} onClick={() => void attachFolder()}>
@@ -4220,6 +4265,7 @@ export default function LeftSidebar(props: {
 
       <Show when={!inGlobal()}>
         <OverlayScroll class={styles.treeScroll} onContextMenu={onSpaceAreaMenu} data-spaces-tree>
+          {chatGroup(() => activeSpace()?.name ?? "", spaceChats)}
           <Show when={topicsGroupSpace()}>
             {(g) => {
               const open = () => !spaceTopicsCollapsed();
@@ -4250,29 +4296,24 @@ export default function LeftSidebar(props: {
                       fold={topicFold(`tm:${g().name}`)}
                     />
                   </Show>
-                  <Show when={activeProjects().length > 0}>
-                    <GroupHead
-                      label="Projects"
-                      count={counted(activeProjects().length, g().projects.length)}
-                      filtered={!!q()}
-                      open={!spaceProjectsCollapsed()}
-                      onToggle={() => toggle(spkey(g()))}
-                      end={statusBubble(() =>
-                        spaceProjectsCollapsed()
-                          ? bubbleForUnits(activeProjects().flatMap((p) => p.branchUnits))
-                          : null,
-                      )}
-                    />
-                  </Show>
                 </>
               );
             }}
           </Show>
-          {/* A space without Topics has no Projects heading to fold under. */}
-          <Show
-            when={topicsGroupSpace()}
-            fallback={<For each={activeProjects()}>{(p) => projectNode(activeSpace()!, p)}</For>}
-          >
+          {/* Non-empty only while a space is active, so `activeSpace()!` holds. */}
+          <Show when={activeProjects().length > 0}>
+            <GroupHead
+              label="Projects"
+              count={counted(activeProjects().length, activeSpace()!.projects.length)}
+              filtered={!!q()}
+              open={!spaceProjectsCollapsed()}
+              onToggle={() => toggle(spkey(activeSpace()!))}
+              end={statusBubble(() =>
+                spaceProjectsCollapsed() ? bubbleForUnits(activeProjects().flatMap((p) => p.branchUnits)) : null,
+              )}
+              addLabel={`New in “${activeSpace()!.name}”`}
+              onAdd={() => openNewProject(activeSpace()!)}
+            />
             <Show when={!spaceProjectsCollapsed()}>
               <For each={spaceFold.shown()}>{(p) => projectNode(activeSpace()!, p)}</For>
               {spaceFold.row()}
@@ -4283,7 +4324,7 @@ export default function LeftSidebar(props: {
             <Show
               when={!q() && activeSpace()}
               fallback={
-                <Show when={shownSpaceTopics().length === 0}>
+                <Show when={shownSpaceTopics().length === 0 && shownSpaceChats().length === 0}>
                   <EmptyRow>no matches in this space</EmptyRow>
                 </Show>
               }
@@ -4422,6 +4463,13 @@ export default function LeftSidebar(props: {
                 : undefined
           }
           topics={deleteReq()!.mode === "space" ? topics() : undefined}
+          chats={
+            deleteReq()!.mode === "space"
+              ? chats()
+                  .filter((c) => c.space === deleteReq()!.name)
+                  .map((c) => c.name ?? NEW_CHAT_NAME)
+              : undefined
+          }
           spaces={config()?.spaces}
           onConfirm={() => confirmDeleteSpace()}
           onCancel={() => setDeleteReq(null)}

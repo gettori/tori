@@ -145,11 +145,11 @@ describe("Global's attached folders", () => {
       expect(screen.getByRole("button", { name: "1 more project" })).toBeTruthy();
     });
 
-    it("lists every project in a space with no Topics", async () => {
+    it("folds a space's projects past six even without Topics", async () => {
       localStorage.setItem("tori.active-space.v1", "work");
       mount();
-      await waitFor(() => expect(projectNames("[data-spaces-tree]")).toHaveLength(8));
-      expect(screen.queryByRole("button", { name: /more projects/ })).toBeNull();
+      await waitFor(() => expect(projectNames("[data-spaces-tree]")).toHaveLength(6));
+      expect(screen.getByRole("button", { name: "2 more projects" })).toBeTruthy();
     });
   });
 
