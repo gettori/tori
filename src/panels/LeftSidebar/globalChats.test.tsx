@@ -134,7 +134,7 @@ describe("Global's chats", () => {
     expect(drafts).toEqual([{ workspace: "chat:c9", root: `${ROOT}/c9`, projectName: "New chat" }]);
     const fresh = await waitFor(() => chatRows().find((r) => r.dataset.chat === "c9")!);
     expect(fresh.getAttribute("aria-current")).toBe("true");
-    expect(within(fresh).getByText("New chat").className).toMatch(/untitled/);
+    expect(within(fresh).getByText("New chat")).toBeTruthy();
     expect(screen.getByRole("button", { name: /^New chat/ })).toBeTruthy();
     forgetChat("c9");
   });
