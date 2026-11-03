@@ -97,6 +97,7 @@ import {
   type OpenSettings,
   ACTIVATE_SPACE,
   type ActivateSpace,
+  NEW_CHAT,
 } from "../../utils/events";
 import { fetchRootIfStale } from "../../utils/remoteSync";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
@@ -193,6 +194,7 @@ import {
   Plus,
   TriangleAlert,
   SquareTerminal,
+  SquarePen,
   Unlink,
   Plug,
   ShieldAlert,
@@ -215,9 +217,24 @@ import {
 import { groupStacks, type StackEntry } from "./stacks";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import TopicList from "./TopicList";
+import ChatList from "./ChatList";
+import {
+  NEW_CHAT_NAME,
+  chatIdOf,
+  chatSelection,
+  chats,
+  chatsRoot,
+  ensureChatsRoot,
+  forgetChat,
+  newChat,
+  type Chat,
+} from "../../utils/chats";
+import { purgeWorkspace } from "../../utils/purgeWorkspace";
 import { createTopicActions } from "./topicActions";
 import { applyTopic, topics, watchTopics } from "../../utils/topicStore";
 import {
+  chatKey,
+  isChatKey,
   topicKey,
   topicSelection,
   chatRoot,
@@ -349,8 +366,9 @@ type ResolvedConfig = { path: string; roots: string[]; spaces: Space[]; global: 
 
 export type Selection = {
   // Absent means "unit": a selection persisted before Topics carried no kind.
-  kind?: "unit" | "topic";
+  kind?: "unit" | "topic" | "chat";
   topicId?: string;
+  chatId?: string;
   topicName?: string;
   // Present members' folders in order, and the one the editor, git and a spawn
   // run against. Null when no member is present; `folderPath` then mirrors "".
@@ -478,7 +496,7 @@ export default function LeftSidebar(props: {
   }
   /** The tree is showing Global. With no named space it is all there is. */
   const inGlobal = () => activeSpaceName() === GLOBAL_KEY || (!!config() && !hasSpaces());
-  const filterNoun = () => (inGlobal() ? "topics and folders" : "projects");
+  const filterNoun = () => (inGlobal() ? "topics, folders and chats" : "projects");
   /** What the tree's heading says, which is whatever the strip has lit. */
   const headingName = () => (inGlobal() ? GLOBAL_NAME : (activeSpace()?.name ?? "Spaces"));
   const globalLook = () => ({
@@ -589,6 +607,11 @@ export default function LeftSidebar(props: {
   // a Topic's members may have come or gone since.
   function restoreGlobal(): boolean {
     const back = rememberedGlobal();
+    if (back?.kind === "chat") {
+      const c = chats().find((c) => c.id === back.chatId);
+      if (c) props.onSelect(chatSelection(c));
+      return !!c;
+    }
     if (back && back.kind !== "topic") return restoreUnit(globalAsSpace(), back);
     const f = back?.topicId ? topics().find((f) => f.id === back.topicId) : null;
     if (!f || !inGlobalTree(f)) return false;
@@ -1118,6 +1141,12 @@ export default function LeftSidebar(props: {
   function selectFromStore(sessionId: string): boolean {
     const hit = findSession(sessionId);
     if (!hit) return false;
+    const root = chatsRoot();
+    const chat = root ? chats().find((c) => c.id === chatIdOf(hit.session.cwd, root)) : undefined;
+    if (chat) {
+      openChat(chat, hit.session);
+      return true;
+    }
     for (const g of treeSpaces()) {
       for (const p of g.projects) {
         const u = unitAt(p, hit.folder, hit.session.branch);
@@ -1174,6 +1203,7 @@ export default function LeftSidebar(props: {
       // A tab click is on the path of a switch the user is watching, so the
       // listing is fetched only for a session the store does not hold yet.
       if (selectFromStore(d.sessionId)) return;
+      if (isChatKey(d.folderPath)) return;
       await fetchSessions(d.folderPath);
       if (await selectSessionById(d.sessionId)) return;
     }
@@ -2438,24 +2468,97 @@ export default function LeftSidebar(props: {
     });
     if (!ok) return;
     try {
-      // The child goes first, and it is what releases the ownership claim (see
-      // `ChatHost::close`). Deleting the file under a live session would leave
-      // it writing a transcript nothing lists and holding an id nothing can
-      // reclaim - `chat_close` is a no-op for a session that is not live, so
-      // this is safe for every session, chat or not.
-      await invoke("chat_close", { sessionId: s.id, reason: "killed" }).catch(() => {});
-      void invoke("autopilot_closed_by_hand", { session: s.id }).catch(() => {});
-      // Any tab driving it closes too, rather than sitting on a transcript that
-      // no longer exists.
-      emitWith<SessionDeleted>(SESSION_DELETED, { sessionId: s.id });
-      await invoke("delete_session", { path: s.path, agent: s.agent ?? "claude" });
-      await invoke("checkpoint_prune", { repoPath: s.cwd, sessionId: s.id }).catch(() => {});
-      await invoke("hooks_status_prune", { sessionId: s.id }).catch(() => {});
+      await tearDownSession(s);
       await refreshSessions();
     } catch (e) {
       setError(String(e));
     }
   }
+
+  async function tearDownSession(s: SessionMeta) {
+    // The child goes first, and it is what releases the ownership claim (see
+    // `ChatHost::close`). Deleting the file under a live session would leave
+    // it writing a transcript nothing lists and holding an id nothing can
+    // reclaim - `chat_close` is a no-op for a session that is not live, so
+    // this is safe for every session, chat or not.
+    await invoke("chat_close", { sessionId: s.id, reason: "killed" }).catch(() => {});
+    void invoke("autopilot_closed_by_hand", { session: s.id }).catch(() => {});
+    // Any tab driving it closes too, rather than sitting on a transcript that
+    // no longer exists.
+    emitWith<SessionDeleted>(SESSION_DELETED, { sessionId: s.id });
+    await invoke("delete_session", { path: s.path, agent: s.agent ?? "claude" });
+    await invoke("checkpoint_prune", { repoPath: s.cwd, sessionId: s.id }).catch(() => {});
+    await invoke("hooks_status_prune", { sessionId: s.id }).catch(() => {});
+  }
+
+  const selectedChatId = () => (props.selected?.kind === "chat" ? (props.selected.chatId ?? null) : null);
+
+  // A chat opens on its newest session, or on the one a tab or a notification
+  // named, so the panels that follow a session (Artefacts' writing mark) have one.
+  function openChat(c: Chat, session = c.sessions[0]) {
+    setActiveSpaceName(GLOBAL_KEY);
+    if (selectedChatId() === c.id && (!session || props.selected?.sessionId === session.id)) return;
+    props.onSelect(chatSelection(c, session));
+  }
+
+  // A chat picked before its first send has no session yet; it takes the first
+  // one the listing turns up.
+  createEffect(() => {
+    const sel = props.selected;
+    if (sel?.kind !== "chat" || sel.sessionId) return;
+    const c = chats().find((c) => c.id === sel.chatId);
+    if (c?.sessions.length) untrack(() => openChat(c));
+  });
+
+  async function startChat() {
+    try {
+      const c = await newChat();
+      openChat(c);
+      emitWith<DraftIntoNew>(DRAFT_INTO_NEW, { workspace: chatKey(c.id), root: c.folder, projectName: NEW_CHAT_NAME });
+    } catch (e) {
+      setError(`Could not start a chat: ${e}`);
+    }
+  }
+
+  async function renameChat(c: Chat) {
+    const newest = c.sessions[0];
+    if (!newest) return;
+    const name = await askText("Rename chat:", c.name ?? "");
+    if (name === null) return;
+    await applySessionName(newest, name);
+  }
+
+  async function deleteChat(c: Chat) {
+    const name = c.name ?? NEW_CHAT_NAME;
+    const ok = await askConfirm({
+      title: `Delete ${name}?`,
+      message: "Its conversation and the files it made are removed. This cannot be undone.",
+      confirmLabel: "Delete chat",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      for (const s of c.sessions) await tearDownSession(s);
+      await invoke("chat_delete", { chatId: c.id });
+      purgeWorkspace(chatKey(c.id));
+      forgetChat(c.id);
+      if (selectedChatId() === c.id) props.onSelect(null);
+      await refreshSessions();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  const chatMenu = (c: Chat): MenuItem[] => [
+    {
+      label: "Rename…",
+      onClick: () => void renameChat(c),
+      refusing: !c.sessions.length,
+      note: c.sessions.length ? undefined : "Named from its first message",
+    },
+    { separator: true },
+    { label: "Delete chat", danger: true, onClick: () => void deleteChat(c) },
+  ];
 
   // --- per-node context menus ---
 
@@ -3302,6 +3405,7 @@ export default function LeftSidebar(props: {
   const gpkey = `gp:${GLOBAL_KEY}`;
   const globalProjectsCollapsed = () => expanded().has(gpkey);
   const globalAddMenu = (): MenuItem[] => [
+    { label: "New chat", icon: SquarePen, onClick: () => void startChat() },
     { label: "New topic", onClick: () => topicActions.openNew() },
     { separator: true },
     {
@@ -3314,6 +3418,13 @@ export default function LeftSidebar(props: {
   const globalTopics = createMemo(() => topics().filter(inGlobalTree));
   const shownGlobalTopics = createMemo(() => globalTopics().filter((t) => matchesTopic(t, query())));
   const counted = (shown: number, all: number) => (q() ? `${shown} of ${all}` : `${all}`);
+  const gckey = `gc:${GLOBAL_KEY}`;
+  const globalChatsCollapsed = () => expanded().has(gckey);
+  const shownChats = createMemo(() => {
+    const needle = q();
+    return needle ? chats().filter((c) => (c.name ?? NEW_CHAT_NAME).toLowerCase().includes(needle)) : chats();
+  });
+  const chatStatus = (c: Chat) => bubbleFor((s) => s.folderPath === chatKey(c.id));
 
   let unlistenConfig: UnlistenFn | undefined;
   let unlistenSessions: UnlistenFn | undefined;
@@ -3327,8 +3438,11 @@ export default function LeftSidebar(props: {
   let unlistenFetchError: UnlistenFn | undefined;
   let offFocus: (() => void) | undefined;
   let offActivateSpace: (() => void) | undefined;
+  let offNewChat: (() => void) | undefined;
   onMount(async () => {
     offActivateSpace = onWith<ActivateSpace>(ACTIVATE_SPACE, ({ name }) => setActiveSpaceName(name));
+    offNewChat = onEvent(NEW_CHAT, () => void startChat());
+    void ensureChatsRoot();
     await invoke("config_watch_start").catch(() => {});
     await invoke("sessions_watch_start").catch(() => {});
     await loadConfig();
@@ -3429,6 +3543,7 @@ export default function LeftSidebar(props: {
     unlistenFetchError?.();
     offFocus?.();
     offActivateSpace?.();
+    offNewChat?.();
   });
 
   // --- forge polling ---------------------------------------------------------
@@ -3699,6 +3814,8 @@ export default function LeftSidebar(props: {
       rollup={() => {
         const shown = inGlobal() && !props.railOnly;
         return bubbleFor((s) => {
+          if (isChatKey(s.folderPath))
+            return !shown || globalChatsCollapsed() || !shownChats().some((c) => chatKey(c.id) === s.folderPath);
           const t = s.home?.topic ? globalTopics().find((t) => t.id === s.home!.topic) : undefined;
           if (t) return !shown || globalTopicsCollapsed() || !matchesTopic(t, query());
           if (s.spaceName !== GLOBAL_KEY) return false;
@@ -3968,6 +4085,14 @@ export default function LeftSidebar(props: {
         </Show>
       </div>
 
+      <Show when={inGlobal()}>
+        <button type="button" class={styles.newChat} onClick={() => void startChat()}>
+          <Icon icon={SquarePen} />
+          <span class={styles.newChatLabel}>{NEW_CHAT_NAME}</span>
+          <kbd class={styles.newChatKey}>⌘N</kbd>
+        </button>
+      </Show>
+
       {/* Hidden rather than unmounted, unlike a space's tree: it hosts the
           Topic dialogs, which a Topic row in any space opens. */}
       <TopicList
@@ -3999,29 +4124,44 @@ export default function LeftSidebar(props: {
           />
         }
         tail={
-          <Show when={(config()?.global?.projects.length ?? 0) > 0}>
-            <GroupHead
-              label="Projects"
-              count={counted(globalProjects().length, config()?.global?.projects.length ?? 0)}
-              open={!globalProjectsCollapsed()}
-              onToggle={() => toggle(gpkey)}
-              end={statusBubble(() =>
-                globalProjectsCollapsed() ? bubbleFor((s) => s.spaceName === GLOBAL_KEY && !s.home?.topic) : null,
-              )}
-              addLabel="Attach folder…"
-              onAdd={() => void attachFolder()}
-            />
-            <Show when={!globalProjectsCollapsed()}>
-              <For each={globalProjects()} fallback={<EmptyRow>no matches in {GLOBAL_NAME}</EmptyRow>}>
-                {(p) => projectNode(globalAsSpace(), p)}
-              </For>
+          <>
+            <Show when={(config()?.global?.projects.length ?? 0) > 0}>
+              <GroupHead
+                label="Projects"
+                count={counted(globalProjects().length, config()?.global?.projects.length ?? 0)}
+                open={!globalProjectsCollapsed()}
+                onToggle={() => toggle(gpkey)}
+                end={statusBubble(() =>
+                  globalProjectsCollapsed() ? bubbleFor((s) => s.spaceName === GLOBAL_KEY && !s.home?.topic) : null,
+                )}
+                addLabel="Attach folder…"
+                onAdd={() => void attachFolder()}
+              />
+              <Show when={!globalProjectsCollapsed()}>
+                <For each={globalProjects()} fallback={<EmptyRow>no matches in {GLOBAL_NAME}</EmptyRow>}>
+                  {(p) => projectNode(globalAsSpace(), p)}
+                </For>
+              </Show>
             </Show>
-          </Show>
+            <Show when={chats().length > 0}>
+              <ChatList
+                chats={shownChats()}
+                count={counted(shownChats().length, chats().length)}
+                open={!globalChatsCollapsed()}
+                onToggle={() => toggle(gckey)}
+                selectedId={selectedChatId()}
+                status={chatStatus}
+                end={() => bubbleFor((s) => shownChats().some((c) => s.folderPath === chatKey(c.id)))}
+                menu={chatMenu}
+                onOpen={openChat}
+              />
+            </Show>
+          </>
         }
         empty={
-          <Show when={!config()?.global?.projects.length}>
+          <Show when={!config()?.global?.projects.length && !chats().length}>
             <div class={`tree-empty ${styles.globalEmpty}`}>
-              <p>Folders you attach and Topics that cross spaces show up here.</p>
+              <p>Chats you start, folders you attach and Topics that cross spaces show up here.</p>
               <Button size="sm" icon={<Icon icon={FolderInput} />} onClick={() => void attachFolder()}>
                 Attach folder…
               </Button>

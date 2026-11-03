@@ -90,8 +90,16 @@ function announce(scans: readonly FolderScan[]) {
 // the folder's stale list: read as "these sessions are gone" it would prune
 // stamps that are still current and blank a row that is still there.
 async function scan(folder: string): Promise<SessionMeta[] | null> {
-  return invoke<SessionMeta[]>("list_sessions", { folder }).catch(() => null);
+  const args = inclusive.has(folder) ? { folder, inclusive: true } : { folder };
+  return invoke<SessionMeta[]>("list_sessions", args).catch(() => null);
 }
+
+// Folders listed with every session nested under them, like the chats root,
+// whose sessions each sit one folder down.
+const inclusive = new Set<string>();
+
+const names = (folder: string, only: readonly string[]) =>
+  only.some((o) => o === folder || (inclusive.has(folder) && o.startsWith(`${folder.replace(/\/+$/, "")}/`)));
 
 /** List one folder now. The single-folder entry point, for a surface that has
  *  just revealed a folder and cannot wait for the next refresh. */
@@ -107,8 +115,10 @@ export async function fetchSessions(folder: string) {
 const inFlight = new Set<string>();
 
 /** Cover `folders`, listing only the ones the store has never seen. Folders it
- *  already holds are left to `refreshSessions`, which rescans the lot. */
-export async function trackFolders(folders: readonly string[]) {
+ *  already holds are left to `refreshSessions`, which rescans the lot.
+ *  `inclusive` lists each with every session nested under it. */
+export async function trackFolders(folders: readonly string[], opts?: { inclusive?: boolean }) {
+  if (opts?.inclusive) for (const f of folders) inclusive.add(f);
   const have = sessions();
   const missing = [...new Set(folders)].filter((f) => f && !(f in have) && !inFlight.has(f));
   if (missing.length === 0) return;
@@ -129,7 +139,7 @@ export async function trackFolders(folders: readonly string[]) {
  *  which is what this always did. */
 export async function refreshSessions(only?: readonly string[]) {
   const covered = Object.keys(sessions());
-  const folders = only ? covered.filter((f) => only.includes(f)) : covered;
+  const folders = only ? covered.filter((f) => names(f, only)) : covered;
   if (folders.length === 0) return;
   await fill(folders, false);
 }
@@ -196,4 +206,5 @@ export function resetSessionStoreForTests() {
   setSessions({});
   setHistorical({});
   inFlight.clear();
+  inclusive.clear();
 }

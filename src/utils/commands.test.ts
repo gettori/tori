@@ -23,6 +23,24 @@ describe("the canonical command table", () => {
     }
   });
 
+  it("opens a new chat on Cmd+N and a scratch buffer on Cmd+Shift+N", () => {
+    const fired = (shiftKey: boolean) =>
+      COMMANDS.find((c) =>
+        c.match?.({
+          code: "KeyN",
+          key: shiftKey ? "N" : "n",
+          metaKey: true,
+          shiftKey,
+          altKey: false,
+          ctrlKey: false,
+        } as KeyboardEvent),
+      )?.id;
+    expect(fired(false)).toBe("chat-new");
+    expect(fired(true)).toBe("editor-new-scratch");
+    expect(COMMANDS.find((c) => c.id === "chat-new")?.keys).toEqual(["⌘", "N"]);
+    expect(COMMANDS.find((c) => c.id === "editor-new-scratch")?.keys).toEqual(["⌘", "⇧", "N"]);
+  });
+
   it("has no two bindings that the same keystroke can fire", () => {
     // `dispatchHotkey` takes the FIRST binding whose `match` returns true, so a
     // second command answering the same keystroke is not a conflict anybody

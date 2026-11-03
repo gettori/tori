@@ -37,6 +37,7 @@ import {
   TAB_CYCLE,
   CLOSE_TAB,
   NEXT_WAITING_SESSION,
+  NEW_CHAT,
   READ_LAST_REPLY,
   READ_SELECTION,
   STOP_READING,
@@ -594,6 +595,16 @@ export const COMMANDS: Command[] = [
     run: () => emit(CLOSE_TAB),
   },
   {
+    id: "chat-new",
+    keys: ["⌘", "N"],
+    label: "New Chat",
+    sub: "A chat in Global, with no project.",
+    group: "session",
+    scope: "window",
+    match: cmd("n"),
+    run: () => emit(NEW_CHAT),
+  },
+  {
     id: "next-waiting",
     keys: ["⌘", "⇧", "A"],
     label: "Next Waiting Session",
@@ -643,19 +654,19 @@ export const COMMANDS: Command[] = [
   //
   // Almost no keys. CM6's own `Mod-s` stays the sole save key, which is why
   // Save is `editor` scope: a table-level binding would fire while a terminal
-  // had focus, saving a file nobody was looking at. The one exception is Cmd+N
-  // below, which is not a CM6 binding at all - it has to work with no buffer
-  // open, which is exactly when there is no keymap to hold it.
+  // had focus, saving a file nobody was looking at. The one exception is
+  // Cmd+Shift+N below, which is not a CM6 binding at all - it has to work with
+  // no buffer open, which is exactly when there is no keymap to hold it.
   {
     id: "editor-new-scratch",
-    keys: ["⌘", "N"],
+    keys: ["⌘", "⇧", "N"],
     label: "New Scratch Buffer",
     sub: "An untitled file, kept until you save it somewhere.",
     group: "editor",
     // `window` for the tab strip's reason: this opens an editor tab, and a
     // program running in the terminal keeps its own claim on the key.
     scope: "window",
-    match: cmd("n"),
+    match: cmdShift("n"),
     run: () => emit(EDITOR_NEW_SCRATCH),
   },
   {

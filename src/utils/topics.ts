@@ -187,6 +187,16 @@ export function isTopicKey(ws: string | null | undefined): boolean {
   return !!ws && ws.startsWith(TOPIC_KEY_PREFIX);
 }
 
+export const CHAT_KEY_PREFIX = "chat:";
+
+export function chatKey(id: string): string {
+  return CHAT_KEY_PREFIX + id;
+}
+
+export function isChatKey(ws: string | null | undefined): boolean {
+  return !!ws && ws.startsWith(CHAT_KEY_PREFIX);
+}
+
 /** The one workspace key for Tori's own command tabs, the group the dock draws.
  *  Synthetic like a Topic's, so no branch unit's strip can ever be keyed on it
  *  (adr_jobs_leave_the_tab_model). */
@@ -314,11 +324,15 @@ export function rootOf(path: string | null | undefined, roots: readonly string[]
   return best;
 }
 
-/** What every per-workspace store keys on: `topic:<id>` for a Topic, the
- *  branch-unit folder otherwise, empty for nothing selected. */
-export function workspaceKey(sel: Pick<Selection, "kind" | "topicId" | "folderPath"> | null | undefined): string {
+/** What every per-workspace store keys on: `topic:<id>` for a Topic,
+ *  `chat:<id>` for a chat, the branch-unit folder otherwise, empty for nothing
+ *  selected. */
+export function workspaceKey(
+  sel: Pick<Selection, "kind" | "topicId" | "chatId" | "folderPath"> | null | undefined,
+): string {
   if (!sel) return "";
   if (sel.kind === "topic" && sel.topicId) return topicKey(sel.topicId);
+  if (sel.kind === "chat" && sel.chatId) return chatKey(sel.chatId);
   return sel.folderPath ?? "";
 }
 
@@ -361,9 +375,10 @@ export function ownsCwd(cwd: string, folder: string): boolean {
 }
 
 /** Whether a live tab counts as running under a Spaces folder: a unit tab by
- *  its workspace, a Topic or Shells tab by where it was spawned, since
- *  neither of those keys is a path. */
+ *  its workspace, a Topic, chat or Shells tab by where it was spawned, since
+ *  none of those keys is a path. */
 export function tabUnderFolder(tab: { workspace: string; cwd?: string }, folder: string): boolean {
-  if (isTopicKey(tab.workspace) || isShellsKey(tab.workspace)) return !!tab.cwd && ownsCwd(tab.cwd, folder);
+  if (isTopicKey(tab.workspace) || isChatKey(tab.workspace) || isShellsKey(tab.workspace))
+    return !!tab.cwd && ownsCwd(tab.cwd, folder);
   return isUnderPath(tab.workspace, folder);
 }
