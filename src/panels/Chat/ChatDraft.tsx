@@ -20,6 +20,7 @@ import FollowToggle from "./FollowToggle";
 import ModelPicker from "./ModelPicker";
 import ModeSelector from "./ModeSelector";
 import { composerAttachments } from "./composerAttachments";
+import { isChatKey } from "../../utils/topics";
 import { attachmentSources, chatTier } from "../../utils/chatCapabilities";
 import { paletteProviders } from "./agentPaletteData";
 import { probeAgent, probeOnHighlight, recheckAgent } from "./draftProbe";
@@ -256,6 +257,8 @@ export default function ChatDraft(props: {
     queueMicrotask(() => props.onStart());
   }
 
+  const centred = () => isChatKey(props.workspace);
+
   return (
     <div class={`${styles.chat} ${props.active ? styles.active : ""}`}>
       <Show when={props.error}>
@@ -269,7 +272,7 @@ export default function ChatDraft(props: {
       {/* Where the transcript will be. Empty rather than explained: a chat that
           has not started has nothing to say about itself, and a placeholder
           would be chrome the user reads once and then reads past forever. */}
-      <div class={styles.draftFill} />
+      <div class={styles.draftFill} classList={{ [styles.draftFillTop]: centred() }} />
 
       <Show when={draftOriginFor(props.tabId)}>
         {(origin) => (
@@ -294,6 +297,7 @@ export default function ChatDraft(props: {
         attachments={pendingFor(props.tabId)}
         draft={draftFor(props.tabId)}
         onDraftChange={(t) => setDraft(props.tabId, t)}
+        idlePlaceholder={centred() ? "Ask anything. Drop files here to attach them." : undefined}
         history={historyFor(props.tabId)}
         // The agent's own last answer, cached with the models by the same
         // handshake. It used to be empty here on the reasoning that a stale set
@@ -375,6 +379,9 @@ export default function ChatDraft(props: {
           </>
         }
       />
+      <Show when={centred()}>
+        <div class={`${styles.draftFill} ${styles.draftFillBottom}`} />
+      </Show>
     </div>
   );
 }

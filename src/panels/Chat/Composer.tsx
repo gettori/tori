@@ -301,6 +301,7 @@ export default function Composer(props: {
    *  Only the placeholder changes: Tori has no channel to a subagent, so what
    *  is typed goes to the main agent from every lane. */
   watching?: string | null;
+  idlePlaceholder?: string;
 }) {
   // The draft lives in the caller's store; this reads and writes it so there is
   // one answer to "what is in the composer" rather than a local copy that has to
@@ -929,7 +930,7 @@ export default function Composer(props: {
               ? `Steer this turn, picked up in ${props.steerCost}`
               : "Steer this turn, picked up at its next step") + (props.onQueue ? ". Option+Enter queues" : "")
           : "Type to queue for the next turn"
-        : "Reply, or @ a file · / for commands";
+        : (props.idlePlaceholder ?? "Reply, or @ a file · / for commands");
 
   // The attachments a token in the text can be drawn as: every chip with a
   // label the prose names it by.

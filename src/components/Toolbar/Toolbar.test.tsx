@@ -14,6 +14,7 @@ const bridge = vi.hoisted(() => ({ calls: [] as { cmd: string; args: Record<stri
 // app does.
 const sync = vi.hoisted(() => ({
   byRoot: {} as Record<string, unknown>,
+  chatRows: [] as unknown[],
 }));
 
 const upstream = (over: Record<string, unknown> = {}) => ({
@@ -33,6 +34,8 @@ vi.mock("@tauri-apps/api/core", () => ({
         spaces: [{ name: "work", color: "Sky", projects: [{ path: "/w/api" }, { path: "/w/web" }] }],
       });
     if (cmd === "git_status") return Promise.resolve([]);
+    if (cmd === "chats_root") return Promise.resolve("/cfg/chats");
+    if (cmd === "list_sessions") return Promise.resolve(sync.chatRows);
     return Promise.resolve(null);
   },
 }));
@@ -265,5 +268,44 @@ describe("Toolbar for a Topic", () => {
     expect(crumbs()).toEqual(["work", "api", "bugfix-260903"]);
     expect(screen.queryByText(sessionSel.sessionTitle)).toBeNull();
     expect(document.querySelector("nav[aria-label='location'] .claude-icon")).toBeNull();
+  });
+});
+
+describe("Toolbar for a chat", () => {
+  const chatSel = (projectName: string) => ({
+    kind: "chat",
+    chatId: "c1",
+    spaceName: "/global",
+    projectName,
+    projectPath: "/cfg/chats/c1",
+    folderPath: "/cfg/chats/c1",
+    branch: "",
+    projectKind: "chat",
+    profile: null,
+  });
+
+  it("reads Global then the chat, with no sync chip", () => {
+    render(() => <Toolbar selected={chatSel("Stale name") as never} />);
+    expect(crumbs()).toEqual(["Global", "New chat"]);
+    expect(syncChip()).toBeNull();
+  });
+
+  it("names the chat from its newest session once one has a title", async () => {
+    sync.chatRows = [
+      {
+        id: "s1",
+        path: "/t/s1.jsonl",
+        cwd: "/cfg/chats/c1",
+        branch: "",
+        title: "Plan a trip",
+        name: null,
+        last_active: 2,
+        created_at: 1,
+      },
+    ];
+    const { ensureChatsRoot } = await import("../../utils/chats");
+    await ensureChatsRoot();
+    render(() => <Toolbar selected={chatSel("New chat") as never} />);
+    await waitFor(() => expect(crumbs()).toEqual(["Global", "Plan a trip"]));
   });
 });
