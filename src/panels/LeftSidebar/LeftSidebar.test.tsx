@@ -296,15 +296,18 @@ describe("the space strip and the Global space", () => {
     expect(global.compareDocumentPosition(segment("work")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("offers only icon and colour on Global's menu, saved through its own command", async () => {
+  it("offers what Global holds and its look on its menu, never Rename or Delete, saved through its own command", async () => {
     sidebar();
     await screen.findByText("repo");
     fireEvent.contextMenu(segment("Global"));
     const rows = await screen.findAllByRole("menuitem");
     expect(rows.map((r) => r.textContent)).toEqual([
+      "New chat",
+      "New topic",
+      "Attach folder…Use a folder from anywhere on disk. Nothing is moved.",
       "Edit icon and colourGlobal is built in. It can't be renamed or deleted.",
     ]);
-    pointerClick(rows[0]!);
+    pointerClick(rows[3]!);
     await screen.findByRole("dialog", { name: "Edit “Global”" });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "set_global_meta")).toBe(true));
@@ -319,7 +322,7 @@ describe("the space strip and the Global space", () => {
       await waitFor(() => expect(pressed("Global")).toBe(true));
       expect(screen.getByText("Global", { selector: "[class*=spaceHeaderName]" })).toBeTruthy();
       expect(screen.getByRole("button", { name: "Filter" })).toBeTruthy();
-      expect(screen.getByRole("button", { name: "Add to Global" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Actions for Global" })).toBeTruthy();
       expect(screen.getByRole("button", { name: "Attach folder…" })).toBeTruthy();
     } finally {
       config.spaces = spaces;
