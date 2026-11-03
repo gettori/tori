@@ -597,8 +597,8 @@ button.groupTitle {
 }
 
 .groupChevron {
-  width: calc(10px * var(--ui-scale));
-  height: calc(10px * var(--ui-scale));
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
   color: var(--fg-subtle);
 }
 
