@@ -688,7 +688,6 @@ mod tests {
             branch: format!("feat/{id}"),
             members: vec![member],
             created_at: 1,
-            promotion: Promotion::default(),
             space: None,
             home: None,
         }

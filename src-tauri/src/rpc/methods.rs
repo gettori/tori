@@ -2943,6 +2943,7 @@ impl Backend for DaemonBackend {
         let promoted = crate::topics::promote_for_chat(
             topic,
             member,
+            crate::settings::topic_promotion(),
             |question| self.ask_for_worktree(session, question, params.timeout),
             || crate::topics::commands::promote_settled(&self.desk, &index, &topic.id, &member.repo_path),
         )

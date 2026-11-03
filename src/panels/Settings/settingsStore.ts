@@ -22,6 +22,7 @@ import {
 } from "./utils/workspaceSettings";
 import { DEFAULT_PIN_SIDES, type PinSide } from "../../layout/pinRules";
 import { isUnderPath } from "../../utils/pathScope";
+import type { Promotion } from "../../utils/topics";
 import { repoRunAt } from "../../utils/runStore";
 
 /** Where the sidebar's space tiles sit. Mirrors `SpaceStrip` in
@@ -59,6 +60,8 @@ export type GitSettings = {
   showTopicWorktrees: boolean;
   cleanupAfterMerge: boolean;
   cleanupAfterIdleDays: number;
+  /** What a chat gets when it asks for a worktree in a Topic member. */
+  topicPromotion: Promotion;
 };
 /** What one session state does when a session crosses into it: the OS
  *  notification, and the sound Tori plays itself. Mirrors `Alert` in
@@ -446,7 +449,13 @@ export type AgentRow = { agent: string; profile: string };
 export const DEFAULT_SETTINGS: Settings = {
   appearance: { theme: "tori-dark", spaceStrip: "bottom" },
   forge: { enabled: true, picks: {}, prWatch: false },
-  git: { fetchEveryMinutes: 10, showTopicWorktrees: false, cleanupAfterMerge: false, cleanupAfterIdleDays: 0 },
+  git: {
+    fetchEveryMinutes: 10,
+    showTopicWorktrees: false,
+    cleanupAfterMerge: false,
+    cleanupAfterIdleDays: 0,
+    topicPromotion: "ask",
+  },
   notifications: {
     needsYou: { notify: true, sound: false },
     turnFinished: { notify: false, sound: false },

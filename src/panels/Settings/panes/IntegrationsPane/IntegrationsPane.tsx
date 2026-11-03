@@ -3,6 +3,7 @@ import ForgeSection from "./ForgeSection";
 import Select, { type SelectOption } from "../../../../components/Select/Select";
 import { settings, setFetchEveryMinutes } from "../../settingsStore";
 import Switch from "../../../../components/Switch/Switch";
+import type { Promotion } from "../../../../utils/topics";
 import { CardSection, Group, Row, rowLabelId, setGit, type PaneProps } from "../../components/paneKit";
 
 /** How often the background fetch runs. Off is first, because it is the answer
@@ -26,8 +27,15 @@ const IDLE_OPTIONS: SelectOption[] = [
   { value: "30", label: "30 days" },
 ];
 
-/** Git itself, what Tori does with remotes, whether Spaces lists Topic
- *  worktrees, when Tori removes worktrees on its own, then the forge accounts and their kill switch. */
+const PROMOTION_OPTIONS: SelectOption[] = [
+  { value: "ask", label: "Ask me first" },
+  { value: "auto", label: "Create it" },
+  { value: "never", label: "Refuse" },
+];
+
+/** Git itself, what Tori does with remotes, how Topics treat worktrees, when
+ *  Tori removes worktrees on its own, then the forge accounts and their kill
+ *  switch. */
 export default function IntegrationsPane(props: PaneProps) {
   return (
     <>
@@ -44,12 +52,20 @@ export default function IntegrationsPane(props: PaneProps) {
           />
         </Row>
       </Group>
-      <Group {...props} title="Spaces" ids={["topic-worktrees-in-spaces"]}>
+      <Group {...props} title="Topics" ids={["topic-worktrees-in-spaces", "topic-promotion"]}>
         <Row {...props} id="topic-worktrees-in-spaces" label="Show Topic worktrees in Spaces">
           <Switch
             checked={settings.git.showTopicWorktrees}
             onChange={(showTopicWorktrees) => void setGit({ showTopicWorktrees })}
             aria-label="Show Topic worktrees in Spaces"
+          />
+        </Row>
+        <Row {...props} id="topic-promotion" label="When a chat needs a worktree">
+          <Select
+            options={PROMOTION_OPTIONS}
+            value={settings.git.topicPromotion}
+            onChange={(v) => void setGit({ topicPromotion: v as Promotion })}
+            aria-labelledby={rowLabelId("topic-promotion")}
           />
         </Row>
       </Group>

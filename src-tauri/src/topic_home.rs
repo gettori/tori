@@ -189,15 +189,11 @@ fn body(topic: &Topic) -> String {
             }
         }
     }
-    let promote = match topic.promotion {
-        Promotion::Ask => {
-            format!("To change one, call `{PROMOTE_TOOL}` with its name; the user is asked to create its worktree.")
-        }
-        Promotion::Auto => {
-            format!("To change one, call `{PROMOTE_TOOL}` with its name; its worktree is created at once.")
-        }
-        Promotion::Never => "This Topic does not let a chat create worktrees. Ask the user to create one.".to_string(),
-    };
+    // Policy-neutral: the policy is a setting that can change after this file
+    // is written, and the tool's answer says what it is at the time.
+    let promote = format!(
+        "To change one, call `{PROMOTE_TOOL}` with its name to get its worktree; depending on the user's setting it is created at once, the user is asked first, or the call is refused."
+    );
     out.push_str(&format!(
         "\n## Rules\n\n- A reference member is the repository's own checkout. Read it, never change it. {promote}\n- Change a worktree member only inside the path listed above.\n"
     ));
@@ -300,8 +296,8 @@ pub fn write_refusal(topics: &[Topic], cwd: &str, target: &str) -> Option<String
             "{} has a worktree for the Topic {} at {w}. Make this change there, not in {}.",
             m.display_name, topic.name, m.repo_path
         ),
-        _ if topic.promotion == Promotion::Never => format!(
-            "{} is a reference in the Topic {}, so it is read only here, and this Topic does not let a chat create worktrees. Ask the user to create one.",
+        _ if crate::settings::topic_promotion() == Promotion::Never => format!(
+            "{} is a reference in the Topic {}, so it is read only here, and Tori is set not to let a chat create worktrees. Ask the user to create one.",
             m.display_name, topic.name
         ),
         _ => format!(

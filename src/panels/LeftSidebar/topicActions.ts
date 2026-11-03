@@ -1,5 +1,4 @@
 import { createEffect, createSignal, onCleanup } from "solid-js";
-import { Check } from "lucide-solid";
 import { invoke } from "@tauri-apps/api/core";
 import { pushToast } from "../../components/Toasts/Toasts";
 import type { MenuItem } from "../../components/Menu/rows";
@@ -11,7 +10,6 @@ import {
   memberState,
   type Topic,
   type Member,
-  type Promotion,
   type RepairAction,
   topicKey,
   newTopicDraft,
@@ -453,25 +451,10 @@ export function createTopicActions(host: TopicActionsHost) {
     setSweepReq({ ...req, members: stuck, busy: false, failures });
   }
 
-  const promotionRow = (topic: Topic, promotion: Promotion, label: string): MenuItem => {
-    const current = (topic.promotion ?? "ask") === promotion;
-    return {
-      label,
-      icon: current ? Check : undefined,
-      note: current ? "Current" : undefined,
-      onClick: () => void mutate("set_topic_promotion", { topicId: topic.id, promotion }),
-    };
-  };
-
   const menu = (topic: Topic): MenuItem[] => [
     { label: "Rename…", onClick: () => setRenameReq(topic) },
     { label: "Move to…", onClick: () => setMoveReq(topic) },
     { label: "Add repository…", onClick: () => setDialog({ topic }) },
-    { separator: true },
-    { heading: "When a chat needs a worktree" },
-    promotionRow(topic, "ask", "Ask me first"),
-    promotionRow(topic, "auto", "Create it"),
-    promotionRow(topic, "never", "Refuse"),
     { separator: true },
     { label: "Delete…", danger: true, onClick: () => openDelete(topic) },
   ];
