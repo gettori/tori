@@ -202,7 +202,6 @@ import {
   GitPullRequest,
   Play,
   Square,
-  LayoutGrid,
 } from "lucide-solid";
 import { BranchMark, WorktreeMark } from "../../components/Icon/gitMarks";
 import {
@@ -544,7 +543,7 @@ export default function LeftSidebar(props: {
   // the ones it takes (see ContextMenu on nesting), and the guard covers a
   // plain handler that only prevents, so what reaches here is the empty area.
   function onSpaceAreaMenu(e: MouseEvent) {
-    if (e.defaultPrevented || !activeSpace()) return;
+    if (e.defaultPrevented || !(inGlobal() || activeSpace())) return;
     e.preventDefault();
     setSpaceAnchor({ x: e.clientX, y: e.clientY });
   }
@@ -2588,7 +2587,6 @@ export default function LeftSidebar(props: {
     { separator: true },
     {
       label: "New Topic",
-      icon: LayoutGrid,
       note: `Groups worktrees from ${g.name}'s projects`,
       onClick: () => topicActions.openNew(g.name),
     },
@@ -2610,7 +2608,6 @@ export default function LeftSidebar(props: {
     { separator: true },
     {
       label: "Attach folder…",
-      icon: FolderInput,
       note: "Use a folder from anywhere on disk. Nothing is moved.",
       onClick: () => void attachFolder(),
     },
@@ -2655,7 +2652,6 @@ export default function LeftSidebar(props: {
   const projectMenu = (g: Group, p: Project): MenuItem[] => {
     const detach: MenuItem = {
       label: "Detach…",
-      icon: Unlink,
       note: "The folder stays where it is",
       onClick: () => setDetachReq({ p, busy: false }),
     };
@@ -4015,7 +4011,7 @@ export default function LeftSidebar(props: {
         {/* Withheld until there is a space to name, or it would read "Spaces"
             at every cold start. */}
         <Show when={inGlobal() || activeSpace()}>
-          <div class={styles.spaceHeader} onContextMenu={inGlobal() ? undefined : onSpaceAreaMenu}>
+          <div class={styles.spaceHeader} onContextMenu={onSpaceAreaMenu}>
             <span class={styles.spaceHeaderName}>{headingName()}</span>
             <Show when={inGlobal()}>
               <Dropdown as="span" wrapper class={styles.spaceHeaderMenu} items={globalMenu()} placement="bottom-end">
@@ -4086,6 +4082,7 @@ export default function LeftSidebar(props: {
           Topic dialogs, which a Topic row in any space opens. */}
       <TopicList
         hidden={!inGlobal()}
+        onContextMenu={onSpaceAreaMenu}
         class={styles.topicList}
         spaces={treeSpaces()}
         targets={visibleSpaces()}
@@ -4232,6 +4229,14 @@ export default function LeftSidebar(props: {
             />
           )}
         </Show>
+      </Show>
+      <Show when={inGlobal()}>
+        <Dropdown
+          open={spaceAnchor() != null}
+          anchor={spaceAnchor() ?? { x: 0, y: 0 }}
+          onOpenChange={(open) => !open && setSpaceAnchor(undefined)}
+          items={globalMenu()}
+        />
       </Show>
 
       {/* Outside the tree's gate: the strip is how you leave a space, so it

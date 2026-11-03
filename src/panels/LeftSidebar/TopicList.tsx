@@ -66,6 +66,7 @@ export default function TopicList(props: {
   listing?: (topic: Topic) => TopicListing;
   actions: TopicActions;
   lead?: JSX.Element;
+  onContextMenu?: (e: MouseEvent) => void;
   head?: JSX.Element;
   collapsed?: boolean;
   tail?: JSX.Element;
@@ -93,7 +94,13 @@ export default function TopicList(props: {
   const listed = () => (props.listing ? topics().filter((t) => props.listing!(t)) : topics());
 
   return (
-    <div class={styles.list} classList={{ [props.class ?? ""]: !!props.class }} hidden={props.hidden} data-topic-list>
+    <div
+      class={styles.list}
+      classList={{ [props.class ?? ""]: !!props.class }}
+      hidden={props.hidden}
+      onContextMenu={(e) => props.onContextMenu?.(e)}
+      data-topic-list
+    >
       <Show when={error()}>{(msg) => <p class={styles.error}>{msg()}</p>}</Show>
       {props.lead}
       <Show when={listed().length > 0} fallback={props.empty}>
