@@ -1,8 +1,8 @@
 ---
 summary: discovers spaces from disk and probes each repo's git kind with a cache keyed on dir and HEAD mtime, or it goes stale
 status: current
-updated: 2026-10-11
-source: "Worktree-aware tree + Sidebar as Project Manager + Sidebar Context-Menu Redesign + Delete Group + Space icons & reordering (personal/tori, branch code-mirror-6); commits 5c5177f, 3501d59, 8ceb6e2, 785b17b, e49947a, e6f929f, 17a334a, e704411, fef06e6, bcd31db, 68920f0; Feature lifecycle, member management and repair (issue #159, branch `feature-workspace`); commit ef3779b; gettori/tickets#74 convert to worktree layout, commit 36635567"
+updated: 2026-11-03
+source: "Worktree-aware tree + Sidebar as Project Manager + Sidebar Context-Menu Redesign + Delete Group + Space icons & reordering (personal/tori, branch code-mirror-6); commits 5c5177f, 3501d59, 8ceb6e2, 785b17b, e49947a, e6f929f, 17a334a, e704411, fef06e6, bcd31db, 68920f0; Feature lifecycle, member management and repair (issue #159, branch `feature-workspace`); commit ef3779b; gettori/tickets#74 convert to worktree layout, commit 36635567; Global space ticket (branch global-space), commits 31c7d198, 11a1c775"
 ---
 
 # Project discovery & setup
@@ -19,6 +19,10 @@ Discovers projects from the filesystem (replacing declared `[[project]]` entries
 - **Origin tagging.** Spaces/projects carry `external: bool` (root-discovered vs pinned via `paths`). `ensure_space_idx` keys on name **and** origin, so a root space and a pinned space of the same name stay distinct - the UI renders externals under a non-deletable "Other" divider.
 - **Dedup** by canonical path (a project reachable via several roots/paths appears once; the root section runs first, so root wins).
 - No default root: an empty config yields empty `roots` + `spaces`, which the UI reads as a first run.
+
+## Global and attached folders
+
+The out-of-root pins below (`[discovery].paths`, legacy `[[project]]`, the "Other" section) were dropped in a5c23d3b. Folders outside the root now come from `[[attached_folder]] { path, name }` and resolve into `ResolvedConfig.global.projects`, a separate field with no path ([[adr_global_is_a_separate_resolved_field]]). `resolve` lists them after the root spaces, deduped on canonical path, each with `availability` ok or missing. `project_groups()` walks the named spaces then Global; `project_dirs()` lists root projects plus attached folders on disk. Detection, attach, detach and relocate are in `src-tauri/src/attached_folder.rs`, see [[concept_attached_folders]].
 
 ## Space metadata overlay & order
 
