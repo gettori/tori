@@ -715,6 +715,12 @@ pub fn reads_token(agent: &str, profile_id: &str) -> bool {
         .is_some_and(AccountUsage::reads_token)
 }
 
+/// What a chat gets when it asks for a worktree in a Topic member, read at the
+/// moment it asks so a change in Settings applies to chats already running.
+pub fn topic_promotion() -> crate::topics::Promotion {
+    get_settings().git.topic_promotion
+}
+
 /// How often the scheduled fetch runs, in minutes. Zero is off, and off means
 /// both the timer and the focus fetch: a setting that silently kept one of the
 /// two would be a switch that does not switch.
@@ -737,6 +743,10 @@ pub struct Git {
     /// Zero is off.
     #[serde(default)]
     pub cleanup_after_idle_days: u32,
+    /// What a chat gets when it asks for a worktree in a Topic member it may
+    /// only read. One answer for every Topic.
+    #[serde(default)]
+    pub topic_promotion: crate::topics::Promotion,
 }
 
 impl Default for Git {
@@ -746,6 +756,7 @@ impl Default for Git {
             show_topic_worktrees: false,
             cleanup_after_merge: false,
             cleanup_after_idle_days: 0,
+            topic_promotion: crate::topics::Promotion::default(),
         }
     }
 }

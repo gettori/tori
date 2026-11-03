@@ -52,8 +52,6 @@ export type Topic = {
   branch: string;
   members: Member[];
   createdAt: number;
-  /** Absent on a record the backend wrote before the setting existed. */
-  promotion?: Promotion;
   space?: string;
   /** The folder the Topic's chats run in. Filled by the backend on every read. */
   home?: string;

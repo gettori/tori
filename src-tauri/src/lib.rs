@@ -373,7 +373,6 @@ pub fn run() {
             topics::commands::reorder_members,
             topics::commands::rename_member,
             topics::commands::rename_topic,
-            topics::commands::set_topic_promotion,
             topics::commands::set_topic_space,
             topics::commands::delete_topic,
             topics::commands::probe_topic_branch,
