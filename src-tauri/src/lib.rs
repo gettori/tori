@@ -658,7 +658,7 @@ pub fn run() {
             chats::chats_root,
             chats::chat_new,
             chats::chat_delete,
-            chats::chat_artefacts,
+            chats::chat_artifacts,
             local_history::local_history_note,
             local_history::local_history_list,
             local_history::local_history_read,
