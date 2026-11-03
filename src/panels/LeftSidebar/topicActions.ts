@@ -56,7 +56,7 @@ export type TopicActions = ReturnType<typeof createTopicActions>;
 /** Add repositories to a Topic, or make one, in a space or global. */
 export type DialogReq = { topic: Topic } | { space?: string };
 
-/** One instance per window, so a row in Topics mode and one in a space's tree
+/** One instance per window, so a row in Global and one in a named space's tree
  *  open the same dialog and see the same open rows. */
 export function createTopicActions(host: TopicActionsHost) {
   const [error, setError] = createSignal<string | null>(null);
@@ -519,7 +519,7 @@ export function createTopicActions(host: TopicActionsHost) {
     discard,
     sweep,
     openDelete,
-    keepInTopics: (topic: Topic) => void mutate("set_topic_space", { topicId: topic.id, space: null }),
+    keepInGlobal: (topic: Topic) => void mutate("set_topic_space", { topicId: topic.id, space: null }),
     menu,
     memberMenu,
   };

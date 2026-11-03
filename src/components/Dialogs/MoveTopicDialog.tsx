@@ -1,6 +1,6 @@
 import { createSignal, For, Show, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { Ban, Tag } from "lucide-solid";
+import { Ban, Globe } from "lucide-solid";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
@@ -8,6 +8,7 @@ import Icon from "../Icon/Icon";
 import SpaceMark from "../SpaceMark/SpaceMark";
 import { spaceOfMember, type SpaceTint } from "../../utils/topicMembers";
 import { refusedReason, type Topic } from "../../utils/topics";
+import { GLOBAL_NAME } from "../../utils/globalSpace";
 
 type MoveSpace = SpaceTint & { icon?: string | null };
 
@@ -105,13 +106,13 @@ export default function MoveTopicDialog(props: {
       open
       size="sheet"
       title={`Move ${props.topic.name}`}
-      description={`Now in ${current() || "Topics"}`}
+      description={`Now in ${current() || GLOBAL_NAME}`}
       onClose={() => props.onCancel()}
       actions={
         <>
           <Button onClick={() => props.onCancel()}>Cancel</Button>
           <Button variant="primary" disabled={!canMove()} onClick={() => void move()}>
-            {busy() ? "Working…" : target() === current() ? "Move" : `Move to ${target() || "Topics"}`}
+            {busy() ? "Working…" : target() === current() ? "Move" : `Move to ${target() || GLOBAL_NAME}`}
           </Button>
         </>
       }
@@ -125,8 +126,8 @@ export default function MoveTopicDialog(props: {
       </Show>
       <div role="radiogroup" aria-label="Move to" class={styles.moveGroup} onKeyDown={onArrow}>
         <Row
-          name="Topics"
-          glyph={<Icon icon={Tag} />}
+          name={GLOBAL_NAME}
+          glyph={<Icon icon={Globe} />}
           note="Any space's projects"
           picked={target() === ""}
           current={current() === ""}

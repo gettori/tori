@@ -146,14 +146,6 @@ describe("the canonical command table", () => {
   });
 });
 
-describe("the sidebar mode toggle", () => {
-  it("is listed by id and label, keyless", () => {
-    const cmd = COMMANDS.find((c) => c.id === "toggle-sidebar-mode");
-    expect(cmd?.label).toBe("Toggle Spaces / Topics");
-    expect(cmd?.keys).toBeUndefined();
-  });
-});
-
 describe("the registry after the omnibox absorbed the two pickers", () => {
   it("emits no event nothing listens for", () => {
     // The retirement half of merging them: `quick-open` and `command-palette`

@@ -1,5 +1,5 @@
 import { rollupStatuses, statusFromDot, type Rollup } from "../../src/utils/sessionStatus";
-import { listsInTopics } from "../../src/utils/topics";
+import { listsInGlobal } from "../../src/utils/topics";
 
 export type Home = { project: string; folder: string; branch: string | null; topic?: string };
 
@@ -152,7 +152,7 @@ export function spaceTopics(tree: Tree, space: string): Topic[] {
 
 export function topicsTabTopics(tree: Tree): Topic[] {
   const known = tree.spaces.map((s) => s.name);
-  return tree.topics.filter((t) => listsInTopics(t, known)).sort(byName);
+  return tree.topics.filter((t) => listsInGlobal(t, known)).sort(byName);
 }
 
 export function topicSpaces(tree: Tree, topic: Topic): string[] {

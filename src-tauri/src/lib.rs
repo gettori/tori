@@ -446,6 +446,7 @@ pub fn run() {
             config::set_project_icon_file,
             icons::pick_icon_file,
             config::set_space_meta,
+            config::set_global_meta,
             config::set_space_order,
             config::add_folder,
             config::delete_space,

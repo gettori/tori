@@ -736,15 +736,14 @@ describe("a Topic whose space Tori cannot find", () => {
     bridge.topics = [ORPHAN];
     bridge.configGate = null;
     localStorage.clear();
-    localStorage.setItem("tori.active-space.v1", "work");
-    localStorage.setItem("tori.sidebar-mode.v1", "topics");
+    localStorage.setItem("tori.active-space.v1", "/global");
   });
 
-  it("lists in Topics mode with a note offering to keep it or delete it", async () => {
+  it("lists in Global with a note offering to keep it or delete it", async () => {
     mount();
     const note = (await screen.findByText(NOTE)).closest("div")!;
     expect(note.textContent).toContain("From saga, which Tori can't find.");
-    expect(within(note).getByRole("button", { name: "Keep in Topics" })).toBeTruthy();
+    expect(within(note).getByRole("button", { name: "Keep in Global" })).toBeTruthy();
     expect(within(note).getByRole("button", { name: "Delete" })).toBeTruthy();
   });
 

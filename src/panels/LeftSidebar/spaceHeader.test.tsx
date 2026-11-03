@@ -75,7 +75,6 @@ describe("the active space header", () => {
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
     localStorage.setItem("tori.active-space.v1", "work");
-    localStorage.setItem("tori.sidebar-mode.v1", "spaces");
   });
 
   it("names the space you are in, above the tree", async () => {
@@ -88,15 +87,10 @@ describe("the active space header", () => {
     expect(head.compareDocumentPosition(header()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  // The name alone is a word with no category. What follows it says which of
-  // the three things in this column that word names.
-  it("says what kind of thing the name is", async () => {
+  it("is the space's name and nothing else", async () => {
     mount();
     await waitFor(() => expect(header()).toBeTruthy());
-    // Nothing leads the name: the tile's glyph (or its initial-letter
-    // fallback) is not repeated here, so the heading is one line of type and
-    // the space's hue lives on the window wash instead.
-    expect(header()!.textContent!.trim()).toMatch(/^work· Spaces/);
+    expect(header()!.textContent!.trim()).toBe("work");
   });
 
   it("follows the space you switch to", async () => {
@@ -144,15 +138,14 @@ describe("the active space header", () => {
     expect(await screen.findByText("Delete space")).toBeTruthy();
   });
 
-  // With the mode tabs gone the heading is the only thing naming the view, so
-  // it follows the strip into Topics rather than disappearing with the tree.
-  // What it drops there is the space's own furniture: the kind label and the
-  // menu belong to a space, and Topics is not one.
-  it("names the mode instead of the space outside Spaces", async () => {
+  // Global has no folder to make things in, so it keeps the heading but not a
+  // named space's menu.
+  it("names Global without a space's menu", async () => {
     mount();
     await waitFor(() => expect(header()).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "Topics" }));
-    await waitFor(() => expect(header()!.textContent!.trim()).toBe("Topics"));
+    fireEvent.click(screen.getByRole("button", { name: "Global" }));
+    await waitFor(() => expect(header()!.textContent!.trim()).toBe("Global"));
     expect(screen.queryByRole("button", { name: "Actions for work" })).toBeNull();
+    expect(rightClick(header()!)).toBe(false);
   });
 });

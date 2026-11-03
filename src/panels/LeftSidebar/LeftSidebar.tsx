@@ -63,7 +63,6 @@ import {
   FOCUS_SEARCH,
   NAVIGATE,
   type NavTarget,
-  TOGGLE_SIDEBAR_MODE,
   SESSIONS_REFRESH,
   DRAG_ABS_PATH_MIME,
   OPEN_JOB,
@@ -187,8 +186,7 @@ import {
   Ellipsis,
   Search,
   Tag,
-  Tags,
-  type LucideIcon,
+  Globe,
   Plus,
   SquareTerminal,
   Unlink,
@@ -224,7 +222,7 @@ import {
   isReference,
   tabUnderFolder,
   inSpace,
-  listsInTopics,
+  listsInGlobal,
   spaceGone,
   type Topic,
 } from "../../utils/topics";
@@ -233,7 +231,8 @@ import BranchLine from "./BranchLine";
 import { prWatchMenu, type PrWatchRow } from "../../utils/prWatchMenu";
 import StatusBubble, { CountBubble } from "./StatusBubble";
 import { latestUnreviewed, runSecondOpinion, secondOpinionRunning } from "../../utils/secondOpinion";
-import SpaceTile, { ModeTile, TileProbe } from "./SpaceTile";
+import SpaceTile, { TileProbe } from "./SpaceTile";
+import { GLOBAL_COLOR, GLOBAL_ICON, GLOBAL_KEY, GLOBAL_NAME } from "../../utils/globalSpace";
 import {
   BranchRow,
   EmptyRow,
@@ -334,7 +333,10 @@ type Space = {
   // A swatch name; absent means the hue is derived from `name`.
   color?: string;
 };
-type ResolvedConfig = { path: string; roots: string[]; spaces: Space[] };
+// The built-in space. No `path`: it owns no folder, so nothing that makes or
+// removes folders under a space can be handed it.
+type GlobalSpace = { projects: Project[]; icon?: string; color?: string };
+type ResolvedConfig = { path: string; roots: string[]; spaces: Space[]; global: GlobalSpace };
 
 export type Selection = {
   // Absent means "unit": a selection persisted before Topics carried no kind.
@@ -379,26 +381,9 @@ const BRANCH_CAP = 6;
 
 const LS_EXPANDED = "tori.expanded.v1";
 const LS_ACTIVE_SPACE = "tori.active-space.v1";
-const LS_MODE = "tori.sidebar-mode.v1";
 // Bump the suffix when `ResolvedConfig` changes shape: a cached copy from an
 // older build is rendered before the fresh one arrives.
-const LS_CONFIG = "tori.sidebar-config.v1";
-
-// What the column shows: the Spaces tree or the Topic list. The filter field,
-// the dialogs and the selection are shared; the tree and the space rail are
-// unmounted in the other rather than hidden.
-type SidebarMode = "spaces" | "topics";
-// The order the segments sit in, which is also the order the toggle steps through.
-const MODE_VALUES: SidebarMode[] = ["spaces", "topics"];
-
-function loadMode(): SidebarMode {
-  try {
-    const stored = localStorage.getItem(LS_MODE);
-    return MODE_VALUES.find((m) => m === stored) ?? "spaces";
-  } catch {
-    return "spaces";
-  }
-}
+const LS_CONFIG = "tori.sidebar-config.v2";
 
 function loadCachedConfig(): ResolvedConfig | null {
   try {
@@ -482,19 +467,15 @@ export default function LeftSidebar(props: {
     setQuery("");
     setSearching(false);
   }
-  const [chosenMode, setMode] = createSignal<SidebarMode>(loadMode());
-  // With no project there is no Topics tile to leave Topics by.
-  const mode = (): SidebarMode => (topicsReachable() ? chosenMode() : "spaces");
-  /** What the filter field is filtering, which is whatever the mode is showing. */
-  const filterNoun = () => (mode() === "topics" ? "topics" : "projects");
+  /** The tree is showing Global. With no named space it is all there is. */
+  const inGlobal = () => activeSpaceName() === GLOBAL_KEY || (!!config() && !hasSpaces());
+  const filterNoun = () => (inGlobal() ? "topics" : "projects");
   /** What the tree's heading says, which is whatever the strip has lit. */
-  const headingName = () => (mode() === "topics" ? "Topics" : (activeSpace()?.name ?? "Spaces"));
-  createEffect(() => {
-    try {
-      localStorage.setItem(LS_MODE, chosenMode());
-    } catch {
-      // ignore quota
-    }
+  const headingName = () => (inGlobal() ? GLOBAL_NAME : (activeSpace()?.name ?? "Spaces"));
+  const globalLook = () => ({
+    name: GLOBAL_NAME,
+    icon: config()?.global?.icon ?? GLOBAL_ICON,
+    color: config()?.global?.color ?? GLOBAL_COLOR,
   });
   let searchEl: HTMLInputElement | undefined;
 
@@ -503,13 +484,7 @@ export default function LeftSidebar(props: {
   // The FULL list (never q-filtered) so the space strip is stable while filtering.
   const visibleSpaces = () => config()?.spaces ?? [];
   const hasSpaces = () => visibleSpaces().length > 0;
-  const hasProjects = () => visibleSpaces().some((g) => g.projects.length > 0);
-  // Assumed until config loads, so a cold start in Topics does not flash the
-  // empty Spaces tree first.
-  const topicsReachable = () => !config() || hasProjects();
 
-  // The active space. Persisted by name; falls back to the first space when the
-  // stored name is gone (e.g. the active space was deleted), so it self-heals.
   const [activeSpaceName, setActiveSpaceName] = createSignal<string | null>(loadActiveSpace());
   createEffect(() => {
     const n = activeSpaceName();
@@ -520,6 +495,7 @@ export default function LeftSidebar(props: {
     }
   });
   const activeSpace = (): Space | null => {
+    if (inGlobal()) return null;
     const gs = visibleSpaces();
     return gs.find((g) => g.name === activeSpaceName()) ?? gs[0] ?? null;
   };
@@ -540,9 +516,8 @@ export default function LeftSidebar(props: {
   }
 
   // Every selection is also the bookmark for the way back to it: its space, or
-  // the Topic slot.
-  // A Topic whose space is gone lists in Topics mode, so that is where it is
-  // remembered.
+  // Global's slot. A Topic whose space is gone lists in Global, so that is
+  // where it is remembered.
   createEffect(() => {
     const s = props.selected;
     rememberSelection(s?.kind === "topic" && goneSpace(s.spaceName) ? { ...s, spaceName: "" } : s);
@@ -589,12 +564,12 @@ export default function LeftSidebar(props: {
     return true;
   }
 
-  // The last Topic, re-resolved against the live records: the stored copy is
-  // a snapshot, and its members may have come or gone since.
-  function restoreTopic(): boolean {
+  // Global's last Topic, re-resolved against the live records: the stored copy
+  // is a snapshot, and its members may have come or gone since.
+  function restoreGlobal(): boolean {
     const back = rememberedTopic();
     const f = back?.topicId ? topics().find((f) => f.id === back.topicId) : null;
-    if (!f || !inTopicsMode(f)) return false;
+    if (!f || !inGlobalTree(f)) return false;
     if (props.selected?.kind === "topic" && props.selected.topicId === f.id) return true;
     selectTopic(f, back!.activeRoot ?? null);
     return true;
@@ -609,24 +584,11 @@ export default function LeftSidebar(props: {
     if (!restoreInSpace(g)) props.onSelect(null);
   }
 
-  // The strip lights one thing at a time, so a space tile answers for both axes:
-  // it names the space AND says the tree is showing spaces. From another mode
-  // the space is set first, and `switchMode` restores into it.
-  function openSpace(g: Space) {
-    if (mode() === "spaces") return switchSpace(g);
-    setActiveSpaceName(g.name);
-    switchMode("spaces");
-  }
-
-  // The mode is how you browse, not which work is open, so an empty memory
-  // leaves the selection alone here rather than clearing it.
-  function switchMode(next: SidebarMode) {
-    setMode(next);
-    if (next === "topics") restoreTopic();
-    else {
-      const g = activeSpace();
-      if (g) restoreInSpace(g);
-    }
+  // Global is a space like the others, so leaving for it clears the same way.
+  function switchToGlobal() {
+    if (inGlobal()) return;
+    setActiveSpaceName(GLOBAL_KEY);
+    if (!restoreGlobal()) props.onSelect(null);
   }
 
   // In-app replacement for window.prompt (unimplemented in WKWebView). Holds the
@@ -730,6 +692,7 @@ export default function LeftSidebar(props: {
     icon: string | null;
     color: string | null;
     busy: boolean;
+    global?: boolean;
   } | null>(null);
 
   // The origin dialog, for a repo that has one and for a repo that does not:
@@ -1231,7 +1194,6 @@ export default function LeftSidebar(props: {
       pushToast(`${at.p.name} has another branch checked out, so Tori left it as it is.`, "info");
       return false;
     }
-    setMode("spaces");
     setActiveSpaceName(at.g.name);
     const next = new Set([...expanded(), pkey(at.g, at.p)]);
     const stack = shownPr(at.p, at.u)?.stack;
@@ -1265,7 +1227,6 @@ export default function LeftSidebar(props: {
       pushToast(`That ${t.project ? "project" : "space"} is no longer in Tori.`, "info");
       return;
     }
-    setMode("spaces");
     setActiveSpaceName(g.name);
     const p = g.projects.find((p) => samePath(p.path, t.project ?? ""));
     if (p) setExpanded(new Set([...expanded(), pkey(g, p)]));
@@ -1348,14 +1309,8 @@ export default function LeftSidebar(props: {
   // has to reach for the field when it was already there.
   onCleanup(
     onEvent(FOCUS_SEARCH, () => {
-      if (!hasProjects()) return;
       if (!searching()) return setSearching(true);
       requestAnimationFrame(() => searchEl?.select());
-    }),
-  );
-  onCleanup(
-    onEvent(TOGGLE_SIDEBAR_MODE, () => {
-      if (topicsReachable()) switchMode(MODE_VALUES[(MODE_VALUES.indexOf(mode()) + 1) % MODE_VALUES.length]);
     }),
   );
 
@@ -1599,6 +1554,18 @@ export default function LeftSidebar(props: {
     });
   }
 
+  function editGlobal() {
+    const g = config()?.global;
+    setSpaceReq({
+      mode: "edit",
+      name: GLOBAL_NAME,
+      icon: g?.icon ?? null,
+      color: g?.color ?? null,
+      busy: false,
+      global: true,
+    });
+  }
+
   // Confirmed: create runs the single `add_space` command (mkdir + icon write +
   // one emit); edit runs `set_space_meta`. Each command emits `config://changed`,
   // which drives the reload, so there is no manual loadConfig here. On failure,
@@ -1617,6 +1584,8 @@ export default function LeftSidebar(props: {
           icon: opts.icon,
           color: opts.color,
         });
+      } else if (req.global) {
+        await invoke("set_global_meta", { icon: opts.icon, color: opts.color });
       } else {
         await invoke("set_space_meta", { name: req.name, icon: opts.icon, color: opts.color });
       }
@@ -2406,7 +2375,7 @@ export default function LeftSidebar(props: {
   // Which space this menu belongs to, in the space's own glyph and hue. The
   // strip is a row of near-identical tiles and the menu opens at the cursor, so
   // without the header the menu is four rows that never say what they act on.
-  const spaceMenuHead = (g: Space) => (
+  const spaceMenuHead = (g: Pick<Space, "name" | "icon" | "color">) => (
     <span class={styles.spaceMenuHead} style={{ "--space-hue-rgb": spaceHueRgb(g.name, g.color) }}>
       <Show when={resolveIcon(g.icon)} fallback={<span class={styles.spaceMenuMark}>{spaceInitials(g.name)}</span>}>
         {(glyph) => <Icon icon={glyph()} />}
@@ -2440,6 +2409,14 @@ export default function LeftSidebar(props: {
     { label: "Edit space", onClick: () => editSpace(g) },
     { separator: true },
     { label: "Delete space", danger: true, onClick: () => openDeleteSpace(g) },
+  ];
+
+  // Global has no folder to make things in and no name to change, so its menu
+  // is how it looks and why that is all.
+  const globalMenu = (): MenuItem[] => [
+    { heading: spaceMenuHead(globalLook()) },
+    { separator: true },
+    { label: "Edit icon and colour", note: "Global is built in. It can't be renamed or deleted.", onClick: editGlobal },
   ];
 
   // A project with a working tree git can branch from: a plain repo or a
@@ -2836,7 +2813,7 @@ export default function LeftSidebar(props: {
 
   // The Topics this folder is a member of, so a unit row can point back at
   // its other home. Kept here rather than lifted out of `TopicList` because
-  // that list mounts only in Topics mode and this chip renders in Spaces.
+  // that list shows only in Global and this chip renders in a named space.
   function topicsAt(folder: string): Topic[] {
     return topics().filter((f) => f.members.some((m) => !!m.worktreePath && sameCwd(m.worktreePath, folder)));
   }
@@ -2858,9 +2835,7 @@ export default function LeftSidebar(props: {
   function openTopic(f: Topic, root: string | null) {
     selectTopic(f, root);
     const g = f.space ? config()?.spaces.find((g) => g.name === f.space) : undefined;
-    if (!g) return setMode("topics");
-    setMode("spaces");
-    setActiveSpaceName(g.name);
+    setActiveSpaceName(g ? g.name : GLOBAL_KEY);
   }
 
   const gkey = (g: Space, p: Project, groupId: string) => `a:${g.name}/${p.name}/${groupId}`;
@@ -3205,7 +3180,11 @@ export default function LeftSidebar(props: {
   const topicsGroupSpace = () => (shownSpaceTopics().length > 0 ? activeSpace() : null);
   const knownSpaces = () => (config() ? visibleSpaces().map((g) => g.name) : null);
   const goneSpace = (name: string | undefined) => spaceGone(name, knownSpaces());
-  const inTopicsMode = (t: Topic) => listsInTopics(t, knownSpaces());
+  const inGlobalTree = (t: Topic) => listsInGlobal(t, knownSpaces());
+  const gtkey = `t:${GLOBAL_KEY}`;
+  const globalTopicsCollapsed = () => expanded().has(gtkey);
+  const globalTopics = createMemo(() => topics().filter(inGlobalTree));
+  const shownGlobalTopics = createMemo(() => globalTopics().filter((t) => matchesTopic(t, query())));
   const counted = (shown: number, all: number) => (q() ? `${shown} of ${all}` : `${all}`);
 
   let unlistenConfig: UnlistenFn | undefined;
@@ -3353,7 +3332,7 @@ export default function LeftSidebar(props: {
     const g = activeSpace();
     const onScreen = (t: Topic) =>
       openRows.includes(t.id) &&
-      (mode() === "topics" ? inTopicsMode(t) : !!g && inSpace(t, g.name) && !spaceTopicsCollapsed());
+      (inGlobal() ? inGlobalTree(t) && !globalTopicsCollapsed() : !!g && inSpace(t, g.name) && !spaceTopicsCollapsed());
     return topics()
       .filter((t) => t.id === open || onScreen(t))
       .map((topic) => ({ topic, visible: true }));
@@ -3462,7 +3441,7 @@ export default function LeftSidebar(props: {
   // safe alongside the theme resolver), and cleared when there is no active
   // space at all so the token layer keeps the last word on an untinted window.
   createEffect(() => {
-    const g = activeSpace();
+    const g = inGlobal() ? globalLook() : activeSpace();
     applySpaceTint(g ? spaceHue(g.name, g.color) : null);
   });
   onCleanup(() => applySpaceTint(null));
@@ -3481,7 +3460,7 @@ export default function LeftSidebar(props: {
   function measureNames() {
     if (!probeEl || !probeNameEl || !probeTextEl) return;
     const each: Record<string, number> = {};
-    for (const name of [...visibleSpaces().map((g) => g.name), "Topics"]) {
+    for (const name of [GLOBAL_NAME, ...visibleSpaces().map((g) => g.name)]) {
       probeTextEl.textContent = name;
       // Rounded up, with a pixel to spare: a fractional target is a target the
       // text does not quite fit into, and the tile clips its own last letter.
@@ -3539,10 +3518,10 @@ export default function LeftSidebar(props: {
   // The strip's tile for one space. `SpaceTile` owns the shape; what is decided
   // here is the state it wears.
   const spaceTile = (g: Space) => {
-    // Lit only while the tree is actually showing this space. In Topics the
+    // Lit only while the tree is actually showing this space. In Global the
     // strip has moved on, and a second lit tile would say the sidebar is
     // showing two things.
-    const on = () => mode() === "spaces" && activeSpace()?.name === g.name;
+    const on = () => !inGlobal() && activeSpace()?.name === g.name;
     return (
       <SpaceTile
         name={g.name}
@@ -3556,7 +3535,7 @@ export default function LeftSidebar(props: {
         dropAfter={dropHint()?.name === g.name && dropHint()!.after}
         menu={spaceMenu(g)}
         rollup={spaceRollup(g)}
-        onClick={() => openSpace(g)}
+        onClick={() => switchSpace(g)}
         onDragStart={(e) => {
           startAbsDrag(
             e,
@@ -3576,15 +3555,24 @@ export default function LeftSidebar(props: {
 
   const dockTabCount = () => (props.liveTabs ?? []).filter((t) => isShellsKey(t.workspace)).length;
 
-  // Topics, as a tile in the same strip and on the same rules as a space.
-  const modeTile = (m: SidebarMode, label: string, glyph: LucideIcon) => (
-    <ModeTile
-      label={label}
-      glyph={glyph}
-      nameWidth={nameTarget(label)}
-      active={mode() === m}
+  const globalTile = () => (
+    <SpaceTile
+      name={GLOBAL_NAME}
+      icon={globalLook().icon}
+      color={globalLook().color}
+      nameWidth={nameTarget(GLOBAL_NAME)}
+      active={inGlobal()}
       rail={railed()}
-      onClick={() => switchMode(m)}
+      fixed
+      menu={globalMenu()}
+      rollup={() => {
+        const shown = inGlobal() && !props.railOnly;
+        return bubbleFor((s) => {
+          const t = s.home?.topic ? globalTopics().find((t) => t.id === s.home!.topic) : undefined;
+          return !!t && (!shown || globalTopicsCollapsed() || !matchesTopic(t, query()));
+        });
+      }}
+      onClick={switchToGlobal}
     />
   );
 
@@ -3595,10 +3583,10 @@ export default function LeftSidebar(props: {
   // only a project the search filter hid entirely (never rendered, so no row
   // to bubble to) still needs to surface on the tile.
   function spaceRollup(g: Space) {
-    // "Active" here means its tree is on screen. In Topics, or with the sidebar
+    // "Active" here means its tree is on screen. In Global, or with the sidebar
     // down to its rail, nothing of it is rendered, so all of its sessions
     // bubble to the tile.
-    const isActive = () => mode() === "spaces" && !props.railOnly && activeSpace()?.name === g.name;
+    const isActive = () => !inGlobal() && !props.railOnly && activeSpace()?.name === g.name;
     return () =>
       isActive()
         ? bubbleFor((s) => {
@@ -3632,17 +3620,12 @@ export default function LeftSidebar(props: {
             height, so the field taking a second one grows the head downward
             instead of lifting the title. */}
         <span class={styles.headStrut} aria-hidden="true" />
-        {/* The title, and in Spaces mode the space's own menu with it. Right-
-            click anywhere on it is the same menu, which is why the handler sits
-            on the group rather than on the name. Withheld until there is a
-            space to name, or it would read "Spaces" at every cold start. */}
-        <Show when={mode() !== "spaces" || activeSpace()}>
-          <div class={styles.spaceHeader} onContextMenu={mode() === "spaces" ? onSpaceAreaMenu : undefined}>
+        {/* Withheld until there is a space to name, or it would read "Spaces"
+            at every cold start. */}
+        <Show when={inGlobal() || activeSpace()}>
+          <div class={styles.spaceHeader} onContextMenu={inGlobal() ? undefined : onSpaceAreaMenu}>
             <span class={styles.spaceHeaderName}>{headingName()}</span>
-            <Show when={mode() === "spaces"}>
-              <span class={styles.spaceHeaderKind}>· Spaces</span>
-            </Show>
-            <Show when={mode() === "spaces" && activeSpace()}>
+            <Show when={activeSpace()}>
               {(g) => (
                 <Dropdown
                   as="span"
@@ -3681,10 +3664,7 @@ export default function LeftSidebar(props: {
             onKeyDown={(e) => e.key === "Escape" && closeSearch()}
           />
         </Show>
-        {/* Before the filter, and only in the mode it means something in: a
-            Topic is the one thing this column makes. It carries the row's
-            auto margin so the pair sits together against the right edge. */}
-        <Show when={mode() === "topics"}>
+        <Show when={inGlobal()}>
           <Button
             class={styles.headAdd}
             variant="ghost"
@@ -3697,7 +3677,7 @@ export default function LeftSidebar(props: {
         </Show>
         {/* Only while the field is shut: open, the field is the affordance and
             the icon would be a second one beside it, in the space it wants. */}
-        <Show when={!searching() && hasProjects()}>
+        <Show when={!searching()}>
           <Button
             class={styles.searchToggle}
             variant="ghost"
@@ -3710,10 +3690,10 @@ export default function LeftSidebar(props: {
         </Show>
       </div>
 
-      {/* Hidden rather than unmounted, unlike the Spaces tree: it hosts the
-          Topic dialogs, which a Topic row in either mode opens. */}
+      {/* Hidden rather than unmounted, unlike a space's tree: it hosts the
+          Topic dialogs, which a Topic row in any space opens. */}
       <TopicList
-        hidden={mode() !== "topics"}
+        hidden={!inGlobal()}
         class={styles.topicList}
         spaces={visibleSpaces()}
         query={query()}
@@ -3721,11 +3701,35 @@ export default function LeftSidebar(props: {
         activeRoot={activeTopicRoot()}
         onOpenMember={(f, root) => selectTopic(f, root)}
         topicStatus={topicStatus}
-        listing={(t) => (!inTopicsMode(t) ? null : goneSpace(t.space) ? "gone" : "listed")}
+        listing={(t) => (!inGlobalTree(t) ? null : goneSpace(t.space) ? "gone" : "listed")}
         actions={topicActions}
+        collapsed={globalTopicsCollapsed()}
+        head={
+          <GroupHead
+            label="Topics"
+            count={counted(shownGlobalTopics().length, globalTopics().length)}
+            open={!globalTopicsCollapsed()}
+            onToggle={() => toggle(gtkey)}
+            end={statusBubble(() =>
+              globalTopicsCollapsed()
+                ? bubbleFor((s) => shownGlobalTopics().some((t) => t.id === s.home?.topic))
+                : null,
+            )}
+            addLabel={`New Topic in ${GLOBAL_NAME}`}
+            onAdd={() => topicActions.openNew()}
+          />
+        }
+        empty={
+          <div class={`tree-empty ${styles.globalEmpty}`}>
+            <p>Topics that cross spaces show up here.</p>
+            <Button size="sm" icon={<Icon icon={Plus} />} onClick={() => topicActions.openNew()}>
+              New Topic
+            </Button>
+          </div>
+        }
       />
 
-      <Show when={mode() === "spaces"}>
+      <Show when={!inGlobal()}>
         <OverlayScroll class={styles.treeScroll} onContextMenu={onSpaceAreaMenu} data-spaces-tree>
           <Show when={topicsGroupSpace()}>
             {(g) => {
@@ -3923,20 +3927,24 @@ export default function LeftSidebar(props: {
         </Show>
       </Show>
 
-      {/* Outside the mode gate: the strip is how you leave a mode, so it has to
-          render in every one. Gated on spaces rather than on a root, because
-          the strip IS the space tiles now that the gear beside them is gone:
-          a configured root with nothing under it has nothing to draw, and that
-          state sits behind the first-run modal regardless. */}
-      <Show when={config() && hasSpaces()}>
+      {/* Outside the tree's gate: the strip is how you leave a space, so it
+          renders for every one, Global included even before any named space
+          exists. */}
+      <Show when={config()}>
         <div class={styles.spaceBar} classList={{ [styles.rail]: railed() }}>
           <TileProbe
-            glyph={Tags}
+            glyph={Globe}
             ref={(el) => (probeEl = el)}
             nameRef={(el) => (probeNameEl = el)}
             textRef={(el) => (probeTextEl = el)}
           />
           <div class={styles.stripNav}>
+            {/* Outside the scroller and ahead of it, past a rule: a long space
+                list can never carry Global off, and it keeps the first slot. */}
+            {globalTile()}
+            <Show when={hasSpaces()}>
+              <div class={styles.spaceDivider} />
+            </Show>
             <div class={styles.spaceScroll}>
               <For each={visibleSpaces()}>{(g) => spaceTile(g)}</For>
             </div>
@@ -3955,14 +3963,6 @@ export default function LeftSidebar(props: {
               >
                 <Icon icon={Plus} />
               </Tooltip>
-            </Show>
-
-            {/* Topics, past a rule so the strip reads as spaces first. Outside
-                the scroller, so a long space list cannot carry off the way back
-                out of a mode. */}
-            <Show when={hasProjects()}>
-              <div class={styles.spaceDivider} />
-              {modeTile("topics", "Topics", Tags)}
             </Show>
           </div>
 

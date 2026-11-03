@@ -16,7 +16,6 @@ import {
   SquareTerminal,
   Star,
   Tag,
-  Tags,
   TriangleAlert,
   type LucideIcon,
 } from "lucide-solid";
@@ -31,7 +30,7 @@ import OverflowTabBar from "../../../../components/OverflowTabBar";
 import Tab from "../../../../components/Tab/Tab";
 import FileIcon from "../../../../seti/FileIcon";
 import { Field, MatchToggles } from "../../../Editor/SearchFields";
-import SpaceTile, { ModeTile } from "../../../LeftSidebar/SpaceTile";
+import SpaceTile from "../../../LeftSidebar/SpaceTile";
 import TopicItem from "../../../LeftSidebar/TopicItem";
 import { BranchRow, ProjectRow } from "../../../LeftSidebar/SidebarRows";
 import { DEFAULT_SEARCH_OPTIONS } from "../../../../utils/searchOptions";
@@ -114,7 +113,7 @@ function TopicsSidebar() {
         <div class={sidebar.treeHead}>
           <span class={sidebar.headStrut} aria-hidden="true" />
           <div class={sidebar.spaceHeader}>
-            <span class={sidebar.spaceHeaderName}>Topics</span>
+            <span class={sidebar.spaceHeaderName}>Global</span>
           </div>
           <Button
             class={sidebar.headAdd}
@@ -139,12 +138,12 @@ function TopicsSidebar() {
         </div>
         <div class={sidebar.spaceBar}>
           <div class={sidebar.stripNav}>
+            <SpaceTile name="Global" icon="Globe" color="Teal" fixed active nameWidth="56px" />
+            <div class={sidebar.spaceDivider} />
             <div class={sidebar.spaceScroll}>
               <SpaceTile name="work" color="Sky" />
               <SpaceTile name="personal" color="Emerald" />
             </div>
-            <div class={sidebar.spaceDivider} />
-            <ModeTile label="Topics" glyph={Tags} active nameWidth="60px" />
           </div>
           <span class={`${sidebar.stripBtn} ${sidebar.dockBtn}`}>
             <Icon icon={SquareTerminal} />
@@ -427,7 +426,7 @@ function SpaceCard() {
   );
 }
 
-/** A Tori window in Topics mode: the real sidebar, editor tabs and Search
+/** A Tori window in Global: the real sidebar, editor tabs and Search
  *  panel on the Webhooks Topic, with the Space tree's tagged rows beside it. */
 export default function TopicsArt() {
   return (

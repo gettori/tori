@@ -73,7 +73,7 @@ export function spaceGone(space: string | undefined, known: readonly string[] | 
 }
 
 /** A global Topic, or one whose space is gone: either takes any repo. */
-export function listsInTopics(topic: Pick<Topic, "space">, known: readonly string[] | null): boolean {
+export function listsInGlobal(topic: Pick<Topic, "space">, known: readonly string[] | null): boolean {
   return isGlobal(topic) || spaceGone(topic.space, known);
 }
 

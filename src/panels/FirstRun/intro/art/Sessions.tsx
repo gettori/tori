@@ -1,5 +1,5 @@
 import { For, type JSX } from "solid-js";
-import { FileCode, Search, SquareTerminal, Tag, Tags } from "lucide-solid";
+import { FileCode, Search, SquareTerminal, Tag } from "lucide-solid";
 import AutopilotSwitch from "../../../../components/Autopilot/AutopilotSwitch";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
@@ -18,7 +18,7 @@ import type { ChatItem, ToolItem } from "../../../Chat/chatStore";
 import chat from "../../../Chat/Chat.module.css";
 import BranchLine from "../../../LeftSidebar/BranchLine";
 import { BranchRow, ProjectRow } from "../../../LeftSidebar/SidebarRows";
-import SpaceTile, { ModeTile } from "../../../LeftSidebar/SpaceTile";
+import SpaceTile from "../../../LeftSidebar/SpaceTile";
 import StatusBubble from "../../../LeftSidebar/StatusBubble";
 import sidebar from "../../../LeftSidebar/LeftSidebar.module.css";
 import rows from "../../../LeftSidebar/SidebarRows.module.css";
@@ -182,6 +182,8 @@ function Sidebar() {
       </div>
       <div class={sidebar.spaceBar}>
         <div class={sidebar.stripNav}>
+          <SpaceTile name="Global" icon="Globe" color="Teal" fixed />
+          <div class={sidebar.spaceDivider} />
           <div class={sidebar.spaceScroll}>
             <SpaceTile name="work" color="Sky" active />
             <SpaceTile
@@ -191,8 +193,6 @@ function Sidebar() {
               rollup={rollup({ waitingForApproval: 1, executing: 1 })}
             />
           </div>
-          <div class={sidebar.spaceDivider} />
-          <ModeTile label="Topics" glyph={Tags} />
         </div>
         <span class={`${sidebar.stripBtn} ${sidebar.dockBtn}`}>
           <Icon icon={SquareTerminal} />

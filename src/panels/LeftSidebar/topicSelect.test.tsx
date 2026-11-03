@@ -63,7 +63,6 @@ const { default: ToastRegion } = await import("../../components/Toasts/Toasts");
 const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
 const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
 const { storesHolding } = await import("../../utils/purgeWorkspace");
-const { emit, TOGGLE_SIDEBAR_MODE } = await import("../../utils/events");
 
 const member = (repo: string, wt: string, order: number) => ({
   repoPath: repo,
@@ -116,8 +115,7 @@ describe("selecting a Topic", () => {
     bridge.topics = [AUTH, PAY];
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("tori.active-space.v1", "work");
-    localStorage.setItem("tori.sidebar-mode.v1", "topics");
+    localStorage.setItem("tori.active-space.v1", "/global");
   });
 
   it("toggles on a Topic click and hands the shell a Topic Selection on a member click", async () => {
@@ -142,16 +140,6 @@ describe("selecting a Topic", () => {
     const active = document.querySelectorAll('[data-topic][aria-current="true"]');
     expect(active.length).toBe(1);
     expect(active[0].getAttribute("data-topic")).toBe("f1");
-  });
-
-  it("leaves the selection alone across a mode cycle", async () => {
-    const { onSelect } = await mounted(topicSel);
-    const list = () => document.querySelector("[data-topic-list]") as HTMLElement;
-    emit(TOGGLE_SIDEBAR_MODE);
-    await waitFor(() => expect(list().hidden).toBe(true));
-    emit(TOGGLE_SIDEBAR_MODE);
-    await waitFor(() => expect(list().hidden).toBe(false));
-    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it("deleting the selected Topic clears it and sweeps topic:<id> from every store", async () => {

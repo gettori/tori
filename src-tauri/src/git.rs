@@ -5233,6 +5233,7 @@ diff --git a/f b/f
         crate::config::ResolvedConfig {
             path: String::new(),
             roots: vec![],
+            global: Default::default(),
             spaces: vec![crate::config::Space {
                 name: "work".into(),
                 path: String::new(),

@@ -62,6 +62,7 @@ export default function SpaceTile(props: {
   /** Stacked in the side rail: the head already names the lit space, so the
    *  pill never opens, and a drop lands above or below rather than beside. */
   rail?: boolean;
+  fixed?: boolean;
   dragging?: boolean;
   dropBefore?: boolean;
   dropAfter?: boolean;
@@ -97,7 +98,7 @@ export default function SpaceTile(props: {
         aria-label={props.name}
         aria-pressed={props.active}
         onClick={() => props.onClick?.()}
-        draggable={true}
+        draggable={!props.fixed}
         onDragStart={(e: DragEvent) => props.onDragStart?.(e)}
         onDragOver={(e: DragEvent) => props.onDragOver?.(e)}
         onDrop={(e: DragEvent) => props.onDrop?.(e)}
@@ -113,40 +114,6 @@ export default function SpaceTile(props: {
         <Show when={props.rollup}>{(get) => <StatusBubble rollup={get()} tile />}</Show>
       </Tooltip>
     </ContextMenu>
-  );
-}
-
-/** A sidebar mode (Topics), as a tile in the same strip and on the same rules
- *  as a space: bare glyph at rest, name and pill when the tree is showing it.
- *  No menu and no rollup, because a mode is not a thing you can act on or that
- *  can hide sessions from you. */
-export function ModeTile(props: {
-  label: string;
-  glyph: LucideIcon;
-  nameWidth?: string;
-  active?: boolean;
-  rail?: boolean;
-  onClick?: () => void;
-}) {
-  const titled = afterPaint(() => props.active && !props.rail);
-  return (
-    <Tooltip
-      as="button"
-      type="button"
-      class={`${styles.space} ${styles.modeTile}`}
-      style={{ "--name-w": props.nameWidth }}
-      classList={{ [styles.active]: props.active, [styles.titled]: titled() }}
-      label={props.label}
-      placement={props.rail ? "right" : undefined}
-      aria-label={props.label}
-      aria-pressed={props.active}
-      onClick={() => props.onClick?.()}
-    >
-      <Icon icon={props.glyph} />
-      <span class={styles.tileName}>
-        <span class={styles.tileNameText}>{props.label}</span>
-      </span>
-    </Tooltip>
   );
 }
 

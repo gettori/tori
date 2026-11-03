@@ -299,9 +299,7 @@ describe("NewTopicDialog", () => {
       fireEvent.click(box("api"));
       expect(group.textContent).toContain("1 of 2");
       expect(
-        screen.getByText(
-          "Only work's projects can join. For projects from several spaces, make the Topic from Topics.",
-        ),
+        screen.getByText("Only work's projects can join. For projects from several spaces, make the Topic in Global."),
       ).toBeTruthy();
     });
 

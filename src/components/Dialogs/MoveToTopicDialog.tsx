@@ -1,6 +1,6 @@
 import { createSignal, onMount, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { Search, Tag } from "lucide-solid";
+import { Globe, Search } from "lucide-solid";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
@@ -14,7 +14,8 @@ import { samePath } from "../../panels/LeftSidebar/attempts";
 import { matchesTopic } from "../../panels/LeftSidebar/TopicRows";
 import { chatsInFolder } from "../../utils/chatSessions";
 import { tintedMembers, type SpaceTint } from "../../utils/topicMembers";
-import { byName, inSpace, isReference, listsInTopics, type Topic } from "../../utils/topics";
+import { byName, inSpace, isReference, listsInGlobal, type Topic } from "../../utils/topics";
+import { GLOBAL_NAME } from "../../utils/globalSpace";
 
 const PICK_NAME = "move-topic-pick";
 
@@ -47,7 +48,7 @@ export default function MoveToTopicDialog(props: {
   const global = () =>
     props.topics
       .filter((t) =>
-        listsInTopics(
+        listsInGlobal(
           t,
           props.spaces.map((g) => g.name),
         ),
@@ -77,7 +78,7 @@ export default function MoveToTopicDialog(props: {
   const groups = () =>
     [
       { label: `In ${props.space}`, topics: own() },
-      { label: "Topics", topics: global() },
+      { label: GLOBAL_NAME, topics: global() },
     ]
       .map((g) => ({ ...g, topics: g.topics.filter((t) => matchesTopic(t, query())) }))
       .filter((g) => g.topics.length > 0);
@@ -133,7 +134,7 @@ export default function MoveToTopicDialog(props: {
             label: props.space,
             icon: <SpaceMark name={props.space} icon={scope()?.icon} color={scope()?.color} size="sm" />,
           },
-          { value: "global" as const, label: "Topics", icon: <Icon icon={Tag} /> },
+          { value: "global" as const, label: GLOBAL_NAME, icon: <Icon icon={Globe} /> },
         ]}
         value={where()}
         onChange={setWhere}
@@ -141,7 +142,7 @@ export default function MoveToTopicDialog(props: {
       <div class={styles.hint}>
         {where() === "space"
           ? `Lives in ${props.space}'s tree. Can hold ${props.space}'s projects only.`
-          : "Listed in Topics. Can hold projects from any space."}
+          : `Listed in ${GLOBAL_NAME}. Can hold projects from any space.`}
       </div>
     </div>
   );

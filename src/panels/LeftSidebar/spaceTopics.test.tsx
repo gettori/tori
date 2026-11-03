@@ -131,8 +131,7 @@ function mount(liveTabs: (typeof PAY_TAB)[] = []) {
   return { sel };
 }
 
-const head = (label: string) => document.querySelector<HTMLElement>(`[data-group-head="${label}"]`);
-// Topics mode's list stays mounted, hidden, beside the Spaces tree.
+const head = (label: string) => document.querySelector<HTMLElement>(`[data-spaces-tree] [data-group-head="${label}"]`);
 const spacesTree = () => within(document.querySelector<HTMLElement>("[data-spaces-tree]")!);
 const before = (a: Node, b: Node) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
 const filter = async (text: string) => {
@@ -150,7 +149,6 @@ describe("Topics in a space's tree", () => {
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
     localStorage.setItem("tori.active-space.v1", "work");
-    localStorage.setItem("tori.sidebar-mode.v1", "spaces");
   });
 
   it("lists the space's own Topics above its projects, each group headed", async () => {
@@ -177,10 +175,10 @@ describe("Topics in a space's tree", () => {
     expect(head("Projects")).toBeNull();
   });
 
-  it("keeps a space's Topics out of Topics mode and a global one in it", async () => {
+  it("keeps a space's Topics out of Global and a global one in it", async () => {
     mount();
     await screen.findByText("Pay");
-    fireEvent.click(screen.getByRole("button", { name: "Topics" }));
+    fireEvent.click(screen.getByRole("button", { name: "Global" }));
     await screen.findByText("Auth");
     expect(screen.queryByText("Pay")).toBeNull();
     expect(screen.queryByText("Bench")).toBeNull();
@@ -235,7 +233,7 @@ describe("Topics in a space's tree", () => {
     await waitFor(() => expect(screen.getByText("Pay").closest("li")?.querySelector('[title="Idle"]')).toBeTruthy());
     expect(workTile().querySelector('[title="1 idle"]')).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Topics" }));
+    fireEvent.click(screen.getByRole("button", { name: "Global" }));
     await waitFor(() => expect(workTile().querySelector('[title="1 idle"]')).toBeTruthy());
   });
 
@@ -258,12 +256,12 @@ describe("Topics in a space's tree", () => {
     expect(drafts).toEqual([{ workspace: "topic:new", root: "/home/new", projectName: "Ship" }]);
     expect(head("Topics")).toBeTruthy();
     expect(screen.getByText("Ship")).toBeTruthy();
-    expect(localStorage.getItem("tori.sidebar-mode.v1")).toBe("spaces");
+    expect(localStorage.getItem("tori.active-space.v1")).toBe("work");
     off();
   });
 
   it("opens a Topic moved into a space in that space's tree", async () => {
-    localStorage.setItem("tori.sidebar-mode.v1", "topics");
+    localStorage.setItem("tori.active-space.v1", "/global");
     const { sel } = mount();
     fireEvent.contextMenu(await screen.findByText("Auth"));
     pointerClick(await screen.findByText("Move to…"));
@@ -271,7 +269,6 @@ describe("Topics in a space's tree", () => {
     fireEvent.click(screen.getByRole("button", { name: "Move to work" }));
 
     await waitFor(() => expect(sel()?.topicId).toBe("auth"));
-    expect(localStorage.getItem("tori.sidebar-mode.v1")).toBe("spaces");
     expect(localStorage.getItem("tori.active-space.v1")).toBe("work");
     expect(spacesTree().getByText("Auth")).toBeTruthy();
   });
@@ -298,7 +295,6 @@ describe("Topics in a space's tree", () => {
     it("lands on a space Topic in its space's tree", async () => {
       const sel = await moveMain("Pay");
       await waitFor(() => expect(sel()?.topicId).toBe("pay"));
-      expect(localStorage.getItem("tori.sidebar-mode.v1")).toBe("spaces");
       expect(localStorage.getItem("tori.active-space.v1")).toBe("work");
       expect(spacesTree().getByText("Pay")).toBeTruthy();
     });

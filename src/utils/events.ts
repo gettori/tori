@@ -139,10 +139,6 @@ export const TOGGLE_EDITOR = "tori:toggle-editor";
 export const TOGGLE_FILETREE = "tori:toggle-filetree";
 export const TOGGLE_DOCK = "tori:toggle-dock";
 
-// Step the sidebar through its modes. Consumed by LeftSidebar, which owns and
-// persists the mode.
-export const TOGGLE_SIDEBAR_MODE = "tori:toggle-sidebar-mode";
-
 // Open the dock with this command's tab in front. The terminal panel owns the
 // tab model, so it answers for a toast's Show as well as its own dedupe.
 export const REVEAL_DOCK = "tori:reveal-dock";

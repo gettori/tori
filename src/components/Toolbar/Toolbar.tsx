@@ -5,6 +5,7 @@ import { ChevronRight } from "lucide-solid";
 import SyncChip from "../SyncChip/SyncChip";
 import { topics } from "../../utils/topicStore";
 import { memberRoot } from "../../utils/topics";
+import { GLOBAL_NAME } from "../../utils/globalSpace";
 import styles from "./Toolbar.module.css";
 
 // Where you are: the breadcrumb to the selected worktree. The trail ends at the
@@ -48,7 +49,7 @@ export default function Toolbar(props: { selected: Selection | null }) {
               }
             >
               <nav class={styles.tbCrumb} aria-label="location">
-                <span class={`${styles.crumb} dim`}>{sel()!.spaceName || "Topics"}</span>
+                <span class={`${styles.crumb} dim`}>{sel()!.spaceName || GLOBAL_NAME}</span>
                 <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
                 <span class={styles.crumb} classList={{ dim: !!member(), [styles.leaf]: !member() }}>
                   {sel()!.topicName ?? sel()!.projectName}
