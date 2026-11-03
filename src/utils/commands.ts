@@ -55,7 +55,6 @@ import {
   TOGGLE_AUTOPILOT_POPUP,
   RELOAD_APP,
   TOGGLE_SIDEBAR,
-  TOGGLE_SIDEBAR_MODE,
   TOGGLE_TERMINAL,
   TOGGLE_EDITOR,
   TOGGLE_FILETREE,
@@ -332,13 +331,6 @@ export const COMMANDS: Command[] = [
     scope: "global",
     match: cmdShift("e"),
     run: () => emit(FOCUS_SEARCH),
-  },
-  {
-    id: "toggle-sidebar-mode",
-    label: "Toggle Spaces / Topics",
-    group: "navigate",
-    scope: "global",
-    run: () => emit(TOGGLE_SIDEBAR_MODE),
   },
   {
     id: "shortcut-sheet",

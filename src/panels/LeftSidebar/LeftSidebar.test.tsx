@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { pointerClick } from "../../test/menus";
 import { expectNoAxeViolations } from "../../test/axe";
-import { emit, TOGGLE_SIDEBAR_MODE } from "../../utils/events";
 
 // The fan-out group is a rendering claim, so it is asserted against the real
 // tree rather than against the grouping function alone (see attempts.test.ts for
@@ -229,7 +228,7 @@ describe("fan-out groups in the tree", () => {
   });
 });
 
-describe("the Spaces | Topics mode", () => {
+describe("the space strip and the Global space", () => {
   beforeEach(() => {
     resetSessionStoreForTests();
     bridge.calls.length = 0;
@@ -261,41 +260,68 @@ describe("the Spaces | Topics mode", () => {
     expect(probes[0]!.tagName).toBe("SPAN");
   });
 
-  // Spaces has no tile of its own: the strip lights the space you are in, and
-  // that tile being pressed IS "the tree is showing spaces".
-  it("defaults to Spaces and keeps the tree mounted", async () => {
+  it("lights the space it was left on and keeps Global's list hidden", async () => {
     const { container } = sidebar();
     await screen.findByText("repo");
     expect(pressed("work")).toBe(true);
+    expect(pressed("Global")).toBe(false);
     expect((container.querySelector("[data-topic-list]") as HTMLElement).hidden).toBe(true);
     await expectNoAxeViolations(container);
   });
 
-  it("persists Topics mode across a remount and unmounts the tree there", async () => {
+  it("persists Global across a remount and unmounts the space's tree there", async () => {
     const first = sidebar();
     await screen.findByText("repo");
-    fireEvent.click(segment("Topics"));
-    await waitFor(() => expect(pressed("Topics")).toBe(true));
-    expect(localStorage.getItem("tori.sidebar-mode.v1")).toBe("topics");
+    fireEvent.click(segment("Global"));
+    await waitFor(() => expect(pressed("Global")).toBe(true));
+    expect(localStorage.getItem("tori.active-space.v1")).toBe("/global");
     expect(screen.queryByText("repo")).toBeNull();
     expect((first.container.querySelector("[data-topic-list]") as HTMLElement).hidden).toBe(false);
-    await screen.findByText("No Topics yet.");
+    await screen.findByText("Topics that cross spaces show up here.");
     await expectNoAxeViolations(first.container);
     first.unmount();
 
     const second = sidebar();
-    await waitFor(() => expect(pressed("Topics")).toBe(true));
+    await waitFor(() => expect(pressed("Global")).toBe(true));
     expect((second.container.querySelector("[data-topic-list]") as HTMLElement).hidden).toBe(false);
     expect(screen.queryByText("repo")).toBeNull();
   });
 
-  it("steps through both on the palette's toggle event", async () => {
+  it("keeps Global first, ahead of the spaces, and out of the reorder drag", async () => {
     sidebar();
     await screen.findByText("repo");
-    emit(TOGGLE_SIDEBAR_MODE);
-    await waitFor(() => expect(pressed("Topics")).toBe(true));
-    emit(TOGGLE_SIDEBAR_MODE);
-    await waitFor(() => expect(pressed("work")).toBe(true));
+    const global = segment("Global");
+    expect(global.getAttribute("draggable")).toBe("false");
+    expect(segment("work").getAttribute("draggable")).toBe("true");
+    expect(global.compareDocumentPosition(segment("work")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("offers only icon and colour on Global's menu, saved through its own command", async () => {
+    sidebar();
     await screen.findByText("repo");
+    fireEvent.contextMenu(segment("Global"));
+    const rows = await screen.findAllByRole("menuitem");
+    expect(rows.map((r) => r.textContent)).toEqual([
+      "Edit icon and colourGlobal is built in. It can't be renamed or deleted.",
+    ]);
+    pointerClick(rows[0]!);
+    await screen.findByRole("dialog", { name: "Edit “Global”" });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "set_global_meta")).toBe(true));
+    expect(bridge.calls.some((c) => c.cmd === "set_space_meta")).toBe(false);
+  });
+
+  it("draws Global, its header and its filter before any space exists", async () => {
+    const spaces = config.spaces;
+    config.spaces = [];
+    try {
+      sidebar();
+      await waitFor(() => expect(pressed("Global")).toBe(true));
+      expect(screen.getByText("Global", { selector: "[class*=spaceHeaderName]" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Filter" })).toBeTruthy();
+      expect(screen.getAllByRole("button", { name: "New Topic" })).toHaveLength(2);
+    } finally {
+      config.spaces = spaces;
+    }
   });
 });

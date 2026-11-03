@@ -1,7 +1,6 @@
 import type { JSX } from "solid-js";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { Tags } from "lucide-solid";
-import SpaceTile, { ModeTile } from "./SpaceTile";
+import SpaceTile from "./SpaceTile";
 import type { MenuItem } from "../../components/Menu/rows";
 import type { Rollup } from "../../utils/sessionStatus";
 
@@ -104,34 +103,34 @@ export const Dragging: Story = {
   args: { dragging: true },
 };
 
-/** The whole strip as the sidebar draws it: the spaces, then the rule, then
- *  Topics. Only one tile in the set is ever lit, because the tree below can
+/** The whole strip as the sidebar draws it: Global, the rule, then the
+ *  spaces. Only one tile in the set is ever lit, because the tree below can
  *  only be showing one thing. */
 export const TheStrip: Story = {
   decorators: [
     () => (
       <Strip>
+        <SpaceTile name="Global" icon="Globe" color="Teal" fixed />
+        <div style={{ width: "1px", "align-self": "stretch", margin: "2px", background: "var(--border-default)" }} />
         <SpaceTile name="work" color="Sky" menu={MENU} active nameWidth="44px" />
         <SpaceTile name="side" color="Rose" menu={MENU} rollup={rollup({ idle: 1 })} />
         <SpaceTile name="infra" icon="server" color="Lime" menu={MENU} />
         <SpaceTile name="archive" color="Slate" menu={MENU} rollup={rollup({ running: 12 })} />
-        <div style={{ width: "1px", "align-self": "stretch", margin: "2px", background: "var(--border-default)" }} />
-        <ModeTile label="Topics" glyph={Tags} />
       </Strip>
     ),
   ],
 };
 
-/** Switching modes moves the pill off the spaces entirely: Topics is not a
- *  space and has no hue of its own, so lit it takes the brand. */
-export const TopicsLit: Story = {
+/** Global lit: a glyph in its own hue rather than an initial, fixed in the
+ *  first slot, with the spaces' sessions still bubbling to their tiles. */
+export const GlobalLit: Story = {
   decorators: [
     () => (
       <Strip>
+        <SpaceTile name="Global" icon="Globe" color="Teal" fixed active nameWidth="52px" />
+        <div style={{ width: "1px", "align-self": "stretch", margin: "2px", background: "var(--border-default)" }} />
         <SpaceTile name="work" color="Sky" menu={MENU} rollup={rollup({ executing: 1 })} />
         <SpaceTile name="side" color="Rose" menu={MENU} />
-        <div style={{ width: "1px", "align-self": "stretch", margin: "2px", background: "var(--border-default)" }} />
-        <ModeTile label="Topics" glyph={Tags} active nameWidth="52px" />
       </Strip>
     ),
   ],

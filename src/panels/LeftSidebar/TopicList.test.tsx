@@ -282,12 +282,18 @@ describe("TopicList", () => {
     await screen.findByText("No Topic matches the filter.");
   });
 
-  it("reads a null answer as no Topics and opens the dialog from the empty state", async () => {
+  it("reads a null answer as no Topics and draws what stands in for them", async () => {
     bridge.topics = null;
-    render(() => <Listed spaces={SPACES} query="" />);
+    render(() => <Listed spaces={SPACES} query="" head={<p>Topics head</p>} empty={<p>No Topics yet.</p>} />);
     await screen.findByText("No Topics yet.");
-    fireEvent.click(screen.getByRole("button", { name: "Create a Topic" }));
-    expect(await screen.findByRole("dialog", { name: "New Topic" })).toBeTruthy();
+    expect(screen.queryByText("Topics head")).toBeNull();
+    expect(document.querySelector("[data-topic]")).toBeNull();
+  });
+
+  it("keeps the head and drops the rows while collapsed", async () => {
+    render(() => <Listed spaces={SPACES} query="" head={<p>Topics head</p>} collapsed />);
+    await screen.findByText("Topics head");
+    expect(screen.queryByText("Auth")).toBeNull();
   });
 
   it("applies a topics://changed payload without a refetch", async () => {
@@ -407,7 +413,7 @@ describe("TopicList", () => {
     render(() => (
       <>
         <ToastRegion />
-        <Listed spaces={SPACES} query="" onActions={(a) => (actions = a)} />
+        <Listed spaces={SPACES} query="" empty={<p>No Topics yet.</p>} onActions={(a) => (actions = a)} />
       </>
     ));
     await screen.findByText("No Topics yet.");

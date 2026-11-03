@@ -36,6 +36,18 @@ struct RawConfig {
     // order; unlisted (e.g. freshly created) spaces keep discovery order after.
     #[serde(default)]
     space_order: Vec<String>,
+    // The built-in Global space's icon and colour. It has no folder, so it is
+    // keyed by nothing and never appears in `space` or `space_order`.
+    #[serde(default)]
+    global: GlobalMeta,
+}
+
+#[derive(Deserialize, Default)]
+struct GlobalMeta {
+    #[serde(default)]
+    icon: Option<String>,
+    #[serde(default)]
+    color: Option<String>,
 }
 
 // One `[[space]]` overlay entry: metadata keyed by the space's name (its folder
@@ -145,12 +157,24 @@ pub struct Space {
     pub color: Option<String>,
 }
 
+/// The built-in space every window has. No `path` on purpose: it owns no
+/// folder, so nothing can mkdir, clone or delete under it.
+#[derive(Serialize, Clone, Default)]
+pub struct GlobalSpace {
+    pub projects: Vec<Project>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+}
+
 #[derive(Serialize, Clone)]
 pub struct ResolvedConfig {
     pub path: String,
     // The configured base folders (expanded). Empty + no spaces => first run.
     pub roots: Vec<String>,
     pub spaces: Vec<Space>,
+    pub global: GlobalSpace,
 }
 
 #[derive(Serialize, Clone)]
@@ -903,10 +927,23 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
         cache.retain(|k, _| seen_paths.contains(k));
     }
 
+    let trimmed = |v: &Option<String>| {
+        v.as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    let global = GlobalSpace {
+        projects: Vec::new(),
+        icon: trimmed(&raw.global.icon),
+        color: trimmed(&raw.global.color),
+    };
+
     ResolvedConfig {
         path: config_path().to_string_lossy().into_owned(),
         roots,
         spaces,
+        global,
     }
 }
 
@@ -1423,6 +1460,31 @@ fn upsert_space_meta(text: &str, name: &str, icon: Option<&str>, color: Option<&
     Ok(doc.to_string())
 }
 
+fn upsert_global_meta(text: &str, icon: Option<&str>, color: Option<&str>) -> Result<String, String> {
+    use toml_edit::{value, Document, Item, Table};
+    let mut doc: Document = text.parse().map_err(|e: toml_edit::TomlError| e.to_string())?;
+    if doc.get("global").is_none() {
+        doc["global"] = Item::Table(Table::new());
+    }
+    let t = doc["global"].as_table_mut().ok_or("`global` is not a table")?;
+    match icon {
+        Some(v) => t["icon"] = value(v),
+        None => {
+            t.remove("icon");
+        }
+    }
+    match color {
+        Some(v) => t["color"] = value(v),
+        None => {
+            t.remove("color");
+        }
+    }
+    if doc["global"].as_table().map(|t| t.is_empty()).unwrap_or(false) {
+        doc.remove("global");
+    }
+    Ok(doc.to_string())
+}
+
 /// Upsert or remove the `[[project_meta]]` entry for `path`, preserving the rest
 /// of the file via `toml_edit`. The two icon keys are mutually exclusive by
 /// construction: whichever the caller does not pass is *removed*, not left
@@ -1616,6 +1678,24 @@ pub fn set_space_meta_in(
     let icon = icon.as_deref().map(str::trim).filter(|s| !s.is_empty());
     let color = color.as_deref().map(str::trim).filter(|s| !s.is_empty());
     write_space_meta(&name, icon, color)?;
+    ui.emit("config://changed", ());
+    Ok(())
+}
+
+/// Set (or clear) the Global space's icon and colour. Global has no name and
+/// no folder, so it gets its own command rather than a reserved name in
+/// `set_space_meta`.
+#[tauri::command(async)]
+pub fn set_global_meta(app: AppHandle, icon: Option<String>, color: Option<String>) -> Result<(), String> {
+    set_global_meta_in(&crate::ui::Ui::from(&app), icon, color)
+}
+
+pub fn set_global_meta_in(ui: &crate::ui::Ui, icon: Option<String>, color: Option<String>) -> Result<(), String> {
+    let _store = crate::exec::cross_process_store_lock("config")?;
+    let icon = icon.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    let color = color.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    let serialized = upsert_global_meta(&ensure_config()?, icon, color)?;
+    std::fs::write(config_path(), serialized).map_err(|e| e.to_string())?;
     ui.emit("config://changed", ());
     Ok(())
 }
@@ -2171,6 +2251,7 @@ mod tests {
             space: Vec::new(),
             project_meta: Vec::new(),
             space_order: Vec::new(),
+            global: GlobalMeta::default(),
         }
     }
 
@@ -2732,6 +2813,26 @@ mod tests {
         let c3: RawConfig = toml::from_str(&no_color).unwrap();
         assert_eq!(c3.space[0].color, None);
         assert!(no_color.contains("[[space]]"));
+    }
+
+    #[test]
+    fn the_global_table_round_trips_and_prunes_when_emptied() {
+        let text = "space_order = [\"work\"]\n";
+        let set = upsert_global_meta(text, Some("Compass"), Some("Teal")).unwrap();
+        let raw: RawConfig = toml::from_str(&set).unwrap();
+        assert_eq!(raw.space_order, vec!["work".to_string()]);
+        let cfg = resolve(raw, &ProjectIndex::default());
+        assert_eq!(cfg.global.icon.as_deref(), Some("Compass"));
+        assert_eq!(cfg.global.color.as_deref(), Some("Teal"));
+        assert!(cfg.spaces.is_empty());
+
+        let no_icon = upsert_global_meta(&set, None, Some("Teal")).unwrap();
+        assert!(!no_icon.contains("icon"));
+        let cleared = upsert_global_meta(&no_icon, None, None).unwrap();
+        assert!(!cleared.contains("[global]"));
+        let cfg = resolve(toml::from_str(&cleared).unwrap(), &ProjectIndex::default());
+        assert_eq!(cfg.global.icon, None);
+        assert_eq!(cfg.global.color, None);
     }
 
     #[test]

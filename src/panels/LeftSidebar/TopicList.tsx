@@ -1,4 +1,4 @@
-import { Show, onCleanup } from "solid-js";
+import { Show, onCleanup, type JSX } from "solid-js";
 import { type SpaceTint } from "./TopicItem";
 import TopicRows from "./TopicRows";
 import { TriangleAlert } from "lucide-solid";
@@ -30,8 +30,8 @@ function GoneSpaceNote(props: { topic: Topic; actions: TopicActions }) {
           Tori.
         </p>
         <div class={styles.goneActions}>
-          <Button size="sm" onClick={() => props.actions.keepInTopics(props.topic)}>
-            Keep in Topics
+          <Button size="sm" onClick={() => props.actions.keepInGlobal(props.topic)}>
+            Keep in Global
           </Button>
           <Button size="sm" variant="danger" onClick={() => props.actions.openDelete(props.topic)}>
             Delete
@@ -48,8 +48,6 @@ export type TopicListing = "listed" | "gone" | null;
  *  the creation checklist. The sidebar's own `Space` satisfies it as is. */
 export type TopicSpace = SpaceTint & RepoSpace;
 
-/** The sidebar's Topics mode: every Topic as a row, the dialogs that make or
- *  change one, and the toast for a creation that left a member failed. */
 export default function TopicList(props: {
   spaces: TopicSpace[];
   query: string;
@@ -66,6 +64,9 @@ export default function TopicList(props: {
    *  longer finds its space. Absent lists every Topic. */
   listing?: (topic: Topic) => TopicListing;
   actions: TopicActions;
+  head?: JSX.Element;
+  collapsed?: boolean;
+  empty?: JSX.Element;
 }) {
   onCleanup(watchTopics());
   const actions = props.actions;
@@ -91,31 +92,31 @@ export default function TopicList(props: {
   return (
     <div class={styles.list} classList={{ [props.class ?? ""]: !!props.class }} hidden={props.hidden} data-topic-list>
       <Show when={error()}>{(msg) => <p class={styles.error}>{msg()}</p>}</Show>
-      <TopicRows
-        topics={listed()}
-        query={props.query}
-        spaces={props.spaces}
-        actions={actions}
-        activeId={props.activeId}
-        activeRoot={props.activeRoot}
-        onOpenMember={props.onOpenMember}
-        topicStatus={props.topicStatus}
-        note={(t) => (
-          <Show when={props.listing?.(t) === "gone"}>
-            <GoneSpaceNote topic={t} actions={actions} />
-          </Show>
-        )}
-        fallback={
-          <div class="tree-empty">
-            <Show when={listed().length === 0} fallback={<p>No Topic matches the filter.</p>}>
-              <p>No Topics yet.</p>
-              <Button size="sm" variant="ghost" onClick={() => setDialog({})}>
-                Create a Topic
-              </Button>
-            </Show>
-          </div>
-        }
-      />
+      <Show when={listed().length > 0} fallback={props.empty}>
+        {props.head}
+        <Show when={!props.collapsed}>
+          <TopicRows
+            topics={listed()}
+            query={props.query}
+            spaces={props.spaces}
+            actions={actions}
+            activeId={props.activeId}
+            activeRoot={props.activeRoot}
+            onOpenMember={props.onOpenMember}
+            topicStatus={props.topicStatus}
+            note={(t) => (
+              <Show when={props.listing?.(t) === "gone"}>
+                <GoneSpaceNote topic={t} actions={actions} />
+              </Show>
+            )}
+            fallback={
+              <div class="tree-empty">
+                <p>No Topic matches the filter.</p>
+              </div>
+            }
+          />
+        </Show>
+      </Show>
 
       <Show when={dialog()}>
         {(req) => (

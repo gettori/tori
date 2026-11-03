@@ -150,7 +150,7 @@ describe("Toolbar for a Topic in a space", () => {
 
   it("keeps Topics and the name alone for a global Topic", () => {
     render(() => <Toolbar selected={topicSel(A) as never} />);
-    expect(crumbs()).toEqual(["Topics", "Auth"]);
+    expect(crumbs()).toEqual(["Global", "Auth"]);
   });
 });
 
@@ -158,7 +158,7 @@ describe("Toolbar for a Topic", () => {
   it("shows Topics and the Topic's name, with no member to switch to", async () => {
     await loadSync({ [A]: upstream({ behind: 3 }) });
     render(() => <Toolbar selected={topicSel(A) as never} />);
-    expect(crumbs()).toEqual(["Topics", "Auth"]);
+    expect(crumbs()).toEqual(["Global", "Auth"]);
     expect(screen.queryByRole("group", { name: "Topic members" })).toBeNull();
     expect(syncChip()).toBeNull();
   });

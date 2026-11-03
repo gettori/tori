@@ -1,11 +1,11 @@
 import { For, Show, type JSX } from "solid-js";
-import { ArrowRight, ChevronRight, Folder, Search, SquareTerminal, Tags } from "lucide-solid";
+import { ArrowRight, ChevronRight, Folder, Search, SquareTerminal } from "lucide-solid";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
 import ProjectIcon from "../../../../components/Icon/ProjectIcon";
 import { WorktreeMark } from "../../../../components/Icon/gitMarks";
 import { BranchRow, ProjectRow } from "../../../LeftSidebar/SidebarRows";
-import SpaceTile, { ModeTile } from "../../../LeftSidebar/SpaceTile";
+import SpaceTile from "../../../LeftSidebar/SpaceTile";
 import sidebar from "../../../LeftSidebar/LeftSidebar.module.css";
 import rows from "../../../LeftSidebar/SidebarRows.module.css";
 import MiniWindow from "./MiniWindow";
@@ -162,12 +162,12 @@ function Sidebar() {
       </div>
       <div class={sidebar.spaceBar}>
         <div class={sidebar.stripNav}>
+          <SpaceTile name="Global" icon="Globe" color="Teal" fixed />
+          <div class={sidebar.spaceDivider} />
           <div class={sidebar.spaceScroll}>
             <SpaceTile name="work" color="Sky" active nameWidth="52px" />
             <SpaceTile name="personal" color="Emerald" />
           </div>
-          <div class={sidebar.spaceDivider} />
-          <ModeTile label="Topics" glyph={Tags} />
         </div>
         <span class={`${sidebar.stripBtn} ${sidebar.dockBtn}`}>
           <Icon icon={SquareTerminal} />
