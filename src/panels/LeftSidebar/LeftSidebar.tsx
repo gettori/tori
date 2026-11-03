@@ -3425,7 +3425,6 @@ export default function LeftSidebar(props: {
   const gckey = `gc:${GLOBAL_KEY}`;
   const globalChatsCollapsed = () => expanded().has(gckey);
   const gcmkey = `gcm:${GLOBAL_KEY}`;
-  const gcokey = `gco:${GLOBAL_KEY}`;
   const shownChats = createMemo(() => {
     const needle = q();
     return needle ? chats().filter((c) => (c.name ?? NEW_CHAT_NAME).toLowerCase().includes(needle)) : chats();
@@ -4152,8 +4151,6 @@ export default function LeftSidebar(props: {
               onToggle={() => toggle(gckey)}
               moreOpen={expanded().has(gcmkey)}
               onToggleMore={() => toggle(gcmkey)}
-              olderOpen={expanded().has(gcokey)}
-              onToggleOlder={() => toggle(gcokey)}
               selectedId={selectedChatId()}
               status={chatStatus}
               rollupOf={(cs) => bubbleFor((s) => cs.some((c) => s.folderPath === chatKey(c.id)))}

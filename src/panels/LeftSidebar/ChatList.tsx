@@ -3,7 +3,7 @@ import { MessageSquare } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import type { MenuItem } from "../../components/Menu/rows";
 import { needsYouOrWorking, type Rollup } from "../../utils/sessionStatus";
-import { NEW_CHAT_NAME, OLDER_AFTER, chatTime, type Chat } from "../../utils/chats";
+import { NEW_CHAT_NAME, chatTime, type Chat } from "../../utils/chats";
 import StatusBubble from "./StatusBubble";
 import { BranchRow, EmptyRow, GroupHead, MoreRow } from "./SidebarRows";
 import { GROUP_CAP, capList, moreLabel } from "./capList";
@@ -18,8 +18,6 @@ export default function ChatList(props: {
   onToggle: () => void;
   moreOpen: boolean;
   onToggleMore: () => void;
-  olderOpen: boolean;
-  onToggleOlder: () => void;
   selectedId: string | null;
   status: (c: Chat) => Rollup | null;
   rollupOf: (chats: readonly Chat[]) => Rollup | null;
@@ -35,15 +33,12 @@ export default function ChatList(props: {
 
   const kept = (c: Chat) => props.selectedId === c.id || needsYouOrWorking(props.status(c));
   // A filter lists every match: a fold would hide the very rows it found.
-  const split = createMemo(() => {
-    if (props.filtered) return { recent: props.chats, shown: props.chats, hidden: [] as Chat[], older: [] as Chat[] };
-    const recent: Chat[] = [];
-    const older: Chat[] = [];
-    for (const c of props.chats) (now() - c.updated > OLDER_AFTER && !kept(c) ? older : recent).push(c);
-    if (props.moreOpen) return { recent, shown: recent, hidden: [] as Chat[], older };
-    return { recent, ...capList(recent, GROUP_CAP, kept), older };
-  });
-  const folds = () => (props.moreOpen ? split().recent.length > GROUP_CAP : split().hidden.length > 0);
+  const split = createMemo(() =>
+    props.filtered || props.moreOpen
+      ? { shown: props.chats, hidden: [] as Chat[] }
+      : capList(props.chats, GROUP_CAP, kept),
+  );
+  const folds = () => !props.filtered && (props.moreOpen ? props.chats.length > GROUP_CAP : split().hidden.length > 0);
 
   const chatRow = (c: Chat) => (
     <BranchRow
@@ -82,14 +77,7 @@ export default function ChatList(props: {
       />
       <Show when={props.open}>
         <div class={rows.projectCard}>
-          <For
-            each={split().shown}
-            fallback={
-              <Show when={props.filtered}>
-                <EmptyRow>No chat matches the filter.</EmptyRow>
-              </Show>
-            }
-          >
+          <For each={split().shown} fallback={<EmptyRow>No chat matches the filter.</EmptyRow>}>
             {chatRow}
           </For>
           <Show when={folds()}>
@@ -99,17 +87,6 @@ export default function ChatList(props: {
               end={<StatusBubble rollup={() => (props.moreOpen ? null : props.rollupOf(split().hidden))} />}
               onClick={props.onToggleMore}
             />
-          </Show>
-          <Show when={split().older.length > 0}>
-            <MoreRow
-              label="Older"
-              open={props.olderOpen}
-              end={<StatusBubble rollup={() => (props.olderOpen ? null : props.rollupOf(split().older))} />}
-              onClick={props.onToggleOlder}
-            />
-            <Show when={props.olderOpen}>
-              <For each={split().older}>{chatRow}</For>
-            </Show>
           </Show>
         </div>
       </Show>
