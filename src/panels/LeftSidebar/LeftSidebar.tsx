@@ -4085,14 +4085,6 @@ export default function LeftSidebar(props: {
         </Show>
       </div>
 
-      <Show when={inGlobal()}>
-        <button type="button" class={styles.newChat} onClick={() => void startChat()}>
-          <Icon icon={SquarePen} />
-          <span class={styles.newChatLabel}>{NEW_CHAT_NAME}</span>
-          <kbd class={styles.newChatKey}>⌘N</kbd>
-        </button>
-      </Show>
-
       {/* Hidden rather than unmounted, unlike a space's tree: it hosts the
           Topic dialogs, which a Topic row in any space opens. */}
       <TopicList
@@ -4107,6 +4099,22 @@ export default function LeftSidebar(props: {
         topicStatus={topicStatus}
         listing={(t) => (!inGlobalTree(t) ? null : goneSpace(t.space) ? "gone" : "listed")}
         actions={topicActions}
+        lead={
+          <Show when={chats().length > 0}>
+            <ChatList
+              chats={shownChats()}
+              count={counted(shownChats().length, chats().length)}
+              open={!globalChatsCollapsed()}
+              onToggle={() => toggle(gckey)}
+              selectedId={selectedChatId()}
+              status={chatStatus}
+              end={() => bubbleFor((s) => shownChats().some((c) => s.folderPath === chatKey(c.id)))}
+              menu={chatMenu}
+              onOpen={openChat}
+              onAdd={() => void startChat()}
+            />
+          </Show>
+        }
         collapsed={globalTopicsCollapsed()}
         head={
           <GroupHead
@@ -4142,19 +4150,6 @@ export default function LeftSidebar(props: {
                   {(p) => projectNode(globalAsSpace(), p)}
                 </For>
               </Show>
-            </Show>
-            <Show when={chats().length > 0}>
-              <ChatList
-                chats={shownChats()}
-                count={counted(shownChats().length, chats().length)}
-                open={!globalChatsCollapsed()}
-                onToggle={() => toggle(gckey)}
-                selectedId={selectedChatId()}
-                status={chatStatus}
-                end={() => bubbleFor((s) => shownChats().some((c) => s.folderPath === chatKey(c.id)))}
-                menu={chatMenu}
-                onOpen={openChat}
-              />
             </Show>
           </>
         }

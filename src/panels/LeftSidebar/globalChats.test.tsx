@@ -135,7 +135,6 @@ describe("Global's chats", () => {
     const fresh = await waitFor(() => chatRows().find((r) => r.dataset.chat === "c9")!);
     expect(fresh.getAttribute("aria-current")).toBe("true");
     expect(within(fresh).getByText("New chat")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /^New chat/ })).toBeTruthy();
     forgetChat("c9");
   });
 
