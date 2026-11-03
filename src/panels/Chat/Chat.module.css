@@ -2363,14 +2363,6 @@ button.diffHunkHeader:hover {
   min-height: 0;
 }
 
-.draftFillTop {
-  flex: 43;
-}
-
-.draftFillBottom {
-  flex: 57;
-}
-
 .draftOrigin {
   padding: 0 var(--tori-space-5) var(--tori-space-3);
   font-size: var(--tori-text-sm);
