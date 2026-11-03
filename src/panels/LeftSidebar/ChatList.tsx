@@ -1,14 +1,11 @@
 import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
-import { Ellipsis, MessageSquare } from "lucide-solid";
+import { MessageSquare } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
-import IconButton from "../../components/IconButton/IconButton";
-import ContextMenu from "../../components/Menu/ContextMenu";
-import Dropdown from "../../components/Menu/Dropdown";
 import type { MenuItem } from "../../components/Menu/rows";
 import type { Rollup } from "../../utils/sessionStatus";
 import { NEW_CHAT_NAME, chatTime, type Chat } from "../../utils/chats";
 import StatusBubble from "./StatusBubble";
-import { EmptyRow, GroupHead } from "./SidebarRows";
+import { BranchRow, EmptyRow, GroupHead } from "./SidebarRows";
 import rows from "./SidebarRows.module.css";
 import styles from "./ChatList.module.css";
 
@@ -39,31 +36,19 @@ export default function ChatList(props: {
         end={<StatusBubble rollup={() => (props.open ? null : (props.end?.() ?? null))} />}
       />
       <Show when={props.open}>
-        <ul class={styles.list} aria-label="Chats">
+        <div class={rows.projectCard}>
           <For each={props.chats} fallback={<EmptyRow>No chat matches the filter.</EmptyRow>}>
             {(c) => {
-              const selected = () => props.selectedId === c.id;
               const busy = () => {
                 const r = props.status(c);
                 return !!r && r.waitingForApproval + r.waitingForAnswer + r.prAttention + r.executing > 0;
               };
               return (
-                <ContextMenu
-                  as="li"
-                  class={`${rows.row} ${styles.chat}`}
-                  classList={{ [styles.sel]: selected() }}
-                  items={props.menu(c)}
-                  aria-current={selected() ? "true" : undefined}
-                  data-chat={c.id}
-                  onClick={() => props.onOpen(c)}
-                >
-                  <span class={`${rows.rowIcon} ${styles.icon}`}>
-                    <Icon icon={MessageSquare} />
-                  </span>
-                  <span class={`${rows.label} ${styles.name}`} classList={{ [styles.untitled]: !c.name }}>
-                    {c.name ?? NEW_CHAT_NAME}
-                  </span>
-                  <span class={`${rows.rowEnd} ${styles.end}`}>
+                <BranchRow
+                  label={c.name ?? NEW_CHAT_NAME}
+                  icon={<Icon icon={MessageSquare} />}
+                  selected={props.selectedId === c.id}
+                  end={
                     <Show
                       when={busy()}
                       fallback={
@@ -74,22 +59,15 @@ export default function ChatList(props: {
                     >
                       <StatusBubble rollup={() => props.status(c)} />
                     </Show>
-                  </span>
-                  <span class={styles.menu} onClick={(e) => e.stopPropagation()}>
-                    <Dropdown as="span" wrapper items={props.menu(c)} placement="bottom-end">
-                      <IconButton
-                        size="sm"
-                        class={rows.rowMenuBtn}
-                        icon={<Icon icon={Ellipsis} />}
-                        tooltip={`Actions for ${c.name ?? NEW_CHAT_NAME}`}
-                      />
-                    </Dropdown>
-                  </span>
-                </ContextMenu>
+                  }
+                  menu={props.menu(c)}
+                  onClick={() => props.onOpen(c)}
+                  rowProps={{ "data-chat": c.id }}
+                />
               );
             }}
           </For>
-        </ul>
+        </div>
       </Show>
     </>
   );
