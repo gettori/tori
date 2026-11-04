@@ -93,6 +93,9 @@ fn pack_file(root: &Path, kind: &'static str, path: std::path::PathBuf, text: St
         row.insert(field.into(), doc.get(field).cloned().unwrap_or(Value::Null));
     }
     row.insert("platforms".into(), json!(platforms(&doc)));
+    if kind == "lsp" {
+        row.insert("runs_project_code".into(), json!(runs_project_code(&doc)));
+    }
     if kind == "agents" {
         row.insert("icon_sha256".into(), icon_sha256(root, &id)?);
     }
@@ -113,6 +116,12 @@ fn icon_sha256(root: &Path, id: &str) -> Result<Value, String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Value::Null),
         Err(e) => Err(format!("{}: {e}", path.display())),
     }
+}
+
+// build.rs includes this file, so it cannot reach `lsp::registry` and repeats
+// its rule: a server launched from the project's own binary runs its code.
+fn runs_project_code(doc: &Value) -> bool {
+    doc["runs_project_code"] == true || doc.pointer("/launch/kind") == Some(&json!("project_bin"))
 }
 
 fn platforms(doc: &Value) -> Vec<String> {
@@ -196,6 +205,7 @@ mod tests {
                 "verified_against": "zed 1.0",
                 "verified_on": "2026-10-09",
                 "platforms": ["linux", "macos"],
+                "runs_project_code": false,
             })
         );
     }

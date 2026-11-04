@@ -36,6 +36,7 @@ import Resizer from "./components/Resizer/Resizer";
 import AskpassDialog from "./components/Dialogs/AskpassDialog";
 import ServerMessageDialog from "./components/Dialogs/ServerMessageDialog";
 import ProposalDialog from "./components/Dialogs/ProposalDialog";
+import PackInstallDialog from "./components/Dialogs/PackInstallDialog";
 import ConfirmDialog, { type ConfirmReq } from "./components/Dialogs/ConfirmDialog";
 import Checkbox from "./components/Checkbox/Checkbox";
 import ToastRegion from "./components/Toasts/Toasts";
@@ -1300,6 +1301,7 @@ function App() {
       <AskpassDialog />
       <ServerMessageDialog />
       <ProposalDialog />
+      <PackInstallDialog />
       <VoiceDownloadDialog />
       <DictationDownloadDialog />
       {/* One for the window, not per transcript: a read keeps going when its
