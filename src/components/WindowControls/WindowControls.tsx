@@ -1,4 +1,5 @@
-import { children, type JSX } from "solid-js";
+import { children, createSignal, onCleanup, onMount, type JSX } from "solid-js";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import LayoutToggles from "../LayoutToggles/LayoutToggles";
 import { stageHost } from "../../tabs/stageHost";
 import styles from "./WindowControls.module.css";
@@ -20,8 +21,35 @@ export default function WindowControls(props: {
   // pill has to follow what it actually rendered, not whether it was passed.
   const status = children(() => props.status);
   const joined = () => status.toArray().some((c) => c != null);
+  // A fullscreen window has no traffic lights, so their reserved space would
+  // sit empty. Entering and leaving fullscreen both arrive as a resize.
+  const [fullscreen, setFullscreen] = createSignal(false);
+  onMount(() => {
+    let win: ReturnType<typeof getCurrentWindow>;
+    try {
+      win = getCurrentWindow();
+    } catch {
+      return;
+    }
+    const sync = () =>
+      void win
+        .isFullscreen()
+        .then(setFullscreen)
+        .catch(() => {});
+    sync();
+    let off: (() => void) | undefined;
+    let disposed = false;
+    void win
+      .onResized(sync)
+      .then((un) => (disposed ? un() : (off = un)))
+      .catch(() => {});
+    onCleanup(() => {
+      disposed = true;
+      off?.();
+    });
+  });
   return (
-    <div class={styles.winControls}>
+    <div class={styles.winControls} classList={{ [styles.fullscreen]: fullscreen() }}>
       <div class={styles.toggleSlot} classList={{ [styles.joined]: joined() }}>
         <LayoutToggles showSidebar={props.showSidebar} />
         {status()}
