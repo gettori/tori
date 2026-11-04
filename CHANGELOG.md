@@ -10,6 +10,33 @@ matching section here fails the release rather than publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.1104.0-beta
+
+- New Topic in a space's menu (or the + on its Topics heading) makes a Topic that lives in that space's tree and holds only that space's projects.
+- Move to... on the Topic menu moves a Topic between Topics and a space. A space that can't hold every member is greyed with the reason, like "api and web are in saga".
+- Move to topic on a worktree lists its space's Topics first, then the ones in Topics, and New has a Where choice.
+- Delete space now deletes the space's own Topics too, and the confirm lists them plus the Topics that lose members.
+- A Topic whose space folder was renamed or deleted outside Tori shows in Topics with Keep in Topics and Delete.
+- Phone: the Projects tab shows the space's Topics with a +, the Topics tab lists only Topics of no space, New Topic makes the branch from the name and has Where, and a Topic has Move to.
+- `tori projects` prints the space on a Topic's line.
+- The Topics tile and **Toggle Spaces / Topics** are replaced by **Home**, the first tile in the space strip, with a house icon. It lists the Topics that belong to no space. Right-click it for **Edit icon and colour**; it can't be renamed or deleted.
+- Home's heading has a **...** menu like any space: **New chat**, **New topic**, **Attach folder...** and **Edit icon and colour**. Right-click the heading or the empty tree for the same menu.
+- A Topic whose space folder is gone now offers **Keep in Home**. **Move to...** on a Topic lists Home first.
+- **Attach folder...** uses a folder from anywhere on disk as a project, without moving it. Plain folders, clones and bare repositories with their worktrees all work.
+- An attached project has a small arrow badge, shows its parent folder on hover, and ends its menu in **Detach...** (**The folder stays where it is**). Detaching never touches the disk.
+- When an attached folder goes missing (drive unplugged, folder moved), its row says so and offers **Locate...** and **Detach**. It comes back by itself when the folder returns.
+- **Remove project** now says **Deletes the folder from disk**, and its confirm shows the path tagged **Deleted**.
+- Chats live in every space. `Cmd+N`, the **+** on the **Chats** heading and **New chat** in the space menu start one in the space on screen. The scratch buffer moved to `Cmd+Shift+N`.
+- Chats are listed first, newest first, with **Rename...** and **Delete chat** on right-click. **Send to a new chat** in a chat starts the new one in the same space.
+- With a chat selected, the right panel shows **Artifacts**: **Made in this chat** and **Added by you**. Click a row to open the file as a tab beside the chat.
+- Deleting a space deletes its chats, and the confirm lists them under **Chats deleted with it**.
+- Every space's tree reads Chats, Topics, then a **Projects** heading that is always there and collapses like the others. Each group shows six, then a **N more** row with the status of what it hides. Anything open, selected or busy stays in the list. Filtering shows every match.
+- Group headings have more room above them, bigger chevrons, and show their count only while collapsed or filtered.
+- **Delete...** on a Topic is now one dialog: a table of its repositories with a **Worktree** and a **Branch** tick each. Clean and merged rows start ticked, and a tick that would lose uncommitted changes or unpushed commits says so on its row.
+- **When a chat needs a worktree** moved from the Topic menu to Settings > Integrations > **Topics**, one setting for every Topic.
+- Pressing Enter on a menu item that opens a confirm no longer confirms it straight away.
+- macOS 26.1104.0-beta ships; Android 26.1104.0-beta ships; browser extension 26.1104.0 ships, rolling out on the Chrome Web Store; push relay unchanged at 26.1030.0-beta.
+
 ## 26.1030.0-beta
 
 - Dictation now asks for the microphone the first time you use it. Before, macOS refused it without asking, Tori never showed up under System Settings > Privacy & Security > Microphone, and there was no way to allow it.
