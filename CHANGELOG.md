@@ -35,7 +35,7 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 - **Delete...** on a Topic is now one dialog: a table of its repositories with a **Worktree** and a **Branch** tick each. Clean and merged rows start ticked, and a tick that would lose uncommitted changes or unpushed commits says so on its row.
 - **When a chat needs a worktree** moved from the Topic menu to Settings > Integrations > **Topics**, one setting for every Topic.
 - Pressing Enter on a menu item that opens a confirm no longer confirms it straight away.
-- macOS 26.1104.0-beta ships; Android 26.1104.0-beta ships; browser extension 26.1104.0 ships, rolling out on the Chrome Web Store; push relay unchanged at 26.1030.0-beta.
+- macOS 26.1104.0-beta ships; Android 26.1104.0-beta ships; browser extension unchanged at 26.1029.0; push relay unchanged at 26.1030.0-beta.
 
 ## 26.1030.0-beta
 
