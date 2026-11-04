@@ -1,3 +1,4 @@
+import { PENDING_OPEN_TTL_MS, pendingFileOpen, setPendingFileOpen } from "../../utils/pendingFileOpen";
 import {
   For,
   createSignal,
@@ -1508,6 +1509,22 @@ export default function Editor(props: {
       clearDebugConsole();
     }),
   );
+
+  // A file a link in another worktree asked for, opened once this pane shows
+  // that worktree and its own tabs are back, so the restore does not skip a
+  // strip it sees as already open.
+  createEffect(() => {
+    const want = pendingFileOpen();
+    if (!want) return;
+    if (Date.now() - want.at > PENDING_OPEN_TTL_MS) return setPendingFileOpen(null);
+    const roots = treeRoots()?.map((r) => r.path) ?? (root() ? [root()!] : []);
+    if (!roots.some((r) => isUnderPath(want.path, r))) return;
+    setPendingFileOpen(null);
+    const w = ws();
+    void fileRestore(w).then(() => {
+      if (ws() === w) emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: want.path, line: want.line });
+    });
+  });
 
   // Projects already swept by local_history_prune this run.
   const prunedHistory = new Set<string>();

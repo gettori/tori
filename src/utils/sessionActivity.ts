@@ -16,6 +16,7 @@ import { createSignal, createMemo, createEffect, createRoot } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { LiveTab } from "./events";
+import { isUnderPath } from "./pathScope";
 import { sessions, type SessionMeta } from "./sessionStore";
 import { liveChats, liveChatIds, type LiveChat } from "./chatSessions";
 import {
@@ -170,6 +171,25 @@ export function projectPathFor(root: string): string | null {
 
 export function unitAt(folder: string): ForgeUnit | null {
   return forgeUnits().find((u) => u.folderPath === folder) ?? null;
+}
+
+/** The unit whose folder holds `path`, longest folder first so a worktree nested
+ *  in its project's checkout answers with itself. A plain repo's units share
+ *  one folder, and the one checked out is the one whose files these are. */
+export function unitOwning(path: string): ForgeUnit | null {
+  let best: ForgeUnit | null = null;
+  for (const u of forgeUnits()) {
+    if (!isUnderPath(path, u.folderPath)) continue;
+    const longer = !best || u.folderPath.length > best.folderPath.length;
+    const sameButCurrent = best && u.folderPath === best.folderPath && u.isCurrent && !best.isCurrent;
+    if (longer || sameButCurrent) best = u;
+  }
+  return best;
+}
+
+/** Which space and project owns `folder`, as the sidebar last reported it. */
+export function folderOwner(folder: string): FolderOwner | null {
+  return folderOwners()[folder] ?? null;
 }
 
 export function unitGone(folder: string): boolean {

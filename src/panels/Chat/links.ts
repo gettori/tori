@@ -11,7 +11,7 @@ export type LinkTarget =
   | { kind: "external"; url: string }
   | { kind: "navigate"; target: NavTarget }
   | { kind: "file"; path: string; line?: number }
-  | { kind: "outside"; path: string }
+  | { kind: "outside"; path: string; line?: number }
   | { kind: "ignore" };
 
 const EXTERNAL = /^(?:https?|mailto|tel):/i;
@@ -73,7 +73,7 @@ export function linkTarget(href: string, cwd: string): LinkTarget {
 
   const abs = resolve(body.startsWith("/") ? "" : cwd, body);
   const line = at ? Number(at[2]) : undefined;
-  return isUnderPath(abs, cwd) ? { kind: "file", path: abs, line } : { kind: "outside", path: abs };
+  return isUnderPath(abs, cwd) ? { kind: "file", path: abs, line } : { kind: "outside", path: abs, line };
 }
 
 /** One path segment: anything but whitespace, quotes and brackets. Not `\w`,
@@ -85,17 +85,19 @@ const EXTENSION = /\.[a-z0-9]{1,8}(?::\d+)?$/;
 
 /**
  * The file a span of reply text names, or null when it does not look like one.
+ * `outside` when it resolves past the workspace, which the caller may still be
+ * able to place in another worktree.
  *
  * Shape only: `bucket.count` passes it as readily as `src/limiter.ts`, so the
- * caller still has to ask the disk before drawing a link. A path outside the
- * workspace is null rather than a link that only says it cannot open.
+ * caller still has to ask the disk before drawing a link.
  */
-export function pathTarget(text: string, cwd: string): { path: string; line?: number } | null {
+export function pathTarget(text: string, cwd: string): { path: string; line?: number; outside: boolean } | null {
   const raw = text.trim().replace(/^@/, "");
   if (!PATH_LIKE.test(raw) || raw.startsWith("~")) return null;
   if (!raw.includes("/") && !EXTENSION.test(raw)) return null;
   const target = linkTarget(raw, cwd);
-  return target.kind === "file" ? { path: target.path, line: target.line } : null;
+  if (target.kind !== "file" && target.kind !== "outside") return null;
+  return { path: target.path, line: target.line, outside: target.kind === "outside" };
 }
 
 /** Path-shaped words in running prose: a slash in them somewhere, so a plain

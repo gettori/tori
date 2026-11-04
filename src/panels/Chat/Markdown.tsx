@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { traceWork } from "../../utils/perfTrace";
 import { emitWith, NAVIGATE, TOAST, type NavTarget, type ToastEvent } from "../../utils/events";
-import { openFile } from "../../utils/pathActions";
+import { openPlaced, placeOf, type FilePlace } from "./filePlace";
 import { linkTarget, pathTarget, pathWords } from "./links";
 import { LINEWISE, PROSE } from "./chatMarked";
 import CodeBlock from "./CodeBlock";
@@ -23,14 +23,26 @@ async function fileExists(path: string): Promise<boolean> {
   return ok;
 }
 
-/** Turn what in `root` names a file in the workspace into links: an inline code
- *  span that is a path, and a path written in the running text. Fenced code is a
- *  component of its own and never reaches here, and an anchor is a link already. */
+type Named = { path: string; line?: number; place: FilePlace };
+
+/** A path from the reply placed against Tori's worktrees, or null when it is
+ *  not a path or lives nowhere Tori tracks. Existence is the caller's check. */
+function named(text: string, cwd: string): Named | null {
+  const target = pathTarget(text, cwd);
+  if (!target) return null;
+  const place = target.outside ? placeOf(target.path, cwd) : ({ kind: "here" } as const);
+  return place ? { path: target.path, line: target.line, place } : null;
+}
+
+/** Turn what in `root` names a file Tori can open into links: an inline code
+ *  span that is a path, and a path written in the running text. Fenced code is
+ *  a component of its own and never reaches here, and an anchor is a link
+ *  already. */
 function linkPaths(root: HTMLElement, cwd: string) {
   if (!cwd) return;
   for (const code of root.querySelectorAll<HTMLElement>("code")) {
     if (code.closest("pre, a") || code.dataset.path) continue;
-    const target = pathTarget(code.textContent ?? "", cwd);
+    const target = named(code.textContent ?? "", cwd);
     if (!target) continue;
     void fileExists(target.path).then((ok) => {
       if (ok) markPath(code, target);
@@ -43,7 +55,7 @@ function linkPaths(root: HTMLElement, cwd: string) {
   }
   for (const node of texts) {
     const found = pathWords(node.data).flatMap((w) => {
-      const target = pathTarget(w.raw, cwd);
+      const target = named(w.raw, cwd);
       return target ? [{ ...w, target }] : [];
     });
     if (!found.length) continue;
@@ -66,10 +78,22 @@ function linkPaths(root: HTMLElement, cwd: string) {
   }
 }
 
-function markPath(el: HTMLElement, target: { path: string; line?: number }) {
+function markPath(el: HTMLElement, target: Named) {
   el.dataset.path = target.path;
   if (target.line) el.dataset.line = String(target.line);
-  el.title = "Open file";
+  if (target.place.kind === "worktree") {
+    el.dataset.folder = target.place.folder;
+    el.dataset.label = target.place.label;
+    el.title = `Open in ${target.place.label}`;
+  } else {
+    el.title = "Open file";
+  }
+}
+
+/** The place `markPath` wrote onto an element. */
+function placeFrom(el: HTMLElement): FilePlace {
+  const { folder, label } = el.dataset;
+  return folder ? { kind: "worktree", folder, label: label ?? folder } : { kind: "here" };
 }
 
 /**
@@ -164,10 +188,10 @@ export default function Markdown(props: { text: string; cwd: string; breaks?: bo
   });
 
   function onLinkClick(e: MouseEvent) {
-    const named = (e.target as Element | null)?.closest?.<HTMLElement>("[data-path]");
-    if (named) {
-      const line = named.dataset.line ? Number(named.dataset.line) : undefined;
-      return openFile(named.dataset.path!, line);
+    const marked = (e.target as Element | null)?.closest?.<HTMLElement>("[data-path]");
+    if (marked) {
+      const line = marked.dataset.line ? Number(marked.dataset.line) : undefined;
+      return openPlaced(marked.dataset.path!, line, placeFrom(marked));
     }
     const anchor = (e.target as Element | null)?.closest?.("a");
     if (!anchor) return;
@@ -182,9 +206,11 @@ export default function Markdown(props: { text: string; cwd: string; breaks?: bo
     } else if (target.kind === "navigate") {
       emitWith<NavTarget>(NAVIGATE, target.target);
     } else if (target.kind === "file") {
-      openFile(target.path, target.line);
+      openPlaced(target.path, target.line, { kind: "here" });
     } else if (target.kind === "outside") {
-      emitWith<ToastEvent>(TOAST, { message: `${target.path} is outside this workspace.`, kind: "info" });
+      const place = placeOf(target.path, props.cwd);
+      if (place) openPlaced(target.path, target.line, place);
+      else emitWith<ToastEvent>(TOAST, { message: `${target.path} is outside this workspace.`, kind: "info" });
     }
   }
 
