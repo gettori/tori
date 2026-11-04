@@ -30,9 +30,11 @@ intelligence.
 ### The catalog
 
 Beyond the core set, Tori knows how to run one server for each of these
-languages. Each is a primary, and each is either bundled, installed by Tori
-from Settings > LSP at a pinned version (see "Installing servers"), or
-installed by you, with a hint on its card saying how.
+languages. Each is a primary. `css` and `html` ship in the app; the rest are
+packs in gettori/packs that Tori fetches from the catalog on request (the
+shipped set is `scripts/bundle.txt`). Once a pack is in, its server is either
+installed by Tori at a pinned version (see "Installing servers") or installed
+by you, with a hint on its card saying how.
 
 | id | Server | How it gets there |
 |---|---|---|

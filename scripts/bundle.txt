@@ -1,0 +1,20 @@
+# The packs Tori ships, as <kind>/<id>; every other pack is fetched from the
+# catalog. Listed only when the binary ships what it launches, first run
+# depends on it, or Tori's own repo develops with it.
+lsp/css
+lsp/eslint
+lsp/html
+lsp/json
+lsp/oxlint
+lsp/typescript
+lsp/yaml
+formatters/oxfmt
+formatters/prettier
+formatters/vite-plus
+themes/tori-dark
+themes/tori-light
+agents/claude
+agents/codex
+agents/copilot
+agents/opencode
+agents/pi
