@@ -25,6 +25,7 @@ import AutopilotSwitch from "../../../../components/Autopilot/AutopilotSwitch";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
 import IconButton from "../../../../components/IconButton/IconButton";
+import OverflowTabBar from "../../../../components/OverflowTabBar";
 import Tab from "../../../../components/Tab/Tab";
 import Tooltip from "../../../../components/Tooltip/Tooltip";
 import { Tabs } from "../../../../lib/tabs";
@@ -73,6 +74,12 @@ const STAGED: Change[] = [
   { status: "M", path: "src/limiter.test.ts" },
 ];
 const UNSTAGED: Change[] = [{ status: "M", path: FILE }];
+
+const HISTORY_TABS = [
+  { id: "graph", label: "Graph", count: 0 },
+  { id: "stashes", label: "Stashes", count: 0 },
+  { id: "checkpoints", label: "Checkpoints", count: 13 },
+];
 
 const STATUS_CLASS: Record<string, string> = { A: review.added, M: review.modified };
 
@@ -205,22 +212,29 @@ function ChangesPanel() {
             </div>
           </div>
           <section class={review.history}>
-            <div class={review.tabStrip}>
-              <div class={review.tabs} role="tablist" aria-label="History">
-                <button type="button" role="tab" class={review.tab} aria-selected="true">
-                  <span>Graph</span>
-                </button>
-                <button type="button" role="tab" class={review.tab} aria-selected="false">
-                  <span>Stashes</span>
-                </button>
-                <button type="button" role="tab" class={review.tab} aria-selected="false">
-                  <span>Checkpoints</span>
-                  <span class={review.tabCount}>13</span>
-                </button>
-              </div>
-              <span class={review.spacer} />
-              <IconButton size="sm" icon={<Icon icon={ChevronUp} />} aria-label="Expand" />
-            </div>
+            <OverflowTabBar
+              class={review.tabStrip}
+              items={HISTORY_TABS}
+              activeId="graph"
+              idOf={(t) => t.id}
+              onActivate={() => {}}
+              onReorder={() => {}}
+              renderTab={(t) => (
+                <Tab
+                  quiet
+                  value={t.id}
+                  trailing={
+                    <Show when={t.count}>
+                      <span class={review.tabCount}>{t.count}</span>
+                    </Show>
+                  }
+                >
+                  {t.label}
+                </Tab>
+              )}
+              renderMenuItem={(t) => <span>{t.label}</span>}
+              trailing={<IconButton size="sm" icon={<Icon icon={ChevronUp} />} aria-label="Expand" />}
+            />
           </section>
         </div>
       </div>
