@@ -301,7 +301,7 @@ mod tests {
 
         for (text, id, gated) in [
             (include_str!("../packs/lsp/typescript.toml"), "typescript", true),
-            (include_str!("../packs/lsp/rust.toml"), "rust", true),
+            (include_str!("../fixtures/packs/lsp/rust.toml"), "rust", true),
             (include_str!("../packs/lsp/json.toml"), "json", false),
             (include_str!("../packs/lsp/yaml.toml"), "yaml", false),
         ] {

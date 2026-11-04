@@ -15,13 +15,9 @@ function fakeStyle() {
 }
 
 describe("bundled registry", () => {
-  it("offers the two Tori themes, then the ports in alphabetical order", () => {
+  it("offers only Tori's two themes, dark first", () => {
     const ids = listSelectableBundled().map((t) => t.id);
-    // Tori's own two lead the registry; the picker sorts by label on its own.
-    expect(ids.slice(0, 2)).toEqual(["tori-dark", "tori-light"]);
-    expect(ids.slice(2)).toEqual(ids.slice(2).sort());
-    expect(ids).toHaveLength(21);
-    expect(new Set(ids).size).toBe(21);
+    expect(ids).toEqual(["tori-dark", "tori-light"]);
   });
 
   it("defaults to Tori Dark", () => {

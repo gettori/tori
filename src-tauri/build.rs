@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn main() {
-    embed_packs();
+    embed_packs("packs", "packs_snapshot.rs");
+    embed_packs("fixtures/packs", "packs_fixtures.rs");
     embed_commit();
     link_compiler_runtime();
     tauri_build::build()
@@ -54,13 +55,13 @@ fn embed_commit() {
     println!("cargo:rustc-env=TORI_COMMIT={sha}");
 }
 
-/// Writes `$OUT_DIR/packs_snapshot.rs`: every file under `packs/` as
+/// Writes `$OUT_DIR/<file>`: every pack under `<dir>` as
 /// `(kind, id, text, sha256)`, and the index those files make.
-fn embed_packs() {
-    let dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("packs");
+fn embed_packs(dir: &str, file: &str) {
+    let dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join(dir);
     println!("cargo:rerun-if-changed={}", dir.display());
 
-    let packs = index_rows::read_packs(&dir).unwrap_or_else(|e| panic!("bundled packs: {e}"));
+    let packs = index_rows::read_packs(&dir).unwrap_or_else(|e| panic!("packs under {}: {e}", dir.display()));
     let mut out = String::from("pub static FILES: &[(&str, &str, &str, &str)] = &[\n");
     for p in &packs {
         writeln!(
@@ -81,6 +82,6 @@ fn embed_packs() {
     )
     .unwrap();
 
-    let target = PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("packs_snapshot.rs");
+    let target = PathBuf::from(std::env::var("OUT_DIR").unwrap()).join(file);
     std::fs::write(target, out).unwrap();
 }

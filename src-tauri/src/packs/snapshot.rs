@@ -2,27 +2,55 @@
 
 include!(concat!(env!("OUT_DIR"), "/packs_snapshot.rs"));
 
+// Catalog packs the registries' tests exercise, from
+// src-tauri/fixtures/packs/. Under test they load beside the bundle, so a
+// pack leaving the bundle does not take its tests with it.
+#[cfg(test)]
+mod fixtures {
+    include!(concat!(env!("OUT_DIR"), "/packs_fixtures.rs"));
+}
+
+type File = (&'static str, &'static str, &'static str, &'static str);
+
+#[cfg(not(test))]
+fn files() -> impl Iterator<Item = &'static File> {
+    FILES.iter()
+}
+
+#[cfg(test)]
+fn files() -> impl Iterator<Item = &'static File> {
+    FILES.iter().chain(fixtures::FILES.iter())
+}
+
+/// The bundled index with the fixtures' rows appended, for a test that
+/// installs a pack the bundle no longer carries.
+#[cfg(test)]
+pub fn index() -> serde_json::Value {
+    let mut index: serde_json::Value = serde_json::from_str(INDEX).unwrap();
+    let more: serde_json::Value = serde_json::from_str(fixtures::INDEX).unwrap();
+    let rows = index["rows"].as_array_mut().unwrap();
+    rows.extend(more["rows"].as_array().unwrap().iter().cloned());
+    index
+}
+
 /// The bundled packs of one kind as `(source, text)`, the source written
 /// `bundled:<id>` as the loaders expect.
 pub fn bundled(kind: &'static str) -> impl Iterator<Item = (String, &'static str)> {
-    FILES
-        .iter()
+    files()
         .filter(move |(k, ..)| *k == kind)
         .map(|(_, id, text, _)| (format!("bundled:{id}"), *text))
 }
 
 /// The text of one bundled pack.
 pub fn text(kind: &str, id: &str) -> Option<&'static str> {
-    FILES
-        .iter()
+    files()
         .find(|(k, i, ..)| *k == kind && *i == id)
         .map(|(_, _, text, _)| *text)
 }
 
 /// The hash of one bundled pack's bytes.
 pub fn sha256(kind: &str, id: &str) -> Option<&'static str> {
-    FILES
-        .iter()
+    files()
         .find(|(k, i, ..)| *k == kind && *i == id)
         .map(|(_, _, _, sha)| *sha)
 }
