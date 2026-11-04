@@ -77,7 +77,13 @@ export default function SyncChip(props: { root: string | null }) {
   // toggles away, so a branch that is ninety-nine behind *and* about to conflict
   // has to show both: the words are the verdict, the marks are what it owes.
   const marks = createMemo(() => syncMarks(gitStateFor(props.root).sync, finished()));
-  const words = () => (SAYS[level()] ? state().label : "");
+  // A never-pushed branch with commits is labelled by its count, which the push
+  // mark already shows, so the words would repeat it.
+  const words = () => {
+    if (!SAYS[level()]) return "";
+    if (level() === "unpushed" && marks().some((m) => m.kind === "push" && m.count != null)) return "";
+    return state().label;
+  };
 
   return (
     <Show when={shown()}>
