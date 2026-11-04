@@ -1,3 +1,4 @@
+import { setPendingFileOpen } from "../../utils/pendingFileOpen";
 import {
   createSignal,
   For,
@@ -1319,7 +1320,13 @@ export default function LeftSidebar(props: {
   // the selection, so dropping one leaves the editor's Session panel blank with
   // nothing left to click to fix it.
   onCleanup(onWith<SessionAction>(SESSION_ACTION, (d) => void runSessionAction(d)));
-  onCleanup(onWith<NavTarget>(NAVIGATE, (t) => void navigateTo(t)));
+  onCleanup(
+    onWith<NavTarget>(NAVIGATE, (t) => {
+      void navigateTo(t).then((ok) => {
+        if (ok && t.file) setPendingFileOpen({ path: t.file, line: t.line, at: Date.now() });
+      });
+    }),
+  );
   // The tab draws first: selecting its session wakes everything that reads the
   // selection, and that work would otherwise land inside the tab's first frame.
   onCleanup(onWith<TerminalTabFocused>(TERMINAL_TAB_FOCUSED, (d) => afterPaint(() => void focusFromTerminalTab(d))));

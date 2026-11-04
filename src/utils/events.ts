@@ -121,7 +121,15 @@ export const OPEN_DIGEST = "tori:open-digest";
 export const NAVIGATE = "tori:navigate";
 /** `folder` and `session` mirror `NavTarget` in src-tauri/src/autopilot.rs;
  *  at least one field is set. */
-export type NavTarget = { folder?: string; session?: string; project?: string; space?: string };
+export type NavTarget = {
+  folder?: string;
+  session?: string;
+  project?: string;
+  space?: string;
+  /** A file to open once the folder is showing, at `line` when given. */
+  file?: string;
+  line?: number;
+};
 export const ZOOM_OUT = "tori:zoom-out";
 export const ZOOM_RESET = "tori:zoom-reset";
 
