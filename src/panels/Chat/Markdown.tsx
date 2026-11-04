@@ -3,21 +3,74 @@ import type { Token } from "marked";
 import { invoke } from "@tauri-apps/api/core";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { traceWork } from "../../utils/perfTrace";
-import {
-  emitWith,
-  NAVIGATE,
-  OPEN_IN_EDITOR,
-  TOAST,
-  type NavTarget,
-  type OpenInEditor,
-  type ToastEvent,
-} from "../../utils/events";
-import { linkTarget } from "./links";
+import { emitWith, NAVIGATE, TOAST, type NavTarget, type ToastEvent } from "../../utils/events";
+import { openFile } from "../../utils/pathActions";
+import { linkTarget, pathTarget, pathWords } from "./links";
 import { LINEWISE, PROSE } from "./chatMarked";
 import CodeBlock from "./CodeBlock";
 import styles from "./Chat.module.css";
 
 type Segment = { kind: "prose"; html: string } | { kind: "code"; lang: string; code: string };
+
+/** Paths known to exist. Only hits are kept: a file the agent writes after it
+ *  first named it has to become a link on the next render. */
+const existing = new Set<string>();
+
+async function fileExists(path: string): Promise<boolean> {
+  if (existing.has(path)) return true;
+  const ok = await invoke<boolean>("file_exists", { path }).catch(() => false);
+  if (ok) existing.add(path);
+  return ok;
+}
+
+/** Turn what in `root` names a file in the workspace into links: an inline code
+ *  span that is a path, and a path written in the running text. Fenced code is a
+ *  component of its own and never reaches here, and an anchor is a link already. */
+function linkPaths(root: HTMLElement, cwd: string) {
+  if (!cwd) return;
+  for (const code of root.querySelectorAll<HTMLElement>("code")) {
+    if (code.closest("pre, a") || code.dataset.path) continue;
+    const target = pathTarget(code.textContent ?? "", cwd);
+    if (!target) continue;
+    void fileExists(target.path).then((ok) => {
+      if (ok) markPath(code, target);
+    });
+  }
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const texts: Text[] = [];
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (!n.parentElement?.closest("code, pre, a, [data-path]")) texts.push(n as Text);
+  }
+  for (const node of texts) {
+    const found = pathWords(node.data).flatMap((w) => {
+      const target = pathTarget(w.raw, cwd);
+      return target ? [{ ...w, target }] : [];
+    });
+    if (!found.length) continue;
+    void Promise.all(found.map((f) => fileExists(f.target.path))).then((oks) => {
+      const source = node.data;
+      if (!node.isConnected) return;
+      // Back to front, so splitting off one match leaves the offsets of the
+      // ones before it where they were.
+      for (let i = found.length - 1; i >= 0; i--) {
+        const f = found[i];
+        if (!oks[i] || source.slice(f.start, f.start + f.raw.length) !== f.raw) continue;
+        const word = node.splitText(f.start);
+        word.splitText(f.raw.length);
+        const span = document.createElement("span");
+        word.replaceWith(span);
+        span.append(word);
+        markPath(span, f.target);
+      }
+    });
+  }
+}
+
+function markPath(el: HTMLElement, target: { path: string; line?: number }) {
+  el.dataset.path = target.path;
+  if (target.line) el.dataset.line = String(target.line);
+  el.title = "Open file";
+}
 
 /**
  * Assistant markdown, rendered block by block rather than as one innerHTML
@@ -111,6 +164,11 @@ export default function Markdown(props: { text: string; cwd: string; breaks?: bo
   });
 
   function onLinkClick(e: MouseEvent) {
+    const named = (e.target as Element | null)?.closest?.<HTMLElement>("[data-path]");
+    if (named) {
+      const line = named.dataset.line ? Number(named.dataset.line) : undefined;
+      return openFile(named.dataset.path!, line);
+    }
     const anchor = (e.target as Element | null)?.closest?.("a");
     if (!anchor) return;
     // Before the switch, not inside it: an href this cannot place must still
@@ -124,7 +182,7 @@ export default function Markdown(props: { text: string; cwd: string; breaks?: bo
     } else if (target.kind === "navigate") {
       emitWith<NavTarget>(NAVIGATE, target.target);
     } else if (target.kind === "file") {
-      emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: target.path, line: target.line });
+      openFile(target.path, target.line);
     } else if (target.kind === "outside") {
       emitWith<ToastEvent>(TOAST, { message: `${target.path} is outside this workspace.`, kind: "info" });
     }
@@ -142,6 +200,7 @@ export default function Markdown(props: { text: string; cwd: string; breaks?: bo
               // transcript's spacing rules select `.mdProse` as a direct child
               // of `.assistant`, so an extra element would break them.
               <div
+                ref={(el) => createEffect(on(s, () => linkPaths(el, props.cwd)))}
                 class={styles.mdProse}
                 onClick={onLinkClick}
                 innerHTML={(s() as Extract<Segment, { kind: "prose" }>).html}
