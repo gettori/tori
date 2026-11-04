@@ -123,7 +123,7 @@ describe("Project settings dialog, Automations section", () => {
     fireEvent.click(await screen.findByRole("tab", { name: "Automations" }));
     expect(screen.queryByLabelText("Pull request rule, at most per hour")).toBeNull();
 
-    fireEvent.click(screen.getByRole("checkbox", { name: "A check fails" }));
+    fireEvent.click(screen.getByRole("switch", { name: "A check fails" }));
     await waitFor(() =>
       expect(saves[saves.length - 1]?.prRules?.["/p"]).toEqual({ on: ["check_failed"], maxPerHour: 3 }),
     );
