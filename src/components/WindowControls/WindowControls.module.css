@@ -14,6 +14,10 @@
   padding: 0 4px 0 86px;
 }
 
+.winControls.fullscreen {
+  padding-left: 12px;
+}
+
 /* The sidebar toggle sits where the traffic lights end; the jump navigation is
    pushed to the rail's right edge, which lines up with the sidebar's border. */
 .toggleSlot {
