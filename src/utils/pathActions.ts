@@ -76,7 +76,12 @@ const DEFAULT_APP_ONLY = new Set([
 /** Open a file a link named: in Tori when it has a view for it, otherwise in the
  *  app the system picks. */
 export function openFile(path: string, line?: number) {
-  const ext = path.split("/").pop()?.split(".").slice(1).pop()?.toLowerCase() ?? "";
-  if (DEFAULT_APP_ONLY.has(ext)) void openInDefaultApp(path);
+  if (opensInDefaultApp(path)) void openInDefaultApp(path);
   else emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path, line });
+}
+
+/** Whether `openFile` hands this path to its default app rather than to Tori. */
+export function opensInDefaultApp(path: string): boolean {
+  const ext = path.split("/").pop()?.split(".").slice(1).pop()?.toLowerCase() ?? "";
+  return DEFAULT_APP_ONLY.has(ext);
 }
