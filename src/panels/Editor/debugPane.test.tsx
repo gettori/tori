@@ -185,11 +185,9 @@ describe("reaching the pane", () => {
     await waitFor(() => expect(screen.getByText(/Nothing is being debugged/)).toBeTruthy());
   });
 
-  it("gets a tab in the strip only once something is being debugged", async () => {
+  it("has a tab in the strip whether or not something is being debugged", async () => {
     await mountEditor();
-    // No tab while nothing runs: an always-present "Debug" is a control that
-    // does nothing on almost every project, almost all of the time.
-    expect(tabs("Debug")).toHaveLength(0);
+    await waitFor(() => expect(tabs("Debug")).toHaveLength(1));
 
     const run = await startRun();
 
@@ -241,7 +239,7 @@ describe("the console", () => {
 });
 
 describe("when a run ends", () => {
-  it("moves the pane off debug", async () => {
+  it("stays on debug", async () => {
     await mountEditor();
     const run = await startRun();
     showDebug();
@@ -250,22 +248,17 @@ describe("when a run ends", () => {
     event(run.id, "terminated");
     await flush();
 
-    // The pane is not left showing an empty debugger somebody has to notice and
-    // click away from; it hands the space back the way Problems and Outline do.
-    await waitFor(() => expect(screen.queryByText(run.name)).toBeNull());
-    await waitFor(() => expect(tabs("Debug")).toHaveLength(0));
-    // Files, specifically: the pane is handed back to the mode every other
-    // fallback lands on, not left on whatever happened to be next in the strip.
-    const filesTab = tab("Files");
-    expect(filesTab?.getAttribute("aria-selected")).toBe("true");
+    // The tab no longer disappears with the run, so neither does the pane: the
+    // reader may still be reading what the run printed.
+    expect(tab("Debug")?.getAttribute("aria-selected")).toBe("true");
   });
 
   it("leaves a deliberately opened empty pane alone", async () => {
     await mountEditor();
     showDebug();
 
-    // Opened with nothing running, it stays open. The fallback is a transition,
-    // not a state: falling back here would make the palette row unusable.
+    // Opened with nothing running, it stays open: the palette row would be
+    // unusable otherwise.
     await waitFor(() => expect(screen.getByText(/Nothing is being debugged/)).toBeTruthy());
     await flush();
     expect(screen.getByText(/Nothing is being debugged/)).toBeTruthy();
