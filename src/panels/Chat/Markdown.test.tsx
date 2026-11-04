@@ -19,7 +19,7 @@ vi.mock("../../utils/mermaidEngine", () => ({
 }));
 import { copyText } from "../../utils/clipboard";
 import { invoke } from "@tauri-apps/api/core";
-import { onWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "../../utils/events";
+import { onWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
 
 const FENCED = "intro paragraph\n\n```ts\nconst x = 1;\n```\n\noutro paragraph";
 
@@ -214,26 +214,22 @@ describe("links in prose are routed, never followed", () => {
     }
   });
 
-  it("opens a workspace file in the editor at its line", () => {
+  it("opens a workspace file in the editor at its line", async () => {
     const seen: OpenInEditor[] = [];
     const off = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => seen.push(d));
     const { getByText } = render(() => <Markdown text={"[a.ts](src/a.ts:12)"} cwd="/repo" />);
     fireEvent.click(getByText("a.ts"));
+    await waitFor(() => expect(seen).toEqual([{ path: "/repo/src/a.ts", line: 12 }]));
     off();
-    expect(seen).toEqual([{ path: "/repo/src/a.ts", line: 12 }]);
   });
 
-  it("says so rather than opening a tab on a file outside the workspace", () => {
+  it("opens a file outside every worktree as a tab here", async () => {
     const opens: OpenInEditor[] = [];
-    const toasts: ToastEvent[] = [];
-    const offOpen = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => opens.push(d));
-    const offToast = onWith<ToastEvent>(TOAST, (d) => toasts.push(d));
+    const off = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => opens.push(d));
     const { getByText } = render(() => <Markdown text={"[hosts](/etc/hosts)"} cwd="/repo" />);
     fireEvent.click(getByText("hosts"));
-    offOpen();
-    offToast();
-    expect(opens).toEqual([]);
-    expect(toasts[0]?.message).toContain("/etc/hosts");
+    await waitFor(() => expect(opens).toEqual([{ path: "/etc/hosts" }]));
+    off();
   });
 
   it("hands a real URL to the opener instead of the editor", () => {

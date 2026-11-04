@@ -265,6 +265,33 @@ pub fn fs_file_size(path: String) -> Option<u64> {
     std::fs::metadata(&path).ok().map(|m| m.len())
 }
 
+/// Does this file read as text? The editor reads files as UTF-8, so a link to
+/// anything else goes to its default app instead of a tab that can only say it
+/// cannot show it. The first 8 KiB decide: a NUL byte or invalid UTF-8 there is
+/// binary, and a character cut off by the window's end is not held against it.
+#[tauri::command(async)]
+pub fn fs_is_text(path: String) -> bool {
+    use std::io::Read;
+    let Ok(file) = std::fs::File::open(&path) else {
+        return false;
+    };
+    let mut head = Vec::with_capacity(8192);
+    if file.take(8192).read_to_end(&mut head).is_err() {
+        return false;
+    }
+    looks_like_text(&head)
+}
+
+fn looks_like_text(head: &[u8]) -> bool {
+    if head.contains(&0) {
+        return false;
+    }
+    match std::str::from_utf8(head) {
+        Ok(_) => true,
+        Err(e) => e.error_len().is_none(),
+    }
+}
+
 /// One file in a batched write.
 #[derive(Deserialize)]
 pub struct FileWrite {

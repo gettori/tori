@@ -3,7 +3,7 @@ import type { Token } from "marked";
 import { invoke } from "@tauri-apps/api/core";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { traceWork } from "../../utils/perfTrace";
-import { emitWith, NAVIGATE, TOAST, type NavTarget, type ToastEvent } from "../../utils/events";
+import { emitWith, NAVIGATE, type NavTarget } from "../../utils/events";
 import { openPlaced, placeOf, type FilePlace } from "./filePlace";
 import { linkTarget, pathTarget, pathWords } from "./links";
 import { LINEWISE, PROSE } from "./chatMarked";
@@ -26,12 +26,12 @@ async function fileExists(path: string): Promise<boolean> {
 type Named = { path: string; line?: number; place: FilePlace };
 
 /** A path from the reply placed against Tori's worktrees, or null when it is
- *  not a path or lives nowhere Tori tracks. Existence is the caller's check. */
+ *  not a path. Existence is the caller's check. */
 function named(text: string, cwd: string): Named | null {
   const target = pathTarget(text, cwd);
   if (!target) return null;
   const place = target.outside ? placeOf(target.path, cwd) : ({ kind: "here" } as const);
-  return place ? { path: target.path, line: target.line, place } : null;
+  return { path: target.path, line: target.line, place };
 }
 
 /** Turn what in `root` names a file Tori can open into links: an inline code
@@ -208,9 +208,7 @@ export default function Markdown(props: { text: string; cwd: string; breaks?: bo
     } else if (target.kind === "file") {
       openPlaced(target.path, target.line, { kind: "here" });
     } else if (target.kind === "outside") {
-      const place = placeOf(target.path, props.cwd);
-      if (place) openPlaced(target.path, target.line, place);
-      else emitWith<ToastEvent>(TOAST, { message: `${target.path} is outside this workspace.`, kind: "info" });
+      openPlaced(target.path, target.line, placeOf(target.path, props.cwd));
     }
   }
 

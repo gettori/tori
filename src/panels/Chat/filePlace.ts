@@ -1,5 +1,7 @@
-// Where a file a reply names lives, as far as Tori can tell: in the workspace
-// the reply was written in, in another worktree Tori tracks, or nowhere it knows.
+// Where a file a reply names lives, as far as Tori can tell: in another worktree
+// Tori tracks, or here, which covers the workspace the reply was written in and
+// every path Tori tracks no worktree for. The editor opens a file outside its
+// root as a tab of its own, so here is the right answer for those too.
 
 import { emitWith, NAVIGATE, type NavTarget } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
@@ -14,12 +16,12 @@ const base = (p: string) => p.replace(/\/+$/, "").split("/").pop() ?? p;
 
 /** `here` covers a Topic's other members too: the editor already spans them,
  *  so a file in a sibling worktree opens without moving anything. */
-export function placeOf(path: string, cwd: string): FilePlace | null {
+export function placeOf(path: string, cwd: string): FilePlace {
   if (cwd && isUnderPath(path, cwd)) return { kind: "here" };
   const topic = cwd ? topics().find((t) => topicRoots(t).some((r) => isUnderPath(cwd, r))) : undefined;
   if (topic && rootOf(path, topicRoots(topic))) return { kind: "here" };
   const unit = unitOwning(path);
-  if (!unit) return null;
+  if (!unit) return { kind: "here" };
   const project = folderOwner(unit.folderPath)?.projectName ?? base(unit.projectPath);
   return { kind: "worktree", folder: unit.folderPath, label: `${project} / ${unit.branch ?? base(unit.folderPath)}` };
 }
@@ -28,6 +30,6 @@ export function placeOf(path: string, cwd: string): FilePlace | null {
  *  first, unless it is a kind that goes to its default app, which needs no
  *  worktree on screen. */
 export function openPlaced(path: string, line: number | undefined, place: FilePlace) {
-  if (place.kind === "here" || opensInDefaultApp(path)) return openFile(path, line);
+  if (place.kind === "here" || opensInDefaultApp(path)) return void openFile(path, line);
   emitWith<NavTarget>(NAVIGATE, { folder: place.folder, file: path, line });
 }
