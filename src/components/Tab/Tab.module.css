@@ -1,46 +1,36 @@
-/* The shared tab pill (mirrors the editor/terminal strips): transparent at rest,
-   a wash that fades downward under the pointer and again, in brand under a bar,
-   when the tab is the selected one. The sidebar's recipe turned ninety degrees:
-   a strip runs across, so its mark hangs from the top edge rather than standing
-   on the left, and the tab reads as the thing the pane below it is showing.
+/* The shared tab pill (editor, terminal and sidebar strips): flat at rest,
+   the label brightening under the pointer, and the selected tab underlined in
+   brand along the strip's bottom edge, so the mark points at the pane it is
+   showing.
 
-   The fill lives on the wrapper rather than on the button, because the close is
-   a sibling of the button now (see Tab.tsx) and the two have to read as one
-   pill. The wrapper is always rendered, so a strip with no close button gets
-   the same box as one with. */
-/* The pill's horizontal breathing room. One value for every shape, so an
-   icon-only tab and a labelled one sit on the same rhythm. */
+   The pill is the box rather than the button, because the close is a sibling
+   of the button (see Tab.tsx) and the underline has to run under both. It
+   stretches to the strip's height so the underline lands on the strip's edge.
+   `--tab-pad` is one value for every shape, so an icon-only tab and a labelled
+   one sit on the same rhythm. */
 .pill {
   --tab-pad: calc(8px * var(--ui-scale));
   position: relative;
   display: inline-flex;
+  align-self: stretch;
   align-items: center;
-  /* Square on the bar's side, rounded away from it, as the sidebar's rows are on
-     theirs: a rounded top corner clips the bar into a lozenge. */
-  border-radius: 0 0 var(--tori-radius-md) var(--tori-radius-md);
-  background: transparent;
-  transition: background var(--tori-duration-fast) ease;
 }
 
 /* Selected off Kobalte's own `data-selected` rather than off a prop, so the
-   highlight cannot drift from the selection the strip actually holds. */
-.pill:hover:not(:has([data-selected])) {
-  background: linear-gradient(to bottom, var(--tab-hover-bg), transparent);
+   underline cannot drift from the selection the strip actually holds. */
+.pill:has([data-selected])::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: var(--tori-border-thick);
+  background: var(--brand-bar);
+  pointer-events: none;
 }
 
-/* The sidebar's selected-row recipe (`.row.branch.sel`, `.railItemActive`) laid
-   on its side: the brand bar across the full top edge over a wash that fades
-   downward, so a column marks "here" along the edge it starts from and a row
-   does the same. Brand rather than `--tab-active-bg`, which resolves to the same
-   grey as the hover and left the bar to carry the whole distinction. */
-.pill:has([data-selected]) {
-  background:
-    linear-gradient(var(--brand-bar), var(--brand-bar)) center top / 100% var(--tori-border-thick) no-repeat,
-    linear-gradient(to bottom, var(--brand-subtle), transparent);
-}
-
-/* Driven by the autopilot. A layer of its own rather than part of the
-   background, which hover, selection and a blurred pane all rewrite. */
+/* Driven by the autopilot. On the top edge, so it never fights the selection
+   underline for the bottom one. */
 .pill[data-locked]::before {
   content: "";
   position: absolute;
@@ -52,12 +42,12 @@
   pointer-events: none;
 }
 
-/* A strip whose pane does not hold focus draws no selection at all: the fill and
-   the rail both say "this is the one", and two panes saying it at once is two
-   answers to a question with one. The label keeps its brighter colour, which
-   says which tab the pane would come back to without claiming the focus. */
-:global(.unified-strip.pane-blur) .pill:has([data-selected]) {
-  background: transparent;
+/* A strip whose pane does not hold focus draws no underline: it says "this is
+   the one", and two panes saying it at once is two answers to a question with
+   one. The label keeps its brighter colour, which says which tab the pane would
+   come back to without claiming the focus. */
+:global(.unified-strip.pane-blur) .pill:has([data-selected])::after {
+  content: none;
 }
 
 .tab {
@@ -121,15 +111,16 @@
 /* The quiet tab: muted bold text, a flat fill only while it is the one
    showing, so the strip reads as one control rather than three buttons. */
 .pill[data-quiet] {
+  align-self: auto;
   border-radius: var(--tori-radius-sm);
-}
-
-.pill[data-quiet]:hover:not(:has([data-selected])) {
-  background: transparent;
 }
 
 .pill[data-quiet]:has([data-selected]) {
   background: var(--neutral-subtle);
+}
+
+.pill[data-quiet]::after {
+  content: none;
 }
 
 .pill[data-quiet] .tab {
