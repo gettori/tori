@@ -247,6 +247,29 @@
   display: none;
 }
 
+/* The right-click target around the strip; it must not become a box of its
+   own between the panel's flex column and the strip. */
+.rightTabsMenu {
+  display: contents;
+}
+
+.checkSlot {
+  flex: none;
+  display: inline-flex;
+  width: var(--control-icon);
+  height: var(--control-icon);
+}
+
+.checkSlot > svg {
+  width: 100%;
+  height: 100%;
+}
+
+.rightEmpty {
+  padding: calc(12px * var(--ui-scale));
+  color: var(--fg-muted);
+}
+
 .rightTabs {
   min-height: calc(40px * var(--ui-scale));
   display: flex;

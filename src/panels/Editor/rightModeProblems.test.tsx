@@ -107,15 +107,16 @@ describe("the Problems tab inside a Topic", () => {
     expect(web?.textContent).toContain("web broke");
   });
 
-  it("does not offer it for a diagnostic in no member of this Topic", async () => {
+  it("does not list a diagnostic in no member of this Topic", async () => {
     publishDiagnostics("/elsewhere/c.ts", problem(1, "someone else's"));
     mounted = render(() => <Editor selected={topicSel(A) as never} />);
-    // Nothing to wait for, so the absence is asserted after the tabs settle.
-    await waitFor(() => expect(screen.getByRole("tab", { name: "Files" })).toBeTruthy());
-    expect(problemsTab()).toBeNull();
+    await waitFor(() => expect(problemsTab()).toBeTruthy());
+    fireEvent.click(problemsTab()!);
+    await waitFor(() => expect(screen.getByText("No problems in the open files.")).toBeTruthy());
+    expect(screen.queryByText("someone else's")).toBeNull();
   });
 
-  it("falls the pane back to Files when the last member's diagnostics clear", async () => {
+  it("stays on Problems when the last member's diagnostics clear, and says so", async () => {
     publishDiagnostics(`${B}/src/b.ts`, problem(9, "web broke"));
     mounted = render(() => <Editor selected={topicSel(A) as never} />);
     await waitFor(() => expect(problemsTab()).toBeTruthy());
@@ -123,9 +124,9 @@ describe("the Problems tab inside a Topic", () => {
     await waitFor(() => expect(screen.getByText("web broke")).toBeTruthy());
 
     clearDiagnostics();
-    await waitFor(() => expect(problemsTab()).toBeNull());
-    // Not stuck on a mode the selection can no longer show.
+    await waitFor(() => expect(screen.getByText("No problems in the open files.")).toBeTruthy());
     expect(screen.queryByText("web broke")).toBeNull();
+    expect(problemsTab()?.getAttribute("aria-selected")).toBe("true");
   });
 
   it("keeps the tab while moving the active member between them", async () => {

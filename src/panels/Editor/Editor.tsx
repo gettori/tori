@@ -50,7 +50,6 @@ import CallsPanel from "./CallsPanel";
 import Breadcrumbs from "./Breadcrumbs";
 // The bar's own stylesheet: these two controls belong to it, not to the editor.
 import crumbStyles from "./Breadcrumbs.module.css";
-import { diagnostics } from "../../utils/diagnostics";
 import { progressFor, progressLabel } from "../../utils/lspProgress";
 import { traceSettle } from "../../utils/perfTrace";
 import { isMarkdownPath } from "../../utils/liveBuffer";
@@ -59,7 +58,7 @@ import { toggledWrap, withoutTab, type WrapOverrides } from "./softWrapTabs";
 import { clearSymbols } from "../../utils/symbols";
 import { callsSupported, clearCallRoots } from "../../utils/callHierarchy";
 import { runFor, stopAllDap, stopDebugRun } from "../../utils/dapSessions";
-import { clearDebugConsole, debugBuild, debugRunning } from "../../utils/debugStore";
+import { clearDebugConsole, debugBuild } from "../../utils/debugStore";
 import DebugTargetDialog from "../../components/Dialogs/DebugTargetDialog";
 import { adapterForPath, dapAdapters, launchTarget, lldbPickAt, resolveRoot, scriptsAt } from "../../utils/debugLaunch";
 import {
@@ -108,6 +107,7 @@ import Resizer from "../../components/Resizer/Resizer";
 import IconButton from "../../components/IconButton/IconButton";
 import Button from "../../components/Button/Button";
 import ContextMenu from "../../components/Menu/ContextMenu";
+import { MenuRow } from "../../components/Menu/rows";
 import { type MenuItem } from "../../components/Menu/rows";
 import Tab from "../../components/Tab/Tab";
 import { TabMemberChip } from "../../components/MemberChip/MemberChip";
@@ -537,6 +537,17 @@ const LS_RIGHT_W = "tori.editor.rightw.v1";
 const RIGHT_W_MIN = 160;
 const CODE_MIN = 320;
 
+const LS_RIGHT_HIDDEN = "tori.editor.righthidden.v1";
+
+function loadHiddenModes(): RightMode[] {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(LS_RIGHT_HIDDEN) ?? "[]");
+    return Array.isArray(v) ? v.filter((m): m is RightMode => typeof m === "string" && m in RIGHT_MODE_TABS) : [];
+  } catch {
+    return [];
+  }
+}
+
 function loadRightW(): number {
   const n = Number(localStorage.getItem(LS_RIGHT_W));
   // Taken as stored: the bound depends on the pane's measured width, which does
@@ -706,8 +717,7 @@ export default function Editor(props: {
   // The mode strip runs through the shared OverflowTabBar, so it collapses into
   // a +N menu on a narrow pane instead of squeezing every label. The bar can
   // reorder tabs when one is picked out of the overflow menu, so the canonical
-  // order lives in a signal; availability (session/problems) still filters it
-  // on every render.
+  // order lives in a signal; the user's hidden set filters it on every render.
   const [modeOrder, setModeOrder] = createSignal<RightMode[]>([
     "files",
     "search",
@@ -719,35 +729,25 @@ export default function Editor(props: {
     "session",
     "artifacts",
   ]);
-  // Files/Changes/Search are always offered; the rest need their target to exist.
+  // Every mode is offered whether or not it has anything to show, so the strip
+  // does not shift under the pointer; each pane says why it is empty. A chat
+  // has no tree, so it gets Artifacts alone and nothing to hide.
+  const [hiddenModes, setHiddenModes] = createSignal<RightMode[]>(loadHiddenModes());
   function modeAvailable(m: RightMode): boolean {
     if (chatId()) return m === "artifacts";
-    switch (m) {
-      case "artifacts":
-        return false;
-      case "session":
-        return !!props.selected?.sessionId;
-      // Only worth a tab when something is actually wrong; an always-present
-      // "Problems (0)" is noise on a clean tree.
-      case "problems":
-        return problemsHere();
-      // Same three-state rule, and the middle state is the point: hidden when
-      // the server has no `callHierarchyProvider`, shown when it has one even
-      // if the caret is not on anything callable - because "this language
-      // cannot do this" and "you are not pointing at a function" are different
-      // things to be told, and hiding on empty says the first when it means the
-      // second.
-      case "calls":
-        return callsSupported(activeId());
-      // A tab only while something is being debugged. Unlike Problems, the pane
-      // behind it is still reachable with nothing running (the palette and the
-      // SET_RIGHT_MODE event both open it), and it explains itself when it is:
-      // the tab is the always-on cost this gate avoids, not the pane.
-      case "debug":
-        return debugRunning();
-      default:
-        return true;
+    return m !== "artifacts" && !hiddenModes().includes(m);
+  }
+  function toggleMode(m: RightMode) {
+    const hiding = !hiddenModes().includes(m);
+    if (hiding && rightTabs().length <= 1) return;
+    const next = hiding ? [...hiddenModes(), m] : hiddenModes().filter((x) => x !== m);
+    setHiddenModes(next);
+    try {
+      localStorage.setItem(LS_RIGHT_HIDDEN, JSON.stringify(next));
+    } catch {
+      // ignore
     }
+    if (hiding && rightMode() === m) setRightMode(rightTabs()[0]!.mode);
   }
   const rightTabs = () =>
     modeOrder()
@@ -760,16 +760,6 @@ export default function Editor(props: {
   const changeCount = () => {
     const roots = treeRoots()?.map((r) => r.path) ?? (root() ? [root()!] : []);
     return roots.reduce((n, r) => n + gitStateFor(r).files.length, 0);
-  };
-  // This workspace's problems. The store now spans every warm project (the
-  // servers stay up across a switch), so what the tab and the panel show has to
-  // be scoped here, or one worktree's errors would badge another's tree. Inside
-  // a Topic the scope is every member, not the active one: hiding the tab
-  // because the repo you happen to be looking at is clean would hide the
-  // section that is not.
-  const problemsHere = () => {
-    const rs = treeRoots()?.map((r) => r.path) ?? (root() != null ? [root()!] : []);
-    return rs.length > 0 && Object.keys(diagnostics()).some((p) => rs.some((r) => isUnderPath(p, r)));
   };
   const [searchFocusNonce, setSearchFocusNonce] = createSignal(0);
   // Find in Folder's narrowing, held until the Search panel has applied it.
@@ -1460,25 +1450,8 @@ export default function Editor(props: {
       if (rightMode() !== "artifacts") setRightMode("artifacts");
       return;
     }
-    if (rightMode() === "artifacts") setRightMode("files");
-    if (rightMode() === "session" && !props.selected?.sessionId) setRightMode("files");
-    // The Problems tab disappears once the last diagnostic clears.
-    if (rightMode() === "problems" && !problemsHere()) setRightMode("files");
-    // And Calls goes the same way when the active tab's server has no call
-    // hierarchy, which switching tabs is enough to cause.
-    if (rightMode() === "calls" && !callsSupported(activeId())) setRightMode("files");
+    if (rightMode() === "artifacts") setRightMode(untrack(rightTabs)[0]?.mode ?? "files");
   });
-
-  // Debug is the one mode whose fallback is a *transition*, not a state. The
-  // others hide a pane that has nothing to show; this pane explains itself when
-  // nothing is running, which is what makes it worth opening from the palette
-  // before a run exists. So it is left alone when opened empty, and only moved
-  // aside when a run that was live ends underneath the reader.
-  createEffect(
-    on(debugRunning, (running, wasRunning) => {
-      if (wasRunning && !running && rightMode() === "debug") setRightMode("files");
-    }),
-  );
 
   // A debug run holds a *debuggee*: a process the workspace's code is running,
   // with its own ports, open files and children. Leaving the workspace is
@@ -3516,42 +3489,62 @@ export default function Editor(props: {
           classList={{ [styles.hidden]: !filetreeOn() }}
           style={{ width: `${rightWidth()}px` }}
         >
-          <OverflowTabBar
-            class={styles.rightTabs}
-            items={rightTabs()}
-            activeId={rightMode()}
-            idOf={(t) => t.mode}
-            onActivate={(id) => setRightMode(id as RightMode)}
-            onReorder={(next) => setModeOrder(next.map((t) => t.mode))}
-            trailing={<Show when={props.onToggleFiletree}>{filetreeToggleBtn(true)}</Show>}
-            renderTab={(t) => {
-              const badge = () => (t.mode === "changes" ? changeCount() : 0);
-              const name = () => (badge() ? `${t.label}, ${badge()} changed file${badge() === 1 ? "" : "s"}` : t.label);
-              return (
-                <Tab
-                  value={t.mode}
-                  icon={<Icon icon={t.icon} />}
-                  tooltip={name()}
-                  // The one `aria-label` on a tooltipped `Tab` in the app. A label
-                  // normally *replaces* a tab's visible text as its name, which is
-                  // why the guard forbids it - but this tab is icon-only, so the
-                  // label is the only name it has.
-                  aria-label={name()}
-                  trailing={
-                    <Show when={badge()}>
-                      <span class={styles.tabCount}>{badge()}</span>
-                    </Show>
-                  }
-                />
-              );
-            }}
-            renderMenuItem={(t) => (
-              <>
-                <Icon icon={t.icon} />
-                <span class="tab-name">{t.label}</span>
-              </>
-            )}
-          />
+          <ContextMenu
+            class={styles.rightTabsMenu}
+            disabled={!!chatId()}
+            menu={
+              <For each={modeOrder().filter((m) => m !== "artifacts")}>
+                {(m) => (
+                  <MenuRow closeOnSelect={false} onClick={() => toggleMode(m)}>
+                    <span class={styles.checkSlot}>
+                      <Show when={!hiddenModes().includes(m)}>
+                        <Icon icon={Check} />
+                      </Show>
+                    </span>
+                    {RIGHT_MODE_TABS[m].label}
+                  </MenuRow>
+                )}
+              </For>
+            }
+          >
+            <OverflowTabBar
+              class={styles.rightTabs}
+              items={rightTabs()}
+              activeId={rightMode()}
+              idOf={(t) => t.mode}
+              onActivate={(id) => setRightMode(id as RightMode)}
+              onReorder={(next) => setModeOrder(next.map((t) => t.mode))}
+              trailing={<Show when={props.onToggleFiletree}>{filetreeToggleBtn(true)}</Show>}
+              renderTab={(t) => {
+                const badge = () => (t.mode === "changes" ? changeCount() : 0);
+                const name = () =>
+                  badge() ? `${t.label}, ${badge()} changed file${badge() === 1 ? "" : "s"}` : t.label;
+                return (
+                  <Tab
+                    value={t.mode}
+                    icon={<Icon icon={t.icon} />}
+                    tooltip={name()}
+                    // The one `aria-label` on a tooltipped `Tab` in the app. A label
+                    // normally *replaces* a tab's visible text as its name, which is
+                    // why the guard forbids it - but this tab is icon-only, so the
+                    // label is the only name it has.
+                    aria-label={name()}
+                    trailing={
+                      <Show when={badge()}>
+                        <span class={styles.tabCount}>{badge()}</span>
+                      </Show>
+                    }
+                  />
+                );
+              }}
+              renderMenuItem={(t) => (
+                <>
+                  <Icon icon={t.icon} />
+                  <span class="tab-name">{t.label}</span>
+                </>
+              )}
+            />
+          </ContextMenu>
           {/* Below the tab strip rather than inside a pane: the four modes it
             serves each answer for one repo, and one row above all of them is
             one control to learn instead of four. Only alongside other members:
@@ -3585,8 +3578,19 @@ export default function Editor(props: {
               <ProblemsPanel selected={props.selected} roots={treeRoots()} />
             </Match>
             <Match when={rightMode() === "calls"}>
-              {focusMemberLine()}
-              <CallsPanel path={activeId()} />
+              <Show
+                when={callsSupported(activeId())}
+                fallback={
+                  <div class={styles.rightEmpty}>
+                    {activeId()
+                      ? "This file's language server has no call hierarchy."
+                      : "Open a file to see its calls."}
+                  </div>
+                }
+              >
+                {focusMemberLine()}
+                <CallsPanel path={activeId()} />
+              </Show>
             </Match>
             <Match when={rightMode() === "changes"}>
               <ReviewPanel
@@ -3622,6 +3626,9 @@ export default function Editor(props: {
             </Match>
             <Match when={rightMode() === "artifacts" && chatId()}>
               {(id) => <ArtifactsPanel chatId={id()} root={root() ?? ""} activePath={shownFileId()} />}
+            </Match>
+            <Match when={rightMode() === "session" && !props.selected?.sessionId}>
+              <div class={styles.rightEmpty}>Select a session to see the files it touched.</div>
             </Match>
             <Match when={rightMode() === "session" && props.selected?.sessionId}>
               {focusMemberLine()}
