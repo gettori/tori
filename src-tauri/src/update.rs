@@ -150,7 +150,7 @@ fn writable(dir: &Path) -> bool {
 /// Returns `None` for anything unparseable, and an unparseable version can
 /// never produce an update notice: a garbage tag should be ignored, not
 /// treated as newer than everything.
-fn parse_semver(raw: &str) -> Option<[u64; 3]> {
+pub(crate) fn parse_semver(raw: &str) -> Option<[u64; 3]> {
     let cleaned = raw.trim().trim_start_matches('v');
     let core = cleaned.split(['-', '+']).next()?;
     let mut parts = core.split('.');
@@ -163,7 +163,7 @@ fn parse_semver(raw: &str) -> Option<[u64; 3]> {
 
 /// Is `candidate` strictly newer than `current`? False whenever either side
 /// fails to parse, so an odd tag is ignored rather than guessed at.
-fn is_newer(candidate: &str, current: &str) -> bool {
+pub(crate) fn is_newer(candidate: &str, current: &str) -> bool {
     match (parse_semver(candidate), parse_semver(current)) {
         (Some(new), Some(old)) => new > old,
         _ => false,

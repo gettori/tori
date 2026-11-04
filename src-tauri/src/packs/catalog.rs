@@ -289,23 +289,121 @@ pub fn rows(
         return Vec::new();
     };
     all.iter()
-        .filter_map(|row| {
-            let (kind, id, sha) = loadable(row)?;
-            let record = installed.find(kind, id);
-            let bundled = bundled_sha(kind, id);
-            let update_available = match record {
-                Some(r) => r.source == Recorded::Catalog && r.sha256 != sha,
-                None => bundled.as_deref().is_some_and(|b| b != sha),
-            };
-            Some(CatalogRow {
-                pack: row.clone(),
-                installed: record.is_some(),
-                bundled: bundled.is_some(),
-                update_available,
-                custom_file: record.is_none() && on_disk(kind, id),
-            })
-        })
+        .filter_map(|row| catalog_row(row, installed, &bundled_sha, &on_disk))
         .collect()
+}
+
+fn catalog_row(
+    row: &Value,
+    installed: &Installed,
+    bundled_sha: &impl Fn(Kind, &str) -> Option<String>,
+    on_disk: &impl Fn(Kind, &str) -> bool,
+) -> Option<CatalogRow> {
+    let (kind, id, sha) = loadable(row)?;
+    let record = installed.find(kind, id);
+    let bundled = bundled_sha(kind, id);
+    let update_available = match record {
+        Some(r) => r.source == Recorded::Catalog && r.sha256 != sha,
+        None => bundled.as_deref().is_some_and(|b| b != sha),
+    };
+    Some(CatalogRow {
+        pack: row.clone(),
+        installed: record.is_some(),
+        bundled: bundled.is_some(),
+        update_available,
+        custom_file: record.is_none() && on_disk(kind, id),
+    })
+}
+
+pub struct Build<'a> {
+    pub version: &'a str,
+    pub platform: &'a str,
+}
+
+pub fn resolve(
+    index: &Value,
+    kind: Kind,
+    id: &str,
+    build: Build,
+    installed: &Installed,
+    bundled_sha: impl Fn(Kind, &str) -> Option<String>,
+    on_disk: impl Fn(Kind, &str) -> bool,
+) -> Result<CatalogRow, String> {
+    // A link id is held to less than a pack id may be.
+    static LINK_ID: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let link_id = LINK_ID.get_or_init(|| regex::Regex::new(r"^[a-z0-9-]+$").unwrap());
+    if !link_id.is_match(id) {
+        return Err(format!("`{id}` is not a pack id"));
+    }
+    let folder = kind.folder();
+    let row = index["rows"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|row| row["kind"] == folder && row["id"] == id)
+        .ok_or_else(|| format!("the catalog has no {folder} pack `{id}`"))?;
+    if let Some(min) = row.get("min_tori").filter(|v| !v.is_null()) {
+        let min = min
+            .as_str()
+            .filter(|m| crate::update::parse_semver(m).is_some())
+            .ok_or_else(|| format!("`{id}` names a Tori version this build cannot read: {min}"))?;
+        if crate::update::is_newer(min, build.version) {
+            return Err(format!("`{id}` needs Tori {min} or newer; this is {}", build.version));
+        }
+    }
+    if !row["schema_version"].as_u64().is_some_and(|v| kind.supports(v)) {
+        return Err(format!("`{id}` is written for a newer Tori than this one"));
+    }
+    let os = build.platform.split('-').next().unwrap_or(build.platform);
+    if row["platforms"]
+        .as_array()
+        .is_some_and(|list| !list.iter().any(|p| p == os))
+    {
+        return Err(format!("`{id}` has no build for {os}"));
+    }
+    catalog_row(row, installed, &bundled_sha, &on_disk)
+        .ok_or_else(|| format!("the catalog row for `{id}` is missing a field"))
+}
+
+fn served_for(app: &tauri::AppHandle, force: bool) -> Served {
+    use tauri::Emitter;
+    let served = fetch(force);
+    if served.changed {
+        for kind in Kind::ALL {
+            super::reload(kind);
+            let _ = app.emit(super::CHANGED, kind);
+        }
+    }
+    served
+}
+
+fn on_disk(kind: Kind, id: &str) -> bool {
+    super::kind_dir(kind)
+        .join(format!("{id}.{}", kind.ext()))
+        .symlink_metadata()
+        .is_ok()
+}
+
+#[tauri::command(async)]
+pub fn packs_resolve(app: tauri::AppHandle, kind: Kind, id: String) -> Result<CatalogRow, String> {
+    let served = served_for(&app, false);
+    let index = served.index.ok_or_else(|| match served.problem {
+        Some(Problem::Offline(e) | Problem::Unverified(e) | Problem::Record(e)) => e,
+        None => "the catalog is not available".to_string(),
+    })?;
+    let installed = installed::read_at(&super::dir().join(installed::FILE))?;
+    resolve(
+        &index,
+        kind,
+        &id,
+        Build {
+            version: env!("CARGO_PKG_VERSION"),
+            platform: &crate::lsp::registry::platform(),
+        },
+        &installed,
+        super::bundled_sha,
+        on_disk,
+    )
 }
 
 /// The catalog for the add dialogs. `force_revalidate` skips the TTL and
@@ -313,25 +411,10 @@ pub fn rows(
 /// changes what every loaded pack is offered, so each kind reloads.
 #[tauri::command(async)]
 pub fn packs_catalog(app: tauri::AppHandle, force_revalidate: bool) -> Catalog {
-    use tauri::Emitter;
-    let served = fetch(force_revalidate);
-    if served.changed {
-        for kind in Kind::ALL {
-            super::reload(kind);
-            let _ = app.emit(super::CHANGED, kind);
-        }
-    }
+    let served = served_for(&app, force_revalidate);
     let index = served.index.unwrap_or(Value::Null);
     let (rows, problem) = match installed::read_at(&super::dir().join(installed::FILE)) {
-        Ok(installed) => {
-            let on_disk = |kind: Kind, id: &str| {
-                super::kind_dir(kind)
-                    .join(format!("{id}.{}", kind.ext()))
-                    .symlink_metadata()
-                    .is_ok()
-            };
-            (rows(&index, &installed, super::bundled_sha, on_disk), served.problem)
-        }
+        Ok(installed) => (rows(&index, &installed, super::bundled_sha, on_disk), served.problem),
         Err(e) => (Vec::new(), Some(Problem::Record(e))),
     };
     Catalog {
@@ -518,6 +601,59 @@ mod tests {
             .map(|r| r.pack["id"].clone())
             .collect();
         assert_eq!(ids, [json!("x")]);
+    }
+
+    fn resolved(index: &Value, id: &str) -> Result<CatalogRow, String> {
+        resolve(
+            index,
+            Kind::Lsp,
+            id,
+            Build {
+                version: "26.1104.0",
+                platform: "macos-aarch64",
+            },
+            &Installed::default(),
+            |_, _| None,
+            |_, _| false,
+        )
+    }
+
+    #[test]
+    fn resolve_finds_the_row_a_link_names() {
+        let mut good = row("x", 1, "aa");
+        good["min_tori"] = json!("26.1008.0");
+        good["platforms"] = json!(["linux", "macos"]);
+        let index = json!({ "rows": [good.clone()] });
+        let r = resolved(&index, "x").unwrap();
+        assert_eq!((r.pack, r.installed, r.bundled), (good, false, false));
+    }
+
+    #[test]
+    fn resolve_refuses_an_odd_id_an_unknown_pack_a_min_tori_it_cannot_meet_a_newer_schema_and_another_os() {
+        let mut future = row("future", 1, "aa");
+        future["min_tori"] = json!("26.1201.0");
+        let mut odd = row("odd", 1, "aa");
+        odd["min_tori"] = json!("soon");
+        let mut elsewhere = row("elsewhere", 1, "aa");
+        elsewhere["platforms"] = json!(["linux", "windows"]);
+        let mut bare = row("bare", 1, "aa");
+        bare.as_object_mut().unwrap().remove("sha256");
+        let index = json!({ "rows": [row("x", 1, "aa"), future, odd, elsewhere, bare, row("y", 99, "aa")] });
+        for (id, expected) in [
+            ("../x", "is not a pack id"),
+            ("x.toml", "is not a pack id"),
+            ("X", "is not a pack id"),
+            ("", "is not a pack id"),
+            ("nope", "has no lsp pack `nope`"),
+            ("future", "needs Tori 26.1201.0 or newer"),
+            ("odd", "cannot read: \"soon\""),
+            ("y", "newer Tori than this one"),
+            ("elsewhere", "has no build for macos"),
+            ("bare", "missing a field"),
+        ] {
+            let err = resolved(&index, id).unwrap_err();
+            assert!(err.contains(expected), "{id}: {err}");
+        }
     }
 
     #[test]

@@ -398,7 +398,7 @@ fn hint_scripts(text: &str, update: &Option<String>, uninstall: &Option<String>,
     }
 }
 
-fn first_backticked(text: &str) -> Option<String> {
+pub(super) fn first_backticked(text: &str) -> Option<String> {
     static SPAN: OnceLock<Regex> = OnceLock::new();
     let span = SPAN.get_or_init(|| Regex::new(r"`([^`]+)`").unwrap());
     span.captures(text).map(|c| c[1].to_string())
