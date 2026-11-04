@@ -355,3 +355,77 @@
   flex-direction: column;
   min-width: 0;
 }
+
+/* Switches that share one question, as a list in a card rather than loose rows,
+   so the question reads once above them. */
+.switchList {
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--tori-space-4);
+  background: var(--neutral-subtle);
+  border: var(--tori-border-thin) solid var(--border-default);
+  border-radius: var(--tori-radius-lg);
+}
+
+.switchItem {
+  flex-direction: row-reverse;
+  justify-content: space-between;
+  padding: var(--tori-space-5) var(--tori-space-6);
+  cursor: pointer;
+}
+
+.switchItem + .switchItem,
+.needs {
+  border-top: var(--tori-border-thin) solid var(--border-default);
+}
+
+.switchItem > label {
+  flex: 1;
+  color: var(--fg-default);
+  font-size: var(--tori-text-md);
+  cursor: pointer;
+}
+
+.needs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--tori-space-3);
+  padding: var(--tori-space-4) var(--tori-space-6);
+}
+
+.needsLabel {
+  margin-right: var(--tori-space-2);
+  color: var(--fg-muted);
+  font-size: var(--tori-text-sm);
+}
+
+.need {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tori-space-2);
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border: var(--tori-border-thin) solid var(--border-default);
+  border-radius: var(--tori-radius-pill);
+  color: var(--fg-muted);
+  font-size: var(--tori-text-sm);
+}
+
+.needOn {
+  color: var(--fg-default);
+}
+
+.needDot {
+  width: calc(6px * var(--ui-scale));
+  height: calc(6px * var(--ui-scale));
+  border-radius: 50%;
+  background: var(--fg-subtle);
+}
+
+.needOn > .needDot {
+  background: var(--success-fg);
+}
+
+.srOnly {
+  composes: srOnly from "../../styles/patterns.module.css";
+}

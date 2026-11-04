@@ -1,9 +1,8 @@
-import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { TriangleAlert } from "lucide-solid";
 import Button from "../../components/Button/Button";
-import CheckboxGroup, { type CheckboxOption } from "../../components/CheckboxGroup/CheckboxGroup";
 import Icon from "../../components/Icon/Icon";
 import Select, { type SelectOption } from "../../components/Select/Select";
 import Switch from "../../components/Switch/Switch";
@@ -31,6 +30,7 @@ import {
   prFixLoop,
   prRule,
   reviewRule,
+  settings,
   setPrFixLoop,
   setPrRule,
   setReviewRule,
@@ -47,29 +47,50 @@ const ACTIONS: SelectOption[] = [
   { value: "review", label: "Create a worktree and review it" },
 ];
 
-const PR_EVENTS: CheckboxOption[] = [
+const PR_EVENTS: { value: PrEvent; label: string }[] = [
   { value: "changes_requested", label: "A review requests changes" },
   { value: "check_failed", label: "A check fails" },
   { value: "conflicting", label: "It conflicts with its base" },
 ];
 
+function Needs(props: { label: string; on: boolean }) {
+  return (
+    <span class={styles.need} classList={{ [styles.needOn]: props.on }}>
+      <span class={styles.needDot} aria-hidden="true" />
+      {props.label}
+      <span class={styles.srOnly}>{props.on ? ", on" : ", off"}</span>
+    </span>
+  );
+}
+
 function PrRuleSection(props: { projectPath: string }) {
   const rule = () => prRule(props.projectPath);
   const save = (patch: Partial<PrRule>) => void setPrRule(props.projectPath, patch);
+  const toggle = (event: PrEvent, on: boolean) =>
+    save({ on: on ? [...rule().on, event] : rule().on.filter((e) => e !== event) });
   return (
     <Section heading="When a watched pull request needs work">
       <Row
-        stack
         label="Hand it to the autopilot when"
-        hint="Only for a pull request a chat watches, once that chat is closed. The autopilot gets the fix as work under this project's contract, in its own worktree, and nothing is pushed without you. Needs pull request watches and the autopilot on."
-      >
-        <CheckboxGroup
-          options={PR_EVENTS}
-          value={rule().on}
-          onChange={(on) => save({ on: on as PrEvent[] })}
-          aria-label="Hand it to the autopilot when"
-        />
-      </Row>
+        hint="Only for a pull request a chat watches, once that chat is closed. The autopilot gets the fix as work under this project's contract, in its own worktree, and nothing is pushed without you."
+      />
+      <div class={styles.switchList} role="group" aria-label="Hand it to the autopilot when">
+        <For each={PR_EVENTS}>
+          {(event) => (
+            <Switch
+              class={styles.switchItem}
+              label={event.label}
+              checked={rule().on.includes(event.value)}
+              onChange={(on) => toggle(event.value, on)}
+            />
+          )}
+        </For>
+        <div class={styles.needs}>
+          <span class={styles.needsLabel}>Needs</span>
+          <Needs label="Pull request watches" on={settings.forge.prWatch} />
+          <Needs label="Autopilot" on={settings.autopilot.available && settings.autopilot.enabled} />
+        </div>
+      </div>
       <Show when={rule().on.length > 0}>
         <Row label="At most per hour" hint="Past this the rule pauses until you resume it in the Cockpit.">
           <Stepper
