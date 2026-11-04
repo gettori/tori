@@ -16,21 +16,15 @@
     min-height: 0;
     width: calc(640px * var(--ui-scale));
   }
+  /* The real panel at its own size, zoomed down to fit the window's height.
+     Offsets and width are zoomed too, so they are written at 1 / 0.74. */
   .card {
     position: absolute;
-    top: calc(84px * var(--ui-scale));
-    right: calc(-14px * var(--ui-scale));
-    width: calc(336px * var(--ui-scale));
-    font-size: var(--tori-text-lg);
+    top: calc(114px * var(--ui-scale));
+    right: calc(-19px * var(--ui-scale));
+    width: calc(454px * var(--ui-scale));
+    zoom: 0.74;
     animation: card-rise 480ms cubic-bezier(0.2, 0.8, 0.2, 1) 420ms both;
-  }
-  /* Laid out from the right, so the strip opens on the newest turn the way the
-     live one lands on it, without a scroll on mount. */
-  .chips {
-    direction: rtl;
-  }
-  .chips > * {
-    direction: ltr;
   }
   .cardTabs {
     border-bottom: var(--tori-border-thin) solid var(--border-default);

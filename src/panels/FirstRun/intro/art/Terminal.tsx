@@ -1,9 +1,9 @@
 import { For, Show } from "solid-js";
-import { ChevronDown, ChevronRight, History, Plus, SquareTerminal } from "lucide-solid";
+import { ChevronDown, ChevronLeft, ChevronRight, History, Plus, SquareTerminal } from "lucide-solid";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
 import OverflowTabBar from "../../../../components/OverflowTabBar";
-import Switch from "../../../../components/Switch/Switch";
+import SegmentedControl from "../../../../components/SegmentedControl/SegmentedControl";
 import Tab from "../../../../components/Tab/Tab";
 import popover from "../../../../components/Popover/Popover.module.css";
 import toolbar from "../../../../components/Toolbar/Toolbar.module.css";
@@ -13,9 +13,11 @@ import ModeSelector from "../../../Chat/ModeSelector";
 import type { ChatItem, ToolItem } from "../../../Chat/chatStore";
 import chat from "../../../Chat/Chat.module.css";
 import timeline from "../../../Editor/CheckpointTimeline.module.css";
+import DiffRows, { diffRowClasses } from "../../../Editor/DiffRows";
 import review from "../../../Editor/ReviewPanel.module.css";
 import TabMark from "../../../Terminal/TabMark";
 import term from "../../../Terminal/Terminal.module.css";
+import { buildRows } from "../../../../utils/diffView";
 import type { SessionStatus } from "../../../../utils/sessionStatus";
 import MiniWindow from "./MiniWindow";
 import styles from "./Terminal.module.css";
@@ -98,17 +100,20 @@ const ITEMS: ChatItem[] = [
   tool("b2", { turnId: "t13", name: "Bash", input: { command: "pnpm test limiter" }, state: "running" }),
 ];
 
-const clock = (min: number) => `${Math.floor(min / 60)}:${String(min % 60).padStart(2, "0")}`;
-const CHIPS = Array.from({ length: 13 }, (_, i) => ({ at: clock(580 + i * 6), files: [2, 1, 3, 1, 2][i % 5] }));
+const DOT = "\u00b7";
 
-const DIFF: { kind: "hunk" | "ctx" | "add" | "del"; text: string }[] = [
-  { kind: "hunk", text: "@@ -31,4 +31,6 @@" },
-  { kind: "ctx", text: "   if (bucket.count >= LIMIT) {" },
-  { kind: "del", text: "-    return res.status(429).end()" },
-  { kind: "add", text: "+    const wait = bucket.resetIn()" },
-  { kind: "add", text: "+    res.setHeader('Retry-After', wait)" },
-  { kind: "add", text: "+    return res.status(429).end()" },
-  { kind: "ctx", text: "   }" },
+const FILES = [
+  { name: "limiter.ts", dir: "src", added: 3, removed: 1, open: true },
+  { name: "limiter.test.ts", dir: "test", added: 12, removed: 0, open: false },
+];
+
+const HUNK = [
+  "   if (bucket.count >= LIMIT) {",
+  "-    return res.status(429).end()",
+  "+    const wait = bucket.resetIn()",
+  "+    res.setHeader('Retry-After', wait)",
+  "+    return res.status(429).end()",
+  "   }",
 ];
 
 function Strip() {
@@ -207,56 +212,87 @@ function Session() {
   );
 }
 
-// The Changes panel's Checkpoints tab, drawn from its own stylesheets: the live
-// timeline lists refs through the backend, so its markup is repeated here.
+const HISTORY_TABS = [
+  { id: "graph", label: "Graph", count: 0 },
+  { id: "stashes", label: "Stashes", count: 0 },
+  { id: "checkpoints", label: "Checkpoints", count: 13 },
+];
+
+// The Changes panel's Checkpoints tab with a turn opened, drawn from its own
+// stylesheets: the live panel lists refs through the backend, so its markup is
+// repeated here.
 function Checkpoints() {
-  const tabs = [{ label: "Graph" }, { label: "Stashes" }, { label: "Checkpoints", count: 13, on: true }];
   return (
     <div class={`${popover.surface} ${styles.card}`} inert>
-      <div class={`${review.tabStrip} ${styles.cardTabs}`}>
-        <div class={review.tabs} role="tablist" aria-label="History">
-          <For each={tabs}>
-            {(t) => (
-              <button type="button" role="tab" class={review.tab} aria-selected={!!t.on}>
-                <span>{t.label}</span>
-                <Show when={t.count}>
-                  <span class={review.tabCount}>{t.count}</span>
-                </Show>
-              </button>
-            )}
-          </For>
+      <OverflowTabBar
+        class={`${review.tabStrip} ${styles.cardTabs}`}
+        items={HISTORY_TABS}
+        activeId="checkpoints"
+        idOf={(t) => t.id}
+        onActivate={() => {}}
+        onReorder={() => {}}
+        renderTab={(t) => (
+          <Tab
+            quiet
+            value={t.id}
+            trailing={
+              <Show when={t.count}>
+                <span class={review.tabCount}>{t.count}</span>
+              </Show>
+            }
+          >
+            {t.label}
+          </Tab>
+        )}
+        renderMenuItem={(t) => <span>{t.label}</span>}
+      />
+      <div class={timeline.panel}>
+        <button type="button" class={timeline.back}>
+          <Icon icon={ChevronLeft} />
+          Checkpoints
+        </button>
+        <div class={timeline.detailHead}>
+          <div class={timeline.detailTitle}>now send the Retry-After header</div>
+          <div class={timeline.detailMeta}>{["10:24", "Chat", "Cap the rate limiter"].join(` ${DOT} `)}</div>
         </div>
-      </div>
-      <div class={timeline.timeline}>
-        <div class={timeline.timelineHeader}>
-          <span class={timeline.timelineTitle}>Timeline</span>
-          <Switch class={timeline.cumulativeToggle} checked={false} onChange={() => {}} label="workspace since here" />
-        </div>
-        <div class={`${timeline.strip} ${styles.chips}`}>
-          <For each={[...CHIPS].reverse()}>
-            {(c, i) => (
-              <button type="button" class={`${timeline.turnChip} ${i() === 0 ? timeline.turnChipActive : ""}`}>
-                <span class={timeline.turnTime}>{c.at}</span>
-                <span class={timeline.turnCount}>{c.files}</span>
-              </button>
-            )}
-          </For>
-        </div>
-        <div class={timeline.timelineActions}>
-          <Button size="sm">Revert tree to here</Button>
-        </div>
-        <div class={timeline.timelineRow}>
-          <span class={`${timeline.timelineStatus} ${timeline.modified}`}>M</span>
-          <span class={timeline.timelineName}>src/limiter.ts</span>
-        </div>
-        <div class={timeline.timelineDiff}>
-          <For each={DIFF}>
-            {(l) => <div class={`${timeline.diffLine} ${l.kind === "ctx" ? "" : timeline[l.kind]}`}>{l.text}</div>}
-          </For>
-        </div>
-        <div class={timeline.timelineRow}>
-          <span class={`${timeline.timelineStatus} ${timeline.modified}`}>M</span>
-          <span class={timeline.timelineName}>test/limiter.test.ts</span>
+        <SegmentedControl
+          class={timeline.range}
+          size="sm"
+          aria-label="Which changes to list"
+          value="turn"
+          onChange={() => {}}
+          options={[
+            { value: "turn", label: `This turn ${DOT} 2` },
+            { value: "since", label: `Since here ${DOT} 2` },
+          ]}
+        />
+        <For each={FILES}>
+          {(f) => (
+            <div>
+              <div class={timeline.fileRow}>
+                <span class={timeline.fileStatus}>M</span>
+                <button type="button" class={timeline.fileMain} aria-expanded={f.open}>
+                  <span class={timeline.fileName}>{f.name}</span>
+                  <span class={timeline.fileDir}>{f.dir}</span>
+                </button>
+                <span class={timeline.added}>+{f.added}</span>
+                <span class={timeline.removed}>-{f.removed}</span>
+              </div>
+              <Show when={f.open}>
+                <div class={timeline.fileDiff}>
+                  <div class={`${diffRowClasses.line} ${diffRowClasses.hunk}`}>@@ -31,4 +31,6 @@</div>
+                  <DiffRows rows={buildRows(HUNK, { old: 31, new: 31 })} path="src/limiter.ts" twoColumn={false} />
+                </div>
+              </Show>
+            </div>
+          )}
+        </For>
+        <div class={timeline.footer}>
+          <Button variant="primary" class={timeline.action}>
+            Revert tree to 10:24
+          </Button>
+          <Button class={timeline.action}>Rewind chat to here</Button>
+          <div class={timeline.footNote}>Current state is saved as a backstop first.</div>
         </div>
       </div>
     </div>
@@ -264,7 +300,7 @@ function Checkpoints() {
 }
 
 /** Slide 04: the real tab strip and chat on a session mid-turn, with the
- *  Changes panel's checkpoint timeline for the turn it is running. */
+ *  Changes panel's Checkpoints tab open on the turn it is running. */
 export default function TerminalArt() {
   return (
     <div class={styles.art}>
