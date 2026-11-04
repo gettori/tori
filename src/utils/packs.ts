@@ -1,5 +1,6 @@
 // Mirrors `packs::Meta`, `packs::LoadError`, `packs::provenance::Provenance`,
-// `packs::migrate::Report` and `packs::catalog::Catalog` in src-tauri/src/packs/.
+// `packs::migrate::Report`, `packs::catalog::Catalog` and `packs::manage::Next`
+// in src-tauri/src/packs/.
 import { createSignal, onCleanup } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -112,6 +113,21 @@ export type CatalogPack = {
   verified_against: string | null;
   verified_on: string | null;
   platforms: string[];
+  /** On lsp rows from an index published after 26.1104.0. */
+  runs_project_code?: boolean;
+};
+
+export type InstallNext =
+  | { step: "nothing" }
+  | { step: "managed" }
+  | { step: "hint"; text: string; command: string | null };
+
+export const KIND_NOUN: Record<PackKind, string> = {
+  lsp: "language server",
+  dap: "debugger",
+  formatters: "formatter",
+  themes: "theme",
+  agents: "agent",
 };
 
 export type CatalogRow = {

@@ -841,6 +841,7 @@ pub fn run() {
             packs::packs_reload,
             packs::packs_remove,
             packs::catalog::packs_catalog,
+            packs::catalog::packs_resolve,
             packs::manage::packs_install,
             packs::manage::packs_update,
             themes::themes_watch_start,

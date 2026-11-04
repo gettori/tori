@@ -6,11 +6,42 @@ use std::io::Read;
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use serde::Serialize;
 use serde_json::Value;
 
 use super::catalog;
 use super::installed::{self, Record, Source as Recorded};
 use super::Kind;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "step", rename_all = "lowercase")]
+pub enum Next {
+    Nothing,
+    Managed,
+    Hint { text: String, command: Option<String> },
+}
+
+pub fn next_step(kind: Kind, text: &str) -> Next {
+    if !matches!(kind, Kind::Lsp | Kind::Dap) {
+        return Next::Nothing;
+    }
+    let Ok(doc) = toml::from_str::<toml::Value>(text) else {
+        return Next::Nothing;
+    };
+    let Some(install) = doc.get("install").and_then(toml::Value::as_table) else {
+        return Next::Nothing;
+    };
+    match install.get("kind").and_then(toml::Value::as_str) {
+        Some("hint") => {
+            let text = install.get("text").and_then(toml::Value::as_str).unwrap_or_default();
+            Next::Hint {
+                text: text.to_string(),
+                command: super::validate::first_backticked(text),
+            }
+        }
+        _ => Next::Managed,
+    }
+}
 
 pub const FIX_RENAME: &str = "rename yours to install this one";
 
@@ -30,7 +61,7 @@ pub fn put(
     index: &Value,
     mut download: impl FnMut(&str) -> Result<Vec<u8>, String>,
     now: u64,
-) -> Result<(), String> {
+) -> Result<String, String> {
     super::check_id(id, "packs_install")?;
     let (row, sha) = index["rows"]
         .as_array()
@@ -93,7 +124,7 @@ pub fn put(
             let _ = std::fs::remove_file(super::icon_path(packs, id));
         }
     }
-    recorded_now
+    recorded_now.map(|()| text)
 }
 
 fn fetch_checked(
@@ -151,7 +182,7 @@ fn download(url: &str) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-fn run(app: &tauri::AppHandle, lsp: &crate::lsp::LspState, kind: Kind, id: &str, mode: Mode) -> Result<(), String> {
+fn run(app: &tauri::AppHandle, lsp: &crate::lsp::LspState, kind: Kind, id: &str, mode: Mode) -> Result<Next, String> {
     use tauri::Emitter;
     check_idle(kind, id, |id| lsp.runs(id))?;
     let served = catalog::fetch(false);
@@ -163,10 +194,10 @@ fn run(app: &tauri::AppHandle, lsp: &crate::lsp::LspState, kind: Kind, id: &str,
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    put(&super::dir(), kind, id, mode, &index, download, now)?;
+    let text = put(&super::dir(), kind, id, mode, &index, download, now)?;
     super::reload(kind);
     let _ = app.emit(super::CHANGED, kind);
-    Ok(())
+    Ok(next_step(kind, &text))
 }
 
 #[tauri::command(async)]
@@ -175,7 +206,7 @@ pub fn packs_install(
     lsp: tauri::State<'_, crate::lsp::LspState>,
     kind: Kind,
     id: String,
-) -> Result<(), String> {
+) -> Result<Next, String> {
     run(&app, &lsp, kind, &id, Mode::Install)
 }
 
@@ -185,7 +216,7 @@ pub fn packs_update(
     lsp: tauri::State<'_, crate::lsp::LspState>,
     kind: Kind,
     id: String,
-) -> Result<(), String> {
+) -> Result<Next, String> {
     run(&app, &lsp, kind, &id, Mode::Replace)
 }
 
