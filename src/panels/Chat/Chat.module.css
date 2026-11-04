@@ -813,6 +813,21 @@ code.secretReason {
   color: var(--accent-fg);
 }
 
+/* A file the reply names, found on disk after render: a path in the text reads
+   as a link, an inline code span keeps the code look. Both underline on hover. */
+.assistant :global([data-path]) {
+  cursor: pointer;
+}
+
+.assistant :global(span[data-path]) {
+  color: var(--accent-fg);
+}
+
+.assistant :global([data-path]:hover) {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
 /* Block-split markdown: each prose run and code fence is its own wrapper, so a
    streaming delta re-renders only the tail. Margins collapse through the prose
    wrappers, so the first/last trim has to reach one level deeper. */

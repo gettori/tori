@@ -75,3 +75,39 @@ export function linkTarget(href: string, cwd: string): LinkTarget {
   const line = at ? Number(at[2]) : undefined;
   return isUnderPath(abs, cwd) ? { kind: "file", path: abs, line } : { kind: "outside", path: abs };
 }
+
+/** One path segment: anything but whitespace, quotes and brackets. Not `\w`,
+ *  which drops a folder named with a multiplication sign or an accent, while
+ *  prose and code expressions still fall out before anything asks the disk. */
+const SEGMENT = "[^\\s/`'\"<>()\\[\\]{}]+";
+const PATH_LIKE = new RegExp(`^(?:~?\\.{0,2}/)?${SEGMENT}(?:/${SEGMENT})*(?::\\d+)?$`);
+const EXTENSION = /\.[a-z0-9]{1,8}(?::\d+)?$/;
+
+/**
+ * The file a span of reply text names, or null when it does not look like one.
+ *
+ * Shape only: `bucket.count` passes it as readily as `src/limiter.ts`, so the
+ * caller still has to ask the disk before drawing a link. A path outside the
+ * workspace is null rather than a link that only says it cannot open.
+ */
+export function pathTarget(text: string, cwd: string): { path: string; line?: number } | null {
+  const raw = text.trim().replace(/^@/, "");
+  if (!PATH_LIKE.test(raw) || raw.startsWith("~")) return null;
+  if (!raw.includes("/") && !EXTENSION.test(raw)) return null;
+  const target = linkTarget(raw, cwd);
+  return target.kind === "file" ? { path: target.path, line: target.line } : null;
+}
+
+/** Path-shaped words in running prose: a slash in them somewhere, so a plain
+ *  word never costs a disk check. Trailing sentence punctuation is not part of
+ *  the path. */
+const PROSE_PATH = new RegExp(`@?(?:~?\\.{0,2}/)?${SEGMENT}(?:/${SEGMENT})+|@?/${SEGMENT}`, "g");
+
+export function pathWords(text: string): { start: number; raw: string }[] {
+  const out: { start: number; raw: string }[] = [];
+  for (const m of text.matchAll(PROSE_PATH)) {
+    const raw = m[0].replace(/[.,;:!?]+$/, "");
+    if (raw.length > 1) out.push({ start: m.index, raw });
+  }
+  return out;
+}
