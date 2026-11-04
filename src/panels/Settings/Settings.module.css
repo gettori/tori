@@ -363,7 +363,7 @@
     margin-top: var(--tori-space-2);
     font-size: var(--tori-text-xs);
     line-height: 1.55;
-    color: var(--fg-muted);
+    color: var(--fg-subtle);
     text-wrap: pretty;
   }
   .hint code {
