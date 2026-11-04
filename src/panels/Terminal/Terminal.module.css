@@ -9,7 +9,7 @@
   display: flex;
   align-items: center;
   min-height: calc(40px * var(--ui-scale));
-  padding: 0 calc(6px * var(--ui-scale));
+  padding: 0 calc(6px * var(--ui-scale)) 0 calc(4px * var(--ui-scale));
   -webkit-user-select: none;
   user-select: none;
   background: var(--canvas-card);
