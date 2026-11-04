@@ -85,8 +85,19 @@ packs() {
     exit 1
   fi
   if ! diff <(grep -v '^#\|^commit ' "$lock" | sed 's/^[0-9a-f]*  //') \
-    <(cd src-tauri/packs && find lsp dap formatters themes agents icons -type f | LC_ALL=C sort); then
+    <(cd src-tauri/packs && for d in lsp dap formatters themes agents icons; do [ -d "$d" ] && find "$d" -type f; done | LC_ALL=C sort); then
     echo "error: src-tauri/packs and $lock list different files (< lock only, > disk only); run scripts/sync-packs.sh" >&2
+    exit 1
+  fi
+  step "src-tauri/packs.lock lists the packs in scripts/bundle.txt"
+  if ! diff <(grep -v '^#' scripts/bundle.txt | grep . | LC_ALL=C sort) \
+    <(grep -v '^#\|^commit ' "$lock" | sed 's/^[0-9a-f]*  //;s/\.[a-z]*$//' | grep -v '^icons/' | LC_ALL=C sort); then
+    echo "error: scripts/bundle.txt and $lock list different packs (< list only, > lock only); run scripts/sync-packs.sh" >&2
+    exit 1
+  fi
+  if [ -n "$(comm -23 <(grep -v '^#\|^commit ' "$lock" | sed 's/^[0-9a-f]*  //;s/\.[a-z]*$//' | grep '^icons/' | sed 's|^icons/||' | LC_ALL=C sort) \
+    <(grep '^agents/' scripts/bundle.txt | sed 's|^agents/||' | LC_ALL=C sort))" ]; then
+    echo "error: $lock carries an icon for an agent not in scripts/bundle.txt; run scripts/sync-packs.sh" >&2
     exit 1
   fi
 }

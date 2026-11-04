@@ -201,7 +201,7 @@ mod tests {
     }
 
     fn index() -> Value {
-        let snapshot: Value = serde_json::from_str(super::super::snapshot::INDEX).unwrap();
+        let snapshot = super::super::snapshot::index();
         let mut row = snapshot["rows"]
             .as_array()
             .unwrap()

@@ -975,16 +975,7 @@ program = "demo-server"
         let (list, _) = build_registry_from(Path::new("/nonexistent/tori/lsp"));
         // Equal lengths mean `admit` refused none of them.
         assert_eq!(list.len(), builtins().count());
-        for id in [
-            "biome",
-            "eslint",
-            "json",
-            "oxlint",
-            "python",
-            "rust",
-            "typescript",
-            "yaml",
-        ] {
+        for id in ["css", "eslint", "html", "json", "oxlint", "typescript", "yaml"] {
             assert!(list.iter().any(|s| s.id == id), "{id} is missing");
         }
         assert!(list.iter().all(|s| !s.is_override()));
