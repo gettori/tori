@@ -8,6 +8,15 @@ export function isPdfPath(path: string): boolean {
   return path.toLowerCase().endsWith(".pdf");
 }
 
+// SVG is deliberately absent: it is XML text, so it opens as an editable source
+// tab (with a render toggle, like Markdown) rather than the read-only image view.
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif"]);
+
+export function isImagePath(path: string): boolean {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  return IMAGE_EXTENSIONS.has(ext);
+}
+
 // Is `child` the same path as, or nested under, `parent`? Trailing slashes are
 // normalized; this is the same lexical prefix rule the sidebar's worktree guard
 // uses (no canonicalization, since both sides come from the same discovery root).

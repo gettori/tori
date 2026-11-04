@@ -478,6 +478,7 @@ pub fn run() {
             fs::fs_read_file,
             fs::fs_write_file,
             fs::file_exists,
+            fs::fs_is_text,
             fs::fs_is_dir,
             dragboard::drag_paths,
             fs::fs_mtime_ms,
