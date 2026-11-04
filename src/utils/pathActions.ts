@@ -4,7 +4,7 @@
 // they raise when it fails.
 import { invoke } from "@tauri-apps/api/core";
 import { copyText } from "./clipboard";
-import { emitWith, TOAST, type ToastEvent } from "./events";
+import { emitWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "./events";
 
 /** Copy the paths, one per line. */
 export async function copyPaths(paths: string[]) {
@@ -33,4 +33,50 @@ export async function openInDefaultApp(path: string) {
   } catch (e) {
     emitWith<ToastEvent>(TOAST, { message: String(e) });
   }
+}
+
+/** Documents and media the backend lets a click hand to their default app
+ *  (`OPENABLE_EXTENSIONS` in launch.rs) that Tori has no view for. The rest of
+ *  that list (PDF, images, SVG, HTML, CSV) Tori shows itself. */
+const DEFAULT_APP_ONLY = new Set([
+  "doc",
+  "docx",
+  "xls",
+  "xlsx",
+  "ppt",
+  "pptx",
+  "odt",
+  "ods",
+  "odp",
+  "rtf",
+  "pages",
+  "numbers",
+  "key",
+  "epub",
+  "tif",
+  "tiff",
+  "heic",
+  "heif",
+  "psd",
+  "mp3",
+  "wav",
+  "m4a",
+  "aac",
+  "flac",
+  "ogg",
+  "opus",
+  "mp4",
+  "m4v",
+  "mov",
+  "webm",
+  "mkv",
+  "avi",
+]);
+
+/** Open a file a link named: in Tori when it has a view for it, otherwise in the
+ *  app the system picks. */
+export function openFile(path: string, line?: number) {
+  const ext = path.split("/").pop()?.split(".").slice(1).pop()?.toLowerCase() ?? "";
+  if (DEFAULT_APP_ONLY.has(ext)) void openInDefaultApp(path);
+  else emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path, line });
 }
