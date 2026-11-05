@@ -86,7 +86,7 @@ import {
   sameRange,
   type CodeAction,
 } from "./lspCodeActions";
-import { formatWithServer } from "./lspFormatting";
+import { formatWithServer, formattingTarget } from "./lspFormatting";
 import type { LspRange } from "./lspDiagnosticContext";
 import { reattachLsp, reconfigureBuffers } from "./lspReattach";
 import { refreshDocumentSymbols, requestWorkspaceSymbols } from "./lspSymbols";
@@ -192,6 +192,7 @@ import { type MenuItem } from "../../components/Menu/rows";
 type ActionMenu = { x: number; y: number; items: MenuItem[] };
 import styles from "./CodeEditor.module.css";
 import InstallBanner from "./InstallBanner";
+import { offerPackFor } from "../../utils/catalogOffers";
 
 function relTo(root: string, abs: string): string {
   return abs.startsWith(root + "/") ? abs.slice(root.length + 1) : abs;
@@ -2524,7 +2525,10 @@ export default function CodeEditor(props: {
     // formatter at all: a detected one that refused has already said why, and
     // reformatting with a different tool on top of that would be worse than
     // doing nothing.
-    if (!outcome.formatter && view) await formatWithServer(view, path, () => shown === path && !!view);
+    if (!outcome.formatter && view) {
+      if (!(await formattingTarget(path))) return void offerPackFor("formatters", path, "editor");
+      await formatWithServer(view, path, () => shown === path && !!view);
+    }
   }
 
   // What running a code action needs from the app: the same question the rename

@@ -78,6 +78,7 @@ import {
   type LldbPick,
   type TargetKind,
 } from "../../utils/debugTargets";
+import { offerPackFor } from "../../utils/catalogOffers";
 import type { RevertOutcome } from "./CheckpointTimeline";
 import SearchPanel from "./SearchPanel";
 import DebugPanel from "./DebugPanel";
@@ -1407,7 +1408,9 @@ export default function Editor(props: {
     const ws = focusRoot();
     if (!ws) return;
     const adapters = await dapAdapters();
-    const claimed = adapterForPath(adapters, debugFilePath());
+    const path = debugFilePath();
+    const claimed = adapterForPath(adapters, path);
+    if (!claimed && path && (await offerPackFor("dap", path, "editor"))) return;
     repeatOrAsk(ws, claimed?.id ?? null, claimed ? [claimed] : adapters);
   }
 

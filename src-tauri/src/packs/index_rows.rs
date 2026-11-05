@@ -93,8 +93,18 @@ fn pack_file(root: &Path, kind: &'static str, path: std::path::PathBuf, text: St
         row.insert(field.into(), doc.get(field).cloned().unwrap_or(Value::Null));
     }
     row.insert("platforms".into(), json!(platforms(&doc)));
-    if kind == "lsp" {
-        row.insert("runs_project_code".into(), json!(runs_project_code(&doc)));
+    match kind {
+        "lsp" => {
+            row.insert("extensions".into(), json!(language_keys(&doc)));
+            row.insert("runs_project_code".into(), json!(runs_project_code(&doc)));
+        }
+        "dap" => {
+            row.insert("languages".into(), json!(language_keys(&doc)));
+        }
+        "formatters" => {
+            row.insert("extensions".into(), doc.get("extensions").cloned().unwrap_or(json!([])));
+        }
+        _ => {}
     }
     if kind == "agents" {
         row.insert("icon_sha256".into(), icon_sha256(root, &id)?);
@@ -116,6 +126,13 @@ fn icon_sha256(root: &Path, id: &str) -> Result<Value, String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Value::Null),
         Err(e) => Err(format!("{}: {e}", path.display())),
     }
+}
+
+fn language_keys(doc: &Value) -> Vec<String> {
+    doc.get("languages")
+        .and_then(Value::as_object)
+        .map(|table| table.keys().cloned().collect())
+        .unwrap_or_default()
 }
 
 // build.rs includes this file, so it cannot reach `lsp::registry` and repeats
@@ -160,6 +177,7 @@ mod tests {
             "schema_version = 1\nid = \"zed\"\nlabel = \"Zed\"\nrole = \"secondary\"\n\
              license = \"MIT\"\ncontributor = { name = \"Ada\", github = \"ada\" }\n\
              verified_against = \"zed 1.0\"\nverified_on = \"2026-10-09\"\n\
+             [languages]\nts = \"typescript\"\ntsx = \"typescriptreact\"\n\
              [install.assets.macos-aarch64]\nfile = \"z\"\n[install.assets.linux-x86_64]\nfile = \"z\"\n\
              [install.assets.macos-x86_64]\nfile = \"z\"\n",
         );
@@ -205,9 +223,37 @@ mod tests {
                 "verified_against": "zed 1.0",
                 "verified_on": "2026-10-09",
                 "platforms": ["linux", "macos"],
+                "extensions": ["ts", "tsx"],
                 "runs_project_code": false,
             })
         );
+    }
+
+    #[test]
+    fn a_row_names_the_extensions_its_kind_claims() {
+        let dir = fixture("claims");
+        let write = |rel: &str, text: &str| {
+            let path = dir.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write(
+            "dap/debugpy.toml",
+            "schema_version = 1\nid = \"debugpy\"\n[languages]\npy = \"debugpy\"\n",
+        );
+        write(
+            "formatters/gofmt.toml",
+            "schema_version = 1\nid = \"gofmt\"\nextensions = [\"go\"]\n",
+        );
+        write("formatters/any.toml", "schema_version = 1\nid = \"any\"\n");
+        let packs = read_packs(&dir).unwrap();
+        let row = |kind: &str, id: &str| packs.iter().find(|p| p.kind == kind && p.id == id).unwrap().row.clone();
+        assert_eq!(row("lsp", "alpha")["extensions"], json!([]));
+        assert_eq!(row("dap", "debugpy")["languages"], json!(["py"]));
+        assert_eq!(row("dap", "debugpy").get("extensions"), None);
+        assert_eq!(row("formatters", "gofmt")["extensions"], json!(["go"]));
+        assert_eq!(row("formatters", "any")["extensions"], json!([]));
+        assert_eq!(row("themes", "moss").get("extensions"), None);
     }
 
     #[test]

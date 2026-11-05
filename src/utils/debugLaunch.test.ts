@@ -63,6 +63,12 @@ vi.mock("@tauri-apps/api/core", () => ({
         }
         return Promise.resolve();
       }
+      case "packs_catalog":
+        return Promise.resolve({
+          rows: [{ pack: { kind: "dap", id: "debugpy", languages: ["py"] }, installed: false, bundled: false }],
+          stale: false,
+          problem: null,
+        });
       default:
         return Promise.resolve(null);
     }
@@ -198,6 +204,21 @@ describe("when the adapter refuses", () => {
     expect(errors[0]).toContain("--inspect");
     expect(errors[0]).toContain("9229");
     expect(errors[0]).toContain("ECONNREFUSED");
+  });
+
+  it("a saved target naming a debugger the catalog has opens the install dialog instead of an error", async () => {
+    const m = await freshModule();
+    const { pendingPackInstall } = await import("./packInstall");
+    const errors: string[] = [];
+
+    const session = await m.launchTarget(
+      { adapterId: "debugpy", kind: "file", path: "/repo/main.py" },
+      { projectPath: "/repo", onError: (e) => errors.push(e) },
+    );
+
+    expect(session).toBeNull();
+    expect(errors).toEqual([]);
+    expect(pendingPackInstall()).toEqual({ kind: "dap", id: "debugpy", origin: "editor" });
   });
 
   it("passes a launch failure through, since it is already specific", async () => {

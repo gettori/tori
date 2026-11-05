@@ -28,6 +28,7 @@ import {
   type DebugTarget,
   type LldbPick,
 } from "./debugTargets";
+import { offerPackById } from "./catalogOffers";
 import { emitWith, OPEN_JOB, TOAST, type OpenJob, type ToastEvent } from "./events";
 import { extensionOf } from "./lspServers";
 import { UNTRUSTED } from "./projectTrust";
@@ -172,7 +173,9 @@ export async function launchTarget(
 ): Promise<DapSession | null> {
   const adapter = (await dapAdapters()).find((a) => a.id === target.adapterId);
   if (!adapter) {
-    opts.onError(`No debugger is registered as ${target.adapterId}.`);
+    if (!(await offerPackById("dap", target.adapterId, "editor"))) {
+      opts.onError(`No debugger is registered as ${target.adapterId}.`);
+    }
     return null;
   }
   const anchor = anchorFor(target, opts.projectPath);
