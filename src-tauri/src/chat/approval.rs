@@ -598,8 +598,7 @@ pub fn settings_args(
     } else {
         crate::rpc::mcp_allow(background)
     };
-    std::fs::write(&path, settings_json_with(&exe, sock, token, allow, home, sandbox)).map_err(|e| e.to_string())?;
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
+    crate::owned_state::write_private(&path, &settings_json_with(&exe, sock, token, allow, home, sandbox))?;
     let mut args = match transport {
         ChatTransport::ClaudeStreamJson => crate::rpc::mcp_config_args(),
         ChatTransport::Acp => Vec::new(),

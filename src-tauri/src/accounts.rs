@@ -1233,7 +1233,8 @@ pub async fn complete_sign_in(adapter_id: String, profile_id: String) -> Result<
         }
         object.insert(flag.key.clone(), serde_json::Value::Bool(true));
         let out = serde_json::to_string_pretty(&state).map_err(|e| e.to_string())?;
-        std::fs::write(&path, out).map_err(|e| format!("could not write {}: {e}", path.display()))?;
+        crate::owned_state::write_atomically(&path, &out)
+            .map_err(|e| format!("could not write {}: {e}", path.display()))?;
         Ok(true)
     })
     .await

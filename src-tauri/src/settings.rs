@@ -1566,12 +1566,41 @@ fn load_from(path: &Path) -> Settings {
     settings
 }
 
+/// What a save into an unreadable settings file is refused with. The window
+/// matches the prefix to say so.
+pub const UNREADABLE: &str = "settings.json could not be read";
+
+// `load_from` falls back to the defaults for a file it cannot read, so a save
+// on top of that would replace the user's settings with them.
+fn unreadable(path: &Path) -> Option<String> {
+    let why = match std::fs::read_to_string(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(e) => e.to_string(),
+        Ok(text) => {
+            let json5::Error::Message { msg, location } = json5::from_str::<serde_json::Value>(&text).err()?;
+            match location {
+                Some(at) => format!("line {}, column {}: {msg}", at.line, at.column),
+                None => msg,
+            }
+        }
+    };
+    let bad = path.with_file_name("settings.json.bad");
+    let kept = match std::fs::copy(path, &bad) {
+        Ok(_) => format!("a copy is at {}", bad.display()),
+        Err(e) => format!("copying it to {} failed: {e}", bad.display()),
+    };
+    Some(format!("{UNREADABLE} ({why}), so nothing was saved over it; {kept}"))
+}
+
 fn save_to(path: &Path, settings: &Settings) -> Result<(), String> {
+    if let Some(why) = unreadable(path) {
+        return Err(why);
+    }
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let json = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
-    std::fs::write(path, json).map_err(|e| e.to_string())
+    crate::owned_state::write_atomically(path, &json)
 }
 
 /// The dropped import path, if it has not been reported yet, marking `state` as
@@ -1843,6 +1872,36 @@ mod tests {
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
         std::env::temp_dir().join(format!("tori-settings-test-{n}-{seq}.json"))
+    }
+
+    #[test]
+    fn a_save_over_a_settings_file_that_does_not_parse_leaves_it_alone() {
+        let dir = tmp_file().with_extension("d");
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("settings.json");
+        let broken = "{\n  \"appearance\": {\n    \"theme\": \"dark\",,\n  }\n}\n";
+        std::fs::write(&p, broken).unwrap();
+
+        let err = save_to(&p, &Settings::default()).unwrap_err();
+        assert!(err.starts_with(UNREADABLE), "{err}");
+        assert!(err.contains("line 3"), "names the line: {err}");
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), broken, "the file is untouched");
+        assert_eq!(std::fs::read_to_string(dir.join("settings.json.bad")).unwrap(), broken);
+
+        forget_default_profile_in(&p, "claude", "work");
+        assert_eq!(
+            std::fs::read_to_string(&p).unwrap(),
+            broken,
+            "no load-modify-save writes over it"
+        );
+
+        std::fs::write(&p, b"{\"appearance\":{\"theme\":\"\xff\"}}").unwrap();
+        let err = save_to(&p, &Settings::default()).unwrap_err();
+        assert!(err.starts_with(UNREADABLE), "not UTF-8: {err}");
+
+        std::fs::write(&p, r#"{"appearance":{}}"#).unwrap();
+        assert!(save_to(&p, &Settings::default()).is_ok(), "a readable file saves");
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

@@ -845,7 +845,7 @@ fn save_adopted(state: &AdoptedState) -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let json = serde_json::to_string_pretty(state).map_err(|e| e.to_string())?;
-    std::fs::write(path, json).map_err(|e| e.to_string())
+    crate::owned_state::write_atomically(&path, &json)
 }
 
 /// Pure seed step: adopt all `folders` exactly once, and never against an empty
@@ -991,7 +991,7 @@ fn save_overlay(map: &HashMap<String, Overlay>) -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let json = serde_json::to_string_pretty(map).map_err(|e| e.to_string())?;
-    std::fs::write(path, json).map_err(|e| e.to_string())
+    crate::owned_state::write_atomically(&path, &json)
 }
 
 pub fn rename(ui: &crate::ui::Ui, id: String, name: Option<String>) -> Result<(), String> {
