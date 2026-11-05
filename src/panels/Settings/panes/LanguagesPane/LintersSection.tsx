@@ -1,7 +1,7 @@
 import { For, Show, Switch, Match, createResource } from "solid-js";
 import { LspCard, probeLspHealth } from "./LspSection";
 import { onPacksChanged } from "../../../../utils/packs";
-import AddPack from "../../components/AddPack";
+import BrowsePacks from "../../components/BrowsePacks";
 import styles from "../../Settings.module.css";
 
 export default function LintersSection() {
@@ -15,7 +15,7 @@ export default function LintersSection() {
         <span>Linters</span>
         <span class={styles.sectionRule} />
       </div>
-      <AddPack kind="lsp" label="Add a linter" filter={(p) => p.role === "secondary"} />
+      <BrowsePacks kind="lsp" role="secondary" />
       <Switch>
         <Match when={health.state === "pending"}>
           <div class={styles.note}>Checking which linters are installed...</div>
