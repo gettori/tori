@@ -35,6 +35,7 @@ use super::server::{
 use super::states::{SessionState, SessionStates};
 use super::table::CallerKind;
 use crate::accounts::DEFAULT_PROFILE_ID;
+use crate::agents::ModeFreedom;
 use crate::autopilot::{AutopilotStore, Contract, Item, Observed, Source};
 use crate::chat::commands::{history_source, read_history, read_with_prompts, HistorySource};
 use crate::chat::host::{Levers, Waiting};
@@ -1021,6 +1022,33 @@ fn fill_picks(given: Picks, contract: Option<&Contract>, me: &Identity, caller: 
     }
 }
 
+// A session spawns no child freer than itself: a permissive mode, or one no pack
+// row vouches for, needs the caller to hold a permissive mode already. Its own
+// mode on its own agent is always in reach.
+fn mode_within_reach(mode: Option<&str>, agent: &str, me: &Identity, caller: &Levers) -> Result<(), String> {
+    let Some(mode) = mode else { return Ok(()) };
+    let own = caller.mode.as_ref().map(|m| m.as_str());
+    let own_agent = me.agent.as_deref();
+    if own_agent == Some(agent) && own == Some(mode) {
+        return Ok(());
+    }
+    let free = own_agent
+        .zip(own)
+        .is_some_and(|(agent, own)| crate::agents::mode_freedom(agent, own) == ModeFreedom::Permissive);
+    if free {
+        return Ok(());
+    }
+    match crate::agents::mode_freedom(agent, mode) {
+        ModeFreedom::Asks => Ok(()),
+        ModeFreedom::Permissive => Err(format!(
+            "`{mode}` runs tools without asking, and this session's own mode asks, so it cannot start one in it"
+        )),
+        ModeFreedom::Unnamed => Err(format!(
+            "`{mode}` is not a mode {agent}'s pack names, so a session cannot start one in it"
+        )),
+    }
+}
+
 fn device_may_spawn(params: &SpawnParams, is_chat: impl Fn(&str) -> bool) -> Result<(), RpcError> {
     let named = match params.new_worktree {
         Some(_) => params.project.is_some(),
@@ -1325,7 +1353,12 @@ impl DaemonBackend {
             account,
             model,
             mode,
-        } = fill_picks(given, contract.as_ref(), &me, &caller.unwrap_or_default());
+        } = fill_picks(
+            given,
+            contract.as_ref(),
+            &me,
+            caller.as_ref().unwrap_or(&Levers::default()),
+        );
         let background = spawns_background(&self.desk.states, principal, params.background.unwrap_or(false));
         let spawner = match principal {
             Principal::Session(Caller::Chat(spawner)) if background => Some(spawner.clone()),
@@ -1334,6 +1367,9 @@ impl DaemonBackend {
         let picked = crate::chat::pick::pick(&folder, agent.as_deref(), account.as_deref()).map_err(refused)?;
         let first =
             crate::chat::pick::first_message(&picked.agent, params.prompt.as_deref(), &attach).map_err(refused)?;
+        if let Principal::Session(_) = principal {
+            mode_within_reach(mode.as_deref(), &picked.agent, &me, &caller.unwrap_or_default()).map_err(refused)?;
+        }
         let mode = mode.or_else(|| read_only.then(|| read_only_mode(&picked.agent)).flatten());
         if let Some(from) = &params.fork {
             let source = listed_sessions(&self.composer.index, None)
@@ -4893,6 +4929,66 @@ mod tests {
                 model: None,
                 mode: None
             }
+        );
+    }
+
+    #[test]
+    fn a_session_spawns_no_child_in_a_mode_freer_than_its_own() {
+        let claude = Identity {
+            agent: Some("claude".into()),
+            ..Default::default()
+        };
+        let in_mode = |mode: &str| Levers {
+            mode: Some(PermissionMode::new(mode)),
+            ..Default::default()
+        };
+        let asks = in_mode("default");
+        for mode in ["default", "acceptEdits", "plan", "dontAsk"] {
+            assert_eq!(
+                mode_within_reach(Some(mode), "claude", &claude, &asks),
+                Ok(()),
+                "{mode}"
+            );
+        }
+        assert_eq!(mode_within_reach(None, "claude", &claude, &asks), Ok(()));
+        for mode in ["auto", "bypassPermissions"] {
+            let err = mode_within_reach(Some(mode), "claude", &claude, &asks).unwrap_err();
+            assert!(err.contains(&format!("`{mode}`")), "{err}");
+        }
+        let err = mode_within_reach(Some("agent-full-access"), "codex", &claude, &asks).unwrap_err();
+        assert!(err.contains("`agent-full-access`") && err.contains("codex"), "{err}");
+
+        let free = in_mode("bypassPermissions");
+        assert_eq!(mode_within_reach(Some("auto"), "claude", &claude, &free), Ok(()));
+        assert_eq!(
+            mode_within_reach(Some("agent-full-access"), "codex", &claude, &free),
+            Ok(())
+        );
+
+        let codex = Identity {
+            agent: Some("codex".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            mode_within_reach(Some("read-only"), "codex", &codex, &in_mode("read-only")),
+            Ok(()),
+            "its own mode on its own agent"
+        );
+        let filled = fill_picks(Picks::default(), None, &claude, &in_mode("bypassPermissions"));
+        assert_eq!(
+            mode_within_reach(filled.mode.as_deref(), "claude", &claude, &in_mode("bypassPermissions")),
+            Ok(()),
+            "an inherited mode is the caller's own"
+        );
+        assert!(
+            mode_within_reach(
+                Some("bypassPermissions"),
+                "claude",
+                &Identity::default(),
+                &Levers::default()
+            )
+            .is_err(),
+            "a terminal caller has no mode to lend"
         );
     }
 

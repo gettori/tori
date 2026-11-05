@@ -256,7 +256,7 @@ describe("the bundled chat tables", () => {
     // mode it warned about. `permissive` replaced it and is not the same claim:
     // that one was about Tori's gate, this one is about what the mode does.
     expect(JSON.stringify(chat.modes)).not.toContain("permissive_caveat");
-    expect(chat.modes.filter((m) => m.permissive).map((m) => m.id)).toEqual(["bypassPermissions"]);
+    expect(chat.modes.filter((m) => m.permissive).map((m) => m.id)).toEqual(["auto", "bypassPermissions"]);
   });
 });
 
