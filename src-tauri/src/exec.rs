@@ -35,12 +35,19 @@ const REFUSE: &str = "echo untrusted >&2; exit 128";
 /// Git runs a repository's own `.git/config` (`core.fsmonitor`, filter drivers,
 /// hooks), so reading one is running it. A stand-in rather than an error, so
 /// each of the ninety call sites keeps reporting failure the way it already did.
+/// In a fork's worktree it runs with no hooks, since a versioned
+/// `core.hooksPath` would run the fork's own.
 pub fn git_in(repo: impl AsRef<std::ffi::OsStr>) -> Command {
     let repo = repo.as_ref();
-    git_gated(repo, crate::trust::allows_git(std::path::Path::new(repo)))
+    let path = std::path::Path::new(repo);
+    let fork = path
+        .ancestors()
+        .find(|dir| dir.join(".git").exists())
+        .is_some_and(crate::worktree::fork_marked);
+    git_gated(repo, crate::trust::allows_git(path), !fork)
 }
 
-fn git_gated(repo: &std::ffi::OsStr, allowed: bool) -> Command {
+fn git_gated(repo: &std::ffi::OsStr, allowed: bool, hooks: bool) -> Command {
     #[cfg(test)]
     count_git(repo);
     if !allowed {
@@ -50,6 +57,9 @@ fn git_gated(repo: &std::ffi::OsStr, allowed: bool) -> Command {
     }
     let mut cmd = Command::new("git");
     cmd.arg("-C").arg(repo);
+    if !hooks {
+        cmd.args(["-c", "core.hooksPath=/dev/null"]);
+    }
     cmd
 }
 
@@ -380,7 +390,7 @@ mod tests {
         );
         let _ = std::fs::remove_file(&marker);
 
-        let refused = git_gated(dir.as_os_str(), false)
+        let refused = git_gated(dir.as_os_str(), false, true)
             .args(["status", "--porcelain"])
             .output()
             .unwrap();
@@ -388,7 +398,7 @@ mod tests {
         assert_eq!(String::from_utf8_lossy(&refused.stderr).trim(), crate::trust::UNTRUSTED);
         assert!(!marker.exists(), "a refused git ran the folder's fsmonitor command");
 
-        let allowed = git_gated(dir.as_os_str(), true)
+        let allowed = git_gated(dir.as_os_str(), true, true)
             .args(["status", "--porcelain"])
             .output()
             .unwrap();

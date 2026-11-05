@@ -336,6 +336,13 @@ pub fn pty_spawn(
     }
     // Running in the daemon already: this window was relaunched, or reloaded.
     let adopted = state.tabs().contains_key(&id);
+    let init = if kind == "agent" && !adopted {
+        let chat = agent_id.as_deref().and_then(crate::agents::find).and_then(|a| a.chat);
+        let trusted = crate::trust::trusted_folder(std::path::Path::new(&cwd));
+        agent_init(chat.as_ref(), trusted, init)?
+    } else {
+        init
+    };
 
     // Ownership, enforced here rather than by a separate command a caller could
     // forget: an agent session driven by two processes at once appends both
@@ -438,6 +445,25 @@ pub fn pty_spawn(
     attached.map(|_| PtySpawnResult { ownership: None })
 }
 
+// An agent typed into a tab loads what the folder ships, the same as a chat, so
+// it gets the same flags or does not start.
+fn agent_init(
+    chat: Option<&crate::agents::ChatConfig>,
+    trusted: bool,
+    init: Option<String>,
+) -> Result<Option<String>, String> {
+    if trusted {
+        return Ok(init);
+    }
+    let args = chat
+        .ok_or_else(|| crate::trust::UNTRUSTED.to_string())?
+        .trust_args(false)?;
+    Ok(init.map(|line| {
+        let quoted: Vec<String> = args.iter().map(|a| crate::chat::approval::sh_quote(a)).collect();
+        format!("{} {}\n", line.trim_end_matches('\n'), quoted.join(" "))
+    }))
+}
+
 /// Sync by design, and it must stay that way: keystrokes are fire-and-forget,
 /// so their byte order is exactly IPC arrival order run inline.
 #[tauri::command]
@@ -520,6 +546,32 @@ pub fn pty_busy_ids(state: State<PtyState>) -> Result<Vec<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn chat_of(agent: &str) -> crate::agents::ChatConfig {
+        crate::agents::find(agent).and_then(|a| a.chat).unwrap()
+    }
+
+    #[test]
+    fn an_agent_tab_in_an_untrusted_folder_starts_with_the_trust_flags_or_not_at_all() {
+        let init = Some("claude --resume 'abc'\n".to_string());
+        let claude = chat_of("claude");
+        assert_eq!(agent_init(Some(&claude), true, init.clone()), Ok(init.clone()));
+        assert_eq!(
+            agent_init(Some(&claude), false, init.clone()),
+            Ok(Some("claude --resume 'abc' '--setting-sources' 'user'\n".to_string()))
+        );
+        let codex = chat_of("codex");
+        assert!(codex.untrusted_args.is_empty(), "codex declares no trust flags");
+        assert_eq!(
+            agent_init(Some(&codex), false, Some("codex\n".into())),
+            Err(crate::trust::UNTRUSTED.to_string())
+        );
+        assert_eq!(
+            agent_init(Some(&codex), true, Some("codex\n".into())),
+            Ok(Some("codex\n".into()))
+        );
+        assert_eq!(agent_init(None, false, None), Err(crate::trust::UNTRUSTED.to_string()));
+    }
 
     fn tab(agent: Option<&str>, profile: Option<&str>, cwd: &str) -> Tab {
         Tab {

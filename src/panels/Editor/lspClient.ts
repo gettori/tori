@@ -23,7 +23,7 @@ import { keymap } from "@codemirror/view";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
-import { askToTrust, noteRefused, onTrustChange, UNTRUSTED } from "../../utils/projectTrust";
+import { askToTrustUnlessFork, noteRefused, onTrustChange, UNTRUSTED } from "../../utils/projectTrust";
 import { NOT_INSTALLED, offerInstall, onServerInstalled } from "../../utils/serverInstall";
 import { dropDiagnostics, dropDiagnosticsUnder } from "../../utils/diagnostics";
 import {
@@ -383,7 +383,10 @@ async function startFor(server: LspServer, path: string, projectPath: string, st
   } catch (e) {
     if (e === UNTRUSTED) {
       if (noteRefused(projectPath)) {
-        askToTrust(projectPath, "Language servers that run this project's code stay off until you trust it.");
+        void askToTrustUnlessFork(
+          projectPath,
+          "Language servers that run this project's code stay off until you trust it.",
+        );
       }
       return;
     }

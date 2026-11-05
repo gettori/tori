@@ -20,7 +20,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 
 import { createDapConnection, initializeArguments, type DapConnection, type DapHandle } from "./dapClient";
-import { askToTrust, noteRefused, UNTRUSTED } from "./projectTrust";
+import { askToTrustUnlessFork, noteRefused, UNTRUSTED } from "./projectTrust";
 
 export type DapSession = {
   handle: DapHandle;
@@ -155,7 +155,10 @@ let runCounter = 0;
  */
 export function refuseUntrustedRun(projectPath: string): void {
   noteRefused(projectPath);
-  askToTrust(projectPath, "Debugging runs this project's code, so it stays off until you trust the project.");
+  void askToTrustUnlessFork(
+    projectPath,
+    "Debugging runs this project's code, so it stays off until you trust the project.",
+  );
 }
 
 /**
