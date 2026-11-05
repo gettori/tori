@@ -222,6 +222,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_deep_link::init())
         // The red button only hides the window, and speech plays from this
         // process, so a reply being read would carry on with nothing left on
         // screen to stop it.
@@ -266,6 +267,9 @@ pub fn run() {
             if let Err(e) = app.asset_protocol_scope().allow_directory(chats::root(), true) {
                 eprintln!("tori: could not open the chats to the webview: {e}");
             }
+
+            app.manage(packs::link::Pending::default());
+            packs::link::watch(app.handle());
 
             setup::set_publisher(app.handle().clone());
             run::at_launch();
@@ -843,6 +847,7 @@ pub fn run() {
             packs::packs_remove,
             packs::catalog::packs_catalog,
             packs::catalog::packs_resolve,
+            packs::link::packs_take_link,
             packs::manage::packs_install,
             packs::manage::packs_update,
             themes::themes_watch_start,

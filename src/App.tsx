@@ -54,6 +54,7 @@ import UpdatePill from "./components/UpdatePill/UpdatePill";
 import DaemonPill from "./components/DaemonPill/DaemonPill";
 import { announceCrash } from "./utils/crashReport";
 import { watchSetup } from "./utils/setupToasts";
+import { watchPackLinks } from "./utils/packLink";
 import UsageStrip from "./components/UsageStrip/UsageStrip";
 import PhoneIndicator from "./components/PhoneIndicator/PhoneIndicator";
 import DevBadge from "./components/DevBadge/DevBadge";
@@ -553,6 +554,7 @@ function App() {
   });
   let unlistenMenu: UnlistenFn | undefined;
   let unlistenSetup: UnlistenFn | undefined;
+  let unlistenLinks: UnlistenFn | undefined;
   // A menu item stays enabled whatever the state, so a click the command cannot
   // act on says why, the way the palette greys the row out.
   const runFromMenu = (id: string) => {
@@ -572,10 +574,12 @@ function App() {
     unlistenMenu = await listen<string>("menu://command", (e) => runFromMenu(e.payload));
     invoke("set_app_menu", { spec: menuSpec() }).catch((e) => console.error("menu bar not set:", e));
     unlistenSetup = await watchSetup();
+    unlistenLinks = await watchPackLinks();
   });
   onCleanup(() => {
     unlistenMenu?.();
     unlistenSetup?.();
+    unlistenLinks?.();
   });
 
   // A deleted Topic: its pane tree and placements go, and if it was what

@@ -329,10 +329,7 @@ pub fn resolve(
     bundled_sha: impl Fn(Kind, &str) -> Option<String>,
     on_disk: impl Fn(Kind, &str) -> bool,
 ) -> Result<CatalogRow, String> {
-    // A link id is held to less than a pack id may be.
-    static LINK_ID: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    let link_id = LINK_ID.get_or_init(|| regex::Regex::new(r"^[a-z0-9-]+$").unwrap());
-    if !link_id.is_match(id) {
+    if !super::is_catalog_id(id) {
         return Err(format!("`{id}` is not a pack id"));
     }
     let folder = kind.folder();
