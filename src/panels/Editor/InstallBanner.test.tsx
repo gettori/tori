@@ -21,14 +21,35 @@ vi.mock("@tauri-apps/api/core", () => ({
       await new Promise<void>((resolve) => (releaseInstall = resolve));
       if (failInstall) throw failInstall;
     }
+    if (cmd === "lsp_registry") return registry;
+    if (cmd === "packs_catalog") return catalog;
     return null;
   },
 }));
+
+const registry = [
+  { id: "typescript", label: "TypeScript", languages: { ts: "typescript" }, role: "primary" },
+  { id: "csharp", label: "C#", languages: { cs: "csharp" }, role: "primary" },
+];
+const catalogPack = (id: string, label: string, ext: string) => ({
+  pack: { kind: "lsp", id, label, extensions: [ext], platforms: [] },
+  installed: false,
+  bundled: false,
+  updateAvailable: false,
+  customFile: false,
+});
+const catalog = {
+  rows: [catalogPack("ruby", "Ruby", "rb"), catalogPack("csharp", "C#", "cs")],
+  stale: false,
+  problem: null,
+};
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 
 const { default: InstallBanner } = await import("./InstallBanner");
 const { offerInstall, offerFor, onServerInstalled } = await import("../../utils/serverInstall");
-const { loadSettings } = await import("../Settings/settingsStore");
+const { loadSettings, setServerDisabled } = await import("../Settings/settingsStore");
+const { ensureLspServersLoaded } = await import("../../utils/lspServers");
+const { pendingPackInstall, dismissPackInstall } = await import("../../utils/packInstall");
 
 // The offers live for the session, so each test asks for its own server.
 let seq = 0;
@@ -78,6 +99,32 @@ describe("InstallBanner", () => {
     await waitFor(() => expect(screen.getByText(/Could not install Python \(pyright\): npm install/)).toBeTruthy());
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
     expect(offerFor(file)?.status).toBe("failed");
+  });
+
+  it("offers the catalog pack for a file no loaded server claims, and Get opens the install dialog", async () => {
+    await ensureLspServersLoaded();
+    render(() => <InstallBanner path="/proj/app.rb" />);
+
+    await waitFor(() => expect(screen.getByText(/language server pack for this file: Ruby/)).toBeTruthy());
+    screen.getByRole("button", { name: "Get" }).click();
+
+    expect(pendingPackInstall()).toEqual({ kind: "lsp", id: "ruby", origin: "editor" });
+    dismissPackInstall();
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+  });
+
+  it("offers nothing for an extension a loaded server claims, even one switched off", async () => {
+    await ensureLspServersLoaded();
+    await setServerDisabled("csharp", true);
+    render(() => (
+      <>
+        <InstallBanner path="/proj/app.ts" />
+        <InstallBanner path="/proj/app.cs" />
+      </>
+    ));
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("Not now drops the offer and does not make it again this session", async () => {

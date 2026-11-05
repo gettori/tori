@@ -117,7 +117,8 @@ import {
   workspaceKey,
 } from "../../utils/topics";
 import { commandStatus, commandVerdict, dropCommandStatus, reportCommandExit } from "./commandStatus";
-import { packsNotice, refreshLoadErrors, type MigrationReport } from "../../utils/packs";
+import { CATALOG_NOTE, packsNotice, refreshLoadErrors, type MigrationReport } from "../../utils/packs";
+import { firstRunOpen } from "../../utils/firstRun";
 import { dropInitRefusal, initRefusal, refuseInit } from "./initRefusal";
 import { createTopicMembers, memberFor, type TintedMember } from "../../utils/topicMembers";
 import {
@@ -1269,6 +1270,12 @@ export default function Terminal(props: {
       const broken = errors.some((e) => e.kind !== "themes");
       if (message) emitWith<ToastEvent>(TOAST, { message, kind: broken ? "error" : "info" });
     });
+    // Once per install, and not on a first run, which never had the old bundle.
+    void invoke<boolean>("packs_catalog_note")
+      .catch(() => false)
+      .then((fresh) => {
+        if (fresh && !firstRunOpen()) emitWith<ToastEvent>(TOAST, { message: CATALOG_NOTE, kind: "info" });
+      });
     // A transcript just appeared: try to attribute it to a fresh tab (see
     // `backfillFreshSessions`) so the sidebar can focus it in place.
     unlistenSessions = await listen("sessions://changed", () => {

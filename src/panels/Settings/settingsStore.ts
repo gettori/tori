@@ -8,6 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { emit, emitWith, SETTINGS_CHANGED, TOAST } from "../../utils/events";
 import { lspDisabledChanged } from "../../utils/lspServers";
+import { offerPackById } from "../../utils/catalogOffers";
 import type { ToastEvent } from "../../utils/events";
 import { getTheme, reloadUserThemes, setTheme } from "../../theme";
 import { editorFontSizePx, terminalFontSizePx, uiScale } from "./utils/scale";
@@ -692,6 +693,7 @@ let lspDisabled = "";
 function applyAll(s: Settings) {
   applySettings(s);
   reportThemeProblems(setTheme(s.appearance.theme));
+  offerMissingTheme(s.appearance.theme);
   const disabled = String(s.lsp?.disabled ?? []);
   if (disabled !== lspDisabled) {
     lspDisabled = disabled;
@@ -1117,6 +1119,12 @@ async function refreshUserThemes() {
   reportThemeProblems(await reloadUserThemes());
   const isUserTheme = getTheme(settings.appearance.theme)?.source !== "bundled";
   if (wasUserTheme || isUserTheme) reportThemeProblems(setTheme(settings.appearance.theme));
+  offerMissingTheme(settings.appearance.theme);
+}
+
+// A theme nothing provides may have left the bundle for the catalog.
+function offerMissingTheme(id: string) {
+  if (!getTheme(id)) void offerPackById("themes", id, "upgrade");
 }
 
 /** Load once, start the file watchers, and re-load on external changes. */

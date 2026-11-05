@@ -113,14 +113,21 @@ export type CatalogPack = {
   verified_against: string | null;
   verified_on: string | null;
   platforms: string[];
-  /** On lsp rows from an index published after 26.1104.0. */
+  /** On rows from an index published after 26.1104.0: `extensions` on lsp
+   *  and formatter rows, `languages` (also extensions) on dap rows. */
   runs_project_code?: boolean;
+  extensions?: string[];
+  languages?: string[];
 };
 
 export type InstallNext =
   | { step: "nothing" }
   | { step: "managed" }
   | { step: "hint"; text: string; command: string | null };
+
+export const CATALOG_NOTE =
+  "Language servers, debuggers, formatters and themes beyond the core now come as packs; " +
+  "Tori offers the one it needs when you open a file, debug, format or pick a theme.";
 
 export const KIND_NOUN: Record<PackKind, string> = {
   lsp: "language server",

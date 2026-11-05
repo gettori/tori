@@ -393,6 +393,29 @@ pub fn packs_migration_report() -> Option<migrate::Report> {
     migrate::last_report()
 }
 
+const CATALOG_NOTE_FLAG: &str = "catalog-note";
+
+// Said once per install, since the bundle shrank to the packs Tori itself
+// needs and nothing in the code shows the rest ever shipped with it.
+#[tauri::command(async)]
+pub fn packs_catalog_note() -> bool {
+    take_catalog_note_at(&dir())
+}
+
+pub(crate) fn take_catalog_note_at(packs: &Path) -> bool {
+    let flag = packs.join(CATALOG_NOTE_FLAG);
+    if flag.exists() {
+        return false;
+    }
+    match std::fs::create_dir_all(packs).and_then(|()| std::fs::write(&flag, "")) {
+        Ok(()) => true,
+        Err(e) => {
+            eprintln!("[packs] could not write {}: {e}", flag.display());
+            false
+        }
+    }
+}
+
 /// Who wrote a pack, credited on its card.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -525,6 +548,15 @@ pub(crate) fn test_meta() -> Meta {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_catalog_note_is_taken_once() {
+        let dir = std::env::temp_dir().join(format!("tori-catalog-note-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(take_catalog_note_at(&dir));
+        assert!(!take_catalog_note_at(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn ids_that_are_safe_file_names_pass() {
