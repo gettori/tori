@@ -358,6 +358,8 @@ args = ["--permission-mode", "auto"]
 # `default` instead. Nothing on the wire objects, so the row is hidden here
 # rather than offered and quietly ignored.
 requires = "supportsAutoMode"
+# A classifier answers the prompts, so nobody does.
+permissive = true
 
 [[chat.modes]]
 id = "dontAsk"
@@ -374,8 +376,8 @@ args = ["--permission-mode", "bypassPermissions"]
 # wearing a new name: that declared a warning about *Tori*, which stopped being
 # true when Tori stopped gating. This declares what the mode itself does, which
 # was always true and matters more now that nothing catches it afterwards. Only
-# this mode: `acceptEdits` still asks about everything that is not an edit, and
-# `dontAsk` denies rather than runs.
+# this and `auto`: `acceptEdits` still asks about everything that is not an
+# edit, and `dontAsk` denies rather than runs.
 permissive = true
 
 # No [[chat.effort]] either, and for the same reason [[chat.models]] went. It
