@@ -566,7 +566,7 @@ pub(crate) fn create_pr_worktree_in(
             ));
         }
     }
-    let (path, created) = add_worktree_in(repo, branch, container, Some(sha))?;
+    let (path, created) = add_worktree_in(repo, branch, container, Some(sha), !fork)?;
     let at = rev_parse(&path.to_string_lossy(), "HEAD")?;
     if at != sha {
         return Err(format!(
@@ -585,16 +585,17 @@ pub(crate) fn create_pr_worktree_in(
 // Removal asks long after creation, maybe across a restart, so the answer is
 // kept in the worktree's admin dir, which git deletes along with the worktree.
 fn fork_marker(worktree: &Path) -> Option<PathBuf> {
-    let out = crate::exec::git_in(worktree)
-        .args(["rev-parse", "--absolute-git-dir"])
-        .output()
-        .ok()
-        .filter(|o| o.status.success())?;
-    Some(
-        PathBuf::from(String::from_utf8_lossy(&out.stdout).trim())
-            .join("tori")
-            .join("fork"),
-    )
+    linked_worktree_admin_dir(worktree).map(|admin| admin.join("tori").join("fork"))
+}
+
+// Read off the `.git` file rather than asked of git: the trust gate asks this,
+// and git in the folder is itself behind that gate.
+fn linked_worktree_admin_dir(folder: &Path) -> Option<PathBuf> {
+    let text = std::fs::read_to_string(folder.join(".git")).ok()?;
+    let gitdir = text.lines().next()?.strip_prefix("gitdir:")?.trim();
+    let admin = folder.join(gitdir);
+    let parent = admin.parent()?.file_name()?;
+    (parent == "worktrees").then_some(admin)
 }
 
 fn mark_fork(worktree: &Path) {
@@ -604,15 +605,24 @@ fn mark_fork(worktree: &Path) {
     }
 }
 
-/// True only when the admin dir resolves and holds no fork marker, so a
-/// worktree git cannot read is treated as a fork.
+pub(crate) fn fork_marked(folder: &Path) -> bool {
+    fork_marker(folder).is_some_and(|m| m.exists())
+}
+
+/// True only for a git folder with no fork marker, so one git cannot read is
+/// treated as a fork.
 pub(crate) fn not_a_fork(worktree: &Path) -> bool {
-    fork_marker(worktree).is_some_and(|m| !m.exists())
+    worktree.join(".git").exists() && !fork_marked(worktree)
 }
 
 #[tauri::command(async)]
 pub fn worktree_not_a_fork(worktree_path: String) -> bool {
     not_a_fork(Path::new(&worktree_path))
+}
+
+#[tauri::command(async)]
+pub fn worktree_fork_marked(worktree_path: String) -> bool {
+    fork_marked(Path::new(&worktree_path))
 }
 
 fn rev_parse(repo: &str, rev: &str) -> Result<String, String> {
@@ -638,14 +648,22 @@ pub(crate) fn create_worktree_in(
     container: &Path,
     base: Option<&str>,
 ) -> Result<PathBuf, String> {
-    let (target, created) = add_worktree_in(repo, branch, container, base)?;
+    let (target, created) = add_worktree_in(repo, branch, container, base, true)?;
     if created {
         crate::setup::on_created(repo, &target);
     }
     Ok(target)
 }
 
-fn add_worktree_in(repo: &str, branch: &str, container: &Path, base: Option<&str>) -> Result<(PathBuf, bool), String> {
+// A fork's checkout runs no hooks: a versioned `core.hooksPath` would run its
+// own `post-checkout`.
+fn add_worktree_in(
+    repo: &str,
+    branch: &str,
+    container: &Path,
+    base: Option<&str>,
+    hooks: bool,
+) -> Result<(PathBuf, bool), String> {
     let branch = branch.trim();
     if branch.is_empty() {
         return Err("Branch name is empty".into());
@@ -668,8 +686,13 @@ fn add_worktree_in(repo: &str, branch: &str, container: &Path, base: Option<&str
     let target = container.join(&folder);
     let target_str = target.to_string_lossy().into_owned();
 
+    let no_hooks: &[&str] = if hooks {
+        &[]
+    } else {
+        &["-c", "core.hooksPath=/dev/null"]
+    };
     if branch_exists(repo, branch) {
-        git_ok(repo, &["worktree", "add", &target_str, branch])?;
+        git_ok(repo, &[no_hooks, &["worktree", "add", &target_str, branch]].concat())?;
     } else {
         // New branch. A base the caller named is resolved against what is
         // already on disk, so no fetch: the user picked it out of a list this
@@ -684,13 +707,14 @@ fn add_worktree_in(repo: &str, branch: &str, container: &Path, base: Option<&str
                 new_branch_start_point(repo, branch)
             }
         };
-        let mut args: Vec<String> = vec![
+        let mut args: Vec<String> = no_hooks.iter().map(|a| a.to_string()).collect();
+        args.extend([
             "worktree".into(),
             "add".into(),
             "-b".into(),
             branch.to_string(),
             target_str.clone(),
-        ];
+        ]);
         if let Some(start) = start {
             args.push(start);
         }
@@ -1154,6 +1178,85 @@ mod tests {
 
     fn git(dir: &Path, args: &[&str]) {
         Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
+    }
+
+    fn committed_repo(dir: &Path) {
+        std::fs::create_dir_all(dir).unwrap();
+        git(dir, &["init", "-q"]);
+        git(dir, &["config", "user.email", "t@t.t"]);
+        git(dir, &["config", "user.name", "t"]);
+        git(dir, &["commit", "-q", "--allow-empty", "-m", "one"]);
+    }
+
+    #[test]
+    fn only_a_marked_linked_worktree_is_a_fork() {
+        let tmp = unique_tmp();
+        let repo = tmp.join("repo");
+        committed_repo(&repo);
+        let wt = tmp.join("wt");
+        git(&repo, &["worktree", "add", "-q", "-b", "f", wt.to_str().unwrap()]);
+        assert!(
+            linked_worktree_admin_dir(&wt).is_some(),
+            "a linked worktree has an admin dir"
+        );
+        assert!(!fork_marked(&wt), "unmarked");
+        mark_fork(&wt);
+        assert!(fork_marked(&wt));
+        assert!(!not_a_fork(&wt));
+
+        let sub = repo.join("sub");
+        std::fs::create_dir_all(repo.join(".git/modules/sub/tori")).unwrap();
+        std::fs::write(repo.join(".git/modules/sub/tori/fork"), "").unwrap();
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join(".git"), "gitdir: ../.git/modules/sub\n").unwrap();
+        assert!(
+            linked_worktree_admin_dir(&sub).is_none(),
+            "a submodule is not a linked worktree"
+        );
+        assert!(!fork_marked(&sub));
+
+        std::fs::create_dir_all(repo.join(".git/tori")).unwrap();
+        std::fs::write(repo.join(".git/tori/fork"), "").unwrap();
+        assert!(!fork_marked(&repo), "a main checkout's .git is a directory");
+
+        let plain = tmp.join("plain");
+        std::fs::create_dir_all(&plain).unwrap();
+        assert!(!fork_marked(&plain));
+        assert!(!not_a_fork(&plain), "a folder git cannot read is treated as a fork");
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn a_forks_checkout_runs_no_versioned_hook() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = unique_tmp();
+        let repo = tmp.join("repo");
+        committed_repo(&repo);
+        let ran = tmp.join("ran");
+        let hook = repo.join(".githooks/post-checkout");
+        std::fs::create_dir_all(hook.parent().unwrap()).unwrap();
+        std::fs::write(&hook, format!("#!/bin/sh\ntouch '{}'\n", ran.display())).unwrap();
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        git(&repo, &["add", "."]);
+        git(&repo, &["commit", "-qm", "hooks"]);
+        git(&repo, &["config", "core.hooksPath", ".githooks"]);
+        let repo_str = repo.to_str().unwrap();
+        let sha = rev_parse(repo_str, "HEAD").unwrap();
+        let container = tmp.join("wts");
+        std::fs::create_dir_all(&container).unwrap();
+
+        let (fork, _) = add_worktree_in(repo_str, "fork-head", &container, Some(&sha), false).unwrap();
+        assert!(!ran.exists(), "a fork's post-checkout ran");
+        mark_fork(&fork);
+        let switched = crate::exec::git_in(&fork)
+            .args(["checkout", "-q", "-b", "other"])
+            .output()
+            .unwrap();
+        assert!(switched.status.success());
+        assert!(!ran.exists(), "git in a fork's worktree ran its post-checkout");
+        add_worktree_in(repo_str, "own-head", &container, Some(&sha), true).unwrap();
+        assert!(ran.exists(), "the hook is real, so the first check means something");
+        std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]

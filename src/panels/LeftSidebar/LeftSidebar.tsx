@@ -271,6 +271,7 @@ import {
 } from "./SidebarRows";
 import TopicRows, { matchesTopic, type TopicFold } from "./TopicRows";
 import rows from "./SidebarRows.module.css";
+import ForkReviewMark from "./ForkReviewMark";
 import styles from "./LeftSidebar.module.css";
 
 // Glyph for a branch-unit row, keyed by its git kind: a worktree (or an empty
@@ -3236,6 +3237,7 @@ export default function LeftSidebar(props: {
             <Show when={tearingDown(u.folderPath)}>
               <span class={rows.tearingDown}>Tearing down</span>
             </Show>
+            <ForkReviewMark folder={u.folderPath} />
             <Show when={runnable(u.folderPath) && runProjectFor(u.folderPath)}>
               {(project) => {
                 const run = () => runAt(u.folderPath);

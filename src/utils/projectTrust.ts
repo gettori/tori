@@ -60,6 +60,31 @@ export function askToTrust(projectPath: string, message: string): void {
   });
 }
 
+/** What a fork's review worktree says instead of offering trust, which would
+ *  not turn its code on. */
+export const FORK_REVIEW = "Fork review, project code off";
+
+const [forks, setForks] = createSignal<Readonly<Record<string, boolean>>>({});
+const forkAsked = new Set<string>();
+
+/** Whether `worktree` holds a fork's pull request. False until Rust answers. */
+export function forkReview(worktree: string): boolean {
+  if (!forkAsked.has(worktree)) {
+    forkAsked.add(worktree);
+    invoke<boolean>("worktree_fork_marked", { worktreePath: worktree })
+      .then((fork) => setForks((prev) => ({ ...prev, [worktree]: fork })))
+      .catch(() => forkAsked.delete(worktree));
+  }
+  return forks()[worktree] === true;
+}
+
+/** `askToTrust`, except in a fork's review worktree, which says so instead. */
+export async function askToTrustUnlessFork(cwd: string, message: string): Promise<void> {
+  const fork = await invoke<boolean>("worktree_fork_marked", { worktreePath: cwd }).catch(() => false);
+  if (fork) emitWith<ToastEvent>(TOAST, { kind: "info", message: FORK_REVIEW });
+  else askToTrust(cwd, message);
+}
+
 /** Trust the project `projectPath` belongs to. */
 export async function trustProject(projectPath: string): Promise<void> {
   const path = await invoke<string>("trust_project", { path: projectPath });

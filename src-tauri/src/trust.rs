@@ -111,13 +111,18 @@ fn gate_at(
     gate_project_at(file, discover, project)
 }
 
+// A fork's worktree sits under a trusted project but its tree is a stranger's.
 fn gate_project_at(file: &Path, discover: impl FnOnce() -> Vec<PathBuf>, project: &Path) -> Result<(), String> {
-    let _guard = lock();
-    if covers(&load_or_seed(file, discover), project) {
+    if stored_at(file, discover, project) && !crate::worktree::fork_marked(project) {
         Ok(())
     } else {
         Err(UNTRUSTED.to_string())
     }
+}
+
+fn stored_at(file: &Path, discover: impl FnOnce() -> Vec<PathBuf>, project: &Path) -> bool {
+    let _guard = lock();
+    covers(&load_or_seed(file, discover), project)
 }
 
 fn trust_at(
@@ -167,20 +172,25 @@ fn trusted_folder_at(owned: &Path, trusted: impl FnOnce(&Path) -> bool, folder: 
 }
 
 /// Whether `folder` is Tori's own state, which no project wrote, or a trusted
-/// project.
+/// project that is not a fork's worktree.
 pub fn trusted_folder(folder: &Path) -> bool {
+    stored_folder(folder) && !crate::worktree::fork_marked(folder)
+}
+
+/// Whether git may open `repo`. A fork's worktree may: the fork cannot write
+/// the shared `.git/config`, and a review needs its status and diffs.
+pub fn allows_git(repo: &Path) -> bool {
+    stored_folder(repo)
+}
+
+fn stored_folder(folder: &Path) -> bool {
     // Tests build their folders under the temp dir, which no store covers.
     cfg!(test)
         || trusted_folder_at(
             &crate::owned_state::config_dir(),
-            |folder| gate_project(folder).is_ok(),
+            |folder| stored_at(&store_path(), crate::config::project_dirs, folder),
             folder,
         )
-}
-
-/// Whether git may open `repo`.
-pub fn allows_git(repo: &Path) -> bool {
-    trusted_folder(repo)
 }
 
 /// Every trusted project, as stored.
@@ -346,6 +356,63 @@ mod tests {
 
         trust_at(&store, Vec::new, Some(&root), &project).unwrap();
         assert_eq!(gate_project_at(&store, Vec::new, &project), Ok(()));
+    }
+
+    #[test]
+    fn a_fork_worktree_under_a_trusted_project_runs_no_project_code_but_keeps_git() {
+        let dir = temp_dir("fork");
+        let repo = dir.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        let git = |args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&repo)
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        };
+        git(&["init", "-q"]);
+        git(&[
+            "-c",
+            "user.email=t@t.t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "one",
+        ]);
+        let wt = repo.join(".tori/worktrees/pr-7");
+        git(&["worktree", "add", "-q", "-b", "pr-7", wt.to_str().unwrap()]);
+        let store = dir.join("trusted.json");
+        trust_at(&store, Vec::new, None, &repo).unwrap();
+        assert_eq!(
+            gate_project_at(&store, Vec::new, &wt),
+            Ok(()),
+            "unmarked, it is the project's own"
+        );
+
+        std::fs::create_dir_all(repo.join(".git/worktrees/pr-7/tori")).unwrap();
+        std::fs::write(repo.join(".git/worktrees/pr-7/tori/fork"), "").unwrap();
+        assert_eq!(
+            gate_project_at(&store, Vec::new, &wt),
+            Err(UNTRUSTED.to_string()),
+            "format_document and dap_start"
+        );
+        assert_eq!(
+            gate_at(&store, Vec::new, &typescript(), &wt),
+            Err(UNTRUSTED.to_string()),
+            "lsp_start"
+        );
+        assert!(!trusted_folder(&wt), "claude starts with untrusted_args");
+        assert!(allows_git(&wt));
+        assert!(
+            crate::git::git_status_body(wt.to_str().unwrap()).is_ok(),
+            "git status still answers"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
