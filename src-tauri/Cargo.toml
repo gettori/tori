@@ -27,6 +27,7 @@ sha2 = "0.10"
 tauri = { version = "2", features = ["protocol-asset", "tray-icon", "image-png"] }
 tauri-plugin-opener = "2"
 tauri-plugin-notification = "2"
+tauri-plugin-deep-link = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
 toml = "0.8"
@@ -46,6 +47,8 @@ ureq = { version = "3", features = ["json"] }
 # Already in the tree through rustls, so it adds no weight.
 ring = "0.17"
 regex = "1"
+# Already in the tree under the deep link plugin.
+url = "2"
 # An autopilot schedule is a 5-field cron in the Mac's local time; `croner`
 # walks DST gaps and repeats, which a hand-rolled matcher would get wrong.
 croner = "4"
