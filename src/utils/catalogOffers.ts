@@ -10,8 +10,8 @@ let rows: Promise<CatalogRow[]> | null = null;
 // Not revalidated: an offer sits on the path of opening a file, and must not
 // put a network round trip there.
 function catalogRows(): Promise<CatalogRow[]> {
-  rows ??= invoke<Catalog>("packs_catalog", { forceRevalidate: false })
-    .then((c) => c.rows)
+  rows ??= invoke<Catalog | null>("packs_catalog", { forceRevalidate: false })
+    .then((c) => (Array.isArray(c?.rows) ? c.rows : []))
     .catch((e) => {
       console.warn("packs_catalog failed", e);
       rows = null;

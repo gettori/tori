@@ -75,6 +75,8 @@ vi.mock("@tauri-apps/api/window", () => ({
     onCloseRequested: () => Promise.resolve(() => {}),
     onFocusChanged: () => Promise.resolve(() => {}),
     isFocused: () => Promise.resolve(true),
+    isFullscreen: () => Promise.resolve(false),
+    onResized: () => Promise.resolve(() => {}),
   }),
 }));
 vi.mock("@tauri-apps/plugin-notification", () => ({
