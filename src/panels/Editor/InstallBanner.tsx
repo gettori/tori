@@ -1,5 +1,8 @@
-import { Match, Show, Switch } from "solid-js";
+import { createResource, createSignal, Match, Show, Switch } from "solid-js";
 import Button from "../../components/Button/Button";
+import { answerCatalogOffer, catalogOfferAnswered, catalogPackFor } from "../../utils/catalogOffers";
+import { extensionOf, hasServerFor, servers } from "../../utils/lspServers";
+import { requestPackInstall } from "../../utils/packInstall";
 import { dismissOffer, installServer, offerFor } from "../../utils/serverInstall";
 import { neverOfferInstall, settings } from "../Settings/settingsStore";
 import styles from "./CodeEditor.module.css";
@@ -18,8 +21,62 @@ export default function InstallBanner(props: { path: string | null }) {
     dismissOffer(serverId);
   };
 
+  // A loaded server, switched off or not, claims the extension: no pack is
+  // offered over it, and none before the registry has said what is loaded.
+  const unclaimed = () => {
+    const path = props.path;
+    const ext = path ? extensionOf(path) : null;
+    return ext && servers().length > 0 && !hasServerFor(path!) ? ext : null;
+  };
+  const [pack] = createResource(unclaimed, (ext) => catalogPackFor("lsp", ext));
+  const [answered, setAnswered] = createSignal(0);
+  const packOffer = () => {
+    answered();
+    const p = pack();
+    const never = settings.lsp?.neverOffer ?? [];
+    return p && !catalogOfferAnswered("lsp", p.id) && !never.includes(p.id) ? p : null;
+  };
+  const answer = (id: string) => {
+    answerCatalogOffer("lsp", id);
+    setAnswered((n) => n + 1);
+  };
+
   return (
-    <Show when={offer()}>
+    <Show
+      when={offer()}
+      fallback={
+        <Show when={packOffer()}>
+          {(p) => (
+            <div class={styles.installBanner} role="status">
+              <span>Tori has a language server pack for this file: {p().label ?? p().id}.</span>
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={() => {
+                  const id = p().id;
+                  if (requestPackInstall({ kind: "lsp", id, origin: "editor" })) answer(id);
+                }}
+              >
+                Get
+              </Button>
+              <Button size="sm" onClick={() => answer(p().id)}>
+                Not now
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  const id = p().id;
+                  neverOfferInstall(id);
+                  answer(id);
+                }}
+              >
+                Never for this language
+              </Button>
+            </div>
+          )}
+        </Show>
+      }
+    >
       {(o) => (
         <div class={styles.installBanner} role="status">
           <Switch>

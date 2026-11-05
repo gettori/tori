@@ -838,6 +838,7 @@ pub fn run() {
             themes::list_user_themes,
             packs::packs_load_errors,
             packs::packs_migration_report,
+            packs::packs_catalog_note,
             packs::packs_reload,
             packs::packs_remove,
             packs::catalog::packs_catalog,
