@@ -276,7 +276,7 @@ fn write_tab_settings(tab: &str, cwd: &str) -> Result<PathBuf, String> {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let sandbox = boxed.then(|| crate::unattended::claude_sandbox(cwd));
-    std::fs::write(&path, claude_settings_json(&exe, sandbox)).map_err(|e| e.to_string())?;
+    crate::owned_state::write_private(&path, &claude_settings_json(&exe, sandbox))?;
     Ok(path)
 }
 

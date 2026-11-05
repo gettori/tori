@@ -43,7 +43,7 @@ fn read(path: &Path) -> Vec<Live> {
 
 fn write(path: &Path, live: &[Live]) {
     if let Ok(text) = serde_json::to_string(live) {
-        let _ = std::fs::write(path, text);
+        let _ = crate::owned_state::write_atomically(path, &text);
     }
 }
 

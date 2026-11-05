@@ -150,7 +150,7 @@ fn save(path: &Path, seen: &Seen) -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let json = serde_json::to_string_pretty(seen).map_err(|e| e.to_string())?;
-    std::fs::write(path, json).map_err(|e| e.to_string())
+    crate::owned_state::write_atomically(path, &json)
 }
 
 // Load, change and save under one lock, so two ticks landing together cannot

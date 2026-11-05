@@ -93,7 +93,7 @@ fn worktree_id(dir: &Path) -> Result<String, String> {
     // sweeps; no record is lost, because a record names its tree directly.
     let id = format!("{nanos:x}-{:x}", std::process::id());
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    std::fs::write(&path, &id).map_err(|e| e.to_string())?;
+    crate::owned_state::write_atomically(&path, &id)?;
     Ok(id)
 }
 
@@ -161,7 +161,7 @@ fn read_records(dir: &Path) -> Vec<BackstopRecord> {
 fn write_records(dir: &Path, records: &[BackstopRecord]) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let json = serde_json::to_string(records).map_err(|e| e.to_string())?;
-    std::fs::write(records_path(dir), json).map_err(|e| e.to_string())
+    crate::owned_state::write_atomically(&records_path(dir), &json)
 }
 
 fn head_now(repo: &str) -> String {

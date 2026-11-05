@@ -211,7 +211,7 @@ pub fn checkpoint_note_touched(
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let json = serde_json::to_string(&rec).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json).map_err(|e| e.to_string())?;
+    crate::owned_state::write_atomically(&path, &json)?;
     // The turn is registered even when it added no path, so the ordinals stay
     // the session's own turn numbering rather than a count of the turns that
     // happened to write something.
@@ -294,7 +294,7 @@ fn write_touched_index(session_id: &str, index: &TouchedIndex) {
         return;
     }
     if let Ok(json) = serde_json::to_string(index) {
-        let _ = std::fs::write(&path, json);
+        let _ = crate::owned_state::write_atomically(&path, &json);
     }
 }
 
