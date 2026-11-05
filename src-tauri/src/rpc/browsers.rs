@@ -147,8 +147,7 @@ mod tests {
         let hub = Hub::default();
         let id = mint_at(&store, &hub, &credential).unwrap();
         let (tx, _rx) = std::sync::mpsc::sync_channel(1);
-        let conn = hub.register(tx, Box::new(|| {}));
-        hub.tag_browser(conn, &id);
+        let conn = hub.register(tx, Box::new(|| {}), &crate::rpc::auth::Principal::Browser(id.clone()));
         hub.remove(conn);
         hub.refuse_browser(Update::Extension);
         assert!(status(&store, &hub)["connected"].as_bool().unwrap());

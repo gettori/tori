@@ -1205,7 +1205,10 @@ mod tests {
     fn an_items_session_ending_reaches_the_autopilot_topic() {
         let hub = Arc::new(Hub::default());
         let (tx, rx) = sync_channel(hub::QUEUE_CAP);
-        hub.subscribe(hub.register(tx, Box::new(|| {})), Channel::Autopilot);
+        hub.subscribe(
+            hub.register(tx, Box::new(|| {}), &auth::Principal::Local),
+            Channel::Autopilot,
+        );
         let dir = crate::autopilot::tests::temp_dir("session-ended");
         let publisher = hub.clone();
         let store = AutopilotStore::open(
@@ -1261,7 +1264,10 @@ mod tests {
     fn a_hold_changing_reaches_the_autopilot_topic() {
         let hub = Arc::new(Hub::default());
         let (tx, rx) = sync_channel(hub::QUEUE_CAP);
-        hub.subscribe(hub.register(tx, Box::new(|| {})), Channel::Autopilot);
+        hub.subscribe(
+            hub.register(tx, Box::new(|| {}), &auth::Principal::Local),
+            Channel::Autopilot,
+        );
         let dir = crate::autopilot::tests::temp_dir("hold-event");
         let publisher = hub.clone();
         let asks = Asks::with_holds(

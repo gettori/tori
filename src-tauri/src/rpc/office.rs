@@ -293,6 +293,12 @@ pub fn start(parts: Parts) -> Arc<Office> {
         states: desk.states,
         askpass,
     });
+    let owner = Arc::downgrade(&office);
+    office.hub.set_owns(Arc::new(move |caller, target| {
+        owner
+            .upgrade()
+            .is_some_and(|office| office.backend.owns(caller, target))
+    }));
     let watched = Arc::downgrade(&office);
     office.hub.watch_devices(Box::new(move || {
         if let Some(office) = watched.upgrade() {

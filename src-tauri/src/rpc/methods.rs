@@ -1270,6 +1270,10 @@ pub struct DaemonBackend {
 }
 
 impl DaemonBackend {
+    pub(super) fn owns(&self, caller: &str, target: &str) -> bool {
+        reach::owns(&live_facts(self), caller, target)
+    }
+
     fn set_push(&self, principal: &Principal, push: Option<super::devices::Push>) -> Result<Value, RpcError> {
         let Principal::Device(id) = principal else {
             return Err(refused("only a paired phone sets where its alerts go".to_string()));
@@ -2108,6 +2112,7 @@ impl Backend for DaemonBackend {
     }
 
     fn session_interrupt(&self, principal: &Principal, params: InterruptParams) -> Result<Value, RpcError> {
+        reach::may_drive(&live_facts(self), principal, &params.id).map_err(refused)?;
         let host = &self.chats.host;
         if !host.is_live(&params.id) {
             return Err(RpcError::new(
@@ -2381,7 +2386,8 @@ impl Backend for DaemonBackend {
         )
     }
 
-    fn session_wait(&self, params: WaitParams) -> Result<Value, RpcError> {
+    fn session_wait(&self, principal: &Principal, params: WaitParams) -> Result<Value, RpcError> {
+        reach::may_drive(&live_facts(self), principal, &params.id).map_err(refused)?;
         self.composer.session_wait(params)
     }
 
@@ -2442,7 +2448,8 @@ impl Backend for DaemonBackend {
         Ok(with_fields(spawned, json!({ "handed_from": old })))
     }
 
-    fn session_pending(&self, params: PendingParams) -> Result<Value, RpcError> {
+    fn session_pending(&self, principal: &Principal, params: PendingParams) -> Result<Value, RpcError> {
+        reach::may_drive(&live_facts(self), principal, &params.id).map_err(refused)?;
         let native = self.chats.host.waiting(&params.id);
         Ok(Value::Array(pending_rows(&params.id, self.asks.pending(), native)))
     }
@@ -2950,6 +2957,9 @@ impl Backend for DaemonBackend {
     }
 
     fn ask_answer(&self, principal: &Principal, params: AskAnswerParams) -> Result<Value, RpcError> {
+        if let Some(asker) = self.ask_session(&params.id) {
+            reach::may_answer(&live_facts(self), principal, &asker).map_err(refused)?;
+        }
         match self.asks.answer(&params.id, params.answer, answered_by(principal)) {
             Ok(()) => {}
             Err(NotAnswered::Unknown) => {

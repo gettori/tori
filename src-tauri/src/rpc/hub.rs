@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
 
+use super::auth::{Caller, Principal};
 use super::frame::{to_line, Notification};
 
 /// Lines a connection may have queued before it counts as not reading.
@@ -77,13 +78,28 @@ struct Conn {
     /// sees a closed socket instead of silently missing events.
     close: Box<dyn Fn() + Send>,
     channels: HashSet<Channel>,
-    /// The paired device on the other end, so revoking it can drop the connection.
-    device: Option<String>,
-    /// The browser credential on the other end, kept apart from `device` since a
-    /// browser is not someone watching, so it never keeps the Mac awake.
-    browser: Option<String>,
+    principal: Principal,
     visible: bool,
     chat: Arc<ChatOutbox>,
+}
+
+impl Conn {
+    /// The paired device on the other end, so revoking it can drop the connection.
+    fn device(&self) -> Option<&str> {
+        match &self.principal {
+            Principal::Device(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    /// The browser credential on the other end, kept apart from `device` since a
+    /// browser is not someone watching, so it never keeps the Mac awake.
+    fn browser(&self) -> Option<&str> {
+        match &self.principal {
+            Principal::Browser(id) => Some(id),
+            _ => None,
+        }
+    }
 }
 
 /// A connection's chat lines, drained by its writer only when the main queue
@@ -142,12 +158,14 @@ fn event_line(channel: &Channel, data: Value) -> String {
 }
 
 type Upstream = Arc<dyn Fn(&Channel, &Value) + Send + Sync>;
+type Owns = Arc<dyn Fn(&str, &str) -> bool + Send + Sync>;
 
 #[derive(Default)]
 pub struct Hub {
     inner: Mutex<Inner>,
     on_devices: Mutex<Option<Box<dyn Fn() + Send>>>,
     upstream: Mutex<Option<Upstream>>,
+    owns: Mutex<Option<Owns>>,
 }
 
 const OPENED_FOR: std::time::Duration = std::time::Duration::from_secs(10);
@@ -193,7 +211,11 @@ impl Update {
 }
 
 fn devices_of(inner: &Inner) -> HashSet<String> {
-    inner.conns.values().filter_map(|c| c.device.clone()).collect()
+    inner
+        .conns
+        .values()
+        .filter_map(|c| c.device().map(str::to_string))
+        .collect()
 }
 
 impl Hub {
@@ -217,6 +239,10 @@ impl Hub {
         *self.upstream.lock().unwrap_or_else(|e| e.into_inner()) = Some(upstream);
     }
 
+    pub fn set_owns(&self, owns: Owns) {
+        *self.owns.lock().unwrap_or_else(|e| e.into_inner()) = Some(owns);
+    }
+
     fn with_devices<T>(&self, change: impl FnOnce(&mut Inner) -> T) -> T {
         let (out, devices) = {
             let mut inner = self.lock();
@@ -232,23 +258,24 @@ impl Hub {
         out
     }
 
-    pub fn register(&self, tx: SyncSender<String>, close: Box<dyn Fn() + Send>) -> ConnId {
-        let mut inner = self.lock();
-        inner.next += 1;
-        let id = inner.next;
-        inner.conns.insert(
-            id,
-            Conn {
-                tx,
-                close,
-                channels: HashSet::new(),
-                device: None,
-                browser: None,
-                visible: true,
-                chat: Arc::default(),
-            },
-        );
-        id
+    pub fn register(&self, tx: SyncSender<String>, close: Box<dyn Fn() + Send>, principal: &Principal) -> ConnId {
+        self.with_devices(|inner| {
+            inner.next += 1;
+            let id = inner.next;
+            inner.browser_seen |= matches!(principal, Principal::Browser(_));
+            inner.conns.insert(
+                id,
+                Conn {
+                    tx,
+                    close,
+                    channels: HashSet::new(),
+                    principal: principal.clone(),
+                    visible: true,
+                    chat: Arc::default(),
+                },
+            );
+            id
+        })
     }
 
     /// The queue a connection's writer drains after its main one.
@@ -261,22 +288,6 @@ impl Hub {
     pub fn watches_chat(&self, id: &str) -> bool {
         let channel = Channel::Chat(id.to_string());
         self.lock().conns.values().any(|c| c.channels.contains(&channel))
-    }
-
-    pub fn tag_device(&self, conn: ConnId, device: &str) {
-        self.with_devices(|inner| {
-            if let Some(c) = inner.conns.get_mut(&conn) {
-                c.device = Some(device.to_string());
-            }
-        });
-    }
-
-    pub fn tag_browser(&self, conn: ConnId, browser: &str) {
-        let mut inner = self.lock();
-        if let Some(c) = inner.conns.get_mut(&conn) {
-            c.browser = Some(browser.to_string());
-            inner.browser_seen = true;
-        }
     }
 
     pub fn browser_seen(&self) -> bool {
@@ -319,7 +330,7 @@ impl Hub {
         let ids: Vec<ConnId> = inner
             .conns
             .iter()
-            .filter(|(_, c)| c.browser.as_deref() == Some(browser))
+            .filter(|(_, c)| c.browser() == Some(browser))
             .map(|(id, _)| *id)
             .collect();
         close_all(&mut inner, ids);
@@ -332,7 +343,7 @@ impl Hub {
     }
 
     pub fn device_visible(&self) -> bool {
-        self.lock().conns.values().any(|c| c.device.is_some() && c.visible)
+        self.lock().conns.values().any(|c| c.device().is_some() && c.visible)
     }
 
     /// Drops every connection held by `device`.
@@ -341,7 +352,7 @@ impl Hub {
             let ids: Vec<ConnId> = inner
                 .conns
                 .iter()
-                .filter(|(_, c)| c.device.as_deref() == Some(device))
+                .filter(|(_, c)| c.device() == Some(device))
                 .map(|(id, _)| *id)
                 .collect();
             close_all(inner, ids);
@@ -370,6 +381,7 @@ impl Hub {
         if let Some(upstream) = upstream {
             upstream(channel, &data);
         }
+        let hidden = self.ask_hidden(channel, &data);
         let line = event_line(channel, data);
         let inner = self.lock();
         if let Channel::Chat(session) = channel {
@@ -381,7 +393,11 @@ impl Hub {
         }
         let mut dropped = Vec::new();
         for (id, conn) in inner.conns.iter().filter(|(_, c)| c.channels.contains(channel)) {
-            match conn.tx.try_send(line.clone()) {
+            let line = match &hidden {
+                Some((bare, shown)) if !shown.contains(id) => bare.clone(),
+                _ => line.clone(),
+            };
+            match conn.tx.try_send(line) {
                 Ok(()) => {}
                 Err(TrySendError::Full(_)) | Err(TrySendError::Disconnected(_)) => dropped.push(*id),
             }
@@ -390,6 +406,38 @@ impl Hub {
         if !dropped.is_empty() {
             self.with_devices(|inner| close_all(inner, dropped));
         }
+    }
+
+    // An ask id is what ask.answer takes, so a reader that may not answer
+    // gets the question without it. Decided outside the lock: ownership reads
+    // session state that can take a while.
+    fn ask_hidden(&self, channel: &Channel, data: &Value) -> Option<(String, HashSet<ConnId>)> {
+        if data["kind"] != "session.question" || data.get("ask_id").is_none() {
+            return None;
+        }
+        let asker = data["id"].as_str().unwrap_or_default();
+        let readers: Vec<(ConnId, Principal)> = self
+            .lock()
+            .conns
+            .iter()
+            .filter(|(_, c)| c.channels.contains(channel))
+            .map(|(id, c)| (*id, c.principal.clone()))
+            .collect();
+        let owns = self.owns.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let shown = readers
+            .into_iter()
+            .filter(|(_, principal)| match principal {
+                Principal::Local | Principal::Device(_) | Principal::Browser(_) => true,
+                Principal::Session(Caller::Chat(me)) => owns.as_ref().is_some_and(|owns| owns(me, asker)),
+                Principal::Session(Caller::Terminal(_)) => false,
+            })
+            .map(|(id, _)| id)
+            .collect();
+        let mut bare = data.clone();
+        if let Some(fields) = bare.as_object_mut() {
+            fields.remove("ask_id");
+        }
+        Some((event_line(channel, bare), shown))
     }
 
     pub fn publish_session(&self, id: &str, data: Value) {
@@ -457,8 +505,8 @@ mod tests {
         let hub = Hub::default();
         let (tx_a, rx_a) = sync_channel(QUEUE_CAP);
         let (tx_b, rx_b) = sync_channel(QUEUE_CAP);
-        let a = hub.register(tx_a, Box::new(|| {}));
-        hub.register(tx_b, Box::new(|| {}));
+        let a = hub.register(tx_a, Box::new(|| {}), &Principal::Local);
+        hub.register(tx_b, Box::new(|| {}), &Principal::Local);
         assert!(hub.subscribe(a, Channel::Sessions));
 
         hub.publish(&Channel::Sessions, json!({"kind": "started"}));
@@ -482,9 +530,18 @@ mod tests {
         let (tx_all, rx_all) = sync_channel(QUEUE_CAP);
         let (tx_one, rx_one) = sync_channel(QUEUE_CAP);
         let (tx_other, rx_other) = sync_channel(QUEUE_CAP);
-        hub.subscribe(hub.register(tx_all, Box::new(|| {})), Channel::Sessions);
-        hub.subscribe(hub.register(tx_one, Box::new(|| {})), Channel::Session("s1".into()));
-        hub.subscribe(hub.register(tx_other, Box::new(|| {})), Channel::Session("s2".into()));
+        hub.subscribe(
+            hub.register(tx_all, Box::new(|| {}), &Principal::Local),
+            Channel::Sessions,
+        );
+        hub.subscribe(
+            hub.register(tx_one, Box::new(|| {}), &Principal::Local),
+            Channel::Session("s1".into()),
+        );
+        hub.subscribe(
+            hub.register(tx_other, Box::new(|| {}), &Principal::Local),
+            Channel::Session("s2".into()),
+        );
 
         let place = Place {
             project: Some("/p".into()),
@@ -510,7 +567,11 @@ mod tests {
         let (tx, _never_read) = sync_channel(2);
         let closed = Arc::new(AtomicBool::new(false));
         let flag = closed.clone();
-        let id = hub.register(tx, Box::new(move || flag.store(true, Ordering::SeqCst)));
+        let id = hub.register(
+            tx,
+            Box::new(move || flag.store(true, Ordering::SeqCst)),
+            &Principal::Local,
+        );
         hub.subscribe(id, Channel::Sessions);
 
         let start = std::time::Instant::now();
@@ -529,7 +590,11 @@ mod tests {
         let (tx, rx) = sync_channel(QUEUE_CAP);
         let closed = Arc::new(AtomicBool::new(false));
         let flag = closed.clone();
-        let id = hub.register(tx, Box::new(move || flag.store(true, Ordering::SeqCst)));
+        let id = hub.register(
+            tx,
+            Box::new(move || flag.store(true, Ordering::SeqCst)),
+            &Principal::Local,
+        );
         hub.subscribe(id, Channel::Sessions);
         hub.subscribe(id, Channel::Chat("s1".into()));
         let chat = hub.chat_outbox(id).unwrap();
@@ -569,7 +634,7 @@ mod tests {
     fn a_chat_event_is_not_serialised_for_nobody() {
         let hub = Hub::default();
         let (tx, _rx) = sync_channel(QUEUE_CAP);
-        let id = hub.register(tx, Box::new(|| {}));
+        let id = hub.register(tx, Box::new(|| {}), &Principal::Local);
         assert!(!hub.watches_chat("s1"));
         hub.subscribe(id, Channel::Chat("s1".into()));
         assert!(hub.watches_chat("s1"));
@@ -577,10 +642,41 @@ mod tests {
     }
 
     #[test]
+    fn a_question_carries_its_ask_id_only_to_the_asker_owner_and_persons() {
+        let hub = Hub::default();
+        hub.set_owns(Arc::new(|caller, target| caller == "spawner" && target == "w"));
+        let reader = |principal: Principal| {
+            let (tx, rx) = sync_channel(QUEUE_CAP);
+            let conn = hub.register(tx, Box::new(|| {}), &principal);
+            hub.subscribe(conn, Channel::Sessions);
+            rx
+        };
+        let chat = |id: &str| Principal::Session(Caller::Chat(id.into()));
+        let owner = reader(chat("spawner"));
+        let stranger = reader(chat("other"));
+        let terminal = reader(Principal::Session(Caller::Terminal("t1".into())));
+        let phone = reader(Principal::Device("d1".into()));
+
+        hub.publish(
+            &Channel::Sessions,
+            json!({ "kind": "session.question", "id": "w", "ask_id": "q1", "questions": [] }),
+        );
+        let ask_id = |rx: &std::sync::mpsc::Receiver<String>| {
+            let got: Value = serde_json::from_str(&rx.try_recv().unwrap()).unwrap();
+            assert_eq!(got["params"]["data"]["kind"], "session.question");
+            got["params"]["data"].get("ask_id").cloned()
+        };
+        assert_eq!(ask_id(&owner), Some(json!("q1")));
+        assert_eq!(ask_id(&phone), Some(json!("q1")));
+        assert_eq!(ask_id(&stranger), None);
+        assert_eq!(ask_id(&terminal), None);
+    }
+
+    #[test]
     fn removing_a_connection_leaves_no_subscription_behind() {
         let hub = Hub::default();
         let (tx, _rx) = sync_channel(QUEUE_CAP);
-        let id = hub.register(tx, Box::new(|| {}));
+        let id = hub.register(tx, Box::new(|| {}), &Principal::Local);
         hub.subscribe(id, Channel::Sessions);
         hub.subscribe(id, Channel::Session("s1".into()));
         hub.remove(id);
@@ -588,7 +684,7 @@ mod tests {
     }
 
     #[test]
-    fn a_device_goes_connected_on_tag_and_disconnected_on_remove_with_one_notice_each() {
+    fn a_device_goes_connected_on_register_and_disconnected_on_remove_with_one_notice_each() {
         let hub = Hub::default();
         let notices = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let counted = notices.clone();
@@ -596,13 +692,13 @@ mod tests {
             counted.fetch_add(1, Ordering::SeqCst);
         }));
         let (tx, _rx) = sync_channel(QUEUE_CAP);
-        let conn = hub.register(tx, Box::new(|| {}));
+        hub.register(tx.clone(), Box::new(|| {}), &Principal::Local);
         assert_eq!(
             notices.load(Ordering::SeqCst),
             0,
-            "an untagged connection is nobody's device"
+            "a local connection is nobody's device"
         );
-        hub.tag_device(conn, "phone");
+        let conn = hub.register(tx, Box::new(|| {}), &Principal::Device("phone".into()));
         assert!(hub.connected_devices().contains("phone"));
         assert_eq!(notices.load(Ordering::SeqCst), 1);
         hub.remove(conn);

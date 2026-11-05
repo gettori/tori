@@ -195,7 +195,7 @@ pub static METHODS: &[Method] = &[
     },
     Method {
         name: "session.interrupt",
-        description: "Stop a live chat session's current turn.",
+        description: "Stop a live chat session's current turn. A chat stops only a session it started.",
         params: schema::<InterruptParams>,
         callers: NOT_WORKERS_AND_DEVICES,
         refusal: None,
@@ -375,13 +375,13 @@ pub static METHODS: &[Method] = &[
     },
     Method {
         name: "session.wait",
-        description: "Wait for a session to stop working: its state, why the wait came back (ended, idle, asking, needs_you, limited with resets_at, or timeout), the question it is waiting on if any, and its last message.",
+        description: "Wait for a session to stop working: its state, why the wait came back (ended, idle, asking, needs_you, limited with resets_at, or timeout), the question it is waiting on if any, and its last message. A chat waits only on a session it started.",
         params: schema::<WaitParams>,
         callers: NOT_WORKERS,
         refusal: None,
         outward: false,
         read_only: true,
-        call: |b, _, v| b.session_wait(params(v)?),
+        call: |b, p, v| b.session_wait(p, params(v)?),
     },
     Method {
         name: "session.check",
@@ -405,13 +405,13 @@ pub static METHODS: &[Method] = &[
     },
     Method {
         name: "session.pending",
-        description: "What a session is waiting on: questions it asked with ask.create, and its agent's own questions and permission prompts, each with its id.",
+        description: "What a session is waiting on: questions it asked with ask.create, and its agent's own questions and permission prompts, each with its id. A chat reads only a session it started.",
         params: schema::<PendingParams>,
         callers: NOT_WORKERS_DEVICES_AND_BROWSER,
         refusal: None,
         outward: false,
         read_only: true,
-        call: |b, _, v| b.session_pending(params(v)?),
+        call: |b, p, v| b.session_pending(p, params(v)?),
     },
     Method {
         name: "session.answer",
@@ -812,7 +812,7 @@ pub static METHODS: &[Method] = &[
     },
     Method {
         name: "ask.answer",
-        description: "Answer a question another session asked, on the user's behalf; the card in that session goes away.",
+        description: "Answer a question another session asked, on the user's behalf; the card in that session goes away. A chat answers only for a session it started; a terminal answers none.",
         params: schema::<AskAnswerParams>,
         callers: NOT_WORKERS_DEVICES_AND_BROWSER,
         refusal: None,

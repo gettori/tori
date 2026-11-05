@@ -27,8 +27,21 @@ fn made(f: &impl Facts, maker: &str, of: &str) -> bool {
     f.cwd(of).and_then(|cwd| f.made_by(&cwd)).as_deref() == Some(maker)
 }
 
+// A handoff hands over the old session's workers with its work.
+fn spawned(f: &impl Facts, caller: &str, target: &str) -> bool {
+    let mut at = f.spawner_of(target);
+    let mut seen = std::collections::HashSet::new();
+    while let Some(id) = at.filter(|id| seen.insert(id.clone())) {
+        if id == caller {
+            return true;
+        }
+        at = f.handed_to(&id);
+    }
+    false
+}
+
 pub fn owns(f: &impl Facts, caller: &str, target: &str) -> bool {
-    f.spawner_of(target).as_deref() == Some(caller)
+    spawned(f, caller, target)
         || made(f, caller, target)
         || (f.autopilot().as_deref() == Some(caller) && f.is_item(target))
 }
@@ -47,6 +60,26 @@ pub fn may_read(f: &impl Facts, principal: &Principal, target: &str) -> Result<(
     match principal {
         Principal::Session(Caller::Chat(me)) if !related(f, me, target, Reach::Read) => Err(format!(
             "{target} is not related to this chat, so it cannot read it; tell the user if you need it"
+        )),
+        _ => Ok(()),
+    }
+}
+
+// An answer speaks for the user, so a chat gives one only down its own line,
+// and a Terminal is an agent in a tab that the card is not addressed to.
+pub fn may_answer(f: &impl Facts, principal: &Principal, asker: &str) -> Result<(), String> {
+    match principal {
+        Principal::Session(Caller::Terminal(_)) => Err(format!(
+            "a terminal does not answer {asker}'s question; the user answers it on its card"
+        )),
+        _ => may_drive(f, principal, asker),
+    }
+}
+
+pub fn may_drive(f: &impl Facts, principal: &Principal, target: &str) -> Result<(), String> {
+    match principal {
+        Principal::Session(Caller::Chat(me)) if !owns(f, me, target) => Err(format!(
+            "only the session that started {target} does this for it; tell the user if you need it"
         )),
         _ => Ok(()),
     }
@@ -278,6 +311,27 @@ mod tests {
         assert!(may_read(&f, &chat("stranger"), "target").is_err());
         assert!(may_read(&f, &Principal::Device("d1".into()), "target").is_ok());
         assert!(may_read(&f, &Principal::Session(Caller::Terminal("t1".into())), "target").is_ok());
+    }
+
+    #[test]
+    fn only_the_spawner_or_a_person_answers_an_ask() {
+        let f = Fake {
+            spawners: [("b", "spawner")].into(),
+            ..Default::default()
+        };
+        let chat = |id: &str| Principal::Session(Caller::Chat(id.into()));
+        assert!(may_answer(&f, &chat("a"), "b").is_err());
+        assert!(may_answer(&f, &chat("spawner"), "b").is_ok());
+        assert!(may_answer(&f, &Principal::Session(Caller::Terminal("t1".into())), "b").is_err());
+        for person in [
+            Principal::Local,
+            Principal::Device("d1".into()),
+            Principal::Browser("x".into()),
+        ] {
+            assert!(may_answer(&f, &person, "b").is_ok());
+        }
+        assert!(may_drive(&f, &chat("a"), "b").is_err());
+        assert!(may_drive(&f, &chat("spawner"), "b").is_ok());
     }
 
     #[test]
