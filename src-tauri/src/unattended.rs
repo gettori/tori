@@ -28,20 +28,109 @@ pub fn level_for(cwd: &str) -> ExecutionLevel {
     crate::settings::execution_level(project.as_deref().unwrap_or(cwd))
 }
 
-pub fn claude_sandbox(cwd: &str) -> Value {
+pub fn claude_sandbox(cwd: &str) -> ClaudeBox {
     let mut domains = crate::settings::unattended().allowed_domains();
     domains.extend(forge_host(cwd));
-    sandbox_json(&domains, &crate::rpc::daemon::paths().sock.to_string_lossy())
+    let reads = Reads {
+        config: crate::owned_state::config_dir(),
+        home: dirs::home_dir().unwrap_or_default(),
+        temp: std::env::temp_dir(),
+    };
+    ClaudeBox {
+        sandbox: sandbox_json(&domains, &crate::rpc::daemon::paths().sock.to_string_lossy(), &reads),
+        read_deny: reads.read_tool_deny(),
+    }
+}
+
+/// A boxed Claude's settings. The sandbox holds only its shell, so the Read
+/// tool gets deny rules of its own, and neither is applied without the other.
+pub struct ClaudeBox {
+    sandbox: Value,
+    read_deny: Vec<String>,
+}
+
+impl ClaudeBox {
+    #[cfg(test)]
+    pub fn of(sandbox: Value) -> Self {
+        Self {
+            sandbox,
+            read_deny: Vec::new(),
+        }
+    }
+
+    pub fn apply(self, settings: &mut Value) {
+        settings["sandbox"] = self.sandbox;
+        let deny = &mut settings["permissions"]["deny"];
+        if !deny.is_array() {
+            *deny = json!([]);
+        }
+        if let Some(list) = deny.as_array_mut() {
+            list.extend(self.read_deny.into_iter().map(Value::String));
+        }
+    }
+}
+
+struct Reads {
+    config: std::path::PathBuf,
+    home: std::path::PathBuf,
+    temp: std::path::PathBuf,
+}
+
+const HOME_SECRETS: [&str; 3] = [".ssh", ".aws", ".gnupg"];
+// What a boxed shell still needs from the config dir: the CLI, its socket and
+// attached files.
+const CONFIG_OPEN: [&str; 3] = ["run", "bin", "attachments"];
+// The Read tool has no allow inside a deny, so attachments stay readable only
+// if the config dir is denied file by file: the ones holding a token.
+const CONFIG_SECRETS: [&str; 10] = [
+    "rpc.json",
+    "devices.json",
+    "browser.json",
+    "browsers.json",
+    "askpass.json",
+    "accounts.json",
+    "forge_accounts.json",
+    "dev-forge-secrets.json",
+    "chat-settings/**",
+    "tab-settings/**",
+];
+
+impl Reads {
+    fn deny(&self) -> Vec<String> {
+        let mut out = vec![path(&self.config)];
+        out.extend(HOME_SECRETS.iter().map(|dir| path(&self.home.join(dir))));
+        out.push(path(&self.temp.join(format!("{}*", crate::askpass::DIR_PREFIX))));
+        out
+    }
+
+    fn allow(&self) -> Vec<String> {
+        CONFIG_OPEN.iter().map(|dir| path(&self.config.join(dir))).collect()
+    }
+
+    // `//` is an absolute path in a permission rule.
+    fn read_tool_deny(&self) -> Vec<String> {
+        let config = CONFIG_SECRETS.iter().map(|name| self.config.join(name));
+        let home = HOME_SECRETS.iter().map(|dir| self.home.join(dir).join("**"));
+        config.chain(home).map(|p| format!("Read(/{})", path(&p))).collect()
+    }
+}
+
+fn path(p: &std::path::Path) -> String {
+    p.to_string_lossy().into_owned()
 }
 
 // `allowUnsandboxedCommands: false` is what stops the agent retrying a failed
 // command outside the box, and it arrives through `--settings`, which a repo's
 // own `.claude/settings.json` cannot loosen.
-fn sandbox_json(domains: &[String], tori_sock: &str) -> Value {
+fn sandbox_json(domains: &[String], tori_sock: &str, reads: &Reads) -> Value {
     json!({
         "enabled": true,
         "failIfUnavailable": true,
         "allowUnsandboxedCommands": false,
+        "filesystem": {
+            "denyRead": reads.deny(),
+            "allowRead": reads.allow(),
+        },
         "network": {
             "allowedDomains": domains,
             "allowUnixSockets": [tori_sock],
@@ -487,11 +576,61 @@ mod tests {
     #[test]
     fn the_sandbox_cannot_be_left_and_lets_the_tori_cli_through() {
         let domains = vec!["pypi.org".to_string(), "github.com".to_string()];
-        let sandbox = sandbox_json(&domains, "/tmp/tori/sock");
+        let reads = Reads {
+            config: "/Users/me/.config/tori".into(),
+            home: "/Users/me".into(),
+            temp: "/var/folders/x/T".into(),
+        };
+        let sandbox = sandbox_json(&domains, "/tmp/tori/sock", &reads);
         assert_eq!(sandbox["enabled"], true);
         assert_eq!(sandbox["failIfUnavailable"], true);
         assert_eq!(sandbox["allowUnsandboxedCommands"], false);
         assert_eq!(sandbox["network"]["allowedDomains"], json!(["pypi.org", "github.com"]));
         assert_eq!(sandbox["network"]["allowUnixSockets"], json!(["/tmp/tori/sock"]));
+        assert_eq!(
+            sandbox["filesystem"]["denyRead"],
+            json!([
+                "/Users/me/.config/tori",
+                "/Users/me/.ssh",
+                "/Users/me/.aws",
+                "/Users/me/.gnupg",
+                "/var/folders/x/T/tori-akp-*"
+            ])
+        );
+        assert_eq!(
+            sandbox["filesystem"]["allowRead"],
+            json!([
+                "/Users/me/.config/tori/run",
+                "/Users/me/.config/tori/bin",
+                "/Users/me/.config/tori/attachments"
+            ])
+        );
+    }
+
+    #[test]
+    fn a_boxed_read_tool_cannot_open_a_token_or_a_key() {
+        let reads = Reads {
+            config: "/Users/me/.config/tori".into(),
+            home: "/Users/me".into(),
+            temp: "/var/folders/x/T".into(),
+        };
+        let boxed = ClaudeBox {
+            sandbox: json!({ "enabled": true }),
+            read_deny: reads.read_tool_deny(),
+        };
+        let mut settings = json!({ "permissions": { "allow": ["mcp__tori"], "deny": ["Read(./.env)"] } });
+        boxed.apply(&mut settings);
+        assert_eq!(settings["sandbox"], json!({ "enabled": true }));
+        let deny = settings["permissions"]["deny"].as_array().unwrap();
+        for rule in [
+            "Read(./.env)",
+            "Read(//Users/me/.config/tori/rpc.json)",
+            "Read(//Users/me/.config/tori/chat-settings/**)",
+            "Read(//Users/me/.ssh/**)",
+            "Read(//Users/me/.gnupg/**)",
+        ] {
+            assert!(deny.contains(&json!(rule)), "{rule} in {deny:?}");
+        }
+        assert!(!deny.iter().any(|r| r.as_str().unwrap().contains("attachments")));
     }
 }

@@ -207,7 +207,7 @@ pub(crate) fn shell_hook_command(exe: &Path) -> String {
     )
 }
 
-fn claude_settings_json(exe: &Path, sandbox: Option<Value>) -> String {
+fn claude_settings_json(exe: &Path, sandbox: Option<crate::unattended::ClaudeBox>) -> String {
     let cmd = status_writer_command();
     let entry = hook_entry(&cmd);
     let mut settings = json!({
@@ -227,7 +227,7 @@ fn claude_settings_json(exe: &Path, sandbox: Option<Value>) -> String {
         }
     });
     if let Some(sandbox) = sandbox {
-        settings["sandbox"] = sandbox;
+        sandbox.apply(&mut settings);
     }
     settings.to_string()
 }
@@ -633,8 +633,11 @@ mod tests {
     #[test]
     fn a_boxed_tab_carries_the_sandbox() {
         let sandbox = json!({ "enabled": true });
-        let parsed: Value =
-            serde_json::from_str(&claude_settings_json(Path::new("/bin/tori"), Some(sandbox.clone()))).unwrap();
+        let parsed: Value = serde_json::from_str(&claude_settings_json(
+            Path::new("/bin/tori"),
+            Some(crate::unattended::ClaudeBox::of(sandbox.clone())),
+        ))
+        .unwrap();
         assert_eq!(parsed["sandbox"], sandbox);
     }
 
