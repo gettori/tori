@@ -162,6 +162,7 @@ async function stackOverRemoval(busy = true) {
         dirty={false}
         unpushed={false}
         hasRemote={true}
+        ignoredWork={[]}
         runningCount={0}
         busy={busy}
         onConfirm={onConfirm}

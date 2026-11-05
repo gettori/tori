@@ -94,6 +94,7 @@ export function createTopicActions(host: TopicActionsHost) {
     dirty: boolean | null;
     unpushed: boolean | null;
     hasRemote: boolean | null;
+    ignoredWork: string[];
     runningCount: number;
     busy: boolean;
   } | null>(null);
@@ -235,14 +236,25 @@ export function createTopicActions(host: TopicActionsHost) {
       dirty: null,
       unpushed: null,
       hasRemote: null,
+      ignoredWork: [],
       runningCount: 0,
       busy: false,
     });
     const forThis = (fn: (r: NonNullable<ReturnType<typeof wtReq>>) => typeof r) =>
       setWtReq((r) => (r && r.worktreePath === worktreePath ? fn(r) : r));
     void host.countRunning?.(worktreePath)?.then((n) => forThis((r) => ({ ...r, runningCount: n })));
-    invoke<{ dirty: boolean; unpushed: boolean; hasRemote: boolean }>("worktree_status", { path: worktreePath })
-      .then((s) => forThis((r) => ({ ...r, dirty: s.dirty, unpushed: s.unpushed, hasRemote: s.hasRemote })))
+    invoke<{ dirty: boolean; unpushed: boolean; hasRemote: boolean; ignoredWork: string[] }>("worktree_status", {
+      path: worktreePath,
+    })
+      .then((s) =>
+        forThis((r) => ({
+          ...r,
+          dirty: s.dirty,
+          unpushed: s.unpushed,
+          hasRemote: s.hasRemote,
+          ignoredWork: s.ignoredWork,
+        })),
+      )
       .catch(() => forThis((r) => ({ ...r, dirty: false, unpushed: false, hasRemote: false })));
   }
 

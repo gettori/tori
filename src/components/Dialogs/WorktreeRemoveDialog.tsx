@@ -22,6 +22,7 @@ export default function WorktreeRemoveDialog(props: {
   // null while the status is still loading; the flags fill in async.
   dirty: boolean | null;
   unpushed: boolean | null;
+  ignoredWork: string[];
   // Whether the branch tracks a remote branch (so it can be deleted there too).
   hasRemote: boolean | null;
   // Live shell/agent tabs running under this worktree, whose PTYs removal tears down.
@@ -61,7 +62,7 @@ export default function WorktreeRemoveDialog(props: {
         <>
           <Button onClick={() => props.onCancel()}>{props.keepLabel ?? "Cancel"}</Button>
           <Button ref={ok} variant="warn" disabled={props.busy} onClick={() => confirm()}>
-            {props.busy ? "Removing…" : "Remove worktree"}
+            {props.busy ? "Removing…" : props.ignoredWork.length > 0 ? "Remove anyway" : "Remove worktree"}
           </Button>
         </>
       }
@@ -96,6 +97,14 @@ export default function WorktreeRemoveDialog(props: {
             </Show>
           </span>
         </div>
+        <Show when={props.ignoredWork.length > 0}>
+          <div class={styles.wtDetailRow}>
+            <span class={styles.wtDetailKey}>Ignored</span>
+            <span class={styles.wtDetailVal} title={props.ignoredWork.join("\n")}>
+              {props.ignoredWork.join(", ")}
+            </span>
+          </div>
+        </Show>
         <Show when={props.runningCount > 0}>
           <div class={styles.wtDetailRow}>
             <span class={styles.wtDetailKey}>Running</span>
@@ -106,7 +115,7 @@ export default function WorktreeRemoveDialog(props: {
         </Show>
       </div>
 
-      <Show when={props.dirty || props.unpushed}>
+      <Show when={props.dirty || props.unpushed || props.ignoredWork.length > 0}>
         <div class={styles.warning}>This deletes work that is not saved anywhere else. It cannot be undone.</div>
       </Show>
 
