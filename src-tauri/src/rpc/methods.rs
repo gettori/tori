@@ -47,6 +47,13 @@ const DEFAULT_LIST_LIMIT: usize = 50;
 const DEFAULT_TAIL_LIMIT: usize = 50;
 const DEFAULT_ASK_WAIT: u64 = 60;
 const DEFAULT_SESSION_WAIT: u64 = 60;
+// Past this a caller's timeout is held to it: a wait of u64::MAX seconds
+// would overflow the deadline and panic the thread serving it.
+const MAX_WAIT: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
+fn wait_timeout(timeout: Option<u64>, default: u64) -> std::time::Duration {
+    std::time::Duration::from_secs(timeout.unwrap_or(default)).min(MAX_WAIT)
+}
 
 #[derive(Serialize)]
 struct Row {
@@ -180,8 +187,7 @@ pub fn wait_for(
     question: impl FnOnce() -> Value,
     limit: impl FnOnce() -> Option<u64>,
 ) -> Result<Value, RpcError> {
-    let deadline =
-        std::time::Instant::now() + std::time::Duration::from_secs(params.timeout.unwrap_or(DEFAULT_SESSION_WAIT));
+    let deadline = std::time::Instant::now() + wait_timeout(params.timeout, DEFAULT_SESSION_WAIT);
     let held = loop {
         let left = deadline.saturating_duration_since(std::time::Instant::now());
         match states.wait_settled(&params.id, left) {
@@ -1788,10 +1794,7 @@ impl DaemonBackend {
     }
 
     fn wait_for_answer(&self, id: &str, timeout: Option<u64>) -> Result<Value, RpcError> {
-        match self
-            .asks
-            .wait(id, std::time::Duration::from_secs(timeout.unwrap_or(DEFAULT_ASK_WAIT)))
-        {
+        match self.asks.wait(id, wait_timeout(timeout, DEFAULT_ASK_WAIT)) {
             Waited::Answered {
                 answer,
                 approval_id: None,
@@ -3416,6 +3419,19 @@ mod tests {
     use super::*;
     use crate::chat::commands::HistorySource;
     use serde_json::json;
+
+    #[test]
+    fn a_wait_is_held_to_an_hour_however_long_it_asks_for() {
+        assert_eq!(wait_timeout(Some(u64::MAX), DEFAULT_ASK_WAIT), MAX_WAIT);
+        assert_eq!(wait_timeout(Some(5), DEFAULT_ASK_WAIT).as_secs(), 5);
+        assert_eq!(wait_timeout(None, DEFAULT_SESSION_WAIT).as_secs(), DEFAULT_SESSION_WAIT);
+        let params = WaitParams {
+            id: "gone".into(),
+            timeout: Some(u64::MAX),
+        };
+        let states = SessionStates::default();
+        assert!(wait_for(params, &states, || false, || None, || Value::Null, || None).is_err());
+    }
 
     fn waited(states: &SessionStates, id: &str, agent: Option<&str>, question: Value, limit: Option<u64>) -> Value {
         let params = WaitParams {
