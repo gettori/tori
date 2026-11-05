@@ -708,6 +708,7 @@ export default function LeftSidebar(props: {
     dirty: boolean | null;
     unpushed: boolean | null;
     hasRemote: boolean | null;
+    ignoredWork: string[];
     runningCount: number;
     busy: boolean;
   } | null>(null);
@@ -1905,7 +1906,7 @@ export default function LeftSidebar(props: {
   // status so the dialog can warn about work about to be lost. The teardown of any
   // live PTYs/editor tabs and the actual delete happen on confirm.
   function openRemoveWorktree(p: Project, u: BranchUnit) {
-    setWtReq({ p, u, dirty: null, unpushed: null, hasRemote: null, runningCount: 0, busy: false });
+    setWtReq({ p, u, dirty: null, unpushed: null, hasRemote: null, ignoredWork: [], runningCount: 0, busy: false });
     // Count what's running under the worktree (shell tabs + agents), so removal
     // warns before it tears their PTYs down.
     countRunningAgents(u.folderPath).then((n) =>
@@ -1917,13 +1918,19 @@ export default function LeftSidebar(props: {
     const finished = finishedPr(u.folderPath, u.branch, syncFor(u.folderPath, u.branch));
     const landed =
       finished?.state === "merged" && (finished.relation?.kind === "at" || finished.relation?.kind === "behind");
-    invoke<{ dirty: boolean; unpushed: boolean; hasRemote: boolean }>("worktree_status", {
+    invoke<{ dirty: boolean; unpushed: boolean; hasRemote: boolean; ignoredWork: string[] }>("worktree_status", {
       path: u.folderPath,
     })
       .then((s) =>
         setWtReq((r) =>
           r && r.u.folderPath === u.folderPath
-            ? { ...r, dirty: s.dirty, unpushed: s.unpushed && !landed, hasRemote: s.hasRemote }
+            ? {
+                ...r,
+                dirty: s.dirty,
+                unpushed: s.unpushed && !landed,
+                hasRemote: s.hasRemote,
+                ignoredWork: s.ignoredWork,
+              }
             : r,
         ),
       )
@@ -4506,6 +4513,7 @@ export default function LeftSidebar(props: {
           dirty={wtReq()!.dirty}
           unpushed={wtReq()!.unpushed}
           hasRemote={wtReq()!.hasRemote}
+          ignoredWork={wtReq()!.ignoredWork}
           runningCount={wtReq()!.runningCount}
           busy={wtReq()!.busy}
           onConfirm={(opts) => confirmRemoveWorktree(opts)}

@@ -47,6 +47,7 @@ function open(props: Partial<Omit<Props, "onConfirm" | "onCancel">> = {}) {
       dirty={false}
       unpushed={false}
       hasRemote={false}
+      ignoredWork={[]}
       runningCount={0}
       busy={false}
       onConfirm={onConfirm}
@@ -64,6 +65,15 @@ const REMOTE = "Delete remote branch (git push --delete)";
 
 describe("WorktreeRemoveDialog", () => {
   describe("contract", () => {
+    it("lists ignored files that look like work and asks to remove anyway", () => {
+      const { onConfirm } = open({ ignoredWork: ["apps/web/.env", "dev.db"] });
+
+      expect(screen.getByText("apps/web/.env, dev.db")).toBeTruthy();
+      expect(screen.getByText(/deletes work that is not saved anywhere else/)).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Remove anyway" }));
+      expect(onConfirm).toHaveBeenCalledTimes(1);
+    });
+
     it("names the worktree it is about to remove", () => {
       open();
 

@@ -193,6 +193,7 @@ export default function TopicList(props: {
             dirty={req().dirty}
             unpushed={req().demote ? false : req().unpushed}
             hasRemote={req().demote ? false : req().hasRemote}
+            ignoredWork={req().ignoredWork}
             runningCount={req().runningCount}
             busy={req().busy}
             keepLabel={req().demote ? undefined : "Keep worktree"}

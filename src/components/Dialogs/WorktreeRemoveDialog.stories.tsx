@@ -24,6 +24,7 @@ const meta = {
     dirty: false,
     unpushed: false,
     hasRemote: false,
+    ignoredWork: [],
     runningCount: 0,
     busy: false,
     onConfirm: () => {},
