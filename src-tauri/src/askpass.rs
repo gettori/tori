@@ -44,6 +44,7 @@ use serde::Serialize;
 pub const ENV_SOCK: &str = "TORI_ASKPASS_SOCK";
 pub const ENV_TOKEN: &str = "TORI_ASKPASS_TOKEN";
 pub const ENV_OP: &str = "TORI_ASKPASS_OP";
+pub const DIR_PREFIX: &str = "tori-akp-";
 
 /// How long a connection blocks for a resolution before failing closed. A user
 /// staring at the dialog is fine; this only bounds a wedged/abandoned prompt.
@@ -250,7 +251,7 @@ fn start_with(emit: Box<dyn Fn(PromptEvent) + Send + Sync>, timeout: Duration) -
     static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let base = std::env::temp_dir();
-    let dir = base.join(format!("tori-akp-{}-{}", std::process::id(), seq));
+    let dir = base.join(format!("{DIR_PREFIX}{}-{}", std::process::id(), seq));
     std::fs::create_dir_all(&dir)?;
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
     let sock_path = dir.join("s");

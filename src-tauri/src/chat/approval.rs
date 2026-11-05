@@ -534,7 +534,7 @@ pub fn settings_json_with(
     token: &str,
     allow: Vec<String>,
     home: Option<&crate::topic_home::HomeLaunch>,
-    sandbox: Option<Value>,
+    sandbox: Option<crate::unattended::ClaudeBox>,
 ) -> String {
     let mut permissions = json!({ "allow": allow });
     if let Some(home) = home {
@@ -566,7 +566,7 @@ pub fn settings_json_with(
         }
     });
     if let Some(sandbox) = sandbox {
-        settings["sandbox"] = sandbox;
+        sandbox.apply(&mut settings);
     }
     settings.to_string()
 }
@@ -586,7 +586,7 @@ pub fn settings_args(
     transport: ChatTransport,
     background: bool,
     home: Option<&crate::topic_home::HomeLaunch>,
-    sandbox: Option<Value>,
+    sandbox: Option<crate::unattended::ClaudeBox>,
 ) -> Result<Vec<String>, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let path = settings_path(session_id);

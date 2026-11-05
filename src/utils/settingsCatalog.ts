@@ -327,7 +327,7 @@ export const SETTINGS: SettingEntry[] = [
     id: "unattended-domains",
     section: "trust",
     label: "Allowed domains when boxed",
-    hint: "Where a boxed Claude session's shell may connect, one per line, `*.example.com` included. The project's own git host is added for each session. A boxed Codex session has no network and asks for each host it needs.",
+    hint: "Where a boxed Claude session's shell may connect, one per line, `*.example.com` included. The project's own git host is added for each session. The same shell cannot read Tori's own files, `~/.ssh`, `~/.aws` or `~/.gnupg`. A boxed Codex session has no network and asks for each host it needs.",
   },
   {
     id: "git",
