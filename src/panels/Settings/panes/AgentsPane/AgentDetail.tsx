@@ -8,9 +8,10 @@ import IconButton from "../../../../components/IconButton/IconButton";
 import AgentGlyph from "../../../../components/Icon/AgentGlyph";
 // Aliased: this module already imports Solid's control-flow `Switch`.
 import Toggle from "../../../../components/Switch/Switch";
-import { findAdapter, isLaunchOnly } from "../../../../utils/agents";
+import { agentIdForProgram, findAdapter, isLaunchOnly } from "../../../../utils/agents";
 import { provenanceLabel } from "../../../../utils/packs";
 import { CatalogConflict } from "../../components/ProvenanceTag";
+import PackControls from "../../components/PackControls";
 import { agentChosen, enableBlockedReason, setAgentEnabled } from "../../../../utils/agentEnabled";
 import {
   chatTier,
@@ -27,6 +28,7 @@ import {
 } from "../../../../utils/modelCatalog";
 import { fuzzyMatch, type Range } from "../../../../utils/fuzzy";
 import { CmdLine, Mark } from "../../components/paneKit";
+import { open as openTabs, tabState } from "../../../Terminal/terminalTabStore";
 import { asTabProfile, signedOutEverywhere, type AgentHealth } from "../../../../utils/agentHealth";
 import { setupJob, installNote, type InstallRoute, type SetupVerb } from "../../../../utils/install";
 import { loginJob, loginNote, type LoginRoute } from "../../../../utils/signIn";
@@ -340,6 +342,11 @@ export default function AgentDetail(props: {
 }) {
   let backEl: HTMLButtonElement | undefined;
   const a = () => props.agent;
+  const agentInUse = (id: string) =>
+    openTabs().some(
+      (t) =>
+        (t.kind === "agent" || t.kind === "chat") && tabState(t) !== "inert" && agentIdForProgram(t.program) === id,
+    );
   const installed = () => a().status !== "notFound";
   // The one drift direction worth surfacing: strictly older than the version
   // the adapter was measured against. Ahead of it is the steady state.
@@ -771,7 +778,16 @@ export default function AgentDetail(props: {
       <Show when={findAdapter(a().id).provenance}>
         {(p) => (
           <>
-            <div class={styles.cardMeta}>{provenanceLabel(p(), findAdapter(a().id).contributor)}</div>
+            <div class={styles.cardMeta}>
+              {provenanceLabel(p(), findAdapter(a().id).contributor)}
+              <PackControls
+                kind="agents"
+                id={a().id}
+                label={a().label}
+                provenance={p()}
+                blocked={() => (agentInUse(a().id) ? `Close the tabs using ${a().id} first.` : null)}
+              />
+            </div>
             <CatalogConflict provenance={p()} id={a().id} />
           </>
         )}

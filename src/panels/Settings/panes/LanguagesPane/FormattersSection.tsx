@@ -5,7 +5,8 @@ import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { setFormatterDisabled } from "../../settingsStore";
 import { onPacksChanged, type PackMeta, type Provenance } from "../../../../utils/packs";
 import ProvenanceTag, { CatalogConflict } from "../../components/ProvenanceTag";
-import AddPack from "../../components/AddPack";
+import BrowsePacks from "../../components/BrowsePacks";
+import PackControls from "../../components/PackControls";
 import { TONE, type BinaryStatus } from "./LspSection";
 import styles from "../../Settings.module.css";
 import NeedsFixing from "../../components/NeedsFixing";
@@ -52,6 +53,9 @@ function FormatterCard(props: { formatter: FormatterHealth }) {
         <Show when={off() || f().status !== "notFound" || f().runsPerProject}>
           <Toggle class={styles.toolSwitch} checked={!off()} aria-label={`Use ${f().label}`} onChange={use} />
         </Show>
+        <span class={styles.toolControls}>
+          <PackControls kind="formatters" id={f().id} label={f().label} provenance={f().provenance} />
+        </span>
       </div>
       <code class={styles.toolProgram}>{f().program}</code>
       <CatalogConflict provenance={f().provenance} id={f().id} />
@@ -109,7 +113,7 @@ export default function FormattersSection() {
         <span>Formatters</span>
         <span class={styles.sectionRule} />
       </div>
-      <AddPack kind="formatters" label="Add a formatter" />
+      <BrowsePacks kind="formatters" />
       <NeedsFixing kind="formatters" />
       <Switch>
         <Match when={formatters.state === "pending"}>

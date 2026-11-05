@@ -5,7 +5,8 @@ import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { setDebuggerDisabled } from "../../settingsStore";
 import { onPacksChanged, type PackMeta, type Provenance } from "../../../../utils/packs";
 import ProvenanceTag, { CatalogConflict } from "../../components/ProvenanceTag";
-import AddPack from "../../components/AddPack";
+import BrowsePacks from "../../components/BrowsePacks";
+import PackControls from "../../components/PackControls";
 import { createToolActions } from "./toolActions";
 import styles from "../../Settings.module.css";
 import NeedsFixing from "../../components/NeedsFixing";
@@ -82,6 +83,7 @@ function DapCard(props: { adapter: DapHealth; onChange: () => Promise<DapHealth[
             <Toggle checked={!off()} aria-label={`Use ${a().label}`} onChange={use} />
           </Show>
           <actions.Controls />
+          <PackControls kind="dap" id={a().id} label={a().label} provenance={a().provenance} />
         </span>
       </div>
       <code class={styles.toolProgram}>{a().program}</code>
@@ -151,7 +153,7 @@ export default function DapSection() {
         <span>Debuggers</span>
         <span class={styles.sectionRule} />
       </div>
-      <AddPack kind="dap" label="Add a debugger" />
+      <BrowsePacks kind="dap" />
       <NeedsFixing kind="dap" />
       <Switch>
         <Match when={health.state === "pending"}>

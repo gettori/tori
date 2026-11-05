@@ -6,7 +6,8 @@ import { installServer, serverInstalled } from "../../../../utils/serverInstall"
 import { overlayRoot, setServerDisabled } from "../../settingsStore";
 import { onPacksChanged, type PackMeta, type Provenance } from "../../../../utils/packs";
 import ProvenanceTag, { CatalogConflict } from "../../components/ProvenanceTag";
-import AddPack from "../../components/AddPack";
+import BrowsePacks from "../../components/BrowsePacks";
+import PackControls from "../../components/PackControls";
 import { createToolActions } from "./toolActions";
 import styles from "../../Settings.module.css";
 import NeedsFixing from "../../components/NeedsFixing";
@@ -142,6 +143,7 @@ export function LspCard(props: { server: LspHealth; onChange: () => Promise<LspH
             />
           </Show>
           <actions.Controls />
+          <PackControls kind="lsp" id={s().id} label={s().label} provenance={s().provenance} />
         </span>
       </div>
       <code class={styles.toolProgram}>{s().program}</code>
@@ -263,7 +265,7 @@ export default function LspSection() {
           onInput={(e) => setQuery(e.currentTarget.value)}
         />
       </div>
-      <AddPack kind="lsp" label="Add a language" filter={(p) => p.role !== "secondary"} />
+      <BrowsePacks kind="lsp" />
       <NeedsFixing kind="lsp" />
       <Switch>
         <Match when={health.state === "pending"}>

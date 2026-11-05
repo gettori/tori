@@ -1,4 +1,4 @@
-import { For, createMemo } from "solid-js";
+import { For, Show, createMemo } from "solid-js";
 import {
   EDITOR_FONT_FALLBACK,
   Group,
@@ -20,7 +20,8 @@ import { primaryFamily } from "../../../../utils/fontLoad";
 import Select, { type SelectGroup, type SelectOption, type SelectTab } from "../../../../components/Select/Select";
 import styles from "../../Settings.module.css";
 import NeedsFixing from "../../components/NeedsFixing";
-import AddPack from "../../components/AddPack";
+import BrowsePacks from "../../components/BrowsePacks";
+import PackControls from "../../components/PackControls";
 import { CatalogConflict } from "../../components/ProvenanceTag";
 
 const SPACE_STRIPS: SelectOption[] = [
@@ -77,7 +78,7 @@ export default function AppearancePane(props: PaneProps) {
 
   return (
     <>
-      <AddPack kind="themes" label="Add a theme" />
+      <BrowsePacks kind="themes" />
       <NeedsFixing kind="themes" />
       {/* "Display" rather than "Theme": the group holds the theme and the zoom,
           and naming it after one of its two rows read as a mislabel. */}
@@ -93,7 +94,21 @@ export default function AppearancePane(props: PaneProps) {
               aria-labelledby={rowLabelId("theme")}
             />
             <For each={listUserThemes()}>
-              {(t) => t.provenance && <CatalogConflict provenance={t.provenance} id={t.id} />}
+              {(t) => (
+                <Show when={t.provenance}>
+                  {(p) => (
+                    <>
+                      <CatalogConflict provenance={p()} id={t.id} />
+                      <Show when={p().source === "catalog"}>
+                        <div class={styles.toolMeta}>
+                          {t.label}
+                          <PackControls kind="themes" id={t.id} label={t.label} provenance={p()} />
+                        </div>
+                      </Show>
+                    </>
+                  )}
+                </Show>
+              )}
             </For>
           </div>
         </Row>

@@ -1,13 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor, cleanup } from "@solidjs/testing-library";
+import { render, screen, waitFor, cleanup, fireEvent } from "@solidjs/testing-library";
 import type { DapHealth } from "./DapSection";
 
 let health: DapHealth[] = [];
+let calls: [string, unknown][] = [];
 let askedForErrors = false;
 const lspError = { kind: "lsp", file: "/cfg/packs/lsp/typescript.toml", message: "bundled id", fix: null };
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: (cmd: string) => {
+  invoke: (cmd: string, args?: unknown) => {
+    calls.push([cmd, args]);
     if (cmd !== "packs_load_errors") return Promise.resolve(cmd === "dap_health" ? health : null);
     askedForErrors = true;
     return Promise.resolve([lspError]);
@@ -45,9 +47,22 @@ const delve = (over: Partial<DapHealth> = {}): DapHealth => ({
 beforeEach(() => {
   cleanup();
   health = [];
+  calls = [];
 });
 
 describe("DapSection", () => {
+  it("offers Update pack and Remove pack on a catalog debugger", async () => {
+    health = [delve({ provenance: { source: "catalog", updateAvailable: true, catalogConflict: false } })];
+    render(() => <DapSection />);
+
+    fireEvent.click(await waitFor(() => screen.getByLabelText("Update the Go (Delve) pack")));
+    await waitFor(() => expect(calls).toContainEqual(["packs_update", { kind: "dap", id: "delve" }]));
+    const remove = () => screen.getByLabelText("Remove the Go (Delve) pack") as HTMLButtonElement;
+    await waitFor(() => expect(remove().disabled).toBe(false));
+    fireEvent.click(remove());
+    await waitFor(() => expect(calls).toContainEqual(["packs_remove", { kind: "dap", id: "delve" }]));
+  });
+
   it("says a version the adapter cannot report is stated, not checked", async () => {
     health = [delve()];
     render(() => <DapSection />);
