@@ -82,7 +82,8 @@ pub fn set_workspace_settings(root: String, settings: Value) -> Result<Value, St
         into.extend(from.clone());
     }
     let text = serde_json::to_string_pretty(&merged).map_err(|e| e.to_string())?;
-    std::fs::write(&path, format!("{text}\n")).map_err(|e| format!("Writing {} failed: {e}", path.display()))?;
+    crate::owned_state::write_atomically(&path, &format!("{text}\n"))
+        .map_err(|e| format!("Writing {} failed: {e}", path.display()))?;
     Ok(merged)
 }
 

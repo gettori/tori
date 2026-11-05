@@ -248,7 +248,7 @@ pub fn create_in_home(entry: &ConfigEntry, home: &Path, name: &str) -> Result<Pa
         std::fs::create_dir_all(parent).map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
     }
     let body = entry.template.as_deref().unwrap_or("").replace("{name}", &stem);
-    std::fs::write(&file, body).map_err(|e| format!("cannot write {}: {e}", file.display()))?;
+    crate::owned_state::write_atomically(&file, &body).map_err(|e| format!("cannot write {}: {e}", file.display()))?;
     Ok(file)
 }
 

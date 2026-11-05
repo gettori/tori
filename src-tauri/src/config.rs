@@ -285,6 +285,12 @@ fn config_path() -> PathBuf {
     crate::owned_state::config_dir().join("tori.toml")
 }
 
+// Through a symlink to its target: a hand-edited config is often a dotfile link.
+fn write_config(text: &str) -> Result<(), String> {
+    let path = config_path();
+    crate::owned_state::write_atomically(&std::fs::canonicalize(&path).unwrap_or(path), text)
+}
+
 fn expand_tilde(path: &str) -> String {
     if let Some(rest) = path.strip_prefix("~/") {
         if let Some(home) = dirs::home_dir() {
@@ -330,7 +336,7 @@ fn ensure_config() -> Result<String, String> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        std::fs::write(&path, SAMPLE).map_err(|e| e.to_string())?;
+        write_config(SAMPLE)?;
     }
     std::fs::read_to_string(&path).map_err(|e| e.to_string())
 }
@@ -431,7 +437,7 @@ fn save_attached(state: &AttachedState) -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let json = serde_json::to_string_pretty(state).map_err(|e| e.to_string())?;
-    std::fs::write(path, json).map_err(|e| e.to_string())
+    crate::owned_state::write_atomically(&path, &json)
 }
 
 pub(crate) fn forget_attached(repo: &Path) {
@@ -1483,7 +1489,7 @@ pub fn set_root(app: AppHandle, path: String) -> Result<(), String> {
         return Err("Empty path".into());
     }
     let serialized = replace_root(&ensure_config()?, &p)?;
-    std::fs::write(config_path(), serialized).map_err(|e| e.to_string())?;
+    write_config(&serialized)?;
     let _ = app.emit("config://changed", ());
     Ok(())
 }
@@ -1496,7 +1502,7 @@ pub fn remove_root(app: AppHandle) -> Result<(), String> {
     // lock now that commands no longer queue on one IPC thread.
     let _store = crate::exec::cross_process_store_lock("config")?;
     let serialized = clear_root(&ensure_config()?)?;
-    std::fs::write(config_path(), serialized).map_err(|e| e.to_string())?;
+    write_config(&serialized)?;
     let _ = app.emit("config://changed", ());
     Ok(())
 }
@@ -1662,7 +1668,7 @@ fn upsert_project_meta(text: &str, path: &str, icon: Option<&str>, icon_file: Op
 /// it back. Both icon values are already trimmed-to-`None` by the caller.
 fn write_project_meta(path: &str, icon: Option<&str>, icon_file: Option<&str>) -> Result<(), String> {
     let serialized = upsert_project_meta(&ensure_config()?, path, icon, icon_file)?;
-    std::fs::write(config_path(), serialized).map_err(|e| e.to_string())
+    write_config(&serialized)
 }
 
 /// The image currently stored for `path`, read back before an overwrite so the
@@ -1717,7 +1723,7 @@ pub fn set_project_icon_file(app: AppHandle, path: String, source: String) -> Re
 /// back. Both values are already trimmed-to-`None` by the caller.
 fn write_space_meta(name: &str, icon: Option<&str>, color: Option<&str>) -> Result<(), String> {
     let serialized = upsert_space_meta(&ensure_config()?, name, icon, color)?;
-    std::fs::write(config_path(), serialized).map_err(|e| e.to_string())
+    write_config(&serialized)
 }
 
 /// mkdir a new space under a root, optionally recording its icon in one shot.
@@ -1807,7 +1813,7 @@ pub fn set_global_meta_in(ui: &crate::ui::Ui, icon: Option<String>, color: Optio
     let icon = icon.as_deref().map(str::trim).filter(|s| !s.is_empty());
     let color = color.as_deref().map(str::trim).filter(|s| !s.is_empty());
     let serialized = upsert_global_meta(&ensure_config()?, icon, color)?;
-    std::fs::write(config_path(), serialized).map_err(|e| e.to_string())?;
+    write_config(&serialized)?;
     ui.emit("config://changed", ());
     Ok(())
 }
@@ -1887,17 +1893,17 @@ pub(crate) fn attached_entries() -> Vec<(PathBuf, String)> {
 
 pub(crate) fn write_attached_folder(_: &StoreLock, path: &str, name: Option<&str>) -> Result<(), String> {
     let serialized = upsert_attached_folder(&ensure_config()?, path, name)?;
-    std::fs::write(config_path(), serialized).map_err(|e| e.to_string())
+    write_config(&serialized)
 }
 
 pub(crate) fn remove_attached_folder(_: &StoreLock, path: &str) -> Result<(), String> {
     let serialized = drop_attached_folder(&ensure_config()?, path)?;
-    std::fs::write(config_path(), serialized).map_err(|e| e.to_string())
+    write_config(&serialized)
 }
 
 pub(crate) fn relocate_attached_entry(_: &StoreLock, old: &str, new: &str) -> Result<(), String> {
     let serialized = move_attached_folder(&ensure_config()?, old, new)?;
-    std::fs::write(config_path(), serialized).map_err(|e| e.to_string())
+    write_config(&serialized)
 }
 
 pub(crate) fn rekey_attached_branches(_: &StoreLock, old: &str, new: &str) -> Result<(), String> {
@@ -1933,7 +1939,7 @@ pub fn set_space_order_in(ui: &crate::ui::Ui, names: Vec<String>) -> Result<(), 
     // lock now that commands no longer queue on one IPC thread.
     let _store = crate::exec::cross_process_store_lock("config")?;
     let serialized = write_space_order(&ensure_config()?, &names)?;
-    std::fs::write(config_path(), serialized).map_err(|e| e.to_string())?;
+    write_config(&serialized)?;
     ui.emit("config://changed", ());
     Ok(())
 }

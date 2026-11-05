@@ -48,7 +48,7 @@ fn save_to(path: &Path, stash: &Value) -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let json = serde_json::to_string(stash).map_err(|e| e.to_string())?;
-    std::fs::write(path, json).map_err(|e| e.to_string())
+    crate::owned_state::write_atomically(path, &json)
 }
 
 // --- commands ---

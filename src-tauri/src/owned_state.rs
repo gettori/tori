@@ -82,8 +82,15 @@ pub(crate) fn path_hash(cwd: &str) -> u64 {
 /// contents durable rather than merely the name: without it a crash can leave
 /// the renamed file present but empty, which for a state store reads as "nothing
 /// here" and is exactly the silent state atomic replacement exists to avoid.
+///
+/// A file already there keeps its mode, so a `0600` one is not opened up.
 pub fn write_atomically(path: &Path, text: &str) -> Result<(), String> {
-    replace(path, text, 0o644)
+    use std::os::unix::fs::PermissionsExt;
+    let mode = std::fs::symlink_metadata(path)
+        .ok()
+        .filter(|m| m.is_file())
+        .map_or(0o644, |m| m.permissions().mode() & 0o777);
+    replace(path, text, mode)
 }
 
 /// `write_atomically` for a file holding secrets: the temp is created `0600`,
@@ -131,6 +138,44 @@ pub fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn state_stores_replace_their_files_in_one_step() {
+        // Checkpoint restores put the user's own files back in their worktree,
+        // where a rename would break hard links and swap the inode an editor has open.
+        let allowed = [("checkpoint.rs", 3)];
+        let stores = [
+            "settings.rs",
+            "backstop.rs",
+            "hot_exit.rs",
+            "sessions.rs",
+            "config.rs",
+            "onboarding.rs",
+            "review_rule.rs",
+            "issues/store.rs",
+            "run.rs",
+            "checkpoint.rs",
+            "accounts.rs",
+            "workspace_settings.rs",
+            "agent_config.rs",
+            "chat/approval.rs",
+            "hooks.rs",
+            "shell_path.rs",
+        ];
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let plain = format!("{}::write(", "fs");
+        let mut found = Vec::new();
+        for file in stores {
+            let text = std::fs::read_to_string(src.join(file)).unwrap();
+            let shipped = text.split("\n#[cfg(test)]\nmod tests").next().unwrap();
+            let count = shipped.matches(&plain).count();
+            let allow = allowed.iter().find(|(f, _)| *f == file).map_or(0, |(_, n)| *n);
+            if count != allow {
+                found.push(format!("{file}: {count}"));
+            }
+        }
+        assert!(found.is_empty(), "use `write_atomically` or `write_private`: {found:?}");
+    }
 
     #[test]
     fn two_checkouts_sharing_a_basename_get_separate_stores() {
