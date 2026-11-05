@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Upload an extension zip to the Chrome Web Store item as its new draft. With
-# --submit it also submits that draft for review as a staged publish: once
-# approved it waits for someone to click Publish in the dashboard.
+# --submit it also submits that draft for review, and the store publishes it
+# as soon as the review passes.
 #
 #   CWS_CLIENT_ID=... CWS_CLIENT_SECRET=... CWS_REFRESH_TOKEN=... CWS_PUBLISHER_ID=... \
 #     .github/scripts/extension-upload.sh [--submit] <zip>
@@ -59,10 +59,10 @@ $submit || exit 0
 
 reply=$(curl -sS -w '\n%{http_code}' -X POST "https://chromewebstore.googleapis.com/v2/$name:publish" \
   -H "Authorization: Bearer $token" -H "Content-Type: application/json" \
-  -d '{"publishType": "STAGED_PUBLISH", "blockOnWarnings": true}') || fail "the submit" "curl exited $?"
+  -d '{"publishType": "DEFAULT_PUBLISH", "blockOnWarnings": true}') || fail "the submit" "curl exited $?"
 code=$(tail -n1 <<<"$reply")
 body=$(sed '$d' <<<"$reply")
 case "$code" in
-  2??) echo "submitted $version for review; publish it from the dashboard once approved" ;;
+  2??) echo "submitted $version for review; it goes live once approved" ;;
   *) fail "the submit" "HTTP $code: $(jq -c . <<<"$body" 2>/dev/null || echo "$body")" ;;
 esac

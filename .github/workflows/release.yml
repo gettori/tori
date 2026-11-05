@@ -415,10 +415,10 @@ jobs:
           packageName: app.gettori.tori.mobile
           releaseFiles: assets/Tori_${{ env.VERSION }}.aab
           track: ${{ vars.PLAY_TRACK || 'alpha' }}
-          status: ${{ vars.PLAY_STATUS || 'draft' }}
+          status: ${{ vars.PLAY_STATUS || 'completed' }}
 
   # Nothing else waits on this job, so a store failure goes red here on its
-  # own. It submits staged; Publish stays a click. The tag gets no GitHub
+  # own. The store publishes it once the review passes. The tag gets no GitHub
   # release, since the store is where the extension is installed from.
   extension:
     needs: gate

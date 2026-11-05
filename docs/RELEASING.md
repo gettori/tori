@@ -164,22 +164,20 @@ why on stderr):
 
 The `extension` job builds the store zip with
 `.github/scripts/extension-zip.sh`, tags the commit, uploads the zip to the
-Chrome Web Store item and submits it for review as a staged publish, with
+Chrome Web Store item and submits it for review, with
 `.github/scripts/extension-upload.sh --submit`. A green job that shipped
-means the version is in review. When the store's approval email arrives, open the item
-in the [Web Store dashboard](https://chrome.google.com/webstore/devconsole)
-and click **Publish**; nothing goes live without that click. A rejection
-also comes by email: fix the cause, then re-run the job, or submit the draft
-by hand from the dashboard. Nothing else waits on this job: if it goes red,
+means the version is in review, and the store publishes it as soon as the
+review passes; nothing has to be clicked. A rejection comes by email: fix the
+cause, then re-run the job, or submit the draft by hand from the
+[Web Store dashboard](https://chrome.google.com/webstore/devconsole). Nothing else waits on this job: if it goes red,
 the other components are out regardless, and the job's log names the step that failed
 (token request, upload, status check or submit). Re-run that job alone once
 the cause is fixed.
 
-A release can land while the previous version is still in review, or
-approved and waiting for Publish. The store may then refuse the upload or
-the submit and the job goes red, which is expected rather than broken.
-Publish the waiting version, or cancel its submission in the dashboard, and
-re-run the job; or carry the change in the next release with
+A release can land while the previous version is still in review. The store
+may then refuse the upload or the submit and the job goes red, which is
+expected rather than broken. Wait for the review, or cancel its submission in
+the dashboard, and re-run the job; or carry the change in the next release with
 `prepare --force extension`, since an unchanged extension does not ship on its
 own.
 
@@ -249,13 +247,14 @@ with `github.token`.
 
 `publish-play` uploads `Tori_<version>.aab` to the track in the repo variable
 `PLAY_TRACK` (default `alpha`, the closed test) with the status in
-`PLAY_STATUS` (default `draft`). Both are repo variables (Settings, Secrets and
-variables, Actions, Variables), so moving on is a settings change, not a
-commit:
+`PLAY_STATUS` (default `completed`, rolled out to the whole track once Play's
+review passes). Both are repo variables (Settings, Secrets and variables,
+Actions, Variables), so moving on is a settings change, not a commit:
 
-- `PLAY_STATUS` to `completed` once the app's first release has been rolled
-  out. Until then the app is a draft and Play takes only draft releases, which
-  you roll out by hand in Play Console.
+- Until the app's first release has been rolled out by hand, the app is a
+  draft and Play takes only draft releases, so a `completed` upload goes red.
+  Set `PLAY_STATUS` to `draft` for that stretch if a red job bothers you, and
+  delete the variable once the first release is out.
 - `PLAY_TRACK` to `production` once the closed test is done (12 testers for 14
   days, for a new personal account).
 
