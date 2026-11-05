@@ -37,7 +37,7 @@ import { behindVerified } from "../../../../utils/versions";
 import AgentDetail from "./AgentDetail";
 import styles from "../../Settings.module.css";
 import NeedsFixing from "../../components/NeedsFixing";
-import AddPack from "../../components/AddPack";
+import BrowsePacks from "../../components/BrowsePacks";
 
 // One flat list, one card per bundled agent, each opening a page of its own.
 // The backend (`agent_health`, which keeps the ecosystem's word on the wire)
@@ -429,7 +429,7 @@ export default function AgentsSection(props: { projectRoot?: string | null }) {
                 onInput={(e) => setQuery(e.currentTarget.value)}
               />
             </div>
-            <AddPack kind="agents" label="Add an agent" />
+            <BrowsePacks kind="agents" />
             <NeedsFixing kind="agents" />
             {/* The failure is a note above the rows rather than a screen of
                 its own: the list is real either way, and the rows degrade to
