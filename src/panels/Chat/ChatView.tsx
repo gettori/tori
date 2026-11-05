@@ -53,7 +53,7 @@ import {
   cancel as cancelResume,
   register as registerResume,
 } from "./resumeAtReset";
-import { askToTrust, noteRefused, UNTRUSTED } from "../../utils/projectTrust";
+import { askToTrustUnlessFork, noteRefused, UNTRUSTED } from "../../utils/projectTrust";
 import { accountWindows, chipFor, usageWarnAt } from "../../utils/usageSettings";
 import {
   approaching,
@@ -1116,7 +1116,7 @@ export default function ChatView(props: {
           // under nobody.
           if (res.profileId !== null) adoptClaim(res.profileId);
           if (res.untrusted && !props.background && noteRefused(props.cwd)) {
-            askToTrust(props.cwd, "This project's own agent settings stay off until you trust it.");
+            void askToTrustUnlessFork(props.cwd, "This project's own agent settings stay off until you trust it.");
           }
           if (res.ownership.type === "granted" && res.ownership.contested) {
             emitWith<ToastEvent>(TOAST, { message: CONTESTED_NOTICE, kind: "error" });
@@ -1133,7 +1133,7 @@ export default function ChatView(props: {
         .catch((e) => {
           const refused = String(e) === UNTRUSTED;
           const message = refused ? "This agent stays off until you trust this project." : String(e);
-          if (refused) askToTrust(props.cwd, message);
+          if (refused) void askToTrustUnlessFork(props.cwd, message);
           edit((s) => applyEvent(s, { type: "sessionError", sessionId: props.sessionId, message, fatal: true }));
           failFirstSend(message);
         });

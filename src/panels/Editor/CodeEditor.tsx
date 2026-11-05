@@ -96,7 +96,7 @@ import { codeLensExtension, setCodeLenses } from "./codeLensWidget";
 import { refreshSemanticTokens, type SemanticDeps } from "./lspSemanticTokens";
 import { semanticHighlight, semanticTokenCount, setSemanticTokens } from "./semanticHighlight";
 import { formatForSave, type FormatDeps, type FormatResult } from "./formatOnSave";
-import { askToTrust, noteRefused, UNTRUSTED } from "../../utils/projectTrust";
+import { askToTrustUnlessFork, noteRefused, UNTRUSTED } from "../../utils/projectTrust";
 import { organizeForSave, type OrganizeDeps } from "./organizeOnSave";
 import { whitespaceEdits, type WhitespaceEdit } from "./whitespaceOnSave";
 import { editsByUri } from "./workspaceEdit";
@@ -804,7 +804,7 @@ export default function CodeEditor(props: {
     // A save says so once a session, or every save would. A format the user
     // asked for by hand always answers, since doing nothing reads as broken.
     if (noteRefused(projectPath) || asked) {
-      askToTrust(projectPath, "Formatters stay off until you trust this project.");
+      void askToTrustUnlessFork(projectPath, "Formatters stay off until you trust this project.");
     }
     return { ...result, error: null };
   }

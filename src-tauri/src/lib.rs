@@ -770,6 +770,7 @@ pub fn run() {
             run::run_stop,
             run::run_list,
             worktree::worktree_not_a_fork,
+            worktree::worktree_fork_marked,
             worktree::prune_worktree_records,
             worktree::remove_worktree_and_branch,
             worktree_cleanup::worktree_cleanup_facts,
