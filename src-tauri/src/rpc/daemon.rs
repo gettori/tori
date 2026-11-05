@@ -857,7 +857,7 @@ impl Dispatch for Daemon {
                 permit(&req.method, self.kind(principal))?;
                 Ok(self.composer.sessions_list(&params(&req.params)?))
             }
-            "session.wait" => {
+            "session.wait" if !matches!(principal, Principal::Session(Caller::Chat(_))) => {
                 permit(&req.method, self.kind(principal))?;
                 self.composer.session_wait(params(&req.params)?)
             }

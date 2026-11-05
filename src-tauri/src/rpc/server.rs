@@ -1160,10 +1160,10 @@ pub trait Backend: Send + Sync {
     fn attempt_new(&self, params: AttemptNewParams) -> Result<Value, RpcError>;
     fn caller(&self, principal: &Principal) -> Result<Value, RpcError>;
     fn session_steer(&self, principal: &Principal, params: SteerParams) -> Result<Value, RpcError>;
-    fn session_wait(&self, params: WaitParams) -> Result<Value, RpcError>;
+    fn session_wait(&self, principal: &Principal, params: WaitParams) -> Result<Value, RpcError>;
     fn session_check(&self, params: CheckParams) -> Result<Value, RpcError>;
     fn session_handoff(&self, principal: &Principal, params: HandoffParams) -> Result<Value, RpcError>;
-    fn session_pending(&self, params: PendingParams) -> Result<Value, RpcError>;
+    fn session_pending(&self, principal: &Principal, params: PendingParams) -> Result<Value, RpcError>;
     fn session_answer(&self, principal: &Principal, params: SessionAnswerParams) -> Result<Value, RpcError>;
     fn session_info(&self, params: InfoParams) -> Result<Value, RpcError>;
     fn session_model(&self, principal: &Principal, params: ModelParams) -> Result<Value, RpcError>;
@@ -1527,14 +1527,11 @@ pub fn handle_first(
 
     let (tx, rx) = sync_channel::<String>(QUEUE_CAP);
     let Ok(closer) = stream.try_clone_box() else { return };
-    let conn = server.hub().register(tx.clone(), Box::new(move || closer.close()));
-    // Tagged before the check, so a revoke either sees this connection or
+    // Registered before the check, so a revoke either sees this connection or
     // removed the device before the check reads it.
-    match &principal {
-        Principal::Device(id) => server.hub().tag_device(conn, id),
-        Principal::Browser(id) => server.hub().tag_browser(conn, id),
-        _ => {}
-    }
+    let conn = server
+        .hub()
+        .register(tx.clone(), Box::new(move || closer.close()), &principal);
     if !credential.holds(&principal) {
         server.hub().remove(conn);
         drop(tx);
@@ -1689,7 +1686,7 @@ pub mod tests {
         fn session_steer(&self, _: &Principal, p: SteerParams) -> Result<Value, RpcError> {
             Ok(json!({ "id": p.id }))
         }
-        fn session_wait(&self, p: WaitParams) -> Result<Value, RpcError> {
+        fn session_wait(&self, _: &Principal, p: WaitParams) -> Result<Value, RpcError> {
             if p.id == SLOW {
                 thread::sleep(Duration::from_millis(800));
             }
@@ -1701,7 +1698,7 @@ pub mod tests {
         fn session_handoff(&self, _: &Principal, p: HandoffParams) -> Result<Value, RpcError> {
             Ok(json!({ "id": p.to }))
         }
-        fn session_pending(&self, p: PendingParams) -> Result<Value, RpcError> {
+        fn session_pending(&self, _: &Principal, p: PendingParams) -> Result<Value, RpcError> {
             if p.id == SLOW {
                 thread::sleep(Duration::from_millis(800));
             }
@@ -2135,9 +2132,8 @@ pub mod tests {
     fn a_hidden_phone_stays_connected_but_stops_attending() {
         let server = stub_server();
         let (tx, _rx) = sync_channel(QUEUE_CAP);
-        let conn = server.hub.register(tx, Box::new(|| {}));
         let phone = Principal::Device("d1".into());
-        server.hub.tag_device(conn, "d1");
+        let conn = server.hub.register(tx, Box::new(|| {}), &phone);
         assert!(server.hub.device_visible(), "a phone connects from the foreground");
         let hide = server.dispatch(conn, &phone, &request("visible", json!({ "visible": false })));
         assert!(hide.is_ok(), "{hide:?}");
@@ -2807,7 +2803,7 @@ pub mod tests {
     fn the_writer_sends_replies_before_a_queued_chat_stream() {
         let hub = Hub::default();
         let (tx, rx) = sync_channel(QUEUE_CAP);
-        let conn = hub.register(tx.clone(), Box::new(|| {}));
+        let conn = hub.register(tx.clone(), Box::new(|| {}), &Principal::Local);
         hub.subscribe(conn, Channel::Chat("s1".into()));
         let chat = hub.chat_outbox(conn).unwrap();
         hub.publish(&Channel::Chat("s1".into()), json!({ "n": 1 }));
