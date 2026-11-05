@@ -744,10 +744,7 @@ pub(crate) fn tree_dirty(worktree: &Path) -> Result<bool, String> {
         return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
     }
     let text = String::from_utf8_lossy(&out.stdout);
-    let shared_canon = worktree
-        .parent()
-        .map(|c| c.join(SHARED_DIR))
-        .and_then(|d| std::fs::canonicalize(d).ok());
+    let shared = shared_target(worktree);
 
     for line in text.lines() {
         if line.is_empty() {
@@ -755,19 +752,8 @@ pub(crate) fn tree_dirty(worktree: &Path) -> Result<bool, String> {
         }
         if let Some(name) = line.strip_prefix("?? ") {
             // An untracked entry: a .shared symlink is not dirt, anything else is.
-            if let Some(ref lc) = shared_canon {
-                let p = worktree.join(name);
-                let is_link = p
-                    .symlink_metadata()
-                    .map(|m| m.file_type().is_symlink())
-                    .unwrap_or(false);
-                if is_link {
-                    if let Ok(target) = std::fs::canonicalize(&p) {
-                        if target.starts_with(lc) {
-                            continue;
-                        }
-                    }
-                }
+            if links_into(&worktree.join(name), shared.as_deref()) {
+                continue;
             }
             return Ok(true);
         }
@@ -775,6 +761,63 @@ pub(crate) fn tree_dirty(worktree: &Path) -> Result<bool, String> {
         return Ok(true);
     }
     Ok(false)
+}
+
+fn shared_target(worktree: &Path) -> Option<PathBuf> {
+    worktree
+        .parent()
+        .and_then(|c| std::fs::canonicalize(shared_dir(c)).ok())
+}
+
+fn links_into(path: &Path, shared: Option<&Path>) -> bool {
+    let Some(shared) = shared else { return false };
+    path.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink())
+        && std::fs::canonicalize(path).is_ok_and(|target| target.starts_with(shared))
+}
+
+// Named by pattern, not every ignored entry, so a monorepo's build output never
+// trains a "Remove anyway" click.
+fn looks_like_work(name: &str) -> bool {
+    name.starts_with(".env")
+        || [".pem", ".key", ".db", ".tfstate"]
+            .iter()
+            .any(|ext| name.ends_with(ext))
+        || name.contains(".sqlite")
+}
+
+pub(crate) fn keeps_no_ignored_work(worktree: &Path) -> Result<(), String> {
+    let kept = ignored_work(worktree)?;
+    if kept.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "This worktree holds ignored files that look like work, which removing it would delete: {}.",
+        kept.join(", ")
+    ))
+}
+
+pub(crate) fn ignored_work(worktree: &Path) -> Result<Vec<String>, String> {
+    let out = crate::exec::git_in(worktree)
+        .args(["status", "--porcelain", "-z", "--ignored=matching"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    let rules = crate::secret_watch::current().0;
+    let shared = shared_target(worktree);
+    let text = String::from_utf8_lossy(&out.stdout);
+    Ok(text
+        .split('\0')
+        .filter_map(|entry| entry.strip_prefix("!! "))
+        .filter(|rel| !rel.ends_with('/'))
+        .filter(|rel| {
+            let name = Path::new(rel).file_name().and_then(|n| n.to_str()).unwrap_or_default();
+            looks_like_work(name) || rules.matches(rel, Some(worktree))
+        })
+        .filter(|rel| !links_into(&worktree.join(rel), shared.as_deref()))
+        .map(str::to_string)
+        .collect())
 }
 
 /// Friendly pre-check before removal (the UI surfaces a clear message). Same
@@ -794,6 +837,7 @@ pub struct WorktreeStatus {
     pub dirty: bool,
     pub unpushed: bool,
     pub has_remote: bool,
+    pub ignored_work: Vec<String>,
 }
 
 /// The `(remote, ref)` a branch pushes to, from its tracking config
@@ -911,6 +955,7 @@ pub(crate) fn worktree_status_body(path: String) -> Result<WorktreeStatus, Strin
         dirty: tree_dirty(p)?,
         unpushed: branch_unpushed(p),
         has_remote,
+        ignored_work: ignored_work(p)?,
     })
 }
 
@@ -967,6 +1012,9 @@ pub(crate) fn branch_status_body(repo: String, branch: String) -> Result<BranchS
 pub(crate) fn do_remove_worktree(repo_path: &str, worktree_path: &str, force: bool) -> Result<(), String> {
     if !force && tree_dirty(Path::new(worktree_path))? {
         return Err("This worktree has uncommitted changes; commit or discard them first.".into());
+    }
+    if !force {
+        keeps_no_ignored_work(Path::new(worktree_path))?;
     }
     let folder = Path::new(worktree_path);
     crate::setup::kill(folder);
@@ -1256,6 +1304,41 @@ mod tests {
         assert!(!ran.exists(), "git in a fork's worktree ran its post-checkout");
         add_worktree_in(repo_str, "own-head", &container, Some(&sha), true).unwrap();
         assert!(ran.exists(), "the hook is real, so the first check means something");
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn removal_refuses_ignored_work_and_lets_build_output_go() {
+        let tmp = unique_tmp();
+        let repo = tmp.join("repo");
+        committed_repo(&repo);
+        std::fs::write(repo.join(".gitignore"), ".env\n.next/\nnode_modules/\n").unwrap();
+        git(&repo, &["add", "."]);
+        git(&repo, &["commit", "-qm", "ignore"]);
+        let repo_s = repo.to_str().unwrap();
+        let add = |name: &str| {
+            let wt = tmp.join(name);
+            git(&repo, &["worktree", "add", "-q", "-b", name, wt.to_str().unwrap()]);
+            for dir in [".next", "node_modules/x"] {
+                std::fs::create_dir_all(wt.join(dir)).unwrap();
+                std::fs::write(wt.join(dir).join("out.js"), "x").unwrap();
+            }
+            wt
+        };
+
+        let built = add("built");
+        assert!(ignored_work(&built).unwrap().is_empty());
+        do_remove_worktree(repo_s, built.to_str().unwrap(), false).unwrap();
+        assert!(!built.exists(), ".next and node_modules go with it");
+
+        let web = add("web");
+        std::fs::create_dir_all(web.join("apps/web")).unwrap();
+        std::fs::write(web.join("apps/web/.env"), "TOKEN=x").unwrap();
+        let err = do_remove_worktree(repo_s, web.to_str().unwrap(), false).unwrap_err();
+        assert!(err.contains("apps/web/.env"), "{err}");
+        assert!(web.join("apps/web/.env").exists());
+        do_remove_worktree(repo_s, web.to_str().unwrap(), true).unwrap();
+        assert!(!web.exists(), "force removes it anyway");
         std::fs::remove_dir_all(&tmp).ok();
     }
 

@@ -2177,6 +2177,7 @@ impl Backend for DaemonBackend {
                 "This worktree has uncommitted changes; commit or discard them first.".into(),
             ));
         }
+        crate::worktree::keeps_no_ignored_work(folder).map_err(refused)?;
         let live = self.composer.sessions_list(&ListParams {
             cwd: Some(params.folder.clone()),
             live: Some(true),

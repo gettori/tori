@@ -192,7 +192,7 @@ export default function UnitScreen(props: {
     const branch = props.unit.branch;
     setAsk({
       title: `Remove worktree \u201c${props.unit.label}\u201d?`,
-      message: `${branch ? `The branch ${branch} stays. ` : ""}A worktree with uncommitted changes or a live session is not removed from the phone.`,
+      message: `${branch ? `The branch ${branch} stays. ` : ""}A worktree with uncommitted changes, ignored files that look like work, or a live session is not removed from the phone.`,
       confirm: "Remove worktree",
       danger: true,
       run: () =>
