@@ -11,7 +11,7 @@ use std::io::{self, Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tungstenite::handshake::server::{ErrorResponse, Request, Response};
 use tungstenite::protocol::frame::coding::CloseCode;
@@ -25,15 +25,23 @@ use super::transport::{Stream, Transport};
 /// cap because only local processes reach it.
 pub const MAX_CONNECTIONS: usize = 8;
 
-// Until the server sets its own auth timeout, a client that opens TCP and says
-// nothing is dropped after this.
-const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
+// Of `MAX_CONNECTIONS`, the most that may be waiting on auth at once, so a
+// stranger on the network cannot hold every slot a paired phone needs.
+const MAX_UNAUTHED: usize = 4;
+
+// From connect to auth, whatever the client sends: a ping each second would
+// otherwise restart a per-read timeout forever.
+const AUTH_DEADLINE: Duration = Duration::from_secs(5);
 
 // The listener is polled rather than woken by a self-connect, which fails once
 // the picked address has left the machine and would leave the port held.
 const ACCEPT_POLL: Duration = Duration::from_millis(100);
 
-type Live = Arc<Mutex<HashMap<u64, Weak<Shared>>>>;
+// The gate sits beside the handle so accept can count waiting connections
+// without upgrading one: a handle dropped there would run `Shared::drop` under
+// the lock it takes.
+type Slots = HashMap<u64, (Weak<Shared>, Arc<Gate>)>;
+type Live = Arc<Mutex<Slots>>;
 
 pub struct WsTransport {
     listener: Mutex<Option<TcpListener>>,
@@ -61,7 +69,7 @@ impl WsTransport {
         self.addr
     }
 
-    fn live(&self) -> MutexGuard<'_, HashMap<u64, Weak<Shared>>> {
+    fn live(&self) -> MutexGuard<'_, Slots> {
         self.live.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
@@ -87,15 +95,16 @@ impl Transport for WsTransport {
             if self.stopping.load(Ordering::SeqCst) {
                 return Ok(None);
             }
-            if live.len() >= MAX_CONNECTIONS {
+            let unauthed = live.values().filter(|(_, gate)| !gate.authed()).count();
+            if live.len() >= MAX_CONNECTIONS || unauthed >= MAX_UNAUTHED {
                 let _ = tcp.shutdown(Shutdown::Both);
                 continue;
             }
             tcp.set_nonblocking(false)?;
-            tcp.set_read_timeout(Some(HANDSHAKE_TIMEOUT))?;
+            tcp.set_read_timeout(Some(AUTH_DEADLINE))?;
             let id = self.next.fetch_add(1, Ordering::Relaxed);
             let stream = WsStream::new(tcp, id, self.live.clone())?;
-            live.insert(id, Arc::downgrade(&stream.0));
+            live.insert(id, (Arc::downgrade(&stream.0), stream.0.gate.clone()));
             return Ok(Some(Box::new(stream)));
         }
     }
@@ -107,7 +116,7 @@ impl Transport for WsTransport {
         let streams: Vec<Arc<Shared>> = {
             let live = self.live();
             self.stopping.store(true, Ordering::SeqCst);
-            live.values().filter_map(Weak::upgrade).collect()
+            live.values().filter_map(|(shared, _)| shared.upgrade()).collect()
         };
         // Outside the lock: the last handle going runs `Shared::drop`, which takes it.
         for shared in streams {
@@ -129,8 +138,48 @@ fn origin_allowed(origin: Option<&str>, dev: bool) -> bool {
     }
 }
 
+struct Gate {
+    deadline: Mutex<Option<Instant>>,
+    idle: Mutex<Option<Duration>>,
+}
+
+impl Gate {
+    fn new() -> Self {
+        Self {
+            deadline: Mutex::new(Some(Instant::now() + AUTH_DEADLINE)),
+            idle: Mutex::new(Some(AUTH_DEADLINE)),
+        }
+    }
+
+    fn authed(&self) -> bool {
+        self.deadline.lock().unwrap_or_else(|e| e.into_inner()).is_none()
+    }
+
+    fn pass(&self) {
+        *self.deadline.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    }
+
+    fn set(&self, tcp: &TcpStream, timeout: Option<Duration>) -> io::Result<()> {
+        *self.idle.lock().unwrap_or_else(|e| e.into_inner()) = timeout;
+        tcp.set_read_timeout(timeout)
+    }
+
+    fn arm(&self, tcp: &TcpStream) -> io::Result<()> {
+        let Some(deadline) = *self.deadline.lock().unwrap_or_else(|e| e.into_inner()) else {
+            return Ok(());
+        };
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return Err(io::ErrorKind::TimedOut.into());
+        }
+        let idle = *self.idle.lock().unwrap_or_else(|e| e.into_inner());
+        tcp.set_read_timeout(Some(idle.map_or(left, |idle| idle.min(left))))
+    }
+}
+
 struct Shared {
     tcp: TcpStream,
+    gate: Arc<Gate>,
     // Until the upgrade, a write would put a frame on a connection that is
     // still plain HTTP.
     upgraded: AtomicBool,
@@ -192,10 +241,12 @@ impl Read for Out {
 struct Io<'a> {
     tcp: &'a mut TcpStream,
     out: &'a mut Out,
+    gate: &'a Gate,
 }
 
 impl Read for Io<'_> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.gate.arm(self.tcp)?;
         self.tcp.read(buf)
     }
 }
@@ -245,6 +296,7 @@ impl WsStream {
         };
         Ok(Self(Arc::new(Shared {
             tcp,
+            gate: Arc::new(Gate::new()),
             upgraded: AtomicBool::new(false),
             closing: AtomicBool::new(false),
             reader: Mutex::new(reader),
@@ -278,7 +330,7 @@ impl WsStream {
         let _ = self.0.tcp.shutdown(Shutdown::Both);
     }
 
-    fn handshake(reader: &mut Reader) -> io::Result<()> {
+    fn handshake(reader: &mut Reader, gate: &Gate) -> io::Result<()> {
         #[allow(
             clippy::result_large_err,
             reason = "tungstenite's handshake callback signature fixes the error type"
@@ -293,7 +345,12 @@ impl WsStream {
         };
         // A browser waits for the 101 before it sends a frame, so nothing is
         // left buffered behind the request when the handshake hands back.
-        tungstenite::accept_hdr(reader.tcp.try_clone()?, from_the_app).map_err(|e| io::Error::other(e.to_string()))?;
+        let io = Io {
+            tcp: &mut reader.tcp,
+            out: &mut reader.out,
+            gate,
+        };
+        tungstenite::accept_hdr(io, from_the_app).map_err(|e| io::Error::other(e.to_string()))?;
         reader.ctx = Some(WebSocketContext::new(Role::Server, Some(config())));
         Ok(())
     }
@@ -303,7 +360,7 @@ impl Read for WsStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let mut reader = self.0.reader.lock().unwrap_or_else(|e| e.into_inner());
         if reader.ctx.is_none() {
-            Self::handshake(&mut reader)?;
+            Self::handshake(&mut reader, &self.0.gate)?;
             self.0.upgraded.store(true, Ordering::SeqCst);
         }
         while reader.rest_of_line.is_empty() {
@@ -314,7 +371,8 @@ impl Read for WsStream {
                 rest_of_line,
             } = &mut *reader;
             let ctx = ctx.as_mut().expect("handshake done above");
-            match ctx.read(&mut Io { tcp, out }) {
+            let gate = &self.0.gate;
+            match ctx.read(&mut Io { tcp, out, gate }) {
                 Ok(Message::Text(text)) => {
                     // A line break is whitespace between JSON tokens and is
                     // escaped inside strings, so a pretty-printed request stays one line.
@@ -333,7 +391,7 @@ impl Read for WsStream {
                     // `ConnectionClosed` before flushing the stream, so `out` is
                     // flushed here or the reply never leaves.
                     self.0.closing.store(true, Ordering::SeqCst);
-                    let _ = ctx.flush(&mut Io { tcp, out });
+                    let _ = ctx.flush(&mut Io { tcp, out, gate });
                     let _ = out.flush();
                     return Ok(0);
                 }
@@ -375,7 +433,10 @@ impl Stream for WsStream {
         Ok(Box::new(self.clone()))
     }
     fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
-        self.0.tcp.set_read_timeout(timeout)
+        self.0.gate.set(&self.0.tcp, timeout)
+    }
+    fn authed(&self) {
+        self.0.gate.pass();
     }
     fn close(&self) {
         self.close_with(CloseCode::Normal);
@@ -555,6 +616,54 @@ mod tests {
         let front = front(Duration::from_millis(200));
         let mut silent = TcpStream::connect(front.transport.addr()).unwrap();
         assert!(closed(&mut silent, Duration::from_secs(2)));
+    }
+
+    #[test]
+    fn a_client_that_pings_but_never_authenticates_is_closed_at_the_deadline() {
+        let front = front(Duration::from_secs(5));
+        let mut client = connect(&front).unwrap();
+        if let tungstenite::stream::MaybeTlsStream::Plain(tcp) = client.get_ref() {
+            tcp.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
+        }
+        let started = Instant::now();
+        let closed_after = loop {
+            assert!(started.elapsed() < Duration::from_secs(10), "still open after 10 s");
+            if client.send(Message::Ping("still here".into())).is_err() {
+                break started.elapsed();
+            }
+            match client.read() {
+                Ok(Message::Close(_)) | Err(WsError::ConnectionClosed | WsError::AlreadyClosed) => {
+                    break started.elapsed()
+                }
+                Err(WsError::Io(e)) if e.kind() != io::ErrorKind::WouldBlock && e.kind() != io::ErrorKind::TimedOut => {
+                    break started.elapsed()
+                }
+                _ => {}
+            }
+        };
+        assert!(
+            closed_after >= Duration::from_secs(4) && closed_after < Duration::from_secs(7),
+            "closed after {closed_after:?}"
+        );
+    }
+
+    #[test]
+    fn a_fifth_unauthenticated_connection_is_refused_and_an_authed_one_keeps_working() {
+        let front = front(Duration::from_secs(5));
+        let mut device = authed(&front);
+        let _waiting: Vec<TcpStream> = (0..MAX_UNAUTHED)
+            .map(|_| TcpStream::connect(front.transport.addr()).unwrap())
+            .collect();
+        assert!(wait_for(|| front.transport.live().len() == 1 + MAX_UNAUTHED));
+        let mut fifth = TcpStream::connect(front.transport.addr()).unwrap();
+        assert!(
+            closed(&mut fifth, Duration::from_secs(1)),
+            "past the fourth is closed at accept"
+        );
+        assert_eq!(
+            call(&mut device, 1, "sessions.list", json!({}))["result"][0]["id"],
+            json!("s1")
+        );
     }
 
     #[test]

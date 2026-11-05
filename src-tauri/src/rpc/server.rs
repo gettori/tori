@@ -1523,6 +1523,7 @@ pub fn handle_first(
             return;
         }
     };
+    stream.authed();
     let _ = stream.set_read_timeout(None);
 
     let (tx, rx) = sync_channel::<String>(QUEUE_CAP);
