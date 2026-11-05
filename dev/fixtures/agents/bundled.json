@@ -133,7 +133,7 @@
             "auto"
           ],
           "requires": "supportsAutoMode",
-          "permissive": false,
+          "permissive": true,
           "default": false
         },
         {

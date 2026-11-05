@@ -1794,6 +1794,25 @@ pub fn find(id: &str) -> Option<AgentAdapter> {
     registry().iter().find(|a| a.id == id).cloned()
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModeFreedom {
+    Asks,
+    Permissive,
+    // No pack row names it, such as a mode an ACP agent sends on its handshake.
+    Unnamed,
+}
+
+pub fn mode_freedom(agent: &str, mode: &str) -> ModeFreedom {
+    let row = find(agent)
+        .and_then(|a| a.chat)
+        .and_then(|chat| chat.modes.into_iter().find(|m| m.id == mode));
+    match row {
+        Some(m) if m.permissive => ModeFreedom::Permissive,
+        Some(_) => ModeFreedom::Asks,
+        None => ModeFreedom::Unnamed,
+    }
+}
+
 /// Substitute `{id}`/`{file}` placeholders in an arg template.
 ///
 /// Test-only for now: every live caller goes through `apply_chat_template`,
@@ -3068,7 +3087,16 @@ sources = ["sessions", "token"]
             .filter(|m| m.permissive)
             .map(|m| m.id.as_str())
             .collect();
-        assert_eq!(permissive, vec!["bypassPermissions"]);
+        assert_eq!(permissive, vec!["auto", "bypassPermissions"]);
+        assert_eq!(mode_freedom("claude", "auto"), ModeFreedom::Permissive);
+        assert_eq!(mode_freedom("claude", "dontAsk"), ModeFreedom::Asks);
+        assert_eq!(mode_freedom("claude", "default"), ModeFreedom::Asks);
+        assert_eq!(mode_freedom("claude", "yolo"), ModeFreedom::Unnamed);
+        assert_eq!(
+            mode_freedom("codex", "agent-full-access"),
+            ModeFreedom::Unnamed,
+            "ACP modes have no pack row"
+        );
 
         // No effort table any more: the levels are the agent's per model, and
         // `effort_args` says only how to spell whichever ones it names.
