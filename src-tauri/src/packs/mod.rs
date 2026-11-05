@@ -4,6 +4,7 @@
 pub mod catalog;
 pub mod index_rows;
 pub mod installed;
+pub mod link;
 pub mod manage;
 pub mod migrate;
 pub mod provenance;
@@ -448,6 +449,14 @@ pub fn check_id(id: &str, source: &str) -> Result<(), String> {
             "{source}: id `{id}` must be lowercase letters, digits, `.`, `_` or `-`, starting with a letter or digit"
         ))
     }
+}
+
+/// What `check_id` lets a pack id be, less the dot and the underscore: the
+/// catalog's rows and the links that name them hold to this.
+pub fn is_catalog_id(id: &str) -> bool {
+    static ID: OnceLock<regex::Regex> = OnceLock::new();
+    ID.get_or_init(|| regex::Regex::new(r"^[a-z0-9-]+$").unwrap())
+        .is_match(id)
 }
 
 /// The file a pack lives in is named after its id. `source` is a path, or
