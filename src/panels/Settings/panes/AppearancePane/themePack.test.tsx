@@ -10,6 +10,7 @@ import { loadWorkspaceSettings } from "../../settingsStore";
 import { listThemes } from "../../../../theme/bundled";
 import { publishUserThemes } from "../../../../theme/userThemes";
 import { unstubbed } from "../../../../test/settingsBackend";
+import { setAppearance } from "../../components/paneKit";
 
 beforeEach(async () => {
   invoke.mockReset();
@@ -21,7 +22,7 @@ beforeEach(async () => {
 afterEach(() => publishUserThemes({ themes: [], errors: [] }));
 
 describe("a catalog theme on the Appearance pane", () => {
-  it("offers Update pack and Remove pack", async () => {
+  it("offers Update pack and Remove pack on the selected theme", async () => {
     const palette = { ...listThemes()[0].palette, id: "nord", label: "Nord" };
     publishUserThemes({
       themes: [
@@ -33,6 +34,7 @@ describe("a catalog theme on the Appearance pane", () => {
       ],
       errors: [],
     });
+    await setAppearance({ theme: "nord" });
     render(() => <AppearancePane shown={() => true} query="" />);
 
     fireEvent.click(await waitFor(() => screen.getByLabelText("Update the Nord pack")));

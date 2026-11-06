@@ -75,6 +75,10 @@ export default function AppearancePane(props: PaneProps) {
   // longer exists, which reads as "no theme" rather than "that one is gone".
   const currentTheme = () =>
     themes().some((t) => t.id === settings.appearance.theme) ? settings.appearance.theme : DEFAULT_THEME_ID;
+  // Only the theme on screen gets Update and Remove: one row cannot hold a set
+  // of controls per installed theme.
+  const selectedPack = () =>
+    listUserThemes().find((t) => t.id === currentTheme() && t.provenance?.source === "catalog");
 
   return (
     <>
@@ -97,25 +101,14 @@ export default function AppearancePane(props: PaneProps) {
               onChange={(value) => setAppearance({ theme: value })}
               aria-labelledby={rowLabelId("theme")}
             />
-            <For each={listUserThemes()}>
-              {(t) => (
-                <Show when={t.provenance}>
-                  {(p) => (
-                    <>
-                      <CatalogConflict provenance={p()} id={t.id} />
-                      <Show when={p().source === "catalog"}>
-                        <div class={styles.toolMeta}>
-                          {t.label}
-                          <PackControls kind="themes" id={t.id} label={t.label} provenance={p()} />
-                        </div>
-                      </Show>
-                    </>
-                  )}
-                </Show>
-              )}
-            </For>
+            <Show when={selectedPack()}>
+              {(t) => <PackControls kind="themes" id={t().id} label={t().label} provenance={t().provenance!} />}
+            </Show>
           </div>
         </Row>
+        <For each={listUserThemes()}>
+          {(t) => <Show when={t.provenance}>{(p) => <CatalogConflict provenance={p()} id={t.id} />}</Show>}
+        </For>
         <Row {...props} id="zoom" label="Zoom">
           {/* Percent in the field, a multiplier in the store. Both the row and
               the hotkeys go through `setZoom`, which clamps and persists, so the
