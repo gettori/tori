@@ -5260,6 +5260,7 @@ diff --git a/f b/f
             is_current: false,
             issue: None,
             made_by: None,
+            operation: None,
         }
     }
 

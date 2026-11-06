@@ -229,6 +229,7 @@ impl ForgeUnit {
             is_current: self.is_current,
             issue: None,
             made_by: None,
+            operation: None,
         }
     }
 }

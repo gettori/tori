@@ -37,6 +37,13 @@
     fill: currentColor;
   }
 
+  /* A rebase, merge, cherry-pick or revert stopped here. Static on purpose:
+     the pulse already means an agent is mid-turn, and a stopped rebase is
+     exactly when nothing moves. After the current rule, which it outranks. */
+  .mark[data-operation="true"] {
+    color: var(--attention-fg);
+  }
+
   /* A `.bare` with no worktrees: the branches are there, the working folder is
      not, so the outline that would be that folder is drawn as a gap rather than
      a line. Only the base outline - the pulse traces the same path with a
