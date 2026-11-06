@@ -347,8 +347,9 @@ pub fn packs_reload(app: tauri::AppHandle, kind: Kind) {
     let _ = app.emit(CHANGED, kind);
 }
 
-/// Delete a pack Tori recorded and the record with it, then reload its kind.
-/// A file Tori never recorded is the user's own, and is theirs to delete.
+/// Delete a pack Tori recorded, Tori's own copy of its server or adapter, and
+/// the record, then reload its kind. A file Tori never recorded is the user's
+/// own, and is theirs to delete.
 #[tauri::command(async)]
 pub fn packs_remove(
     app: tauri::AppHandle,
@@ -358,13 +359,24 @@ pub fn packs_remove(
 ) -> Result<(), String> {
     use tauri::Emitter;
     manage::check_idle(kind, &id, |id| lsp.runs(id))?;
-    remove_at(&dir(), kind, &id)?;
+    remove_at(&dir(), kind, &id, |id| match kind {
+        Kind::Lsp => crate::lsp::managed::remove(&crate::lsp::managed::servers_dir(), id),
+        Kind::Dap => crate::lsp::managed::remove(&crate::dap::managed::debuggers_dir(), id),
+        _ => Ok(()),
+    })?;
     reload(kind);
     let _ = app.emit(CHANGED, kind);
     Ok(())
 }
 
-fn remove_at(packs: &Path, kind: Kind, id: &str) -> Result<(), String> {
+// The download goes before the pack file: a download left behind by a failed
+// removal would have no card left to remove it from.
+fn remove_at(
+    packs: &Path,
+    kind: Kind,
+    id: &str,
+    remove_download: impl FnOnce(&str) -> Result<(), String>,
+) -> Result<(), String> {
     check_id(id, "packs_remove")?;
     let record_path = packs.join(installed::FILE);
     if installed::read_at(&record_path)?.find(kind, id).is_none() {
@@ -372,6 +384,7 @@ fn remove_at(packs: &Path, kind: Kind, id: &str) -> Result<(), String> {
             "`{id}` is not a pack Tori installed, so it is yours to delete by hand"
         ));
     }
+    remove_download(id)?;
     let mut files = vec![packs.join(kind.folder()).join(format!("{id}.{}", kind.ext()))];
     if kind == Kind::Agents {
         files.push(icon_path(packs, id));

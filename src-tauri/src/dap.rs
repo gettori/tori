@@ -56,7 +56,7 @@ use tauri::{AppHandle, Manager, State};
 use crate::env::augmented_path;
 
 mod cargo;
-mod managed;
+pub(crate) mod managed;
 pub mod registry;
 
 use registry::{DapAdapter, Install, Launch, Resolve};
