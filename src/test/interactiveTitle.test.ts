@@ -119,6 +119,7 @@ const KEPT = new Map<string, Kept>([
   ["components/Dialogs/DebugTargetDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/TopicWorktreeSweepDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/ConvertLayoutDialog.tsx", { count: 1, reason: HEADING }],
+  ["components/Dialogs/RestoreWorktreeDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/InitGitDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/NewTopicDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/MoveToTopicDialog.tsx", { count: 1, reason: HEADING }],
@@ -139,8 +140,8 @@ const KEPT = new Map<string, Kept>([
   [
     "components/Dialogs/WorktreeRemoveDialog.tsx",
     {
-      count: 3,
-      reason: `${HEADING}, plus two of ${TRUNCATION}: the worktree path, and the ignored work it would delete`,
+      count: 4,
+      reason: `${HEADING}, plus three of ${TRUNCATION}: the worktree path, and the ignored and too large files it would delete`,
     },
   ],
   ["components/Dialogs/stackedDialogs.test.tsx", { count: 1, reason: FIXTURE }],
@@ -405,7 +406,7 @@ const KEPT = new Map<string, Kept>([
  *
  *  **Down one** with a sent prompt's file chip, which previews like the
  *  composer's instead of carrying its path. */
-const RAW_ELEMENT_TITLES = 76;
+const RAW_ELEMENT_TITLES = 77;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. The Changes
  *  panel's stash row is one: a click expands it to its files. */
@@ -549,7 +550,7 @@ describe("the title= guard", () => {
       // for the project settings tab's path, and one for the run command row's
       // running mark. Down one: a sent prompt's chip previews its attachment
       // now, the way the composer's does, instead of naming its path.
-      span: 59,
+      span: 60,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });
