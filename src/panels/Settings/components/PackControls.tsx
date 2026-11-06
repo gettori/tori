@@ -13,6 +13,7 @@ export default function PackControls(props: {
   label: string;
   provenance: Provenance;
   blocked?: () => string | null;
+  onRemove?: () => void;
 }) {
   const [busy, setBusy] = createSignal(false);
   const run = (command: "packs_update" | "packs_remove") => {
@@ -45,7 +46,7 @@ export default function PackControls(props: {
         tooltip="Remove pack"
         aria-label={`Remove the ${props.label} pack`}
         disabled={busy()}
-        onClick={() => run("packs_remove")}
+        onClick={() => (props.onRemove ? props.onRemove() : run("packs_remove"))}
       />
     </Show>
   );

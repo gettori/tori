@@ -56,6 +56,10 @@ function DapCard(props: { adapter: DapHealth; onChange: () => Promise<DapHealth[
     onChange: () => props.onChange(),
     install: (adapterId) => invoke("dap_install", { adapterId }),
     remove: (adapterId) => invoke("dap_uninstall", { adapterId }),
+    pack: {
+      is: () => a().provenance.source === "catalog",
+      remove: () => invoke("packs_remove", { kind: "dap", id: a().id }),
+    },
   });
   // Kept here because `dap_health` is not asked again after a save.
   const [turnedOff, setTurnedOff] = createSignal<boolean | null>(null);
@@ -83,7 +87,13 @@ function DapCard(props: { adapter: DapHealth; onChange: () => Promise<DapHealth[
             <Toggle checked={!off()} aria-label={`Use ${a().label}`} onChange={use} />
           </Show>
           <actions.Controls />
-          <PackControls kind="dap" id={a().id} label={a().label} provenance={a().provenance} />
+          <PackControls
+            kind="dap"
+            id={a().id}
+            label={a().label}
+            provenance={a().provenance}
+            onRemove={actions.removePack()}
+          />
         </span>
       </div>
       <code class={styles.toolProgram}>{a().program}</code>

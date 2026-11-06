@@ -41,6 +41,7 @@ export function createToolActions(opts: {
   remove: (id: string) => Promise<unknown>;
   onHintInstalled?: (id: string) => void;
   uninstallNote?: () => string;
+  pack?: { is: () => boolean; remove: () => Promise<unknown> };
 }) {
   const t = opts.tool;
   const [pending, setPending] = createSignal<"install" | "remove" | null>(null);
@@ -51,6 +52,7 @@ export function createToolActions(opts: {
     t().installedVersion !== null && t().availableVersion !== null && t().installedVersion !== t().availableVersion;
   const installable = () => t().installedVersion === null && t().status === "notFound" && t().availableVersion !== null;
   const command = () => (t().status === "notFound" ? commandIn(t().hint) : null);
+  const packed = () => opts.pack?.is() ?? false;
 
   const runCommand = async (verb: Verb, line: string) => {
     setConfirming(false);
@@ -69,6 +71,11 @@ export function createToolActions(opts: {
   // from the answer rather than from this card.
   const finished = async (verb: Verb, state: JobState) => {
     if (state !== "ok") return;
+    if (verb === "uninstall" && opts.pack && packed()) {
+      await opts.pack
+        .remove()
+        .catch((e) => emitWith<ToastEvent>(TOAST, { message: `Could not remove the ${t().label} pack: ${String(e)}` }));
+    }
     const { id, label, program } = t();
     if (verb === "install") opts.onHintInstalled?.(id);
     const now = (await opts.onChange())?.find((x) => x.id === id);
@@ -146,7 +153,7 @@ export function createToolActions(opts: {
           onClick={() => run("update")}
         />
       </Show>
-      <Show when={t().uninstall}>
+      <Show when={!packed() && t().uninstall}>
         <IconButton
           size="sm"
           icon={<Icon icon={Trash2} />}
@@ -155,7 +162,7 @@ export function createToolActions(opts: {
           onClick={() => setConfirming(true)}
         />
       </Show>
-      <Show when={t().installedVersion}>
+      <Show when={!packed() && t().installedVersion}>
         <IconButton
           size="sm"
           icon={<Icon icon={Trash2} />}
@@ -187,9 +194,14 @@ export function createToolActions(opts: {
       {(cmd) => (
         <ConfirmDialog
           danger
-          title={`Uninstall ${t().label}?`}
-          message={[`Runs ${cmd()} in a terminal here.`, opts.uninstallNote?.()].filter(Boolean).join(" ")}
-          confirmLabel="Uninstall"
+          title={packed() ? `Remove ${t().label}?` : `Uninstall ${t().label}?`}
+          message={[
+            packed() ? `Runs ${cmd()} in a terminal here, then removes the pack.` : `Runs ${cmd()} in a terminal here.`,
+            opts.uninstallNote?.(),
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          confirmLabel={packed() ? "Remove" : "Uninstall"}
           onConfirm={() => void runCommand("uninstall", cmd())}
           onCancel={() => setConfirming(false)}
         />
@@ -197,5 +209,10 @@ export function createToolActions(opts: {
     </Show>
   );
 
-  return { pending, job, outdated, installable, command, Controls, Job, Confirm };
+  // A pack whose server came from the user's own toolchain runs its uninstall
+  // first, and is removed once that succeeds, since removing it first would
+  // take the card running the job away.
+  const removePack = () => (t().uninstall && packed() ? () => setConfirming(true) : undefined);
+
+  return { pending, job, outdated, installable, command, packed, removePack, Controls, Job, Confirm };
 }
