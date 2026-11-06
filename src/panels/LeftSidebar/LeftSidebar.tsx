@@ -1643,7 +1643,10 @@ export default function LeftSidebar(props: {
       const repos = listed.flatMap((g) =>
         g.projects.filter((p) => !["plain-dir", "converting"].includes(projectUnitKind(p) ?? "")).map((p) => p.path),
       );
-      invoke<Record<string, number>>("rescue_counts", { repos }).then(setRescueCounts, () => {});
+      invoke<Record<string, number> | null>("rescue_counts", { repos }).then(
+        (counts) => setRescueCounts(counts ?? {}),
+        () => {},
+      );
       void syncUnits(listed.flatMap((g) => g.projects.flatMap((p) => p.branchUnits)));
       // Seed the adopted set from the first real discovery (idempotent, and a
       // no-op on empty), so existing folders are never flagged historical.
