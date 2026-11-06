@@ -26,6 +26,8 @@ import {
   type ContractPatch,
 } from "../../../../utils/autopilotContracts";
 import ProjectContract from "./ProjectContract";
+import { issueRepos } from "../../../../utils/issues";
+import { ISSUE_REPOS_CHANGED, onWith, type IssueReposChanged } from "../../../../utils/events";
 
 /** One project's contract, read and saved through Rust, with the worker model
  *  picker wired to the agent catalogue. */
@@ -49,6 +51,15 @@ export default function ProjectContractEditor(props: { project: string; onDirty?
     }),
   );
 
+  const [repos, { refetch: rereadRepos }] = createResource(
+    () => props.project,
+    (path) => issueRepos(path).then((r) => r.effective),
+  );
+  onCleanup(
+    onWith<IssueReposChanged>(ISSUE_REPOS_CHANGED, (e) => {
+      if (sameFolder(e.path, props.project)) void rereadRepos();
+    }),
+  );
   const [contracts, { mutate }] = createResource(() => loadContracts().catch(() => ({})));
   const contract = () => contractFor(contracts() ?? {}, props.project);
   // Rust keys a project by the first spelling it saw, so any other spelling of this folder goes.
@@ -78,6 +89,7 @@ export default function ProjectContractEditor(props: { project: string; onDirty?
       project={props.project}
       onDirty={props.onDirty}
       contract={contract()}
+      repos={repos() ?? []}
       onSet={setFor(props.project)}
       workersOn={(set) => (
         <ModelPicker

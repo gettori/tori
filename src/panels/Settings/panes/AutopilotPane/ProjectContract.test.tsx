@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vite-plus/test";
 import { render, screen, fireEvent, waitFor, within } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
 import ProjectContract from "./ProjectContract";
+import { pointerClick } from "../../../../test/menus";
 import { DEFAULT_CONTRACT, type Contract, type ContractPatch } from "../../../../utils/autopilotContracts";
 
 const saved: Contract = {
@@ -19,18 +20,29 @@ const saved: Contract = {
   ],
 };
 
-// Stands in for Rust: a save lands in the contract, a bad repo is refused with its sentence.
-function open(initial: Contract = DEFAULT_CONTRACT) {
+function open(initial: Contract = DEFAULT_CONTRACT, repos = ["gettori/tori", "gettori/tickets"]) {
   const [contract, setContract] = createSignal(initial);
   const onSet = vi.fn(async (patch: ContractPatch) => {
-    if (patch.issues?.some((q) => !/^[^/\s]+\/[^/\s]+$/.test(q.repo)))
-      throw `an issue source's repo must be owner/name, not "${patch.issues.find((q) => !q.repo.includes("/"))?.repo}"`;
+    const off = patch.issues?.find((q) => !repos.includes(q.repo));
+    if (off) throw `${off.repo} is not one of this project's issue repos`;
     setContract((prev) => ({ ...prev, ...patch }));
   });
   render(() => (
-    <ProjectContract project="/s/tori" contract={contract()} onSet={onSet} workersOn={() => <span>picker</span>} />
+    <ProjectContract
+      project="/s/tori"
+      contract={contract()}
+      repos={repos}
+      onSet={onSet}
+      workersOn={() => <span>picker</span>}
+    />
   ));
   return { onSet, setContract };
+}
+
+async function pickRepo(label: string, repo: string) {
+  pointerClick(screen.getByLabelText(label));
+  await screen.findByRole("listbox");
+  pointerClick(screen.getByRole("option", { name: repo }));
 }
 
 // Each choice is a segmented strip named after its question, so a choice is
@@ -60,7 +72,8 @@ describe("ProjectContract", () => {
     const save = screen.getByRole("button", { name: "Save sources" });
     expect(save.hasAttribute("disabled")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Add source" }));
-    type("Source 1 repo", "gettori/tickets");
+    expect(screen.getByLabelText("Source 1 repo").textContent).toContain("gettori/tori");
+    await pickRepo("Source 1 repo", "gettori/tickets");
     type("Source 1 labels", "block 1, effort: easy");
     type("Source 1 exclude labels", "discuss");
     type("Source 1 milestone", "Phase 1: Mac and Android");
@@ -91,21 +104,21 @@ describe("ProjectContract", () => {
         .getByRole("button", { name: "Local branch only" })
         .getAttribute("aria-pressed"),
     ).toBe("true");
-    expect((screen.getByLabelText("Source 1 repo") as HTMLInputElement).value).toBe("gettori/tickets");
+    expect(screen.getByLabelText("Source 1 repo").textContent).toContain("gettori/tickets");
     expect((screen.getByLabelText("Source 1 milestone") as HTMLInputElement).value).toBe("Phase 1: Mac and Android");
     fireEvent.click(screen.getByRole("button", { name: "Remove source" }));
     fireEvent.click(screen.getByRole("button", { name: "Save sources" }));
     await waitFor(() => expect(onSet).toHaveBeenCalledWith({ issues: [] }));
   });
 
-  it("keeps a refused source as typed and says why", async () => {
-    const { onSet } = open();
-    fireEvent.click(screen.getByRole("button", { name: "Add source" }));
-    type("Source 1 repo", "gettori");
+  it("keeps a source whose repo left the list and says why it was refused", async () => {
+    const { onSet } = open(saved, ["gettori/tori"]);
+    expect(screen.getByLabelText("Source 1 repo").textContent).toContain("gettori/tickets");
+    type("Source 1 milestone", "Phase 2");
     fireEvent.click(screen.getByRole("button", { name: "Save sources" }));
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain('must be owner/name, not "gettori"');
+    expect(alert.textContent).toContain("gettori/tickets is not one of this project's issue repos");
     expect(onSet).toHaveBeenCalledTimes(1);
-    expect((screen.getByLabelText("Source 1 repo") as HTMLInputElement).value).toBe("gettori");
+    expect(screen.getByLabelText("Source 1 repo").textContent).toContain("gettori/tickets");
   });
 });

@@ -1,7 +1,7 @@
 import { createEffect, createSignal, For, on, Show } from "solid-js";
 
 import Button from "../../components/Button/Button";
-import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
+import { emitWith, ISSUE_REPOS_CHANGED, TOAST, type IssueReposChanged, type ToastEvent } from "../../utils/events";
 import {
   errorText,
   issueRepoAccess,
@@ -74,6 +74,7 @@ export default function IssuesSection(props: { projectPath: string; onDirty?: (d
     setBusy(true);
     try {
       show(await setIssueRepos(props.projectPath, draft()));
+      emitWith<IssueReposChanged>(ISSUE_REPOS_CHANGED, { path: props.projectPath });
     } catch (e) {
       toast(errorText(e));
     } finally {
