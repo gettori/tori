@@ -1639,6 +1639,50 @@ impl DaemonBackend {
         others
     }
 
+    fn chat_ask(
+        &self,
+        session: &str,
+        question: String,
+        options: Option<Vec<String>>,
+        approval: Option<Approval>,
+        item: Option<String>,
+        timeout: Option<u64>,
+    ) -> Result<Value, RpcError> {
+        if let Some(item) = &item {
+            if approval.is_none() {
+                return Err(RpcError::new(
+                    INVALID_PARAMS,
+                    "item goes with an approval: only an approval holds an item up",
+                ));
+            }
+            if !self.autopilot.has(item) {
+                return Err(RpcError::new(INVALID_PARAMS, format!("no autopilot item {item}")));
+            }
+        }
+        let mirror = self.desk.states.root_background(session);
+        let ask = self.asks.create(
+            session.to_string(),
+            question,
+            options.unwrap_or_default(),
+            approval,
+            mirror,
+            item,
+        );
+        self.desk.ui.emit(super::asks::SHOW_EVENT, &ask);
+        self.chats.host.publish(
+            session,
+            "session.question",
+            json!({
+                "ask_id": ask.id,
+                "questions": [{
+                    "question": ask.question,
+                    "options": ask.options.iter().map(|label| json!({ "label": label })).collect::<Vec<_>>(),
+                }],
+            }),
+        );
+        self.wait_for_answer(&ask.id, timeout)
+    }
+
     fn project(&self, principal: &Principal, given: Option<String>) -> Result<String, RpcError> {
         let callers = || {
             self.identity(principal)
@@ -1815,15 +1859,10 @@ impl DaemonBackend {
     // otherwise promote with nobody waiting on it.
     fn ask_for_worktree(&self, session: &str, question: &str, timeout: Option<u64>) -> Result<bool, String> {
         const YES: &str = "Create worktree";
-        let params = AskParams {
-            question: question.to_string(),
-            options: Some(vec![YES.to_string(), "Not now".to_string()]),
-            timeout,
-            approval: None,
-            project: None,
-            item: None,
-        };
-        let answered = self.ask_create(session, params).map_err(|e| e.message)?;
+        let options = Some(vec![YES.to_string(), "Not now".to_string()]);
+        let answered = self
+            .chat_ask(session, question.to_string(), options, None, None, timeout)
+            .map_err(|e| e.message)?;
         match answered["answer"].as_str() {
             Some(answer) => Ok(answer == YES),
             None => {
@@ -2902,11 +2941,10 @@ impl Backend for DaemonBackend {
         }))
     }
 
-    fn ask_create(&self, session: &str, params: AskParams) -> Result<Value, RpcError> {
-        let principal = Principal::Session(Caller::Chat(session.to_string()));
+    fn ask_create(&self, principal: &Principal, params: AskParams) -> Result<Value, RpcError> {
         let approval = match params.approval {
             Some(draft) => Some(Approval {
-                project: self.project(&principal, params.project)?,
+                project: self.project(principal, params.project)?,
                 draft,
             }),
             None => None,
@@ -2914,38 +2952,37 @@ impl Backend for DaemonBackend {
         if let Some(approval) = &approval {
             postable(approval, crate::forge::commands::pr_view)?;
         }
-        if let Some(item) = &params.item {
-            if approval.is_none() {
+        let (asker, surface) = match principal {
+            Principal::Session(Caller::Chat(session)) => {
+                return self.chat_ask(
+                    session,
+                    params.question,
+                    params.options,
+                    approval,
+                    params.item,
+                    params.timeout,
+                )
+            }
+            Principal::Session(Caller::Terminal(tab)) => (tab.clone(), super::asks::Surface::Tab(tab.clone())),
+            Principal::Local => (super::asks::OUTSIDE_ASKER.to_string(), super::asks::Surface::Window),
+            _ => {
                 return Err(RpcError::new(
-                    INVALID_PARAMS,
-                    "item goes with an approval: only an approval holds an item up",
-                ));
+                    INTERNAL_ERROR,
+                    "ask.create reached with a caller its row does not admit",
+                ))
             }
-            if !self.autopilot.has(item) {
-                return Err(RpcError::new(INVALID_PARAMS, format!("no autopilot item {item}")));
-            }
+        };
+        let Some(approval) = approval else {
+            return Err(RpcError::new(REFUSED, super::table::ASK_OUTSIDE_A_CHAT));
+        };
+        if params.item.is_some() {
+            return Err(RpcError::new(
+                INVALID_PARAMS,
+                "item goes with a chat's approval: only a chat holds an item up",
+            ));
         }
-        let mirror = self.desk.states.root_background(session);
-        let ask = self.asks.create(
-            session.to_string(),
-            params.question,
-            params.options.unwrap_or_default(),
-            approval,
-            mirror,
-            params.item,
-        );
+        let ask = self.asks.create_approval(asker, params.question, approval, surface);
         self.desk.ui.emit(super::asks::SHOW_EVENT, &ask);
-        self.chats.host.publish(
-            session,
-            "session.question",
-            json!({
-                "ask_id": ask.id,
-                "questions": [{
-                    "question": ask.question,
-                    "options": ask.options.iter().map(|label| json!({ "label": label })).collect::<Vec<_>>(),
-                }],
-            }),
-        );
         self.wait_for_answer(&ask.id, params.timeout)
     }
 
@@ -4715,6 +4752,7 @@ mod tests {
             approval: None,
             shown_in: Vec::new(),
             item: None,
+            surface: super::super::asks::Surface::Chat,
         };
         let question = crate::chat::model::ChatQuestion {
             question: "Which one?".into(),

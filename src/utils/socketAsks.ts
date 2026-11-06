@@ -27,6 +27,8 @@ export type SocketAsk = {
   shown_in?: string[];
   // The autopilot item an approval is for, which makes it a hold.
   item?: string;
+  // Absent from a build older than cards outside a chat, where it was always a chat.
+  surface?: { kind: "chat" } | { kind: "tab"; id: string } | { kind: "window" };
 };
 
 const [asks, setAsks] = createSignal<SocketAsk[]>([]);
@@ -34,6 +36,10 @@ const [asks, setAsks] = createSignal<SocketAsk[]>([]);
 export const allAsks = asks;
 
 export const asksFor = (session: string) => asks().filter((a) => (a.shown_in ?? [a.session]).includes(session));
+
+export const asksForTab = (tab: string) => asks().filter((a) => a.surface?.kind === "tab" && a.surface.id === tab);
+
+export const windowAsks = () => asks().filter((a) => a.surface?.kind === "window");
 
 export function showAsk(ask: SocketAsk) {
   setAsks((prev) =>

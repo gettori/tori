@@ -28,6 +28,7 @@ import { ensureFontLoaded } from "../../utils/fontLoad";
 import Button from "../../components/Button/Button";
 import "@xterm/xterm/css/xterm.css";
 import styles from "./Terminal.module.css";
+import TabApprovals from "./TabApprovals";
 
 /** `PtySpawnResult` from `src-tauri/src/pty.rs`. `ownership` is null for every
  *  tab that took no claim, which is most of them. */
@@ -492,6 +493,7 @@ export default function TerminalView(props: {
           </div>
         )}
       </Show>
+      <TabApprovals tab={props.id} active={props.active} />
       <div class={styles.termHost} ref={host} />
     </div>
   );

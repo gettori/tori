@@ -1,9 +1,9 @@
 import { createSignal, For, Show } from "solid-js";
 import Button from "../../components/Button/Button";
-import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
 import { findSession } from "../../utils/sessionStore";
-import { answerAsk, type SocketAsk } from "../../utils/socketAsks";
+import type { SocketAsk } from "../../utils/socketAsks";
 import ApprovalDraft from "./ApprovalDraft";
+import { answering } from "./answering";
 import Tip from "./Tip";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import styles from "./Chat.module.css";
@@ -15,15 +15,7 @@ export default function AskCard(props: { ask: SocketAsk; here: string }) {
     return meta()?.name || meta()?.title || props.ask.session.slice(0, 8);
   };
   const [text, setText] = createSignal("");
-  const [sending, setSending] = createSignal(false);
-  const send = (answer: string) => {
-    if (!answer.trim() || sending()) return;
-    setSending(true);
-    answerAsk(props.ask.id, answer.trim()).catch((e) => {
-      setSending(false);
-      emitWith<ToastEvent>(TOAST, { message: `The answer did not reach the asker: ${String(e)}`, kind: "error" });
-    });
-  };
+  const { sending, send } = answering(() => props.ask.id);
   return (
     <div class={`${styles.banner} ${styles.ask}${props.ask.approval ? ` ${styles.askApproval}` : ""}`}>
       <span class={styles.bannerText}>

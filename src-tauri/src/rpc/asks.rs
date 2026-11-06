@@ -20,6 +20,15 @@ pub const WITHDRAWN: &str = "Withdrawn";
 /// is, it loads with the pending list.
 pub const SHOW_EVENT: &str = "asks://show";
 pub const CLOSE_EVENT: &str = "asks://close";
+pub const OUTSIDE_ASKER: &str = "outside";
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "id", rename_all = "lowercase")]
+pub enum Surface {
+    Chat,
+    Tab(String),
+    Window,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Ask {
@@ -33,6 +42,7 @@ pub struct Ask {
     pub shown_in: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub item: Option<String>,
+    pub surface: Surface,
 }
 
 struct Held {
@@ -91,6 +101,7 @@ fn reloaded(hold: Hold) -> (String, Held) {
         approval: Some(approval),
         shown_in: hold.shown_in,
         item: Some(hold.item),
+        surface: Surface::Chat,
     };
     (
         ask.id.clone(),
@@ -102,6 +113,11 @@ fn reloaded(hold: Hold) -> (String, Held) {
             withdrawn: false,
         },
     )
+}
+
+// Unguessable, since any caller can wait on an id and reading an answer consumes it.
+fn new_id() -> String {
+    format!("ask-{}", crate::chat::approval::random_token())
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -214,23 +230,38 @@ impl Asks {
         mirror: Option<String>,
         item: Option<String>,
     ) -> Ask {
-        // Unguessable, since any caller can wait on an id and reading an answer consumes it.
-        let id = format!("ask-{}", crate::chat::approval::random_token());
         let options = match approval {
             Some(_) => vec![APPROVE.to_string(), REJECT.to_string()],
             None => options,
         };
         let mirror = mirror.filter(|m| approval.is_some() && *m != session);
         let shown_in = std::iter::once(session.clone()).chain(mirror).collect();
-        let ask = Ask {
-            id: id.clone(),
+        self.insert(Ask {
+            id: new_id(),
             session,
             question,
             options,
             approval,
             shown_in,
             item,
-        };
+            surface: Surface::Chat,
+        })
+    }
+
+    pub fn create_approval(&self, asker: String, question: String, approval: Approval, surface: Surface) -> Ask {
+        self.insert(Ask {
+            id: new_id(),
+            session: asker,
+            question,
+            options: vec![APPROVE.to_string(), REJECT.to_string()],
+            approval: Some(approval),
+            shown_in: Vec::new(),
+            item: None,
+            surface,
+        })
+    }
+
+    fn insert(&self, ask: Ask) -> Ask {
         let entry = Held {
             ask: ask.clone(),
             answer: None,
@@ -241,7 +272,7 @@ impl Asks {
         let hold = hold_of(&entry);
         {
             let mut held = self.held();
-            held.insert(id, entry);
+            held.insert(ask.id.clone(), entry);
             if hold.is_some() {
                 self.save(&held);
             }
@@ -500,6 +531,28 @@ mod tests {
                 approval_id: None
             }
         );
+    }
+
+    #[test]
+    fn a_card_says_where_it_draws() {
+        let asks = Asks::default();
+        let approval = || Approval {
+            project: "/p".into(),
+            draft: Draft::PrMerge {
+                number: 7,
+                method: MergeMethod::Squash,
+                head_sha: "abc".into(),
+            },
+        };
+        let tab = asks.create_approval("t1".into(), "merge?".into(), approval(), Surface::Tab("t1".into()));
+        let window = asks.create_approval(OUTSIDE_ASKER.into(), "merge?".into(), approval(), Surface::Window);
+        let chat = approval_ask(&asks);
+        let shape = |ask: &Ask| serde_json::to_value(ask).unwrap();
+        assert_eq!(shape(&tab)["surface"], json!({ "kind": "tab", "id": "t1" }));
+        assert_eq!(shape(&tab)["shown_in"], json!([]));
+        assert_eq!(shape(&tab)["options"], json!([APPROVE, REJECT]));
+        assert_eq!(shape(&window)["surface"], json!({ "kind": "window" }));
+        assert_eq!(shape(&chat)["surface"], json!({ "kind": "chat" }));
     }
 
     fn approval_ask(asks: &Asks) -> Ask {
