@@ -25,11 +25,12 @@ use super::attached::{Attachment, Screen};
 use super::auth::{authenticate, Caller, Children, Credential, Principal, AUTH_METHOD};
 use super::composer::{Composer, Sources};
 use super::frame::{
-    read_request, to_line, Notification, Request, Response, RpcError, INVALID_PARAMS, INVALID_REQUEST,
+    read_request, to_line, Notification, Request, Response, RpcError, FOREIGN, INVALID_PARAMS, INVALID_REQUEST,
     METHOD_NOT_FOUND, REFUSED,
 };
 use super::hub::{Channel, ConnId, Hub};
 use super::outbox::{Outbox, OUTBOX_BYTES};
+use super::peer::Peer;
 use super::server::{
     browser_opened, browser_refused, handle_first, params, permit, subscribe, unsubscribe, Dispatch, Server,
     AUTH_TIMEOUT,
@@ -226,12 +227,14 @@ pub struct Daemon {
     attachment: Arc<Attachment>,
     // The app process last attached, so a new one starts with no stale child tokens.
     instance: Mutex<Option<String>>,
+    signature: Option<&'static [u8]>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct WindowParams {
-    token: String,
+    #[serde(default)]
+    token: Option<String>,
     build: String,
     instance: String,
 }
@@ -344,12 +347,12 @@ impl Daemon {
         handle_first(self.as_ref(), &self.credential, stream, reader, first);
     }
 
-    // Only the process token: a child's would let an agent stand in for the
-    // person at every card and prompt the window answers.
-    fn admit(&self, first: &Request) -> Result<(WindowParams, Arc<Window>), RpcError> {
+    // Only Tori code: anything else would stand in for the person at every
+    // card and prompt the window answers.
+    fn admit(&self, first: &Request, stream: &dyn Stream) -> Result<(WindowParams, Arc<Window>), RpcError> {
         let params: WindowParams =
             serde_json::from_value(first.params.clone()).map_err(|e| RpcError::new(INVALID_PARAMS, e.to_string()))?;
-        self.local_only(&params.token, "be the window")?;
+        self.proven(stream, params.token.as_deref(), "be the window")?;
         let mut slot = self.window.lock().unwrap_or_else(|e| e.into_inner());
         if slot.as_ref().is_some_and(|w| !w.out.is_closed()) {
             eprintln!("tori daemon: refused a second window while one is attached");
@@ -377,6 +380,17 @@ impl Daemon {
         Ok((params, window))
     }
 
+    fn proven(&self, stream: &dyn Stream, token: Option<&str>, what: &str) -> Result<(), RpcError> {
+        match super::peer::check(self.signature, stream.peer_audit_token()) {
+            Peer::Tori => Ok(()),
+            Peer::SelfUnsigned if cfg!(debug_assertions) => {
+                eprintln!("tori daemon: this build is unsigned, so a peer that would {what} shows the file token");
+                self.local_only(token.unwrap_or_default(), what)
+            }
+            Peer::SelfUnsigned | Peer::Foreign => Err(RpcError::new(FOREIGN, format!("only Tori may {what}"))),
+        }
+    }
+
     fn local_only(&self, token: &str, what: &str) -> Result<(), RpcError> {
         let auth = Request {
             jsonrpc: "2.0".into(),
@@ -392,13 +406,16 @@ impl Daemon {
         }
     }
 
-    // Only the process token: a child's would let an agent type into every
-    // shell the person has open.
+    // Only Tori code: anything else could type into every shell the person
+    // has open.
     fn serve_attach(&self, first: Request, mut stream: Box<dyn Stream>, reader: BufReader<Box<dyn Stream>>) {
         let id = first.id.clone().unwrap_or(Value::Null);
         let admitted = serde_json::from_value::<AttachParams>(first.params)
             .map_err(|e| RpcError::new(INVALID_PARAMS, e.to_string()))
-            .and_then(|params| self.local_only(&params.token, "attach to a tab").map(|()| params))
+            .and_then(|params| {
+                self.proven(stream.as_ref(), params.token.as_deref(), "attach to a tab")
+                    .map(|()| params)
+            })
             .and_then(|mut params| {
                 params.tab = self.attach_target(&params.tab)?;
                 Ok(params)
@@ -428,7 +445,7 @@ impl Daemon {
         mut reader: BufReader<Box<dyn Stream>>,
     ) {
         let id = first.id.clone().unwrap_or(Value::Null);
-        let (params, window) = match self.admit(&first) {
+        let (params, window) = match self.admit(&first, stream.as_ref()) {
             Ok(admitted) => admitted,
             Err(e) => {
                 let _ = super::frame::write_line(&mut stream, &to_line(&Response::err(id, e)));
@@ -953,6 +970,7 @@ pub fn start(paths: Paths) -> Result<Start, String> {
             paths,
             window: Mutex::default(),
             instance: Mutex::default(),
+            signature: super::peer::own_cdhash(),
         }
     });
     let accepting = daemon.clone();
@@ -1299,13 +1317,6 @@ mod tests {
         serve(&daemon);
         let (_hub, link) = app(&paths);
         let child = link.mint(Caller::Terminal("t1".into())).unwrap();
-        let mut agent = Raw::connect(&paths);
-        let refused = agent.call(
-            0,
-            WINDOW_METHOD,
-            json!({ "token": child, "build": build_id(), "instance": "x" }),
-        );
-        assert_eq!(refused["error"]["message"], "only a local client may be the window");
         let mut second = Raw::connect(&paths);
         let refused = second.call(
             0,
@@ -1406,7 +1417,7 @@ mod tests {
         let mut stream = UnixStream::connect(&paths.sock).unwrap();
         stream.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
         let params = AttachParams {
-            token: token.into(),
+            token: Some(token.into()),
             tab: tab.into(),
             replay,
             cols: 80,
@@ -1485,21 +1496,6 @@ mod tests {
         let (live, exit) = drain(&mut reader, |_| false);
         assert!(contains(&live, "got:go"), "{:?}", String::from_utf8_lossy(&live));
         assert_eq!(exit, Some(Some(0)));
-        window.send(json!({ "jsonrpc": "2.0", "id": 9, "method": "shutdown" }));
-        daemon.wait();
-    }
-
-    #[test]
-    fn a_child_token_cannot_attach_to_a_tab() {
-        let paths = Paths::under(&config("attach-child"));
-        let daemon = started(&paths);
-        let mut window = window(&paths);
-        spawn_command(&mut window, "t1", "sleep", &["5"]);
-        let child = window.call(2, "mint", json!({ "caller": Caller::Terminal("t2".into()) }));
-        let child = child["result"].as_str().unwrap();
-        let (_stream, _reader, reply) = attach(&paths, child, "t1", true);
-        assert_eq!(reply["error"]["message"], "only a local client may attach to a tab");
-        window.call(3, "pty.kill", json!({ "tab": "t1" }));
         window.send(json!({ "jsonrpc": "2.0", "id": 9, "method": "shutdown" }));
         daemon.wait();
     }

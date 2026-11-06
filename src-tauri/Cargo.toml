@@ -103,6 +103,10 @@ qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 ort = { version = "=2.0.0-rc.15" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+# The code signature of whatever connects to the daemon's socket (`rpc/peer.rs`).
+# Both already in the lock file under the keyring and native-tls.
+security-framework-sys = "2.17"
+core-foundation-sys = "0.8"
 # The notification plugin's desktop send never reports a click, so a needs-you
 # notification goes out here, waiting for one. Already in the lock file through
 # the plugin's notify-rust. Patched below so a needs-you notification carries

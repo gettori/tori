@@ -322,7 +322,8 @@ fn attach(args: &[String]) -> Result<(), Failure> {
         Failure::Io(io::Error::new(io::ErrorKind::NotFound, message))
     })?;
     eprintln!("tori: attaching to {target}, Ctrl-\\ detaches");
-    let ended = crate::pty::attach::run(&sock, &token, target).map_err(Failure::Refused)?;
+    let ended = crate::pty::attach::run(&sock, crate::rpc::peer::unless_signed(|| Some(token)), target)
+        .map_err(Failure::Refused)?;
     match ended {
         Ended::Detached => eprintln!("\ntori: detached, {target} keeps running"),
         Ended::Exited(Some(code)) => eprintln!("\ntori: {target} exited with {code}"),
