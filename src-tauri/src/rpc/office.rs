@@ -42,6 +42,19 @@ pub struct Office {
     askpass: Option<Arc<crate::askpass::AskpassInner>>,
 }
 
+impl Office {
+    pub fn take_approval(&self, id: &str, draft: &super::approvals::Draft) -> Result<(), String> {
+        self.asks.approvals.take(id, draft)
+    }
+
+    // A shell's card goes with its connection: nothing is left to read the answer.
+    pub fn withdraw_asker(&self, asker: &str) {
+        for id in self.asks.withdraw_asker(asker) {
+            self.desk.ui.emit(asks::CLOSE_EVENT, json!({ "id": id }));
+        }
+    }
+}
+
 pub struct Parts {
     pub hub: Arc<Hub>,
     pub desk: Desk,

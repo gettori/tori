@@ -7,6 +7,7 @@ use std::io::{self, Write};
 use serde_json::{json, Value};
 
 use crate::pty::attach::Ended;
+use crate::rpc::approvals::APPROVE;
 use crate::rpc::client::{self, Client, Found};
 
 const COMMANDS: [&str; 28] = [
@@ -322,8 +323,18 @@ fn attach(args: &[String]) -> Result<(), Failure> {
         Failure::Io(io::Error::new(io::ErrorKind::NotFound, message))
     })?;
     eprintln!("tori: attaching to {target}, Ctrl-\\ detaches");
-    let ended = crate::pty::attach::run(&sock, crate::rpc::peer::unless_signed(|| Some(token)), target)
-        .map_err(Failure::Refused)?;
+    let mut tori = connect()?;
+    let cwd = std::env::current_dir()?.to_string_lossy().into_owned();
+    let approval = json!({ "project": cwd, "action": "pty.attach", "tab": target });
+    let question = format!("pty.attach typing into terminal {target}");
+    let approval_id = ask_approval(&mut |m, p| tori.call(m, p), approval, &question, &mut io::stderr())?;
+    let ended = crate::pty::attach::run(
+        &sock,
+        crate::rpc::peer::unless_signed(|| Some(token)),
+        approval_id,
+        target,
+    )
+    .map_err(Failure::Refused)?;
     match ended {
         Ended::Detached => eprintln!("\ntori: detached, {target} keeps running"),
         Ended::Exited(Some(code)) => eprintln!("\ntori: {target} exited with {code}"),
@@ -1233,7 +1244,8 @@ fn spawn(args: &[String]) -> Result<(), Failure> {
         "attach": attach,
         "background": p.has("background"),
     });
-    let spawned = connect()?.call("session.spawn", params)?;
+    let mut tori = connect()?;
+    let spawned = retry_after_approval(&mut |m, p| tori.call(m, p), "session.spawn", params, &mut io::stderr())?;
     let mut out = io::stdout().lock();
     if p.has("json") {
         return Ok(writeln!(out, "{spawned}")?);
@@ -1573,9 +1585,49 @@ fn pr_request(args: &[String]) -> Result<(&'static str, Value), Failure> {
     })
 }
 
+// Short, so a shell that went away loses its card within this many seconds:
+// the daemon sees the connection close only once a wait returns.
+const APPROVAL_POLL: u64 = 60;
+
+type Call<'a> = dyn FnMut(&str, Value) -> Result<Value, client::ClientError> + 'a;
+
+// A call refused for want of an approval names the exact one it wants, so the
+// card is asked for here and the call made again with what it answers.
+fn retry_after_approval(call: &mut Call, method: &str, params: Value, err: &mut impl Write) -> Result<Value, Failure> {
+    let wanted = match call(method, params.clone()) {
+        Err(client::ClientError::Rpc(e)) if e.code == crate::rpc::frame::NEEDS_APPROVAL && e.data.is_some() => e,
+        done => return Ok(done?),
+    };
+    let data = wanted.data.clone().unwrap_or_default();
+    let question = data["question"].as_str().unwrap_or(&wanted.message).to_string();
+    let approval_id = ask_approval(call, data["approval"].clone(), &question, err)?;
+    let mut params = params;
+    params["approval_id"] = json!(approval_id);
+    Ok(call(method, params)?)
+}
+
+fn ask_approval(call: &mut Call, approval: Value, question: &str, err: &mut impl Write) -> Result<String, Failure> {
+    let mut draft = approval;
+    let project = draft.as_object_mut().and_then(|d| d.remove("project"));
+    writeln!(err, "tori: waiting for approval in Tori: {question}")?;
+    let mut answered = call(
+        "ask.create",
+        json!({ "question": question, "approval": draft, "project": project, "timeout": APPROVAL_POLL }),
+    )?;
+    while answered["answer"].is_null() {
+        let id = answered["id"].as_str().unwrap_or_default().to_string();
+        answered = call("ask.wait", json!({ "id": id, "timeout": APPROVAL_POLL }))?;
+    }
+    match (answered["answer"].as_str(), answered["approval_id"].as_str()) {
+        (Some(APPROVE), Some(id)) => Ok(id.to_string()),
+        _ => Err(Failure::Refused("rejected in Tori".into())),
+    }
+}
+
 fn pr(args: &[String]) -> Result<(), Failure> {
     let (method, params) = pr_request(args)?;
-    let done = connect()?.call(method, params)?;
+    let mut tori = connect()?;
+    let done = retry_after_approval(&mut |m, p| tori.call(m, p), method, params, &mut io::stderr())?;
     let mut out = io::stdout().lock();
     if args.iter().any(|a| a == "--json") {
         return Ok(writeln!(out, "{done}")?);
@@ -2296,6 +2348,53 @@ mod tests {
         assert!(matches!(interrupt_params(&args(&["s1"])), Ok(v) if v == json!({ "id": "s1" })));
         assert!(matches!(interrupt_params(&args(&[])), Err(Failure::Usage(_))));
         assert!(matches!(interrupt_params(&args(&["s1", "s2"])), Err(Failure::Usage(_))));
+    }
+
+    #[test]
+    fn a_call_that_needs_an_approval_asks_for_its_card_and_goes_through_only_on_approve() {
+        let needs = || {
+            let approval =
+                json!({ "project": "/p", "action": "pr.merge", "number": 7, "method": "squash", "head_sha": "abc" });
+            let e = crate::rpc::frame::RpcError::new(crate::rpc::frame::NEEDS_APPROVAL, "needs an approval")
+                .with_data(json!({ "approval": approval, "question": "pr.merge merging #7 at abc in /p" }));
+            client::ClientError::Rpc(e)
+        };
+        let run = |answer: &'static str| {
+            let mut calls: Vec<(String, Value)> = Vec::new();
+            let mut err = Vec::new();
+            let outcome = retry_after_approval(
+                &mut |method, params| {
+                    calls.push((method.to_string(), params.clone()));
+                    match (method, params["approval_id"].as_str()) {
+                        ("ask.create", _) => Ok(json!({ "id": "ask-1", "answer": answer, "approval_id": "appr-1" })),
+                        ("pr.merge", Some("appr-1")) => Ok(json!({ "merged": true })),
+                        _ => Err(needs()),
+                    }
+                },
+                "pr.merge",
+                json!({ "number": 7, "method": "squash", "head_sha": "abc", "project": "/p", "approval_id": null }),
+                &mut err,
+            );
+            (outcome, calls, String::from_utf8(err).unwrap())
+        };
+
+        let (outcome, calls, err) = run("Approve");
+        assert!(matches!(outcome, Ok(ref done) if *done == json!({ "merged": true })));
+        assert_eq!(
+            err,
+            "tori: waiting for approval in Tori: pr.merge merging #7 at abc in /p\n"
+        );
+        let (method, card) = &calls[1];
+        assert_eq!(method, "ask.create");
+        assert_eq!(card["question"], "pr.merge merging #7 at abc in /p");
+        assert_eq!(card["project"], "/p");
+        assert_eq!(card["approval"]["action"], "pr.merge");
+        assert!(card["approval"].get("project").is_none());
+        assert_eq!(calls.len(), 3);
+
+        let (outcome, calls, _) = run("Reject");
+        assert!(matches!(outcome, Err(Failure::Refused(m)) if m == "rejected in Tori"));
+        assert_eq!(calls.len(), 2, "nothing is called again on a Reject");
     }
 
     #[test]

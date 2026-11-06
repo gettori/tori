@@ -14,6 +14,8 @@ export type AskApproval = { project: string } & (
     }
   | { action: "pr.push"; number: number; head: string; head_sha: string }
   | { action: "pr.merge"; number: number; method: MergeMethod; head_sha: string }
+  | { action: "session.spawn"; agent: string; mode: string; folder: string }
+  | { action: "pty.attach"; tab: string }
 );
 
 export type SocketAsk = {

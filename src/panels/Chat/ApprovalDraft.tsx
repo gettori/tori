@@ -9,6 +9,8 @@ export default function ApprovalDraft(props: { approval: AskApproval }) {
   const review = () => (props.approval.action === "review.submit" ? props.approval : undefined);
   const push = () => (props.approval.action === "pr.push" ? props.approval : undefined);
   const merge = () => (props.approval.action === "pr.merge" ? props.approval : undefined);
+  const spawn = () => (props.approval.action === "session.spawn" ? props.approval : undefined);
+  const attach = () => (props.approval.action === "pty.attach" ? props.approval : undefined);
   return (
     <div class={styles.askDraft}>
       <Show when={pr()}>
@@ -63,6 +65,24 @@ export default function ApprovalDraft(props: { approval: AskApproval }) {
             <span class={styles.askDraftMeta}>
               {merge().method} at {merge().head_sha}
             </span>
+          </>
+        )}
+      </Show>
+      <Show when={spawn()}>
+        {(spawn) => (
+          <>
+            <strong>
+              Start {spawn().agent} in {spawn().mode}
+            </strong>
+            <span class={styles.askDraftMeta}>It runs tools without asking you</span>
+          </>
+        )}
+      </Show>
+      <Show when={attach()}>
+        {(attach) => (
+          <>
+            <strong>Type into terminal {attach().tab}</strong>
+            <span class={styles.askDraftMeta}>It sees what the shell printed and types into it</span>
           </>
         )}
       </Show>

@@ -429,7 +429,7 @@ impl Hub {
             .filter(|(_, principal)| match principal {
                 Principal::Local | Principal::Device(_) | Principal::Browser(_) => true,
                 Principal::Session(Caller::Chat(me)) => owns.as_ref().is_some_and(|owns| owns(me, asker)),
-                Principal::Session(Caller::Terminal(_)) => false,
+                Principal::Session(Caller::Terminal(_)) | Principal::Outside(_) => false,
             })
             .map(|(id, _)| id)
             .collect();

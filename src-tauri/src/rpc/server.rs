@@ -711,6 +711,9 @@ pub struct SpawnParams {
     pub item: Option<String>,
     /// A session to fork: the new one carries its conversation on, on its agent.
     pub fork: Option<String>,
+    /// The approval `ask.create` returned for starting it in a permissive `mode`, which a terminal tab or a
+    /// shell outside Tori needs.
+    pub approval_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -1269,7 +1272,9 @@ pub(super) fn subscribe(
         ));
     }
     // The stream is for a person watching a chat; an agent reads a session with session.tail.
-    if matches!(channel, Channel::Chat(_)) && !matches!(kind, CallerKind::Device | CallerKind::Local) {
+    if matches!(channel, Channel::Chat(_))
+        && !matches!(kind, CallerKind::Device | CallerKind::Local | CallerKind::Outside)
+    {
         return Err(RpcError::new(
             REFUSED,
             "chat:<id> is open to a device or a local client only",
@@ -1407,6 +1412,7 @@ pub trait Dispatch: Send + Sync {
     fn hub(&self) -> &Hub;
     fn auth_timeout(&self) -> Duration;
     fn dispatch(&self, conn: ConnId, principal: &Principal, req: &Request) -> Result<Value, RpcError>;
+    fn closed(&self, _principal: &Principal) {}
 }
 
 impl Dispatch for Server {
@@ -1572,6 +1578,7 @@ pub fn handle_first(
         }
     }
     server.hub().remove(conn);
+    server.closed(&principal);
     drop(tx);
     let _ = writer.join();
 }
@@ -1680,7 +1687,7 @@ pub mod tests {
         }
         fn caller(&self, principal: &Principal) -> Result<Value, RpcError> {
             Ok(match principal {
-                Principal::Local => json!({ "caller": null }),
+                Principal::Local | Principal::Outside(_) => json!({ "caller": null }),
                 Principal::Session(caller) => json!({ "caller": caller }),
                 Principal::Device(id) => json!({ "caller": { "kind": "device", "id": id } }),
                 Principal::Browser(id) => json!({ "caller": { "kind": "browser", "id": id } }),
@@ -2069,7 +2076,7 @@ pub mod tests {
             as_caller(&chat),
             json!({"caller": {"kind": "chat", "id": "s1"}, "kind": "chat"})
         );
-        assert_eq!(as_caller("tok"), json!({"caller": null, "kind": "local"}));
+        assert_eq!(as_caller("tok"), json!({"caller": null, "kind": "outside"}));
 
         r.children.revoke_token(&tab);
         let mut c = Client::connect(&r);
@@ -2160,7 +2167,7 @@ pub mod tests {
     fn every_spawn_param_is_optional_and_described() {
         let schema = schemars::schema_for!(SpawnParams).to_value();
         let properties = schema["properties"].as_object().unwrap();
-        assert_eq!(properties.len(), 14);
+        assert_eq!(properties.len(), 15);
         for (name, field) in properties {
             assert!(
                 field["description"].as_str().is_some_and(|d| !d.is_empty()),
@@ -2250,6 +2257,7 @@ pub mod tests {
             }
             let principal = match method.callers[0] {
                 CallerKind::Local => Principal::Local,
+                CallerKind::Outside => Principal::Outside("outside-k1".into()),
                 CallerKind::Terminal => Principal::Session(Caller::Terminal("t1".into())),
                 CallerKind::Chat | CallerKind::Worker => Principal::Session(Caller::Chat("s1".into())),
                 CallerKind::Device => Principal::Device("d1".into()),
@@ -2293,7 +2301,10 @@ pub mod tests {
             "question": "Open it?",
             "approval": { "action": "pr.merge", "number": 7, "method": "squash", "head_sha": "abc" },
         });
-        for caller in [Principal::Session(Caller::Terminal("t1".into())), Principal::Local] {
+        for caller in [
+            Principal::Session(Caller::Terminal("t1".into())),
+            Principal::Outside("outside-k1".into()),
+        ] {
             let plain = server.dispatch(0, &caller, &request("ask.create", json!({"question": "q"})));
             assert_eq!(plain.unwrap_err().message, table::ASK_OUTSIDE_A_CHAT, "{caller:?}");
             assert!(

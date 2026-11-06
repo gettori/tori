@@ -136,8 +136,12 @@ impl Children {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "id", rename_all = "lowercase")]
 pub enum Principal {
-    /// Holds the process token from the bridge file: Tori did not start it.
+    /// Tori's own window, over the link; nothing on the socket is this.
     Local,
+    /// Holds the process token from the bridge file: any process of this user's,
+    /// Tori did not start it. One key per connection, since every shell shows
+    /// the same token and an approval one asked for is its own.
+    Outside(String),
     /// Holds a token minted for one child Tori spawned.
     Session(Caller),
     /// Holds a paired device's credential, by device id.
@@ -190,7 +194,10 @@ pub fn authenticate(first: &Request, credential: &Credential) -> Result<Principa
             browsers,
         } => {
             if process.matches(&token) {
-                return Ok(Principal::Local);
+                return Ok(Principal::Outside(format!(
+                    "outside-{}",
+                    crate::chat::approval::random_token()
+                )));
             }
             children
                 .get(&token)
@@ -327,8 +334,13 @@ mod tests {
     }
 
     #[test]
-    fn the_right_token_is_local() {
-        assert_eq!(auth("secret", &cred()), Ok(Principal::Local));
+    fn the_right_token_is_an_outside_caller_with_a_key_per_connection() {
+        let (Ok(Principal::Outside(one)), Ok(Principal::Outside(two))) =
+            (auth("secret", &cred()), auth("secret", &cred()))
+        else {
+            panic!("the process token authenticates as an outside caller");
+        };
+        assert_ne!(one, two, "a second shell gets a key of its own");
     }
 
     #[test]

@@ -37,8 +37,8 @@ pub enum EndReason {
 }
 
 // On the wire: "user", {"session": id}, {"tab": id}, "local" for a caller Tori
-// did not spawn, "agent" for a turn the agent opened itself, "watcher" for a
-// wake the autopilot's watcher sent.
+// did not spawn, "outside" for one holding the file token, "agent" for a turn
+// the agent opened itself, "watcher" for a wake the autopilot's watcher sent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TurnBy {
@@ -46,6 +46,7 @@ pub enum TurnBy {
     Session(String),
     Tab(String),
     Local,
+    Outside,
     Agent,
     Watcher,
 }

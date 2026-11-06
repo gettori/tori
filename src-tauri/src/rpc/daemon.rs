@@ -21,12 +21,13 @@ use std::thread::{self, JoinHandle};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use super::approvals::Draft;
 use super::attached::{Attachment, Screen};
 use super::auth::{authenticate, Caller, Children, Credential, Principal, AUTH_METHOD};
 use super::composer::{Composer, Sources};
 use super::frame::{
     read_request, to_line, Notification, Request, Response, RpcError, FOREIGN, INVALID_PARAMS, INVALID_REQUEST,
-    METHOD_NOT_FOUND, REFUSED,
+    METHOD_NOT_FOUND, NEEDS_APPROVAL, REFUSED,
 };
 use super::hub::{Channel, ConnId, Hub};
 use super::outbox::{Outbox, OUTBOX_BYTES};
@@ -168,6 +169,7 @@ fn link_cli(bin: &Path) -> io::Result<()> {
 
 struct Window {
     out: Arc<Outbox>,
+    peer: Option<super::peer::AuditToken>,
     pending: Mutex<HashMap<u64, SyncSender<Result<Value, RpcError>>>>,
     next: AtomicU64,
 }
@@ -373,6 +375,7 @@ impl Daemon {
         }
         let window = Arc::new(Window {
             out: Arc::new(Outbox::new(OUTBOX_BYTES)),
+            peer: stream.peer_audit_token(),
             pending: Mutex::default(),
             next: AtomicU64::new(0),
         });
@@ -400,7 +403,7 @@ impl Daemon {
             worktree: None,
         };
         match authenticate(&auth, &self.credential) {
-            Ok(Principal::Local) => Ok(()),
+            Ok(Principal::Outside(_)) => Ok(()),
             Ok(_) => Err(RpcError::new(REFUSED, format!("only a local client may {what}"))),
             Err(e) => Err(e.rpc()),
         }
@@ -416,6 +419,7 @@ impl Daemon {
                 self.proven(stream.as_ref(), params.token.as_deref(), "attach to a tab")
                     .map(|()| params)
             })
+            .and_then(|params| self.attach_approved(stream.as_ref(), &params).map(|()| params))
             .and_then(|mut params| {
                 params.tab = self.attach_target(&params.tab)?;
                 Ok(params)
@@ -427,6 +431,34 @@ impl Daemon {
                 stream.close();
             }
         }
+    }
+
+    fn is_window(&self, stream: &dyn Stream) -> bool {
+        let peer = stream.peer_audit_token();
+        peer.is_some() && self.window().and_then(|w| w.peer) == peer
+    }
+
+    // Any Tori process but the window is `tori attach`, a person or an agent
+    // at a shell, and pays with a card.
+    fn attach_approved(&self, stream: &dyn Stream, params: &AttachParams) -> Result<(), RpcError> {
+        if self.is_window(stream) {
+            return Ok(());
+        }
+        let draft = Draft::PtyAttach {
+            tab: params.tab.clone(),
+        };
+        let needs = |why: String| {
+            RpcError::new(
+                NEEDS_APPROVAL,
+                format!("attaching to {} needs an approval: {why}", params.tab),
+            )
+        };
+        let id = params
+            .approval_id
+            .as_deref()
+            .ok_or_else(|| needs("no approval_id was passed".into()))?;
+        let office = self.office.get().ok_or_else(|| RpcError::new(REFUSED, STARTING))?;
+        office.take_approval(id, &draft).map_err(needs)
     }
 
     fn attach_target(&self, named: &str) -> Result<String, RpcError> {
@@ -881,6 +913,12 @@ impl Dispatch for Daemon {
             _ => Err(RpcError::new(REFUSED, STARTING)),
         }
     }
+
+    fn closed(&self, principal: &Principal) {
+        if let (Principal::Outside(key), Some(office)) = (principal, self.office.get()) {
+            office.withdraw_asker(key);
+        }
+    }
 }
 
 /// A line past `cap` ends the link: the rest of it is still in the stream.
@@ -1289,7 +1327,9 @@ mod tests {
             WINDOW_METHOD,
             json!({ "token": token(&paths), "build": build_id(), "instance": "a" }),
         );
-        assert!(begun.elapsed() < Duration::from_millis(100), "{:?}", begun.elapsed());
+        // The window's signature is looked up as it links, some 25 ms on a debug
+        // binary and more with the whole suite running beside it.
+        assert!(begun.elapsed() < Duration::from_millis(200), "{:?}", begun.elapsed());
         assert_eq!(reply["result"]["protocol"], json!(PROTOCOL));
         raw.send(json!({ "jsonrpc": "2.0", "id": 9, "method": "shutdown" }));
         daemon.wait();
@@ -1418,6 +1458,7 @@ mod tests {
         stream.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
         let params = AttachParams {
             token: Some(token.into()),
+            approval_id: None,
             tab: tab.into(),
             replay,
             cols: 80,

@@ -35,6 +35,12 @@ written, and runs agents inside them. The line it tries to hold:
 - **The remote front answers only a paired device.** It listens on Tailscale
   and loopback, and is off by default. Reaching it without a device credential
   is a vulnerability.
+- **A process holding `rpc.json` is an outside caller: it acts through the
+  same cards an agent does.** Opening, reviewing, pushing or merging a pull
+  request, typing into a terminal tab, and starting a session that runs tools
+  without asking each wait for your Approve in Tori, and it can never be the
+  window or answer for you. Doing any of those without the card is a
+  vulnerability.
 
 ## What does not
 
