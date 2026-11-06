@@ -728,11 +728,16 @@ export const SETTINGS_UNREADABLE = "settings.json could not be read";
 
 /** Persist settings; the watcher echo re-loads the store into agreement. */
 export async function saveSettings(next: Settings): Promise<void> {
-  const saved = await invoke<Settings>("set_settings", { settings: next }).catch((e: unknown) => {
+  let saved: Settings;
+  // A plain await, not a `.catch` on it: the extra tick would let a second
+  // save start from the settings this one has not stored yet.
+  try {
+    saved = await invoke<Settings>("set_settings", { settings: next });
+  } catch (e) {
     // Said here, once, since most callers drop a failed save on purpose.
     if (String(e).startsWith(SETTINGS_UNREADABLE)) emitWith<ToastEvent>(TOAST, { kind: "error", message: String(e) });
     throw e;
-  });
+  }
   setSettings(saved);
   applyAll(saved);
   emit(SETTINGS_CHANGED);

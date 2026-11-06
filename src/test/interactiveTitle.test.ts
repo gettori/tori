@@ -98,6 +98,7 @@ const KEPT = new Map<string, Kept>([
   ["components/Dialog/Dialog.test.tsx", { count: 1, reason: FIXTURE }],
   ["components/Dialogs/AddAccountDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/ProposalDialog.tsx", { count: 1, reason: HEADING }],
+  ["components/Dialogs/ApprovalDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/RenameAccountDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/AddBranchDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/AskpassDialog.tsx", { count: 1, reason: HEADING }],
@@ -135,7 +136,13 @@ const KEPT = new Map<string, Kept>([
   ["components/Dialogs/PromptModal.test.tsx", { count: 1, reason: FIXTURE }],
   ["components/Dialogs/SpaceDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/PromptModal.tsx", { count: 1, reason: HEADING }],
-  ["components/Dialogs/WorktreeRemoveDialog.tsx", { count: 2, reason: `${HEADING}, plus one ${TRUNCATION}` }],
+  [
+    "components/Dialogs/WorktreeRemoveDialog.tsx",
+    {
+      count: 3,
+      reason: `${HEADING}, plus two of ${TRUNCATION}: the worktree path, and the ignored work it would delete`,
+    },
+  ],
   ["components/Dialogs/stackedDialogs.test.tsx", { count: 1, reason: FIXTURE }],
   ["components/ForgeChip/ForgeChip.tsx", { count: 3, reason: TRUNCATION }],
   ["components/Menu/ContextMenu.test.tsx", { count: 1, reason: FIXTURE }],
@@ -398,7 +405,7 @@ const KEPT = new Map<string, Kept>([
  *
  *  **Down one** with a sent prompt's file chip, which previews like the
  *  composer's instead of carrying its path. */
-const RAW_ELEMENT_TITLES = 75;
+const RAW_ELEMENT_TITLES = 76;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. The Changes
  *  panel's stash row is one: a click expands it to its files. */
@@ -542,7 +549,7 @@ describe("the title= guard", () => {
       // for the project settings tab's path, and one for the run command row's
       // running mark. Down one: a sent prompt's chip previews its attachment
       // now, the way the composer's does, instead of naming its path.
-      span: 58,
+      span: 59,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });
