@@ -908,6 +908,15 @@
     border-color: var(--brand-default);
   }
 
+  /* Inherits the title row's mono uppercase for the same reason as the filter. */
+  .titleAction {
+    flex: none;
+    font-family: var(--tori-font-ui);
+    font-weight: 400;
+    letter-spacing: normal;
+    text-transform: none;
+  }
+
   /* Language servers and debuggers: three across in the full-width panel,
      fewer as it narrows. */
   .toolGrid {

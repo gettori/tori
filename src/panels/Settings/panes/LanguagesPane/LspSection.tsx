@@ -232,8 +232,8 @@ export default function LspSection() {
           value={query()}
           onInput={(e) => setQuery(e.currentTarget.value)}
         />
+        <BrowsePacks kind="lsp" class={styles.titleAction} />
       </div>
-      <BrowsePacks kind="lsp" />
       <NeedsFixing kind="lsp" />
       <Switch>
         <Match when={health.state === "pending"}>
