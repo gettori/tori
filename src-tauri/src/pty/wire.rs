@@ -14,7 +14,9 @@ const MAX_FRAME: usize = 64 * 1024 * 1024;
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AttachParams {
-    pub token: String,
+    // Shown only by an unsigned build, which has no signature to prove itself by.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
     pub tab: String,
     pub replay: bool,
     pub cols: u16,

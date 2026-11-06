@@ -20,6 +20,9 @@ pub trait Stream: Read + Write + Send {
     fn peer(&self) -> Option<String> {
         None
     }
+    fn peer_audit_token(&self) -> Option<super::peer::AuditToken> {
+        None
+    }
     /// Ends both directions, which also unblocks a thread reading the stream.
     fn close(&self);
 }
@@ -36,6 +39,9 @@ impl Stream for UnixStream {
     }
     fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         UnixStream::set_read_timeout(self, timeout)
+    }
+    fn peer_audit_token(&self) -> Option<super::peer::AuditToken> {
+        super::peer::audit_token(self)
     }
     fn close(&self) {
         let _ = UnixStream::shutdown(self, Shutdown::Both);

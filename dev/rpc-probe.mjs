@@ -11,6 +11,9 @@
 //   node dev/rpc-probe.mjs --no-wait --mint <name>
 //                                          # device.mint: adds a device for the remote front and
 //                                          # prints its credential, shown only this once.
+//   node dev/rpc-probe.mjs --no-wait --window
+//                                          # a window frame with the file token: refused, unless
+//                                          # the daemon is an unsigned build.
 //
 // Finds the socket the way a front must: `TORI_SOCK`/`TORI_CALLER` when run
 // inside a Tori terminal, else `~/.config/tori/rpc.json`. Exits non-zero when any
@@ -28,6 +31,7 @@ const issueAt = args.indexOf("--issue");
 const issue = issueAt >= 0 ? { project: args[issueAt + 1], key: args[issueAt + 2] } : null;
 const mintAt = args.indexOf("--mint");
 const mint = mintAt >= 0 ? args[mintAt + 1] : null;
+const window = args.includes("--window");
 
 function locate() {
   if (process.env.TORI_SOCK && process.env.TORI_CALLER) {
@@ -109,6 +113,17 @@ const refused = await bad.call("auth", { token: "not-the-token" });
 check(refused.error?.code === -32001, "a wrong token is refused", JSON.stringify(refused.error));
 const hungUp = await Promise.race([bad.closed.then(() => true), new Promise((r) => setTimeout(() => r(false), 2000))]);
 check(hungUp, "and its connection is closed");
+
+if (window) {
+  const w = connect(sock);
+  const frame = await w.call("window", { token, build: "probe", instance: "probe" });
+  check(
+    frame.error?.code === -32004,
+    "a window frame from outside Tori is refused",
+    JSON.stringify(frame.error ?? frame.result),
+  );
+  w.end();
+}
 
 if (issue) {
   const { project, key } = issue;

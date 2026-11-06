@@ -25,6 +25,7 @@ pub mod methods;
 pub mod office;
 pub mod outbox;
 pub mod pairing;
+pub mod peer;
 pub mod permissions;
 pub mod phone;
 pub mod pr_rules;
