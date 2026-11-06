@@ -51,7 +51,7 @@ use super::model::{
     ChatConfigKind, ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode, PermissionScope,
     QuestionAnswer,
 };
-use super::transport::{build_command, emit, AgentTransport, Sink, StartSpec};
+use super::transport::{build_command, emit, path_of, spawn_error, AgentTransport, Sink, StartSpec};
 
 /// How long Tori waits for `initialize` before giving up on an agent.
 ///
@@ -505,6 +505,7 @@ impl AgentTransport for AcpTransport {
         // would spawn a child with no `augmented_path()`, which fails to find
         // the agent binary on a normal desktop launch.
         let mut std_cmd = build_command(&spec);
+        let path = path_of(&std_cmd);
         #[cfg(unix)]
         {
             use std::os::unix::process::CommandExt as _;
@@ -524,7 +525,7 @@ impl AgentTransport for AcpTransport {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
 
-        let mut child = cmd.spawn().map_err(|e| format!("could not start the agent: {e}"))?;
+        let mut child = cmd.spawn().map_err(|e| spawn_error(&spec, path.as_deref(), &e))?;
         self.pid = Some(child.id());
 
         let stdin = child.stdin.take().ok_or("the agent gave no stdin")?;

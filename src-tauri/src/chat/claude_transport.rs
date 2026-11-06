@@ -41,7 +41,7 @@ use super::model::{
     file_ref_locator, ref_note, refs_first, ChatConfigValue, ChatEvent, ChatQuestion, ContentBlock, PermissionDecision,
     PermissionMode, PermissionScope, PermissionSuggestion, QuestionAnswer,
 };
-use super::transport::{build_command, emit, AgentTransport, Sink, StartSpec};
+use super::transport::{build_command, emit, path_of, spawn_error, AgentTransport, Sink, StartSpec};
 
 /// How much stderr to keep. Enough to carry a usage error or a stack trace's
 /// first frames; bounded so a chatty child cannot grow this without limit.
@@ -578,12 +578,13 @@ fn abandon(child: &mut Child) {
 
 impl AgentTransport for ClaudeTransport {
     fn start(&mut self, spec: StartSpec, sink: Sink) -> Result<(), String> {
-        let mut child = build_command(&spec)
+        let mut cmd = build_command(&spec);
+        let mut child = cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| format!("could not start {}: {e}", spec.program))?;
+            .map_err(|e| spawn_error(&spec, path_of(&cmd).as_deref(), &e))?;
 
         let mut take_stdio = || {
             Ok::<_, String>((
