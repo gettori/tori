@@ -335,9 +335,10 @@ mod tests {
             assert!(chat.iter().any(|t| t == tool), "{tool} missing from {chat:?}");
         }
         let terminal = listed("terminal");
+        assert!(terminal.iter().any(|t| t == "ask_create"), "{terminal:?}");
         assert!(
-            !terminal.iter().any(|t| t == "ask_create"),
-            "a terminal was offered ask_create"
+            !terminal.iter().any(|t| t == "plan_set"),
+            "a terminal was offered plan_set"
         );
         let worker = listed("worker");
         assert!(worker.iter().any(|t| t == "ask_create"), "{worker:?}");

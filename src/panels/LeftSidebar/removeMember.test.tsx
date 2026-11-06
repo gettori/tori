@@ -62,7 +62,8 @@ vi.mock("@tauri-apps/api/core", () => ({
       bridge.members = bridge.members.filter((m) => m.repoPath !== args.repoPath);
       return Promise.resolve(topic());
     }
-    if (cmd === "worktree_status") return Promise.resolve({ dirty: bridge.dirty, unpushed: false, hasRemote: false });
+    if (cmd === "worktree_status")
+      return Promise.resolve({ dirty: bridge.dirty, unpushed: false, hasRemote: false, ignoredWork: [] });
     if (cmd === "list_sessions" || cmd === "list_project_attempts" || cmd === "sessions_running")
       return Promise.resolve([]);
     if (cmd === "folder_historical") return Promise.resolve(false);
