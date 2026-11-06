@@ -285,9 +285,6 @@ type CheckpointFile = { path: string; shared_with?: string[]; unattributed?: boo
  */
 const FIRST_SEND_DEADLINE_MS = 60_000;
 
-/** The host's own pace for a hidden session (`HIDDEN_RELEASE_MS` in pacing.rs). */
-const HIDDEN_APPLY_MS = 250;
-
 /** Events that only change what the transcript draws. Their side effects read
  *  the event and never the state, so a hidden chat can apply them late. */
 const RENDER_ONLY = new Set<ChatEvent["type"]>([
@@ -557,14 +554,11 @@ export default function ChatView(props: {
 
   const edit = (fn: (s: ChatState) => void) => setState(produce(fn));
 
-  // A hidden chat's render-only events, folded in one write per window. The host
-  // already merges its token deltas; this does the same for tool calls, so a chat
-  // behind another tab stops re-rendering per event. Side effects never wait here.
+  // A hidden chat's render-only events, folded in when it is shown or when an event
+  // that reads the state arrives, never on a timer: each write re-runs the status
+  // scans over the whole transcript. Side effects never wait here.
   let held: ChatEvent[] = [];
-  let heldTimer: ReturnType<typeof setTimeout> | undefined;
   function applyHeld() {
-    clearTimeout(heldTimer);
-    heldTimer = undefined;
     if (!held.length) return;
     const events = held;
     held = [];
@@ -572,11 +566,6 @@ export default function ChatView(props: {
       for (const ev of events) applyEvent(s, ev);
     });
   }
-  function holdForScreen(ev: ChatEvent) {
-    held.push(ev);
-    heldTimer ??= setTimeout(applyHeld, HIDDEN_APPLY_MS);
-  }
-  onCleanup(() => clearTimeout(heldTimer));
   createEffect(
     on(
       () => props.active,
@@ -935,7 +924,7 @@ export default function ChatView(props: {
         return;
       }
       if (!props.active && RENDER_ONLY.has(ev.type)) {
-        holdForScreen(ev);
+        held.push(ev);
       } else {
         // Anything else may read the state right after, so what was held lands first.
         applyHeld();
