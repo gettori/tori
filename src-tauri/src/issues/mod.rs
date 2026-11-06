@@ -20,6 +20,7 @@
 pub mod commands;
 pub mod gate;
 pub mod github;
+pub mod repos;
 pub mod store;
 
 use crate::forge::accounts::Provider;
@@ -67,6 +68,26 @@ pub struct Issue {
     pub body: String,
     pub url: String,
     pub suggested_branch: String,
+}
+
+/// Whether the viewer can read issues in a repo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Access {
+    Readable,
+    /// Missing, private to someone else, or a token without issue access.
+    NoAccess,
+    /// The repo has issues turned off.
+    IssuesOff,
+}
+
+/// One issue number looked up across repos: the issues it is in each, and the
+/// repos that could not be read.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Found {
+    pub hits: Vec<IssueRef>,
+    pub skipped: Vec<String>,
 }
 
 /// What asking to link a branch found.
@@ -195,6 +216,42 @@ pub fn canonical_key(key: &str, origin: &str) -> String {
     }
 }
 
+/// The repos to look in and the number, for what a person typed: a bare `N`
+/// or `#N` reads every `listed` repo, `owner/name#N` and an issue URL that
+/// repo alone, and `name#N` each listed repo of that name, else that name
+/// under `origin`'s owner. `None` for anything else.
+pub fn candidates(input: &str, origin: &str, listed: &[String]) -> Option<(Vec<String>, u64)> {
+    let input = input.trim();
+    let number = |n: &str| n.parse::<u64>().ok().filter(|n| *n > 0);
+    let bare = input.trim_start_matches('#');
+    if !bare.is_empty() && bare.bytes().all(|b| b.is_ascii_digit()) {
+        return Some((listed.to_vec(), number(bare)?));
+    }
+    if let Some((repo, n)) = split_key(input) {
+        return Some((vec![repo], n));
+    }
+    let (name, n) = input.split_once('#')?;
+    let name = name.trim().to_lowercase();
+    if name.is_empty() || name.contains(['/', ' ']) {
+        return None;
+    }
+    let n = number(n.trim())?;
+    let named: Vec<String> = listed
+        .iter()
+        .filter(|r| {
+            r.rsplit('/')
+                .next()
+                .is_some_and(|tail| tail.eq_ignore_ascii_case(&name))
+        })
+        .cloned()
+        .collect();
+    if !named.is_empty() {
+        return Some((named, n));
+    }
+    let owner = origin.split_once('/')?.0;
+    Some((vec![format!("{}/{name}", owner.to_lowercase())], n))
+}
+
 /// How a canonical key reads to a person: `#N`, or `owner/name#N`.
 pub fn display_of(canonical: &str) -> String {
     if canonical.contains('#') {
@@ -220,6 +277,18 @@ pub trait IssueSource: Send + Sync {
     /// naming something that is not an issue there is [`ForgeError::Invalid`],
     /// with the sentence to show.
     fn get(&self, repo: &RepoRef, key: &str) -> Result<Issue, ForgeError>;
+
+    /// Open issues assigned to the viewer across `repos`, keyed against `origin`.
+    fn list_assigned_in(&self, origin: &RepoRef, repos: &[RepoRef]) -> Result<Vec<IssueRef>, ForgeError>;
+
+    /// Issue `number` in each of `repos`, in one request, keyed against
+    /// `origin`. A pull request with that number is not a hit, and a repo the
+    /// viewer cannot read is skipped rather than failing the rest.
+    fn find(&self, origin: &RepoRef, number: u64, repos: &[RepoRef]) -> Result<Found, ForgeError>;
+
+    /// Whether the viewer can read issues in each of `repos`, in order, in
+    /// one request. One repo it cannot read never fails the others.
+    fn access(&self, repos: &[RepoRef]) -> Result<Vec<Access>, ForgeError>;
 
     /// Make `branch` in `repo` from `base` (the host's default branch when
     /// `None`) and link it to the issue, which may live in another repo.
@@ -340,6 +409,32 @@ mod tests {
             named.search(),
             "repo: is:open is:issue label:\"say hi\" assignee:skarif2"
         );
+    }
+
+    #[test]
+    fn each_typed_form_picks_its_repos() {
+        let origin = "gettori/tori";
+        let listed = [
+            "gettori/tori".to_string(),
+            "gettori/tickets".to_string(),
+            "other/tickets".to_string(),
+        ];
+        let got = |input: &str| candidates(input, origin, &listed);
+        assert_eq!(got("31"), Some((listed.to_vec(), 31)));
+        assert_eq!(got("#31"), Some((listed.to_vec(), 31)));
+        assert_eq!(got("gettori/tickets#31"), Some((vec!["gettori/tickets".into()], 31)));
+        assert_eq!(
+            got("https://github.com/Acme/Docs/issues/7"),
+            Some((vec!["acme/docs".into()], 7))
+        );
+        assert_eq!(
+            got("Tickets#31"),
+            Some((vec!["gettori/tickets".into(), "other/tickets".into()], 31))
+        );
+        assert_eq!(got("web#4"), Some((vec!["gettori/web".into()], 4)));
+        for nothing in ["", "fix the bug", "web#", "web#x", "#0", "a b#3"] {
+            assert_eq!(got(nothing), None, "{nothing}");
+        }
     }
 
     #[test]

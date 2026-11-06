@@ -440,6 +440,7 @@ pub fn relocate_attached_folder(app: tauri::AppHandle, old: String, new: String)
         ("branches", crate::config::rekey_attached_branches(&store, &old, new)),
         ("sessions", crate::sessions::rekey_adopted(&old, new)),
         ("issues", crate::issues::store::rekey(&old, new)),
+        ("issue repos", crate::issues::repos::rekey(&old, new)),
         ("origins", crate::unit_origins::rekey(&old, new)),
         ("trust", crate::trust::rekey(&old, new)),
         ("settings", crate::settings::rekey_project(&old, new)),

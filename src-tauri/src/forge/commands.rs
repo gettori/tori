@@ -757,7 +757,7 @@ pub struct Client {
     pub forge: Box<dyn Forge>,
 }
 
-fn remote_of(project_path: &str) -> Result<Remote, ForgeError> {
+pub(crate) fn remote_of(project_path: &str) -> Result<Remote, ForgeError> {
     match crate::git::git_origin(project_path.to_string()) {
         Ok(Some(url)) => remote::parse(&url),
         Ok(None) => Err(ForgeError::NoRemote),

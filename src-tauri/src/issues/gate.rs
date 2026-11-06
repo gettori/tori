@@ -11,10 +11,14 @@ use crate::forge::status::{SingleFlight, FRESH_FOR};
 use crate::forge::{now_secs, ForgeError, RateLimitKind};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// How long to hold off when a refusal named no deadline at all.
 const UNNAMED_WAIT_SECS: u64 = 60;
+
+/// How long a repo the viewer could not read is left out of a multi-repo
+/// read, so a poll tick does not fail on it, then fall back, every time.
+const NO_ACCESS_FOR: Duration = Duration::from_secs(600);
 
 #[derive(Default)]
 pub struct Gate {
@@ -22,6 +26,7 @@ pub struct Gate {
     limits: Mutex<HashMap<String, (RateLimitKind, u64)>>,
     fresh: Mutex<HashMap<String, (Instant, Vec<IssueRef>)>>,
     flight: SingleFlight<Vec<IssueRef>>,
+    unreadable: Mutex<HashMap<(String, String), Instant>>,
 }
 
 impl Gate {
@@ -96,6 +101,31 @@ impl Gate {
             .unwrap_or_else(|e| e.into_inner())
             .insert(key, (Instant::now(), list.clone()));
         Ok(list)
+    }
+}
+
+fn repo_key(account: &str, repo: &str) -> (String, String) {
+    (account.to_string(), repo.to_lowercase())
+}
+
+impl Gate {
+    /// Records what a read of `repo` found, so the next multi-repo read
+    /// leaves out a repo that just refused.
+    pub fn note_access(&self, account: &str, repo: &str, readable: bool) {
+        let key = repo_key(account, repo);
+        let mut unreadable = self.unreadable.lock().unwrap_or_else(|e| e.into_inner());
+        if readable {
+            unreadable.remove(&key);
+        } else {
+            unreadable.insert(key, Instant::now());
+        }
+    }
+
+    /// Whether `repo` refused a read lately enough to be left out.
+    pub fn unreadable(&self, account: &str, repo: &str) -> bool {
+        let key = repo_key(account, repo);
+        let unreadable = self.unreadable.lock().unwrap_or_else(|e| e.into_inner());
+        unreadable.get(&key).is_some_and(|at| at.elapsed() <= NO_ACCESS_FOR)
     }
 }
 
