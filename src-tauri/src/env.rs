@@ -49,6 +49,30 @@ const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 /// exactly the verbose-banner case this guards. On timeout we kill by pid,
 /// which also unblocks that thread.
 pub fn output_with_timeout(cmd: &mut std::process::Command) -> Option<std::process::Output> {
+    run_with_timeout(cmd).ok()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProbeFailure {
+    CouldNotRun(String),
+    TimedOut,
+    NoPath { status: Option<i32> },
+}
+
+impl std::fmt::Display for ProbeFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProbeFailure::CouldNotRun(e) => write!(f, "{} could not run: {e}", login_shell()),
+            ProbeFailure::TimedOut => write!(f, "{} took over {}s", login_shell(), PROBE_TIMEOUT.as_secs()),
+            ProbeFailure::NoPath { status: Some(code) } => {
+                write!(f, "{} printed no PATH (exit status {code})", login_shell())
+            }
+            ProbeFailure::NoPath { status: None } => write!(f, "{} printed no PATH", login_shell()),
+        }
+    }
+}
+
+fn run_with_timeout(cmd: &mut std::process::Command) -> Result<std::process::Output, ProbeFailure> {
     use std::process::Stdio;
 
     let child = cmd
@@ -58,7 +82,7 @@ pub fn output_with_timeout(cmd: &mut std::process::Command) -> Option<std::proce
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .ok()?;
+        .map_err(|e| ProbeFailure::CouldNotRun(e.to_string()))?;
     let pid = child.id();
 
     let (tx, rx) = std::sync::mpsc::channel();
@@ -67,13 +91,13 @@ pub fn output_with_timeout(cmd: &mut std::process::Command) -> Option<std::proce
     });
 
     match rx.recv_timeout(PROBE_TIMEOUT) {
-        Ok(result) => result.ok(),
+        Ok(result) => result.map_err(|e| ProbeFailure::CouldNotRun(e.to_string())),
         Err(_) => {
             let _ = std::process::Command::new("kill")
                 .arg("-9")
                 .arg(pid.to_string())
                 .status();
-            None
+            Err(ProbeFailure::TimedOut)
         }
     }
 }
@@ -89,12 +113,14 @@ fn extract_sentinel(stdout: &str) -> Option<String> {
     (!value.trim().is_empty()).then(|| value.to_string())
 }
 
-fn capture_login_path() -> Option<String> {
-    let out = output_with_timeout(
+fn capture_login_path() -> Result<String, ProbeFailure> {
+    let out = run_with_timeout(
         std::process::Command::new(login_shell())
             .args(["-lic", &format!("printf '{SENTINEL_BEGIN}%s{SENTINEL_END}' \"$PATH\"")]),
     )?;
-    extract_sentinel(&String::from_utf8_lossy(&out.stdout))
+    extract_sentinel(&String::from_utf8_lossy(&out.stdout)).ok_or(ProbeFailure::NoPath {
+        status: out.status.code(),
+    })
 }
 
 /// A file the bundle ships, as Tauri resolves its resource dir on macOS:
@@ -105,18 +131,76 @@ pub fn bundled(relative: &str) -> Option<PathBuf> {
     Some(contents.join("Resources").join(relative))
 }
 
-static LOGIN_PATH: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+// One slow shell at boot must not break spawns until Tori quits, and a shell
+// that always fails must not cost 5 s on every spawn.
+const RETRY_AFTER: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// The user's login-shell PATH, captured once on first use. `None` when the
-/// shell could not be run or its output carried no usable sentinel value; in
-/// that case callers fall back to a per-binary `command -v` probe rather than
+struct LoginPathCache {
+    captured: std::sync::OnceLock<String>,
+    failed: std::sync::Mutex<Option<(std::time::Instant, ProbeFailure)>>,
+}
+
+impl LoginPathCache {
+    const fn new() -> Self {
+        Self {
+            captured: std::sync::OnceLock::new(),
+            failed: std::sync::Mutex::new(None),
+        }
+    }
+
+    // The lock is held across the probe, so a caller arriving mid-probe waits
+    // for its answer rather than starting a second shell.
+    fn get(&self, now: std::time::Instant, probe: impl FnOnce() -> Result<String, ProbeFailure>) -> Option<&str> {
+        if let Some(path) = self.captured.get() {
+            return Some(path);
+        }
+        let mut failed = self.failed.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(path) = self.captured.get() {
+            return Some(path);
+        }
+        if let Some((at, _)) = failed.as_ref() {
+            if now.saturating_duration_since(*at) < RETRY_AFTER {
+                return None;
+            }
+        }
+        match probe() {
+            Ok(path) => {
+                *failed = None;
+                Some(self.captured.get_or_init(|| path))
+            }
+            Err(why) => {
+                eprintln!("tori: could not read the login shell's PATH: {why}");
+                *failed = Some((std::time::Instant::now(), why));
+                None
+            }
+        }
+    }
+
+    fn failure(&self) -> Option<ProbeFailure> {
+        if self.captured.get().is_some() {
+            return None;
+        }
+        let failed = self.failed.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        failed.as_ref().map(|(_, why)| why.clone())
+    }
+}
+
+static LOGIN_PATH: LoginPathCache = LoginPathCache::new();
+
+/// The user's login-shell PATH, kept once captured. `None` when the shell
+/// could not be run or its output carried no usable sentinel value; in that
+/// case callers fall back to a per-binary `command -v` probe rather than
 /// silently consulting the (wrong) GUI process PATH.
 pub fn login_path() -> Option<&'static str> {
-    LOGIN_PATH.get_or_init(capture_login_path).as_deref()
+    LOGIN_PATH.get(std::time::Instant::now(), capture_login_path)
 }
 
 pub fn login_path_if_captured() -> Option<&'static str> {
-    LOGIN_PATH.get().and_then(|p| p.as_deref())
+    LOGIN_PATH.captured.get().map(String::as_str)
+}
+
+pub fn login_path_failure() -> Option<ProbeFailure> {
+    LOGIN_PATH.failure()
 }
 
 fn is_executable(path: &Path) -> bool {
@@ -144,7 +228,7 @@ fn probe_binary(program: &str) -> Option<PathBuf> {
 /// Search a colon-separated PATH for an executable named `program`. Pure, so
 /// the lookup that matters most (a binary living only in a dir the GUI process
 /// never sees, e.g. an nvm shim dir) is testable without a real login shell.
-fn resolve_in_path(program: &str, path: &str) -> Option<PathBuf> {
+pub(crate) fn resolve_in_path(program: &str, path: &str) -> Option<PathBuf> {
     path.split(':')
         .filter(|dir| !dir.is_empty())
         .map(|dir| Path::new(dir).join(program))
@@ -172,10 +256,11 @@ fn expand_tilde(path: &str) -> PathBuf {
 }
 
 /// PATH for a child that runs the user's own tools (an agent session, its
-/// hooks). The login PATH when the startup probe has it, since a dir only the
-/// user's rc adds is invisible to `augmented_path`.
+/// hooks). The login PATH, since a dir only the user's rc adds is invisible to
+/// `augmented_path`. Blocks on a probe still in flight: a session restored at
+/// launch would otherwise spawn on the fallback before the startup probe lands.
 pub fn session_path() -> String {
-    login_path_if_captured().map_or_else(augmented_path, str::to_string)
+    login_path().map_or_else(augmented_path, str::to_string)
 }
 
 pub fn augmented_path() -> String {
@@ -263,6 +348,54 @@ mod tests {
     fn output_with_timeout_returns_a_fast_child_normally() {
         let out = output_with_timeout(std::process::Command::new("/bin/echo").arg("hi")).expect("echo succeeds");
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "hi");
+    }
+
+    #[test]
+    fn a_failed_probe_is_asked_again_after_the_cooldown() {
+        let cache = LoginPathCache::new();
+        let t0 = std::time::Instant::now();
+        assert_eq!(cache.get(t0, || Err(ProbeFailure::TimedOut)), None);
+        assert_eq!(cache.failure(), Some(ProbeFailure::TimedOut));
+
+        let mut ran = false;
+        let soon = t0 + std::time::Duration::from_secs(1);
+        assert_eq!(
+            cache.get(soon, || {
+                ran = true;
+                Ok("/early".into())
+            }),
+            None
+        );
+        assert!(!ran, "a call inside the cooldown must not run the probe again");
+
+        let later = t0 + RETRY_AFTER + std::time::Duration::from_secs(1);
+        assert_eq!(cache.get(later, || Ok("/login/bin".into())), Some("/login/bin"));
+        assert_eq!(cache.failure(), None);
+        assert_eq!(
+            cache.get(later, || panic!("a captured PATH is never probed again")),
+            Some("/login/bin")
+        );
+    }
+
+    #[test]
+    fn a_caller_during_an_in_flight_probe_gets_its_answer() {
+        let cache: &'static LoginPathCache = Box::leak(Box::new(LoginPathCache::new()));
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let first = std::thread::spawn(move || {
+            cache
+                .get(std::time::Instant::now(), || {
+                    started_tx.send(()).unwrap();
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                    Ok("/login/bin".into())
+                })
+                .map(str::to_string)
+        });
+        started_rx.recv().unwrap();
+        let second = cache.get(std::time::Instant::now(), || {
+            panic!("the second caller must wait, not probe")
+        });
+        assert_eq!(second, Some("/login/bin"));
+        assert_eq!(first.join().unwrap().as_deref(), Some("/login/bin"));
     }
 
     #[test]

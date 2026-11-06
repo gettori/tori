@@ -86,6 +86,39 @@ pub fn build_command(spec: &StartSpec) -> std::process::Command {
     cmd
 }
 
+/// What to tell the user when a spawn fails. A missing `cwd` and a missing
+/// binary both come back as the same `NotFound`.
+pub fn spawn_error(spec: &StartSpec, path: Option<&str>, e: &std::io::Error) -> String {
+    let program = &spec.program;
+    if !spec.cwd.is_empty() && !std::path::Path::new(&spec.cwd).is_dir() {
+        return format!("could not start {program}: the folder {} is gone", spec.cwd);
+    }
+    if e.kind() != std::io::ErrorKind::NotFound {
+        return format!("could not start {program}: {e}");
+    }
+    if program.contains('/') {
+        return format!("could not start {program}: there is no such file");
+    }
+    // A missing shebang interpreter is `NotFound` too, for a program PATH has.
+    if path.is_some_and(|p| crate::env::resolve_in_path(program, p).is_some()) {
+        return format!("could not start {program}: {e}");
+    }
+    let why = crate::env::login_path_failure()
+        .map(|f| format!(" Tori could not read your login shell's PATH: {f}."))
+        .unwrap_or_default();
+    format!(
+        "could not start {program}: it is not on PATH ({}).{why}",
+        path.unwrap_or_default()
+    )
+}
+
+pub fn path_of(cmd: &std::process::Command) -> Option<String> {
+    cmd.get_envs()
+        .find(|(key, _)| *key == "PATH")
+        .and_then(|(_, value)| value)
+        .map(|value| value.to_string_lossy().into_owned())
+}
+
 /// One live agent session, driven as a long-lived process.
 ///
 /// Every method returns `Result` rather than emitting on failure, so the host
@@ -323,6 +356,37 @@ mod tests {
         child.stdout.take().unwrap().read_to_string(&mut out).unwrap();
         let _ = child.wait();
         assert_eq!(out, "reached");
+    }
+
+    #[test]
+    fn a_spawn_into_a_deleted_folder_names_the_folder() {
+        let spec = StartSpec {
+            cwd: "/tmp/tori-no-such-worktree".to_string(),
+            program: "/bin/sh".to_string(),
+            ..StartSpec::default()
+        };
+        let mut cmd = build_command(&spec);
+        let e = cmd.spawn().expect_err("a missing cwd cannot spawn");
+        assert_eq!(
+            spawn_error(&spec, path_of(&cmd).as_deref(), &e),
+            "could not start /bin/sh: the folder /tmp/tori-no-such-worktree is gone"
+        );
+    }
+
+    #[test]
+    fn a_binary_missing_from_path_names_the_path_searched() {
+        let spec = StartSpec {
+            program: "tori-no-such-agent".to_string(),
+            ..StartSpec::default()
+        };
+        let mut cmd = build_command(&spec);
+        cmd.env("PATH", "/usr/bin:/bin");
+        let e = cmd.spawn().expect_err("a missing binary cannot spawn");
+        let msg = spawn_error(&spec, path_of(&cmd).as_deref(), &e);
+        assert!(
+            msg.starts_with("could not start tori-no-such-agent: it is not on PATH (/usr/bin:/bin)."),
+            "{msg}"
+        );
     }
 
     /// A transport must be usable as a boxed object: the host holds
