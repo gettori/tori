@@ -1,13 +1,15 @@
 ---
 summary: list_worktrees_body reports a detached worktree's branch as the string (detached), not empty, so an emptiness check lets it through
 status: current
-updated: 2026-10-11
-source: Move an existing worktree into a Topic (gettori/tickets#76, branch `phase-1-block-2`), `src-tauri/src/worktree.rs:85`, `src-tauri/src/topics.rs` (`moved_worktree`), commit 1b73f0ea
+updated: 2026-11-06
+source: Move an existing worktree into a Topic (gettori/tickets#76, branch `phase-1-block-2`), `src-tauri/src/worktree.rs:85`, `src-tauri/src/topics.rs` (`moved_worktree`), commit 1b73f0ea; plan "Survive a rebase, a restart and a delete" (branch `rebase-recovery`), commit 8e2d94a0
 ---
 
 # A detached worktree's branch is `(detached)`, not empty
 
 Do NOT test `Worktree.branch.is_empty()` to mean "not on a branch". Why: `list_worktrees_body` parses git's porcelain `detached` line into the literal string `(detached)` (`worktree.rs:85`), so a detached worktree has a non-empty branch, and a guard written as an emptiness check waves it through as if it were on a branch named `(detached)`. Check both, the way `worktree_cleanup.rs:76`, `attempts.rs:394` and `topics.rs` `moved_worktree` do; `config.rs:281` writes the same marker for a unit. The move gate's first version checked only `is_empty()`, and its refusal test failed with the detached worktree accepted.
+
+A worktree in the middle of a rebase is detached too, so it also reads `(detached)` here. That stays on purpose: cleanup and the other callers must not treat a half-done rebase as being on its branch. The sidebar shows the rebase's branch from `worktree::operation(folder).replaying` instead, see [[component_operation_watch]].
 
 ## Related
 

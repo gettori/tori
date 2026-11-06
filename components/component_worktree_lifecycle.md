@@ -1,8 +1,8 @@
 ---
 summary: worktree creation is a shared core taking a target dir, so a plain repo's Feature worktree lands under .tori/worktrees
 status: current
-updated: 2026-10-10
-source: Sidebar as Project Manager + Sidebar Context-Menu Redesign + Shared tab + Attach worktree + Add Branch/Worktree unify (personal/tori, branch code-mirror-6); commits 09ad986, dac1093, e704411, _shared-tab_, _attach-worktree_, _add-branch-worktree_; Features phase 0 (#152, branch feature-workspace); commit 4f9c5ab; Feature lifecycle, member management and repair (#159); commits ef3779b, ede61ff, 70756f3; gettori/tori#208 commit b25293df (create_pr_worktree_in); plan "Run a setup command when a worktree is created" on branch setup-command, ticket gettori/tickets#2
+updated: 2026-11-06
+source: Sidebar as Project Manager + Sidebar Context-Menu Redesign + Shared tab + Attach worktree + Add Branch/Worktree unify (personal/tori, branch code-mirror-6); commits 09ad986, dac1093, e704411, _shared-tab_, _attach-worktree_, _add-branch-worktree_; Features phase 0 (#152, branch feature-workspace); commit 4f9c5ab; Feature lifecycle, member management and repair (#159); commits ef3779b, ede61ff, 70756f3; gettori/tori#208 commit b25293df (create_pr_worktree_in); plan "Run a setup command when a worktree is created" on branch setup-command, ticket gettori/tickets#2; plan "Survive a rebase, a restart and a delete" (branch `rebase-recovery`), commits 43e7d624, b89355ae
 ---
 
 # Worktree lifecycle
@@ -33,6 +33,7 @@ After a worktree is created, each top-level entry of `<container>/.shared/` is s
 
 - **Dirty guard** (`tree_dirty`): refuses removal on tracked modifications or genuine untracked files, but **ignores untracked symlinks pointing into the sibling `.shared/`** (regenerable pointers, not user work). Without this a freshly linked worktree would read as dirty and be unremovable, see [[gotcha_shared_symlinks_read_as_untracked_and_block_worktree_removal]].
 - `do_remove_worktree` (shared core, no emit): once `tree_dirty` passes, it kills a running setup in the folder, then `git worktree remove --force` (to drop the `.shared` symlinks git treats as untracked) then `prune_worktrees`. `remove_worktree` wraps it + emit (branch kept).
+- **A copy before the delete.** `do_remove_worktree` delegates to `remove_worktree_deleting(.., deleted_branch)` (`worktree.rs:1113`), which calls `rescue::keep` after killing setup and stopping the run command and before teardown; if there was work and the copy cannot be written, nothing is deleted. Only `remove_worktree_and_branch` passes the branch it is about to delete. See [[component_rescue_copies]], which also restores through `add_worktree_in` (now `pub(crate)`) so it can write the kept files before `on_created`.
 - `prune_worktrees(repo)` (#159): best-effort `git worktree prune`, extracted so the two Feature-side callers share it. `build_member` prunes before it reads the list, because git keeps listing a folder deleted outside Tori ([[gotcha_git_keeps_listing_a_worktree_you_deleted_outside_it]]); `relocate_member` prunes **after** `git worktree repair`, never before ([[gotcha_git_worktree_repair_before_git_worktree_prune_never_the_reverse]]).
 - **`remove_worktree_and_branch`** removes the folder first, then `git branch -D`. It **emits `config://changed` *before* returning a `-D` failure**, so the tree refreshes (folder gone) and the frontend surfaces an explicit "folder removed, branch not deleted" message - the partial outcome is never swallowed.
 - **Live-use guard (UI-side)**: the shared `worktreeRemovalBlock(u)` refuses removal when the worktree is the open editor root (`selected.folderPath` equals or is under it) or hosts a running agent, prefix-matching nested sessions via `list_sessions(worktree)` then `session_running` per id. Nothing is deleted when refused; used by both remove and delete+branch.
@@ -94,3 +95,5 @@ checkout) there is no `node_modules` to clone and attempts start without one.
 - [[component_feature_store]] - the second caller of the creation core
 - [[component_worktree_setup]] - the setup command a created worktree runs, and the run a removal kills
 - [[component_worktree_cleanup]] - the automatic sweep, the third removal caller
+- [[component_rescue_copies]]: the copy every removal keeps, and the restore that brings it back
+- [[component_operation_watch]]: the operation state a removal warns about
