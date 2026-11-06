@@ -35,9 +35,7 @@ TIMEOUT_MINUTES="${NOTARIZE_TIMEOUT_MINUTES:-240}"
 
 case "$FILE" in
   *.dmg)
-    # --force: Tauri's bundler already signs the DMG, and codesign refuses to
-    # sign over an existing signature without it.
-    codesign --force --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$FILE"
+    codesign --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$FILE"
     ;;
   *.zip) ;;
   *)

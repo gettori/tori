@@ -1,0 +1,11 @@
+# The workflows pin every action to a commit, so nothing moves until this
+# proposes the next one.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

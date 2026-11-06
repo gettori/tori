@@ -14,7 +14,8 @@ val tauriProperties = Properties().apply {
 }
 
 // Absent on a fresh checkout: the keystore and this file are deliberately not in
-// the repo, so a build without them stays possible and comes out unsigned.
+// the repo. A release build without them is refused unless asked for unsigned
+// (ORG_GRADLE_PROJECT_unsigned=true), so a lost keystore never ships unsigned.
 val keystorePropertiesFile = rootProject.file("keystore.properties")
 val keystoreProperties = Properties().apply {
     if (keystorePropertiesFile.exists()) {
@@ -22,6 +23,16 @@ val keystoreProperties = Properties().apply {
     }
 }
 val signRelease = keystoreProperties.getProperty("storeFile") != null
+val unsignedRelease = (findProperty("unsigned") as String?) == "true"
+
+gradle.taskGraph.whenReady {
+    val release = allTasks.any { it.name.contains("Release") }
+    if (release && !signRelease && !unsignedRelease) {
+        throw GradleException(
+            "no keystore.properties for a release build; add it, or set ORG_GRADLE_PROJECT_unsigned=true for an unsigned one"
+        )
+    }
+}
 
 // Push needs the Firebase project's config. Without it the app still builds,
 // with push unavailable.
