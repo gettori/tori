@@ -24,7 +24,7 @@ const lines = (text: string) =>
 
 const ACCESS_LABEL: Record<RepoAccess["access"], string> = {
   readable: "Readable",
-  noAccess: "No access",
+  unreadable: "No access",
   issuesOff: "Issues off",
 };
 
