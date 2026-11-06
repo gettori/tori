@@ -257,6 +257,7 @@ import StatusBubble, { CountBubble } from "./StatusBubble";
 import { latestUnreviewed, runSecondOpinion, secondOpinionRunning } from "../../utils/secondOpinion";
 import SpaceTile, { TileProbe } from "./SpaceTile";
 import { GLOBAL_COLOR, GLOBAL_ICON, GLOBAL_KEY, GLOBAL_NAME, allSpaces, spaceLabel } from "../../utils/globalSpace";
+import { applyOperation, displayBranch, ownsFolder, type Operation } from "../../utils/worktreeOperation";
 import {
   BranchRow,
   EmptyRow,
@@ -289,14 +290,20 @@ import styles from "./LeftSidebar.module.css";
 // bullet at its right edge. The glyph draws a branch and its tip, so it can
 // say where HEAD is in the ink it already has, and the end cluster keeps its
 // width for the things that change.
-function UnitIcon(props: { kind: string | undefined; active: boolean; current: boolean }) {
+function UnitIcon(props: { kind: string | undefined; active: boolean; current: boolean; operation?: boolean }) {
+  const operation = () => (props.operation ? "true" : undefined);
   return (
     <Switch fallback={<Icon icon={Folder} />}>
       <Match when={props.kind === "worktree" || props.kind === "incomplete" || props.kind === "converting"}>
-        <WorktreeMark active={props.active} current={props.current} stub={props.kind !== "worktree"} />
+        <WorktreeMark
+          active={props.active}
+          current={props.current}
+          stub={props.kind !== "worktree"}
+          data-operation={operation()}
+        />
       </Match>
       <Match when={props.kind === "plain"}>
-        <BranchMark active={props.active} current={props.current} />
+        <BranchMark active={props.active} current={props.current} data-operation={operation()} />
       </Match>
     </Switch>
   );
@@ -340,6 +347,7 @@ type BranchUnit = {
   isCurrent: boolean;
   issue?: UnitIssue;
   madeBy?: UnitOrigin;
+  operation?: Operation;
 };
 type Branch = { name: string; current: boolean };
 // `icon`/`iconFile` are what the user chose (a Lucide name, or an image in the
@@ -387,6 +395,9 @@ export type Selection = {
   // The branch-unit's working folder: the anchor every path consumer uses.
   folderPath: string;
   branch: string;
+  // What the breadcrumb shows. `branch` is the selection's identity and stays
+  // `(detached)` while a rebase runs.
+  branchLabel?: string;
   projectKind: string;
   agent?: string;
   // Which account of `agent` the selected session belongs to; `null` is the
@@ -606,6 +617,7 @@ export default function LeftSidebar(props: {
       projectPath: p.path,
       folderPath: u.folderPath,
       branch: unitLabel(u),
+      branchLabel: displayBranch(u),
       projectKind: u.kind,
       // A selection persisted before accounts existed has no profile field, so
       // it reads as the default account, which is what it ran as.
@@ -1611,6 +1623,8 @@ export default function LeftSidebar(props: {
       // dropped, and the rest left holding what they had. Fire-and-forget, so a
       // slow batch never holds the tree back from rendering.
       const listed = allSpaces(cfg);
+      const owned = listed.flatMap((g) => g.projects.flatMap((p) => p.branchUnits.filter(ownsFolder)));
+      invoke("operation_watch_start", { folders: [...new Set(owned.map((u) => u.folderPath))] }).catch(() => {});
       void syncUnits(listed.flatMap((g) => g.projects.flatMap((p) => p.branchUnits)));
       // Seed the adopted set from the first real discovery (idempotent, and a
       // no-op on empty), so existing folders are never flagged historical.
@@ -3017,6 +3031,7 @@ export default function LeftSidebar(props: {
       projectPath: p.path,
       folderPath: u.folderPath,
       branch: unitLabel(u),
+      branchLabel: displayBranch(u),
       projectKind: u.kind,
       // A unit with no session selected names no account: the profile arrives
       // with the session, since that is the thing an account belongs to.
@@ -3056,6 +3071,7 @@ export default function LeftSidebar(props: {
       projectPath: p.path,
       folderPath: u.folderPath,
       branch: unitLabel(u),
+      branchLabel: displayBranch(u),
       projectKind: u.kind,
       agent: s.agent,
       // The index derived this from the root the transcript was found under, so
@@ -3216,8 +3232,10 @@ export default function LeftSidebar(props: {
     };
     return (
       <BranchRow
-        label={unitLabel(u)}
-        icon={<UnitIcon kind={u.kind} active={rollup().executing > 0} current={u.isCurrent} />}
+        label={displayBranch(u)}
+        icon={
+          <UnitIcon kind={u.kind} active={rollup().executing > 0} current={u.isCurrent} operation={!!u.operation} />
+        }
         iconLabel={iconLabel(u)}
         selected={unitSelected(u)}
         nested={attempt != null || layer}
@@ -3228,7 +3246,8 @@ export default function LeftSidebar(props: {
         meta={
           (showPr() && (!trunk() || releaseShows(status()!, Date.now() / 1000))) ||
           (sync()?.base?.stat?.files ?? 0) > 0 ||
-          spendView(spent(), "") ? (
+          spendView(spent(), "") ||
+          u.operation ? (
             <BranchLine
               status={showPr() ? status()! : null}
               base={sync()?.base}
@@ -3236,6 +3255,7 @@ export default function LeftSidebar(props: {
               watched={showPr() && prWatches().some((w) => w.url === status()?.pullRequest?.url)}
               reviewAsked={reviewAsked()}
               release={trunk()}
+              operation={u.operation}
             />
           ) : undefined
         }
@@ -3543,6 +3563,7 @@ export default function LeftSidebar(props: {
   const spaceFold = projectFold(activeSpace, activeProjects, () => `pm:${activeSpace()?.name ?? ""}`);
 
   let unlistenConfig: UnlistenFn | undefined;
+  let unlistenOperation: UnlistenFn | undefined;
   let unlistenSessions: UnlistenFn | undefined;
   let unlistenNavOpen: UnlistenFn | undefined;
   let unlistenNavDraft: UnlistenFn | undefined;
@@ -3563,6 +3584,13 @@ export default function LeftSidebar(props: {
     await invoke("sessions_watch_start").catch(() => {});
     await loadConfig();
     unlistenConfig = await listen("config://changed", () => void loadConfig());
+    unlistenOperation = await listen<{ folder: string; operation: Operation | null }>("worktree://operation", (e) => {
+      const cfg = config();
+      if (!cfg) return;
+      const { config: next, reload } = applyOperation(cfg, e.payload.folder, e.payload.operation);
+      if (next !== cfg) setConfig(next);
+      if (reload) void loadConfig();
+    });
     unlistenPrWatches = await listen("pr_watch://changed", readPrWatches);
     unlistenSessions = await listen<SessionsChanged | null>("sessions://changed", (e) => {
       // No explicit tail re-read: the tail-state effect now triggers on the
@@ -3648,6 +3676,7 @@ export default function LeftSidebar(props: {
   });
   onCleanup(() => {
     unlistenConfig?.();
+    unlistenOperation?.();
     unlistenPrWatches?.();
     unlistenSessions?.();
     unlistenNavOpen?.();

@@ -147,6 +147,7 @@ mod tests {
             is_current: false,
             issue: None,
             made_by: None,
+            operation: None,
         }
     }
 

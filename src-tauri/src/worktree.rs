@@ -598,6 +598,90 @@ fn linked_worktree_admin_dir(folder: &Path) -> Option<PathBuf> {
     (parent == "worktrees").then_some(admin)
 }
 
+pub(crate) fn git_dir(folder: &Path) -> Option<PathBuf> {
+    let dot = folder.join(".git");
+    if dot.is_dir() {
+        return Some(dot);
+    }
+    linked_worktree_admin_dir(folder)
+}
+
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum OperationKind {
+    Rebase,
+    Merge,
+    CherryPick,
+    Revert,
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Operation {
+    pub kind: OperationKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replaying: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub step: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total: Option<u32>,
+    pub conflicted: usize,
+}
+
+// Marker files, not git: the sidebar asks this of every row on every load, and
+// git runs only to count the unmerged paths of a folder that has an operation.
+pub(crate) fn operation(folder: &Path) -> Option<Operation> {
+    let dir = git_dir(folder)?;
+    let read = |name: &str| {
+        let text = std::fs::read_to_string(dir.join(name)).ok()?;
+        let text = text.trim().to_string();
+        (!text.is_empty()).then_some(text)
+    };
+    let number = |name: &str| read(name).and_then(|n| n.parse::<u32>().ok());
+    let rebase = |state: &str, step: &str, total: &str| {
+        (
+            OperationKind::Rebase,
+            read(&format!("{state}/head-name")).and_then(|name| name.strip_prefix("refs/heads/").map(str::to_string)),
+            number(&format!("{state}/{step}")),
+            number(&format!("{state}/{total}")),
+        )
+    };
+    // Same order as `conflict::git_conflict_op`: a pick that stops inside a
+    // rebase leaves both markers, and the rebase is what the user is in.
+    let (kind, replaying, step, total) = if dir.join("rebase-merge").is_dir() {
+        rebase("rebase-merge", "msgnum", "end")
+    } else if dir.join("rebase-apply").is_dir() {
+        rebase("rebase-apply", "next", "last")
+    } else if dir.join("MERGE_HEAD").exists() {
+        (OperationKind::Merge, None, None, None)
+    } else if dir.join("CHERRY_PICK_HEAD").exists() {
+        (OperationKind::CherryPick, None, None, None)
+    } else if dir.join("REVERT_HEAD").exists() {
+        (OperationKind::Revert, None, None, None)
+    } else {
+        return None;
+    };
+    let conflicted = crate::exec::git_in(folder)
+        .args(["diff", "--name-only", "--diff-filter=U"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .filter(|l| !l.is_empty())
+                .count()
+        })
+        .unwrap_or(0);
+    Some(Operation {
+        kind,
+        replaying,
+        step,
+        total,
+        conflicted,
+    })
+}
+
 fn mark_fork(worktree: &Path) {
     if let Some(marker) = fork_marker(worktree) {
         let _ = marker.parent().map(std::fs::create_dir_all);
@@ -1234,6 +1318,78 @@ mod tests {
         git(dir, &["config", "user.email", "t@t.t"]);
         git(dir, &["config", "user.name", "t"]);
         git(dir, &["commit", "-q", "--allow-empty", "-m", "one"]);
+    }
+
+    fn diverged_repo(repo: &Path) {
+        std::fs::create_dir_all(repo).unwrap();
+        git(repo, &["init", "-q", "-b", "main"]);
+        git(repo, &["config", "user.email", "t@t.t"]);
+        git(repo, &["config", "user.name", "t"]);
+        git(repo, &["config", "commit.gpgsign", "false"]);
+        let commit = |text: &str| {
+            std::fs::write(repo.join("a.txt"), text).unwrap();
+            git(repo, &["add", "a.txt"]);
+            git(repo, &["commit", "-q", "-m", text]);
+        };
+        commit("base\n");
+        git(repo, &["checkout", "-q", "-b", "feat"]);
+        commit("feat\n");
+        git(repo, &["checkout", "-q", "main"]);
+        commit("main\n");
+    }
+
+    fn rebase_onto_main(folder: &Path) {
+        git(folder, &["-c", "core.editor=true", "rebase", "main"]);
+    }
+
+    fn stopped_rebase() -> Option<Operation> {
+        Some(Operation {
+            kind: OperationKind::Rebase,
+            replaying: Some("feat".into()),
+            step: Some(1),
+            total: Some(1),
+            conflicted: 1,
+        })
+    }
+
+    #[test]
+    fn a_rebase_stopped_on_a_conflict_reads_in_every_layout() {
+        let tmp = unique_tmp();
+
+        let plain = tmp.join("plain");
+        diverged_repo(&plain);
+        assert_eq!(operation(&plain), None, "nothing in progress yet");
+        git(&plain, &["checkout", "-q", "feat"]);
+        rebase_onto_main(&plain);
+        assert_eq!(operation(&plain), stopped_rebase(), "a plain repo's own checkout");
+
+        let repo = tmp.join("repo");
+        diverged_repo(&repo);
+        let linked = tmp.join("linked");
+        git(&repo, &["worktree", "add", "-q", linked.to_str().unwrap(), "feat"]);
+        rebase_onto_main(&linked);
+        assert_eq!(operation(&linked), stopped_rebase(), "a plain repo's linked worktree");
+        assert_eq!(operation(&repo), None, "the main checkout is not the one rebasing");
+
+        std::fs::write(linked.join(".git"), "gitdir: ../repo/.git/worktrees/linked\n").unwrap();
+        assert_eq!(operation(&linked), stopped_rebase(), "a relative gitdir");
+
+        let src = tmp.join("src");
+        diverged_repo(&src);
+        let container = tmp.join("container");
+        std::fs::create_dir_all(&container).unwrap();
+        git(&container, &["clone", "-q", "--bare", src.to_str().unwrap(), ".bare"]);
+        let bare = container.join(".bare");
+        git(&bare, &["config", "user.email", "t@t.t"]);
+        git(&bare, &["config", "user.name", "t"]);
+        let wt = container.join("feat");
+        git(&bare, &["worktree", "add", "-q", wt.to_str().unwrap(), "feat"]);
+        rebase_onto_main(&wt);
+        assert_eq!(operation(&wt), stopped_rebase(), "a bare container's worktree");
+
+        git(&wt, &["rebase", "--abort"]);
+        assert_eq!(operation(&wt), None, "an aborted rebase is gone");
+        std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]

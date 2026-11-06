@@ -51,6 +51,7 @@ mod mcp;
 mod model;
 mod needs_you_log;
 mod onboarding;
+mod operation_watch;
 mod owned_state;
 pub mod packs;
 pub mod palette;
@@ -335,6 +336,7 @@ pub fn run() {
         .manage(ConfigWatch::default())
         .manage(ProjectIndex::default())
         .manage(RootWatch::default())
+        .manage(operation_watch::OperationWatch::default())
         .manage(FsWatch::default())
         .manage(DapState::default())
         .manage(LspState::default())
@@ -468,6 +470,7 @@ pub fn run() {
             config::project_delete_preview,
             config::rediscover,
             config::roots_watch_start,
+            operation_watch::operation_watch_start,
             config::cleanup_incomplete,
             config::seed_attached,
             config::attach_branch,
