@@ -338,6 +338,10 @@ export type OpenSettings = { query?: string; entry?: string };
 // the entry point names one. Consumed by App.tsx, which owns the dialog's
 // open state, so the sidebar, Settings and the palette share one door.
 export const OPEN_PROJECT_SETTINGS = "tori:open-project-settings";
+
+// A project's issue repos were saved, so a picker over them rereads.
+export const ISSUE_REPOS_CHANGED = "tori:issue-repos-changed";
+export type IssueReposChanged = { path: string };
 export type OpenProjectSettings = { path: string; section?: ProjectSection };
 
 // The language-server commands. They exist as events, and not only as CM6 key

@@ -1,5 +1,5 @@
 import { createEffect, createSignal, For, on, Show, type JSX } from "solid-js";
-import { type SelectOption } from "../../../../components/Select/Select";
+import Select, { type SelectOption } from "../../../../components/Select/Select";
 import SegmentedControl from "../../../../components/SegmentedControl/SegmentedControl";
 import Button from "../../../../components/Button/Button";
 import styles from "../../Settings.module.css";
@@ -44,6 +44,7 @@ export default function ProjectContract(props: {
   onSet: (patch: ContractPatch) => Promise<unknown>;
   /** Whether the issue sources hold unsaved edits. */
   onDirty?: (dirty: boolean) => void;
+  repos: string[];
 }) {
   const [draft, setDraft] = createSignal<IssueQuery[]>([]);
   const [error, setError] = createSignal<string | null>(null);
@@ -65,6 +66,11 @@ export default function ProjectContract(props: {
     ),
   );
 
+  const optionsKeeping = (current: string): SelectOption[] =>
+    [...props.repos, ...(current && !props.repos.includes(current) ? [current] : [])].map((r) => ({
+      value: r,
+      label: r,
+    }));
   const dirty = () => JSON.stringify(draft()) !== JSON.stringify(props.contract.issues);
   createEffect(() => props.onDirty?.(dirty()));
   const edit = (at: number, change: Partial<IssueQuery>) =>
@@ -133,7 +139,7 @@ export default function ProjectContract(props: {
         </div>
         <Show
           when={draft().length}
-          fallback={<p class={styles.note}>None: the issues assigned to you in this project's repo.</p>}
+          fallback={<p class={styles.note}>None: the issues assigned to you in this project's issue repos.</p>}
         >
           <For each={draft()}>
             {(query, at) => {
@@ -159,11 +165,17 @@ export default function ProjectContract(props: {
                     </Button>
                   </div>
                   <div class={own.fields}>
-                    {field(
-                      "Repo",
-                      () => query.repo,
-                      (v) => ({ repo: v.trim() }),
-                    )}
+                    <label class={own.field}>
+                      <span>Repo</span>
+                      <Select
+                        size="sm"
+                        aria-label={`Source ${at() + 1} repo`}
+                        placeholder="Pick a repo"
+                        options={optionsKeeping(query.repo)}
+                        value={query.repo}
+                        onChange={(repo) => edit(at(), { repo })}
+                      />
+                    </label>
                     {field(
                       "Labels",
                       () => query.labels.join(", "),
@@ -197,7 +209,8 @@ export default function ProjectContract(props: {
         </Show>
         <p class={styles.note}>
           Labels are comma separated and all must match. Assignee left empty is you, <code>any</code> is anyone. Extra
-          is raw GitHub search qualifiers. Once set, sources replace the project's own repo.
+          is raw GitHub search qualifiers. A source's repo is one of the project's issue repos, set in the project's
+          settings under Issues. Once set, sources replace the issues assigned to you there.
         </p>
         <Show when={error()}>
           {(message) => (
@@ -207,7 +220,10 @@ export default function ProjectContract(props: {
           )}
         </Show>
         <div class={own.sourceActions}>
-          <Button size="sm" onClick={() => setDraft((prev) => [...prev, emptyQuery()])}>
+          <Button
+            size="sm"
+            onClick={() => setDraft((prev) => [...prev, { ...emptyQuery(), repo: props.repos[0] ?? "" }])}
+          >
             Add source
           </Button>
           <span class={own.sourceCount}>

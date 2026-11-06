@@ -61,6 +61,13 @@ pub fn normalize(repos: &[String]) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
+pub fn unlisted<'a>(sources: &'a [IssueQuery], listed: &[String]) -> Option<&'a str> {
+    sources
+        .iter()
+        .map(|q| q.repo.trim())
+        .find(|repo| !listed.iter().any(|l| l.eq_ignore_ascii_case(repo)))
+}
+
 pub fn stored(project: &str) -> Vec<String> {
     RepoStore::load_from(&store_path())
         .0
@@ -171,6 +178,14 @@ mod tests {
         let f = file("origin");
         assert_eq!(effective_in(&f, "/p", "gettori/tori", &[]), ["gettori/tori"]);
         assert!(!f.exists());
+    }
+
+    #[test]
+    fn a_source_outside_the_list_is_named() {
+        let listed = ["gettori/tori".to_string()];
+        let sources = [source("GetTori/Tori"), source("gettori/tickets")];
+        assert_eq!(unlisted(&sources, &listed), Some("gettori/tickets"));
+        assert_eq!(unlisted(&sources[..1], &listed), None);
     }
 
     #[test]
