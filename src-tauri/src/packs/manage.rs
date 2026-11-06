@@ -303,7 +303,7 @@ mod tests {
     fn remove_refuses_a_file_tori_did_not_record() {
         let dir = packs("remove");
         std::fs::write(dir.join("lsp/mine.toml"), "mine").unwrap();
-        assert!(super::super::remove_at(&dir, Kind::Lsp, "mine").is_err());
+        assert!(super::super::remove_at(&dir, Kind::Lsp, "mine", |_| Ok(())).is_err());
         assert!(dir.join("lsp/mine.toml").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }

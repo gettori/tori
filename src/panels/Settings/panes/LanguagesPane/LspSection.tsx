@@ -78,21 +78,6 @@ export const TONE: Record<BinaryStatus, string> = {
   notFound: styles.dotOff,
 };
 
-type Tab = "ready" | "installable" | "manual";
-
-const TABS: { id: Tab; label: string }[] = [
-  { id: "ready", label: "Ready" },
-  { id: "installable", label: "Installable" },
-  { id: "manual", label: "Manual" },
-];
-
-// By what the user can do about it, not by whether it runs right now: a server
-// turned off stays in its tab with its switch off.
-function tabOf(s: LspHealth): Tab {
-  if (s.installedVersion !== null || s.status !== "notFound") return "ready";
-  return s.availableVersion !== null ? "installable" : "manual";
-}
-
 const kindOf = (s: LspHealth) => (s.role === "secondary" ? "Linter" : "LSP");
 
 export function LspCard(props: { server: LspHealth; onChange: () => Promise<LspHealth[] | null | undefined> }) {
@@ -107,6 +92,10 @@ export function LspCard(props: { server: LspHealth; onChange: () => Promise<LspH
     remove: (serverId) => invoke("lsp_uninstall", { serverId }),
     onHintInstalled: serverInstalled,
     uninstallNote: () => `Files that use ${s().label} lose it once Tori restarts.`,
+    pack: {
+      is: () => s().provenance.source === "catalog",
+      remove: () => invoke("packs_remove", { kind: "lsp", id: s().id }),
+    },
   });
   // Flipped here as soon as it is saved, rather than after `lsp_health`
   // answers, which probes every binary again.
@@ -143,7 +132,13 @@ export function LspCard(props: { server: LspHealth; onChange: () => Promise<LspH
             />
           </Show>
           <actions.Controls />
-          <PackControls kind="lsp" id={s().id} label={s().label} provenance={s().provenance} />
+          <PackControls
+            kind="lsp"
+            id={s().id}
+            label={s().label}
+            provenance={s().provenance}
+            onRemove={actions.removePack()}
+          />
         </span>
       </div>
       <code class={styles.toolProgram}>{s().program}</code>
@@ -217,45 +212,18 @@ export default function LspSection() {
   const [health, { refetch }] = createResource(probeLspHealth);
   onPacksChanged("lsp", () => void refetch());
   const servers = () => (health() ?? []).filter((s) => s.role === "primary");
-  const [picked, setPicked] = createSignal<Tab | null>(null);
   const [query, setQuery] = createSignal("");
 
   const q = () => query().trim().toLowerCase();
-  const count = (tab: Tab) => servers().filter((s) => tabOf(s) === tab).length;
-  // Until one is picked, the first tab with anything in it, so a machine with
-  // nothing ready does not open on an empty list.
-  const tab = () => picked() ?? TABS.find((t) => count(t.id) > 0)?.id ?? "ready";
-  // A search looks in every tab, the way the settings search looks in every
-  // pane, so a server is never hidden behind the tab it is not in.
   const matches = (s: LspHealth) =>
     [s.label, s.program, kindOf(s), ...s.extensions.map((e) => `.${e}`)].some((f) => f.toLowerCase().includes(q()));
-  const shown = () => servers().filter((s) => (q() ? matches(s) : tabOf(s) === tab()));
-
-  const pick = (t: Tab) => {
-    setPicked(t);
-    setQuery("");
-  };
+  const shown = () => servers().filter((s) => !q() || matches(s));
 
   return (
     <section class={styles.section}>
       <div class={styles.sectionTitle}>
         <span>Language servers</span>
         <span class={styles.sectionRule} />
-        <div class={styles.groupTabs} role="group" aria-label="Show language servers">
-          <For each={TABS}>
-            {(t) => (
-              <button
-                type="button"
-                class={styles.groupTab}
-                aria-pressed={!q() && tab() === t.id}
-                onClick={() => pick(t.id)}
-              >
-                {t.label}
-                <span class={styles.groupTabCount}>{count(t.id)}</span>
-              </button>
-            )}
-          </For>
-        </div>
         <input
           type="text"
           class={styles.tableFilter}
