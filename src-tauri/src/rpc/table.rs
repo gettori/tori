@@ -6,7 +6,7 @@ use schemars::{json_schema, schema_for, JsonSchema, Schema};
 use serde_json::{json, Value};
 
 use super::auth::{Caller, Principal};
-use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS};
+use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
 use super::phone::{self, MIN_PHONE_PROTOCOL, PHONE_PROTOCOL};
 use super::server::{
     params, AccountsListParams, AgentsListParams, AllowGroupParams, AskAnswerParams, AskParams, AskWaitParams,
@@ -114,6 +114,8 @@ const DEVICES_AND_BROWSER: &[CallerKind] = &[CallerKind::Device, CallerKind::Bro
 const WATCH_REFUSAL: &str =
     "a watch wakes its chat with a new turn, so only a chat you drive can hold one; an autopilot worker's pull request already reaches the autopilot";
 
+pub const ASK_OUTSIDE_A_CHAT: &str =
+    "a plain question shows in a chat panel; a terminal tab or a shell outside Tori may ask for an approval only";
 /// What a worker is told on every row that leaves it out, in place of the row's own `refusal`.
 pub const WORKER_REFUSAL: &str = "a worker never spawns or steers; finish your turn and your spawner reads it";
 
@@ -773,15 +775,25 @@ pub static METHODS: &[Method] = &[
     },
     Method {
         name: "ask.create",
-        description: "Ask the user a question in the calling chat and wait for the answer, or return its id to poll with ask.wait.",
+        description: "Ask the user a question in the calling chat and wait for the answer, or return its id to poll with ask.wait. A terminal tab or a shell outside Tori may ask for an approval only, which shows in the tab or in a dialog.",
         params: schema::<AskParams>,
-        callers: &[CallerKind::Chat, CallerKind::Worker],
-        refusal: Some("its card shows in a chat panel, so only a chat session can ask"),
+        callers: &[CallerKind::Chat, CallerKind::Worker, CallerKind::Terminal, CallerKind::Local],
+        refusal: Some("its card shows in Tori's window, so only a chat, a terminal tab or a shell on this Mac can ask"),
         outward: false,
         read_only: false,
-        call: |b, p, v| match p {
-            Principal::Session(Caller::Chat(session)) => b.ask_create(session, params(v)?),
-            _ => Err(RpcError::new(INTERNAL_ERROR, "ask.create reached with a caller its row does not admit")),
+        call: |b, p, v| {
+            let asked: AskParams = params(v)?;
+            match p {
+                Principal::Session(Caller::Chat(_)) => {}
+                Principal::Session(Caller::Terminal(_)) | Principal::Local if asked.approval.is_some() => {}
+                Principal::Session(Caller::Terminal(_)) | Principal::Local => {
+                    return Err(RpcError::new(REFUSED, ASK_OUTSIDE_A_CHAT));
+                }
+                _ => {
+                    return Err(RpcError::new(INTERNAL_ERROR, "ask.create reached with a caller its row does not admit"));
+                }
+            }
+            b.ask_create(p, asked)
         },
     },
     Method {

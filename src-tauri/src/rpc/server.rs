@@ -1191,7 +1191,7 @@ pub trait Backend: Send + Sync {
     fn session_spawn(&self, principal: &Principal, params: SpawnParams) -> Result<Value, RpcError>;
     fn window_open(&self, params: OpenParams) -> Result<Value, RpcError>;
     fn budget(&self, principal: &Principal, params: BudgetParams) -> Result<Value, RpcError>;
-    fn ask_create(&self, session: &str, params: AskParams) -> Result<Value, RpcError>;
+    fn ask_create(&self, principal: &Principal, params: AskParams) -> Result<Value, RpcError>;
     fn plan_set(&self, session: &str, params: PlanSetParams) -> Result<Value, RpcError>;
     fn topic_member_promote(&self, session: &str, params: TopicPromoteParams) -> Result<Value, RpcError>;
     fn ask_wait(&self, params: AskWaitParams) -> Result<Value, RpcError>;
@@ -1797,7 +1797,7 @@ pub mod tests {
         fn topic_member_promote(&self, _: &str, p: TopicPromoteParams) -> Result<Value, RpcError> {
             Ok(json!({ "member": p.member }))
         }
-        fn ask_create(&self, _: &str, p: AskParams) -> Result<Value, RpcError> {
+        fn ask_create(&self, _: &Principal, p: AskParams) -> Result<Value, RpcError> {
             Ok(json!({ "question": p.question }))
         }
         fn plan_set(&self, _: &str, p: PlanSetParams) -> Result<Value, RpcError> {
@@ -2272,18 +2272,37 @@ pub mod tests {
         let server = stub_server();
         let tab = Principal::Session(Caller::Terminal("t1".into()));
         let err = server
-            .dispatch(0, &tab, &request("ask.create", json!({"question": "q"})))
+            .dispatch(0, &tab, &request("plan.set", json!({"items": []})))
             .unwrap_err();
         assert_eq!(err.code, REFUSED);
         assert!(
-            err.message.contains("terminal") && err.message.contains("ask.create"),
+            err.message.contains("terminal") && err.message.contains("plan.set"),
             "{}",
             err.message
         );
         let chat = Principal::Session(Caller::Chat("s1".into()));
         assert!(server
-            .dispatch(0, &chat, &request("ask.create", json!({"question": "q"})))
+            .dispatch(0, &chat, &request("plan.set", json!({"items": []})))
             .is_ok());
+    }
+
+    #[test]
+    fn a_tab_or_a_shell_outside_tori_asks_for_an_approval_only() {
+        let server = stub_server();
+        let approval = json!({
+            "question": "Open it?",
+            "approval": { "action": "pr.merge", "number": 7, "method": "squash", "head_sha": "abc" },
+        });
+        for caller in [Principal::Session(Caller::Terminal("t1".into())), Principal::Local] {
+            let plain = server.dispatch(0, &caller, &request("ask.create", json!({"question": "q"})));
+            assert_eq!(plain.unwrap_err().message, table::ASK_OUTSIDE_A_CHAT, "{caller:?}");
+            assert!(
+                server
+                    .dispatch(0, &caller, &request("ask.create", approval.clone()))
+                    .is_ok(),
+                "{caller:?}"
+            );
+        }
     }
 
     #[test]

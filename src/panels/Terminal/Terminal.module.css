@@ -190,6 +190,34 @@
   color: var(--fg-default);
 }
 
+.tabApprovals {
+  position: absolute;
+  z-index: 10;
+  top: calc(10px * var(--ui-scale));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(calc(560px * var(--ui-scale)), calc(100% - 20px * var(--ui-scale)));
+  display: flex;
+  flex-direction: column;
+  gap: calc(8px * var(--ui-scale));
+}
+
+.tabApproval {
+  display: flex;
+  flex-direction: column;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(10px * var(--ui-scale));
+  background: var(--canvas-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.tabApprovalActions {
+  display: flex;
+  gap: calc(8px * var(--ui-scale));
+}
+
 /* Restore / Dismiss are shared <Button>s now. */
 
 .termHostWrap {
