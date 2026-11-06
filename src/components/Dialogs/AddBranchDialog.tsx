@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, on, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { Check, ChevronsUpDown, CircleDot, Cloud, GitCommitHorizontal, Plus, RefreshCw, Trash2 } from "lucide-solid";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
@@ -9,7 +9,7 @@ import Icon from "../Icon/Icon";
 import IconButton from "../IconButton/IconButton";
 import Popover from "../Popover/Popover";
 import SegmentedControl from "../SegmentedControl/SegmentedControl";
-import { errorText, type Issue, type IssueRef } from "../../utils/issues";
+import { errorText, type AssignedIssues, type Found, type Issue, type IssueRef } from "../../utils/issues";
 
 /** Where the chosen branch is, which is what says how to add it: a local one is
  *  attached, a remote-only one is tracked, and a name that is neither is made. */
@@ -29,11 +29,17 @@ export type BranchPick = {
 /** What the dialog needs from the issue source. Withheld when the project has
  *  none, which is what hides the Issue tab. */
 export type IssueSourceProps = {
-  assigned: () => Promise<IssueRef[]>;
+  assigned: () => Promise<AssignedIssues>;
   get: (key: string) => Promise<Issue>;
+  find: (input: string) => Promise<Found>;
   /** Whether the local `base` holds commits its remote does not. */
   ahead: (base: string) => Promise<boolean>;
 };
+
+const ISSUE_NUMBER = /^#?\d+$/;
+const REPO_ISSUE = /^[\w.-]+(\/[\w.-]+)?#\d+$/;
+const ISSUE_URL = /^https?:\/\/\S+\/(issues|pull)\/\d+/;
+const ISSUE_REF = [ISSUE_NUMBER, REPO_ISSUE, ISSUE_URL];
 
 /** The folder a worktree for `branch` would get, matching `pick_worktree_folder`
  *  on the Rust side: the branch's last segment. That name can already be taken,
@@ -173,6 +179,8 @@ export default function AddBranchDialog(props: {
   const [assigned, setAssigned] = createSignal<IssueRef[] | null>(null);
   const [issueError, setIssueError] = createSignal<string | null>(null);
   const [loadingKey, setLoadingKey] = createSignal<string | null>(null);
+  const [found, setFound] = createSignal<Found | null>(null);
+  const [unread, setUnread] = createSignal<string[]>([]);
   const [issue, setIssue] = createSignal<Issue | null>(null);
   const [issueName, setIssueName] = createSignal("");
   const [link, setLink] = createSignal(true);
@@ -186,7 +194,10 @@ export default function AddBranchDialog(props: {
         if (s !== "issue" || assigned() !== null || !props.issues) return;
         props.issues
           .assigned()
-          .then((list) => setAssigned(list.filter((i) => i.kind === "issue")))
+          .then((list) => {
+            setAssigned(list.rows.filter((i) => i.kind === "issue"));
+            setUnread(list.skipped);
+          })
           .catch((e) => {
             setAssigned([]);
             setIssueError(errorText(e));
@@ -205,12 +216,29 @@ export default function AddBranchDialog(props: {
     issueMatches().map((i) => ({ value: i.key, label: i.title })),
   );
   const displays = createMemo(() => new Map((assigned() ?? []).map((i) => [i.key, i.display])));
-  const unlistedKey = () => {
-    const m = issueQuery()
-      .trim()
-      .match(/^#?(\d+)$/);
-    return m && !displays().has(m[1]) ? m[1] : null;
+  const typedRef = () => {
+    const q = issueQuery().trim();
+    return ISSUE_REF.some((form) => form.test(q)) && !displays().has(q.replace(/^#/, "")) ? q : null;
   };
+
+  function lookUp(input: string) {
+    if (!props.issues || loadingKey()) return;
+    setLoadingKey(input);
+    setIssueError(null);
+    setFound(null);
+    props.issues
+      .find(input)
+      .then((f) => {
+        setLoadingKey(null);
+        if (f.hits.length === 1) return loadIssue(f.hits[0].key);
+        setFound(f);
+        if (!f.hits.length) setIssueError(`No issue found for ${input}`);
+      })
+      .catch((e) => {
+        setLoadingKey(null);
+        setIssueError(errorText(e));
+      });
+  }
 
   function loadIssue(key: string) {
     if (!props.issues || loadingKey()) return;
@@ -426,15 +454,15 @@ export default function AddBranchDialog(props: {
           }}
           onSelect={loadIssue}
           onKeyDown={(e) => {
-            const key = unlistedKey();
-            if (e.key !== "Enter" || issueOptions().length || !key) return;
+            const typed = typedRef();
+            if (e.key !== "Enter" || issueOptions().length || !typed) return;
             e.preventDefault();
-            loadIssue(key);
+            lookUp(typed);
           }}
           picked={issue()?.key ?? null}
           inputRef={(el) => (input = el)}
-          placeholder="Filter assigned issues, or type a number"
-          aria-label="Filter assigned issues, or type a number"
+          placeholder="Filter, or type #31, tickets#31, a URL"
+          aria-label="Filter assigned issues, or type an issue"
           listLabel="Assigned issues"
           emptyLabel={assigned() === null ? "Loading…" : "No assigned issue matches"}
           itemComponent={(option) => (
@@ -452,14 +480,28 @@ export default function AddBranchDialog(props: {
           aboveList={
             <>
               <Show when={issueError()}>{(message) => <div class={styles.issueError}>{message()}</div>}</Show>
-              <Show when={unlistedKey()}>
-                {(key) => (
-                  <button type="button" class={styles.createRow} onClick={() => loadIssue(key())}>
+              <Show when={typedRef()}>
+                {(typed) => (
+                  <button type="button" class={styles.createRow} onClick={() => lookUp(typed())}>
                     <Icon icon={CircleDot} aria-hidden="true" />
-                    <span class={styles.createLead}>{loadingKey() === key() ? "Opening" : "Open issue"}</span>
-                    <span class={styles.createName}>#{key()}</span>
+                    <span class={styles.createLead}>{loadingKey() === typed() ? "Opening" : "Open issue"}</span>
+                    <span class={styles.createName}>{/^\d+$/.test(typed()) ? `#${typed()}` : typed()}</span>
                   </button>
                 )}
+              </Show>
+              <Show when={!issue() && (found()?.hits.length ?? 0) > 1}>
+                <For each={found()?.hits}>
+                  {(hit) => (
+                    <button type="button" class={styles.createRow} onClick={() => loadIssue(hit.key)}>
+                      <Icon icon={CircleDot} aria-hidden="true" />
+                      <span class={styles.issueKey}>{hit.display}</span>
+                      <span class={styles.createName}>{hit.title}</span>
+                    </button>
+                  )}
+                </For>
+              </Show>
+              <Show when={found()?.skipped.length ? found()?.skipped : unread().length ? unread() : null}>
+                {(repos) => <div class={styles.issueNote}>Not searched, no access: {repos().join(", ")}</div>}
               </Show>
               <Show when={issue()}>
                 {(found) => (

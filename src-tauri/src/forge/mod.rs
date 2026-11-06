@@ -127,6 +127,21 @@ pub enum ForgeError {
     },
 }
 
+impl ForgeError {
+    /// Whether this says one repo cannot be read, as against the account,
+    /// the host, or the network.
+    pub fn repo_refused(&self) -> bool {
+        matches!(
+            self,
+            ForgeError::Forbidden { .. }
+                | ForgeError::NotFound
+                | ForgeError::OrgUnapproved { .. }
+                | ForgeError::Invalid { .. }
+                | ForgeError::Api { .. }
+        )
+    }
+}
+
 /// Which of GitHub's two rate limits was hit.
 ///
 /// They behave differently and must be backed off differently: the primary

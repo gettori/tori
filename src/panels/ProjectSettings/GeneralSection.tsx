@@ -5,6 +5,7 @@ import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
 import type { SpaceProject } from "../../utils/topicMembers";
 import ProjectIconPicker, { type ProjectIconChoice } from "../../components/ProjectIconPicker/ProjectIconPicker";
 import BranchesSection from "./BranchesSection";
+import IssuesSection from "./IssuesSection";
 import { Row, Section } from "./Section";
 import styles from "./ProjectSettingsDialog.module.css";
 
@@ -19,7 +20,11 @@ const toast = (message: string) => emitWith<ToastEvent>(TOAST, { message, kind: 
 
 /** What a project is, what it wears, and for a git project where it points.
  *  The layout is a fact read off disk, so it is shown, not edited. */
-export default function GeneralSection(props: { project: SpaceProject; kind: string | undefined }) {
+export default function GeneralSection(props: {
+  project: SpaceProject;
+  kind: string | undefined;
+  onDirty?: (dirty: boolean) => void;
+}) {
   const [busy, setBusy] = createSignal(false);
 
   // Both commands emit `config://changed`, which is what brings the new icon
@@ -71,6 +76,7 @@ export default function GeneralSection(props: { project: SpaceProject; kind: str
 
       <Show when={props.kind && props.kind !== "plain-dir"}>
         <BranchesSection projectPath={props.project.path} projectName={props.project.name ?? props.project.path} />
+        <IssuesSection projectPath={props.project.path} onDirty={props.onDirty} />
       </Show>
     </>
   );

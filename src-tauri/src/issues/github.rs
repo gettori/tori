@@ -6,13 +6,15 @@
 //! the suggestion is computed here.
 
 use super::{
-    canonical_key, display_of, suggested_branch, Issue, IssueKind, IssueQuery, IssueRef, IssueSource, LinkOutcome,
+    canonical_key, display_of, suggested_branch, Access, Found, Issue, IssueKind, IssueQuery, IssueRef, IssueSource,
+    LinkOutcome,
 };
 use crate::forge::github::GitHubForge;
-use crate::forge::http::graphql_data;
+use crate::forge::http::{classify, graphql_data, HttpResponse};
 use crate::forge::model::RepoRef;
 use crate::forge::ForgeError;
 use serde_json::{json, Value};
+use std::collections::HashMap;
 
 pub const ASSIGNED_CAP: u32 = 50;
 
@@ -147,6 +149,48 @@ fn not_an_issue(number: u64, repo: &RepoRef, what: &str) -> ForgeError {
     }
 }
 
+// One `repository` field per repo, aliased `r0`, `r1`, ..., so a repo the
+// viewer cannot read errors on its own alias and leaves the rest.
+fn per_repo(repos: &[RepoRef], fields: &str) -> (String, Value) {
+    let mut params = Vec::new();
+    let mut body = String::new();
+    let mut vars = serde_json::Map::new();
+    for (i, repo) in repos.iter().enumerate() {
+        params.push(format!("$o{i}: String!, $n{i}: String!"));
+        body.push_str(&format!(
+            "  r{i}: repository(owner: $o{i}, name: $n{i}) {{ {fields} }}\n"
+        ));
+        vars.insert(format!("o{i}"), json!(repo.owner));
+        vars.insert(format!("n{i}"), json!(repo.repo));
+    }
+    (
+        format!("query({}) {{\n{body}}}", params.join(", ")),
+        Value::Object(vars),
+    )
+}
+
+// Per alias, whether an error there means the repo itself cannot be read: a
+// NOT_FOUND below the repo is only a missing item in it. An error naming no
+// alias is the whole request's, so it fails the call as `graphql_data` would.
+fn split_by_alias(resp: &HttpResponse) -> Result<(Value, HashMap<String, bool>), ForgeError> {
+    if let Some(err) = classify(resp) {
+        return Err(err);
+    }
+    let v: Value = serde_json::from_str(&resp.body).map_err(|e| ForgeError::Malformed { message: e.to_string() })?;
+    let mut failed: HashMap<String, bool> = HashMap::new();
+    for e in v.get("errors").and_then(Value::as_array).into_iter().flatten() {
+        let path = e.get("path").and_then(Value::as_array);
+        let Some(alias) = path.and_then(|p| p.first()).and_then(Value::as_str) else {
+            return graphql_data(resp).map(|d| (d, failed));
+        };
+        let missing_item =
+            e.get("type").and_then(Value::as_str) == Some("NOT_FOUND") && path.is_some_and(|p| p.len() > 1);
+        *failed.entry(alias.to_string()).or_default() |= !missing_item;
+    }
+    let data = v.get("data").cloned().unwrap_or(Value::Null);
+    Ok((data, failed))
+}
+
 fn qualified(branch: &str) -> String {
     format!("refs/heads/{}", branch.trim_start_matches("refs/heads/"))
 }
@@ -197,6 +241,82 @@ impl IssueSource for GitHubForge {
             body: text("body"),
             url: text("url"),
         })
+    }
+
+    fn access(&self, repos: &[RepoRef]) -> Result<Vec<Access>, ForgeError> {
+        if repos.is_empty() {
+            return Ok(Vec::new());
+        }
+        // Reading one issue is what a fine-grained token without Issues access fails.
+        let (query, vars) = per_repo(repos, "hasIssuesEnabled issues(first: 1) { totalCount }");
+        let (data, failed) = split_by_alias(&self.graphql_response(&query, vars)?)?;
+        Ok((0..repos.len())
+            .map(|i| {
+                let alias = format!("r{i}");
+                let node = data.get(&alias).filter(|n| !n.is_null());
+                match node {
+                    _ if failed.contains_key(&alias) => Access::NoAccess,
+                    None => Access::NoAccess,
+                    Some(n) if n.get("hasIssuesEnabled") == Some(&Value::Bool(false)) => Access::IssuesOff,
+                    Some(_) => Access::Readable,
+                }
+            })
+            .collect())
+    }
+
+    fn list_assigned_in(&self, origin: &RepoRef, repos: &[RepoRef]) -> Result<Vec<IssueRef>, ForgeError> {
+        if repos.is_empty() {
+            return Ok(Vec::new());
+        }
+        let scope: Vec<String> = repos.iter().map(|r| format!("repo:{}", full_name(r))).collect();
+        let search = format!("{} is:open is:issue assignee:@me", scope.join(" "));
+        let data = self.graphql(MATCHING, json!({ "issues": search, "first": ASSIGNED_CAP }))?;
+        Ok(refs_from(&data, "issues", IssueKind::Issue, origin))
+    }
+
+    fn find(&self, origin: &RepoRef, number: u64, repos: &[RepoRef]) -> Result<Found, ForgeError> {
+        let mut found = Found::default();
+        if repos.is_empty() {
+            return Ok(found);
+        }
+        let fields =
+            format!("nameWithOwner issueOrPullRequest(number: {number}) {{ __typename ... on Issue {{ title url }} }}");
+        let (query, vars) = per_repo(repos, &fields);
+        let (data, failed) = split_by_alias(&self.graphql_response(&query, vars)?)?;
+        let origin = full_name(origin);
+        for (i, repo) in repos.iter().enumerate() {
+            let alias = format!("r{i}");
+            let Some(at) = data
+                .get(&alias)
+                .filter(|n| !n.is_null() && failed.get(&alias) != Some(&true))
+            else {
+                found.skipped.push(full_name(repo).to_lowercase());
+                continue;
+            };
+            let Some(node) = at
+                .get("issueOrPullRequest")
+                .filter(|n| n.get("__typename").and_then(Value::as_str) == Some("Issue"))
+            else {
+                continue;
+            };
+            let name = at
+                .get("nameWithOwner")
+                .and_then(Value::as_str)
+                .map_or_else(|| full_name(repo), str::to_string);
+            let key = canonical_key(&format!("{name}#{number}"), &origin);
+            let text = |k: &str| node.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
+            found.hits.push(IssueRef {
+                display: display_of(&key),
+                key,
+                title: text("title"),
+                url: text("url"),
+                kind: IssueKind::Issue,
+                author: None,
+                head_sha: None,
+                body_len: None,
+            });
+        }
+        Ok(found)
     }
 
     fn link_branch(
@@ -352,6 +472,87 @@ mod tests {
             (Some("ana"), Some("abc123"))
         );
         assert_eq!((list[0].author.as_deref(), list[0].head_sha.as_deref()), (None, None));
+    }
+
+    #[test]
+    fn one_unreadable_repo_does_not_fail_the_access_check_for_the_rest() {
+        let (f, stub) = forge(vec![StubTransport::json(
+            200,
+            r#"{"data":{
+              "r0":{"hasIssuesEnabled":true,"issues":{"totalCount":3}},
+              "r1":null,
+              "r2":{"hasIssuesEnabled":true,"issues":null},
+              "r3":{"hasIssuesEnabled":false,"issues":{"totalCount":0}}
+            },"errors":[
+              {"type":"NOT_FOUND","path":["r1"],"message":"Could not resolve"},
+              {"type":"FORBIDDEN","path":["r2","issues"],"message":"Resource not accessible by personal access token"}
+            ]}"#,
+        )]);
+        let got = f
+            .access(&[
+                at("gettori", "tori"),
+                at("gone", "x"),
+                at("gettori", "tickets"),
+                at("gettori", "off"),
+            ])
+            .unwrap();
+        assert_eq!(
+            got,
+            [Access::Readable, Access::NoAccess, Access::NoAccess, Access::IssuesOff]
+        );
+        assert_eq!(
+            (vars(&stub, 0)["o2"].as_str(), vars(&stub, 0)["n2"].as_str()),
+            (Some("gettori"), Some("tickets"))
+        );
+    }
+
+    fn at(owner: &str, name: &str) -> RepoRef {
+        RepoRef {
+            owner: owner.into(),
+            repo: name.into(),
+        }
+    }
+
+    #[test]
+    fn a_number_is_found_where_it_is_an_issue_and_skipped_where_unreadable() {
+        let (f, _) = forge(vec![StubTransport::json(
+            200,
+            r#"{"data":{
+              "r0":{"nameWithOwner":"gettori/tori","issueOrPullRequest":{"__typename":"PullRequest"}},
+              "r1":{"nameWithOwner":"gettori/tickets","issueOrPullRequest":{"__typename":"Issue","title":"Dogfood","url":"https://github.com/gettori/tickets/issues/31"}},
+              "r2":null,
+              "r3":{"nameWithOwner":"gettori/docs","issueOrPullRequest":null}
+            },"errors":[
+              {"type":"FORBIDDEN","path":["r2"],"message":"Resource not accessible by personal access token"},
+              {"type":"NOT_FOUND","path":["r3","issueOrPullRequest"],"message":"Could not resolve"}
+            ]}"#,
+        )]);
+        let found = f
+            .find(
+                &repo(),
+                31,
+                &[
+                    at("gettori", "tori"),
+                    at("gettori", "tickets"),
+                    at("Acme", "Secret"),
+                    at("gettori", "docs"),
+                ],
+            )
+            .unwrap();
+        let hits: Vec<(&str, &str)> = found.hits.iter().map(|h| (h.key.as_str(), h.title.as_str())).collect();
+        assert_eq!(hits, [("gettori/tickets#31", "Dogfood")]);
+        assert_eq!(found.skipped, ["acme/secret"]);
+    }
+
+    #[test]
+    fn the_assigned_list_across_repos_is_one_search() {
+        let (f, stub) = forge(vec![StubTransport::json(200, r#"{"data":{"issues":{"nodes":[]}}}"#)]);
+        f.list_assigned_in(&repo(), &[at("gettori", "tori"), at("gettori", "tickets")])
+            .unwrap();
+        assert_eq!(
+            vars(&stub, 0)["issues"],
+            "repo:gettori/tori repo:gettori/tickets is:open is:issue assignee:@me"
+        );
     }
 
     #[test]

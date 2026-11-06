@@ -43,10 +43,11 @@ import AddBranchDialog, { type BranchPick, type IssueSourceProps } from "../../c
 import {
   errorText,
   issueDraft,
+  type AssignedIssues,
   pendingReviews,
   unitIssueOf,
+  type Found,
   type Issue,
-  type IssueRef,
   type LinkOutcome,
   type UnitIssue,
 } from "../../utils/issues";
@@ -2283,8 +2284,9 @@ export default function LeftSidebar(props: {
   }
 
   const issueSourceFor = (p: Project): IssueSourceProps => ({
-    assigned: () => invoke<IssueRef[]>("issues_assigned", { projectPath: p.path }),
+    assigned: () => invoke<AssignedIssues>("issues_assigned", { projectPath: p.path }),
     get: (key) => invoke<Issue>("issues_get", { projectPath: p.path, key }),
+    find: (input) => invoke<Found>("issues_find", { projectPath: p.path, input }),
     ahead: (base) =>
       invoke<{ unpushed: boolean }>("branch_status", { repo: p.path, branch: base }).then((s) => s.unpushed),
   });

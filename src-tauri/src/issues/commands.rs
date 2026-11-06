@@ -10,12 +10,15 @@
 )]
 
 use super::gate::gate;
+use super::repos;
 use super::store::{self, UnitIssue};
 use super::{
-    offers_issues, FailedSource, Issue, IssueKind, IssueQuery, IssueRef, IssueSource, LinkOutcome, SourceList,
+    candidates, offers_issues, Access, FailedSource, Found, Issue, IssueKind, IssueQuery, IssueRef, IssueSource,
+    LinkOutcome, SourceList,
 };
 use crate::forge::accounts;
 use crate::forge::commands::{attempt, gated_client, Client, ForgeErrorDto};
+use crate::forge::model::RepoRef;
 use crate::forge::{Forge, ForgeError};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
@@ -85,18 +88,6 @@ pub struct Assigned {
     pub failed: Vec<FailedSource>,
 }
 
-impl Assigned {
-    pub fn rows(&self) -> Vec<IssueRef> {
-        let mut out: Vec<IssueRef> = Vec::new();
-        for row in self.lists.iter().flat_map(|l| &l.rows) {
-            if !out.iter().any(|r| r.kind == row.kind && r.key == row.key) {
-                out.push(row.clone());
-            }
-        }
-        out
-    }
-}
-
 /// The project's lists: with no `sources` its own assigned list as before,
 /// else one list per source beside the origin's review requests.
 fn gather(c: &Client, sources: &[IssueQuery], refresh: bool) -> Result<Assigned, ForgeError> {
@@ -135,11 +126,121 @@ fn gather(c: &Client, sources: &[IssueQuery], refresh: bool) -> Result<Assigned,
     })
 }
 
-/// Every row the project's sources list, issues then review requests, once each.
+fn search_assigned_in(c: &Client, repos: &[RepoRef], refresh: bool) -> Result<Vec<IssueRef>, ForgeError> {
+    let scope: Vec<String> = repos.iter().map(name_of).collect();
+    gate().assigned(
+        &c.account_id,
+        &format!("assigned in {}", scope.join(" ")),
+        refresh,
+        || attempt(c, |f| source_of(f)?.list_assigned_in(&c.repo, repos)),
+    )
+}
+
+fn name_of(r: &RepoRef) -> String {
+    format!("{}/{}", r.owner, r.repo)
+}
+
+// When every repo refused lately the search runs over all of them anyway, so
+// the refusal reaches the user instead of an empty list.
+fn searchable_repos(c: &Client, repos: &[String]) -> Vec<RepoRef> {
+    let all: Vec<RepoRef> = repos.iter().filter_map(|r| repo_ref(r)).collect();
+    let readable: Vec<RepoRef> = all
+        .iter()
+        .filter(|r| !gate().unreadable(&c.account_id, &name_of(r)))
+        .cloned()
+        .collect();
+    if readable.is_empty() {
+        all
+    } else {
+        readable
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssignedIssues {
+    pub rows: Vec<IssueRef>,
+    pub skipped: Vec<String>,
+}
+
+// One unreadable repo fails a multi-repo search whole, so a refused search is
+// retried a repo at a time and the refusing repo is left out of the next one.
+fn fetch_assigned_in(c: &Client, repos: &[String], refresh: bool) -> Result<AssignedIssues, ForgeError> {
+    let search = searchable_repos(c, repos);
+    let mut skipped: Vec<String> = repos
+        .iter()
+        .filter(|r| !search.iter().any(|s| name_of(s).eq_ignore_ascii_case(r)))
+        .cloned()
+        .collect();
+    let refused = match search_assigned_in(c, &search, refresh) {
+        Ok(rows) => return Ok(AssignedIssues { rows, skipped }),
+        Err(e) if search.len() > 1 && e.repo_refused() => e,
+        Err(e) => {
+            if e.repo_refused() {
+                gate().note_access(&c.account_id, &name_of(&search[0]), false);
+            }
+            return Err(named_access(e));
+        }
+    };
+    let mut rows = Vec::new();
+    let mut answered = false;
+    for repo in &search {
+        match search_assigned_in(c, std::slice::from_ref(repo), refresh) {
+            Ok(found) => {
+                gate().note_access(&c.account_id, &name_of(repo), true);
+                answered = true;
+                rows.extend(found);
+            }
+            Err(e) if e.repo_refused() => {
+                gate().note_access(&c.account_id, &name_of(repo), false);
+                skipped.push(name_of(repo).to_lowercase());
+            }
+            Err(e) => return Err(named_access(e)),
+        }
+    }
+    if answered {
+        Ok(AssignedIssues { rows, skipped })
+    } else {
+        Err(named_access(refused))
+    }
+}
+
+pub fn assigned_issues(
+    project_path: &str,
+    sources: &[IssueQuery],
+    refresh: bool,
+) -> Result<AssignedIssues, ForgeError> {
+    let c = issue_client(project_path)?;
+    let mut list = fetch_assigned_in(&c, &effective_repos(project_path, sources), refresh)?;
+    let reviews = fetch_assigned(&c, refresh)?;
+    list.rows
+        .extend(reviews.into_iter().filter(|r| r.kind == IssueKind::ReviewRequest));
+    Ok(list)
+}
+
 pub fn assigned(project_path: &str, sources: &[IssueQuery], refresh: bool) -> Result<Vec<IssueRef>, ForgeError> {
-    let mut rows = gather(&issue_client(project_path)?, sources, refresh)?.rows();
-    rows.sort_by_key(|r| r.kind == IssueKind::ReviewRequest);
-    Ok(rows)
+    assigned_issues(project_path, sources, refresh).map(|list| list.rows)
+}
+
+pub fn find(project_path: &str, input: &str, sources: &[IssueQuery]) -> Result<Found, ForgeError> {
+    let c = issue_client(project_path)?;
+    let listed = effective_repos(project_path, sources);
+    let (repos, number) = candidates(input, &full_name(&c), &listed).ok_or_else(|| ForgeError::Invalid {
+        message: format!(
+            "\"{}\" is not an issue. Type a number, repo#N, owner/repo#N or an issue URL.",
+            input.trim()
+        ),
+    })?;
+    let refs: Vec<RepoRef> = repos.iter().filter_map(|r| repo_ref(r)).collect();
+    let found = gate()
+        .call(&c.account_id, || {
+            attempt(&c, |f| source_of(f)?.find(&c.repo, number, &refs))
+        })
+        .map_err(named_access)?;
+    for repo in &repos {
+        gate().note_access(&c.account_id, repo, !found.skipped.contains(repo));
+    }
+    Ok(found)
 }
 
 // `None` where `offered` says no; one client resolve, since the poll tick calls it per project.
@@ -229,13 +330,102 @@ pub fn issues_source(project_path: String) -> bool {
     offered(&project_path)
 }
 
-#[tauri::command(async)]
-pub fn issues_assigned(project_path: String, refresh: Option<bool>) -> Result<Vec<IssueRef>, ForgeErrorDto> {
+fn contract_sources(project_path: &str) -> Result<Vec<IssueQuery>, ForgeError> {
     let contracts: std::collections::BTreeMap<String, crate::autopilot::Contract> =
         crate::rpc::office_call_as("autopilot.contracts", serde_json::json!({}))
-            .map_err(|message| crate::forge::ForgeError::Transport { message })?;
-    let sources = contracts.get(&project_path).cloned().unwrap_or_default().issues;
-    Ok(assigned(&project_path, &sources, refresh.unwrap_or(false))?)
+            .map_err(|message| ForgeError::Transport { message })?;
+    Ok(contracts.get(project_path).cloned().unwrap_or_default().issues)
+}
+
+#[tauri::command(async)]
+pub fn issues_assigned(project_path: String, refresh: Option<bool>) -> Result<AssignedIssues, ForgeErrorDto> {
+    let sources = contract_sources(&project_path)?;
+    Ok(assigned_issues(&project_path, &sources, refresh.unwrap_or(false))?)
+}
+
+pub fn origin_of(project_path: &str) -> Option<String> {
+    crate::forge::commands::remote_of(project_path)
+        .ok()
+        .map(|r| format!("{}/{}", r.repo.owner, r.repo.repo).to_lowercase())
+}
+
+pub fn effective_repos(project_path: &str, sources: &[IssueQuery]) -> Vec<String> {
+    match origin_of(project_path) {
+        Some(origin) => repos::effective(project_path, &origin, sources),
+        None => repos::stored(project_path),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IssueRepos {
+    pub origin: Option<String>,
+    pub stored: Vec<String>,
+    pub effective: Vec<String>,
+}
+
+fn issue_repos_of(project_path: &str, sources: &[IssueQuery]) -> IssueRepos {
+    let effective = effective_repos(project_path, sources);
+    IssueRepos {
+        origin: origin_of(project_path),
+        stored: repos::stored(project_path),
+        effective,
+    }
+}
+
+// With the daemon out of reach the list still loads; only the one-time seed waits.
+#[tauri::command(async)]
+pub fn issue_repos_get(project_path: String) -> IssueRepos {
+    let sources = contract_sources(&project_path).unwrap_or_default();
+    issue_repos_of(&project_path, &sources)
+}
+
+#[tauri::command(async)]
+pub fn issue_repos_set(project_path: String, repos: Vec<String>) -> Result<IssueRepos, String> {
+    repos::save(&project_path, &repos)?;
+    Ok(issue_repos_of(&project_path, &[]))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoAccess {
+    pub repo: String,
+    pub access: Access,
+}
+
+fn repo_ref(full: &str) -> Option<RepoRef> {
+    let (owner, repo) = full.split_once('/')?;
+    Some(RepoRef {
+        owner: owner.into(),
+        repo: repo.into(),
+    })
+}
+
+fn record_access(account: &str, refs: &[RepoRef], found: Vec<Access>) -> Vec<RepoAccess> {
+    refs.iter()
+        .zip(found)
+        .map(|(r, access)| {
+            let repo = format!("{}/{}", r.owner, r.repo);
+            gate().note_access(account, &repo, access == Access::Readable);
+            RepoAccess { repo, access }
+        })
+        .collect()
+}
+
+#[tauri::command(async)]
+pub fn issue_repos_access(project_path: String, repos: Vec<String>) -> Result<Vec<RepoAccess>, ForgeErrorDto> {
+    let c = issue_client(&project_path)?;
+    let refs: Vec<RepoRef> = repos.iter().filter_map(|r| repo_ref(r)).collect();
+    let found = gate()
+        .call(&c.account_id, || attempt(&c, |f| source_of(f)?.access(&refs)))
+        .map_err(named_access)?;
+    Ok(record_access(&c.account_id, &refs, found))
+}
+
+#[tauri::command(async)]
+pub fn issues_find(project_path: String, input: String) -> Result<Found, ForgeErrorDto> {
+    let sources = contract_sources(&project_path).unwrap_or_default();
+    Ok(find(&project_path, &input, &sources)?)
 }
 
 #[tauri::command(async)]
@@ -277,39 +467,6 @@ mod tests {
             head_sha: None,
             body_len: None,
         }
-    }
-
-    #[test]
-    fn the_rows_are_every_lists_once_each() {
-        let list = |search: &str, rows: Vec<IssueRef>| SourceList {
-            search: Some(search.into()),
-            kind: IssueKind::Issue,
-            rows,
-            complete: true,
-        };
-        let assigned = Assigned {
-            account: "a".into(),
-            repo: "gettori/tori".into(),
-            lists: vec![
-                SourceList {
-                    search: None,
-                    kind: IssueKind::ReviewRequest,
-                    rows: vec![row("4", IssueKind::ReviewRequest)],
-                    complete: true,
-                },
-                list("a", vec![row("gettori/tickets#31", IssueKind::Issue)]),
-                list(
-                    "b",
-                    vec![
-                        row("gettori/tickets#31", IssueKind::Issue),
-                        row("gettori/tickets#32", IssueKind::Issue),
-                    ],
-                ),
-            ],
-            failed: Vec::new(),
-        };
-        let keys: Vec<String> = assigned.rows().into_iter().map(|r| r.key).collect();
-        assert_eq!(keys, ["4", "gettori/tickets#31", "gettori/tickets#32"]);
     }
 
     #[test]

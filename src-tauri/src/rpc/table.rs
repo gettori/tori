@@ -627,7 +627,7 @@ pub static METHODS: &[Method] = &[
     },
     Method {
         name: "issues.assigned",
-        description: "Open issues assigned to you in a project's repo, then open pull requests waiting on your review, each with its kind.",
+        description: "Open issues assigned to you in a project's issue repos (its own repo when none are set), then open pull requests waiting on your review, each with its kind.",
         params: schema::<IssuesAssignedParams>,
         callers: ANYONE_AND_DEVICES,
         refusal: None,
