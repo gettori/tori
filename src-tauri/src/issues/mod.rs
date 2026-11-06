@@ -76,7 +76,7 @@ pub struct Issue {
 pub enum Access {
     Readable,
     /// Missing, private to someone else, or a token without issue access.
-    NoAccess,
+    Unreadable,
     /// The repo has issues turned off.
     IssuesOff,
 }

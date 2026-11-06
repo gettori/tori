@@ -255,8 +255,8 @@ impl IssueSource for GitHubForge {
                 let alias = format!("r{i}");
                 let node = data.get(&alias).filter(|n| !n.is_null());
                 match node {
-                    _ if failed.contains_key(&alias) => Access::NoAccess,
-                    None => Access::NoAccess,
+                    _ if failed.contains_key(&alias) => Access::Unreadable,
+                    None => Access::Unreadable,
                     Some(n) if n.get("hasIssuesEnabled") == Some(&Value::Bool(false)) => Access::IssuesOff,
                     Some(_) => Access::Readable,
                 }
@@ -498,7 +498,12 @@ mod tests {
             .unwrap();
         assert_eq!(
             got,
-            [Access::Readable, Access::NoAccess, Access::NoAccess, Access::IssuesOff]
+            [
+                Access::Readable,
+                Access::Unreadable,
+                Access::Unreadable,
+                Access::IssuesOff
+            ]
         );
         assert_eq!(
             (vars(&stub, 0)["o2"].as_str(), vars(&stub, 0)["n2"].as_str()),
