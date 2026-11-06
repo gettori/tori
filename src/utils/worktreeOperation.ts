@@ -8,6 +8,17 @@ export type Operation = {
   conflicted: number;
 };
 
+export type WorktreeStatus = {
+  dirty: boolean;
+  unpushed: boolean;
+  hasRemote: boolean;
+  ignoredWork: string[];
+  operation: Operation | null;
+  largeFiles: string[];
+  keepsCopy: boolean;
+  keepsCopyWithBranch: boolean;
+};
+
 type UnitLike = {
   label: string;
   folderPath: string;

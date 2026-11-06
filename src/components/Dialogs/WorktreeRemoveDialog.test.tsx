@@ -69,7 +69,7 @@ describe("WorktreeRemoveDialog", () => {
       const { onConfirm } = open({ ignoredWork: ["apps/web/.env", "dev.db"] });
 
       expect(screen.getByText("apps/web/.env, dev.db")).toBeTruthy();
-      expect(screen.getByText(/deletes work that is not saved anywhere else/)).toBeTruthy();
+      expect(screen.getByText("This deletes ignored files, which no copy holds. It cannot be undone.")).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "Remove anyway" }));
       expect(onConfirm).toHaveBeenCalledTimes(1);
     });
@@ -99,12 +99,45 @@ describe("WorktreeRemoveDialog", () => {
       expect(screen.getByText("clean")).toBeTruthy();
     });
 
-    it("warns, in words, when the removal loses work", () => {
-      open({ dirty: true, unpushed: true });
+    it("says, in words, what work the removal touches and that a copy is kept", () => {
+      open({ dirty: true, unpushed: true, keepsCopy: true, keepsCopyWithBranch: true });
 
       expect(screen.getByText("uncommitted changes")).toBeTruthy();
       expect(screen.getByText("unpushed commits")).toBeTruthy();
-      expect(screen.getByText("This deletes work that is not saved anywhere else. It cannot be undone.")).toBeTruthy();
+      expect(document.querySelector("[data-remove-kept]")?.textContent).toContain("Tori keeps a copy");
+      expect(screen.queryByText(/It cannot be undone/)).toBeNull();
+    });
+
+    it("warns that a rebase in progress loses its progress", () => {
+      open({
+        operation: { kind: "rebase", replaying: "feat", step: 3, total: 7, conflicted: 1 },
+        keepsCopy: true,
+        keepsCopyWithBranch: true,
+      });
+
+      expect(document.querySelector("[data-remove-operation]")?.textContent).toBe("rebase in progress");
+      expect(
+        screen.getByText(/stopped on a conflict in 1 file, at commit 3 of 7\..*loses its progress\./),
+      ).toBeTruthy();
+      expect(document.querySelector("[data-remove-kept]")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Remove anyway" })).toBeTruthy();
+    });
+
+    it("names the files too large to keep", () => {
+      open({ dirty: true, largeFiles: ["dump.bin", "rec.mov"] });
+
+      expect(document.querySelector("[data-remove-large]")?.textContent).toBe("dump.bin, rec.mov");
+      expect(
+        screen.getByText("This deletes files too large to keep, which no copy holds. It cannot be undone."),
+      ).toBeTruthy();
+    });
+
+    it("promises a copy only for the branch choice that makes one", () => {
+      open({ unpushed: true, keepsCopy: false, keepsCopyWithBranch: true });
+
+      expect(document.querySelector("[data-remove-kept]")).toBeTruthy();
+      fireEvent.click(check(LOCAL));
+      expect(document.querySelector("[data-remove-kept]")).toBeNull();
     });
 
     it("counts the terminal tabs the removal will stop", () => {

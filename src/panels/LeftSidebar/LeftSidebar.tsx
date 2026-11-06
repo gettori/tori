@@ -257,7 +257,13 @@ import StatusBubble, { CountBubble } from "./StatusBubble";
 import { latestUnreviewed, runSecondOpinion, secondOpinionRunning } from "../../utils/secondOpinion";
 import SpaceTile, { TileProbe } from "./SpaceTile";
 import { GLOBAL_COLOR, GLOBAL_ICON, GLOBAL_KEY, GLOBAL_NAME, allSpaces, spaceLabel } from "../../utils/globalSpace";
-import { applyOperation, displayBranch, ownsFolder, type Operation } from "../../utils/worktreeOperation";
+import {
+  applyOperation,
+  displayBranch,
+  ownsFolder,
+  type Operation,
+  type WorktreeStatus,
+} from "../../utils/worktreeOperation";
 import {
   BranchRow,
   EmptyRow,
@@ -721,6 +727,10 @@ export default function LeftSidebar(props: {
     unpushed: boolean | null;
     hasRemote: boolean | null;
     ignoredWork: string[];
+    operation: Operation | null;
+    largeFiles: string[];
+    keepsCopy: boolean | null;
+    keepsCopyWithBranch: boolean | null;
     runningCount: number;
     busy: boolean;
   } | null>(null);
@@ -1920,7 +1930,20 @@ export default function LeftSidebar(props: {
   // status so the dialog can warn about work about to be lost. The teardown of any
   // live PTYs/editor tabs and the actual delete happen on confirm.
   function openRemoveWorktree(p: Project, u: BranchUnit) {
-    setWtReq({ p, u, dirty: null, unpushed: null, hasRemote: null, ignoredWork: [], runningCount: 0, busy: false });
+    setWtReq({
+      p,
+      u,
+      dirty: null,
+      unpushed: null,
+      hasRemote: null,
+      ignoredWork: [],
+      operation: u.operation ?? null,
+      largeFiles: [],
+      keepsCopy: null,
+      keepsCopyWithBranch: null,
+      runningCount: 0,
+      busy: false,
+    });
     // Count what's running under the worktree (shell tabs + agents), so removal
     // warns before it tears their PTYs down.
     countRunningAgents(u.folderPath).then((n) =>
@@ -1932,7 +1955,7 @@ export default function LeftSidebar(props: {
     const finished = finishedPr(u.folderPath, u.branch, syncFor(u.folderPath, u.branch));
     const landed =
       finished?.state === "merged" && (finished.relation?.kind === "at" || finished.relation?.kind === "behind");
-    invoke<{ dirty: boolean; unpushed: boolean; hasRemote: boolean; ignoredWork: string[] }>("worktree_status", {
+    invoke<WorktreeStatus>("worktree_status", {
       path: u.folderPath,
     })
       .then((s) =>
@@ -1944,6 +1967,10 @@ export default function LeftSidebar(props: {
                 unpushed: s.unpushed && !landed,
                 hasRemote: s.hasRemote,
                 ignoredWork: s.ignoredWork,
+                operation: s.operation,
+                largeFiles: s.largeFiles,
+                keepsCopy: s.keepsCopy,
+                keepsCopyWithBranch: s.keepsCopyWithBranch,
               }
             : r,
         ),
@@ -4536,13 +4563,17 @@ export default function LeftSidebar(props: {
 
       <Show when={wtReq()}>
         <WorktreeRemoveDialog
-          label={wtReq()!.u.label}
+          label={displayBranch(wtReq()!.u)}
           path={wtReq()!.u.folderPath}
           branch={wtReq()!.u.branch}
           dirty={wtReq()!.dirty}
           unpushed={wtReq()!.unpushed}
           hasRemote={wtReq()!.hasRemote}
           ignoredWork={wtReq()!.ignoredWork}
+          operation={wtReq()!.operation}
+          largeFiles={wtReq()!.largeFiles}
+          keepsCopy={wtReq()!.keepsCopy}
+          keepsCopyWithBranch={wtReq()!.keepsCopyWithBranch}
           runningCount={wtReq()!.runningCount}
           busy={wtReq()!.busy}
           onConfirm={(opts) => confirmRemoveWorktree(opts)}

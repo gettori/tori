@@ -922,6 +922,10 @@ pub struct WorktreeStatus {
     pub unpushed: bool,
     pub has_remote: bool,
     pub ignored_work: Vec<String>,
+    pub operation: Option<Operation>,
+    pub large_files: Vec<String>,
+    pub keeps_copy: bool,
+    pub keeps_copy_with_branch: bool,
 }
 
 /// The `(remote, ref)` a branch pushes to, from its tracking config
@@ -1035,11 +1039,20 @@ pub async fn worktree_status(path: String) -> Result<WorktreeStatus, String> {
 pub(crate) fn worktree_status_body(path: String) -> Result<WorktreeStatus, String> {
     let p = Path::new(&path);
     let has_remote = branch_at(p).and_then(|b| resolve_remote_branch(p, &b)).is_some();
+    let dirty = tree_dirty(p)?;
     Ok(WorktreeStatus {
-        dirty: tree_dirty(p)?,
+        dirty,
         unpushed: branch_unpushed(p),
         has_remote,
         ignored_work: ignored_work(p)?,
+        operation: operation(p),
+        large_files: if dirty {
+            crate::rescue::large_files(p)
+        } else {
+            Vec::new()
+        },
+        keeps_copy: crate::rescue::keeps_copy(p, None),
+        keeps_copy_with_branch: crate::rescue::keeps_copy(p, branch_at(p).as_deref()),
     })
 }
 
@@ -1094,6 +1107,15 @@ pub(crate) fn branch_status_body(repo: String, branch: String) -> Result<BranchS
 /// symlinks git would otherwise treat as untracked. Shared by `remove_worktree` and
 /// the delete-plus-branch variant; it does not emit (the caller does).
 pub(crate) fn do_remove_worktree(repo_path: &str, worktree_path: &str, force: bool) -> Result<(), String> {
+    remove_worktree_deleting(repo_path, worktree_path, force, None)
+}
+
+pub(crate) fn remove_worktree_deleting(
+    repo_path: &str,
+    worktree_path: &str,
+    force: bool,
+    deleted_branch: Option<&str>,
+) -> Result<(), String> {
     if !force && tree_dirty(Path::new(worktree_path))? {
         return Err("This worktree has uncommitted changes; commit or discard them first.".into());
     }
@@ -1103,6 +1125,12 @@ pub(crate) fn do_remove_worktree(repo_path: &str, worktree_path: &str, force: bo
     let folder = Path::new(worktree_path);
     crate::setup::kill(folder);
     crate::run::stop(folder);
+    // After the kill, so nothing is still writing, and before teardown, which
+    // runs the project's own script in the folder.
+    if folder.is_dir() {
+        crate::rescue::keep(folder, deleted_branch)
+            .map_err(|e| format!("Tori could not keep a copy of this worktree's work, so it was not deleted: {e}"))?;
+    }
     if folder.is_dir() && not_a_fork(folder) {
         crate::setup::teardown(repo_path, folder);
     }
@@ -1214,7 +1242,7 @@ pub fn remove_worktree_and_branch(
     let lock = crate::exec::repo_lock(&repo_path);
     let _repo = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     crate::git::not_an_option(&branch)?;
-    do_remove_worktree(&repo_path, &worktree_path, force)?;
+    remove_worktree_deleting(&repo_path, &worktree_path, force, Some(&branch))?;
     let del = crate::exec::git_in(&repo_path)
         .args(["branch", "-D", &branch])
         .output()
