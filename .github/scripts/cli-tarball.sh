@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Pack the app's own binary as the tori CLI release asset, which gettori/packs
 # CI downloads to run `tori validate-pack` and `tori packs-index`. Prints the
-# tarball's path.
+# tarball's path. check-cli.sh asks the binary to answer as the CLI, in the
+# build job; this runs where the signing key is, so it never runs the binary.
 #
 # The binary is already signed as part of the bundle. When the notarization
 # variables are set it is also notarized here, as a zip, since that is the
@@ -31,21 +32,6 @@ cp "$bin" "$stage/tori"
 if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
   codesign --force --sign "$APPLE_SIGNING_IDENTITY" --options runtime --timestamp "$stage/tori"
   codesign --verify --strict "$stage/tori"
-fi
-
-# Only the runner's own arch can answer; the other is packed on trust, since
-# it is the same source at the same commit.
-case "$ARCH" in x64) native=x86_64 ;; *) native=$ARCH ;; esac
-if [ "$(uname -m)" = "$native" ]; then
-  # Asked once before it ships: packs CI depends on this binary answering as
-  # the CLI outside its bundle. A binary that does not know the command starts
-  # the app instead, so the question has a deadline (perl, since macOS has no
-  # timeout).
-  answer=$(perl -e 'alarm 20; exec @ARGV' "$stage/tori" validate-pack 2>&1) && status=0 || status=$?
-  case "$status:$answer" in
-    1:*"tori validate-pack <file|dir>"*) ;;
-    *) echo "error: $bin does not answer as the tori CLI (exit $status)" >&2; exit 1 ;;
-  esac
 fi
 
 if [ -n "${APPLE_API_KEY:-}" ]; then

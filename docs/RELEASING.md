@@ -84,25 +84,34 @@ moves no version, so the run ends there in a few seconds. Run the same command
 in a checkout to see what a commit would build. The picked components build in
 parallel:
 
-- **macOS, twice**, one job per architecture (`aarch64-apple-darwin` on the
-  runner's own arch, `x86_64-apple-darwin` cross-compiled on the same runner).
-  Each builds the app, signs it with the Developer ID under the hardened
-  runtime, checks every Mach-O inside is for that arch alone and that the
-  signature verifies all the way down, then notarizes the DMG (one
-  submission covers the app inside it) and staples the ticket to it. It
-  staples the same ticket onto the app and packs it as
-  `Tori_<version>_<aarch64|x64>.app.tar.gz`, the file the in-app updater and
-  `install.sh` download. It packs the binary as `tori-cli-<version>-macos-<arm64|x64>.tar.gz`, notarized as
-  a zip, after checking it answers as the CLI. The arm64 job also runs the
-  binary's `tori packs-catalog --check`, which fetches the live index from
-  gettori.app and verifies it with the keys this build trusts. Apple's queue
-  decides most of the job's length: minutes on a good day, hours on a bad
-  one; the wait gives up after four.
-- **Android**, arm64 only, on Linux, with NDK r28 or later. It writes the
-  keystore from secrets and builds an APK and an AAB. It checks the APK is
-  signed and names it `Tori_<version>.apk`, then checks the AAB is signed and
-  that every native library in it is 16 KB aligned, which Play requires, and
-  names it `Tori_<version>.aab`.
+- **macOS, twice**, one pair of jobs per architecture (`aarch64-apple-darwin`
+  on the runner's own arch, `x86_64-apple-darwin` cross-compiled on the same
+  runner). `build-macos` holds no secret: it runs `pnpm install` and
+  `tauri build --bundles app` unsigned, checks the binary answers as the CLI
+  and, on arm64, runs its `tori packs-catalog --check`, which fetches the live
+  index from gettori.app and verifies it with the keys this build trusts. It
+  hands the app on as a tarball, since an artifact drops symlinks and exec
+  bits. `sign-macos` runs on the `release` environment, checks out only
+  `.github/scripts` and `src-tauri/Entitlements.plist`, and never runs what
+  the build made. It signs the app inside out with the Developer ID under the
+  hardened runtime (`sign-app.sh`), checks every Mach-O inside is for that
+  arch alone and that the signature verifies all the way down, builds the DMG
+  with `hdiutil` (`make-dmg.sh`), notarizes it (one submission covers the app
+  inside it) and staples the ticket to it. It staples the same ticket onto the
+  app and packs it as `Tori_<version>_<aarch64|x64>.app.tar.gz`, the file the
+  in-app updater and `install.sh` download, and packs the binary as
+  `tori-cli-<version>-macos-<arm64|x64>.tar.gz`, notarized as a zip. Apple's
+  queue decides most of the sign job's length: minutes on a good day, hours on
+  a bad one; the wait gives up after four.
+- **Android**, arm64 only, on Linux, with NDK r28 or later. `build-android`
+  holds no secret: it builds an unsigned APK and AAB, asking for that with
+  `ORG_GRADLE_PROJECT_unsigned=true` (a release build with no
+  `keystore.properties` is refused otherwise, so a lost keystore never ships
+  unsigned), and checks that every native library in the AAB is 16 KB aligned,
+  which Play requires.
+  `sign-android`, on the `release` environment, writes the keystore from
+  secrets, signs the APK with `apksigner` and the AAB with `jarsigner`, checks
+  both verify, and names them `Tori_<version>.apk` and `Tori_<version>.aab`.
 - **The browser extension**, the store zip (see below).
 - **The push relay**, the Cloudflare Worker in `relay/` (see below).
 
