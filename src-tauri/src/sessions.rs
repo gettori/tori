@@ -91,8 +91,20 @@ struct CacheEntry {
     meta: Option<SessionMeta>,
 }
 
+/// The last walk's rows, and the roots and moment it walked.
+struct Walk {
+    at: Instant,
+    roots: Vec<(PathBuf, String)>,
+    rows: Vec<SessionMeta>,
+}
+
 #[derive(Default)]
-pub struct SessionIndex(Mutex<HashMap<PathBuf, CacheEntry>>);
+pub struct SessionIndex(Mutex<HashMap<PathBuf, CacheEntry>>, Mutex<Option<Walk>>);
+
+/// How long one walk answers for. Shorter than the watcher's settle, so a
+/// listing an emit asked for never gets a walk that started before the change
+/// behind that emit.
+const WALK_REUSE: std::time::Duration = std::time::Duration::from_millis(200);
 
 #[derive(Default)]
 pub struct SessionWatch(pub Mutex<Option<RecommendedWatcher>>);
@@ -545,9 +557,32 @@ fn index_roots(index: &SessionIndex, roots: &[Root]) -> Vec<SessionMeta> {
 /// it for the listing's labels reads it once.
 fn ensure_index(index: &SessionIndex, accounts: &crate::accounts::AccountsFile) -> Vec<SessionMeta> {
     let adapters = agents::registry();
-    let mut all = index_roots(index, &discovery_roots(&adapters, accounts));
+    let mut all = recent_walk(index, &discovery_roots(&adapters, accounts));
     all.extend(acp_sessions());
     all
+}
+
+/// `index_roots`, shared by every listing that lands within `WALK_REUSE` of
+/// one walk. A refresh asks once per folder and in parallel, so the lock is
+/// held across the walk: the callers behind it get its rows instead of a walk
+/// of their own.
+fn recent_walk(index: &SessionIndex, roots: &[Root]) -> Vec<SessionMeta> {
+    let key: Vec<(PathBuf, String)> = roots.iter().map(|r| (r.dir.clone(), r.profile.clone())).collect();
+    let mut last = match index.1.lock() {
+        Ok(l) => l,
+        Err(_) => return index_roots(index, roots),
+    };
+    if let Some(walk) = last.as_ref().filter(|w| w.at.elapsed() < WALK_REUSE && w.roots == key) {
+        return walk.rows.clone();
+    }
+    let at = Instant::now();
+    let rows = index_roots(index, roots);
+    *last = Some(Walk {
+        at,
+        roots: key,
+        rows: rows.clone(),
+    });
+    rows
 }
 
 /// The ACP sessions Tori has locators for, as listing rows.
@@ -1814,24 +1849,64 @@ impl SessionsChanged {
 }
 
 /// Resolve the burst's touched files to the folders their sessions are anchored
-/// on, or `None` when any of them cannot be resolved.
+/// on, or `None` when any of them cannot be resolved. A file that belongs to no
+/// transcript (an agent's notes kept beside them) names nothing, so a burst of
+/// only those is `Some` and empty.
 ///
-/// The index is the only thing that knows a transcript's cwd: the encoding of a
-/// cwd into a directory name belongs to the agent (see `transcript_path`), so
-/// the path alone cannot be decoded. A miss means a file Tori has not parsed
-/// yet, which is exactly the new-session case, so one miss makes the whole
-/// answer "all" rather than a set that quietly omits it.
+/// Only a transcript knows its cwd: the encoding of a cwd into a directory name
+/// belongs to the agent (see `transcript_path`), so the path alone cannot be
+/// decoded. The window's index is filled at launch and listings run in the
+/// daemon, so it misses every session started since; those are read here from
+/// the file's head. A transcript with no cwd yet is the new-session case, so
+/// that one miss makes the whole answer "all" rather than a set that quietly
+/// omits it.
 fn folders_for(index: &SessionIndex, touched: &HashSet<PathBuf>) -> Option<Vec<String>> {
     if touched.is_empty() || touched.len() > TOUCHED_CAP {
         return None;
     }
-    let cache = index.0.lock().ok()?;
     let mut folders = HashSet::new();
     for path in touched {
-        let cwd = cache.get(path).and_then(|e| e.meta.as_ref()).map(|m| m.cwd.clone())?;
-        folders.insert(cwd);
+        let Some(transcript) = transcript_owning(path) else {
+            continue;
+        };
+        folders.insert(cwd_of(index, &transcript)?);
     }
     Some(folders.into_iter().collect())
+}
+
+/// The transcript a touched path belongs to: the `<stem>.jsonl` beside the
+/// directory it sits in (a subagent's transcript, a sidecar), or the path
+/// itself when it is a transcript.
+fn transcript_owning(path: &Path) -> Option<PathBuf> {
+    path.ancestors()
+        .skip(1)
+        .map(|dir| dir.with_extension("jsonl"))
+        .find(|beside| beside.is_file())
+        .or_else(|| (path.extension().is_some_and(|e| e == "jsonl")).then(|| path.to_path_buf()))
+}
+
+/// Cwds read off transcript heads the index has not seen. A transcript never
+/// moves its cwd, so an entry never goes stale.
+static HEAD_CWDS: std::sync::LazyLock<Mutex<HashMap<PathBuf, String>>> = std::sync::LazyLock::new(Mutex::default);
+
+fn cwd_of(index: &SessionIndex, transcript: &Path) -> Option<String> {
+    let indexed = index
+        .0
+        .lock()
+        .ok()?
+        .get(transcript)
+        .and_then(|e| e.meta.as_ref())
+        .map(|m| m.cwd.clone());
+    if indexed.is_some() {
+        return indexed;
+    }
+    let mut heads = HEAD_CWDS.lock().ok()?;
+    if let Some(cwd) = heads.get(transcript) {
+        return Some(cwd.clone());
+    }
+    let cwd = parse_session(&transcript.to_path_buf(), UNIX_EPOCH, UNIX_EPOCH, "")?.cwd;
+    heads.insert(transcript.to_path_buf(), cwd.clone());
+    Some(cwd)
 }
 
 /// Start (or restart) the session watcher over the current set of roots.
@@ -1912,6 +1987,9 @@ pub fn sessions_watch_start(app: AppHandle, state: State<SessionWatch>) -> Resul
                 // long after its transcript stopped moving.
                 let touched = WATCH_TOUCHED.lock().ok().and_then(|mut t| t.take()).unwrap_or_default();
                 let folders = folders_for(&app_handle.state::<SessionIndex>(), &touched);
+                if folders.as_ref().is_some_and(|f| f.is_empty()) {
+                    continue;
+                }
                 let _ = app_handle.emit("sessions://changed", SessionsChanged { folders });
                 crate::rpc::sessions_changed();
             }
