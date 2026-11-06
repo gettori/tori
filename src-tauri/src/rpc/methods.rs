@@ -13,7 +13,7 @@ use super::approvals::{Approval, Approvals, Draft};
 use super::asks::{Ask, Asks, By, NotAnswered, Waited};
 use super::auth::{Caller, Principal};
 use super::events::{project_of, same_folder, TurnBy};
-use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, REFUSED};
+use super::frame::{RpcError, INTERNAL_ERROR, INVALID_PARAMS, NEEDS_APPROVAL, REFUSED};
 use super::reach;
 use super::server::{
     AccountsListParams, AgentsListParams, AllowGroupParams, AskAnswerParams, AskParams, AskWaitParams,
@@ -748,15 +748,17 @@ fn stored_by_attachment_write(attach: &[String], store: &Path) -> Result<(), Rpc
     }
 }
 
-// A chat's text arrives as a Tori note naming it; a person's, as typed.
+const OUTSIDE_STEER: &str = "a shell outside Tori";
+
+// Anything but a person's text arrives as a Tori note naming who sent it: an
+// agent can run in a tab, and anything of this user's can hold the file token.
 fn steered(principal: &Principal, text: String) -> (TurnBy, String) {
+    let note = |from: &str| super::events::from_tori("steer", Some(from), &text);
     match principal {
         Principal::Local | Principal::Device(_) | Principal::Browser(_) => (TurnBy::Local, text),
-        Principal::Session(Caller::Chat(from)) => (
-            TurnBy::Session(from.clone()),
-            super::events::from_tori("steer", Some(from), &text),
-        ),
-        Principal::Session(Caller::Terminal(tab)) => (TurnBy::Tab(tab.clone()), text),
+        Principal::Session(Caller::Chat(from)) => (TurnBy::Session(from.clone()), note(from)),
+        Principal::Session(Caller::Terminal(tab)) => (TurnBy::Tab(tab.clone()), note(&format!("tab {tab}"))),
+        Principal::Outside(_) => (TurnBy::Outside, note(OUTSIDE_STEER)),
     }
 }
 
@@ -881,7 +883,7 @@ fn route_steer(
             }
             reach::note_agent_steer(from, target);
         }
-        Principal::Session(Caller::Terminal(_)) => {}
+        Principal::Session(Caller::Terminal(_)) | Principal::Outside(_) => {}
         Principal::Local | Principal::Device(_) | Principal::Browser(_) => reach::person_spoke(target),
     }
     if !sink.is_live(target) {
@@ -1143,24 +1145,27 @@ fn pushable(pr: &crate::forge::model::PullRequest, head: &str) -> Result<(), Str
     Ok(())
 }
 
+// Whose approval an outward call spends: nobody watches a background session,
+// an agent can run in a tab, and anything of this user's can hold the file
+// token. A foreground chat is the person's own.
+fn approval_key(principal: &Principal, background: impl Fn(&str) -> bool) -> Option<&str> {
+    match principal {
+        Principal::Session(Caller::Chat(id)) if background(id) => Some(id),
+        Principal::Session(Caller::Terminal(tab)) => Some(tab),
+        Principal::Outside(key) => Some(key),
+        _ => None,
+    }
+}
+
 fn gated_by_approval(
     approvals: &Approvals,
-    background: Option<&str>,
+    asker: Option<&str>,
     wanted: &Approval,
     approval_id: Option<&str>,
     call: impl FnOnce() -> Result<Value, RpcError>,
 ) -> Result<Value, RpcError> {
-    let Some(session) = background else { return call() };
-    let id = approvals.reserve(approval_id, session, wanted).map_err(|why| {
-        let action = wanted.draft.action();
-        refused(format!(
-            "{action} from a background session needs an approval for {} in {}: {why}. Call ask_create (`tori ask \
-             --approval` from a shell) with `approval` set to this action and its exact draft, then pass the approval_id \
-             an Approve answer returns",
-            wanted.draft.target(),
-            wanted.project
-        ))
-    })?;
+    let Some(asker) = asker else { return call() };
+    let id = reserve_approval(approvals, asker, wanted, approval_id)?;
     let outcome = call();
     // Kept when the call fails: a refusal from the host changed nothing, so it should not cost a second approval.
     match outcome {
@@ -1168,6 +1173,53 @@ fn gated_by_approval(
         Err(_) => approvals.release(&id),
     }
     outcome
+}
+
+// Released on drop unless spent, so a call that fails costs no second approval.
+struct Reserved<'a> {
+    approvals: &'a Approvals,
+    id: Option<String>,
+}
+
+impl Reserved<'_> {
+    fn spend(mut self) {
+        if let Some(id) = self.id.take() {
+            self.approvals.spend(&id);
+        }
+    }
+}
+
+impl Drop for Reserved<'_> {
+    fn drop(&mut self) {
+        if let Some(id) = self.id.take() {
+            self.approvals.release(&id);
+        }
+    }
+}
+
+fn reserve_approval(
+    approvals: &Approvals,
+    asker: &str,
+    wanted: &Approval,
+    approval_id: Option<&str>,
+) -> Result<String, RpcError> {
+    approvals.reserve(approval_id, asker, wanted).map_err(|why| {
+        let action = wanted.draft.action();
+        RpcError::new(
+            NEEDS_APPROVAL,
+            format!(
+                "{action} from a background session, a terminal tab or a shell outside Tori needs an approval for {} \
+                 in {}: {why}. Call ask_create (`tori ask --approval` from a shell) with `approval` set to this action \
+                 and its exact draft, then pass the approval_id an Approve answer returns",
+                wanted.draft.target(),
+                wanted.project
+            ),
+        )
+        .with_data(json!({
+            "approval": wanted,
+            "question": format!("{action} {} in {}", wanted.draft.target(), wanted.project),
+        }))
+    })
 }
 
 // A review that would not post as drawn is refused before its card shows, so
@@ -1377,9 +1429,20 @@ impl DaemonBackend {
         let picked = crate::chat::pick::pick(&folder, agent.as_deref(), account.as_deref()).map_err(refused)?;
         let first =
             crate::chat::pick::first_message(&picked.agent, params.prompt.as_deref(), &attach).map_err(refused)?;
-        if let Principal::Session(_) = principal {
-            mode_within_reach(mode.as_deref(), &picked.agent, &me, &caller.unwrap_or_default()).map_err(refused)?;
-        }
+        let reserved = match principal {
+            Principal::Session(Caller::Chat(_)) => {
+                mode_within_reach(mode.as_deref(), &picked.agent, &me, &caller.unwrap_or_default()).map_err(refused)?;
+                None
+            }
+            Principal::Session(Caller::Terminal(_)) | Principal::Outside(_) => self.spawn_gate(
+                principal,
+                &picked.agent,
+                mode.as_deref(),
+                &folder,
+                params.approval_id.as_deref(),
+            )?,
+            _ => None,
+        };
         let mode = mode.or_else(|| read_only.then(|| read_only_mode(&picked.agent)).flatten());
         if let Some(from) = &params.fork {
             let source = listed_sessions(&self.composer.index, None)
@@ -1414,6 +1477,9 @@ impl DaemonBackend {
         let spawned = crate::chat::commands::spawn_session(host, request, Box::new(|_| {})).map_err(refused)?;
         if spawned.spawned.is_none() {
             return Err(refused(format!("the session id was refused: {:?}", spawned.ownership)));
+        }
+        if let Some(reserved) = reserved {
+            reserved.spend();
         }
         // Before the first message, so the chat finds who sent it the moment
         // it opens.
@@ -1573,7 +1639,9 @@ impl DaemonBackend {
 
     pub fn identity(&self, principal: &Principal) -> Identity {
         match principal {
-            Principal::Local | Principal::Device(_) | Principal::Browser(_) => Identity::default(),
+            Principal::Local | Principal::Outside(_) | Principal::Device(_) | Principal::Browser(_) => {
+                Identity::default()
+            }
             Principal::Session(Caller::Terminal(tab)) => self
                 .ptys
                 .list()
@@ -1874,11 +1942,8 @@ impl DaemonBackend {
         }
     }
 
-    fn background_session<'a>(&self, principal: &'a Principal) -> Option<&'a str> {
-        match principal {
-            Principal::Session(Caller::Chat(id)) if self.desk.states.is_background(id) => Some(id),
-            _ => None,
-        }
+    fn approval_key<'a>(&self, principal: &'a Principal) -> Option<&'a str> {
+        approval_key(principal, |id| self.desk.states.is_background(id))
     }
 
     fn gated_outward(
@@ -1900,7 +1965,7 @@ impl DaemonBackend {
         }
         gated_by_approval(
             &self.asks.approvals,
-            self.background_session(principal),
+            self.approval_key(principal),
             &wanted,
             approval_id,
             || call(&wanted.project),
@@ -1911,6 +1976,42 @@ impl DaemonBackend {
         self.askpass
             .clone()
             .ok_or_else(|| refused("git has no way to ask for a credential: the askpass socket did not start".into()))
+    }
+
+    fn spawn_gate(
+        &self,
+        principal: &Principal,
+        agent: &str,
+        mode: Option<&str>,
+        folder: &str,
+        approval_id: Option<&str>,
+    ) -> Result<Option<Reserved<'_>>, RpcError> {
+        let Some(mode) = mode else { return Ok(None) };
+        match crate::agents::mode_freedom(agent, mode) {
+            ModeFreedom::Asks => Ok(None),
+            ModeFreedom::Unnamed if matches!(principal, Principal::Outside(_)) => Ok(None),
+            ModeFreedom::Unnamed => Err(refused(format!(
+                "`{mode}` is not a mode {agent}'s pack names, so a terminal tab cannot start one in it"
+            ))),
+            ModeFreedom::Permissive => {
+                let wanted = Approval {
+                    project: project_of(folder, &crate::config::project_dirs()).unwrap_or_else(|| folder.to_string()),
+                    draft: Draft::SessionSpawn {
+                        agent: agent.to_string(),
+                        mode: mode.to_string(),
+                        folder: folder.to_string(),
+                    },
+                };
+                let Some(key) = self.approval_key(principal) else {
+                    return Ok(None);
+                };
+                let id = reserve_approval(&self.asks.approvals, key, &wanted, approval_id)?;
+                Ok(Some(Reserved {
+                    approvals: &self.asks.approvals,
+                    id: Some(id),
+                }))
+            }
+        }
     }
 
     fn hold_for_window(&self, principal: &Principal, wanted: Approval) -> RpcError {
@@ -2384,7 +2485,7 @@ impl Backend for DaemonBackend {
 
     fn caller(&self, principal: &Principal) -> Result<Value, RpcError> {
         let caller = match principal {
-            Principal::Local => Value::Null,
+            Principal::Local | Principal::Outside(_) => Value::Null,
             Principal::Session(caller) => json!(caller),
             Principal::Device(id) => json!({ "kind": "device", "id": id }),
             Principal::Browser(id) => json!({ "kind": "browser", "id": id }),
@@ -2964,7 +3065,7 @@ impl Backend for DaemonBackend {
                 )
             }
             Principal::Session(Caller::Terminal(tab)) => (tab.clone(), super::asks::Surface::Tab(tab.clone())),
-            Principal::Local => (super::asks::OUTSIDE_ASKER.to_string(), super::asks::Surface::Window),
+            Principal::Outside(key) => (key.clone(), super::asks::Surface::Window),
             _ => {
                 return Err(RpcError::new(
                     INTERNAL_ERROR,
@@ -4236,6 +4337,19 @@ mod tests {
     }
 
     #[test]
+    fn a_tab_or_a_shell_outside_tori_steers_as_a_note_naming_it() {
+        let (by, text) = steered(&Principal::Session(Caller::Terminal("t1".into())), "go on".into());
+        assert_eq!(by, TurnBy::Tab("t1".into()));
+        assert_eq!(text, "<tori kind=\"steer\" from=\"tab t1\">\ngo on\n</tori>");
+        let (by, text) = steered(&Principal::Outside("outside-k1".into()), "go on".into());
+        assert_eq!(by, TurnBy::Outside);
+        assert_eq!(
+            text,
+            "<tori kind=\"steer\" from=\"a shell outside Tori\">\ngo on\n</tori>"
+        );
+    }
+
+    #[test]
     fn a_background_session_spawns_background_children_whatever_they_ask() {
         let states = SessionStates::default();
         states.mark_background("autopilot");
@@ -4294,6 +4408,28 @@ mod tests {
     }
 
     #[test]
+    fn a_tab_or_a_shell_outside_tori_spends_only_an_approval_it_asked_for() {
+        let approvals = Approvals::default();
+        let tab = Principal::Session(Caller::Terminal("t1".into()));
+        let key = approval_key(&tab, |_| false);
+        let err = gated_by_approval(&approvals, key, &pr_draft(), None, opened).unwrap_err();
+        assert_eq!(err.code, NEEDS_APPROVAL);
+        assert_eq!(
+            approval_key(&Principal::Session(Caller::Chat("s1".into())), |_| false),
+            None
+        );
+
+        let first = Principal::Outside("outside-a".into());
+        let second = Principal::Outside("outside-b".into());
+        let id = approvals.grant("outside-a", pr_draft());
+        let key = approval_key(&second, |_| false);
+        let err = gated_by_approval(&approvals, key, &pr_draft(), Some(&id), opened).unwrap_err();
+        assert!(err.message.contains("given to another session"), "{}", err.message);
+        let key = approval_key(&first, |_| false);
+        assert!(gated_by_approval(&approvals, key, &pr_draft(), Some(&id), opened).is_ok());
+    }
+
+    #[test]
     fn a_background_pr_create_without_an_approval_is_refused_naming_what_it_needs() {
         let approvals = Approvals::default();
         let ran = std::cell::Cell::new(false);
@@ -4302,7 +4438,8 @@ mod tests {
             opened()
         })
         .unwrap_err();
-        assert_eq!(err.code, REFUSED);
+        assert_eq!(err.code, NEEDS_APPROVAL);
+        assert_eq!(err.data.as_ref().unwrap()["approval"]["action"], "pr.create");
         for named in [
             "pr.create",
             "a pull request from 1-x at abc into main",

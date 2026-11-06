@@ -17,6 +17,8 @@ pub struct AttachParams {
     // Shown only by an unsigned build, which has no signature to prove itself by.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval_id: Option<String>,
     pub tab: String,
     pub replay: bool,
     pub cols: u16,

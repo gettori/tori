@@ -279,7 +279,7 @@ export function activityOf(e: AutopilotEvent, items: ItemRow[]): ActivityItem | 
   return null;
 }
 
-const KIND_OF: Record<AskApproval["action"], DecisionKind> = {
+const KIND_OF: Partial<Record<AskApproval["action"], DecisionKind>> = {
   "pr.create": "pr",
   "review.submit": "review",
   "pr.push": "push",
@@ -301,7 +301,7 @@ export function decisionOf(
   const asked = holds.find((h) => h.ask === ask.id)?.asked_at;
   return {
     id: ask.id,
-    kind: approval ? KIND_OF[approval.action] : "question",
+    kind: (approval && KIND_OF[approval.action]) ?? "question",
     ticket,
     refKind: item
       ? item.source.type === "pr" || item.source.type === "rule"

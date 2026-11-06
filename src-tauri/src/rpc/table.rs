@@ -29,6 +29,7 @@ use super::server::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CallerKind {
     Local,
+    Outside,
     Terminal,
     Chat,
     Worker,
@@ -40,6 +41,7 @@ impl CallerKind {
     pub fn of(principal: &Principal) -> Self {
         match principal {
             Principal::Local => Self::Local,
+            Principal::Outside(_) => Self::Outside,
             Principal::Session(Caller::Terminal(_)) => Self::Terminal,
             Principal::Session(Caller::Chat(_)) => Self::Chat,
             Principal::Device(_) => Self::Device,
@@ -50,6 +52,7 @@ impl CallerKind {
     pub fn name(self) -> &'static str {
         match self {
             Self::Local => "local",
+            Self::Outside => "outside",
             Self::Terminal => "terminal",
             Self::Chat => "chat",
             Self::Worker => "worker",
@@ -61,16 +64,23 @@ impl CallerKind {
 
 const ANYONE: &[CallerKind] = &[
     CallerKind::Local,
+    CallerKind::Outside,
     CallerKind::Terminal,
     CallerKind::Chat,
     CallerKind::Worker,
 ];
-const NOT_WORKERS: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerKind::Chat];
-// A person at a shell, an outside client or a paired phone; no agent session can start a spend.
-const NOT_SESSIONS_AND_DEVICES: &[CallerKind] = &[CallerKind::Local, CallerKind::Terminal, CallerKind::Device];
+const NOT_WORKERS: &[CallerKind] = &[
+    CallerKind::Local,
+    CallerKind::Outside,
+    CallerKind::Terminal,
+    CallerKind::Chat,
+];
+// Nothing in a Tori tab or chat can start a spend.
+const OUTSIDE_AND_DEVICES: &[CallerKind] = &[CallerKind::Local, CallerKind::Outside, CallerKind::Device];
 // A paired device never acts outward.
 const ANYONE_AND_DEVICES: &[CallerKind] = &[
     CallerKind::Local,
+    CallerKind::Outside,
     CallerKind::Terminal,
     CallerKind::Chat,
     CallerKind::Worker,
@@ -78,12 +88,14 @@ const ANYONE_AND_DEVICES: &[CallerKind] = &[
 ];
 const NOT_WORKERS_AND_DEVICES: &[CallerKind] = &[
     CallerKind::Local,
+    CallerKind::Outside,
     CallerKind::Terminal,
     CallerKind::Chat,
     CallerKind::Device,
 ];
 const ANYONE_DEVICES_AND_BROWSER: &[CallerKind] = &[
     CallerKind::Local,
+    CallerKind::Outside,
     CallerKind::Terminal,
     CallerKind::Chat,
     CallerKind::Worker,
@@ -92,6 +104,7 @@ const ANYONE_DEVICES_AND_BROWSER: &[CallerKind] = &[
 ];
 const ANYONE_AND_BROWSER: &[CallerKind] = &[
     CallerKind::Local,
+    CallerKind::Outside,
     CallerKind::Terminal,
     CallerKind::Chat,
     CallerKind::Worker,
@@ -99,13 +112,25 @@ const ANYONE_AND_BROWSER: &[CallerKind] = &[
 ];
 const NOT_WORKERS_DEVICES_AND_BROWSER: &[CallerKind] = &[
     CallerKind::Local,
+    CallerKind::Outside,
     CallerKind::Terminal,
     CallerKind::Chat,
     CallerKind::Device,
     CallerKind::Browser,
 ];
 // What a phone's screens read and switch, kept off every agent's tool list.
+const SCREENS: &[CallerKind] = &[CallerKind::Local, CallerKind::Outside, CallerKind::Device];
+// A person's own say over a session's permissions: a phone is one, but anything
+// holding the file token is an outside shell.
 const LOCAL_AND_DEVICES: &[CallerKind] = &[CallerKind::Local, CallerKind::Device];
+// Answering as the person stays off an outside shell, whose answer nobody vouches for.
+const ANSWERERS: &[CallerKind] = &[
+    CallerKind::Local,
+    CallerKind::Terminal,
+    CallerKind::Chat,
+    CallerKind::Device,
+    CallerKind::Browser,
+];
 const CHATS: &[CallerKind] = &[CallerKind::Chat];
 const DEVICES: &[CallerKind] = &[CallerKind::Device];
 const BROWSER: &[CallerKind] = &[CallerKind::Browser];
@@ -209,7 +234,7 @@ pub static METHODS: &[Method] = &[
         name: "session.rename",
         description: "Name a session, or clear its name with null, as the sidebar's Rename does.",
         params: schema::<RenameParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: false,
@@ -229,7 +254,7 @@ pub static METHODS: &[Method] = &[
         name: "session.close",
         description: "End a live chat session, as closing its tab does. Its transcript stays in the worktree's history and it resumes from there.",
         params: schema::<CloseParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: false,
@@ -239,7 +264,7 @@ pub static METHODS: &[Method] = &[
         name: "worktree.remove",
         description: "Remove a worktree and keep its branch. Refused while it has uncommitted changes or a live session.",
         params: schema::<WorktreeRemoveParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: false,
@@ -249,7 +274,7 @@ pub static METHODS: &[Method] = &[
         name: "branch.attach",
         description: "Show an existing local branch in a project's sidebar, by name.",
         params: schema::<BranchAttachParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: false,
@@ -259,7 +284,7 @@ pub static METHODS: &[Method] = &[
         name: "space.new",
         description: "Make a space: a folder in Tori's base folder, with its icon and colour.",
         params: schema::<SpaceParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: false,
@@ -269,7 +294,7 @@ pub static METHODS: &[Method] = &[
         name: "space.edit",
         description: "Set a space's icon and colour.",
         params: schema::<SpaceParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: false,
@@ -279,7 +304,7 @@ pub static METHODS: &[Method] = &[
         name: "space.order",
         description: "Set the order the spaces show in.",
         params: schema::<SpaceOrderParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: false,
@@ -289,7 +314,7 @@ pub static METHODS: &[Method] = &[
         name: "topic.new",
         description: "Make a Topic over several repositories, each a worktree on one branch or a reference.",
         params: schema::<TopicNewParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: false,
@@ -299,7 +324,7 @@ pub static METHODS: &[Method] = &[
         name: "topic.rename",
         description: "Rename a Topic.",
         params: schema::<TopicRenameParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: false,
@@ -309,7 +334,7 @@ pub static METHODS: &[Method] = &[
         name: "topic.space",
         description: "List a Topic in a space's tree, which must hold every member, or in Topics with a null space.",
         params: schema::<TopicSpaceParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: false,
@@ -319,7 +344,7 @@ pub static METHODS: &[Method] = &[
         name: "topic.delete",
         description: "Delete a Topic's record. Its worktrees and branches stay as they are.",
         params: schema::<TopicIdParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: false,
@@ -329,7 +354,7 @@ pub static METHODS: &[Method] = &[
         name: "topic.member.add",
         description: "Add a repository to a Topic, or move a worktree the user already has into it.",
         params: schema::<TopicMemberAddParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: false,
@@ -339,7 +364,7 @@ pub static METHODS: &[Method] = &[
         name: "topic.member.order",
         description: "Set the order a Topic's members show in.",
         params: schema::<TopicMemberOrderParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: false,
@@ -349,7 +374,7 @@ pub static METHODS: &[Method] = &[
         name: "topic.promote",
         description: "Give a Topic's reference member its own worktree on the Topic branch, as the sidebar's Promote does.",
         params: schema::<TopicMemberParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: false,
@@ -359,7 +384,7 @@ pub static METHODS: &[Method] = &[
         name: "attempt.new",
         description: "Make one attempt in a fan out: a worktree on its own branch, grouped with the others of its goal.",
         params: schema::<AttemptNewParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: false,
@@ -429,7 +454,7 @@ pub static METHODS: &[Method] = &[
         name: "session.info",
         description: "A live chat session's model and permission mode as of its last turn, and the models and modes it can switch to.",
         params: schema::<InfoParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: true,
@@ -439,7 +464,7 @@ pub static METHODS: &[Method] = &[
         name: "session.model",
         description: "Switch a live chat session's model, taking effect from its next turn.",
         params: schema::<ModelParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: false,
@@ -459,7 +484,7 @@ pub static METHODS: &[Method] = &[
         name: "review.list",
         description: "Sessions with work nobody has reviewed yet, riskiest first: each with its score, the signals behind it, its last reply and whether it is still running.",
         params: no_params,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: Some("an agent cannot review its own work"),
         outward: false,
         read_only: true,
@@ -469,7 +494,7 @@ pub static METHODS: &[Method] = &[
         name: "review.mark",
         description: "Mark a session reviewed up to the latest prompt its row showed. Refused while it is still running or once it has a newer prompt.",
         params: schema::<ReviewMarkParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: Some("an agent cannot review its own work"),
         outward: false,
         read_only: false,
@@ -509,7 +534,7 @@ pub static METHODS: &[Method] = &[
         name: "needs_you.list",
         description: "The last day of what needed you, newest first: blocks, worker questions, finished turns and pull requests needing attention, each with `resolvedAt` once answered.",
         params: no_params,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: Some("an agent cannot read what needs the person"),
         outward: false,
         read_only: true,
@@ -519,7 +544,7 @@ pub static METHODS: &[Method] = &[
         name: "needs_you.seen",
         description: "Answer a session's finished-turn rows and a folder's pull request rows, once the person has looked.",
         params: schema::<NeedsYouSeenParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: Some("an agent cannot answer for the person"),
         outward: false,
         read_only: false,
@@ -529,7 +554,7 @@ pub static METHODS: &[Method] = &[
         name: "digest.list",
         description: "Since you looked: sessions that finished since `since` (default the last look) with turns, lines changed and verification verdict, every unanswered block, `since`, `asOf` to hand back once shown, and `ready` once the first composition after launch has run.",
         params: schema::<DigestParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: Some("an agent cannot read what needs the person"),
         outward: false,
         read_only: true,
@@ -539,7 +564,7 @@ pub static METHODS: &[Method] = &[
         name: "digest.looked",
         description: "The person saw the digest read at `at` (its `asOf`). Moves the last look there, never back, and is shared by every device.",
         params: schema::<DigestLookedParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: Some("an agent cannot look for the person"),
         outward: false,
         read_only: false,
@@ -569,7 +594,7 @@ pub static METHODS: &[Method] = &[
         name: "radar.list",
         description: "Each watched branch unit's base conflicts: the paths a merge of its base would conflict on, empty when it merges clean, null when unknown. `enabled` is false, with no units, while the radar is switched off.",
         params: no_params,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: true,
@@ -579,7 +604,7 @@ pub static METHODS: &[Method] = &[
         name: "units.git",
         description: "For each worktree folder: lines added and deleted since HEAD, and commits ahead and behind the branch it syncs with (null when it has none). A folder that is not a repo is left out.",
         params: schema::<UnitsGitParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: true,
@@ -595,7 +620,7 @@ pub static METHODS: &[Method] = &[
         name: "units.sync",
         description: "For each unit, its branch's standing as the sidebar draws it: dirty, the upstream's ahead and behind (or none yet), the base's ahead and the files that would conflict, and HEAD's commit time. Keyed `path\\u0000branch`; a folder that is not a repo is left out.",
         params: schema::<UnitsSyncParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: true,
@@ -611,7 +636,7 @@ pub static METHODS: &[Method] = &[
         name: "units.pr",
         description: "The forge's word on a project's branches, from the sidebar's poll: each branch's pull request, checks and review decision. Refused when the project's forge has no account.",
         params: schema::<UnitsPrParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: true,
@@ -777,7 +802,7 @@ pub static METHODS: &[Method] = &[
         name: "ask.create",
         description: "Ask the user a question in the calling chat and wait for the answer, or return its id to poll with ask.wait. A terminal tab or a shell outside Tori may ask for an approval only, which shows in the tab or in a dialog.",
         params: schema::<AskParams>,
-        callers: &[CallerKind::Chat, CallerKind::Worker, CallerKind::Terminal, CallerKind::Local],
+        callers: &[CallerKind::Chat, CallerKind::Worker, CallerKind::Terminal, CallerKind::Outside],
         refusal: Some("its card shows in Tori's window, so only a chat, a terminal tab or a shell on this Mac can ask"),
         outward: false,
         read_only: false,
@@ -785,8 +810,8 @@ pub static METHODS: &[Method] = &[
             let asked: AskParams = params(v)?;
             match p {
                 Principal::Session(Caller::Chat(_)) => {}
-                Principal::Session(Caller::Terminal(_)) | Principal::Local if asked.approval.is_some() => {}
-                Principal::Session(Caller::Terminal(_)) | Principal::Local => {
+                Principal::Session(Caller::Terminal(_)) | Principal::Outside(_) if asked.approval.is_some() => {}
+                Principal::Session(Caller::Terminal(_)) | Principal::Outside(_) => {
                     return Err(RpcError::new(REFUSED, ASK_OUTSIDE_A_CHAT));
                 }
                 _ => {
@@ -826,7 +851,7 @@ pub static METHODS: &[Method] = &[
         name: "ask.answer",
         description: "Answer a question another session asked, on the user's behalf; the card in that session goes away. A chat answers only for a session it started; a terminal answers none.",
         params: schema::<AskAnswerParams>,
-        callers: NOT_WORKERS_DEVICES_AND_BROWSER,
+        callers: ANSWERERS,
         refusal: None,
         outward: false,
         read_only: false,
@@ -936,7 +961,7 @@ pub static METHODS: &[Method] = &[
         name: "agents.list",
         description: "The agents that run as a chat, each id and label, as session.spawn takes them, and with a folder the agent and account its last chat ran as, or null.",
         params: schema::<AgentsListParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: true,
@@ -946,7 +971,7 @@ pub static METHODS: &[Method] = &[
         name: "accounts.list",
         description: "An agent's accounts as a picker shows them: id, label and the signed-in email when known.",
         params: schema::<AccountsListParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: true,
@@ -996,7 +1021,7 @@ pub static METHODS: &[Method] = &[
         name: "autopilot.log",
         description: "The autopilot's latest log entries, oldest first.",
         params: schema::<LogParams>,
-        callers: LOCAL_AND_DEVICES,
+        callers: SCREENS,
         refusal: None,
         outward: false,
         read_only: true,
@@ -1006,7 +1031,7 @@ pub static METHODS: &[Method] = &[
         name: "autopilot.start",
         description: "Turn the autopilot on: start its session with the brief, and start it again when Tori launches. Answers the runner's status.",
         params: no_params,
-        callers: NOT_SESSIONS_AND_DEVICES,
+        callers: OUTSIDE_AND_DEVICES,
         refusal: Some("turning the autopilot on is the user's call"),
         outward: false,
         read_only: false,
@@ -1016,7 +1041,7 @@ pub static METHODS: &[Method] = &[
         name: "autopilot.stop",
         description: "Turn the autopilot off: close its session. The queue on disk and every worker session stay as they are.",
         params: no_params,
-        callers: NOT_SESSIONS_AND_DEVICES,
+        callers: OUTSIDE_AND_DEVICES,
         refusal: Some("turning the autopilot off is the user's call"),
         outward: false,
         read_only: false,
@@ -1096,7 +1121,7 @@ pub static METHODS: &[Method] = &[
         name: "autopilot.schedule.resume",
         description: "Resume a schedule paused after three failed runs: only runs from now on count towards the next pause.",
         params: schema::<ScheduleIdParams>,
-        callers: &[CallerKind::Local, CallerKind::Terminal],
+        callers: &[CallerKind::Local, CallerKind::Outside, CallerKind::Terminal],
         refusal: Some("resuming a paused schedule is the user's call"),
         outward: false,
         read_only: false,

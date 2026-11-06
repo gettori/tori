@@ -502,6 +502,7 @@ impl Link {
         let sock = self.paths.sock.to_string_lossy();
         let params = crate::pty::wire::AttachParams {
             token: super::peer::unless_signed(|| bridge_token(&self.paths)),
+            approval_id: None,
             tab: tab.to_string(),
             replay: true,
             cols,

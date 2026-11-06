@@ -79,10 +79,11 @@ fn resizes() -> io::Result<File> {
     Ok(unsafe { File::from_raw_fd(fds[0]) })
 }
 
-pub fn run(sock: &str, token: Option<String>, target: &str) -> Result<Ended, String> {
+pub fn run(sock: &str, token: Option<String>, approval_id: String, target: &str) -> Result<Ended, String> {
     let (cols, rows) = size();
     let params = AttachParams {
         token,
+        approval_id: Some(approval_id),
         tab: target.to_string(),
         replay: true,
         cols,

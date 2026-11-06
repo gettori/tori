@@ -24,6 +24,9 @@ pub const STORE_UNREADABLE: i64 = -32003;
 pub const FOREIGN: i64 = -32004;
 // A daemon from before signatures refuses the window's params instead.
 pub const OTHER_BUILD: [i64; 2] = [FOREIGN, INVALID_PARAMS];
+// A call that goes through once a person approves it; `data.approval` is the
+// exact approval to ask for.
+pub const NEEDS_APPROVAL: i64 = -32005;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Request {
@@ -45,6 +48,8 @@ pub struct Request {
 pub struct RpcError {
     pub code: i64,
     pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<Value>,
 }
 
 impl RpcError {
@@ -52,6 +57,14 @@ impl RpcError {
         Self {
             code,
             message: message.into(),
+            data: None,
+        }
+    }
+
+    pub fn with_data(self, data: Value) -> Self {
+        Self {
+            data: Some(data),
+            ..self
         }
     }
 }
