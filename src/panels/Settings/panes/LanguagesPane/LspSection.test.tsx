@@ -366,10 +366,10 @@ describe("LspSection", () => {
     await waitFor(() => expect(calls).toContainEqual(["packs_remove", { kind: "lsp", id: "fresh" }]));
   });
 
-  it("lists no catalog; Browse packs opens the site at the language servers", async () => {
+  it("lists no catalog; More LSPs opens the site at the language servers", async () => {
     health = [server()];
     render(() => <LspSection />);
-    fireEvent.click(await waitFor(() => screen.getByText("Browse packs")));
+    fireEvent.click(await waitFor(() => screen.getByText("More LSPs")));
     expect(calls).toContainEqual(["plugin:opener|open_url", { url: "https://gettori.app/packs/lsp/" }]);
     expect(screen.queryByText("Add a language")).toBeNull();
     expect(calls.map(([cmd]) => cmd)).not.toContain("packs_catalog");
