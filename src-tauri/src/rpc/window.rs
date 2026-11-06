@@ -18,7 +18,7 @@ use serde_json::{json, Value};
 
 use super::auth::Caller;
 use super::daemon::{build_id, read_line, wait_released, Paths, MAX_LINK_LINE, PROTOCOL, SLOW_ON_LINK, WINDOW_METHOD};
-use super::frame::{to_line, Notification, Response, RpcError, INTERNAL_ERROR, REFUSED};
+use super::frame::{to_line, Notification, Response, RpcError, INTERNAL_ERROR, OTHER_BUILD, REFUSED};
 use super::hub::Channel;
 use super::outbox::{Outbox, OUTBOX_BYTES};
 
@@ -213,9 +213,13 @@ impl Link {
         }
     }
 
-    fn connect(&self) -> Result<UnixStream, String> {
+    fn connect(&self) -> Result<(UnixStream, Option<libc::pid_t>), String> {
+        let linked = |stream: UnixStream| {
+            let daemon = super::peer::pid(&stream);
+            (stream, daemon)
+        };
         match UnixStream::connect(&self.paths.sock) {
-            Ok(stream) => return Ok(stream),
+            Ok(stream) => return Ok(linked(stream)),
             Err(e) if !self.spawn => return Err(format!("{}: {e}", self.paths.sock.display())),
             Err(_) => {}
         }
@@ -223,7 +227,7 @@ impl Link {
         let started = Instant::now();
         loop {
             match UnixStream::connect(&self.paths.sock) {
-                Ok(stream) => return Ok(stream),
+                Ok(stream) => return Ok(linked(stream)),
                 Err(e) if started.elapsed() >= DAEMON_START_WAIT => {
                     return Err(format!(
                         "the daemon did not start: {e}, see {}",
@@ -271,12 +275,8 @@ impl Link {
     }
 
     fn attach(&self, restarted: &mut bool) -> Result<(Arc<Conn>, BufReader<UnixStream>), Attach> {
-        let mut stream = self.connect().map_err(Attach::Failed)?;
-        let sock = self.paths.sock.to_string_lossy();
-        let token = crate::credential::socket_in_file(&self.paths.rpc_json)
-            .filter(|(at, _)| *at == sock)
-            .map(|(_, token)| token)
-            .ok_or_else(|| Attach::Failed(format!("{} names another socket", self.paths.rpc_json.display())))?;
+        let (mut stream, daemon) = self.connect().map_err(Attach::Failed)?;
+        let token = super::peer::unless_signed(|| bridge_token(&self.paths));
         let frame = json!({
             "jsonrpc": "2.0",
             "id": 0,
@@ -290,11 +290,11 @@ impl Link {
         let reply = read_line(&mut reader, MAX_LINK_LINE)
             .map_err(failed)?
             .ok_or_else(|| Attach::Failed("the daemon closed the link".into()))?;
-        stream.set_read_timeout(None).map_err(failed)?;
         let reply: Value = serde_json::from_str(&reply).map_err(|e| Attach::Failed(e.to_string()))?;
         if let Some(message) = reply["error"]["message"].as_str() {
-            return Err(Attach::Failed(message.to_string()));
+            return Err(self.refused(daemon, &reply["error"]["code"], message, restarted));
         }
+        stream.set_read_timeout(None).map_err(failed)?;
         let protocol = reply["result"]["protocol"].as_u64();
         let spoken = protocol == Some(u64::from(PROTOCOL));
         let replaced = reply["result"]["build"] != build_id() && self.spawn;
@@ -337,6 +337,24 @@ impl Link {
             let _ = stream.shutdown(Shutdown::Both);
         });
         Ok((conn, reader))
+    }
+
+    fn refused(&self, daemon: Option<libc::pid_t>, code: &Value, message: &str, restarted: &mut bool) -> Attach {
+        if !OTHER_BUILD.iter().any(|c| *code == json!(c)) || !self.spawn {
+            return Attach::Failed(message.to_string());
+        }
+        if super::launchd::managed() {
+            return Attach::Outdated(format!("the running daemon refused this window: {message}"));
+        }
+        let Some(pid) = daemon.filter(|_| !*restarted) else {
+            return Attach::Failed(message.to_string());
+        };
+        *restarted = true;
+        eprintln!("tori: restarting the daemon, it refused this build: {message}");
+        // SAFETY: kill has no memory preconditions; the pid is the socket's listener.
+        unsafe { libc::kill(pid, libc::SIGTERM) };
+        wait_released(&self.paths.lock, DAEMON_START_WAIT);
+        Attach::Restarting
     }
 
     fn read(&self, conn: &Arc<Conn>, mut reader: BufReader<UnixStream>) {
@@ -482,12 +500,8 @@ impl Link {
     // unmounts kills its tab.
     pub fn attach_pty(&self, tab: &str, cols: u16, rows: u16) -> Result<(UnixStream, BufReader<UnixStream>), String> {
         let sock = self.paths.sock.to_string_lossy();
-        let token = crate::credential::socket_in_file(&self.paths.rpc_json)
-            .filter(|(at, _)| *at == sock)
-            .map(|(_, token)| token)
-            .ok_or_else(|| format!("{} names another socket", self.paths.rpc_json.display()))?;
         let params = crate::pty::wire::AttachParams {
-            token,
+            token: super::peer::unless_signed(|| bridge_token(&self.paths)),
             tab: tab.to_string(),
             replay: true,
             cols,
@@ -532,6 +546,13 @@ enum Attach {
     Restarting,
     Outdated(String),
     Failed(String),
+}
+
+fn bridge_token(paths: &Paths) -> Option<String> {
+    let sock = paths.sock.to_string_lossy();
+    crate::credential::socket_in_file(&paths.rpc_json)
+        .filter(|(at, _)| *at == sock)
+        .map(|(_, token)| token)
 }
 
 fn unanswered(method: &str, wait: Duration) -> RpcError {

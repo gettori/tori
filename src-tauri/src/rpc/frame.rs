@@ -20,6 +20,10 @@ pub const REFUSED: i64 = -32002;
 // Every credential reads as unknown against a devices file that could not be
 // read, and a phone that took that for a revoke would drop one that still works.
 pub const STORE_UNREADABLE: i64 = -32003;
+// A window or attach whose code signature is not Tori's.
+pub const FOREIGN: i64 = -32004;
+// A daemon from before signatures refuses the window's params instead.
+pub const OTHER_BUILD: [i64; 2] = [FOREIGN, INVALID_PARAMS];
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Request {
