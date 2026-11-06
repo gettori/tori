@@ -77,7 +77,7 @@ export function pendingReviews(
 
 export type IssueRepos = { origin: string | null; stored: string[]; effective: string[] };
 
-export type RepoAccess = { repo: string; access: "readable" | "noAccess" | "issuesOff" };
+export type RepoAccess = { repo: string; access: "readable" | "unreadable" | "issuesOff" };
 
 export const issueRepos = (projectPath: string) => invoke<IssueRepos>("issue_repos_get", { projectPath });
 
