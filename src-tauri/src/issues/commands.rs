@@ -88,9 +88,7 @@ pub struct Assigned {
     pub failed: Vec<FailedSource>,
 }
 
-/// The project's lists: with no `sources` its own assigned list as before,
-/// else one list per source beside the origin's review requests.
-fn gather(c: &Client, sources: &[IssueQuery], refresh: bool) -> Result<Assigned, ForgeError> {
+fn gather(c: &Client, project_path: &str, sources: &[IssueQuery], refresh: bool) -> Result<Assigned, ForgeError> {
     let cap = super::github::ASSIGNED_CAP as usize;
     let list = |search: Option<String>, kind: IssueKind, rows: Vec<IssueRef>| SourceList {
         complete: rows.len() < cap,
@@ -98,13 +96,18 @@ fn gather(c: &Client, sources: &[IssueQuery], refresh: bool) -> Result<Assigned,
         kind,
         rows,
     };
-    let assigned = fetch_assigned(c, refresh)?;
-    let (issues, reviews): (Vec<IssueRef>, Vec<IssueRef>) =
-        assigned.into_iter().partition(|r| r.kind == IssueKind::Issue);
+    let reviews: Vec<IssueRef> = fetch_assigned(c, refresh)?
+        .into_iter()
+        .filter(|r| r.kind == IssueKind::ReviewRequest)
+        .collect();
     let mut lists = vec![list(None, IssueKind::ReviewRequest, reviews)];
     let mut failed = Vec::new();
     if sources.is_empty() {
-        lists.insert(0, list(None, IssueKind::Issue, issues));
+        let mine = fetch_assigned_in(c, &effective_repos(project_path, sources), refresh)?;
+        let every_repo_read = mine.skipped.is_empty();
+        let mut issues = list(None, IssueKind::Issue, mine.rows);
+        issues.complete &= every_repo_read;
+        lists.insert(0, issues);
     }
     for query in sources {
         match query
@@ -251,7 +254,7 @@ pub fn assigned_if_offered(project_path: &str, sources: &[IssueQuery]) -> Result
     if !offers(&c) {
         return Ok(None);
     }
-    gather(&c, sources, false).map(Some)
+    gather(&c, project_path, sources, false).map(Some)
 }
 
 pub fn get(project_path: &str, key: &str) -> Result<Issue, ForgeError> {
@@ -380,9 +383,28 @@ pub fn issue_repos_get(project_path: String) -> IssueRepos {
     issue_repos_of(&project_path, &sources)
 }
 
+fn keeps_every_source(project_path: &str, next: &[String], sources: &[IssueQuery]) -> Result<(), String> {
+    let reads = match (next.is_empty(), origin_of(project_path)) {
+        (true, Some(origin)) => vec![origin],
+        _ => next.to_vec(),
+    };
+    match repos::unlisted(sources, &reads) {
+        Some(repo) => Err(format!(
+            "An autopilot issue source reads {repo}. Remove that source in Agents first, then remove {repo} here."
+        )),
+        None => Ok(()),
+    }
+}
+
 #[tauri::command(async)]
 pub fn issue_repos_set(project_path: String, repos: Vec<String>) -> Result<IssueRepos, String> {
-    repos::save(&project_path, &repos)?;
+    let next = repos::normalize(&repos)?;
+    let sources = contract_sources(&project_path).map_err(|_| {
+        "Tori could not check this project's autopilot sources, so the list was not saved. Try again in a moment."
+            .to_string()
+    })?;
+    keeps_every_source(&project_path, &next, &sources)?;
+    repos::save(&project_path, &next)?;
     Ok(issue_repos_of(&project_path, &[]))
 }
 
@@ -453,7 +475,7 @@ pub fn issues_record(app: AppHandle, project_path: String, branch: String, issue
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     fn row(key: &str, kind: IssueKind) -> IssueRef {
@@ -467,6 +489,41 @@ mod tests {
             head_sha: None,
             body_len: None,
         }
+    }
+
+    pub(crate) fn repo_with_origin(name: &str, origin: &str) -> String {
+        let dir = std::env::temp_dir().join(format!("tori-issue-origin-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for args in [vec!["init", "-q"], vec!["remote", "add", "origin", origin]] {
+            let ok = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&dir)
+                .args(&args)
+                .status()
+                .unwrap();
+            assert!(ok.success());
+        }
+        dir.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn a_repo_a_source_reads_cannot_leave_the_list() {
+        let project = repo_with_origin("keeps", "https://github.com/gettori/tori.git");
+        let sources = [IssueQuery {
+            repo: "gettori/tickets".into(),
+            ..IssueQuery::default()
+        }];
+        let err = keeps_every_source(&project, &["gettori/tori".into()], &sources).unwrap_err();
+        assert!(err.contains("gettori/tickets"), "{err}");
+        assert!(keeps_every_source(&project, &[], &sources).is_err());
+        assert!(keeps_every_source(&project, &["gettori/tori".into(), "gettori/tickets".into()], &sources).is_ok());
+        let origin_only = [IssueQuery {
+            repo: "gettori/tori".into(),
+            ..IssueQuery::default()
+        }];
+        assert!(keeps_every_source(&project, &[], &origin_only).is_ok());
+        let _ = std::fs::remove_dir_all(&project);
     }
 
     #[test]

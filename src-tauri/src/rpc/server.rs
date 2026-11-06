@@ -1005,8 +1005,8 @@ pub struct ProjectSetParams {
     pub account: Option<String>,
     /// The model they use.
     pub model: Option<String>,
-    /// Where the project's issues come from, replacing the list before. Empty, it is the issues assigned to you
-    /// in the project's own repo.
+    /// Where the project's issues come from, replacing the list before. Each repo must be one of the project's
+    /// issue repos. Empty, it is the issues assigned to you across those repos.
     pub issues: Option<Vec<IssueQuery>>,
     /// A dollar ceiling each item inherits, over the global `budgets.itemUsd`. Its workers get no new turn once
     /// their sessions have spent it. An ACP worker reports no cost, so it never reaches one.
@@ -1017,6 +1017,17 @@ impl ProjectSetParams {
     pub fn apply(self, store: &AutopilotStore, project: String) -> Result<Value, RpcError> {
         for query in self.issues.iter().flatten() {
             query.check().map_err(|e| RpcError::new(INVALID_PARAMS, e))?;
+        }
+        if let Some(issues) = &self.issues {
+            let current = store.contract(&project).unwrap_or_default().issues;
+            let listed = crate::issues::commands::effective_repos(&project, &current);
+            let reads_issues = !listed.is_empty();
+            if let Some(repo) = crate::issues::repos::unlisted(issues, &listed).filter(|_| reads_issues) {
+                return Err(RpcError::new(
+                    INVALID_PARAMS,
+                    format!("{repo} is not one of this project's issue repos. Add it in the project's settings, under Issues, first."),
+                ));
+            }
         }
         let patch = ContractPatch {
             ships: self.ships,
@@ -2188,6 +2199,23 @@ pub mod tests {
             ("gettori/tickets", Some("Phase 1: Mac and Android"), None)
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_source_repo_off_the_projects_issue_repos_is_refused() {
+        let dir = crate::autopilot::tests::temp_dir("project-set-unlisted");
+        let store = AutopilotStore::open(dir.clone(), Box::new(|_| {}));
+        let project =
+            crate::issues::commands::tests::repo_with_origin("unlisted", "https://github.com/gettori/tori.git");
+        let set = |repo: &str| {
+            let params: ProjectSetParams = serde_json::from_value(json!({ "issues": [{ "repo": repo }] })).unwrap();
+            params.apply(&store, project.clone())
+        };
+        let refused = set("gettori/tickets").unwrap_err();
+        assert!(refused.message.contains("gettori/tickets"), "{}", refused.message);
+        set("gettori/tori").unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&project);
     }
 
     // Params built from each row's own schema, so a row added later is covered
