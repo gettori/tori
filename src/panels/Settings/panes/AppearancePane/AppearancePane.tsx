@@ -78,11 +78,15 @@ export default function AppearancePane(props: PaneProps) {
 
   return (
     <>
-      <BrowsePacks kind="themes" />
       <NeedsFixing kind="themes" />
       {/* "Display" rather than "Theme": the group holds the theme and the zoom,
           and naming it after one of its two rows read as a mislabel. */}
-      <Group {...props} title="Display" ids={idsIn("appearance")}>
+      <Group
+        {...props}
+        title="Display"
+        ids={idsIn("appearance")}
+        action={<BrowsePacks kind="themes" class={styles.titleAction} />}
+      >
         <Row {...props} id="theme" label="Theme">
           <div class={styles.control}>
             <Select

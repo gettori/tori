@@ -14,8 +14,8 @@ export default function LintersSection() {
       <div class={styles.sectionTitle}>
         <span>Linters</span>
         <span class={styles.sectionRule} />
+        <BrowsePacks kind="lsp" role="secondary" class={styles.titleAction} />
       </div>
-      <BrowsePacks kind="lsp" role="secondary" />
       <Switch>
         <Match when={health.state === "pending"}>
           <div class={styles.note}>Checking which linters are installed...</div>

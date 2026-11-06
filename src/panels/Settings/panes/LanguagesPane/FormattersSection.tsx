@@ -112,8 +112,8 @@ export default function FormattersSection() {
       <div class={styles.sectionTitle}>
         <span>Formatters</span>
         <span class={styles.sectionRule} />
+        <BrowsePacks kind="formatters" class={styles.titleAction} />
       </div>
-      <BrowsePacks kind="formatters" />
       <NeedsFixing kind="formatters" />
       <Switch>
         <Match when={formatters.state === "pending"}>
