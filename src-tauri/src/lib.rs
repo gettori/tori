@@ -318,6 +318,7 @@ pub fn run() {
 
             std::thread::spawn(account_commands::sync_quietly);
             std::thread::spawn(worktree::sweep_trash);
+            std::thread::spawn(rescue::sweep);
 
             // Install the keychain store and restore the forge credential.
             // Non-fatal like the askpass bridge and the tray above: a keychain
@@ -472,6 +473,9 @@ pub fn run() {
             config::rediscover,
             config::roots_watch_start,
             operation_watch::operation_watch_start,
+            rescue::rescue_list,
+            rescue::rescue_counts,
+            rescue::rescue_restore,
             config::cleanup_incomplete,
             config::seed_attached,
             config::attach_branch,

@@ -741,7 +741,7 @@ pub(crate) fn create_worktree_in(
 
 // A fork's checkout runs no hooks: a versioned `core.hooksPath` would run its
 // own `post-checkout`.
-fn add_worktree_in(
+pub(crate) fn add_worktree_in(
     repo: &str,
     branch: &str,
     container: &Path,

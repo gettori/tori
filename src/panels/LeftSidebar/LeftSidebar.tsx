@@ -37,6 +37,7 @@ import MoveToTopicDialog from "../../components/Dialogs/MoveToTopicDialog";
 import BranchRemoveDialog from "../../components/Dialogs/BranchRemoveDialog";
 import InitGitDialog from "../../components/Dialogs/InitGitDialog";
 import ConvertLayoutDialog, { type ConversionPreview } from "../../components/Dialogs/ConvertLayoutDialog";
+import RestoreWorktreeDialog, { type Rescued } from "../../components/Dialogs/RestoreWorktreeDialog";
 import { moveWorkspaces } from "../../utils/moveWorkspace";
 import { unsavedUnder } from "../../utils/unsavedPaths";
 import AddBranchDialog, { type BranchPick, type IssueSourceProps } from "../../components/Dialogs/AddBranchDialog";
@@ -760,6 +761,10 @@ export default function LeftSidebar(props: {
     blockers: string[];
     busy: boolean;
   } | null>(null);
+  const [rescueCounts, setRescueCounts] = createSignal<Record<string, number>>({});
+  const [restoreReq, setRestoreReq] = createSignal<{ p: Project; rescues: Rescued[] | null; busy: boolean } | null>(
+    null,
+  );
 
   // The space-level "New…" dialog: create an empty folder, clone a repo, or
   // bootstrap a bare + worktree project, chosen by a segmented control.
@@ -1635,6 +1640,10 @@ export default function LeftSidebar(props: {
       const listed = allSpaces(cfg);
       const owned = listed.flatMap((g) => g.projects.flatMap((p) => p.branchUnits.filter(ownsFolder)));
       invoke("operation_watch_start", { folders: [...new Set(owned.map((u) => u.folderPath))] }).catch(() => {});
+      const repos = listed.flatMap((g) =>
+        g.projects.filter((p) => !["plain-dir", "converting"].includes(projectUnitKind(p) ?? "")).map((p) => p.path),
+      );
+      invoke<Record<string, number>>("rescue_counts", { repos }).then(setRescueCounts, () => {});
       void syncUnits(listed.flatMap((g) => g.projects.flatMap((p) => p.branchUnits)));
       // Seed the adopted set from the first real discovery (idempotent, and a
       // no-op on empty), so existing folders are never flagged historical.
@@ -1897,6 +1906,33 @@ export default function LeftSidebar(props: {
     } catch (e) {
       setConvertReq(null);
       setError(String(e));
+    }
+  }
+
+  async function openRestore(p: Project) {
+    setRestoreReq({ p, rescues: null, busy: false });
+    try {
+      const rescues = await invoke<Rescued[]>("rescue_list", { repo: p.path });
+      setRestoreReq((r) => (r?.p === p ? { ...r, rescues } : r));
+    } catch (e) {
+      setRestoreReq(null);
+      setError(errorText(e));
+    }
+  }
+
+  async function confirmRestore(id: string) {
+    const req = restoreReq();
+    if (!req) return;
+    const { p } = req;
+    setRestoreReq({ ...req, busy: true });
+    try {
+      const folder = await invoke<string>("rescue_restore", { repo: p.path, id });
+      setRestoreReq(null);
+      await loadConfig();
+      selectUnitIn(p, (u) => samePath(u.folderPath, folder));
+    } catch (e) {
+      setRestoreReq(null);
+      setError(errorText(e));
     }
   }
 
@@ -2753,12 +2789,16 @@ export default function LeftSidebar(props: {
       ];
     const kind = kindMenu(g, p);
     const remove = g.name === GLOBAL_KEY ? detach : kind.remove;
+    const restore: MenuItem[] = rescueCounts()[p.path]
+      ? [{ label: "Restore deleted worktree", onClick: () => void openRestore(p) }]
+      : [];
+    const rows = [...kind.rows, ...restore];
     return [
       { heading: projectMenuHead(p) },
       { separator: true },
-      ...kind.rows,
+      ...rows,
       // No leading separator on a menu whose kind contributed nothing.
-      ...(kind.rows.length ? [{ separator: true } as MenuItem] : []),
+      ...(rows.length ? [{ separator: true } as MenuItem] : []),
       // Git kinds only, and one row for both jobs: setting a first origin and
       // replacing an existing one are the same command asking the same
       // question, so the label is all that differs. It keeps the warn
@@ -4661,6 +4701,18 @@ export default function LeftSidebar(props: {
             busy={req().busy}
             onConfirm={() => void confirmConvert()}
             onCancel={() => setConvertReq(null)}
+          />
+        )}
+      </Show>
+
+      <Show when={restoreReq()}>
+        {(req) => (
+          <RestoreWorktreeDialog
+            projectName={req().p.name}
+            rescues={req().rescues}
+            busy={req().busy}
+            onRestore={(id) => void confirmRestore(id)}
+            onCancel={() => setRestoreReq(null)}
           />
         )}
       </Show>
