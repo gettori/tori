@@ -10,6 +10,49 @@ matching section here fails the release rather than publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.1106.0-beta
+
+- Tori now ships only the language servers, linters, formatters, themes and agents it needs itself: TypeScript, JSON, YAML, CSS and HTML servers, ESLint and oxlint, Prettier, oxfmt and Vite+, Tori Dark and Tori Light, and the five agents. The rest are packs on gettori.app.
+- A pack's page on gettori.app has **Install in Tori**. It opens Tori and shows the pack in a dialog first: name, description, contributor, license, platforms, and where the request came from. **Cancel** has focus and Enter does nothing. Mac only for now.
+- Opening a file no loaded server handles shows **Tori has a language server pack for this file**, with **Get**, **Not now** and **Never for this language**.
+- F5 on a file with no debugger, or a saved run whose debugger is gone, offers the debugger's pack. **Format Document** on a file nothing formats offers the formatter's pack. Format on save stays quiet.
+- If your theme isn't shipped with Tori anymore, Tori offers its pack when it starts.
+- The **Add a language**, **Add a linter**, **Add a debugger**, **Add a formatter**, **Add a theme** and **Add an agent** lists are gone. Each of those panes has **Browse packs**, which opens the kind's page on gettori.app.
+- A card whose pack came from the catalog has **Update pack** when there's a newer one, and **Remove pack**.
+- The first launch after updating says once which packs moved to the catalog.
+- A hint pack's install command (its first command in backticks) may only start `brew`, `cs`, `dotnet`, `gem`, `ghcup`, `go`, `opam`, `rustup` or `xcode-select`, same as its update and uninstall scripts.
+- A file name in a chat reply, in inline code or in the text, opens with a click. A file in another worktree opens there. One outside every worktree opens in Tori if it's text, an image or a PDF, else in its own app.
+- The right panel shows every tab. Right-click the tab strip to hide any of them.
+- The pull request rule shows its triggers as switches under **Hand it to the autopilot when**, and says what it **Needs**: **Pull request watches** and **Autopilot**.
+- The title bar shows an unpushed branch's commit count once.
+- The selected tab gets an underline instead of a top bar and a wash.
+- In fullscreen the title bar no longer leaves a gap for the traffic lights.
+- Settings hints use the subtle text colour.
+- The intro's history tabs and checkpoint card look like the Changes and Checkpoints panels they show.
+- Project settings > General has a new **Issues** list: the repos this project's issues live in, one `owner/name` per line. Empty means the project's own repo. Each repo shows **Readable**, **No access** or **Issues off** for your account.
+- In the add worktree dialog, the **Issue** tab takes `31`, `#31`, `tickets#31`, `gettori/tickets#31` or an issue URL. A number found in more than one repo shows a row for each, and a repo your account can't read is named under the list.
+- The assigned issues in that dialog come from every repo on the **Issues** list.
+- An autopilot issue source now picks its repo from the project's **Issues** list, and with no sources the autopilot picks up issues assigned to you in every repo on it.
+- Fix Tori getting slow and laggy (typing in the chat input, animations) while agents are running, with the window, the daemon and the webview each using a full core or more
+- A secret read or a verification mark on a session that is still working can show up to 10 seconds late now, it shows right away once the turn ends
+- A boxed Claude session can no longer read Tori's tokens, `~/.ssh` or `~/.gnupg`.
+- A fork's review worktree runs no project code: no setup, run, language server, formatter, debugger or agent config from the fork. Git still works there.
+- A session can't start a child in a permission mode freer than its own.
+- Tori's state files are written in one step, and a file that doesn't parse is never written over.
+- Removing a worktree no longer deletes its ignored work silently: env files, keys, local databases and the like are listed, and the button becomes **Remove anyway**.
+- Only a session's owner can answer its questions, wait on it or stop it.
+- A network connection has five seconds to authenticate, and at most four connections may wait unauthenticated.
+- Pairing a phone now needs a tap on **Pair** on the phone and **Allow** on the Mac.
+- Releases are built with no signing secret in reach and signed in a separate job.
+- Only Tori's own code can be the window or attach to a terminal tab.
+- An approval asked from a terminal tab shows over that tab, and one from a shell outside Tori opens a dialog, with **Reject** focused.
+- From a terminal tab or a shell outside Tori, opening, reviewing, pushing or merging a pull request, `tori attach`, and starting a session in a mode that runs tools without asking now wait for your **Approve** in Tori. `tori` asks for the card itself and prints `tori: waiting for approval in Tori`.
+- A worktree in the middle of a rebase, merge, cherry-pick or revert shows it on its row: the icon turns amber, a rebase shows the branch being rebased instead of (detached), and a chip says **Rebasing 3/7**, or **Conflict 3/7** with how many files are conflicted.
+- Removing a worktree that has uncommitted changes, an operation in progress or commits no branch holds keeps a copy of its commits and files for 30 days. The remove dialog says so, and lists ignored files and files over 50 MB that the copy does not hold.
+- **Restore deleted worktree** in the project menu brings a kept copy back in a new worktree, on its original branch when that is safe, otherwise on `<branch>-restored`.
+- After a macOS update or a slow login shell, agents no longer fail to start with "No such file or directory" until Tori is restarted. When a start does fail, the error says whether the folder is gone or the program is not on PATH.
+- macOS 26.1106.0-beta ships; Android 26.1106.0-beta ships; browser extension 26.1106.0 ships, rolling out on the Chrome Web Store; push relay unchanged at 26.1030.0-beta.
+
 ## 26.1104.0-beta
 
 - New Topic in a space's menu (or the + on its Topics heading) makes a Topic that lives in that space's tree and holds only that space's projects.
