@@ -1486,6 +1486,24 @@ li[data-picked] .branchDelete {
   white-space: nowrap;
 }
 
+/* ---- Restore a deleted worktree ---- */
+.restoreDetail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-3);
+  margin-top: var(--tori-space-5);
+}
+.restoreLine {
+  font-size: var(--tori-text-sm);
+  color: var(--fg-muted);
+}
+.restoreCommits {
+  margin: var(--tori-space-2) 0 0;
+  padding-left: var(--tori-space-6);
+  font-family: var(--tori-font-mono);
+  color: var(--fg-default);
+}
+
 /* ---- Remove folder / Remove project ---- */
 
 /* What the list is a listing of, and how much of it there is. Attached to the
