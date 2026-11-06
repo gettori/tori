@@ -51,7 +51,7 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 - Removing a worktree that has uncommitted changes, an operation in progress or commits no branch holds keeps a copy of its commits and files for 30 days. The remove dialog says so, and lists ignored files and files over 50 MB that the copy does not hold.
 - **Restore deleted worktree** in the project menu brings a kept copy back in a new worktree, on its original branch when that is safe, otherwise on `<branch>-restored`.
 - After a macOS update or a slow login shell, agents no longer fail to start with "No such file or directory" until Tori is restarted. When a start does fail, the error says whether the folder is gone or the program is not on PATH.
-- macOS 26.1106.0-beta ships; Android 26.1106.0-beta ships; browser extension 26.1106.0 ships, rolling out on the Chrome Web Store; push relay unchanged at 26.1030.0-beta.
+- macOS 26.1106.0-beta ships; Android 26.1106.0-beta ships; browser extension unchanged at 26.1029.0; push relay unchanged at 26.1030.0-beta.
 
 ## 26.1104.0-beta
 
