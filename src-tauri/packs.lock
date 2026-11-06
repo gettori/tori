@@ -1,6 +1,6 @@
 # Written by scripts/sync-packs.sh. Do not edit: run it again.
-commit 0d7bdd05b1a22b90794129f3750e5370c0859fff
-88a2c2ac86ccac67bca94fc48ab04882b0ce338da55cf200597d867ee0163d04  agents/claude.toml
+commit 1f60d004d3673d7872b53876e4c92a4889cd201f
+8e40fdc1d615e143a5cddb17e50ce9ea87dc81938f077534ca2cef9cecd3f163  agents/claude.toml
 42c699f5c3371d33b1582fde4244b698d0cca4b14c918ecc5f2ae561ad1db2d1  agents/codex.toml
 5df881494496b02bede8258e314e2eccec9e0b2609f62795aad94e36d121c5e1  agents/copilot.toml
 20233ebaa65a46906d670c537419ff76a06365db37d191359dd9b6cfc5dfefd5  agents/opencode.toml
