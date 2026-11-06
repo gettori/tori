@@ -194,6 +194,10 @@ export default function TopicList(props: {
             unpushed={req().demote ? false : req().unpushed}
             hasRemote={req().demote ? false : req().hasRemote}
             ignoredWork={req().ignoredWork}
+            operation={req().operation}
+            largeFiles={req().largeFiles}
+            keepsCopy={req().keepsCopy}
+            keepsCopyWithBranch={req().keepsCopyWithBranch}
             runningCount={req().runningCount}
             busy={req().busy}
             keepLabel={req().demote ? undefined : "Keep worktree"}

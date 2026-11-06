@@ -65,6 +65,7 @@ mod provenance;
 mod pty;
 mod radar;
 mod read_grants;
+mod rescue;
 mod review;
 mod review_rule;
 mod rpc;

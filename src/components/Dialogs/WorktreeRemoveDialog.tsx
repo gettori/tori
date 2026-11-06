@@ -3,6 +3,7 @@ import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
 import Checkbox from "../Checkbox/Checkbox";
+import { operationChip, type Operation } from "../../utils/worktreeOperation";
 
 // The removal confirmation for a single worktree. Shows what is being deleted (the
 // branch + folder path), warns when the tree has uncommitted or unpushed work about
@@ -23,6 +24,12 @@ export default function WorktreeRemoveDialog(props: {
   dirty: boolean | null;
   unpushed: boolean | null;
   ignoredWork: string[];
+  operation?: Operation | null;
+  largeFiles?: string[];
+  // Whether the removal keeps a rescue copy, with the local branch kept and
+  // with it deleted, as `worktree_status` decides it.
+  keepsCopy?: boolean | null;
+  keepsCopyWithBranch?: boolean | null;
   // Whether the branch tracks a remote branch (so it can be deleted there too).
   hasRemote: boolean | null;
   // Live shell/agent tabs running under this worktree, whose PTYs removal tears down.
@@ -42,6 +49,13 @@ export default function WorktreeRemoveDialog(props: {
   const [deleteLocal, setDeleteLocal] = createSignal(props.branch != null);
   const [deleteRemote, setDeleteRemote] = createSignal(false);
   const confirm = () => props.onConfirm({ deleteLocal: deleteLocal(), deleteRemote: deleteRemote() });
+  const op = () => (props.operation ? operationChip(props.operation) : null);
+  const large = () => props.largeFiles ?? [];
+  const kept = () => !!(deleteLocal() ? props.keepsCopyWithBranch : props.keepsCopy);
+  const lost = () =>
+    [props.ignoredWork.length > 0 ? "ignored files" : "", large().length > 0 ? "files too large to keep" : ""]
+      .filter(Boolean)
+      .join(" and ");
   let ok: HTMLButtonElement | undefined;
 
   function onKeyDown(e: KeyboardEvent) {
@@ -62,7 +76,7 @@ export default function WorktreeRemoveDialog(props: {
         <>
           <Button onClick={() => props.onCancel()}>{props.keepLabel ?? "Cancel"}</Button>
           <Button ref={ok} variant="warn" disabled={props.busy} onClick={() => confirm()}>
-            {props.busy ? "Removing…" : props.ignoredWork.length > 0 ? "Remove anyway" : "Remove worktree"}
+            {props.busy ? "Removing…" : lost() || props.operation ? "Remove anyway" : "Remove worktree"}
           </Button>
         </>
       }
@@ -83,6 +97,13 @@ export default function WorktreeRemoveDialog(props: {
         <div class={styles.wtDetailRow}>
           <span class={styles.wtDetailKey}>Status</span>
           <span class={styles.wtDetailTags}>
+            <Show when={props.operation}>
+              {(o) => (
+                <span class={`${styles.delTag} ${styles.warn}`} data-remove-operation>
+                  {o().kind} in progress
+                </span>
+              )}
+            </Show>
             <Show when={props.dirty === null || props.unpushed === null}>
               <span class={`${styles.delTag} ${styles.muted}`}>checking…</span>
             </Show>
@@ -105,6 +126,14 @@ export default function WorktreeRemoveDialog(props: {
             </span>
           </div>
         </Show>
+        <Show when={large().length > 0}>
+          <div class={styles.wtDetailRow}>
+            <span class={styles.wtDetailKey}>Too large</span>
+            <span class={styles.wtDetailVal} title={large().join("\n")} data-remove-large>
+              {large().join(", ")}
+            </span>
+          </div>
+        </Show>
         <Show when={props.runningCount > 0}>
           <div class={styles.wtDetailRow}>
             <span class={styles.wtDetailKey}>Running</span>
@@ -115,8 +144,16 @@ export default function WorktreeRemoveDialog(props: {
         </Show>
       </div>
 
-      <Show when={props.dirty || props.unpushed || props.ignoredWork.length > 0}>
-        <div class={styles.warning}>This deletes work that is not saved anywhere else. It cannot be undone.</div>
+      <Show when={op()}>
+        {(o) => <div class={styles.warning}>{`${o().title} Deleting the worktree loses its progress.`}</div>}
+      </Show>
+      <Show when={kept()}>
+        <div class={styles.note} data-remove-kept>
+          Tori keeps a copy of its commits and changed files for 30 days, so you can restore it.
+        </div>
+      </Show>
+      <Show when={lost()}>
+        <div class={styles.warning}>{`This deletes ${lost()}, which no copy holds. It cannot be undone.`}</div>
       </Show>
 
       <Show when={props.branch}>
