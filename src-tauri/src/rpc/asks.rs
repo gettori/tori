@@ -20,7 +20,6 @@ pub const WITHDRAWN: &str = "Withdrawn";
 /// is, it loads with the pending list.
 pub const SHOW_EVENT: &str = "asks://show";
 pub const CLOSE_EVENT: &str = "asks://close";
-pub const OUTSIDE_ASKER: &str = "outside";
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "id", rename_all = "lowercase")]
@@ -321,6 +320,17 @@ impl Asks {
         }
     }
 
+    pub fn withdraw_asker(&self, asker: &str) -> Vec<String> {
+        let ids = self
+            .held()
+            .iter()
+            .filter(|(_, h)| h.ask.session == asker)
+            .map(|(id, _)| id.clone())
+            .collect();
+        self.forget_session(asker);
+        ids
+    }
+
     // A restarted autopilot is a new session id: what the old one asked, and the
     // worker cards mirrored to it, belong to the new one. Returns the moved asks.
     pub fn rebind_session(&self, from: &str, to: &str) -> Vec<Ask> {
@@ -545,7 +555,7 @@ mod tests {
             },
         };
         let tab = asks.create_approval("t1".into(), "merge?".into(), approval(), Surface::Tab("t1".into()));
-        let window = asks.create_approval(OUTSIDE_ASKER.into(), "merge?".into(), approval(), Surface::Window);
+        let window = asks.create_approval("outside-k1".into(), "merge?".into(), approval(), Surface::Window);
         let chat = approval_ask(&asks);
         let shape = |ask: &Ask| serde_json::to_value(ask).unwrap();
         assert_eq!(shape(&tab)["surface"], json!({ "kind": "tab", "id": "t1" }));

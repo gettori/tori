@@ -67,6 +67,20 @@ pub enum Draft {
         /// The head commit to land; the host refuses once the branch has moved on.
         head_sha: String,
     },
+    #[serde(rename = "session.spawn")]
+    SessionSpawn {
+        /// The agent the session runs.
+        agent: String,
+        /// The permission mode it opens on, one that runs tools without asking.
+        mode: String,
+        /// The folder it starts in.
+        folder: String,
+    },
+    #[serde(rename = "pty.attach")]
+    PtyAttach {
+        /// The terminal tab, or the terminal session, as `tori attach` named it.
+        tab: String,
+    },
 }
 
 impl Draft {
@@ -76,6 +90,8 @@ impl Draft {
             Draft::ReviewSubmit { .. } => "review.submit",
             Draft::PrPush { .. } => "pr.push",
             Draft::PrMerge { .. } => "pr.merge",
+            Draft::SessionSpawn { .. } => "session.spawn",
+            Draft::PtyAttach { .. } => "pty.attach",
         }
     }
 
@@ -94,6 +110,8 @@ impl Draft {
                 number, head, head_sha, ..
             } => format!("pushing {head_sha} to {head} for #{number}"),
             Draft::PrMerge { number, head_sha, .. } => format!("merging #{number} at {head_sha}"),
+            Draft::SessionSpawn { agent, mode, folder } => format!("starting {agent} in {mode} in {folder}"),
+            Draft::PtyAttach { tab } => format!("typing into terminal {tab}"),
         }
     }
 }
@@ -162,6 +180,25 @@ impl Approvals {
         }
         held.in_use = true;
         Ok(id.to_string())
+    }
+
+    // For whoever asked: a call on a connection of its own has no principal to
+    // hold the grant to, and the id went only to the asker.
+    pub fn take(&self, id: &str, draft: &Draft) -> Result<(), String> {
+        let (session, project) = {
+            let granted = self.granted();
+            let held = granted
+                .get(id)
+                .ok_or_else(|| format!("approval {id} is unknown or already spent"))?;
+            (held.session.clone(), held.approval.project.clone())
+        };
+        let wanted = Approval {
+            project,
+            draft: draft.clone(),
+        };
+        let id = self.reserve(Some(id), &session, &wanted)?;
+        self.spend(&id);
+        Ok(())
     }
 
     pub fn spend(&self, id: &str) {
