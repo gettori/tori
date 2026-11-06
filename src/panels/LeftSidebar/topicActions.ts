@@ -23,6 +23,7 @@ import { pull } from "../../utils/gitActions";
 import { emitWith, ROOT_MOVED, DRAFT_INTO_NEW, type RootMoved, type DraftIntoNew } from "../../utils/events";
 import { demoteMemberWorktree, removeMemberWorktree } from "../../utils/memberWorktree";
 import { purgeWorkspace } from "../../utils/purgeWorkspace";
+import type { Operation, WorktreeStatus } from "../../utils/worktreeOperation";
 
 export type TopicActionsHost = {
   activeId: () => string | null | undefined;
@@ -95,6 +96,10 @@ export function createTopicActions(host: TopicActionsHost) {
     unpushed: boolean | null;
     hasRemote: boolean | null;
     ignoredWork: string[];
+    operation: Operation | null;
+    largeFiles: string[];
+    keepsCopy: boolean | null;
+    keepsCopyWithBranch: boolean | null;
     runningCount: number;
     busy: boolean;
   } | null>(null);
@@ -237,13 +242,17 @@ export function createTopicActions(host: TopicActionsHost) {
       unpushed: null,
       hasRemote: null,
       ignoredWork: [],
+      operation: null,
+      largeFiles: [],
+      keepsCopy: null,
+      keepsCopyWithBranch: null,
       runningCount: 0,
       busy: false,
     });
     const forThis = (fn: (r: NonNullable<ReturnType<typeof wtReq>>) => typeof r) =>
       setWtReq((r) => (r && r.worktreePath === worktreePath ? fn(r) : r));
     void host.countRunning?.(worktreePath)?.then((n) => forThis((r) => ({ ...r, runningCount: n })));
-    invoke<{ dirty: boolean; unpushed: boolean; hasRemote: boolean; ignoredWork: string[] }>("worktree_status", {
+    invoke<WorktreeStatus>("worktree_status", {
       path: worktreePath,
     })
       .then((s) =>
@@ -253,6 +262,10 @@ export function createTopicActions(host: TopicActionsHost) {
           unpushed: s.unpushed,
           hasRemote: s.hasRemote,
           ignoredWork: s.ignoredWork,
+          operation: s.operation,
+          largeFiles: s.largeFiles,
+          keepsCopy: s.keepsCopy,
+          keepsCopyWithBranch: s.keepsCopyWithBranch,
         })),
       )
       .catch(() => forThis((r) => ({ ...r, dirty: false, unpushed: false, hasRemote: false })));
