@@ -237,6 +237,7 @@ export function Group(props: {
   ids: string[];
   /** Passed down by every pane via `{...props}`; set only while searching. */
   prefix?: string;
+  action?: JSX.Element;
   children: JSX.Element;
 }) {
   return (
@@ -247,6 +248,7 @@ export function Group(props: {
               title alone - the rule beside it carries no text. */}
           <span>{props.prefix ? `${props.prefix} · ${props.title}` : props.title}</span>
           <span class={styles.sectionRule} />
+          {props.action}
         </div>
         {props.children}
       </section>

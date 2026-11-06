@@ -162,8 +162,8 @@ export default function DapSection() {
       <div class={styles.sectionTitle}>
         <span>Debuggers</span>
         <span class={styles.sectionRule} />
+        <BrowsePacks kind="dap" class={styles.titleAction} />
       </div>
-      <BrowsePacks kind="dap" />
       <NeedsFixing kind="dap" />
       <Switch>
         <Match when={health.state === "pending"}>

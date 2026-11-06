@@ -23,8 +23,13 @@ export default function BrowsePacks(props: { kind: PackKind; role?: "secondary";
     );
   return (
     <div class={props.class}>
-      <Button size="xs" iconRight={<Icon icon={ExternalLink} />} onClick={open}>
-        More {props.role === "secondary" ? "linters" : NOUN[props.kind]}
+      <Button
+        size="xs"
+        iconRight={<Icon icon={ExternalLink} />}
+        aria-label={`More ${props.role === "secondary" ? "linters" : NOUN[props.kind]}`}
+        onClick={open}
+      >
+        More
       </Button>
     </div>
   );
