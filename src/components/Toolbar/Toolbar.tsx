@@ -45,7 +45,7 @@ export default function Toolbar(props: { selected: Selection | null }) {
                     <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
                     <span class={`${styles.crumb} dim`}>{sel()!.projectName}</span>
                     <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
-                    <span class={`${styles.crumb} ${styles.leaf}`}>{sel()!.branch}</span>
+                    <span class={`${styles.crumb} ${styles.leaf}`}>{sel()!.branchLabel ?? sel()!.branch}</span>
                   </nav>
                   {/* Outside the nav, which is a list of places: this is a
                       control, and a landmark that holds one is a landmark that

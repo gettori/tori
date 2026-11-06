@@ -83,3 +83,33 @@ describe("what a branch has cost", () => {
     expect(container.firstChild).toBeNull();
   });
 });
+
+describe("an operation in progress", () => {
+  it("leads the line with the operation and its step", () => {
+    const { container } = render(() => (
+      <BranchLine status={null} operation={{ kind: "rebase", replaying: "feat", step: 3, total: 7, conflicted: 0 }} />
+    ));
+    expect(container.querySelector("[data-operation]")?.textContent).toBe("Rebasing 3/7");
+    expect(container.querySelector("[data-operation-files]")).toBeNull();
+  });
+
+  it("says conflict and how many files when it stopped on one", () => {
+    const { container } = render(() => (
+      <BranchLine status={null} operation={{ kind: "rebase", replaying: "feat", step: 3, total: 7, conflicted: 2 }} />
+    ));
+    expect(container.querySelector('[data-operation="rebase"]')?.textContent).toBe("Conflict 3/7");
+    expect(container.querySelector("[data-operation-files]")?.textContent).toBe("2 files");
+  });
+
+  it("names a merge, a cherry-pick and a revert", () => {
+    for (const [kind, text] of [
+      ["merge", "Merging"],
+      ["cherry-pick", "Cherry-picking"],
+      ["revert", "Reverting"],
+    ] as const) {
+      const { container, unmount } = render(() => <BranchLine status={null} operation={{ kind, conflicted: 0 }} />);
+      expect(container.querySelector(`[data-operation="${kind}"]`)?.textContent).toBe(text);
+      unmount();
+    }
+  });
+});

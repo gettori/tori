@@ -168,6 +168,7 @@ pub(crate) mod tests {
             is_current,
             issue: None,
             made_by: None,
+            operation: None,
         }
     }
     fn plain(branch: Option<&str>, is_current: bool) -> BranchUnit {

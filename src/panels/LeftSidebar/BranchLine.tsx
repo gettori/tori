@@ -24,6 +24,7 @@ import { prTone, releaseShows, type PrTone, type UnitStatus } from "../../utils/
 import type { BaseSync } from "../../utils/gitActions";
 import type { SessionUsage } from "../../utils/chatUsageStore";
 import { spendView } from "../../utils/spend";
+import { operationChip, type Operation } from "../../utils/worktreeOperation";
 import styles from "./BranchLine.module.css";
 
 const CHECK_ICON: Record<BadgeTone, LucideIcon> = {
@@ -85,7 +86,9 @@ export default function BranchLine(props: {
    *  another long-lived branch rather than a feature landing. */
   release?: boolean;
   branchSpend?: SessionUsage | null;
+  operation?: Operation | null;
 }) {
+  const op = () => (props.operation ? operationChip(props.operation) : null);
   const pr = () => {
     const st = props.status;
     if (!st?.pullRequest) return null;
@@ -151,6 +154,8 @@ export default function BranchLine(props: {
   };
   const storyLead = () => {
     const p = pr();
+    const o = op();
+    if (o) return [o.title];
     if (p) return [`#${p.number} ${p.title}`];
     if (stat()) return [diffLine()];
     return spent() ? [spent()!.says] : [];
@@ -167,6 +172,10 @@ export default function BranchLine(props: {
   };
   const storyRest = () => {
     const p = pr();
+    if (op()) {
+      if (p) return [`#${p.number} ${p.title}`];
+      return [stat() ? diffLine() : "", spent()?.says ?? ""].filter(Boolean);
+    }
     if (!p) return stat() && spent() ? [spent()!.says] : [];
     const b = badges();
     return [
@@ -259,7 +268,7 @@ export default function BranchLine(props: {
   );
 
   return (
-    <Show when={pr() || stat() || spent()}>
+    <Show when={op() || pr() || stat() || spent()}>
       {
         // A span, not a button. The line reports; it is not a way in. The
         // Pull Requests panel is reached from the command palette and from
@@ -273,6 +282,25 @@ export default function BranchLine(props: {
           label={<TooltipLines lead={storyLead()} rest={storyRest()} />}
         >
           <span class={styles.items}>
+            <Show when={op()}>
+              {(o) => (
+                <>
+                  <span
+                    class={`${styles.item} ${o().conflicted ? styles.bad : styles.busy}`}
+                    data-operation={props.operation!.kind}
+                  >
+                    {o().text}
+                  </span>
+                  <Show when={o().files}>
+                    {(files) => (
+                      <span class={`${styles.item} ${styles.bad}`} data-operation-files>
+                        {files()}
+                      </span>
+                    )}
+                  </Show>
+                </>
+              )}
+            </Show>
             <Show when={pr()}>{(p) => standing(p)}</Show>
             <Show when={stat()}>{(s) => size(s)}</Show>
             <Show when={spent()}>
