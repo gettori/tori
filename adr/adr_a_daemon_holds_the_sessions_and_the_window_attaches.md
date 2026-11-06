@@ -1,8 +1,8 @@
 ---
 summary: sessions run in `tori daemon`, the same binary; the window attaches over a link, quit leaves it, an update waits for idle
 status: current
-updated: 2026-10-15
-source: gettori/tickets#24 plan "Session host: agents outlive the window", branch phase-1-block-3, commits ed0255e3 to 806eb9a1; src-tauri/src/rpc/{daemon,window,office,launchd}.rs
+updated: 2026-11-06
+source: gettori/tickets#24 plan "Session host: agents outlive the window", branch phase-1-block-3, commits ed0255e3 to 806eb9a1; security-hardening branch, 19218d04 and the outside-principal phase; src-tauri/src/rpc/{daemon,window,office,launchd,peer}.rs
 ---
 
 # A daemon holds the sessions and the window attaches
@@ -22,9 +22,9 @@ source: gettori/tickets#24 plan "Session host: agents outlive the window", branc
 
 ## Consequences
 
-- **Builds compare by build id, not version**, since a rebuild keeps the version. A release window on the same link `PROTOCOL` attaches to an older daemon and asks it to restart when idle; another protocol shows "Restart needed".
+- **Builds compare by build id, not version**, since a rebuild keeps the version. A release window on the same link `PROTOCOL` attaches to an older daemon and asks it to restart when idle; another protocol shows "Restart needed". A window and a daemon from before signatures cannot link: the older daemon refuses the window's params, a release window then shows "Restart needed", and a dev window stops it and starts its own.
 - **Shells do not survive a daemon restart.** Keeping a PTY across an exec is out of scope; an on-screen shell tab closes as when its shell exits.
-- **`rpc.json` is readable by every process of the user**, so `Principal::Local` means the same uid, not the app. Only Local may be the window or attach to a PTY, which stops sessions, workers and devices and nothing more; #39's sandbox is where the file leaves an agent's reach.
+- **`rpc.json` is readable by every process of the user**, so its token makes an outside caller (`Principal::Outside`, a key per connection), never the window. The window and a PTY attach prove themselves by code signature (`rpc/peer.rs`): the daemon's own cdhash, or the Developer ID team on a release build. An outside caller or a terminal tab pays with an approval card for the outward rows, `tori attach` and a permissive spawn, and it never answers for you, switches a permission mode, allows a permission group or mints a credential. `Principal::Local` is the window's own office calls over the link, and nothing on the socket produces it.
 - **Git writes from two processes share one `flock`** in the repo's common dir (`exec::repo_lock`, `src-tauri/src/exec.rs:141`), since the checkpoint snapshot runs where the chat runs and the app's own git stays in the app.
 - **The webview bridge is gone.** [[adr_socket_asks_the_webview_until_rust_owns_state]] predicted that moving state into Rust would leave the wire unchanged, and it did.
 
