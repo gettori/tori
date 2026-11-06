@@ -37,7 +37,12 @@ describe("AddBranchDialog, starting from an issue in another repo", () => {
         fetching={false}
         busy={false}
         baseDefault="main"
-        issues={{ assigned: () => Promise.resolve([row]), get, ahead: () => Promise.resolve(false) }}
+        issues={{
+          assigned: () => Promise.resolve({ rows: [row], skipped: [] }),
+          get,
+          find: () => Promise.resolve({ hits: [], skipped: [] }),
+          ahead: () => Promise.resolve(false),
+        }}
         onConfirm={onConfirm}
         onCancel={() => {}}
       />
@@ -51,5 +56,54 @@ describe("AddBranchDialog, starting from an issue in another repo", () => {
     await waitFor(() => expect(start.hasAttribute("disabled")).toBe(false));
     fireEvent.click(start);
     expect(onConfirm.mock.calls[0][0].issue.issue.key).toBe(foreign);
+  });
+});
+
+describe("AddBranchDialog, typing an issue", () => {
+  const here: IssueRef = { ...row, key: "31", display: "#31", title: "Here too" };
+
+  function open(find: (input: string) => Promise<{ hits: IssueRef[]; skipped: string[] }>) {
+    const get = vi.fn((key: string) => Promise.resolve({ ...issue, key, display: key }));
+    render(() => (
+      <AddBranchDialog
+        mode="worktree"
+        projectName="tori"
+        projectPath="~/tori"
+        locals={["main"]}
+        remotes={["main"]}
+        taken={[]}
+        fetching={false}
+        busy={false}
+        baseDefault="main"
+        issues={{
+          assigned: () => Promise.resolve({ rows: [], skipped: [] }),
+          get,
+          find: vi.fn(find),
+          ahead: () => Promise.resolve(false),
+        }}
+        onConfirm={() => {}}
+        onCancel={() => {}}
+      />
+    ));
+    fireEvent.click(screen.getByRole("button", { name: "Issue" }));
+    return get;
+  }
+
+  it("lists a number found in two repos and notes the repo it could not read", async () => {
+    const get = open(() => Promise.resolve({ hits: [here, row], skipped: ["acme/secret"] }));
+    const input = screen.getByRole("combobox");
+    fireEvent.input(input, { target: { value: "31" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Open issue/ }));
+    expect(await screen.findByRole("button", { name: /Here too/ })).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: new RegExp(row.title) }));
+    await waitFor(() => expect(get).toHaveBeenCalledWith(foreign));
+    expect(screen.getByText(/no access: acme\/secret/)).toBeTruthy();
+  });
+
+  it("opens a repo#N with one hit straight away", async () => {
+    const get = open(() => Promise.resolve({ hits: [row], skipped: [] }));
+    fireEvent.input(screen.getByRole("combobox"), { target: { value: "tickets#31" } });
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
+    await waitFor(() => expect(get).toHaveBeenCalledWith(foreign));
   });
 });

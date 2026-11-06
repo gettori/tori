@@ -241,7 +241,11 @@ export default function ProjectSettingsDialog(props: { path: string; section?: P
                   <div class={s.note}>No setting matches "{query().trim()}".</div>
                 </Show>
                 {pane("general", () => (
-                  <GeneralSection project={f().project} kind={kind()} />
+                  <GeneralSection
+                    project={f().project}
+                    kind={kind()}
+                    onDirty={(on) => markDirty("general:issues", on)}
+                  />
                 ))}
                 {pane("worktrees", () => (
                   <>

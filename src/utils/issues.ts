@@ -1,3 +1,5 @@
+import { invoke } from "@tauri-apps/api/core";
+
 // The issue source as the frontend sees it, mirrored from `src-tauri/src/issues`.
 // A key is opaque (GitHub's is the number, Linear's would be `ENG-123`), and
 // `display` is what goes on screen.
@@ -24,6 +26,10 @@ export type Issue = {
   url: string;
   suggestedBranch: string;
 };
+
+export type Found = { hits: IssueRef[]; skipped: string[] };
+
+export type AssignedIssues = { rows: IssueRef[]; skipped: string[] };
 
 export type LinkOutcome = "created" | "alreadyLinked" | "unlinked";
 
@@ -68,3 +74,15 @@ export function pendingReviews(
   }
   return list.rows.filter((r) => !covered.has(Number(r.key)));
 }
+
+export type IssueRepos = { origin: string | null; stored: string[]; effective: string[] };
+
+export type RepoAccess = { repo: string; access: "readable" | "noAccess" | "issuesOff" };
+
+export const issueRepos = (projectPath: string) => invoke<IssueRepos>("issue_repos_get", { projectPath });
+
+export const setIssueRepos = (projectPath: string, repos: string[]) =>
+  invoke<IssueRepos>("issue_repos_set", { projectPath, repos });
+
+export const issueRepoAccess = (projectPath: string, repos: string[]) =>
+  invoke<RepoAccess[]>("issue_repos_access", { projectPath, repos });
