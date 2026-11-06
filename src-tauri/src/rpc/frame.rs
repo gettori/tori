@@ -17,6 +17,9 @@ pub const INTERNAL_ERROR: i64 = -32603;
 pub const UNAUTHORIZED: i64 = -32001;
 // Tori understood the call and said no, or the work behind it failed.
 pub const REFUSED: i64 = -32002;
+// Every credential reads as unknown against a devices file that could not be
+// read, and a phone that took that for a revoke would drop one that still works.
+pub const STORE_UNREADABLE: i64 = -32003;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Request {

@@ -36,7 +36,9 @@ const PROBE_MS = 20_000;
 // An attempt made as the network changes can sit unopened with no close event.
 const CONNECT_MS = 10_000;
 
+export const UNAUTHORIZED_CODE = -32001;
 export const REFUSED_CODE = -32002;
+export const STORE_UNREADABLE_CODE = -32003;
 export const METHOD_NOT_FOUND = -32601;
 
 export class RpcError extends Error {
@@ -75,6 +77,10 @@ function installId(): string {
   const made = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
   localStorage.setItem(INSTALL_KEY, made);
   return made;
+}
+
+export function forgetsCredential(e: Error): boolean {
+  return e instanceof RpcError && e.code === UNAUTHORIZED_CODE && e.message === REVOKED;
 }
 
 export function parsePairLink(text: string): { url: string; code: string } | null {
@@ -244,7 +250,7 @@ export class RemoteClient {
           this.setGeneration(this.generation() + 1);
         },
         (e: Error) => {
-          if (e.message === REVOKED) {
+          if (forgetsCredential(e)) {
             this.stopped = true;
             this.setStatus("revoked");
             forget();

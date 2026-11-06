@@ -17,6 +17,9 @@ pub trait Stream: Read + Write + Send {
     fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()>;
     /// Called once the first frame proved who is on the other end.
     fn authed(&self) {}
+    fn peer(&self) -> Option<String> {
+        None
+    }
     /// Ends both directions, which also unblocks a thread reading the stream.
     fn close(&self);
 }

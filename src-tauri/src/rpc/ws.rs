@@ -438,6 +438,9 @@ impl Stream for WsStream {
     fn authed(&self) {
         self.0.gate.pass();
     }
+    fn peer(&self) -> Option<String> {
+        self.0.tcp.peer_addr().ok().map(|addr| addr.ip().to_string())
+    }
     fn close(&self) {
         self.close_with(CloseCode::Normal);
     }
@@ -462,6 +465,7 @@ mod tests {
         hub: Arc<Hub>,
         devices: Arc<Devices>,
         pairing: Arc<Pairing>,
+        asked: Option<std::sync::mpsc::Receiver<crate::rpc::pairing::Request>>,
         credential: String,
         dir: std::path::PathBuf,
     }
@@ -488,7 +492,8 @@ mod tests {
             backend: Box::<StubBackend>::default(),
             auth_timeout,
         });
-        let pairing = Arc::new(Pairing::new(Box::new(|_| {})));
+        let (pairing, asked) = crate::rpc::pairing::tests::with_window(Box::new(|_| {}));
+        let pairing = Arc::new(pairing);
         serve(
             transport.clone(),
             Arc::new(Credential::Remote {
@@ -502,6 +507,7 @@ mod tests {
             hub,
             devices,
             pairing,
+            asked: Some(asked),
             credential,
             dir,
         }
@@ -686,8 +692,10 @@ mod tests {
 
     #[test]
     fn pairing_answers_then_closes_and_the_credential_authenticates_next_time() {
-        let front = front(Duration::from_secs(5));
+        let mut front = front(Duration::from_secs(5));
         let offer = front.pairing.start("ws://x", crate::owned_state::now_ms()).unwrap();
+        let asked = front.asked.take().unwrap();
+        let _answering = crate::rpc::pairing::tests::answer_next(front.pairing.clone(), asked, true);
         let mut pairer = connect(&front).unwrap();
         let reply = call(&mut pairer, 0, "pair", json!({ "code": offer.code, "name": "probe" }));
         assert_eq!(reply["result"]["name"], json!("probe"));

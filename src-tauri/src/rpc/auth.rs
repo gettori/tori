@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 
 use super::devices::Devices;
-use super::frame::{Request, RpcError, UNAUTHORIZED};
-use super::pairing::{PairError, Pairing};
+use super::frame::{Request, RpcError, STORE_UNREADABLE, UNAUTHORIZED};
+use super::pairing::{PairError, Pairing, Request as PairRequest};
 
 pub const AUTH_METHOD: &str = "auth";
 pub const PAIR_METHOD: &str = "pair";
@@ -152,6 +152,7 @@ pub enum AuthError {
     MissingToken,
     MissingCode,
     WrongToken,
+    StoreUnreadable,
     Pair(PairError),
 }
 
@@ -162,6 +163,7 @@ impl AuthError {
             AuthError::MissingToken => "auth needs a token",
             AuthError::MissingCode => "pair needs a code",
             AuthError::WrongToken => "wrong token",
+            AuthError::StoreUnreadable => return RpcError::new(STORE_UNREADABLE, "device store unreadable"),
             AuthError::Pair(e) => return RpcError::new(UNAUTHORIZED, e.message()),
         };
         RpcError::new(UNAUTHORIZED, message)
@@ -196,6 +198,7 @@ pub fn authenticate(first: &Request, credential: &Credential) -> Result<Principa
                 .or_else(|| browsers.find(&token).map(Principal::Browser))
                 .ok_or(AuthError::WrongToken)
         }
+        Credential::Remote { devices, .. } if devices.writable().is_err() => Err(AuthError::StoreUnreadable),
         Credential::Remote { devices, .. } => devices.find(&token).map(Principal::Device).ok_or(AuthError::WrongToken),
     }
 }
@@ -218,7 +221,7 @@ pub struct Paired {
 
 /// A first frame that trades the live pairing code for a device credential.
 /// Only a network front pairs; the unix socket has no devices.
-pub fn pair(first: &Request, credential: &Credential) -> Result<Paired, AuthError> {
+pub fn pair(first: &Request, credential: &Credential, addr: &str, pending: impl FnOnce()) -> Result<Paired, AuthError> {
     let Credential::Remote { devices, pairing } = credential else {
         return Err(AuthError::NotAnAuthFrame);
     };
@@ -228,8 +231,12 @@ pub fn pair(first: &Request, credential: &Credential) -> Result<Paired, AuthErro
     let install = p.install.filter(|i| {
         !i.is_empty() && i.len() <= MAX_INSTALL_CHARS && i.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
     });
+    let request = PairRequest {
+        name: name.clone(),
+        addr: addr.to_string(),
+    };
     pairing
-        .redeem(&code, crate::owned_state::now_ms(), || {
+        .redeem(&code, crate::owned_state::now_ms(), &request, pending, || {
             devices.mint_install(&name, install.as_deref())
         })
         .map(|(device, credential, replaced)| Paired {
@@ -384,7 +391,10 @@ mod tests {
         let child = children(&local).mint(Caller::Chat("s1".into()));
         let remote = Credential::Remote {
             devices,
-            pairing: Arc::new(Pairing::new(Box::new(|_| {}))),
+            pairing: Arc::new(Pairing::new(
+                Box::new(|_| {}),
+                Box::new(crate::rpc::pairing::tests::NoWindow),
+            )),
         };
 
         assert_eq!(auth(&secret, &remote), Ok(Principal::Device(device.id)));
@@ -412,7 +422,8 @@ mod tests {
                 crate::chat::approval::random_token()
             ))
             .join("devices.json");
-        let pairing = Arc::new(Pairing::new(Box::new(|_| {})));
+        let (pairing, asked) = crate::rpc::pairing::tests::with_window(Box::new(|_| {}));
+        let pairing = Arc::new(pairing);
         let remote = Credential::Remote {
             devices: Arc::new(Devices::open(path.clone())),
             pairing: pairing.clone(),
@@ -420,10 +431,18 @@ mod tests {
         let code = pairing.start("ws://x", crate::owned_state::now_ms()).unwrap().code;
 
         assert_eq!(
-            pair(&req("pair", json!({ "code": code })), &cred()),
+            pair(&req("pair", json!({ "code": code })), &cred(), "", || {}),
             Err(AuthError::NotAnAuthFrame)
         );
-        let paired = pair(&req("pair", json!({ "code": code, "name": "  Pixel\n 8  " })), &remote).unwrap();
+        let answering = crate::rpc::pairing::tests::answer_next(pairing.clone(), asked, true);
+        let paired = pair(
+            &req("pair", json!({ "code": code, "name": "  Pixel\n 8  " })),
+            &remote,
+            "100.64.0.2",
+            || {},
+        )
+        .unwrap();
+        drop(answering);
         assert_eq!(paired.name, "Pixel 8");
         assert_eq!(
             auth(&paired.credential, &remote),
@@ -431,7 +450,7 @@ mod tests {
         );
         assert!(remote.holds(&Principal::Device(paired.id)));
         assert_eq!(
-            pair(&req("pair", json!({ "code": code })), &remote),
+            pair(&req("pair", json!({ "code": code })), &remote, "", || {}),
             Err(AuthError::Pair(PairError::NoCode)),
             "a used code is refused"
         );

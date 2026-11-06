@@ -461,6 +461,17 @@
     letter-spacing: 0.1em;
     color: var(--fg-default);
   }
+  .pairAsk {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-3);
+    padding: var(--tori-space-4) var(--tori-space-1);
+    font-size: var(--tori-text-sm);
+    color: var(--fg-default);
+  }
+  .pairAsk > span {
+    flex: 1;
+  }
 
   /* A note between groups, outside the row grid. */
   .note {

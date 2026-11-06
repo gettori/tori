@@ -96,6 +96,10 @@ impl Remote {
     pub fn cancel_pairing(&self) {
         self.pairing.cancel();
     }
+
+    pub fn allow_pairing(&self, yes: bool) -> Result<(), String> {
+        self.pairing.allow(yes)
+    }
 }
 
 fn address(config: &Config, offered: &[Interface]) -> Result<SocketAddr, String> {
@@ -303,7 +307,10 @@ mod tests {
         let remote = Remote::new(
             server,
             devices,
-            Arc::new(Pairing::new(Box::new(move |e| log.lock().unwrap().push(e)))),
+            Arc::new(Pairing::new(
+                Box::new(move |e| log.lock().unwrap().push(e)),
+                Box::new(crate::rpc::pairing::tests::NoWindow),
+            )),
         );
         assert!(remote.start_pairing().is_err(), "no pairing while off");
 

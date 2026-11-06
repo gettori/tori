@@ -249,9 +249,15 @@ pub fn start(parts: Parts) -> Arc<Office> {
     let devices = Arc::new(super::devices::Devices::open(super::devices_path()));
     composer.set_phones(devices.clone());
     let paired = desk.ui.clone();
-    let pairing = Arc::new(super::pairing::Pairing::new(Box::new(move |ended| {
-        paired.emit(DEVICES_EVENT, json!({ "ended": ended }));
-    })));
+    let pairing = Arc::new(super::pairing::Pairing::new(
+        Box::new(move |ended| {
+            paired.emit(DEVICES_EVENT, json!({ "ended": ended }));
+        }),
+        Box::new(PairAsker {
+            ui: desk.ui.clone(),
+            screen: screen.clone(),
+        }),
+    ));
     let backend = DaemonBackend {
         desk: desk.clone(),
         screen,
@@ -314,6 +320,26 @@ pub fn start(parts: Parts) -> Arc<Office> {
 
 // The Settings pane is not a socket subscriber, so it hears about devices here.
 const DEVICES_EVENT: &str = "remote://devices";
+const PAIR_REQUEST_EVENT: &str = "remote://pair-request";
+
+struct PairAsker {
+    ui: crate::ui::Ui,
+    screen: Arc<dyn super::methods::Screen>,
+}
+
+impl super::pairing::Asker for PairAsker {
+    fn ask(&self, request: &super::pairing::Request) -> Result<(), super::pairing::PairError> {
+        if !self.screen.attached() {
+            return Err(super::pairing::PairError::NoWindow);
+        }
+        self.ui.emit(PAIR_REQUEST_EVENT, request);
+        Ok(())
+    }
+
+    fn settled(&self) {
+        self.ui.emit(PAIR_REQUEST_EVENT, Value::Null);
+    }
+}
 const UPDATE_EVENT: &str = "daemon://update-waiting";
 
 #[derive(Debug, Clone, PartialEq)]
@@ -741,6 +767,7 @@ impl Office {
                 self.remote.cancel_pairing();
                 Ok(json!({}))
             }
+            "pairing.allow" => self.remote.allow_pairing(arg(args, "yes")?).map(|()| json!({})),
             "devices.list" => {
                 let connected = self.hub.connected_devices();
                 let rows: Vec<Value> = self

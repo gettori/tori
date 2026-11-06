@@ -25,6 +25,9 @@ type Tailscale = { state: "missing" } | { state: "stopped" } | { state: "connect
 /** Mirrors `PairingOffer` in src-tauri/src/rpc/mod.rs. */
 type Offer = { code: string; url: string; uri: string; expires_ms: number; svg: string };
 
+/** Mirrors `pairing::Request` in src-tauri/src/rpc/pairing.rs. */
+type PairRequest = { name: string; addr: string };
+
 /** Mirrors `pairing::Ended` in src-tauri/src/rpc/pairing.rs, plus the expiry only the pane watches. */
 type Ended = "used" | "burned" | "cancelled" | "expired";
 
@@ -77,6 +80,7 @@ export default function RemotePane(props: PaneProps) {
   const [tailscale, setTailscale] = createSignal<Tailscale | null>(null);
   const [offer, setOffer] = createSignal<Offer | null>(null);
   const [ended, setEnded] = createSignal<Ended | null>(null);
+  const [request, setRequest] = createSignal<PairRequest | null>(null);
   const [now, setNow] = createSignal(Date.now());
 
   const loadDevices = () =>
@@ -110,6 +114,7 @@ export default function RemotePane(props: PaneProps) {
       loadDevices();
       if (e.payload.ended && offer()) end(e.payload.ended);
     });
+    const unlistenRequest = listen<PairRequest | null>("remote://pair-request", (e) => setRequest(e.payload));
     const tick = setInterval(() => {
       setNow(Date.now());
       const live = offer();
@@ -119,6 +124,7 @@ export default function RemotePane(props: PaneProps) {
       clearInterval(tick);
       window.removeEventListener("focus", loadNetwork);
       void unlisten.then((f) => f());
+      void unlistenRequest.then((f) => f());
       // A code left live after the pane closes is one nobody is watching.
       if (offer())
         void invoke("pairing_cancel").catch((e) => pushToast(`The pairing code was not cancelled: ${String(e)}`));
@@ -133,6 +139,11 @@ export default function RemotePane(props: PaneProps) {
         setOffer(o);
       })
       .catch((e) => pushToast(`Pairing did not start: ${String(e)}`));
+  };
+
+  const answer = (yes: boolean) => {
+    setRequest(null);
+    void invoke("pairing_allow", { yes }).catch((e) => pushToast(`The answer did not reach Tori: ${String(e)}`));
   };
 
   const revoke = (d: Device) =>
@@ -225,6 +236,23 @@ export default function RemotePane(props: PaneProps) {
           </Button>
         </Show>
       </Row>
+      {/* Outside the search filter: a phone is waiting on this answer. */}
+      <Show when={request()}>
+        {(r) => (
+          <div class={styles.pairAsk} role="alertdialog" aria-labelledby="remote-pair-ask">
+            <span id="remote-pair-ask">
+              Allow {r().name} from {r().addr}?
+            </span>
+            {/* Focused, so Enter on a request nobody expected turns it away. */}
+            <Button size="sm" ref={(el) => queueMicrotask(() => el.focus())} onClick={() => answer(false)}>
+              Deny
+            </Button>
+            <Button size="sm" variant="primary" onClick={() => answer(true)}>
+              Allow
+            </Button>
+          </div>
+        )}
+      </Show>
       <Show when={props.shown("remote-pair")}>
         <Show when={offer()}>
           {(o) => (
