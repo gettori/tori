@@ -1485,7 +1485,9 @@ pub fn handle_first(
         // `auth`, so every connection that is served starts with a credential.
         Ok(Some(first)) if first.method == PAIR_METHOD => {
             let id = first.id.clone().unwrap_or(Value::Null);
-            let reply = match pair(&first, credential) {
+            // Waiting on the Mac is not a client stalling before auth.
+            let addr = stream.peer().unwrap_or_default();
+            let reply = match pair(&first, credential, &addr, || stream.authed()) {
                 Ok(paired) => {
                     for old in &paired.replaced {
                         server.hub().close_device(old);
@@ -3059,7 +3061,10 @@ pub mod tests {
         let (device, secret) = devices.mint("phone").unwrap();
         let credential = Credential::Remote {
             devices: devices.clone(),
-            pairing: Arc::new(Pairing::new(Box::new(|_| {}))),
+            pairing: Arc::new(Pairing::new(
+                Box::new(|_| {}),
+                Box::new(crate::rpc::pairing::tests::NoWindow),
+            )),
         };
         let server = Server {
             hub: Default::default(),

@@ -733,6 +733,7 @@ pub fn run() {
             rpc::tailscale_open,
             rpc::pairing_start,
             rpc::pairing_cancel,
+            rpc::pairing_allow,
             rpc::devices_list,
             rpc::device_revoke,
             rpc::browser_status,

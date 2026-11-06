@@ -831,6 +831,11 @@ pub fn pairing_cancel() -> Result<(), String> {
 }
 
 #[tauri::command(async)]
+pub fn pairing_allow(yes: bool) -> Result<(), String> {
+    office_call("pairing.allow", json!({ "yes": yes })).map(|_| ())
+}
+
+#[tauri::command(async)]
 pub fn devices_list() -> Result<Value, String> {
     office_call("devices.list", json!({}))
 }
