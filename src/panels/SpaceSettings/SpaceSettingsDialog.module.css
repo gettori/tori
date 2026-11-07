@@ -60,3 +60,7 @@
 .titleName {
   text-transform: capitalize;
 }
+
+.headerActions {
+  gap: var(--tori-space-4);
+}
