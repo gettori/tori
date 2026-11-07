@@ -13,7 +13,7 @@ import {
   withFallback,
   type PaneProps,
 } from "../../components/paneKit";
-import { settings, setZoom, zoom, ZOOM_MAX, ZOOM_MIN } from "../../settingsStore";
+import { setSidebar, settings, setZoom, zoom, ZOOM_MAX, ZOOM_MIN, type SpaceStrip } from "../../settingsStore";
 import { listSelectableThemes, DEFAULT_THEME_ID, type ThemeChoice } from "../../../../theme";
 import { listUserThemes } from "../../../../theme/userThemes";
 import { primaryFamily } from "../../../../utils/fontLoad";
@@ -23,6 +23,11 @@ import NeedsFixing from "../../components/NeedsFixing";
 import BrowsePacks from "../../components/BrowsePacks";
 import PackControls from "../../components/PackControls";
 import { CatalogConflict } from "../../components/ProvenanceTag";
+
+const SPACE_STRIPS: SelectOption[] = [
+  { value: "bottom", label: "Bottom" },
+  { value: "side", label: "Left" },
+];
 
 /** A theme as a row: the id is what settings.json stores, the label is what the
  *  user reads. */
@@ -116,6 +121,16 @@ export default function AppearancePane(props: PaneProps) {
             value={Math.round(zoom() * 100)}
             onChange={(v) => setZoom(v / 100)}
           />
+        </Row>
+        <Row {...props} id="space-strip" label="Space tiles">
+          <div class={styles.control}>
+            <Select
+              options={SPACE_STRIPS}
+              value={settings.sidebar.spaceTiles}
+              onChange={(value) => void setSidebar({ spaceTiles: value as SpaceStrip })}
+              aria-labelledby={rowLabelId("space-strip")}
+            />
+          </div>
         </Row>
       </Group>
 

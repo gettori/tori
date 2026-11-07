@@ -24,7 +24,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { homeDir } from "@tauri-apps/api/path";
 import Dropdown from "../../components/Menu/Dropdown";
-import { MenuRow, MenuRows, MenuSeparator, type MenuItem } from "../../components/Menu/rows";
+import type { MenuItem } from "../../components/Menu/rows";
 import PromptModal from "../../components/Dialogs/PromptModal";
 import PickerModal from "../../components/Dialogs/PickerModal";
 import ConfirmDeleteSpace, { type DeleteEntry } from "../../components/Dialogs/ConfirmDeleteSpace";
@@ -57,7 +57,8 @@ import type { UnitOrigin } from "../../utils/unitOrigin";
 import NewProjectDialog from "../../components/Dialogs/NewProjectDialog";
 import MoveToSpaceDialog from "../../components/Dialogs/MoveToSpaceDialog";
 import { claimProjectFolder, projectJob, type NewProjectMode } from "../../utils/newProject";
-import SpaceDialog, { type SpaceDialogMode } from "../../components/Dialogs/SpaceDialog";
+import SpaceDialog from "../../components/Dialogs/SpaceDialog";
+import SpaceSettingsDialog from "../SpaceSettings/SpaceSettingsDialog";
 import { pushToast, type ToastAction } from "../../components/Toasts/Toasts";
 import Button from "../../components/Button/Button";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
@@ -187,12 +188,12 @@ import {
   type WatchedProject,
 } from "../../utils/forgeStatus";
 import {
+  branchLineFor,
+  cardColoursFor,
   laneConfigFor,
   portLinksAt,
   reviewRule,
   runProjectFor,
-  setLanes,
-  setSidebar,
   settings as appSettings,
 } from "../Settings/settingsStore";
 import {
@@ -220,7 +221,6 @@ import {
   FolderInput,
   Ellipsis,
   Search,
-  SlidersHorizontal,
   Tag,
   House,
   Plus,
@@ -304,7 +304,6 @@ import {
 } from "../../utils/topics";
 import { dockOpen } from "../../layout/dockStore";
 import BranchLine, { drawnFacts, type BranchLineProps } from "./BranchLine";
-import { BRANCH_LINE_MODES } from "../../utils/branchLineItems";
 import { prWatchMenu, type PrWatchRow } from "../../utils/prWatchMenu";
 import StatusBubble, { CountBubble } from "./StatusBubble";
 import { latestUnreviewed, runSecondOpinion, secondOpinionRunning } from "../../utils/secondOpinion";
@@ -618,7 +617,6 @@ export default function LeftSidebar(props: {
   const clearPicked = (e: KeyboardEvent) => e.key === "Escape" && picked() && setPicked(null);
   window.addEventListener("keydown", clearPicked);
   onCleanup(() => window.removeEventListener("keydown", clearPicked));
-  const colourful = () => appSettings.sidebar.cardColours === "colourful";
   const groupHue = (c: string | undefined): CardHue | null =>
     (GROUP_HUES as readonly string[]).includes(c ?? "") ? (c as CardHue) : null;
   function heldValue<T>(live: () => T): () => T {
@@ -908,17 +906,10 @@ export default function LeftSidebar(props: {
   const [newReq, setNewReq] = createSignal<{ g: Space; busy: boolean; move?: boolean } | null>(null);
   const [spaceMoveReq, setSpaceMoveReq] = createSignal<{ p: Project; from: string } | null>(null);
 
-  // The space create/edit dialog (icon picker). "new" creates a folder under the
-  // root; "edit" only rewrites the `[[space]]` icon (keyed by `name`), so the
-  // name is immutable there. `busy` gates double-submit like the sibling dialogs.
-  const [spaceReq, setSpaceReq] = createSignal<{
-    mode: SpaceDialogMode;
-    name: string;
-    icon: string | null;
-    color: string | null;
-    busy: boolean;
-    global?: boolean;
-  } | null>(null);
+  // The create-space dialog. `busy` gates double-submit like the sibling dialogs.
+  const [spaceReq, setSpaceReq] = createSignal<{ busy: boolean } | null>(null);
+  // The settings dialog's space, by settings key: a name, or `GLOBAL_KEY`.
+  const [spaceSettings, setSpaceSettings] = createSignal<string | null>(null);
 
   // The origin dialog, for a repo that has one and for a repo that does not:
   // setting a first origin and replacing an existing one are the same command
@@ -954,7 +945,6 @@ export default function LeftSidebar(props: {
   const [dropHint, setDropHint] = createSignal<{ name: string; after: boolean } | null>(null);
 
   const railed = () => appSettings.sidebar.spaceTiles === "side";
-  const branchLine = () => appSettings.sidebar.branchLine;
 
   const [deleteReq, setDeleteReq] = createSignal<{
     mode: "space" | "folder" | "project";
@@ -1883,60 +1873,28 @@ export default function LeftSidebar(props: {
   // Open the create-space dialog (needs a root to mkdir under).
   function addSpace() {
     if (!(config()?.roots ?? []).length) return;
-    setSpaceReq({ mode: "new", name: "", icon: null, color: null, busy: false });
+    setSpaceReq({ busy: false });
   }
 
-  // Open the edit-space dialog, prefilled. Keyed by name; only the icon is
-  // editable.
-  function editSpace(g: Space) {
-    setSpaceReq({
-      mode: "edit",
-      name: g.name,
-      icon: g.icon ?? null,
-      color: g.color ?? null,
-      busy: false,
-    });
-  }
-
-  function editGlobal() {
-    const g = config()?.global;
-    setSpaceReq({
-      mode: "edit",
-      name: GLOBAL_NAME,
-      icon: g?.icon ?? null,
-      color: g?.color ?? null,
-      busy: false,
-      global: true,
-    });
-  }
-
-  // Confirmed: create runs the single `add_space` command (mkdir + icon write +
-  // one emit); edit runs `set_space_meta`. Each command emits `config://changed`,
-  // which drives the reload, so there is no manual loadConfig here. On failure,
-  // surface the error and leave the dialog open.
+  // Confirmed: the single `add_space` command (mkdir + icon write + one emit).
+  // It emits `config://changed`, which drives the reload, so there is no manual
+  // loadConfig here. On failure, surface the error and leave the dialog open.
   async function confirmSpace(opts: { name: string; icon: string | null; color: string | null }) {
-    const req = spaceReq();
-    if (!req) return;
-    setSpaceReq({ ...req, busy: true });
+    if (!spaceReq()) return;
+    setSpaceReq({ busy: true });
     try {
-      if (req.mode === "new") {
-        const roots = config()?.roots ?? [];
-        if (!roots.length) throw new Error("No base folder configured");
-        await invoke("add_space", {
-          root: roots[0],
-          name: opts.name,
-          icon: opts.icon,
-          color: opts.color,
-        });
-      } else if (req.global) {
-        await invoke("set_global_meta", { icon: opts.icon, color: opts.color });
-      } else {
-        await invoke("set_space_meta", { name: req.name, icon: opts.icon, color: opts.color });
-      }
+      const roots = config()?.roots ?? [];
+      if (!roots.length) throw new Error("No base folder configured");
+      await invoke("add_space", {
+        root: roots[0],
+        name: opts.name,
+        icon: opts.icon,
+        color: opts.color,
+      });
       setSpaceReq(null);
     } catch (e) {
       setError(String(e));
-      setSpaceReq({ ...req, busy: false });
+      setSpaceReq({ busy: false });
     }
   }
 
@@ -2876,6 +2834,11 @@ export default function LeftSidebar(props: {
   // "New…" and "Add new space" failed to do while sitting next to each other:
   // one of them creates inside this space, the other creates a sibling of it,
   // and the old labels read as near-synonyms.
+  const viewRows = (): MenuItem[] => [
+    { label: "Collapse all", keys: "\u2318\u2325\u2190", onClick: () => setProjectsOpen(false) },
+    { label: "Expand all", keys: "\u2318\u2325\u2192", onClick: () => setProjectsOpen(true) },
+  ];
+
   const spaceMenu = (g: Space): MenuItem[] => [
     { heading: spaceMenuHead(g) },
     { separator: true },
@@ -2895,7 +2858,9 @@ export default function LeftSidebar(props: {
     { separator: true },
     { label: "New space", onClick: () => addSpace() },
     { separator: true },
-    { label: "Edit space", onClick: () => editSpace(g) },
+    ...viewRows(),
+    { separator: true },
+    { label: "Space settings\u2026", onClick: () => setSpaceSettings(g.name) },
     { separator: true },
     { label: "Delete space", danger: true, onClick: () => openDeleteSpace(g) },
   ];
@@ -2914,7 +2879,9 @@ export default function LeftSidebar(props: {
       onClick: () => void attachFolder(),
     },
     { separator: true },
-    { label: "Edit icon and colour", note: "Home is built in. It can't be renamed or deleted.", onClick: editGlobal },
+    ...viewRows(),
+    { separator: true },
+    { label: "Space settings\u2026", onClick: () => setSpaceSettings(GLOBAL_KEY) },
   ];
 
   // A project with a working tree git can branch from: a plain repo or a
@@ -3439,6 +3406,7 @@ export default function LeftSidebar(props: {
     // One rollup for the row: the glyph's pulse and the status chip are two
     // readings of the same fact, and computing it twice is how they drift.
     const rollup = () => bubbleForUnits([u]);
+    const branchLine = () => branchLineFor(g.name);
     const sync = () => syncFor(u.folderPath, u.branch);
     const spent = () =>
       u.branch && showSpend() ? spendFor({ kind: "branch", project: p.path, branch: u.branch }) : null;
@@ -4263,6 +4231,7 @@ export default function LeftSidebar(props: {
   );
 
   function projectNode(g: Group, p: Project) {
+    const colourful = () => cardColoursFor(g.name) === "colourful";
     const popen = () => expanded().has(pkey(g, p));
     const missing = () => p.availability === "missing";
     // A non-git folder has no branch node, and now no session rows
@@ -4719,50 +4688,6 @@ export default function LeftSidebar(props: {
         : bubbleFor(inThis);
   }
 
-  const viewSpace = () => (inGlobal() ? GLOBAL_KEY : (activeSpace()?.name ?? null));
-  const viewLanes = laneConfigFor(() => viewSpace() ?? GLOBAL_KEY);
-  const viewMenu = () => (
-    <>
-      <Show when={viewSpace()}>
-        {(space) => (
-          <>
-            <MenuRow
-              selected={viewLanes().enabled}
-              onClick={() => void setLanes(space(), { enabled: !viewLanes().enabled })}
-            >
-              PR lanes
-            </MenuRow>
-            <MenuSeparator />
-          </>
-        )}
-      </Show>
-      <MenuRows items={[{ heading: "Branch line" }]} />
-      <For each={BRANCH_LINE_MODES}>
-        {(m) => (
-          <MenuRow
-            selected={branchLine().mode === m.value}
-            onClick={() => void setSidebar({ branchLine: { ...branchLine(), mode: m.value } })}
-          >
-            {m.label}
-          </MenuRow>
-        )}
-      </For>
-      <MenuSeparator />
-      <MenuRow onClick={() => setProjectsOpen(false)}>
-        <span class={styles.viewMenuLabel}>Collapse all</span>
-        <span class={styles.viewMenuKeys}>⌘⌥←</span>
-      </MenuRow>
-      <MenuRow onClick={() => setProjectsOpen(true)}>
-        <span class={styles.viewMenuLabel}>Expand all</span>
-        <span class={styles.viewMenuKeys}>⌘⌥→</span>
-      </MenuRow>
-      <MenuSeparator />
-      <MenuRow onClick={() => emitWith<OpenSettings>(OPEN_SETTINGS, { entry: "branch-line-mode" })}>
-        Sidebar settings…
-      </MenuRow>
-    </>
-  );
-
   return (
     <div
       class={`${styles.tree} ${rows.rowScope}`}
@@ -4852,16 +4777,6 @@ export default function LeftSidebar(props: {
             icon={<Icon icon={Search} />}
             onClick={() => setSearching(true)}
           />
-          <Dropdown as="span" wrapper class={styles.viewMenu} menu={viewMenu()} placement="bottom-end">
-            <Button
-              class={styles.searchToggle}
-              variant="ghost"
-              size="md"
-              aria-label="View options"
-              tooltip="View options"
-              icon={<Icon icon={SlidersHorizontal} />}
-            />
-          </Dropdown>
         </Show>
       </div>
 
@@ -5385,15 +5300,35 @@ export default function LeftSidebar(props: {
 
       <Show when={spaceReq()}>
         <SpaceDialog
-          mode={spaceReq()!.mode}
-          name={spaceReq()!.name}
-          icon={spaceReq()!.icon}
-          color={spaceReq()!.color}
+          mode="new"
+          name=""
+          icon={null}
+          color={null}
           spaces={(config()?.spaces ?? []).map((s) => s.name)}
           busy={spaceReq()!.busy}
           onConfirm={(opts) => confirmSpace(opts)}
           onCancel={() => setSpaceReq(null)}
         />
+      </Show>
+      <Show when={spaceSettings()}>
+        {(key) => {
+          const global = () => key() === GLOBAL_KEY;
+          const look = () => (global() ? globalLook() : (config()?.spaces ?? []).find((sp) => sp.name === key()));
+          return (
+            <Show when={look()}>
+              {(g) => (
+                <SpaceSettingsDialog
+                  space={key()}
+                  name={g().name}
+                  icon={g().icon ?? null}
+                  color={g().color ?? null}
+                  global={global()}
+                  onClose={() => setSpaceSettings(null)}
+                />
+              )}
+            </Show>
+          );
+        }}
       </Show>
     </div>
   );

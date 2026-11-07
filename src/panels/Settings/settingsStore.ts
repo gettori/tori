@@ -44,12 +44,17 @@ export type BranchLineItem =
   | "spend"
   | "age"
   | "comments";
+export type BranchLine = { mode: BranchLineMode; items: Record<BranchLineItem, boolean> };
+/** One space's own look, where it differs from the defaults. Mirrors
+ *  `SpaceView` in src-tauri/src/settings.rs. */
+export type SpaceView = { cardColours?: CardColours; branchLine?: BranchLine };
 /** Mirrors `Sidebar` in src-tauri/src/settings.rs. */
 export type SidebarSettings = {
   spaceTiles: SpaceStrip;
   cardColours: CardColours;
-  branchLine: { mode: BranchLineMode; items: Record<BranchLineItem, boolean> };
+  branchLine: BranchLine;
   lanes: { default: LaneConfig; spaces: Record<string, LaneConfig> };
+  spaceViews: Record<string, SpaceView>;
 };
 export type Typography = {
   uiFontFamily: string;
@@ -490,6 +495,7 @@ export const DEFAULT_SETTINGS: Settings = {
       },
     },
     lanes: { default: structuredClone(DEFAULT_LANES), spaces: {} },
+    spaceViews: {},
   },
   forge: { enabled: true, picks: {}, prWatch: false },
   git: {
@@ -1178,6 +1184,27 @@ export function resetLanes(space: string | null): Promise<void> {
   if (space === null) return setSidebar({ lanes: { ...lanes, default: structuredClone(DEFAULT_LANES) } });
   const { [space]: _, ...spaces } = lanes.spaces;
   return setSidebar({ lanes: { ...lanes, spaces } });
+}
+
+export const cardColoursFor = (space: string): CardColours =>
+  settings.sidebar.spaceViews?.[space]?.cardColours ?? settings.sidebar.cardColours;
+
+export const branchLineFor = (space: string): BranchLine =>
+  settings.sidebar.spaceViews?.[space]?.branchLine ?? settings.sidebar.branchLine;
+
+export function setSpaceView(space: string, patch: SpaceView): Promise<void> {
+  const views = settings.sidebar.spaceViews ?? {};
+  return setSidebar({ spaceViews: { ...views, [space]: { ...views[space], ...patch } } });
+}
+
+/** Whether `space` holds any setting of its own rather than the defaults. */
+export const spaceHasOwn = (space: string): boolean =>
+  settings.sidebar.lanes.spaces[space] !== undefined || settings.sidebar.spaceViews?.[space] !== undefined;
+
+export function resetSpace(space: string): Promise<void> {
+  const { [space]: _, ...spaces } = settings.sidebar.lanes.spaces;
+  const { [space]: __, ...views } = settings.sidebar.spaceViews ?? {};
+  return setSidebar({ lanes: { ...settings.sidebar.lanes, spaces }, spaceViews: views });
 }
 
 export function setUnattended(patch: Partial<Unattended>): Promise<void> {

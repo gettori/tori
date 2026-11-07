@@ -139,6 +139,16 @@ pub struct Lanes {
     pub spaces: std::collections::BTreeMap<String, LaneConfig>,
 }
 
+/// One space's own look, where it differs from the sidebar's defaults.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SpaceView {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub card_colours: Option<CardColours>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch_line: Option<BranchLine>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Sidebar {
@@ -148,6 +158,7 @@ pub struct Sidebar {
     pub card_colours: CardColours,
     pub branch_line: BranchLine,
     pub lanes: Lanes,
+    pub space_views: std::collections::BTreeMap<String, SpaceView>,
 }
 
 /// Ids persisted by the VS Code-theme era, mapped on read so an install keeps
@@ -1176,6 +1187,7 @@ fn lenient_sidebar<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Sidebar, D:
             items: field(&line, "items"),
         },
         lanes: field(&raw, "lanes"),
+        space_views: field(&raw, "spaceViews"),
     })
 }
 

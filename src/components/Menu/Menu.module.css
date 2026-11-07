@@ -182,3 +182,9 @@
   white-space: normal;
   max-width: 32ch;
 }
+
+.keys {
+  margin-left: auto;
+  padding-left: calc(16px * var(--ui-scale));
+  color: var(--fg-subtle);
+}

@@ -372,7 +372,7 @@ describe("the sidebar levels that outlive the session rows", () => {
 
     fireEvent.contextMenu(await screen.findByRole("button", { name: "work" }));
     expect(await screen.findByText("New in “work”")).toBeTruthy();
-    expect(screen.getByText("Edit space")).toBeTruthy();
+    expect(screen.getByText("Space settings\u2026")).toBeTruthy();
     expect(screen.getByText("Delete space")).toBeTruthy();
     fireEvent.keyDown(document, { key: "Escape" });
 
