@@ -48,3 +48,19 @@
     font-weight: 600;
   }
 }
+
+/* Outside the layer: the shared title rules they adjust are unlayered, and a
+   layered rule loses to those whatever its specificity. */
+.titleMark {
+  width: calc(24px * var(--ui-scale));
+  height: calc(24px * var(--ui-scale));
+  font-size: var(--tori-text-lg);
+}
+
+.titleName {
+  text-transform: capitalize;
+}
+
+.titleKind {
+  font-size: var(--tori-text-xl);
+}
