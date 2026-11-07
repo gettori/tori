@@ -404,7 +404,7 @@ export function GroupCard(props: {
     >
       <ContextMenu
         class={`${styles.row} ${styles.cardHead}`}
-        classList={{ [styles.cardHeadSel]: props.holdsSelection === true }}
+        classList={{ [styles.cardHeadSel]: props.holdsSelection === true, [styles.cardHeadOpen]: props.open }}
         items={props.menu ?? []}
         onClick={() => props.onToggle?.()}
         aria-expanded={props.open}
@@ -469,7 +469,7 @@ export function LaneCard(props: {
     >
       <button
         type="button"
-        class={`${styles.row} ${styles.cardHead}`}
+        class={`${styles.row} ${styles.cardHead} ${styles.cardHeadOpen}`}
         aria-expanded="true"
         onClick={() => props.onPark()}
       >
