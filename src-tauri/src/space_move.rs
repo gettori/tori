@@ -173,6 +173,14 @@ fn refusal(path: &Path, target: &Path, busy: &[String]) -> Option<String> {
     if under(space, path) {
         return Some("A folder can't move into itself.".into());
     }
+    let own = crate::owned_state::config_dir();
+    if under(path, &own) || under(&own, path) {
+        return Some("This folder holds Tori's own files.".into());
+    }
+    let base = space.parent()?;
+    if canon(path).parent() == Some(canon(base).as_path()) && !crate::base_layout::setup_would_group(path) {
+        return Some("This is a space folder. Move its projects instead.".into());
+    }
     if taken(space, &target.file_name()?.to_string_lossy()) {
         return Some(format!(
             "{} already has a folder named {}.",
@@ -378,6 +386,15 @@ pub fn move_into_space(
     save_journal(&file, &journal)?;
     let warnings = run_journal(&file, journal.clone(), &mut move_one)?;
     finish(&app, &index, &journal, warnings)
+}
+
+#[tauri::command(async)]
+pub fn move_check(base: String, space: String, name: String, path: String) -> Option<String> {
+    let from = PathBuf::from(path.trim().trim_end_matches('/'));
+    match target_of(Path::new(base.trim()), &space, &name) {
+        Ok(to) => refusal(&from, &to, &[]),
+        Err(why) => Some(why),
+    }
 }
 
 #[tauri::command(async)]
