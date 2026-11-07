@@ -186,7 +186,17 @@ import {
   reviewRequests,
   type WatchedProject,
 } from "../../utils/forgeStatus";
-import { portLinksAt, reviewRule, runProjectFor, setSidebar, settings as appSettings } from "../Settings/settingsStore";
+import {
+  laneConfigFor,
+  portLinksAt,
+  reviewRule,
+  runProjectFor,
+  setLanes,
+  setSidebar,
+  settings as appSettings,
+} from "../Settings/settingsStore";
+import { LANE_LABEL, laneOf, laneOrder, startsParked, type LaneId } from "../../utils/prLanes";
+import { prChildState } from "../../utils/prChildState";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
 import ProjectIcon from "../../components/Icon/ProjectIcon";
@@ -195,6 +205,7 @@ import { spaceHue, spaceHueRgb, applySpaceTint } from "../../utils/spaceTint";
 import { shortHome, spaceInitials } from "../../utils/names";
 import { rememberSelection, rememberedInSpace, rememberedGlobal } from "../../utils/selectionMemory";
 import {
+  Ban,
   Folder,
   FolderInput,
   Ellipsis,
@@ -231,10 +242,16 @@ import MisplacedProjects from "./MisplacedProjects";
 import UnfinishedMove from "./UnfinishedMove";
 import GroupingDialog from "../../components/Dialogs/GroupingDialog";
 import { GROUP_CAP, capList, moreLabel } from "./capList";
-import { arrange, moveKeys, orderedKeys, unitKey } from "./arrange";
+import { arrange, arrive, moveKeys, orderedKeys, unitKey } from "./arrange";
 import { createSidebarDrag, type DragCommit, type SidebarDragProps } from "./sidebarDrag";
 import { createGroup, freeName, groupOf, putInGroup, renameGroup, takeOut, ungroup, type BranchGroup } from "./groups";
-import { projectOrder, saveProjectOrder, startSidebarOrder } from "../../utils/sidebarOrder";
+import {
+  projectLanes,
+  projectOrder,
+  saveProjectOrder,
+  saveProjectOrderSeen,
+  startSidebarOrder,
+} from "../../utils/sidebarOrder";
 import {
   NEW_CHAT_NAME,
   chatIdOf,
@@ -291,6 +308,8 @@ import {
   attemptGroup,
   stackGroup,
   GroupCard,
+  LaneCard,
+  ParkedLanes,
   type GroupNameDraft,
 } from "./SidebarRows";
 import TopicRows, { matchesTopic, type TopicFold } from "./TopicRows";
@@ -3371,6 +3390,15 @@ export default function LeftSidebar(props: {
     return unitChip(p, u).kind === "pr" ? (unitStatus(p.path, u.branch)?.pullRequest ?? null) : null;
   }
 
+  function unitChild(p: Project, u: BranchUnit) {
+    const kind = unitChip(p, u).kind;
+    if (kind === "hidden" || kind === "unknown") return "pending";
+    const status = kind === "pr" ? unitStatus(p.path, u.branch) : null;
+    const pr = status?.pullRequest;
+    const asked = pr?.state === "open" && (requestedReviews(p.path)?.includes(pr.number) ?? false);
+    return prChildState(status, forgeViewer(p.path), asked);
+  }
+
   // One branch-unit node. A leaf since the session rows went: sessions are
   // reached from the terminal pane's History dropdown now, so a branch has
   // nothing left to expand and clicking it means one thing - select this unit.
@@ -4256,33 +4284,91 @@ export default function LeftSidebar(props: {
         .map((gr) => `group:${gr.name}`),
     ];
     const base = () => defaultBranchOf(p.path);
+    const isGroupEntry = (e: Entry) => typeof e === "string" && e.startsWith("group:");
+    const lanes = laneConfigFor(() => g.name);
+    const liveLane = (u: BranchUnit): LaneId | null | "pending" => {
+      if (u.branch !== null && u.branch === base()) return null;
+      const child = unitChild(p, u);
+      return child === "pending" ? child : laneOf(child, lanes());
+    };
+    const heldLanes = heldValue(() => {
+      if (!lanes().enabled) return new Map<string, LaneId | null | "pending">();
+      const all = [...split().units, ...split().groups.flatMap((grp) => grp.members.map((m) => m.unit))];
+      return new Map(all.map((u) => [unitKey(u), liveLane(u)] as const));
+    });
+    const drawn = (lane: LaneId | null | "pending") => lane === null || laneOrder(lanes()).includes(lane as LaneId);
+    const laneOfUnit = (u: BranchUnit) => {
+      const held = heldLanes().get(unitKey(u));
+      return held !== undefined && (held === "pending" || drawn(held)) ? held : liveLane(u);
+    };
+    const isPending = (u: BranchUnit | undefined) => u !== undefined && laneOfUnit(u) === "pending";
+    const placeOf = (u: BranchUnit): LaneId | null => {
+      const known = laneOfUnit(u);
+      if (known !== "pending") return known;
+      const last = projectLanes(p.path)[unitKey(u)];
+      if (last === "main") return null;
+      const id = last?.slice(5) as LaneId | undefined;
+      return id && laneOrder(lanes()).includes(id) ? id : "working";
+    };
     // The selected unit survives the cap in its own place: a highlight you
     // cannot see is worse than a longer list.
     const showAll = () => expanded().has(mkey(g, p));
-    const section = createMemo(
-      () =>
-        arrange(entries(), {
-          keysOf: (e) => unitsOf(e).map(unitKey),
-          order: projectOrder(p.path),
-          base: base(),
-          cap: { size: BRANCH_CAP, keep: (e) => unitsOf(e).some(unitSelected), open: showAll() },
-        })[0],
+    const sections = createMemo(() =>
+      arrange(entries(), {
+        keysOf: (e) => unitsOf(e).map(unitKey),
+        order: projectOrder(p.path),
+        base: base(),
+        cap: { size: BRANCH_CAP, keep: (e) => unitsOf(e).some(unitSelected), open: showAll() },
+        lanes: lanes().enabled
+          ? {
+              of: (e) => (unitsOf(e)[0] ? placeOf(unitsOf(e)[0]) : null),
+              order: laneOrder(lanes()),
+              isGroup: isGroupEntry,
+            }
+          : undefined,
+      }),
     );
+    const section = () => sections()[0];
+    const laneSection = (id: LaneId) => sections().find((sec) => sec.id === `lane:${id}`);
+    const laneIds = () => sections().flatMap((sec) => (sec.id.startsWith("lane:") ? [sec.id.slice(5) as LaneId] : []));
+    const laneUnits = (id: LaneId) => (laneSection(id)?.shown ?? []).flatMap(unitsOf);
+    const laneKey = (id: LaneId) => `lane:${p.path}#${id}`;
+    const parked = (id: LaneId) => startsParked(id) !== expanded().has(laneKey(id));
+    const openLanes = () => laneIds().filter((id) => !parked(id));
+    const parkedLanes = () => laneIds().filter(parked);
     const shown = () => ({ units: section().shown, hidden: section().hidden.flatMap(unitsOf) });
     const allUnitsOrder = () => {
       const keys = new Set(p.branchUnits.map(unitKey));
       for (const grp of split().groups) for (const m of grp.members) keys.add(unitKey(m.unit));
       return orderedKeys([...keys], projectOrder(p.path), base());
     };
+    const lanesOnScreen = () => {
+      const seen: Record<string, string> = { ...projectLanes(p.path) };
+      for (const sec of sections())
+        for (const e of [...sec.shown, ...sec.hidden]) {
+          const units = unitsOf(e);
+          if (!isGroupEntry(e) && isPending(units[0])) continue;
+          for (const u of units) seen[unitKey(u)] = isGroupEntry(e) ? "group" : sec.id;
+        }
+      return seen;
+    };
     createEffect(() => {
       if (missing() || p.branchUnits.length === 0) return;
-      saveProjectOrder(p.path, allUnitsOrder());
+      if (!lanes().enabled) return saveProjectOrder(p.path, allUnitsOrder());
+      const seen = lanesOnScreen();
+      saveProjectOrderSeen(p.path, arrive(allUnitsOrder(), projectLanes(p.path), seen), seen);
     });
     const groupOpen = (name: string) => !expanded().has(collapsedKey(p, name));
     const visibleOrder = () =>
-      section().shown.flatMap((e) =>
-        typeof e === "string" && e.startsWith("group:") && !groupOpen(e.slice(6)) ? [] : unitsOf(e).map(unitKey),
+      [...section().shown, ...openLanes().flatMap((id) => laneSection(id)?.shown ?? [])].flatMap((e) =>
+        isGroupEntry(e) && !groupOpen((e as string).slice(6)) ? [] : unitsOf(e).map(unitKey),
       );
+    const dragSection = (key: string) => {
+      const branch = branchOfKey(key);
+      if (branch && groupOf(groups(), branch)) return "group";
+      if (key.startsWith("group:")) return "groupHead";
+      return sections().find((sec) => [...sec.shown, ...sec.hidden].some((e) => entryKey(e) === key))?.id ?? null;
+    };
     const branchOfKey = (key: string) => split().units.find((u) => unitKey(u) === key)?.branch ?? null;
     function newGroup(branches: string[]) {
       const name = freeName(groups());
@@ -4303,6 +4389,15 @@ export default function LeftSidebar(props: {
     onCleanup(() => projectActions.delete(p.path));
     const drag = createSidebarDrag({
       onActive: setDragOn,
+      refuse: (from, to, zone) => {
+        if (!lanes().enabled || zone === "middle" || to.section.startsWith("group:")) return null;
+        const src = dragSection(from);
+        if (src === "group" || src === to.section) return null;
+        if (src === "groupHead") return to.section === "main" ? null : "Groups sit above the lanes.";
+        return src?.startsWith("lane:")
+          ? `Lanes follow PR state. Reorder inside ${LANE_LABEL[src.slice(5) as LaneId]}, or drop into a group.`
+          : "Lanes follow PR state. Drop into a group instead.";
+      },
       onCommit: ({ from, to }: DragCommit) => {
         const fromBranch = branchOfKey(from);
         if ("groupWith" in to) {
@@ -4325,7 +4420,7 @@ export default function LeftSidebar(props: {
           writeGroups(p, putInGroup(groups(), name, fromBranch, was >= 0 && was < to.index ? to.index - 1 : to.index));
           return;
         }
-        const list = section().shown;
+        const list = (sections().find((sec) => sec.id === to.section) ?? section()).shown;
         if (list.length === 0) return;
         const member = fromBranch ? groupOf(groups(), fromBranch) : undefined;
         const moving = member
@@ -4341,10 +4436,10 @@ export default function LeftSidebar(props: {
         saveProjectOrder(p.path, moveKeys(allUnitsOrder(), moving, target, before ? "before" : "after"));
       },
     });
-    const dragFor = (e: Entry, index: () => number) =>
+    const dragFor = (e: Entry, index: () => number, section = "main") =>
       drag.rowProps({
         key: entryKey(e),
-        section: "main",
+        section,
         get index() {
           return index();
         },
@@ -4408,10 +4503,22 @@ export default function LeftSidebar(props: {
         </GroupCard>
       );
     }
+    const entryNode = (e: Entry, i: () => number, sec: string) =>
+      typeof e === "number" ? (
+        stackGroupNode(g, p, () => stackOf(e), dragFor(e, i, sec))
+      ) : isGroupEntry(e) ? (
+        groupCardNode((e as string).slice(6), i)
+      ) : typeof e === "string" ? (
+        <Show when={attemptOf(e.slice(8))} keyed>
+          {(grp) => attemptGroupNode(g, p, grp, dragFor(e, i, sec))}
+        </Show>
+      ) : (
+        unitNode(g, p, e, undefined, false, dragFor(e, i, sec))
+      );
     // Show the control only when it has something to say. Open, that is
     // "the list is longer than the cap"; closed, "something is actually
     // hidden" - which a cap+1 list whose last unit is selected is not.
-    const truncated = () => (showAll() ? entries().length > BRANCH_CAP : shown().hidden.length > 0);
+    const truncated = () => (showAll() ? section().shown.length > BRANCH_CAP : shown().hidden.length > 0);
     // Everything under this project, groups included, for the rollup a
     // collapsed project row shows.
     const allUnits = () => [...split().units, ...split().groups.flatMap((grp) => grp.members.map((m) => m.unit))];
@@ -4500,26 +4607,39 @@ export default function LeftSidebar(props: {
           <For
             each={shown().units}
             fallback={
-              <Show when={split().groups.length === 0}>
+              <Show when={split().groups.length === 0 && laneIds().length === 0}>
                 <EmptyRow>no branches</EmptyRow>
               </Show>
             }
           >
-            {(e, i) =>
-              typeof e === "number" ? (
-                stackGroupNode(g, p, () => stackOf(e), dragFor(e, i))
-              ) : typeof e === "string" && e.startsWith("group:") ? (
-                groupCardNode(e.slice(6), i)
-              ) : typeof e === "string" ? (
-                <Show when={attemptOf(e.slice(8))} keyed>
-                  {(grp) => attemptGroupNode(g, p, grp, dragFor(e, i))}
-                </Show>
-              ) : (
-                unitNode(g, p, e, undefined, false, dragFor(e, i))
-              )
-            }
+            {(e, i) => entryNode(e, i, "main")}
           </For>
           <Show when={truncated()}>{moreNode(g, p, () => shown().hidden)}</Show>
+          <For each={openLanes()}>
+            {(id) => (
+              <LaneCard lane={id} count={laneUnits(id).length} onPark={() => toggle(laneKey(id))}>
+                <For each={laneSection(id)?.shown ?? []}>{(e, i) => entryNode(e, i, `lane:${id}`)}</For>
+              </LaneCard>
+            )}
+          </For>
+          <Show when={parkedLanes().length > 0}>
+            <ParkedLanes
+              lanes={parkedLanes().map((id) => ({
+                lane: id,
+                count: laneUnits(id).length,
+                holdsSelection: laneUnits(id).some(unitSelected),
+              }))}
+              onOpen={(id) => toggle(laneKey(id))}
+            />
+          </Show>
+          <Show when={drag.refused()}>
+            {(r) => (
+              <div class={styles.dragRefused} style={{ left: `${r().x + 14}px`, top: `${r().y + 14}px` }}>
+                <Icon icon={Ban} />
+                <span>{r().reason}</span>
+              </div>
+            )}
+          </Show>
         </Show>
       </ProjectRow>
     );
@@ -4555,8 +4675,23 @@ export default function LeftSidebar(props: {
         : bubbleFor(inThis);
   }
 
+  const viewSpace = () => (inGlobal() ? GLOBAL_KEY : (activeSpace()?.name ?? null));
+  const viewLanes = laneConfigFor(() => viewSpace() ?? GLOBAL_KEY);
   const viewMenu = () => (
     <>
+      <Show when={viewSpace()}>
+        {(space) => (
+          <>
+            <MenuRow
+              selected={viewLanes().enabled}
+              onClick={() => void setLanes(space(), { enabled: !viewLanes().enabled })}
+            >
+              PR lanes
+            </MenuRow>
+            <MenuSeparator />
+          </>
+        )}
+      </Show>
       <MenuRows items={[{ heading: "Branch line" }]} />
       <For each={BRANCH_LINE_MODES}>
         {(m) => (

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
+import { createEffect, createRoot } from "solid-js";
 
 // `.tsx`, with no JSX in it: the extension is what puts a file in the jsdom
 // project (see vitest.config.ts), and the store reaches the theme module at
@@ -51,6 +52,10 @@ const {
   settings,
   loadWorkspaceSettings,
   editorDefaults,
+  lanesFor,
+  laneConfigFor,
+  setLanes,
+  resetLanes,
 } = await import("./settingsStore");
 
 /** Seed the store through the real save path, which is the only way in.
@@ -249,5 +254,41 @@ describe("which workspace an overlay answers for", () => {
     await loadWorkspaceSettings(null);
 
     expect(editorDefaults().minimap).toBe(DEFAULT_SETTINGS.editorDefaults.minimap);
+  });
+});
+
+describe("PR lanes per Space", () => {
+  it("follows default until a Space changes, then keeps its own copy", async () => {
+    await setLanes(null, { enabled: true });
+    expect(lanesFor("work")).toEqual({ ...lanesFor("work"), enabled: true, foldReviewing: false });
+    expect(settings.sidebar.lanes.spaces.work).toBeUndefined();
+
+    await setLanes("work", { foldReviewing: true });
+    expect(settings.sidebar.lanes.spaces.work).toEqual({ ...settings.sidebar.lanes.default, foldReviewing: true });
+    await setLanes(null, { enabled: false });
+    expect(lanesFor("work").enabled).toBe(true);
+    expect(lanesFor("/global").enabled).toBe(false);
+
+    await resetLanes("work");
+    expect(settings.sidebar.lanes.spaces.work).toBeUndefined();
+  });
+
+  it("does not wake a reader when an unrelated setting saves", async () => {
+    await setLanes("work", { enabled: true });
+    let runs = 0;
+    const dispose = createRoot((dispose) => {
+      const lanes = laneConfigFor(() => "work");
+      createEffect(() => {
+        lanes();
+        runs++;
+      });
+      return dispose;
+    });
+    expect(runs).toBe(1);
+    await saveSettings({ ...JSON.parse(JSON.stringify(settings)), appearance: { theme: "tori-light" } });
+    expect(runs).toBe(1);
+    await setLanes("work", { foldReviewing: true });
+    expect(runs).toBe(2);
+    dispose();
   });
 });

@@ -289,6 +289,7 @@ const KEPT = new Map<string, Kept>([
   ["panels/Settings/panes/IntegrationsPane/IntegrationsPane.tsx", { count: 3, reason: GROUP_HEADING }],
   ["panels/Settings/panes/BrowserPane/BrowserPane.tsx", { count: 1, reason: GROUP_HEADING }],
   ["panels/Settings/panes/RemotePane/RemotePane.tsx", { count: 1, reason: GROUP_HEADING }],
+  ["panels/Settings/panes/SidebarPane/SidebarPane.tsx", { count: 3, reason: GROUP_HEADING }],
   [
     "panels/Settings/panes/ProjectsPane/TrustedProjects.tsx",
     { count: 2, reason: `one ${HEADING}, and one ${TRUNCATION}: a trusted project's path, on a \`code\`` },

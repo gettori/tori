@@ -26,6 +26,16 @@
     border-color: var(--border-strong);
     color: var(--fg-default);
   }
+  .laneChips {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    align-items: center;
+    gap: var(--tori-space-3) var(--tori-space-5);
+  }
+  .laneParent {
+    color: var(--fg-muted);
+    font-size: var(--tori-text-xs);
+  }
   .chip:disabled {
     opacity: 0.5;
     cursor: default;

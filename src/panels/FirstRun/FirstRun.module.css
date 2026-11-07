@@ -280,6 +280,11 @@
     font-size: var(--tori-text-md);
     color: var(--fg-subtle);
   }
+  .lanes {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--tori-space-5);
+  }
   .note {
     font-size: var(--tori-text-md);
     color: var(--fg-muted);
