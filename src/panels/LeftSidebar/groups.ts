@@ -13,8 +13,27 @@ export function freeName(groups: readonly BranchGroup[], base = "New group"): st
   return `${base} ${n}`;
 }
 
-export function createGroup(groups: readonly BranchGroup[], name: string, branches: readonly string[]): BranchGroup[] {
-  return tidy([...without(groups, branches), { name, branches: [...branches] }]);
+export function createGroup(
+  groups: readonly BranchGroup[],
+  name: string,
+  branches: readonly string[],
+  colour?: string,
+): BranchGroup[] {
+  return tidy([...without(groups, branches), { name, ...(colour ? { colour } : {}), branches: [...branches] }]);
+}
+
+export const colourGroup = (groups: readonly BranchGroup[], name: string, colour: string | null) =>
+  groups.map((g) => {
+    if (g.name !== name) return g;
+    const { colour: _, ...rest } = g;
+    return colour ? { ...rest, colour } : rest;
+  });
+
+export function freeHue(groups: readonly BranchGroup[], hues: readonly string[], pick = Math.random): string {
+  const taken = new Set(groups.map((g) => g.colour));
+  const free = hues.filter((h) => !taken.has(h));
+  const from = free.length ? free : hues;
+  return from[Math.floor(pick() * from.length)];
 }
 
 export function putInGroup(groups: readonly BranchGroup[], name: string, branch: string, index: number): BranchGroup[] {

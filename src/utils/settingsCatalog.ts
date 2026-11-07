@@ -611,6 +611,12 @@ export const SETTINGS: SettingEntry[] = [
     hint: "Show the pull requests you review in In review, beside your own.",
   },
   {
+    id: "card-colours",
+    section: "sidebar",
+    label: "Card colours",
+    hint: "Subtle keeps every lane and group card neutral. Colourful tints each lane by its state and lets each group pick a colour.",
+  },
+  {
     id: "branch-line-mode",
     section: "sidebar",
     label: "Branch line",
