@@ -175,15 +175,20 @@
   border-radius: 1px;
   background: var(--brand-bar);
 }
+/* Set like the tree's own section heads (`.groupLabel`, `.groupCount`), so a
+   card's name labels its branches rather than competing with them. */
 .cardLabel {
-  color: var(--fg-default);
+  color: var(--fg-subtle);
+  font-size: var(--tori-text-xs);
   font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
 }
 .cardCount {
   flex: none;
   color: var(--fg-subtle);
-  font-size: var(--tori-text-md);
-  font-variant-numeric: tabular-nums;
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-xs);
 }
 .row.cardHead .rowChevron {
   margin-left: auto;
