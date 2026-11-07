@@ -18,7 +18,15 @@ import {
   StateField,
   type Extension,
 } from "@codemirror/state";
-import { Decoration, EditorView, WidgetType, dropCursor, placeholder, type DecorationSet } from "@codemirror/view";
+import {
+  Decoration,
+  EditorView,
+  WidgetType,
+  drawSelection,
+  dropCursor,
+  placeholder,
+  type DecorationSet,
+} from "@codemirror/view";
 
 /** How a chip draws itself. `key` is what tells two chips for one label apart
  *  (a chip removed and another attached under the same name), so a widget is
@@ -167,6 +175,9 @@ export function createComposerField(opts: ComposerFieldOptions): ComposerField {
       selection: EditorSelection.cursor(opts.doc.length),
       extensions: [
         EditorView.lineWrapping,
+        // WebKit's own caret lags a redrawn line: it lingers as a second caret
+        // after a fast delete and reaches the end of a recalled prompt late.
+        drawSelection(),
         // Where a dragged token will land, shown while it is over the text, so
         // dropping one inside a word is not guesswork.
         dropCursor(),
