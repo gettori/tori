@@ -51,6 +51,9 @@ const WEBHOOKS_PR: UnitStatus = {
   },
   checks: { state: "success", total: 4, failing: 0, skipped: 0, contexts: [] },
   reviewDecision: "reviewRequired",
+  reviews: [],
+  requestedReviewers: [],
+  viewerReview: null,
 };
 
 function rollup(r: Partial<Rollup>): () => Rollup {

@@ -273,6 +273,32 @@ pub struct UnitStatus {
     pub pull_request: Option<PullRequest>,
     pub checks: CheckRollup,
     pub review_decision: ReviewDecision,
+    /// Defaulted because a status cached before these fields existed must
+    /// still read.
+    #[serde(default)]
+    pub reviews: Vec<LatestReview>,
+    /// Teams are left out: a team request says nothing about which person it
+    /// waits on.
+    #[serde(default)]
+    pub requested_reviewers: Vec<String>,
+    #[serde(default)]
+    pub viewer_review: Option<ReviewVerdict>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LatestReview {
+    pub author: String,
+    pub verdict: ReviewVerdict,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ReviewVerdict {
+    Approved,
+    ChangesRequested,
+    Commented,
+    Dismissed,
 }
 
 /// What the last answered call said about the rate budget.
@@ -627,6 +653,12 @@ mod tests {
             pull_request: Some(pr.clone()),
             checks: rollup(),
             review_decision: ReviewDecision::ChangesRequested,
+            reviews: vec![LatestReview {
+                author: "octo".into(),
+                verdict: ReviewVerdict::ChangesRequested,
+            }],
+            requested_reviewers: vec!["octo".into()],
+            viewer_review: Some(ReviewVerdict::Commented),
         };
 
         let samples = serde_json::json!({

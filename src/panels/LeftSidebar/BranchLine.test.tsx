@@ -30,6 +30,9 @@ const status = (over: Partial<PullRequest>): UnitStatus => ({
   },
   checks: { state: "none", total: 0, failing: 0, skipped: 0, contexts: [] },
   reviewDecision: "none",
+  reviews: [],
+  requestedReviewers: [],
+  viewerReview: null,
 });
 
 describe("a pull request's line", () => {
@@ -164,5 +167,51 @@ describe("the branch line setting", () => {
     expect(container.querySelector("[data-diff-lines]")).toBeTruthy();
     expect(container.querySelector("[data-diff-files]")?.textContent).toBe("3");
     expect(screen.getByText("3d")).toBeTruthy();
+  });
+});
+
+describe("the PR number's colour", () => {
+  const withReviews = (over: Partial<UnitStatus>, pr: Partial<PullRequest> = {}): UnitStatus => ({
+    ...status(pr),
+    ...over,
+  });
+  const number = (s: UnitStatus, asked = false) => {
+    const { container, unmount } = render(() => <BranchLine status={s} viewer="skarif2" reviewAsked={asked} />);
+    const state = container.querySelector("[data-pr-state]")?.getAttribute("data-pr-state");
+    unmount();
+    return state;
+  };
+
+  it.each([
+    ["draft", status({ isDraft: true })],
+    ["ready", status({})],
+    ["commented", withReviews({ reviews: [{ author: "ana", verdict: "commented" }] })],
+    ["changesRequested", withReviews({ reviewDecision: "changesRequested" })],
+    [
+      "reReview",
+      withReviews({ reviews: [{ author: "ana", verdict: "changesRequested" }], requestedReviewers: ["ana"] }),
+    ],
+    ["approved", withReviews({ reviewDecision: "approved" })],
+    ["reviewed", withReviews({ viewerReview: "approved" }, { author: "ana" })],
+    ["merged", status({ state: "merged", mergedAt: iso(1) })],
+    ["closed", status({ state: "closed", closedAt: iso(1) })],
+    ["unlaned", status({ author: "ana" })],
+  ] as const)("marks %s", (want, s) => {
+    expect(number(s)).toBe(want);
+  });
+
+  it("marks a review asked of you", () => {
+    expect(number(status({ author: "ana" }), true)).toBe("reviewRequested");
+  });
+
+  it("draws a conflict with the base as a mark of its own", () => {
+    const base = { name: "main", ahead: 1, behind: 2, conflicts: ["a.rs", "b.rs"] };
+    const { container, unmount } = render(() => <BranchLine status={status({})} base={base} viewer="skarif2" />);
+    expect(container.querySelector("[data-pr-conflict]")?.textContent).toBe("2");
+    expect(container.querySelector("[data-pr-state]")?.getAttribute("data-pr-state")).toBe("ready");
+    unmount();
+
+    const clean = render(() => <BranchLine status={status({})} base={{ ...base, conflicts: [] }} />);
+    expect(clean.container.querySelector("[data-pr-conflict]")).toBeNull();
   });
 });

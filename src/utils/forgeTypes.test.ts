@@ -32,7 +32,7 @@ const keysOf = (v: unknown) => Object.keys(v as object).sort();
 
 /// Reached through `reviewThread` rather than emitted on its own, so the
 /// top-level loop skips it and the nested test below covers it instead.
-const NESTED_ONLY = ["reviewComment", "prCounts", "prReviewCounts", "checkContext", "prStack"];
+const NESTED_ONLY = ["reviewComment", "prCounts", "prReviewCounts", "checkContext", "prStack", "latestReview"];
 /// Bare values, not objects, so there are no field names to compare. Their
 /// contents are checked by the enum and auth-state tests below.
 const NOT_OBJECTS = ["reviewDecision", "authStates", "servedProviders"];
@@ -89,6 +89,7 @@ describe("forgeTypes mirrors the Rust forge model", () => {
     expect(keysOf(counts)).toEqual([...FORGE_KEYS.prCounts].sort());
     expect(keysOf(counts.reviews)).toEqual([...FORGE_KEYS.prReviewCounts].sort());
     expect(keysOf(golden.pullRequest.stack)).toEqual([...FORGE_KEYS.prStack].sort());
+    expect(keysOf(golden.unitStatus.reviews[0])).toEqual([...FORGE_KEYS.latestReview].sort());
   });
 
   it("agrees on every value of every closed enum", () => {
@@ -203,6 +204,9 @@ describe("needsAttention", () => {
     pullRequest: null,
     checks: { state: "success", total: 3, failing: 0, skipped: 0, contexts: [] },
     reviewDecision: "none",
+    reviews: [],
+    requestedReviewers: [],
+    viewerReview: null,
     ...over,
   });
   const failed: CheckRollup = { state: "failure", total: 3, failing: 1, skipped: 0, contexts: [] };

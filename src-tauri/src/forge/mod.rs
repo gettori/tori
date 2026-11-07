@@ -516,6 +516,9 @@ mod tests {
                     pull_request: None,
                     checks: CheckRollup::none(),
                     review_decision: ReviewDecision::None,
+                    reviews: vec![],
+                    requested_reviewers: vec![],
+                    viewer_review: None,
                 })
                 .collect())
         }

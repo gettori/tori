@@ -1,6 +1,7 @@
 import { Show, createMemo } from "solid-js";
 import {
   GitMerge,
+  GitMergeConflict,
   GitPullRequest,
   GitPullRequestArrow,
   GitPullRequestClosed,
@@ -20,7 +21,8 @@ import Tooltip from "../../components/Tooltip/Tooltip";
 import TooltipLines from "../../components/Tooltip/TooltipLines";
 import { compactAge, compactAgo } from "../../utils/compactAge";
 import { forgeBadges, ranChecks, type BadgeTone, type PrChipState } from "../../utils/forgeChip";
-import { prTone, releaseShows, type PrTone, type UnitStatus } from "../../utils/forgeTypes";
+import { releaseShows, type UnitStatus } from "../../utils/forgeTypes";
+import { prChildState, type PrChildState } from "../../utils/prChildState";
 import type { BaseSync } from "../../utils/gitActions";
 import type { SessionUsage } from "../../utils/chatUsageStore";
 import { spendView } from "../../utils/spend";
@@ -34,12 +36,10 @@ const CHECK_ICON: Record<BadgeTone, LucideIcon> = {
   busy: CircleDotDashed,
 };
 
-const TONE_SAYS: Record<PrTone, string> = {
-  asked: "Your review is requested",
-  changes: "Changes requested",
-  conflict: "",
-  approved: "Approved",
-  quiet: "",
+const CHILD_SAYS: Partial<Record<PrChildState | "unlaned", string>> = {
+  reviewRequested: "Your review is requested",
+  reReview: "Re-review requested",
+  reviewed: "You reviewed it",
 };
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -83,6 +83,8 @@ export type BranchLineProps = {
   watched?: boolean;
   /** Whether the viewer's review is requested on it, a re-request included. */
   reviewAsked?: boolean;
+  /** The forge login, which decides whether the PR is yours or one you review. */
+  viewer?: string | null;
   /** The branch is the repo's default, so its pull request is a release to
    *  another long-lived branch rather than a feature landing. */
   release?: boolean;
@@ -168,12 +170,10 @@ export default function BranchLine(props: BranchLineProps) {
     return p.state === "open" ? (p.isDraft ? "draft" : "open") : p.state;
   };
   const conflicts = () => props.base?.conflicts ?? [];
-  const tone = () =>
-    props.status ? prTone(props.status, props.reviewAsked === true, conflicts().length > 0, props.release) : "quiet";
-  const numberClass = () => {
-    if (state() === "open") return `tone_${tone()}`;
-    return props.release ? "pr_closed" : `pr_${state()}`;
-  };
+  const child = () => prChildState(props.status, props.viewer ?? null, props.reviewAsked === true);
+  // A release that is approved or finished is routine, so it stays quiet.
+  const quietRelease = () => props.release && (child() === "approved" || state() !== "open");
+  const numberClass = () => (quietRelease() ? "pr_closed" : `pr_${child()}`);
   const checks = () => props.status!.checks;
   const ran = () => ranChecks(checks());
   const passed = () => ran() - checks().failing;
@@ -222,7 +222,7 @@ export default function BranchLine(props: BranchLineProps) {
       openedAt() !== null ? `${p.author} opened ${compactAgo(openedAt()!)}` : `Opened by ${p.author}`,
       endedAt() !== null ? `${pr()!.state === "merged" ? "Merged" : "Closed"} ${compactAgo(endedAt()!)}` : "",
       p.stack ? `Layer ${p.stack.position} of ${p.stack.size} in a stack, targets ${p.stack.baseRef}` : "",
-      TONE_SAYS[tone()] || b.review?.title,
+      CHILD_SAYS[child()] || b.review?.title,
       b.checks?.title,
       p.comments ? `${p.comments} comment${p.comments === 1 ? "" : "s"}` : "",
       props.watched ? "A chat is watching it" : "",
@@ -238,12 +238,18 @@ export default function BranchLine(props: BranchLineProps) {
       <Show when={shows("pr")}>
         <span
           class={`${styles.item} ${styles[numberClass()]}`}
-          data-pr-state={state()}
-          data-pr-tone={state() === "open" ? tone() : undefined}
+          data-pr-state={child()}
           data-pr-release={props.release ? p().baseRef : undefined}
         >
           <Icon icon={props.release ? GitPullRequestArrow : prIcon(state())} />
           {props.release ? `-> ${p().baseRef} #${p().number}` : `#${p().number}`}
+        </span>
+      </Show>
+
+      <Show when={shows("pr") && p().state === "open" && conflicts().length}>
+        <span class={`${styles.item} ${styles.bad}`} data-pr-conflict={conflicts().length}>
+          <Icon icon={GitMergeConflict} />
+          {conflicts().length}
         </span>
       </Show>
 

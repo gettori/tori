@@ -154,7 +154,14 @@ export type UnitStatus = {
   pullRequest: PullRequest | null;
   checks: CheckRollup;
   reviewDecision: ReviewDecision;
+  reviews: LatestReview[];
+  requestedReviewers: string[];
+  viewerReview: ReviewVerdict | null;
 };
+
+export type ReviewVerdict = "approved" | "changesRequested" | "commented" | "dismissed";
+
+export type LatestReview = { author: string; verdict: ReviewVerdict };
 
 /// What the last answered call said about the rate budget.
 ///
@@ -478,7 +485,8 @@ export const FORGE_KEYS = {
   prSummary: ["counts", "mergeableState", "updatedAt"],
   prCounts: ["additions", "changedFiles", "commits", "deletions", "reviews"],
   prReviewCounts: ["approved", "changesRequested"],
-  unitStatus: ["checks", "headRef", "pullRequest", "reviewDecision"],
+  unitStatus: ["checks", "headRef", "pullRequest", "requestedReviewers", "reviewDecision", "reviews", "viewerReview"],
+  latestReview: ["author", "verdict"],
   reviewThread: ["comments", "diffHunk", "id", "isOutdated", "isResolved", "line", "path", "startLine"],
   reviewComment: ["author", "body", "createdAt", "id"],
   prFile: ["additions", "deletions", "patch", "path", "previousPath", "status"],
@@ -586,19 +594,4 @@ export function releaseShows(status: UnitStatus, nowSecs: number): boolean {
   if (pr.state === "open") return true;
   const at = Date.parse((pr.state === "merged" ? pr.mergedAt : pr.closedAt) ?? "");
   return !Number.isNaN(at) && nowSecs - at / 1000 < RELEASE_AFTERGLOW_SECS;
-}
-
-export type PrTone = "asked" | "changes" | "conflict" | "approved" | "quiet";
-
-/// What an open pull request's number is coloured for, most pressing first. A
-/// review asked of you beats the verdict already on the PR, since a re-request
-/// after your changes requested leaves that verdict standing until you review.
-/// A release from the default branch is routine once approved, so it stays quiet.
-export function prTone(status: UnitStatus, asked: boolean, conflicting: boolean, release = false): PrTone {
-  const pr = status.pullRequest;
-  if (!pr || pr.state !== "open" || pr.isDraft) return "quiet";
-  if (asked) return "asked";
-  if (status.reviewDecision === "changesRequested") return "changes";
-  if (conflicting) return "conflict";
-  return status.reviewDecision === "approved" && !release ? "approved" : "quiet";
 }

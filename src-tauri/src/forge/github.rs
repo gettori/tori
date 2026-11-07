@@ -30,8 +30,9 @@ use super::http::{
 };
 use super::model::{
     AuthState, Capabilities, CheckContext, CheckLog, CheckRollup, CheckState, DiffSide, DraftComment, FileStatus,
-    Grant, MergeableState, OrgAccess, Paged, PrCounts, PrFile, PrReviewCounts, PrStack, PrState, PrSummary,
-    PullRequest, RateSnapshot, RepoRef, ReviewComment, ReviewDecision, ReviewEvent, ReviewThread, UnitStatus, Viewer,
+    Grant, LatestReview, MergeableState, OrgAccess, Paged, PrCounts, PrFile, PrReviewCounts, PrStack, PrState,
+    PrSummary, PullRequest, RateSnapshot, RepoRef, ReviewComment, ReviewDecision, ReviewEvent, ReviewThread,
+    ReviewVerdict, UnitStatus, Viewer,
 };
 use super::{CreatePr, Forge, ForgeError, MergeMethod};
 use serde_json::Value;
@@ -432,6 +433,54 @@ fn review_decision_from(v: Option<&str>) -> ReviewDecision {
     }
 }
 
+fn review_number(branch: &str) -> Option<u64> {
+    let digits = branch.strip_prefix("pr-")?;
+    // Exactly what `review_branch` writes: no sign, no leading zero.
+    if digits.starts_with('0') || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    digits.parse().ok()
+}
+
+fn verdict_from(v: Option<&str>) -> Option<ReviewVerdict> {
+    match v {
+        Some("APPROVED") => Some(ReviewVerdict::Approved),
+        Some("CHANGES_REQUESTED") => Some(ReviewVerdict::ChangesRequested),
+        Some("COMMENTED") => Some(ReviewVerdict::Commented),
+        Some("DISMISSED") => Some(ReviewVerdict::Dismissed),
+        _ => None,
+    }
+}
+
+fn reviews_from_graphql(v: &Value) -> (Vec<LatestReview>, Vec<String>, Option<ReviewVerdict>) {
+    let nodes = |key: &str| {
+        v.get(key)
+            .and_then(|c| c.get("nodes"))
+            .and_then(|n| n.as_array())
+            .cloned()
+            .unwrap_or_default()
+    };
+    let reviews = nodes("latestReviews")
+        .iter()
+        .filter_map(|r| {
+            Some(LatestReview {
+                author: r.get("author").map(|a| str_at(a, "login"))?,
+                verdict: verdict_from(r.get("state").and_then(|s| s.as_str()))?,
+            })
+        })
+        .collect();
+    let requested = nodes("reviewRequests")
+        .iter()
+        .filter_map(|r| r.get("requestedReviewer")?.get("login")?.as_str().map(str::to_string))
+        .collect();
+    let viewer = verdict_from(
+        v.get("viewerLatestReview")
+            .and_then(|r| r.get("state"))
+            .and_then(|s| s.as_str()),
+    );
+    (reviews, requested, viewer)
+}
+
 fn pr_from_graphql(v: &Value) -> PullRequest {
     let state = match v.get("state").and_then(|s| s.as_str()) {
         Some("MERGED") => PrState::Merged,
@@ -542,6 +591,7 @@ macro_rules! pr_scalar_fields {
   author { login }
   comments { totalCount }
   reviewDecision
+  viewerLatestReview { state }
 "#
     };
 }
@@ -551,9 +601,14 @@ macro_rules! pr_scalar_fields {
 /// the rollup is the costly part of the query.
 const ENDED_PR_FIELDS: &str = concat!(pr_scalar_fields!(), "  commits(last: 1) { nodes { commit { oid } } }\n");
 
+// Open only: on a finished PR the viewer's own review is the one fact a lane
+// still reads, and these two lists times five ended PRs per branch would
+// multiply the batch's node count.
 const PR_FIELDS: &str = concat!(
     pr_scalar_fields!(),
     r#"
+  latestReviews(first: 20) { nodes { state author { login } } }
+  reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } } } }
   commits(last: 1) { nodes { commit {
     oid
     statusCheckRollup {
@@ -903,10 +958,13 @@ impl Forge for GitHubForge {
             .enumerate()
             .map(|(i, b)| {
                 let name = serde_json::Value::String(b.clone());
+                let numbered = review_number(b)
+                    .map(|n| format!("\nn{i}: pullRequest(number:{n}) {{ {PR_FIELDS}{stack} }}"))
+                    .unwrap_or_default();
                 format!(
                     "u{i}: pullRequests(headRefName:{name}, states:[OPEN], first:1) {{ nodes {{ {PR_FIELDS}{stack} }} }}\n\
                      e{i}: pullRequests(headRefName:{name}, states:[MERGED, CLOSED], \
-                     orderBy:{{field:CREATED_AT, direction:DESC}}, first:5) {{ nodes {{ {ENDED_PR_FIELDS}{stack} }} }}"
+                     orderBy:{{field:CREATED_AT, direction:DESC}}, first:5) {{ nodes {{ {ENDED_PR_FIELDS}{stack} }} }}{numbered}"
                 )
             })
             .chain(
@@ -919,9 +977,9 @@ impl Forge for GitHubForge {
         let query =
             format!("query($owner:String!,$repo:String!){{ repository(owner:$owner,name:$repo){{\n{selections}\n}} }}");
         let resp = self.graphql_response(&query, serde_json::json!({ "owner": repo.owner, "repo": repo.repo }))?;
-        // Only a watched number can be one the repo lacks, so the branch-only
-        // query keeps failing whole as it always did.
-        let data = if watched.is_empty() {
+        // Only a watched or `pr-<n>` number can be one the repo lacks, so any
+        // other query keeps failing whole as it always did.
+        let data = if watched.is_empty() && !branches.iter().any(|b| review_number(b).is_some()) {
             graphql_data(&resp)?
         } else {
             data_past_alias_errors(&resp)?
@@ -953,18 +1011,28 @@ impl Forge for GitHubForge {
                         .and_then(|n| n.as_array())
                 };
                 let open = nodes(format!("u{i}")).and_then(|n| n.first());
-                let ended = open.is_none();
                 // `headRefName` matches a fork's branch of the same name too, and a
                 // fork's finished PR from its own `main` is not this repo's `main`.
                 let same_repo = |pr: &&Value| !pr.get("isCrossRepository").and_then(|c| c.as_bool()).unwrap_or(false);
-                let Some(node) = open.or_else(|| nodes(format!("e{i}")).and_then(|n| n.iter().find(same_repo))) else {
+                // A review worktree's `pr-<n>` branch names the PR it checked out,
+                // a fork's or a name collision's, which no head name finds.
+                let numbered = || repository.get(format!("n{i}")).filter(|v| !v.is_null());
+                let Some(node) = open
+                    .or_else(|| nodes(format!("e{i}")).and_then(|n| n.iter().find(same_repo)))
+                    .or_else(numbered)
+                else {
                     return UnitStatus {
                         head_ref: branch.clone(),
                         pull_request: None,
                         checks: CheckRollup::none(),
                         review_decision: ReviewDecision::None,
+                        reviews: vec![],
+                        requested_reviewers: vec![],
+                        viewer_review: None,
                     };
                 };
+                let ended = node.get("state").and_then(|s| s.as_str()) != Some("OPEN");
+                let (reviews, requested_reviewers, viewer_review) = reviews_from_graphql(node);
                 let rollup = node
                     .get("commits")
                     .and_then(|c| c.get("nodes"))
@@ -982,6 +1050,9 @@ impl Forge for GitHubForge {
                     } else {
                         review_decision_from(node.get("reviewDecision").and_then(|r| r.as_str()))
                     },
+                    reviews,
+                    requested_reviewers,
+                    viewer_review,
                 }
             })
             .collect();
@@ -1466,6 +1537,91 @@ mod tests {
             })
         );
         assert_eq!(statuses[1].pull_request.as_ref().unwrap().stack, None);
+    }
+
+    #[test]
+    fn latest_reviews_requests_and_the_viewer_s_review_ride_the_batch() {
+        let (f, _stub) = forge(vec![StubTransport::json(
+            200,
+            r#"{"data":{"repository":{
+                "u0":{"nodes":[{"number":7,"state":"OPEN","headRefName":"a","author":{"login":"me"},
+                    "latestReviews":{"nodes":[
+                        {"state":"CHANGES_REQUESTED","author":{"login":"octo"}},
+                        {"state":"COMMENTED","author":{"login":"ana"}},
+                        {"state":"PENDING","author":{"login":"draft"}}]},
+                    "reviewRequests":{"nodes":[
+                        {"requestedReviewer":{"login":"octo"}},
+                        {"requestedReviewer":{}}]},
+                    "viewerLatestReview":{"state":"APPROVED"},
+                    "commits":{"nodes":[{"commit":{"oid":"s"}}]}}]}}}}"#,
+        )]);
+        let s = &f.unit_statuses(&repo(), &["a".to_string()]).unwrap()[0];
+        assert_eq!(
+            s.reviews,
+            vec![
+                LatestReview {
+                    author: "octo".into(),
+                    verdict: ReviewVerdict::ChangesRequested,
+                },
+                LatestReview {
+                    author: "ana".into(),
+                    verdict: ReviewVerdict::Commented,
+                },
+            ]
+        );
+        assert_eq!(
+            s.requested_reviewers,
+            vec!["octo".to_string()],
+            "a team request names no one"
+        );
+        assert_eq!(s.viewer_review, Some(ReviewVerdict::Approved));
+    }
+
+    #[test]
+    fn a_pr_n_branch_no_head_name_finds_reads_pr_n_by_number() {
+        let (f, stub) = forge(vec![StubTransport::json(
+            200,
+            r#"{"data":{"repository":{
+                "u0":{"nodes":[]},"e0":{"nodes":[]},
+                "n0":{"number":9,"state":"OPEN","headRefName":"main","isCrossRepository":true,
+                    "author":{"login":"fork"},"commits":{"nodes":[{"commit":{"oid":"s"}}]}},
+                "u1":{"nodes":[{"number":31,"state":"OPEN","headRefName":"pr-12","author":{"login":"me"},
+                    "commits":{"nodes":[{"commit":{"oid":"t"}}]}}]},"e1":{"nodes":[]},
+                "n1":{"number":12,"state":"MERGED","headRefName":"other","author":{"login":"me"},
+                    "commits":{"nodes":[{"commit":{"oid":"u"}}]}},
+                "u2":{"nodes":[]},"e2":{"nodes":[]}}}}"#,
+        )]);
+        let branches = ["pr-9", "pr-12", "pr-007"].map(String::from);
+        let statuses = f.unit_statuses(&repo(), &branches).unwrap();
+        assert_eq!(statuses[0].pull_request.as_ref().unwrap().number, 9);
+        assert_eq!(
+            statuses[1].pull_request.as_ref().unwrap().number,
+            31,
+            "a PR under the branch's own name keeps it"
+        );
+        assert!(statuses[2].pull_request.is_none());
+        let query = &stub.bodies()[0];
+        assert!(query.contains("n0: pullRequest(number:9)") && query.contains("n1: pullRequest(number:12)"));
+        assert!(
+            !query.contains("n2:"),
+            "only what review_branch writes is read by number"
+        );
+    }
+
+    #[test]
+    fn a_pr_n_number_the_repo_lacks_fails_its_alias_only() {
+        let (f, _stub) = forge(vec![StubTransport::json(
+            200,
+            r#"{"data":{"repository":{"u0":{"nodes":[]},"e0":{"nodes":[]},"n0":null,
+                "u1":{"nodes":[{"number":4,"state":"OPEN","headRefName":"b","author":{"login":"me"},
+                    "commits":{"nodes":[{"commit":{"oid":"t"}}]}}]},"e1":{"nodes":[]}}},
+               "errors":[{"type":"NOT_FOUND","path":["repository","n0"],"message":"Could not resolve"}]}"#,
+        )]);
+        let statuses = f
+            .unit_statuses(&repo(), &["pr-99".to_string(), "b".to_string()])
+            .unwrap();
+        assert!(statuses[0].pull_request.is_none());
+        assert_eq!(statuses[1].pull_request.as_ref().unwrap().number, 4);
     }
 
     #[test]

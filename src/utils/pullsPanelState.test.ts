@@ -46,6 +46,9 @@ const status = (over: Partial<UnitStatus> = {}): UnitStatus => ({
   pullRequest: pull(),
   checks: { state: "none", total: 0, failing: 0, skipped: 0, contexts: [] },
   reviewDecision: "none",
+  reviews: [],
+  requestedReviewers: [],
+  viewerReview: null,
   ...over,
 });
 
