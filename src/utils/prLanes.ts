@@ -75,8 +75,6 @@ export function laneOrder(cfg: LaneConfig): LaneId[] {
 
 export type CardHue = "accent" | "red" | "amber" | "green" | "blue" | "purple" | "teal" | "pink";
 
-export const GROUP_HUES: readonly CardHue[] = ["blue", "green", "amber", "pink"];
-
 export const LANE_HUE: Readonly<Record<LaneId, CardHue | null>> = {
   working: "purple",
   inReview: "blue",

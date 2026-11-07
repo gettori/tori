@@ -42,6 +42,7 @@
   }
   /* The space's glyph, or its initials, in its own hue, as its tile wears it. */
   .titleMark {
+    --space-hue-rgb: var(--shell-glow-rgb);
     color: rgb(var(--space-hue-rgb));
     font-size: var(--tori-text-md);
     font-weight: 600;

@@ -172,8 +172,11 @@ export default function SpaceSettingsDialog(props: {
   return (
     <ModalShell label={`${props.name} settings`} onClose={props.onClose} onEscape={clearQuery}>
       <div class={s.header}>
-        <div class={`${s.title} ${own.title}`} style={{ "--space-hue-rgb": spaceHueRgb(props.name, props.color) }}>
-          <span class={`${own.titleIcon} ${styles.titleMark}`}>
+        <div class={`${s.title} ${own.title}`}>
+          <span
+            class={`${own.titleIcon} ${styles.titleMark}`}
+            style={{ "--space-hue-rgb": spaceHueRgb(props.name, props.color) }}
+          >
             <Show when={resolveIcon(props.icon)} fallback={spaceInitials(props.name)}>
               {(glyph) => <Icon icon={glyph()} />}
             </Show>

@@ -18,6 +18,9 @@ export type MenuItem =
    *  own glyph and name rather than a word - which is the whole of what it adds
    *  over a label the rows already carry. */
   | { heading: JSX.Element }
+  /** A grid of colour swatches, each its own item, with the chosen one ringed.
+   *  `null` is the leading "None" swatch. */
+  | { swatches: MenuSwatch[]; value: string | null; onPick: (value: string | null) => void }
   | {
       label: string;
       onClick: () => void;
@@ -236,6 +239,26 @@ export function DescribedRow(props: {
   );
 }
 
+export type MenuSwatch = { value: string; label: string; hex: string };
+
+function SwatchRow(props: { swatches: MenuSwatch[]; value: string | null; onPick: (value: string | null) => void }) {
+  const swatch = (value: string | null, label: string, hex: string | null) => (
+    <Primitive.Item
+      class={styles.swatch}
+      classList={{ [styles.swatchNone]: hex === null, [styles.swatchOn]: props.value === value }}
+      style={hex ? { "--swatch": hex } : undefined}
+      aria-label={props.value === value ? `${label}, chosen` : label}
+      onSelect={() => props.onPick(value)}
+    />
+  );
+  return (
+    <div class={styles.swatches}>
+      {swatch(null, "None", null)}
+      <For each={props.swatches}>{(s) => swatch(s.value, s.label, s.hex)}</For>
+    </div>
+  );
+}
+
 /** The rows of a flat `MenuItem[]`, ungrouped. Split out so `MenuRows` can put
  *  the same list inside a group or not without writing it twice. */
 function FlatRows(props: { items: MenuItem[] }) {
@@ -246,6 +269,8 @@ function FlatRows(props: { items: MenuItem[] }) {
           <MenuSeparator />
         ) : "heading" in it ? (
           <MenuHeading>{it.heading}</MenuHeading>
+        ) : "swatches" in it ? (
+          <SwatchRow swatches={it.swatches} value={it.value} onPick={it.onPick} />
         ) : (
           <NoteRow item={it} />
         )

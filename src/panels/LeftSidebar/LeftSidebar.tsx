@@ -196,27 +196,17 @@ import {
   runProjectFor,
   settings as appSettings,
 } from "../Settings/settingsStore";
-import {
-  GROUP_HUES,
-  LANE_HUE,
-  LANE_LABEL,
-  laneOf,
-  laneOrder,
-  startsParked,
-  type CardHue,
-  type LaneId,
-} from "../../utils/prLanes";
+import { LANE_HUE, LANE_LABEL, laneOf, laneOrder, startsParked, type LaneId } from "../../utils/prLanes";
 import { prChildState } from "../../utils/prChildState";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
 import ProjectIcon from "../../components/Icon/ProjectIcon";
 import { resolveIcon } from "../../components/Icon/iconRegistry";
-import { spaceHue, spaceHueRgb, applySpaceTint } from "../../utils/spaceTint";
+import { GROUP_COLORS, applySpaceTint, groupColor, groupColorName, spaceHue, spaceHueRgb } from "../../utils/spaceTint";
 import { shortHome, spaceInitials } from "../../utils/names";
 import { rememberSelection, rememberedInSpace, rememberedGlobal } from "../../utils/selectionMemory";
 import {
   Ban,
-  Check,
   Folder,
   FolderInput,
   Ellipsis,
@@ -617,8 +607,6 @@ export default function LeftSidebar(props: {
   const clearPicked = (e: KeyboardEvent) => e.key === "Escape" && picked() && setPicked(null);
   window.addEventListener("keydown", clearPicked);
   onCleanup(() => window.removeEventListener("keydown", clearPicked));
-  const groupHue = (c: string | undefined): CardHue | null =>
-    (GROUP_HUES as readonly string[]).includes(c ?? "") ? (c as CardHue) : null;
   function heldValue<T>(live: () => T): () => T {
     let kept: { v: T } | null = null;
     return createMemo(() => {
@@ -4365,7 +4353,12 @@ export default function LeftSidebar(props: {
     const branchOfKey = (key: string) => split().units.find((u) => unitKey(u) === key)?.branch ?? null;
     function newGroup(branches: string[]) {
       const name = freeName(groups());
-      const colour = colourful() ? freeHue(groups(), GROUP_HUES) : undefined;
+      const colour = colourful()
+        ? freeHue(
+            groups(),
+            GROUP_COLORS.map((c) => c.name),
+          )
+        : undefined;
       writeGroups(p, createGroup(groups(), name, branches, colour));
       editGroup(p, name);
     }
@@ -4469,18 +4462,18 @@ export default function LeftSidebar(props: {
           onDraft={(d) => setGroupDraft({ path: p.path, name, draft: d })}
           onRename={rename}
           onToggle={() => toggle(collapsedKey(p, name))}
-          hue={colourful() ? groupHue(colour()) : null}
+          tint={colourful() ? groupColor(colour()) : null}
           menu={[
             { label: "Rename", onClick: () => editGroup(p, name) },
             ...(colourful()
               ? [
                   { separator: true as const },
                   { heading: "Colour" },
-                  ...[...GROUP_HUES, null].map((h) => ({
-                    label: h === null ? "None" : h[0].toUpperCase() + h.slice(1),
-                    icon: groupHue(colour()) === h ? Check : undefined,
-                    onClick: () => writeGroups(p, colourGroup(groups(), name, h)),
-                  })),
+                  {
+                    swatches: GROUP_COLORS.map((c) => ({ value: c.name, label: c.name, hex: c.hex })),
+                    value: groupColorName(colour()),
+                    onPick: (c: string | null) => writeGroups(p, colourGroup(groups(), name, c)),
+                  },
                 ]
               : []),
             { separator: true },

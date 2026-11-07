@@ -29,7 +29,8 @@ import {
   stackGroup,
 } from "./SidebarRows";
 import rows from "./SidebarRows.module.css";
-import { GROUP_HUES, LANE_HUE, type LaneId } from "../../utils/prLanes";
+import { LANE_HUE, type LaneId } from "../../utils/prLanes";
+import { GROUP_COLORS } from "../../utils/spaceTint";
 
 const MENU: MenuItem[] = [
   { label: "Open in editor", onClick: () => {} },
@@ -731,7 +732,7 @@ function CardsIn(props: { colourful: boolean }) {
     <Tree>
       <ProjectRow name="frontend" icon={<ProjectIcon seed="/w/frontend" />} disclosure open menu={MENU}>
         <BranchRow label="main" icon={<BranchMark active={false} current />} menu={MENU} />
-        <GroupCard name="Drag and drop" count={2} open hue={props.colourful ? GROUP_HUES[0] : null} menu={MENU}>
+        <GroupCard name="Drag and drop" count={2} open tint={props.colourful ? GROUP_COLORS[9].hex : null} menu={MENU}>
           <BranchRow label="dnd-core" icon={<WorktreeMark active={false} />} menu={MENU} />
           <BranchRow label="dnd-ghost" icon={<WorktreeMark active={false} />} selected menu={MENU} />
         </GroupCard>
