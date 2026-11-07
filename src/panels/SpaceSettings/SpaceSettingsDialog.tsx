@@ -187,7 +187,7 @@ export default function SpaceSettingsDialog(props: {
           </span>
           <span class={own.titleKind}>space</span>
         </div>
-        <div class={s.headerActions}>
+        <div class={`${s.headerActions} ${styles.headerActions}`}>
           <Show when={spaceHasOwn(props.space)}>
             <Button size="sm" onClick={() => void resetSpace(props.space)}>
               Reset to defaults
