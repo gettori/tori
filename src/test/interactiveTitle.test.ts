@@ -622,8 +622,9 @@ describe("the title= guard", () => {
 
 /** Components that accept `tooltip` and give the control a name from it. */
 const BACKFILLS_NAME = new Set(["Button", "IconButton"]);
-/** Components that accept `tooltip` but are named by their own visible text. */
-const NAMED_BY_TEXT = new Set(["Tab"]);
+/** Components that accept `tooltip` but are named by their own visible text.
+ *  `MenuRow` is named by its label, and its tooltip is the row's hint. */
+const NAMED_BY_TEXT = new Set(["Tab", "MenuRow"]);
 /** Components that accept `tooltip` and take a *required* name prop of their
  *  own, so the tooltip is a description on a control that is already named and
  *  no backfill is wanted. `Picker`'s `ariaLabel` is required by its type, which
