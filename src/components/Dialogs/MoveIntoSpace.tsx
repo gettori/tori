@@ -123,7 +123,7 @@ export function MoveFields(props: { form: MoveForm; path: string | null; home: s
         </div>
       </div>
 
-      <Show when={f.found()}>{(found) => <LayoutCard layout={found().layout} tilde={tilde} />}</Show>
+      <Show when={f.found()}>{(found) => <LayoutCard layout={found().layout} tilde={tilde} root={props.path} />}</Show>
 
       <Show when={f.found()?.layout.kind === "clone"}>
         <Checkbox

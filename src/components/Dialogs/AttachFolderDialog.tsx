@@ -51,9 +51,19 @@ function Card(props: { icon: LucideIcon; heading: string; description: string; c
   );
 }
 
-export function LayoutCard(props: { layout: Inspection["layout"]; tilde: (p: string) => string }) {
+export function LayoutCard(props: {
+  layout: Inspection["layout"];
+  tilde: (p: string) => string;
+  root?: string | null;
+}) {
   const layout = props.layout;
   const tilde = props.tilde;
+  // A worktree inside the project's folder by its place there, since every row
+  // would otherwise repeat the same root. One outside it keeps its full path.
+  const where = (path: string) => {
+    const root = props.root?.replace(/\/+$/, "");
+    return root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : tilde(path);
+  };
   if (layout.kind === "clone")
     return (
       <Card
@@ -100,7 +110,7 @@ export function LayoutCard(props: { layout: Inspection["layout"]; tilde: (p: str
                   <Icon icon={GitBranch} />
                   <span class={styles.detectBranch}>{w.branch ?? "detached"}</span>
                   <span class={styles.detectPath} title={w.path}>
-                    {tilde(w.path)}
+                    {where(w.path)}
                   </span>
                 </li>
               )}
@@ -237,7 +247,7 @@ export default function AttachFolderDialog(props: {
               when={!f().refused}
               fallback={<Card icon={Ban} heading="Tori can't attach this folder" description={f().refused!} />}
             >
-              <LayoutCard layout={f().layout} tilde={tilde} />
+              <LayoutCard layout={f().layout} tilde={tilde} root={path()} />
             </Show>
           )}
         </Show>
