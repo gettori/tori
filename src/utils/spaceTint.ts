@@ -42,6 +42,48 @@ export const SPACE_COLORS: SpaceColor[] = [
 
 const BY_NAME: Map<string, string> = new Map(SPACE_COLORS.map((c) => [c.name, c.hex]));
 
+/** A branch group's swatches: the space set and five more, in wheel order, so
+ *  with "None" in front they fill the menu's grid of six. Data for the same
+ *  reason the space set is: a group's colour is stored with the group. */
+export const GROUP_COLORS: SpaceColor[] = [
+  { name: "Amber", hex: "#d9a468" },
+  { name: "Sand", hex: "#cdb08c" },
+  { name: "Coral", hex: "#e08a6a" },
+  { name: "Rose", hex: "#e0808f" },
+  { name: "Plum", hex: "#c584b5" },
+  { name: "Magenta", hex: "#d98ad4" },
+  { name: "Violet", hex: "#ab8ae6" },
+  { name: "Indigo", hex: "#8a9ae6" },
+  { name: "Blue", hex: "#7598e8" },
+  { name: "Sky", hex: "#6fb0e0" },
+  { name: "Teal", hex: "#63c1c1" },
+  { name: "Mint", hex: "#7fd2b6" },
+  { name: "Emerald", hex: "#6fc59a" },
+  { name: "Lime", hex: "#a8cc7a" },
+  { name: "Olive", hex: "#bdb86e" },
+  { name: "Gold", hex: "#d9c168" },
+  { name: "Slate", hex: "#93a1b5" },
+];
+
+const GROUP_BY_NAME: Map<string, string> = new Map(GROUP_COLORS.map((c) => [c.name, c.hex]));
+
+// The four theme hues groups were coloured with before the swatches.
+const OLD_GROUP_HUES: Record<string, string> = { blue: "Sky", green: "Emerald", amber: "Amber", pink: "Rose" };
+
+/** A group's stored colour as one of the swatch names, or `null` for none or
+ *  unknown. */
+export function groupColorName(stored: string | undefined | null): string | null {
+  if (!stored) return null;
+  const name = OLD_GROUP_HUES[stored] ?? stored;
+  return GROUP_BY_NAME.has(name) ? name : null;
+}
+
+/** The hex a group's stored colour paints, or `undefined` for none or unknown. */
+export function groupColor(stored: string | undefined | null): string | undefined {
+  const name = groupColorName(stored);
+  return name ? GROUP_BY_NAME.get(name) : undefined;
+}
+
 /** Resolve a stored swatch name to its hue, or `undefined` when the key is
  *  unknown or blank so the caller can fall back to the derived one. */
 export function resolveColor(name: string | undefined | null): string | undefined {

@@ -353,7 +353,8 @@ export function GroupCard(props: {
   menu?: MenuItem[];
   onToggle?: () => void;
   rowProps?: SidebarDragProps;
-  hue?: CardHue | null;
+  /** The group's colour as a hex, or none. */
+  tint?: string | null;
   children?: JSX.Element;
 }) {
   const editor = (draft: () => GroupNameDraft) => {
@@ -398,8 +399,8 @@ export function GroupCard(props: {
     <div
       class={`node ${styles.groupCard}`}
       data-group={props.name}
-      data-hue={props.hue ?? undefined}
-      style={props.hue ? HUE_VARS[props.hue] : undefined}
+      data-hue={props.tint ? "" : undefined}
+      style={props.tint ? tintVars(props.tint) : undefined}
     >
       <ContextMenu
         class={`${styles.row} ${styles.cardHead}`}
@@ -424,6 +425,14 @@ export function GroupCard(props: {
     </div>
   );
 }
+
+/** A group card washed in its own colour, mixed down into the card the way the
+ *  lane hues are, so it reads in either theme. */
+const tintVars = (hex: string) => ({
+  "--card-head": `color-mix(in srgb, ${hex} 12%, var(--lane-card))`,
+  "--card-body": `color-mix(in srgb, ${hex} 7%, var(--lane-card))`,
+  "--card-icon": hex,
+});
 
 const LANE_ICON: Record<LaneId, LucideIcon> = {
   working: Activity,
