@@ -118,13 +118,11 @@
    back to it (see gotcha_the_sidebar_rail_is_a_variable_not_a_copy). */
 .groupCard {
   position: relative;
-  /* Margin plus label inset is the 28px a branch's icon sits at outside a
-     card, so grouped and ungrouped icons share one column. */
-  margin: calc(8px * var(--ui-scale)) 0 0 calc(20px * var(--ui-scale));
+  margin: calc(8px * var(--ui-scale)) 0 0 calc(22px * var(--ui-scale));
   border-radius: calc(8px * var(--ui-scale));
   background: var(--lane-card);
-  --rail-x: calc(-4px * var(--ui-scale));
-  --branch-label-x: calc(8px * var(--ui-scale));
+  --rail-x: calc(-6px * var(--ui-scale));
+  --branch-label-x: calc(10px * var(--ui-scale));
 }
 .groupCard::before {
   content: "";
@@ -141,13 +139,8 @@
 .groupCard .branchNode:last-child {
   margin-bottom: 0;
 }
-/* The rail runs outside the card and `.row` clips its overflow, so a member
-   row starts on the rail itself, and its pill and bar meet the line as they
-   do outside a card. */
-.groupCard .row.branch {
-  margin-left: var(--rail-x);
-  padding-left: calc(var(--branch-label-x) - var(--rail-x));
-}
+/* The rail runs outside the card, but `.row` clips its overflow, so a pill
+   drawn on it loses its bar. Inside a card it starts at the card's edge. */
 .groupCard .row.branch::before {
   left: 0;
 }
@@ -206,12 +199,12 @@
   font-weight: 600;
   outline: none;
 }
-/* Clipped to the card's lower right corner, which a square pill on the last
-   row would otherwise poke past, and open on the left, where the rows reach
-   back to the rail. */
+/* Clipped to the card's lower corners, which a square pill on the last row
+   would otherwise poke past. */
 .cardBody {
   padding-bottom: calc(2px * var(--ui-scale));
-  clip-path: inset(0 0 0 calc(-8px * var(--ui-scale)) round 0 0 calc(8px * var(--ui-scale)) 0);
+  overflow: hidden;
+  border-radius: 0 0 calc(8px * var(--ui-scale)) calc(8px * var(--ui-scale));
 }
 button.row.cardHead {
   width: 100%;
@@ -228,7 +221,7 @@ button.row.cardHead:hover {
   position: relative;
   display: flex;
   gap: calc(6px * var(--ui-scale));
-  padding: calc(8px * var(--ui-scale)) 0 calc(6px * var(--ui-scale)) calc(20px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) 0 calc(6px * var(--ui-scale)) calc(22px * var(--ui-scale));
 }
 .parkedRow::before {
   content: "";
