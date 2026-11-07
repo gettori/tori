@@ -130,6 +130,7 @@ export default function SpaceSettingsDialog(props: {
         <div
           ref={el}
           id={paneId(id)}
+          data-pane={id}
           role={searching() ? "group" : "tabpanel"}
           aria-label={searching() ? SECTION_LABEL[id] : undefined}
           aria-labelledby={searching() ? undefined : tabId(id)}
