@@ -32,7 +32,7 @@ export default function TrustSection(props: { projectPath: string }) {
       .filter((e) => !sameCwd(e, props.projectPath) && isUnderPath(props.projectPath, e))
       .sort((a, b) => b.length - a.length)[0];
 
-  async function run(verb: string, change: () => Promise<void>) {
+  async function run(verb: string, change: () => Promise<unknown>) {
     setBusy(true);
     try {
       await change();

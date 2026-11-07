@@ -85,11 +85,12 @@ export async function askToTrustUnlessFork(cwd: string, message: string): Promis
   else askToTrust(cwd, message);
 }
 
-/** Trust the project `projectPath` belongs to. */
-export async function trustProject(projectPath: string): Promise<void> {
+/** Trust the project `projectPath` belongs to, returning the path trusted. */
+export async function trustProject(projectPath: string): Promise<string> {
   const path = await invoke<string>("trust_project", { path: projectPath });
   setRefused(refused().filter((p) => !isUnderPath(p, path)));
   fire({ path, trusted: true });
+  return path;
 }
 
 /** Stop trusting a project, by the path `trusted_projects` listed it under. */
@@ -115,6 +116,19 @@ function watchTrusted() {
       .catch(() => {});
   onTrustChange(read);
   read();
+}
+
+/** Whether the folder at `path` is known to be trusted. False while the list
+ *  is unread. */
+export function projectTrusted(path: string): boolean {
+  watchTrusted();
+  return !!trustedList()?.some((t) => t && isUnderPath(path, t));
+}
+
+/** Whether the folder at `path` is trusted, read from the store now. */
+export async function trustedNow(path: string): Promise<boolean> {
+  const list = await invoke<string[]>("trusted_projects");
+  return list.some((t) => t && isUnderPath(path, t));
 }
 
 /** Whether the project at `path` is known to be untrusted. False while the list

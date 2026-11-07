@@ -12,6 +12,8 @@ export type ConversionPreview = {
   nested: { from: string; to: string }[];
   outside: string[];
   topics: string[];
+  defaultWorktree?: string;
+  note?: string;
 };
 
 // Converting a plain clone to the bare plus worktree layout. Everything the

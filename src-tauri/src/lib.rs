@@ -467,6 +467,7 @@ pub fn run() {
             attached_folder::inspect_folder,
             root_scan::scan_root,
             space_move::move_into_space,
+            space_move::move_check,
             space_move::move_journal,
             space_move::resume_moves,
             attached_folder::attach_folder,

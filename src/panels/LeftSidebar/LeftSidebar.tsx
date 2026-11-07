@@ -56,6 +56,7 @@ import {
 import ChangeOriginDialog from "../../components/Dialogs/ChangeOriginDialog";
 import type { UnitOrigin } from "../../utils/unitOrigin";
 import NewProjectDialog from "../../components/Dialogs/NewProjectDialog";
+import MoveToSpaceDialog from "../../components/Dialogs/MoveToSpaceDialog";
 import { claimProjectFolder, projectJob, type NewProjectMode } from "../../utils/newProject";
 import SpaceDialog, { type SpaceDialogMode } from "../../components/Dialogs/SpaceDialog";
 import { pushToast, type ToastAction } from "../../components/Toasts/Toasts";
@@ -773,7 +774,8 @@ export default function LeftSidebar(props: {
 
   // The space-level "New…" dialog: create an empty folder, clone a repo, or
   // bootstrap a bare + worktree project, chosen by a segmented control.
-  const [newReq, setNewReq] = createSignal<{ g: Space; busy: boolean } | null>(null);
+  const [newReq, setNewReq] = createSignal<{ g: Space; busy: boolean; move?: boolean } | null>(null);
+  const [spaceMoveReq, setSpaceMoveReq] = createSignal<{ p: Project; from: string } | null>(null);
 
   // The space create/edit dialog (icon picker). "new" creates a folder under the
   // root; "edit" only rewrites the `[[space]]` icon (keyed by `name`), so the
@@ -1847,8 +1849,19 @@ export default function LeftSidebar(props: {
   }
 
   // Open the space-level "New…" dialog.
-  function openNewProject(g: Space) {
-    setNewReq({ g, busy: false });
+  function openNewProject(g: Space, move = false) {
+    setNewReq({ g, busy: false, move });
+  }
+
+  const baseFolder = () => config()?.roots[0];
+  const moveTargets = (from: string) =>
+    (config()?.spaces ?? []).map((s) => s.name).filter((n) => n !== from && n !== GLOBAL_KEY);
+
+  function moved(warnings: string[]) {
+    setNewReq(null);
+    setSpaceMoveReq(null);
+    if (warnings.length) setError(warnings.join(" "));
+    void loadConfig();
   }
 
   // Confirmed: route by mode. An empty folder is a direct `add_folder` invoke; a
@@ -2734,6 +2747,11 @@ export default function LeftSidebar(props: {
     { separator: true },
     { label: "New chat", onClick: () => void startChat(g.name) },
     { label: `New in “${g.name}”`, onClick: () => openNewProject(g) },
+    {
+      label: "Move folder here…",
+      note: `Moves a folder from anywhere on this disk into ${g.name}.`,
+      onClick: () => openNewProject(g, true),
+    },
     { separator: true },
     {
       label: "New Topic",
@@ -2839,6 +2857,9 @@ export default function LeftSidebar(props: {
             } as MenuItem,
           ]),
       { label: "Project settings", onClick: () => openProjectSettings(p.path) },
+      ...(baseFolder() && projectUnitKind(p) !== "converting" && moveTargets(g.name).length
+        ? [{ label: "Move to space…", onClick: () => setSpaceMoveReq({ p, from: g.name }) } as MenuItem]
+        : []),
       ...(remove ? [{ separator: true } as MenuItem, remove] : []),
     ];
   };
@@ -4822,6 +4843,31 @@ export default function LeftSidebar(props: {
           busy={newReq()!.busy}
           onConfirm={(opts) => confirmNewProject(opts)}
           onCancel={() => setNewReq(null)}
+          move={
+            baseFolder()
+              ? {
+                  base: baseFolder()!,
+                  home: home(),
+                  initial: newReq()!.move,
+                  pickFolder: () => pickFolder(`Choose a folder to move into ${newReq()!.g.name}`),
+                  countRunning: countRunningAgents,
+                  onMoved: (_, warnings) => moved(warnings),
+                }
+              : undefined
+          }
+        />
+      </Show>
+
+      <Show when={spaceMoveReq() && baseFolder()}>
+        <MoveToSpaceDialog
+          name={spaceMoveReq()!.p.name}
+          path={spaceMoveReq()!.p.path}
+          base={baseFolder()!}
+          home={home()}
+          spaces={moveTargets(spaceMoveReq()!.from)}
+          countRunning={countRunningAgents}
+          onMoved={(_, warnings) => moved(warnings)}
+          onCancel={() => setSpaceMoveReq(null)}
         />
       </Show>
 

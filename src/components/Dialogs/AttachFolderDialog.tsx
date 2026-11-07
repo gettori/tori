@@ -51,7 +51,7 @@ function Card(props: { icon: LucideIcon; heading: string; description: string; c
   );
 }
 
-function LayoutCard(props: { layout: Inspection["layout"]; tilde: (p: string) => string }) {
+export function LayoutCard(props: { layout: Inspection["layout"]; tilde: (p: string) => string }) {
   const layout = props.layout;
   const tilde = props.tilde;
   if (layout.kind === "clone")

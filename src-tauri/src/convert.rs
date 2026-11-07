@@ -675,11 +675,13 @@ pub mod commands {
         app: AppHandle,
         index: State<'_, ProjectIndex>,
         project_path: String,
+        with_default: Option<bool>,
     ) -> Result<Preview, String> {
         let index = index.inner().clone();
         let path = project_path.clone();
+        let with_default = with_default.unwrap_or(false);
         let out = crate::exec::git_write("convert_to_worktree_layout", project_path.clone(), move || {
-            let out = convert(Path::new(&project_path), &Store::default_location(), false);
+            let out = convert(Path::new(&project_path), &Store::default_location(), with_default);
             let linked: Vec<String> = out
                 .as_ref()
                 .map(|p| {
