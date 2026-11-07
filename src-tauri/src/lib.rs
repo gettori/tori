@@ -12,6 +12,7 @@ mod attempts;
 mod auth;
 mod autopilot;
 mod backstop;
+mod base_layout;
 mod blame;
 mod blind_edit;
 mod browser_host;

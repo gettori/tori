@@ -5234,6 +5234,7 @@ diff --git a/f b/f
             path: String::new(),
             roots: vec![],
             global: Default::default(),
+            misplaced: vec![],
             spaces: vec![crate::config::Space {
                 name: "work".into(),
                 path: String::new(),

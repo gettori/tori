@@ -267,6 +267,7 @@ pub(crate) mod tests {
             path: String::new(),
             roots: vec![],
             spaces: vec![],
+            misplaced: vec![],
             global: crate::config::GlobalSpace {
                 projects: vec![crate::config::AttachedProject {
                     availability: Default::default(),
