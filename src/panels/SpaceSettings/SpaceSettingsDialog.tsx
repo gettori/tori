@@ -184,7 +184,7 @@ export default function SpaceSettingsDialog(props: {
           <span class={`${own.titleName} ${styles.titleName}`} title={props.name}>
             {props.name}
           </span>
-          <span class={`${own.titleKind} ${styles.titleKind}`}>space</span>
+          <span class={own.titleKind}>space</span>
         </div>
         <div class={s.headerActions}>
           <Show when={spaceHasOwn(props.space)}>
