@@ -107,7 +107,7 @@ describe("the active space header", () => {
     // The same rows `spaceMenu` gives a root-discovered space's tile, each one
     // naming what it acts on.
     expect(await screen.findByText("New in “work”")).toBeTruthy();
-    expect(screen.getByText("Edit space")).toBeTruthy();
+    expect(screen.getByText("Space settings\u2026")).toBeTruthy();
     expect(screen.getByText("Delete space")).toBeTruthy();
   });
 
@@ -146,7 +146,7 @@ describe("the active space header", () => {
     expect(screen.queryByRole("button", { name: "Actions for work" })).toBeNull();
     expect(screen.getByRole("button", { name: "Actions for Home" })).toBeTruthy();
     expect(rightClick(header()!)).toBe(true);
-    expect(await screen.findByText("Edit icon and colour")).toBeTruthy();
+    expect(await screen.findByText("Space settings\u2026")).toBeTruthy();
     expect(screen.queryByText("Delete space")).toBeNull();
   });
 });

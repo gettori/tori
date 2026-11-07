@@ -5,7 +5,6 @@ import {
   Braces,
   Bug,
   Columns2,
-  PanelLeft,
   FileCode,
   FolderCog,
   Globe,
@@ -40,7 +39,6 @@ import ChatPane from "./panes/ChatPane/ChatPane";
 import EditorPane from "./panes/EditorPane/EditorPane";
 import IntegrationsPane from "./panes/IntegrationsPane/IntegrationsPane";
 import PanesPane from "./panes/PanesPane/PanesPane";
-import SidebarPane from "./panes/SidebarPane/SidebarPane";
 import { DebuggersPane, FormattersPane, LintersPane, ServersPane } from "./panes/LanguagesPane/LanguagesPane";
 import ProjectsPane from "./panes/ProjectsPane/ProjectsPane";
 import ModalShell from "./components/ModalShell";
@@ -74,7 +72,6 @@ const TAB_ICONS: Record<string, LucideIcon> = {
   wheel: WheelGlyph,
   plug: Plug,
   "columns-2": Columns2,
-  "panel-left": PanelLeft,
   "folder-cog": FolderCog,
   smartphone: Smartphone,
   globe: Globe,
@@ -92,7 +89,6 @@ const PANES: Record<SettingTab, Component<PaneProps>> = {
   projects: ProjectsPane,
   appearance: AppearancePane,
   panes: PanesPane,
-  sidebar: SidebarPane,
   integrations: IntegrationsPane,
   remote: RemotePane,
   browser: BrowserPane,

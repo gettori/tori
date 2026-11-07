@@ -79,7 +79,7 @@ describe("the space's empty area", () => {
 
     expect(rightClick(scroller(container))).toBe(true);
     expect(await screen.findByText("New in “work”")).toBeTruthy();
-    expect(screen.getByText("Edit space")).toBeTruthy();
+    expect(screen.getByText("Space settings\u2026")).toBeTruthy();
     expect(screen.getByText("Delete space")).toBeTruthy();
   });
 
