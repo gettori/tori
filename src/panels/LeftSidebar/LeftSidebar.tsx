@@ -221,6 +221,7 @@ import { groupStacks, type StackEntry } from "./stacks";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import TopicList from "./TopicList";
 import ChatList from "./ChatList";
+import MisplacedProjects from "./MisplacedProjects";
 import { GROUP_CAP, capList, moreLabel } from "./capList";
 import {
   NEW_CHAT_NAME,
@@ -382,7 +383,7 @@ type Group = Pick<Space, "name" | "projects" | "icon" | "color">;
 // The built-in space. No `path`: it owns no folder, so nothing that makes or
 // removes folders under a space can be handed it.
 type GlobalSpace = { projects: Project[]; icon?: string; color?: string };
-type ResolvedConfig = { path: string; roots: string[]; spaces: Space[]; global: GlobalSpace };
+type ResolvedConfig = { path: string; roots: string[]; spaces: Space[]; global: GlobalSpace; misplaced?: string[] };
 
 export type Selection = {
   // Absent means "unit": a selection persisted before Topics carried no kind.
@@ -4478,11 +4479,15 @@ export default function LeftSidebar(props: {
         />
       </Show>
 
+      <MisplacedProjects paths={config()?.misplaced ?? []} home={home()} onAttach={setAttachAt} />
       {/* Outside the tree's gate: the strip is how you leave a space, so it
           renders for every one, Global included even before any named space
           exists. */}
       <Show when={config()}>
-        <div class={styles.spaceBar} classList={{ [styles.rail]: railed() }}>
+        <div
+          class={styles.spaceBar}
+          classList={{ [styles.rail]: railed(), [styles.belowMisplaced]: !!config()?.misplaced?.length }}
+        >
           <TileProbe
             glyph={House}
             ref={(el) => (probeEl = el)}

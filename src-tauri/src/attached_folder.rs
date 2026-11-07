@@ -223,12 +223,17 @@ pub(crate) struct Surroundings {
     pub home: Option<PathBuf>,
     pub own_state: PathBuf,
     pub attached: Vec<(PathBuf, String)>,
+    pub ignore: Vec<String>,
+    pub not_spaces: Vec<String>,
 }
 
 impl Surroundings {
     fn current(except: Option<&Path>) -> Self {
         let raw = crate::config::attached_entries();
+        let (ignore, not_spaces) = crate::config::discovery_filters();
         Self {
+            ignore,
+            not_spaces,
             root: crate::config::discovery_root(),
             home: dirs::home_dir(),
             own_state: crate::owned_state::config_dir(),
@@ -246,7 +251,9 @@ fn refusal(folder: &Path, gitdir: &GitDir, around: &Surroundings) -> Option<Stri
         return Some("Pick a project folder, not your home folder or the whole disk.".into());
     }
     if let Some(root) = around.root.as_deref().map(canon) {
-        if folder.starts_with(&root) {
+        let attached: Vec<PathBuf> = around.attached.iter().map(|(p, _)| p.clone()).collect();
+        let rules = crate::base_layout::Rules::new(&around.ignore, &around.not_spaces, &attached);
+        if rules.discovered(&root, &folder) {
             return Some("This folder is inside your base folder, so it's already in a space.".into());
         }
         if root.starts_with(&folder) {
@@ -510,6 +517,8 @@ mod tests {
             home: Some(tmp.join("home")),
             own_state: tmp.join("home/.config/tori"),
             attached: vec![(tmp.join("home/clients/acme"), "acme".into())],
+            ignore: Vec::new(),
+            not_spaces: Vec::new(),
         }
     }
 
@@ -548,6 +557,11 @@ mod tests {
         };
         assert!(refused("home").unwrap().contains("home folder"));
         assert!(refused("root/work/web").unwrap().contains("inside your base folder"));
+        assert!(refused("root/work").unwrap().contains("inside your base folder"));
+        std::fs::create_dir_all(tmp.join("root/loose/.git")).unwrap();
+        assert_eq!(refused("root/loose"), None);
+        std::fs::create_dir_all(tmp.join("root/work/client/deep/.git")).unwrap();
+        assert_eq!(refused("root/work/client/deep"), None);
         let holds_root = inspect_in(&tmp, &around).unwrap().refused.unwrap();
         assert!(holds_root.contains("holds your base folder"), "{holds_root}");
         assert!(refused("home/.config").unwrap().contains("Tori's own files"));

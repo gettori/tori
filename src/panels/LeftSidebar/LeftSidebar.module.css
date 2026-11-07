@@ -242,6 +242,10 @@
   gap: calc(6px * var(--ui-scale));
 }
 
+.spaceBar.belowMisplaced {
+  margin-top: 0;
+}
+
 /* Divider from the tree above, inset 8px from each edge so it does not run into
    the sidebar's corners. A pseudo-element rather than border-top, which a padded
    box cannot inset. */

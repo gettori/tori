@@ -19,6 +19,7 @@ use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 
+use crate::base_layout::Rules;
 use crate::exec::StoreLock;
 
 #[derive(Deserialize, Default)]
@@ -98,6 +99,10 @@ struct RawDiscovery {
     /// Folder names skipped during the scan (in addition to dotfiles).
     #[serde(default)]
     ignore: Vec<String>,
+    /// Top-level folder names that are not spaces. Unlike `ignore`, a project
+    /// of the same name inside a space still lists.
+    #[serde(default)]
+    not_spaces: Vec<String>,
 }
 
 /// How a project folder relates to git. Serialized kebab-case for the frontend.
@@ -205,6 +210,7 @@ pub struct ResolvedConfig {
     pub roots: Vec<String>,
     pub spaces: Vec<Space>,
     pub global: GlobalSpace,
+    pub misplaced: Vec<String>,
 }
 
 pub const GLOBAL_NAME: &str = "Home";
@@ -814,31 +820,18 @@ fn project_favicon(ppath: &Path, units: &[BranchUnit]) -> Option<String> {
     crate::icons::cached_project_icon(ppath, &folders)
 }
 
-fn skipped(name: &str, ignore: &[String]) -> bool {
-    name.starts_with('.') || ignore.iter().any(|i| i == name)
-}
-
 // The walk `resolve` does, minus its git probe per project: that probe is far
 // too slow for a caller that only needs the paths.
-pub(crate) fn project_dirs_under(root: &Path, ignore: &[String]) -> Vec<PathBuf> {
-    let mut dirs = Vec::new();
-    let Ok(spaces) = std::fs::read_dir(root) else {
-        return dirs;
-    };
-    for space in spaces.flatten().map(|e| e.path()) {
-        if !space.is_dir() || skipped(&basename(&space), ignore) {
-            continue;
-        }
-        let Ok(projects) = std::fs::read_dir(&space) else {
-            continue;
-        };
-        for project in projects.flatten().map(|e| e.path()) {
-            if project.is_dir() && !skipped(&basename(&project), ignore) {
-                dirs.push(project);
-            }
-        }
-    }
-    dirs
+pub(crate) fn project_dirs_under(root: &Path, rules: &Rules) -> Vec<PathBuf> {
+    rules
+        .spaces(root)
+        .iter()
+        .flat_map(|space| rules.projects(space))
+        .collect()
+}
+
+fn layout_rules(raw: &RawConfig) -> Rules<'_> {
+    Rules::new(&raw.discovery.ignore, &raw.discovery.not_spaces, &attached_dirs_in(raw))
 }
 
 // Read without `ensure_config`: asking which projects exist must not be what
@@ -858,35 +851,31 @@ pub(crate) fn discovery_root() -> Option<PathBuf> {
         .map(|r| PathBuf::from(expand_tilde(r)))
 }
 
+pub(crate) fn discovery_filters() -> (Vec<String>, Vec<String>) {
+    let raw = read_raw_config();
+    (raw.discovery.ignore, raw.discovery.not_spaces)
+}
+
 pub(crate) fn space_roots(name: &str) -> Option<Vec<PathBuf>> {
     let raw = read_raw_config();
     let root = PathBuf::from(expand_tilde(raw.discovery.roots.first()?));
-    space_roots_in(&root, name, &raw.discovery.ignore)
+    space_roots_in(&root, name, &layout_rules(&raw))
 }
 
-pub(crate) fn space_roots_in(root: &Path, name: &str, ignore: &[String]) -> Option<Vec<PathBuf>> {
+pub(crate) fn space_roots_in(root: &Path, name: &str, rules: &Rules) -> Option<Vec<PathBuf>> {
     let mut parts = Path::new(name).components();
     if !matches!(
         (parts.next(), parts.next()),
         (Some(std::path::Component::Normal(_)), None)
-    ) || skipped(name, ignore)
-    {
+    ) {
         return None;
     }
     let space = root.join(name);
-    if !space.is_dir() {
+    if !rules.is_space(&space) {
         return None;
     }
     let mut dirs = vec![space.clone()];
-    match std::fs::read_dir(&space) {
-        Ok(entries) => dirs.extend(
-            entries
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| p.is_dir() && !skipped(&basename(p), ignore)),
-        ),
-        Err(e) => eprintln!("tori: cannot list space {}: {e}", space.display()),
-    }
+    dirs.extend(rules.projects(&space));
     // A project symlinked in from elsewhere still counts as the space's.
     let resolved: Vec<PathBuf> = dirs.iter().filter_map(|d| d.canonicalize().ok()).collect();
     dirs.extend(resolved);
@@ -896,7 +885,7 @@ pub(crate) fn space_roots_in(root: &Path, name: &str, ignore: &[String]) -> Opti
 pub(crate) fn project_dirs() -> Vec<PathBuf> {
     let raw = read_raw_config();
     let mut dirs = match raw.discovery.roots.first() {
-        Some(root) => project_dirs_under(Path::new(&expand_tilde(root)), &raw.discovery.ignore),
+        Some(root) => project_dirs_under(Path::new(&expand_tilde(root)), &layout_rules(&raw)),
         None => Vec::new(),
     };
     dirs.extend(attached_dirs_in(&raw).into_iter().filter(|d| d.is_dir()));
@@ -922,7 +911,7 @@ pub fn project_of_folder(folder: String) -> Option<String> {
 }
 
 fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
-    let skip = |name: &str| skipped(name, &raw.discovery.ignore);
+    let rules = layout_rules(&raw);
     // Single canonical root: a legacy multi-root config collapses to the first on
     // load (not only on explicit reset), so discovery yields one tree, never two.
     let roots: Vec<String> = raw.discovery.roots.iter().take(1).map(|r| expand_tilde(r)).collect();
@@ -964,27 +953,23 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
     };
 
     // Roots scanned as <root>/<space>/<project>; empty space dirs registered.
+    let mut misplaced: Vec<String> = Vec::new();
     for root in &roots {
         let root = PathBuf::from(root);
-        let Ok(space_dirs) = std::fs::read_dir(&root) else {
-            continue;
-        };
-        for g in space_dirs.flatten() {
-            let gpath = g.path();
-            if !gpath.is_dir() || skip(&basename(&gpath)) {
-                continue;
-            }
-            let gi = ensure_space_idx(&mut spaces, &basename(&gpath), &gpath);
-            if let Ok(projects) = std::fs::read_dir(&gpath) {
-                for p in projects.flatten() {
-                    let ppath = p.path();
-                    if ppath.is_dir() && !skip(&basename(&ppath)) {
-                        let name = basename(&ppath);
-                        spaces[gi].projects.extend(probe(ppath, name));
-                    }
-                }
+        let space_dirs = rules.spaces(&root);
+        for gpath in &space_dirs {
+            let gi = ensure_space_idx(&mut spaces, &basename(gpath), gpath);
+            for ppath in rules.projects(gpath) {
+                let name = basename(&ppath);
+                spaces[gi].projects.extend(probe(ppath, name));
             }
         }
+        misplaced.extend(
+            rules
+                .misplaced(&root, &space_dirs)
+                .iter()
+                .map(|p| p.to_string_lossy().into_owned()),
+        );
     }
 
     // After the roots, so a folder that is also discovered stays in its space.
@@ -1089,6 +1074,7 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
         roots,
         spaces,
         global,
+        misplaced,
     }
 }
 
@@ -1098,7 +1084,7 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
 pub(crate) fn resolve_root(root: &Path, index: &ProjectIndex) -> ResolvedConfig {
     let discovery = RawDiscovery {
         roots: vec![root.to_string_lossy().into_owned()],
-        ignore: Vec::new(),
+        ..Default::default()
     };
     resolve(
         RawConfig {
@@ -1788,10 +1774,18 @@ pub fn add_space_in(
     let _store = crate::exec::cross_process_store_lock("config")?;
     let n = valid_name(&name)?;
     let dir = PathBuf::from(expand_tilde(&root)).join(&n);
-    if dir.exists() {
-        return Err(format!("\"{n}\" already exists"));
+    let unhidden = unhide_space(&ensure_config()?, &n)?;
+    match (&unhidden, dir.is_dir()) {
+        (Unhide::Written(text), true) => write_config(text)?,
+        (Unhide::NotHidden, true) => return Err(format!("\"{n}\" already exists")),
+        (_, false) if dir.exists() => return Err(format!("\"{n}\" already exists")),
+        (unhidden, false) => {
+            std::fs::create_dir(&dir).map_err(|e| e.to_string())?;
+            if let Unhide::Written(text) = unhidden {
+                write_config(text)?;
+            }
+        }
     }
-    std::fs::create_dir(&dir).map_err(|e| e.to_string())?;
     let icon = icon.as_deref().map(str::trim).filter(|s| !s.is_empty());
     let color = color.as_deref().map(str::trim).filter(|s| !s.is_empty());
     if icon.is_some() || color.is_some() {
@@ -1934,6 +1928,30 @@ pub(crate) fn relocate_attached_entry(_: &StoreLock, old: &str, new: &str) -> Re
 
 pub(crate) fn rekey_attached_branches(_: &StoreLock, old: &str, new: &str) -> Result<(), String> {
     crate::attached_folder::rekey_file(&attached_path(), old, new)
+}
+
+#[derive(Debug, PartialEq)]
+enum Unhide {
+    Written(String),
+    NotHidden,
+}
+
+fn unhide_space(text: &str, name: &str) -> Result<Unhide, String> {
+    let mut doc: toml_edit::Document = text.parse().map_err(|e: toml_edit::TomlError| e.to_string())?;
+    let Some(list) = doc
+        .get_mut("discovery")
+        .and_then(|d| d.get_mut("not_spaces"))
+        .and_then(|v| v.as_array_mut())
+    else {
+        return Ok(Unhide::NotHidden);
+    };
+    let before = list.len();
+    list.retain(|v| v.as_str() != Some(name));
+    if list.len() == before {
+        return Ok(Unhide::NotHidden);
+    }
+    list.fmt();
+    Ok(Unhide::Written(doc.to_string()))
 }
 
 /// Set the top-level `space_order` array (root-space names) via `toml_edit`,
@@ -2486,6 +2504,7 @@ mod tests {
             discovery: RawDiscovery {
                 roots: roots.iter().map(|s| s.to_string()).collect(),
                 ignore: ignore.iter().map(|s| s.to_string()).collect(),
+                ..Default::default()
             },
             space: Vec::new(),
             project_meta: Vec::new(),
@@ -3055,6 +3074,36 @@ mod tests {
     }
 
     #[test]
+    fn a_repo_at_the_base_is_reported_misplaced_and_an_attached_one_lists_in_home_only() {
+        let tmp = unique_tmp();
+        let root = tmp.join("Projects");
+        init_repo(&root.join("loose"), "main");
+        init_repo(&root.join("stray"), "main");
+        init_repo(&root.join("work/client/deep"), "main");
+        init_repo(&root.join("work/api"), "main");
+        let mut config = raw(&[root.to_str().unwrap()], &[]);
+        config.attached_folder.push(AttachedFolderEntry {
+            path: root.join("stray").to_string_lossy().into_owned(),
+            name: None,
+        });
+        let cfg = resolve(config, &ProjectIndex::default());
+        let names: Vec<&str> = cfg.spaces.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, ["work"]);
+        let work: Vec<&str> = space(&cfg, "work")
+            .unwrap()
+            .projects
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect();
+        assert_eq!(work, ["api"]);
+        let home: Vec<&str> = cfg.global.projects.iter().map(|a| a.project.name.as_str()).collect();
+        assert_eq!(home, ["stray"]);
+        let misplaced: Vec<String> = cfg.misplaced.iter().map(|p| basename(Path::new(p))).collect();
+        assert_eq!(misplaced, ["loose", "deep"]);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
     fn valid_name_rejects_traversal_and_hidden() {
         assert!(valid_name("feature").is_ok());
         assert!(valid_name("  spaced  ").is_ok()); // trimmed
@@ -3341,6 +3390,18 @@ mod tests {
         let names: Vec<&str> = cfg.spaces.iter().map(|g| g.name.as_str()).collect();
         assert_eq!(names, vec!["beta", "alpha"]);
         std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn unhide_space_drops_only_that_name_and_reports_nothing_to_do() {
+        let text = "# keep\n[discovery]\nroots = [\"~/P\"]\nnot_spaces = [\"shots\", \"notes\"]\n";
+        let Unhide::Written(out) = unhide_space(text, "shots").unwrap() else {
+            panic!("shots was hidden");
+        };
+        assert!(out.contains("# keep"));
+        assert!(out.contains("not_spaces = [\"notes\"]"), "{out}");
+        assert_eq!(unhide_space(text, "work").unwrap(), Unhide::NotHidden);
+        assert_eq!(unhide_space("", "shots").unwrap(), Unhide::NotHidden);
     }
 
     #[test]
