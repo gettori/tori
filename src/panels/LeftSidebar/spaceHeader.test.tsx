@@ -116,7 +116,7 @@ describe("the active space header", () => {
     await waitFor(() => expect(header()).toBeTruthy());
     pointerClick(menuButton());
     const row = await screen.findByRole("menuitem", { name: /New Topic/ });
-    expect(row.textContent).toContain("Groups worktrees from work's projects");
+    expect(row.textContent).toBe("New Topic");
     pointerClick(row);
     expect(await screen.findByRole("dialog", { name: "New Topic in work" })).toBeTruthy();
     expect(screen.getByRole("checkbox", { name: "proj" })).toBeTruthy();
