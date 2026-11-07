@@ -230,6 +230,9 @@ import MisplacedProjects from "./MisplacedProjects";
 import UnfinishedMove from "./UnfinishedMove";
 import GroupingDialog from "../../components/Dialogs/GroupingDialog";
 import { GROUP_CAP, capList, moreLabel } from "./capList";
+import { arrange, moveKeys, orderedKeys, unitKey } from "./arrange";
+import { createSidebarDrag, type DragCommit, type SidebarDragProps } from "./sidebarDrag";
+import { projectOrder, saveProjectOrder, startSidebarOrder } from "../../utils/sidebarOrder";
 import {
   NEW_CHAT_NAME,
   chatIdOf,
@@ -501,6 +504,20 @@ export default function LeftSidebar(props: {
     pushToast(msg, kind, action);
   }
   const [expanded, setExpanded] = createSignal<Set<string>>(loadExpanded());
+  // Nothing a poll answers moves a row while the pointer is over the list or a
+  // row is in flight: the row under the cursor would slide away from the
+  // click. The user's own drop still lands at once.
+  const [pointerIn, setPointerIn] = createSignal(false);
+  const [dragOn, setDragOn] = createSignal(false);
+  const held = () => pointerIn() || dragOn();
+  function heldValue<T>(live: () => T): () => T {
+    let kept: { v: T } | null = null;
+    return createMemo(() => {
+      const v = live();
+      if (!held() || !kept) kept = { v };
+      return kept.v;
+    });
+  }
   // Per-project origin URL, keyed by project path: gates whether the add-branch
   // dialog fetches and folds in remote branches, and whether the menu offers to
   // change an origin or to set a first one.
@@ -3291,7 +3308,14 @@ export default function LeftSidebar(props: {
   // nothing left to expand and clicking it means one thing - select this unit.
   // Shared by the flat worktree/branch list and by the attempts inside a group,
   // which are the same node one indent deeper.
-  function unitNode(g: Group, p: Project, u: BranchUnit, attempt?: AttemptRecord, layer = false) {
+  function unitNode(
+    g: Group,
+    p: Project,
+    u: BranchUnit,
+    attempt?: AttemptRecord,
+    layer = false,
+    drag?: SidebarDragProps,
+  ) {
     // One rollup for the row: the glyph's pulse and the status chip are two
     // readings of the same fact, and computing it twice is how they drift.
     const rollup = () => bubbleForUnits([u]);
@@ -3385,6 +3409,7 @@ export default function LeftSidebar(props: {
         menu={attempt ? attemptMenu(g, p, u, attempt) : unitMenu(g, p, u)}
         onClick={() => selectUnit(g, p, u)}
         onDragStart={(e) => startAbsDrag(e, u.folderPath)}
+        rowProps={drag}
         meta={u.operation || drawnFacts(line()).size > 0 ? <BranchLine {...line()} /> : undefined}
         end={
           <>
@@ -3526,7 +3551,7 @@ export default function LeftSidebar(props: {
   // One fan-out group: the goal as the header, its attempts nested beneath.
   // Grouping is the whole point - three attempts at one question are one thing
   // in the tree, not three unrelated worktrees sitting next to `main`.
-  function attemptGroupNode(g: Group, p: Project, grp: AttemptGroup<BranchUnit>) {
+  function attemptGroupNode(g: Group, p: Project, grp: AttemptGroup<BranchUnit>, drag?: SidebarDragProps) {
     const key = gkey(g, p, grp.groupId);
     const open = () => expanded().has(key);
     const units = () => grp.members.map((m) => m.unit);
@@ -3535,6 +3560,7 @@ export default function LeftSidebar(props: {
     return (
       <GroupRow
         {...attemptGroup(grp.goal, grp.members.length)}
+        rowProps={drag}
         open={open()}
         onClick={() => {
           toggle(key);
@@ -3553,7 +3579,7 @@ export default function LeftSidebar(props: {
 
   // Looked up by number on every read, because the poll answers anew each tick
   // and a group object kept here would go stale.
-  function stackGroupNode(g: Group, p: Project, grp: () => StackGroup | undefined) {
+  function stackGroupNode(g: Group, p: Project, grp: () => StackGroup | undefined, drag?: SidebarDragProps) {
     return (
       <Show when={grp()}>
         {(s) => {
@@ -3562,6 +3588,7 @@ export default function LeftSidebar(props: {
           return (
             <GroupRow
               {...stackGroup(s().stack.size, s().stack.baseRef)}
+              rowProps={drag}
               open={open()}
               onClick={() => toggle(key())}
               end={statusBubble(() => (open() ? null : bubbleForUnits(s().members)))}
@@ -3703,6 +3730,7 @@ export default function LeftSidebar(props: {
   let offFocus: (() => void) | undefined;
   let offActivateSpace: (() => void) | undefined;
   let offNewChat: (() => void) | undefined;
+  onCleanup(startSidebarOrder());
   onMount(async () => {
     offActivateSpace = onWith<ActivateSpace>(ACTIVATE_SPACE, ({ name }) => setActiveSpaceName(name));
     offNewChat = onEvent(NEW_CHAT, () => void startChat(inGlobal() ? null : (activeSpace()?.name ?? null)));
@@ -4121,26 +4149,65 @@ export default function LeftSidebar(props: {
     // container arrives as an ordinary worktree unit, so it is lifted
     // out here rather than rendered twice.
     const split = () => groupAttempts(inSpaces(p.branchUnits), attempts()[p.path] ?? [], attemptStandIn);
-    // A stack stands in the list as its number, which `For` keeps by
-    // value, so a poll tick that rebuilds the groups does not rebuild
-    // every row in the card with them.
-    const stacked = createMemo(() => groupStacks(split().units, (u) => shownPr(p, u)?.stack ?? null));
-    const entries = () => stacked().map((e) => (e.kind === "unit" ? e.unit : e.stack.number));
+    const prStacks = heldValue(
+      () => new Map(split().units.map((u) => [unitKey(u), shownPr(p, u)?.stack ?? null] as const)),
+    );
+    // A stack stands in the list as its number and an attempt group as its
+    // id, which `For` keeps by value, so a poll tick that rebuilds the groups
+    // does not rebuild every row in the card with them.
+    const stacked = createMemo(() => groupStacks(split().units, (u) => prStacks().get(unitKey(u)) ?? null));
     const stackOf = (n: number) => stacked().find((e): e is StackGroup => e.kind === "stack" && e.stack.number === n);
-    const unitsOf = (e: BranchUnit | number) => (typeof e === "number" ? (stackOf(e)?.members ?? []) : [e]);
-    // A long branch list is cut to BRANCH_CAP with the rest behind a
-    // "N more branches" row. The selected unit is always kept, IN ITS
-    // OWN PLACE in the order: a highlight you cannot see is worse than
-    // a longer list, and lifting it to the top would reorder the tree
-    // under the user. Partitioned in one pass so the shown and hidden
-    // halves are always two views of the same `entries()`.
-    const showAll = () => expanded().has(mkey(g, p));
-    const shown = () => {
-      const all = entries();
-      if (showAll()) return { units: all, hidden: [] as BranchUnit[] };
-      const cut = capList(all, BRANCH_CAP, (e) => unitsOf(e).some(unitSelected));
-      return { units: cut.shown, hidden: cut.hidden.flatMap(unitsOf) };
+    const attemptOf = (id: string) => split().groups.find((grp) => grp.groupId === id);
+    type Entry = BranchUnit | number | string;
+    const unitsOf = (e: Entry): BranchUnit[] => {
+      if (typeof e === "number") return stackOf(e)?.members ?? [];
+      if (typeof e === "string") return attemptOf(e)?.members.map((m) => m.unit) ?? [];
+      return [e];
     };
+    const entryKey = (e: Entry) =>
+      typeof e === "number" ? `stack:${e}` : typeof e === "string" ? `attempt:${e}` : unitKey(e);
+    const entries = (): Entry[] => [
+      ...stacked().map((e) => (e.kind === "unit" ? e.unit : e.stack.number)),
+      ...split().groups.map((grp) => grp.groupId),
+    ];
+    const base = () => defaultBranchOf(p.path);
+    // The selected unit survives the cap in its own place: a highlight you
+    // cannot see is worse than a longer list.
+    const showAll = () => expanded().has(mkey(g, p));
+    const section = createMemo(
+      () =>
+        arrange(entries(), {
+          keysOf: (e) => unitsOf(e).map(unitKey),
+          order: projectOrder(p.path),
+          base: base(),
+          cap: { size: BRANCH_CAP, keep: (e) => unitsOf(e).some(unitSelected), open: showAll() },
+        })[0],
+    );
+    const shown = () => ({ units: section().shown, hidden: section().hidden.flatMap(unitsOf) });
+    const allUnitsOrder = () => {
+      const keys = new Set(p.branchUnits.map(unitKey));
+      for (const grp of split().groups) for (const m of grp.members) keys.add(unitKey(m.unit));
+      return orderedKeys([...keys], projectOrder(p.path), base());
+    };
+    createEffect(() => {
+      if (missing() || p.branchUnits.length === 0) return;
+      saveProjectOrder(p.path, allUnitsOrder());
+    });
+    const drag = createSidebarDrag({
+      onActive: setDragOn,
+      onCommit: ({ from, to }: DragCommit) => {
+        if (!("section" in to)) return;
+        const list = section().shown;
+        const moving = list.find((e) => entryKey(e) === from);
+        if (moving === undefined || list.length === 0) return;
+        const before = to.index < list.length;
+        const target = list[before ? to.index : list.length - 1];
+        const keys = (e: Entry) => unitsOf(e).map(unitKey);
+        saveProjectOrder(p.path, moveKeys(allUnitsOrder(), keys(moving), keys(target), before ? "before" : "after"));
+      },
+    });
+    const dragFor = (e: Entry, index: number) =>
+      drag.rowProps({ key: entryKey(e), section: "main", index, paths: unitsOf(e).map((u) => u.folderPath) });
     // Show the control only when it has something to say. Open, that is
     // "the list is longer than the cap"; closed, "something is actually
     // hidden" - which a cap+1 list whose last unit is selected is not.
@@ -4238,10 +4305,19 @@ export default function LeftSidebar(props: {
               </Show>
             }
           >
-            {(e) => (typeof e === "number" ? stackGroupNode(g, p, () => stackOf(e)) : unitNode(g, p, e))}
+            {(e, i) =>
+              typeof e === "number" ? (
+                stackGroupNode(g, p, () => stackOf(e), dragFor(e, i()))
+              ) : typeof e === "string" ? (
+                <Show when={attemptOf(e)} keyed>
+                  {(grp) => attemptGroupNode(g, p, grp, dragFor(e, i()))}
+                </Show>
+              ) : (
+                unitNode(g, p, e, undefined, false, dragFor(e, i()))
+              )
+            }
           </For>
           <Show when={truncated()}>{moreNode(g, p, () => shown().hidden)}</Show>
-          <For each={split().groups}>{(grp) => attemptGroupNode(g, p, grp)}</For>
         </Show>
       </ProjectRow>
     );
@@ -4310,6 +4386,8 @@ export default function LeftSidebar(props: {
     <div
       class={`${styles.tree} ${rows.rowScope}`}
       classList={{ [styles.railed]: railed(), [styles.railOnly]: railed() && props.railOnly }}
+      onPointerEnter={() => setPointerIn(true)}
+      onPointerLeave={() => setPointerIn(false)}
     >
       <div
         class={styles.treeHead}

@@ -83,6 +83,7 @@ mod settings;
 mod setup;
 mod shared;
 mod shell_path;
+mod sidebar_order;
 mod sound;
 mod space_move;
 mod speech;
@@ -440,6 +441,8 @@ pub fn run() {
             second_opinion::second_opinion_list,
             second_opinion::second_opinion_set_status,
             second_opinion::second_opinion_run,
+            sidebar_order::sidebar_order_read,
+            sidebar_order::sidebar_order_write,
             verification::verification_commands,
             verification::verification_defaults,
             chat::commands::chat_mark_turn,
