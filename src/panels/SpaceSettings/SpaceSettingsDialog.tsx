@@ -181,10 +181,10 @@ export default function SpaceSettingsDialog(props: {
               {(glyph) => <Icon icon={glyph()} />}
             </Show>
           </span>
-          <span class={own.titleName} title={props.name}>
+          <span class={`${own.titleName} ${styles.titleName}`} title={props.name}>
             {props.name}
           </span>
-          <span class={own.titleKind}>space</span>
+          <span class={`${own.titleKind} ${styles.titleKind}`}>space</span>
         </div>
         <div class={s.headerActions}>
           <Show when={spaceHasOwn(props.space)}>
