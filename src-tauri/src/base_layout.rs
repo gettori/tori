@@ -89,7 +89,7 @@ fn top_level_project(dir: &Path) -> bool {
 // A top-level folder the setup scan offers to group. Wider than discovery's
 // rule, since the user confirms each one, but a manifest still never claims a
 // folder of repos.
-pub(crate) fn loose_project(dir: &Path) -> bool {
+pub(crate) fn setup_would_group(dir: &Path) -> bool {
     top_level_project(dir) || (!has_git(dir) && has_manifest(dir) && !subdirs(dir).iter().any(|c| has_git(c)))
 }
 
@@ -187,7 +187,7 @@ impl<'a> Rules<'a> {
         let parts: Vec<_> = rel.components().collect();
         match parts.len() {
             0 => true,
-            1 => self.is_space(&folder),
+            1 => self.is_space(&folder) && !setup_would_group(&folder),
             2 => folder.parent().is_some_and(|space| self.is_space(space)) && self.is_space_project(&folder),
             _ => false,
         }

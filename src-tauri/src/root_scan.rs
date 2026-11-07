@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::attached_folder::{layout_at, origin_at, Layout};
-use crate::base_layout::{has_git, is_project, loose_project, worktree_of_another_repo};
+use crate::base_layout::{has_git, is_project, setup_would_group, worktree_of_another_repo};
 
 const HEAVY: &[&str] = &["node_modules", "target", "vendor", ".venv", "dist", "build"];
 const BUDGET: usize = 2_000;
@@ -29,10 +29,21 @@ pub struct Misplaced {
     pub suggestion: Option<String>,
 }
 
+// Every entry name inside a top-level folder, so the grouping view can refuse
+// a move that would land on one before anything moves.
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TopFolder {
+    pub name: String,
+    pub entries: Vec<String>,
+}
+
 #[derive(Serialize, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RootScan {
     pub base: String,
+    pub folders: Vec<TopFolder>,
+    pub hidden: Vec<String>,
     pub spaces: Vec<FoundSpace>,
     pub misplaced: Vec<Misplaced>,
     pub empty_top: Vec<String>,
@@ -181,10 +192,24 @@ fn refusal(base: &Path, around: &Around) -> Option<String> {
     if base.starts_with(&own) || own.starts_with(&base) {
         return Some("This folder holds Tori's own files.".into());
     }
-    if loose_project(&base) {
+    if setup_would_group(&base) {
         return Some("This is a project. Pick the folder that holds your projects.".into());
     }
     None
+}
+
+fn top_folder(dir: &Path) -> TopFolder {
+    let mut entries: Vec<String> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    entries.sort();
+    TopFolder {
+        name: name_of(dir),
+        entries,
+    }
 }
 
 fn relative(base: &Path, path: &Path) -> String {
@@ -222,7 +247,7 @@ fn scan_in(base: &Path, around: &Around) -> RootScan {
         if worktree_of_another_repo(top) {
             continue;
         }
-        if loose_project(top) {
+        if setup_would_group(top) {
             let owner = origin_at(top).as_deref().and_then(remote_owner);
             scan.misplaced.push(misplaced(base, top.clone(), owner));
             continue;
@@ -230,6 +255,7 @@ fn scan_in(base: &Path, around: &Around) -> RootScan {
         walked_tops += 1;
         let walked = Space::walk(top);
         let name = name_of(top);
+        scan.folders.push(top_folder(top));
         if walked.over() {
             scan.too_big.push(name);
             continue;
@@ -254,6 +280,7 @@ fn scan_in(base: &Path, around: &Around) -> RootScan {
     // A linked space is listed by discovery but never walked, so a link back up
     // the tree cannot loop the scan.
     for link in linked_dirs(base) {
+        scan.folders.push(top_folder(&link));
         let projects = children(&link)
             .unwrap_or_default()
             .iter()
@@ -283,7 +310,10 @@ pub fn scan_root(path: String) -> RootScan {
         home: dirs::home_dir(),
         own_state: crate::owned_state::config_dir(),
     };
-    scan_in(&base, &around)
+    RootScan {
+        hidden: crate::config::discovery_filters().1,
+        ..scan_in(&base, &around)
+    }
 }
 
 #[cfg(test)]
@@ -364,6 +394,8 @@ mod tests {
         let spaces: Vec<(&str, usize)> = scan.spaces.iter().map(|s| (s.name.as_str(), s.projects)).collect();
         assert_eq!(spaces, [("work", 2)]);
         assert_eq!(scan.empty_top, ["screenshots"]);
+        let work = scan.folders.iter().find(|f| f.name == "work").unwrap();
+        assert_eq!(work.entries, ["api", "app"]);
         fs::remove_dir_all(&tmp).ok();
     }
 

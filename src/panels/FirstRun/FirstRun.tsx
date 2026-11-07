@@ -18,7 +18,8 @@ import FirstRunShell, { StepRail, type RailStep } from "./FirstRunShell";
 import { createHostsSetup } from "./hostsSetup";
 import { createProjectSetup } from "./projectSetup";
 import { AGENTS_LEAD } from "./steps/AgentsStep";
-import BaseFolderStep, { BASE_FOLDER_LEAD } from "./steps/BaseFolderStep";
+import BaseFolderStep, { BASE_FOLDER_LEAD, DEFAULT_BASE, type Pending } from "./steps/BaseFolderStep";
+import { applyPlan, initialPlan, rowProblems, scanFits, type RootScan } from "../../utils/grouping";
 import { HOSTS_LEAD } from "./steps/HostsStep";
 import { PROJECT_LEAD } from "./steps/ProjectStep";
 import ReadyStep, { readyLead, type ReadySummary } from "./steps/ReadyStep";
@@ -62,6 +63,7 @@ export default function FirstRun() {
   const [picked, setPicked] = createSignal<string | null>(null);
   const [newName, setNewName] = createSignal("");
   const [created, setCreated] = createSignal<string | null>(null);
+  const [pending, setPending] = createSignal<Pending | null>(null);
   const agentsSetup = createAgentsSetup({ home, onScreen: () => page() === "setup" && step() === "agents" });
 
   onMount(() => {
@@ -112,23 +114,65 @@ export default function FirstRun() {
     setReached((n) => Math.max(n, ORDER.indexOf(next)));
   }
 
-  async function chooseFolder() {
+  async function adoptIfFits(path: string) {
+    const scan = await invoke<RootScan>("scan_root", { path });
+    if (!scanFits(scan)) {
+      setPending({ scan, plan: scan.refused ? null : initialPlan(scan) });
+      return;
+    }
+    setPending(null);
+    await invoke("set_root", { path });
+    await reloadFirstRunConfig();
+    // A new root is a new set of spaces; whatever was picked under the old
+    // one names nothing now.
+    setPicked(null);
+    setSpaceMode("pick");
+  }
+
+  async function withBusy(body: () => Promise<void>) {
     setBusy(true);
     try {
-      const path = await invoke<string | null>("pick_folder");
-      if (!path) return;
-      await invoke("set_root", { path });
-      await reloadFirstRunConfig();
-      // A new root is a new set of spaces; whatever was picked under the old
-      // one names nothing now.
-      setPicked(null);
-      setSpaceMode("pick");
+      await body();
     } catch (e) {
       fail(e);
     } finally {
       setBusy(false);
     }
   }
+
+  const chooseFolder = (prompt?: string) =>
+    withBusy(async () => {
+      const path = await invoke<string | null>("pick_folder", prompt ? { prompt } : {});
+      if (path) await adoptIfFits(path);
+    });
+
+  const useDefault = () =>
+    withBusy(async () => adoptIfFits(await invoke<string>("make_base_folder", { name: DEFAULT_BASE })));
+
+  const grouping = () => pending()?.plan ?? null;
+  const shownBase = () => pending()?.scan.base ?? root();
+  const canApply = () => {
+    const p = pending();
+    return !busy() && !!p?.plan && rowProblems(p.scan, p.plan).size === 0;
+  };
+
+  const applyGrouping = () =>
+    withBusy(async () => {
+      const p = pending();
+      if (!p?.plan) return;
+      const done = await applyPlan(p.scan, p.plan, { setRoot: true });
+      for (const warning of done.warnings) emitWith<ToastEvent>(TOAST, { message: warning, kind: "error" });
+      setPending(null);
+      await reloadFirstRunConfig();
+      setPicked(null);
+      setSpaceMode("pick");
+      if (spaces().length > 0) {
+        activate(spaces()[0].name);
+        go("hosts");
+      } else {
+        go("space");
+      }
+    });
 
   const creating = () => step() === "space" && (spaceMode() === "create" || spaces().length === 0);
   const canCreate = () => !busy() && !badName(newName());
@@ -182,7 +226,7 @@ export default function FirstRun() {
       label: "Base folder",
       required: true,
       group: "setup",
-      summary: root() ? shortHome(root()!, home()) : null,
+      summary: shownBase() ? shortHome(shownBase()!, home()) : null,
     },
     { id: "space", label: "Space", required: true, group: "setup", summary: spaceName() },
     { id: "hosts", label: "Git hosts", group: "once", summary: hostsSetup.summary() },
@@ -255,9 +299,15 @@ export default function FirstRun() {
                 Continue
               </Button>
             </Match>
+            <Match when={step() === "base" && grouping()}>
+              {back()}
+              <Button variant="primary" disabled={!canApply()} onClick={() => void applyGrouping()}>
+                Apply
+              </Button>
+            </Match>
             <Match when={step() === "base"}>
               {back()}
-              <Button variant="primary" disabled={!root() || busy()} onClick={() => go("space")}>
+              <Button variant="primary" disabled={!root() || busy() || !!pending()} onClick={() => go("space")}>
                 Continue
               </Button>
             </Match>
@@ -305,6 +355,10 @@ export default function FirstRun() {
               home={home()}
               busy={busy()}
               onChoose={() => void chooseFolder()}
+              pending={pending()}
+              onPlan={(plan) => setPending((p) => (p ? { ...p, plan } : p))}
+              onCreate={() => void chooseFolder("Make a new folder with New Folder, then choose it")}
+              onDefault={() => void useDefault()}
             />
           </Match>
           <Match when={step() === "space" && root()}>

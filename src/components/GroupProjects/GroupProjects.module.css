@@ -1,0 +1,78 @@
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-5);
+  font-size: var(--tori-text-md);
+  color: var(--fg-default);
+}
+
+.lead {
+  margin: 0;
+  color: var(--fg-muted);
+}
+
+.rows {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--tori-space-3) var(--tori-space-4);
+  align-items: center;
+}
+
+.head {
+  font-size: var(--tori-text-sm);
+  color: var(--fg-subtle);
+}
+
+.where {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
+  color: var(--fg-subtle);
+}
+
+.input {
+  composes: input from "../../styles/patterns.module.css";
+  min-width: 0;
+}
+
+.problem {
+  grid-column: 1 / -1;
+  margin-top: calc(-4px * var(--ui-scale));
+  font-size: var(--tori-text-sm);
+  color: var(--danger-fg);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-2);
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: var(--tori-text-sm);
+  font-weight: 600;
+  color: var(--fg-muted);
+}
+
+.addRow {
+  display: flex;
+  gap: var(--tori-space-3);
+  align-items: center;
+}
+
+.list {
+  margin: 0;
+  padding-left: calc(18px * var(--ui-scale));
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
+  color: var(--fg-muted);
+}

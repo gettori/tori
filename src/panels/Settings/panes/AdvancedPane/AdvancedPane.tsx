@@ -5,7 +5,7 @@ import { FileWarning, Folder, SquareTerminal } from "lucide-solid";
 import Button from "../../../../components/Button/Button";
 import ConfirmDialog from "../../../../components/Dialogs/ConfirmDialog";
 import Icon from "../../../../components/Icon/Icon";
-import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
+import { emit, emitWith, OPEN_GROUPING, TOAST, type ToastEvent } from "../../../../utils/events";
 import { firstRunConfig, forgetIntro } from "../../../../utils/firstRun";
 import { shortHome } from "../../../../utils/names";
 import { ago } from "../../../../utils/relativeTime";
@@ -151,10 +151,19 @@ export default function AdvancedPane(props: PaneProps) {
               <Show when={root()} fallback="Tori has nowhere to keep spaces, so it is showing first-run setup instead.">
                 Holding {count(spaces().length, "space", "spaces")} and {count(projects(), "project", "projects")}.
                 Every space is a folder inside this one, and every project lives inside a space. Tori reads it and
-                writes new spaces into it; it never moves what is already there.
+                writes new spaces into it, and moves a project only when you sort it into a space.
               </Show>
             </div>
           </div>
+          <Button
+            disabled={!root()}
+            onClick={() => {
+              emit(OPEN_GROUPING);
+              props.onClose?.();
+            }}
+          >
+            Sort projects...
+          </Button>
         </div>
       </Group>
 
