@@ -39,6 +39,7 @@ import InitGitDialog from "../../components/Dialogs/InitGitDialog";
 import ConvertLayoutDialog, { type ConversionPreview } from "../../components/Dialogs/ConvertLayoutDialog";
 import RestoreWorktreeDialog, { type Rescued } from "../../components/Dialogs/RestoreWorktreeDialog";
 import { moveWorkspaces } from "../../utils/moveWorkspace";
+import { resumeMoves, unfinishedMoves, type PlannedMove } from "../../utils/moveProjects";
 import { unsavedUnder } from "../../utils/unsavedPaths";
 import AddBranchDialog, { type BranchPick, type IssueSourceProps } from "../../components/Dialogs/AddBranchDialog";
 import {
@@ -222,6 +223,7 @@ import Tooltip from "../../components/Tooltip/Tooltip";
 import TopicList from "./TopicList";
 import ChatList from "./ChatList";
 import MisplacedProjects from "./MisplacedProjects";
+import UnfinishedMove from "./UnfinishedMove";
 import { GROUP_CAP, capList, moreLabel } from "./capList";
 import {
   NEW_CHAT_NAME,
@@ -1426,6 +1428,21 @@ export default function LeftSidebar(props: {
       setError(String(e));
       return null;
     });
+
+  const [unfinished, setUnfinished] = createSignal<PlannedMove[] | null>(null);
+  onMount(() => void unfinishedMoves().then(setUnfinished, (e) => setError(String(e))));
+
+  async function resumeUnfinished() {
+    try {
+      const done = await resumeMoves();
+      setUnfinished(null);
+      if (done.warning) setError(done.warning);
+    } catch (e) {
+      setError(String(e));
+      setUnfinished(await unfinishedMoves().catch(() => unfinished()));
+    }
+    await loadConfig();
+  }
 
   async function attachFolder() {
     const at = await pickFolder("Choose a folder to attach");
@@ -4479,6 +4496,9 @@ export default function LeftSidebar(props: {
         />
       </Show>
 
+      <Show when={unfinished()} keyed>
+        {(moves) => <UnfinishedMove moves={moves} onResume={resumeUnfinished} />}
+      </Show>
       <MisplacedProjects paths={config()?.misplaced ?? []} home={home()} onAttach={setAttachAt} />
       {/* Outside the tree's gate: the strip is how you leave a space, so it
           renders for every one, Global included even before any named space
@@ -4486,7 +4506,10 @@ export default function LeftSidebar(props: {
       <Show when={config()}>
         <div
           class={styles.spaceBar}
-          classList={{ [styles.rail]: railed(), [styles.belowMisplaced]: !!config()?.misplaced?.length }}
+          classList={{
+            [styles.rail]: railed(),
+            [styles.belowMisplaced]: !!config()?.misplaced?.length || !!unfinished(),
+          }}
         >
           <TileProbe
             glyph={House}
