@@ -454,7 +454,7 @@ mod tests {
         let store = dir.join("trusted.json");
         let root = dir.join("projects");
         std::fs::create_dir_all(root.join("work/old")).unwrap();
-        let discover = || crate::config::project_dirs_under(&root, &[]);
+        let discover = || crate::config::project_dirs_under(&root, &crate::base_layout::Rules::new(&[], &[], &[]));
 
         assert_eq!(gate_at(&store, discover, &typescript(), &root.join("work/old")), Ok(()));
 

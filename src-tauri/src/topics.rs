@@ -2972,7 +2972,7 @@ mod tests {
     fn spaced_store(tmp: &Path, root: &Path) -> Store {
         let root = root.to_path_buf();
         Store::at(tmp.join("topics.json"), move |name| {
-            crate::config::space_roots_in(&root, name, &[])
+            crate::config::space_roots_in(&root, name, &crate::base_layout::Rules::new(&[], &[], &[]))
         })
     }
 
@@ -3024,7 +3024,12 @@ mod tests {
         std::os::unix::fs::symlink(root.join("elsewhere/linked"), root.join("saga/linked")).unwrap();
         std::os::unix::fs::symlink(&root, tmp.join("root-link")).unwrap();
 
-        let roots = crate::config::space_roots_in(&tmp.join("root-link"), "saga", &[]).unwrap();
+        let roots = crate::config::space_roots_in(
+            &tmp.join("root-link"),
+            "saga",
+            &crate::base_layout::Rules::new(&[], &[], &[]),
+        )
+        .unwrap();
         let api = root.join("saga/api");
         let cms = root.join("craft/cms");
         let linked = root.join("elsewhere/linked");
