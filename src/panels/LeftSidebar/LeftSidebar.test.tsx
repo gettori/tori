@@ -304,7 +304,7 @@ describe("the space strip and the Global space", () => {
     expect(rows.map((r) => r.textContent)).toEqual([
       "New chat",
       "New topic",
-      "Attach folder…Use a folder from anywhere on disk. Nothing is moved.",
+      "Attach folder…",
       "Collapse all\u2318\u2325\u2190",
       "Expand all\u2318\u2325\u2192",
       "Space settings\u2026",

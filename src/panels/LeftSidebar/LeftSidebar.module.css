@@ -411,6 +411,7 @@
 }
 .spaceMenuName {
   font-weight: 600;
+  text-transform: capitalize;
   color: var(--fg-default);
   overflow: hidden;
   text-overflow: ellipsis;

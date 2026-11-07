@@ -1,6 +1,7 @@
 import { For, Show, createUniqueId, type JSX } from "solid-js";
 import { ChevronRight, type LucideIcon } from "lucide-solid";
 import Icon from "../Icon/Icon";
+import Tooltip from "../Tooltip/Tooltip";
 import { DropdownMenu as Primitive } from "../../lib/menu";
 import { useMenuSurface } from "./surface";
 import styles from "./Menu.module.css";
@@ -39,6 +40,9 @@ export type MenuItem =
       note?: string;
       /** The row's keyboard shortcut, drawn at the row's end. */
       keys?: string;
+      /** What the row does, as a tooltip on hover and keyboard focus rather than
+       *  a `note` under the label. */
+      hint?: string;
     };
 
 /**
@@ -79,10 +83,15 @@ export function MenuRow(props: {
    *  options) rather than committing a choice. Closing on that click would shut
    *  the menu the row was navigating within. */
   closeOnSelect?: boolean;
+  /** A tooltip for the row, opened by hover and by keyboard focus. */
+  tooltip?: string;
   children: JSX.Element;
 }) {
   return (
-    <Primitive.Item
+    <Tooltip
+      as={Primitive.Item}
+      label={props.tooltip}
+      placement="right"
       class={styles.item}
       classList={{
         [styles.danger]: !!props.danger,
@@ -106,7 +115,7 @@ export function MenuRow(props: {
       onKeyDown={(e: KeyboardEvent) => e.key === "Enter" && e.preventDefault()}
     >
       {props.children}
-    </Primitive.Item>
+    </Tooltip>
   );
 }
 
@@ -199,6 +208,7 @@ function NoteRow(props: { item: Extract<MenuItem, { label: string }> }) {
       disabled={props.item.disabled}
       refusing={props.item.refusing}
       describedBy={props.item.note ? noteId : undefined}
+      tooltip={props.item.hint}
     >
       <Show when={props.item.icon}>{(icon) => <Icon icon={icon()} aria-hidden="true" />}</Show>
       <Show when={props.item.note} fallback={props.item.label}>

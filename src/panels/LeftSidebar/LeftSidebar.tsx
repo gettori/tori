@@ -2834,13 +2834,13 @@ export default function LeftSidebar(props: {
     { label: `New in “${g.name}”`, onClick: () => openNewProject(g) },
     {
       label: "Move folder here…",
-      note: `Moves a folder from anywhere on this disk into ${g.name}.`,
+      hint: `Moves a folder from anywhere on this disk into ${g.name}.`,
       onClick: () => openNewProject(g, true),
     },
     { separator: true },
     {
       label: "New Topic",
-      note: `Groups worktrees from ${g.name}'s projects`,
+      hint: `Groups worktrees from ${g.name}'s projects`,
       onClick: () => topicActions.openNew(g.name),
     },
     { separator: true },
@@ -2863,7 +2863,7 @@ export default function LeftSidebar(props: {
     { separator: true },
     {
       label: "Attach folder…",
-      note: "Use a folder from anywhere on disk. Nothing is moved.",
+      hint: "Use a folder from anywhere on disk. Nothing is moved.",
       onClick: () => void attachFolder(),
     },
     { separator: true },
