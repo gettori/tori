@@ -1506,6 +1506,46 @@ pub fn set_root(app: AppHandle, path: String) -> Result<(), String> {
     Ok(())
 }
 
+fn add_not_spaces(text: &str, names: &[String]) -> Result<String, String> {
+    use toml_edit::{Array, Document, Item, Table};
+    let mut doc: Document = text.parse().map_err(|e: toml_edit::TomlError| e.to_string())?;
+    let discovery = doc.entry("discovery").or_insert_with(|| Item::Table(Table::new()));
+    let table = discovery.as_table_mut().ok_or("`discovery` is not a table")?;
+    let list = table
+        .entry("not_spaces")
+        .or_insert_with(|| toml_edit::value(Array::new()))
+        .as_array_mut()
+        .ok_or("`not_spaces` is not a list")?;
+    for name in names {
+        if !list.iter().any(|v| v.as_str() == Some(name)) {
+            list.push(name.as_str());
+        }
+    }
+    list.fmt();
+    Ok(doc.to_string())
+}
+
+/// Hide top-level folders of the base from the space list.
+#[tauri::command(async)]
+pub fn hide_spaces(app: AppHandle, names: Vec<String>) -> Result<(), String> {
+    let _store = crate::exec::cross_process_store_lock("config")?;
+    write_config(&add_not_spaces(&ensure_config()?, &names)?)?;
+    let _ = app.emit("config://changed", ());
+    Ok(())
+}
+
+/// Make `~/<name>` for a fresh base folder, keeping one that is already there.
+#[tauri::command(async)]
+pub fn make_base_folder(name: String) -> Result<String, String> {
+    let n = valid_name(&name)?;
+    let dir = dirs::home_dir().ok_or("No home folder")?.join(n);
+    if dir.exists() && !dir.is_dir() {
+        return Err(format!("{} is a file, not a folder", dir.display()));
+    }
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.to_string_lossy().into_owned())
+}
+
 /// Forget the configured root (no on-disk deletion). Returns to the first-run
 /// state.
 #[tauri::command(async)]
@@ -3426,6 +3466,17 @@ mod tests {
         let names: Vec<&str> = cfg.spaces.iter().map(|g| g.name.as_str()).collect();
         assert_eq!(names, vec!["beta", "alpha"]);
         std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn add_not_spaces_appends_once_and_keeps_the_rest() {
+        let text = "# keep\n[discovery]\nroots = [\"~/P\"]\nnot_spaces = [\"shots\"]\n";
+        let out = add_not_spaces(text, &["shots".into(), "office".into()]).unwrap();
+        assert!(out.contains("# keep") && out.contains("roots = [\"~/P\"]"));
+        assert!(out.contains("not_spaces = [\"shots\", \"office\"]"), "{out}");
+        assert!(add_not_spaces("", &["a".into()])
+            .unwrap()
+            .contains("not_spaces = [\"a\"]"));
     }
 
     #[test]

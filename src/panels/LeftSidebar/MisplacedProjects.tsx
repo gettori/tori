@@ -8,7 +8,12 @@ import styles from "./MisplacedProjects.module.css";
 
 // Discovery no longer reads a project at the top of the base folder as a
 // space, so without this an upgrade would make it vanish from the sidebar.
-export default function MisplacedProjects(props: { paths: string[]; home: string; onAttach: (path: string) => void }) {
+export default function MisplacedProjects(props: {
+  paths: string[];
+  home: string;
+  onAttach: (path: string) => void;
+  onSort: () => void;
+}) {
   const [open, setOpen] = createSignal(false);
   const name = (path: string) => path.split("/").pop() || path;
   const count = () => props.paths.length;
@@ -23,7 +28,10 @@ export default function MisplacedProjects(props: { paths: string[]; home: string
           </span>
         </button>
         <Show when={open()}>
-          <p class={styles.note}>Attach one to Home to use it where it is.</p>
+          <p class={styles.note}>Sort them into spaces, or attach one to Home to use it where it is.</p>
+          <Button size="sm" variant="primary" onClick={() => props.onSort()}>
+            Sort into spaces
+          </Button>
           <For each={props.paths}>
             {(path) => (
               <div class={styles.row}>

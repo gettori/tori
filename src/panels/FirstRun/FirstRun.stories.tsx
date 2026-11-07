@@ -11,6 +11,8 @@ import type { Cloud, Failure } from "../Settings/panes/IntegrationsPane/forgeAdd
 import FirstRunShell, { StepRail, type RailStep } from "./FirstRunShell";
 import AgentsStep, { AGENTS_LEAD, type Command } from "./steps/AgentsStep";
 import BaseFolderStep, { BASE_FOLDER_LEAD } from "./steps/BaseFolderStep";
+import { initialPlan, type Plan } from "../../utils/grouping";
+import { MIXED } from "../../utils/grouping.fixture";
 import HostsStep, { HOSTS_LEAD } from "./steps/HostsStep";
 import ProjectStep, { PROJECT_LABEL, PROJECT_LEAD, gitMissing } from "./steps/ProjectStep";
 import ReadyStep, { readyLead, type ReadySummary } from "./steps/ReadyStep";
@@ -211,6 +213,57 @@ export const BaseFolderVoid: Story = {
   render: () => (
     <Shell current="base" heading="Base folder" required lead={BASE_FOLDER_LEAD} primary="Continue" hint={baseHint}>
       <BaseFolderStep root={`${HOME}/code`} spaces={[]} home={HOME} onChoose={() => {}} />
+    </Shell>
+  ),
+};
+
+/** A dump folder: its projects need a space before it can be the base. */
+export const BaseFolderNeedsGrouping: Story = {
+  render: () => {
+    const [plan, setPlan] = createSignal<Plan>(initialPlan(MIXED));
+    return (
+      <Shell current="base" heading="Base folder" required lead={BASE_FOLDER_LEAD} primary="Apply" hint={baseHint}>
+        <BaseFolderStep
+          root={null}
+          spaces={[]}
+          home={HOME}
+          onChoose={() => {}}
+          pending={{ scan: MIXED, plan: plan() }}
+          onPlan={setPlan}
+        />
+      </Shell>
+    );
+  },
+};
+
+/** A folder that cannot be the base, with the three ways forward. */
+export const BaseFolderRefused: Story = {
+  render: () => (
+    <Shell
+      current="base"
+      heading="Base folder"
+      required
+      lead={BASE_FOLDER_LEAD}
+      primary="Continue"
+      primaryDisabled
+      hint={baseHint}
+    >
+      <BaseFolderStep
+        root={null}
+        spaces={[]}
+        home={HOME}
+        onChoose={() => {}}
+        pending={{
+          scan: {
+            ...MIXED,
+            base: `${HOME}/site`,
+            refused: "This is a project. Pick the folder that holds your projects.",
+          },
+          plan: null,
+        }}
+        onCreate={() => {}}
+        onDefault={() => {}}
+      />
     </Shell>
   ),
 };

@@ -742,6 +742,8 @@ export type RemoveBranchUnit = { projectPath: string; branch: string };
 export const ADD_BRANCH_UNIT = "tori:add-branch-unit";
 export type AddBranchUnit = { projectPath: string; base?: string | null };
 
+export const OPEN_GROUPING = "tori:open-grouping";
+
 // Payload-carrying event: surface a toast from anywhere. components/Toasts owns
 // the stack (ToastRegion listens, pushToast writes), so panels emit this instead
 // of holding their own notifier.
