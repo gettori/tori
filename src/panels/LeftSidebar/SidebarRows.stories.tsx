@@ -17,6 +17,7 @@ import {
   BranchRow,
   EmptyRow,
   FoldRow,
+  GroupCard,
   GroupHead,
   GroupRow,
   MoreRow,
@@ -683,6 +684,38 @@ export const TopicsGroupClosed: Story = {
         <GroupHead label="Topics" count="2" open={false} onToggle={() => {}} end={bubble({ executing: 1 })} />
         <GroupHead label="Projects" count="2" />
         <ProjectRow name="api" icon={<ProjectIcon seed="/w/api" />} disclosure menu={MENU} />
+      </Tree>
+    ),
+  ],
+};
+
+export const GroupCardSelected: Story = {
+  decorators: [
+    () => (
+      <Tree>
+        <ProjectRow name="api" icon={<ProjectIcon seed="/w/api" />} disclosure open menu={MENU}>
+          <BranchRow label="main" icon={<BranchMark active={false} current />} menu={MENU} />
+          <GroupCard name="Drag and drop" count={3} open menu={MENU}>
+            <BranchRow label="dnd-core" icon={<WorktreeMark active={false} />} menu={MENU} />
+            <BranchRow label="dnd-ghost" icon={<WorktreeMark active={false} />} selected menu={MENU} />
+            <BranchRow label="dnd-drop" icon={<WorktreeMark active={false} />} picked menu={MENU} />
+          </GroupCard>
+          <BranchRow label="billing" icon={<WorktreeMark active={false} />} picked menu={MENU} />
+        </ProjectRow>
+      </Tree>
+    ),
+  ],
+};
+
+export const GroupCardCollapsedHoldingSelection: Story = {
+  decorators: [
+    () => (
+      <Tree>
+        <ProjectRow name="api" icon={<ProjectIcon seed="/w/api" />} disclosure open menu={MENU}>
+          <BranchRow label="main" icon={<BranchMark active={false} current />} menu={MENU} />
+          <GroupCard name="Drag and drop" count={3} open={false} holdsSelection menu={MENU} />
+          <BranchRow label="billing" icon={<WorktreeMark active={false} />} menu={MENU} />
+        </ProjectRow>
       </Tree>
     ),
   ],

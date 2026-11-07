@@ -1151,6 +1151,7 @@ pub(crate) fn remove_worktree_deleting(
         if let Err(e) = crate::unit_origins::forget(repo_path, &branch) {
             eprintln!("tori: {branch} was removed, but forgetting who made it failed: {e}");
         }
+        crate::config::groups::forget_branch(repo_path, &branch);
     }
     Ok(())
 }

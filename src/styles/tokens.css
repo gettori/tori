@@ -283,6 +283,10 @@
     --done-selected: #1e3334;
     --done-bar: #4ec9b0;
 
+    /* lane */
+    --lane-card: #191b20;
+    --lane-card-hi: #1d1f24;
+
     /* blocking */
     --blocking-surface: #222327;
     --blocking-border: #d9a468;
@@ -471,6 +475,10 @@
     --done-wash: #f1f7f6;
     --done-selected: #e8f1f0;
     --done-bar: #14756a;
+
+    /* lane */
+    --lane-card: #f7f7f7;
+    --lane-card-hi: #f1f1f1;
 
     /* blocking */
     --blocking-surface: #ece9e6;

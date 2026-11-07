@@ -177,6 +177,9 @@ export const ROLES: Role[] = [
   { id: "done.selected", cssVar: "--done-selected", group: "done" },
   { id: "done.bar", cssVar: "--done-bar", group: "done" },
 
+  { id: "lane.card", cssVar: "--lane-card", group: "lane" },
+  { id: "lane.cardHi", cssVar: "--lane-card-hi", group: "lane" },
+
   { id: "blocking.surface", cssVar: "--blocking-surface", group: "blocking" },
   { id: "blocking.border", cssVar: "--blocking-border", group: "blocking" },
   { id: "blocking.fg", cssVar: "--blocking-fg", group: "blocking" },
@@ -382,6 +385,11 @@ export function buildRoleValues(palette: Palette): Record<string, string> {
     "done.wash": mix(p.canvas, p.info, v({ dark: 0.08, light: 0.06 })),
     "done.selected": mix(p.canvas, p.info, v({ dark: 0.16, light: 0.1 })),
     "done.bar": p.info,
+
+    // The sidebar's lane and group cards. Opaque over `canvas`, which the
+    // sidebar sits on, so the gate can measure the rows drawn on them.
+    "lane.card": mix(p.canvas, p.fillTint, v({ dark: 0.04, light: 0.035 })),
+    "lane.cardHi": mix(p.canvas, p.fillTint, v({ dark: 0.075, light: 0.06 })),
 
     // The blocking tier: the one look for a surface that has stopped the turn
     // and is waiting on the user. Two of them exist (the permission prompt and

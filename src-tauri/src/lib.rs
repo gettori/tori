@@ -443,6 +443,7 @@ pub fn run() {
             second_opinion::second_opinion_run,
             sidebar_order::sidebar_order_read,
             sidebar_order::sidebar_order_write,
+            config::groups::set_project_groups,
             verification::verification_commands,
             verification::verification_defaults,
             chat::commands::chat_mark_turn,

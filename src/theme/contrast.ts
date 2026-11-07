@@ -114,6 +114,7 @@ export type ContrastRule = {
 };
 
 const CANVASES = ["canvas.default", "canvas.card", "canvas.head", "canvas.input"];
+const CARDS = ["lane.card", "lane.cardHi"];
 /** The editor and the terminal both paint the work card, so syntax and the ANSI
  *  ramp are measured against exactly one surface. */
 const CODE_SURFACE = ["canvas.card"];
@@ -135,9 +136,9 @@ export const CONTRAST_RULES: Record<string, ContrastRule> = {
   // card's title, the Other label, the hint, the subagent badge. It is a step
   // off `canvas.card` rather than an alias of it, so a pair measured only
   // against the canvases would go unmeasured the moment the tier lifted.
-  "fg.default": text([...CANVASES, "neutral.hover", "brand.wash", "blocking.surface", "done.selected"]),
-  "fg.muted": text([...CANVASES, "neutral.hover", "blocking.surface", "done.wash", "done.selected"]),
-  "fg.subtle": muted([...CANVASES, "blocking.surface", "done.wash"]),
+  "fg.default": text([...CANVASES, ...CARDS, "neutral.hover", "brand.wash", "blocking.surface", "done.selected"]),
+  "fg.muted": text([...CANVASES, ...CARDS, "neutral.hover", "blocking.surface", "done.wash", "done.selected"]),
+  "fg.subtle": muted([...CANVASES, ...CARDS, "blocking.surface", "done.wash"]),
   // Not parked here after failing: it is designed to sit under every floor.
   "fg.watermark": exempt(
     "watermark text stands in for absent content (placeholders, ghost hints); it is meant to " +
@@ -163,17 +164,17 @@ export const CONTRAST_RULES: Record<string, ContrastRule> = {
   "scrollbar.thumb": exempt("a position indicator following the platform's own low-contrast convention"),
   "scrollbar.thumbHover": exempt("as scrollbar.thumb, one step stronger on hover"),
 
-  "accent.fg": text(CANVASES),
+  "accent.fg": text([...CANVASES, ...CARDS]),
   "accent.subtle": surface(),
 
   "neutral.hover": surface(),
   "neutral.subtle": surface(),
 
-  "danger.fg": text(CANVASES),
+  "danger.fg": text([...CANVASES, ...CARDS]),
   "danger.emphasis": surface(),
-  "attention.fg": text(CANVASES),
+  "attention.fg": text([...CANVASES, ...CARDS]),
   "attention.emphasis": surface(),
-  "success.fg": text(CANVASES),
+  "success.fg": text([...CANVASES, ...CARDS]),
   "success.emphasis": surface(),
   "info.fg": text(CANVASES),
 
@@ -235,6 +236,9 @@ export const CONTRAST_RULES: Record<string, ContrastRule> = {
   "done.wash": surface(),
   "done.selected": surface(),
   "done.bar": graphic(["canvas.default", "done.selected"]),
+
+  "lane.card": surface(),
+  "lane.cardHi": surface(),
 
   // The blocking tier sits ON the chat pane, which is `canvas.card`, and carries
   // its own text. The border is measured against both sides it separates: the

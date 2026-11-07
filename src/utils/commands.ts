@@ -57,6 +57,7 @@ import {
   RELOAD_APP,
   TOGGLE_SIDEBAR,
   COLLAPSE_PROJECTS,
+  GROUP_BRANCHES,
   EXPAND_PROJECTS,
   TOGGLE_TERMINAL,
   TOGGLE_EDITOR,
@@ -464,6 +465,15 @@ export const COMMANDS: Command[] = [
     scope: "window",
     match: cmdOpt("ArrowRight"),
     run: () => emit(EXPAND_PROJECTS),
+  },
+  {
+    id: "group-branches",
+    keys: ["⌘", "G"],
+    label: "Group Selected Branches",
+    group: "view",
+    scope: "window",
+    match: cmd("g"),
+    run: () => emit(GROUP_BRANCHES),
   },
   {
     id: "toggle-sidebar",
