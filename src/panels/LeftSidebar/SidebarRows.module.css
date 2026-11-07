@@ -190,6 +190,73 @@
 .cardBody {
   padding-bottom: calc(2px * var(--ui-scale));
 }
+button.row.cardHead {
+  width: calc(100% - var(--tree-inset));
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+button.row.cardHead:hover {
+  background: var(--lane-card-hi);
+}
+.parkedRow {
+  position: relative;
+  display: flex;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(6px * var(--ui-scale))
+    calc(22px * var(--ui-scale));
+}
+.parkedRow::before {
+  content: "";
+  position: absolute;
+  left: calc(16px * var(--ui-scale));
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border-rail);
+}
+.parkedCard {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  height: calc(32px * var(--ui-scale));
+  padding: 0 calc(10px * var(--ui-scale)) 0 calc(8px * var(--ui-scale));
+  border: 0;
+  border-radius: calc(8px * var(--ui-scale));
+  background: var(--lane-card);
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: var(--tori-text-md);
+  cursor: pointer;
+}
+.parkedCard:hover {
+  background: var(--lane-card-hi);
+}
+.parkedCard svg {
+  flex: none;
+  width: calc(13px * var(--ui-scale));
+  height: calc(13px * var(--ui-scale));
+}
+.parkedName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.parkedCard.cardHeadSel::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: calc(6px * var(--ui-scale));
+  bottom: calc(6px * var(--ui-scale));
+  width: var(--tori-border-thick);
+  border-radius: 1px;
+  background: var(--brand-bar);
+}
 
 /* Hover and selection share one pill: it starts ON the rail so the marker bar
    lands where the line was, and runs to the column's right edge. The z-index

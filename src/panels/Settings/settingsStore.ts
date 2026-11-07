@@ -2,7 +2,7 @@
 // backend, applies typography to CSS tokens, and re-applies live when the
 // file changes (hand edit or set_settings) through the settings://changed
 // watcher event. The reactive store backs the settings panel (Phase 4).
-import { createSignal } from "solid-js";
+import { createMemo, createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -25,6 +25,7 @@ import { DEFAULT_PIN_SIDES, type PinSide } from "../../layout/pinRules";
 import { isUnderPath } from "../../utils/pathScope";
 import type { Promotion } from "../../utils/topics";
 import { repoRunAt } from "../../utils/runStore";
+import { DEFAULT_LANES, sameLanes, type LaneConfig } from "../../utils/prLanes";
 
 /** Where the sidebar's space tiles sit. Mirrors `SpaceStrip` in
  *  src-tauri/src/settings.rs. */
@@ -48,6 +49,7 @@ export type SidebarSettings = {
   spaceTiles: SpaceStrip;
   cardColours: CardColours;
   branchLine: { mode: BranchLineMode; items: Record<BranchLineItem, boolean> };
+  lanes: { default: LaneConfig; spaces: Record<string, LaneConfig> };
 };
 export type Typography = {
   uiFontFamily: string;
@@ -487,6 +489,7 @@ export const DEFAULT_SETTINGS: Settings = {
         comments: true,
       },
     },
+    lanes: { default: structuredClone(DEFAULT_LANES), spaces: {} },
   },
   forge: { enabled: true, picks: {}, prWatch: false },
   git: {
@@ -1154,6 +1157,27 @@ export function setPortLinks(projectPath: string, on: boolean): Promise<void> {
 
 export function setSidebar(patch: Partial<SidebarSettings>): Promise<void> {
   return saveSettings({ ...settings, sidebar: { ...settings.sidebar, ...patch } });
+}
+
+export const lanesFor = (space: string): LaneConfig =>
+  settings.sidebar.lanes.spaces[space] ?? settings.sidebar.lanes.default;
+
+/** Value-equal, since every save hands back a fresh object for every Space
+ *  (gotcha_every_settings_save_replaces_every_per_project_map). */
+export const laneConfigFor = (space: () => string) =>
+  createMemo(() => lanesFor(space()), undefined, { equals: sameLanes });
+
+export function setLanes(space: string | null, patch: Partial<LaneConfig>): Promise<void> {
+  const lanes = settings.sidebar.lanes;
+  if (space === null) return setSidebar({ lanes: { ...lanes, default: { ...lanes.default, ...patch } } });
+  return setSidebar({ lanes: { ...lanes, spaces: { ...lanes.spaces, [space]: { ...lanesFor(space), ...patch } } } });
+}
+
+export function resetLanes(space: string | null): Promise<void> {
+  const lanes = settings.sidebar.lanes;
+  if (space === null) return setSidebar({ lanes: { ...lanes, default: structuredClone(DEFAULT_LANES) } });
+  const { [space]: _, ...spaces } = lanes.spaces;
+  return setSidebar({ lanes: { ...lanes, spaces } });
 }
 
 export function setUnattended(patch: Partial<Unattended>): Promise<void> {

@@ -110,6 +110,35 @@ pub struct BranchLine {
     pub items: BranchLineItems,
 }
 
+/// One Space's PR lanes. `lit` holds the child states that get a lane of their
+/// own, as the frontend spells them; an unknown one is ignored there.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LaneConfig {
+    pub enabled: bool,
+    pub lit: Vec<String>,
+    pub fold_reviewing: bool,
+}
+
+impl Default for LaneConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            lit: ["changesRequested", "approved", "reviewRequested"]
+                .map(String::from)
+                .to_vec(),
+            fold_reviewing: false,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Lanes {
+    pub default: LaneConfig,
+    pub spaces: std::collections::BTreeMap<String, LaneConfig>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Sidebar {
@@ -118,6 +147,7 @@ pub struct Sidebar {
     pub space_tiles: SpaceStrip,
     pub card_colours: CardColours,
     pub branch_line: BranchLine,
+    pub lanes: Lanes,
 }
 
 /// Ids persisted by the VS Code-theme era, mapped on read so an install keeps
@@ -1145,6 +1175,7 @@ fn lenient_sidebar<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Sidebar, D:
             mode: field(&line, "mode"),
             items: field(&line, "items"),
         },
+        lanes: field(&raw, "lanes"),
     })
 }
 
@@ -3503,6 +3534,14 @@ mod tests {
         s.sidebar.card_colours = CardColours::Colourful;
         s.sidebar.branch_line.mode = BranchLineMode::Pr;
         s.sidebar.branch_line.items.spend = false;
+        s.sidebar.lanes.default.enabled = true;
+        s.sidebar.lanes.spaces.insert(
+            "work".into(),
+            LaneConfig {
+                fold_reviewing: true,
+                ..LaneConfig::default()
+            },
+        );
         save_to(&p, &s).unwrap();
         assert_eq!(load_from(&p).sidebar, s.sidebar);
         std::fs::remove_file(&p).ok();

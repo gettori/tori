@@ -17,6 +17,9 @@ export type ArrangeOptions<E> = {
   order: readonly string[];
   base?: string | null;
   cap?: { size: number; keep: (e: E) => boolean; open: boolean };
+  /** `of` answers null for an entry that stays in `main`, where groups follow
+   *  the unlaned entries. `order` lists the lanes top to bottom. */
+  lanes?: { of: (e: E) => string | null; order: readonly string[]; isGroup: (e: E) => boolean };
 };
 
 export function arrange<E>(entries: readonly E[], opts: ArrangeOptions<E>): Section<E>[] {
@@ -31,9 +34,35 @@ export function arrange<E>(entries: readonly E[], opts: ArrangeOptions<E>): Sect
     .map((e, i) => ({ e, i, r: rank(e) }))
     .sort((a, b) => a.r - b.r || a.i - b.i)
     .map((x) => x.e);
+  const lanes = opts.lanes;
+  const lane = (e: E) => (lanes && !lanes.isGroup(e) ? lanes.of(e) : null);
+  const main = lanes
+    ? [...sorted.filter((e) => !lanes.isGroup(e) && lane(e) === null), ...sorted.filter(lanes.isGroup)]
+    : sorted;
   const cap = opts.cap;
-  const cut = cap && !cap.open ? capList(sorted, cap.size, cap.keep) : { shown: sorted, hidden: [] };
-  return [{ id: "main", ...cut }];
+  const cut = cap && !cap.open ? capList(main, cap.size, cap.keep) : { shown: main, hidden: [] };
+  const laned = (lanes?.order ?? []).flatMap((id) => {
+    const shown = sorted.filter((e) => lane(e) === id);
+    return shown.length ? [{ id: `lane:${id}`, shown, hidden: [] }] : [];
+  });
+  return [{ id: "main", ...cut }, ...laned];
+}
+
+export function arrive(
+  order: readonly string[],
+  last: Readonly<Record<string, string>>,
+  now: Readonly<Record<string, string>>,
+): string[] {
+  const moved = (k: string) => last[k] !== undefined && now[k] !== undefined && last[k] !== now[k];
+  const arrived = order.filter(moved);
+  if (arrived.length === 0) return [...order];
+  let out = order.filter((k) => !moved(k));
+  for (const lane of new Set(arrived.map((k) => now[k]))) {
+    const lead = out.findIndex((k) => now[k] === lane);
+    const at = lead < 0 ? 0 : lead;
+    out = [...out.slice(0, at), ...arrived.filter((k) => now[k] === lane), ...out.slice(at)];
+  }
+  return out;
 }
 
 export function orderedKeys(keys: readonly string[], order: readonly string[], base?: string | null): string[] {

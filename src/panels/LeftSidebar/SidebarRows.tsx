@@ -1,15 +1,26 @@
 import type { SidebarDragProps } from "./sidebarDrag";
-import { Show, onMount, type JSX } from "solid-js";
+import { For, Show, onMount, type JSX } from "solid-js";
 import {
+  Activity,
   ArrowUpRight,
+  Check,
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  CircleCheck,
+  CircleX,
   Ellipsis,
+  Eye,
   GitBranch,
+  GitMerge,
+  GitPullRequest,
+  GitPullRequestClosed,
+  GitPullRequestDraft,
   Group,
   Layers,
+  MessageSquare,
   Plus,
+  RefreshCw,
   SquareStack,
   TriangleAlert,
   type LucideIcon,
@@ -20,6 +31,7 @@ import IconButton from "../../components/IconButton/IconButton";
 import { type MenuItem } from "../../components/Menu/rows";
 import Icon from "../../components/Icon/Icon";
 import type { DragRowProps } from "../../utils/dragReorder";
+import { LANE_LABEL, type LaneId } from "../../utils/prLanes";
 import styles from "./SidebarRows.module.css";
 
 /** The mark on a project tile that says the folder was attached from
@@ -403,6 +415,72 @@ export function GroupCard(props: {
       <Show when={props.open}>
         <div class={styles.cardBody}>{props.children}</div>
       </Show>
+    </div>
+  );
+}
+
+const LANE_ICON: Record<LaneId, LucideIcon> = {
+  working: Activity,
+  inReview: GitPullRequest,
+  reviewing: Eye,
+  done: GitMerge,
+  noPr: GitBranch,
+  draft: GitPullRequestDraft,
+  ready: GitPullRequest,
+  commented: MessageSquare,
+  changesRequested: CircleX,
+  reReview: RefreshCw,
+  approved: CircleCheck,
+  reviewRequested: Eye,
+  reviewed: Check,
+  merged: GitMerge,
+  closed: GitPullRequestClosed,
+};
+
+/** An open lane. Its header parks it. */
+export function LaneCard(props: { lane: LaneId; count: number; onPark: () => void; children?: JSX.Element }) {
+  return (
+    <div class={`node ${styles.groupCard}`} data-lane={props.lane}>
+      <button
+        type="button"
+        class={`${styles.row} ${styles.cardHead}`}
+        aria-expanded="true"
+        onClick={() => props.onPark()}
+      >
+        <span class={styles.rowIcon}>
+          <Icon icon={LANE_ICON[props.lane]} />
+        </span>
+        <span class={`${styles.label} ${styles.cardLabel}`}>{LANE_LABEL[props.lane]}</span>
+        <span class={styles.cardCount}>{props.count}</span>
+        <RowChevron open />
+      </button>
+      <div class={styles.cardBody}>{props.children}</div>
+    </div>
+  );
+}
+
+export type ParkedLane = { lane: LaneId; count: number; holdsSelection: boolean };
+
+/** The parked lanes side by side. A click opens one in its place. */
+export function ParkedLanes(props: { lanes: ParkedLane[]; onOpen: (lane: LaneId) => void }) {
+  return (
+    <div class={`node ${styles.parkedRow}`}>
+      <For each={props.lanes}>
+        {(l) => (
+          <button
+            type="button"
+            class={styles.parkedCard}
+            classList={{ [styles.cardHeadSel]: l.holdsSelection }}
+            data-lane={l.lane}
+            aria-expanded="false"
+            onClick={() => props.onOpen(l.lane)}
+          >
+            <Icon icon={LANE_ICON[l.lane]} />
+            <span class={styles.parkedName}>{LANE_LABEL[l.lane]}</span>
+            <span class={styles.cardCount}>{l.count}</span>
+          </button>
+        )}
+      </For>
     </div>
   );
 }

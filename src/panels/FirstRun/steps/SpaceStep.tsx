@@ -1,6 +1,8 @@
 import { For, Show } from "solid-js";
 import type { FirstRunSpace } from "../../../utils/firstRun";
 import { badName, shortHome } from "../../../utils/names";
+import Switch from "../../../components/Switch/Switch";
+import { setLanes, settings } from "../../Settings/settingsStore";
 import styles from "../FirstRun.module.css";
 
 export const SPACE_LEAD =
@@ -32,84 +34,100 @@ export default function SpaceStep(props: {
   let field: HTMLInputElement | undefined;
 
   return (
-    <Show
-      when={props.mode === "pick" && props.spaces.length > 0}
-      fallback={
-        <>
-          <div class={styles.field}>
-            <label class={styles.fieldLabel} for="first-run-space-name">
-              Space name
-            </label>
-            <input
-              id="first-run-space-name"
-              ref={(el) => {
-                field = el;
-                queueMicrotask(() => field?.focus());
-              }}
-              class={styles.input}
-              type="text"
-              value={props.name}
-              placeholder="work"
-              autocomplete="off"
-              spellcheck={false}
-              disabled={props.busy}
-              onInput={(e) => props.onName(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key !== "Enter") return;
-                e.preventDefault();
-                props.onSubmit();
-              }}
-            />
-            <Show when={error()} fallback={<div class={styles.preview}>Creates {preview()}</div>}>
-              {(err) => <div class={styles.error}>{err()}</div>}
-            </Show>
-          </div>
-          <div class={styles.card}>
-            <Show
-              when={props.spaces.length > 0}
-              fallback={
-                <>
-                  No spaces found in {shortHome(props.root, props.home)}. One space is all Tori needs to open, and you
-                  can add more at any time.
-                </>
-              }
-            >
-              The new space is created inside {shortHome(props.root, props.home)}, beside the ones already there.
-            </Show>
-          </div>
-          <Show when={props.spaces.length > 0}>
-            <div>
-              <button type="button" class={styles.link} onClick={() => props.onMode("pick")}>
-                Pick an existing space instead
-              </button>
+    <>
+      <Show
+        when={props.mode === "pick" && props.spaces.length > 0}
+        fallback={
+          <>
+            <div class={styles.field}>
+              <label class={styles.fieldLabel} for="first-run-space-name">
+                Space name
+              </label>
+              <input
+                id="first-run-space-name"
+                ref={(el) => {
+                  field = el;
+                  queueMicrotask(() => field?.focus());
+                }}
+                class={styles.input}
+                type="text"
+                value={props.name}
+                placeholder="work"
+                autocomplete="off"
+                spellcheck={false}
+                disabled={props.busy}
+                onInput={(e) => props.onName(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
+                  e.preventDefault();
+                  props.onSubmit();
+                }}
+              />
+              <Show when={error()} fallback={<div class={styles.preview}>Creates {preview()}</div>}>
+                {(err) => <div class={styles.error}>{err()}</div>}
+              </Show>
             </div>
-          </Show>
-        </>
-      }
-    >
-      <div class={styles.choices} role="radiogroup" aria-label="Space to open">
-        <For each={props.spaces}>
-          {(s) => (
-            <button
-              type="button"
-              role="radio"
-              aria-checked={props.selected === s.name}
-              class={styles.choice}
-              classList={{ [styles.choiceOn]: props.selected === s.name }}
-              onClick={() => props.onSelect(s.name)}
-            >
-              <span>{s.name}</span>
-              <span class={styles.choiceCount}>{plural(s.projects.length)}</span>
-            </button>
-          )}
-        </For>
+            <div class={styles.card}>
+              <Show
+                when={props.spaces.length > 0}
+                fallback={
+                  <>
+                    No spaces found in {shortHome(props.root, props.home)}. One space is all Tori needs to open, and you
+                    can add more at any time.
+                  </>
+                }
+              >
+                The new space is created inside {shortHome(props.root, props.home)}, beside the ones already there.
+              </Show>
+            </div>
+            <Show when={props.spaces.length > 0}>
+              <div>
+                <button type="button" class={styles.link} onClick={() => props.onMode("pick")}>
+                  Pick an existing space instead
+                </button>
+              </div>
+            </Show>
+          </>
+        }
+      >
+        <div class={styles.choices} role="radiogroup" aria-label="Space to open">
+          <For each={props.spaces}>
+            {(s) => (
+              <button
+                type="button"
+                role="radio"
+                aria-checked={props.selected === s.name}
+                class={styles.choice}
+                classList={{ [styles.choiceOn]: props.selected === s.name }}
+                onClick={() => props.onSelect(s.name)}
+              >
+                <span>{s.name}</span>
+                <span class={styles.choiceCount}>{plural(s.projects.length)}</span>
+              </button>
+            )}
+          </For>
+        </div>
+        <div class={styles.row}>
+          <button type="button" class={styles.link} onClick={() => props.onMode("create")}>
+            Add another space
+          </button>
+          <span class={styles.hint}>Tori opens on the space you select here.</span>
+        </div>
+      </Show>
+      <div class={styles.lanes}>
+        <Switch
+          checked={settings.sidebar.lanes.default.enabled}
+          onChange={(enabled) => void setLanes(null, { enabled })}
+          aria-label="PR lanes"
+        />
+        <div>
+          <div class={styles.fieldLabel}>PR lanes</div>
+          <div class={styles.hint}>
+            Sort each project's branches by where their pull request stands. The lanes fill once a forge account is
+            signed in on the next step.
+          </div>
+        </div>
       </div>
-      <div class={styles.row}>
-        <button type="button" class={styles.link} onClick={() => props.onMode("create")}>
-          Add another space
-        </button>
-        <span class={styles.hint}>Tori opens on the space you select here.</span>
-      </div>
-    </Show>
+    </>
   );
 }
