@@ -356,8 +356,8 @@ html {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  /* Breathing room around the raised card. The left gap is the outer splitter,
-     so no padding-left here. */
+  /* Breathing room around the raised card. None on the left: the card meets
+     the sidebar, whose own inset keeps the tree off it. */
   padding: 0 calc(10px * var(--ui-scale)) calc(10px * var(--ui-scale)) 0;
   /* The containing block for the terminal's overlays (the restore offer, the
      orphan banner): they take this box's edges rather than the window's, so
@@ -447,8 +447,8 @@ html {
   display: none;
 }
 
-/* With the sidebar hidden its Resizer gutter is gone too, so restore the
-   card's left breathing room the gutter normally provided. */
+/* With the sidebar hidden, nothing stands left of the card, so it gets the
+   breathing room it has on its other sides. */
 .workspace.no-sidebar {
   padding-left: calc(10px * var(--ui-scale));
 }

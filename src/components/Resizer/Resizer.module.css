@@ -30,6 +30,12 @@
   margin: calc(-4px * var(--ui-scale)) 0;
 }
 
+/* The sidebar's edge. Reaches only 3px back into the sidebar, because its
+   overlay scrollbar's thumb starts 3px in from that edge. */
+.edge.x {
+  margin: 0 calc(-5px * var(--ui-scale)) 0 calc(-3px * var(--ui-scale));
+}
+
 .hairline::before {
   content: "";
   position: absolute;

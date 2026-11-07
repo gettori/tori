@@ -227,8 +227,9 @@ const WORK_MIN = 200;
 // it, `min-width: 0` on that pane lets a drag crush the transcript to nothing.
 const CHAT_MIN = 320;
 // Chrome that sits between the panes, so a ceiling leaves room for it: one
-// Resizer is 8px (Resizer.module.css .resizer) and .workspace pads 10px on the
-// side away from the sidebar (App.css .workspace / .workspace.no-sidebar).
+// Resizer is 8px (Resizer.module.css .resizer), except the sidebar's, which
+// takes no width, and .workspace pads 10px on the side away from the sidebar
+// (App.css .workspace / .workspace.no-sidebar).
 const GUTTER = 8;
 const WORKSPACE_PAD = 10;
 
@@ -407,7 +408,7 @@ function App() {
   const shared = () =>
     bodyW() -
     px(WORKSPACE_PAD) -
-    (showSidebar() ? px(GUTTER) : railOnly() ? px(SPACE_RAIL) : px(WORKSPACE_PAD)) -
+    (showSidebar() ? 0 : railOnly() ? px(SPACE_RAIL) : px(WORKSPACE_PAD)) -
     (showTerminal() && showEditor() ? px(GUTTER) : 0);
   // The pane that absorbs the slack is chat, or the editor when chat is hidden
   // (`.pane.editor.fill`).
@@ -1205,6 +1206,7 @@ function App() {
         <Show when={showSidebar()}>
           <Resizer
             side="before"
+            variant="edge"
             value={sidebarW()}
             min={px(SIDEBAR_MIN)}
             max={sidebarMax()}
