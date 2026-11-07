@@ -154,8 +154,8 @@ const { resetForgeStatusForTests } = await import("../../utils/forgeStatus");
 const { emit, GROUP_BRANCHES } = await import("../../utils/events");
 const { resetSidebarOrderForTests } = await import("../../utils/sidebarOrder");
 const { setSidebar } = await import("../Settings/settingsStore");
-const { GROUP_HUES } = await import("../../utils/prLanes");
-const [FIRST, , , LAST] = GROUP_HUES;
+const { GROUP_COLORS } = await import("../../utils/spaceTint");
+const [FIRST, , , LAST] = GROUP_COLORS;
 
 const labels = () =>
   [...document.querySelectorAll("[class*='label']")]
@@ -337,25 +337,25 @@ describe("custom groups", () => {
 
   it("shows a group's colour only in Colourful, where its menu sets it and a new group takes a free hue", async () => {
     bridge.branches = ["main", "a", "b", "c"];
-    bridge.groups = [{ name: "G1", colour: LAST, branches: ["a"] }];
+    bridge.groups = [{ name: "G1", colour: LAST.name, branches: ["a"] }];
     mount();
     const card = () => document.querySelector<HTMLElement>('[data-group="G1"]');
     await waitFor(() => expect(card()).toBeTruthy());
     expect(card()!.dataset.hue).toBeUndefined();
     rightClick(headerOf("G1"));
     await screen.findByRole("menuitem", { name: "Rename" });
-    expect(screen.queryByRole("menuitem", { name: "Blue" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: FIRST.name })).toBeNull();
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
 
     await setSidebar({ cardColours: "colourful" });
-    await waitFor(() => expect(card()!.dataset.hue).toBe(LAST));
+    await waitFor(() => expect(card()!.style.getPropertyValue("--card-icon")).toBe(LAST.hex));
     rightClick(headerOf("G1"));
-    pointerClick(await screen.findByRole("menuitem", { name: "Blue" }));
-    await waitFor(() => expect(lastWrite()).toEqual([{ name: "G1", colour: FIRST, branches: ["a"] }]));
-    await waitFor(() => expect(card()?.dataset.hue).toBe(FIRST));
+    pointerClick(await screen.findByRole("menuitem", { name: FIRST.name }));
+    await waitFor(() => expect(lastWrite()).toEqual([{ name: "G1", colour: FIRST.name, branches: ["a"] }]));
+    await waitFor(() => expect(card()?.style.getPropertyValue("--card-icon")).toBe(FIRST.hex));
 
     drag(rowOf("c"), rowOf("b"), "middle");
     await waitFor(() => expect(lastWrite()).toHaveLength(2));
-    expect(GROUP_HUES.slice(1)).toContain((lastWrite()[1] as { colour?: string }).colour);
+    expect(GROUP_COLORS.slice(1).map((c) => c.name)).toContain((lastWrite()[1] as { colour?: string }).colour);
   });
 });
