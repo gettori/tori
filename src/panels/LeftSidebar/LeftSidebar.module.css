@@ -508,3 +508,28 @@
   display: flex;
   gap: var(--tori-space-2);
 }
+
+/* Stands in for the drag ghost while a drop is refused: the platform draws the
+   ghost, so the reason has to follow the pointer on its own. */
+.dragRefused {
+  position: fixed;
+  z-index: 1300;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--tori-space-3);
+  max-width: calc(280px * var(--ui-scale));
+  padding: var(--tori-space-3) var(--tori-space-5);
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-md);
+  background: var(--canvas-card);
+  box-shadow: var(--shadow-md);
+  color: var(--fg-default);
+  font-size: var(--tori-text-md);
+  line-height: var(--tori-line-normal);
+  pointer-events: none;
+}
+.dragRefused svg {
+  flex: none;
+  margin-top: calc(2px * var(--ui-scale));
+  color: var(--danger-fg);
+}

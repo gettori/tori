@@ -34,11 +34,14 @@ export type SidebarDragProps = {
   onDrop: JSX.EventHandler<HTMLElement, DragEvent>;
   onDragEnd: JSX.EventHandler<HTMLElement, DragEvent>;
   "data-dragging": string | undefined;
-  "data-drop": "before" | "after" | "into" | undefined;
+  "data-drop": "before" | "after" | "into" | "refused" | undefined;
 };
+
+export type Refusal = { reason: string; x: number; y: number };
 
 export type SidebarDrag = {
   dragging: () => string | null;
+  refused: () => Refusal | null;
   rowProps: (spot: RowSpot) => SidebarDragProps;
 };
 
@@ -47,9 +50,10 @@ const DROP: Record<Zone, "before" | "after" | "into"> = { top: "before", bottom:
 export function createSidebarDrag(opts: {
   onCommit: (c: DragCommit) => void;
   onActive?: (active: boolean) => void;
+  refuse?: (from: string, to: RowSpot, zone: Zone) => string | null;
 }): SidebarDrag {
   const [dragging, setDragging] = createSignal<string | null>(null);
-  const [over, setOver] = createSignal<{ key: string; zone: Zone } | null>(null);
+  const [over, setOver] = createSignal<{ key: string; zone: Zone; refused: Refusal | null } | null>(null);
 
   function end() {
     setDragging(null);
@@ -60,6 +64,7 @@ export function createSidebarDrag(opts: {
 
   return {
     dragging,
+    refused: () => over()?.refused ?? null,
     rowProps: (spot) => ({
       draggable: true,
       onDragStart: (e) => {
@@ -80,9 +85,11 @@ export function createSidebarDrag(opts: {
         // Only a preventDefault here makes the row a drop target at all.
         e.preventDefault();
         e.stopPropagation();
-        if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
         const rect = e.currentTarget.getBoundingClientRect();
-        setOver({ key: spot.key, zone: zoneAt(rect.top, rect.height, e.clientY, spot.groupable === true) });
+        const zone = zoneAt(rect.top, rect.height, e.clientY, spot.groupable === true);
+        const reason = opts.refuse?.(dragging()!, spot, zone) ?? null;
+        if (e.dataTransfer) e.dataTransfer.dropEffect = reason ? "none" : "move";
+        setOver({ key: spot.key, zone, refused: reason ? { reason, x: e.clientX, y: e.clientY } : null });
       },
       onDragLeave: (e) => {
         if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
@@ -90,7 +97,8 @@ export function createSidebarDrag(opts: {
       },
       onDrop: (e) => {
         const from = dragging();
-        const zone = over()?.key === spot.key ? over()!.zone : null;
+        const o = over()?.key === spot.key ? over() : null;
+        const zone = o && !o.refused ? o.zone : null;
         e.preventDefault();
         e.stopPropagation();
         end();
@@ -107,7 +115,8 @@ export function createSidebarDrag(opts: {
       },
       get "data-drop"() {
         const o = over();
-        return o?.key === spot.key && dragging() ? DROP[o.zone] : undefined;
+        if (o?.key !== spot.key || !dragging()) return undefined;
+        return o.refused ? "refused" : DROP[o.zone];
       },
     }),
   };

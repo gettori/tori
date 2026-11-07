@@ -587,6 +587,30 @@ export const SETTINGS: SettingEntry[] = [
     hint: "A strip along the bottom of the sidebar, or a rail down its left edge that fits any number of spaces.",
   },
   {
+    id: "lanes-for",
+    section: "sidebar",
+    label: "Lanes for",
+    hint: "Each Space keeps its own lanes. A Space follows Default until you change something for it.",
+  },
+  {
+    id: "pr-lanes",
+    section: "sidebar",
+    label: "PR lanes",
+    hint: "Sort each project's branches into Working, In review, Reviewing and Done by pull request state. Groups stay above the lanes.",
+  },
+  {
+    id: "lane-split",
+    section: "sidebar",
+    label: "Own lanes",
+    hint: "A lit state gets a lane of its own, directly above the lane it comes from.",
+  },
+  {
+    id: "lanes-fold",
+    section: "sidebar",
+    label: "Fold into In review",
+    hint: "Show the pull requests you review in In review, beside your own.",
+  },
+  {
     id: "branch-line-mode",
     section: "sidebar",
     label: "Branch line",
