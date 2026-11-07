@@ -155,6 +155,10 @@
   padding-left: var(--branch-label-x);
   border-radius: calc(8px * var(--ui-scale));
 }
+/* Open, the head sits on its body, so only its top corners round. */
+.row.cardHead.cardHeadOpen {
+  border-radius: calc(8px * var(--ui-scale)) calc(8px * var(--ui-scale)) 0 0;
+}
 .row.cardHead:hover,
 .row.cardHead[data-expanded] {
   background: var(--lane-card-hi);
