@@ -120,36 +120,31 @@
   right: calc(var(--tori-space-5) * 2 + var(--control-icon));
 }
 
-/* A path that is no project: no door, so the action takes the chevron's
-   place. */
-.pathItem {
-  padding: var(--tori-space-4) var(--tori-space-5);
+/* Set apart from the list, in the attention hue: leftover trust is worth a
+   look, not an alarm. */
+.stale {
+  display: flex;
+  align-items: center;
+  gap: var(--tori-space-4);
+  margin-top: var(--tori-space-7);
+  padding: var(--tori-space-4) var(--tori-space-4) var(--tori-space-4) var(--tori-space-5);
+  border: var(--tori-border-thin) solid color-mix(in srgb, var(--attention-fg) 35%, transparent);
+  border-radius: var(--tori-radius-md);
+  background: color-mix(in srgb, var(--attention-fg) 8%, transparent);
+  color: var(--fg-default);
+  font-size: var(--tori-text-sm);
 }
 
-.pathItem .action {
-  right: var(--tori-space-5);
+.stale > svg {
+  flex: none;
+  width: var(--control-icon);
+  height: var(--control-icon);
+  color: var(--attention-fg);
 }
 
-.path {
+.stale > span {
   flex: 1;
   min-width: 0;
-  padding-right: calc(var(--tori-space-5) + var(--control-height-xs));
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--tori-font-mono);
-  font-size: var(--tori-text-sm);
-  color: var(--fg-default);
-}
-
-.pathOff {
-  color: var(--fg-muted);
-}
-
-.othersTitle {
-  margin: var(--tori-space-6) 0 var(--tori-space-3);
-  color: var(--fg-subtle);
-  font-size: var(--tori-text-xs);
 }
 
 .spaceHead {
