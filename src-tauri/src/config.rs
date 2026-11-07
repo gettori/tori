@@ -1921,6 +1921,30 @@ pub(crate) fn remove_attached_folder(_: &StoreLock, path: &str) -> Result<(), St
     write_config(&serialized)
 }
 
+fn rekey_project_meta(text: &str, old: &str, new: &str) -> Result<String, String> {
+    use toml_edit::{value, Document};
+    let mut doc: Document = text.parse().map_err(|e: toml_edit::TomlError| e.to_string())?;
+    if let Some(tables) = doc.get_mut("project_meta").and_then(|i| i.as_array_of_tables_mut()) {
+        for t in tables.iter_mut().filter(|t| same_folder(t, old)) {
+            t["path"] = value(new);
+        }
+    }
+    Ok(doc.to_string())
+}
+
+fn settle_moved_project(text: &str, old: &str, new: &str) -> Result<String, String> {
+    drop_attached_folder(&rekey_project_meta(text, old, new)?, old)
+}
+
+pub(crate) fn settle_moved_entry(_: &StoreLock, old: &str, new: &str) -> Result<(), String> {
+    let text = ensure_config()?;
+    let settled = settle_moved_project(&text, old, new)?;
+    match settled == text {
+        true => Ok(()),
+        false => write_config(&settled),
+    }
+}
+
 pub(crate) fn relocate_attached_entry(_: &StoreLock, old: &str, new: &str) -> Result<(), String> {
     let serialized = move_attached_folder(&ensure_config()?, old, new)?;
     write_config(&serialized)
@@ -2584,6 +2608,18 @@ mod tests {
             .all(|a| a.availability == Availability::Ok));
 
         std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn a_project_moved_into_a_space_stops_being_attached_but_keeps_its_icon() {
+        let text = "[[attached_folder]]\npath = \"/old/site\"\n\n[[attached_folder]]\npath = \"/old/other\"\n\n[[project_meta]]\npath = \"/old/site\"\nicon = \"Rocket\"\n";
+        let out = settle_moved_project(text, "/old/site", "/P/work/site").unwrap();
+        let raw: RawConfig = toml::from_str(&out).unwrap();
+        let attached: Vec<&str> = raw.attached_folder.iter().map(|a| a.path.as_str()).collect();
+        assert_eq!(attached, ["/old/other"]);
+        assert_eq!(raw.project_meta[0].path, "/P/work/site");
+        let none = settle_moved_project("[[project_meta]]\npath = \"/a\"\n", "/old/site", "/new").unwrap();
+        assert!(none.contains("path = \"/a\""));
     }
 
     #[test]

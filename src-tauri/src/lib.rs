@@ -84,6 +84,7 @@ mod setup;
 mod shared;
 mod shell_path;
 mod sound;
+mod space_move;
 mod speech;
 mod themes;
 mod topic_home;
@@ -463,6 +464,9 @@ pub fn run() {
             config::set_global_meta,
             attached_folder::inspect_folder,
             root_scan::scan_root,
+            space_move::move_into_space,
+            space_move::move_journal,
+            space_move::resume_moves,
             attached_folder::attach_folder,
             attached_folder::detach_folder,
             attached_folder::relocate_attached_folder,

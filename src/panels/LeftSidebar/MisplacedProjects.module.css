@@ -9,6 +9,10 @@
   font-size: var(--tori-text-xs);
 }
 
+.misplaced + .misplaced {
+  margin-top: 0;
+}
+
 .head {
   display: flex;
   align-items: center;

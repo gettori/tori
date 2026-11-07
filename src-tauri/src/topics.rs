@@ -672,6 +672,28 @@ pub fn repoint_worktrees(store: &Store, repo: &str, to: impl Fn(&str) -> Option<
     })
 }
 
+// Old paths no longer exist after the move, so both spellings of `old` are
+// matched as strings.
+pub fn move_repo(store: &Store, old: &[String], new: &str) -> Result<(), String> {
+    let rebase = |path: &str| {
+        old.iter().find_map(|o| match relative_to(path, o) {
+            Some(rest) => Some(format!("{new}/{rest}")),
+            None => (path.trim_end_matches('/') == o.trim_end_matches('/')).then(|| new.to_string()),
+        })
+    };
+    store.mutate(|file| {
+        for m in file.topics.iter_mut().flat_map(|t| t.members.iter_mut()) {
+            if let Some(moved) = rebase(&m.repo_path) {
+                m.repo_path = moved;
+            }
+            if let Some(moved) = m.worktree_path.as_deref().and_then(&rebase) {
+                m.worktree_path = Some(moved);
+            }
+        }
+        Ok(())
+    })
+}
+
 /// The record with every member's state refreshed. What a call that changed the
 /// world on disk has to answer with: `load_topic` returns the stored state,
 /// and the stored state is the one such a call has just invalidated. Callers
@@ -1743,6 +1765,33 @@ mod tests {
         let store = Store::at(tmp.join("topics.json"), no_space);
         store.save(&TopicFile { topics }).unwrap();
         store
+    }
+
+    #[test]
+    fn a_moved_repo_takes_its_members_and_their_worktrees_along() {
+        let tmp = unique_tmp();
+        let store = store_with(
+            &tmp,
+            vec![topic(
+                "auth",
+                vec![
+                    member("/old/app", Some("/old/app/.tori/worktrees/auth"), MemberState::Present),
+                    member("/private/old/app", Some("/elsewhere/app-auth"), MemberState::Present),
+                    member("/old/application", Some("/old/application/x"), MemberState::Present),
+                ],
+            )],
+        );
+        move_repo(&store, &["/old/app".into(), "/private/old/app".into()], "/P/work/app").unwrap();
+        let members = &store.load().topics[0].members;
+        assert_eq!(members[0].repo_path, "/P/work/app");
+        assert_eq!(
+            members[0].worktree_path.as_deref(),
+            Some("/P/work/app/.tori/worktrees/auth")
+        );
+        assert_eq!(members[1].repo_path, "/P/work/app");
+        assert_eq!(members[1].worktree_path.as_deref(), Some("/elsewhere/app-auth"));
+        assert_eq!(members[2].repo_path, "/old/application");
+        std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]
