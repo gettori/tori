@@ -1,4 +1,4 @@
-import { Show } from "solid-js";
+import { Show, createMemo } from "solid-js";
 import {
   GitMerge,
   GitPullRequest,
@@ -25,6 +25,7 @@ import type { BaseSync } from "../../utils/gitActions";
 import type { SessionUsage } from "../../utils/chatUsageStore";
 import { spendView } from "../../utils/spend";
 import { operationChip, type Operation } from "../../utils/worktreeOperation";
+import type { BranchLineItem, BranchLineMode } from "../Settings/settingsStore";
 import styles from "./BranchLine.module.css";
 
 const CHECK_ICON: Record<BadgeTone, LucideIcon> = {
@@ -74,7 +75,7 @@ function prIcon(state: PrChipState): LucideIcon {
  * what a failing check looks like. What this adds is the counts behind those
  * tones, which the tone alone throws away.
  */
-export default function BranchLine(props: {
+export type BranchLineProps = {
   status: UnitStatus | null;
   /** The base the branch is measured against, whose `stat` is the diff a pull
    *  request of it shows. */
@@ -87,17 +88,54 @@ export default function BranchLine(props: {
   release?: boolean;
   branchSpend?: SessionUsage | null;
   operation?: Operation | null;
-}) {
+  /** The tooltip tells the whole story whatever this hides. */
+  show?: { mode: BranchLineMode; items: Record<BranchLineItem, boolean> };
+};
+
+function shownPr(props: BranchLineProps) {
+  const st = props.status;
+  if (!st?.pullRequest) return null;
+  return props.release && !releaseShows(st, Date.now() / 1000) ? null : st.pullRequest;
+}
+
+function shownStat(props: BranchLineProps) {
+  const s = props.base?.stat;
+  return s && s.files > 0 ? s : null;
+}
+
+/** The facts the line draws for these props. A row with none and no running
+ *  operation has no second line. */
+export function drawnFacts(props: BranchLineProps): Set<BranchLineItem> {
+  const s = props.show;
+  const lit = (item: BranchLineItem) =>
+    !s || (s.mode === "full" ? s.items[item] : s.mode === "pr" && (item === "pr" || item === "stack"));
+  const out = new Set<BranchLineItem>();
+  const add = (item: BranchLineItem, has: unknown) => has && lit(item) && out.add(item);
+  const p = shownPr(props);
+  if (p) {
+    const checks = forgeBadges(props.status).checks;
+    const finishedAt = p.state === "merged" ? p.mergedAt : p.closedAt;
+    add("pr", true);
+    add("stack", p.stack);
+    add("watched", props.watched);
+    add("checks", checks);
+    add("skipped", (checks?.tone === "good" || checks?.tone === "bad") && props.status!.checks.skipped > 0);
+    add("age", !Number.isNaN(Date.parse((p.state === "open" ? p.createdAt : finishedAt) ?? "")));
+    add("comments", p.comments > 0);
+  }
+  const stat = shownStat(props);
+  add("diff", stat);
+  add("files", stat);
+  add("spend", spendView(props.branchSpend, "this branch"));
+  return out;
+}
+
+export default function BranchLine(props: BranchLineProps) {
+  const drawn = createMemo(() => drawnFacts(props));
+  const shows = (item: BranchLineItem) => drawn().has(item);
   const op = () => (props.operation ? operationChip(props.operation) : null);
-  const pr = () => {
-    const st = props.status;
-    if (!st?.pullRequest) return null;
-    return props.release && !releaseShows(st, Date.now() / 1000) ? null : st.pullRequest;
-  };
-  const stat = () => {
-    const s = props.base?.stat;
-    return s && s.files > 0 ? s : null;
-  };
+  const pr = () => shownPr(props);
+  const stat = () => shownStat(props);
   const spent = () => spendView(props.branchSpend, "this branch");
   const badges = () => forgeBadges(props.status);
   // RFC 3339 on the wire, epoch seconds here, and nothing at all if the host
@@ -197,17 +235,19 @@ export default function BranchLine(props: {
   // the size of the change, and last the age and the comment count.
   const standing = (p: () => NonNullable<UnitStatus["pullRequest"]>) => (
     <>
-      <span
-        class={`${styles.item} ${styles[numberClass()]}`}
-        data-pr-state={state()}
-        data-pr-tone={state() === "open" ? tone() : undefined}
-        data-pr-release={props.release ? p().baseRef : undefined}
-      >
-        <Icon icon={props.release ? GitPullRequestArrow : prIcon(state())} />
-        {props.release ? `-> ${p().baseRef} #${p().number}` : `#${p().number}`}
-      </span>
+      <Show when={shows("pr")}>
+        <span
+          class={`${styles.item} ${styles[numberClass()]}`}
+          data-pr-state={state()}
+          data-pr-tone={state() === "open" ? tone() : undefined}
+          data-pr-release={props.release ? p().baseRef : undefined}
+        >
+          <Icon icon={props.release ? GitPullRequestArrow : prIcon(state())} />
+          {props.release ? `-> ${p().baseRef} #${p().number}` : `#${p().number}`}
+        </span>
+      </Show>
 
-      <Show when={p().stack}>
+      <Show when={shows("stack") && p().stack}>
         {(st) => (
           <span class={styles.item} data-pr-stack={`${st().position}/${st().size}`}>
             <Icon icon={SquareStack} />
@@ -216,13 +256,13 @@ export default function BranchLine(props: {
         )}
       </Show>
 
-      <Show when={props.watched}>
+      <Show when={shows("watched")}>
         <span class={styles.item} data-pr-watched>
           <Icon icon={Eye} />
         </span>
       </Show>
 
-      <Show when={badges().checks}>
+      <Show when={shows("checks") && badges().checks}>
         {(c) => (
           <span class={`${styles.item} ${styles[c().tone]}`} data-pr-checks={c().tone}>
             <Icon icon={CHECK_ICON[c().tone]} />
@@ -233,7 +273,7 @@ export default function BranchLine(props: {
         )}
       </Show>
 
-      <Show when={badges().checks?.tone === "good" || badges().checks?.tone === "bad" ? checks().skipped : 0}>
+      <Show when={shows("skipped") ? checks().skipped : 0}>
         <span class={`${styles.item} ${styles.skipped}`} data-pr-skipped={checks().skipped}>
           <Icon icon={CircleSlash} />
           {checks().skipped}
@@ -244,21 +284,25 @@ export default function BranchLine(props: {
 
   const size = (s: () => NonNullable<BaseSync["stat"]>) => (
     <>
-      <span class={styles.item} data-diff-lines>
-        <span class={styles.good}>{`+${s().insertions}`}</span>/<span class={styles.bad}>{`-${s().deletions}`}</span>
-      </span>
-      <span class={styles.item} data-diff-files={s().files}>
-        <Icon icon={FileDiff} />
-        {s().files}
-      </span>
+      <Show when={shows("diff")}>
+        <span class={styles.item} data-diff-lines>
+          <span class={styles.good}>{`+${s().insertions}`}</span>/<span class={styles.bad}>{`-${s().deletions}`}</span>
+        </span>
+      </Show>
+      <Show when={shows("files")}>
+        <span class={styles.item} data-diff-files={s().files}>
+          <Icon icon={FileDiff} />
+          {s().files}
+        </span>
+      </Show>
     </>
   );
 
   const history = (p: () => NonNullable<UnitStatus["pullRequest"]>) => (
     <>
-      <Show when={ended() ?? age()}>{(a) => <span class={styles.item}>{a()}</span>}</Show>
+      <Show when={shows("age") && (ended() ?? age())}>{(a) => <span class={styles.item}>{a()}</span>}</Show>
 
-      <Show when={p().comments > 0}>
+      <Show when={shows("comments")}>
         <span class={styles.item} data-pr-comments={p().comments}>
           <Icon icon={MessageSquare} />
           {p().comments}
@@ -268,7 +312,7 @@ export default function BranchLine(props: {
   );
 
   return (
-    <Show when={op() || pr() || stat() || spent()}>
+    <Show when={op() || drawn().size > 0}>
       {
         // A span, not a button. The line reports; it is not a way in. The
         // Pull Requests panel is reached from the command palette and from
@@ -303,7 +347,7 @@ export default function BranchLine(props: {
             </Show>
             <Show when={pr()}>{(p) => standing(p)}</Show>
             <Show when={stat()}>{(s) => size(s)}</Show>
-            <Show when={spent()}>
+            <Show when={shows("spend") && spent()}>
               {(v) => (
                 <span class={styles.item} data-spend>
                   {v().text}

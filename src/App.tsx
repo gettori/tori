@@ -314,7 +314,7 @@ function App() {
   const [showSidebar, setShowSidebar] = createSignal(initial.showSidebar);
   // Hiding the sidebar hides its tree. With the space tiles in the rail, the
   // rail stays, since it is the way back to every space.
-  const railOnly = () => !showSidebar() && settings.appearance.spaceStrip === "side";
+  const railOnly = () => !showSidebar() && settings.sidebar.spaceTiles === "side";
   const [showFiletree, setShowFiletree] = createSignal(initial.showFiletree);
   const [dock, setDock] = createSignal(initial.dock);
   resetDock(initial.showDock);

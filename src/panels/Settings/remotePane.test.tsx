@@ -1,7 +1,7 @@
 // The Remote section: a switch Rust owns, so it writes through `remote_set`
 // rather than `set_settings`, and the status line shows what Rust answered.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor, within } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
 
 const invoke = vi.fn();
@@ -53,7 +53,7 @@ describe("the Remote settings section", () => {
 
   it("passes the accessibility gate", async () => {
     openRemote();
-    await screen.findByText("Off");
+    await within(document.getElementById("settings-pane-remote")!).findByText("Off");
     await expectNoAxeViolations(document.body);
   });
 });
