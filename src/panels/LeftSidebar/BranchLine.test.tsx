@@ -113,3 +113,56 @@ describe("an operation in progress", () => {
     }
   });
 });
+
+describe("the branch line setting", () => {
+  const ALL = {
+    pr: true,
+    stack: true,
+    watched: true,
+    checks: true,
+    skipped: true,
+    diff: true,
+    files: true,
+    spend: true,
+    age: true,
+    comments: true,
+  };
+  const base = { name: "main", stat: { files: 3, insertions: 12, deletions: 4 }, conflicts: [] } as never;
+  const stacked = () => status({ comments: 2, stack: { number: 9, size: 3, position: 2, baseRef: "main" } });
+
+  it("draws nothing in Off, but still leads with a running operation", () => {
+    const off = { mode: "off" as const, items: ALL };
+    const quiet = render(() => <BranchLine status={stacked()} base={base} show={off} />);
+    expect(quiet.container.querySelector("[data-pr-line]")).toBeNull();
+    quiet.unmount();
+
+    const busy = render(() => (
+      <BranchLine
+        status={stacked()}
+        show={off}
+        operation={{ kind: "rebase", replaying: "feat", step: 3, total: 7, conflicted: 0 }}
+      />
+    ));
+    expect(busy.container.querySelector("[data-operation]")?.textContent).toBe("Rebasing 3/7");
+    expect(busy.container.querySelector("[data-pr-state]")).toBeNull();
+  });
+
+  it("keeps the number and the stack in PR only", () => {
+    const { container } = render(() => <BranchLine status={stacked()} base={base} show={{ mode: "pr", items: ALL }} />);
+    expect(container.querySelector("[data-pr-state]")?.textContent).toBe("#12");
+    expect(container.querySelector("[data-pr-stack]")?.textContent).toBe("2/3");
+    expect(container.querySelector("[data-diff-lines]")).toBeNull();
+    expect(container.querySelector("[data-pr-comments]")).toBeNull();
+    expect(screen.queryByText("3d")).toBeNull();
+  });
+
+  it("drops an unlit item in Full and keeps the rest", () => {
+    const { container } = render(() => (
+      <BranchLine status={stacked()} base={base} show={{ mode: "full", items: { ...ALL, comments: false } }} />
+    ));
+    expect(container.querySelector("[data-pr-comments]")).toBeNull();
+    expect(container.querySelector("[data-diff-lines]")).toBeTruthy();
+    expect(container.querySelector("[data-diff-files]")?.textContent).toBe("3");
+    expect(screen.getByText("3d")).toBeTruthy();
+  });
+});

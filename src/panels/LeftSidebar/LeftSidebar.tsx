@@ -18,14 +18,13 @@ import { isLocked } from "../../utils/autopilotStore";
 import { extensionConnected, openPort, portsAt } from "../../utils/portsStore";
 import { spendFor } from "../../utils/spendStore";
 import { showSpend } from "../../utils/usageSettings";
-import { spendView } from "../../utils/spend";
 import { tearingDown } from "../../utils/teardowns";
 import { runAt, runnable, startRun, stopRun } from "../../utils/runStore";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { homeDir } from "@tauri-apps/api/path";
 import Dropdown from "../../components/Menu/Dropdown";
-import { type MenuItem } from "../../components/Menu/rows";
+import { MenuRow, MenuRows, MenuSeparator, type MenuItem } from "../../components/Menu/rows";
 import PromptModal from "../../components/Dialogs/PromptModal";
 import PickerModal from "../../components/Dialogs/PickerModal";
 import ConfirmDeleteSpace, { type DeleteEntry } from "../../components/Dialogs/ConfirmDeleteSpace";
@@ -103,6 +102,8 @@ import {
   NEW_CHAT,
   OPEN_CHAT,
   type OpenChat,
+  COLLAPSE_PROJECTS,
+  EXPAND_PROJECTS,
 } from "../../utils/events";
 import { fetchRootIfStale } from "../../utils/remoteSync";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
@@ -156,7 +157,7 @@ import { resetToUpstream } from "../../utils/gitActions";
 import { compactAgo } from "../../utils/compactAge";
 import SyncMarks from "../../components/SyncMarks/SyncMarks";
 import TooltipLines from "../../components/Tooltip/TooltipLines";
-import { forgeAccountName, forgeErrorMessage, needsAttention, releaseShows } from "../../utils/forgeTypes";
+import { forgeAccountName, forgeErrorMessage, needsAttention } from "../../utils/forgeTypes";
 import { defaultBranchOf } from "../../utils/defaultBranch";
 import { apiCanServe } from "../../utils/createPr";
 import {
@@ -181,7 +182,7 @@ import {
   reviewRequests,
   type WatchedProject,
 } from "../../utils/forgeStatus";
-import { portLinksAt, reviewRule, runProjectFor, settings as appSettings } from "../Settings/settingsStore";
+import { portLinksAt, reviewRule, runProjectFor, setSidebar, settings as appSettings } from "../Settings/settingsStore";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
 import ProjectIcon from "../../components/Icon/ProjectIcon";
@@ -194,6 +195,7 @@ import {
   FolderInput,
   Ellipsis,
   Search,
+  SlidersHorizontal,
   Tag,
   House,
   Plus,
@@ -252,7 +254,8 @@ import {
   type Topic,
 } from "../../utils/topics";
 import { dockOpen } from "../../layout/dockStore";
-import BranchLine from "./BranchLine";
+import BranchLine, { drawnFacts, type BranchLineProps } from "./BranchLine";
+import { BRANCH_LINE_MODES } from "../../utils/branchLineItems";
 import { prWatchMenu, type PrWatchRow } from "../../utils/prWatchMenu";
 import StatusBubble, { CountBubble } from "./StatusBubble";
 import { latestUnreviewed, runSecondOpinion, secondOpinionRunning } from "../../utils/secondOpinion";
@@ -815,7 +818,8 @@ export default function LeftSidebar(props: {
   const [dragSpace, setDragSpace] = createSignal<string | null>(null);
   const [dropHint, setDropHint] = createSignal<{ name: string; after: boolean } | null>(null);
 
-  const railed = () => appSettings.appearance.spaceStrip === "side";
+  const railed = () => appSettings.sidebar.spaceTiles === "side";
+  const branchLine = () => appSettings.sidebar.branchLine;
 
   const [deleteReq, setDeleteReq] = createSignal<{
     mode: "space" | "folder" | "project";
@@ -1408,6 +1412,8 @@ export default function LeftSidebar(props: {
     }),
   );
   onCleanup(onEvent(SESSIONS_REFRESH, () => refreshSessions()));
+  onCleanup(onEvent(COLLAPSE_PROJECTS, () => setProjectsOpen(false)));
+  onCleanup(onEvent(EXPAND_PROJECTS, () => setProjectsOpen(true)));
   // Deferred to the next frame so focus lands after the sidebar is revealed
   // (App un-hides it on the same event; a synchronous focus would hit a
   // display:none element and be dropped).
@@ -2989,6 +2995,17 @@ export default function LeftSidebar(props: {
     { label: "Promote this attempt", warn: true, onClick: () => promoteAttempt(p, u, a) },
   ];
 
+  function setProjectsOpen(open: boolean) {
+    const g = inGlobal() ? globalAsSpace() : activeSpace();
+    if (!g) return;
+    const next = new Set(expanded());
+    for (const p of g.projects) {
+      if (open) next.add(pkey(g, p));
+      else next.delete(pkey(g, p));
+    }
+    setExpanded(next);
+  }
+
   function toggle(key: string) {
     const next = new Set(expanded());
     if (next.has(key)) next.delete(key);
@@ -3300,6 +3317,16 @@ export default function LeftSidebar(props: {
       if (!hiddenConflict()) out.push(...conflictLines(sync()?.base?.conflicts ?? []));
       return out;
     };
+    const line = (): BranchLineProps => ({
+      status: showPr() ? status()! : null,
+      base: sync()?.base,
+      branchSpend: spent(),
+      watched: showPr() && prWatches().some((w) => w.url === status()?.pullRequest?.url),
+      reviewAsked: reviewAsked(),
+      release: trunk(),
+      operation: u.operation,
+      show: branchLine(),
+    });
     return (
       <BranchRow
         label={displayBranch(u)}
@@ -3313,22 +3340,7 @@ export default function LeftSidebar(props: {
         menu={attempt ? attemptMenu(g, p, u, attempt) : unitMenu(g, p, u)}
         onClick={() => selectUnit(g, p, u)}
         onDragStart={(e) => startAbsDrag(e, u.folderPath)}
-        meta={
-          (showPr() && (!trunk() || releaseShows(status()!, Date.now() / 1000))) ||
-          (sync()?.base?.stat?.files ?? 0) > 0 ||
-          spendView(spent(), "") ||
-          u.operation ? (
-            <BranchLine
-              status={showPr() ? status()! : null}
-              base={sync()?.base}
-              branchSpend={spent()}
-              watched={showPr() && prWatches().some((w) => w.url === status()?.pullRequest?.url)}
-              reviewAsked={reviewAsked()}
-              release={trunk()}
-              operation={u.operation}
-            />
-          ) : undefined
-        }
+        meta={u.operation || drawnFacts(line()).size > 0 ? <BranchLine {...line()} /> : undefined}
         end={
           <>
             <Show when={tearingDown(u.folderPath)}>
@@ -4220,6 +4232,35 @@ export default function LeftSidebar(props: {
         : bubbleFor(inThis);
   }
 
+  const viewMenu = () => (
+    <>
+      <MenuRows items={[{ heading: "Branch line" }]} />
+      <For each={BRANCH_LINE_MODES}>
+        {(m) => (
+          <MenuRow
+            selected={branchLine().mode === m.value}
+            onClick={() => void setSidebar({ branchLine: { ...branchLine(), mode: m.value } })}
+          >
+            {m.label}
+          </MenuRow>
+        )}
+      </For>
+      <MenuSeparator />
+      <MenuRow onClick={() => setProjectsOpen(false)}>
+        <span class={styles.viewMenuLabel}>Collapse all</span>
+        <span class={styles.viewMenuKeys}>⌘⌥←</span>
+      </MenuRow>
+      <MenuRow onClick={() => setProjectsOpen(true)}>
+        <span class={styles.viewMenuLabel}>Expand all</span>
+        <span class={styles.viewMenuKeys}>⌘⌥→</span>
+      </MenuRow>
+      <MenuSeparator />
+      <MenuRow onClick={() => emitWith<OpenSettings>(OPEN_SETTINGS, { entry: "branch-line-mode" })}>
+        Sidebar settings…
+      </MenuRow>
+    </>
+  );
+
   return (
     <div
       class={`${styles.tree} ${rows.rowScope}`}
@@ -4307,6 +4348,16 @@ export default function LeftSidebar(props: {
             icon={<Icon icon={Search} />}
             onClick={() => setSearching(true)}
           />
+          <Dropdown as="span" wrapper class={styles.viewMenu} menu={viewMenu()} placement="bottom-end">
+            <Button
+              class={styles.searchToggle}
+              variant="ghost"
+              size="md"
+              aria-label="View options"
+              tooltip="View options"
+              icon={<Icon icon={SlidersHorizontal} />}
+            />
+          </Dropdown>
         </Show>
       </div>
 

@@ -142,6 +142,8 @@ export const RELOAD_APP = "tori:reload-app";
 // editor when the filetree is shown). Emitted by the topbar cluster, the view
 // hotkeys, and the command palette so all three drive one path.
 export const TOGGLE_SIDEBAR = "tori:toggle-sidebar";
+export const COLLAPSE_PROJECTS = "tori:collapse-projects";
+export const EXPAND_PROJECTS = "tori:expand-projects";
 export const TOGGLE_TERMINAL = "tori:toggle-terminal";
 export const TOGGLE_EDITOR = "tori:toggle-editor";
 export const TOGGLE_FILETREE = "tori:toggle-filetree";

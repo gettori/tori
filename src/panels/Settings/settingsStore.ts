@@ -29,7 +29,26 @@ import { repoRunAt } from "../../utils/runStore";
 /** Where the sidebar's space tiles sit. Mirrors `SpaceStrip` in
  *  src-tauri/src/settings.rs. */
 export type SpaceStrip = "bottom" | "side";
-export type Appearance = { theme: string; spaceStrip: SpaceStrip };
+export type Appearance = { theme: string };
+export type CardColours = "subtle" | "colourful";
+export type BranchLineMode = "off" | "pr" | "full";
+export type BranchLineItem =
+  | "pr"
+  | "stack"
+  | "watched"
+  | "checks"
+  | "skipped"
+  | "diff"
+  | "files"
+  | "spend"
+  | "age"
+  | "comments";
+/** Mirrors `Sidebar` in src-tauri/src/settings.rs. */
+export type SidebarSettings = {
+  spaceTiles: SpaceStrip;
+  cardColours: CardColours;
+  branchLine: { mode: BranchLineMode; items: Record<BranchLineItem, boolean> };
+};
 export type Typography = {
   uiFontFamily: string;
   uiFontSize: number;
@@ -321,6 +340,7 @@ export type Budgets = {
 };
 export type Settings = {
   appearance: Appearance;
+  sidebar: SidebarSettings;
   typography: Typography;
   checkpoints: Checkpoints;
   panePins: PanePins;
@@ -448,7 +468,26 @@ export type AutopilotSettings = {
 export type AgentRow = { agent: string; profile: string };
 
 export const DEFAULT_SETTINGS: Settings = {
-  appearance: { theme: "tori-dark", spaceStrip: "bottom" },
+  appearance: { theme: "tori-dark" },
+  sidebar: {
+    spaceTiles: "bottom",
+    cardColours: "subtle",
+    branchLine: {
+      mode: "full",
+      items: {
+        pr: true,
+        stack: true,
+        watched: true,
+        checks: true,
+        skipped: false,
+        diff: true,
+        files: true,
+        spend: true,
+        age: true,
+        comments: true,
+      },
+    },
+  },
   forge: { enabled: true, picks: {}, prWatch: false },
   git: {
     fetchEveryMinutes: 10,
@@ -1111,6 +1150,10 @@ export function portLinksAt(path: string): boolean {
 export function setPortLinks(projectPath: string, on: boolean): Promise<void> {
   const rest = (settings.portLinks ?? []).filter((p) => p !== projectPath);
   return saveSettings({ ...settings, portLinks: on ? [...rest, projectPath] : rest });
+}
+
+export function setSidebar(patch: Partial<SidebarSettings>): Promise<void> {
+  return saveSettings({ ...settings, sidebar: { ...settings.sidebar, ...patch } });
 }
 
 export function setUnattended(patch: Partial<Unattended>): Promise<void> {
