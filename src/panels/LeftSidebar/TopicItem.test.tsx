@@ -298,6 +298,9 @@ describe("a member's pull request", () => {
     },
     checks: { state: failing ? "failure" : "success", total: 3, failing, skipped: 0, contexts: [] },
     reviewDecision: "none",
+    reviews: [],
+    requestedReviewers: [],
+    viewerReview: null,
   });
 
   it("draws the pull request line only on a member that has one, a reference included", async () => {

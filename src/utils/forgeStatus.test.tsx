@@ -143,6 +143,9 @@ function status(head: string, over: Partial<UnitStatus> = {}): UnitStatus {
     pullRequest: null,
     checks: { state: "success", total: 1, failing: 0, skipped: 0, contexts: [] },
     reviewDecision: "none",
+    reviews: [],
+    requestedReviewers: [],
+    viewerReview: null,
     ...over,
   };
 }

@@ -74,6 +74,9 @@ const unit = (over: Partial<UnitStatus> & { headRef: string }): UnitStatus => ({
   pullRequest: null,
   checks: { state: "none", total: 0, failing: 0, skipped: 0, contexts: [] },
   reviewDecision: "none",
+  reviews: [],
+  requestedReviewers: [],
+  viewerReview: null,
   ...over,
 });
 
@@ -231,9 +234,8 @@ describe("the forge chip on a branch row", () => {
 
     // Open, all checks green, approved. The score is the line's whole point:
     // the chip had only a tone, and 3/3 is what the tone was standing in for.
-    expect(shipped.querySelector('[data-pr-state="open"]')?.textContent).toContain("#11");
+    expect(shipped.querySelector('[data-pr-state="approved"]')?.textContent).toContain("#11");
     expect(shipped.querySelector('[data-pr-checks="good"]')?.textContent).toContain("3/3");
-    expect(shipped.querySelector('[data-pr-tone="approved"]')).toBeTruthy();
     // Nothing of it left beside the name.
     expect(shipped.querySelector("[data-forge-state]")).toBeNull();
 
@@ -244,14 +246,13 @@ describe("the forge chip on a branch row", () => {
     expect(drafting.querySelector('[data-pr-checks="busy"]')).toBeTruthy();
     // Running checks carry no score: the total is still moving.
     expect(drafting.querySelector('[data-pr-checks="busy"]')?.textContent).not.toContain("/");
-    expect(drafting.querySelector("[data-pr-tone]")).toBeNull();
 
     // Failing checks and a changes-requested verdict, the two states
     // `needsAttention` counts and Phase 7 will attribute to a session.
     const broken = await row("broken");
     // 5 total, 2 failing, so 3 passed - the number GitHub's own list shows.
     expect(broken.querySelector('[data-pr-checks="bad"]')?.textContent).toContain("3/5");
-    expect(broken.querySelector('[data-pr-tone="changes"]')).toBeTruthy();
+    expect(broken.querySelector('[data-pr-state="changesRequested"]')).toBeTruthy();
   });
 
   it("draws nothing on a branch the forge answered for and has no PR", async () => {

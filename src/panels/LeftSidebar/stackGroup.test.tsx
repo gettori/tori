@@ -47,6 +47,9 @@ const status = (headRef: string): UnitStatus => {
     pullRequest,
     checks: { state: "none", total: 0, failing: 0, skipped: 0, contexts: [] },
     reviewDecision: "none",
+    reviews: [],
+    requestedReviewers: [],
+    viewerReview: null,
   };
 };
 
