@@ -11,5 +11,6 @@ Do not reset a draft from an effect that tracks `settings.projectAgents[path]` o
 
 ## Related
 
+- [[component_settings_store]] `laneConfigFor`, the value-equal reader the sidebar's lanes use for the same reason
 - [[component_project_settings_dialog]]
 - [[component_settings_store]]

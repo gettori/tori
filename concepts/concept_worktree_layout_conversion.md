@@ -1,8 +1,8 @@
 ---
 summary: a plain clone converts in place by staging its files, going bare, then adding the worktree, with a per-step journal for undo
 status: current
-updated: 2026-10-11
-source: "gettori/tickets#74, convert a plain clone to the bare plus worktree layout (personal/tori, branch phase-1-block-2); src-tauri/src/convert.rs; commits 36635567, 42a2de53"
+updated: 2026-11-07
+source: "gettori/tickets#74, convert a plain clone to the bare plus worktree layout (personal/tori, branch phase-1-block-2); src-tauri/src/convert.rs; commits 36635567, 42a2de53; fit any base folder plan (branch move-any-folder-or-project-to-space), commit 0dcef3f6"
 ---
 
 # Worktree layout conversion
@@ -22,7 +22,10 @@ source: "gettori/tickets#74, convert a plain clone to the bare plus worktree lay
 5. Moves the new `.git` file into staging and renames staging over the empty worktree folder.
 6. Moves the old `index` and `logs/HEAD` into the admin dir, found by its `gitdir` backlink rather than by name.
 7. Moves Tori worktrees out to `<proj>/<slug>`, repairs every linked worktree at its new path, prunes only after ([[gotcha_git_worktree_repair_before_git_worktree_prune_never_the_reverse]]), and repoints Topic members.
-8. Deletes the journal.
+8. With `with_default`, adds a worktree for the default branch too when it differs from the checked-out one (`Step::Default`), creating the local branch from origin when missing.
+9. Deletes the journal.
+
+`with_default` is off for the sidebar's own Convert and on for Move here (`convert_to_worktree_layout { withDefault }`). The default branch is origin/HEAD, else `origin/main`, else `origin/master` (`default_branch`), the same answer the preview's Topic warning uses. With none found, or a folder already named after it, the conversion still runs and `Preview.note` says why there is no second worktree. Undo removes that worktree and deletes the branch only when `branch_was_missing` and it exists now.
 
 The linked list is read raw from porcelain ([[gotcha_list_worktrees_body_hides_dot_folder_worktrees]]).
 
@@ -35,6 +38,8 @@ The journal records the last step begun and a `repointed` flag. Every undo step 
 The frontend refuses while any tab is live or any file unsaved (the quit stash included), then moves the editor state with [[concept_workspace_move]] instead of purging it. Earlier agent sessions stay keyed to the old cwd; the dialog says so rather than aliasing them.
 
 ## Related
+
+- [[concept_space_move]] Move here converts after the move
 
 - [[concept_workspace_move]] the frontend half
 - [[component_project_discovery]] the `converting` kind

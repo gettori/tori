@@ -1,8 +1,8 @@
 ---
 summary: every sidebar group shows six via capList, keeps open, selected and busy items in place, and its fold row carries their rollup
 status: current
-updated: 2026-11-03
-source: Calm sidebar sections plan (branch global-space); src/panels/LeftSidebar/capList.ts:7; src/panels/LeftSidebar/LeftSidebar.tsx:3435; src/panels/LeftSidebar/ChatList.tsx; src/panels/LeftSidebar/TopicRows.tsx; src/panels/LeftSidebar/SidebarRows.tsx:233
+updated: 2026-11-07
+source: Calm sidebar sections plan (branch global-space); Sidebar lanes, custom groups and branch line controls plan (branch left-sidebar-customization); src/panels/LeftSidebar/capList.ts:7; src/panels/LeftSidebar/LeftSidebar.tsx:3435; src/panels/LeftSidebar/ChatList.tsx; src/panels/LeftSidebar/TopicRows.tsx; src/panels/LeftSidebar/SidebarRows.tsx:233
 ---
 
 # Sidebar group folds
@@ -14,6 +14,7 @@ Chats, Topics and projects in a space's tree each show at most `GROUP_CAP` (6) i
 - **One cut.** `capList(items, cap, keep)` (`src/panels/LeftSidebar/capList.ts:7`) returns `shown` and `hidden` in the list's own order, with every `keep` item past the cap left in its own place. Branch lists use it too (`BRANCH_CAP = GROUP_CAP`).
 - **What is kept.** The selected item, an open one (an expanded Topic or project), and a busy one: `needsYouOrWorking` (`src/utils/sessionStatus.ts:158`) means executing, waiting for approval or an answer, or a pull request needing you. Opening is free, so a cap never closes anything.
 - **The fold row reports what it hides.** While shut it carries the `StatusBubble` rollup of the hidden items, so tile rollups did not change: a hidden item is still on screen through its fold row.
+- **Branch lists are in the user's order** since the sidebar arrangement work: `arrange()` applies the cap to its `main` section, where a group counts as one entry. PR lanes are never capped; they park instead. See [[concept_sidebar_arrangement]].
 - **Filtering turns it off.** With filter text, every match lists, with no cap.
 - **A space without Topics stays uncapped.** It has no Projects heading, so there is no section to fold under. The space tree renders the plain `activeProjects()` list then, and `projectFold` only when `topicsGroupSpace()` is set.
 - **Remembered state** lives in the sidebar's `expanded()` set: `gcm:` (more chats), `tm:<space>` (Topics), `pm:<space>` (projects), with `/global` for Home.
@@ -24,12 +25,14 @@ Chats, Topics and projects in a space's tree each show at most `GROUP_CAP` (6) i
 ## Why it is this way
 
 - Topics and projects are capped by name order, not recency, so nothing reorders under the user.
+- PR lanes and arrival at the top of a lane break that rule for branches on purpose: they are opt-in, and the sidebar's hold keeps every poll-driven move off the rows while the pointer is over the tree.
 - Members of an open Topic stay uncapped.
 - Rejected: accordion opening, auto-collapse of idle items, date headings in Chats, and tabs between sections. Each one hides or moves things the user did not touch.
 - An Older fold for chats untouched a week was built and then removed: every chat row already shows its date, and with only old chats the list opened on a lone Older row.
 
 ## Related
 
+- [[concept_sidebar_arrangement]] the order, groups and lanes the branch cap now works over
 - [[concept_chats]] - the chats this folds
 - [[gotcha_the_sidebar_rail_is_a_variable_not_a_copy]] - why card lists do not reuse the rail row
 - [[gotcha_a_non_keyed_show_child_reading_its_accessor_throws_when_cleared]] - hit by the first cut of the Topics fold row

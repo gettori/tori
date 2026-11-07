@@ -1,8 +1,8 @@
 ---
 summary: discovers spaces from disk and probes each repo's git kind with a cache keyed on dir and HEAD mtime, or it goes stale
 status: current
-updated: 2026-11-03
-source: "Worktree-aware tree + Sidebar as Project Manager + Sidebar Context-Menu Redesign + Delete Group + Space icons & reordering (personal/tori, branch code-mirror-6); commits 5c5177f, 3501d59, 8ceb6e2, 785b17b, e49947a, e6f929f, 17a334a, e704411, fef06e6, bcd31db, 68920f0; Feature lifecycle, member management and repair (issue #159, branch `feature-workspace`); commit ef3779b; gettori/tickets#74 convert to worktree layout, commit 36635567; Global space ticket (branch global-space), commits 31c7d198, 11a1c775"
+updated: 2026-11-07
+source: "Worktree-aware tree + Sidebar as Project Manager + Sidebar Context-Menu Redesign + Delete Group + Space icons & reordering (personal/tori, branch code-mirror-6); commits 5c5177f, 3501d59, 8ceb6e2, 785b17b, e49947a, e6f929f, 17a334a, e704411, fef06e6, bcd31db, 68920f0; Feature lifecycle, member management and repair (issue #159, branch `feature-workspace`); commit ef3779b; gettori/tickets#74 convert to worktree layout, commit 36635567; Global space ticket (branch global-space), commits 31c7d198, 11a1c775; fit any base folder plan (branch move-any-folder-or-project-to-space), commit 0084dd55; src-tauri/src/base_layout.rs"
 ---
 
 # Project discovery & setup
@@ -15,6 +15,7 @@ Discovers projects from the filesystem (replacing declared `[[project]]` entries
 
 - **A plain repo lists the worktrees it contains (#159).** `probe_project`'s no-bare branch returns `plain_branch_units` **plus** `secondary_worktree_units`, one `ProjectKind::Worktree` unit per `git worktree list` entry after the main worktree that sits **inside** the main worktree's own folder. Without it a Feature worktree kept in a plain repo was invisible in Tori: `plain_branch_units` enumerates `git branch` and keeps only the current checkout and attached names, and the walkers skip `.tori/worktrees` ([[gotcha_a_plain_repo_does_not_list_its_secondary_worktrees_as_branch_units]]). Containment, not merely non-main: a linked worktree beside its repo is a project in its own right and would otherwise list under that repo *and* be probed as itself. The test runs against git's own path for the main worktree, not the probed path, so a symlinked space root cannot make it silently match nothing. A branch a plain unit already names is skipped, so an attached branch checked out elsewhere yields one row, not two.
 - **Single canonical root.** `[discovery].roots` collapses to the **first** root **in-memory on load** (`roots.iter().take(1)`), so a legacy multi-root config yields one tree, not two, without rewriting the toml. Scanned as `<root>/<space>/<project>`; dotfiles and `[discovery].ignore` names skipped. **Empty space dirs are surfaced** so a freshly created space is selectable.
+- **Top-level projects are not spaces.** `base_layout::Rules` decides: a top-level folder that is a `.bare` or a `.git` without independent repos of its own is a project, so it is no space; neither is a name in `[discovery].not_spaces` or an attached folder. Inside a space a non-project folder holding repos is a container, not a project. Both kinds land in `ResolvedConfig.misplaced` for the sidebar banner. See [[concept_base_folder_fit]].
 - **Extra paths** (`[discovery].paths`, space = parent dir) + **legacy `[[project]]`** folded in. Migration is **in-memory** - the toml is never rewritten except by explicit mutation, so it is non-destructive and dodges the self-write echo.
 - **Origin tagging.** Spaces/projects carry `external: bool` (root-discovered vs pinned via `paths`). `ensure_space_idx` keys on name **and** origin, so a root space and a pinned space of the same name stay distinct - the UI renders externals under a non-deletable "Other" divider.
 - **Dedup** by canonical path (a project reachable via several roots/paths appears once; the root section runs first, so root wins).
@@ -86,6 +87,8 @@ A conversion journal (`tori-convert.json` in `.git` or `.bare`) makes `probe_pro
 
 ## Related
 
+- [[concept_base_folder_fit]] the top-level rule, the setup scan and grouping
+- [[concept_space_move]] moving a project into a space
 - [[adr_attached_branch_model]]
 - [[lesson_pure_core_for_global_stores]]
 - [[gotcha_mtime_cache_must_key_on_dir_mtime_and_head]]
