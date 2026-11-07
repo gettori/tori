@@ -37,6 +37,10 @@ pub struct Preview {
     /// Topics with a reference to this repo that will need its default branch
     /// checked out, since the container will not have one.
     pub topics: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_worktree: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -49,6 +53,7 @@ enum Step {
     Swap,
     Index,
     Linked,
+    Default,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -63,6 +68,16 @@ struct Journal {
     linked: Vec<String>,
     #[serde(default)]
     repointed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    default: Option<DefaultWorktree>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DefaultWorktree {
+    branch: String,
+    leaf: String,
+    branch_was_missing: bool,
 }
 
 /// Is a conversion of `project` unfinished? Asked by every probe, so two stats.
@@ -250,7 +265,7 @@ pub fn preview(project: &Path, store: &Store) -> Result<Preview, String> {
         }
     }
 
-    let needs_default = match crate::worktree::origin_default(&s(&proj)) {
+    let needs_default = match default_branch(&proj) {
         Some(d) => d != branch,
         None => branch != "main" && branch != "master",
     };
@@ -276,12 +291,66 @@ pub fn preview(project: &Path, store: &Store) -> Result<Preview, String> {
         nested,
         outside,
         topics,
+        default_worktree: None,
+        note: None,
     })
 }
 
-pub fn convert(project: &Path, store: &Store) -> Result<Preview, String> {
-    let preview = preview(project, store)?;
+// origin/HEAD first; a remote added by hand has none, so then whichever of
+// main and master origin has.
+fn default_branch(proj: &Path) -> Option<String> {
+    crate::worktree::origin_default(&s(proj)).or_else(|| {
+        ["main", "master"]
+            .into_iter()
+            .find(|b| {
+                git(
+                    proj,
+                    &["rev-parse", "-q", "--verify", &format!("refs/remotes/origin/{b}")],
+                )
+                .is_ok()
+            })
+            .map(str::to_string)
+    })
+}
+
+fn default_worktree(proj: &Path, preview: &Preview) -> Result<Option<DefaultWorktree>, String> {
+    let Some(branch) = default_branch(proj) else {
+        return Err("No default branch found, so only the current branch has a worktree.".into());
+    };
+    if branch == preview.branch {
+        return Ok(None);
+    }
+    let leaf = branch.rsplit('/').next().unwrap_or(&branch).to_string();
+    let taken = leaf == preview.leaf
+        || preview
+            .tori
+            .iter()
+            .any(|m| m.from.rsplit('/').next() == Some(leaf.as_str()))
+        || proj.join(&leaf).exists();
+    if taken {
+        return Err(format!(
+            "A folder named {leaf} is in the way, so {branch} has no worktree yet."
+        ));
+    }
+    let branch_was_missing = git(proj, &["rev-parse", "-q", "--verify", &format!("refs/heads/{branch}")]).is_err();
+    Ok(Some(DefaultWorktree {
+        branch,
+        leaf,
+        branch_was_missing,
+    }))
+}
+
+pub fn convert(project: &Path, store: &Store, with_default: bool) -> Result<Preview, String> {
+    let mut preview = preview(project, store)?;
     let proj = std::fs::canonicalize(project).map_err(|e| e.to_string())?;
+    let default = match with_default {
+        true => default_worktree(&proj, &preview).unwrap_or_else(|note| {
+            preview.note = Some(note);
+            None
+        }),
+        false => None,
+    };
+    preview.default_worktree = default.as_ref().map(|d| s(&proj.join(&d.leaf)));
     let mut j = Journal {
         step: Step::Journal,
         leaf: preview.leaf.clone(),
@@ -300,6 +369,7 @@ pub fn convert(project: &Path, store: &Store) -> Result<Preview, String> {
             .chain(preview.outside.iter().cloned())
             .collect(),
         repointed: false,
+        default,
     };
     save_journal(&proj, &j)?;
     match forward(&proj, project, &mut j, store) {
@@ -383,6 +453,13 @@ fn forward(proj: &Path, given: &Path, j: &mut Journal, store: &Store) -> Result<
     j.repointed = true;
     save_journal(proj, j)?;
 
+    if let Some(d) = j.default.clone() {
+        j.step = Step::Default;
+        save_journal(proj, j)?;
+        git(proj, &["worktree", "add", "-q", &s(&proj.join(&d.leaf)), &d.branch])?;
+        checkpoint("defaulted")?;
+    }
+
     std::fs::remove_file(git_dir(proj).join(JOURNAL)).map_err(|e| format!("journal: {e}"))
 }
 
@@ -432,6 +509,30 @@ pub fn undo(project: &Path, store: &Store) -> Result<(), String> {
     let checkout = proj.join(&j.leaf);
     let bare = proj.join(".bare");
 
+    if let Some(d) = j.default.as_ref().filter(|_| j.step >= Step::Default) {
+        let folder = proj.join(&d.leaf);
+        if let Some(admin) = admin_dir(&proj, &folder) {
+            std::fs::remove_dir_all(&admin).map_err(|e| format!("{}: {e}", admin.display()))?;
+        }
+        if folder.is_dir() {
+            std::fs::remove_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+        }
+        let made = git(
+            &proj,
+            &[
+                "--git-dir",
+                &s(&bare),
+                "rev-parse",
+                "-q",
+                "--verify",
+                &format!("refs/heads/{}", d.branch),
+            ],
+        )
+        .is_ok();
+        if d.branch_was_missing && made {
+            git(&proj, &["--git-dir", &s(&bare), "branch", "-q", "-D", &d.branch])?;
+        }
+    }
     if j.repointed {
         repoint(store, &proj, project, |base, p| restored(base, &j.leaf, &j.tori, p))?;
     }
@@ -578,7 +679,7 @@ pub mod commands {
         let index = index.inner().clone();
         let path = project_path.clone();
         let out = crate::exec::git_write("convert_to_worktree_layout", project_path.clone(), move || {
-            let out = convert(Path::new(&project_path), &Store::default_location());
+            let out = convert(Path::new(&project_path), &Store::default_location(), false);
             let linked: Vec<String> = out
                 .as_ref()
                 .map(|p| {
@@ -739,6 +840,91 @@ mod tests {
         preview(dir, &store(tmp)).unwrap_err()
     }
 
+    fn feature_clone(tmp: &Path, origin_head: bool) -> PathBuf {
+        let origin = repo(tmp);
+        let dir = tmp.join("clone");
+        run(tmp, &["clone", "-q", &s(&origin), &s(&dir)]);
+        if !origin_head {
+            run(&dir, &["remote", "set-head", "origin", "-d"]);
+            run(&dir, &["checkout", "-q", "-b", "feature/x"]);
+            run(&dir, &["branch", "-q", "-D", "main"]);
+        } else {
+            run(&dir, &["checkout", "-q", "-b", "feature/x"]);
+        }
+        write(&dir.join("a.txt"), "changed\n");
+        dir
+    }
+
+    #[test]
+    fn a_clone_on_a_feature_branch_also_gets_its_default_branch() {
+        let tmp = tmp();
+        let dir = feature_clone(&tmp, true);
+        let before = state(&dir);
+
+        let p = convert(&dir, &store(&tmp), true).unwrap();
+
+        assert_eq!(p.default_worktree.as_deref(), Some(s(&dir.join("main")).as_str()));
+        let (after, before) = (state(&dir.join("x")), before);
+        for i in [0, 1, 3] {
+            assert_eq!(after[i], before[i], "status, stash and reflog");
+        }
+        assert_eq!(run(&dir.join("main"), &["branch", "--show-current"]).trim(), "main");
+        assert_eq!(std::fs::read_to_string(dir.join("main/a.txt")).unwrap(), "one\n");
+        assert!(!interrupted(&dir));
+    }
+
+    #[test]
+    fn without_origin_head_the_default_is_the_main_origin_has() {
+        let tmp = tmp();
+        let dir = feature_clone(&tmp, false);
+
+        let p = convert(&dir, &store(&tmp), true).unwrap();
+
+        assert_eq!(p.default_worktree.as_deref(), Some(s(&dir.join("main")).as_str()));
+        assert_eq!(
+            run(&dir.join("main"), &["rev-parse", "--abbrev-ref", "@{u}"]).trim(),
+            "origin/main"
+        );
+    }
+
+    #[test]
+    fn with_no_default_to_find_only_the_current_branch_converts_and_says_so() {
+        let tmp = tmp();
+        let dir = repo(&tmp);
+        run(&dir, &["checkout", "-q", "-b", "feature/x"]);
+
+        let p = convert(&dir, &store(&tmp), true).unwrap();
+
+        assert_eq!(p.default_worktree, None);
+        assert!(p.note.unwrap().contains("No default branch found"));
+        assert!(dir.join("x").is_dir() && !dir.join("main").exists());
+    }
+
+    #[test]
+    fn the_old_convert_still_makes_one_worktree() {
+        let tmp = tmp();
+        let dir = feature_clone(&tmp, true);
+
+        let p = convert(&dir, &store(&tmp), false).unwrap();
+
+        assert_eq!(p.default_worktree, None);
+        assert!(dir.join("x").is_dir() && !dir.join("main").exists());
+    }
+
+    #[test]
+    fn undo_after_the_default_worktree_restores_the_plain_clone() {
+        let tmp = tmp();
+        let dir = feature_clone(&tmp, false);
+        let before = state(&dir);
+
+        test_stop::set("defaulted", false);
+        assert!(convert(&dir, &store(&tmp), true).is_err());
+
+        assert!(dir.join(".git").is_dir() && !dir.join(".bare").exists());
+        assert!(!dir.join("main").exists() && !interrupted(&dir));
+        assert_eq!(state(&dir), before);
+    }
+
     #[test]
     fn a_busy_clone_converts_with_git_reading_the_same() {
         let tmp = tmp();
@@ -746,7 +932,7 @@ mod tests {
         busy(&dir);
         let before = state(&dir);
 
-        let p = convert(&dir, &store(&tmp)).unwrap();
+        let p = convert(&dir, &store(&tmp), false).unwrap();
 
         let checkout = dir.join("main");
         assert_eq!(p.target, s(&checkout));
@@ -767,7 +953,7 @@ mod tests {
         run(&dir, &["commit", "-qm", "main dir"]);
         let before = state(&dir);
 
-        convert(&dir, &store(&tmp)).unwrap();
+        convert(&dir, &store(&tmp), false).unwrap();
 
         assert_eq!(state(&dir.join("main")), before);
         assert!(dir.join("main/main/x.txt").is_file());
@@ -781,7 +967,7 @@ mod tests {
         let before = state(&dir);
 
         test_stop::set("bared", false);
-        assert!(convert(&dir, &store(&tmp)).is_err());
+        assert!(convert(&dir, &store(&tmp), false).is_err());
 
         assert!(dir.join(".git").is_dir() && !dir.join(".bare").exists());
         assert!(!interrupted(&dir));
@@ -903,7 +1089,7 @@ mod tests {
         run(&dir, &["worktree", "add", "-q", &s(&outside), "-b", "o"]);
         let store = store_with(&tmp, vec![topic("t", member(&dir, MemberMode::Worktree, Some(&tori)))]);
 
-        convert(&dir, &store).unwrap();
+        convert(&dir, &store, false).unwrap();
 
         let moved = [dir.join("t"), dir.join("main/wt/n"), outside.clone()];
         for wt in &moved {
@@ -936,7 +1122,7 @@ mod tests {
         let before = state(&dir);
 
         test_stop::set(stop, true);
-        assert!(convert(&dir, &store).is_err());
+        assert!(convert(&dir, &store, false).is_err());
 
         assert!(interrupted(&dir), "{stop}");
         assert!(crate::config::removable_stub(&dir).is_err(), "{stop}");
