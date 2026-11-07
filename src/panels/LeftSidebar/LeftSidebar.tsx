@@ -5313,7 +5313,10 @@ export default function LeftSidebar(props: {
       <Show when={spaceSettings()}>
         {(key) => {
           const global = () => key() === GLOBAL_KEY;
-          const look = () => (global() ? globalLook() : (config()?.spaces ?? []).find((sp) => sp.name === key()));
+          const look = () =>
+            global()
+              ? { ...globalLook(), path: undefined, projects: config()?.global?.projects ?? [] }
+              : (config()?.spaces ?? []).find((sp) => sp.name === key());
           return (
             <Show when={look()}>
               {(g) => (
@@ -5322,6 +5325,8 @@ export default function LeftSidebar(props: {
                   name={g().name}
                   icon={g().icon ?? null}
                   color={g().color ?? null}
+                  path={g().path}
+                  projects={g().projects.length}
                   global={global()}
                   onClose={() => setSpaceSettings(null)}
                 />
