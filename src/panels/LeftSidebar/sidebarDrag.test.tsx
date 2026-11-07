@@ -17,6 +17,8 @@ function transfer() {
 function fire(el: Element, type: "dragStart" | "dragOver" | "drop", dt: ReturnType<typeof transfer>, y = 0) {
   const ev = createEvent[type](el, { clientY: y });
   Object.defineProperty(ev, "dataTransfer", { value: dt });
+  // jsdom's DragEvent drops `clientY` from its init.
+  Object.defineProperty(ev, "clientY", { value: y });
   fireEvent(el, ev);
 }
 

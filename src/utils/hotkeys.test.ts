@@ -53,6 +53,7 @@ describe("the canonical binding table", () => {
         "focus-pr-review",
         "focus-terminal",
         "focus-toasts",
+        "group-branches",
         "lsp-code-action",
         "lsp-definition",
         "lsp-format",

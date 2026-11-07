@@ -5245,6 +5245,7 @@ diff --git a/f b/f
                     icon: None,
                     icon_file: None,
                     favicon: None,
+                    groups: Vec::new(),
                 }],
                 icon: None,
                 color: None,

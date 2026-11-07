@@ -1,5 +1,5 @@
 import type { SidebarDragProps } from "./sidebarDrag";
-import { Show, type JSX } from "solid-js";
+import { Show, onMount, type JSX } from "solid-js";
 import {
   ArrowUpRight,
   ChevronDown,
@@ -7,6 +7,7 @@ import {
   ChevronUp,
   Ellipsis,
   GitBranch,
+  Group,
   Layers,
   Plus,
   SquareStack,
@@ -148,6 +149,7 @@ export function BranchRow(props: {
    *  no Tab can land on rather than a tooltip nobody could open. */
   iconLabel?: string;
   selected?: boolean;
+  picked?: boolean;
   nested?: boolean;
   look?: "done" | "closed" | null;
   /** A mark between the glyph and the name, e.g. the autopilot's wheel on a
@@ -159,7 +161,7 @@ export function BranchRow(props: {
    *  exactly the single-line shape it has always had, which is most rows. */
   meta?: JSX.Element;
   menu?: MenuItem[];
-  onClick?: () => void;
+  onClick?: (e: MouseEvent) => void;
   onDragStart?: (e: DragEvent) => void;
   /** Spread on the row last, for a caller that keys or reorders its rows (a
    *  Topic's members carry `data-member` and the drag-reorder handlers). */
@@ -181,8 +183,9 @@ export function BranchRow(props: {
     <div class={`node ${styles.branchNode}`} classList={{ [styles.attemptNode]: props.nested }}>
       <ContextMenu
         class={`${styles.row} ${styles.branch} ${styles.sub1} ${props.selected ? styles.sel : ""} ${props.look ? styles[props.look] : ""}`}
+        classList={{ [styles.picked]: props.picked === true }}
         data-two-line={props.meta != null ? "true" : undefined}
-        onClick={() => props.onClick?.()}
+        onClick={(e: MouseEvent) => props.onClick?.(e)}
         items={props.menu ?? []}
         draggable={true}
         onDragStart={(e: DragEvent) => props.onDragStart?.(e)}
@@ -318,6 +321,88 @@ export function GroupRow(props: {
         <RowChevron open={props.open} />
       </div>
       {props.children}
+    </div>
+  );
+}
+
+export type GroupNameDraft = { text: string; start: number; end: number };
+
+/** A custom group: a card with its name and count on the header and its
+ *  member rows inside. The draft lives with the caller, because a config
+ *  reload remounts the whole tree and the editor has to come back as it was. */
+export function GroupCard(props: {
+  name: string;
+  count: number;
+  open: boolean;
+  holdsSelection?: boolean;
+  draft?: GroupNameDraft | null;
+  onDraft?: (draft: GroupNameDraft) => void;
+  onRename?: (name: string | null) => void;
+  menu?: MenuItem[];
+  onToggle?: () => void;
+  rowProps?: SidebarDragProps;
+  children?: JSX.Element;
+}) {
+  const editor = (draft: () => GroupNameDraft) => {
+    let input!: HTMLInputElement;
+    const keep = () =>
+      props.onDraft?.({ text: input.value, start: input.selectionStart ?? 0, end: input.selectionEnd ?? 0 });
+    onMount(() => {
+      input.focus();
+      input.setSelectionRange(draft().start, draft().end);
+    });
+    return (
+      <input
+        ref={input}
+        class={styles.groupName}
+        value={draft().text}
+        aria-label="Group name"
+        onClick={(e) => e.stopPropagation()}
+        onInput={keep}
+        onSelect={keep}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === "Enter") props.onRename?.(input.value);
+          else if (e.key === "Escape") props.onRename?.(null);
+        }}
+        // A reload remounts the tree, and the new editor takes focus on mount;
+        // only a blur that leaves no editor focused is the user moving on.
+        onBlur={() =>
+          setTimeout(() => {
+            if (
+              !(
+                document.activeElement instanceof HTMLInputElement &&
+                document.activeElement.getAttribute("aria-label") === "Group name"
+              )
+            )
+              props.onRename?.(input.value);
+          })
+        }
+      />
+    );
+  };
+  return (
+    <div class={`node ${styles.groupCard}`} data-group={props.name}>
+      <ContextMenu
+        class={`${styles.row} ${styles.cardHead}`}
+        classList={{ [styles.cardHeadSel]: props.holdsSelection === true }}
+        items={props.menu ?? []}
+        onClick={() => props.onToggle?.()}
+        aria-expanded={props.open}
+        {...props.rowProps}
+      >
+        <span class={styles.rowIcon}>
+          <Icon icon={Group} />
+        </span>
+        <Show when={props.draft} fallback={<span class={`${styles.label} ${styles.cardLabel}`}>{props.name}</span>}>
+          {(draft) => editor(draft)}
+        </Show>
+        <span class={styles.cardCount}>{props.count}</span>
+        <RowChevron open={props.open} />
+      </ContextMenu>
+      <Show when={props.open}>
+        <div class={styles.cardBody}>{props.children}</div>
+      </Show>
     </div>
   );
 }
