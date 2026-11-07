@@ -132,7 +132,8 @@ const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
 const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
 const { resetForgeStatusForTests } = await import("../../utils/forgeStatus");
 const { resetSidebarOrderForTests } = await import("../../utils/sidebarOrder");
-const { setLanes, resetLanes } = await import("../Settings/settingsStore");
+const { setLanes, resetLanes, setSidebar } = await import("../Settings/settingsStore");
+const { LANE_HUE } = await import("../../utils/prLanes");
 
 const mount = () => render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={[]} />);
 const lane = (id: string) => document.querySelector<HTMLElement>(`[data-lane="${id}"]`);
@@ -159,6 +160,7 @@ describe("PR lanes", () => {
     localStorage.clear();
     localStorage.setItem("tori.active-space.v1", "work");
     localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:work/gh"]));
+    await setSidebar({ cardColours: "subtle" });
     await resetLanes("work");
     await setLanes(null, { enabled: true });
   });
@@ -213,5 +215,16 @@ describe("PR lanes", () => {
     await waitFor(() => expect(screen.queryByText(/Lanes follow PR state/)).toBeNull());
     expect(bridge.saved[GH]).toEqual(before);
     expect(within(lane("changesRequested")!).getByText("fix")).toBeTruthy();
+  });
+
+  it("draws every card on the one neutral surface in Subtle and in its lane's hue in Colourful", async () => {
+    mount();
+    await waitFor(() => expect(lane("changesRequested")).toBeTruthy());
+    const ids = ["working", "changesRequested", "done"] as const;
+    const hues = () => ids.map((id) => lane(id)?.dataset.hue ?? null);
+    expect(hues()).toEqual([null, null, null]);
+    await setSidebar({ cardColours: "colourful" });
+    await waitFor(() => expect(hues()).toEqual(ids.map((id) => LANE_HUE[id])));
+    expect(new Set(hues()).size).toBe(3);
   });
 });

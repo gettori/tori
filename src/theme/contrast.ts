@@ -114,7 +114,25 @@ export type ContrastRule = {
 };
 
 const CANVASES = ["canvas.default", "canvas.card", "canvas.head", "canvas.input"];
-const CARDS = ["lane.card", "lane.cardHi"];
+const HUE_CARDS = [
+  "lane.redHead",
+  "lane.redBody",
+  "lane.amberHead",
+  "lane.amberBody",
+  "lane.greenHead",
+  "lane.greenBody",
+  "lane.blueHead",
+  "lane.blueBody",
+  "lane.purpleHead",
+  "lane.purpleBody",
+  "lane.tealHead",
+  "lane.tealBody",
+  "lane.pinkHead",
+  "lane.pinkBody",
+  "lane.accentHead",
+  "lane.accentBody",
+];
+const CARDS = ["lane.card", "lane.cardHi", ...HUE_CARDS];
 /** The editor and the terminal both paint the work card, so syntax and the ANSI
  *  ramp are measured against exactly one surface. */
 const CODE_SURFACE = ["canvas.card"];
@@ -239,6 +257,22 @@ export const CONTRAST_RULES: Record<string, ContrastRule> = {
 
   "lane.card": surface(),
   "lane.cardHi": surface(),
+  "lane.redHead": surface(),
+  "lane.redBody": surface(),
+  "lane.amberHead": surface(),
+  "lane.amberBody": surface(),
+  "lane.greenHead": surface(),
+  "lane.greenBody": surface(),
+  "lane.blueHead": surface(),
+  "lane.blueBody": surface(),
+  "lane.purpleHead": surface(),
+  "lane.purpleBody": surface(),
+  "lane.tealHead": surface(),
+  "lane.tealBody": surface(),
+  "lane.pinkHead": surface(),
+  "lane.pinkBody": surface(),
+  "lane.accentHead": surface(),
+  "lane.accentBody": surface(),
 
   // The blocking tier sits ON the chat pane, which is `canvas.card`, and carries
   // its own text. The border is measured against both sides it separates: the

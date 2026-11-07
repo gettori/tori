@@ -73,4 +73,69 @@ export function laneOrder(cfg: LaneConfig): LaneId[] {
   );
 }
 
+export type CardHue = "accent" | "red" | "amber" | "green" | "blue" | "purple" | "teal" | "pink";
+
+export const GROUP_HUES: readonly CardHue[] = ["blue", "green", "amber", "pink"];
+
+export const LANE_HUE: Readonly<Record<LaneId, CardHue | null>> = {
+  working: "purple",
+  inReview: "blue",
+  reviewing: "amber",
+  done: "teal",
+  noPr: null,
+  draft: null,
+  ready: "accent",
+  commented: null,
+  changesRequested: "red",
+  reReview: "amber",
+  approved: "green",
+  reviewRequested: "amber",
+  reviewed: null,
+  merged: "purple",
+  closed: null,
+};
+
+export const HUE_VARS: Readonly<Record<CardHue, Record<string, string>>> = {
+  red: {
+    "--card-head": "var(--lane-red-head)",
+    "--card-body": "var(--lane-red-body)",
+    "--card-icon": "var(--danger-fg)",
+  },
+  amber: {
+    "--card-head": "var(--lane-amber-head)",
+    "--card-body": "var(--lane-amber-body)",
+    "--card-icon": "var(--attention-fg)",
+  },
+  green: {
+    "--card-head": "var(--lane-green-head)",
+    "--card-body": "var(--lane-green-body)",
+    "--card-icon": "var(--success-fg)",
+  },
+  blue: {
+    "--card-head": "var(--lane-blue-head)",
+    "--card-body": "var(--lane-blue-body)",
+    "--card-icon": "var(--scale-blue)",
+  },
+  purple: {
+    "--card-head": "var(--lane-purple-head)",
+    "--card-body": "var(--lane-purple-body)",
+    "--card-icon": "var(--scale-purple)",
+  },
+  teal: {
+    "--card-head": "var(--lane-teal-head)",
+    "--card-body": "var(--lane-teal-body)",
+    "--card-icon": "var(--info-fg)",
+  },
+  pink: {
+    "--card-head": "var(--lane-pink-head)",
+    "--card-body": "var(--lane-pink-body)",
+    "--card-icon": "var(--scale-pink)",
+  },
+  accent: {
+    "--card-head": "var(--lane-accent-head)",
+    "--card-body": "var(--lane-accent-body)",
+    "--card-icon": "var(--accent-fg)",
+  },
+};
+
 export const startsParked = (lane: LaneId) => (PARENTS as readonly string[]).includes(lane) && lane !== "working";

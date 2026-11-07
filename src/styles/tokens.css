@@ -286,6 +286,22 @@
     /* lane */
     --lane-card: #191b20;
     --lane-card-hi: #1d1f24;
+    --lane-red-head: #261e24;
+    --lane-red-body: #231d22;
+    --lane-amber-head: #252222;
+    --lane-amber-body: #222021;
+    --lane-green-head: #17231f;
+    --lane-green-body: #17211f;
+    --lane-blue-head: #1a2229;
+    --lane-blue-body: #192027;
+    --lane-purple-head: #211f2a;
+    --lane-purple-body: #1f1e28;
+    --lane-teal-head: #1a2629;
+    --lane-teal-body: #192326;
+    --lane-pink-head: #281c25;
+    --lane-pink-body: #251b23;
+    --lane-accent-head: #1a222f;
+    --lane-accent-body: #19202c;
 
     /* blocking */
     --blocking-surface: #222327;
@@ -479,6 +495,22 @@
     /* lane */
     --lane-card: #f7f7f7;
     --lane-card-hi: #f1f1f1;
+    --lane-red-head: #fae9ea;
+    --lane-red-body: #fcf2f2;
+    --lane-amber-head: #f4efe6;
+    --lane-amber-body: #f8f5f0;
+    --lane-green-head: #e8f2eb;
+    --lane-green-body: #f1f7f3;
+    --lane-blue-head: #eaf0f3;
+    --lane-blue-body: #f2f6f8;
+    --lane-purple-head: #f2edf6;
+    --lane-purple-body: #f7f4fa;
+    --lane-teal-head: #e8f1f0;
+    --lane-teal-body: #f1f7f6;
+    --lane-pink-head: #f9eaef;
+    --lane-pink-body: #fbf2f5;
+    --lane-accent-head: #e6eff8;
+    --lane-accent-body: #f0f5fb;
 
     /* blocking */
     --blocking-surface: #ece9e6;

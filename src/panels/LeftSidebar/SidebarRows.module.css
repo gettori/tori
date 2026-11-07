@@ -848,3 +848,22 @@ button.groupTitle {
 .row[data-drop="into"] {
   box-shadow: inset 0 0 0 1px var(--attention-fg);
 }
+
+.groupCard[data-hue] {
+  background: var(--card-body, var(--lane-card));
+}
+.groupCard[data-hue] > .row.cardHead {
+  background: var(--card-head, var(--lane-card));
+}
+.groupCard[data-hue] > .row.cardHead:hover,
+.groupCard[data-hue] > .row.cardHead[data-expanded],
+.parkedCard[data-hue]:hover {
+  background: color-mix(in srgb, var(--card-head, var(--lane-card)), var(--fg-default) 5%);
+}
+.groupCard[data-hue] > .row.cardHead .rowIcon,
+.parkedCard[data-hue] svg {
+  color: var(--card-icon, currentColor);
+}
+.parkedCard[data-hue] {
+  background: var(--card-head, var(--lane-card));
+}

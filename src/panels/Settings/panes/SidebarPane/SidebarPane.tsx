@@ -7,6 +7,7 @@ import {
   setSidebar,
   settings,
   type BranchLineItem,
+  type CardColours,
   type SpaceStrip,
 } from "../../settingsStore";
 import SegmentedControl, { type SegmentedOption } from "../../../../components/SegmentedControl/SegmentedControl";
@@ -23,6 +24,11 @@ import styles from "./SidebarPane.module.css";
 const SPACE_TILES: SegmentedOption<SpaceStrip>[] = [
   { value: "bottom", label: "Bottom" },
   { value: "side", label: "Left" },
+];
+
+const CARD_COLOURS: SegmentedOption<CardColours>[] = [
+  { value: "subtle", label: "Subtle" },
+  { value: "colourful", label: "Colourful" },
 ];
 
 const DEFAULT_SCOPE = "";
@@ -49,7 +55,7 @@ export default function SidebarPane(props: PaneProps) {
 
   return (
     <>
-      <Group {...props} title="Layout" ids={["space-strip"]}>
+      <Group {...props} title="Layout" ids={["space-strip", "card-colours"]}>
         <Row {...props} id="space-strip" label="Space tiles">
           <SegmentedControl
             size="sm"
@@ -57,6 +63,15 @@ export default function SidebarPane(props: PaneProps) {
             value={settings.sidebar.spaceTiles}
             onChange={(spaceTiles) => setSidebar({ spaceTiles })}
             aria-label="Space tiles"
+          />
+        </Row>
+        <Row {...props} id="card-colours" label="Card colours">
+          <SegmentedControl
+            size="sm"
+            options={CARD_COLOURS}
+            value={settings.sidebar.cardColours}
+            onChange={(cardColours) => setSidebar({ cardColours })}
+            aria-label="Card colours"
           />
         </Row>
       </Group>

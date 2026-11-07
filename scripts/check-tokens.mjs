@@ -199,13 +199,20 @@ const HUE_MAPPING = "src/seti/mapping.ts";
  */
 const HUE_POSITIONS = [/"hue":\s*$/, /\|\s*$/];
 
+/** The card hues the `lane.<hue>Head` roles declare. `prLanes.ts` names them as
+ *  identifiers, a group's stored colour among them, and maps each to its roles. */
+const CARD_HUES = new Set(ROLES.flatMap((r) => r.id.match(/^lane\.(\w+)Head$/)?.slice(1) ?? []));
+const CARD_HUE_FILE = "src/utils/prLanes.ts";
+const CARD_HUE_POSITIONS = [/\|\s*$/, /:\s*$/, /[[,]\s*$/];
+
 function isQuotedHueName(rel, text, match, index) {
-  if (rel !== HUE_MAPPING || !SCALE_HUES.has(match)) return false;
+  const card = rel === CARD_HUE_FILE && CARD_HUES.has(match);
+  if (!card && (rel !== HUE_MAPPING || !SCALE_HUES.has(match))) return false;
   const before = text[index - 1];
   const after = text[index + match.length];
   if (before !== '"' || after !== '"') return false;
   const preceding = text.slice(0, index - 1);
-  return HUE_POSITIONS.some((position) => position.test(preceding));
+  return (card ? CARD_HUE_POSITIONS : HUE_POSITIONS).some((position) => position.test(preceding));
 }
 
 function walk(dir, out = []) {

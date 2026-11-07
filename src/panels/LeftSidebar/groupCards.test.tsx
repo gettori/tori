@@ -61,6 +61,7 @@ const status = (headRef: string): UnitStatus => {
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: { project: string; order: unknown }) => {
     bridge.calls.push(cmd);
+    if (cmd === "set_settings") return Promise.resolve((args as unknown as { settings: unknown }).settings);
     if (cmd === "set_project_groups") {
       const groups = (args as unknown as { groups: typeof bridge.groups }).groups;
       bridge.groups = structuredClone(groups);
@@ -152,6 +153,9 @@ const { resetSessionActivityForTests } = await import("../../utils/sessionActivi
 const { resetForgeStatusForTests } = await import("../../utils/forgeStatus");
 const { emit, GROUP_BRANCHES } = await import("../../utils/events");
 const { resetSidebarOrderForTests } = await import("../../utils/sidebarOrder");
+const { setSidebar } = await import("../Settings/settingsStore");
+const { GROUP_HUES } = await import("../../utils/prLanes");
+const [FIRST, , , LAST] = GROUP_HUES;
 
 const labels = () =>
   [...document.querySelectorAll("[class*='label']")]
@@ -187,7 +191,7 @@ const nameInput = () => document.querySelector<HTMLInputElement>('input[aria-lab
 const lastWrite = () => bridge.writes[bridge.writes.length - 1];
 
 describe("custom groups", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetSessionStoreForTests();
     resetSessionActivityForTests();
     resetForgeStatusForTests();
@@ -200,6 +204,7 @@ describe("custom groups", () => {
     localStorage.clear();
     localStorage.setItem("tori.active-space.v1", "work");
     localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:work/gh"]));
+    await setSidebar({ cardColours: "subtle" });
   });
 
   it("draws a three-member group as a card that stays collapsed across a reload", async () => {
@@ -328,5 +333,29 @@ describe("custom groups", () => {
     pointerClick(await screen.findByRole("menuitem", { name: "Ungroup" }));
     await waitFor(() => expect(lastWrite()).toEqual([]));
     await waitFor(() => expect(labels()).toEqual(["main", "a", "b", "c"]));
+  });
+
+  it("shows a group's colour only in Colourful, where its menu sets it and a new group takes a free hue", async () => {
+    bridge.branches = ["main", "a", "b", "c"];
+    bridge.groups = [{ name: "G1", colour: LAST, branches: ["a"] }];
+    mount();
+    const card = () => document.querySelector<HTMLElement>('[data-group="G1"]');
+    await waitFor(() => expect(card()).toBeTruthy());
+    expect(card()!.dataset.hue).toBeUndefined();
+    rightClick(headerOf("G1"));
+    await screen.findByRole("menuitem", { name: "Rename" });
+    expect(screen.queryByRole("menuitem", { name: "Blue" })).toBeNull();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+
+    await setSidebar({ cardColours: "colourful" });
+    await waitFor(() => expect(card()!.dataset.hue).toBe(LAST));
+    rightClick(headerOf("G1"));
+    pointerClick(await screen.findByRole("menuitem", { name: "Blue" }));
+    await waitFor(() => expect(lastWrite()).toEqual([{ name: "G1", colour: FIRST, branches: ["a"] }]));
+    await waitFor(() => expect(card()?.dataset.hue).toBe(FIRST));
+
+    drag(rowOf("c"), rowOf("b"), "middle");
+    await waitFor(() => expect(lastWrite()).toHaveLength(2));
+    expect(GROUP_HUES.slice(1)).toContain((lastWrite()[1] as { colour?: string }).colour);
   });
 });
