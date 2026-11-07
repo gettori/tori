@@ -16,7 +16,6 @@ import {
   GitPullRequest,
   GitPullRequestClosed,
   GitPullRequestDraft,
-  Group,
   Layers,
   MessageSquare,
   Plus,
@@ -410,9 +409,6 @@ export function GroupCard(props: {
         aria-expanded={props.open}
         {...props.rowProps}
       >
-        <span class={styles.rowIcon}>
-          <Icon icon={Group} />
-        </span>
         <Show when={props.draft} fallback={<span class={`${styles.label} ${styles.cardLabel}`}>{props.name}</span>}>
           {(draft) => editor(draft)}
         </Show>
