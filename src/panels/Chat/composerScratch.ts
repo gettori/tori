@@ -7,11 +7,18 @@ import { liveBufferText } from "../Editor/liveBuffers";
 import { draftFor, linkedScratchFor, setDraft, setLinkedScratch, type ComposerKey } from "../../utils/chatCompose";
 import {
   emitWith,
+  onWith,
   EDITOR_CLOSE_PATH,
+  EDITOR_FILE_SAVED,
+  EDITOR_PROMPT_DONE,
+  EDITOR_TAB_CLOSED,
+  FOCUS_SESSION_TAB,
   OPEN_IN_EDITOR,
   type EditorClosePath,
   type EditorFileSaved,
+  type EditorPromptDone,
   type EditorTabClosed,
+  type FocusSessionTab,
   type OpenInEditor,
 } from "../../utils/events";
 
@@ -55,4 +62,31 @@ export function mirrorSaved(key: ComposerKey, saved: EditorFileSaved): boolean {
 export async function scratchTabClosed(key: ComposerKey, closed: EditorTabClosed): Promise<void> {
   if (closed.path !== linkedScratchFor(key)) return;
   await unlinkScratch(key, { closeTab: false });
+}
+
+/** What a send carries when the draft is linked: the editor's text, saved or
+ *  not. The link ends and the tab and its file go with it. */
+export function takeScratch(key: ComposerKey, text: string): string {
+  const path = linkedScratchFor(key);
+  const live = path ? liveBufferText(path) : null;
+  void unlinkScratch(key, { closeTab: true });
+  return live ?? text;
+}
+
+/** Answer the editor for this composer's linked file: each save, the close,
+ *  and the editor's own done, which also brings the chat tab back. Returns the
+ *  unsubscribe. */
+export function followScratch(key: ComposerKey, tabId: string): () => void {
+  const offSaved = onWith<EditorFileSaved>(EDITOR_FILE_SAVED, (saved) => mirrorSaved(key, saved));
+  const offClosed = onWith<EditorTabClosed>(EDITOR_TAB_CLOSED, (closed) => void scratchTabClosed(key, closed));
+  const offDone = onWith<EditorPromptDone>(EDITOR_PROMPT_DONE, ({ path }) => {
+    if (path !== linkedScratchFor(key)) return;
+    void unlinkScratch(key, { closeTab: true });
+    emitWith<FocusSessionTab>(FOCUS_SESSION_TAB, { tabId });
+  });
+  return () => {
+    offSaved();
+    offClosed();
+    offDone();
+  };
 }

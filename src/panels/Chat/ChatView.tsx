@@ -17,8 +17,7 @@ import { createRelatedSessions } from "./relatedSessions";
 import PendingRequests from "./PendingRequests";
 import MessageList from "./MessageList";
 import SelectionToolbar, { quoteBlock } from "../../components/SelectionToolbar/SelectionToolbar";
-import { mirrorSaved, openDraftInEditor, scratchTabClosed, unlinkScratch } from "./composerScratch";
-import { liveBufferText } from "../Editor/liveBuffers";
+import { followScratch, openDraftInEditor, takeScratch, unlinkScratch } from "./composerScratch";
 import SessionDiffView from "./SessionDiffView";
 import SessionInfo from "./SessionInfo";
 import Composer, { type ComposerHandle } from "./Composer";
@@ -154,11 +153,7 @@ import {
   type NavTarget,
   onWith,
   AGENT_FILES_WRITTEN,
-  EDITOR_FILE_SAVED,
-  EDITOR_TAB_CLOSED,
   FOCUS_SESSION_TAB,
-  EDITOR_PROMPT_DONE,
-  type EditorPromptDone,
   REVEAL_TURN,
   REWIND_CHAT,
   CHAT_SUBMIT,
@@ -168,8 +163,6 @@ import {
   type ChatSubmit,
   type SendToSessionResult,
   type AgentFilesWritten,
-  type EditorFileSaved,
-  type EditorTabClosed,
   type FocusSessionTab,
   type OpenJob,
   type RevealTurn,
@@ -494,21 +487,7 @@ export default function ChatView(props: {
   const linkedName = () => linkedScratchFor(composerKey())?.split("/").pop() ?? null;
   onMount(() => {
     void loadStash();
-    const offSaved = onWith<EditorFileSaved>(EDITOR_FILE_SAVED, (saved) => mirrorSaved(composerKey(), saved));
-    const offClosed = onWith<EditorTabClosed>(
-      EDITOR_TAB_CLOSED,
-      (closed) => void scratchTabClosed(composerKey(), closed),
-    );
-    const offDone = onWith<EditorPromptDone>(EDITOR_PROMPT_DONE, ({ path }) => {
-      if (path !== linkedScratchFor(composerKey())) return;
-      void unlinkScratch(composerKey(), { closeTab: true });
-      emitWith<FocusSessionTab>(FOCUS_SESSION_TAB, { tabId: props.tabId });
-    });
-    onCleanup(() => {
-      offSaved();
-      offClosed();
-      offDone();
-    });
+    onCleanup(followScratch(composerKey(), props.tabId));
   });
   // This run's first turn boundary. The diff view's attribution spans from
   // here, which is exactly the span the in-memory before-states cover: a
@@ -1627,12 +1606,10 @@ export default function ChatView(props: {
   function onSend(text: string, command: "chat_send" | "chat_send_held" = "chat_send", queue = false) {
     // A draft being edited in a scratch tab sends what the editor holds right
     // now, saved or not, and the tab and its file go with it.
-    const scratch = linkedScratchFor(composerKey());
-    if (scratch) text = liveBufferText(scratch) ?? text;
+    text = takeScratch(composerKey(), text);
     // Recorded on the way out whichever path it takes, since from the user's
     // side all three are "I sent that".
     pushHistory(composerKey(), text);
-    void unlinkScratch(composerKey(), { closeTab: true });
     // A chat that was opened to read has no child yet. The message is held the
     // way a draft's first send holds one and the tab is told to start, which
     // resumes **this** session id rather than minting a fresh one; the effect

@@ -31,10 +31,12 @@ import {
   hasAutoSend,
   historyFor,
   markAutoSend,
+  linkedScratchFor,
   pendingFor,
   setDraft,
 } from "../../utils/chatCompose";
 import { discardEntry, loadStash, restoreEntry, stashDraft, stashEntries } from "./promptStash";
+import { followScratch, openDraftInEditor, takeScratch, unlinkScratch } from "./composerScratch";
 import { invoke } from "@tauri-apps/api/core";
 import { draftPick, hasPick, resetDraftPick, setDraftOption, setDraftPick } from "../../utils/chatDraftPick";
 import { openAgentCard } from "../../utils/agentCard";
@@ -117,6 +119,7 @@ export default function ChatDraft(props: {
     ensureAdaptersLoaded();
     ensureAgentHealthLoaded();
     void loadStash();
+    onCleanup(followScratch(props.tabId, props.tabId));
     // The cache, then one probe for the agent this draft would actually start.
     // Opening a chat on claude is already going to launch claude, so asking it
     // costs nothing new; asking every other agent on the machine would.
@@ -245,7 +248,7 @@ export default function ChatDraft(props: {
 
   function onSend(text: string) {
     if (starting() || blocked() !== null) return;
-    const trimmed = text.trim();
+    const trimmed = takeScratch(props.tabId, text).trim();
     // Attachment-only is a valid thing to send, so the chips count too. Nothing
     // at all is not: an empty send would cost a process and a session id.
     if (!trimmed && !pendingFor(props.tabId).length) return;
@@ -322,6 +325,9 @@ export default function ChatDraft(props: {
         onAttachUploads={attachments.onAttachUploads}
         onAttachRejected={(reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" })}
         onDropAttachment={(id) => dropPending(props.tabId, id)}
+        linked={linkedScratchFor(props.tabId)?.split("/").pop() ?? null}
+        onOpenInEditor={() => void openDraftInEditor(props.tabId)}
+        onUnlink={() => void unlinkScratch(props.tabId, { closeTab: true })}
         stash={stashEntries()}
         onStash={() => void stashDraft(props.tabId)}
         onRestoreStash={(id) =>
