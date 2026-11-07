@@ -66,6 +66,9 @@ function status(o: {
       contexts: [],
     },
     reviewDecision: o.review ?? "reviewRequired",
+    reviews: [],
+    requestedReviewers: [],
+    viewerReview: null,
   };
 }
 
@@ -83,6 +86,9 @@ const NO_PR: UnitStatus = {
   pullRequest: null,
   checks: { state: "none", total: 0, failing: 0, skipped: 0, contexts: [] },
   reviewDecision: "none",
+  reviews: [],
+  requestedReviewers: [],
+  viewerReview: null,
 };
 
 /** The rail, at the width the column actually has. Every judgement on this

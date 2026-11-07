@@ -3296,10 +3296,22 @@ export default function LeftSidebar(props: {
       const pr = openPr();
       return pr !== null && (requestedReviews(p.path)?.includes(pr.number) ?? false);
     };
+    const line = (): BranchLineProps => ({
+      status: showPr() ? status()! : null,
+      base: sync()?.base,
+      branchSpend: spent(),
+      watched: showPr() && prWatches().some((w) => w.url === status()?.pullRequest?.url),
+      reviewAsked: reviewAsked(),
+      viewer: forgeViewer(p.path),
+      release: trunk(),
+      operation: u.operation,
+      show: branchLine(),
+    });
     const allMarks = createMemo(() => withOverlap(held() ? [] : syncMarks(sync(), finished()), overlap()));
-    // An open PR's number turns red for a conflict with the base, and its line's
-    // tooltip names the files, so the row does not say it twice.
-    const hiddenConflict = () => (openPr() ? allMarks().find((m) => m.kind === "conflict") : undefined);
+    // An open PR's line carries the conflict mark and its tooltip names the
+    // files, so the row does not say it twice.
+    const hiddenConflict = () =>
+      openPr() && drawnFacts(line()).has("pr") ? allMarks().find((m) => m.kind === "conflict") : undefined;
     const marks = createMemo(() => (hiddenConflict() ? allMarks().filter((m) => m.kind !== "conflict") : allMarks()));
     const watch = createMemo(() => (portLinksAt(u.folderPath) ? portsAt(u.folderPath) : () => []));
     const listening = () => watch()();
@@ -3317,16 +3329,6 @@ export default function LeftSidebar(props: {
       if (!hiddenConflict()) out.push(...conflictLines(sync()?.base?.conflicts ?? []));
       return out;
     };
-    const line = (): BranchLineProps => ({
-      status: showPr() ? status()! : null,
-      base: sync()?.base,
-      branchSpend: spent(),
-      watched: showPr() && prWatches().some((w) => w.url === status()?.pullRequest?.url),
-      reviewAsked: reviewAsked(),
-      release: trunk(),
-      operation: u.operation,
-      show: branchLine(),
-    });
     return (
       <BranchRow
         label={displayBranch(u)}

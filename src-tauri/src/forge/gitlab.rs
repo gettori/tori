@@ -23,9 +23,9 @@
 
 use super::http::{classify, paginate_rest, HttpRequest, Recording, Transport, PAGE_CAP};
 use super::model::{
-    AuthState, Capabilities, CheckRollup, CheckState, DiffSide, DraftComment, FileStatus, Grant, MergeableState,
-    OrgAccess, Paged, PrFile, PrState, PrSummary, PullRequest, RateSnapshot, RepoRef, ReviewComment, ReviewDecision,
-    ReviewEvent, ReviewThread, UnitStatus, Viewer,
+    AuthState, Capabilities, CheckRollup, CheckState, DiffSide, DraftComment, FileStatus, Grant, LatestReview,
+    MergeableState, OrgAccess, Paged, PrFile, PrState, PrSummary, PullRequest, RateSnapshot, RepoRef, ReviewComment,
+    ReviewDecision, ReviewEvent, ReviewThread, ReviewVerdict, UnitStatus, Viewer,
 };
 use super::{epoch_secs, CreatePr, Forge, ForgeError, MergeMethod};
 use serde_json::Value;
@@ -351,6 +351,34 @@ fn verdict_from_list(mr: &Value) -> Option<ReviewDecision> {
         Some("not_approved") => Some(ReviewDecision::ReviewRequired),
         _ => None,
     }
+}
+
+fn logins(users: Option<&Value>) -> Vec<String> {
+    users
+        .and_then(|u| u.as_array())
+        .map(|u| {
+            u.iter()
+                .map(|u| str_at(u, "username"))
+                .filter(|l| !l.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// GitLab's only verdict is an approval, so each approver is a latest review.
+fn approvers(v: &Value) -> Vec<LatestReview> {
+    let users: Vec<Value> = v
+        .get("approved_by")
+        .and_then(|a| a.as_array())
+        .map(|a| a.iter().filter_map(|e| e.get("user").cloned()).collect())
+        .unwrap_or_default();
+    logins(Some(&Value::Array(users)))
+        .into_iter()
+        .map(|author| LatestReview {
+            author,
+            verdict: ReviewVerdict::Approved,
+        })
+        .collect()
 }
 
 /// The approval endpoint's answer as a review verdict.
@@ -681,26 +709,42 @@ impl Forge for GitLabForge {
                         pull_request: finished,
                         checks: CheckRollup::none(),
                         review_decision: ReviewDecision::None,
+                        reviews: vec![],
+                        requested_reviewers: vec![],
+                        viewer_review: None,
                     };
                 };
                 let pull_request = pr_from(mr).ok();
+                let mut approvals = None;
                 let review_decision = match pull_request.as_ref() {
                     // Free, and the common half of the answer.
                     Some(_) if verdict_from_list(mr).is_some() => verdict_from_list(mr).unwrap_or(ReviewDecision::None),
                     Some(pr) if asked < APPROVAL_LOOKUPS => {
                         asked += 1;
                         let path = format!("/projects/{}/merge_requests/{}/approvals", project(repo), pr.number);
-                        self.send(self.rest("GET", &path, None))
-                            .map(|v| decision_from_approvals(&v))
+                        approvals = self.send(self.rest("GET", &path, None)).ok();
+                        approvals
+                            .as_ref()
+                            .map(decision_from_approvals)
                             .unwrap_or(ReviewDecision::None)
                     }
                     _ => ReviewDecision::None,
                 };
+                let reviews = approvals.as_ref().map(approvers).unwrap_or_default();
+                // GitLab keeps a reviewer on the list after they approve, so an
+                // approval is what answers the request.
+                let requested_reviewers = logins(mr.get("reviewers"))
+                    .into_iter()
+                    .filter(|login| !reviews.iter().any(|r: &LatestReview| &r.author == login))
+                    .collect();
                 UnitStatus {
                     head_ref: branch.clone(),
                     pull_request,
                     checks: checks_from_pipeline(mr.get("head_pipeline")),
                     review_decision,
+                    reviews,
+                    requested_reviewers,
+                    viewer_review: None,
                 }
             })
             .collect())
@@ -1053,6 +1097,28 @@ mod tests {
         // The open list, one page of history for the unmatched branch, and one
         // approval call: nothing per branch.
         assert_eq!(stub.request_count(), 3);
+    }
+
+    #[test]
+    fn approvers_are_latest_reviews_and_answer_their_review_request() {
+        let list = format!("[{}]", mr(r#","reviewers":[{"username":"octo"},{"username":"ana"}]"#));
+        let (f, _stub) = forge(vec![
+            StubTransport::json(200, &list),
+            StubTransport::json(
+                200,
+                r#"{"approved":false,"approvals_left":1,"approved_by":[{"user":{"username":"octo"}}]}"#,
+            ),
+        ]);
+        let statuses = f.unit_statuses(&repo(), &["wave-3".to_string()]).unwrap();
+        assert_eq!(
+            statuses[0].reviews,
+            vec![LatestReview {
+                author: "octo".into(),
+                verdict: ReviewVerdict::Approved,
+            }]
+        );
+        assert_eq!(statuses[0].requested_reviewers, vec!["ana".to_string()]);
+        assert_eq!(statuses[0].viewer_review, None);
     }
 
     #[test]

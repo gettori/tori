@@ -238,7 +238,17 @@
           "title": "Let a conflict be handed to the agent",
           "url": "https://github.com/skarif2/tori/pull/42"
         },
-        "reviewDecision": "changesRequested"
+        "requestedReviewers": [
+          "octo"
+        ],
+        "reviewDecision": "changesRequested",
+        "reviews": [
+          {
+            "author": "octo",
+            "verdict": "changesRequested"
+          }
+        ],
+        "viewerReview": "commented"
       }
     ],
     "uncovered": 4
@@ -292,7 +302,17 @@
       "title": "Let a conflict be handed to the agent",
       "url": "https://github.com/skarif2/tori/pull/42"
     },
-    "reviewDecision": "changesRequested"
+    "requestedReviewers": [
+      "octo"
+    ],
+    "reviewDecision": "changesRequested",
+    "reviews": [
+      {
+        "author": "octo",
+        "verdict": "changesRequested"
+      }
+    ],
+    "viewerReview": "commented"
   },
   "viewer": {
     "avatarUrl": "https://avatars.githubusercontent.com/u/1",
