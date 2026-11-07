@@ -303,6 +303,17 @@ fn clean(path: &str) -> PathBuf {
     PathBuf::from(trimmed.strip_suffix('/').filter(|t| !t.is_empty()).unwrap_or(trimmed))
 }
 
+pub(crate) fn layout_at(folder: &Path) -> Layout {
+    layout_of(&git_dir(folder))
+}
+
+pub(crate) fn origin_at(folder: &Path) -> Option<String> {
+    match git_dir(folder) {
+        GitDir::Main { dir, .. } => origin_url(&dir),
+        _ => None,
+    }
+}
+
 /// What attaching `path` would attach, or why it can't be.
 #[tauri::command(async)]
 pub fn inspect_folder(path: String) -> Result<Inspection, String> {
