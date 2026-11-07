@@ -34,6 +34,8 @@ export type MenuItem =
       /** Why the row refuses, drawn under the label and announced after it. A
        *  native `title` would be neither, which is what `refusing` exists for. */
       note?: string;
+      /** The row's keyboard shortcut, drawn at the row's end. */
+      keys?: string;
     };
 
 /**
@@ -203,6 +205,9 @@ function NoteRow(props: { item: Extract<MenuItem, { label: string }> }) {
             {props.item.note}
           </span>
         </span>
+      </Show>
+      <Show when={props.item.keys}>
+        <span class={styles.keys}>{props.item.keys}</span>
       </Show>
     </MenuRow>
   );

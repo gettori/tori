@@ -142,6 +142,11 @@
 .groupCard .branchNode:last-child {
   margin-bottom: 0;
 }
+/* The rail runs outside the card, but `.row` clips its overflow, so a pill
+   drawn on it loses its bar. Inside a card it starts at the card's edge. */
+.groupCard .row.branch::before {
+  left: 0;
+}
 .row.cardHead {
   padding-left: var(--branch-label-x);
   border-radius: calc(8px * var(--ui-scale));
@@ -150,15 +155,16 @@
 .row.cardHead[data-expanded] {
   background: var(--lane-card-hi);
 }
-/* Collapsed with the selected branch inside: the selection's bar, drawn on
-   the rail beside the card rather than inside its rounded corner. */
+/* Collapsed with the selected branch inside. Inset from the rounded corners,
+   which would otherwise clip it, the way a parked lane draws it. */
 .row.cardHead.cardHeadSel::before {
   content: "";
   position: absolute;
-  left: var(--rail-x);
-  top: 0;
-  bottom: 0;
+  left: 0;
+  top: calc(6px * var(--ui-scale));
+  bottom: calc(6px * var(--ui-scale));
   width: var(--tori-border-thick);
+  border-radius: 1px;
   background: var(--brand-bar);
 }
 .cardLabel {
@@ -187,8 +193,12 @@
   font-weight: 600;
   outline: none;
 }
+/* Clipped to the card's lower corners, which a square pill on the last row
+   would otherwise poke past. */
 .cardBody {
   padding-bottom: calc(2px * var(--ui-scale));
+  overflow: hidden;
+  border-radius: 0 0 calc(8px * var(--ui-scale)) calc(8px * var(--ui-scale));
 }
 button.row.cardHead {
   width: calc(100% - var(--tree-inset));
@@ -277,10 +287,6 @@ button.row.cardHead:hover {
   top: 0;
   bottom: 0;
   z-index: -1;
-  /* Square on the rail, rounded away from it: a rounded left edge would clip
-     the selection's marker bar into a lozenge, and the bar has to run the row's
-     full height to read as the rail thickening. */
-  border-radius: 0 var(--tori-radius-md) var(--tori-radius-md) 0;
   background: transparent;
 }
 /* A branch whose pull request merged with nothing made since rests on a faint

@@ -45,7 +45,6 @@ export type SettingSection =
   | "chat"
   | "autopilot"
   | "panes"
-  | "sidebar"
   | "remote"
   | "browser"
   | "root"
@@ -75,7 +74,6 @@ export type SettingTab =
   | "appearance"
   | "integrations"
   | "panes"
-  | "sidebar"
   | "remote"
   | "browser"
   | "advanced";
@@ -121,7 +119,6 @@ export const SETTING_TABS: SettingTabDef[] = [
   { id: "autopilot", label: "Autopilot", group: "Workbench", icon: "wheel", sections: ["autopilot"] },
   { id: "editor", label: "Editor", group: "Workbench", icon: "file-code", sections: ["editor", "editing"] },
   { id: "panes", label: "Panes", group: "Workbench", icon: "columns-2", sections: ["panes"] },
-  { id: "sidebar", label: "Sidebar", group: "Workbench", icon: "panel-left", sections: ["sidebar"] },
   { id: "projects", label: "Projects", group: "Workbench", icon: "folder-kanban", sections: ["projects", "trust"] },
   { id: "servers", label: "LSP", group: "Languages", icon: "braces", sections: ["lsp"] },
   { id: "debuggers", label: "Debuggers", group: "Languages", icon: "bug", sections: ["dap"] },
@@ -181,7 +178,6 @@ export const SECTION_TITLES: Record<SettingSection, string> = {
   chat: "Chat",
   autopilot: "Autopilot",
   panes: "Panes",
-  sidebar: "Sidebar",
   remote: "Remote access",
   browser: "Browser extension",
   root: "Base folder",
@@ -391,6 +387,12 @@ export const SETTINGS: SettingEntry[] = [
     label: "Zoom",
     hint: "Scales the whole interface, on top of the font sizes below. ⌘= and ⌘- move it a step, ⌘0 resets it.",
   },
+  {
+    id: "space-strip",
+    section: "appearance",
+    label: "Space tiles",
+    hint: "A strip along the bottom of the sidebar, or a rail down its left edge that fits any number of spaces.",
+  },
 
   { id: "ui-font-family", section: "typography", label: "UI font family" },
   { id: "ui-font-size", section: "typography", label: "UI font size" },
@@ -578,55 +580,6 @@ export const SETTINGS: SettingEntry[] = [
     section: "panes",
     label: "Files open in",
     hint: "Which end of the split a file opens in. Files already open stay where they are.",
-  },
-
-  {
-    id: "space-strip",
-    section: "sidebar",
-    label: "Space tiles",
-    hint: "A strip along the bottom of the sidebar, or a rail down its left edge that fits any number of spaces.",
-  },
-  {
-    id: "lanes-for",
-    section: "sidebar",
-    label: "Lanes for",
-    hint: "Each Space keeps its own lanes. A Space follows Default until you change something for it.",
-  },
-  {
-    id: "pr-lanes",
-    section: "sidebar",
-    label: "PR lanes",
-    hint: "Sort each project's branches into Working, In review, Reviewing and Done by pull request state. Groups stay above the lanes.",
-  },
-  {
-    id: "lane-split",
-    section: "sidebar",
-    label: "Own lanes",
-    hint: "A lit state gets a lane of its own, directly above the lane it comes from.",
-  },
-  {
-    id: "lanes-fold",
-    section: "sidebar",
-    label: "Fold into In review",
-    hint: "Show the pull requests you review in In review, beside your own.",
-  },
-  {
-    id: "card-colours",
-    section: "sidebar",
-    label: "Card colours",
-    hint: "Subtle keeps every lane and group card neutral. Colourful tints each lane by its state and lets each group pick a colour.",
-  },
-  {
-    id: "branch-line-mode",
-    section: "sidebar",
-    label: "Branch line",
-    hint: "The second line under a branch name: nothing, the pull request alone, or every fact lit below. A running rebase or merge always shows.",
-  },
-  {
-    id: "branch-line-items",
-    section: "sidebar",
-    label: "Branch line items",
-    hint: "What Full shows: pull request, stack, watched, checks, skipped checks, diff size, files, spend, age and comments. The row's tooltip lists everything, whatever is hidden.",
   },
 
   {

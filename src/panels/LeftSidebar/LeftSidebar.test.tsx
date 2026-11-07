@@ -296,7 +296,7 @@ describe("the space strip and the Global space", () => {
     expect(global.compareDocumentPosition(segment("work")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("offers what Global holds and its look on its menu, never Rename or Delete, saved through its own command", async () => {
+  it("offers what Global holds and its settings on its menu, never Rename or Delete, saved through its own command", async () => {
     sidebar();
     await screen.findByText("repo");
     fireEvent.contextMenu(segment("Home"));
@@ -305,11 +305,13 @@ describe("the space strip and the Global space", () => {
       "New chat",
       "New topic",
       "Attach folder…Use a folder from anywhere on disk. Nothing is moved.",
-      "Edit icon and colourHome is built in. It can't be renamed or deleted.",
+      "Collapse all\u2318\u2325\u2190",
+      "Expand all\u2318\u2325\u2192",
+      "Space settings\u2026",
     ]);
-    pointerClick(rows[3]!);
-    await screen.findByRole("dialog", { name: "Edit “Home”" });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    pointerClick(rows[5]!);
+    await screen.findByRole("dialog", { name: "Home settings" });
+    fireEvent.click(screen.getByRole("button", { name: "Reroll the colour and icon" }));
     await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "set_global_meta")).toBe(true));
     expect(bridge.calls.some((c) => c.cmd === "set_space_meta")).toBe(false);
   });

@@ -81,10 +81,10 @@ describe("collapse and expand all", () => {
     await waitFor(() => expect(branches()).toEqual([]));
   });
 
-  it("does the same from the view menu", async () => {
+  it("does the same from the space menu", async () => {
     mount();
     await waitFor(() => expect(screen.getByText("alpha")).toBeTruthy());
-    pointerClick(screen.getByRole("button", { name: "View options" }));
+    pointerClick(screen.getByRole("button", { name: "Actions for work" }));
     pointerClick(await screen.findByRole("menuitem", { name: /Expand all/ }));
     await waitFor(() => expect(branches()).toEqual(["alpha-main", "beta-main"]));
   });

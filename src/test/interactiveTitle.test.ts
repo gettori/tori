@@ -213,6 +213,7 @@ const KEPT = new Map<string, Kept>([
     },
   ],
   ["panels/ProjectSettings/ProjectHeader.tsx", { count: 1, reason: TRUNCATION }],
+  ["panels/SpaceSettings/SpaceSettingsDialog.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/ProjectSettings/WorktreesSection.tsx", { count: 1, reason: HEADING }],
   ["panels/Editor/ProblemsPanel.tsx", { count: 2, reason: `one ${TRUNCATION}, and one ${ROW_ONCLICK}` }],
   ["panels/Editor/TodoPanel.tsx", { count: 2, reason: `one ${TRUNCATION}, and one ${ROW_ONCLICK}` }],
@@ -289,7 +290,6 @@ const KEPT = new Map<string, Kept>([
   ["panels/Settings/panes/IntegrationsPane/IntegrationsPane.tsx", { count: 3, reason: GROUP_HEADING }],
   ["panels/Settings/panes/BrowserPane/BrowserPane.tsx", { count: 1, reason: GROUP_HEADING }],
   ["panels/Settings/panes/RemotePane/RemotePane.tsx", { count: 1, reason: GROUP_HEADING }],
-  ["panels/Settings/panes/SidebarPane/SidebarPane.tsx", { count: 3, reason: GROUP_HEADING }],
   [
     "panels/Settings/panes/ProjectsPane/TrustedProjects.tsx",
     { count: 2, reason: `one ${HEADING}, and one ${TRUNCATION}: a trusted project's path, on a \`code\`` },
@@ -415,7 +415,7 @@ const KEPT = new Map<string, Kept>([
  *
  *  **Up three** with moving projects into spaces: the move dialog's folder, a
  *  grouping row's path and a misplaced project's name. */
-const RAW_ELEMENT_TITLES = 80;
+const RAW_ELEMENT_TITLES = 81;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. The Changes
  *  panel's stash row is one: a click expands it to its files. */
@@ -560,8 +560,9 @@ describe("the title= guard", () => {
       // running mark. Down one: a sent prompt's chip previews its attachment
       // now, the way the composer's does, instead of naming its path. Up three:
       // the move dialog's folder, a grouping row's path and a misplaced
-      // project's name, each the full path behind a truncated label.
-      span: 63,
+      // project's name, each the full path behind a truncated label. Up one
+      // for the space settings dialog's name.
+      span: 64,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });
