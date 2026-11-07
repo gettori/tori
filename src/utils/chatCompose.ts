@@ -15,6 +15,7 @@
 // The trust boundary is unchanged and is the whole point: blocks land in the
 // composer as removable chips and wait there. Nothing here sends anything.
 import { createSignal } from "solid-js";
+import { createStore } from "solid-js/store";
 import type { ContentBlock } from "./chatTypes";
 import { isPdfPath } from "./pathScope";
 import { attributed, type HunkNote } from "./safeSend";
@@ -247,7 +248,8 @@ export function dropPending(key: ComposerKey, id: string) {
   const gone = pendingFor(key).find((p) => p.id === id);
   const label = gone?.block.type === "fileRef" || gone?.block.type === "ref" ? gone.block.label : null;
   setPending((prev) => ({ ...prev, [key]: (prev[key] ?? []).filter((p) => p.id !== id) }));
-  if (label) setDrafts((prev) => (key in prev ? { ...prev, [key]: stripToken(prev[key], label) } : prev));
+  const draft = drafts[key];
+  if (label && draft !== undefined) setDrafts(key, stripToken(draft, label));
 }
 
 /** Take everything pending for a composer, clearing it. Called when the turn that
@@ -299,7 +301,10 @@ const [histories, setHistories] = createSignal<Record<ComposerKey, string[]>>({}
 // send remounts the surface (the tab record is replaced with the session it
 // minted), and clearing there would throw away the very text that send is
 // carrying.
-const [drafts, setDrafts] = createSignal<Record<ComposerKey, string>>({});
+//
+// A store rather than one signal over the record: a keystroke then wakes only
+// the composer it was typed in, not every chat that reads a draft.
+const [drafts, setDrafts] = createStore<Record<ComposerKey, string | undefined>>({});
 
 // The scratch file a composer's draft is being edited in, per composer. While
 // one is linked the editor is the only writer and the composer only sends.
@@ -330,11 +335,11 @@ export function setDraftOrigin(key: ComposerKey, origin: DraftOrigin | null) {
 }
 
 export function draftFor(key: ComposerKey): string {
-  return drafts()[key] ?? "";
+  return drafts[key] ?? "";
 }
 
 export function setDraft(key: ComposerKey, text: string) {
-  setDrafts((prev) => (prev[key] === text ? prev : { ...prev, [key]: text }));
+  setDrafts(key, text);
 }
 
 /**
@@ -364,7 +369,7 @@ export function restoreDraft(key: ComposerKey, text: string) {
  *  three teardowns. */
 export function clearComposer(key: ComposerKey) {
   clearPending(key);
-  setDrafts((prev) => dropKey(prev, key));
+  setDrafts(key, undefined);
   setLinkedScratches((prev) => dropKey(prev, key));
   setHistories((prev) => dropKey(prev, key));
   setAutoSend((prev) => dropKey(prev, key));
@@ -560,7 +565,8 @@ export function relabel(key: ComposerKey, from: string, to: string) {
       p.block.type === "fileRef" && p.block.label === from ? { ...p, block: { ...p.block, label: to } } : p,
     ),
   }));
-  setDrafts((prev) => (key in prev ? { ...prev, [key]: renameTokens(prev[key], renames) } : prev));
+  const draft = drafts[key];
+  if (draft !== undefined) setDrafts(key, renameTokens(draft, renames));
   setAutoSend((prev) => (key in prev ? { ...prev, [key]: renameTokens(prev[key], renames) } : prev));
 }
 
