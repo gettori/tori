@@ -53,7 +53,6 @@ const CARD_ENTRIES: Record<string, string> = {
   debuggers: "Debuggers",
   linters: "Linters",
   formatters: "Formatters",
-  "trusted-projects": "Trusted projects",
   git: "Git",
   forge: "Hosts",
 };

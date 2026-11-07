@@ -70,16 +70,95 @@
   font-size: var(--tori-text-xs);
 }
 
-.trust {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: var(--tori-space-3);
+.space + svg {
   margin-left: auto;
+}
+
+/* A row with a trust action laid over its door, for the Projects pane: the
+   two are separate buttons, so the item rather than the door carries the rule
+   and the hover, and the door keeps the whole row, chevron included. */
+.item {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.item + .item {
+  border-top: var(--tori-border-thin) solid var(--border-default);
+}
+
+.item:hover {
+  background: var(--neutral-hover);
+}
+
+.item .row {
+  flex: 1;
+  min-width: 0;
+}
+
+.item .row:hover {
+  background: none;
+}
+
+.item .row {
+  padding-right: calc(var(--tori-space-5) * 3 + var(--control-icon) + var(--control-height-xs));
+}
+
+.item .row > svg,
+.action {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.item .row > svg {
+  right: var(--tori-space-5);
+}
+
+.action {
+  display: flex;
+  right: calc(var(--tori-space-5) * 2 + var(--control-icon));
+}
+
+/* A path that is no project: no door, so the action takes the chevron's
+   place. */
+.pathItem {
+  padding: var(--tori-space-4) var(--tori-space-5);
+}
+
+.pathItem .action {
+  right: var(--tori-space-5);
+}
+
+.path {
+  flex: 1;
+  min-width: 0;
+  padding-right: calc(var(--tori-space-5) + var(--control-height-xs));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
+  color: var(--fg-default);
+}
+
+.pathOff {
   color: var(--fg-muted);
+}
+
+.othersTitle {
+  margin: var(--tori-space-6) 0 var(--tori-space-3);
+  color: var(--fg-subtle);
   font-size: var(--tori-text-xs);
 }
 
-.space + svg {
-  margin-left: auto;
+.spaceHead {
+  margin: var(--tori-space-6) 0 0;
+  color: var(--fg-subtle);
+  font-size: var(--tori-text-xs);
+  text-transform: capitalize;
+}
+
+.spaceHead + .list {
+  margin-top: var(--tori-space-3);
 }
