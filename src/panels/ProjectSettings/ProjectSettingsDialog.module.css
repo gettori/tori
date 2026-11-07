@@ -47,6 +47,25 @@
   white-space: nowrap;
 }
 
+/* What the dialog is for, after the name: a dot, then the kind in a muted
+   tone, so the name still reads first. */
+.titleKind {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--tori-space-4);
+  color: var(--fg-subtle);
+  font-weight: 400;
+}
+
+.titleKind::before {
+  content: "";
+  width: calc(4px * var(--ui-scale));
+  height: calc(4px * var(--ui-scale));
+  border-radius: 50%;
+  background: currentColor;
+}
+
 /* The footer card's title with the copy button at its end. */
 .footHead {
   display: flex;
