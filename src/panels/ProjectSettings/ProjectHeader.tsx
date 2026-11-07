@@ -27,6 +27,7 @@ export function ProjectTitle(props: { project: SpaceProject }) {
       <span class={styles.titleName} title={name()}>
         {name()}
       </span>
+      <span class={styles.titleKind}>project</span>
     </div>
   );
 }
