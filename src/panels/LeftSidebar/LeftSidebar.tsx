@@ -67,6 +67,7 @@ import {
   emit,
   emitWith,
   FOCUS_SEARCH,
+  OPEN_GROUPING,
   NAVIGATE,
   type NavTarget,
   SESSIONS_REFRESH,
@@ -224,6 +225,7 @@ import TopicList from "./TopicList";
 import ChatList from "./ChatList";
 import MisplacedProjects from "./MisplacedProjects";
 import UnfinishedMove from "./UnfinishedMove";
+import GroupingDialog from "../../components/Dialogs/GroupingDialog";
 import { GROUP_CAP, capList, moreLabel } from "./capList";
 import {
   NEW_CHAT_NAME,
@@ -1430,6 +1432,8 @@ export default function LeftSidebar(props: {
     });
 
   const [unfinished, setUnfinished] = createSignal<PlannedMove[] | null>(null);
+  const [grouping, setGrouping] = createSignal(false);
+  onCleanup(onEvent(OPEN_GROUPING, () => setGrouping(true)));
   onMount(() => void unfinishedMoves().then(setUnfinished, (e) => setError(String(e))));
 
   async function resumeUnfinished() {
@@ -4499,7 +4503,25 @@ export default function LeftSidebar(props: {
       <Show when={unfinished()} keyed>
         {(moves) => <UnfinishedMove moves={moves} onResume={resumeUnfinished} />}
       </Show>
-      <MisplacedProjects paths={config()?.misplaced ?? []} home={home()} onAttach={setAttachAt} />
+      <MisplacedProjects
+        paths={config()?.misplaced ?? []}
+        home={home()}
+        onAttach={setAttachAt}
+        onSort={() => setGrouping(true)}
+      />
+      <Show when={grouping() && config()?.roots[0]}>
+        {(base) => (
+          <GroupingDialog
+            base={base()}
+            onDone={(warnings) => {
+              setGrouping(false);
+              for (const w of warnings) setError(w);
+              void loadConfig();
+            }}
+            onCancel={() => setGrouping(false)}
+          />
+        )}
+      </Show>
       {/* Outside the tree's gate: the strip is how you leave a space, so it
           renders for every one, Global included even before any named space
           exists. */}
