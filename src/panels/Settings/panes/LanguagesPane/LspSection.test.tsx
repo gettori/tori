@@ -40,7 +40,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 const { default: LspSection } = await import("./LspSection");
-const { default: TrustedProjects } = await import("../ProjectsPane/TrustedProjects");
+const { default: ProjectTrust } = await import("../ProjectsPane/ProjectTrust");
 
 const server = (over: Partial<LspHealth> = {}): LspHealth => ({
   id: "typescript",
@@ -336,9 +336,9 @@ describe("LspSection", () => {
 
   it("lists trusted projects, and Revoke takes one off the list", async () => {
     trusted = ["/work/repo", "/work/other"];
-    render(() => <TrustedProjects />);
+    render(() => <ProjectTrust />);
 
-    const revoke = await screen.findByRole("button", { name: "Revoke /work/repo" });
+    const revoke = await screen.findByRole("button", { name: "Untrust /work/repo" });
     revoke.click();
 
     await waitFor(() => expect(screen.queryByText("/work/repo")).toBeNull());

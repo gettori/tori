@@ -1,20 +1,14 @@
-import { CardSection, Group, type PaneProps } from "../../components/paneKit";
-import ProjectList from "./ProjectList";
-import TrustedProjects from "./TrustedProjects";
+import { CardSection, type PaneProps } from "../../components/paneKit";
+import ProjectTrust from "./ProjectTrust";
 import UnattendedLists from "./UnattendedLists";
 
-/** The projects Tori found, each opening its settings dialog, then the trusted
- *  list, which also holds paths that are not projects Tori found. */
+/** The projects Tori found, each with its trust and a door to its settings,
+ *  then the unattended lists. */
 export default function ProjectsPane(props: PaneProps) {
   return (
     <>
-      <Group {...props} title="Projects" ids={["projects-list"]}>
-        <CardSection {...props} id="projects-list">
-          <ProjectList trust />
-        </CardSection>
-      </Group>
-      <CardSection {...props} id="trusted-projects">
-        <TrustedProjects />
+      <CardSection {...props} id="projects-list">
+        <ProjectTrust />
       </CardSection>
       <UnattendedLists {...props} />
     </>
