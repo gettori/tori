@@ -112,6 +112,11 @@ function approxTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+function sameToken(a: CompletionToken | null, b: CompletionToken | null): boolean {
+  if (a === b) return true;
+  return !!a && !!b && a.kind === b.kind && a.query === b.query && a.start === b.start && a.end === b.end;
+}
+
 /** What a caller holds to put text into the composer, handed over on mount. */
 export type ComposerHandle = {
   /** Insert at the caret, on a line of its own, and focus the input. */
@@ -309,7 +314,7 @@ export default function Composer(props: {
   const text = () => props.draft;
   const setText = (value: string) => props.onDraftChange(value);
   const [historyIndex, setHistoryIndex] = createSignal(-1);
-  const [token, setToken] = createSignal<CompletionToken | null>(null);
+  const [token, setToken] = createSignal<CompletionToken | null>(null, { equals: sameToken });
   const [files, setFiles] = createSignal<string[]>([]);
   const [menuIndex, setMenuIndex] = createSignal(0);
   const [dragging, setDragging] = createSignal(false);
@@ -457,13 +462,14 @@ export default function Composer(props: {
     }
   }
 
+  // The field first, so the draft effect finds it already holding the text and
+  // does not replace the whole document a second time.
   function setInputText(next: string, caret: number) {
+    field?.set(next, caret);
     setText(next);
     setHistoryIndex(-1);
     setCaret(caret);
-    if (!field) return;
-    field.set(next, caret);
-    field.focus();
+    field?.focus();
   }
 
   function drill(t: CompletionToken, key: string) {
@@ -772,9 +778,9 @@ export default function Composer(props: {
     if (next < -1 || next >= entries.length) return false;
     setHistoryIndex(next);
     const value = next === -1 ? "" : entries[next];
+    field?.set(value, value.length);
     setText(value);
     setCaret(value.length);
-    field?.set(value, value.length);
     return true;
   }
 
@@ -964,10 +970,9 @@ export default function Composer(props: {
       onInput: (value) => {
         setText(value);
         setHistoryIndex(-1);
-        syncToken();
       },
-      // A click or an arrow can move the caret out of the token that opened the
-      // menu without changing a character, so selection is watched too.
+      // Every edit as well as every caret move: a click or an arrow can move the
+      // caret out of the token that opened the menu without changing a character.
       onSelect: syncToken,
       onKeyDown: (e) => {
         onKeyDown(e);

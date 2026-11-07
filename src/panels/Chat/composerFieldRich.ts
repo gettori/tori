@@ -91,14 +91,13 @@ const command = ViewPlugin.fromClass(
       }
     }
     build(view: EditorView): DecorationSet {
-      const text = view.state.doc.toString();
       const marks = [];
-      const lead = COMMAND.exec(text.slice(0, 64));
+      const lead = COMMAND.exec(view.state.sliceDoc(0, 64));
       if (lead) marks.push(commandMark.range(0, lead[0].length));
       const skills = new Set(view.state.facet(skillNames));
       if (skills.size) {
         const tree = syntaxTree(view.state);
-        for (const m of text.matchAll(SKILL)) {
+        for (const m of view.state.doc.toString().matchAll(SKILL)) {
           if (!skills.has(m[1])) continue;
           const node = tree.resolveInner(m.index, 1);
           if (/Code|CodeText|CodeMark/.test(node.name) || node.parent?.name === "FencedCode") continue;
