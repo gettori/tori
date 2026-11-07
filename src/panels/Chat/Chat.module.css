@@ -2996,7 +2996,10 @@ button.diffHunkHeader:hover {
   outline: none;
 }
 
+/* Lines wrap, so nothing here scrolls sideways. With classic scrollbars a
+   stray horizontal one would add its height to the box. */
 .inputField :global(.cm-scroller) {
+  overflow-x: hidden;
   font-family: inherit;
   line-height: inherit;
 }
