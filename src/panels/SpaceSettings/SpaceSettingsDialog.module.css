@@ -60,7 +60,3 @@
 .titleName {
   text-transform: capitalize;
 }
-
-.titleKind {
-  font-size: var(--tori-text-xl);
-}
