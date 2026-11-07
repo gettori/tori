@@ -192,7 +192,16 @@ import {
   setSidebar,
   settings as appSettings,
 } from "../Settings/settingsStore";
-import { LANE_LABEL, laneOf, laneOrder, startsParked, type LaneId } from "../../utils/prLanes";
+import {
+  GROUP_HUES,
+  LANE_HUE,
+  LANE_LABEL,
+  laneOf,
+  laneOrder,
+  startsParked,
+  type CardHue,
+  type LaneId,
+} from "../../utils/prLanes";
 import { prChildState } from "../../utils/prChildState";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
@@ -203,6 +212,7 @@ import { shortHome, spaceInitials } from "../../utils/names";
 import { rememberSelection, rememberedInSpace, rememberedGlobal } from "../../utils/selectionMemory";
 import {
   Ban,
+  Check,
   Folder,
   FolderInput,
   Ellipsis,
@@ -238,7 +248,18 @@ import ChatList from "./ChatList";
 import { GROUP_CAP, capList, moreLabel } from "./capList";
 import { arrange, arrive, moveKeys, orderedKeys, unitKey } from "./arrange";
 import { createSidebarDrag, type DragCommit, type SidebarDragProps } from "./sidebarDrag";
-import { createGroup, freeName, groupOf, putInGroup, renameGroup, takeOut, ungroup, type BranchGroup } from "./groups";
+import {
+  colourGroup,
+  createGroup,
+  freeHue,
+  freeName,
+  groupOf,
+  putInGroup,
+  renameGroup,
+  takeOut,
+  ungroup,
+  type BranchGroup,
+} from "./groups";
 import {
   projectLanes,
   projectOrder,
@@ -591,6 +612,9 @@ export default function LeftSidebar(props: {
   const clearPicked = (e: KeyboardEvent) => e.key === "Escape" && picked() && setPicked(null);
   window.addEventListener("keydown", clearPicked);
   onCleanup(() => window.removeEventListener("keydown", clearPicked));
+  const colourful = () => appSettings.sidebar.cardColours === "colourful";
+  const groupHue = (c: string | undefined): CardHue | null =>
+    (GROUP_HUES as readonly string[]).includes(c ?? "") ? (c as CardHue) : null;
   function heldValue<T>(live: () => T): () => T {
     let kept: { v: T } | null = null;
     return createMemo(() => {
@@ -4329,7 +4353,8 @@ export default function LeftSidebar(props: {
     const branchOfKey = (key: string) => split().units.find((u) => unitKey(u) === key)?.branch ?? null;
     function newGroup(branches: string[]) {
       const name = freeName(groups());
-      writeGroups(p, createGroup(groups(), name, branches));
+      const colour = colourful() ? freeHue(groups(), GROUP_HUES) : undefined;
+      writeGroups(p, createGroup(groups(), name, branches, colour));
       editGroup(p, name);
     }
     projectActions.set(p.path, {
@@ -4405,6 +4430,7 @@ export default function LeftSidebar(props: {
       });
     function groupCardNode(name: string, index: () => number) {
       const members = () => membersOf(name);
+      const colour = () => groups().find((gr) => gr.name === name)?.colour;
       const open = () => groupOpen(name);
       const draft = () => {
         const d = groupDraft();
@@ -4431,8 +4457,20 @@ export default function LeftSidebar(props: {
           onDraft={(d) => setGroupDraft({ path: p.path, name, draft: d })}
           onRename={rename}
           onToggle={() => toggle(collapsedKey(p, name))}
+          hue={colourful() ? groupHue(colour()) : null}
           menu={[
             { label: "Rename", onClick: () => editGroup(p, name) },
+            ...(colourful()
+              ? [
+                  { separator: true as const },
+                  { heading: "Colour" },
+                  ...[...GROUP_HUES, null].map((h) => ({
+                    label: h === null ? "None" : h[0].toUpperCase() + h.slice(1),
+                    icon: groupHue(colour()) === h ? Check : undefined,
+                    onClick: () => writeGroups(p, colourGroup(groups(), name, h)),
+                  })),
+                ]
+              : []),
             { separator: true },
             { label: "Ungroup", onClick: () => writeGroups(p, ungroup(groups(), name)) },
           ]}
@@ -4574,7 +4612,12 @@ export default function LeftSidebar(props: {
           <Show when={truncated()}>{moreNode(g, p, () => shown().hidden)}</Show>
           <For each={openLanes()}>
             {(id) => (
-              <LaneCard lane={id} count={laneUnits(id).length} onPark={() => toggle(laneKey(id))}>
+              <LaneCard
+                lane={id}
+                count={laneUnits(id).length}
+                hue={colourful() ? LANE_HUE[id] : null}
+                onPark={() => toggle(laneKey(id))}
+              >
                 <For each={laneSection(id)?.shown ?? []}>{(e, i) => entryNode(e, i, `lane:${id}`)}</For>
               </LaneCard>
             )}
@@ -4585,6 +4628,7 @@ export default function LeftSidebar(props: {
                 lane: id,
                 count: laneUnits(id).length,
                 holdsSelection: laneUnits(id).some(unitSelected),
+                hue: colourful() ? LANE_HUE[id] : null,
               }))}
               onOpen={(id) => toggle(laneKey(id))}
             />

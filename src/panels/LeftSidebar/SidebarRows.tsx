@@ -31,7 +31,7 @@ import IconButton from "../../components/IconButton/IconButton";
 import { type MenuItem } from "../../components/Menu/rows";
 import Icon from "../../components/Icon/Icon";
 import type { DragRowProps } from "../../utils/dragReorder";
-import { LANE_LABEL, type LaneId } from "../../utils/prLanes";
+import { HUE_VARS, LANE_LABEL, type CardHue, type LaneId } from "../../utils/prLanes";
 import styles from "./SidebarRows.module.css";
 
 /** The mark on a project tile that says the folder was attached from
@@ -353,6 +353,7 @@ export function GroupCard(props: {
   menu?: MenuItem[];
   onToggle?: () => void;
   rowProps?: SidebarDragProps;
+  hue?: CardHue | null;
   children?: JSX.Element;
 }) {
   const editor = (draft: () => GroupNameDraft) => {
@@ -394,7 +395,12 @@ export function GroupCard(props: {
     );
   };
   return (
-    <div class={`node ${styles.groupCard}`} data-group={props.name}>
+    <div
+      class={`node ${styles.groupCard}`}
+      data-group={props.name}
+      data-hue={props.hue ?? undefined}
+      style={props.hue ? HUE_VARS[props.hue] : undefined}
+    >
       <ContextMenu
         class={`${styles.row} ${styles.cardHead}`}
         classList={{ [styles.cardHeadSel]: props.holdsSelection === true }}
@@ -438,9 +444,20 @@ const LANE_ICON: Record<LaneId, LucideIcon> = {
 };
 
 /** An open lane. Its header parks it. */
-export function LaneCard(props: { lane: LaneId; count: number; onPark: () => void; children?: JSX.Element }) {
+export function LaneCard(props: {
+  lane: LaneId;
+  count: number;
+  onPark: () => void;
+  hue?: CardHue | null;
+  children?: JSX.Element;
+}) {
   return (
-    <div class={`node ${styles.groupCard}`} data-lane={props.lane}>
+    <div
+      class={`node ${styles.groupCard}`}
+      data-lane={props.lane}
+      data-hue={props.hue ?? undefined}
+      style={props.hue ? HUE_VARS[props.hue] : undefined}
+    >
       <button
         type="button"
         class={`${styles.row} ${styles.cardHead}`}
@@ -459,7 +476,7 @@ export function LaneCard(props: { lane: LaneId; count: number; onPark: () => voi
   );
 }
 
-export type ParkedLane = { lane: LaneId; count: number; holdsSelection: boolean };
+export type ParkedLane = { lane: LaneId; count: number; holdsSelection: boolean; hue?: CardHue | null };
 
 /** The parked lanes side by side. A click opens one in its place. */
 export function ParkedLanes(props: { lanes: ParkedLane[]; onOpen: (lane: LaneId) => void }) {
@@ -472,6 +489,8 @@ export function ParkedLanes(props: { lanes: ParkedLane[]; onOpen: (lane: LaneId)
             class={styles.parkedCard}
             classList={{ [styles.cardHeadSel]: l.holdsSelection }}
             data-lane={l.lane}
+            data-hue={l.hue ?? undefined}
+            style={l.hue ? HUE_VARS[l.hue] : undefined}
             aria-expanded="false"
             onClick={() => props.onOpen(l.lane)}
           >

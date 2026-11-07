@@ -20,13 +20,16 @@ import {
   GroupCard,
   GroupHead,
   GroupRow,
+  LaneCard,
   MoreRow,
+  ParkedLanes,
   ProjectRow,
   TrunkRow,
   attemptGroup,
   stackGroup,
 } from "./SidebarRows";
 import rows from "./SidebarRows.module.css";
+import { GROUP_HUES, LANE_HUE, type LaneId } from "../../utils/prLanes";
 
 const MENU: MenuItem[] = [
   { label: "Open in editor", onClick: () => {} },
@@ -717,6 +720,47 @@ export const GroupCardCollapsedHoldingSelection: Story = {
           <BranchRow label="billing" icon={<WorktreeMark active={false} />} menu={MENU} />
         </ProjectRow>
       </Tree>
+    ),
+  ],
+};
+
+function CardsIn(props: { colourful: boolean }) {
+  const hue = (id: LaneId) => (props.colourful ? LANE_HUE[id] : null);
+
+  return (
+    <Tree>
+      <ProjectRow name="frontend" icon={<ProjectIcon seed="/w/frontend" />} disclosure open menu={MENU}>
+        <BranchRow label="main" icon={<BranchMark active={false} current />} menu={MENU} />
+        <GroupCard name="Drag and drop" count={2} open hue={props.colourful ? GROUP_HUES[0] : null} menu={MENU}>
+          <BranchRow label="dnd-core" icon={<WorktreeMark active={false} />} menu={MENU} />
+          <BranchRow label="dnd-ghost" icon={<WorktreeMark active={false} />} selected menu={MENU} />
+        </GroupCard>
+        <LaneCard lane="working" count={2} hue={hue("working")} onPark={() => {}}>
+          <BranchRow label="lane-settings" icon={<WorktreeMark active={false} />} menu={MENU} />
+          <BranchRow label="rebase-fix" icon={<WorktreeMark active={false} />} menu={MENU} />
+        </LaneCard>
+        <LaneCard lane="changesRequested" count={1} hue={hue("changesRequested")} onPark={() => {}}>
+          <BranchRow label="checkout-flow" icon={<WorktreeMark active={false} />} menu={MENU} />
+        </LaneCard>
+        <ParkedLanes
+          lanes={[
+            { lane: "inReview", count: 3, holdsSelection: false, hue: hue("inReview") },
+            { lane: "done", count: 4, holdsSelection: false, hue: hue("done") },
+          ]}
+          onOpen={() => {}}
+        />
+      </ProjectRow>
+    </Tree>
+  );
+}
+
+export const CardColours: Story = {
+  decorators: [
+    () => (
+      <div style={{ display: "flex", gap: "24px" }}>
+        <CardsIn colourful={false} />
+        <CardsIn colourful />
+      </div>
     ),
   ],
 };
