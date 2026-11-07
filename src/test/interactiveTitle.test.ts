@@ -130,6 +130,10 @@ const KEPT = new Map<string, Kept>([
   ["components/Dialogs/DetachConfirm.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/MoveTopicDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/NewProjectDialog.tsx", { count: 1, reason: HEADING }],
+  ["components/Dialogs/GroupingDialog.tsx", { count: 1, reason: HEADING }],
+  ["components/Dialogs/MoveToSpaceDialog.tsx", { count: 1, reason: HEADING }],
+  ["components/Dialogs/MoveIntoSpace.tsx", { count: 1, reason: `${TRUNCATION}: the folder being moved` }],
+  ["components/GroupProjects/GroupProjects.tsx", { count: 1, reason: `${TRUNCATION}: a project's full path` }],
   ["components/Dialogs/PickerModal.test.tsx", { count: 2, reason: FIXTURE }],
   ["components/Dialogs/ServerMessageDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/PackInstallDialog.tsx", { count: 1, reason: HEADING }],
@@ -230,6 +234,7 @@ const KEPT = new Map<string, Kept>([
   ["panels/FirstRun/intro/Intro.tsx", { count: 1, reason: `${HEADING} - the intro's` }],
   ["panels/FirstRun/job/InlineJob.stories.tsx", { count: 4, reason: FIXTURE }],
   ["panels/LeftSidebar/TopicItem.tsx", { count: 4, reason: TRUNCATION }],
+  ["panels/LeftSidebar/MisplacedProjects.tsx", { count: 1, reason: `${TRUNCATION}: a project's path` }],
   ["panels/LeftSidebar/TopicList.tsx", { count: 2, reason: HEADING }],
   ["panels/LeftSidebar/branchTruncation.test.tsx", { count: 3, reason: FIXTURE }],
   ["panels/LeftSidebar/forgeChipRow.test.tsx", { count: 2, reason: FIXTURE }],
@@ -405,8 +410,11 @@ const KEPT = new Map<string, Kept>([
  *  path, truncated from the left, beside the Worktrees section's own.
  *
  *  **Down one** with a sent prompt's file chip, which previews like the
- *  composer's instead of carrying its path. */
-const RAW_ELEMENT_TITLES = 77;
+ *  composer's instead of carrying its path.
+ *
+ *  **Up three** with moving projects into spaces: the move dialog's folder, a
+ *  grouping row's path and a misplaced project's name. */
+const RAW_ELEMENT_TITLES = 80;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. The Changes
  *  panel's stash row is one: a click expands it to its files. */
@@ -549,8 +557,10 @@ describe("the title= guard", () => {
       // it truncated is drawn once now, in the panel that replaced it. Up one
       // for the project settings tab's path, and one for the run command row's
       // running mark. Down one: a sent prompt's chip previews its attachment
-      // now, the way the composer's does, instead of naming its path.
-      span: 60,
+      // now, the way the composer's does, instead of naming its path. Up three:
+      // the move dialog's folder, a grouping row's path and a misplaced
+      // project's name, each the full path behind a truncated label.
+      span: 63,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });
