@@ -1,7 +1,7 @@
 ---
 summary: Settings store resolves formatOnSave in three states (null, false, true) with ??; vimMode has no per-project form
 status: current
-updated: 2026-10-10
+updated: 2026-11-07
 source: "Central configurable UI system (personal/tori, branch code-mirror-6); Phases 3, 4; commits 94055c9, 631d16e; theme rework: Native theming system: palette + roles generator (branch `terminal-editor-design`) Phases 2, 7"
 ---
 
@@ -163,3 +163,8 @@ The project settings dialog ([[component_project_settings_dialog]]) edits every 
 
 Any effect reading one of these by reference refires on every save, see [[gotcha_every_settings_save_replaces_every_per_project_map]].
 
+## Sidebar lanes per Space (2026-11-07)
+
+`sidebar.lanes` is `{ default, spaces }`, each a `LaneConfig { enabled, lit, foldReviewing }` (`settings.rs` `Lanes`, read leniently field by field like the rest of `sidebar`). A Space is keyed by name, Home by `/global`, and follows `default` until it has an entry: `lanesFor(space)` falls back, `setLanes(space, patch)` copies what the Space inherited on its first change (`null` edits `default`), and `resetLanes(space)` deletes the entry. `lit` is a list of strings in Rust so an unknown state does not fail the file.
+
+Readers go through `laneConfigFor(space)` (`settingsStore.ts:1167`), a memo with `equals: sameLanes`, because every save hands back a fresh object for every Space and the sidebar's `arrange()` would otherwise re-run on a theme change ([[gotcha_every_settings_save_replaces_every_per_project_map]]). `setSettings(reconcile(...))` would remove the need store-wide; it was not taken, since it changes identity behaviour for every reader. See [[concept_sidebar_arrangement]].
