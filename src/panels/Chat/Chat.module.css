@@ -3004,7 +3004,17 @@ button.diffHunkHeader:hover {
 .inputField :global(.cm-content) {
   min-height: calc(3 * var(--input-line) + var(--input-pad-top) + var(--input-pad-bottom));
   padding: var(--input-pad-top) 0 var(--input-pad-bottom);
-  caret-color: var(--fg-default);
+}
+
+/* The caret and selection are drawn by CodeMirror (composerField.ts). The
+   focused selection needs the base theme's long selector to outrank it. */
+.inputField :global(.cm-editor .cm-cursor) {
+  border-left-color: var(--fg-default);
+}
+
+.inputField :global(.cm-editor .cm-selectionBackground),
+.inputField :global(.cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground) {
+  background: var(--accent-subtle);
 }
 
 .inputField :global(.cm-line) {
