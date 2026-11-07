@@ -128,6 +128,7 @@ const { emitWith, NAVIGATE } = await import("../../utils/events");
 const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
 const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
 const { resetForgeStatusForTests } = await import("../../utils/forgeStatus");
+const { resetSidebarOrderForTests } = await import("../../utils/sidebarOrder");
 
 type Picked = { folderPath?: string; branch?: string } | null;
 
@@ -147,6 +148,7 @@ describe("a stack in the project card", () => {
     resetSessionStoreForTests();
     resetSessionActivityForTests();
     resetForgeStatusForTests();
+    resetSidebarOrderForTests();
     bridge.calls.length = 0;
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();

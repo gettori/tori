@@ -1,3 +1,4 @@
+import type { SidebarDragProps } from "./sidebarDrag";
 import { Show, type JSX } from "solid-js";
 import {
   ArrowUpRight,
@@ -162,7 +163,7 @@ export function BranchRow(props: {
   onDragStart?: (e: DragEvent) => void;
   /** Spread on the row last, for a caller that keys or reorders its rows (a
    *  Topic's members carry `data-member` and the drag-reorder handlers). */
-  rowProps?: Partial<DragRowProps> & { [data: `data-${string}`]: string | undefined };
+  rowProps?: (Partial<DragRowProps> & { [data: `data-${string}`]: string | undefined }) | SidebarDragProps;
 }) {
   const glyph = () => (
     <span class={styles.rowIcon} title={props.iconLabel}>
@@ -296,6 +297,7 @@ export function GroupRow(props: {
   end?: JSX.Element;
   onClick?: () => void;
   children?: JSX.Element;
+  rowProps?: SidebarDragProps;
 }) {
   return (
     <div class={`node ${styles.branchNode}`}>
@@ -303,6 +305,7 @@ export function GroupRow(props: {
         class={`${styles.row} ${styles.branch} ${styles.sub1}`}
         onClick={() => props.onClick?.()}
         title={props.label}
+        {...props.rowProps}
       >
         <span class={styles.rowIcon}>
           <Icon icon={props.icon} />
