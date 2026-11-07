@@ -334,15 +334,14 @@ describe("LspSection", () => {
     await waitFor(() => expect(calls).toContainEqual(["lsp_install", { serverId: "python" }]));
   });
 
-  it("lists trusted projects, and Revoke takes one off the list", async () => {
+  it("offers to forget trusted paths that are no longer projects", async () => {
     trusted = ["/work/repo", "/work/other"];
     render(() => <ProjectTrust />);
 
-    const revoke = await screen.findByRole("button", { name: "Untrust /work/repo" });
-    revoke.click();
+    expect(await screen.findByText("2 trusted paths are no longer projects.")).toBeTruthy();
+    screen.getByRole("button", { name: "Forget them" }).click();
 
-    await waitFor(() => expect(screen.queryByText("/work/repo")).toBeNull());
-    expect(screen.getByText("/work/other")).toBeTruthy();
+    await waitFor(() => expect(trusted).toEqual([]));
   });
 
   it("shows a catalog pack's health card with its contributor, Update pack and Remove pack", async () => {

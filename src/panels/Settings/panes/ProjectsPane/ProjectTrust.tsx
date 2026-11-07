@@ -1,7 +1,8 @@
 import { For, Show, createResource, createSignal, onCleanup } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { ChevronRight, ListX, ShieldCheck, ShieldOff } from "lucide-solid";
+import { ChevronRight, ListX, ShieldCheck, ShieldOff, TriangleAlert } from "lucide-solid";
 
+import Button from "../../../../components/Button/Button";
 import ConfirmDialog from "../../../../components/Dialogs/ConfirmDialog";
 import Icon from "../../../../components/Icon/Icon";
 import IconButton from "../../../../components/IconButton/IconButton";
@@ -10,7 +11,7 @@ import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { GLOBAL_KEY, GLOBAL_NAME } from "../../../../utils/globalSpace";
 import { isUnderPath, sameCwd } from "../../../../utils/pathScope";
 import { openProjectSettings } from "../../../../utils/projectSettings";
-import { onTrustChange, refusedProjects, revokeProject, trustProject } from "../../../../utils/projectTrust";
+import { onTrustChange, revokeProject, trustProject } from "../../../../utils/projectTrust";
 import { createSpaces } from "../../../../utils/topicMembers";
 import styles from "../../Settings.module.css";
 import own from "./ProjectList.module.css";
@@ -24,26 +25,17 @@ const FILTERS: { id: Filter; label: string }[] = [
 ];
 
 /**
- * Every project Tori found, with its trust and the way into its settings, then
- * the trusted or refused paths that match no project: a parent folder trusted
- * whole, or a project since removed. Trust is stored by path and covers what is
- * under it, so a project trusted through a parent says so and cannot be revoked
- * on its own.
+ * Every project Tori found, with its trust and the way into its settings. Trust
+ * is stored by path and covers what is under it, so a project trusted through a
+ * parent says so and cannot be untrusted on its own, and a path whose project
+ * has gone is offered up to be forgotten.
  */
 export default function ProjectTrust() {
   const spaces = createSpaces();
   const [trusted, { refetch: refetchTrusted }] = createResource(() =>
     invoke<string[]>("trusted_projects").catch(() => [] as string[]),
   );
-  const [discovered, { refetch: refetchDiscovered }] = createResource(() =>
-    invoke<string[] | null>("untrusted_projects").catch(() => null),
-  );
-  onCleanup(
-    onTrustChange(() => {
-      void refetchTrusted();
-      void refetchDiscovered();
-    }),
-  );
+  onCleanup(onTrustChange(() => void refetchTrusted()));
   const [filter, setFilter] = createSignal<Filter>("all");
   const [query, setQuery] = createSignal("");
   const [confirming, setConfirming] = createSignal(false);
@@ -64,17 +56,15 @@ export default function ProjectTrust() {
         };
       }),
     );
-  const isProject = (path: string) => projects().some((r) => sameCwd(r.project.path, path));
-  const others = () => {
-    const refused = [...new Set([...(discovered() ?? []), ...refusedProjects()])].filter((p) => !isProject(p));
-    return [
-      ...entries()
-        .filter((p) => !isProject(p))
-        .sort()
-        .map((path) => ({ path, trusted: true })),
-      ...refused.sort().map((path) => ({ path, trusted: false })),
-    ];
-  };
+  // Trusted paths no project is at, in or under: what a moved, detached or
+  // deleted project leaves behind. A missing project is still listed, so the
+  // trust of one on an unplugged drive is not counted here.
+  const stale = () =>
+    spaces()
+      ? entries().filter(
+          (t) => !projects().some((r) => isUnderPath(r.project.path, t) || isUnderPath(t, r.project.path)),
+        )
+      : [];
 
   const count = (f: Filter) => projects().filter((r) => f === "all" || r.trusted === (f === "trusted")).length;
   const q = () => query().trim().toLowerCase();
@@ -91,7 +81,6 @@ export default function ProjectTrust() {
       else groups.push({ space: r.space, rows: [r] });
       return groups;
     }, []);
-  const shownOthers = () => others().filter((o) => matches(o.path));
 
   // Trust on what is not trusted, untrust on what holds its own entry, and for
   // what a parent folder covers, a disabled mark that names the folder.
@@ -214,19 +203,17 @@ export default function ProjectTrust() {
         </Show>
       </Show>
 
-      <Show when={shownOthers().length > 0}>
-        <div class={own.othersTitle}>Other paths</div>
-        <div class={own.list}>
-          <For each={shownOthers()}>
-            {(o) => (
-              <div class={`${own.item} ${own.pathItem}`}>
-                <code class={own.path} classList={{ [own.pathOff]: !o.trusted }} title={o.path}>
-                  {o.path}
-                </code>
-                <span class={own.action}>{trustButton(o.path, o.path, o.trusted ? o.path : null, null)}</span>
-              </div>
-            )}
-          </For>
+      <Show when={stale().length > 0}>
+        <div class={own.stale} role="status">
+          <Icon icon={TriangleAlert} aria-hidden="true" />
+          <span>
+            {stale().length === 1
+              ? "1 trusted path is no longer a project."
+              : `${stale().length} trusted paths are no longer projects.`}
+          </span>
+          <Button size="xs" onClick={() => run("forget", Promise.all(stale().map(revokeProject)))}>
+            Forget {stale().length === 1 ? "it" : "them"}
+          </Button>
         </div>
       </Show>
 

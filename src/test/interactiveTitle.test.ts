@@ -289,10 +289,7 @@ const KEPT = new Map<string, Kept>([
   ["panels/Settings/panes/IntegrationsPane/IntegrationsPane.tsx", { count: 3, reason: GROUP_HEADING }],
   ["panels/Settings/panes/BrowserPane/BrowserPane.tsx", { count: 1, reason: GROUP_HEADING }],
   ["panels/Settings/panes/RemotePane/RemotePane.tsx", { count: 1, reason: GROUP_HEADING }],
-  [
-    "panels/Settings/panes/ProjectsPane/ProjectTrust.tsx",
-    { count: 2, reason: `one ${HEADING}, and one ${TRUNCATION}: a trusted project's path, on a \`code\`` },
-  ],
+  ["panels/Settings/panes/ProjectsPane/ProjectTrust.tsx", { count: 1, reason: HEADING }],
   ["components/Autopilot/DecisionCard.tsx", { count: 1, reason: TRUNCATION }],
   ["components/Dialogs/RebaseDialog.tsx", { count: 2, reason: `${HEADING}, plus one ${TRUNCATION}` }],
   ["components/ModelDownload/ModelDownloadDialog.tsx", { count: 1, reason: HEADING }],
@@ -414,7 +411,7 @@ const KEPT = new Map<string, Kept>([
  *
  *  **Up three** with moving projects into spaces: the move dialog's folder, a
  *  grouping row's path and a misplaced project's name. */
-const RAW_ELEMENT_TITLES = 81;
+const RAW_ELEMENT_TITLES = 80;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. The Changes
  *  panel's stash row is one: a click expands it to its files. */
@@ -544,9 +541,9 @@ describe("the title= guard", () => {
     // Up four spans, down one div, and three tags new to this census: a
     // decision card's ticket, a rebase row's subject and a script row's running
     // mark are spans, a trusted project's path is a `code`, and the `p` and
-    // `img` are attack strings in the sanitizer's test, not elements.
+    // `img` are attack strings in the sanitizer's test, not elements. Down the
+    // `code`: the trusted path went with the list of paths that are no project.
     expect(Object.fromEntries([...byTag].sort())).toEqual({
-      code: 1,
       div: 12,
       // The usage readout's breakdown moved from a span to the `dl` it now is.
       dl: 1,
