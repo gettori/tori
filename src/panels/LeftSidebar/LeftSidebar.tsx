@@ -891,7 +891,7 @@ export default function LeftSidebar(props: {
 
   // The space-level "New…" dialog: create an empty folder, clone a repo, or
   // bootstrap a bare + worktree project, chosen by a segmented control.
-  const [newReq, setNewReq] = createSignal<{ g: Space; busy: boolean; move?: boolean } | null>(null);
+  const [newReq, setNewReq] = createSignal<{ g: Space; busy: boolean } | null>(null);
   const [spaceMoveReq, setSpaceMoveReq] = createSignal<{ p: Project; from: string } | null>(null);
 
   // The create-space dialog. `busy` gates double-submit like the sibling dialogs.
@@ -1929,8 +1929,8 @@ export default function LeftSidebar(props: {
   }
 
   // Open the space-level "New…" dialog.
-  function openNewProject(g: Space, move = false) {
-    setNewReq({ g, busy: false, move });
+  function openNewProject(g: Space) {
+    setNewReq({ g, busy: false });
   }
 
   const baseFolder = () => config()?.roots[0];
@@ -2832,11 +2832,6 @@ export default function LeftSidebar(props: {
     { separator: true },
     { label: "New chat", onClick: () => void startChat(g.name) },
     { label: `New in “${g.name}”`, onClick: () => openNewProject(g) },
-    {
-      label: "Move folder here…",
-      hint: `Moves a folder from anywhere on this disk into ${g.name}.`,
-      onClick: () => openNewProject(g, true),
-    },
     { separator: true },
     {
       label: "New Topic",
@@ -5268,7 +5263,6 @@ export default function LeftSidebar(props: {
               ? {
                   base: baseFolder()!,
                   home: home(),
-                  initial: newReq()!.move,
                   pickFolder: () => pickFolder(`Choose a folder to move into ${newReq()!.g.name}`),
                   countRunning: countRunningAgents,
                   onMoved: (_, warnings) => moved(warnings),
