@@ -31,6 +31,7 @@ export default function MoveToSpaceDialog(props: {
   return (
     <Dialog
       open
+      size="sheet"
       title={`Move “${props.name}” to a space`}
       onClose={() => props.onCancel()}
       onKeyDown={(e) => {
@@ -52,6 +53,7 @@ export default function MoveToSpaceDialog(props: {
         <div class={styles.spaceField}>
           <div class={styles.spaceLabel}>Space</div>
           <Select
+            class={styles.fullWidth}
             aria-label="Space"
             options={props.spaces.map((s) => ({ value: s, label: s }))}
             value={space()}
