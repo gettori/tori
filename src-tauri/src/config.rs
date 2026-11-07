@@ -21,6 +21,8 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::exec::StoreLock;
 
+pub mod groups;
+
 #[derive(Deserialize, Default)]
 struct RawConfig {
     #[serde(default)]
@@ -88,6 +90,8 @@ struct ProjectMeta {
     /// An image on disk, normally a copy in `~/.config/tori/icons`.
     #[serde(default)]
     icon_file: Option<String>,
+    #[serde(default)]
+    group: Vec<groups::BranchGroup>,
 }
 
 #[derive(Deserialize, Default)]
@@ -161,6 +165,8 @@ pub struct Project {
     /// The favicon found inside the project, as an absolute path.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub favicon: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<groups::BranchGroup>,
 }
 
 /// A project Global lists from outside the base folder.
@@ -946,6 +952,7 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
                 icon: None,
                 icon_file: None,
                 favicon: None,
+                groups: Vec::new(),
             });
         }
         seen_paths.insert(ppath.clone());
@@ -957,6 +964,7 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
             name,
             path: ppath.to_string_lossy().into_owned(),
             favicon: project_favicon(&ppath, &branch_units),
+            groups: Vec::new(),
             branch_units,
             icon: None,
             icon_file: None,
@@ -1053,6 +1061,7 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
                 .filter(|s| !s.is_empty())
                 .map(expand_tilde)
                 .filter(|f| Path::new(f).is_file());
+            p.groups = groups::normalized(&meta.group);
         }
     }
 
@@ -1347,7 +1356,7 @@ pub fn detach_branch(app: AppHandle, index: State<ProjectIndex>, repo: String, b
 pub fn delete_branch(app: AppHandle, index: State<ProjectIndex>, repo: String, branch: String) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
-    let _store = crate::exec::cross_process_store_lock("config")?;
+    let store = crate::exec::cross_process_store_lock("config")?;
     // This one also writes to the repository, so it queues with every
     // other git write on the same common dir.
     let repo_lock = crate::exec::repo_lock(&repo);
@@ -1366,6 +1375,7 @@ pub fn delete_branch(app: AppHandle, index: State<ProjectIndex>, repo: String, b
         entry.branches.remove(&branch);
     }
     save_attached(&state)?;
+    groups::forget_branch_locked(&store, &repo, &branch);
     index.evict(&path);
     let _ = app.emit("config://changed", ());
     Ok(())
@@ -1633,9 +1643,8 @@ fn upsert_global_meta(text: &str, icon: Option<&str>, color: Option<&str>) -> Re
 /// of the file via `toml_edit`. The two icon keys are mutually exclusive by
 /// construction: whichever the caller does not pass is *removed*, not left
 /// behind, so a project can never end up with a stale glyph shadowed by an
-/// image (or vice versa). Both `None` prunes the whole entry, which is what
-/// "back to automatic" means. Pure over the config text, so it unit-tests
-/// without touching the real config.
+/// image (or vice versa). Both `None` is "back to automatic". Pure over the
+/// config text, so it unit-tests without touching the real config.
 fn upsert_project_meta(text: &str, path: &str, icon: Option<&str>, icon_file: Option<&str>) -> Result<String, String> {
     use toml_edit::{value, ArrayOfTables, Document, Item, Table};
     let mut doc: Document = text.parse().map_err(|e: toml_edit::TomlError| e.to_string())?;
@@ -1651,8 +1660,9 @@ fn upsert_project_meta(text: &str, path: &str, icon: Option<&str>, icon_file: Op
         .position(|t| t.get("path").and_then(|v| v.as_str()) == Some(path));
 
     if icon.is_none() && icon_file.is_none() {
-        if let Some(i) = pos {
-            tables.remove(i);
+        if let Some(t) = pos.and_then(|i| tables.get_mut(i)) {
+            t.remove("icon");
+            t.remove("icon_file");
         }
     } else {
         let i = match pos {
@@ -1679,14 +1689,7 @@ fn upsert_project_meta(text: &str, path: &str, icon: Option<&str>, icon_file: Op
         }
     }
 
-    // Drop an emptied `[[project_meta]]` so the file has no dangling array key.
-    if doc["project_meta"]
-        .as_array_of_tables()
-        .map(|t| t.is_empty())
-        .unwrap_or(false)
-    {
-        doc.remove("project_meta");
-    }
+    groups::prune_bare_meta(&mut doc);
     Ok(doc.to_string())
 }
 
@@ -3167,6 +3170,42 @@ mod tests {
     }
 
     #[test]
+    fn clearing_the_icon_keeps_the_project_s_groups() {
+        let with_icon = upsert_project_meta("", "/p/tori", Some("Rocket"), None).unwrap();
+        let grouped = groups::upsert_groups(
+            &with_icon,
+            "/p/tori",
+            &[groups::BranchGroup {
+                name: "G".into(),
+                colour: None,
+                branches: vec!["a".into()],
+            }],
+        )
+        .unwrap();
+        let cleared = upsert_project_meta(&grouped, "/p/tori", None, None).unwrap();
+        assert_eq!(
+            cleared,
+            "[[project_meta]]\npath = \"/p/tori\"\n\n[[project_meta.group]]\nname = \"G\"\nbranches = [\"a\"]\n"
+        );
+    }
+
+    #[test]
+    fn a_project_missing_from_disk_keeps_its_groups() {
+        let root = std::env::temp_dir().join(format!("tori_groups_missing_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("work")).unwrap();
+        let gone = root.join("work/gone").to_string_lossy().into_owned();
+        let text = format!(
+            "[discovery]\nroots = [\"{}\"]\n\n[[project_meta]]\npath = \"{gone}\"\n\n[[project_meta.group]]\nname = \"G\"\nbranches = [\"a\"]\n",
+            root.display()
+        );
+        let other = upsert_project_meta(&text, "/p/other", Some("Star"), None).unwrap();
+        assert!(other.contains(&format!("path = \"{gone}\"\n\n[[project_meta.group]]")));
+        let raw: RawConfig = toml::from_str(&other).unwrap();
+        assert_eq!(raw.project_meta.iter().find(|m| m.path == gone).unwrap().group.len(), 1);
+    }
+
+    #[test]
     fn upsert_project_meta_adds_switches_and_prunes() {
         // Add onto an empty config: creates the `[[project_meta]]` entry.
         let added = upsert_project_meta("", "/p/tori", Some("Rocket"), None).unwrap();
@@ -3235,11 +3274,13 @@ mod tests {
                 path: picked.to_string_lossy().into_owned(),
                 icon: Some("Rocket".into()),
                 icon_file: None,
+                group: Vec::new(),
             },
             ProjectMeta {
                 path: missing.to_string_lossy().into_owned(),
                 icon: None,
                 icon_file: Some(tmp.join("gone.png").to_string_lossy().into_owned()),
+                group: Vec::new(),
             },
         ];
         let cfg = resolve(cfg_in, &ProjectIndex::default());
@@ -3254,6 +3295,7 @@ mod tests {
             path: missing.to_string_lossy().into_owned(),
             icon: None,
             icon_file: Some(img.to_string_lossy().into_owned()),
+            group: Vec::new(),
         }];
         let cfg2 = resolve(raw2, &ProjectIndex::default());
         assert_eq!(

@@ -236,6 +236,7 @@ pub(crate) mod tests {
             icon: None,
             icon_file: None,
             favicon: None,
+            groups: Vec::new(),
         };
         let spaces = [ProjectGroup {
             name: "s".into(),
@@ -277,6 +278,7 @@ pub(crate) mod tests {
                         icon: None,
                         icon_file: None,
                         favicon: None,
+                        groups: Vec::new(),
                     },
                 }],
                 icon: None,
@@ -333,6 +335,7 @@ pub(crate) mod tests {
             icon: None,
             icon_file: None,
             favicon: None,
+            groups: Vec::new(),
         };
         let spaces = [ProjectGroup {
             name: "s".into(),
@@ -359,6 +362,7 @@ pub(crate) mod tests {
             icon: None,
             icon_file: None,
             favicon: None,
+            groups: Vec::new(),
         };
         let spaces = [ProjectGroup {
             name: "s".into(),

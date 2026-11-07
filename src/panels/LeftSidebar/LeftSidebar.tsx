@@ -103,6 +103,7 @@ import {
   OPEN_CHAT,
   type OpenChat,
   COLLAPSE_PROJECTS,
+  GROUP_BRANCHES,
   EXPAND_PROJECTS,
 } from "../../utils/events";
 import { fetchRootIfStale } from "../../utils/remoteSync";
@@ -226,6 +227,7 @@ import ChatList from "./ChatList";
 import { GROUP_CAP, capList, moreLabel } from "./capList";
 import { arrange, moveKeys, orderedKeys, unitKey } from "./arrange";
 import { createSidebarDrag, type DragCommit, type SidebarDragProps } from "./sidebarDrag";
+import { createGroup, freeName, groupOf, putInGroup, renameGroup, takeOut, ungroup, type BranchGroup } from "./groups";
 import { projectOrder, saveProjectOrder, startSidebarOrder } from "../../utils/sidebarOrder";
 import {
   NEW_CHAT_NAME,
@@ -282,6 +284,8 @@ import {
   TrunkRow,
   attemptGroup,
   stackGroup,
+  GroupCard,
+  type GroupNameDraft,
 } from "./SidebarRows";
 import TopicRows, { matchesTopic, type TopicFold } from "./TopicRows";
 import rows from "./SidebarRows.module.css";
@@ -374,6 +378,7 @@ type Project = {
   iconFile?: string;
   favicon?: string;
   availability?: "ok" | "missing";
+  groups?: BranchGroup[];
 };
 type Space = {
   name: string;
@@ -504,6 +509,69 @@ export default function LeftSidebar(props: {
   const [pointerIn, setPointerIn] = createSignal(false);
   const [dragOn, setDragOn] = createSignal(false);
   const held = () => pointerIn() || dragOn();
+
+  // Group edits show at once and write `tori.toml` behind them. An edit is
+  // dropped once its writes have landed and a reload has read them back.
+  const [groupEdits, setGroupEdits] = createSignal<Record<string, BranchGroup[]>>({});
+  const groupWrites = new Map<string, number>();
+  const groupsOf = (p: Project) => groupEdits()[p.path] ?? p.groups ?? [];
+  function writeGroups(p: Project, next: BranchGroup[]) {
+    setGroupEdits({ ...groupEdits(), [p.path]: next });
+    groupWrites.set(p.path, (groupWrites.get(p.path) ?? 0) + 1);
+    const settle = () => {
+      const left = (groupWrites.get(p.path) ?? 1) - 1;
+      groupWrites.set(p.path, left);
+      if (left > 0) return;
+      void loadConfig().then(() => {
+        if (groupWrites.get(p.path)) return;
+        const { [p.path]: _, ...rest } = groupEdits();
+        setGroupEdits(rest);
+      });
+    };
+    invoke("set_project_groups", { path: p.path, groups: next }).then(settle, (e) => {
+      setError(String(e));
+      settle();
+    });
+  }
+  // Kept here rather than in the input: a reload remounts the tree, and the
+  // editor comes back with the text and the selection it had.
+  const [groupDraft, setGroupDraft] = createSignal<{ path: string; name: string; draft: GroupNameDraft } | null>(null);
+  const editGroup = (p: Project, name: string) =>
+    setGroupDraft({ path: p.path, name, draft: { text: name, start: 0, end: name.length } });
+  const collapsedKey = (p: Project, name: string) => `cg:${p.path}#${name}`;
+  const [picked, setPicked] = createSignal<{ path: string; keys: string[]; anchor: string } | null>(null);
+  const pickedIn = (p: Project) => {
+    const pk = picked();
+    return pk?.path === p.path ? pk.keys : [];
+  };
+  const projectActions = new Map<string, { order: () => string[]; groupPicked: () => void }>();
+  function pickClick(p: Project, u: BranchUnit, e: MouseEvent): boolean {
+    if (!e.metaKey && !e.shiftKey) return false;
+    const key = unitKey(u);
+    const pk = picked()?.path === p.path ? picked()! : { path: p.path, keys: [], anchor: key };
+    if (e.shiftKey) {
+      const order = projectActions.get(p.path)?.order() ?? [];
+      const [a, b] = [order.indexOf(pk.anchor), order.indexOf(key)].sort((x, y) => x - y);
+      const range = a >= 0 && b >= 0 ? order.slice(a, b + 1) : [key];
+      setPicked({ ...pk, keys: [...new Set([...pk.keys, ...range])] });
+    } else {
+      const keys = pk.keys.includes(key) ? pk.keys.filter((k) => k !== key) : [...pk.keys, key];
+      setPicked(keys.length ? { path: p.path, keys, anchor: key } : null);
+    }
+    return true;
+  }
+  const groupPickMenu = (p: Project, u: BranchUnit): MenuItem[] => {
+    const keys = pickedIn(p);
+    if (keys.length < 2 || !keys.includes(unitKey(u))) return [];
+    return [
+      { label: `Group ${keys.length} branches`, onClick: () => projectActions.get(p.path)?.groupPicked() },
+      { separator: true },
+    ];
+  };
+  onCleanup(onEvent(GROUP_BRANCHES, () => picked() && projectActions.get(picked()!.path)?.groupPicked()));
+  const clearPicked = (e: KeyboardEvent) => e.key === "Escape" && picked() && setPicked(null);
+  window.addEventListener("keydown", clearPicked);
+  onCleanup(() => window.removeEventListener("keydown", clearPicked));
   function heldValue<T>(live: () => T): () => T {
     let kept: { v: T } | null = null;
     return createMemo(() => {
@@ -3361,10 +3429,15 @@ export default function LeftSidebar(props: {
         }
         iconLabel={iconLabel(u)}
         selected={unitSelected(u)}
+        picked={pickedIn(p).includes(unitKey(u))}
         nested={attempt != null || layer}
         look={finishedLook(finished())}
-        menu={attempt ? attemptMenu(g, p, u, attempt) : unitMenu(g, p, u)}
-        onClick={() => selectUnit(g, p, u)}
+        menu={attempt ? attemptMenu(g, p, u, attempt) : [...groupPickMenu(p, u), ...unitMenu(g, p, u)]}
+        onClick={(e) => {
+          if (pickClick(p, u, e)) return;
+          setPicked(null);
+          selectUnit(g, p, u);
+        }}
         onDragStart={(e) => startAbsDrag(e, u.folderPath)}
         rowProps={drag}
         meta={u.operation || drawnFacts(line()).size > 0 ? <BranchLine {...line()} /> : undefined}
@@ -4112,20 +4185,32 @@ export default function LeftSidebar(props: {
     // A stack stands in the list as its number and an attempt group as its
     // id, which `For` keeps by value, so a poll tick that rebuilds the groups
     // does not rebuild every row in the card with them.
-    const stacked = createMemo(() => groupStacks(split().units, (u) => prStacks().get(unitKey(u)) ?? null));
+    const groups = () => groupsOf(p);
+    const byBranch = createMemo(
+      () => new Map(split().units.flatMap((u) => (u.branch ? [[u.branch, u] as const] : []))),
+    );
+    const membersOf = (name: string) =>
+      (groups().find((gr) => gr.name === name)?.branches ?? []).flatMap((b) => byBranch().get(b) ?? []);
+    const grouped = createMemo(() => new Set(groups().flatMap((gr) => gr.branches)));
+    const loose = () => split().units.filter((u) => !u.branch || !grouped().has(u.branch));
+    const stacked = createMemo(() => groupStacks(loose(), (u) => prStacks().get(unitKey(u)) ?? null));
     const stackOf = (n: number) => stacked().find((e): e is StackGroup => e.kind === "stack" && e.stack.number === n);
     const attemptOf = (id: string) => split().groups.find((grp) => grp.groupId === id);
+    // A unit, a stack's number, or `attempt:<id>` / `group:<name>`.
     type Entry = BranchUnit | number | string;
     const unitsOf = (e: Entry): BranchUnit[] => {
       if (typeof e === "number") return stackOf(e)?.members ?? [];
-      if (typeof e === "string") return attemptOf(e)?.members.map((m) => m.unit) ?? [];
+      if (typeof e === "string" && e.startsWith("group:")) return membersOf(e.slice(6));
+      if (typeof e === "string") return attemptOf(e.slice(8))?.members.map((m) => m.unit) ?? [];
       return [e];
     };
-    const entryKey = (e: Entry) =>
-      typeof e === "number" ? `stack:${e}` : typeof e === "string" ? `attempt:${e}` : unitKey(e);
+    const entryKey = (e: Entry) => (typeof e === "number" ? `stack:${e}` : typeof e === "string" ? e : unitKey(e));
     const entries = (): Entry[] => [
       ...stacked().map((e) => (e.kind === "unit" ? e.unit : e.stack.number)),
-      ...split().groups.map((grp) => grp.groupId),
+      ...split().groups.map((grp) => `attempt:${grp.groupId}`),
+      ...groups()
+        .filter((gr) => membersOf(gr.name).length > 0)
+        .map((gr) => `group:${gr.name}`),
     ];
     const base = () => defaultBranchOf(p.path);
     // The selected unit survives the cap in its own place: a highlight you
@@ -4150,21 +4235,136 @@ export default function LeftSidebar(props: {
       if (missing() || p.branchUnits.length === 0) return;
       saveProjectOrder(p.path, allUnitsOrder());
     });
+    const groupOpen = (name: string) => !expanded().has(collapsedKey(p, name));
+    const visibleOrder = () =>
+      section().shown.flatMap((e) =>
+        typeof e === "string" && e.startsWith("group:") && !groupOpen(e.slice(6)) ? [] : unitsOf(e).map(unitKey),
+      );
+    const branchOfKey = (key: string) => split().units.find((u) => unitKey(u) === key)?.branch ?? null;
+    function newGroup(branches: string[]) {
+      const name = freeName(groups());
+      writeGroups(p, createGroup(groups(), name, branches));
+      editGroup(p, name);
+    }
+    projectActions.set(p.path, {
+      order: visibleOrder,
+      groupPicked: () => {
+        const keys = pickedIn(p);
+        const branches = visibleOrder()
+          .filter((k) => keys.includes(k))
+          .flatMap((k) => branchOfKey(k) ?? []);
+        setPicked(null);
+        if (branches.length > 0) newGroup(branches);
+      },
+    });
+    onCleanup(() => projectActions.delete(p.path));
     const drag = createSidebarDrag({
       onActive: setDragOn,
       onCommit: ({ from, to }: DragCommit) => {
-        if (!("section" in to)) return;
+        const fromBranch = branchOfKey(from);
+        if ("groupWith" in to) {
+          if (!fromBranch) return;
+          if (to.groupWith.startsWith("group:")) {
+            const name = to.groupWith.slice(6);
+            const at = groups().find((gr) => gr.name === name)?.branches.length ?? 0;
+            writeGroups(p, putInGroup(groups(), name, fromBranch, at));
+            return;
+          }
+          const target = branchOfKey(to.groupWith);
+          if (target && target !== fromBranch) newGroup([target, fromBranch]);
+          return;
+        }
+        if (to.section.startsWith("group:")) {
+          if (!fromBranch) return;
+          const name = to.section.slice(6);
+          const list = groups().find((gr) => gr.name === name)?.branches ?? [];
+          const was = list.indexOf(fromBranch);
+          writeGroups(p, putInGroup(groups(), name, fromBranch, was >= 0 && was < to.index ? to.index - 1 : to.index));
+          return;
+        }
         const list = section().shown;
-        const moving = list.find((e) => entryKey(e) === from);
-        if (moving === undefined || list.length === 0) return;
+        if (list.length === 0) return;
+        const member = fromBranch ? groupOf(groups(), fromBranch) : undefined;
+        const moving = member
+          ? [from]
+          : (() => {
+              const e = list.find((x) => entryKey(x) === from);
+              return e === undefined ? null : unitsOf(e).map(unitKey);
+            })();
+        if (!moving) return;
+        if (member && fromBranch) writeGroups(p, takeOut(groups(), fromBranch));
         const before = to.index < list.length;
-        const target = list[before ? to.index : list.length - 1];
-        const keys = (e: Entry) => unitsOf(e).map(unitKey);
-        saveProjectOrder(p.path, moveKeys(allUnitsOrder(), keys(moving), keys(target), before ? "before" : "after"));
+        const target = unitsOf(list[before ? to.index : list.length - 1]).map(unitKey);
+        saveProjectOrder(p.path, moveKeys(allUnitsOrder(), moving, target, before ? "before" : "after"));
       },
     });
-    const dragFor = (e: Entry, index: number) =>
-      drag.rowProps({ key: entryKey(e), section: "main", index, paths: unitsOf(e).map((u) => u.folderPath) });
+    const dragFor = (e: Entry, index: () => number) =>
+      drag.rowProps({
+        key: entryKey(e),
+        section: "main",
+        get index() {
+          return index();
+        },
+        paths: unitsOf(e).map((u) => u.folderPath),
+        groupable: typeof e === "object" || (typeof e === "string" && e.startsWith("group:")),
+      });
+    function groupCardNode(name: string, index: () => number) {
+      const members = () => membersOf(name);
+      const open = () => groupOpen(name);
+      const draft = () => {
+        const d = groupDraft();
+        return d?.path === p.path && d.name === name ? d.draft : null;
+      };
+      const rename = (text: string | null) => {
+        if (!draft()) return;
+        setGroupDraft(null);
+        const next = text === null ? null : renameGroup(groups(), name, text);
+        if (!next || text === name) return;
+        if (!open()) {
+          toggle(collapsedKey(p, name));
+          toggle(collapsedKey(p, text!.trim()));
+        }
+        writeGroups(p, next);
+      };
+      return (
+        <GroupCard
+          name={name}
+          count={members().length}
+          open={open()}
+          holdsSelection={!open() && members().some(unitSelected)}
+          draft={draft()}
+          onDraft={(d) => setGroupDraft({ path: p.path, name, draft: d })}
+          onRename={rename}
+          onToggle={() => toggle(collapsedKey(p, name))}
+          menu={[
+            { label: "Rename", onClick: () => editGroup(p, name) },
+            { separator: true },
+            { label: "Ungroup", onClick: () => writeGroups(p, ungroup(groups(), name)) },
+          ]}
+          rowProps={dragFor(`group:${name}`, index)}
+        >
+          <For each={members()}>
+            {(u, i) =>
+              unitNode(
+                g,
+                p,
+                u,
+                undefined,
+                false,
+                drag.rowProps({
+                  key: unitKey(u),
+                  section: `group:${name}`,
+                  get index() {
+                    return i();
+                  },
+                  paths: u.folderPath,
+                }),
+              )
+            }
+          </For>
+        </GroupCard>
+      );
+    }
     // Show the control only when it has something to say. Open, that is
     // "the list is longer than the cap"; closed, "something is actually
     // hidden" - which a cap+1 list whose last unit is selected is not.
@@ -4264,13 +4464,15 @@ export default function LeftSidebar(props: {
           >
             {(e, i) =>
               typeof e === "number" ? (
-                stackGroupNode(g, p, () => stackOf(e), dragFor(e, i()))
+                stackGroupNode(g, p, () => stackOf(e), dragFor(e, i))
+              ) : typeof e === "string" && e.startsWith("group:") ? (
+                groupCardNode(e.slice(6), i)
               ) : typeof e === "string" ? (
-                <Show when={attemptOf(e)} keyed>
-                  {(grp) => attemptGroupNode(g, p, grp, dragFor(e, i()))}
+                <Show when={attemptOf(e.slice(8))} keyed>
+                  {(grp) => attemptGroupNode(g, p, grp, dragFor(e, i))}
                 </Show>
               ) : (
-                unitNode(g, p, e, undefined, false, dragFor(e, i()))
+                unitNode(g, p, e, undefined, false, dragFor(e, i))
               )
             }
           </For>

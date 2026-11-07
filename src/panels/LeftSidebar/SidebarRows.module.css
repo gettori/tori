@@ -116,6 +116,81 @@
   margin-bottom: 0;
 }
 
+/* Inside a card the rail variables are re-anchored to the card's own edge,
+   so member rows draw the rail where it already runs and their pill reaches
+   back to it (see gotcha_the_sidebar_rail_is_a_variable_not_a_copy). */
+.groupCard {
+  position: relative;
+  margin: calc(8px * var(--ui-scale)) calc(8px * var(--ui-scale)) 0 calc(22px * var(--ui-scale));
+  border-radius: calc(8px * var(--ui-scale));
+  background: var(--lane-card);
+  --rail-x: calc(-6px * var(--ui-scale));
+  --branch-label-x: calc(10px * var(--ui-scale));
+}
+.groupCard::before {
+  content: "";
+  position: absolute;
+  left: var(--rail-x);
+  top: calc(-8px * var(--ui-scale));
+  bottom: 0;
+  width: 1px;
+  background: var(--border-rail);
+}
+.groupCard:last-child {
+  margin-bottom: calc(6px * var(--ui-scale));
+}
+.groupCard .branchNode:last-child {
+  margin-bottom: 0;
+}
+.row.cardHead {
+  padding-left: var(--branch-label-x);
+  border-radius: calc(8px * var(--ui-scale));
+}
+.row.cardHead:hover,
+.row.cardHead[data-expanded] {
+  background: var(--lane-card-hi);
+}
+/* Collapsed with the selected branch inside: the selection's bar, drawn on
+   the rail beside the card rather than inside its rounded corner. */
+.row.cardHead.cardHeadSel::before {
+  content: "";
+  position: absolute;
+  left: var(--rail-x);
+  top: 0;
+  bottom: 0;
+  width: var(--tori-border-thick);
+  background: var(--brand-bar);
+}
+.cardLabel {
+  color: var(--fg-default);
+  font-weight: 600;
+}
+.cardCount {
+  flex: none;
+  color: var(--fg-subtle);
+  font-size: var(--tori-text-md);
+  font-variant-numeric: tabular-nums;
+}
+.row.cardHead .rowChevron {
+  margin-left: auto;
+}
+.groupName {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 calc(4px * var(--ui-scale));
+  border: 0;
+  border-radius: var(--tori-radius-sm);
+  background: var(--canvas-input);
+  box-shadow: inset 0 0 0 1px var(--attention-fg);
+  color: var(--fg-default);
+  font: inherit;
+  font-weight: 600;
+  outline: none;
+}
+.cardBody {
+  padding-bottom: calc(2px * var(--ui-scale));
+}
+
 /* Hover and selection share one pill: it starts ON the rail so the marker bar
    lands where the line was, and runs to the column's right edge. The z-index
    gives the -1 pill a context to sit behind, and lifts the row over the rail. */
@@ -237,6 +312,10 @@ button.moreRow {
   background:
     linear-gradient(var(--brand-bar), var(--brand-bar)) left center / var(--tori-border-thick) 100% no-repeat,
     linear-gradient(to right, var(--brand-subtle), transparent);
+}
+
+.row.branch.picked::before {
+  background: var(--brand-subtle);
 }
 
 /* A done branch selected keeps its teal: the bar and a stronger wash take the
