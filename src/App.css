@@ -217,6 +217,13 @@ html {
   background: transparent;
 }
 
+/* The gap to the work card, now that the resizer over the seam takes no width.
+   Inside the stored width (border-box), so the layout math is unchanged. Not
+   on the rail alone, which is a fixed 52px strip. */
+.pane.sidebar.full {
+  padding-right: calc(4px * var(--ui-scale));
+}
+
 .pane.detail-pane {
   flex: 1 1 auto;
 }
