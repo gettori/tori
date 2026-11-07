@@ -78,17 +78,44 @@ export const CheckMark: Component<StatusMarkProps> = (props) => (
   </Frame>
 );
 
-/** A session mid-turn. The first dot is drawn last so it stays over the left
- *  chevron as that springs inward. */
-export const WorkingMark: Component<StatusMarkProps> = (props) => (
-  <Frame {...props} mark="working">
-    <path class={`${styles.dot} ${styles.dot2}`} d="M12 12h.01" />
-    <path class={`${styles.dot} ${styles.dot3}`} d="M16 12h.01" />
-    <path class={styles.right} d="m17 7 5 5-5 5" />
-    <path class={styles.left} d="m7 7-5 5 5 5" />
-    <path class={`${styles.dot} ${styles.dot1}`} d="M8 12h.01" />
-    <path class={`${styles.spark} ${styles.dot1}`} d="M8 12h.01" />
-    <path class={`${styles.spark} ${styles.dot2}`} d="M12 12h.01" />
-    <path class={`${styles.spark} ${styles.dot3}`} d="M16 12h.01" />
-  </Frame>
-);
+/** A session mid-turn.
+ *
+ *  Each part is an `<svg>` of its own rather than a shape inside one: motion
+ *  inside an SVG lays out and repaints every frame, while an `<svg>` element
+ *  that only moves and fades is left to the compositor. (A box around the
+ *  `<svg>` is not: WebKit lays that out every frame too, measured.) The first
+ *  dot is last so it stays over the left chevron as that springs inward. */
+export const WorkingMark: Component<Pick<StatusMarkProps, "size" | "strokeWidth" | "animate" | "class">> = (props) => {
+  const piece = (classes: string, d: string) => (
+    <svg
+      viewBox="0 0 24 24"
+      width={props.size ?? 16}
+      height={props.size ?? 16}
+      fill="none"
+      stroke="currentColor"
+      stroke-width={props.strokeWidth ?? DEFAULT_STROKE}
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      class={`${styles.piece} ${classes}`}
+    >
+      <path d={d} />
+    </svg>
+  );
+  return (
+    <span
+      aria-hidden="true"
+      data-mark="working"
+      data-animate={props.animate ? "true" : "false"}
+      classList={{ [styles.mark]: true, [styles.working]: true, [props.class ?? ""]: !!props.class }}
+    >
+      {piece(`${styles.dot} ${styles.dot2}`, "M12 12h.01")}
+      {piece(`${styles.dot} ${styles.dot3}`, "M16 12h.01")}
+      {piece(styles.right, "m17 7 5 5-5 5")}
+      {piece(styles.left, "m7 7-5 5 5 5")}
+      {piece(`${styles.dot} ${styles.dot1}`, "M8 12h.01")}
+      {piece(`${styles.spark} ${styles.dot1}`, "M8 12h.01")}
+      {piece(`${styles.spark} ${styles.dot2}`, "M12 12h.01")}
+      {piece(`${styles.spark} ${styles.dot3}`, "M16 12h.01")}
+    </span>
+  );
+};

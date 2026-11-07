@@ -1,219 +1,44 @@
-/* The animated half of the git marks: while a session in that unit is mid-turn,
-   a pulse traces the same path the resting glyph draws, so the row's own icon
-   reports the work rather than a second badge appearing beside it.
+/* The state half of the git marks, drawn onto Lucide's own elements. Still on
+   purpose: these sit in a dense column of static Lucide glyphs, and motion
+   inside an SVG lays out and repaints the window every frame.
 
-   Stroke travel and node flashes, never rotation: these sit in a dense column
-   of static Lucide glyphs, where a spinner would read as an error. */
+   The selectors pin to element order inside `folder-git-2` (stem, outline,
+   fork node, leaf node) and `git-merge` (tip node, top node, line), which is
+   fixed for the pinned lucide-solid version. */
 @layer components {
-  /* The folder outline is 1.90x the branch path (49.68 vs 26.14 user units).
-     Equal cycles ran its head 1.9x faster and read as urgent; equal speed ran
-     its cycle 1.9x long and read as slow. sqrt(1.90) splits both to 1.38x. */
-  .mark {
-    --gm-cycle: 2200ms;
-  }
-  .mark[data-mark="worktree"] {
-    --gm-cycle: 3000ms;
-  }
-
-  .mark .pulse {
-    display: none;
-  }
-
   /* The repo's checked-out branch, said in the row's own glyph instead of in a
      coloured bullet at the row's end: the branch tip fills in, and the whole
      mark steps up out of the column's muted tone. Two readings of one state,
      because at 16px a filled r=3 node beside a 1.75-stroke hollow one is a
      difference of a pixel or two of ink. Kept in `currentColor` rather than
-     taking a hue, so the pulse stays the one thing in this column that does.
+     taking a hue.
 
-     Under reduced motion `active` fills BOTH nodes (see the bottom of this
-     file), which is what keeps the two apart: one node is where HEAD is, two
-     is a session mid-turn. */
+     `active` fills BOTH nodes (the last rule here), which is what keeps the two
+     apart: one node is where HEAD is, two is a session mid-turn. */
   .mark[data-current="true"] {
     color: var(--fg-default);
   }
 
-  .mark[data-current="true"] .tip {
+  .mark[data-mark="branch"][data-current="true"] circle:first-of-type,
+  .mark[data-mark="worktree"][data-current="true"] circle:last-of-type {
     fill: currentColor;
   }
 
-  /* A rebase, merge, cherry-pick or revert stopped here. Static on purpose:
-     the pulse already means an agent is mid-turn, and a stopped rebase is
-     exactly when nothing moves. After the current rule, which it outranks. */
+  /* A rebase, merge, cherry-pick or revert stopped here. After the current
+     rule, which it outranks. */
   .mark[data-operation="true"] {
     color: var(--attention-fg);
   }
 
   /* A `.bare` with no worktrees: the branches are there, the working folder is
      not, so the outline that would be that folder is drawn as a gap rather than
-     a line. Only the base outline - the pulse traces the same path with a
-     dasharray of its own, and a stub has no session to pulse for anyway. */
-  .stub {
+     a line. */
+  .mark[data-stub="true"] path:nth-of-type(2) {
     stroke-dasharray: 3 2.5;
   }
 
-  /* The resting glyph is left alone and the pulse rides over it in the selected
-     row's foreground, one step brighter than the icon's own `--fg-muted`. A
-     working row gains a highlight rather than losing contrast: dimming the base
-     made the busiest row in the column read as the disabled one.
-
-     `stroke` is set here rather than left to `currentColor` on the root, so the
-     colour does not depend on when a browser resolves an inherited keyword;
-     `color` carries it to the nodes, which fill from `currentColor`. */
-  .mark[data-active="true"] .pulse {
-    display: inline;
-    color: var(--fg-default);
-    stroke: var(--fg-default);
-  }
-
-  .tail {
-    stroke-dasharray: 44 200;
-    opacity: 0.55;
-  }
-  .head {
-    stroke-dasharray: 24 200;
-  }
-  .stem {
-    stroke-dasharray: 55 200;
-  }
-
-  /* Its own layer while it loops, for the reason statusMarks gives. */
-  .mark[data-active="true"] {
-    will-change: transform;
-  }
-
-  .mark[data-active="true"] .tail {
-    animation: gm-tail var(--gm-cycle) linear infinite;
-  }
-  .mark[data-active="true"] .head {
-    animation: gm-head var(--gm-cycle) linear infinite;
-  }
-  .mark[data-active="true"] .stem {
-    animation: gm-stem var(--gm-cycle) linear infinite;
-  }
-  .mark[data-active="true"] .nodeTop {
-    animation: gm-node-top var(--gm-cycle) ease-in-out infinite;
-  }
-  .mark[data-active="true"] .nodeEnd {
-    animation: gm-node-end var(--gm-cycle) ease-in-out infinite;
-  }
-  .mark[data-active="true"] .nodeLeaf {
-    animation: gm-node-leaf var(--gm-cycle) ease-in-out infinite;
-  }
-  .mark[data-active="true"] .nodeFork {
-    animation: gm-node-fork var(--gm-cycle) ease-in-out infinite;
-  }
-
-  @keyframes gm-tail {
-    0% {
-      stroke-dashoffset: 44;
-    }
-    76%,
-    100% {
-      stroke-dashoffset: -100;
-    }
-  }
-
-  @keyframes gm-head {
-    0% {
-      stroke-dashoffset: 24;
-    }
-    76%,
-    100% {
-      stroke-dashoffset: -120;
-    }
-  }
-
-  /* Starts at 62%, where the outline trace is running out: the branch reads as
-     something the folder grew, not as a second animation sharing the box. */
-  @keyframes gm-stem {
-    0%,
-    62% {
-      stroke-dashoffset: 55;
-      opacity: 0;
-    }
-    65% {
-      opacity: 1;
-    }
-    95% {
-      stroke-dashoffset: -100;
-      opacity: 1;
-    }
-    96%,
-    100% {
-      stroke-dashoffset: -100;
-      opacity: 0;
-    }
-  }
-
-  @keyframes gm-node-top {
-    0%,
-    17%,
-    51%,
-    100% {
-      opacity: 0;
-      fill-opacity: 0;
-    }
-    26%,
-    34% {
-      opacity: 1;
-      fill-opacity: 0.7;
-    }
-  }
-
-  @keyframes gm-node-end {
-    0%,
-    47%,
-    94%,
-    100% {
-      opacity: 0;
-      fill-opacity: 0;
-    }
-    60%,
-    72% {
-      opacity: 1;
-      fill-opacity: 0.7;
-    }
-  }
-
-  @keyframes gm-node-leaf {
-    0%,
-    51%,
-    85%,
-    100% {
-      opacity: 0;
-      fill-opacity: 0;
-    }
-    61%,
-    68% {
-      opacity: 1;
-      fill-opacity: 0.7;
-    }
-  }
-
-  @keyframes gm-node-fork {
-    0%,
-    68%,
-    100% {
-      opacity: 0;
-      fill-opacity: 0;
-    }
-    79%,
-    85% {
-      opacity: 1;
-      fill-opacity: 0.7;
-    }
-  }
-
-  /* Reduced motion still has to say "working", so the pulse goes and the
-     resting glyph fills its nodes in the same brighter foreground instead: a
-     static difference, read the same way. */
-  @media (prefers-reduced-motion: reduce) {
-    .mark[data-active="true"] .base circle {
-      fill: var(--fg-default);
-    }
-    .mark[data-active="true"] .pulse {
-      display: none;
-    }
+  /* A session mid-turn fills every node in the brighter foreground. */
+  .mark[data-active="true"] circle {
+    fill: var(--fg-default);
   }
 }
