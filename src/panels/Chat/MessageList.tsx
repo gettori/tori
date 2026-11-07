@@ -381,7 +381,12 @@ export default function MessageList(props: {
     });
   }
 
+  // Our own pins fire scroll events too. One that lands after a tall row
+  // arrived but before its pin ran is not the reader leaving the bottom, and
+  // judging it as one would drop every pin after it.
+  let pinnedTop = -1;
   function onListScroll() {
+    if (stuck() && scroller?.scrollTop === pinnedTop) return;
     setStuck(atBottom());
     if (!armed && !stuck()) {
       armed = true;
@@ -669,7 +674,9 @@ export default function MessageList(props: {
     if (pinFrame) return;
     pinFrame = requestAnimationFrame(() => {
       pinFrame = 0;
-      if (stuck()) scroller?.scrollTo({ top: scroller.scrollHeight });
+      if (!stuck() || !scroller) return;
+      scroller.scrollTo({ top: scroller.scrollHeight });
+      pinnedTop = scroller.scrollTop;
     });
   };
   onCleanup(() => cancelAnimationFrame(pinFrame));
@@ -748,7 +755,9 @@ export default function MessageList(props: {
     // Only while pinned: a reader who has scrolled up is holding a position on
     // purpose, and a resize is not a reason to take it away from them.
     const ro = new ResizeObserver(() => {
-      if (stuck() && scroller) scroller.scrollTop = scroller.scrollHeight;
+      if (!stuck() || !scroller) return;
+      scroller.scrollTop = scroller.scrollHeight;
+      pinnedTop = scroller.scrollTop;
     });
     ro.observe(scroller);
     for (const row of scroller.children) ro.observe(row);
