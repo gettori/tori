@@ -69,6 +69,7 @@ mod read_grants;
 mod rescue;
 mod review;
 mod review_rule;
+mod root_scan;
 mod rpc;
 mod run;
 mod scratch;
@@ -461,6 +462,7 @@ pub fn run() {
             config::set_space_meta,
             config::set_global_meta,
             attached_folder::inspect_folder,
+            root_scan::scan_root,
             attached_folder::attach_folder,
             attached_folder::detach_folder,
             attached_folder::relocate_attached_folder,

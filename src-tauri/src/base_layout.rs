@@ -14,7 +14,7 @@ const MANIFESTS: &[&str] = &[
     "pubspec.yaml",
 ];
 
-fn has_git(dir: &Path) -> bool {
+pub(crate) fn has_git(dir: &Path) -> bool {
     dir.join(".git").exists() || dir.join(".bare").exists()
 }
 
@@ -69,7 +69,7 @@ fn independent_repo(child: &Path, parent: &Path) -> bool {
     child.join(".bare").exists() || child.join(".git").is_dir() || gitdir_outside(child, parent)
 }
 
-fn worktree_of_another_repo(dir: &Path) -> bool {
+pub(crate) fn worktree_of_another_repo(dir: &Path) -> bool {
     gitdir_outside(dir, dir)
 }
 
@@ -84,6 +84,13 @@ fn top_level_project(dir: &Path) -> bool {
         return false;
     }
     !subdirs(dir).iter().any(|c| independent_repo(c, dir))
+}
+
+// A top-level folder the setup scan offers to group. Wider than discovery's
+// rule, since the user confirms each one, but a manifest still never claims a
+// folder of repos.
+pub(crate) fn loose_project(dir: &Path) -> bool {
+    top_level_project(dir) || (!has_git(dir) && has_manifest(dir) && !subdirs(dir).iter().any(|c| has_git(c)))
 }
 
 fn container(dir: &Path) -> bool {
