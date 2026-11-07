@@ -478,7 +478,7 @@ export const DEFAULT_SETTINGS: Settings = {
   appearance: { theme: "tori-dark" },
   sidebar: {
     spaceTiles: "bottom",
-    cardColours: "subtle",
+    cardColours: "colourful",
     branchLine: {
       mode: "full",
       items: {
