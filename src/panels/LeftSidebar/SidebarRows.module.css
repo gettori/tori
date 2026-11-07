@@ -53,9 +53,6 @@
   height: var(--row-h);
   margin: 0 0 0 var(--tree-inset);
   padding: 0 calc(8px * var(--ui-scale));
-  /* Square on the left like the branch pill, so every list row in this column
-     takes the same shape under the pointer. */
-  border-radius: 0 var(--tori-radius-md) var(--tori-radius-md) 0;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
