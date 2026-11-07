@@ -15,8 +15,9 @@ type Props = {
   onInput: (next: number) => void;
   onCommit?: () => void;
   // Rest appearance: "gutter" is invisible until hover (outer gaps between
-  // surfaces); "hairline" keeps a faint line at rest (dividers inside one card).
-  variant?: "gutter" | "hairline";
+  // surfaces); "hairline" keeps a faint line at rest (dividers inside one card);
+  // "edge" is invisible and takes no width, laid over the seam it resizes.
+  variant?: "gutter" | "hairline" | "edge";
 };
 
 export default function Resizer(props: Props): JSX.Element {
@@ -101,6 +102,7 @@ export default function Resizer(props: Props): JSX.Element {
         [styles.x]: axis() === "x",
         [styles.y]: axis() === "y",
         [styles.hairline]: (props.variant ?? "gutter") === "hairline",
+        [styles.edge]: props.variant === "edge",
         [styles.dragging]: dragging(),
       }}
       role="separator"
