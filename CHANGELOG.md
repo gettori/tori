@@ -10,6 +10,36 @@ matching section here fails the release rather than publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.1107.0-beta
+
+- **Settings > LSP** shows every language server in one list, the **Ready**, **Installable** and **Manual** tabs are gone. **Search** still filters it.
+- **Remove pack** on a language server or debugger also removes the copy Tori downloaded for it. A pack whose server came from your own toolchain runs its uninstall command first, then removes the pack. A card shows one trash button instead of two.
+- **Browse packs** is now **More**, in each section's title row.
+- In **Appearance**, **Update pack** and **Remove pack** sit next to the theme picker for the selected theme only. Before, every installed theme pack squeezed into that row and the names wrapped letter by letter.
+- Setup checks the base folder you pick. When some projects aren't in a space, it lets you pick a space for each one, add new spaces, and hide top-level folders that aren't spaces. Projects you don't group are attached to Home.
+- When Tori can't use a folder, setup says why and offers **Choose another folder**, **Create a new folder** or **Use ~/tori_projects**.
+- A git repository at the top of the base folder no longer shows up as a space. A banner above the space strip lists projects that aren't in a space, with **Sort into spaces** and **Attach to Home**.
+- **Sort projects...** in Settings > Advanced opens the same grouping view over your current base folder.
+- **Move here** in a space's New in dialog, and **Move folder here...** in the space menu, move a folder from anywhere on the same disk into the space.
+- **Move to space...** in the project menu moves a Home or space project into another space.
+- When you move a plain clone, **Convert to worktree layout** is ticked by default. It converts the clone after the move, with worktrees for the checked-out branch and the default branch. Ticking it trusts the folder.
+- If a move gets interrupted, the sidebar shows **Resume** so you can finish it.
+- Drag a branch up or down in the sidebar to put a project's branches in your own order. New branches land at the top, and the default branch stays first.
+- Group branches into named cards: drop a branch onto the middle of another, or pick rows with Cmd-click or Shift-click and press Cmd+G. Right-click a group to rename it, give it a colour, or ungroup it. A group stays until its last branch is removed.
+- PR lanes sort each project's branches into Working, In review, Reviewing and Done by pull request state. You can give a state its own lane, fold Reviewing into In review, and set it all per space. Lanes are off until you turn them on in Settings > Sidebar, in the View options menu, or on the first run Space step.
+- A branch that changes lane moves to the top of its new lane. Lanes can be parked into one row, and In review, Reviewing and Done start parked.
+- Card colours: Subtle keeps every lane and group card neutral, and Colourful tints lanes by state and groups by their own colour.
+- The second line under a branch can show everything (Full), just the pull request (PR only), or nothing (Off). In Full, you pick which facts it shows.
+- A pull request number is now coloured by where its review stands: blue when open with no review, red when changes are requested, orange when your review or a re-review is asked for, green when approved, and purple when merged. A conflict with the base shows as its own red count next to the number.
+- The View options menu (the sliders button in the sidebar heading) has PR lanes, the branch line mode, Collapse all (Cmd+Opt+Left) and Expand all (Cmd+Opt+Right).
+- Space tiles moved from Settings > Appearance to Settings > Sidebar.
+- The chat input feels smoother. No more second cursor for a moment when you delete fast, and the cursor lands at the end right away when you press Up for an earlier prompt.
+- Typing in one chat no longer slows down other open chats.
+- **Open the draft in the editor** now shows in a new chat too, not only after the first message.
+- Fix Tori keeping the CPU and GPU busy, and the fan on, while any session on a visible sidebar row is working
+- The worktree and branch icons no longer trace while a session works; the working mark beside them still moves, and the icon fills its nodes
+- macOS 26.1107.0-beta ships; Android 26.1107.0-beta ships; browser extension 26.1107.0 ships, rolling out on the Chrome Web Store; push relay unchanged at 26.1030.0-beta.
+
 ## 26.1106.0-beta
 
 - Tori now ships only the language servers, linters, formatters, themes and agents it needs itself: TypeScript, JSON, YAML, CSS and HTML servers, ESLint and oxlint, Prettier, oxfmt and Vite+, Tori Dark and Tori Light, and the five agents. The rest are packs on gettori.app.
