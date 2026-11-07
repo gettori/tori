@@ -38,7 +38,7 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 - **Open the draft in the editor** now shows in a new chat too, not only after the first message.
 - Fix Tori keeping the CPU and GPU busy, and the fan on, while any session on a visible sidebar row is working
 - The worktree and branch icons no longer trace while a session works; the working mark beside them still moves, and the icon fills its nodes
-- macOS 26.1107.0-beta ships; Android 26.1107.0-beta ships; browser extension 26.1107.0 ships, rolling out on the Chrome Web Store; push relay unchanged at 26.1030.0-beta.
+- macOS 26.1107.0-beta ships; Android 26.1107.0-beta ships; browser extension unchanged at 26.1029.0; push relay unchanged at 26.1030.0-beta.
 
 ## 26.1106.0-beta
 
