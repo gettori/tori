@@ -81,8 +81,8 @@ export default function TrustSection(props: { projectPath: string }) {
                     </>
                   }
                 >
-                  <Button onClick={() => emitWith<OpenSettings>(OPEN_SETTINGS, { entry: "trusted-projects" })}>
-                    Open trusted projects
+                  <Button onClick={() => emitWith<OpenSettings>(OPEN_SETTINGS, { entry: "projects-list" })}>
+                    Open projects
                   </Button>
                 </Row>
               )}

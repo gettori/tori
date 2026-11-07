@@ -1,12 +1,10 @@
-import { createResource, For, onCleanup, Show } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
+import { For, Show } from "solid-js";
 import { ChevronRight } from "lucide-solid";
 
 import Icon from "../../../../components/Icon/Icon";
 import ProjectIcon from "../../../../components/Icon/ProjectIcon";
-import { isUnderPath } from "../../../../utils/pathScope";
+import { GLOBAL_KEY, GLOBAL_NAME } from "../../../../utils/globalSpace";
 import { openProjectSettings, type ProjectSection } from "../../../../utils/projectSettings";
-import { onTrustChange } from "../../../../utils/projectTrust";
 import { createSpaces } from "../../../../utils/topicMembers";
 import styles from "../../Settings.module.css";
 import own from "./ProjectList.module.css";
@@ -16,18 +14,16 @@ import own from "./ProjectList.module.css";
  * no project setting of its own: it is one more way in, so a row opens the dialog
  * (on `section` when named) over this panel, which is here again when it closes.
  */
-export default function ProjectList(props: { section?: ProjectSection; trust?: boolean }) {
+export default function ProjectList(props: { section?: ProjectSection }) {
   const spaces = createSpaces();
-  const [trusted, { refetch }] = createResource(
-    () => props.trust,
-    () => invoke<string[]>("trusted_projects").catch(() => [] as string[]),
-  );
-  onCleanup(onTrustChange(() => void refetch()));
-  const isTrusted = (path: string) => (trusted() ?? []).some((t) => isUnderPath(path, t));
 
   const rows = () =>
     (spaces() ?? []).flatMap((space) =>
-      space.projects.map((project) => ({ space: space.name, project, name: project.name ?? project.path })),
+      space.projects.map((project) => ({
+        space: space.name === GLOBAL_KEY ? GLOBAL_NAME : space.name,
+        project,
+        name: project.name ?? project.path,
+      })),
     );
 
   return (
@@ -52,15 +48,6 @@ export default function ProjectList(props: { section?: ProjectSection; trust?: b
                 </span>
                 <span class={own.name}>{r.name}</span>
                 <span class={own.space}>{r.space}</span>
-                <Show when={props.trust}>
-                  <span class={own.trust}>
-                    <span
-                      class={`${styles.dot} ${isTrusted(r.project.path) ? styles.dotOk : styles.dotOff}`}
-                      aria-hidden="true"
-                    />
-                    {isTrusted(r.project.path) ? "Trusted" : "Not trusted"}
-                  </span>
-                </Show>
                 <Icon icon={ChevronRight} aria-hidden="true" />
               </button>
             )}

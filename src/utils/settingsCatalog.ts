@@ -309,13 +309,7 @@ export const SETTINGS: SettingEntry[] = [
     id: "projects-list",
     section: "projects",
     label: "Projects",
-    hint: "Every project Tori found. Each one opens its own settings, where everything set per project lives.",
-  },
-  {
-    id: "trusted-projects",
-    section: "trust",
-    label: "Trusted projects",
-    hint: "Which projects may start servers that run the project's own code, like TypeScript and Rust.",
+    hint: "Every project Tori found, by space, and whether it is trusted to start servers that run its own code, like TypeScript and Rust. Each one opens its own settings.",
   },
   {
     id: "unattended-deny",
