@@ -1,0 +1,33 @@
+@layer components {
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--tori-space-3);
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    height: calc(24px * var(--ui-scale));
+    padding: 0 var(--tori-space-4);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
+    background: transparent;
+    font: inherit;
+    font-size: var(--tori-text-xs);
+    color: var(--fg-subtle);
+    cursor: pointer;
+  }
+  .chip:hover:not(:disabled) {
+    border-color: var(--border-strong);
+    color: var(--fg-default);
+  }
+  .on {
+    background: var(--neutral-subtle);
+    border-color: var(--border-strong);
+    color: var(--fg-default);
+  }
+  .chip:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+}

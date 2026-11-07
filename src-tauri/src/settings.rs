@@ -35,10 +35,15 @@ pub struct Appearance {
     /// existence, and nothing in the app can set it again.
     #[serde(rename = "importPath", default, skip_serializing)]
     pub legacy_import_path: Option<String>,
-    /// Where the sidebar's space tiles sit: a strip along the bottom, or a rail
-    /// down the left edge for when there are too many spaces for one row.
-    #[serde(default)]
-    pub space_strip: SpaceStrip,
+}
+
+impl Default for Appearance {
+    fn default() -> Self {
+        Self {
+            theme: "tori-dark".into(),
+            legacy_import_path: None,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -49,14 +54,70 @@ pub enum SpaceStrip {
     Side,
 }
 
-impl Default for Appearance {
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum CardColours {
+    #[default]
+    Subtle,
+    Colourful,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum BranchLineMode {
+    Off,
+    Pr,
+    #[default]
+    Full,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct BranchLineItems {
+    pub pr: bool,
+    pub stack: bool,
+    pub watched: bool,
+    pub checks: bool,
+    pub skipped: bool,
+    pub diff: bool,
+    pub files: bool,
+    pub spend: bool,
+    pub age: bool,
+    pub comments: bool,
+}
+
+impl Default for BranchLineItems {
     fn default() -> Self {
         Self {
-            theme: "tori-dark".into(),
-            legacy_import_path: None,
-            space_strip: SpaceStrip::default(),
+            pr: true,
+            stack: true,
+            watched: true,
+            checks: true,
+            skipped: false,
+            diff: true,
+            files: true,
+            spend: true,
+            age: true,
+            comments: true,
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct BranchLine {
+    pub mode: BranchLineMode,
+    pub items: BranchLineItems,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Sidebar {
+    /// A strip along the bottom, or a rail down the left edge for when there
+    /// are too many spaces for one row.
+    pub space_tiles: SpaceStrip,
+    pub card_colours: CardColours,
+    pub branch_line: BranchLine,
 }
 
 /// Ids persisted by the VS Code-theme era, mapped on read so an install keeps
@@ -955,6 +1016,8 @@ fn autopilot_agent<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::
 pub struct Settings {
     #[serde(default)]
     pub appearance: Appearance,
+    #[serde(default, deserialize_with = "lenient_sidebar")]
+    pub sidebar: Sidebar,
     #[serde(default)]
     pub typography: Typography,
     #[serde(default)]
@@ -1065,6 +1128,26 @@ impl Default for SecretWatch {
 
 // Any shape but a list of strings reads as no additions: `load_from` has no
 // per-section recovery, so a strict parse here would reset every other setting.
+/// Field by field, so a value this build does not know resets that one field
+/// rather than failing the whole file into its defaults.
+fn lenient_sidebar<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Sidebar, D::Error> {
+    fn field<T: serde::de::DeserializeOwned + Default>(raw: &serde_json::Value, key: &str) -> T {
+        raw.get(key)
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default()
+    }
+    let raw = serde_json::Value::deserialize(d)?;
+    let line = raw.get("branchLine").cloned().unwrap_or_default();
+    Ok(Sidebar {
+        space_tiles: field(&raw, "spaceTiles"),
+        card_colours: field(&raw, "cardColours"),
+        branch_line: BranchLine {
+            mode: field(&line, "mode"),
+            items: field(&line, "items"),
+        },
+    })
+}
+
 fn lenient_secret_watch<'de, D: serde::Deserializer<'de>>(d: D) -> Result<SecretWatch, D::Error> {
     let raw = serde_json::Value::deserialize(d)?;
     let patterns = raw
@@ -1547,11 +1630,34 @@ fn migrate_editor_block(mut value: serde_json::Value) -> serde_json::Value {
     value
 }
 
+/// On read, so a user who never opens Settings keeps their strip. An explicit
+/// `sidebar.spaceTiles` wins, being the newer of the two.
+fn migrate_space_strip(mut value: serde_json::Value) -> serde_json::Value {
+    let Some(obj) = value.as_object_mut() else {
+        return value;
+    };
+    let Some(strip) = obj
+        .get_mut("appearance")
+        .and_then(|a| a.as_object_mut())
+        .and_then(|a| a.remove("spaceStrip"))
+    else {
+        return value;
+    };
+    let sidebar = obj
+        .entry("sidebar")
+        .or_insert_with(|| serde_json::Value::Object(Default::default()));
+    if let Some(s) = sidebar.as_object_mut() {
+        s.entry("spaceTiles").or_insert(strip);
+    }
+    value
+}
+
 fn load_from(path: &Path) -> Settings {
     let mut settings: Settings = std::fs::read_to_string(path)
         .ok()
         .and_then(|t| json5::from_str::<serde_json::Value>(&t).ok())
         .map(migrate_editor_block)
+        .map(migrate_space_strip)
         .and_then(|v| serde_json::from_value::<Settings>(v).ok())
         .unwrap_or_default();
     if let Some(id) = migrate_theme_id(&settings.appearance.theme) {
@@ -3357,6 +3463,48 @@ mod tests {
             "importPath must be dropped on save: {written}"
         );
         assert!(load_from(&p).appearance.legacy_import_path.is_none());
+        std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn space_strip_moves_to_the_sidebar_block_and_leaves_the_file_on_save() {
+        let p = tmp_file();
+        std::fs::write(
+            &p,
+            "{ \"appearance\": { \"theme\": \"tori-dark\", \"spaceStrip\": \"side\" } }",
+        )
+        .unwrap();
+        let s = load_from(&p);
+        assert_eq!(s.sidebar.space_tiles, SpaceStrip::Side);
+
+        save_to(&p, &s).unwrap();
+        let written = std::fs::read_to_string(&p).unwrap();
+        assert!(!written.contains("spaceStrip"), "{written}");
+        assert_eq!(load_from(&p).sidebar, s.sidebar);
+        std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn an_explicit_space_tiles_wins_over_the_old_key() {
+        let p = tmp_file();
+        std::fs::write(
+            &p,
+            "{ \"appearance\": { \"spaceStrip\": \"side\" }, \"sidebar\": { \"spaceTiles\": \"bottom\" } }",
+        )
+        .unwrap();
+        assert_eq!(load_from(&p).sidebar.space_tiles, SpaceStrip::Bottom);
+        std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn the_sidebar_block_round_trips() {
+        let p = tmp_file();
+        let mut s = Settings::default();
+        s.sidebar.card_colours = CardColours::Colourful;
+        s.sidebar.branch_line.mode = BranchLineMode::Pr;
+        s.sidebar.branch_line.items.spend = false;
+        save_to(&p, &s).unwrap();
+        assert_eq!(load_from(&p).sidebar, s.sidebar);
         std::fs::remove_file(&p).ok();
     }
 

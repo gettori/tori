@@ -69,6 +69,22 @@
   color: var(--fg-default);
 }
 
+/* Beside the filter button, which already holds the right edge, so this one
+   gives up the auto margin rather than splitting the free space with it. */
+.viewMenu {
+  display: inline-flex;
+}
+.viewMenu .searchToggle {
+  margin-left: 0;
+}
+.viewMenuLabel {
+  flex: 1;
+}
+.viewMenuKeys {
+  margin-left: calc(16px * var(--ui-scale));
+  color: var(--fg-subtle);
+}
+
 /* The Topic list on the Spaces tree's own padding: its Topics are project
    cards, which bring their inset with them. */
 .topicList {
