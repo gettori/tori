@@ -425,8 +425,8 @@ export function GroupCard(props: {
 /** A group card washed in its own colour, mixed down into the card the way the
  *  lane hues are, so it reads in either theme. */
 const tintVars = (hex: string) => ({
-  "--card-head": `color-mix(in srgb, ${hex} 12%, var(--lane-card))`,
-  "--card-body": `color-mix(in srgb, ${hex} 7%, var(--lane-card))`,
+  "--card-head": `color-mix(in srgb, ${hex} 7%, var(--lane-card))`,
+  "--card-body": `color-mix(in srgb, ${hex} 4%, var(--lane-card))`,
   "--card-icon": hex,
 });
 
