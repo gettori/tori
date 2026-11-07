@@ -1188,7 +1188,7 @@ function App() {
       <div class="body" ref={bodyEl}>
         <aside
           class="pane sidebar"
-          classList={{ hidden: !showSidebar() && !railOnly() }}
+          classList={{ hidden: !showSidebar() && !railOnly(), full: showSidebar() }}
           style={{ width: `${railOnly() ? px(SPACE_RAIL) : sidebarW()}px` }}
           onMouseDown={windowDragStart}
         >
