@@ -57,8 +57,8 @@ pub enum SpaceStrip {
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum CardColours {
-    #[default]
     Subtle,
+    #[default]
     Colourful,
 }
 
