@@ -10,6 +10,24 @@ matching section here fails the release rather than publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.1108.0-beta
+
+- Each space has its own **Space settings**, opened from the space menu, with **General**, **Cards**, **PR lanes** and **Branch line** sections. Card colours, PR lanes and the branch line are set per space, and **Reset to defaults** puts a space back on the defaults.
+- Settings > Sidebar is gone. **Space tiles** moved back to Settings > Appearance.
+- The View options menu is folded into the space menu, which now has **Collapse all** and **Expand all**. **Move folder here...** is gone from the space menu, since the **New in** dialog already moves a folder in.
+- The space and project menus (the ... button) open down and to the right of the button.
+- **Card colours** is **Colourful** by default, and card tints are softer.
+- Pick a group's colour from a grid of 17 swatches.
+- Group headers no longer have an icon, and their titles look like the **PROJECTS** heading.
+- A collapsed group shows its sessions' status on its header.
+- Sidebar rows have square corners, and a selected branch inside a PR lane looks the same as one outside it.
+- The sidebar's resize handle no longer takes up space next to the sidebar.
+- In Settings > Projects, every project is in one list grouped by space, with **All**, **Trusted** and **Not trusted** filters and a shield button to trust or untrust each one. A project trusted through a parent folder says which folder.
+- **Other paths** is replaced by a notice when trusted paths no longer belong to any project, with **Forget them** to remove them.
+- The **Move to space** dialog is tidied, and its worktree folders are shown relative to the project.
+- Space and project settings titles read "Name . space" and "Name . project".
+- macOS 26.1108.0-beta ships; Android 26.1108.0-beta ships; browser extension 26.1108.0 ships, rolling out on the Chrome Web Store; push relay unchanged at 26.1030.0-beta.
+
 ## 26.1107.0-beta
 
 - **Settings > LSP** shows every language server in one list, the **Ready**, **Installable** and **Manual** tabs are gone. **Search** still filters it.
