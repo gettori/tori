@@ -4458,6 +4458,7 @@ export default function LeftSidebar(props: {
           onRename={rename}
           onToggle={() => toggle(collapsedKey(p, name))}
           tint={colourful() ? groupColor(colour()) : null}
+          end={statusBubble(() => (open() ? null : bubbleForUnits(members())))}
           menu={[
             { label: "Rename", onClick: () => editGroup(p, name) },
             ...(colourful()

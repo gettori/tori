@@ -354,6 +354,8 @@ export function GroupCard(props: {
   rowProps?: SidebarDragProps;
   /** The group's colour as a hex, or none. */
   tint?: string | null;
+  /** The trailing marks, before the chevron: a collapsed group's rollup. */
+  end?: JSX.Element;
   children?: JSX.Element;
 }) {
   const editor = (draft: () => GroupNameDraft) => {
@@ -413,6 +415,7 @@ export function GroupCard(props: {
           {(draft) => editor(draft)}
         </Show>
         <span class={styles.cardCount}>{props.count}</span>
+        <span class={styles.rowEnd}>{props.end}</span>
         <RowChevron open={props.open} />
       </ContextMenu>
       <Show when={props.open}>

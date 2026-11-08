@@ -186,6 +186,9 @@
 .row.cardHead .rowChevron {
   margin-left: auto;
 }
+.row.cardHead .rowEnd + .rowChevron {
+  margin-left: 0;
+}
 .groupName {
   flex: 1 1 auto;
   min-width: 0;
