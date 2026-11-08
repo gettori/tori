@@ -344,18 +344,12 @@ function KitchenSink() {
         <PendingRequests sessionId="child-1" />
       </Section>
 
-      <Section
-        heading="Plan card"
-        detail="Live while the agent's turn keeps it; dimmed with a reason when it does not."
-      >
+      <Section heading="Plan card" detail="Live while a turn is running; dimmed once the agent has stopped.">
         <State label="Live">
           <PlanCard items={PLAN} />
         </State>
         <State label="Agent stopped here (no turn running)">
           <PlanCard items={PLAN} stale="stopped" />
-        </State>
-        <State label="Not updated this turn">
-          <PlanCard items={PLAN} stale="notUpdated" />
         </State>
       </Section>
     </div>
