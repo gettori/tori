@@ -564,6 +564,13 @@ button.moreRow {
   color: var(--scale-orange);
 }
 
+/* The ellipsis button's size, so the two sit level at the row's end. */
+.trustMark {
+  flex: none;
+  border-color: transparent;
+  color: var(--scale-orange);
+}
+
 /* The forge's one door per repo: add an account for this host, or pick between
    the ones it has. Sized to the glyph rather than to a control, so it lands in
    the same column as a branch row's marks directly below it. */
