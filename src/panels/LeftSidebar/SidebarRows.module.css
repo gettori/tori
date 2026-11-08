@@ -861,7 +861,22 @@ button.groupTitle {
   opacity: 0.35;
 }
 .row[data-drop="into"] {
-  box-shadow: inset 0 0 0 1px var(--attention-fg);
+  box-shadow: inset 0 0 0 0.5px var(--attention-fg);
+}
+/* A branch row's outline starts where a group card does, clear of the rail,
+   so it is drawn on the free `::after` rather than as the row's own shadow. */
+.row.branch[data-drop="into"] {
+  box-shadow: none;
+}
+.row.branch[data-drop="into"]::after {
+  content: "";
+  position: absolute;
+  left: max(0px, calc(var(--rail-x) + 6px * var(--ui-scale)));
+  right: 0;
+  top: 0;
+  bottom: 0;
+  box-shadow: inset 0 0 0 0.5px var(--attention-fg);
+  pointer-events: none;
 }
 
 /* Drawn on the row's wrapper, centred on the seam, so the bottom of one row and
@@ -878,7 +893,14 @@ button.groupTitle {
   pointer-events: none;
   z-index: 3;
 }
-:is(.branchNode, .groupCard):has(> .row[data-drop])::after {
+/* Where a group card starts, 6px clear of the rail, so a branch's line and a
+   card's line on the same seam are one line. Inside a card the rail runs 6px
+   outside it, so there the line starts at the card's edge. */
+.branchNode:has(> .row[data-drop])::after {
+  left: max(0px, calc(var(--rail-x) + 6px * var(--ui-scale)));
+  right: 0;
+}
+.groupCard:has(> .row[data-drop])::after {
   left: 0;
   right: 0;
 }
@@ -904,14 +926,13 @@ button.groupTitle {
   pointer-events: none;
   z-index: 3;
 }
-
-/* A drop anywhere inside a group outlines the whole card, so in or out of it
-   is clear before the release; the line then says only where. */
-.groupCard[data-group]:has(> .row[data-drop="into"], .cardBody .row[data-drop]:not([data-drop="refused"])) {
-  box-shadow: 0 0 0 1px var(--attention-fg);
+/* A group card stands 8px below whatever is above it, so the line after that
+   row and the line before the card are both drawn mid gap, as one line. */
+.groupCard:has(> .row[data-drop="before"])::after {
+  top: calc(-4px * var(--ui-scale) - 0.25px);
 }
-.groupCard[data-group] > .row[data-drop="into"] {
-  box-shadow: none;
+:is(.branchNode, .groupCard):has(+ .groupCard):has(> .row[data-drop="after"], > .dropTail[data-drop="after"])::after {
+  bottom: calc(-4px * var(--ui-scale) - 0.25px);
 }
 
 /* Over the card's last pixels and the gap under it, above the next row, so a
