@@ -57,8 +57,16 @@ export function createSidebarDrag(opts: {
 }): SidebarDrag {
   const [dragging, setDragging] = createSignal<string | null>(null);
   const [over, setOver] = createSignal<{ key: string; zone: Zone; refused: Refusal | null } | null>(null);
+  let from: { section: string; index: number } | null = null;
+  // The seam just above or below the carried row puts it back where it is, so
+  // it is no target at all rather than a line that promises a move.
+  const stays = (to: RowSpot, zone: Zone) =>
+    !!from &&
+    to.section === from.section &&
+    ((zone === "top" && to.index === from.index + 1) || (zone === "bottom" && to.index === from.index - 1));
 
   function end() {
+    from = null;
     setDragging(null);
     setOver(null);
     opts.onActive?.(false);
@@ -80,6 +88,7 @@ export function createSidebarDrag(opts: {
           }
           e.dataTransfer.effectAllowed = "copyMove";
         }
+        from = { section: spot.section, index: spot.index };
         setDragging(spot.key);
         opts.onActive?.(true);
       },
@@ -90,6 +99,11 @@ export function createSidebarDrag(opts: {
         e.stopPropagation();
         const rect = e.currentTarget.getBoundingClientRect();
         const zone = spot.zone ?? zoneAt(rect.top, rect.height, e.clientY, spot.groupable === true);
+        if (stays(spot, zone)) {
+          if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+          setOver(null);
+          return;
+        }
         const reason = opts.refuse?.(dragging()!, spot, zone) ?? null;
         if (e.dataTransfer) e.dataTransfer.dropEffect = reason ? "none" : "move";
         setOver({ key: spot.key, zone, refused: reason ? { reason, x: e.clientX, y: e.clientY } : null });
