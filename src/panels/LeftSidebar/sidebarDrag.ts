@@ -24,6 +24,9 @@ export type RowSpot = {
   index: number;
   paths: string | string[];
   groupable?: boolean;
+  /** Pins the zone for a target that only ever means one side, whatever part
+   *  of it the pointer is over. */
+  zone?: Zone;
 };
 
 export type SidebarDragProps = {
@@ -86,7 +89,7 @@ export function createSidebarDrag(opts: {
         e.preventDefault();
         e.stopPropagation();
         const rect = e.currentTarget.getBoundingClientRect();
-        const zone = zoneAt(rect.top, rect.height, e.clientY, spot.groupable === true);
+        const zone = spot.zone ?? zoneAt(rect.top, rect.height, e.clientY, spot.groupable === true);
         const reason = opts.refuse?.(dragging()!, spot, zone) ?? null;
         if (e.dataTransfer) e.dataTransfer.dropEffect = reason ? "none" : "move";
         setOver({ key: spot.key, zone, refused: reason ? { reason, x: e.clientX, y: e.clientY } : null });
