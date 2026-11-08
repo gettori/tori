@@ -62,6 +62,7 @@ mod perf_budgets;
 mod ports;
 mod presence;
 mod project_config;
+mod project_order;
 mod provenance;
 mod pty;
 mod radar;
@@ -441,6 +442,8 @@ pub fn run() {
             second_opinion::second_opinion_list,
             second_opinion::second_opinion_set_status,
             second_opinion::second_opinion_run,
+            project_order::project_order_read,
+            project_order::project_order_write,
             sidebar_order::sidebar_order_read,
             sidebar_order::sidebar_order_write,
             config::groups::set_project_groups,
