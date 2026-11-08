@@ -26,7 +26,7 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 - **Other paths** is replaced by a notice when trusted paths no longer belong to any project, with **Forget them** to remove them.
 - The **Move to space** dialog is tidied, and its worktree folders are shown relative to the project.
 - Space and project settings titles read "Name . space" and "Name . project".
-- macOS 26.1108.0-beta ships; Android 26.1108.0-beta ships; browser extension 26.1108.0 ships, rolling out on the Chrome Web Store; push relay unchanged at 26.1030.0-beta.
+- macOS 26.1108.0-beta ships; Android 26.1108.0-beta ships; browser extension unchanged at 26.1029.0; push relay unchanged at 26.1030.0-beta.
 
 ## 26.1107.0-beta
 
