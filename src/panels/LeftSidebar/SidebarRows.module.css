@@ -888,6 +888,42 @@ button.groupTitle {
 :is(.projectCard, .branchNode, .groupCard):has(> .row[data-drop="after"])::after {
   bottom: 0;
 }
+/* `.cardBody` clips its overflow, so the line above a group's first member is
+   drawn inside that row instead of on the seam. */
+.cardBody > .branchNode:first-child:has(> .row[data-drop="before"])::after {
+  top: 0;
+}
+.groupCard:has(> .dropTail[data-drop="after"])::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 0.5px;
+  background: var(--attention-fg);
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* A drop anywhere inside a group outlines the whole card, so in or out of it
+   is clear before the release; the line then says only where. */
+.groupCard[data-group]:has(> .row[data-drop="into"], .cardBody .row[data-drop]:not([data-drop="refused"])) {
+  box-shadow: 0 0 0 1px var(--attention-fg);
+}
+.groupCard[data-group] > .row[data-drop="into"] {
+  box-shadow: none;
+}
+
+/* Over the card's last pixels and the gap under it, above the next row, so a
+   group at the bottom of the list still has somewhere to drop after it. */
+.dropTail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(-4px * var(--ui-scale));
+  height: calc(10px * var(--ui-scale));
+  z-index: 3;
+}
 
 .groupCard[data-hue] {
   background: var(--card-body, var(--lane-card));

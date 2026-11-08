@@ -354,6 +354,9 @@ export function GroupCard(props: {
   menu?: MenuItem[];
   onToggle?: () => void;
   rowProps?: SidebarDragProps;
+  /** The strip along the card's bottom edge that drops after the whole card,
+   *  which the last member's own lower half cannot: that lands inside. */
+  tailProps?: SidebarDragProps;
   /** The group's colour as a hex, or none. */
   tint?: string | null;
   /** The trailing marks, before the chevron: a collapsed group's rollup. */
@@ -423,6 +426,7 @@ export function GroupCard(props: {
       <Show when={props.open}>
         <div class={styles.cardBody}>{props.children}</div>
       </Show>
+      <Show when={props.tailProps}>{(tail) => <div class={styles.dropTail} {...tail()} draggable={false} />}</Show>
     </div>
   );
 }
