@@ -264,6 +264,7 @@ import {
   saveProjectOrderSeen,
   startSidebarOrder,
 } from "../../utils/sidebarOrder";
+import { projectListOrder, saveProjectListOrder, startProjectListOrder } from "../../utils/projectListOrder";
 import {
   NEW_CHAT_NAME,
   chatIdOf,
@@ -3771,9 +3772,40 @@ export default function LeftSidebar(props: {
         needsYouOrWorking(bubbleForUnits(p.branchUnits))
       );
     };
+    // A project with no rank yet sorts above every ranked one, so a new
+    // project lands on top; among themselves they keep the config's order.
+    const ranked = (ps: readonly Project[]) =>
+      arrange(ps, { keysOf: (p) => [p.path], order: projectListOrder(g()?.name ?? "") })[0].shown;
+    const sorted = createMemo(() => ranked(list()));
+    const allPaths = () => ranked(g()?.projects ?? []).map((p) => p.path);
+    createEffect(() => {
+      const at = g();
+      if (!config() || !at || at.projects.length === 0) return;
+      saveProjectListOrder(at.name, allPaths());
+    });
     const split = createMemo(() =>
-      capped() && !open() ? capList(list(), GROUP_CAP, kept) : { shown: list(), hidden: [] as Project[] },
+      capped() && !open() ? capList(sorted(), GROUP_CAP, kept) : { shown: sorted(), hidden: [] as Project[] },
     );
+    const drag = createSidebarDrag({
+      onActive: setDragOn,
+      onCommit: ({ from, to }: DragCommit) => {
+        const at = g();
+        const rows = split().shown;
+        if (!at || !("section" in to) || rows.length === 0) return;
+        const before = to.index < rows.length;
+        const target = rows[before ? to.index : rows.length - 1].path;
+        saveProjectListOrder(at.name, moveKeys(allPaths(), [from], [target], before ? "before" : "after"));
+      },
+    });
+    const dragFor = (p: Project, index: () => number) =>
+      drag.rowProps({
+        key: p.path,
+        section: "main",
+        get index() {
+          return index();
+        },
+        paths: p.path,
+      });
     const folds = () => capped() && (open() ? list().length > GROUP_CAP : split().hidden.length > 0);
     const row = () => (
       <Show when={folds()}>
@@ -3785,7 +3817,7 @@ export default function LeftSidebar(props: {
         />
       </Show>
     );
-    return { shown: () => split().shown, row };
+    return { shown: () => split().shown, row, dragFor };
   }
   const globalFold = projectFold(
     () => globalAsSpace(),
@@ -3809,6 +3841,7 @@ export default function LeftSidebar(props: {
   let offActivateSpace: (() => void) | undefined;
   let offNewChat: (() => void) | undefined;
   onCleanup(startSidebarOrder());
+  onCleanup(startProjectListOrder());
   onMount(async () => {
     offActivateSpace = onWith<ActivateSpace>(ACTIVATE_SPACE, ({ name }) => setActiveSpaceName(name));
     offNewChat = onEvent(NEW_CHAT, () => void startChat(inGlobal() ? null : (activeSpace()?.name ?? null)));
@@ -4216,7 +4249,7 @@ export default function LeftSidebar(props: {
     />
   );
 
-  function projectNode(g: Group, p: Project) {
+  function projectNode(g: Group, p: Project, rowDrag: SidebarDragProps) {
     const colourful = () => cardColoursFor(g.name) === "colourful";
     const popen = () => expanded().has(pkey(g, p));
     const missing = () => p.availability === "missing";
@@ -4539,7 +4572,7 @@ export default function LeftSidebar(props: {
           if (missing() || !plainDir()) toggle(pkey(g, p));
           else selectUnit(g, p, folderUnit());
         }}
-        onDragStart={(e) => startAbsDrag(e, p.path)}
+        rowProps={rowDrag}
         end={
           <>
             {/* Lit only when a worktree is missing a shared file, since
@@ -4817,7 +4850,7 @@ export default function LeftSidebar(props: {
               />
               <Show when={!globalProjectsCollapsed()}>
                 <For each={globalFold.shown()} fallback={<EmptyRow>no matches in {GLOBAL_NAME}</EmptyRow>}>
-                  {(p) => projectNode(globalAsSpace(), p)}
+                  {(p, i) => projectNode(globalAsSpace(), p, globalFold.dragFor(p, i))}
                 </For>
                 {globalFold.row()}
               </Show>
@@ -4888,7 +4921,7 @@ export default function LeftSidebar(props: {
               onAdd={() => openNewProject(activeSpace()!)}
             />
             <Show when={!spaceProjectsCollapsed()}>
-              <For each={spaceFold.shown()}>{(p) => projectNode(activeSpace()!, p)}</For>
+              <For each={spaceFold.shown()}>{(p, i) => projectNode(activeSpace()!, p, spaceFold.dragFor(p, i))}</For>
               {spaceFold.row()}
             </Show>
           </Show>
