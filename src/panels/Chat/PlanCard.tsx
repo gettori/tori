@@ -29,15 +29,21 @@ const STALE: Record<PlanStale, string> = {
   stopped: "Agent stopped here",
 };
 
-export default function PlanCard(props: { items: readonly PlanItem[]; stale?: PlanStale | null }) {
+export default function PlanCard(props: {
+  items: readonly PlanItem[];
+  stale?: PlanStale | null;
+  /** Start open rather than folded. Read once, at mount. */
+  defaultOpen?: boolean;
+}) {
   const done = createMemo(() => props.items.filter((i) => i.status === "completed").length);
   // The one in flight, if any. Named rather than counted: with the list
   // collapsed this is the only line worth a row of its own.
   const active = createMemo(() => props.items.find((i) => i.status === "inProgress") ?? null);
-  // Open by default, which is the card as it always was. Per mount rather than
-  // remembered: a plan belongs to a turn, and one folded away yesterday is not
-  // an instruction about the next one.
-  const [open, setOpen] = createSignal(true);
+  // Folded by default: open, the card takes the transcript's room for every
+  // turn that has a plan, and the pill already says how far along it is. Per
+  // mount rather than remembered: a plan belongs to a turn, and one opened
+  // yesterday is not an instruction about the next one.
+  const [open, setOpen] = createSignal(!!props.defaultOpen);
   const tally = () => `${done()}/${props.items.length}`;
 
   // The open card's list, which is the only one that scrolls. The tooltip draws

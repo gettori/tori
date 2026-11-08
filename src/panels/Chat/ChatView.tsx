@@ -2651,8 +2651,6 @@ export default function ChatView(props: {
       <For each={asksFor(props.sessionId)}>{(ask) => <AskCard ask={ask} here={props.sessionId} />}</For>
       <PendingRequests sessionId={props.sessionId} />
 
-      <PlanCard items={state.plan} stale={planStale(state)} />
-
       <LaneStrip
         lanes={laneStrip(state)}
         tasks={backgroundTasks(state)}
@@ -2670,6 +2668,11 @@ export default function ChatView(props: {
           )
         }
       />
+
+      {/* Last in the stack, on the input's own edge: the plan is the turn's
+          running progress, folded to a count by default and opened on demand,
+          and what waits on the user (asks, lanes) stays above it. */}
+      <PlanCard items={state.plan} stale={planStale(state)} />
 
       <Show
         when={!locked()}
