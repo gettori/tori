@@ -27,7 +27,6 @@ import styles from "./Chat.module.css";
  */
 const STALE: Record<PlanStale, string> = {
   stopped: "Agent stopped here",
-  notUpdated: "Not updated this turn",
 };
 
 export default function PlanCard(props: { items: readonly PlanItem[]; stale?: PlanStale | null }) {
