@@ -1,4 +1,4 @@
-import { createEffect, createSignal, on, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, on, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { GitCommitHorizontal } from "lucide-solid";
 
@@ -57,29 +57,30 @@ export default function GraphSection(props: {
   // Keyed on HEAD rather than on a watcher burst: `.git` is watcher-filtered,
   // and the store already re-reads HEAD on every event that can move it, so a
   // commit, a pull or a checkout all arrive here as a new sha.
+  // A memo, so only a new sha re-runs this: the store publishes a new map on
+  // every status re-read and fetch stamp, and a fresh array built from it would
+  // re-read the log on each of those.
+  const head = createMemo(() => gitStateFor(props.root).head);
   createEffect(
-    on(
-      () => [props.root, gitStateFor(props.root).head, !!props.all] as const,
-      async ([root, , all]) => {
-        setOpen(new Set<string>());
-        if (!root) {
-          setEntries([]);
-          return;
-        }
-        try {
-          // A branch longer than one page would push the base off the bottom,
-          // and where you left the trunk is the one thing this section is for.
-          // So the page grows to reach it, rather than the reader paging for it.
-          const offset = await invoke<number>("git_base_offset", { projectPath: root }).catch(() => 0);
-          const limit = Math.min(CAP, Math.max(ROWS, offset + TAIL));
-          setEntries(await invoke<LogEntry[]>("git_log", { projectPath: root, limit, all }));
-          setError("");
-        } catch (e) {
-          setEntries([]);
-          setError(String(e));
-        }
-      },
-    ),
+    on([() => props.root, head, () => !!props.all], async ([root, , all]) => {
+      setOpen(new Set<string>());
+      if (!root) {
+        setEntries([]);
+        return;
+      }
+      try {
+        // A branch longer than one page would push the base off the bottom,
+        // and where you left the trunk is the one thing this section is for.
+        // So the page grows to reach it, rather than the reader paging for it.
+        const offset = await invoke<number>("git_base_offset", { projectPath: root }).catch(() => 0);
+        const limit = Math.min(CAP, Math.max(ROWS, offset + TAIL));
+        setEntries(await invoke<LogEntry[]>("git_log", { projectPath: root, limit, all }));
+        setError("");
+      } catch (e) {
+        setEntries([]);
+        setError(String(e));
+      }
+    }),
   );
 
   return (

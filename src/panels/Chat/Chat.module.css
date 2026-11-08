@@ -957,32 +957,22 @@ code.secretReason {
   color: var(--fg-default);
 }
 
-/* The word itself is the animation: a sheen sweeping the label while deltas
-   stream. Its floor is the toggle's own muted tier, so the sweep never dips
-   under what the resting label reads at, and the global reduced-motion rule
-   (base.css) freezes it into a static gradient. */
+/* The word itself is the animation: the label breathes while deltas stream.
+   Opacity only, so the compositor runs it: a sheen swept with
+   `background-clip: text` re-shaped and repainted the text every frame, on the
+   main thread, for every live label. The global reduced-motion rule (base.css)
+   holds it at one frame. */
 .thinkingLive {
-  background: linear-gradient(90deg, var(--fg-muted) 40%, var(--fg-default) 50%, var(--fg-muted) 60%);
-  background-size: 200% 100%;
-  background-clip: text;
-  -webkit-background-clip: text;
-  color: transparent;
-  animation: thinkingSheen 1.6s linear infinite;
-  /* A layer of its own: `background-position` repaints every frame, and
-     without one that repaint lands on the whole transcript's surface. A box,
-     because an inline span cannot be a layer. */
-  display: inline-block;
-  will-change: transform;
+  animation: thinkingBreathe 1.6s ease-in-out infinite;
 }
 
-/* 0% to 200% of a 200%-wide tiling image is exactly one tile, so the loop has
-   no seam. */
-@keyframes thinkingSheen {
-  from {
-    background-position: 200% 0;
+@keyframes thinkingBreathe {
+  0%,
+  100% {
+    opacity: 0.55;
   }
-  to {
-    background-position: 0% 0;
+  50% {
+    opacity: 1;
   }
 }
 

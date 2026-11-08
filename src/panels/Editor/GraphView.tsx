@@ -118,16 +118,16 @@ export default function GraphView(props: { workspace: string }) {
   // `.git` is watcher-filtered, and the store re-reads HEAD on every event that
   // can move it. Paging state resets with it, since the rows below page one
   // describe a history that just changed shape.
+  // A memo for the same reason GraphSection keeps one: only a new sha, not
+  // every store write, should reload the history.
+  const head = createMemo(() => gitStateFor(props.workspace).head);
   createEffect(
-    on(
-      () => [props.workspace, gitStateFor(props.workspace).head] as const,
-      () => {
-        setOpen(new Set<string>());
-        setFiles({});
-        setDone(false);
-        void load(0);
-      },
-    ),
+    on([() => props.workspace, head], () => {
+      setOpen(new Set<string>());
+      setFiles({});
+      setDone(false);
+      void load(0);
+    }),
   );
 
   /** Expand a row, fetching its file list once. */

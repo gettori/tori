@@ -151,9 +151,13 @@ export default function PullsPanel(props: {
   /** Who the "Ask agent to draft" button in the create form writes to. */
   selected: Selection | null;
 }) {
-  const paused = () => forgePause(props.root);
+  // Memos, not accessors: the git store publishes a new map on every write (a
+  // status re-read, a fetch stamp), and the fetch effect below keys on these.
+  // A memo notifies only when its value moves, so the effect runs on a branch
+  // change and not on every save in the worktree.
+  const paused = createMemo(() => forgePause(props.root));
   const git = () => gitStateFor(props.root);
-  const branch = () => git().branch;
+  const branch = createMemo(() => git().branch);
 
   // Origin and the default base are this panel's own two reads. Neither is in
   // any store: the sidebar holds a map of origins it built for its own rows,
