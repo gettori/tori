@@ -10,7 +10,16 @@ import styles from "./Menu.module.css";
  *  local is what lets this file expose a placement type without the app
  *  importing one from the primitives package - which `boundary.test.ts` would
  *  fail it for, this file included. */
-export type MenuPlacement = "bottom-start" | "bottom-end" | "top-start" | "top-end" | "right-start" | "left-start";
+export type MenuPlacement =
+  | "bottom-start"
+  | "bottom-end"
+  | "top-start"
+  | "top-end"
+  | "right-start"
+  | "left-start"
+  /** Hung off the trigger's bottom right corner, opening down and right, for a
+   *  small button at the end of a row whose menu should not cover the row. */
+  | "corner";
 
 /** The gutter between a trigger and its menu, in px. Not a token: Kobalte takes
  *  a number and passes it to floating-ui, so it never reaches CSS and cannot
@@ -171,12 +180,25 @@ export default function Dropdown<T extends HTMLElement = HTMLButtonElement>(prop
         modal={local.modal ?? false}
         open={local.open}
         onOpenChange={local.onOpenChange}
-        placement={local.placement ?? (atCursor() ? "right-start" : "bottom-start")}
-        gutter={atCursor() ? CURSOR_GUTTER : TRIGGER_GUTTER}
+        placement={
+          local.placement === "corner"
+            ? "bottom-start"
+            : (local.placement ?? (atCursor() ? "right-start" : "bottom-start"))
+        }
+        gutter={atCursor() ? CURSOR_GUTTER : local.placement === "corner" ? 0 : TRIGGER_GUTTER}
         shift={atCursor() ? CURSOR_SHIFT : undefined}
         // Floating-ui treats the point as a zero-size anchor and flips or slides
         // the menu against the viewport from there.
-        getAnchorRect={atCursor() ? () => cursorRect(local.anchor) : undefined}
+        getAnchorRect={
+          atCursor()
+            ? () => cursorRect(local.anchor)
+            : local.placement === "corner"
+              ? (el) => {
+                  const r = el?.getBoundingClientRect();
+                  return r && { x: r.right, y: r.top, width: 0, height: r.height };
+                }
+              : undefined
+        }
       >
         <Show when={!atCursor()}>
           <Primitive.Trigger as={local.as ?? "button"} {...notAControl()} {...triggerProps} />

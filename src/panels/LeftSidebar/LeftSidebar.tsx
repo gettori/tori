@@ -4705,7 +4705,7 @@ export default function LeftSidebar(props: {
           <div class={styles.spaceHeader} onContextMenu={onSpaceAreaMenu}>
             <span class={styles.spaceHeaderName}>{headingName()}</span>
             <Show when={inGlobal()}>
-              <Dropdown as="span" wrapper class={styles.spaceHeaderMenu} items={globalMenu()} placement="bottom-end">
+              <Dropdown as="span" wrapper class={styles.spaceHeaderMenu} items={globalMenu()} placement="corner">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -4717,13 +4717,7 @@ export default function LeftSidebar(props: {
             </Show>
             <Show when={activeSpace()}>
               {(g) => (
-                <Dropdown
-                  as="span"
-                  wrapper
-                  class={styles.spaceHeaderMenu}
-                  items={spaceMenu(g())}
-                  placement="bottom-end"
-                >
+                <Dropdown as="span" wrapper class={styles.spaceHeaderMenu} items={spaceMenu(g())} placement="corner">
                   <Button
                     variant="ghost"
                     size="sm"

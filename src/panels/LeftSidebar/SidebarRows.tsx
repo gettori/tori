@@ -132,7 +132,7 @@ export function ProjectRow(props: {
         <Show when={props.menu?.length}>
           {/* Stops the click so opening the menu does not also toggle the row. */}
           <span class={styles.rowMenu} onClick={(e) => e.stopPropagation()}>
-            <Dropdown as="span" wrapper items={props.menu} placement="bottom-end">
+            <Dropdown as="span" wrapper items={props.menu} placement="corner">
               <IconButton
                 size="sm"
                 class={styles.rowMenuBtn}
