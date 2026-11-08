@@ -2466,7 +2466,7 @@ button.diffHunkHeader:hover {
 .ask + .ask,
 .ask + .planCard,
 .ask + .lanes,
-.planCard + .lanes {
+.lanes + .planCard {
   margin-top: calc(12px * var(--ui-scale));
 }
 

@@ -157,6 +157,66 @@ function Section(props: { heading: string; detail: string; children: JSX.Element
   );
 }
 
+/** The foot of a chat column: whatever sits last above the input, then a
+ *  stand-in for the input. The composer's own inset and top padding, so a
+ *  pill hangs off the box's edge the way it does in the app. */
+function AboveInput(props: { children: JSX.Element }) {
+  return (
+    <div
+      class={styles.chat}
+      style={{
+        position: "static",
+        display: "flex",
+        width: "760px",
+        "padding-top": "16px",
+        background: "var(--canvas-card)",
+      }}
+    >
+      {props.children}
+      <div
+        style={{
+          margin: "12px 16px 16px",
+          height: "88px",
+          padding: "12px",
+          border: "1px solid var(--border-default)",
+          "border-radius": "var(--tori-radius-xl)",
+          color: "var(--fg-subtle)",
+          "font-size": "13px",
+        }}
+      >
+        Reply, or @ a file · / for commands
+      </div>
+    </div>
+  );
+}
+
+/** The plan card's three states, its own story too: the kitchen sink opens a
+ *  menu that holds the page still, and this section is at its foot. */
+function PlanCardSection() {
+  return (
+    <Section
+      heading="Plan card, last above the input"
+      detail="Folded to a count on the input's edge by default, the list a hover away, the card one click. Dimmed once the agent has stopped."
+    >
+      <State label="Folded (default), a turn running">
+        <AboveInput>
+          <PlanCard items={PLAN} />
+        </AboveInput>
+      </State>
+      <State label="Folded, agent stopped here (no turn running)">
+        <AboveInput>
+          <PlanCard items={PLAN} stale="stopped" />
+        </AboveInput>
+      </State>
+      <State label="Open, one click on the pill">
+        <AboveInput>
+          <PlanCard items={PLAN} defaultOpen />
+        </AboveInput>
+      </State>
+    </Section>
+  );
+}
+
 function State(props: { label: string; children: JSX.Element }) {
   return (
     <div style={{ display: "flex", "flex-direction": "column", gap: "4px" }}>
@@ -344,14 +404,7 @@ function KitchenSink() {
         <PendingRequests sessionId="child-1" />
       </Section>
 
-      <Section heading="Plan card" detail="Live while a turn is running; dimmed once the agent has stopped.">
-        <State label="Live">
-          <PlanCard items={PLAN} />
-        </State>
-        <State label="Agent stopped here (no turn running)">
-          <PlanCard items={PLAN} stale="stopped" />
-        </State>
-      </Section>
+      <PlanCardSection />
     </div>
   );
 }
@@ -364,3 +417,12 @@ const meta = {
 export default meta;
 
 export const KitchenSinkStory: StoryObj<typeof meta> = { name: "Kitchen sink" };
+
+export const PlanCardStates: StoryObj<typeof meta> = {
+  name: "Plan card",
+  render: () => (
+    <div style={{ width: "760px", padding: "24px", background: "var(--canvas-default)" }}>
+      <PlanCardSection />
+    </div>
+  ),
+};
