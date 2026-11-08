@@ -882,13 +882,13 @@ button.groupTitle {
   position: absolute;
   left: calc(16px * var(--ui-scale));
   right: calc(16px * var(--ui-scale));
-  height: 1px;
+  height: 0.5px;
   background: var(--attention-fg);
   pointer-events: none;
   z-index: 1;
 }
 .projectCard:has(.row.project[data-drop="before"])::after {
-  top: -1px;
+  top: -0.5px;
 }
 .projectCard:has(.row.project[data-drop="after"])::after {
   bottom: 0;
