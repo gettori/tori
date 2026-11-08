@@ -870,6 +870,30 @@ button.groupTitle {
   box-shadow: inset 0 0 0 1px var(--attention-fg);
 }
 
+/* Drawn on the card's edge, centred on the seam, so the bottom of one project
+   and the top of the next are the same line rather than two lines a few pixels
+   apart; and "after" an expanded project sits under its branches, where it lands. */
+.row.project[data-drop] {
+  box-shadow: none;
+}
+.projectCard:has(.row.project[data-drop="before"])::after,
+.projectCard:has(.row.project[data-drop="after"])::after {
+  content: "";
+  position: absolute;
+  left: calc(16px * var(--ui-scale));
+  right: calc(16px * var(--ui-scale));
+  height: 1px;
+  background: var(--attention-fg);
+  pointer-events: none;
+  z-index: 1;
+}
+.projectCard:has(.row.project[data-drop="before"])::after {
+  top: -1px;
+}
+.projectCard:has(.row.project[data-drop="after"])::after {
+  bottom: 0;
+}
+
 .groupCard[data-hue] {
   background: var(--card-body, var(--lane-card));
 }
