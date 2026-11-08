@@ -3,6 +3,7 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
+import { pointerClick } from "../../test/menus";
 
 const A = "/w/api/.tori/worktrees/auth";
 const B = "/w/web/.tori/worktrees/auth";
@@ -192,14 +193,15 @@ describe("Toolbar for a Topic", () => {
     expect(syncChip()).toBeNull();
   });
 
-  it("opens the Changes panel, where every one of these states is acted on", async () => {
+  it("opens a menu whose last row opens the Changes panel", async () => {
     await loadSync({ "/w/api": upstream({ behind: 3 }) });
     const modes: unknown[] = [];
     const onMode = (e: Event) => modes.push((e as CustomEvent).detail);
     window.addEventListener(SET_RIGHT_MODE, onMode);
 
     render(() => <Toolbar selected={unitSel as never} />);
-    fireEvent.click(syncChip()!);
+    pointerClick(syncChip()!);
+    pointerClick(await screen.findByText("Open Changes"));
     window.removeEventListener(SET_RIGHT_MODE, onMode);
 
     expect(modes).toEqual([{ mode: "changes" }]);

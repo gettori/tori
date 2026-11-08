@@ -23,6 +23,7 @@ import { adoptSync } from "./branchSync";
 import { mentionPath } from "./pathScope";
 import { askToTrust, noteRefused, onTrustChange, UNTRUSTED } from "./projectTrust";
 import { DIVERGED_REFUSAL, divergedTarget, duplicateWarning } from "./pushWords";
+import { mayRewrite, type GuardAsk } from "./gitGuard";
 
 /** One porcelain entry. `path` is repo-relative, as every git_* command wants,
  *  and since the backend moved to `--porcelain=v2 -z` it is always a real
@@ -92,7 +93,13 @@ export type BaseSync = {
    *  of it shows. Null when git would not answer. Optional only so a fixture
    *  may omit it; the backend always sends it. */
   stat?: { files: number; insertions: number; deletions: number } | null;
+  /** The base is a local branch rather than `origin/<name>`. Optional only so
+   *  a fixture may omit it; the backend always sends it. */
+  local_base?: boolean;
 };
+
+/** The ref the base counts were taken against, as a merge would name it. */
+export const baseRef = (base: BaseSync): string => (base.local_base ? base.name : `origin/${base.name}`);
 
 /** The last fetch that touched a root, from the `git://fetch-*` events.
  *
@@ -293,21 +300,51 @@ export function canPush(root?: string | null): boolean {
   return !!ab && (!ab.has_upstream || ab.ahead > 0);
 }
 
+/** The remote and history actions a surface may want to show as running. */
+export type GitBusy = "push" | "pull" | "fetch" | "reset" | "merge";
+
 // Per root, not one flag: a Topic draws a Push per member, and one shared
-// flag would label every one of them "Pushing..." for a push in any one.
-const [pushingRoots, setPushingRoots] = createSignal<ReadonlySet<string>>(new Set());
+// flag would label every one of them "Pushing..." for a push in any one. Per
+// kind as well, so a fetch in flight does not swallow a push pressed during it;
+// the backend already queues the two on the repo lock.
+const [busyRoots, setBusyRoots] = createSignal<ReadonlyMap<string, ReadonlySet<GitBusy>>>(new Map());
+
+/** What is in flight in this member: `kind` when it is, or with no kind, the
+ *  first thing running there. Null when nothing is. */
+export function busyIn(root: string | null | undefined, kind?: GitBusy): GitBusy | null {
+  const running = root ? busyRoots().get(root) : undefined;
+  if (!running?.size) return null;
+  if (kind) return running.has(kind) ? kind : null;
+  return running.values().next().value ?? null;
+}
 
 /** Is a push in flight in this member? */
-export const pushingIn = (root: string | null | undefined): boolean => !!root && pushingRoots().has(root);
+export const pushingIn = (root: string | null | undefined): boolean => busyIn(root, "push") !== null;
 
-function markPushing(root: string, on: boolean): void {
-  setPushingRoots((prev) => {
-    if (prev.has(root) === on) return prev;
-    const next = new Set(prev);
-    if (on) next.add(root);
+function markBusy(root: string, kind: GitBusy, on: boolean): void {
+  setBusyRoots((prev) => {
+    const cur = prev.get(root) ?? new Set<GitBusy>();
+    if (cur.has(kind) === on) return prev;
+    const set = new Set(cur);
+    if (on) set.add(kind);
+    else set.delete(kind);
+    const next = new Map(prev);
+    if (set.size) next.set(root, set);
     else next.delete(root);
     return next;
   });
+}
+
+/** Run `work` with `kind` marked in flight for `root`, or answer `refused`
+ *  without running it when the same kind already is. */
+async function whileBusy<T>(root: string, kind: GitBusy, refused: T, work: () => Promise<T>): Promise<T> {
+  if (busyIn(root, kind)) return refused;
+  markBusy(root, kind, true);
+  try {
+    return await work();
+  } finally {
+    markBusy(root, kind, false);
+  }
 }
 
 function toastError(e: unknown) {
@@ -520,45 +557,69 @@ export function unstageAll(root: string): Promise<boolean> {
   return paths.length ? unstage(root, paths) : Promise.resolve(false);
 }
 
-/** Fire-and-forget: the answer arrives as `git://fetch-done`, which the store
- *  is already listening for. */
-export async function fetchIn(root: string): Promise<boolean> {
-  return toastDone("Fetched.", await act(root, () => invoke("git_fetch", { repo: root }), refreshMeta));
+/** Fetch, waiting for the background op's own event so the flag stays up for
+ *  as long as the fetch actually runs. */
+export function fetchIn(root: string): Promise<boolean> {
+  return whileBusy(root, "fetch", false, async () => {
+    const result = waitFor(root, "git://fetch-done", "git://fetch-error");
+    try {
+      await invoke("git_fetch", { repo: root });
+    } catch (e) {
+      toastError(e);
+      return false;
+    }
+    const { ok, error } = await result;
+    if (!ok) {
+      toastError(error || "Fetch failed");
+      return false;
+    }
+    return toastDone("Fetched.", true);
+  });
 }
 
 /** Pull, waiting for the background op's own event. Separate from `fetchIn`
  *  because a pull can stop on a conflict, which is a state the file list has to
- *  be re-read to show. */
-export async function pull(root: string, rebase = false, ffOnly = false): Promise<boolean> {
+ *  be re-read to show.
+ *
+ *  Behind the rewrite guard: a pull replaces files across the worktree, so an
+ *  agent mid-turn there would have its work changed under it. */
+export function pull(root: string, ask: GuardAsk, rebase = false, ffOnly = false): Promise<boolean> {
   // Either kind of pull would replay or merge the history the force push
   // replaced. The backend re-checks that nothing here is local work.
-  if (gitStateFor(root).sync?.upstream.superseded) return resetToUpstream(root);
-  const result = waitFor(root, "git://pull-done", "git://pull-error");
-  try {
-    await invoke("git_pull", { repo: root, rebase, ffOnly });
-  } catch (e) {
-    toastError(e);
-    return false;
-  }
-  const { ok, error } = await result;
-  await refreshGit(root);
-  if (!ok) {
-    toastError(error || "Pull failed");
-    return false;
-  }
-  return toastDone(rebase ? "Pulled with rebase." : "Pulled.", true);
+  if (gitStateFor(root).sync?.upstream.superseded) return resetToUpstream(root, ask);
+  return whileBusy(root, "pull", false, async () => {
+    if (!(await mayRewrite("Pull", root, ask))) return false;
+    const result = waitFor(root, "git://pull-done", "git://pull-error");
+    try {
+      await invoke("git_pull", { repo: root, rebase, ffOnly });
+    } catch (e) {
+      toastError(e);
+      return false;
+    }
+    const { ok, error } = await result;
+    await refreshGit(root);
+    if (!ok) {
+      toastError(error || "Pull failed");
+      return false;
+    }
+    return toastDone(rebase ? "Pulled with rebase." : "Pulled.", true);
+  });
 }
 
-/** Move the branch onto its upstream after a force push replaced what it had. */
-export async function resetToUpstream(root: string): Promise<boolean> {
-  return toastDone(
-    "Reset to upstream.",
-    await act(root, () => invoke("git_reset_to_upstream", { projectPath: root }), refreshGit),
-  );
+/** Move the branch onto its upstream after a force push replaced what it had.
+ *  Behind the rewrite guard for the same reason as `pull`. */
+export function resetToUpstream(root: string, ask: GuardAsk): Promise<boolean> {
+  return whileBusy(root, "reset", false, async () => {
+    if (!(await mayRewrite("Reset", root, ask))) return false;
+    return toastDone(
+      "Reset to upstream.",
+      await act(root, () => invoke("git_reset_to_upstream", { projectPath: root }), refreshGit),
+    );
+  });
 }
 
-export async function merge(root: string, branch: string): Promise<IntegrateOutcome | null> {
-  return integrate(root, "git_merge", { projectPath: root, branch });
+export function merge(root: string, branch: string): Promise<IntegrateOutcome | null> {
+  return whileBusy(root, "merge", null, () => integrate(root, "git_merge", { projectPath: root, branch }));
 }
 
 export async function rebase(root: string, onto: string): Promise<IntegrateOutcome | null> {
@@ -703,25 +764,23 @@ function waitForPush(repo: string): Promise<{ ok: boolean; error: string }> {
  * a push is in flight, and two concurrent pushes of one branch is not a thing
  * either of them should be able to start.
  */
-export async function push(root: string, branch: string): Promise<boolean> {
-  if (pushingIn(root)) return false;
-  markPushing(root, true);
-  const result = waitForPush(root);
-  try {
-    await invoke("git_push", { repo: root, remote: "origin", branch });
-  } catch (e) {
-    markPushing(root, false);
-    toastError(e);
-    return false;
-  }
-  const { ok, error } = await result;
-  markPushing(root, false);
-  if (!ok) {
-    toastError(error || "Push failed");
-    return false;
-  }
-  await refreshMeta(root);
-  return toastDone(`Pushed ${branch}.`, true);
+export function push(root: string, branch: string): Promise<boolean> {
+  return whileBusy(root, "push", false, async () => {
+    const result = waitForPush(root);
+    try {
+      await invoke("git_push", { repo: root, remote: "origin", branch });
+    } catch (e) {
+      toastError(e);
+      return false;
+    }
+    const { ok, error } = await result;
+    if (!ok) {
+      toastError(error || "Push failed");
+      return false;
+    }
+    await refreshMeta(root);
+    return toastDone(`Pushed ${branch}.`, true);
+  });
 }
 
 /** `origin/<branch>` when this member and it have both moved, else null. */
@@ -783,25 +842,23 @@ export async function pushGuard(root: string, confirm: GuardConfirm): Promise<Pu
 
 /** Force push `branch` over `origin/<branch>`, leased on `expected`, the sha
  *  the confirm showed. Same flag and events as `push`. */
-export async function forcePush(root: string, branch: string, expected: string): Promise<boolean> {
-  if (pushingIn(root)) return false;
-  markPushing(root, true);
-  const result = waitForPush(root);
-  try {
-    await invoke("git_force_push", { repo: root, branch, expected });
-  } catch (e) {
-    markPushing(root, false);
-    toastError(e);
-    return false;
-  }
-  const { ok, error } = await result;
-  markPushing(root, false);
-  if (!ok) {
-    toastError(error || "Force push failed");
-    return false;
-  }
-  await refreshMeta(root);
-  return toastDone(`Force pushed ${branch}.`, true);
+export function forcePush(root: string, branch: string, expected: string): Promise<boolean> {
+  return whileBusy(root, "push", false, async () => {
+    const result = waitForPush(root);
+    try {
+      await invoke("git_force_push", { repo: root, branch, expected });
+    } catch (e) {
+      toastError(e);
+      return false;
+    }
+    const { ok, error } = await result;
+    if (!ok) {
+      toastError(error || "Force push failed");
+      return false;
+    }
+    await refreshMeta(root);
+    return toastDone(`Force pushed ${branch}.`, true);
+  });
 }
 
 /**

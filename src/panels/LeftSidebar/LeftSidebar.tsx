@@ -159,6 +159,7 @@ import {
 import { overlapsAt, watchRadar } from "../../utils/radar";
 import { finishedPr, prRelation } from "../../utils/prRelation";
 import { resetToUpstream } from "../../utils/gitActions";
+import type { GuardAsk } from "../../utils/gitGuard";
 import { compactAgo } from "../../utils/compactAge";
 import SyncMarks from "../../components/SyncMarks/SyncMarks";
 import TooltipLines from "../../components/Tooltip/TooltipLines";
@@ -814,6 +815,7 @@ export default function LeftSidebar(props: {
   function askConfirm(opts: ConfirmOpts): Promise<boolean> {
     return new Promise((resolve) => setConfirmReq({ ...opts, resolve }));
   }
+  const guardAsk: GuardAsk = { confirm: askConfirm, refuse: (reason) => pushToast(reason, "error") };
   function resolveConfirm(v: boolean) {
     const req = confirmReq();
     setConfirmReq(null);
@@ -3084,7 +3086,7 @@ export default function LeftSidebar(props: {
       items.push({
         label: "Reset to upstream",
         onClick: async () => {
-          if (await resetToUpstream(u.folderPath)) await resyncRoot(u.folderPath);
+          if (await resetToUpstream(u.folderPath, guardAsk)) await resyncRoot(u.folderPath);
         },
       });
     }
@@ -3943,6 +3945,7 @@ export default function LeftSidebar(props: {
   const [expandedTopics, setExpandedTopics] = createSignal<string[]>([]);
   const topicActions = createTopicActions({
     activeId: activeTopicId,
+    guard: guardAsk,
     onSelect: (f, moved) => {
       const current = props.selected?.topicId === f.id ? (props.selected.activeRoot ?? null) : null;
       selectTopic(f, moved && current === moved.from ? moved.to : current);

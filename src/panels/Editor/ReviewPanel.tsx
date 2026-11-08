@@ -61,7 +61,7 @@ import { DIFF_CONTEXT } from "../../utils/diffHunks";
 import { compactAge } from "../../utils/compactAge";
 import { copyText } from "../../utils/clipboard";
 import { mentionPath } from "../../utils/pathScope";
-import { mayRewrite } from "../../utils/gitGuard";
+import { mayRewrite, type GuardAsk } from "../../utils/gitGuard";
 import { requestSend, type SessionTarget } from "../../utils/safeSend";
 import { askAgentToResolve } from "../../utils/conflictAsk";
 import { sendBlockedReason } from "../../utils/sendTarget";
@@ -655,6 +655,7 @@ export default function ReviewPanel(props: {
   function askConfirm(opts: Omit<ConfirmReq, "resolve">): Promise<boolean> {
     return new Promise((resolve) => setConfirmReq({ ...opts, resolve }));
   }
+  const guardAsk: GuardAsk = { confirm: askConfirm, refuse: (reason) => toastError(reason) };
 
   async function commit(thenPush = false) {
     const roots = commitRoots();
@@ -814,11 +815,7 @@ export default function ReviewPanel(props: {
    *  hard, one Tori cannot see inside is overridable. `verb` names the action in
    *  the override, so the question reads as itself rather than as a revert. */
   async function guarded(verb: string, root: string, action: () => Promise<void>) {
-    const ok = await mayRewrite(verb, root, {
-      confirm: askConfirm,
-      refuse: (reason) => toastError(reason),
-    });
-    if (ok) await action();
+    if (await mayRewrite(verb, root, guardAsk)) await action();
   }
 
   /** Hold the busy flag across everything, confirms included.
@@ -1394,7 +1391,7 @@ export default function ReviewPanel(props: {
       <Show
         when={!superseded(menuRoot())}
         fallback={
-          <MenuRow onClick={() => menuRoot() && void pullIn(menuRoot()!, false, viewedReadOnly())}>
+          <MenuRow onClick={() => menuRoot() && void pullIn(menuRoot()!, guardAsk, false, viewedReadOnly())}>
             Reset to Upstream
           </MenuRow>
         }
@@ -1402,7 +1399,7 @@ export default function ReviewPanel(props: {
         <DescribedRow
           label="Pull"
           note={pullWords(aheadBehindIn(menuRoot()), viewedReadOnly())}
-          onClick={() => menuRoot() && void pullIn(menuRoot()!, false, viewedReadOnly())}
+          onClick={() => menuRoot() && void pullIn(menuRoot()!, guardAsk, false, viewedReadOnly())}
         />
       </Show>
       <Show when={!viewedReadOnly()}>
@@ -1410,7 +1407,7 @@ export default function ReviewPanel(props: {
           <DescribedRow
             label="Pull (Rebase)"
             note={pullRebaseWords(aheadBehindIn(menuRoot()))}
-            onClick={() => menuRoot() && void pullIn(menuRoot()!, true)}
+            onClick={() => menuRoot() && void pullIn(menuRoot()!, guardAsk, true)}
           />
         </Show>
         <DescribedRow
@@ -1562,7 +1559,7 @@ export default function ReviewPanel(props: {
                   type="button"
                   class={styles.aheadPill}
                   label="The upstream was force-pushed. Reset to it"
-                  onClick={() => viewedRoot() && void resetToUpstream(viewedRoot()!)}
+                  onClick={() => viewedRoot() && void resetToUpstream(viewedRoot()!, guardAsk)}
                 >
                   {`${DOWN}${ab().behind}`}
                 </Tooltip>

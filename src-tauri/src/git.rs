@@ -2817,7 +2817,8 @@ pub struct BaseSync {
     /// committed and pushed. `None` when git would not answer, which the row
     /// draws as nothing rather than as zero.
     stat: Option<DiffStat>,
-    #[serde(skip)]
+    /// The base is a local branch, not `origin/<name>`, so a merge of it names
+    /// it bare.
     local_base: bool,
 }
 
