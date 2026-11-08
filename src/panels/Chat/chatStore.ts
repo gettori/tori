@@ -425,18 +425,17 @@ export type QueuedInput = { id: string; blocks: ContentBlock[]; held?: true; ste
 
 function clearPlan(s: ChatState) {
   s.plan = [];
-  s.planTurnId = null;
 }
 
-/** Why the plan on screen is not the agent's current word: no turn is running,
- *  or one is and has not touched it. Null while it is live, or when there is
- *  none. Agents are told to keep it current and do not always, so the card says
- *  so rather than spinning on a step nothing is working on. */
-export type PlanStale = "stopped" | "notUpdated";
-export function planStale(s: Pick<ChatState, "plan" | "planTurnId" | "activeTurnId">): PlanStale | null {
+/** Why the plan on screen is not the agent's current word: no turn is running.
+ *  Null while one is, or when there is no plan. A running turn that has not
+ *  touched the plan is still working, so the card keeps spinning through it; a
+ *  long turn spends most of its time in tools without a plan call, and reading
+ *  that as abandoned was the card's one lie. */
+export type PlanStale = "stopped";
+export function planStale(s: Pick<ChatState, "plan" | "activeTurnId">): PlanStale | null {
   if (!s.plan.length) return null;
-  if (s.activeTurnId === null) return "stopped";
-  return s.activeTurnId === s.planTurnId ? null : "notUpdated";
+  return s.activeTurnId === null ? "stopped" : null;
 }
 
 export function queuedText(q: Pick<QueuedInput, "blocks">): string {
@@ -619,9 +618,6 @@ export type ChatState = {
   agents: string[];
   plugins: ChatPlugin[];
   plan: PlanItem[];
-  /** The turn that last sent `plan`, so the card can tell a list the agent is
-   *  keeping from one it left behind. */
-  planTurnId: string | null;
   /** Tokens the conversation is holding right now, or null before anything has
    *  measured it.
    *
@@ -734,7 +730,6 @@ export function initialChat(sessionId: string, answerQuestionsInline = true): Ch
     agents: [],
     plugins: [],
     plan: [],
-    planTurnId: null,
     contextTokens: null,
     lastTurnUsage: null,
     lastCostUsd: null,
@@ -1645,7 +1640,6 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
     case "planUpdate":
       touchTurn(s, ev.turnId);
       s.plan = ev.items;
-      s.planTurnId = ev.items.length ? ev.turnId : null;
       return;
     case "usage": {
       touchTurn(s, ev.turnId);
