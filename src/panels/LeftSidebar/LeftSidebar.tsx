@@ -4561,8 +4561,8 @@ export default function LeftSidebar(props: {
                 debuggers and formatters stay off until it is trusted. */}
             <Show when={projectUntrusted(p.path)}>
               <IconButton
-                size="xs"
-                class={rows.driftMark}
+                size="sm"
+                class={rows.trustMark}
                 icon={<Icon icon={ShieldOff} />}
                 aria-label={`${p.name}: not trusted`}
                 tooltip="Not trusted: its language servers, debuggers and formatters are off"
