@@ -90,6 +90,7 @@ export function ProjectRow(props: {
   menu?: MenuItem[];
   onClick?: () => void;
   onDragStart?: (e: DragEvent) => void;
+  rowProps?: SidebarDragProps;
   children?: JSX.Element;
 }) {
   return (
@@ -101,6 +102,7 @@ export function ProjectRow(props: {
         items={props.menu ?? []}
         draggable={true}
         onDragStart={(e: DragEvent) => props.onDragStart?.(e)}
+        {...props.rowProps}
       >
         <span class={`${styles.rowIcon} ${styles.projectIcon}`}>
           <span class={styles.projectIconArt}>{props.icon}</span>
