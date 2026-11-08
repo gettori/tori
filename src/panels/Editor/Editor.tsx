@@ -194,6 +194,9 @@ import {
   GIT_PULL,
   GIT_PULL_REBASE,
   GIT_SYNC,
+  GIT_SYNC_REBASE,
+  GIT_RESET_UPSTREAM,
+  GIT_MERGE_BASE,
   GIT_STAGE_ALL,
   GIT_UNSTAGE_ALL,
   GIT_DISCARD_ALL,
@@ -253,7 +256,7 @@ import {
   stashToWrite,
 } from "../../utils/hotExit";
 import { closeAllowed } from "../../utils/closeGuard";
-import { mayRewrite } from "../../utils/gitGuard";
+import { mayRewrite, type GuardAsk } from "../../utils/gitGuard";
 import { flushDeferredWrites } from "../../utils/deferredWrite";
 import {
   refreshGit,
@@ -276,6 +279,8 @@ import {
   unstageAll,
   fetchIn,
   pull as pullIn,
+  resetToUpstream,
+  baseRef,
   merge,
   rebase,
   abortIntegrate,
@@ -1308,6 +1313,10 @@ export default function Editor(props: {
     setConfirmReq(null);
     req?.resolve(v);
   }
+  const guardAsk: GuardAsk = {
+    confirm: askConfirm,
+    refuse: (reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" }),
+  };
 
   // --- Debugging -----------------------------------------------------------
   //
@@ -2456,8 +2465,27 @@ export default function Editor(props: {
   async function syncCurrentBranch() {
     const r = gitWriteRoot();
     if (!r || refuseIfDiverged(r)) return;
-    if (!(await pullIn(r))) return;
+    if (!(await pullIn(r, guardAsk))) return;
     await guardedPush(r);
+  }
+
+  /** Sync for a branch that has diverged from its upstream: replay the commits
+   *  here on top of it, then push. Plain Sync refuses this case, since a merge
+   *  pull would knot the two histories together. */
+  async function rebaseSyncCurrentBranch() {
+    const r = gitWriteRoot();
+    if (!r) return;
+    if (!(await pullIn(r, guardAsk, true))) return;
+    await guardedPush(r);
+  }
+
+  /** Merge the base the branch is measured against: the same ref its counts
+   *  were taken from, so the merge is of what the chip said was missing. */
+  function mergeBaseHere() {
+    const r = gitWriteRoot();
+    const base = r ? gitStateFor(r).sync?.base : null;
+    if (!r || !base) return;
+    void rewriteHere("Merge", (root) => merge(root, baseRef(base)), false, r);
   }
 
   /** A branch to act on, chosen from this repo's own list. */
@@ -2483,10 +2511,7 @@ export default function Editor(props: {
     r = gitWriteRoot(),
   ) {
     if (!r) return;
-    const allowed = await mayRewrite(verb, r, {
-      confirm: askConfirm,
-      refuse: (reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" }),
-    });
+    const allowed = await mayRewrite(verb, r, guardAsk);
     if (allowed) reportIntegrate(await run(r), verb, quietDone);
   }
 
@@ -2518,10 +2543,7 @@ export default function Editor(props: {
     // The same guard the Changes panel's own Discard consults: this rewrites
     // every changed file in the worktree, so an agent mid-turn here can have
     // its work clobbered.
-    const allowed = await mayRewrite("Discard", r, {
-      confirm: askConfirm,
-      refuse: (reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" }),
-    });
+    const allowed = await mayRewrite("Discard", r, guardAsk);
     if (!allowed) return;
     try {
       await invoke("git_discard_files", { projectPath: r, files });
@@ -2649,13 +2671,19 @@ export default function Editor(props: {
       }),
       onEvent(GIT_PULL, () => {
         const r = gitRoot();
-        if (r) void pullIn(r, false, !!referenceAt(r));
+        if (r) void pullIn(r, guardAsk, false, !!referenceAt(r));
       }),
       onEvent(GIT_PULL_REBASE, () => {
         const r = gitWriteRoot();
-        if (r) void pullIn(r, true);
+        if (r) void pullIn(r, guardAsk, true);
       }),
       onEvent(GIT_SYNC, () => void syncCurrentBranch()),
+      onEvent(GIT_SYNC_REBASE, () => void rebaseSyncCurrentBranch()),
+      onEvent(GIT_RESET_UPSTREAM, () => {
+        const r = gitWriteRoot();
+        if (r) void resetToUpstream(r, guardAsk);
+      }),
+      onEvent(GIT_MERGE_BASE, mergeBaseHere),
       onEvent(GIT_STAGE_ALL, () => {
         const r = gitWriteRoot();
         if (r) void stageAll(r);

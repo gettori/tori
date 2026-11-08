@@ -20,6 +20,7 @@ import { finishedPr } from "../../utils/prRelation";
 import { syncFor } from "../../utils/branchSync";
 import { moveKey } from "../../utils/dragReorder";
 import { pull } from "../../utils/gitActions";
+import type { GuardAsk } from "../../utils/gitGuard";
 import { emitWith, ROOT_MOVED, DRAFT_INTO_NEW, type RootMoved, type DraftIntoNew } from "../../utils/events";
 import { demoteMemberWorktree, removeMemberWorktree } from "../../utils/memberWorktree";
 import { purgeWorkspace } from "../../utils/purgeWorkspace";
@@ -27,6 +28,8 @@ import type { Operation, WorktreeStatus } from "../../utils/worktreeOperation";
 
 export type TopicActionsHost = {
   activeId: () => string | null | undefined;
+  /** The host's confirm and refusal, for the git writes a member's menu runs. */
+  guard: GuardAsk;
   /** `moved` names a member root that changed folder, so the active root can
    *  follow it rather than fall back to the first member. */
   onSelect?: (topic: Topic, moved?: { from: string; to: string }) => void;
@@ -497,7 +500,9 @@ export function createTopicActions(host: TopicActionsHost) {
       // pulled; pulling is the one git write it takes.
       const root = isReference(member) ? memberRoot(member) : null;
       return [
-        ...(root ? [{ label: "Pull", onClick: () => void pull(root, false, true) }, { separator: true as const }] : []),
+        ...(root
+          ? [{ label: "Pull", onClick: () => void pull(root, host.guard, false, true) }, { separator: true as const }]
+          : []),
         // A worktree moved in has no Remove worktree: promoting it back would
         // land on the Topic branch, not the one it came with.
         ...(isReference(member)

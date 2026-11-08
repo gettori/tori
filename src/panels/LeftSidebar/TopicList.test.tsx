@@ -100,6 +100,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       });
     }
     if (cmd === "pick_folder") return Promise.resolve(bridge.picked);
+    if (cmd === "list_sessions") return Promise.resolve([]);
     if (cmd === "delete_topic") {
       const settle = () => (bridge.failDelete ? Promise.reject(new Error("delete refused")) : Promise.resolve(null));
       if (!bridge.holdDelete) return settle();
@@ -218,6 +219,7 @@ function Listed(props: Omit<ComponentProps<typeof TopicList>, "actions"> & HostP
   const [host, rest] = splitProps(props, ["onSelect", "onDeleted", "countRunning", "onExpanded", "onActions"]);
   const actions = createTopicActions({
     activeId: () => rest.activeId,
+    guard: { confirm: async () => false, refuse: () => {} },
     onSelect: (topic, moved) => host.onSelect?.(topic, moved),
     onDeleted: (topic) => host.onDeleted?.(topic),
     countRunning: (path) => host.countRunning?.(path),
