@@ -27,13 +27,17 @@ describe("PlanCard", () => {
   // the list, which is the whole reason the card is pinned above the composer
   // rather than left to scroll away in the transcript.
   it("names the in-flight step in the header", () => {
-    const { container } = render(() => <PlanCard items={plan(["read it", "completed"], ["fix it", "inProgress"])} />);
+    const { container } = render(() => (
+      <PlanCard items={plan(["read it", "completed"], ["fix it", "inProgress"])} defaultOpen />
+    ));
     const head = container.querySelector("[class*='planHead']");
     expect(head?.textContent).toContain("fix it");
   });
 
   it("says nothing about an in-flight step when none is running", () => {
-    const { container } = render(() => <PlanCard items={plan(["read it", "completed"], ["fix it", "completed"])} />);
+    const { container } = render(() => (
+      <PlanCard items={plan(["read it", "completed"], ["fix it", "completed"])} defaultOpen />
+    ));
     const head = container.querySelector("[class*='planHead']");
     expect(head?.textContent).toContain("2/2");
     expect(head?.textContent).not.toContain("fix it");
@@ -52,7 +56,7 @@ describe("PlanCard", () => {
     const state = initialChat(SESSION);
     const after = (list: PlanItem[]) => {
       applyEvent(state, { type: "planUpdate", sessionId: SESSION, turnId: "t1", items: list });
-      return render(() => <PlanCard items={state.plan} />).container;
+      return render(() => <PlanCard items={state.plan} defaultOpen />).container;
     };
 
     expect(render(() => <PlanCard items={state.plan} />).container.textContent).toBe("");
@@ -71,36 +75,35 @@ describe("PlanCard", () => {
     expect(c.querySelector("[class*='planActive']")).toBeNull();
   });
 
-  // Folding it away gives the transcript its space back, and the plan is still
-  // there to be read: a count on the composer's own edge, the list a hover
-  // away, and one click back to the card.
+  // Folded is the default: a count on the composer's own edge, the list a
+  // hover away, and one click to the card, which gives the transcript its
+  // space back for every turn that has a plan.
   describe("folding the card away", () => {
     const items = plan(["read it", "completed"], ["fix it", "inProgress"], ["test it", "pending"]);
 
-    it("opens as the card, which is what it always was", () => {
-      const { container } = render(() => <PlanCard items={items} />);
-      expect(container.querySelector("[class*='planCard']")).toBeTruthy();
-      expect(container.querySelector("[class*='planPill']")).toBeNull();
+    it("opens folded to the tally", () => {
+      const { container, getByRole } = render(() => <PlanCard items={items} />);
+      expect(getByRole("button").textContent).toBe("1/3");
+      expect(container.querySelector("[class*='planCard']")).toBeNull();
     });
 
-    it("collapses to the tally, and the tally opens it again", () => {
+    it("the tally opens the card, and the card's head folds it again", () => {
       const { container, getByRole } = render(() => <PlanCard items={items} />);
-
-      fireEvent.click(container.querySelector("[class*='planHead']")!);
-      const pill = getByRole("button");
-      expect(pill.textContent).toBe("1/3");
       expect(container.querySelector("[class*='planList']")).toBeNull();
 
-      fireEvent.click(pill);
+      fireEvent.click(getByRole("button"));
       expect(container.querySelector("[class*='planCard']")).toBeTruthy();
       expect(container.querySelector("[class*='planList']")).toBeTruthy();
+
+      fireEvent.click(container.querySelector("[class*='planHead']")!);
+      expect(container.querySelector("[class*='planCard']")).toBeNull();
+      expect(getByRole("button").textContent).toBe("1/3");
     });
 
     // The whole list, not a summary of it: the pill is a way to read the plan
     // without unfolding it, so what it carries has to be the plan.
     it("carries the list in its tooltip", () => {
-      const { container, getByRole } = render(() => <PlanCard items={items} />);
-      fireEvent.click(container.querySelector("[class*='planHead']")!);
+      const { getByRole } = render(() => <PlanCard items={items} />);
 
       fireEvent.focus(getByRole("button"));
       const tip = document.querySelector("[role='tooltip']");
@@ -110,8 +113,7 @@ describe("PlanCard", () => {
     });
 
     it("names itself for a reader who cannot see the number", () => {
-      const { container, getByRole } = render(() => <PlanCard items={items} />);
-      fireEvent.click(container.querySelector("[class*='planHead']")!);
+      const { getByRole } = render(() => <PlanCard items={items} />);
       expect(getByRole("button").getAttribute("aria-label")).toBe("Plan: 1/3 done. Show the list.");
     });
   });
@@ -132,7 +134,7 @@ describe("PlanCard", () => {
       turnId: "t1",
       items: plan(["new step", "pending"]),
     });
-    const { container } = render(() => <PlanCard items={state.plan} />);
+    const { container } = render(() => <PlanCard items={state.plan} defaultOpen />);
     expect(container.textContent).toContain("new step");
     expect(container.textContent).not.toContain("old step");
     expect(container.querySelectorAll("li").length).toBe(1);
