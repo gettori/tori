@@ -4512,6 +4512,15 @@ export default function LeftSidebar(props: {
             { label: "Ungroup", onClick: () => writeGroups(p, ungroup(groups(), name)) },
           ]}
           rowProps={dragFor(`group:${name}`, index)}
+          tailProps={drag.rowProps({
+            key: `group:${name}`,
+            section: "main",
+            get index() {
+              return index();
+            },
+            paths: [],
+            zone: "bottom",
+          })}
         >
           <For each={members()}>
             {(u, i) =>
