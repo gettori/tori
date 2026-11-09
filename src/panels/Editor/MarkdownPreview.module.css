@@ -93,13 +93,11 @@
 }
 
 .markdownBody :global(hr) {
-  box-sizing: content-box;
-  height: 0.25em;
+  height: 0;
   margin: calc(24px * var(--ui-scale)) 0;
   padding: 0;
-  overflow: hidden;
-  background: var(--border-strong);
   border: 0;
+  border-top: 1px solid var(--border-default);
 }
 
 .markdownBody :global(code),
