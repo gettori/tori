@@ -10,12 +10,9 @@
 // two buttons that merge is two places a stale verdict can offer it.
 
 import { createEffect, createMemo, For, on, Show } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
 import {
   ArrowLeft,
   Copy,
-  ExternalLink,
-  FileStack,
   GitMerge,
   GitPullRequest,
   GitPullRequestClosed,
@@ -24,13 +21,10 @@ import {
 } from "lucide-solid";
 import { prActivity, prOpened } from "../../../utils/prMeta";
 import { copyText } from "../../../utils/clipboard";
-import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../../utils/events";
-import { parsePrArg, prAllTabId } from "../../../utils/syntheticTabs";
+import { parsePrArg } from "../../../utils/syntheticTabs";
 import { unitStatusForPr } from "../../../utils/forgeStatus";
 import { ensure, prEntry } from "../../../utils/prReviewStore";
 import MarkdownDocument from "../MarkdownDocument";
-import Button from "../../../components/Button/Button";
-import IconButton from "../../../components/IconButton/IconButton";
 import Icon from "../../../components/Icon/Icon";
 import styles from "./PrOverviewView.module.css";
 
@@ -94,32 +88,18 @@ export default function PrOverviewView(props: { workspace: string; arg: string }
       <Show when={pr()} fallback={<div class="tree-empty">No pull request here carries that number.</div>}>
         {(p) => (
           <div class={styles.column}>
-            <div class={styles.head}>
-              <h1 class={styles.title}>
-                {p().title} <span class={styles.number}>#{p().number}</span>
-              </h1>
-              {/* The other way to read the diff: one scrolling tab instead of
-                  a tab per file. Here rather than only in the panel, because
-                  this is the tab a review is started from. */}
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={<Icon icon={FileStack} size={14} />}
-                onClick={() =>
-                  emitWith<OpenInEditor>(OPEN_IN_EDITOR, {
-                    path: prAllTabId(props.workspace, number()),
-                  })
-                }
+            <h1 class={styles.title}>
+              {p().title}{" "}
+              <a
+                class={styles.number}
+                href={p().url}
+                target="_blank"
+                rel="noreferrer"
+                title={`Open pull request ${p().number} on the host`}
               >
-                Review all files
-              </Button>
-              <IconButton
-                size="sm"
-                icon={<Icon icon={ExternalLink} />}
-                tooltip={`Open pull request ${p().number} on github.com`}
-                onClick={() => void invoke("plugin:opener|open_url", { url: p().url }).catch(() => {})}
-              />
-            </div>
+                #{p().number}
+              </a>
+            </h1>
 
             <div class={styles.summary}>
               <span class={styles.state} data-state={state()}>
