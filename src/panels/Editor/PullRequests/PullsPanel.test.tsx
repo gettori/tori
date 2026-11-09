@@ -172,7 +172,7 @@ const {
 } = await import("../../../utils/forgeStatus");
 const { addPending, notePr, prEntry, resetPrReviewStoreForTests, setViewingPr, viewingPr } =
   await import("../../../utils/prReviewStore");
-const { prDiffTabId, prTabId } = await import("../../../utils/syntheticTabs");
+const { prDiffTabId } = await import("../../../utils/syntheticTabs");
 const { onWith, ADD_BRANCH_UNIT, OPEN_IN_EDITOR, SEND_TO_SESSION, SEND_TO_SESSION_RESULT } =
   await import("../../../utils/events");
 const { resetPrListStoreForTests } = await import("../../../utils/prListStore");
@@ -913,11 +913,16 @@ describe("the header and the footer", () => {
     // a plain "1 pending" reads as ready when it is not.
     expect(screen.getByText("1 pending, 1 needs a look")).toBeTruthy();
 
+    // The form lives in the panel's Review tab, so finishing brings that tab
+    // forward from wherever the reader left the panel.
+    fireEvent.click(screen.getByRole("tab", { name: "Checks" }));
     const opened: string[] = [];
     const off = onWith<{ path: string }>(OPEN_IN_EDITOR, (e) => opened.push(e.path));
     fireEvent.click(screen.getByText("Finish review"));
     off();
-    expect(opened).toEqual([prTabId(ROOT, 42)]);
+    expect(opened).toEqual([]);
+    expect(screen.getByRole("tab", { name: "Review" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("button", { name: "Submit review" })).toBeTruthy();
   });
 });
 

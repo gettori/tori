@@ -5,9 +5,9 @@ import type { ForgeAccount, PrFile, PullRequest, StatusReport } from "../../../u
 // The pull request itself, rather than one of its files.
 //
 // What these pin is the split the plan draws: this tab carries the description
-// and the detail read's counts, and it carries no way to land the branch. The
-// merge control is the panel's and only the panel's, because two controls that
-// merge are two places a stale verdict can offer it.
+// and the detail read's counts, and it carries no way to land the branch or
+// submit a review. Both are the panel's and only the panel's, because two
+// controls that act are two places a stale verdict can offer it.
 
 const ROOT = "/root/work/gh";
 const BRANCH = "wave-3";
@@ -67,8 +67,9 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 }));
 
 const { default: PrOverviewView } = await import("./PrOverviewView");
+const { default: ReviewForm } = await import("./ReviewForm");
 const { prTabId, prDiffTabId, parseSyntheticId } = await import("../../../utils/syntheticTabs");
-const { addPending, prEntry, resetPrReviewStoreForTests } = await import("../../../utils/prReviewStore");
+const { addPending, ensure, prEntry, resetPrReviewStoreForTests } = await import("../../../utils/prReviewStore");
 const { onWith, OPEN_IN_EDITOR } = await import("../../../utils/events");
 const {
   noteForgeAccounts,
@@ -162,6 +163,14 @@ function openTab() {
   return render(() => <PrOverviewView workspace={t.workspace} arg={t.arg} />);
 }
 
+/** Mount the form the way the panel's Review tab does, with the pull request
+ *  read the panel would already have asked for. */
+async function openForm() {
+  ensure(ROOT, 42);
+  render(() => <ReviewForm workspace={ROOT} number={42} />);
+  await waitFor(() => expect(prEntry(ROOT, 42).files).toHaveLength(1));
+}
+
 const cmds = (name: string) => bridge.calls.filter((c) => c.cmd === name);
 
 /** A held comment on the one row the fixture patch actually carries, so its
@@ -231,9 +240,19 @@ describe("the pull request overview tab", () => {
       expect(screen.queryByRole("button", { name: label })).toBeNull();
     }
   });
+
+  it("shows the description without the review form, which belongs to the panel", async () => {
+    await signIn();
+    await pollWith();
+    openTab();
+
+    await waitFor(() => expect(screen.getByText("into the stage")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Submit review" })).toBeNull();
+    expect(screen.queryByText("Your review")).toBeNull();
+  });
 });
 
-describe("the review submitted from the overview tab", () => {
+describe("the review form", () => {
   const submit = () => screen.getByRole("button", { name: "Submit review" }) as HTMLButtonElement;
 
   it("opens the file a held comment sits in when its row is jumped to", async () => {
@@ -241,8 +260,7 @@ describe("the review submitted from the overview tab", () => {
     // a line of text away from its rows is a remark about nothing.
     await signIn();
     await pollWith();
-    openTab();
-    await waitFor(() => expect(screen.getByText(/skarif2/)).toBeTruthy());
+    await openForm();
     holdComment();
 
     const opened: string[] = [];
@@ -259,8 +277,7 @@ describe("the review submitted from the overview tab", () => {
     // refused before it is sent rather than after.
     await signIn();
     await pollWith();
-    openTab();
-    await waitFor(() => expect(screen.getByText(/skarif2/)).toBeTruthy());
+    await openForm();
     holdComment("about a line that is gone", 40);
 
     await waitFor(() => expect(submit().disabled).toBe(true));
@@ -272,8 +289,7 @@ describe("the review submitted from the overview tab", () => {
   it("refuses the submit while the head has moved under the diff", async () => {
     await signIn();
     await pollWith();
-    openTab();
-    await waitFor(() => expect(screen.getByText(/skarif2/)).toBeTruthy());
+    await openForm();
     holdComment();
     await waitFor(() => expect(submit().disabled).toBe(false));
 
@@ -286,8 +302,7 @@ describe("the review submitted from the overview tab", () => {
   it("sends the held comments, drops the draft, and re-reads what it changed", async () => {
     await signIn();
     await pollWith();
-    openTab();
-    await waitFor(() => expect(screen.getByText(/skarif2/)).toBeTruthy());
+    await openForm();
     holdComment();
     await waitFor(() => expect(submit().disabled).toBe(false));
 
@@ -325,8 +340,7 @@ describe("the review submitted from the overview tab", () => {
     bridge.submitFails = { kind: "forbidden", message: "you cannot review this pull request" };
     await signIn();
     await pollWith();
-    openTab();
-    await waitFor(() => expect(screen.getByText(/skarif2/)).toBeTruthy());
+    await openForm();
     holdComment();
     await waitFor(() => expect(submit().disabled).toBe(false));
 
@@ -343,8 +357,7 @@ describe("the review submitted from the overview tab", () => {
     // nothing, and a disabled one with no visible reason reads as broken.
     await signIn();
     await pollWith();
-    openTab();
-    await waitFor(() => expect(screen.getByText(/skarif2/)).toBeTruthy());
+    await openForm();
 
     fireEvent.click(screen.getByRole("radio", { name: /Approve/ }));
 
@@ -360,8 +373,7 @@ describe("the review submitted from the overview tab", () => {
     bridge.capabilities = { ...FULL_CAPS, requestChanges: false };
     await signIn();
     await pollWith();
-    openTab();
-    await waitFor(() => expect(screen.getByText(/skarif2/)).toBeTruthy());
+    await openForm();
 
     await waitFor(() =>
       expect((screen.getByRole("radio", { name: /Request changes/ }) as HTMLInputElement).disabled).toBe(true),
