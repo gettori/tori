@@ -17,11 +17,10 @@ import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../../utils/even
 import { parsePrArg, prAllTabId } from "../../../utils/syntheticTabs";
 import { unitStatusForPr } from "../../../utils/forgeStatus";
 import { ensure, prEntry } from "../../../utils/prReviewStore";
-import Markdown from "../../Chat/Markdown";
+import MarkdownDocument from "../MarkdownDocument";
 import Button from "../../../components/Button/Button";
 import IconButton from "../../../components/IconButton/IconButton";
 import Icon from "../../../components/Icon/Icon";
-import ReviewForm from "./ReviewForm";
 import styles from "./PrOverviewView.module.css";
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -127,21 +126,9 @@ export default function PrOverviewView(props: { workspace: string; arg: string }
               fallback={<div class={styles.noBody}>This pull request has no description.</div>}
             >
               {(body) => (
-                <div class={styles.body}>
-                  <Markdown text={body()} cwd={props.workspace} />
-                </div>
+                <MarkdownDocument text={body()} base={props.workspace} source={`${props.workspace}#${number()}`} />
               )}
             </Show>
-
-            <hr class={styles.rule} />
-
-            {/* One mount of the shared form, the other being the panel's.
-                Both read the pull request's own draft, so the verdict picked
-                here is the verdict the panel shows. */}
-            <section class={styles.reviewSection}>
-              <h2 class={styles.sectionTitle}>Your review</h2>
-              <ReviewForm workspace={props.workspace} number={number()} />
-            </section>
           </div>
         )}
       </Show>

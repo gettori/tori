@@ -6,7 +6,7 @@
   flex-direction: column;
   min-height: 0;
   overflow: auto;
-  background: var(--canvas-default);
+  background: var(--canvas-card);
 }
 
 .column {
@@ -14,7 +14,7 @@
   flex-direction: column;
   gap: calc(12px * var(--ui-scale));
   width: 100%;
-  max-width: calc(620px * var(--ui-scale));
+  max-width: calc(860px * var(--ui-scale));
   margin: 0 auto;
   padding: calc(24px * var(--ui-scale));
 }
@@ -91,28 +91,7 @@
   border-top: 1px solid var(--border-default);
 }
 
-.body {
-  color: var(--fg-default);
-  font-size: var(--tori-text-lg);
-  line-height: 1.55;
-}
-
 .noBody {
   color: var(--fg-muted);
   font-size: var(--tori-text-md);
-}
-
-/* The heading and the form under it. The form brings its own layout; this is
-   the gap between the two. */
-.reviewSection {
-  display: flex;
-  flex-direction: column;
-  gap: calc(8px * var(--ui-scale));
-}
-
-.sectionTitle {
-  margin: 0;
-  color: var(--fg-default);
-  font-size: var(--tori-text-lg);
-  font-weight: 600;
 }

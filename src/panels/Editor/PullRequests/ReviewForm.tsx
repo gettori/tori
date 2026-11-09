@@ -1,11 +1,10 @@
 // The form a review goes out from: the comments being held for it, a summary,
 // the verdict, and the one call that sends all three.
 //
-// Mounted twice, in the pull request's own tab and in the panel beside the
-// branch. Neither the summary nor the verdict lives here for that reason: both
-// sit in `prReviewStore` under the pull request, so the two mounts are one form
-// in two places rather than two half-written reviews. What is local is the
-// refusal and the in-flight flag, which are about this mount's own submit.
+// Mounted in the panel beside the branch. Neither the summary nor the verdict
+// lives here: both sit in `prReviewStore` under the pull request. What is local
+// is the refusal and the in-flight flag, which are about this mount's own
+// submit.
 
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";

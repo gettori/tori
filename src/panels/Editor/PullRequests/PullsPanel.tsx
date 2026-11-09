@@ -1039,7 +1039,7 @@ export default function PullsPanel(props: {
                         {pendingLabel()}
                       </span>
                       <span class={styles.spacer} />
-                      <Button variant="primary" size="xs" onClick={() => openInStage(prTabId)}>
+                      <Button variant="primary" size="xs" onClick={() => revealPrTab("review")}>
                         Finish review
                       </Button>
                     </div>
