@@ -21,14 +21,7 @@
   padding: calc(24px * var(--ui-scale));
 }
 
-.head {
-  display: flex;
-  align-items: flex-start;
-  gap: calc(8px * var(--ui-scale));
-}
-
 .title {
-  flex: 1;
   margin: 0;
   color: var(--fg-default);
   font-size: calc(32px * var(--ui-scale));
@@ -40,6 +33,12 @@
 .number {
   color: var(--fg-muted);
   font-weight: 300;
+  text-decoration: none;
+}
+.number:hover,
+.number:focus-visible {
+  color: var(--accent-fg);
+  text-decoration: underline;
 }
 
 /* One line, never wrapped: only the branch names give way, and they shorten
