@@ -16,12 +16,14 @@ export function prOpened(pr: PullRequest): string | null {
   return Number.isNaN(opened) ? null : `opened ${compactAgo(opened / 1000)}`;
 }
 
-/** What the detail read adds: when it last moved, and how big it is. */
-export function prActivity(updatedAt: string | null, counts: PrCounts | null): string[] {
+/** What the detail read adds: when it last moved, and how big it is. `files`
+ *  off for a surface whose own file list already counts them. */
+export function prActivity(updatedAt: string | null, counts: PrCounts | null, files = true): string[] {
   const parts: string[] = [];
   const moved = updatedAt ? Date.parse(updatedAt) : NaN;
   if (!Number.isNaN(moved)) parts.push(`updated ${compactAgo(moved / 1000)}`);
-  if (counts) parts.push(plural(counts.commits, "commit"), plural(counts.changedFiles, "file"));
+  if (counts) parts.push(plural(counts.commits, "commit"));
+  if (counts && files) parts.push(plural(counts.changedFiles, "file"));
   return parts;
 }
 
