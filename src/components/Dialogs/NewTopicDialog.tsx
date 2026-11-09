@@ -389,7 +389,7 @@ export default function NewTopicDialog(props: {
                   <input
                     class={styles.input}
                     aria-labelledby={ISSUE_LABEL}
-                    placeholder="Optional: #204, owner/repo#204 or a link, then Enter"
+                    placeholder="Optional: #42, owner/repo#42 or a link, then Enter"
                     value={issueQuery()}
                     disabled={lookingUp()}
                     onInput={(e) => setIssueQuery(e.currentTarget.value)}
