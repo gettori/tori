@@ -1,0 +1,162 @@
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: calc(12px * var(--ui-scale));
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  color: var(--fg-default);
+  font-size: calc(32px * var(--ui-scale));
+  font-weight: 400;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.number {
+  color: var(--fg-muted);
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+}
+.number:hover,
+.number:focus-visible {
+  color: var(--accent-fg);
+  text-decoration: underline;
+}
+
+/* Wraps when it does not fit, the branches and size moving down as one. */
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--tori-text-lg);
+}
+
+.state {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  padding: calc(5px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  border-radius: var(--tori-radius-pill);
+  color: var(--fg-on-emphasis);
+  font-weight: 500;
+  background: var(--success-emphasis);
+}
+.state[data-state="draft"] {
+  background: var(--fg-subtle);
+}
+.state[data-state="merged"] {
+  background: var(--status-progress);
+}
+.state[data-state="closed"] {
+  background: var(--danger-emphasis);
+}
+
+.byline {
+  flex: none;
+  white-space: nowrap;
+}
+
+.author {
+  color: var(--fg-default);
+  font-weight: 600;
+}
+
+/* The branches and the size, wrapping chip by chip when the line runs out. */
+.where {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+}
+
+.branches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+}
+
+.branch {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  border-radius: 6px;
+  color: var(--accent-fg);
+  background: var(--accent-subtle);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
+}
+
+/* Never shortened: a branch name cut anywhere is a different name. One longer
+   than the whole line breaks after a hyphen, and the chip never narrows below
+   its longest piece. */
+.branchName {
+  overflow-wrap: break-word;
+}
+
+.arrow {
+  flex: none;
+  color: var(--fg-muted);
+}
+
+.copy {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  margin-left: calc(2px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale));
+  border: none;
+  border-radius: var(--tori-radius-sm);
+  color: var(--accent-fg);
+  background: none;
+  cursor: pointer;
+}
+.copy:hover,
+.copy:focus-visible {
+  background: var(--neutral-hover);
+}
+
+.diffstat {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  font-weight: 600;
+}
+.added {
+  color: var(--diff-added);
+}
+.removed {
+  color: var(--diff-deleted);
+}
+
+/* The panel's 320px: the same header at sidebar size, with the branches
+   wrapped onto a line of their own instead of squeezed to nothing. */
+.header[data-compact] {
+  gap: calc(8px * var(--ui-scale));
+}
+.header[data-compact] .title {
+  font-size: var(--tori-text-xl);
+  font-weight: 600;
+  line-height: 1.35;
+}
+.header[data-compact] .number {
+  font-weight: 400;
+}
+.header[data-compact] .summary {
+  font-size: var(--tori-text-md);
+}
+.header[data-compact] .state {
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  font-size: var(--tori-text-sm);
+}
+.header[data-compact] .where {
+  flex: 1 1 100%;
+}

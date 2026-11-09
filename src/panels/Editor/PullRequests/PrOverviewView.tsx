@@ -9,50 +9,16 @@
 // **No merge control.** Landing a branch is the panel's, and only the panel's:
 // two buttons that merge is two places a stale verdict can offer it.
 
-import { createEffect, createMemo, For, on, Show } from "solid-js";
-import {
-  ArrowLeft,
-  Copy,
-  GitMerge,
-  GitPullRequest,
-  GitPullRequestClosed,
-  GitPullRequestDraft,
-  type LucideIcon,
-} from "lucide-solid";
-import { prActivity, prOpened } from "../../../utils/prMeta";
-import { copyText } from "../../../utils/clipboard";
+import { createEffect, createMemo, on, Show } from "solid-js";
+import { prActivity } from "../../../utils/prMeta";
 import { parsePrArg } from "../../../utils/syntheticTabs";
 import { unitStatusForPr } from "../../../utils/forgeStatus";
 import { ensure, prEntry } from "../../../utils/prReviewStore";
 import MarkdownDocument from "../MarkdownDocument";
-import Icon from "../../../components/Icon/Icon";
+import PrHeader from "./PrHeader";
 import styles from "./PrOverviewView.module.css";
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
-
-type StateKey = "open" | "draft" | "merged" | "closed";
-
-const STATE: Record<StateKey, { label: string; icon: LucideIcon }> = {
-  open: { label: "Open", icon: GitPullRequest },
-  draft: { label: "Draft", icon: GitPullRequestDraft },
-  merged: { label: "Merged", icon: GitMerge },
-  closed: { label: "Closed", icon: GitPullRequestClosed },
-};
-
-type BlockKind = "added" | "removed" | "neutral";
-
-/** The host's five-square size bar: each side gets its share rounded down, and
- *  what rounding leaves over stays grey. */
-function diffBlocks(additions: number, deletions: number): BlockKind[] {
-  const total = additions + deletions;
-  const added = total ? Math.floor((5 * additions) / total) : 0;
-  const removed = total ? Math.floor((5 * deletions) / total) : 0;
-  return [
-    ...Array<BlockKind>(added).fill("added"),
-    ...Array<BlockKind>(removed).fill("removed"),
-    ...Array<BlockKind>(5 - added - removed).fill("neutral"),
-  ];
-}
 
 export default function PrOverviewView(props: { workspace: string; arg: string }) {
   const number = createMemo(() => parsePrArg(props.arg));
@@ -69,12 +35,6 @@ export default function PrOverviewView(props: { workspace: string; arg: string }
 
   const activity = createMemo(() => prActivity(entry().summary?.updatedAt ?? null, counts()));
   const reviews = () => counts()?.reviews ?? null;
-  const state = createMemo((): StateKey => {
-    const p = pr();
-    if (!p) return "open";
-    return p.state === "open" && p.isDraft ? "draft" : p.state;
-  });
-
   createEffect(
     on([() => props.workspace, number], ([root, n]) => {
       // Idempotent per pull request, so coming back to one already read costs
@@ -88,64 +48,7 @@ export default function PrOverviewView(props: { workspace: string; arg: string }
       <Show when={pr()} fallback={<div class="tree-empty">No pull request here carries that number.</div>}>
         {(p) => (
           <div class={styles.column}>
-            <h1 class={styles.title}>
-              {p().title}{" "}
-              <a
-                class={styles.number}
-                href={p().url}
-                target="_blank"
-                rel="noreferrer"
-                title={`Open pull request ${p().number} on the host`}
-              >
-                #{p().number}
-              </a>
-            </h1>
-
-            <div class={styles.summary}>
-              <span class={styles.state} data-state={state()}>
-                <Icon icon={STATE[state()].icon} size={14} aria-hidden="true" />
-                {STATE[state()].label}
-              </span>
-              <span class={styles.byline}>
-                <strong class={styles.author}>{p().author}</strong>
-                <Show when={prOpened(p())}>{(o) => <> {o()}</>}</Show>
-              </span>
-              <span class={styles.where}>
-                <span class={styles.branches}>
-                  <span class={styles.branch} title={p().baseRef}>
-                    <span class={styles.branchName}>{p().baseRef}</span>
-                  </span>
-                  <Icon icon={ArrowLeft} size={14} class={styles.arrow} aria-label="from" />
-                  <span class={styles.branch} title={p().headRef}>
-                    <span class={styles.branchName}>{p().headRef}</span>
-                    <button
-                      type="button"
-                      class={styles.copy}
-                      aria-label="Copy the branch name"
-                      title="Copy the branch name"
-                      onClick={() => void copyText(p().headRef)}
-                    >
-                      <Icon icon={Copy} size={12} aria-hidden="true" />
-                    </button>
-                  </span>
-                </span>
-                {/* Absent until the detail read lands rather than zeroed: "+0 -0"
-                    is a size, and it would be the wrong one. */}
-                <Show when={counts()}>
-                  {(c) => (
-                    <span class={styles.diffstat}>
-                      <span class={styles.added}>+{c().additions}</span>
-                      <span class={styles.removed}>-{c().deletions}</span>
-                      <span class={styles.blocks} aria-hidden="true">
-                        <For each={diffBlocks(c().additions, c().deletions)}>
-                          {(kind) => <span class={styles.block} data-kind={kind} />}
-                        </For>
-                      </span>
-                    </span>
-                  )}
-                </Show>
-              </span>
-            </div>
+            <PrHeader pr={p()} counts={counts()} />
 
             <Show when={activity().length || reviews()}>
               <div class={styles.meta}>

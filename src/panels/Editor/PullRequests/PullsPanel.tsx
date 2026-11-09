@@ -67,7 +67,7 @@ import { createPrFlow } from "../../../utils/prCreateFlow";
 import { stepKeys } from "../../../utils/keyNav";
 import { fileRowName } from "../../../utils/prFiles";
 import { baseName, filesUnder, folderTree, type FolderNode } from "../../../utils/pathTree";
-import { prMetaParts } from "../../../utils/prMeta";
+import { prActivity } from "../../../utils/prMeta";
 import { originHost } from "../../../utils/prUrl";
 import { mergeGate } from "../../../utils/mergeGate";
 import { pullsPanelState, type DirectRead } from "../../../utils/pullsPanelState";
@@ -112,7 +112,6 @@ import MergeBar from "./MergeBar";
 import { CreatePrFlowDialog } from "../../../components/Dialogs/CreatePrDialog";
 import Button from "../../../components/Button/Button";
 import IconButton from "../../../components/IconButton/IconButton";
-import Tooltip from "../../../components/Tooltip/Tooltip";
 import SpendFigure from "../../../components/SpendFigure/SpendFigure";
 import Icon from "../../../components/Icon/Icon";
 import Chevron from "../../../components/Chevron/Chevron";
@@ -120,6 +119,8 @@ import Checkbox from "../../../components/Checkbox/Checkbox";
 import FileIcon from "../../../seti/FileIcon";
 import Resizer from "../../../components/Resizer/Resizer";
 import { chromeScale } from "../../Settings/settingsStore";
+import DiffBlocks from "./DiffBlocks";
+import PrHeader from "./PrHeader";
 import ReviewForm from "./ReviewForm";
 import styles from "./PullsPanel.module.css";
 
@@ -860,35 +861,9 @@ export default function PullsPanel(props: {
                 <div class={styles.body}>
                   {/* Block 1: which pull request this is. */}
                   <div class={styles.identity}>
-                    <div class={styles.identityTop}>
-                      <span class={styles.pill} data-pr-state={s().pr.isDraft ? "draft" : s().pr.state}>
-                        {s().pr.isDraft ? "draft" : s().pr.state}
-                      </span>
-                      {/* One line, with the rest of it behind the pointer. Tori's
-                          own tooltip rather than the native `title`, which the
-                          webview does not draw: a truncated label whose full text
-                          nothing shows is a truncated label. */}
-                      <Tooltip<HTMLSpanElement> as="span" class={styles.subject} label={s().pr.title}>
-                        {s().pr.title}
-                      </Tooltip>
-                      {/* The number is the way out to github.com, rather than an
-                          icon beside it saying the same thing. An anchor and not a
-                          button, so the middle click and the Cmd+click that every
-                          other link in the app answers work here too; its own name
-                          is spelled out, since the number alone tells a screen
-                          reader nothing about where it goes. */}
-                      <a
-                        class={styles.number}
-                        href={s().pr.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        aria-label={`Open pull request ${s().pr.number} on github.com`}
-                      >
-                        #{s().pr.number}
-                      </a>
-                    </div>
+                    <PrHeader pr={s().pr} counts={totals()} compact />
                     <div class={styles.meta}>
-                      {prMetaParts(s().pr, summary()?.updatedAt ?? null, totals()).join(", ")}
+                      {prActivity(summary()?.updatedAt ?? null, totals(), false).join(", ")}
                       <SpendFigure
                         usage={
                           props.root && showSpend()
@@ -896,25 +871,8 @@ export default function PullsPanel(props: {
                             : null
                         }
                         what="this pull request"
-                        before=", "
+                        before={prActivity(summary()?.updatedAt ?? null, totals(), false).length ? ", " : ""}
                       />
-                    </div>
-                    <div class={styles.branches}>
-                      {/* The head loses its *start* when it does not fit: a long
-                          branch name is prefixed with the part every branch
-                          shares. The `bdi` is what keeps the name itself in the
-                          order it was typed: the right-to-left box that moves
-                          the ellipsis to the front also reorders a name whose
-                          first run is a number, so `2427-message-thread` reads
-                          as `message-thread-2427`. Isolated, the box truncates
-                          from the start and the text inside it does not move. */}
-                      <span class={styles.headRef} title={s().pr.headRef}>
-                        <bdi>{s().pr.headRef}</bdi>
-                      </span>
-                      <span class={styles.into} aria-hidden="true">
-                        -&gt;
-                      </span>
-                      <span class={styles.baseRef}>{s().pr.baseRef}</span>
                     </div>
                   </div>
 
@@ -1006,6 +964,7 @@ export default function PullsPanel(props: {
                         <span class={styles.counts}>
                           <span class={styles.added}>+{n().additions}</span>
                           <span class={styles.removed}>-{n().deletions}</span>
+                          <DiffBlocks additions={n().additions} deletions={n().deletions} />
                         </span>
                       )}
                     </Show>
