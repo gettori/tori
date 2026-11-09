@@ -52,7 +52,10 @@ export default function ReviewForm(props: { workspace: string; number: number })
   const pending = () => entry().pending;
   const staleCount = () => pending().filter((c) => c.anchor !== "ok").length;
   const filesWithPending = () => new Set(pending().map((c) => c.path)).size;
-  const verdict = () => entry().verdict;
+  /// The verdict that goes out. Your own pull request takes a comment review
+  /// only, whatever was picked on someone else's, because the host refuses the
+  /// other two from the author.
+  const verdict = (): ReviewEvent => (selfAuthored() ? "comment" : entry().verdict);
 
   const [submitting, setSubmitting] = createSignal(false);
   const [submitError, setSubmitError] = createSignal<string | null>(null);
@@ -181,20 +184,26 @@ export default function ReviewForm(props: { workspace: string; number: number })
         onInput={(e) => setReviewBody(props.workspace, props.number, e.currentTarget.value)}
       />
 
-      <RadioGroup
-        aria-label="Review verdict"
-        options={VERDICTS.map((v) => ({
-          value: v.value,
-          label: v.label,
-          description: v.description,
-          // Disabled with its reason rather than hidden: a host without a
-          // verdict and a pull request you wrote yourself are two different
-          // noes, and a missing radio says neither.
-          disabled: !supported(v.value),
-        }))}
-        value={verdict()}
-        onChange={(value) => setReviewVerdict(props.workspace, props.number, value as ReviewEvent)}
-      />
+      <Show
+        when={!selfAuthored()}
+        fallback={
+          <p class={styles.quiet}>Your own pull request, so this goes out as a comment. Only others can approve it.</p>
+        }
+      >
+        <RadioGroup
+          aria-label="Review verdict"
+          options={VERDICTS.map((v) => ({
+            value: v.value,
+            label: v.label,
+            description: v.description,
+            // Disabled rather than hidden: a missing radio does not say the
+            // host lacks it.
+            disabled: !supported(v.value),
+          }))}
+          value={verdict()}
+          onChange={(value) => setReviewVerdict(props.workspace, props.number, value as ReviewEvent)}
+        />
+      </Show>
 
       <div class={styles.submit}>
         <Button
@@ -204,7 +213,7 @@ export default function ReviewForm(props: { workspace: string; number: number })
           tooltip={blocked() ?? undefined}
           onClick={() => void submitReview()}
         >
-          Submit review
+          {selfAuthored() ? "Comment" : "Submit review"}
         </Button>
         <Show when={pending().length}>
           <span class={styles.hint}>Posts all {pending().length} at once</span>
