@@ -112,69 +112,10 @@
 .identity {
   display: flex;
   flex-direction: column;
-  gap: calc(4px * var(--ui-scale));
+  gap: calc(8px * var(--ui-scale));
   padding: calc(12px * var(--ui-scale));
   border-bottom: 1px solid var(--border-default);
   min-width: 0;
-}
-
-.identityTop {
-  display: flex;
-  align-items: center;
-  gap: calc(6px * var(--ui-scale));
-  min-width: 0;
-}
-
-.pill {
-  flex: none;
-  padding: calc(1px * var(--ui-scale)) calc(6px * var(--ui-scale));
-  border-radius: 999px;
-  border: 1px solid currentColor;
-  text-transform: lowercase;
-  font-size: var(--tori-text-sm);
-}
-.pill[data-pr-state="open"] {
-  color: var(--success-fg);
-}
-.pill[data-pr-state="draft"] {
-  color: var(--fg-muted);
-}
-.pill[data-pr-state="merged"] {
-  color: var(--status-progress);
-}
-.pill[data-pr-state="closed"] {
-  color: var(--danger-fg);
-}
-
-/* The way out to github.com, and the only one on this block now that the icon
-   beside it is gone. Quiet at rest so it reads as the pull request's number,
-   and a link under the pointer so it also reads as the way out. */
-.number {
-  flex: none;
-  color: var(--fg-muted);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--tori-text-lg);
-  text-decoration: none;
-}
-.number:hover,
-.number:focus-visible {
-  color: var(--accent-fg);
-  text-decoration: underline;
-}
-
-/* One line, always, sharing it with the state and the number however narrow
-   the pane gets. A zero basis rather than `auto`: the flex base of `auto` is the
-   title's own full width, which is what pushes the number off the row. The rest
-   of a long title is behind the pointer. */
-.subject {
-  flex: 1 1 0;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--fg-default);
-  font-weight: 600;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* The same line the pull request's own tab draws, at the same size: two
@@ -182,43 +123,6 @@
 .meta {
   color: var(--fg-muted);
   font-size: var(--tori-text-md);
-}
-
-/* Both refs as the pull request's own tab draws them: monospace, muted, the
-   head and the base the same weight. What the panel keeps for itself is the
-   truncation, since this row has 320px and that one has a column. */
-.branches {
-  display: flex;
-  align-items: baseline;
-  gap: calc(4px * var(--ui-scale));
-  min-width: 0;
-  color: var(--fg-muted);
-  font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--tori-text-xs);
-}
-
-/* The head loses its *start* when it does not fit. Long branch names share a
-   prefix (`feature/`, `skarif2/`), so cutting the end is cutting the half that
-   identifies it. */
-.headRef {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  direction: rtl;
-  text-align: left;
-}
-
-.into {
-  flex: none;
-  color: var(--fg-subtle);
-}
-
-/* The base never truncates: it is short, and it is what the head is being
-   proposed into. */
-.baseRef {
-  flex: none;
 }
 
 /* --- block 2: the three verdicts ----------------------------------------- */
@@ -516,6 +420,7 @@ button.verdictRow:not(:disabled):hover {
 .counts {
   flex: none;
   display: flex;
+  align-items: center;
   gap: calc(4px * var(--ui-scale));
   font-variant-numeric: tabular-nums;
   font-size: var(--tori-text-md);
