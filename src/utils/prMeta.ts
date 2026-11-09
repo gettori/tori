@@ -10,6 +10,21 @@ import type { PrCounts, PullRequest } from "./forgeTypes";
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
+/** "opened 3d ago", or null when the host sent a date that does not parse. */
+export function prOpened(pr: PullRequest): string | null {
+  const opened = Date.parse(pr.createdAt);
+  return Number.isNaN(opened) ? null : `opened ${compactAgo(opened / 1000)}`;
+}
+
+/** What the detail read adds: when it last moved, and how big it is. */
+export function prActivity(updatedAt: string | null, counts: PrCounts | null): string[] {
+  const parts: string[] = [];
+  const moved = updatedAt ? Date.parse(updatedAt) : NaN;
+  if (!Number.isNaN(moved)) parts.push(`updated ${compactAgo(moved / 1000)}`);
+  if (counts) parts.push(plural(counts.commits, "commit"), plural(counts.changedFiles, "file"));
+  return parts;
+}
+
 /**
  * The parts, for a caller to join.
  *
@@ -21,11 +36,6 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
  * needs to wait for.
  */
 export function prMetaParts(pr: PullRequest, updatedAt: string | null, counts: PrCounts | null): string[] {
-  const parts = [pr.author];
-  const opened = Date.parse(pr.createdAt);
-  if (!Number.isNaN(opened)) parts.push(`opened ${compactAgo(opened / 1000)}`);
-  const moved = updatedAt ? Date.parse(updatedAt) : NaN;
-  if (!Number.isNaN(moved)) parts.push(`updated ${compactAgo(moved / 1000)}`);
-  if (counts) parts.push(plural(counts.commits, "commit"), plural(counts.changedFiles, "file"));
-  return parts;
+  const opened = prOpened(pr);
+  return [pr.author, ...(opened ? [opened] : []), ...prActivity(updatedAt, counts)];
 }
