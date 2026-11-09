@@ -89,16 +89,6 @@ fn issue_at(repo: &RepoRef, key: &str) -> Result<(RepoRef, u64), ForgeError> {
     Ok((repo.clone(), number))
 }
 
-// An issue from another repo leads with that repo's name, so it never shares
-// a prefix with the project's own issue of the same number.
-fn branch_prefix(key: &str, at: &RepoRef, number: u64) -> String {
-    if key.contains('#') {
-        format!("{}-{number}", at.repo)
-    } else {
-        number.to_string()
-    }
-}
-
 fn full_name(repo: &RepoRef) -> String {
     format!("{}/{}", repo.owner, repo.repo)
 }
@@ -235,7 +225,7 @@ impl IssueSource for GitHubForge {
         let key = canonical_key(&format!("{}#{number}", full_name(&at)), &full_name(repo));
         Ok(Issue {
             display: display_of(&key),
-            suggested_branch: suggested_branch(&branch_prefix(&key, &at, number), &title),
+            suggested_branch: suggested_branch(number, &title),
             key,
             title,
             body: text("body"),
@@ -567,7 +557,7 @@ mod tests {
             r#"{"data":{"repository":{"issueOrPullRequest":{"__typename":"Issue","number":202,"title":"GitHub Issues as a source","body":"Do it.","url":"u"}}}}"#,
         )]);
         let issue = f.get(&repo(), "#202").unwrap();
-        assert_eq!(issue.suggested_branch, "202-github-issues-as-a-source");
+        assert_eq!(issue.suggested_branch, "github-issues-as-a-source");
         assert_eq!((issue.key.as_str(), issue.body.as_str()), ("202", "Do it."));
     }
 
@@ -748,7 +738,7 @@ mod tests {
                 issue.display.as_str(),
                 issue.suggested_branch.as_str()
             ),
-            ("gettori/tickets#31", "gettori/tickets#31", "tickets-31-dogfood")
+            ("gettori/tickets#31", "gettori/tickets#31", "dogfood")
         );
     }
 

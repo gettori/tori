@@ -18,7 +18,7 @@ import type { Rollup } from "../../utils/sessionStatus";
 import StatusBubble from "./StatusBubble";
 import BranchLine from "./BranchLine";
 import type { UnitStatus } from "../../utils/forgeTypes";
-import { AliasBadge, BranchRow, IconChevron } from "./SidebarRows";
+import { AliasBadge, BranchRow, IconChevron, IssueMark } from "./SidebarRows";
 import rows from "./SidebarRows.module.css";
 import styles from "./TopicItem.module.css";
 
@@ -148,9 +148,15 @@ export default function TopicItem(props: {
             <IconChevron open={open()} />
           </button>
         </span>
-        <span class={rows.label} data-name title={props.topic.branch}>
+        <span
+          class={rows.label}
+          classList={{ [rows.labelHugged]: !!props.topic.issue }}
+          data-name
+          title={props.topic.branch}
+        >
           {props.topic.name}
         </span>
+        <Show when={props.topic.issue}>{(issue) => <IssueMark issue={issue()} />}</Show>
         <span class={rows.rowEnd}>
           <Show when={!open()}>
             <span class={styles.chips}>
