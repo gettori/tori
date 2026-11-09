@@ -1,3 +1,5 @@
+import type { Phase } from "./chatstatus";
+
 export type Rect = { x: number; y: number; width: number; height: number };
 
 export type MatchedRule = { selector: string; declarations: string; location: string };
@@ -66,6 +68,10 @@ export type Setup = {
 
 export type Chat = { id: string; title: string; agent: string };
 
+export type ChatRow = Chat & { phase: Phase };
+
+export type ChatLine = { id: string; line: string | null };
+
 export type Shot = { images: string[]; why?: string };
 
 export type Sent = { title: string; logged: boolean } | { error: string };
@@ -90,7 +96,8 @@ export type BatchRequest =
   | { type: "batch.clear" }
   | { type: "shot"; rect: Rect; viewport: number }
   | { type: "markdown"; log: LogEntry[] }
-  | { type: "chats" }
+  | { type: "chat.status" }
+  | { type: "chat.line"; id: string }
   | { type: "send"; chat: Chat | null; log: LogEntry[] }
   | { type: "reveal"; id: string }
   | { type: "options" }
