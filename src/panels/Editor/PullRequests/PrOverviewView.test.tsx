@@ -43,6 +43,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       return bridge.submitFails ? Promise.reject(bridge.submitFails) : Promise.resolve(null);
     if (cmd === "forge_review_threads") return Promise.resolve({ items: [], truncated: false });
     if (cmd === "forge_pr_summary") return Promise.resolve(bridge.summary);
+    if (cmd === "forge_viewer") return Promise.resolve("skarif2");
     if (cmd === "forge_unit_statuses") {
       return Promise.resolve(bridge.report ?? { statuses: [], uncovered: 0, rate: RATE });
     }
@@ -69,7 +70,8 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 const { default: PrOverviewView } = await import("./PrOverviewView");
 const { default: ReviewForm } = await import("./ReviewForm");
 const { prTabId, prDiffTabId, parseSyntheticId } = await import("../../../utils/syntheticTabs");
-const { addPending, ensure, prEntry, resetPrReviewStoreForTests } = await import("../../../utils/prReviewStore");
+const { addPending, ensure, prEntry, resetPrReviewStoreForTests, setReviewVerdict } =
+  await import("../../../utils/prReviewStore");
 const { onWith, OPEN_IN_EDITOR } = await import("../../../utils/events");
 const {
   noteForgeAccounts,
@@ -253,7 +255,9 @@ describe("the pull request overview tab", () => {
 });
 
 describe("the review form", () => {
-  const submit = () => screen.getByRole("button", { name: "Submit review" }) as HTMLButtonElement;
+  // "Comment" on your own pull request, which is what the fixture's is once the
+  // viewer is known, and "Submit review" until then.
+  const submit = () => screen.getByRole("button", { name: /^(Comment|Submit review)$/ }) as HTMLButtonElement;
 
   it("opens the file a held comment sits in when its row is jumped to", async () => {
     // The jump is the whole reason the list is here: a pending comment read as
@@ -350,21 +354,25 @@ describe("the review form", () => {
     expect(prEntry(ROOT, 42).pending).toHaveLength(1);
   });
 
-  it("refuses a verdict on your own pull request, and says why on screen", async () => {
-    // GitHub answers 422 for approve and request-changes from the author, and
-    // on a single-owner repo that is every pull request. The verdict stays
-    // pickable and the submit is what refuses: a control that vanishes says
-    // nothing, and a disabled one with no visible reason reads as broken.
+  it("offers no verdict on your own pull request, and sends it as a comment", async () => {
+    // The host refuses approve and request-changes from the author, and on a
+    // single-owner repo that is every pull request. A comment review is the
+    // one it takes, so that is all the form offers, and it says why.
     await signIn();
     await pollWith();
     await openForm();
+    holdComment();
 
-    fireEvent.click(screen.getByRole("radio", { name: /Approve/ }));
+    await waitFor(() => expect(screen.queryByRole("radio")).toBeNull());
+    expect(screen.getByText(/Your own pull request/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Comment" })).toBeTruthy();
 
-    await waitFor(() => expect(submit().disabled).toBe(true));
-    expect(document.querySelector("[data-submit-reason]")!.textContent).toContain(
-      "does not accept this on your own pull request",
-    );
+    // Even with a verdict left picked from before, what goes out is a comment.
+    setReviewVerdict(ROOT, 42, "approve");
+    await waitFor(() => expect(submit().disabled).toBe(false));
+    fireEvent.click(submit());
+    await waitFor(() => expect(cmds("forge_submit_review")).toHaveLength(1));
+    expect(cmds("forge_submit_review")[0].args.event).toBe("comment");
   });
 
   it("renders a verdict the host does not have inert rather than absent", async () => {
@@ -372,7 +380,7 @@ describe("the review form", () => {
     // one says neither.
     bridge.capabilities = { ...FULL_CAPS, requestChanges: false };
     await signIn();
-    await pollWith();
+    await pollWith({ author: "someone-else" });
     await openForm();
 
     await waitFor(() =>
