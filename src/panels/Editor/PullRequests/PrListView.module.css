@@ -6,7 +6,7 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
-  background: var(--canvas-default);
+  background: var(--canvas-card);
 }
 
 .column {

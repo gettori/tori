@@ -5,76 +5,219 @@
 .preview {
   flex: 1;
   min-height: 0;
-  background: var(--canvas-default);
+  background: var(--canvas-card);
   padding: calc(16px * var(--ui-scale)) calc(24px * var(--ui-scale));
 }
 
+/* GitHub's rendered markdown, its sizes and spacing rule for rule, so a README
+   or a PR description reads the way it does on the forge. Colours stay ours,
+   so the document follows the theme. */
 .markdownBody {
   max-width: calc(860px * var(--ui-scale));
   margin: 0 auto;
   color: var(--fg-default);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
   font-size: var(--tori-text-2xl);
-  line-height: 1.6;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+}
+
+/* The prose carrier is `display: contents`, so the document's first and last
+   blocks can sit one level down. */
+.markdownBody > :global(*:first-child),
+.markdownBody > .prose:first-child > :global(*:first-child) {
+  margin-top: 0;
+}
+.markdownBody > :global(*:last-child),
+.markdownBody > .prose:last-child > :global(*:last-child) {
+  margin-bottom: 0;
+}
+
+.markdownBody :global(p),
+.markdownBody :global(blockquote),
+.markdownBody :global(ul),
+.markdownBody :global(ol),
+.markdownBody :global(dl),
+.markdownBody :global(table),
+.markdownBody :global(pre),
+.markdownBody :global(details),
+.codeBlock {
+  margin-top: 0;
+  margin-bottom: 1em;
 }
 
 .markdownBody :global(h1),
 .markdownBody :global(h2),
 .markdownBody :global(h3),
-.markdownBody :global(h4) {
+.markdownBody :global(h4),
+.markdownBody :global(h5),
+.markdownBody :global(h6) {
+  margin-top: calc(24px * var(--ui-scale));
+  margin-bottom: calc(16px * var(--ui-scale));
   color: var(--fg-default);
   font-weight: 600;
-  margin: 1.2em 0 0.5em;
+  line-height: 1.25;
 }
 .markdownBody :global(h1) {
-  border-bottom: 1px solid var(--border-default);
+  font-size: 2em;
   padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--border-default);
 }
-.markdownBody :global(p) {
-  margin: 0.6em 0;
+.markdownBody :global(h2) {
+  font-size: 1.5em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--border-default);
 }
-.markdownBody :global(a) {
-  color: var(--accent-fg);
+.markdownBody :global(h3) {
+  font-size: 1.25em;
 }
-.markdownBody :global(code) {
-  font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: 0.9em;
-  background: var(--neutral-hover);
-  border-radius: var(--tori-radius-sm);
-  padding: 0.1em 0.35em;
+.markdownBody :global(h4) {
+  font-size: 1em;
 }
-.markdownBody :global(pre) {
-  background: var(--neutral-hover);
-  border-radius: var(--tori-radius-md);
-  padding: calc(10px * var(--ui-scale));
-  overflow-x: auto;
+.markdownBody :global(h5) {
+  font-size: 0.875em;
 }
-.markdownBody :global(pre code) {
-  background: none;
-  padding: 0;
-}
-.markdownBody :global(blockquote) {
-  margin: 0.6em 0;
-  padding-left: 1em;
-  border-left: 3px solid var(--border-default);
+.markdownBody :global(h6) {
+  font-size: 0.85em;
   color: var(--fg-muted);
 }
-.markdownBody :global(img) {
-  max-width: 100%;
-  border-radius: var(--tori-radius-sm);
+
+.markdownBody :global(a) {
+  color: var(--accent-fg);
+  text-decoration: underline;
+  text-underline-offset: calc(3px * var(--ui-scale));
 }
+.markdownBody :global(strong),
+.markdownBody :global(b) {
+  font-weight: 600;
+}
+
+.markdownBody :global(hr) {
+  box-sizing: content-box;
+  height: 0.25em;
+  margin: calc(24px * var(--ui-scale)) 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--border-strong);
+  border: 0;
+}
+
+.markdownBody :global(code),
+.markdownBody :global(kbd),
+.markdownBody :global(pre) {
+  font-family: var(--tori-font-mono);
+}
+.markdownBody :global(code) {
+  margin: 0;
+  padding: 0.2em 0.4em;
+  font-size: 85%;
+  white-space: break-spaces;
+  background: var(--neutral-subtle);
+  border-radius: 6px;
+}
+.markdownBody :global(pre) {
+  padding: calc(16px * var(--ui-scale));
+  overflow: auto;
+  font-size: 85%;
+  line-height: 1.45;
+  color: var(--fg-default);
+  background: var(--neutral-subtle);
+  border-radius: 6px;
+  word-wrap: normal;
+}
+/* The fence's margin is on its wrapper, so the copy button's box and the
+   frame's are the same box. */
+.codeBlock > :global(pre) {
+  margin: 0;
+}
+.markdownBody :global(pre code) {
+  display: inline;
+  padding: 0;
+  margin: 0;
+  font-size: 100%;
+  white-space: pre;
+  background: transparent;
+  border: 0;
+}
+.markdownBody :global(kbd) {
+  display: inline-block;
+  padding: calc(4px * var(--ui-scale));
+  font-size: 0.75em;
+  line-height: calc(10px * var(--ui-scale));
+  vertical-align: middle;
+  color: var(--fg-default);
+  background: var(--neutral-subtle);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  box-shadow: inset 0 -1px 0 var(--border-strong);
+}
+
+.markdownBody :global(blockquote) {
+  margin-left: 0;
+  margin-right: 0;
+  padding: 0 1em;
+  color: var(--fg-muted);
+  border-left: 0.25em solid var(--border-strong);
+}
+
+.markdownBody :global(ul),
+.markdownBody :global(ol) {
+  padding-left: 2em;
+}
+.markdownBody :global(ul ul),
+.markdownBody :global(ul ol),
+.markdownBody :global(ol ol),
+.markdownBody :global(ol ul) {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.markdownBody :global(li + li) {
+  margin-top: 0.25em;
+}
+.markdownBody :global(li > p) {
+  margin-top: calc(16px * var(--ui-scale));
+}
+/* `marked` draws a task item as a bare checkbox in the item, with no class to
+   hang GitHub's `task-list-item` rules on. */
+.markdownBody :global(li:has(> input[type="checkbox"])) {
+  list-style-type: none;
+}
+.markdownBody :global(li > input[type="checkbox"]) {
+  margin: 0 0.2em 0.25em -1.4em;
+  vertical-align: middle;
+}
+
 .markdownBody :global(table) {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow: auto;
+  border-spacing: 0;
   border-collapse: collapse;
-  margin: 0.6em 0;
+  font-variant: tabular-nums;
+}
+.markdownBody :global(th) {
+  font-weight: 600;
 }
 .markdownBody :global(th),
 .markdownBody :global(td) {
-  border: 1px solid var(--border-default);
-  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(13px * var(--ui-scale));
+  border: 1px solid var(--border-strong);
 }
-.markdownBody :global(ul),
-.markdownBody :global(ol) {
-  padding-left: 1.4em;
-  margin: 0.6em 0;
+.markdownBody :global(tr) {
+  border-top: 1px solid var(--border-default);
+}
+.markdownBody :global(tr:nth-child(2n)) {
+  background: var(--neutral-subtle);
+}
+
+.markdownBody :global(img) {
+  max-width: 100%;
+  box-sizing: content-box;
+}
+
+.markdownBody :global(details summary) {
+  cursor: pointer;
 }
 
 /* The carrier for a run of rendered prose. `display: contents` so its blocks lay
@@ -95,7 +238,7 @@
 }
 
 /* A fence, wrapped so the copy button has a box to hug. The <pre> inside keeps
-   the frame `.markdownBody pre` already gives it, so the wrapper is invisible. */
+   the frame `.markdownBody pre` gives it, so the wrapper is invisible. */
 .codeBlock {
   position: relative;
 }
