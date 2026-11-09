@@ -10,6 +10,22 @@ matching section here fails the release rather than publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.1109.0-beta
+
+- Fix the Pull Request pane reloading, and the app stalling, while an agent edits files in the worktree, and reloading on every scheduled fetch even on a branch with no pull request
+- Fix the Graph tab re-reading the log on every save instead of on a new commit
+- The "Thinking" and "Reading ..." labels in a chat now pulse instead of sweeping a highlight through the text
+- The plan card is the last thing above the input now, below asks and the lane strip, and opens folded to its count on the input's edge; the list is a hover away and the card one click
+- The plan card no longer says "Not updated this turn" and stops its spinner during a turn that is running tools; it dims only when the agent has stopped
+- Click the sync chip in the title bar for a menu of what you can do from there: **Push**, **Publish**, **Pull**, **Pull (Rebase) and Push** on a diverged branch, **Reset to Upstream** after a force push, **Merge main** when the base moved on and nothing would conflict, and **Continue**, **Skip** or **Abort** for a stopped rebase or merge. **Fetch** and **Open Changes** close the list
+- The sync chip says when a push, pull, fetch, reset or merge is running, and shows **rebase in progress** while one is stopped
+- Pull and Reset to Upstream refuse while an agent is mid-turn in the worktree, and ask when Tori can't tell, like Discard and Rebase
+- A failed Fetch from the Changes menu or the palette now says why, instead of saying **Fetched.**
+- Drag a project up or down in the sidebar to reorder it. Each space keeps its own order, and a new project shows up on top.
+- The drop line while dragging a project or branch is now one thin line between the two rows, and it no longer shows next to the row you are dragging.
+- A branch can be dropped right after a group, even when the group is last in the list.
+- macOS 26.1109.0-beta ships; Android 26.1109.0-beta ships; browser extension 26.1109.0 ships, rolling out on the Chrome Web Store; push relay unchanged at 26.1030.0-beta.
+
 ## 26.1108.0-beta
 
 - Each space has its own **Space settings**, opened from the space menu, with **General**, **Cards**, **PR lanes** and **Branch line** sections. Card colours, PR lanes and the branch line are set per space, and **Reset to defaults** puts a space back on the defaults.
