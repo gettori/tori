@@ -1256,6 +1256,9 @@ pub fn remove_worktree_and_branch(
             "Worktree folder removed, but branch \"{branch}\" was not deleted: {stderr}"
         ));
     }
+    if let Err(e) = crate::issues::store::forget(&repo_path, &branch) {
+        eprintln!("tori: {branch} was deleted, but forgetting its issue failed: {e}");
+    }
     Ok(())
 }
 

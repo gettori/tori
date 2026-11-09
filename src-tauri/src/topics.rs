@@ -130,6 +130,10 @@ pub struct Topic {
     /// folder follows from where the record lives.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub home: Option<String>,
+    /// The issue the Topic was started from. On the record rather than in
+    /// `unit_issues.json`, so deleting the Topic deletes the link with it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issue: Option<crate::issues::store::UnitIssue>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -519,6 +523,13 @@ pub fn rename_topic(store: &Store, topic_id: &str, name: &str) -> Result<(), Str
     }
     store.mutate(|file| {
         topic_mut(file, topic_id)?.name = name.to_string();
+        Ok(())
+    })
+}
+
+pub fn set_issue(store: &Store, topic_id: &str, issue: Option<crate::issues::store::UnitIssue>) -> Result<(), String> {
+    store.mutate(|file| {
+        topic_mut(file, topic_id)?.issue = issue;
         Ok(())
     })
 }
@@ -1064,6 +1075,7 @@ pub fn create_topic_with(
             created_at: crate::owned_state::now_ms(),
             space: space.map(str::to_string),
             home: None,
+            issue: None,
         });
         Ok(())
     })?;
@@ -1294,8 +1306,10 @@ pub mod commands {
         branch: String,
         space: Option<String>,
         members: Vec<NewMember>,
+        issue: Option<crate::issues::store::UnitIssue>,
     ) -> Result<Topic, String> {
-        let call = serde_json::json!({ "name": name, "branch": branch, "space": space, "members": members });
+        let call =
+            serde_json::json!({ "name": name, "branch": branch, "space": space, "members": members, "issue": issue });
         blocking("create_topic", move || {
             crate::rpc::office_call_as("topics.create_topic", call)
         })
@@ -1309,15 +1323,14 @@ pub mod commands {
         branch: String,
         space: Option<String>,
         members: Vec<NewMember>,
+        issue: Option<crate::issues::store::UnitIssue>,
     ) -> Result<Topic, String> {
-        let topic = super::create_topic_with(
-            &Store::default_location(),
-            &name,
-            &branch,
-            space.as_deref(),
-            &members,
-            &step(desk),
-        )?;
+        let store = Store::default_location();
+        let mut topic = super::create_topic_with(&store, &name, &branch, space.as_deref(), &members, &step(desk))?;
+        if issue.is_some() {
+            super::set_issue(&store, &topic.id, issue.clone())?;
+            topic.issue = issue;
+        }
         settle(desk, index, &topic);
         Ok(topic)
     }
@@ -1638,6 +1651,7 @@ pub mod commands {
                 arg(args, "branch")?,
                 arg(args, "space")?,
                 arg(args, "members")?,
+                arg(args, "issue")?,
             )
             .map(|v| serde_json::json!(v)),
             "retry_member" => retry_member_in(desk, index, arg(args, "topic_id")?, arg(args, "repo_path")?)
@@ -1758,6 +1772,7 @@ mod tests {
             created_at: 1,
             space: None,
             home: None,
+            issue: None,
         }
     }
 

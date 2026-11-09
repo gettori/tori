@@ -1362,6 +1362,9 @@ pub fn delete_branch(app: AppHandle, index: State<ProjectIndex>, repo: String, b
     }
     save_attached(&state)?;
     groups::forget_branch_locked(&store, &repo, &branch);
+    if let Err(e) = crate::issues::store::forget(&repo, &branch) {
+        eprintln!("tori: {branch} was deleted, but forgetting its issue failed: {e}");
+    }
     index.evict(&path);
     let _ = app.emit("config://changed", ());
     Ok(())

@@ -310,6 +310,7 @@ import {
 } from "../../utils/worktreeOperation";
 import {
   BranchRow,
+  IssueMark,
   EmptyRow,
   FoldRow,
   GroupHead,
@@ -3489,6 +3490,7 @@ export default function LeftSidebar(props: {
         }}
         onDragStart={(e) => startAbsDrag(e, u.folderPath)}
         rowProps={drag}
+        trail={<Show when={u.issue}>{(issue) => <IssueMark issue={issue()} />}</Show>}
         meta={u.operation || drawnFacts(line()).size > 0 ? <BranchLine {...line()} /> : undefined}
         end={
           <>
@@ -3542,24 +3544,6 @@ export default function LeftSidebar(props: {
                 </Tooltip>
               )}
             </For>
-            <Show when={u.issue}>
-              {(issue) => (
-                <Tooltip
-                  as="button"
-                  type="button"
-                  class={rows.issueChip}
-                  aria-label={`Open issue ${issue().display}`}
-                  label={`${issue().display} ${issue().title}`}
-                  data-issue-chip={issue().key}
-                  onClick={(e: MouseEvent) => {
-                    e.stopPropagation();
-                    void invoke("plugin:opener|open_url", { url: issue().url }).catch(() => {});
-                  }}
-                >
-                  {issue().display}
-                </Tooltip>
-              )}
-            </Show>
             <SyncMarks marks={marks()} label={<TooltipLines lead={storyLead()} rest={storyRest()} />} />
             <For each={topicsAt(u.folderPath)}>
               {(f) => (

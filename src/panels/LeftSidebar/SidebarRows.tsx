@@ -21,6 +21,7 @@ import {
   Plus,
   RefreshCw,
   SquareStack,
+  Ticket,
   TriangleAlert,
   type LucideIcon,
 } from "lucide-solid";
@@ -31,7 +32,32 @@ import { type MenuItem } from "../../components/Menu/rows";
 import Icon from "../../components/Icon/Icon";
 import type { DragRowProps } from "../../utils/dragReorder";
 import { HUE_VARS, LANE_LABEL, type CardHue, type LaneId } from "../../utils/prLanes";
+import { invoke } from "@tauri-apps/api/core";
+import Tooltip from "../../components/Tooltip/Tooltip";
+import TooltipLines from "../../components/Tooltip/TooltipLines";
+import type { UnitIssue } from "../../utils/issues";
 import styles from "./SidebarRows.module.css";
+
+/** The issue a branch or a Topic was started from, worn after its name. Opens
+ *  the issue's page; the row's own click never fires. */
+export function IssueMark(props: { issue: UnitIssue }) {
+  return (
+    <Tooltip
+      as="button"
+      type="button"
+      class={styles.issueChip}
+      aria-label={`Open issue ${props.issue.display}`}
+      label={<TooltipLines lead={[props.issue.display]} rest={[props.issue.title]} />}
+      data-issue-chip={props.issue.key}
+      onClick={(e: MouseEvent) => {
+        e.stopPropagation();
+        void invoke("plugin:opener|open_url", { url: props.issue.url }).catch(() => {});
+      }}
+    >
+      <Icon icon={Ticket} />
+    </Tooltip>
+  );
+}
 
 /** The mark on a project tile that says the folder was attached from
  *  elsewhere, worn wherever the project is drawn. */
@@ -168,6 +194,9 @@ export function BranchRow(props: {
   /** A mark between the glyph and the name, e.g. the autopilot's wheel on a
    *  worktree it started. */
   lead?: JSX.Element;
+  /** A mark right after the name, e.g. the issue a worktree was started from.
+   *  It stays visible when the name truncates. */
+  trail?: JSX.Element;
   end?: JSX.Element;
   /** A second line under the name, for a branch whose pull request has more to
    *  say than the end cluster has width for (`BranchLine`). Absent leaves the row
@@ -188,7 +217,10 @@ export function BranchRow(props: {
   const name = () => (
     <>
       {props.lead}
-      <span class={styles.label}>{props.label}</span>
+      <span class={styles.label} classList={{ [styles.labelHugged]: props.trail != null }}>
+        {props.label}
+      </span>
+      {props.trail}
     </>
   );
   const end = () => <span class={styles.rowEnd}>{props.end}</span>;

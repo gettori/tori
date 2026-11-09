@@ -6,8 +6,9 @@
 //! reason: writing the watched `tori.toml` would loop the config watcher.
 //!
 //! A record is written only once its branch exists locally, so no load can see
-//! a record without its unit. It is pruned only when its branch is gone both
-//! locally and on `origin`, and only on a write: a load never writes.
+//! a record without its unit. It goes when Tori deletes its branch, and
+//! otherwise is pruned on the next write once its branch is gone both locally
+//! and on `origin`: a load never writes.
 
 use crate::config::BranchUnit;
 use serde::{Deserialize, Serialize};
@@ -77,6 +78,18 @@ impl IssueStore {
         entries.retain(|b, _| b == branch || live(b));
         entries.insert(branch.to_string(), issue);
     }
+
+    fn forget(&mut self, repo: &str, branch: &str) -> bool {
+        let key = norm(repo);
+        let Some(entries) = self.0.get_mut(&key) else {
+            return false;
+        };
+        let had = entries.remove(branch).is_some();
+        if entries.is_empty() {
+            self.0.remove(&key);
+        }
+        had
+    }
 }
 
 /// Puts each unit's record on it. Units with none are left as they were.
@@ -115,6 +128,22 @@ fn record_in(file: &Path, repo: &str, branch: &str, issue: UnitIssue) -> Result<
         has_ref(repo, &format!("refs/heads/{b}")) || has_ref(repo, &format!("refs/remotes/origin/{b}"))
     });
     store.save_to(file)
+}
+
+/// Drops the record of `branch`, which Tori just deleted. A new branch given
+/// the same name later is not the one the issue was about.
+pub fn forget(repo: &str, branch: &str) -> Result<(), String> {
+    forget_in(&store_path(), repo, branch)
+}
+
+fn forget_in(file: &Path, repo: &str, branch: &str) -> Result<(), String> {
+    let lock = crate::exec::named_lock("unit_issues");
+    let _held = lock.lock().unwrap_or_else(|e| e.into_inner());
+    let mut store = IssueStore::load_from(file);
+    if store.forget(repo, branch) {
+        store.save_to(file)?;
+    }
+    Ok(())
 }
 
 pub(crate) fn rekey(old: &str, new: &str) -> Result<(), String> {
@@ -228,6 +257,23 @@ mod tests {
         store.put("/r", "2-b", issue("2"), |_| false);
         assert_eq!(store.for_repo("/r").unwrap().keys().collect::<Vec<_>>(), vec!["2-b"]);
         // Another repo's records are not this write's business.
+        assert!(store.for_repo("/other").unwrap().contains_key("1-a"));
+    }
+
+    #[test]
+    fn forgetting_drops_only_that_branch() {
+        let dir = scratch("forget");
+        let file = dir.join("unit_issues.json");
+        let mut store = IssueStore::default();
+        store.put("/r", "1-a", issue("1"), |_| true);
+        store.put("/r", "2-b", issue("2"), |_| true);
+        store.put("/other", "1-a", issue("9"), |_| true);
+        store.save_to(&file).unwrap();
+
+        forget_in(&file, "/r/", "1-a").unwrap();
+
+        let store = IssueStore::load_from(&file);
+        assert_eq!(store.for_repo("/r").unwrap().keys().collect::<Vec<_>>(), vec!["2-b"]);
         assert!(store.for_repo("/other").unwrap().contains_key("1-a"));
     }
 

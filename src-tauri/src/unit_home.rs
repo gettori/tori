@@ -321,6 +321,7 @@ pub(crate) mod tests {
             created_at: 0,
             space: None,
             home: Some("/cfg/topics/auth-1".into()),
+            issue: None,
         }
     }
 

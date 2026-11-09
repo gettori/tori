@@ -793,6 +793,7 @@ mod tests {
             created_at: 1,
             space: None,
             home: None,
+            issue: None,
         }
     }
 
