@@ -203,7 +203,6 @@ const KEPT = new Map<string, Kept>([
   ],
   ["panels/Editor/OutlinePanel.tsx", { count: 1, reason: ROW_ONCLICK }],
   ["panels/Editor/PullRequests/PrList.tsx", { count: 2, reason: TRUNCATION }],
-  ["panels/Editor/PullRequests/PullsPanel.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Editor/CheckpointTimeline.tsx", { count: 1, reason: `one ${HEADING}` }],
   [
     "panels/Editor/Editor.tsx",
@@ -410,8 +409,11 @@ const KEPT = new Map<string, Kept>([
  *  composer's instead of carrying its path.
  *
  *  **Up three** with moving projects into spaces: the move dialog's folder, a
- *  grouping row's path and a misplaced project's name. */
-const RAW_ELEMENT_TITLES = 80;
+ *  grouping row's path and a misplaced project's name.
+ *
+ *  **Down one** with the pull request header shared by the panel and the tab:
+ *  branch names wrap instead of truncating, so the head ref needs no title. */
+const RAW_ELEMENT_TITLES = 79;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. The Changes
  *  panel's stash row is one: a click expands it to its files. */
@@ -557,8 +559,9 @@ describe("the title= guard", () => {
       // now, the way the composer's does, instead of naming its path. Up three:
       // the move dialog's folder, a grouping row's path and a misplaced
       // project's name, each the full path behind a truncated label. Up one
-      // for the space settings dialog's name.
-      span: 64,
+      // for the space settings dialog's name. Down one: the panel's branch line
+      // no longer truncates, so it has no full name to show.
+      span: 63,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });
