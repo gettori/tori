@@ -112,6 +112,17 @@ export type PanelOut =
 // The picker's global the DevTools panel evals with `$0`; a refusal, or null once the comment box is open.
 export type CommentOn = "toriComment";
 
+// The picker's global the Elements sidebar evals with `$0`; a refusal, or what a pick of it would carry.
+// `chat` is null when the tray has no chosen chat.
+export type ContextOf = "toriContext";
+export type ElementContext = {
+  what: string;
+  chain: string[];
+  source: string | null;
+  chat: string | null;
+  commentBlocked: string | null;
+};
+
 // The panel has no tab of its own, so it names the one DevTools inspects.
 export type PanelRequest =
   | { type: "panel.state"; tabId: number }
