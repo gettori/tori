@@ -24,7 +24,7 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 - Drag a project up or down in the sidebar to reorder it. Each space keeps its own order, and a new project shows up on top.
 - The drop line while dragging a project or branch is now one thin line between the two rows, and it no longer shows next to the row you are dragging.
 - A branch can be dropped right after a group, even when the group is last in the list.
-- macOS 26.1109.0-beta ships; Android 26.1109.0-beta ships; browser extension 26.1109.0 ships, rolling out on the Chrome Web Store; push relay unchanged at 26.1030.0-beta.
+- macOS 26.1109.0-beta ships; Android 26.1109.0-beta ships; browser extension unchanged at 26.1029.0; push relay unchanged at 26.1030.0-beta.
 
 ## 26.1108.0-beta
 
