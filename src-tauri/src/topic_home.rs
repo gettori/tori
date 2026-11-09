@@ -156,7 +156,14 @@ pub fn note(topic: &Topic) -> String {
 fn body(topic: &Topic) -> String {
     let mut members: Vec<&Member> = topic.members.iter().collect();
     members.sort_by_key(|m| m.order);
-    let mut out = format!("Branch: `{}`\n\n## Members\n\n", topic.branch);
+    let mut out = format!("Branch: `{}`\n", topic.branch);
+    if let Some(issue) = &topic.issue {
+        out.push_str(&format!(
+            "Issue: {} {} ({}). Read it with the issues_get tool, key `{}`.\n",
+            issue.display, issue.title, issue.url, issue.key
+        ));
+    }
+    out.push_str("\n## Members\n\n");
     let mut unavailable = Vec::new();
     for m in &members {
         let path = member_root(m).unwrap_or(&m.repo_path);

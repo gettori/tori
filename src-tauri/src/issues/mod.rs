@@ -321,26 +321,49 @@ pub fn offers_issues(provider: Provider, scopes: Option<&[String]>) -> bool {
     }
 }
 
-const BRANCH_CAP: usize = 60;
+const BRANCH_CAP: usize = 32;
+// Words a cut title should not end on: `show-the-icon-on` reads as broken.
+const DANGLING: &[&str] = &[
+    "a", "an", "and", "as", "at", "by", "for", "in", "of", "on", "or", "the", "to", "with",
+];
 
-/// `<prefix>-<slug of title>`: lowercase ASCII, every run of anything else one
-/// `-`, cut to [`BRANCH_CAP`] on a character boundary with no dangling `-`.
-pub fn suggested_branch(prefix: &str, title: &str) -> String {
-    let mut out = prefix.to_ascii_lowercase();
-    let mut gap = true;
-    for c in title.chars() {
-        if c.is_ascii_alphanumeric() {
-            if gap {
-                out.push('-');
-                gap = false;
-            }
-            out.push(c.to_ascii_lowercase());
+/// The slug of `title`: lowercase ASCII words joined by `-`, as many whole
+/// words as fit in [`BRANCH_CAP`], minus a dangling small word. No issue number: the unit's record already
+/// carries the link. A title with nothing ASCII falls back to `issue-<number>`.
+pub fn suggested_branch(number: u64, title: &str) -> String {
+    let mut out = String::new();
+    for word in title
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|w| !w.is_empty())
+    {
+        let word = word.to_ascii_lowercase();
+        let next = if out.is_empty() {
+            word.len()
         } else {
-            gap = true;
+            out.len() + 1 + word.len()
+        };
+        if next > BRANCH_CAP {
+            if out.is_empty() {
+                out = word[..BRANCH_CAP].to_string();
+            }
+            break;
         }
+        if !out.is_empty() {
+            out.push('-');
+        }
+        out.push_str(&word);
     }
-    out.truncate(BRANCH_CAP);
-    out.trim_end_matches('-').to_string()
+    while let Some((head, last)) = out.rsplit_once('-') {
+        if !DANGLING.contains(&last) {
+            break;
+        }
+        out.truncate(head.len());
+    }
+    if out.is_empty() {
+        format!("issue-{number}")
+    } else {
+        out
+    }
 }
 
 #[cfg(test)]
@@ -350,24 +373,24 @@ mod tests {
     #[test]
     fn a_slug_folds_punctuation_and_case() {
         assert_eq!(
-            suggested_branch("202", "GitHub Issues: start a unit!"),
-            "202-github-issues-start-a-unit"
+            suggested_branch(202, "GitHub Issues: start a unit!"),
+            "github-issues-start-a-unit"
         );
     }
 
     #[test]
-    fn a_title_with_nothing_ascii_is_just_the_prefix() {
-        assert_eq!(suggested_branch("7", ""), "7");
-        assert_eq!(suggested_branch("7", "日本語 ✓"), "7");
-        assert_eq!(suggested_branch("7", "Fix café crash"), "7-fix-caf-crash");
+    fn a_title_with_nothing_ascii_falls_back_to_the_number() {
+        assert_eq!(suggested_branch(7, ""), "issue-7");
+        assert_eq!(suggested_branch(7, "日本語 ✓"), "issue-7");
+        assert_eq!(suggested_branch(7, "Fix café crash"), "fix-caf-crash");
     }
 
     #[test]
-    fn a_long_title_is_cut_without_a_trailing_dash() {
-        let name = suggested_branch("12", &"word ".repeat(30));
-        assert!(name.len() <= BRANCH_CAP);
-        assert!(!name.ends_with('-'));
-        assert!(name.starts_with("12-word-word"));
+    fn a_long_title_keeps_whole_words_within_the_cap() {
+        let name = suggested_branch(12, "Show the ticket as an icon on worktree rows");
+        assert_eq!(name, "show-the-ticket-as-an-icon");
+        assert!(suggested_branch(12, &"word ".repeat(30)).len() <= BRANCH_CAP);
+        assert_eq!(suggested_branch(12, &"x".repeat(50)).len(), BRANCH_CAP);
     }
 
     #[test]

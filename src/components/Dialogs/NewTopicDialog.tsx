@@ -1,6 +1,6 @@
 import { createSignal, createEffect, on, onCleanup, For, Show, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { Search, TriangleAlert } from "lucide-solid";
+import { Search, Ticket, TriangleAlert, X } from "lucide-solid";
 import styles from "./Dialogs.module.css";
 import { spaceLabel } from "../../utils/globalSpace";
 import Button from "../Button/Button";
@@ -10,10 +10,13 @@ import SegmentedControl from "../SegmentedControl/SegmentedControl";
 import RepoChecklist, { type RepoSpace } from "./RepoChecklist";
 import SpaceMark from "../SpaceMark/SpaceMark";
 import { topicSlug, type MemberMode, type Topic } from "../../utils/topics";
+import { errorText, unitIssueOf, type Found, type Issue } from "../../utils/issues";
+import IconButton from "../IconButton/IconButton";
 
 const NAME_LABEL = "topic-name-label";
 const BRANCH_LABEL = "topic-branch-label";
 const PICKED_LABEL = "topic-picked-label";
+const ISSUE_LABEL = "topic-issue-label";
 const PROBE_DEBOUNCE_MS = 250;
 
 export type BranchProbe = { valid: boolean; local: boolean; remote: boolean; hasWorktree: boolean };
@@ -62,6 +65,10 @@ export default function NewTopicDialog(props: {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const [filter, setFilter] = createSignal("");
+  const [issueQuery, setIssueQuery] = createSignal("");
+  const [issue, setIssue] = createSignal<Issue | null>(null);
+  const [issueError, setIssueError] = createSignal<string | null>(null);
+  const [lookingUp, setLookingUp] = createSignal(false);
   let nameInput: HTMLInputElement | undefined;
 
   const adding = () => props.topic !== undefined;
@@ -184,6 +191,35 @@ export default function NewTopicDialog(props: {
     setChecked((prev) => prev.filter((r) => r !== repoPath));
   }
 
+  // Looked up through the first picked repository's issue source, the same
+  // one its own branch dialog would use.
+  async function lookUpIssue() {
+    const input = issueQuery().trim();
+    if (!input || lookingUp()) return;
+    const projectPath = picked()[0];
+    if (!projectPath) return setIssueError("Pick a repository first, its issues are searched");
+    setLookingUp(true);
+    setIssueError(null);
+    try {
+      const found = await invoke<Found>("issues_find", { projectPath, input });
+      if (found.hits.length !== 1) {
+        setIssueError(
+          found.hits.length ? `${found.hits.length} issues match, paste one exactly` : `No issue found for ${input}`,
+        );
+        return;
+      }
+      const got = await invoke<Issue>("issues_get", { projectPath, key: found.hits[0].key });
+      setIssue(got);
+      setIssueQuery("");
+      if (!name().trim()) setName(got.title);
+      if (typedBranch() === null && !props.pinned?.branch) setTypedBranch(got.suggestedBranch);
+    } catch (e) {
+      setIssueError(errorText(e));
+    } finally {
+      setLookingUp(false);
+    }
+  }
+
   async function confirm() {
     if (!canConfirm()) return;
     setBusy(true);
@@ -206,6 +242,7 @@ export default function NewTopicDialog(props: {
           branch: branch(),
           members,
           ...(props.space ? { space: props.space } : {}),
+          ...(issue() ? { issue: unitIssueOf(issue()!) } : {}),
         });
       }
       props.onDone(topic);
@@ -271,7 +308,7 @@ export default function NewTopicDialog(props: {
           {(name) => <SpaceMark name={name()} icon={scope()?.icon} color={scope()?.color} />}
         </Show>
       }
-      size="wide"
+      size="table"
       onClose={() => props.onCancel()}
       initialFocus={() => nameInput}
       actions={
@@ -341,6 +378,47 @@ export default function NewTopicDialog(props: {
                 <div class={styles.hint}>not a valid branch name</div>
               </Show>
               <Show when={takenBy()}>{(f) => <div class={styles.hint}>already used by {f().name}</div>}</Show>
+            </div>
+            <div class={styles.topicIssue}>
+              <div id={ISSUE_LABEL} class={styles.label}>
+                Issue
+              </div>
+              <Show
+                when={issue()}
+                fallback={
+                  <input
+                    class={styles.input}
+                    aria-labelledby={ISSUE_LABEL}
+                    placeholder="Optional: #204, owner/repo#204 or a link, then Enter"
+                    value={issueQuery()}
+                    disabled={lookingUp()}
+                    onInput={(e) => setIssueQuery(e.currentTarget.value)}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter") return;
+                      e.preventDefault();
+                      void lookUpIssue();
+                    }}
+                    autocapitalize="off"
+                    autocorrect="off"
+                    spellcheck={false}
+                  />
+                }
+              >
+                {(i) => (
+                  <div class={styles.topicIssuePicked} data-topic-issue={i().key}>
+                    <Icon icon={Ticket} />
+                    <span class={styles.topicIssueKey}>{i().display}</span>
+                    <span class={styles.topicIssueTitle}>{i().title}</span>
+                    <IconButton
+                      size="xs"
+                      icon={<Icon icon={X} />}
+                      tooltip="Start without this issue"
+                      onClick={() => setIssue(null)}
+                    />
+                  </div>
+                )}
+              </Show>
+              <Show when={issueError()}>{(msg) => <div class={styles.hint}>{msg()}</div>}</Show>
             </div>
           </Show>
         </div>

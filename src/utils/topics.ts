@@ -6,6 +6,7 @@
 import type { Selection } from "../panels/LeftSidebar/LeftSidebar";
 import { invoke } from "@tauri-apps/api/core";
 import { isUnderPath } from "./pathScope";
+import type { UnitIssue } from "./issues";
 
 export type MemberState =
   | { kind: "present" }
@@ -55,6 +56,8 @@ export type Topic = {
   space?: string;
   /** The folder the Topic's chats run in. Filled by the backend on every read. */
   home?: string;
+  /** The issue the Topic was started from. */
+  issue?: UnitIssue;
 };
 
 export function isGlobal(topic: Pick<Topic, "space">): boolean {

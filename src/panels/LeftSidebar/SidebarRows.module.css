@@ -459,6 +459,11 @@ button.moreRow {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Shrinks to the text so the trailing mark sits on the name's end; `.rowEnd`
+   keeps its place at the right with its own auto margin. */
+.row .label.labelHugged {
+  flex: 0 1 auto;
+}
 
 /* Leading type icon on a project / branch row, boxed to the same 16px
    slot as `.seti-icon` so labels line up across levels. */
@@ -674,7 +679,17 @@ button.moreRow {
    row reads a glyph rather than a control until the pointer finds it. */
 /* The issue a unit was started from, as its key. Text rather than a glyph:
    the key is the thing worth reading. */
-.row .issueChip,
+.row .issueChip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  margin-left: calc(4px * var(--ui-scale));
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
 .row .portChip {
   flex: none;
   margin-left: calc(4px * var(--ui-scale));
@@ -731,6 +746,7 @@ button.moreRow {
 }
 /* CSS-sized so it tracks --ui-scale. On the cluster's own size rather than a
    control's: it used to be the one mark that sat smaller than its neighbours. */
+.row .issueChip :global(svg),
 .row .topicChip :global(svg) {
   width: calc(14px * var(--ui-scale));
   height: calc(14px * var(--ui-scale));

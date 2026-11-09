@@ -303,6 +303,33 @@
 .topicFields .label {
   margin-top: 0;
 }
+.topicIssue {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.topicIssuePicked {
+  display: flex;
+  align-items: center;
+  gap: var(--tori-space-3);
+  min-width: 0;
+  padding: calc(4px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(4px * var(--ui-scale))
+    calc(10px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-md);
+  color: var(--fg-muted);
+}
+.topicIssueKey {
+  flex: none;
+  font-family: var(--tori-font-mono);
+  color: var(--fg-default);
+}
+.topicIssueTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .mono {
   font-family: var(--tori-font-mono);
 }
