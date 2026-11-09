@@ -1,5 +1,7 @@
 /* One pull request as a whole. A reading column rather than the full pane
-   width: this is prose, and prose set across a 2,000px stage is unreadable. */
+   width: this is prose, and prose set across a 2,000px stage is unreadable.
+   The head follows the host's own pull request header: a large title, then
+   one line of state, author, branches and size. */
 .overview {
   display: flex;
   flex: 1;
@@ -29,47 +31,155 @@
   flex: 1;
   margin: 0;
   color: var(--fg-default);
-  font-size: var(--tori-text-2xl);
-  font-weight: 600;
-  line-height: 1.3;
+  font-size: calc(32px * var(--ui-scale));
+  font-weight: 400;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .number {
-  margin-right: calc(6px * var(--ui-scale));
-  color: var(--fg-subtle);
-  font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-weight: 400;
-}
-
-.meta,
-.branches {
   color: var(--fg-muted);
-  font-size: var(--tori-text-md);
+  font-weight: 300;
 }
 
-.branches {
-  font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--tori-text-xs);
-}
-
-.rollup {
+/* One line, never wrapped: only the branch names give way, and they shorten
+   with an ellipsis. */
+.summary {
   display: flex;
   align-items: center;
-  gap: calc(12px * var(--ui-scale));
-  font-size: var(--tori-text-md);
+  gap: calc(8px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--tori-text-lg);
 }
 
-.counts {
-  display: flex;
+.state {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
   gap: calc(4px * var(--ui-scale));
-  font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--tori-text-xs);
+  padding: calc(5px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  border-radius: var(--tori-radius-pill);
+  color: var(--fg-on-emphasis);
+  font-weight: 500;
+  background: var(--success-emphasis);
+}
+.state[data-state="draft"] {
+  background: var(--fg-subtle);
+}
+.state[data-state="merged"] {
+  background: var(--status-progress);
+}
+.state[data-state="closed"] {
+  background: var(--danger-emphasis);
+}
+
+.byline {
+  flex: none;
+  white-space: nowrap;
+}
+
+.author {
+  color: var(--fg-default);
+  font-weight: 600;
+}
+
+/* The size keeps its width and the branch names shorten to make room. The
+   full name is in the chip's tooltip. */
+.where {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  min-width: 0;
+  max-width: 100%;
+}
+
+.branches {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  min-width: 0;
+  max-width: 100%;
+}
+
+.branch {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  min-width: 0;
+  padding: calc(2px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  border-radius: 6px;
+  color: var(--accent-fg);
+  background: var(--accent-subtle);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
+}
+
+.branchName {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.arrow {
+  flex: none;
+  color: var(--fg-muted);
+}
+
+.copy {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  margin-left: calc(2px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale));
+  border: none;
+  border-radius: var(--tori-radius-sm);
+  color: var(--accent-fg);
+  background: none;
+  cursor: pointer;
+}
+.copy:hover,
+.copy:focus-visible {
+  background: var(--neutral-hover);
+}
+
+.diffstat {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  font-weight: 600;
 }
 .added {
   color: var(--diff-added);
 }
 .removed {
   color: var(--diff-deleted);
+}
+
+.blocks {
+  display: inline-flex;
+  gap: calc(1px * var(--ui-scale));
+  margin-left: calc(2px * var(--ui-scale));
+}
+.block {
+  width: calc(8px * var(--ui-scale));
+  height: calc(8px * var(--ui-scale));
+  border-radius: 2px;
+  background: var(--neutral-hover);
+}
+.block[data-kind="added"] {
+  background: var(--diff-added);
+}
+.block[data-kind="removed"] {
+  background: var(--diff-deleted);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(12px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--tori-text-md);
 }
 
 .verdict {
