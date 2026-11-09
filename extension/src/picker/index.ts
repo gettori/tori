@@ -3,6 +3,8 @@ import type {
   BatchRequest,
   Chat,
   CommentOn,
+  ContextOf,
+  ElementContext,
   LogChannel,
   LogEntry,
   LogKind,
@@ -15,12 +17,17 @@ import type {
   Shot,
   TrayState,
 } from "../pick";
-import { capture, hasLine, insideSensitive } from "./capture";
+import { capture, componentsOf, hasLine, insideSensitive } from "./capture";
 
 const COMMENT_ON: CommentOn = "toriComment";
+const CONTEXT_OF: ContextOf = "toriContext";
 
 // Injected again on every pick request; the first copy in this world answers.
-const loaded = globalThis as { toriPicker?: boolean; [COMMENT_ON]?: (target: unknown) => string | null };
+const loaded = globalThis as {
+  toriPicker?: boolean;
+  [COMMENT_ON]?: (target: unknown) => string | null;
+  [CONTEXT_OF]?: (target: unknown) => string | ElementContext;
+};
 
 type Mode = "ready" | "pick" | "idle";
 
@@ -1141,17 +1148,40 @@ function start() {
   };
 
   // `$0` skips the hit testing a click gets, so it can name what a click never reaches.
-  loaded[COMMENT_ON] = (target) => {
+  const onPage = (target: unknown): Element | string => {
     if (!(target instanceof Element) || target.ownerDocument !== document)
       return "Select an element on this page in the Elements panel. One inside a frame cannot be picked.";
     if (target === host || target.getRootNode() === root) return "That is Tori's own overlay.";
+    return target;
+  };
+
+  const cannotComment = (target: Element): string | null => {
     if (target === document.documentElement || target === document.head || target === document.body)
       return "Select an element inside the page, not the whole document.";
-    target.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
     const r = target.getBoundingClientRect();
     if (!r.width || !r.height) return "That element has no size on the page, so there is nothing to point at.";
-    comment(target);
     return null;
+  };
+
+  loaded[COMMENT_ON] = (target) => {
+    const at = onPage(target);
+    if (typeof at === "string") return at;
+    const blocked = cannotComment(at);
+    if (blocked) return blocked;
+    at.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
+    comment(at);
+    return null;
+  };
+
+  loaded[CONTEXT_OF] = (target) => {
+    const at = onPage(target);
+    if (typeof at === "string") return at;
+    return {
+      what: nameOf(at),
+      ...componentsOf(at),
+      chat: chats === null ? null : chosen || null,
+      commentBlocked: cannotComment(at),
+    };
   };
 
   chrome.runtime.onMessage.addListener((message: PickerRequest) => {

@@ -1,0 +1,88 @@
+@import "../tokens.css";
+
+body {
+  margin: 0;
+  background: var(--tori-bg);
+  color: var(--tori-fg);
+  font-family: var(--tori-font);
+  font-size: var(--tori-fs-2);
+  line-height: var(--tori-lh);
+}
+
+.note {
+  margin: 0;
+  padding: var(--tori-sp-3) var(--tori-sp-4);
+  color: var(--tori-fg-2);
+}
+
+dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--tori-sp-1) var(--tori-sp-4);
+  margin: 0;
+  padding: var(--tori-sp-3) var(--tori-sp-4);
+}
+
+dt {
+  color: var(--tori-fg-3);
+}
+
+dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.code {
+  font-family: var(--tori-mono);
+  font-size: var(--tori-fs-1);
+}
+
+.none {
+  color: var(--tori-fg-3);
+}
+
+.act {
+  display: flex;
+  align-items: center;
+  gap: var(--tori-sp-3);
+  padding: 0 var(--tori-sp-4) var(--tori-sp-3);
+}
+
+button {
+  appearance: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--tori-font);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--tori-focus);
+  outline-offset: 2px;
+}
+
+.primary {
+  flex: none;
+  height: 26px;
+  padding: 0 var(--tori-sp-4);
+  border-radius: var(--tori-r-2);
+  background: var(--tori-acc);
+  color: var(--tori-acc-fg);
+  font-weight: 600;
+  font-size: var(--tori-fs-2);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--tori-acc-hover);
+}
+
+.primary:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.why {
+  min-width: 0;
+  color: var(--tori-fg-2);
+  overflow-wrap: anywhere;
+}

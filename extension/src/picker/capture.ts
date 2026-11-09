@@ -169,6 +169,11 @@ function rulesOf(el: Element): { rules: MatchedRule[]; properties: string[] } {
   });
 }
 
+export function componentsOf(el: Element): { chain: string[]; source: string | null } {
+  const found = askInspect(el);
+  return { chain: found?.chain ?? [], source: sourceFor(found?.source ?? null, el) };
+}
+
 function whereOf(el: Element, rules: MatchedRule[]): Where {
   const found = askInspect(el);
   const nearest = (attribute: string) => el.closest(`[${attribute}]`)?.getAttribute(attribute) ?? "";
