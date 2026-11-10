@@ -21,7 +21,7 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 - On your own pull request the review form drops Approve and Request changes, the button says **Comment**
 - Start a Topic from an issue, issue branches stay short, and forgetting an issue's branch forgets the issue
 - The red close button hides the window again
-- macOS 26.1110.0-beta ships; Android 26.1110.0-beta ships; browser extension 26.1110.0 ships, rolling out on the Chrome Web Store; push relay unchanged at 26.1030.0-beta.
+- macOS 26.1110.0-beta ships; Android 26.1110.0-beta ships; browser extension unchanged at 26.1029.0; push relay unchanged at 26.1030.0-beta.
 
 ## 26.1109.0-beta
 
