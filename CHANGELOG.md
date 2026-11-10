@@ -10,6 +10,19 @@ matching section here fails the release rather than publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.1110.0-beta
+
+- The pull request tab's header follows GitHub: the title with its number (click the number to open it on GitHub), an Open/Draft/Merged/Closed pill, who opened it and when, the base and head branches with a copy button, and the size with GitHub's five-square bar
+- The Pull Request panel uses the same header, with the size bar moved to the Files header
+- Branch names in the pull request header are never cut short, a long one wraps instead
+- A pull request's description renders like a markdown file preview: diagrams and copy buttons on code blocks work there too
+- Markdown preview follows GitHub's typography and spacing, sits on the same background as other files, draws dividers as a thin line and task list checkboxes bigger with a clear tick
+- The pull request tab no longer has the review form, **Finish review** opens the panel's **Review** tab instead
+- On your own pull request the review form drops Approve and Request changes, the button says **Comment**
+- Start a Topic from an issue, issue branches stay short, and forgetting an issue's branch forgets the issue
+- The red close button hides the window again
+- macOS 26.1110.0-beta ships; Android 26.1110.0-beta ships; browser extension 26.1110.0 ships, rolling out on the Chrome Web Store; push relay unchanged at 26.1030.0-beta.
+
 ## 26.1109.0-beta
 
 - Fix the Pull Request pane reloading, and the app stalling, while an agent edits files in the worktree, and reloading on every scheduled fetch even on a branch with no pull request
