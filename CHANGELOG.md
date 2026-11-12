@@ -14,7 +14,7 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
 - After a reload, opening a chat from the sidebar shows its tab again instead of the conversation with no tab
 - The Artifacts sidebar lists a long chat's attached files right away, and selecting that chat no longer drives CPU to 500%
-- macOS 26.1112.0-beta ships; Android unchanged at 26.1110.0-beta; browser extension 26.1112.0 ships, rolling out on the Chrome Web Store; push relay unchanged at 26.1030.0-beta.
+- macOS 26.1112.0-beta ships; Android unchanged at 26.1110.0-beta; browser extension unchanged at 26.1029.0; push relay unchanged at 26.1030.0-beta.
 
 ## 26.1110.0-beta
 
