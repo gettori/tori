@@ -49,6 +49,8 @@ ring = "0.17"
 regex = "1"
 # Already in the tree under the deep link plugin.
 url = "2"
+# Already in the tree through regex.
+memchr = "2"
 # An autopilot schedule is a 5-field cron in the Mac's local time; `croner`
 # walks DST gaps and repeats, which a hand-rolled matcher would get wrong.
 croner = "4"

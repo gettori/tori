@@ -5665,6 +5665,7 @@ dependencies = [
  "keyring-core",
  "libc",
  "mac-notification-sys",
+ "memchr",
  "misaki-rs",
  "notify",
  "objc2",
