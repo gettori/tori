@@ -223,10 +223,20 @@ type TailState = "working" | "done" | "blocked-candidate";
 
 // The subset of Selection focusOrResume actually reads - narrowed so
 // safe-send's resume-into-tab path can call it without fabricating a full
-// Selection (spaceName, projectKind, ... it never touches).
+// Selection (spaceName, projectKind, ... it never touches). `kind` and its ids
+// name the tab's workspace for a chat or a Topic, whose key is not a path.
 type ResumeTarget = Pick<
   Selection,
-  "sessionId" | "agent" | "profile" | "sessionFile" | "sessionTitle" | "sessionCwd" | "folderPath"
+  | "kind"
+  | "chatId"
+  | "topicId"
+  | "sessionId"
+  | "agent"
+  | "profile"
+  | "sessionFile"
+  | "sessionTitle"
+  | "sessionCwd"
+  | "folderPath"
 >;
 
 // `Reaped` from src-tauri/src/chat/ownership.rs. Only `orphan` reaches the
@@ -1598,7 +1608,7 @@ export default function Terminal(props: {
     // before this workspace has been restored, so every question below would be
     // answered against an empty strip. Restore never reaches this function, so
     // there is nothing here to wait on itself.
-    await stripReady(sel.folderPath);
+    await stripReady(workspaceKey(sel));
     const sessionId = sel.sessionId!;
     const agentId = agents().some((a) => a.id === sel.agent) ? sel.agent! : "claude";
     // Hosting means *driving*, so a tab short of `live` does not count. It also
@@ -1676,7 +1686,7 @@ export default function Terminal(props: {
         id,
         title: sel.sessionTitle?.slice(0, 28) || sessionId.slice(0, 8),
         cwd: sel.sessionCwd || sel.folderPath,
-        workspace: sel.folderPath,
+        workspace: workspaceKey(sel),
         kind: "agent",
         program: a.program,
         args,
@@ -2313,7 +2323,7 @@ export default function Terminal(props: {
     // tab id, so that record is gone and the project's memory is the only thing
     // left that knows. Skipped on ACP, which republishes its own on session/load.
     if (pickRidesArgv(findAdapter(agentId).chat?.transport)) {
-      const resumed = resumedPicks(chatPrefs(sel.folderPath), findAdapter(agentId).chat ?? null);
+      const resumed = resumedPicks(chatPrefs(workspaceKey(sel)), findAdapter(agentId).chat ?? null);
       if (resumed.mode !== null || resumed.effort !== null) setDraftPick(id, resumed);
     }
     openOrActivate({
@@ -2327,7 +2337,7 @@ export default function Terminal(props: {
       // and `syncTabTitles`, so all three agree from the first frame.
       title: (sel.sessionTitle || sessionId).slice(0, 28),
       cwd: sel.sessionCwd || sel.folderPath,
-      workspace: sel.folderPath,
+      workspace: workspaceKey(sel),
       kind: "chat",
       program: agentId,
       args: [],
