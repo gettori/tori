@@ -123,7 +123,7 @@ fn artifacts_in(root: &Path, folder: &str, transcripts: &[String], attachments: 
     walk(&chat_folder(root, folder)?, &mut made);
     let mut added: Vec<Artifact> = Vec::new();
     for transcript in transcripts {
-        for holder in crate::attachments::holders_named_by(Path::new(transcript), attachments) {
+        for holder in crate::attachments::holders_named_by_cached(Path::new(transcript), attachments) {
             let mut files = Vec::new();
             walk(&holder, &mut files);
             for file in files {
