@@ -1,9 +1,14 @@
 //! Pasted and dropped chat attachments, written to disk so that every
 //! attachment is a path the agent reads like any other file. The directory is
 //! handed to the agent with `--add-dir`, so a Read there raises no prompt.
+use std::collections::{HashMap, HashSet};
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use memchr::memmem;
 
 /// The filename rides in this header, percent-encoded, because the body is
 /// the file itself.
@@ -83,14 +88,102 @@ pub(crate) fn holders_named_by(transcript: &Path, dir: &Path) -> Vec<PathBuf> {
 }
 
 pub(crate) fn holders_named_in(text: &[u8], dir: &Path) -> Vec<PathBuf> {
+    let mut ids = HashSet::new();
+    named_ids(text, dir, &mut ids);
+    holders_among(dir, &ids)
+}
+
+/// [`holders_named_by`] for a transcript read again and again, the Artifacts
+/// panel's at every turn end. A transcript only grows, so each call reads what
+/// was appended since the last one.
+pub(crate) fn holders_named_by_cached(transcript: &Path, dir: &Path) -> Vec<PathBuf> {
+    let ids = scan_appended(transcript, dir).unwrap_or_default();
+    holders_among(dir, &ids)
+}
+
+fn holders_among(dir: &Path, ids: &HashSet<String>) -> Vec<PathBuf> {
+    if ids.is_empty() {
+        return Vec::new();
+    }
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
     entries
         .flatten()
+        .filter(|e| ids.contains(e.file_name().to_string_lossy().as_ref()))
         .map(|e| e.path())
-        .filter(|p| p.is_dir() && contains(text, needle(p).as_bytes()))
+        .filter(|p| p.is_dir())
         .collect()
+}
+
+/// The longest file name APFS allows, so a holder id is never longer.
+const NAME_MAX: usize = 255;
+
+/// Every `<id>` that `text` names as `<dir>/<id>/`, the same test as matching
+/// each holder's [`needle`], in one pass rather than one per holder.
+fn named_ids(text: &[u8], dir: &Path, out: &mut HashSet<String>) {
+    let prefix = format!("{}/", dir.to_string_lossy());
+    let finder = memmem::Finder::new(prefix.as_bytes());
+    let mut from = 0;
+    while let Some(found) = finder.find(&text[from..]) {
+        let start = from + found + prefix.len();
+        let window = &text[start..text.len().min(start + NAME_MAX + 1)];
+        if let Some(end) = memchr::memchr(b'/', window).filter(|&end| end > 0) {
+            out.insert(String::from_utf8_lossy(&window[..end]).into_owned());
+        }
+        from += found + 1;
+    }
+}
+
+/// What one transcript has been read for so far. `head` tells a file that was
+/// replaced from one that grew: a rewrite starts over.
+struct Scanned {
+    len: u64,
+    head: Vec<u8>,
+    ids: HashSet<String>,
+}
+
+const HEAD: usize = 4096;
+
+fn scanned() -> &'static Mutex<HashMap<(PathBuf, PathBuf), Scanned>> {
+    static SCANNED: OnceLock<Mutex<HashMap<(PathBuf, PathBuf), Scanned>>> = OnceLock::new();
+    SCANNED.get_or_init(Default::default)
+}
+
+fn scan_appended(transcript: &Path, dir: &Path) -> std::io::Result<HashSet<String>> {
+    let mut file = std::fs::File::open(transcript)?;
+    let len = file.metadata()?.len();
+    let mut head = vec![0; HEAD.min(len as usize)];
+    file.read_exact(&mut head)?;
+    let key = (transcript.to_path_buf(), dir.to_path_buf());
+    let prior = scanned()
+        .lock()
+        .map_err(|_| std::io::Error::other("poisoned"))?
+        .remove(&key);
+    let (mut ids, from) = match prior {
+        Some(p) if p.len <= len && head.starts_with(&p.head) => {
+            // Back far enough that a name cut off by the last read's end is
+            // read whole this time.
+            let overlap = (dir.as_os_str().len() + 2 + NAME_MAX) as u64;
+            (p.ids, p.len.saturating_sub(overlap))
+        }
+        _ => (HashSet::new(), 0),
+    };
+    let mut text = Vec::with_capacity((len - from) as usize);
+    file.seek(SeekFrom::Start(from))?;
+    file.take(len - from).read_to_end(&mut text)?;
+    named_ids(&text, dir, &mut ids);
+    if let Ok(mut map) = scanned().lock() {
+        map.insert(
+            key,
+            Scanned {
+                len,
+                head,
+                ids: ids.clone(),
+            },
+        );
+    }
+    Ok(ids)
 }
 
 /// Remove each holder that no transcript under `roots` and no file in
@@ -163,7 +256,7 @@ fn needle(holder: &Path) -> String {
 }
 
 fn contains(haystack: &[u8], needle: &[u8]) -> bool {
-    !needle.is_empty() && haystack.windows(needle.len()).any(|w| w == needle)
+    !needle.is_empty() && memmem::find(haystack, needle).is_some()
 }
 
 fn percent_decode(encoded: &str) -> String {
