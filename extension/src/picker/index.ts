@@ -2,6 +2,8 @@ import TOKENS from "../tokens.css?raw";
 import type {
   BatchRequest,
   Chat,
+  ChatLine,
+  ChatRow,
   CommentOn,
   LogChannel,
   LogEntry,
@@ -15,6 +17,7 @@ import type {
   Shot,
   TrayState,
 } from "../pick";
+import type { Phase } from "../chatstatus";
 import { capture, hasLine, insideSensitive } from "./capture";
 
 const COMMENT_ON: CommentOn = "toriComment";
@@ -90,23 +93,29 @@ button:focus-visible { outline: 2px solid var(--tori-focus); outline-offset: 2px
 .spin { animation: tori-spin .8s linear infinite; }
 .hint { padding: var(--tori-sp-4); display: flex; gap: var(--tori-sp-3); align-items: center; color: var(--tori-fg-2); }
 .send { flex: none; display: flex; flex-direction: column; gap: var(--tori-sp-3); padding: var(--tori-sp-3) var(--tori-sp-4) 0; border-top: 1px solid var(--tori-bd); }
+.body > .send:last-child { padding-bottom: var(--tori-sp-4); }
 .act { flex: none; display: flex; flex-direction: column; gap: var(--tori-sp-3); padding: var(--tori-sp-3) var(--tori-sp-4) var(--tori-sp-4); border-top: 1px solid var(--tori-bd); }
 .act.joined, .act.bare { border-top: none; }
 .none { display: flex; gap: var(--tori-sp-2); align-items: center; font-size: var(--tori-fs-2); color: var(--tori-fg-2); padding: 2px 0; }
 .choose { display: flex; flex-direction: column; gap: var(--tori-sp-2); }
 .choose-head { display: flex; align-items: center; justify-content: space-between; gap: var(--tori-sp-3); min-height: 22px; }
 .choose-head span { font: 600 var(--tori-fs-1)/1 var(--tori-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--tori-fg-3); }
-.choose-head.end { justify-content: flex-end; }
 .new-chat { height: 22px; padding: 0 6px 0 4px; display: flex; align-items: center; gap: var(--tori-sp-1); border-radius: var(--tori-r-1); background: transparent; color: var(--tori-acc-tx); }
 .new-chat:hover:not(:disabled) { background: var(--tori-acc-soft); }
 .new-chat:focus-visible { outline-offset: 0; }
 .none .grow { flex: 1; min-width: 0; }
 .chooser { display: flex; flex-direction: column; border: 1px solid var(--tori-bd-strong); border-radius: var(--tori-r-2); background: var(--tori-bg-sunk); overflow: hidden; }
-.chooser button { border-radius: 0; display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: var(--tori-sp-3); align-items: center; padding: 6px var(--tori-sp-3); text-align: left; color: var(--tori-fg); background: transparent; font: 400 var(--tori-fs-2)/1.35 var(--tori-font); }
-.chooser button + button { border-top: 1px solid var(--tori-bd); }
-.chooser button:hover { background: var(--tori-hover); }
-.chooser button[aria-checked="true"] { background: var(--tori-acc-soft); }
-.chooser button:focus-visible { outline-offset: -2px; }
+.chat-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.chat-row + .chat-row { border-top: 1px solid var(--tori-bd); }
+.chat-row.on { background: var(--tori-acc-soft); }
+.chat-main { min-width: 0; border-radius: 0; display: grid; grid-template-columns: 7px minmax(0, 1fr) auto; gap: var(--tori-sp-3); align-items: center; padding: 6px var(--tori-sp-3); text-align: left; color: var(--tori-fg); background: transparent; font: 400 var(--tori-fs-2)/1.35 var(--tori-font); }
+.chat-main.pick { grid-template-columns: 12px 7px minmax(0, 1fr) auto; }
+button.chat-main:hover { background: var(--tori-hover); }
+button.chat-main:focus-visible { outline-offset: -2px; }
+.chat-line { grid-column: 1 / -1; min-width: 0; padding: 0 var(--tori-sp-3) 6px calc(var(--tori-sp-3) * 2 + 7px); font-size: var(--tori-fs-1); color: var(--tori-fg-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-line.pick { padding-left: calc(var(--tori-sp-3) * 3 + 19px); }
+.chat-show { height: 24px; margin-right: var(--tori-sp-2); padding: 0 8px; font-size: var(--tori-fs-1); }
+.dot.needs { background: var(--tori-warn-tx); }
 .radio { width: 12px; height: 12px; border-radius: 6px; border: 1px solid var(--tori-bd-strong); background: var(--tori-bg); }
 [aria-checked="true"] .radio { border: 4px solid var(--tori-acc); }
 .chat-title { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -162,6 +171,9 @@ const MASK = `input[type="password"], input[autocomplete="off"], textarea[autoco
 input[data-sensitive], textarea[data-sensitive] { color: transparent !important; -webkit-text-fill-color: transparent !important; text-shadow: none !important; }`;
 const KEEP_PICKING = "Press the shortcut or click Tori to keep picking";
 const PICKING = "Click an element or select text. Esc stops.";
+const PHASE_NAME: Record<Phase, string> = { working: "Working", needs: "Needs you", done: "Done" };
+const PHASE_DOT: Record<Phase, string> = { working: "dot live", needs: "dot needs", done: "dot" };
+
 const DRAFTING = "Opening a new chat in Tori\u2026";
 const DRAFTED = "New chat open in Tori";
 const DRAFT_NEXT = "Pick a model and send it there.";
@@ -371,7 +383,8 @@ function start() {
   let overflow = 0;
   let asking = false;
   let replied = false;
-  let chats: Chat[] | null = null;
+  let chats: ChatRow[] | null = null;
+  let lines = new Map<string, string | null>();
   let chosen = "";
   let sent: { chat: Chat | null; count: number; log: boolean } | null = null;
   let sending = false;
@@ -431,12 +444,22 @@ function start() {
     if (!host.matches(":popover-open")) host.showPopover();
   };
 
+  // Rows first, then each line as its tail lands, so one slow chat holds up nothing.
   const loadChats = () => {
-    chats = [];
-    void ask<Chat[] | null>({ type: "chats" }).then((found) => {
-      chats = found ?? [];
-      if (!chats.some((c) => c.id === chosen)) chosen = chats[0]?.id ?? "";
+    const asked: ChatRow[] = [];
+    chats = asked;
+    lines = new Map();
+    void ask<ChatRow[] | null>({ type: "chat.status" }).then((found) => {
+      if (chats !== asked) return;
+      const got = (chats = found ?? []);
+      if (!got.some((c) => c.id === chosen)) chosen = got[0]?.id ?? "";
       renderTray();
+      for (const chat of got)
+        void ask<ChatLine | null>({ type: "chat.line", id: chat.id }).then((said) => {
+          if (chats !== got || !said) return;
+          lines.set(said.id, said.line);
+          if (tray.isConnected) renderTray();
+        });
     });
   };
 
@@ -583,39 +606,54 @@ function start() {
     ];
   };
 
-  const chooser = (list: Chat[]): HTMLElement => {
-    const group = el("div", { className: "chooser" });
-    group.setAttribute("role", "radiogroup");
-    group.setAttribute("aria-labelledby", "tori-send-to");
-    const choose = (id: string) => {
-      chosen = id;
-      renderTray(`chat-${id}`);
-    };
-    for (const chat of list) {
-      const on = chat.id === chosen;
-      const radio = button("", "", () => choose(chat.id), `chat-${chat.id}`);
-      radio.setAttribute("role", "radio");
-      radio.setAttribute("aria-checked", String(on));
-      radio.tabIndex = on ? 0 : -1;
-      radio.append(
-        el("span", { className: "radio" }),
-        el("span", { className: "chat-title", textContent: chat.title, title: chat.title }),
-        el("span", { className: "agent", textContent: chat.agent }),
-      );
-      radio.onkeydown = (e) => {
+  const chatRow = (chat: ChatRow, list: ChatRow[], pick: boolean, show: boolean): HTMLElement => {
+    const dot = el("span", { className: PHASE_DOT[chat.phase], title: PHASE_NAME[chat.phase] });
+    dot.setAttribute("role", "img");
+    dot.setAttribute("aria-label", PHASE_NAME[chat.phase]);
+    const title = el("span", { className: "chat-title", textContent: chat.title, title: chat.title });
+    const agent = el("span", { className: "agent", textContent: chat.agent });
+    const on = pick && chat.id === chosen;
+    let main: HTMLElement;
+    if (pick) {
+      const choose = (id: string) => {
+        chosen = id;
+        renderTray(`chat-${id}`);
+      };
+      main = button("chat-main pick", "", () => choose(chat.id), `chat-${chat.id}`);
+      main.setAttribute("role", "radio");
+      main.setAttribute("aria-checked", String(on));
+      main.tabIndex = on ? 0 : -1;
+      main.append(el("span", { className: "radio" }), dot, title, agent);
+      main.onkeydown = (e) => {
         const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[e.key];
         if (!step) return;
         e.preventDefault();
         const at = list.findIndex((c) => c.id === chosen);
         choose(list[(at + step + list.length) % list.length].id);
       };
-      group.append(radio);
+    } else main = el("div", { className: "chat-main" }, dot, title, agent);
+    const row = el("div", { className: on ? "chat-row on" : "chat-row" }, main);
+    if (show) {
+      const reach = button("ghost chat-show", "Show in Tori", () => void reveal(chat), `show-${chat.id}`);
+      reach.setAttribute("aria-label", `Show ${chat.title} in Tori`);
+      row.append(reach);
     }
+    const line = lines.get(chat.id);
+    if (line)
+      row.append(el("span", { className: pick ? "chat-line pick" : "chat-line", textContent: line, title: line }));
+    return row;
+  };
+
+  const chatList = (list: ChatRow[], pick: boolean): HTMLElement => {
+    const choosing = pick && list.length > 1;
+    const group = el("div", { className: "chooser" }, ...list.map((chat) => chatRow(chat, list, choosing, true)));
+    if (choosing) group.setAttribute("role", "radiogroup");
+    group.setAttribute("aria-labelledby", "tori-send-to");
     const label = el(
       "div",
       { className: "choose-head" },
-      el("span", { id: "tori-send-to", textContent: "Send to" }),
-      newChat(),
+      el("span", { id: "tori-send-to", textContent: pick ? "Send to" : "Chats" }),
+      ...(pick ? [newChat()] : []),
     );
     return el("div", { className: "choose" }, label, group);
   };
@@ -628,14 +666,19 @@ function start() {
   };
 
   const choice = (): HTMLElement[] => {
-    if (!canSend() || !chats) return [];
+    if (!onWorktree() || !chats) return [];
+    const pick = canSend();
     if (!chats.length) {
       const none = el("span", { className: "grow", textContent: "No live chat in this worktree" });
-      return [el("div", { className: "send" }, el("div", { className: "none" }, icon("chat"), none, newChat()))];
+      return [
+        el(
+          "div",
+          { className: "send" },
+          el("div", { className: "none" }, icon("chat"), none, ...(pick ? [newChat()] : [])),
+        ),
+      ];
     }
-    if (chats.length === 1)
-      return [el("div", { className: "send" }, el("div", { className: "choose-head end" }, newChat()))];
-    return [el("div", { className: "send" }, chooser(chats))];
+    return [el("div", { className: "send" }, chatList(chats, pick))];
   };
 
   const actions = (joined: boolean): HTMLElement => {
@@ -678,7 +721,9 @@ function start() {
     );
     const actions = el("div", { className: "actions" }, button("secondary", "Close", leave, "close"));
     if (chat) actions.append(button("primary", "Show in Tori", () => void reveal(chat), "show"));
-    return el("div", { className: "done" }, done, ...(error ? [alert(error)] : []), actions);
+    const now = chat && chats?.find((c) => c.id === chat.id);
+    const fresh = now ? [el("div", { className: "chooser" }, chatRow(now, [], false, false))] : [];
+    return el("div", { className: "done" }, done, ...fresh, ...(error ? [alert(error)] : []), actions);
   };
 
   const renderTray = (focus?: string) => {
@@ -687,7 +732,7 @@ function start() {
       tray.remove();
       return;
     }
-    if (canSend() && chats === null) loadChats();
+    if (onWorktree() && chats === null) loadChats();
     const keep = focus ?? (root.activeElement as HTMLElement | null)?.dataset?.key;
     if (sent && !picks.length) tray.replaceChildren(header(), sentView(sent));
     else if (mode === "ready" && status) {
@@ -700,9 +745,13 @@ function start() {
         go.setAttribute("aria-keyshortcuts", shortcut.aria);
       }
       const ready = el("div", { className: "ready" }, go);
-      if (!logged()) tray.replaceChildren(header(), ready);
-      else {
-        const choosing = choice();
+      const choosing = choice();
+      if (!logged()) {
+        const body = el("div", { className: "body" }, ready, ...choosing);
+        const scrolled = tray.querySelector(".body")?.scrollTop ?? 0;
+        tray.replaceChildren(header(), body);
+        body.scrollTop = scrolled;
+      } else {
         const copied = flash ? [el("div", { className: "status" }, flash)] : [];
         const body = el("div", { className: "body" }, ready, ...copied, ...logLine(), ...choosing);
         const scrolled = tray.querySelector(".body")?.scrollTop ?? 0;
@@ -819,6 +868,7 @@ function start() {
       picks = [];
       targets = [];
       flash = "";
+      chats = null;
       refresh(chat ? "show" : "close");
       return;
     }
