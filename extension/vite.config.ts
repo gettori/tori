@@ -63,6 +63,7 @@ export default defineConfig(({ mode }) => {
           welcome: "welcome.html",
           devtools: "devtools.html",
           panel: "panel.html",
+          sidebar: "sidebar.html",
           picker: "src/picker/index.ts",
           pagelog: "src/pagelog.ts",
           pagerelay: "src/pagerelay.ts",
