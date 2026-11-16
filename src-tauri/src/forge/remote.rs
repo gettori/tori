@@ -2,6 +2,11 @@
 
 use super::model::RepoRef;
 use super::ForgeError;
+use std::collections::HashMap;
+use std::path::Path;
+use std::process::Command;
+use std::sync::{Mutex, OnceLock};
+use std::time::SystemTime;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Remote {
@@ -80,6 +85,61 @@ pub fn parse(url: &str) -> Result<Remote, ForgeError> {
             repo: repo.to_string(),
         },
     })
+}
+
+pub fn resolve_alias(remote: Remote) -> Remote {
+    match aliased_host(&remote.host) {
+        Some(host) => Remote { host, ..remote },
+        None => remote,
+    }
+}
+
+type AliasCache = HashMap<String, (Option<SystemTime>, Option<String>)>;
+
+fn aliased_host(alias: &str) -> Option<String> {
+    static CACHE: OnceLock<Mutex<AliasCache>> = OnceLock::new();
+    // A leading dash would reach ssh as an option.
+    if alias.starts_with('-') {
+        return None;
+    }
+    let cache = || {
+        CACHE
+            .get_or_init(Default::default)
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    };
+    let config_mtime = ssh_config_mtime();
+    if let Some(known) = cached(&cache(), alias, config_mtime) {
+        return known;
+    }
+    let hostname = ssh_hostname(alias)?;
+    let host = Some(canonical_host(&hostname)).filter(|host| host != alias);
+    cache().insert(alias.to_string(), (config_mtime, host.clone()));
+    host
+}
+
+fn cached(cache: &AliasCache, alias: &str, config_mtime: Option<SystemTime>) -> Option<Option<String>> {
+    let (at, host) = cache.get(alias)?;
+    (*at == config_mtime).then(|| host.clone())
+}
+
+fn ssh_config_mtime() -> Option<SystemTime> {
+    let home = std::env::var_os("HOME")?;
+    std::fs::metadata(Path::new(&home).join(".ssh/config"))
+        .and_then(|meta| meta.modified())
+        .ok()
+}
+
+fn ssh_hostname(alias: &str) -> Option<String> {
+    let out = Command::new("ssh").args(["-G", "--", alias]).output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .find_map(|line| line.strip_prefix("hostname "))
+        .map(|host| host.trim().to_string())
+        .filter(|host| !host.is_empty())
 }
 
 #[cfg(test)]
