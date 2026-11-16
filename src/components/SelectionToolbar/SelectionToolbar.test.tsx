@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vite-plus/test";
 import { render, fireEvent, screen } from "@solidjs/testing-library";
-import SelectionToolbar, { quoteBlock, selectionWithin } from "./SelectionToolbar";
+import SelectionToolbar, { quoteAction, quoteBlock, readAction, selectionWithin } from "./SelectionToolbar";
 
 // jsdom never fires selectionchange on its own, so every test sets the
 // selection and dispatches the event by hand, the way the browser would.
@@ -23,13 +23,7 @@ function mount() {
         <textarea aria-label="Other">typed</textarea>
       </div>
       <p>elsewhere</p>
-      <SelectionToolbar
-        root={() => root}
-        actions={[
-          { label: "Quote", run: onQuote },
-          { label: "Read", run: vi.fn() },
-        ]}
-      />
+      <SelectionToolbar root={() => root} actions={[quoteAction(onQuote), readAction(vi.fn())]} />
     </div>
   ));
   return { ...result, root, onQuote };
