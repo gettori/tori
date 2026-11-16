@@ -42,7 +42,8 @@ export function createCloneAccount(url: () => string, space: () => string | null
           const rows = await invoke<{ accountId: string; access: Access }[]>("forge_repo_access", { url: u }).catch(
             () => [],
           );
-          if (live) setAccess(Object.fromEntries(rows.map((r) => [r.accountId, r.access])));
+          const known = Array.isArray(rows) ? rows : [];
+          if (live) setAccess(Object.fromEntries(known.map((r) => [r.accountId, r.access])));
         }, SETTLE_MS);
         onCleanup(() => {
           live = false;
