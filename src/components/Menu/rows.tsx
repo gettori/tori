@@ -1,5 +1,6 @@
 import { For, Show, createUniqueId, type JSX } from "solid-js";
 import { ChevronRight, type LucideIcon } from "lucide-solid";
+import Glide from "../Glide/Glide";
 import Icon from "../Icon/Icon";
 import Tooltip from "../Tooltip/Tooltip";
 import { DropdownMenu as Primitive } from "../../lib/menu";
@@ -119,6 +120,20 @@ export function MenuRow(props: {
   );
 }
 
+/** The menu's one fill, under the highlighted row. A flyout's parent keeps it
+ *  while the pointer is in the flyout, so the trail back up the tree stays lit,
+ *  and a destructive row paints its own wash instead. */
+export function MenuGlide() {
+  return (
+    <Glide
+      active={(list) =>
+        list.querySelector(`.${styles.item}[data-highlighted]:not(.${styles.danger})`) ??
+        list.querySelector(`.${styles.item}[data-expanded]`)
+      }
+    />
+  );
+}
+
 /** How far a flyout sits from the row that opened it, and how far back up. Both
  *  in px and neither a token, for the reason `Dropdown`'s `TRIGGER_GUTTER`
  *  documents: floating-ui takes numbers, so these never reach CSS and cannot
@@ -168,6 +183,7 @@ export function MenuSub(props: {
       </Primitive.SubTrigger>
       <Primitive.Portal mount={surface()}>
         <Primitive.SubContent class={styles.content} onContextMenu={(e: MouseEvent) => e.preventDefault()}>
+          <MenuGlide />
           {props.children}
         </Primitive.SubContent>
       </Primitive.Portal>

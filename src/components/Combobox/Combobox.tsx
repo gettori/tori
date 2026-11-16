@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, Show, type JSX } from "solid-js";
 import { Combobox as Primitive, useComboboxContext } from "../../lib/combobox";
+import Glide from "../Glide/Glide";
 import OverlayScroll from "../Scrollbar/OverlayScroll";
 import styles from "./Combobox.module.css";
 
@@ -243,6 +244,7 @@ export default function Combobox(props: {
                with no height to exceed never scrolls. */
             <OverlayScroll
               class={props.listClass}
+              contentClass={styles.listFrame}
               viewportRef={setScroller}
               // The rows are not focusable (the listbox is virtual-focus, the
               // input keeps the caret), so a press would hand focus to the
@@ -251,6 +253,7 @@ export default function Combobox(props: {
               // is covered too. The commit is the click, which still fires.
               onMouseDown={(e: MouseEvent) => e.preventDefault()}
             >
+              <Highlight />
               <Primitive.Listbox
                 class={styles.listbox}
                 aria-label={props.listLabel}
@@ -270,6 +273,21 @@ export default function Combobox(props: {
         </Show>
       </Show>
     </Primitive.Root>
+  );
+}
+
+// Never under the picked row: its wash is a choice, not a position.
+function Highlight() {
+  const context = useComboboxContext();
+  return (
+    <Glide
+      hover={`.${styles.item}:not([data-disabled]):not([data-picked])`}
+      active={(list) =>
+        context.listState().selectionManager().focusedKey() == null
+          ? null
+          : list.querySelector(`.${styles.item}[data-highlighted]:not([data-picked])`)
+      }
+    />
   );
 }
 
