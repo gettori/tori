@@ -457,7 +457,6 @@ export type ChatInputProps = {
   toriMcp?: boolean;
   /** Which commands are skills, the only ones a mid-sentence `/` offers. */
   skills?: string[];
-  /** The pane's height; the stories fill the canvas. */
   height?: string;
 };
 

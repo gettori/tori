@@ -19,8 +19,8 @@
   transform-origin: var(--kb-popover-content-transform-origin, center);
 }
 
-/* Enter only, the shape Menu.module.css spells out. `scale` rather than
-   `transform` matters most here: the caller's own class shares this element. */
+/* Enter only, so solid-presence unmounts at once on close. `scale` rather than
+   `transform`: the caller's own class shares this element. */
 @keyframes popoverSurfaceIn {
   from {
     opacity: 0;

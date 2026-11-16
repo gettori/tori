@@ -100,7 +100,7 @@
   transform-origin: var(--kb-select-content-transform-origin, center);
 }
 
-/* Enter only, the shape Menu.module.css spells out. */
+/* Enter only, so solid-presence unmounts at once on close. */
 @keyframes selectContentIn {
   from {
     opacity: 0;

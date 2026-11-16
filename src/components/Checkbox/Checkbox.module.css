@@ -71,8 +71,7 @@
 
 /* Mounted whether or not the box is checked (see Checkbox.tsx), so the hidden
    state is CSS: Kobalte stamps `data-checked` on the indicator itself. A
-   transition, not a keyframe, so a pane shown again does not replay the tick;
-   it lives on the checked state only, so unchecking is instant. */
+   transition, so a pane shown again does not replay the tick. */
 .indicator {
   display: flex;
   align-items: center;

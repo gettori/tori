@@ -32,7 +32,7 @@
 
 /* Enter only. With no `[data-closed]` animation, solid-presence reads
    `animation-name: none` on close and unmounts at once, so closing stays
-   instant. `scale` rather than `transform`, like the shared entrances. */
+   instant. */
 @keyframes menuContentIn {
   from {
     opacity: 0;
