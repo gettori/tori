@@ -295,20 +295,24 @@ fn sync_config(hosts: &[&str], helper: &str, own: &Path, global: &Path) -> Resul
         // Appended by hand: `git config --add` would join an `[include]` already
         // higher in the file, above the plain helpers Tori's reset must follow,
         // and `store` there would save Tori's token in plain text.
-        let ends_open = std::fs::read(global).is_ok_and(|text| text.last().is_some_and(|b| *b != b'\n'));
-        let quoted = include.replace('\\', "\\\\").replace('"', "\\\"");
-        let section = format!(
-            "{}[include]\n\tpath = \"{quoted}\"\n",
-            if ends_open { "\n" } else { "" }
-        );
-        std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(global)
-            .and_then(|mut f| f.write_all(section.as_bytes()))
-            .map_err(|e| e.to_string())?;
+        append_include(global, &include)?;
     }
     Ok(())
+}
+
+pub(crate) fn append_include(config: &Path, include: &str) -> Result<(), String> {
+    let ends_open = std::fs::read(config).is_ok_and(|text| text.last().is_some_and(|b| *b != b'\n'));
+    let quoted = include.replace('\\', "\\\\").replace('"', "\\\"");
+    let section = format!(
+        "{}[include]\n\tpath = \"{quoted}\"\n",
+        if ends_open { "\n" } else { "" }
+    );
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(config)
+        .and_then(|mut f| f.write_all(section.as_bytes()))
+        .map_err(|e| e.to_string())
 }
 
 fn git_config_exit(file: &Path, args: &[&str]) -> Result<i32, String> {

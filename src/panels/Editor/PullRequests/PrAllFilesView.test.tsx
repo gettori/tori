@@ -163,6 +163,8 @@ const account: ForgeAccount = {
   scopes: null,
   source: "token",
   orgAccess: [],
+  commitName: null,
+  commitEmail: null,
   auth: { kind: "signedIn", login: "skarif2" },
 };
 

@@ -222,6 +222,8 @@ const signInAs = async (login: string) => {
       scopes: null,
       source: "token",
       orgAccess: [],
+      commitName: null,
+      commitEmail: null,
       auth: { kind: "signedIn", login },
     },
   ]);

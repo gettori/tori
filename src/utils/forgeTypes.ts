@@ -350,6 +350,8 @@ export type ForgeAccount = {
   source: ForgeSource;
   /// Organisations that refused this account and have not been authorized since.
   orgAccess: OrgAccess[];
+  commitName: string | null;
+  commitEmail: string | null;
   auth: AuthState;
 };
 
@@ -374,6 +376,19 @@ export type RepoAccount =
   | { kind: "account"; accountId: string; host: string; auth: AuthState; capabilities: Capabilities }
   | { kind: "pick"; host: string; candidates: ForgeAccount[] }
   | { kind: "noAccount"; host: string | null };
+
+export type CommitIdentity = {
+  name: string | null;
+  email: string | null;
+  source:
+    | { kind: "account"; accountId: string }
+    | { kind: "repo" }
+    | { kind: "global" }
+    | { kind: "include"; file: string }
+    | { kind: "none" };
+  ignored: { key: string; value: string; removable: boolean }[];
+  needsChoice: string | null;
+};
 
 export type SignInRoutes = {
   host: string;
@@ -509,6 +524,8 @@ export const FORGE_KEYS = {
   forgeAccount: [
     "auth",
     "baseUrl",
+    "commitEmail",
+    "commitName",
     "expiresAt",
     "id",
     "label",

@@ -1,4 +1,4 @@
-import { createResource, createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -7,7 +7,7 @@ import ChangeOriginDialog from "../../components/Dialogs/ChangeOriginDialog";
 import Select from "../../components/Select/Select";
 import { emitWith, OPEN_SETTINGS, TOAST, type OpenSettings, type ToastEvent } from "../../utils/events";
 import { forgeAccountsOn, forgeRepo, pickForgeAccount, resolveForgeRepo } from "../../utils/forgeStatus";
-import { forgeAccountName, forgeErrorMessage } from "../../utils/forgeTypes";
+import { forgeAccountName, forgeErrorMessage, type CommitIdentity } from "../../utils/forgeTypes";
 import { Row, Section } from "./Section";
 import styles from "./ProjectSettingsDialog.module.css";
 
@@ -29,6 +29,10 @@ export default function BranchesSection(props: { projectPath: string; projectNam
     () => props.projectPath,
     (repo) => invoke<string | null>("repo_default_branch", { repo }).catch(() => null),
   );
+  const [author, { refetch: refetchAuthor }] = createResource(
+    () => props.projectPath,
+    (projectPath) => invoke<CommitIdentity>("forge_commit_identity", { projectPath }).catch(() => null),
+  );
   const [editing, setEditing] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
 
@@ -39,6 +43,7 @@ export default function BranchesSection(props: { projectPath: string; projectNam
     unlisten = await listen("config://changed", () => {
       void refetchOrigin();
       void refetchBase();
+      void refetchAuthor();
       void resolveForgeRepo(props.projectPath);
     });
   });
@@ -68,6 +73,38 @@ export default function BranchesSection(props: { projectPath: string; projectNam
   const current = () => {
     const r = repo();
     return r?.kind === "account" ? r.accountId : "";
+  };
+  const accountName = (id: string) => {
+    const a = forgeAccountsOn(host() ?? "").find((x) => x.id === id);
+    return a ? forgeAccountName(a) : id;
+  };
+
+  async function authorAction(command: string, args: Record<string, unknown> = {}) {
+    try {
+      await invoke(command, { projectPath: props.projectPath, ...args });
+    } catch (e) {
+      toast(forgeErrorMessage(e));
+    }
+    void refetchAuthor();
+  }
+
+  const authorHint = (a: CommitIdentity) => {
+    switch (a.source.kind) {
+      case "account":
+        return `From ${accountName(a.source.accountId)}, for every git client in this repo.`;
+      case "repo":
+        return "Set in this repo's own git config.";
+      case "global": {
+        const r = repo();
+        return r?.kind === "account"
+          ? `Your global git author. Give ${accountName(r.accountId)} an author in Settings to commit as it here.`
+          : "Your global git author.";
+      }
+      case "include":
+        return `From ${a.source.file}.`;
+      case "none":
+        return "No author is set, so git will refuse to commit.";
+    }
   };
 
   return (
@@ -106,9 +143,50 @@ export default function BranchesSection(props: { projectPath: string; projectNam
                 options={accountOptions()}
                 value={current()}
                 onChange={(id) =>
-                  void pickForgeAccount(props.projectPath, id).catch((e) => toast(forgeErrorMessage(e)))
+                  void pickForgeAccount(props.projectPath, id)
+                    .catch((e) => toast(forgeErrorMessage(e)))
+                    .then(() => refetchAuthor())
                 }
               />
+            </Show>
+          </Row>
+        )}
+      </Show>
+      <Show when={author()}>
+        {(a) => (
+          <Row
+            label="Commits as"
+            hint={
+              <>
+                <div>{authorHint(a())}</div>
+                <Show when={a().needsChoice}>
+                  {(id) => <div>This repo sets its own author, so {accountName(id())}'s is not applied here.</div>}
+                </Show>
+                <For each={a().ignored}>
+                  {(own) => (
+                    <div>
+                      This repo's own {own.key} ({own.value}) is ignored.{" "}
+                      <Show when={own.removable}>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          onClick={() => void authorAction("forge_identity_remove_own", { key: own.key })}
+                        >
+                          Remove it
+                        </Button>
+                      </Show>
+                    </div>
+                  )}
+                </For>
+              </>
+            }
+          >
+            <span class={styles.value}>{a().email ? `${a().name ?? ""} <${a().email}>` : "Not set"}</span>
+            <Show when={a().needsChoice}>
+              {(id) => <Button onClick={() => void authorAction("forge_identity_use")}>Use {accountName(id())}</Button>}
+            </Show>
+            <Show when={a().ignored.length > 0}>
+              <Button onClick={() => void authorAction("forge_identity_stop")}>Use the repo's own</Button>
             </Show>
           </Row>
         )}

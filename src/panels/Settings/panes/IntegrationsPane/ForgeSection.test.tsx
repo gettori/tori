@@ -56,6 +56,8 @@ function account(id: string, auth: AuthState, login: string | null, extra: Parti
     scopes: null,
     source: "token",
     orgAccess: [],
+    commitName: null,
+    commitEmail: null,
     auth,
     ...extra,
   };

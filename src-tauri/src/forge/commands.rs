@@ -22,7 +22,9 @@ use super::model::{
 };
 use super::remote::{self, Remote};
 use super::token::{self, Secret};
-use super::{auth, cli, github, gitlab, now_secs, prs, refresh, status, CreatePr, Forge, ForgeError, MergeMethod};
+use super::{
+    auth, cli, github, gitlab, identity, now_secs, prs, refresh, status, CreatePr, Forge, ForgeError, MergeMethod,
+};
 use crate::credential::Reach;
 use crate::rpc::pr_watch;
 use serde::Serialize;
@@ -430,6 +432,7 @@ pub fn resync_global_config() {
 #[tauri::command(async)]
 pub fn forge_set_default_account(host: String, account_id: Option<String>) -> Result<Vec<HostView>, ForgeErrorDto> {
     accounts::update(|file| accounts::set_default_account(file, &host, account_id.as_deref()))?;
+    reconciled()?;
     Ok(accounts::view(&accounts::load(), auth::state))
 }
 
@@ -679,6 +682,7 @@ pub fn forge_remove_account(account_id: String) -> Result<(), ForgeErrorDto> {
     resync_global_config();
     // A pick left behind names no account, so resolution already ignores it.
     let _ = crate::settings::edit_forge_picks(|picks| accounts::drop_picks_for(picks, &account_id));
+    reconciled()?;
     Ok(())
 }
 
@@ -746,7 +750,73 @@ pub fn forge_pick_account(project_path: String, account_id: String) -> Result<()
         picks.insert(remote.key(), account_id.clone()).as_ref() != Some(&account_id)
     })
     .map_err(|message| ForgeError::Transport { message })?;
+    reconciled()?;
     Ok(())
+}
+
+fn reconciled() -> Result<(), ForgeError> {
+    let failed = identity::reconcile();
+    if failed.is_empty() {
+        return Ok(());
+    }
+    Err(ForgeError::Transport {
+        message: format!("Commit authors could not be updated for {}", failed.join("; ")),
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IdentitySuggestion {
+    pub name: String,
+    pub email: String,
+}
+
+#[tauri::command(async)]
+pub fn forge_identity_hint(account_id: String) -> Result<IdentitySuggestion, ForgeErrorDto> {
+    let file = accounts::load();
+    let (host, account) = accounts::find(&file, &account_id).ok_or(ForgeError::NotAuthenticated)?;
+    let forge = forge_for(
+        account.provider,
+        &account.base_url,
+        auth::token(&account_id),
+        login_of(&account_id),
+    );
+    let result = forge.identity_hint();
+    auth::note_result(&account_id, &result);
+    let (name, email) = identity::suggestion(host, &result?);
+    Ok(IdentitySuggestion { name, email })
+}
+
+#[tauri::command(async)]
+pub fn forge_set_identity(
+    account_id: String,
+    name: Option<String>,
+    email: Option<String>,
+) -> Result<Vec<HostView>, ForgeErrorDto> {
+    let pair = name.as_deref().zip(email.as_deref());
+    accounts::update(|file| accounts::set_identity(file, &account_id, pair))?;
+    reconciled()?;
+    Ok(accounts::view(&accounts::load(), auth::state))
+}
+
+#[tauri::command(async)]
+pub fn forge_commit_identity(project_path: String) -> Result<identity::CommitIdentity, ForgeErrorDto> {
+    Ok(identity::commit_identity(&project_path)?)
+}
+
+#[tauri::command(async)]
+pub fn forge_identity_use(project_path: String) -> Result<(), ForgeErrorDto> {
+    Ok(identity::use_account(&project_path)?)
+}
+
+#[tauri::command(async)]
+pub fn forge_identity_stop(project_path: String) -> Result<(), ForgeErrorDto> {
+    Ok(identity::stop_account(&project_path)?)
+}
+
+#[tauri::command(async)]
+pub fn forge_identity_remove_own(project_path: String, key: String) -> Result<(), ForgeErrorDto> {
+    Ok(identity::remove_own(&project_path, &key)?)
 }
 
 /// A forge client for one checkout: the account it acts as, and the repo on
@@ -2158,6 +2228,8 @@ mod tests {
             scopes: None,
             source: Source::Token,
             org_access: Vec::new(),
+            commit_name: None,
+            commit_email: None,
         };
         let token = fresh_token_with(&AccountsFile::default(), accounts::GITHUB_COM, &account, |_| Some(1));
         assert_eq!(token.as_deref(), Some("ghp_lapsed"));

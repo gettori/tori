@@ -83,6 +83,19 @@ pub struct Account {
     /// since. Learned from the hosts' own refusals, never probed for.
     #[serde(default)]
     pub org_access: Vec<OrgAccess>,
+    #[serde(default)]
+    pub commit_name: Option<String>,
+    #[serde(default)]
+    pub commit_email: Option<String>,
+}
+
+impl Account {
+    pub fn identity(&self) -> Option<(&str, &str)> {
+        match (self.commit_name.as_deref(), self.commit_email.as_deref()) {
+            (Some(name), Some(email)) if !name.is_empty() && !email.is_empty() => Some((name, email)),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -230,6 +243,8 @@ pub fn add_account(
         scopes: None,
         source,
         org_access: Vec::new(),
+        commit_name: None,
+        commit_email: None,
     });
     Ok(id)
 }
@@ -365,6 +380,32 @@ pub fn note_login(file: &mut AccountsFile, id: &str, login: &str) {
     }
 }
 
+pub fn set_identity(file: &mut AccountsFile, id: &str, identity: Option<(&str, &str)>) -> Result<bool, ForgeError> {
+    let identity = match identity.map(|(name, email)| (name.trim(), email.trim())) {
+        Some((name, email)) if name.is_empty() || email.is_empty() || !email.contains('@') => {
+            return Err(ForgeError::Invalid {
+                message: "Commits need both a name and an email address.".into(),
+            })
+        }
+        other => other,
+    };
+    let account = file
+        .hosts
+        .values_mut()
+        .flat_map(|r| r.accounts.iter_mut())
+        .find(|a| a.id == id)
+        .ok_or(ForgeError::NotAuthenticated)?;
+    let next = (
+        identity.map(|(name, _)| name.to_string()),
+        identity.map(|(_, email)| email.to_string()),
+    );
+    if (account.commit_name.clone(), account.commit_email.clone()) == next {
+        return Ok(false);
+    }
+    (account.commit_name, account.commit_email) = next;
+    Ok(true)
+}
+
 /// The old keychain entry is only read, never deleted, so a downgrade still
 /// signs in.
 pub fn migrate_legacy(
@@ -392,6 +433,8 @@ pub fn migrate_legacy(
             scopes: None,
             source: Source::default(),
             org_access: Vec::new(),
+            commit_name: None,
+            commit_email: None,
         });
     }
     file.legacy_migrated = true;
