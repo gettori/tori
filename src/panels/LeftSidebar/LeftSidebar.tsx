@@ -173,6 +173,10 @@ import {
   forgeRepo,
   noteForgeEnabled,
   pickForgeAccount,
+  accountWithAccess,
+  forgeAccountCount,
+  forgeAccountOf,
+  forgeAvatar,
   mergeWatched,
   prWatchProjects,
   cardProjects,
@@ -1168,7 +1172,7 @@ export default function LeftSidebar(props: {
       return [
         { heading: `${repo.host} account` },
         ...repo.candidates.map((a) => ({
-          label: forgeAccountName(a),
+          label: accountWithAccess(p.path, a),
           onClick: () => void pickForgeAccount(p.path, a.id).catch((e) => setError(forgeErrorMessage(e))),
         })),
       ];
@@ -1232,6 +1236,29 @@ export default function LeftSidebar(props: {
           </span>
         </Show>
       </>
+    );
+  }
+
+  // Only once a second account exists: with one, every repo is on it.
+  function accountAvatarNode(p: Project) {
+    const account = () => (forgeAccountCount() >= 2 ? forgeAccountOf(p.path) : null);
+    return (
+      <Show when={account()}>
+        {(a) => (
+          <Tooltip
+            as="span"
+            class={rows.accountAvatar}
+            role="img"
+            aria-label={`${p.name}: ${forgeAccountName(a())}`}
+            label={forgeAccountName(a())}
+            data-forge-account={a().id}
+          >
+            <Show when={forgeAvatar(a())} fallback={forgeAccountName(a()).slice(0, 1).toUpperCase()}>
+              {(url) => <img src={url()} alt="" draggable={false} />}
+            </Show>
+          </Tooltip>
+        )}
+      </Show>
     );
   }
 
@@ -4614,6 +4641,7 @@ export default function LeftSidebar(props: {
               />
             </Show>
             {reviewRequestsNode(p)}
+            {accountAvatarNode(p)}
             {forgeDoorNode(p)}
             {statusBubble(() =>
               plainDir() ? bubbleForUnits([folderUnit()]) : !popen() ? bubbleForUnits(allUnits()) : null,

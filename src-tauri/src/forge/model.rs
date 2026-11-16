@@ -771,6 +771,7 @@ mod tests {
                     commit_email: Some("1+skarif2@users.noreply.github.com".into()),
                     ssh_public_key: Some("/Users/skarif2/.ssh/id_ed25519.pub".into()),
                     signing_public_key: Some("/Users/skarif2/.ssh/id_ed25519.pub".into()),
+                    avatar_url: Some("https://avatars.githubusercontent.com/u/1".into()),
                 },
                 auth: AuthState::SignedIn { login: "skarif2".into() },
             },

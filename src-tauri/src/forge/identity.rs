@@ -244,6 +244,21 @@ impl Repo {
         Ok(at.is_some_and(|at| own.is_none_or(|own| at > own)))
     }
 
+    fn author_without_account(&self, places: &Places) -> Result<Option<String>, String> {
+        let last = |key: &str| -> Result<Option<String>, String> {
+            Ok(self
+                .entries(key)?
+                .into_iter()
+                .rfind(|entry| places.kind(entry) != Kind::Account)
+                .map(|entry| entry.value))
+        };
+        let name = last("user.name")?;
+        Ok(last("user.email")?.map(|email| match name {
+            Some(name) => format!("{name} <{email}>"),
+            None => email,
+        }))
+    }
+
     /// Points the repo at one account file, or at none.
     fn apply(&self, want: Option<&Path>, places: &Places) -> Result<(), String> {
         let have = self.included(places)?;
@@ -570,4 +585,92 @@ pub fn remove_own(path: &str, key: &str) -> Result<(), ForgeError> {
         }
     }
     Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Removal {
+    pub remote: String,
+    pub projects: Vec<String>,
+    pub choices: Vec<RemovalChoice>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemovalChoice {
+    pub account_id: Option<String>,
+    pub author: Option<String>,
+    pub unread: bool,
+    pub preselected: bool,
+}
+
+fn own_choice(own: &Result<Option<String>, String>) -> RemovalChoice {
+    RemovalChoice {
+        account_id: None,
+        author: own.clone().unwrap_or_default(),
+        unread: own.is_err(),
+        preselected: false,
+    }
+}
+
+pub fn removal(account_id: &str) -> Vec<Removal> {
+    let file = accounts::load();
+    let picks = crate::settings::get_settings().forge.picks;
+    let mut after = file.clone();
+    accounts::remove_account(&mut after, account_id);
+    let mut after_picks = picks.clone();
+    accounts::drop_picks_for(&mut after_picks, account_id);
+    let places = Places::here();
+    let mut rows: Vec<Removal> = Vec::new();
+    for path in known_repos() {
+        let Ok(remote) = super::commands::remote_of(&path) else {
+            continue;
+        };
+        if accounts::resolve(&file, &picks, &remote) != Resolution::Account(account_id.to_string()) {
+            continue;
+        }
+        let key = remote.key();
+        if let Some(row) = rows.iter_mut().find(|row| row.remote == key) {
+            row.projects.push(path);
+            continue;
+        }
+        let own = Repo::open(&path).and_then(|repo| repo.author_without_account(&places));
+        let resolved = match accounts::resolve(&after, &after_picks, &remote) {
+            Resolution::Account(id) => Some(id),
+            _ => None,
+        };
+        let mut choices: Vec<RemovalChoice> = after
+            .hosts
+            .get(&remote.host)
+            .map(|record| record.accounts.as_slice())
+            .unwrap_or_default()
+            .iter()
+            .map(|account| match account.identity() {
+                Some((name, email)) => RemovalChoice {
+                    author: Some(format!("{name} <{email}>")),
+                    unread: false,
+                    preselected: resolved.as_ref() == Some(&account.id),
+                    account_id: Some(account.id.clone()),
+                },
+                None => RemovalChoice {
+                    preselected: resolved.as_ref() == Some(&account.id),
+                    account_id: Some(account.id.clone()),
+                    ..own_choice(&own)
+                },
+            })
+            .collect();
+        // With no pick, a host default or a lone account would take it anyway.
+        if resolved.is_none() {
+            choices.push(RemovalChoice {
+                preselected: true,
+                ..own_choice(&own)
+            });
+        }
+        rows.push(Removal {
+            remote: key,
+            projects: vec![path],
+            choices,
+        });
+    }
+    rows
 }

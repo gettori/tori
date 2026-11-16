@@ -6,7 +6,13 @@ import Button from "../../components/Button/Button";
 import ChangeOriginDialog from "../../components/Dialogs/ChangeOriginDialog";
 import Select from "../../components/Select/Select";
 import { emitWith, OPEN_SETTINGS, TOAST, type OpenSettings, type ToastEvent } from "../../utils/events";
-import { forgeAccountsOn, forgeRepo, pickForgeAccount, resolveForgeRepo } from "../../utils/forgeStatus";
+import {
+  accountWithAccess,
+  forgeAccountsOn,
+  forgeRepo,
+  pickForgeAccount,
+  resolveForgeRepo,
+} from "../../utils/forgeStatus";
 import { forgeAccountName, forgeErrorMessage, type CommitIdentity } from "../../utils/forgeTypes";
 import { Row, Section } from "./Section";
 import styles from "./ProjectSettingsDialog.module.css";
@@ -68,7 +74,10 @@ export default function BranchesSection(props: { projectPath: string; projectNam
     const r = repo();
     if (!r?.host) return [];
     const list = r.kind === "pick" ? r.candidates : forgeAccountsOn(r.host);
-    return list.map((a) => ({ value: a.id, label: forgeAccountName(a) }));
+    return list.map((a) => ({
+      value: a.id,
+      label: r.kind === "pick" ? accountWithAccess(props.projectPath, a) : forgeAccountName(a),
+    }));
   };
   const current = () => {
     const r = repo();
@@ -160,7 +169,12 @@ export default function BranchesSection(props: { projectPath: string; projectNam
               <>
                 <div>{authorHint(a())}</div>
                 <Show when={a().needsChoice}>
-                  {(id) => <div>This repo sets its own author, so {accountName(id())}'s is not applied here.</div>}
+                  {(id) => (
+                    <div>
+                      This repo sets its own author, so {accountName(id())}'s is not applied here. Using{" "}
+                      {accountName(id())} ignores the repo's own author ({a().email ?? "none"}) until you switch back.
+                    </div>
+                  )}
                 </Show>
                 <For each={a().ignored}>
                   {(own) => (
