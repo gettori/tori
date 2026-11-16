@@ -1,7 +1,11 @@
 import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask, TextLayer } from "pdfjs-dist";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
-import SelectionToolbar, { selectionWithin } from "../../components/SelectionToolbar/SelectionToolbar";
+import SelectionToolbar, {
+  quoteAction,
+  readAction,
+  selectionWithin,
+} from "../../components/SelectionToolbar/SelectionToolbar";
 import { loadPdf, pdfFailureMessage, pdfTextLayer, pdfView, setPdfView } from "./pdfDocument";
 import {
   clampPage,
@@ -570,8 +574,8 @@ function PdfDocumentView(props: {
         <SelectionToolbar
           root={() => scroller}
           actions={[
-            { label: "Quote", run: (text) => void quote(text) },
-            ...(LOCAL_SPEECH ? [{ label: "Read", run: (text: string) => void readAloud(text) }] : []),
+            quoteAction((text) => void quote(text)),
+            ...(LOCAL_SPEECH ? [readAction((text) => void readAloud(text))] : []),
           ]}
         />
       </Show>

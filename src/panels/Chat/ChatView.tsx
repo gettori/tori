@@ -16,7 +16,11 @@ import { listen } from "@tauri-apps/api/event";
 import { createRelatedSessions } from "./relatedSessions";
 import PendingRequests from "./PendingRequests";
 import MessageList from "./MessageList";
-import SelectionToolbar, { quoteBlock } from "../../components/SelectionToolbar/SelectionToolbar";
+import SelectionToolbar, {
+  quoteAction,
+  quoteBlock,
+  readAction,
+} from "../../components/SelectionToolbar/SelectionToolbar";
 import { followScratch, openDraftInEditor, takeScratch, unlinkScratch } from "./composerScratch";
 import SessionDiffView from "./SessionDiffView";
 import SessionInfo from "./SessionInfo";
@@ -2636,8 +2640,8 @@ export default function ChatView(props: {
       <SelectionToolbar
         root={() => transcriptEl}
         actions={[
-          { label: "Quote", run: (text) => composer?.insertBlock(quoteBlock(text)) },
-          ...(LOCAL_SPEECH ? [{ label: "Read", run: (text: string) => void readSelection(text) }] : []),
+          quoteAction((text) => composer?.insertBlock(quoteBlock(text))),
+          ...(LOCAL_SPEECH ? [readAction((text) => void readSelection(text))] : []),
         ]}
       />
 
