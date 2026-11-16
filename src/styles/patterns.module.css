@@ -54,6 +54,28 @@
   padding: calc(16px * var(--ui-scale));
 }
 
+/* One-shot entrances, applied through `enterOnce`, never as a static class: a
+   static one replays whenever its pane is shown again. They use the individual
+   `scale` and `translate` properties so an element's own `transform` survives. */
+@keyframes popIn {
+  from {
+    opacity: 0;
+    scale: 0.95;
+  }
+}
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    translate: 0 calc(4px * var(--ui-scale));
+  }
+}
+.enterPop {
+  animation: popIn var(--tori-duration-med) var(--tori-ease-out);
+}
+.enterRise {
+  animation: riseIn var(--tori-duration-med) var(--tori-ease-out);
+}
+
 /* Announced, never drawn. `clip-path` rather than `display: none`, which would
    take the text out of the accessible name it exists to supply. Five modules
    carried this recipe verbatim before. */
