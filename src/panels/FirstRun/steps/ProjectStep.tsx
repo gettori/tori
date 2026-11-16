@@ -69,6 +69,7 @@ export default function ProjectStep(props: {
   onSubmit: () => void;
   onInstallGit: () => void;
   onCheckGit: () => void;
+  account?: JSX.Element;
   job?: JSX.Element;
 }) {
   const needsUrl = () => props.mode !== "folder";
@@ -149,6 +150,7 @@ export default function ProjectStep(props: {
                   </div>
                 </Show>
               </div>
+              <Show when={needsUrl()}>{props.account}</Show>
               <Show when={nameError() ?? props.error} fallback={<div class={styles.preview}>{preview()}</div>}>
                 {(err) => <div class={styles.error}>{err()}</div>}
               </Show>

@@ -6,6 +6,7 @@ import Checkbox from "../Checkbox/Checkbox";
 import Dialog from "../Dialog/Dialog";
 import { createMoveForm, MoveFields } from "./MoveIntoSpace";
 import { nameFromUrl, type NewProjectMode } from "../../utils/newProject";
+import { CloneAccountField, createCloneAccount } from "./CloneAccount";
 
 // Create a folder or a clone under a space. The worktree layout is a box on
 // Clone, on by default, not a third mode: both layouts ask the same fields.
@@ -32,7 +33,13 @@ export type MoveHere = {
 export default function NewProjectDialog(props: {
   spaceName: string;
   busy: boolean;
-  onConfirm: (opts: { mode: NewProjectMode; name: string; url: string; worktreeLayout: boolean }) => void;
+  onConfirm: (opts: {
+    mode: NewProjectMode;
+    name: string;
+    url: string;
+    worktreeLayout: boolean;
+    accountId: string | null;
+  }) => void;
   onCancel: () => void;
   move?: MoveHere;
 }) {
@@ -52,6 +59,7 @@ export default function NewProjectDialog(props: {
   let first: HTMLInputElement | undefined;
 
   const needsUrl = () => mode() === "clone";
+  const account = createCloneAccount(() => (needsUrl() ? url() : ""));
 
   function onUrlInput(v: string) {
     setUrl(v);
@@ -84,7 +92,7 @@ export default function NewProjectDialog(props: {
   // The URL is the only required field in the two git modes: a blank folder name
   // is not missing, it is the placeholder's promise that the URL supplies one.
   const folderName = () => name().trim() || (needsUrl() ? nameFromUrl(url().trim()) : "");
-  const canConfirm = () => (needsUrl() ? !!url().trim() : !!name().trim());
+  const canConfirm = () => (needsUrl() ? !!url().trim() && account.ready() : !!name().trim());
   const confirm = () => {
     const m = mode();
     if (m === "move") return void confirmMove();
@@ -94,6 +102,7 @@ export default function NewProjectDialog(props: {
       name: folderName(),
       url: url().trim(),
       worktreeLayout: mode() === "clone" && worktreeLayout(),
+      accountId: needsUrl() ? account.accountId() : null,
     });
   };
 
@@ -179,6 +188,12 @@ export default function NewProjectDialog(props: {
                 spellcheck={false}
               />
             </div>
+            <CloneAccountField
+              pick={account}
+              fieldClass={styles.spaceField}
+              labelClass={styles.spaceLabel}
+              helpClass={styles.spaceHelp}
+            />
           </Show>
 
           <div class={styles.spaceField}>
