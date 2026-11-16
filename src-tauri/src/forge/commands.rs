@@ -759,7 +759,16 @@ pub struct Client {
 
 pub(crate) fn remote_of(project_path: &str) -> Result<Remote, ForgeError> {
     match crate::git::git_origin(project_path.to_string()) {
-        Ok(Some(url)) => remote::parse(&url),
+        Ok(Some(url)) => {
+            let remote = remote::parse(&url)?;
+            let over_ssh = !url.starts_with("https://") && !url.starts_with("http://");
+            // Only a host nothing is signed in to can be an ssh config alias.
+            if over_ssh && !accounts::load().hosts.contains_key(&remote.host) {
+                Ok(remote::resolve_alias(remote))
+            } else {
+                Ok(remote)
+            }
+        }
         Ok(None) => Err(ForgeError::NoRemote),
         Err(message) => Err(ForgeError::Transport { message }),
     }
