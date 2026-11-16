@@ -27,6 +27,7 @@ use super::model::{
     MergeableState, OrgAccess, Paged, PrFile, PrState, PrSummary, PullRequest, RateSnapshot, RepoRef, ReviewComment,
     ReviewDecision, ReviewEvent, ReviewThread, ReviewVerdict, UnitStatus, Viewer,
 };
+use super::IdentityHint;
 use super::{epoch_secs, CreatePr, Forge, ForgeError, MergeMethod};
 use serde_json::Value;
 use sha1::{Digest, Sha1};
@@ -602,6 +603,20 @@ impl Forge for GitLabForge {
         Ok(Viewer {
             login: str_at(&v, "username"),
             avatar_url: opt_str(&v, "avatar_url"),
+        })
+    }
+
+    fn identity_hint(&self) -> Result<IdentityHint, ForgeError> {
+        self.require_token()?;
+        let v = self.send(self.rest("GET", "/user", None))?;
+        let email = ["commit_email", "public_email"]
+            .into_iter()
+            .find_map(|key| opt_str(&v, key).filter(|s| !s.is_empty()));
+        Ok(IdentityHint {
+            id: v.get("id").and_then(Value::as_u64),
+            login: str_at(&v, "username"),
+            name: opt_str(&v, "name").filter(|s| !s.is_empty()),
+            email,
         })
     }
 

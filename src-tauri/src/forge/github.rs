@@ -34,6 +34,7 @@ use super::model::{
     PrSummary, PullRequest, RateSnapshot, RepoRef, ReviewComment, ReviewDecision, ReviewEvent, ReviewThread,
     ReviewVerdict, UnitStatus, Viewer,
 };
+use super::IdentityHint;
 use super::{CreatePr, Forge, ForgeError, MergeMethod};
 use serde_json::Value;
 
@@ -846,6 +847,17 @@ impl Forge for GitHubForge {
         Ok(Viewer {
             login: str_at(&v, "login"),
             avatar_url: v.get("avatar_url").and_then(|a| a.as_str()).map(|s| s.to_string()),
+        })
+    }
+
+    fn identity_hint(&self) -> Result<IdentityHint, ForgeError> {
+        self.require_token()?;
+        let v = self.send(self.rest("GET", "/user", None))?;
+        Ok(IdentityHint {
+            id: v.get("id").and_then(Value::as_u64),
+            login: str_at(&v, "login"),
+            name: opt_str(&v, "name").filter(|s| !s.is_empty()),
+            email: opt_str(&v, "email").filter(|s| !s.is_empty()),
         })
     }
 

@@ -335,6 +335,9 @@ pub fn run() {
             // since it was written.
             std::thread::spawn(forge::commands::resync_global_config);
 
+            forge::identity::install(app.state::<ProjectIndex>().inner().clone());
+            forge::identity::reconcile_soon();
+
             Ok(())
         })
         .manage(forge::commands::DeviceFlowState::default())
@@ -816,6 +819,12 @@ pub fn run() {
             forge::commands::forge_remove_account,
             forge::commands::forge_repo_account,
             forge::commands::forge_pick_account,
+            forge::commands::forge_identity_hint,
+            forge::commands::forge_set_identity,
+            forge::commands::forge_commit_identity,
+            forge::commands::forge_identity_use,
+            forge::commands::forge_identity_stop,
+            forge::commands::forge_identity_remove_own,
             forge::commands::forge_pr_for_branch,
             forge::commands::forge_create_pr,
             forge::commands::forge_push_and_create_pr,

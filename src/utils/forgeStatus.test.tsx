@@ -104,6 +104,8 @@ function account(id: string, auth: AuthState): ForgeAccount {
     scopes: null,
     source: "token",
     orgAccess: [],
+    commitName: null,
+    commitEmail: null,
     auth,
   };
 }

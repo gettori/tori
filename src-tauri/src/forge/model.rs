@@ -475,6 +475,16 @@ impl ReviewEvent {
     }
 }
 
+/// What the host says about a token's owner, to suggest a commit author from.
+/// A host may hide the id, the name and the email.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct IdentityHint {
+    pub id: Option<u64>,
+    pub login: String,
+    pub name: Option<String>,
+    pub email: Option<String>,
+}
+
 /// Who the stored token belongs to.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -757,6 +767,8 @@ mod tests {
                         org: "acme".into(),
                         url: "https://github.com/orgs/acme/sso?authorization_request=AR_kgD".into(),
                     }],
+                    commit_name: Some("Arif".into()),
+                    commit_email: Some("1+skarif2@users.noreply.github.com".into()),
                 },
                 auth: AuthState::SignedIn { login: "skarif2".into() },
             },

@@ -101,6 +101,8 @@ const noteAuth = (auth: AuthState) =>
             scopes: null,
             source: "token",
             orgAccess: [],
+            commitName: null,
+            commitEmail: null,
             auth,
           },
         ],
