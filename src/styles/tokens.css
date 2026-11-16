@@ -143,6 +143,7 @@
     --tori-duration-fast: 80ms;
     --tori-duration-med: 160ms;
     --tori-ease: ease;
+    --tori-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 
     /* ---- Settings-driven tokens (overridden by the settings store as inline
        props on <html>; defaults here match the pre-settings look). ---- */
