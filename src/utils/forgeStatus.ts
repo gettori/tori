@@ -289,8 +289,9 @@ async function loadAccess(path: string) {
   setAccess((m) => ({ ...m, [path]: {} }));
   const rows = await invoke<{ accountId: string; access: RepoAccess }[]>("forge_project_access", {
     projectPath: path,
-  }).catch(() => []);
-  setAccess((m) => ({ ...m, [path]: Object.fromEntries(rows.map((r) => [r.accountId, r.access])) }));
+  }).catch(() => null);
+  const known = Array.isArray(rows) ? rows : [];
+  setAccess((m) => ({ ...m, [path]: Object.fromEntries(known.map((r) => [r.accountId, r.access])) }));
 }
 
 export function forgeAccess(path: string, accountId: string): RepoAccess {
