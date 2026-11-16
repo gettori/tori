@@ -3531,6 +3531,9 @@ button.diffHunkHeader:hover {
    input, because the composer sits at the bottom of the pane and a menu below
    it would open off-screen. */
 .completions {
+  position: relative;
+  isolation: isolate;
+  --glide-radius: var(--tori-radius-sm);
   display: flex;
   flex-direction: column;
   max-height: calc(240px * var(--ui-scale));
@@ -3556,16 +3559,6 @@ button.diffHunkHeader:hover {
   font-size: var(--tori-text-md);
   text-align: left;
   cursor: pointer;
-}
-
-.completion:hover {
-  background: var(--neutral-hover);
-}
-
-/* Declared after :hover, so keyboard selection wins over whatever the pointer
-   happens to be resting on. */
-.completionActive {
-  background: var(--neutral-hover);
 }
 
 .completionName {

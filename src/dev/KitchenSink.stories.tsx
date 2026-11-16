@@ -5,6 +5,7 @@ import Button, { type ButtonSize, type ButtonVariant } from "../components/Butto
 import Checkbox from "../components/Checkbox/Checkbox";
 import CheckboxGroup from "../components/CheckboxGroup/CheckboxGroup";
 import Dialog from "../components/Dialog/Dialog";
+import Glide, { optionAt } from "../components/Glide/Glide";
 import Icon from "../components/Icon/Icon";
 import IconButton from "../components/IconButton/IconButton";
 import ContextMenu from "../components/Menu/ContextMenu";
@@ -213,6 +214,122 @@ function SelectionSection() {
   );
 }
 
+const PATHS = Array.from({ length: 40 }, (_, i) =>
+  [
+    "src/panels/Chat/Composer.tsx",
+    "src/panels/Chat/MessageList.tsx",
+    "src/components/Menu/rows.tsx",
+    "src/components/Select/Select.tsx",
+    "src/utils/enterOnce.ts",
+  ][i % 5].replace(".ts", `${Math.floor(i / 5) || ""}.ts`),
+);
+
+const listBox: JSX.CSSProperties = {
+  position: "relative",
+  isolation: "isolate",
+  display: "flex",
+  "flex-direction": "column",
+  "max-height": "calc(240px * var(--ui-scale))",
+  "overflow-y": "auto",
+  padding: "calc(4px * var(--ui-scale))",
+  background: "var(--canvas-card)",
+  border: "1px solid var(--border-default)",
+  "border-radius": "var(--tori-radius-md)",
+  "box-shadow": "var(--shadow-md)",
+};
+
+const listRow: JSX.CSSProperties = {
+  padding: "calc(5px * var(--ui-scale)) calc(10px * var(--ui-scale))",
+  border: 0,
+  background: "transparent",
+  color: "var(--fg-default)",
+  "font-family": "var(--tori-font-mono)",
+  "font-size": "var(--tori-text-md)",
+  "text-align": "left",
+  cursor: "pointer",
+};
+
+function ListsSection() {
+  const [query, setQuery] = createSignal("");
+  const [index, setIndex] = createSignal(0);
+  const [open, setOpen] = createSignal(true);
+  const rows = () => PATHS.filter((p) => p.toLowerCase().includes(query().toLowerCase()));
+  const step = (by: number) => {
+    const n = rows().length;
+    if (n) setIndex((i) => (i + by + n) % n);
+  };
+  return (
+    <Section
+      title="Lists"
+      note="The fill glides under a moving pointer and jumps with the arrows. Wheel under a still pointer and it stays on the row beneath it; filter and it follows the active row; reopen and it lands while the list is still scaling in. The right list lights only under the pointer and is hidden, observing nothing, when the pointer is away."
+    >
+      <div style={row}>
+        <input
+          aria-label="Filter paths"
+          placeholder="Filter, arrows to move"
+          value={query()}
+          onInput={(e) => {
+            setQuery(e.currentTarget.value);
+            setIndex(0);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown") (e.preventDefault(), step(1));
+            if (e.key === "ArrowUp") (e.preventDefault(), step(-1));
+          }}
+          style={{ width: "calc(260px * var(--ui-scale))" }}
+          class={patterns.input}
+        />
+        <Button variant="ghost" onClick={() => setOpen(false)}>
+          Close
+        </Button>
+        <Button onClick={() => setOpen(true)}>Open</Button>
+      </div>
+      <div
+        style={{
+          display: "grid",
+          "grid-template-columns": "1fr 1fr",
+          gap: "var(--tori-space-5)",
+          "align-items": "start",
+        }}
+      >
+        <Show when={open()} fallback={<div />}>
+          <div
+            ref={(el) => enterOnce(el, patterns.enterPop)}
+            role="listbox"
+            aria-label="Paths"
+            style={{ ...listBox, "transform-origin": "top center", "--glide-radius": "var(--tori-radius-sm)" }}
+          >
+            <Glide active={(list) => optionAt(list, index())} />
+            <For each={rows()}>
+              {(path, i) => (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={i() === index()}
+                  onMouseEnter={() => setIndex(i())}
+                  style={listRow}
+                >
+                  {path}
+                </button>
+              )}
+            </For>
+          </div>
+        </Show>
+        <div role="listbox" aria-label="Hover only" style={listBox}>
+          <Glide hover='[role="option"]' />
+          <For each={PATHS.slice(0, 6)}>
+            {(path) => (
+              <div role="option" aria-selected="false" style={listRow}>
+                {path}
+              </div>
+            )}
+          </For>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
 function ButtonsSection() {
   return (
     <Section title="Buttons" note="Every variant and size, the icon buttons, and disabled ones that must not move.">
@@ -384,15 +501,20 @@ function KitchenSink() {
   stubHost([chatInputHost, promptsHost]);
   stubAssetUrls();
   return (
-    <div style={{ "max-width": "960px", padding: "0 var(--tori-space-7)" }}>
-      <MotionSection />
-      <ButtonsSection />
-      <OverlaysSection />
-      <ChecksSection />
-      <ComposerSection />
-      <TranscriptSection />
-      <PromptsSection />
-      <SelectionSection />
+    // Its own scroller: App.css locks `html` and `body`, which suits a window but
+    // not a page this long.
+    <div style={{ position: "fixed", inset: 0, "overflow-y": "auto", padding: "var(--tori-space-6)" }}>
+      <div style={{ "max-width": "960px", padding: "0 var(--tori-space-7)" }}>
+        <MotionSection />
+        <ButtonsSection />
+        <OverlaysSection />
+        <ChecksSection />
+        <ComposerSection />
+        <TranscriptSection />
+        <PromptsSection />
+        <SelectionSection />
+        <ListsSection />
+      </div>
     </div>
   );
 }

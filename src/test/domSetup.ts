@@ -20,6 +20,13 @@ Element.prototype.scrollIntoView ??= () => {};
 // empty list is what a zero-sized element genuinely has, and CM6 already reads
 // it as "not laid out yet" and keeps its defaults.
 Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList;
+// A list's gliding highlight observes the list from the frame after it opens,
+// and nothing resizes in a document with no layout.
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
 
 // The root element's width, for the one library that subtracts it from the
 // window's. `solid-prevent-scroll` - which Kobalte's dialog uses to lock the
