@@ -28,7 +28,8 @@
     border-color var(--tori-duration-fast) ease,
     background var(--tori-duration-fast) ease,
     box-shadow var(--tori-duration-fast) ease,
-    filter var(--tori-duration-fast) ease;
+    filter var(--tori-duration-fast) ease,
+    scale var(--tori-duration-fast) ease;
 }
 
 /* Keyboard focus: a gold brand ring (pointer focus stays quiet). */
@@ -38,9 +39,11 @@
   box-shadow: 0 0 0 3px var(--brand-ring);
 }
 
-/* Active press: a subtle settle, shared by every variant. */
+/* Active press: a subtle settle, shared by every variant. `scale` rather than
+   `transform`, so a call site's own transform survives the press. */
 .btn:active:not(:disabled) {
   filter: brightness(0.96);
+  scale: 0.97;
 }
 
 /* Icons are CSS-sized to the standard control icon (overrides Lucide's numeric

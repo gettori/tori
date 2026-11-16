@@ -94,7 +94,7 @@ export default function RadioGroup(props: {
             >
               <Primitive.ItemInput class={styles.input} />
               <Primitive.ItemControl class={styles.control}>
-                <Primitive.ItemIndicator class={styles.indicator} />
+                <Primitive.ItemIndicator class={styles.indicator} forceMount />
               </Primitive.ItemControl>
               <div class={styles.text}>
                 <Primitive.ItemLabel class={styles.label}>{option.label}</Primitive.ItemLabel>
