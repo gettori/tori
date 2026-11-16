@@ -42,6 +42,11 @@
   min-height: 0;
 }
 
+.list {
+  position: relative;
+  isolation: isolate;
+}
+
 /* The agent whose models are on the right, in the Settings rail's own recipe
    (`Settings.module.css`, `.railItemActive`). The left column is a nav list
    doing what that rail does - naming what the pane beside it is *of* - so it
@@ -68,13 +73,6 @@
   height: calc(15px * var(--ui-scale));
   border-radius: var(--tori-radius-sm);
   background: var(--brand-bar);
-}
-
-/* The right-hand highlight is the arrow cursor rather than a selection, so it
-   is neutral and it belongs to the pane the keys are driving: two lit rows at
-   once would be two answers to what Enter does. */
-.models.paneActive .rowActive {
-  background: var(--neutral-hover);
 }
 
 /* What the right-hand list is: the agent as itself (mark, name, version), then
@@ -228,17 +226,9 @@
   cursor: pointer;
 }
 
-.row:hover {
-  background: var(--neutral-hover);
-}
-
 .rowInert {
   cursor: default;
   color: var(--fg-muted);
-}
-
-.rowInert:hover {
-  background: transparent;
 }
 
 /* A model row is two lines: the name, then what the provider says about it

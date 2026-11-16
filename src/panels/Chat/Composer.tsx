@@ -47,6 +47,7 @@ import styles from "./Chat.module.css";
 import patterns from "../../styles/patterns.module.css";
 import { enterOnce } from "../../utils/enterOnce";
 import Tooltip from "../../components/Tooltip/Tooltip";
+import Glide, { optionAt } from "../../components/Glide/Glide";
 import DictationWave from "../../components/DictationWave/DictationWave";
 import {
   dropActive as dropDictation,
@@ -1274,12 +1275,12 @@ export default function Composer(props: {
           role="listbox"
           aria-label="Stashed drafts"
         >
+          <Glide active={(list) => optionAt(list, stashIndex())} />
           <For each={stashRows()}>
             {(entry, i) => (
               <button
                 type="button"
                 class={styles.completion}
-                classList={{ [styles.completionActive]: i() === stashIndex() }}
                 role="option"
                 aria-selected={i() === stashIndex()}
                 onMouseEnter={() => setStashIndex(i())}
@@ -1318,12 +1319,12 @@ export default function Composer(props: {
           off-screen. */}
       <Show when={menuOpen()}>
         <div ref={(el) => enterOnce(el, patterns.enterPop)} class={styles.completions} role="listbox">
+          <Glide active={(list) => optionAt(list, menuIndex())} />
           <For each={sessionHits()}>
             {(s, i) => (
               <button
                 type="button"
                 class={styles.completion}
-                classList={{ [styles.completionActive]: i() === menuIndex() }}
                 role="option"
                 aria-selected={i() === menuIndex()}
                 onMouseEnter={() => setMenuIndex(i())}
@@ -1342,7 +1343,6 @@ export default function Composer(props: {
                 <button
                   type="button"
                   class={styles.completion}
-                  classList={{ [styles.completionActive]: i() === menuIndex() }}
                   role="option"
                   aria-selected={i() === menuIndex()}
                   onMouseEnter={() => setMenuIndex(i())}
@@ -1362,7 +1362,6 @@ export default function Composer(props: {
               <button
                 type="button"
                 class={styles.completion}
-                classList={{ [styles.completionActive]: i() === menuIndex() }}
                 role="option"
                 aria-selected={i() === menuIndex()}
                 onMouseEnter={() => setMenuIndex(i())}
@@ -1382,7 +1381,6 @@ export default function Composer(props: {
               <button
                 type="button"
                 class={styles.completion}
-                classList={{ [styles.completionActive]: i() === menuIndex() }}
                 role="option"
                 aria-selected={i() === menuIndex()}
                 onMouseEnter={() => setMenuIndex(i())}
@@ -1408,7 +1406,6 @@ export default function Composer(props: {
               <button
                 type="button"
                 class={styles.completion}
-                classList={{ [styles.completionActive]: i() === menuIndex() }}
                 role="option"
                 aria-selected={i() === menuIndex()}
                 onMouseEnter={() => setMenuIndex(i())}
