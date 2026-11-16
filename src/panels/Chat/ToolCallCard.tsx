@@ -182,8 +182,8 @@ export default function ToolCallCard(props: {
 
   return (
     <div
-      class={`${styles.tool} ${props.card.state === "awaitingApproval" ? styles.toolBlocked : ""}`}
-      classList={{ [styles.toolSecret]: secretShown() }}
+      class={styles.tool}
+      classList={{ [styles.toolBlocked]: props.card.state === "awaitingApproval", [styles.toolSecret]: secretShown() }}
       data-pending-card={props.card.state === "awaitingApproval" ? "" : undefined}
       data-tool-use-id={props.card.toolUseId}
     >

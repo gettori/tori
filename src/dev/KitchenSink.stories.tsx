@@ -22,6 +22,7 @@ import {
   chatInputHost,
   stubAssetUrls,
 } from "../panels/Chat/__fixtures__/chatInput";
+import { TranscriptPane, createTranscript } from "../panels/Chat/__fixtures__/transcript";
 import patterns from "../styles/patterns.module.css";
 import { enterOnce } from "../utils/enterOnce";
 import { stubHost } from "./stubHost";
@@ -115,6 +116,40 @@ function ComposerSection() {
       <div style={{ display: hidden() ? "none" : "grid", gap: "var(--tori-space-5)" }}>
         <ChatInput height="320px" />
         <ChatInput height="420px" running attachments={[IMAGE_1, FILE_1, PR_CHIP]} />
+      </div>
+    </Section>
+  );
+}
+
+function TranscriptSection() {
+  const transcript = createTranscript();
+  const [collapse, setCollapse] = createSignal(false);
+  const [hidden, setHidden] = createSignal(false);
+  return (
+    <Section
+      title="Transcript"
+      note="Send prompts or run an agent turn and the new rows rise in. History, Load earlier, a lane chip, Collapse work, the first row of an empty chat and hide then show draw rows without rising. The status and lane dots pulse while a turn runs."
+    >
+      <div style={row}>
+        <Button onClick={() => transcript.sendOrSteer()}>{transcript.running() ? "Steer" : "Send a prompt"}</Button>
+        <Button onClick={() => transcript.runAgentTurn()} disabled={transcript.running()}>
+          Run an agent turn
+        </Button>
+        <Button onClick={() => transcript.deliverHistory()} disabled={!transcript.moreHistory()}>
+          Deliver history
+        </Button>
+        <Button variant="ghost" onClick={() => setCollapse(!collapse())}>
+          {collapse() ? "Expand work" : "Collapse work"}
+        </Button>
+        <Button variant="ghost" onClick={() => transcript.reset()}>
+          Empty the chat
+        </Button>
+        <Button variant="ghost" onClick={() => setHidden(!hidden())}>
+          {hidden() ? "Show" : "Hide"} (display: none)
+        </Button>
+      </div>
+      <div style={{ display: hidden() ? "none" : "block", border: "1px solid var(--border-default)" }}>
+        <TranscriptPane transcript={transcript} collapseWork={collapse()} height="520px" />
       </div>
     </Section>
   );
@@ -297,6 +332,7 @@ function KitchenSink() {
       <OverlaysSection />
       <ChecksSection />
       <ComposerSection />
+      <TranscriptSection />
     </div>
   );
 }

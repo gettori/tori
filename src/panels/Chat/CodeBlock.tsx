@@ -64,7 +64,12 @@ export default function CodeBlock(props: { lang: string; code: string }) {
           </button>
         </Show>
         <button type="button" class={styles.codeBtn} aria-label="Copy code" onClick={copy}>
-          <Icon icon={copied() ? Check : Copy} size={13} aria-hidden="true" />
+          <Icon
+            icon={copied() ? Check : Copy}
+            size={13}
+            class={copied() ? styles.codeCopied : undefined}
+            aria-hidden="true"
+          />
         </button>
         <Show when={props.lang}>
           <span class={styles.codeLang}>{props.lang}</span>
