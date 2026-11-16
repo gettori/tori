@@ -26,6 +26,7 @@ import {
   Wrench,
 } from "lucide-solid";
 import AgentGlyph from "../../components/Icon/AgentGlyph";
+import Glide, { optionAt } from "../../components/Glide/Glide";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import Popover from "../../components/Popover/Popover";
 import Icon from "../../components/Icon/Icon";
@@ -252,9 +253,10 @@ export default function AgentPalette(props: {
       </div>
 
       <div class={styles.panes}>
-        <div class={styles.agents} classList={{ [styles.paneActive]: pane() === "providers" }}>
+        <div class={styles.agents}>
           <OverlayScroll class={styles.scroll}>
-            <div id={paneId("providers")} role="listbox" aria-label="Agents">
+            <div id={paneId("providers")} class={styles.list} role="listbox" aria-label="Agents">
+              <Glide hover='[role="option"]' />
               <For each={filtered()}>
                 {(p) => (
                   <div
@@ -262,8 +264,7 @@ export default function AgentPalette(props: {
                     class={styles.row}
                     // Not gated on the pane: this row names what the list on
                     // the right is *of*, which stays true while the arrows are
-                    // over there. Which pane the keys are in is the bar's job
-                    // (`.agents.paneActive`), not the fill's.
+                    // over there.
                     classList={{ [styles.rowActive]: p === provider() }}
                     role="option"
                     aria-selected={isCurrent(p)}
@@ -296,7 +297,7 @@ export default function AgentPalette(props: {
           </OverlayScroll>
         </div>
 
-        <div class={styles.models} classList={{ [styles.paneActive]: pane() === "models" }}>
+        <div class={styles.models}>
           {/* The agent as itself, then its list introduced the way Settings
               introduces the same list (`.groupHead`): the word, a rule, the
               count. No glyph: the left pane already wears it, and twice at
@@ -336,7 +337,16 @@ export default function AgentPalette(props: {
           </div>
 
           <OverlayScroll class={styles.scroll}>
-            <div id={paneId("models")} role="listbox" aria-label="Models">
+            <div id={paneId("models")} class={styles.list} role="listbox" aria-label="Models">
+              <Glide
+                hover='[role="option"]:not([aria-disabled="true"])'
+                // Only while the keys are in this pane: a cursor lit in both would
+                // be two answers to what Enter does.
+                active={(list) => {
+                  const m = shownModel();
+                  return pane() === "models" && m ? optionAt(list, models().indexOf(m)) : null;
+                }}
+              />
               <For each={models()}>
                 {(m) => (
                   <div
