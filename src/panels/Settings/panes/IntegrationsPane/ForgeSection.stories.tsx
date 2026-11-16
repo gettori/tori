@@ -18,6 +18,8 @@ function account(host: string, login: string, auth: AuthState, provider: ForgePr
     scopes: provider === "github" ? ["repo", "workflow"] : null,
     source: "token",
     orgAccess: [],
+    commitName: null,
+    commitEmail: null,
     auth,
   };
 }

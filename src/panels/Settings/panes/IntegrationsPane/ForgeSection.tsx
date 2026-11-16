@@ -35,6 +35,7 @@ import {
 } from "./forgeAddFlow";
 import { asFailure, createDeviceFlow, failureText, openInBrowser } from "./deviceFlow";
 import DeviceWaitCard from "./DeviceWaitCard";
+import AccountAuthor from "./AccountAuthor";
 import styles from "../../Settings.module.css";
 import cards from "./ForgeSection.module.css";
 
@@ -556,6 +557,7 @@ export default function ForgeSection() {
                             Remove
                           </Button>
                         </div>
+                        <AccountAuthor account={account} onChanged={refresh} onError={setError} />
                         <Show when={account.auth.kind === "suspect"}>
                           <div class={cards.reason} data-testid="suspect-notice">
                             {rejection(host.host, account.rejectedAt)}

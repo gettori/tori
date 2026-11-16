@@ -299,6 +299,8 @@ function signInForgeAccount() {
     scopes: null,
     source: "token",
     orgAccess: [],
+    commitName: null,
+    commitEmail: null,
     auth: authState as ForgeAccount["auth"],
   };
   noteForgeAccounts(authState.kind === "signedOut" ? [] : [account]);

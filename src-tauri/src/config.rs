@@ -1442,6 +1442,7 @@ pub fn config_watch_start(app: AppHandle, state: State<ConfigWatch>) -> Result<(
         if let Ok(event) = res {
             if event.paths.iter().any(|p| p == &target) {
                 let _ = app_handle.emit("config://changed", ());
+                crate::forge::identity::reconcile_soon();
             }
         }
     })

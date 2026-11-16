@@ -30,6 +30,7 @@ pub mod device_flow;
 pub mod github;
 pub mod gitlab;
 pub mod http;
+pub mod identity;
 pub mod model;
 pub mod pr_view;
 pub mod prs;
@@ -38,6 +39,7 @@ pub mod remote;
 pub mod status;
 pub mod token;
 
+pub use model::IdentityHint;
 use model::{
     AuthState, Capabilities, DraftComment, Grant, OrgAccess, Paged, PrFile, PrState, PrSummary, PullRequest,
     RateSnapshot, RepoRef, ReviewComment, ReviewEvent, ReviewThread, UnitStatus, Viewer,
@@ -402,6 +404,10 @@ pub trait Forge: Send + Sync {
     /// and all.
     fn issues(&self) -> Option<&dyn crate::issues::IssueSource> {
         None
+    }
+
+    fn identity_hint(&self) -> Result<IdentityHint, ForgeError> {
+        Ok(IdentityHint::default())
     }
 }
 

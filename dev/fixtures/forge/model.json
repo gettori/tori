@@ -60,6 +60,8 @@
       "login": "skarif2"
     },
     "baseUrl": "https://github.com",
+    "commitEmail": "1+skarif2@users.noreply.github.com",
+    "commitName": "Arif",
     "expiresAt": 1785179400,
     "id": "github-com-skarif2",
     "label": "skarif2",
