@@ -22,6 +22,7 @@ import {
   chatInputHost,
   stubAssetUrls,
 } from "../panels/Chat/__fixtures__/chatInput";
+import { PromptsPane, createPrompts, promptsHost } from "../panels/Chat/__fixtures__/prompts";
 import { TranscriptPane, createTranscript } from "../panels/Chat/__fixtures__/transcript";
 import patterns from "../styles/patterns.module.css";
 import { enterOnce } from "../utils/enterOnce";
@@ -151,6 +152,27 @@ function TranscriptSection() {
       <div style={{ display: hidden() ? "none" : "block", border: "1px solid var(--border-default)" }}>
         <TranscriptPane transcript={transcript} collapseWork={collapse()} height="520px" />
       </div>
+    </Section>
+  );
+}
+
+function PromptsSection() {
+  const prompts = createPrompts();
+  return (
+    <Section
+      title="Prompts"
+      note="A permission prompt on an edit and on a long command, then two approval asks, a long draft and a short one. A pressed option holds a neutral fill until the ask clears; a failed answer gives the buttons back."
+    >
+      <div style={row}>
+        <Button onClick={() => prompts.askAgain()}>Ask again</Button>
+        <Button variant="ghost" onClick={() => prompts.setFailNext(true)} disabled={prompts.failNext()}>
+          {prompts.failNext() ? "The next answer fails" : "Fail the next answer"}
+        </Button>
+      </div>
+      <PromptsPane prompts={prompts} />
+      <p style={{ margin: 0, "font-size": "var(--tori-text-md)", color: "var(--fg-muted)" }}>
+        Host heard: {prompts.heard().slice(-3).join(" / ") || "nothing yet"}
+      </p>
     </Section>
   );
 }
@@ -323,7 +345,7 @@ function ChecksSection() {
 }
 
 function KitchenSink() {
-  stubHost([chatInputHost]);
+  stubHost([chatInputHost, promptsHost]);
   stubAssetUrls();
   return (
     <div style={{ "max-width": "960px", padding: "0 var(--tori-space-7)" }}>
@@ -333,6 +355,7 @@ function KitchenSink() {
       <ChecksSection />
       <ComposerSection />
       <TranscriptSection />
+      <PromptsSection />
     </div>
   );
 }
