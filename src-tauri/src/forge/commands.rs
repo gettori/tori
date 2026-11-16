@@ -754,6 +754,130 @@ pub fn forge_pick_account(project_path: String, account_id: String) -> Result<()
     Ok(())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloneAccounts {
+    pub host: String,
+    pub accounts: Vec<accounts::AccountView>,
+    pub preselect: Option<String>,
+    pub over_https: bool,
+    pub git_credentials: bool,
+}
+
+#[tauri::command(async)]
+pub fn forge_clone_accounts(url: String) -> Option<CloneAccounts> {
+    let url = url.trim();
+    let remote = remote_at(url).ok()?;
+    let file = accounts::load();
+    let record = file.hosts.get(&remote.host).filter(|r| r.accounts.len() >= 2)?;
+    let preselect = match accounts::resolve(&file, &crate::settings::get_settings().forge.picks, &remote) {
+        Resolution::Account(id) => Some(id),
+        _ => None,
+    };
+    Some(CloneAccounts {
+        accounts: record
+            .accounts
+            .iter()
+            .map(|a| accounts::account_view(a, auth::state))
+            .collect(),
+        preselect,
+        over_https: over_https(url),
+        git_credentials: accounts::git_credentials(&file, &remote.host),
+        host: remote.host,
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Access {
+    Yes,
+    No,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountAccess {
+    pub account_id: String,
+    pub access: Access,
+}
+
+#[tauri::command(async)]
+pub fn forge_repo_access(url: String) -> Result<Vec<AccountAccess>, ForgeErrorDto> {
+    let remote = remote_at(url.trim())?;
+    let file = accounts::load();
+    let Some(record) = file.hosts.get(&remote.host) else {
+        return Ok(Vec::new());
+    };
+    let access_of = |account: &accounts::Account| {
+        if !auth::enabled() || !auth::may_call(&account.id) {
+            return Access::Unknown;
+        }
+        let token = fresh_token(&file, &remote.host, account);
+        let forge = forge_for(account.provider, &account.base_url, token, login_of(&account.id));
+        match forge.can_read(&remote.repo) {
+            Ok(()) => Access::Yes,
+            // Both hosts answer 404 for a private repo the account cannot see.
+            Err(ForgeError::NotFound) => Access::No,
+            Err(_) => Access::Unknown,
+        }
+    };
+    Ok(std::thread::scope(|scope| {
+        let checks: Vec<_> = record
+            .accounts
+            .iter()
+            .map(|account| (account.id.clone(), scope.spawn(|| access_of(account))))
+            .collect();
+        checks
+            .into_iter()
+            .map(|(account_id, check)| AccountAccess {
+                account_id,
+                access: check.join().unwrap_or(Access::Unknown),
+            })
+            .collect()
+    }))
+}
+
+#[tauri::command(async)]
+pub fn forge_clone_prepare(url: String, account_id: Option<String>) -> Result<Option<String>, ForgeErrorDto> {
+    let url = url.trim();
+    let remote = match remote_at(url) {
+        Ok(remote) => remote,
+        // With no account picked there is nothing to save, and a URL no
+        // account can resolve for (a local path, say) still clones.
+        Err(_) if account_id.is_none() => return Ok(None),
+        Err(e) => return Err(e.into()),
+    };
+    if let Some(id) = &account_id {
+        let on_host = accounts::load()
+            .hosts
+            .get(&remote.host)
+            .is_some_and(|r| r.accounts.iter().any(|a| &a.id == id));
+        if !on_host {
+            return Err(ForgeError::Invalid {
+                message: format!("That account is not on {}.", remote.host),
+            }
+            .into());
+        }
+        crate::settings::edit_forge_picks(|picks| picks.insert(remote.key(), id.clone()).as_ref() != Some(id))
+            .map_err(|message| ForgeError::Transport { message })?;
+        // The picker said so before the clone: over https the pick only
+        // reaches git through Tori's helper.
+        if over_https(url) {
+            accounts::update(|file| Ok(accounts::set_git_credentials(file, &remote.host, true)))?;
+        }
+        // Other clones of this origin follow the pick, but none of them may
+        // hold this clone up.
+        identity::reconcile_soon();
+    }
+    let picks = crate::settings::get_settings().forge.picks;
+    let Resolution::Account(id) = accounts::resolve(&accounts::load(), &picks, &remote) else {
+        return Ok(None);
+    };
+    let path = identity::file_for(&id);
+    Ok(path.is_file().then(|| path.to_string_lossy().into_owned()))
+}
+
 fn reconciled() -> Result<(), ForgeError> {
     let failed = identity::reconcile();
     if failed.is_empty() {
@@ -863,18 +987,23 @@ pub struct Client {
 
 pub(crate) fn remote_of(project_path: &str) -> Result<Remote, ForgeError> {
     match crate::git::git_origin(project_path.to_string()) {
-        Ok(Some(url)) => {
-            let remote = remote::parse(&url)?;
-            let over_ssh = !url.starts_with("https://") && !url.starts_with("http://");
-            // Only a host nothing is signed in to can be an ssh config alias.
-            if over_ssh && !accounts::load().hosts.contains_key(&remote.host) {
-                Ok(remote::resolve_alias(remote))
-            } else {
-                Ok(remote)
-            }
-        }
+        Ok(Some(url)) => remote_at(&url),
         Ok(None) => Err(ForgeError::NoRemote),
         Err(message) => Err(ForgeError::Transport { message }),
+    }
+}
+
+fn over_https(url: &str) -> bool {
+    url.starts_with("https://") || url.starts_with("http://")
+}
+
+fn remote_at(url: &str) -> Result<Remote, ForgeError> {
+    let remote = remote::parse(url)?;
+    // Only a host nothing is signed in to can be an ssh config alias.
+    if !over_https(url) && !accounts::load().hosts.contains_key(&remote.host) {
+        Ok(remote::resolve_alias(remote))
+    } else {
+        Ok(remote)
     }
 }
 

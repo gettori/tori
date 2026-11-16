@@ -56,7 +56,7 @@ import ChangeOriginDialog from "../../components/Dialogs/ChangeOriginDialog";
 import type { UnitOrigin } from "../../utils/unitOrigin";
 import NewProjectDialog from "../../components/Dialogs/NewProjectDialog";
 import MoveToSpaceDialog from "../../components/Dialogs/MoveToSpaceDialog";
-import { claimProjectFolder, projectJob, type NewProjectMode } from "../../utils/newProject";
+import { claimProjectFolder, prepareClone, projectJob, type NewProjectMode } from "../../utils/newProject";
 import SpaceDialog from "../../components/Dialogs/SpaceDialog";
 import SpaceSettingsDialog from "../SpaceSettings/SpaceSettingsDialog";
 import { pushToast, type ToastAction } from "../../components/Toasts/Toasts";
@@ -1925,11 +1925,17 @@ export default function LeftSidebar(props: {
     }
   }
 
-  async function runInTab(g: Space, name: string, url: string, worktreeLayout: boolean) {
+  async function runInTab(g: Space, name: string, url: string, worktreeLayout: boolean, accountId: string | null) {
     const bad = await claimProjectFolder(g.path, name);
     if (bad) return setError(bad);
+    let include: string | null;
+    try {
+      include = await prepareClone(url, accountId);
+    } catch (e) {
+      return setError(forgeErrorMessage(e));
+    }
     setError("");
-    emitWith<OpenJob>(OPEN_JOB, projectJob(g.path, name, url, worktreeLayout));
+    emitWith<OpenJob>(OPEN_JOB, projectJob(g.path, name, url, worktreeLayout, include));
   }
 
   // Open the space-level "New…" dialog.
@@ -1952,7 +1958,13 @@ export default function LeftSidebar(props: {
   // clone or bare + worktree runs in a terminal tab (native git progress +
   // ambient auth). url/name pass as positional args (never interpolated), so
   // there is no shell injection.
-  async function confirmNewProject(opts: { mode: NewProjectMode; name: string; url: string; worktreeLayout: boolean }) {
+  async function confirmNewProject(opts: {
+    mode: NewProjectMode;
+    name: string;
+    url: string;
+    worktreeLayout: boolean;
+    accountId: string | null;
+  }) {
     const req = newReq();
     if (!req) return;
     const { g } = req;
@@ -1971,7 +1983,7 @@ export default function LeftSidebar(props: {
     // A clone opens a terminal tab; runInTab validates the name and surfaces
     // its own errors, so close the dialog and hand off.
     setNewReq(null);
-    await runInTab(g, opts.name, opts.url, opts.worktreeLayout);
+    await runInTab(g, opts.name, opts.url, opts.worktreeLayout, opts.accountId);
   }
 
   async function cleanupStub(u: BranchUnit) {

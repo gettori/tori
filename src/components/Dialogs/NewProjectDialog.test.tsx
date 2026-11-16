@@ -33,6 +33,8 @@ function open(props: Partial<Omit<NewProps, "onConfirm" | "onCancel">> = {}) {
 }
 
 const create = () => screen.getByRole("button", { name: "Create" }) as HTMLButtonElement;
+// A clone's Create waits until the URL's host has said which accounts it has.
+const accountsLooked = () => vi.waitFor(() => expect(create().disabled).toBe(false));
 
 describe("NewProjectDialog", () => {
   describe("contract", () => {
@@ -65,7 +67,7 @@ describe("NewProjectDialog", () => {
       expect(url()).toBeTruthy();
     });
 
-    it("clones in the worktree layout unless the box is cleared, and says which", () => {
+    it("clones in the worktree layout unless the box is cleared, and says which", async () => {
       const { onConfirm, mode, url } = open();
 
       fireEvent.click(mode("Clone"));
@@ -76,6 +78,7 @@ describe("NewProjectDialog", () => {
       fireEvent.input(url(), { target: { value: "https://github.com/skarif2/tori.git" } });
       fireEvent.click(box);
       expect(screen.getByText("Clones a git repository into a new folder inside this space.")).toBeTruthy();
+      await accountsLooked();
       fireEvent.click(create());
 
       expect(onConfirm).toHaveBeenCalledWith({
@@ -83,6 +86,7 @@ describe("NewProjectDialog", () => {
         name: "tori",
         url: "https://github.com/skarif2/tori.git",
         worktreeLayout: false,
+        accountId: null,
       });
     });
 
@@ -98,10 +102,16 @@ describe("NewProjectDialog", () => {
       fireEvent.input(name(), { target: { value: "  notes  " } });
       fireEvent.click(create());
 
-      expect(onConfirm).toHaveBeenCalledWith({ mode: "folder", name: "notes", url: "", worktreeLayout: false });
+      expect(onConfirm).toHaveBeenCalledWith({
+        mode: "folder",
+        name: "notes",
+        url: "",
+        worktreeLayout: false,
+        accountId: null,
+      });
     });
 
-    it("fills the folder name from the URL", () => {
+    it("fills the folder name from the URL", async () => {
       const { onConfirm, mode, name, url } = open();
 
       fireEvent.click(mode("Clone"));
@@ -109,6 +119,7 @@ describe("NewProjectDialog", () => {
 
       expect(name().value).toBe("tori");
 
+      await accountsLooked();
       fireEvent.click(create());
 
       expect(onConfirm).toHaveBeenCalledWith({
@@ -116,6 +127,7 @@ describe("NewProjectDialog", () => {
         name: "tori",
         url: "https://github.com/skarif2/tori.git",
         worktreeLayout: true,
+        accountId: null,
       });
     });
 
@@ -158,7 +170,13 @@ describe("NewProjectDialog", () => {
       fireEvent.input(name(), { target: { value: "notes" } });
       fireEvent.keyDown(name(), { key: "Enter" });
 
-      expect(onConfirm).toHaveBeenCalledWith({ mode: "folder", name: "notes", url: "", worktreeLayout: false });
+      expect(onConfirm).toHaveBeenCalledWith({
+        mode: "folder",
+        name: "notes",
+        url: "",
+        worktreeLayout: false,
+        accountId: null,
+      });
     });
 
     it("ignores Enter while the work is already running", () => {

@@ -410,6 +410,7 @@ pub trait Forge: Send + Sync {
     fn identity_hint(&self) -> Result<IdentityHint, ForgeError> {
         Ok(IdentityHint::default())
     }
+    fn can_read(&self, repo: &RepoRef) -> Result<(), ForgeError>;
 }
 
 pub fn now_secs() -> u64 {
@@ -578,6 +579,9 @@ mod tests {
         }
         fn update_branch(&self, _repo: &RepoRef, _number: u64) -> Result<(), ForgeError> {
             Err(ForgeError::NotAuthenticated)
+        }
+        fn can_read(&self, _repo: &RepoRef) -> Result<(), ForgeError> {
+            Ok(())
         }
         fn reopen(&self, _repo: &RepoRef, _number: u64) -> Result<(), ForgeError> {
             Err(ForgeError::NotAuthenticated)

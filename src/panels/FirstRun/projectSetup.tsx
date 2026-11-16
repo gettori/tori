@@ -6,7 +6,9 @@ import type { OpenJob } from "../../utils/events";
 import { reloadFirstRunConfig, type FirstRunSpace } from "../../utils/firstRun";
 import { gitInstallJob, type GitReport } from "../../utils/gitHealth";
 import { badName, shortHome } from "../../utils/names";
-import { claimProjectFolder, nameFromUrl, projectJob, type NewProjectMode } from "../../utils/newProject";
+import { claimProjectFolder, nameFromUrl, prepareClone, projectJob, type NewProjectMode } from "../../utils/newProject";
+import { CloneAccountField, createCloneAccount } from "../../components/Dialogs/CloneAccount";
+import { forgeErrorMessage } from "../../utils/forgeTypes";
 import InlineJob from "./job/InlineJob";
 import type { JobState } from "./job/InlineJobFrame";
 import ProjectStep, { PROJECT_LABEL, gitMissing } from "./steps/ProjectStep";
@@ -38,6 +40,8 @@ export function createProjectSetup(opts: {
   const [made, setMade] = createSignal<{ space: FirstRunSpace; name: string } | null>(null);
   const [git, setGit] = createSignal<GitReport | null>(null);
   const [checkingGit, setCheckingGit] = createSignal(false);
+
+  const account = createCloneAccount(() => (mode() === "clone" ? url() : ""));
 
   const running = () => creating() || jobState() === "running" || jobState() === "waiting";
 
@@ -94,7 +98,7 @@ export function createProjectSetup(opts: {
     setNameEdited(false);
   }
 
-  const canCreate = () => !badName(name()) && (mode() === "folder" || url().trim() !== "");
+  const canCreate = () => !badName(name()) && (mode() === "folder" || (url().trim() !== "" && account.ready()));
 
   async function create() {
     const space = opts.space();
@@ -112,10 +116,16 @@ export function createProjectSetup(opts: {
       }
       const refused = await claimProjectFolder(space.path, n);
       if (refused) return setError(refused);
+      let include: string | null;
+      try {
+        include = await prepareClone(url(), account.accountId());
+      } catch (e) {
+        return setError(forgeErrorMessage(e));
+      }
       // Interactive, unlike the dock's clone: nothing else in the modal takes
       // keys, and a passphrase prompt needs them.
       const layout = worktreeLayout();
-      const job = { ...projectJob(space.path, n, url(), layout), interactive: true };
+      const job = { ...projectJob(space.path, n, url(), layout, include), interactive: true };
       setJob({ kind: "project", job, worktreeLayout: layout, space, name: n });
     } catch (e) {
       setError(String(e));
@@ -212,6 +222,14 @@ export function createProjectSetup(opts: {
           }}
           onInstallGit={installGit}
           onCheckGit={() => void checkGit()}
+          account={
+            <CloneAccountField
+              pick={account}
+              fieldClass={styles.field}
+              labelClass={styles.fieldLabel}
+              helpClass={styles.preview}
+            />
+          }
           job={
             <Show
               when={job()}

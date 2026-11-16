@@ -228,10 +228,26 @@ impl Repo {
             .collect())
     }
 
+    // `git clone -c include.path` writes the include above the repo's own
+    // sections, so a value the repo sets later would win over the account.
+    fn outranks_own(&self, want: Option<&Path>) -> Result<bool, String> {
+        let Some(want) = want else {
+            return Ok(true);
+        };
+        let lines = self.config_lines(&["--local", "--list"])?;
+        let include = format!("include.path={}", want.to_string_lossy());
+        let at = lines.iter().rposition(|line| *line == include);
+        let own = lines.iter().rposition(|line| {
+            line.split_once('=')
+                .is_some_and(|(key, _)| MANAGED.iter().any(|m| m.eq_ignore_ascii_case(key)))
+        });
+        Ok(at.is_some_and(|at| own.is_none_or(|own| at > own)))
+    }
+
     /// Points the repo at one account file, or at none.
     fn apply(&self, want: Option<&Path>, places: &Places) -> Result<(), String> {
         let have = self.included(places)?;
-        if have.len() <= 1 && have.first().map(PathBuf::as_path) == want {
+        if have.len() <= 1 && have.first().map(PathBuf::as_path) == want && self.outranks_own(want)? {
             return Ok(());
         }
         for path in &have {
