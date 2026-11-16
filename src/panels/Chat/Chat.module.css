@@ -68,6 +68,26 @@
   color: var(--success-fg);
 }
 
+/* On the live "Thinking" label's 1.6s tempo, so every busy mark in the pane
+   breathes as one. */
+.stripBusy > .stripDot,
+.laneDot.laneBusy,
+.laneDot.laneMainBusy {
+  animation: busyPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes busyPulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    scale: 0.8;
+  }
+  50% {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
 .stripIdle .stripDot {
   color: var(--fg-subtle);
 }
@@ -883,6 +903,7 @@ code.secretReason {
   padding: calc(3px * var(--ui-scale));
   cursor: pointer;
   opacity: 0;
+  transition: opacity 120ms ease;
 }
 
 .codeBlock:hover .codeBtn,
@@ -894,6 +915,10 @@ code.secretReason {
 .codeBtn:focus-visible {
   color: var(--fg-default);
   background: var(--neutral-hover);
+}
+
+.codeCopied {
+  color: var(--success-fg);
 }
 
 /* The rendered face of an `md` fence: the same frame as the source it
@@ -1008,6 +1033,7 @@ code.secretReason {
 
 .workChevron {
   flex: none;
+  transition: transform var(--tori-duration-fast) var(--tori-ease);
 }
 
 .workToggle:hover {

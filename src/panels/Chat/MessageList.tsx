@@ -3,6 +3,7 @@ import {
   Match,
   Show,
   Switch,
+  children,
   createEffect,
   createMemo,
   createSignal,
@@ -13,7 +14,6 @@ import {
 } from "solid-js";
 import {
   Brain,
-  ChevronDown,
   ChevronRight,
   CircleCheck,
   CircleDashed,
@@ -64,9 +64,40 @@ import styles from "./Chat.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import Markdown from "./Markdown";
 import SentPrompt from "./SentPrompt";
-import { foldEdits, groupRuns, runLabel, thoughtLabel, type RunCache, type WorkRun } from "./toolRenderers";
+import {
+  foldEdits,
+  groupRuns,
+  runLabel,
+  thoughtLabel,
+  type RunCache,
+  type TranscriptRow,
+  type WorkRun,
+} from "./toolRenderers";
+import patterns from "../../styles/patterns.module.css";
+import { enterOnce } from "../../utils/enterOnce";
 
 const VERDICT_ICON = { verified: CircleCheck, failed: CircleX, unverified: CircleDashed } as const;
+
+const NONE: ReadonlySet<TranscriptRow> = new Set();
+const RISE_AT_MOST = 3;
+
+function appended(was: readonly TranscriptRow[], now: readonly TranscriptRow[]): ReadonlySet<TranscriptRow> {
+  const at = was.length ? now.lastIndexOf(was[was.length - 1]) : -1;
+  const added = now.length - 1 - at;
+  if (at < 0 || at >= was.length || added < 1 || added > RISE_AT_MOST) return NONE;
+  // A sliding window drops rows off the top, so `was` can lead with extra ones.
+  const dropped = was.length - 1 - at;
+  for (let i = 0; i < at; i++) if (now[i] !== was[dropped + i]) return NONE;
+  return new Set(now.slice(at + 1));
+}
+
+// Every element the row drew: a row is sibling nodes (its turn anchor, then the
+// card), and a wrapper would break the list's gap and the anchor's margin.
+function rise(view: JSX.Element): JSX.Element {
+  const nodes = children(() => view);
+  for (const node of nodes.toArray()) if (node instanceof HTMLElement) enterOnce(node, patterns.enterRise);
+  return <>{nodes()}</>;
+}
 
 function ThinkingBlock(props: { text: string; live: boolean; thoughtMs: number }) {
   const [open, setOpen] = createSignal(false);
@@ -150,7 +181,7 @@ function HookRow(props: { item: Extract<ChatItem, { kind: "hook" }> }) {
     return parts.length ? parts.join(", ") : "finished";
   };
   return (
-    <div class={`${styles.notice} ${failed() ? styles.noticeError : ""}`}>
+    <div class={styles.notice} classList={{ [styles.noticeError]: failed() }}>
       <span class={styles.noticeLine}>
         {/* The glyph says "a hook ran" whether or not it failed; the colour and
             the stderr below say how it went. Swapping it for a warning sign on
@@ -410,6 +441,13 @@ export default function MessageList(props: {
   // transcript nobody collapsed should not re-run it each time a call settles.
   const grouped = createMemo(() => (props.collapseWork ? groupRuns(shown(), runCache) : null));
   const rows = () => grouped()?.rows ?? shown();
+  const arrivals = createMemo<{ rows: readonly TranscriptRow[]; fresh: ReadonlySet<TranscriptRow> }>(
+    (was) => {
+      const now = rows();
+      return { rows: now, fresh: appended(was.rows, now) };
+    },
+    { rows: [], fresh: NONE },
+  );
 
   const turnIdOf = (it: ChatItem) =>
     it.kind === "text" || it.kind === "thinking" || it.kind === "tool" || it.kind === "question" ? it.turnId : null;
@@ -894,9 +932,11 @@ export default function MessageList(props: {
       <Match when={p.item.kind === "notice" && p.item}>
         {(it) => (
           <div
-            class={`${styles.notice} ${it().level === "error" ? styles.noticeError : ""} ${
-              it().level === "attention" ? styles.noticeAttention : ""
-            }`}
+            class={styles.notice}
+            classList={{
+              [styles.noticeError]: it().level === "error",
+              [styles.noticeAttention]: it().level === "attention",
+            }}
           >
             <Show
               when={it().pendingSince}
@@ -1000,7 +1040,12 @@ export default function MessageList(props: {
         <For each={held()}>{(m) => <TurnAnchor itemId={m.id} />}</For>
         <div class={styles.work}>
           <button type="button" class={styles.workToggle} aria-expanded={open()} onClick={() => setOpen(!open())}>
-            <Icon icon={open() ? ChevronDown : ChevronRight} size={14} class={styles.workChevron} aria-hidden="true" />
+            <Icon
+              icon={ChevronRight}
+              size={14}
+              class={`${styles.workChevron} ${open() ? styles.toolCaretOpen : ""}`}
+              aria-hidden="true"
+            />
             <span class={styles.workText}>
               <span class={styles.workLabel} classList={{ [styles.thinkingLive]: label().live }}>
                 {label().text}
@@ -1038,7 +1083,12 @@ export default function MessageList(props: {
           </Button>
         </div>
       </Show>
-      <For each={rows()}>{(row) => (row.kind === "run" ? <WorkCard run={row} /> : <Row item={row} />)}</For>
+      <For each={rows()}>
+        {(row) => {
+          const view = row.kind === "run" ? <WorkCard run={row} /> : <Row item={row} />;
+          return arrivals().fresh.has(row) ? rise(view) : view;
+        }}
+      </For>
       <Show when={props.streaming}>
         <span class={styles.cursor} aria-hidden="true" />
       </Show>
