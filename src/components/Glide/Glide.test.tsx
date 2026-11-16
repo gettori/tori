@@ -82,6 +82,7 @@ describe("Glide", () => {
 
     setIndex(-1);
     await frame();
+    await new Promise((resolve) => setTimeout(resolve, 100));
     expect(fill.hasAttribute("data-shown")).toBe(false);
     expect(observing).toBe(0);
   });

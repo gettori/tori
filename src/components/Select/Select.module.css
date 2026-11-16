@@ -85,6 +85,8 @@
 /* ---- The listbox surface: Menu's .content, minus the menu machinery ---- */
 
 .content {
+  position: relative;
+  isolation: isolate;
   z-index: 1000;
   min-width: calc(140px * var(--ui-scale));
   max-width: calc(320px * var(--ui-scale));
@@ -163,20 +165,11 @@
   transition: background var(--tori-duration-fast) ease;
 }
 
-/* Pointer and keyboard reach the same state; same call as Menu's .item. */
-.item:hover,
-.item[data-highlighted] {
-  background: var(--neutral-hover);
-}
-
 /* Muted rather than opacity, because a role is theme-correct and an opacity is
    not. Kobalte already blocks activation, so nothing here has to. */
 .item[data-disabled] {
   color: var(--fg-muted);
   cursor: default;
-}
-.item[data-disabled]:hover {
-  background: transparent;
 }
 
 .itemLabel {

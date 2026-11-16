@@ -163,6 +163,7 @@ const KEPT = new Map<string, Kept>([
   ["components/ShortcutSheet/ShortcutSheet.tsx", { count: 1, reason: HEADING }],
   ["components/Tooltip/Tooltip.stories.tsx", { count: 1, reason: FIXTURE }],
   ["components/Tooltip/Tooltip.test.tsx", { count: 2, reason: FIXTURE }],
+  ["dev/KitchenSink.stories.tsx", { count: 1, reason: `${HEADING} - the Overlays section's dialog` }],
   ["panels/Chat/agentTurnCeiling.test.tsx", { count: 1, reason: FIXTURE }],
   ["panels/Chat/followEdits.test.tsx", { count: 1, reason: FIXTURE }],
   ["panels/Chat/ChatView.tsx", { count: 1, reason: HEADING }],
