@@ -2104,7 +2104,9 @@ fn git_command(repo: &str, op_id: &str, sock: &Path, token: &str) -> Command {
     cmd.env("SSH_ASKPASS_REQUIRE", "force");
     cmd.env("GIT_TERMINAL_PROMPT", "0");
     cmd.env("LC_ALL", "C");
-    cmd.env("GIT_SSH_COMMAND", "ssh -o StrictHostKeyChecking=accept-new");
+    if let Some(ssh) = ssh_command(repo, "-o StrictHostKeyChecking=accept-new") {
+        cmd.env("GIT_SSH_COMMAND", ssh);
+    }
     cmd.env(ENV_SOCK, sock);
     cmd.env(ENV_TOKEN, token);
     cmd.env(ENV_OP, op_id);
@@ -2301,12 +2303,42 @@ fn quiet_git_command(repo: &str) -> Command {
     cmd.env_remove("SSH_ASKPASS_REQUIRE");
     cmd.env("GIT_TERMINAL_PROMPT", "0");
     cmd.env("LC_ALL", "C");
-    cmd.env(
-        "GIT_SSH_COMMAND",
-        "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new",
-    );
+    if let Some(ssh) = ssh_command(repo, "-o BatchMode=yes -o StrictHostKeyChecking=accept-new") {
+        cmd.env("GIT_SSH_COMMAND", ssh);
+    }
     cmd.env("PATH", augmented_path());
     cmd
+}
+
+fn ssh_command(repo: &str, options: &str) -> Option<String> {
+    // GIT_SSH_COMMAND outranks core.sshCommand, so the user's own command has
+    // to be carried into it or their key and proxy are dropped.
+    let configured = std::env::var("GIT_SSH_COMMAND").ok().or_else(|| {
+        let out = crate::exec::git_in(repo)
+            .args(["config", "--get", "core.sshCommand"])
+            .output()
+            .ok()?;
+        out.status
+            .success()
+            .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+    });
+    ssh_command_from(configured.as_deref(), std::env::var_os("GIT_SSH").is_some(), options)
+}
+
+fn ssh_command_from(configured: Option<&str>, program_set: bool, options: &str) -> Option<String> {
+    match configured.map(str::trim).filter(|c| !c.is_empty()) {
+        // ssh keeps the first value it is given, so the user's own options win.
+        Some(command) if is_openssh(command) => Some(format!("{command} {options}")),
+        // A wrapper or another client may not take OpenSSH's options.
+        Some(_) => None,
+        None if program_set => None,
+        None => Some(format!("ssh {options}")),
+    }
+}
+
+fn is_openssh(command: &str) -> bool {
+    let program = command.split_whitespace().next().unwrap_or_default();
+    Path::new(program.trim_matches(['"', '\''])).file_name() == Some(std::ffi::OsStr::new("ssh"))
 }
 
 /// Fetch every repository the sidebar knows, on a schedule, without asking.
