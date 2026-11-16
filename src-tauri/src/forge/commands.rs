@@ -612,6 +612,7 @@ fn add_signed_in(
 /// the account does not pay for a second viewer call.
 struct Named {
     login: String,
+    avatar_url: Option<String>,
     grant: Grant,
 }
 
@@ -623,8 +624,8 @@ fn ask_viewer(
     source: Source,
 ) -> Result<Named, ForgeError> {
     let forge = forge_for(provider, base_url, Some(token.to_string()), None);
-    let login = match forge.viewer() {
-        Ok(viewer) => viewer.login,
+    let viewer = match forge.viewer() {
+        Ok(viewer) => viewer,
         Err(ForgeError::CredentialSuspect) => {
             return Err(ForgeError::Invalid {
                 message: format!("{host} rejected that token."),
@@ -633,7 +634,8 @@ fn ask_viewer(
         Err(e) => return Err(e),
     };
     Ok(Named {
-        login,
+        login: viewer.login,
+        avatar_url: viewer.avatar_url,
         grant: reported_grant(provider, source, forge.as_ref()),
     })
 }
@@ -652,7 +654,11 @@ fn store_signed_in(
     reauth: Option<&str>,
     named: Named,
 ) -> Result<SignedIn, ForgeError> {
-    let Named { login, grant } = named;
+    let Named {
+        login,
+        avatar_url,
+        grant,
+    } = named;
     // The flow's own lifetime wins where there is one: a browser token's
     // `expires_in` is the authority on itself, and the grant read is the only
     // source for a pasted one.
@@ -662,6 +668,7 @@ fn store_signed_in(
         let id = accounts::add_account(file, provider, base_url, host, &login, source, reauth)?;
         accounts::note_expiry(file, &id, expires_at);
         accounts::clear_org_access(file, &id);
+        accounts::note_avatar(file, &id, avatar_url.as_deref());
         if let Some(scopes) = scopes.clone() {
             accounts::note_scopes(file, &id, scopes);
         }
@@ -672,9 +679,34 @@ fn store_signed_in(
     Ok(SignedIn { account_id, login })
 }
 
+#[tauri::command(async)]
+pub fn forge_account_removal(account_id: String) -> Vec<identity::Removal> {
+    identity::removal(&account_id)
+}
+
 /// Signs an account out and forgets it, along with the repo picks naming it.
 #[tauri::command(async)]
-pub fn forge_remove_account(account_id: String) -> Result<(), ForgeErrorDto> {
+pub fn forge_remove_account(account_id: String, moves: Option<BTreeMap<String, String>>) -> Result<(), ForgeErrorDto> {
+    let moves = moves.unwrap_or_default();
+    let file = accounts::load();
+    for (key, id) in &moves {
+        let fits = id != &account_id
+            && accounts::find(&file, id).is_some_and(|(host, _)| key.starts_with(&format!("{host}/")));
+        if !fits {
+            return Err(ForgeError::Invalid {
+                message: format!("{key} cannot move to that account."),
+            }
+            .into());
+        }
+    }
+    // Before the account goes, so a move that cannot be saved stops the removal.
+    if !moves.is_empty() {
+        crate::settings::edit_forge_picks(|picks| {
+            picks.extend(moves);
+            true
+        })
+        .map_err(|message| ForgeError::Transport { message })?;
+    }
     auth::sign_out(&account_id)?;
     accounts::update(|file| Ok(accounts::remove_account(file, &account_id)))?;
     auth::tell_daemon(&account_id);
@@ -825,10 +857,41 @@ pub struct AccountAccess {
 
 #[tauri::command(async)]
 pub fn forge_repo_access(url: String) -> Result<Vec<AccountAccess>, ForgeErrorDto> {
-    let remote = remote_at(url.trim())?;
+    Ok(access_for(&remote_at(url.trim())?))
+}
+
+#[tauri::command(async)]
+pub fn forge_project_access(project_path: String) -> Result<Vec<AccountAccess>, ForgeErrorDto> {
+    Ok(access_for(&remote_of(&project_path)?))
+}
+
+/// Learns the host's avatar for an account that signed in before Tori kept one.
+#[tauri::command(async)]
+pub fn forge_account_avatar(account_id: String) -> Option<String> {
+    let file = accounts::load();
+    let (host, account) = accounts::find(&file, &account_id)?;
+    if account.avatar_url.is_some() {
+        return account.avatar_url.clone();
+    }
+    if !auth::enabled() || !auth::may_call(&account_id) {
+        return None;
+    }
+    let token = fresh_token(&file, host, account);
+    let url = forge_for(account.provider, &account.base_url, token, login_of(&account_id))
+        .viewer()
+        .ok()?
+        .avatar_url?;
+    let _ = accounts::update(|file| {
+        accounts::note_avatar(file, &account_id, Some(&url));
+        Ok(())
+    });
+    Some(url)
+}
+
+fn access_for(remote: &Remote) -> Vec<AccountAccess> {
     let file = accounts::load();
     let Some(record) = file.hosts.get(&remote.host) else {
-        return Ok(Vec::new());
+        return Vec::new();
     };
     let access_of = |account: &accounts::Account| {
         if !auth::enabled() || !auth::may_call(&account.id) {
@@ -843,7 +906,7 @@ pub fn forge_repo_access(url: String) -> Result<Vec<AccountAccess>, ForgeErrorDt
             Err(_) => Access::Unknown,
         }
     };
-    Ok(std::thread::scope(|scope| {
+    std::thread::scope(|scope| {
         let checks: Vec<_> = record
             .accounts
             .iter()
@@ -856,7 +919,7 @@ pub fn forge_repo_access(url: String) -> Result<Vec<AccountAccess>, ForgeErrorDt
                 access: check.join().unwrap_or(Access::Unknown),
             })
             .collect()
-    }))
+    })
 }
 
 #[tauri::command(async)]
@@ -2416,6 +2479,7 @@ mod tests {
             commit_email: None,
             ssh_public_key: None,
             signing_public_key: None,
+            avatar_url: None,
         };
         let token = fresh_token_with(&AccountsFile::default(), accounts::GITHUB_COM, &account, |_| Some(1));
         assert_eq!(token.as_deref(), Some("ghp_lapsed"));

@@ -354,6 +354,7 @@ export type ForgeAccount = {
   commitEmail: string | null;
   sshPublicKey: string | null;
   signingPublicKey: string | null;
+  avatarUrl?: string | null;
   auth: AuthState;
 };
 
@@ -537,6 +538,7 @@ export const FORGE_KEYS = {
   statusReport: ["rate", "statuses", "uncovered"],
   forgeAccount: [
     "auth",
+    "avatarUrl",
     "baseUrl",
     "commitEmail",
     "commitName",
