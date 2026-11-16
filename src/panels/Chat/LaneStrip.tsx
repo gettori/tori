@@ -47,7 +47,7 @@ export default function LaneStrip(props: {
   // elapsed clock uses.
   const [now, setNow] = createSignal(Date.now());
 
-  const mainTone = () => (props.busy ? agentStyles.tint : styles.laneIdle);
+  const mainTone = () => (props.busy ? `${agentStyles.tint} ${styles.laneMainBusy}` : styles.laneIdle);
 
   const [showDone, setShowDone] = createSignal(false);
   const isLive = (l: Lane) => l.status === null || props.blocked.has(l.agentId);
