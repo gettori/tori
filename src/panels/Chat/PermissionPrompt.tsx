@@ -105,7 +105,10 @@ export default function PermissionPrompt(props: {
           when={isCommand()}
           fallback={
             <>
-              Allow <code>{props.card.name ?? "this tool"}</code>
+              Allow{" "}
+              <Show when={props.card.name} fallback="this tool">
+                {(name) => <span class={styles.promptTool}>{name()}</span>}
+              </Show>
               <Show when={digest()}>
                 {(d) => (
                   <>
