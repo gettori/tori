@@ -136,7 +136,9 @@ function setup(over: Partial<Parameters<typeof ModelPicker>[0]> = {}) {
     return menu as HTMLElement;
   };
   const rowNames = (menu: HTMLElement) =>
-    [...menu.children].map((row) => (row.firstElementChild?.firstElementChild as HTMLElement | null)?.textContent);
+    [...menu.querySelectorAll(':scope > [role="menuitem"]')].map(
+      (row) => (row.firstElementChild?.firstElementChild as HTMLElement | null)?.textContent,
+    );
 
   return { ...result, pills, openPalette, modelNames, pickModel, openEffort, rowNames, onSelectModel, onSelectEffort };
 }

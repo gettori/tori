@@ -4,6 +4,9 @@ import styles from "./Glide.module.css";
 // A row reached within this long of a real pointer move is the pointer's doing.
 // Keys, and a wheel scrolling rows under a resting pointer, move no pointer.
 const POINTER_MS = 100;
+// Crossing a gap between rows (a menu's separator) lights nothing for a frame or
+// two; the fill waits that out, so it glides on instead of blinking.
+const GAP_MS = 80;
 
 /** A listbox's option at `index`, for a cursor kept as an index. */
 export const optionAt = (list: HTMLElement, index: number) => list.querySelectorAll('[role="option"]')[index];
@@ -17,7 +20,9 @@ export const optionAt = (list: HTMLElement, index: number) => list.querySelector
  * radius sets `--glide-radius`.
  */
 export default function Glide(props: {
-  /** The row the list's own cursor is on, read again whenever it is placed. */
+  /** The row the list's own cursor is on, read again whenever it is placed:
+   *  when the signals it reads change, and when focus moves inside the list,
+   *  which is how a menu's or a select's highlight moves. */
   active?: (list: HTMLElement) => Element | null | undefined;
   /** Rows that light under a moving pointer, for a list whose cursor does not
    *  follow the pointer itself. */
@@ -30,6 +35,7 @@ export default function Glide(props: {
   let glideNext = false;
   let shown: HTMLElement | null = null;
   let frame = 0;
+  let gap = 0;
   let resize: ResizeObserver | null = null;
   let rows: MutationObserver | null = null;
 
@@ -52,7 +58,17 @@ export default function Glide(props: {
   function place() {
     frame = 0;
     const row = target();
-    if (!row) return hide();
+    if (!row) {
+      if (shown && !gap) {
+        gap = window.setTimeout(() => {
+          gap = 0;
+          if (!target()) hide();
+        }, GAP_MS);
+      }
+      return;
+    }
+    clearTimeout(gap);
+    gap = 0;
     let x = 0;
     let y = 0;
     for (let n: HTMLElement | null = row; n && n !== el.offsetParent; n = n.offsetParent as HTMLElement | null) {
@@ -101,22 +117,31 @@ export default function Glide(props: {
       const next = row && host.contains(row) ? row : null;
       if (next === hovered) return;
       hovered = next;
-      if (next) lead = "hover";
+      if (next && pointerMoved()) lead = "hover";
       request(pointerMoved());
     };
     const onLeave = () => {
       hovered = null;
       request(false);
     };
+    const onFocus = () => {
+      lead = "cursor";
+      request(pointerMoved());
+    };
     host.addEventListener("pointermove", onMove);
+    host.addEventListener("focusin", onFocus);
+    host.addEventListener("focusout", onFocus);
     if (props.hover) {
       host.addEventListener("pointerover", onOver);
       host.addEventListener("pointerleave", onLeave);
     }
     onCleanup(() => {
       cancelAnimationFrame(frame);
+      clearTimeout(gap);
       hide();
       host.removeEventListener("pointermove", onMove);
+      host.removeEventListener("focusin", onFocus);
+      host.removeEventListener("focusout", onFocus);
       host.removeEventListener("pointerover", onOver);
       host.removeEventListener("pointerleave", onLeave);
     });

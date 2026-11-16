@@ -50,6 +50,11 @@
   color: var(--fg-watermark);
 }
 
+.listFrame {
+  position: relative;
+  isolation: isolate;
+}
+
 /* No scrolling of its own: the list is the content of an `OverlayScroll`
    viewport (see Combobox.tsx), and a scroller inside a scroller is two bars for
    one list. */
@@ -85,39 +90,12 @@
   color: var(--fg-default);
 }
 
-/* Pointer and keyboard reach the same state; same call as Menu's and Select's
-   `.item`. `data-highlighted` is the active row here, and it is *not*
-   `aria-selected`: in a combobox that attribute means the committed value, and
-   these pickers commit and close, so no visible row is ever selected.
-
-   Never over the picked row: a choice that goes grey the moment the pointer
-   crosses it reads as having been undone, and these two states answer
-   different questions - one is where the pointer is, the other is what you
-   chose, and only the second survives the pointer leaving. */
-.item:hover:not([data-picked]),
-.item[data-highlighted]:not([data-picked]) {
-  background: var(--neutral-hover);
-}
-
-/* While the pointer is over the list, the pointer owns the paint. The active
-   row is seeded on the first row before anything is pressed (see `Bridge`), so
-   without this a list you are merely hovering shows two rows wearing the same
-   colour, one of which nothing has ever touched. The keyboard's row comes back
-   the moment the pointer leaves, and the parked row keeps its own colour
-   throughout - it is a choice, not a position. */
-.listbox:hover .item[data-highlighted]:not(:hover):not([data-picked]) {
-  background: transparent;
-}
-
 /* Muted rather than opacity, because a role is theme-correct and an opacity is
    not. Kobalte already blocks activation and skips these rows with the arrow
    keys, so nothing here has to. */
 .item[data-disabled] {
   color: var(--fg-muted);
   cursor: default;
-}
-.item[data-disabled]:hover {
-  background: transparent;
 }
 
 .itemLabel {

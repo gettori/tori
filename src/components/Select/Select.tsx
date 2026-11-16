@@ -2,6 +2,7 @@ import { createMemo, createSignal, Show } from "solid-js";
 import { Check, ChevronsUpDown } from "lucide-solid";
 import { Select as Primitive } from "../../lib/select";
 import { useDialogSurface } from "../Dialog/surface";
+import Glide from "../Glide/Glide";
 import Icon from "../Icon/Icon";
 import SegmentedControl from "../SegmentedControl/SegmentedControl";
 import type { ControlSize } from "../controls";
@@ -160,6 +161,7 @@ export default function Select(props: {
           makes, and for the same reason. */}
       <Primitive.Portal mount={dialogSurface()}>
         <Primitive.Content class={styles.content} classList={{ [styles.tabbed]: !!props.tabs }}>
+          <Glide active={(list) => list.querySelector(`.${styles.item}[data-highlighted]`)} />
           <Show when={props.tabs}>
             {(tabs) => (
               <SegmentedControl

@@ -40,7 +40,7 @@ const row: JSX.CSSProperties = {
   gap: "var(--tori-space-4)",
 };
 
-function Section(props: { title: string; note: string; children: JSX.Element }) {
+function Section(props: { heading: string; note: string; children: JSX.Element }) {
   return (
     <section
       style={{
@@ -51,7 +51,7 @@ function Section(props: { title: string; note: string; children: JSX.Element }) 
       }}
     >
       <header style={{ display: "grid", gap: "var(--tori-space-2)" }}>
-        <h2 style={{ margin: 0, "font-size": "var(--tori-text-3xl)", color: "var(--fg-default)" }}>{props.title}</h2>
+        <h2 style={{ margin: 0, "font-size": "var(--tori-text-3xl)", color: "var(--fg-default)" }}>{props.heading}</h2>
         <p style={{ margin: 0, "font-size": "var(--tori-text-md)", color: "var(--fg-muted)" }}>{props.note}</p>
       </header>
       {props.children}
@@ -87,7 +87,7 @@ function MotionSection() {
   const [probes, setProbes] = createSignal<Entrance[]>(["pop", "rise"]);
   return (
     <Section
-      title="Motion"
+      heading="Motion"
       note="Each probe counts how often its entrance played. Hide and show replays nothing; a probe added while hidden never plays."
     >
       <div style={row}>
@@ -108,7 +108,7 @@ function ComposerSection() {
   const [hidden, setHidden] = createSignal(false);
   return (
     <Section
-      title="Composer"
+      heading="Composer"
       note="Idle: type to light the send button, @ opens the list, picking a row attaches it. Running: Option+Enter queues, and a tile shows its X on hover. Hide and show replays nothing."
     >
       <div style={row}>
@@ -130,7 +130,7 @@ function TranscriptSection() {
   const [hidden, setHidden] = createSignal(false);
   return (
     <Section
-      title="Transcript"
+      heading="Transcript"
       note="Send prompts or run an agent turn and the new rows rise in. History, Load earlier, a lane chip, Collapse work, the first row of an empty chat and hide then show draw rows without rising. The status and lane dots pulse while a turn runs."
     >
       <div style={row}>
@@ -162,7 +162,7 @@ function PromptsSection() {
   const prompts = createPrompts();
   return (
     <Section
-      title="Prompts"
+      heading="Prompts"
       note="A permission prompt on an edit and on a long command, then two approval asks, a long draft and a short one. A pressed option holds a neutral fill until the ask clears; a failed answer gives the buttons back."
     >
       <div style={row}>
@@ -185,7 +185,7 @@ function SelectionSection() {
   const said = (label: string) => (text: string) => setHeard(`${label}: ${text.slice(0, 60)}`);
   return (
     <Section
-      title="Selection"
+      heading="Selection"
       note="Select some text: the toolbar pops in once under it, an action fills inside the pill on hover and settles on press. Where it sits and what it offers are unchanged."
     >
       <div
@@ -260,7 +260,7 @@ function ListsSection() {
   };
   return (
     <Section
-      title="Lists"
+      heading="Lists"
       note="The fill glides under a moving pointer and jumps with the arrows. Wheel under a still pointer and it stays on the row beneath it; filter and it follows the active row; reopen and it lands while the list is still scaling in. The right list lights only under the pointer and is hidden, observing nothing, when the pointer is away."
     >
       <div style={row}>
@@ -332,7 +332,7 @@ function ListsSection() {
 
 function ButtonsSection() {
   return (
-    <Section title="Buttons" note="Every variant and size, the icon buttons, and disabled ones that must not move.">
+    <Section heading="Buttons" note="Every variant and size, the icon buttons, and disabled ones that must not move.">
       <For each={SIZES}>
         {(size) => (
           <div style={row}>
@@ -374,8 +374,8 @@ function OverlaysSection() {
   let popoverBtn: HTMLButtonElement | undefined;
   return (
     <Section
-      title="Overlays"
-      note="Dropdown with a submenu and a danger row, a right-click menu, a select, a popover, a tooltip and a dialog."
+      heading="Overlays"
+      note="Dropdown with a submenu and a danger row, a right-click menu, a select, a popover, a tooltip and a dialog. In the menus and the select one fill glides under the pointer and jumps with the arrows; a disabled row takes none, the danger row keeps its own wash, and the submenu's parent stays lit while the pointer is in the flyout."
     >
       <div style={row}>
         <Dropdown
@@ -465,7 +465,7 @@ function ChecksSection() {
   const [picks, setPicks] = createSignal<string[]>([]);
   const [place, setPlace] = createSignal<string | null>(null);
   return (
-    <Section title="Checks" note="Tick and dot, checked and unchecked, plus disabled states.">
+    <Section heading="Checks" note="Tick and dot, checked and unchecked, plus disabled states.">
       <div style={{ display: "grid", gap: "var(--tori-space-8)", "grid-template-columns": "repeat(3, max-content)" }}>
         <div style={{ display: "grid", gap: "var(--tori-space-3)", "align-content": "start" }}>
           <Checkbox checked={untracked()} onChange={setUntracked} label="Include untracked files" />

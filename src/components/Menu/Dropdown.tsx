@@ -1,7 +1,7 @@
 import { Show, splitProps, type JSX } from "solid-js";
 import { DropdownMenu as Primitive } from "../../lib/menu";
 import { useDialogSurface } from "../Dialog/surface";
-import { MenuRows, type MenuItem } from "./rows";
+import { MenuGlide, MenuRows, type MenuItem } from "./rows";
 import { MenuSurface } from "./surface";
 import styles from "./Menu.module.css";
 
@@ -212,6 +212,7 @@ export default function Dropdown<T extends HTMLElement = HTMLButtonElement>(prop
             // browser's menu on top of Tori's. The hand-rolled Menu did the same.
             onContextMenu={(e: MouseEvent) => e.preventDefault()}
           >
+            <MenuGlide />
             {local.menu ?? <MenuRows items={local.items ?? []} />}
           </Primitive.Content>
         </Primitive.Portal>
