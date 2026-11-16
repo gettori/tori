@@ -130,6 +130,7 @@ const KEPT = new Map<string, Kept>([
   ["components/Dialogs/DetachConfirm.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/MoveTopicDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/NewProjectDialog.tsx", { count: 1, reason: HEADING }],
+  ["components/Dialogs/RemoveAccountDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/GroupingDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/MoveToSpaceDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/MoveIntoSpace.tsx", { count: 1, reason: `${TRUNCATION}: the folder being moved` }],
