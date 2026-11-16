@@ -13,6 +13,7 @@ import { MenuRow, MenuSeparator, MenuSub } from "../components/Menu/rows";
 import Popover from "../components/Popover/Popover";
 import RadioGroup from "../components/RadioGroup/RadioGroup";
 import Select from "../components/Select/Select";
+import SelectionToolbar, { quoteAction, readAction } from "../components/SelectionToolbar/SelectionToolbar";
 import Tooltip from "../components/Tooltip/Tooltip";
 import {
   ChatInput,
@@ -172,6 +173,41 @@ function PromptsSection() {
       <PromptsPane prompts={prompts} />
       <p style={{ margin: 0, "font-size": "var(--tori-text-md)", color: "var(--fg-muted)" }}>
         Host heard: {prompts.heard().slice(-3).join(" / ") || "nothing yet"}
+      </p>
+    </Section>
+  );
+}
+
+function SelectionSection() {
+  let root: HTMLDivElement | undefined;
+  const [heard, setHeard] = createSignal("");
+  const said = (label: string) => (text: string) => setHeard(`${label}: ${text.slice(0, 60)}`);
+  return (
+    <Section
+      title="Selection"
+      note="Select some text: the toolbar pops in once under it, an action fills inside the pill on hover and settles on press. Where it sits and what it offers are unchanged."
+    >
+      <div
+        ref={root}
+        style={{
+          display: "grid",
+          gap: "var(--tori-space-4)",
+          "font-size": "var(--tori-text-lg)",
+          "line-height": 1.6,
+          color: "var(--fg-default)",
+        }}
+      >
+        <p style={{ margin: 0 }}>
+          Select a few words in either paragraph and the toolbar floats under the selection. Pressing an action keeps
+          the selection, so the text you picked is the text the action gets.
+        </p>
+        <p style={{ margin: 0 }}>
+          Quote puts the selection in the composer as a Markdown quote, and Read speaks it with the local voice.
+        </p>
+      </div>
+      <SelectionToolbar root={() => root} actions={[quoteAction(said("Quote")), readAction(said("Read"))]} />
+      <p style={{ margin: 0, "font-size": "var(--tori-text-md)", color: "var(--fg-muted)" }}>
+        Last action: {heard() || "none yet"}
       </p>
     </Section>
   );
@@ -356,6 +392,7 @@ function KitchenSink() {
       <ComposerSection />
       <TranscriptSection />
       <PromptsSection />
+      <SelectionSection />
     </div>
   );
 }

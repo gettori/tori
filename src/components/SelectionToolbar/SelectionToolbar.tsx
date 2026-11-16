@@ -1,4 +1,8 @@
 import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
+import { TextQuote, Volume2, type LucideIcon } from "lucide-solid";
+import Icon from "../Icon/Icon";
+import patterns from "../../styles/patterns.module.css";
+import { enterOnce } from "../../utils/enterOnce";
 import styles from "./SelectionToolbar.module.css";
 
 /** Each selected line as a Markdown quote, then a blank line so what follows
@@ -35,7 +39,10 @@ export function holdSelection() {
 
 export const heldSelection = () => held;
 
-export type SelectionAction = { label: string; run: (text: string) => void };
+export type SelectionAction = { label: string; icon: LucideIcon; run: (text: string) => void };
+
+export const quoteAction = (run: SelectionAction["run"]): SelectionAction => ({ label: "Quote", icon: TextQuote, run });
+export const readAction = (run: SelectionAction["run"]): SelectionAction => ({ label: "Read", icon: Volume2, run });
 
 /**
  * Actions floating by a selection.
@@ -84,6 +91,7 @@ export default function SelectionToolbar(props: {
     <Show when={range()}>
       {(r) => (
         <div
+          ref={(el) => enterOnce(el, patterns.enterPop)}
           role="toolbar"
           aria-label="Selection"
           class={styles.toolbar}
@@ -93,19 +101,25 @@ export default function SelectionToolbar(props: {
           onMouseDown={(e) => e.preventDefault()}
         >
           <For each={props.actions}>
-            {(action) => (
-              <button
-                type="button"
-                class={styles.action}
-                onClick={() => {
-                  // The selection's own text, which keeps a line break between
-                  // blocks where the bare range would run them together.
-                  action.run(document.getSelection()?.toString() || r().toString());
-                  setRange(null);
-                }}
-              >
-                {action.label}
-              </button>
+            {(action, i) => (
+              <>
+                <Show when={i() > 0}>
+                  <span class={styles.divider} />
+                </Show>
+                <button
+                  type="button"
+                  class={styles.action}
+                  onClick={() => {
+                    // The selection's own text, which keeps a line break between
+                    // blocks where the bare range would run them together.
+                    action.run(document.getSelection()?.toString() || r().toString());
+                    setRange(null);
+                  }}
+                >
+                  <Icon icon={action.icon} />
+                  {action.label}
+                </button>
+              </>
             )}
           </For>
         </div>
