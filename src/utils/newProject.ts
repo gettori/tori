@@ -8,13 +8,15 @@ import { badName } from "./names";
 export type NewProjectMode = "folder" | "clone";
 
 // Bare + worktree bootstrap, run as one `&&` chain in a terminal.
-// $1 = repo URL, $2 = project folder (passed as args, never interpolated). The
+// $1 = repo URL, $2 = project folder, $3 = the account's git config file or
+// empty (passed as args, never interpolated). The
 // trailing `|| rm -rf` cleans up a half-built project on any failure; a killed
 // run leaves a `.bare`-only stub, which discovery flags as `incomplete`.
 // Not `set -e`: a shell ignores it in a subshell tested by `||`, so a failed
 // clone ran on to "Done" and exited 0.
-export const BOOTSTRAP_SCRIPT = `url="$1"; proj="$2"
-git clone --bare -- "$url" "$proj/.bare" &&
+export const BOOTSTRAP_SCRIPT = `url="$1"; proj="$2"; inc="$3"
+if [ -n "$inc" ]; then set -- -c "include.path=$inc"; else set --; fi
+git clone --bare "$@" -- "$url" "$proj/.bare" &&
   printf 'gitdir: ./.bare\\n' > "$proj/.git" &&
   git -C "$proj/.bare" config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*' &&
   git -C "$proj" fetch origin &&
@@ -46,11 +48,24 @@ export async function claimProjectFolder(spacePath: string, name: string): Promi
   return null;
 }
 
+/** Saves the account picked for a clone of `url` (null when there was no
+ *  picker) and answers the account's git config file for the clone to include. */
+export const prepareClone = (url: string, accountId: string | null) =>
+  invoke<string | null>("forge_clone_prepare", { url: url.trim(), accountId });
+
 /** The job that clones `url` into the space as `name`, plain or in the
  *  worktree layout, which re-discovers projects when it exits. Native git
- *  progress and ambient auth, no in-app credentials. */
-export function projectJob(spacePath: string, name: string, url: string, worktreeLayout: boolean): OpenJob {
+ *  progress and ambient auth, no in-app credentials. `include` is the
+ *  account's git config file, so the clone's own fetch already acts as it. */
+export function projectJob(
+  spacePath: string,
+  name: string,
+  url: string,
+  worktreeLayout: boolean,
+  include: string | null,
+): OpenJob {
   const n = name.trim();
+  const config = include ? ["-c", `include.path=${include}`] : [];
   const kind = worktreeLayout ? "bootstrap" : "clone";
   const target = `${spacePath}/${n}`;
   return {
@@ -60,7 +75,9 @@ export function projectJob(spacePath: string, name: string, url: string, worktre
     title: `${kind} ${n}`,
     cwd: spacePath,
     program: worktreeLayout ? "sh" : "git",
-    args: worktreeLayout ? ["-c", BOOTSTRAP_SCRIPT, "tori", url.trim(), n] : ["clone", "--", url.trim(), n],
+    args: worktreeLayout
+      ? ["-c", BOOTSTRAP_SCRIPT, "tori", url.trim(), n, include ?? ""]
+      : ["clone", ...config, "--", url.trim(), n],
     rediscoverOnExit: true,
   };
 }

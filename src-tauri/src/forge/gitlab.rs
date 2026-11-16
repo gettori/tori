@@ -620,6 +620,12 @@ impl Forge for GitLabForge {
         })
     }
 
+    fn can_read(&self, repo: &RepoRef) -> Result<(), ForgeError> {
+        self.require_token()?;
+        self.send(self.rest("GET", &format!("/projects/{}", project(repo)), None))
+            .map(|_| ())
+    }
+
     fn pull_request_for_branch(&self, repo: &RepoRef, branch: &str) -> Result<Option<PullRequest>, ForgeError> {
         self.require_token()?;
         let path = format!(
