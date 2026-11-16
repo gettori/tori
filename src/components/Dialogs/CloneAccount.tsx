@@ -15,7 +15,7 @@ type Access = "yes" | "no" | "unknown";
 
 const SETTLE_MS = 400;
 
-export function createCloneAccount(url: () => string) {
+export function createCloneAccount(url: () => string, space: () => string | null) {
   const [choice, setChoice] = createSignal<CloneAccounts | null>(null);
   const [access, setAccess] = createSignal<Record<string, Access> | null>(null);
   const [chosen, setChosen] = createSignal<string | null>(null);
@@ -32,7 +32,9 @@ export function createCloneAccount(url: () => string) {
         if (!u) return;
         let live = true;
         const timer = setTimeout(async () => {
-          const found = await invoke<CloneAccounts | null>("forge_clone_accounts", { url: u }).catch(() => null);
+          const found = await invoke<CloneAccounts | null>("forge_clone_accounts", { url: u, space: space() }).catch(
+            () => null,
+          );
           if (!live) return;
           setChoice(found);
           setPending(false);
