@@ -110,14 +110,24 @@
   border-color: var(--fg-subtle);
 }
 
-/* Kobalte mounts the indicator only while checked, so this needs no hidden
-   state of its own. A drawn dot rather than an icon: at 6px a Lucide glyph is
-   mush, and the shape carries no meaning a circle does not. */
+/* Force-mounted (see RadioGroup.tsx), so the hidden state is CSS, the same
+   transition-on-check-only shape as Checkbox.module.css's tick. A drawn dot
+   rather than an icon: at 6px a Lucide glyph is mush, and the shape carries no
+   meaning a circle does not. */
 .indicator {
   width: calc(8px * var(--ui-scale));
   height: calc(8px * var(--ui-scale));
   border-radius: var(--tori-radius-pill);
   background: var(--brand-default);
+  opacity: 0;
+  scale: 0;
+}
+.indicator[data-checked] {
+  opacity: 1;
+  scale: 1;
+  transition:
+    opacity var(--tori-duration-med) var(--tori-ease-out),
+    scale var(--tori-duration-med) var(--tori-ease-out);
 }
 
 .item[data-disabled] .indicator {

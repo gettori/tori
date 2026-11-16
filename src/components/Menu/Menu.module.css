@@ -24,7 +24,30 @@
   border: 1px solid var(--border-default);
   border-radius: var(--tori-radius-xl);
   box-shadow: var(--shadow-md);
+  /* Submenus share this name: Kobalte sets it on every menu content, sub or
+     not. The fallback keeps check 3 passing, since the name exists nowhere in
+     src/. */
+  transform-origin: var(--kb-menu-content-transform-origin, center);
 }
+
+/* Enter only. With no `[data-closed]` animation, solid-presence reads
+   `animation-name: none` on close and unmounts at once, so closing stays
+   instant. `scale` rather than `transform`, like the shared entrances. */
+@keyframes menuContentIn {
+  from {
+    opacity: 0;
+    scale: 0.95;
+  }
+}
+.content[data-expanded] {
+  animation: menuContentIn var(--tori-duration-med) var(--tori-ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  .content[data-expanded] {
+    animation: none;
+  }
+}
+
 .content:focus {
   /* The content takes focus when the menu opens, before any row is highlighted.
      A ring around the whole surface indicates no target; the highlighted row is

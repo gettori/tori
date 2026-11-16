@@ -16,6 +16,24 @@
   overflow: hidden;
   -webkit-user-select: none;
   user-select: none;
+  transform-origin: var(--kb-popover-content-transform-origin, center);
+}
+
+/* Enter only, the shape Menu.module.css spells out. `scale` rather than
+   `transform` matters most here: the caller's own class shares this element. */
+@keyframes popoverSurfaceIn {
+  from {
+    opacity: 0;
+    scale: 0.95;
+  }
+}
+.surface[data-expanded] {
+  animation: popoverSurfaceIn var(--tori-duration-med) var(--tori-ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  .surface[data-expanded] {
+    animation: none;
+  }
 }
 
 .surface:focus {

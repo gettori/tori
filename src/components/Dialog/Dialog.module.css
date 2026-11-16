@@ -59,7 +59,7 @@
 }
 
 .backdrop[data-expanded] {
-  animation: dialogBackdropIn var(--tori-duration-med) var(--tori-ease);
+  animation: dialogBackdropIn var(--tori-duration-med) var(--tori-ease-out);
 }
 .backdrop[data-closed] {
   animation: dialogBackdropOut var(--tori-duration-fast) var(--tori-ease);
@@ -86,7 +86,7 @@
   outline: none;
 }
 .panel[data-expanded] {
-  animation: dialogPanelIn var(--tori-duration-med) var(--tori-ease);
+  animation: dialogPanelIn var(--tori-duration-med) var(--tori-ease-out);
 }
 .panel[data-closed] {
   animation: dialogPanelOut var(--tori-duration-fast) var(--tori-ease);

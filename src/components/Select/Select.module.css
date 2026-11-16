@@ -97,6 +97,23 @@
   border: 1px solid var(--border-default);
   border-radius: var(--tori-radius-xl);
   box-shadow: var(--shadow-md);
+  transform-origin: var(--kb-select-content-transform-origin, center);
+}
+
+/* Enter only, the shape Menu.module.css spells out. */
+@keyframes selectContentIn {
+  from {
+    opacity: 0;
+    scale: 0.95;
+  }
+}
+.content[data-expanded] {
+  animation: selectContentIn var(--tori-duration-med) var(--tori-ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  .content[data-expanded] {
+    animation: none;
+  }
 }
 
 /* The tab strip of a tabbed list: the full width of the surface, segments

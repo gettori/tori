@@ -65,7 +65,7 @@
   }
 }
 .content[data-expanded] {
-  animation: tooltipContentIn var(--tori-duration-fast) var(--tori-ease);
+  animation: tooltipContentIn var(--tori-duration-fast) var(--tori-ease-out);
 }
 @media (prefers-reduced-motion: reduce) {
   .content[data-expanded] {
