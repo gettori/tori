@@ -91,6 +91,8 @@ pub struct Account {
     pub ssh_public_key: Option<String>,
     #[serde(default)]
     pub signing_public_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
 }
 
 impl Account {
@@ -251,6 +253,7 @@ pub fn add_account(
         commit_email: None,
         ssh_public_key: None,
         signing_public_key: None,
+        avatar_url: None,
     });
     Ok(id)
 }
@@ -386,6 +389,14 @@ pub fn note_login(file: &mut AccountsFile, id: &str, login: &str) {
     }
 }
 
+pub fn note_avatar(file: &mut AccountsFile, id: &str, url: Option<&str>) {
+    for account in file.hosts.values_mut().flat_map(|r| r.accounts.iter_mut()) {
+        if account.id == id {
+            account.avatar_url = url.map(str::to_string);
+        }
+    }
+}
+
 pub fn set_identity(file: &mut AccountsFile, id: &str, identity: Option<(&str, &str)>) -> Result<bool, ForgeError> {
     let identity = match identity.map(|(name, email)| (name.trim(), email.trim())) {
         Some((name, email)) if name.is_empty() || email.is_empty() || !email.contains('@') => {
@@ -463,6 +474,7 @@ pub fn migrate_legacy(
             commit_email: None,
             ssh_public_key: None,
             signing_public_key: None,
+            avatar_url: None,
         });
     }
     file.legacy_migrated = true;

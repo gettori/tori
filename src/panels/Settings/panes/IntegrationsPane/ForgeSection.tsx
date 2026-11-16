@@ -9,6 +9,7 @@ import RadioGroup from "../../../../components/RadioGroup/RadioGroup";
 import Select from "../../../../components/Select/Select";
 import Switch from "../../../../components/Switch/Switch";
 import ConfirmDialog, { type ConfirmOpts, type ConfirmReq } from "../../../../components/Dialogs/ConfirmDialog";
+import RemoveAccountDialog, { type Removal } from "../../../../components/Dialogs/RemoveAccountDialog";
 import { settings, saveSettings } from "../../settingsStore";
 import {
   forgeAccountName,
@@ -399,9 +400,38 @@ export default function ForgeSection() {
     }
   }
 
-  async function remove(host: string, account: ForgeAccount) {
+  const [removing, setRemoving] = createSignal<{
+    host: ForgeHost;
+    account: ForgeAccount;
+    removals: Removal[];
+    busy: boolean;
+  } | null>(null);
+
+  async function removeWithMoves(moves: Record<string, string>) {
+    const req = removing();
+    if (!req) return;
+    setRemoving({ ...req, busy: true });
+    setError(null);
+    try {
+      await invoke("forge_remove_account", { accountId: req.account.id, moves });
+      setRemoving(null);
+      await refresh();
+    } catch (e) {
+      setRemoving({ ...req, busy: false });
+      setError(forgeErrorMessage(e));
+    }
+  }
+
+  async function remove(host: ForgeHost, account: ForgeAccount) {
+    let removals: Removal[];
+    try {
+      removals = await invoke<Removal[]>("forge_account_removal", { accountId: account.id });
+    } catch (e) {
+      return setError(forgeErrorMessage(e));
+    }
+    if (removals.length > 0) return setRemoving({ host, account, removals, busy: false });
     const ok = await askConfirm({
-      title: `Remove ${forgeAccountName(account)} from ${host}?`,
+      title: `Remove ${forgeAccountName(account)} from ${host.host}?`,
       message: "Tori deletes the token it stored for this account.",
       confirmLabel: "Remove",
       danger: true,
@@ -553,7 +583,7 @@ export default function ForgeSection() {
                             size="xs"
                             class={cards.remove}
                             aria-label={`Remove ${forgeAccountName(account)}`}
-                            onClick={() => void remove(host.host, account)}
+                            onClick={() => void remove(host, account)}
                           >
                             Remove
                           </Button>
@@ -995,6 +1025,19 @@ export default function ForgeSection() {
             danger={req().danger}
             onConfirm={() => answerConfirm(true)}
             onCancel={() => answerConfirm(false)}
+          />
+        )}
+      </Show>
+      <Show when={removing()}>
+        {(req) => (
+          <RemoveAccountDialog
+            account={req().account}
+            host={req().host.host}
+            others={req().host.accounts.filter((a) => a.id !== req().account.id)}
+            removals={req().removals}
+            busy={req().busy}
+            onConfirm={(moves) => void removeWithMoves(moves)}
+            onCancel={() => setRemoving(null)}
           />
         )}
       </Show>

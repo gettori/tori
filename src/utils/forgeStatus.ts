@@ -17,6 +17,7 @@
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import {
+  forgeAccountName,
   isForgeError,
   type AuthState,
   type Capabilities,
@@ -275,7 +276,57 @@ const key = (path: string, branch: string) => `${path}\n${branch}`;
 export async function resolveForgeRepo(path: string): Promise<RepoAccount | null> {
   const repo = await invoke<RepoAccount>("forge_repo_account", { projectPath: path }).catch(() => null);
   if (repo) setRepos((m) => ({ ...m, [path]: repo }));
+  if (repo?.kind === "pick" && !(path in access())) void loadAccess(path);
   return repo;
+}
+
+export type RepoAccess = "yes" | "no" | "unknown";
+
+const [access, setAccess] = createSignal<Record<string, Record<string, RepoAccess>>>({});
+
+// Once per checkout and session: it costs one request per account on the host.
+async function loadAccess(path: string) {
+  setAccess((m) => ({ ...m, [path]: {} }));
+  const rows = await invoke<{ accountId: string; access: RepoAccess }[]>("forge_project_access", {
+    projectPath: path,
+  }).catch(() => []);
+  setAccess((m) => ({ ...m, [path]: Object.fromEntries(rows.map((r) => [r.accountId, r.access])) }));
+}
+
+export function forgeAccess(path: string, accountId: string): RepoAccess {
+  return access()[path]?.[accountId] ?? "unknown";
+}
+
+export function accountWithAccess(path: string, account: ForgeAccount): string {
+  const reach = forgeAccess(path, account.id);
+  const name = forgeAccountName(account);
+  return reach === "yes" ? `${name} (can read it)` : reach === "no" ? `${name} (no access)` : name;
+}
+
+const [avatars, setAvatars] = createSignal<Record<string, { url: string | null; at: number }>>({});
+const AVATAR_RETRY_MS = 5 * 60 * 1000;
+
+// Asked lazily, for an account signed in before Tori kept the host's avatar.
+// A miss is asked again after a while, never on every render.
+export function forgeAvatar(account: ForgeAccount): string | null {
+  if (account.avatarUrl) return account.avatarUrl;
+  const known = avatars()[account.id];
+  if (!known || (known.url === null && Date.now() - known.at > AVATAR_RETRY_MS)) {
+    setAvatars((m) => ({ ...m, [account.id]: { url: null, at: Date.now() } }));
+    void invoke<string | null>("forge_account_avatar", { accountId: account.id })
+      .catch(() => null)
+      .then((url) => setAvatars((m) => ({ ...m, [account.id]: { url, at: Date.now() } })));
+  }
+  return known?.url ?? null;
+}
+
+export function forgeAccountCount(): number {
+  return accounts().length;
+}
+
+export function forgeAccountOf(path: string | null): ForgeAccount | null {
+  const repo = forgeRepo(path);
+  return repo?.kind === "account" ? (accounts().find((a) => a.id === repo.accountId) ?? null) : null;
 }
 
 /** What a checkout last resolved to, or null before it has been asked. */

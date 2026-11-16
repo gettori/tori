@@ -165,6 +165,8 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "forge_device_cancel":
         calls.cancel += 1;
         return Promise.resolve(null);
+      case "forge_account_removal":
+        return Promise.resolve([]);
       case "forge_remove_account":
         calls.removed.push(args?.accountId as string);
         hosts = [];
