@@ -17,7 +17,8 @@
   transition:
     color var(--tori-duration-fast) ease,
     border-color var(--tori-duration-fast) ease,
-    background var(--tori-duration-fast) ease;
+    background var(--tori-duration-fast) ease,
+    scale var(--tori-duration-fast) ease;
 }
 
 .iconBtn svg {
@@ -39,6 +40,7 @@
 
 .iconBtn:active:not(:disabled) {
   filter: brightness(0.96);
+  scale: 0.97;
 }
 
 /* Pressed toggle: brand fill, held through hover. */

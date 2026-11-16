@@ -70,15 +70,23 @@
 }
 
 /* Mounted whether or not the box is checked (see Checkbox.tsx), so the hidden
-   state is CSS: Kobalte stamps `data-checked` on the indicator itself. */
+   state is CSS: Kobalte stamps `data-checked` on the indicator itself. A
+   transition, not a keyframe, so a pane shown again does not replay the tick;
+   it lives on the checked state only, so unchecking is instant. */
 .indicator {
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
+  opacity: 0;
+  scale: 0.5;
 }
 .indicator[data-checked],
 .indicator[data-indeterminate] {
-  display: flex;
+  opacity: 1;
+  scale: 1;
+  transition:
+    opacity var(--tori-duration-med) var(--tori-ease-out),
+    scale var(--tori-duration-med) var(--tori-ease-out);
 }
 
 /* Typography is inherited, not set here. The box is this component's; the words
