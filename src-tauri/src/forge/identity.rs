@@ -9,7 +9,15 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-const KEYS: [&str; 2] = ["user.name", "user.email"];
+const AUTHOR: [&str; 2] = ["user.name", "user.email"];
+const MANAGED: [&str; 6] = [
+    "user.name",
+    "user.email",
+    "core.sshCommand",
+    "user.signingkey",
+    "gpg.format",
+    "commit.gpgsign",
+];
 
 pub fn files_dir() -> PathBuf {
     crate::owned_state::config_dir().join("git-accounts")
@@ -32,26 +40,95 @@ pub fn suggestion(host: &str, hint: &IdentityHint) -> (String, String) {
     (name, email)
 }
 
-pub fn write_file(account: &Account) -> Result<(), String> {
-    write_file_in(&files_dir(), account)
+pub fn write_file(host: &str, account: &Account) -> Result<(), String> {
+    write_file_in(&files_dir(), host, account)
 }
 
-fn write_file_in(dir: &Path, account: &Account) -> Result<(), String> {
-    let path = dir.join(format!("{}.gitconfig", account.id));
-    let Some((name, email)) = account.identity() else {
-        return match std::fs::remove_file(&path) {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
-            _ => Ok(()),
-        };
+fn sets_repo_settings(account: &Account) -> bool {
+    account.identity().is_some() || account.ssh_public_key.is_some() || account.signing_public_key.is_some()
+}
+
+fn quoted(text: &str) -> String {
+    format!("'{}'", text.replace('\'', "'\\''"))
+}
+
+fn remove(path: &Path) -> Result<(), String> {
+    let gone = if path.is_dir() {
+        std::fs::remove_dir_all(path)
+    } else {
+        std::fs::remove_file(path)
     };
+    match gone {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(format!("{}: {e}", path.display())),
+        _ => Ok(()),
+    }
+}
+
+fn ssh_wrapper(host: &str, key: &str) -> String {
+    format!(
+        r#"#!/bin/sh
+destination() {{
+  skip=
+  for arg in "$@"; do
+    if [ -n "$skip" ]; then skip=; continue; fi
+    case "$arg" in
+      -o|-p|-i|-F|-l|-J) skip=1 ;;
+      -*) ;;
+      *) echo "${{arg#*@}}"; return ;;
+    esac
+  done
+}}
+resolved_host() {{
+  ssh -G -- "$1" 2>/dev/null | awk '$1 == "hostname" {{ print $2; exit }}'
+}}
+if [ "$(resolved_host "$(destination "$@")")" = {host} ]; then
+  exec ssh -i {key} -o IdentitiesOnly=yes "$@"
+fi
+exec ssh "$@"
+"#,
+        host = quoted(host),
+        key = quoted(key),
+    )
+}
+
+fn write_file_in(dir: &Path, host: &str, account: &Account) -> Result<(), String> {
+    let path = dir.join(format!("{}.gitconfig", account.id));
+    let ssh_dir = dir.join(format!("{}.ssh", account.id));
+    if account.ssh_public_key.is_none() {
+        remove(&ssh_dir)?;
+    }
+    if !sets_repo_settings(account) {
+        return remove(&path);
+    }
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let mut entries: Vec<(&str, String)> = Vec::new();
+    if let Some((name, email)) = account.identity() {
+        entries.extend([("user.name", name.to_string()), ("user.email", email.to_string())]);
+    }
+    if let Some(key) = &account.ssh_public_key {
+        std::fs::create_dir_all(&ssh_dir).map_err(|e| e.to_string())?;
+        let script = ssh_dir.join("ssh");
+        std::fs::write(&script, ssh_wrapper(host, &super::ssh_keys::private_or_public(key)))
+            .map_err(|e| e.to_string())?;
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+        // Named `ssh`, so git and Tori both still treat it as OpenSSH.
+        entries.push(("core.sshCommand", quoted(&script.to_string_lossy())));
+    }
+    if let Some(key) = &account.signing_public_key {
+        entries.extend([
+            ("gpg.format", "ssh".to_string()),
+            ("user.signingkey", super::ssh_keys::private_or_public(key)),
+            ("commit.gpgsign", "true".to_string()),
+        ]);
+    }
     let tmp = path.with_extension("tmp");
     let _ = std::fs::remove_file(&tmp);
-    for (key, value) in [("user.name", name), ("user.email", email)] {
+    for (key, value) in entries {
         let out = crate::exec::git_outside_a_repo()
             .args(["config", "--file"])
             .arg(&tmp)
-            .args([key, value])
+            .args([key, &value])
             .output()
             .map_err(|e| format!("git could not run: {e}"))?;
         if !out.status.success() {
@@ -130,9 +207,9 @@ impl Repo {
         Some(Entry { scope, origin, value })
     }
 
-    fn own(&self, places: &Places) -> Result<Vec<(String, Entry)>, String> {
+    fn own(&self, keys: &[&str], places: &Places) -> Result<Vec<(String, Entry)>, String> {
         let mut own = Vec::new();
-        for key in KEYS {
+        for &key in keys {
             for entry in self.entries(key)? {
                 if matches!(places.kind(&entry), Kind::Repo | Kind::Include) {
                     own.push((key.to_string(), entry));
@@ -228,14 +305,23 @@ impl Places {
     }
 }
 
-fn wanted(repo: &str, file: &AccountsFile, picks: &BTreeMap<String, String>) -> Option<(String, PathBuf)> {
+struct Wanted {
+    id: String,
+    file: PathBuf,
+    sets_author: bool,
+}
+
+fn wanted(repo: &str, file: &AccountsFile, picks: &BTreeMap<String, String>) -> Option<Wanted> {
     let remote = super::commands::remote_of(repo).ok()?;
     let Resolution::Account(id) = accounts::resolve(file, picks, &remote) else {
         return None;
     };
-    accounts::find(file, &id)?.1.identity()?;
-    let path = file_for(&id);
-    Some((id, path))
+    let account = accounts::find(file, &id)?.1;
+    sets_repo_settings(account).then(|| Wanted {
+        file: file_for(&id),
+        sets_author: account.identity().is_some(),
+        id,
+    })
 }
 
 static INDEX: OnceLock<crate::config::ProjectIndex> = OnceLock::new();
@@ -287,34 +373,40 @@ pub fn reconcile() -> Vec<String> {
     let picks = crate::settings::get_settings().forge.picks;
     let places = Places::here();
     let mut failed = Vec::new();
-    for (_, account) in accounts::all_accounts(&file) {
-        if let Err(e) = write_file(account) {
+    for (host, account) in accounts::all_accounts(&file) {
+        if let Err(e) = write_file(host, account) {
             failed.push(format!("the git config file for {}: {e}", account.id));
         }
     }
     for path in known_repos() {
-        let want = wanted(&path, &file, &picks).map(|(_, file)| file);
+        let want = wanted(&path, &file, &picks);
         let applied = Repo::open(&path).and_then(|repo| {
             // A repo with its own author and no account yet waits for the user.
-            if want.is_some() && repo.included(&places)?.is_empty() && !repo.own(&places)?.is_empty() {
+            if want.as_ref().is_some_and(|w| w.sets_author)
+                && repo.included(&places)?.is_empty()
+                && !repo.own(&AUTHOR, &places)?.is_empty()
+            {
                 return Ok(());
             }
-            repo.apply(want.as_deref(), &places)
+            repo.apply(want.as_ref().map(|w| w.file.as_path()), &places)
         });
         if let Err(e) = applied {
             failed.push(format!("{path}: {e}"));
         }
     }
     // After the repos, so none is left including a file that is already gone.
-    let live: Vec<PathBuf> = accounts::all_accounts(&file)
-        .filter(|(_, a)| a.identity().is_some())
-        .map(|(_, a)| file_for(&a.id))
-        .collect();
+    let mut live = vec![files_dir().join("agent-keys")];
+    for (_, account) in accounts::all_accounts(&file).filter(|(_, a)| sets_repo_settings(a)) {
+        live.push(file_for(&account.id));
+        if account.ssh_public_key.is_some() {
+            live.push(files_dir().join(format!("{}.ssh", account.id)));
+        }
+    }
     if let Ok(dir) = std::fs::read_dir(files_dir()) {
         for path in dir.flatten().map(|e| e.path()) {
             if !live.contains(&path) {
-                if let Err(e) = std::fs::remove_file(&path) {
-                    failed.push(format!("{}: {e}", path.display()));
+                if let Err(e) = remove(&path) {
+                    failed.push(e);
                 }
             }
         }
@@ -386,20 +478,32 @@ pub fn commit_identity(path: &str) -> Result<CommitIdentity, ForgeError> {
             },
         },
     };
-    let own = repo.own(&places).map_err(failed)?;
-    let ignored = match source {
-        IdentitySource::Account { .. } => own
-            .iter()
-            .map(|(key, e)| IgnoredValue {
-                key: key.clone(),
-                value: e.value.clone(),
-                removable: places.kind(e) == Kind::Repo,
-            })
-            .collect(),
-        _ => Vec::new(),
-    };
-    let needs_choice = if !own.is_empty() && repo.included(&places).map_err(failed)?.is_empty() {
-        wanted(path, &accounts::load(), &crate::settings::get_settings().forge.picks).map(|(id, _)| id)
+    let mut ignored = Vec::new();
+    for key in MANAGED {
+        let from_account = repo
+            .entries(key)
+            .map_err(failed)?
+            .last()
+            .is_some_and(|e| places.kind(e) == Kind::Account);
+        if from_account {
+            ignored.extend(
+                repo.own(&[key], &places)
+                    .map_err(failed)?
+                    .into_iter()
+                    .map(|(key, e)| IgnoredValue {
+                        removable: places.kind(&e) == Kind::Repo,
+                        key,
+                        value: e.value,
+                    }),
+            );
+        }
+    }
+    let needs_choice = if !repo.own(&AUTHOR, &places).map_err(failed)?.is_empty()
+        && repo.included(&places).map_err(failed)?.is_empty()
+    {
+        wanted(path, &accounts::load(), &crate::settings::get_settings().forge.picks)
+            .filter(|w| w.sets_author)
+            .map(|w| w.id)
     } else {
         None
     };
@@ -414,13 +518,13 @@ pub fn commit_identity(path: &str) -> Result<CommitIdentity, ForgeError> {
 
 pub fn use_account(path: &str) -> Result<(), ForgeError> {
     let _guard = lock();
-    let (_, want) = wanted(path, &accounts::load(), &crate::settings::get_settings().forge.picks).ok_or_else(|| {
+    let want = wanted(path, &accounts::load(), &crate::settings::get_settings().forge.picks).ok_or_else(|| {
         ForgeError::Invalid {
-            message: "This repo's account has no commit author set.".into(),
+            message: "This repo's account has no commit author or keys set.".into(),
         }
     })?;
     Repo::open(path)
-        .and_then(|repo| repo.apply(Some(&want), &Places::here()))
+        .and_then(|repo| repo.apply(Some(&want.file), &Places::here()))
         .map_err(failed)
 }
 
@@ -432,7 +536,7 @@ pub fn stop_account(path: &str) -> Result<(), ForgeError> {
 }
 
 pub fn remove_own(path: &str, key: &str) -> Result<(), ForgeError> {
-    if !KEYS.contains(&key) {
+    if !MANAGED.contains(&key) {
         return Err(ForgeError::Invalid {
             message: format!("Tori does not manage {key}."),
         });

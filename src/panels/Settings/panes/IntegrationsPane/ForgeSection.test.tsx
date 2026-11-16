@@ -58,6 +58,8 @@ function account(id: string, auth: AuthState, login: string | null, extra: Parti
     orgAccess: [],
     commitName: null,
     commitEmail: null,
+    sshPublicKey: null,
+    signingPublicKey: null,
     auth,
     ...extra,
   };

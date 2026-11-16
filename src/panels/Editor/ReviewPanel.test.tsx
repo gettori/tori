@@ -301,6 +301,8 @@ function signInForgeAccount() {
     orgAccess: [],
     commitName: null,
     commitEmail: null,
+    sshPublicKey: null,
+    signingPublicKey: null,
     auth: authState as ForgeAccount["auth"],
   };
   noteForgeAccounts(authState.kind === "signedOut" ? [] : [account]);

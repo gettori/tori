@@ -352,6 +352,8 @@ export type ForgeAccount = {
   orgAccess: OrgAccess[];
   commitName: string | null;
   commitEmail: string | null;
+  sshPublicKey: string | null;
+  signingPublicKey: string | null;
   auth: AuthState;
 };
 
@@ -389,6 +391,18 @@ export type CommitIdentity = {
   ignored: { key: string; value: string; removable: boolean }[];
   needsChoice: string | null;
 };
+
+export type SshKey = {
+  path: string;
+  label: string;
+  inAgent: boolean;
+  file: "none" | "plain" | "passphrase";
+};
+
+export type KeyTest =
+  | { kind: "ok"; login: string }
+  | { kind: "mismatch"; login: string }
+  | { kind: "failed"; message: string };
 
 export type SignInRoutes = {
   host: string;
@@ -534,7 +548,9 @@ export const FORGE_KEYS = {
     "provider",
     "rejectedAt",
     "scopes",
+    "signingPublicKey",
     "source",
+    "sshPublicKey",
   ],
   signInRoutes: ["appId", "baseUrl", "deviceFlow", "host", "scopes", "tokenUrl"],
   // Not a domain type, but it crosses the same bridge and the poll scheduler

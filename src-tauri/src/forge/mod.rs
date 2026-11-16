@@ -36,6 +36,7 @@ pub mod pr_view;
 pub mod prs;
 pub mod refresh;
 pub mod remote;
+pub mod ssh_keys;
 pub mod status;
 pub mod token;
 

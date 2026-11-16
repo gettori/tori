@@ -327,6 +327,8 @@ const OCTOCAT: ForgeHost = {
       orgAccess: [],
       commitName: null,
       commitEmail: null,
+      sshPublicKey: null,
+      signingPublicKey: null,
       auth: { kind: "signedIn", login: "octocat" },
     },
   ],
