@@ -20,6 +20,8 @@ function account(host: string, login: string, auth: AuthState, provider: ForgePr
     orgAccess: [],
     commitName: null,
     commitEmail: null,
+    sshPublicKey: null,
+    signingPublicKey: null,
     auth,
   };
 }

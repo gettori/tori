@@ -78,7 +78,9 @@
       "repo",
       "workflow"
     ],
-    "source": "cli"
+    "signingPublicKey": "/Users/skarif2/.ssh/id_ed25519.pub",
+    "source": "cli",
+    "sshPublicKey": "/Users/skarif2/.ssh/id_ed25519.pub"
   },
   "forgeError": {
     "kind": "rateLimited",

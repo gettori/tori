@@ -87,6 +87,10 @@ pub struct Account {
     pub commit_name: Option<String>,
     #[serde(default)]
     pub commit_email: Option<String>,
+    #[serde(default)]
+    pub ssh_public_key: Option<String>,
+    #[serde(default)]
+    pub signing_public_key: Option<String>,
 }
 
 impl Account {
@@ -245,6 +249,8 @@ pub fn add_account(
         org_access: Vec::new(),
         commit_name: None,
         commit_email: None,
+        ssh_public_key: None,
+        signing_public_key: None,
     });
     Ok(id)
 }
@@ -406,6 +412,26 @@ pub fn set_identity(file: &mut AccountsFile, id: &str, identity: Option<(&str, &
     Ok(true)
 }
 
+pub fn set_keys(
+    file: &mut AccountsFile,
+    id: &str,
+    ssh_public_key: Option<String>,
+    signing_public_key: Option<String>,
+) -> Result<bool, ForgeError> {
+    let account = file
+        .hosts
+        .values_mut()
+        .flat_map(|r| r.accounts.iter_mut())
+        .find(|a| a.id == id)
+        .ok_or(ForgeError::NotAuthenticated)?;
+    if account.ssh_public_key == ssh_public_key && account.signing_public_key == signing_public_key {
+        return Ok(false);
+    }
+    account.ssh_public_key = ssh_public_key;
+    account.signing_public_key = signing_public_key;
+    Ok(true)
+}
+
 /// The old keychain entry is only read, never deleted, so a downgrade still
 /// signs in.
 pub fn migrate_legacy(
@@ -435,6 +461,8 @@ pub fn migrate_legacy(
             org_access: Vec::new(),
             commit_name: None,
             commit_email: None,
+            ssh_public_key: None,
+            signing_public_key: None,
         });
     }
     file.legacy_migrated = true;

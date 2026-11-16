@@ -800,6 +800,40 @@ pub fn forge_set_identity(
 }
 
 #[tauri::command(async)]
+pub fn forge_ssh_keys() -> Result<Vec<super::ssh_keys::SshKey>, ForgeErrorDto> {
+    Ok(super::ssh_keys::list().map_err(|message| ForgeError::Transport { message })?)
+}
+
+#[tauri::command(async)]
+pub fn forge_set_keys(
+    account_id: String,
+    ssh_public_key: Option<String>,
+    signing_public_key: Option<String>,
+) -> Result<Vec<HostView>, ForgeErrorDto> {
+    for key in ssh_public_key.iter().chain(&signing_public_key) {
+        if !super::ssh_keys::is_known(key) {
+            return Err(ForgeError::Invalid {
+                message: format!("{key} is not a public key Tori listed."),
+            }
+            .into());
+        }
+    }
+    accounts::update(|file| accounts::set_keys(file, &account_id, ssh_public_key, signing_public_key))?;
+    reconciled()?;
+    Ok(accounts::view(&accounts::load(), auth::state))
+}
+
+#[tauri::command(async)]
+pub fn forge_test_ssh_key(account_id: String) -> Result<super::ssh_keys::KeyTest, ForgeErrorDto> {
+    let file = accounts::load();
+    let (host, account) = accounts::find(&file, &account_id).ok_or(ForgeError::NotAuthenticated)?;
+    let key = account.ssh_public_key.as_deref().ok_or_else(|| ForgeError::Invalid {
+        message: "Choose an SSH key first.".into(),
+    })?;
+    Ok(super::ssh_keys::test(host, key, account.login.as_deref()))
+}
+
+#[tauri::command(async)]
 pub fn forge_commit_identity(project_path: String) -> Result<identity::CommitIdentity, ForgeErrorDto> {
     Ok(identity::commit_identity(&project_path)?)
 }
@@ -2230,6 +2264,8 @@ mod tests {
             org_access: Vec::new(),
             commit_name: None,
             commit_email: None,
+            ssh_public_key: None,
+            signing_public_key: None,
         };
         let token = fresh_token_with(&AccountsFile::default(), accounts::GITHUB_COM, &account, |_| Some(1));
         assert_eq!(token.as_deref(), Some("ghp_lapsed"));

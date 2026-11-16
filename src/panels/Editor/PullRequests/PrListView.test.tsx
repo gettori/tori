@@ -92,6 +92,8 @@ const account: ForgeAccount = {
   orgAccess: [],
   commitName: null,
   commitEmail: null,
+  sshPublicKey: null,
+  signingPublicKey: null,
   auth: { kind: "signedIn", login: "skarif2" },
 };
 

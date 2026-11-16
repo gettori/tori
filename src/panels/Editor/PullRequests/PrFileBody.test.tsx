@@ -224,6 +224,8 @@ const signInAs = async (login: string) => {
       orgAccess: [],
       commitName: null,
       commitEmail: null,
+      sshPublicKey: null,
+      signingPublicKey: null,
       auth: { kind: "signedIn", login },
     },
   ]);

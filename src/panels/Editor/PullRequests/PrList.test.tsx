@@ -103,6 +103,8 @@ const noteAuth = (auth: AuthState) =>
             orgAccess: [],
             commitName: null,
             commitEmail: null,
+            sshPublicKey: null,
+            signingPublicKey: null,
             auth,
           },
         ],

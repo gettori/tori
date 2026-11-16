@@ -260,6 +260,7 @@ pub fn run() {
             })) {
                 Ok(inner) => {
                     credential::adopt(inner.sock_path(), inner.credential_token());
+                    git::install_signing_bridge(inner.clone());
                     app.manage(askpass::AskpassState(inner));
                 }
                 Err(e) => eprintln!("tori: askpass bridge failed to start: {e}"),
@@ -825,6 +826,9 @@ pub fn run() {
             forge::commands::forge_identity_use,
             forge::commands::forge_identity_stop,
             forge::commands::forge_identity_remove_own,
+            forge::commands::forge_ssh_keys,
+            forge::commands::forge_set_keys,
+            forge::commands::forge_test_ssh_key,
             forge::commands::forge_pr_for_branch,
             forge::commands::forge_create_pr,
             forge::commands::forge_push_and_create_pr,
