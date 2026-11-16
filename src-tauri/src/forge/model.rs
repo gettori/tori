@@ -769,6 +769,8 @@ mod tests {
                     }],
                     commit_name: Some("Arif".into()),
                     commit_email: Some("1+skarif2@users.noreply.github.com".into()),
+                    ssh_public_key: Some("/Users/skarif2/.ssh/id_ed25519.pub".into()),
+                    signing_public_key: Some("/Users/skarif2/.ssh/id_ed25519.pub".into()),
                 },
                 auth: AuthState::SignedIn { login: "skarif2".into() },
             },

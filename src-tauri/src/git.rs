@@ -1170,6 +1170,36 @@ pub async fn git_commit(
     .await
 }
 
+static SIGNING_BRIDGE: std::sync::OnceLock<std::sync::Arc<crate::askpass::AskpassInner>> = std::sync::OnceLock::new();
+
+pub fn install_signing_bridge(bridge: std::sync::Arc<crate::askpass::AskpassInner>) {
+    let _ = SIGNING_BRIDGE.set(bridge);
+}
+
+/// For a git that may make a commit: a signing key's passphrase can only be
+/// asked for through askpass, since the app has no terminal.
+fn may_sign(cmd: &mut Command) -> &mut Command {
+    if let Some(bridge) = SIGNING_BRIDGE.get() {
+        let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("git"));
+        cmd.env("SSH_ASKPASS", exe)
+            .env("SSH_ASKPASS_REQUIRE", "force")
+            .env(ENV_SOCK, bridge.sock_path())
+            .env(ENV_TOKEN, bridge.token())
+            .env(ENV_OP, next_op_id());
+    }
+    cmd
+}
+
+fn run_signed(repo: &str, args: &[&str]) -> Result<(), String> {
+    let out = may_sign(crate::exec::git_in(repo).args(args))
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    Ok(())
+}
+
 /// Every commit and push Tori makes passes this. A repo's hooks are written for
 /// a terminal: inside the app they would block the UI for a whole pre-push
 /// build, or fail on tools that are not on the app's PATH. CI is the backstop.
@@ -1196,7 +1226,7 @@ pub(crate) fn git_commit_body(
         args.push("--signoff");
     }
     args.extend(["-m", message]);
-    git_run(&project_path, &args)
+    run_signed(&project_path, &args)
 }
 
 /// HEAD's full commit message, for prefilling the editor when amend is toggled
@@ -3830,7 +3860,7 @@ fn has_unmerged(repo: &str) -> bool {
 
 /// Run one integrate subcommand and read a conflict apart from a refusal.
 fn integrate(repo: &str, args: &[&str]) -> Result<IntegrateOutcome, String> {
-    match git_run(repo, args) {
+    match run_signed(repo, args) {
         Ok(()) => Ok(IntegrateOutcome {
             conflicted: false,
             message: String::new(),
@@ -3874,7 +3904,7 @@ pub async fn git_rebase(project_path: String, onto: String) -> Result<IntegrateO
 /// Without this a GUI git with no TTY dies on `vi`, or waits on one forever.
 fn integrate_edited(repo: &str, args: &[&str], sequence: Option<&str>) -> Result<IntegrateOutcome, String> {
     let mut cmd = crate::exec::git_in(repo);
-    cmd.args(args).env("GIT_EDITOR", "true");
+    may_sign(cmd.args(args).env("GIT_EDITOR", "true"));
     cmd.env("GIT_SEQUENCE_EDITOR", sequence.unwrap_or("true"));
     let out = cmd.output().map_err(|e| e.to_string())?;
     if out.status.success() {

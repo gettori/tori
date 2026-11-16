@@ -106,6 +106,8 @@ function account(id: string, auth: AuthState): ForgeAccount {
     orgAccess: [],
     commitName: null,
     commitEmail: null,
+    sshPublicKey: null,
+    signingPublicKey: null,
     auth,
   };
 }

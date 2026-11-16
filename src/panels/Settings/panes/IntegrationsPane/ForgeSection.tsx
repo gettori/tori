@@ -36,6 +36,7 @@ import {
 import { asFailure, createDeviceFlow, failureText, openInBrowser } from "./deviceFlow";
 import DeviceWaitCard from "./DeviceWaitCard";
 import AccountAuthor from "./AccountAuthor";
+import AccountKeys from "./AccountKeys";
 import styles from "../../Settings.module.css";
 import cards from "./ForgeSection.module.css";
 
@@ -558,6 +559,7 @@ export default function ForgeSection() {
                           </Button>
                         </div>
                         <AccountAuthor account={account} onChanged={refresh} onError={setError} />
+                        <AccountKeys account={account} onChanged={refresh} onError={setError} />
                         <Show when={account.auth.kind === "suspect"}>
                           <div class={cards.reason} data-testid="suspect-notice">
                             {rejection(host.host, account.rejectedAt)}
