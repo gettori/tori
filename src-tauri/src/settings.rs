@@ -291,6 +291,10 @@ pub struct Forge {
     /// more than one account.
     #[serde(default)]
     pub picks: std::collections::BTreeMap<String, String>,
+    /// Account id by host, by space name. Only preselects the clone picker, and
+    /// never resolves a repo.
+    #[serde(default)]
+    pub space_accounts: std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>,
     /// Whether a session may watch a pull request and be woken on changes.
     /// Off by default: every wake is a paid turn.
     #[serde(default)]
@@ -302,6 +306,7 @@ impl Default for Forge {
         Self {
             enabled: true,
             picks: Default::default(),
+            space_accounts: Default::default(),
             pr_watch: false,
         }
     }

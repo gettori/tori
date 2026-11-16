@@ -765,15 +765,14 @@ pub struct CloneAccounts {
 }
 
 #[tauri::command(async)]
-pub fn forge_clone_accounts(url: String) -> Option<CloneAccounts> {
+pub fn forge_clone_accounts(url: String, space: Option<String>) -> Option<CloneAccounts> {
     let url = url.trim();
     let remote = remote_at(url).ok()?;
     let file = accounts::load();
     let record = file.hosts.get(&remote.host).filter(|r| r.accounts.len() >= 2)?;
-    let preselect = match accounts::resolve(&file, &crate::settings::get_settings().forge.picks, &remote) {
-        Resolution::Account(id) => Some(id),
-        _ => None,
-    };
+    let forge = crate::settings::get_settings().forge;
+    let space_default = space.and_then(|space| forge.space_accounts.get(&space)?.get(&remote.host).cloned());
+    let preselect = clone_preselect(&file, &forge.picks, space_default, &remote);
     Some(CloneAccounts {
         accounts: record
             .accounts
@@ -785,6 +784,28 @@ pub fn forge_clone_accounts(url: String) -> Option<CloneAccounts> {
         git_credentials: accounts::git_credentials(&file, &remote.host),
         host: remote.host,
     })
+}
+
+fn clone_preselect(
+    file: &AccountsFile,
+    picks: &BTreeMap<String, String>,
+    space_default: Option<String>,
+    remote: &Remote,
+) -> Option<String> {
+    let on_host = |id: &String| {
+        file.hosts
+            .get(&remote.host)
+            .is_some_and(|r| r.accounts.iter().any(|a| &a.id == id))
+    };
+    if let Some(picked) = picks.get(&remote.key()).filter(|id| on_host(id)) {
+        return Some(picked.clone());
+    }
+    space_default
+        .filter(on_host)
+        .or_else(|| match accounts::resolve(file, picks, remote) {
+            Resolution::Account(id) => Some(id),
+            _ => None,
+        })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

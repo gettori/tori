@@ -59,7 +59,10 @@ export default function NewProjectDialog(props: {
   let first: HTMLInputElement | undefined;
 
   const needsUrl = () => mode() === "clone";
-  const account = createCloneAccount(() => (needsUrl() ? url() : ""));
+  const account = createCloneAccount(
+    () => (needsUrl() ? url() : ""),
+    () => props.spaceName,
+  );
 
   function onUrlInput(v: string) {
     setUrl(v);

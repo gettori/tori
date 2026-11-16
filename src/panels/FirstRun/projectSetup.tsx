@@ -41,7 +41,10 @@ export function createProjectSetup(opts: {
   const [git, setGit] = createSignal<GitReport | null>(null);
   const [checkingGit, setCheckingGit] = createSignal(false);
 
-  const account = createCloneAccount(() => (mode() === "clone" ? url() : ""));
+  const account = createCloneAccount(
+    () => (mode() === "clone" ? url() : ""),
+    () => opts.space()?.name ?? null,
+  );
 
   const running = () => creating() || jobState() === "running" || jobState() === "waiting";
 
