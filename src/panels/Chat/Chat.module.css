@@ -1705,6 +1705,19 @@ button.diffHunkHeader:hover {
   padding: 0.1em 0.35em;
 }
 
+.promptTool {
+  display: inline-block;
+  padding: 0 0.5em;
+  border-radius: var(--tori-radius-pill);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  background: var(--neutral-subtle);
+  color: var(--blocking-accent);
+  font-family: var(--tori-font-mono);
+  font-size: 0.9em;
+  line-height: 1.6;
+  max-width: 100%;
+}
+
 .promptDisclose {
   align-self: flex-start;
   border: none;
@@ -2433,7 +2446,39 @@ button.diffHunkHeader:hover {
 }
 
 .askApproval {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  color: var(--fg-default);
+}
+
+.askTitle {
+  padding: calc(10px * var(--ui-scale)) calc(16px * var(--ui-scale)) 0;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.askApproval .askDraft {
+  flex-basis: auto;
+  padding: calc(6px * var(--ui-scale)) calc(16px * var(--ui-scale)) calc(12px * var(--ui-scale));
+}
+
+.askFooter {
+  display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(16px * var(--ui-scale));
+  border-top: 1px solid var(--border-default);
+}
+
+.ask button[data-chosen]:disabled {
+  opacity: 1;
+  background: var(--fg-default);
+  border-color: var(--fg-default);
+  color: var(--canvas-card);
 }
 
 .askDraft {
