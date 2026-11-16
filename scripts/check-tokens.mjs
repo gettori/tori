@@ -83,7 +83,11 @@ const ALLOWLIST = new Map([
   ],
   [
     "src/panels/Chat/ChatInput.stories.tsx",
-    "picture content, not UI styling: the workshop has no asset protocol, so image chips show drawn placeholder screenshots, and `#1234` is a pull request number typed into a draft",
+    "draft content, not UI styling: `#1234` is a pull request number typed into a draft",
+  ],
+  [
+    "src/panels/Chat/__fixtures__/chatInput.tsx",
+    "picture content, not UI styling: the workshop has no asset protocol, so image chips show drawn placeholder screenshots",
   ],
 ]);
 

@@ -46,6 +46,7 @@ export function AttachmentGrid(props: { items: readonly HeldBlock[]; chip: (a: H
 /** One attachment above the text. Without `onRemove` it is a record of what a
  *  sent prompt carried: it previews, and cannot be taken away or dragged. */
 export function AttachmentChip(props: {
+  ref?: (el: HTMLDivElement) => void;
   block: ContentBlock;
   missing?: boolean;
   pointed?: boolean;
@@ -66,6 +67,7 @@ export function AttachmentChip(props: {
   const reason = () => (props.missing && path ? `. No file at ${path}` : "");
   return (
     <div
+      ref={props.ref}
       class={styles.attachment}
       classList={{
         [styles.attachmentTile]: tile,

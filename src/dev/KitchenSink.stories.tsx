@@ -1,6 +1,5 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { For, Show, createSignal, type JSX } from "solid-js";
-import { mockIPC } from "@tauri-apps/api/mocks";
 import { Copy, PanelLeft, Settings, Trash2 } from "lucide-solid";
 import Button, { type ButtonSize, type ButtonVariant } from "../components/Button/Button";
 import Checkbox from "../components/Checkbox/Checkbox";
@@ -15,24 +14,17 @@ import Popover from "../components/Popover/Popover";
 import RadioGroup from "../components/RadioGroup/RadioGroup";
 import Select from "../components/Select/Select";
 import Tooltip from "../components/Tooltip/Tooltip";
+import {
+  ChatInput,
+  FILE_1,
+  IMAGE_1,
+  PR_CHIP,
+  chatInputHost,
+  stubAssetUrls,
+} from "../panels/Chat/__fixtures__/chatInput";
 import patterns from "../styles/patterns.module.css";
 import { enterOnce } from "../utils/enterOnce";
-
-type HostHandler = (cmd: string, args: Record<string, unknown>) => unknown;
-
-// `mockIPC` replaces the whole host, so a second section stubbing it would
-// silently unplug the first. Sections hand their handlers in here instead, and
-// the first one that answers (anything but undefined) wins.
-function stubHost(handlers: HostHandler[]) {
-  mockIPC((cmd, args) => {
-    const q = (args ?? {}) as Record<string, unknown>;
-    for (const handle of handlers) {
-      const answer = handle(cmd, q);
-      if (answer !== undefined) return answer;
-    }
-    return null;
-  });
-}
+import { stubHost } from "./stubHost";
 
 const VARIANTS: ButtonVariant[] = ["default", "primary", "success", "warn", "danger", "ghost"];
 const SIZES: ButtonSize[] = ["md", "sm", "xs"];
@@ -103,6 +95,26 @@ function MotionSection() {
       </div>
       <div style={{ ...row, display: hidden() ? "none" : "flex" }}>
         <For each={probes()}>{(enter, i) => <Probe id={i() + 1} enter={enter} />}</For>
+      </div>
+    </Section>
+  );
+}
+
+function ComposerSection() {
+  const [hidden, setHidden] = createSignal(false);
+  return (
+    <Section
+      title="Composer"
+      note="Idle: type to light the send button, @ opens the list, picking a row attaches it. Running: Option+Enter queues, and a tile shows its X on hover. Hide and show replays nothing."
+    >
+      <div style={row}>
+        <Button variant="ghost" onClick={() => setHidden(!hidden())}>
+          {hidden() ? "Show" : "Hide"} (display: none)
+        </Button>
+      </div>
+      <div style={{ display: hidden() ? "none" : "grid", gap: "var(--tori-space-5)" }}>
+        <ChatInput height="320px" />
+        <ChatInput height="420px" running attachments={[IMAGE_1, FILE_1, PR_CHIP]} />
       </div>
     </Section>
   );
@@ -276,13 +288,15 @@ function ChecksSection() {
 }
 
 function KitchenSink() {
-  stubHost([]);
+  stubHost([chatInputHost]);
+  stubAssetUrls();
   return (
     <div style={{ "max-width": "960px", padding: "0 var(--tori-space-7)" }}>
       <MotionSection />
       <ButtonsSection />
       <OverlaysSection />
       <ChecksSection />
+      <ComposerSection />
     </div>
   );
 }

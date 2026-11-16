@@ -44,6 +44,8 @@ import type { SessionMeta } from "../../utils/sessionStore";
 import { sessionTitle } from "../../utils/sessionMention";
 import { navLevel, type NavProject, type NavSpace, type NavUnit } from "../../utils/mentionNavigator";
 import styles from "./Chat.module.css";
+import patterns from "../../styles/patterns.module.css";
+import { enterOnce } from "../../utils/enterOnce";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import DictationWave from "../../components/DictationWave/DictationWave";
 import {
@@ -1050,6 +1052,18 @@ export default function Composer(props: {
     });
   }
 
+  // Only what arrives after the composer was drawn pops in. Keyed by id, not by
+  // object: a store that replaces a queued item (a steer flips its flag) must
+  // not read as a new arrival.
+  const drawn = new Set<string>();
+  let drawnOnce = false;
+  onMount(() => (drawnOnce = true));
+  const popIfNew = (key: string) => (el: HTMLElement) => {
+    const fresh = drawnOnce && !drawn.has(key);
+    drawn.add(key);
+    if (fresh) enterOnce(el, patterns.enterPop);
+  };
+
   // A component rather than a factory, so each chip owns its own `missing`
   // signal and the effect that keeps asking the disk about it.
   const Chip = (p: { a: PendingBlock }) => {
@@ -1072,6 +1086,7 @@ export default function Composer(props: {
     }
     return (
       <AttachmentChip
+        ref={popIfNew(`chip:${p.a.id}`)}
         block={block}
         missing={missing()}
         pointed={pointing() === p.a.id}
@@ -1139,6 +1154,7 @@ export default function Composer(props: {
                 const row = drag.rowProps(q.id);
                 return (
                   <div
+                    ref={popIfNew(`queue:${q.id}`)}
                     class={styles.queueItem}
                     classList={{
                       [styles.queueItemEditing]: props.editing === q.id,
@@ -1252,7 +1268,12 @@ export default function Composer(props: {
         </div>
       </Show>
       <Show when={stashOpen()}>
-        <div class={styles.completions} role="listbox" aria-label="Stashed drafts">
+        <div
+          ref={(el) => enterOnce(el, patterns.enterPop)}
+          class={styles.completions}
+          role="listbox"
+          aria-label="Stashed drafts"
+        >
           <For each={stashRows()}>
             {(entry, i) => (
               <button
@@ -1296,7 +1317,7 @@ export default function Composer(props: {
           composer sits at the bottom of the pane, and a menu below would open
           off-screen. */}
       <Show when={menuOpen()}>
-        <div class={styles.completions} role="listbox">
+        <div ref={(el) => enterOnce(el, patterns.enterPop)} class={styles.completions} role="listbox">
           <For each={sessionHits()}>
             {(s, i) => (
               <button
