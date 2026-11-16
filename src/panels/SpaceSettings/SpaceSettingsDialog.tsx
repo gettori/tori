@@ -9,9 +9,12 @@ import { resolveIcon } from "../../components/Icon/iconRegistry";
 import IconButton from "../../components/IconButton/IconButton";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import SegmentedControl, { type SegmentedOption } from "../../components/SegmentedControl/SegmentedControl";
+import Select from "../../components/Select/Select";
 import Switch from "../../components/Switch/Switch";
 import { BRANCH_LINE_ITEMS, BRANCH_LINE_MODES } from "../../utils/branchLineItems";
 import { copyText } from "../../utils/clipboard";
+import { forgeAccountsOn, forgeHosts } from "../../utils/forgeStatus";
+import { forgeAccountName } from "../../utils/forgeTypes";
 import { emitWith, onWith, OPEN_SETTINGS, TOAST, type ToastEvent } from "../../utils/events";
 import { spaceInitials } from "../../utils/names";
 import type { PrChildState } from "../../utils/prChildState";
@@ -27,7 +30,9 @@ import {
   laneConfigFor,
   resetSpace,
   setLanes,
+  setSpaceAccount,
   setSpaceView,
+  spaceAccountFor,
   spaceHasOwn,
   type BranchLineItem,
   type CardColours,
@@ -153,6 +158,16 @@ export default function SpaceSettingsDialog(props: {
     void setSpaceView(props.space, {
       branchLine: { ...line(), items: { ...line().items, [id]: !line().items[id] } },
     });
+
+  const sharedHosts = () => [...forgeHosts().keys()].filter((host) => forgeAccountsOn(host).length >= 2).sort();
+  const accountOptions = (host: string) => [
+    { value: "", label: "No default" },
+    ...forgeAccountsOn(host).map((a) => ({ value: a.id, label: forgeAccountName(a) })),
+  ];
+  const setAccount = (host: string, id: string) =>
+    void setSpaceAccount(props.space, host, id || null).catch((e: unknown) =>
+      emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }),
+    );
 
   const look = (): Appearance => ({ icon: props.icon, color: props.color });
   const setLook = (next: Appearance) =>
@@ -286,11 +301,32 @@ export default function SpaceSettingsDialog(props: {
             <div class={s.note}>No setting matches "{query().trim()}".</div>
           </Show>
           {pane("general", () => (
-            <Section heading="Appearance">
-              <Row label="Icon and colour" hint="How the space's tile looks in the strip.">
-                <SpaceAppearance name={props.name} value={look()} onChange={setLook} />
-              </Row>
-            </Section>
+            <>
+              <Section heading="Appearance">
+                <Row label="Icon and colour" hint="How the space's tile looks in the strip.">
+                  <SpaceAppearance name={props.name} value={look()} onChange={setLook} />
+                </Row>
+              </Section>
+              <Show when={!props.global && sharedHosts().length > 0}>
+                <Section heading="Git accounts">
+                  <For each={sharedHosts()}>
+                    {(host) => (
+                      <Row
+                        label={host}
+                        hint={`Preselected when you clone a ${host} repo into this space. A repo that already has an account keeps it.`}
+                      >
+                        <Select
+                          aria-label={`Default ${host} account for ${props.name}`}
+                          options={accountOptions(host)}
+                          value={spaceAccountFor(props.space, host) ?? ""}
+                          onChange={(id) => setAccount(host, id)}
+                        />
+                      </Row>
+                    )}
+                  </For>
+                </Section>
+              </Show>
+            </>
           ))}
           {pane("cards", () => (
             <Section heading="Cards">

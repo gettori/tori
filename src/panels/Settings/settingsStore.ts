@@ -75,9 +75,15 @@ export type PanePins = { terminal: PinSide; chat: PinSide; file: PinSide };
 /** The forge integration's kill switch. Separate from signing out on purpose:
  *  signing out also stops the traffic but costs the credential, so quieting a
  *  misbehaving poller would disable PR creation and the review surface too. */
-/** The forge kill switch, the account each repo picked (written by Rust), and
- *  whether a session may watch a pull request. */
-export type ForgeSettings = { enabled: boolean; picks: Record<string, string>; prWatch: boolean };
+/** The forge kill switch, the account each repo picked (written by Rust),
+ *  whether a session may watch a pull request, and each space's account per
+ *  host, which only preselects the clone picker. */
+export type ForgeSettings = {
+  enabled: boolean;
+  picks: Record<string, string>;
+  prWatch: boolean;
+  spaceAccounts?: Record<string, Record<string, string>>;
+};
 
 /** Git behaviour Tori decides, as opposed to git's own config. Mirrors `Git` in
  *  src-tauri/src/settings.rs. `fetchEveryMinutes: 0` is off, and off stops the
@@ -1205,6 +1211,18 @@ export function resetSpace(space: string): Promise<void> {
   const { [space]: _, ...spaces } = settings.sidebar.lanes.spaces;
   const { [space]: __, ...views } = settings.sidebar.spaceViews ?? {};
   return setSidebar({ lanes: { ...settings.sidebar.lanes, spaces }, spaceViews: views });
+}
+
+export const spaceAccountFor = (space: string, host: string): string | null =>
+  settings.forge.spaceAccounts?.[space]?.[host] ?? null;
+
+export function setSpaceAccount(space: string, host: string, accountId: string | null): Promise<void> {
+  const all = settings.forge.spaceAccounts ?? {};
+  const { [host]: _, ...rest } = all[space] ?? {};
+  const hosts = accountId ? { ...rest, [host]: accountId } : rest;
+  const { [space]: __, ...others } = all;
+  const spaceAccounts = Object.keys(hosts).length ? { ...others, [space]: hosts } : others;
+  return saveSettings({ ...settings, forge: { ...settings.forge, spaceAccounts } });
 }
 
 export function setUnattended(patch: Partial<Unattended>): Promise<void> {
