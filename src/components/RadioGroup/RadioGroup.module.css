@@ -110,10 +110,9 @@
   border-color: var(--fg-subtle);
 }
 
-/* Force-mounted (see RadioGroup.tsx), so the hidden state is CSS, the same
-   transition-on-check-only shape as Checkbox.module.css's tick. A drawn dot
-   rather than an icon: at 6px a Lucide glyph is mush, and the shape carries no
-   meaning a circle does not. */
+/* Force-mounted, so the hidden state is CSS, and a transition so a pane shown
+   again does not replay the dot. A drawn dot rather than an icon: at 6px a
+   Lucide glyph is mush, and the shape carries no meaning a circle does not. */
 .indicator {
   width: calc(8px * var(--ui-scale));
   height: calc(8px * var(--ui-scale));
