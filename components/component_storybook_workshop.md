@@ -1,8 +1,8 @@
 ---
 summary: Storybook runs the Kobalte wrappers on the app's real tokens with no pin, no viteFinal and docgen off
 status: current
-updated: 2026-08-12
-source: "plan \"Storybook 10 workshop with a11y addon and theme toolbar\" (personal/tori, branch `96-storybook`, issue #96, part of #93); `.storybook/main.ts`, `.storybook/preview.tsx`; gettori/tori#96 comment 5259157006"
+updated: 2026-11-17
+source: "plan \"Storybook 10 workshop with a11y addon and theme toolbar\" (personal/tori, branch `96-storybook`, issue #96, part of #93); `.storybook/main.ts`, `.storybook/preview.tsx`; gettori/tori#96 comment 5259157006; the kitchen sink from plan \"Visual polish pass with a Storybook kitchen sink\" (branch ui-rework), src/dev/KitchenSink.stories.tsx, src/dev/stubHost.ts:9, commits 844ac739 to f3fce4b5"
 ---
 
 # The Storybook workshop
@@ -51,16 +51,25 @@ Adding the dependency was not free, and the one real cost is worth knowing befor
 
 The check that missed it was this plan's own: it compared `pnpm list vite vite-plugin-solid` before and after, which reports **versions**, and the versions genuinely did not move. What moved was the peer resolution key inside the lockfile. Diff the lockfile's importer entries, not a version list.
 
+## The kitchen sink
+
+`src/dev/KitchenSink.stories.tsx` ("Design/Kitchen sink") is one story with a section per piece of the visual polish pass: motion probes, buttons, overlays, checks, composer, transcript, prompts, selection, lists, sidebar and one diagram per mermaid kind. Every section is checked in tori-dark and tori-light; motion is checked headless against the static build (`storybook-static` served locally, driven over the DevTools Protocol, and in Playwright's WebKit for anything the app's engine paints differently).
+
+- **One host stub for the page.** `mockIPC` replaces the whole host, so two sections each stubbing it would silently unplug the first. `stubHost(handlers)` (`src/dev/stubHost.ts:9`) installs one handler that asks each fixture in turn; a fixture answers the commands it owns and `undefined` otherwise. It also calls `mockWindows("main")` and passes `shouldMockEvents`, which any harness that calls `listen` needs.
+- **Harnesses live in `__fixtures__` modules**, exporting their `HostHandler` and a pane (`src/panels/Chat/__fixtures__/` for the composer, transcript and prompts, `src/panels/LeftSidebar/__fixtures__/sidebar.tsx`), so a component's own story and the kitchen sink share one harness. A check 1 exemption moves with its harness.
+- **The root is its own scroller** (`position: fixed; inset: 0; overflow-y: auto`): `App.css` locks `html`, `body` and `#root` with `overflow: hidden`, which suits a window and leaves a long story unscrollable. Changing `preview.css` instead would touch every story.
+
 ## Connections
 
 - Governed by [[adr_headless_primitives]] - names Storybook as the workshop for the Kobalte wrappers; this implements that clause.
 - Depends on [[concept_design_token_system]] - the four-sheet import order and the inline-prop key-ownership contract.
 - Depends on [[component_theme_engine]] - `bundled.ts` / `roles.ts` / `resolver.ts`, used directly rather than through the barrel.
-- Documents [[component_button]] - the first and so far only component with stories.
+- Documents [[component_button]] - the first component with stories.
 - Sibling of [[concept_axe_accessibility_gate]] - that gate is the jsdom floor in `pnpm test`; this panel is the browser view, and it sees what jsdom cannot.
 
 ## Related
 
+- [[concept_one_shot_entrances]], [[component_glide]], [[component_diagram]]: what the kitchen sink's sections exercise.
 - [[gotcha_storybook_solidjs_vites_docgen_breaks_on_an_export_default_function_component]] - why `docgen: false` is mandatory here.
 - [[gotcha_a_role_value_cannot_prove_the_css_import_order_is_right]] - why the import order is checked by inversion.
 - [[gotcha_storybook_is_outside_the_token_guards_scan]] - `.storybook/` CSS is unguarded.

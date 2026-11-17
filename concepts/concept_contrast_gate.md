@@ -1,8 +1,8 @@
 ---
 summary: every theme role must declare a contrast floor and surface, or the gate fails, catching 31 misses in shipped palettes
 status: current
-updated: 2026-09-24
-source: "Native theming system: palette + roles generator (personal/tori, branch `terminal-editor-design`); Phases 6, 7; commit db3abe9"
+updated: 2026-11-17
+source: "Native theming system: palette + roles generator (personal/tori, branch `terminal-editor-design`); Phases 6, 7; commit db3abe9; the blocking frame exemption from plan \"Visual polish pass with a Storybook kitchen sink\" (branch ui-rework), commit 8c23675a, src/theme/contrast.ts:280"
 ---
 
 # The contrast gate
@@ -40,6 +40,7 @@ A translucent value must be **composited onto its surface before measuring**. Wh
 
 - **`ansi.black` is exempt.** ANSI slots are used as fills as often as foregrounds (block drawing, `setab 0`), so slot 0 is the ramp's floor by definition; forcing it to 3:1 on a dark theme would render every standard palette wrong. **Slot 8 was not exempted** - it measured 2.90 and moved.
 - **Shadows, scrims, borders, and scrollbar thumbs** carry a `why` rather than a floor: a `box-shadow` value is not a colour pair, and a hairline divider that cleared 3.0 would stop being a hairline.
+- **`blocking.border` is exempt, alone in its tier.** The permission prompt and the question card wear the approval ask card's plain hairline, because a gold 3:1 frame on top of the brand state label and the primary button read as an alarm. The tier test still forbids a `why` on the other three blocking roles and skips only this one.
 
 ## What it found, which is the argument for having it
 
@@ -52,7 +53,7 @@ The first honest run failed **both bundled palettes in 31 places**, in themes th
 
 The mandatory entry catches a role with no rule. It does **not** catch a role whose rule is complete and whose surface has changed underneath it. `fg.muted` and `fg.subtle` named the four canvases; the moment the chat's blocking cards stopped painting `canvas.card` and started painting `blocking.surface`, every label on them was measured against a background it no longer had, and the run stayed green because an unmeasured pair and a passing pair look identical in the output.
 
-The fix is the discipline rather than a check: **a new surface role is only half a change until every foreground already drawn on what it replaced names it too.** `blocking.surface` is now on the `on` list of `fg.default`, `fg.muted` and `fg.subtle`, and putting the original amounts back fails 10 tests across the bundled gate and `admit()`. See [[lesson_a_new_surface_leaves_its_text_unmeasured]].
+The fix is the discipline rather than a check: **a new surface role is only half a change until every foreground already drawn on what it replaced names it too.** `blocking.surface` is on the `on` list of `fg.default`, `fg.muted` and `fg.subtle`. Since the approval restyle it equals `canvas.card` and the test that required a lift off the pane is gone, but it stays a role of its own, so a fill that comes back is measured from its first commit. See [[lesson_a_new_surface_leaves_its_text_unmeasured]].
 
 ## Watch out
 
