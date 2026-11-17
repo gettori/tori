@@ -977,6 +977,7 @@ impl ClaudeMapper {
                         turn_id: self.turn_id(),
                         text: text.to_string(),
                         agent_id: None,
+                        at: None,
                     });
                 }
                 Some("tool_use") => {
@@ -1092,6 +1093,7 @@ impl ClaudeMapper {
                         turn_id: self.turn_id(),
                         text: delta["text"].as_str().unwrap_or_default().to_string(),
                         agent_id: None,
+                        at: None,
                     }],
                     (Some(OpenBlock::Thinking), Some("thinking_delta")) => vec![ChatEvent::ThinkingDelta {
                         session_id: self.session_id.clone(),

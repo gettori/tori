@@ -204,6 +204,7 @@ describe("every frontend setting has a field in the struct that persists it", ()
     attachLongPastes: true,
     showReadAloud: true,
     showPlan: true,
+    timestamps: "prompts",
     resumeAtReset: false,
     maxConcurrentChats: 4,
   };

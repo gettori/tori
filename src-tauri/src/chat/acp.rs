@@ -508,6 +508,7 @@ pub fn map_update(session_id: &str, turn_id: &str, update: &SessionUpdate, cwd: 
             turn_id: turn_id.to_string(),
             text: chunk_text(chunk),
             agent_id: None,
+            at: None,
         }],
 
         SessionUpdate::AgentThoughtChunk(chunk) => vec![ChatEvent::ThinkingDelta {
@@ -526,6 +527,7 @@ pub fn map_update(session_id: &str, turn_id: &str, update: &SessionUpdate, cwd: 
             session_id: session_id.to_string(),
             turn_id: turn_id.to_string(),
             blocks: vec![ContentBlock::from_replayed_text(&chunk_text(chunk))],
+            at: None,
         }],
 
         SessionUpdate::ToolCall(call) => {

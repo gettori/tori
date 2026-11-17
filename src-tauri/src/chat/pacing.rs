@@ -106,6 +106,7 @@ impl Stream {
                 turn_id,
                 text,
                 agent_id,
+                at: None,
             },
             Stream::Thinking {
                 session_id,
@@ -144,6 +145,7 @@ pub(super) fn split(event: &ChatEvent) -> Option<(Stream, String)> {
             turn_id,
             text,
             agent_id,
+            at: _,
         } => Some((
             Stream::Text {
                 session_id: session_id.clone(),
@@ -328,6 +330,7 @@ mod tests {
             turn_id: turn.into(),
             text: text.into(),
             agent_id: agent_id.map(str::to_string),
+            at: None,
         }
     }
 

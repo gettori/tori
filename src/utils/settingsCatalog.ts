@@ -623,6 +623,12 @@ export const SETTINGS: SettingEntry[] = [
   { id: "streaming", section: "chat", label: "Stream responses" },
   { id: "transcript-density", section: "chat", label: "Transcript density" },
   {
+    id: "timestamps",
+    section: "chat",
+    label: "Timestamps",
+    hint: "When a prompt was sent and when a reply finished, on prompts, replies, both or neither.",
+  },
+  {
     id: "tool-output-lines",
     section: "chat",
     label: "Tool output lines",

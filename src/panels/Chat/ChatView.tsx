@@ -957,13 +957,17 @@ export default function ChatView(props: {
         if (ev.type === "userMessage") seedLabels(composerKey(), labelsOf(ev.blocks));
         return false;
       }
+      // Stamped on arrival, not when folded: a hidden chat holds its frames,
+      // and the time a reply landed is not the time its tab was looked at.
+      const stamped =
+        (ev.type === "textDelta" || ev.type === "userMessage") && ev.at === undefined ? { ...ev, at: Date.now() } : ev;
       if (!props.active && RENDER_ONLY.has(ev.type)) {
-        held.push(ev);
+        held.push(stamped);
       } else {
         // Anything else may read the state right after, so what was held lands first.
         drainHeld(s);
         dropNotice();
-        applyEvent(s, ev);
+        applyEvent(s, stamped);
       }
       return true;
     }
@@ -2686,6 +2690,7 @@ export default function ChatView(props: {
           replyMark={props.cockpit ? ReplyMark : undefined}
           replyAction={props.sideOf ? sendableReply : undefined}
           collapseWork={settings.chatDefaults.collapseWork}
+          timestamps={settings.chatDefaults.timestamps}
           showSecrets={settings.secretWatch?.enabled !== false}
           showBlindEdits={settings.blindEdits?.enabled !== false}
           verifications={state.verifications}

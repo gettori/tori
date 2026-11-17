@@ -127,6 +127,8 @@ export type ChatPrefs = {
  *  default; `agent` is the fallback restoring the pre-chat behaviour. */
 export type DefaultSurface = "chat" | "agent";
 export type TranscriptDensity = "comfortable" | "compact";
+/** Which transcript rows show the time they were sent or landed. */
+export type Timestamps = "off" | "prompts" | "replies" | "both";
 /** Global chat preferences: what a new chat starts with, and how the transcript
  *  renders. Separate from the per-project `chat` map so neither reshapes the
  *  other's on-disk field. */
@@ -153,6 +155,7 @@ export type ChatDefaults = {
   showReadAloud: boolean;
   /** The plan card above the composer. */
   showPlan: boolean;
+  timestamps: Timestamps;
   /** Send a continue by itself once the usage limit a chat stopped on resets.
    *  Off by default; the limit banner can still arm a single chat. */
   resumeAtReset: boolean;
@@ -547,6 +550,7 @@ export const DEFAULT_SETTINGS: Settings = {
     attachLongPastes: true,
     showReadAloud: true,
     showPlan: true,
+    timestamps: "prompts",
     resumeAtReset: false,
     maxConcurrentChats: 4,
   },

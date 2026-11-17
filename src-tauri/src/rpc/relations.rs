@@ -208,6 +208,7 @@ mod tests {
             session_id: "me".into(),
             turn_id: "t".into(),
             blocks: vec![crate::chat::model::ContentBlock::Text { text: text.into() }],
+            at: None,
         };
         let mut events = vec![user("<tori kind=\"steer\" from=\"early\">\nhi\n</tori>")];
         events.extend((0..500).map(|i| user(&format!("prompt {i}"))));

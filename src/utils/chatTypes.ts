@@ -493,7 +493,9 @@ export type ChatEvent =
   /// A user turn the panel did not send itself: a replayed transcript, or turns
   /// that happened in a PTY tab or an outside terminal. A live chat pushes its
   /// own user turn locally, so this is history's counterpart to that.
-  | { type: "userMessage"; sessionId: string; turnId: string; blocks: ContentBlock[] }
+  /// `at` is epoch ms: the transcript's time on a replay, the arrival time on a
+  /// live frame (stamped by the panel), absent where neither is known.
+  | { type: "userMessage"; sessionId: string; turnId: string; blocks: ContentBlock[]; at?: number }
   /// The conversation was compacted: earlier turns were replaced by a summary
   /// to reclaim the context window. Measured: the boundary carries the token
   /// figures, and the **summary is the next user message**, stitched on by
@@ -528,7 +530,7 @@ export type ChatEvent =
   /// `agentId` is the subagent whose prose this is, null for the main agent's.
   /// A subagent never streams, so its text arrives as one whole frame rather
   /// than as deltas; this is the only prose a live lane has.
-  | { type: "textDelta"; sessionId: string; turnId: string; text: string; agentId: string | null }
+  | { type: "textDelta"; sessionId: string; turnId: string; text: string; agentId: string | null; at?: number }
   | { type: "thinkingDelta"; sessionId: string; turnId: string; text: string; agentId: string | null }
   /// An upsert: a later emission carries only what that frame said, so an empty
   /// `name` or a null `input` means "unchanged" rather than "cleared".

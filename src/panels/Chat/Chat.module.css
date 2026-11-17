@@ -370,7 +370,8 @@
    rather than as another card on top of it. */
 .userRow {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
   margin-top: calc(12px * var(--ui-scale));
 }
 
@@ -697,6 +698,21 @@ code.secretReason {
 
 .replyText {
   position: relative;
+}
+
+/* A line of its own under the message. */
+.stamp {
+  display: block;
+  margin-top: calc(4px * var(--ui-scale));
+  color: var(--fg-watermark);
+  font-size: var(--tori-text-xs);
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.userRow > .stamp {
+  padding-right: calc(8px * var(--ui-scale));
 }
 
 .replyRead {

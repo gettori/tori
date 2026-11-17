@@ -1746,6 +1746,7 @@ mod tests {
                 session_id: "s1".into(),
                 turn_id: "t1".into(),
                 blocks: vec![ContentBlock::Text { text: "ask".into() }],
+                at: None,
             })
             .unwrap(),
             "{ this line is torn".to_string(),
