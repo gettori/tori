@@ -15,16 +15,12 @@ export type TooltipPlacement = "top" | "bottom" | "left" | "right";
  *  only passing over its control on the way to a neighbour, and covered it. */
 const OPEN_DELAY = 700;
 /** Radix closes on leave with no delay too. A lingering tooltip sat over the
- *  neighbouring control the pointer was heading for. Hovering into the content
- *  still keeps it open: Kobalte's safe area cancels the close, not this timer. */
+ *  neighbouring control the pointer was heading for. */
 const CLOSE_DELAY = 0;
-/** Kobalte's own default, restated because it is a design decision rather than
- *  an inherited one: within 300ms of one tooltip closing, the next opens with no
- *  delay at all, so sweeping a row of icon buttons reads as one gesture instead
- *  of eight separate waits. The timer behind it is module-global inside Kobalte,
- *  so every tooltip in the app sharing this value *is* the whole grouping
- *  mechanism. */
-const SKIP_DELAY = 300;
+/** No warm-up grouping. Kobalte's skip window is module-global and restarts on
+ *  every close, so one tooltip opening set off instant tooltips on every row the
+ *  pointer crossed down the sidebar. Each tooltip waits its own full delay. */
+const SKIP_DELAY = 0;
 
 /** How far the tooltip sits off its trigger. Enough to clear the trigger's own
  *  focus ring, which a flush tooltip sits on top of.
@@ -82,10 +78,7 @@ export type TooltipProps<T extends HTMLElement = HTMLButtonElement, P extends Re
      *  Not Kobalte's `disabled` alone either, which only gates *opening*
      *  (`isDisabled()` is read by the trigger before it calls `openTooltip`) and
      *  leaves an open one open. Passing this at all therefore moves the tooltip
-     *  onto the controlled path below, the same one `whenDisabled` uses, and
-     *  costs the same thing: a controlled tooltip does not take part in Kobalte's
-     *  module-global warm-up grouping. Worth it on a pill, which is not one of a
-     *  row of icons being swept past. */
+     *  onto the controlled path below, the same one `whenDisabled` uses. */
     suppressed?: boolean;
     placement?: TooltipPlacement;
     openDelay?: number;
@@ -185,9 +178,8 @@ export type TooltipProps<T extends HTMLElement = HTMLButtonElement, P extends Re
  * renders when `whenDisabled` is set - a span whose `pointerenter`/
  * `pointerleave` drive the tooltip's open state on their own timer.
  *
- * That state is controlled, so it bypasses Kobalte's module-global warm-up
- * timer and this tooltip does not participate in skip-delay grouping. Kobalte's
- * own requests are fed back into the same signal, so focus opening, click-to-
+ * That state is controlled, so it runs on this component's timer rather than
+ * Kobalte's. Kobalte's own requests are fed back into the same signal, so focus opening, click-to-
  * close and Escape keep working for the spells when the control is *not*
  * disabled.
  *
@@ -226,7 +218,7 @@ export default function Tooltip<T extends HTMLElement = HTMLButtonElement, P ext
   // `whenDisabled` needs the signal to drive the tooltip from a hover surface;
   // `suppressed` needs it so a *close* can be forced, which Kobalte's own
   // `disabled` cannot do. Either one takes the tooltip off the uncontrolled
-  // default and its grouped warm-up timer.
+  // default and Kobalte's timer.
   const controlled = () => !!local.whenDisabled || local.suppressed !== undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const clearTimer = () => {
@@ -271,9 +263,12 @@ export default function Tooltip<T extends HTMLElement = HTMLButtonElement, P ext
         openDelay={openDelay()}
         closeDelay={closeDelay()}
         skipDelayDuration={SKIP_DELAY}
+        // The content is `pointer-events: none`, so there is nothing to reach in
+        // it, and the safe area only held the tooltip over the row the pointer
+        // was heading for.
+        ignoreSafeArea
         // `undefined` is how Kobalte is told this is uncontrolled, so the
-        // default path keeps the grouped warm-up timer rather than this
-        // component's.
+        // default path keeps Kobalte's timer rather than this component's.
         //
         // `false` while suppressed, and the signal still receives Kobalte's own
         // closes underneath: the trigger blurs as the menu takes focus, that
