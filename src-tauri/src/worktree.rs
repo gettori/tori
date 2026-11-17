@@ -1139,6 +1139,11 @@ pub(crate) fn remove_worktree_deleting(
         None => git_ok(repo_path, &["worktree", "remove", "--force", worktree_path])?,
     }
     prune_worktrees(repo_path);
+    // After the prune, which drops the removed worktree's admin dir and the
+    // backstop id in it, so its discard refs read as orphaned.
+    if let Err(e) = crate::backstop::prune_orphaned_refs(repo_path) {
+        eprintln!("tori: {worktree_path} was removed, but sweeping its backups failed: {e}");
+    }
     if let Some(root) = root {
         crate::ports::release(&root);
     }
@@ -1522,6 +1527,34 @@ mod tests {
         assert!(web.join("apps/web/.env").exists());
         do_remove_worktree(repo_s, web.to_str().unwrap(), true).unwrap();
         assert!(!web.exists(), "force removes it anyway");
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn removing_a_worktree_sweeps_its_backstop_refs() {
+        let tmp = unique_tmp();
+        let repo = tmp.join("repo");
+        committed_repo(&repo);
+        let repo_s = repo.to_str().unwrap();
+        let wt = tmp.join("side");
+        git(&repo, &["worktree", "add", "-q", "-b", "side", wt.to_str().unwrap()]);
+        crate::backstop::take(repo_s, "main's").unwrap();
+        crate::backstop::take(wt.to_str().unwrap(), "side's").unwrap();
+        let refs = || {
+            let out = Command::new("git")
+                .arg("-C")
+                .arg(&repo)
+                .args(["for-each-ref", "--format=%(refname)", "refs/tori/discard/"])
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).lines().count()
+        };
+        assert_eq!(refs(), 2);
+
+        do_remove_worktree(repo_s, wt.to_str().unwrap(), true).unwrap();
+
+        assert_eq!(refs(), 1, "the removed worktree's ref goes and main's stays");
+        assert_eq!(crate::backstop::backstop_list(repo_s.to_string()).unwrap().len(), 1);
         std::fs::remove_dir_all(&tmp).ok();
     }
 
