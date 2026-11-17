@@ -37,7 +37,6 @@ const PROBE_MS = 20_000;
 const CONNECT_MS = 10_000;
 
 export const UNAUTHORIZED_CODE = -32001;
-export const REFUSED_CODE = -32002;
 export const STORE_UNREADABLE_CODE = -32003;
 export const METHOD_NOT_FOUND = -32601;
 

@@ -86,8 +86,6 @@ export function isSelfAuthored(pr: PullRequest, viewerLogin: string | null): boo
   return viewerLogin.toLowerCase() === pr.author.toLowerCase();
 }
 
-export type SubmitBlock = { event: ReviewEvent; reason: string };
-
 export const STALE_ANCHOR_REASON = "Some comments no longer match the diff. Fix or remove them first.";
 export const DRIFT_REASON = "This pull request has new commits. Reload the diff before submitting.";
 

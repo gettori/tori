@@ -14,7 +14,7 @@
 // because a person just pressed a key, and a multi-file one takes a snapshot
 // first because there is no other way back.
 
-import { applyWorkspaceEdit, list, type ApplyDeps, type EditTarget, type WorkspaceEdit } from "./workspaceEdit";
+import { applyWorkspaceEdit, list, type ApplyDeps, type WorkspaceEdit } from "./workspaceEdit";
 
 // Re-exported, not re-declared: these were this module's before the applier
 // existed and callers still reach for them here. Exactly what has an importer,
@@ -22,10 +22,6 @@ import { applyWorkspaceEdit, list, type ApplyDeps, type EditTarget, type Workspa
 // to publish.
 export { editsByUri } from "./workspaceEdit";
 export type { LspPosition, WorkspaceEdit, MaterialisedFile, Mapping } from "./workspaceEdit";
-
-/** One file's worth of a rename. The applier calls this an `EditTarget`, since
- *  a rename is no longer the only thing that produces them. */
-export type RenameTarget = EditTarget;
 
 export type RenameDeps = ApplyDeps & {
   /** `textDocument/rename`. */

@@ -27,11 +27,6 @@ export const pinGroup = (kind: string): PinGroup => (kind === "file" ? "file" : 
 
 const [sides, setSides] = createSignal<PinSides>(DEFAULT_PIN_SIDES);
 
-/** The rules in force. Reactive, so changing one re-routes the next tab that
- *  opens without touching the tabs already placed (those carry their own pane
- *  in the placement store). */
-export const pinSides = sides;
-
 export function setPinSides(next: Partial<PinSides>): void {
   setSides({ ...DEFAULT_PIN_SIDES, ...next });
 }

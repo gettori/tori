@@ -153,7 +153,3 @@ export type Catalog = {
   stale: boolean;
   problem: CatalogProblem | null;
 };
-
-/** The catalog, asked for again past the cache's TTL: an add list is opened
- *  to see what is there now. */
-export const loadCatalog = () => invoke<Catalog>("packs_catalog", { forceRevalidate: true });

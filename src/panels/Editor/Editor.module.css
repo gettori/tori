@@ -71,12 +71,6 @@
   text-align: center;
 }
 
-.editorErr {
-  padding: calc(10px * var(--ui-scale));
-  color: var(--danger-fg);
-  font-size: var(--tori-text-lg);
-}
-
 /* Says why the buffer below has conflict markers in it. `flex: none` because
    it sits in the same column as the editor, which takes the rest. */
 .conflictBanner {

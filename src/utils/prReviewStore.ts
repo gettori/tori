@@ -415,13 +415,6 @@ export function addPending(root: string, number: number, comment: DraftComment &
   saveDraft(root, number);
 }
 
-export function removePending(root: string, number: number, at: number): void {
-  const k = key(root, number);
-  slot(k);
-  setEntries(k, "pending", (list) => list.filter((_, i) => i !== at));
-  saveDraft(root, number);
-}
-
 export function setReviewBody(root: string, number: number, body: string): void {
   const k = key(root, number);
   slot(k);

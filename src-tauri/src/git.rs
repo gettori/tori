@@ -1447,18 +1447,6 @@ pub fn git_branch_paths(project_path: String, base: String) -> Result<Vec<String
         .collect())
 }
 
-/// What a commit would hold: the index with `staged`, the working tree without.
-/// `--numstat` rather than `--shortstat`, whose wording follows the locale.
-#[tauri::command(async)]
-pub fn git_diff_stat(project_path: String, staged: Option<bool>) -> Result<DiffStat, String> {
-    let mut args = vec!["diff", "--numstat"];
-    if staged.unwrap_or(false) {
-        args.push("--cached");
-    }
-    let out = git_capture(&project_path, &args)?;
-    Ok(parse_numstat(&out))
-}
-
 /// Everything uncommitted against HEAD, staged or not, new files included: the
 /// Changes tab's total. Fails on an unborn branch, which has no HEAD to diff.
 #[tauri::command(async)]
