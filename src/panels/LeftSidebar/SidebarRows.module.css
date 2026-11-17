@@ -66,20 +66,19 @@
   box-shadow: inset 0 0 0 1px var(--brand-default);
 }
 
-/* [data-expanded] mirrors :hover: it persists on the row a context menu belongs
-   to, so it stays highlighted while the menu is open. Kobalte stamps it on the
-   trigger, which IS the row, so nothing in the sidebar toggles a class for it. */
-.row:hover,
-.row[data-expanded] {
-  background: linear-gradient(to right, var(--neutral-hover), transparent);
+.glideFrame {
+  position: relative;
+  isolation: isolate;
+  --glide-radius: 0;
+  --glide-fill: linear-gradient(to right, var(--neutral-hover), transparent);
 }
 
 .branchNode {
   position: relative;
 }
 
-/* Under the rows (z-index 2), so a hovered or selected pill paints over the
-   rail rather than having to start clear of it. */
+/* Under the rows (z-index 2), so a selected pill paints over the rail rather
+   than having to start clear of it. */
 .branchNode::before {
   content: "";
   position: absolute;
@@ -276,9 +275,9 @@ button.row.cardHead:hover {
   background: var(--brand-bar);
 }
 
-/* Hover and selection share one pill: it starts ON the rail so the marker bar
-   lands where the line was, and runs to the column's right edge. The z-index
-   gives the -1 pill a context to sit behind, and lifts the row over the rail. */
+/* The selection pill starts ON the rail so the marker bar lands where the line
+   was, and runs to the column's right edge. The z-index gives the -1 pill a
+   context to sit behind, and lifts the row over the rail. */
 .row.branch {
   height: auto;
   padding-block: var(--branch-row-pad);
@@ -298,18 +297,9 @@ button.row.cardHead:hover {
   background: transparent;
 }
 /* A branch whose pull request merged with nothing made since rests on a faint
-   teal wash. Declared before the hover rule at equal specificity, so the
-   pointer still lights it the way it lights every other row. */
+   teal wash. */
 .row.branch.done::before {
   background: linear-gradient(to right, var(--done-wash), transparent);
-}
-.row.branch:hover,
-.row.branch[data-expanded] {
-  background: transparent;
-}
-.row.branch:hover::before,
-.row.branch[data-expanded]::before {
-  background: linear-gradient(to right, var(--neutral-hover), transparent);
 }
 
 /* ---- The two-line branch row ----
@@ -382,13 +372,10 @@ button.moreRow {
   text-align: left;
 }
 
-/* Selected branch: the hover pill's geometry held in a brand wash that fades
-   out to the right, with the same left bar the settings rail marks its active
-   category with (`.railItemActive::before`). The bar covers the rail rather
-   than sitting beside it, so the line reads as thickening into the selection.
-   Declared AFTER the :hover rule at equal specificity, so hovering a selected
-   row keeps the gold instead of dropping to grey - the same ordering every
-   selected row in this app depends on. */
+/* Selected branch: a brand wash that fades out to the right, with the same left
+   bar the settings rail marks its active category with (`.railItemActive::before`).
+   The bar covers the rail rather than sitting beside it, so the line reads as
+   thickening into the selection. */
 .row.branch.sel::before {
   background:
     linear-gradient(var(--brand-bar), var(--brand-bar)) left center / var(--tori-border-thick) 100% no-repeat,
@@ -440,17 +427,11 @@ button.moreRow {
   font-style: italic;
   cursor: default;
 }
-.row.dim:hover {
-  background: transparent;
-}
 
 .row.trunkRow,
 .row.trunkRow .rowIcon {
   color: var(--fg-subtle);
   cursor: default;
-}
-.row.trunkRow:hover {
-  background: transparent;
 }
 
 .row .label {

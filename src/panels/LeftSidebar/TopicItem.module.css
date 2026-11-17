@@ -7,19 +7,10 @@
 
 /* The open Topic's head, while no member row carries the selection: the brand
    bar over a wash that fades out to the right, as a selected branch row. */
-/* Scoped under `.item` so it outranks the shared row's :hover wash, which
-   would otherwise win or lose on bundle order. */
-.item > .headSel,
-.item > .headSel:hover {
+.item > .headSel {
   background:
     linear-gradient(var(--brand-bar), var(--brand-bar)) left center / var(--tori-border-thick) 100% no-repeat,
     linear-gradient(to right, var(--brand-subtle), transparent);
-}
-
-/* The menu sits on the whole card, so the card is what Kobalte marks while it
-   is open; the head row takes the hover wash for it, as a project row does. */
-.item[data-expanded] > :first-child {
-  background: linear-gradient(to right, var(--neutral-hover), transparent);
 }
 
 /* The disclosure is the icon slot itself, so the chevron that cross-fades in

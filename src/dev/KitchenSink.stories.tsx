@@ -7,10 +7,12 @@ import CheckboxGroup from "../components/CheckboxGroup/CheckboxGroup";
 import Dialog from "../components/Dialog/Dialog";
 import Glide, { optionAt } from "../components/Glide/Glide";
 import Icon from "../components/Icon/Icon";
+import ProjectIcon from "../components/Icon/ProjectIcon";
+import { BranchMark, WorktreeMark } from "../components/Icon/gitMarks";
 import IconButton from "../components/IconButton/IconButton";
 import ContextMenu from "../components/Menu/ContextMenu";
 import Dropdown from "../components/Menu/Dropdown";
-import { MenuRow, MenuSeparator, MenuSub } from "../components/Menu/rows";
+import { MenuRow, MenuSeparator, MenuSub, type MenuItem } from "../components/Menu/rows";
 import Popover from "../components/Popover/Popover";
 import RadioGroup from "../components/RadioGroup/RadioGroup";
 import Select from "../components/Select/Select";
@@ -26,6 +28,18 @@ import {
 } from "../panels/Chat/__fixtures__/chatInput";
 import { PromptsPane, createPrompts, promptsHost } from "../panels/Chat/__fixtures__/prompts";
 import { TranscriptPane, createTranscript } from "../panels/Chat/__fixtures__/transcript";
+import {
+  BranchRow,
+  EmptyRow,
+  GroupRow,
+  LaneCard,
+  ProjectRow,
+  RowGlide,
+  TrunkRow,
+  stackGroup,
+} from "../panels/LeftSidebar/SidebarRows";
+import rows from "../panels/LeftSidebar/SidebarRows.module.css";
+import { SidebarPane, sidebarHost } from "../panels/LeftSidebar/__fixtures__/sidebar";
 import patterns from "../styles/patterns.module.css";
 import { enterOnce } from "../utils/enterOnce";
 import { stubHost } from "./stubHost";
@@ -330,6 +344,46 @@ function ListsSection() {
   );
 }
 
+const ROW_MENU: MenuItem[] = [
+  { label: "Open in editor", onClick: () => {} },
+  { label: "Reveal in Finder", onClick: () => {} },
+  { separator: true },
+  { label: "Remove", onClick: () => {}, danger: true },
+];
+
+function SidebarSection() {
+  return (
+    <Section
+      heading="Sidebar"
+      note="The work space's tree, then a column of the row states the fixture cannot reach. One fill follows the pointer, starting at the rail on a branch; it sits under the selected branch's bar and the merged branch's wash, stays on a row while its menu is open, and skips the trunk and empty rows. A lane card fills its own rows."
+    >
+      <div style={{ display: "flex", gap: "var(--tori-space-7)", "align-items": "start" }}>
+        <SidebarPane space="work" height="640px" />
+        <div class={`${rows.rowScope} ${rows.glideFrame}`} style={{ width: "260px" }}>
+          <RowGlide />
+          <ProjectRow name="web" icon={<ProjectIcon seed="/w/web" />} disclosure open menu={ROW_MENU}>
+            <BranchRow label="main" icon={<BranchMark active={false} current />} menu={ROW_MENU} />
+            <BranchRow label="feat/onboarding" icon={<WorktreeMark active />} selected menu={ROW_MENU} />
+            <BranchRow label="fix/cors" icon={<WorktreeMark active={false} />} look="done" menu={ROW_MENU} />
+            <GroupRow {...stackGroup(2, "main")} open>
+              <BranchRow nested label="feat/ui" icon={<WorktreeMark active={false} />} menu={ROW_MENU} />
+              <BranchRow nested label="feat/api" icon={<WorktreeMark active={false} />} menu={ROW_MENU} />
+              <TrunkRow name="main" />
+            </GroupRow>
+          </ProjectRow>
+          <ProjectRow name="scratch" icon={<ProjectIcon seed="/tmp/scratch" />} disclosure open menu={ROW_MENU}>
+            <EmptyRow>no branches</EmptyRow>
+          </ProjectRow>
+          <LaneCard lane="inReview" count={2} onPark={() => {}}>
+            <BranchRow label="feat/billing" icon={<WorktreeMark active={false} />} menu={ROW_MENU} />
+            <BranchRow label="feat/search" icon={<WorktreeMark active={false} />} menu={ROW_MENU} />
+          </LaneCard>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
 function ButtonsSection() {
   return (
     <Section heading="Buttons" note="Every variant and size, the icon buttons, and disabled ones that must not move.">
@@ -498,7 +552,7 @@ function ChecksSection() {
 }
 
 function KitchenSink() {
-  stubHost([chatInputHost, promptsHost]);
+  stubHost([chatInputHost, promptsHost, sidebarHost]);
   stubAssetUrls();
   return (
     // Its own scroller: App.css locks `html` and `body`, which suits a window but
@@ -514,6 +568,7 @@ function KitchenSink() {
         <PromptsSection />
         <SelectionSection />
         <ListsSection />
+        <SidebarSection />
       </div>
     </div>
   );
