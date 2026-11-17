@@ -1198,6 +1198,7 @@ fn run_turn(
             session_id: shared.session_id.clone(),
             turn_id: turn.clone(),
             blocks: blocks.clone(),
+            at: None,
         },
     );
     let request = PromptRequest::new(session_id.clone(), acp::prompt_blocks(&blocks));
@@ -1756,6 +1757,7 @@ mod tests {
             blocks: vec![ContentBlock::Text {
                 text: "fix the bug".to_string(),
             }],
+            at: None,
         }];
         shared.note_echoed(&turn);
         // And what an echoing agent sends back for that same turn.

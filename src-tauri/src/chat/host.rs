@@ -675,6 +675,7 @@ fn split_user_notes(event: ChatEvent) -> Vec<ChatEvent> {
         session_id,
         turn_id,
         blocks,
+        at,
     } = event
     else {
         return vec![event];
@@ -683,6 +684,7 @@ fn split_user_notes(event: ChatEvent) -> Vec<ChatEvent> {
         session_id: session_id.clone(),
         turn_id: turn_id.clone(),
         blocks,
+        at,
     };
     let mut out = Vec::new();
     let mut refs = Vec::new();
@@ -1714,6 +1716,7 @@ impl ChatHost {
                     session_id: session_id.to_string(),
                     turn_id: String::new(),
                     blocks: vec![note],
+                    at: None,
                 },
             );
         }
@@ -1777,6 +1780,7 @@ impl ChatHost {
                     session_id: session_id.to_string(),
                     turn_id: String::new(),
                     blocks,
+                    at: None,
                 },
             );
         }
@@ -2039,6 +2043,7 @@ mod tests {
             turn_id: turn.to_string(),
             text: "said".into(),
             agent_id: None,
+            at: None,
         }
     }
 
@@ -2100,6 +2105,7 @@ mod tests {
             session_id: "s".into(),
             turn_id: "t".into(),
             blocks,
+            at: None,
         };
         let bodies = |events: Vec<ChatEvent>| -> Vec<Vec<ContentBlock>> {
             events
@@ -2153,6 +2159,7 @@ mod tests {
             session_id: "s".into(),
             turn_id: "t".into(),
             blocks: std::iter::once(text(&topic)).chain(sent).collect(),
+            at: None,
         });
         let bodies: Vec<Vec<ContentBlock>> = echoed
             .into_iter()
@@ -3155,6 +3162,7 @@ mod tests {
                         turn_id: "t1".into(),
                         text: text.clone(),
                         agent_id: None,
+                        at: None,
                     },
                 );
             }
@@ -4098,6 +4106,7 @@ mod tests {
                 turn_id: "t1".into(),
                 agent_id: None,
                 text: "x".into(),
+                at: None,
             },
         );
         assert_eq!(host.waiting_permissions().len(), 1);

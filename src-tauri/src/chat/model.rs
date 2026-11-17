@@ -1231,6 +1231,10 @@ pub enum ChatEvent {
         session_id: String,
         turn_id: String,
         blocks: Vec<ContentBlock>,
+        /// Epoch milliseconds the prompt was sent: the transcript's own time on
+        /// a replay, the clock on a live frame, `None` where neither is known.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        at: Option<u64>,
     },
 
     /// The conversation was compacted: earlier turns were replaced by a summary
@@ -1337,6 +1341,9 @@ pub enum ChatEvent {
         /// frame: the only prose a live lane has.
         #[serde(default)]
         agent_id: Option<String>,
+        /// Epoch milliseconds this text landed, as on `UserMessage`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        at: Option<u64>,
     },
 
     ThinkingDelta {
@@ -1980,6 +1987,7 @@ mod tests {
                 blocks: vec![ContentBlock::Text {
                     text: "fix the bug".into(),
                 }],
+                at: None,
             },
             ChatEvent::Compacted {
                 session_id: "s1".into(),
@@ -2020,6 +2028,7 @@ mod tests {
                 // Filled rather than `None`, so a mirror that dropped the
                 // field fails here instead of reading every lane as main.
                 agent_id: Some("acb01121756a92ca0".into()),
+                at: None,
             },
             ChatEvent::ThinkingDelta {
                 session_id: "s1".into(),
@@ -2721,6 +2730,7 @@ mod tests {
             turn_id: "t1".into(),
             text: "hi".into(),
             agent_id: None,
+            at: None,
         })
         .unwrap();
         assert_eq!(json["type"], "textDelta");

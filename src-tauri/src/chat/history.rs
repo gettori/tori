@@ -76,6 +76,7 @@ pub fn events_and_prompts(
         if turn.role == "user" {
             prompts.push((turn.ts, events.len()));
         }
+        let first = events.len();
 
         // The invocation and its output are two records, so they are two turns
         // by the time they reach here, and only together are they worth a row.
@@ -113,6 +114,7 @@ pub fn events_and_prompts(
                             session_id: session_id.to_string(),
                             turn_id: turn_id.clone(),
                             blocks: vec![ContentBlock::Text { text: note.to_string() }],
+                            at: None,
                         });
                     }
                     if !noted || !rest.is_empty() {
@@ -182,7 +184,16 @@ pub fn events_and_prompts(
                 session_id: session_id.to_string(),
                 turn_id: turn_id.clone(),
                 blocks: user_blocks,
+                at: None,
             });
+        }
+        // Zero is the parser's "no timestamp on the line", not 1970.
+        if turn.ts > 0 {
+            for event in &mut events[first..] {
+                if let ChatEvent::UserMessage { at, .. } | ChatEvent::TextDelta { at, .. } = event {
+                    *at = Some(turn.ts * 1000);
+                }
+            }
         }
     }
 
@@ -209,6 +220,7 @@ fn push_block(
                     turn_id: turn_id.to_string(),
                     text: text.clone(),
                     agent_id: agent_id.map(str::to_string),
+                    at: None,
                 });
             }
         }

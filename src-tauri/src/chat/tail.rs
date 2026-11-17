@@ -359,6 +359,7 @@ mod tests {
             session_id: "s".into(),
             turn_id: format!("t{turn}"),
             blocks,
+            at: None,
         }
     }
 
@@ -368,6 +369,7 @@ mod tests {
             turn_id: format!("t{turn}"),
             text: body.into(),
             agent_id: None,
+            at: None,
         }
     }
 

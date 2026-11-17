@@ -473,6 +473,7 @@ mod tests {
             session_id: "s1".into(),
             turn_id: turn.into(),
             blocks: Vec::new(),
+            at: None,
         };
         let events = vec![
             user("u1"),

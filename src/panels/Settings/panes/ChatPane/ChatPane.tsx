@@ -41,7 +41,13 @@ import {
   setVerification,
   type PaneProps,
 } from "../../components/paneKit";
-import { settings, type DefaultSurface, type NotificationSettings, type TranscriptDensity } from "../../settingsStore";
+import {
+  settings,
+  type DefaultSurface,
+  type NotificationSettings,
+  type Timestamps,
+  type TranscriptDensity,
+} from "../../settingsStore";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
 import IconButton from "../../../../components/IconButton/IconButton";
@@ -83,7 +89,7 @@ const SESSIONS = [
   "resume-at-reset",
 ];
 
-/** The two option lists, module-level so they are not rebuilt per render. The
+/** The option lists, module-level so they are not rebuilt per render. The
  *  values are the store's own unions, so a typo here is a type error at the
  *  `onChange` cast rather than a row that silently never matches. */
 const SURFACES: SelectOption[] = [
@@ -93,6 +99,12 @@ const SURFACES: SelectOption[] = [
 const DENSITIES: SelectOption[] = [
   { value: "comfortable", label: "Comfortable" },
   { value: "compact", label: "Compact" },
+];
+const TIMESTAMPS: SelectOption[] = [
+  { value: "prompts", label: "Prompts" },
+  { value: "both", label: "Prompts and replies" },
+  { value: "replies", label: "Replies" },
+  { value: "off", label: "Off" },
 ];
 
 const NOTIFICATIONS = [
@@ -304,6 +316,22 @@ export default function ChatPane(props: PaneProps) {
               value={settings.chatDefaults.density}
               onChange={(value) => setChatDefaults({ density: value as TranscriptDensity })}
               aria-labelledby={rowLabelId("transcript-density")}
+            />
+          </div>
+        </Row>
+
+        <Row
+          {...props}
+          id="timestamps"
+          label="Timestamps"
+          hint="When a prompt was sent and when a reply finished. A chat reopened from an ACP agent has no times to show for its earlier turns."
+        >
+          <div class={styles.control}>
+            <Select
+              options={TIMESTAMPS}
+              value={settings.chatDefaults.timestamps}
+              onChange={(value) => setChatDefaults({ timestamps: value as Timestamps })}
+              aria-labelledby={rowLabelId("timestamps")}
             />
           </div>
         </Row>

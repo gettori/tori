@@ -727,6 +727,7 @@ mod tests {
             turn_id: turn.into(),
             text: text.into(),
             agent_id: None,
+            at: None,
         }
     }
 
@@ -778,6 +779,7 @@ mod tests {
             session_id: "s1".into(),
             turn_id: turn.into(),
             blocks: vec![model::ContentBlock::Text { text: said.into() }],
+            at: None,
         }
     }
 

@@ -61,6 +61,7 @@ import { findSession } from "../../utils/sessionStore";
 import { toriNote } from "../../utils/toriNote";
 import type { Answer } from "./PermissionPrompt";
 import styles from "./Chat.module.css";
+import type { Timestamps } from "../Settings/settingsStore";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import Markdown from "./Markdown";
 import SentPrompt from "./SentPrompt";
@@ -120,6 +121,52 @@ function ThinkingBlock(props: { text: string; live: boolean; thoughtMs: number }
   );
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function ordinal(n: number): string {
+  const teen = n % 100 >= 11 && n % 100 <= 13;
+  const suffix = teen ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th");
+  return `${n}${suffix}`;
+}
+
+/** "Just now", "Today at 2:32 PM", "Yesterday at 12:12 AM", "10th Jan 2026, 12:12 AM". */
+export function stampLabel(at: number, now = Date.now()): string {
+  if (now - at < 60_000) return "Just now";
+  const d = new Date(at);
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
+  const day = (t: number) => new Date(t).setHours(0, 0, 0, 0);
+  const days = Math.round((day(now) - day(at)) / 86_400_000);
+  if (days === 0) return `Today at ${time}`;
+  if (days === 1) return `Yesterday at ${time}`;
+  return `${ordinal(d.getDate())} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${time}`;
+}
+
+// One clock for every stamp on screen, running only while one is mounted, so
+// "Just now" turns into "Today at ..." without each row keeping a timer.
+const [clock, setClock] = createSignal(Date.now());
+let clockUsers = 0;
+let clockTimer: ReturnType<typeof setInterval> | undefined;
+function useClock(): () => number {
+  if (clockUsers++ === 0) {
+    setClock(Date.now());
+    clockTimer = setInterval(() => setClock(Date.now()), 30_000);
+  }
+  onCleanup(() => {
+    if (--clockUsers === 0) clearInterval(clockTimer);
+  });
+  return clock;
+}
+
+function Stamp(props: { at: number }) {
+  const now = useClock();
+  const date = () => new Date(props.at);
+  return (
+    <time class={styles.stamp} dateTime={date().toISOString()} title={date().toLocaleString()}>
+      {stampLabel(props.at, now())}
+    </time>
+  );
+}
+
 function ReplyText(props: {
   id: string;
   text: string;
@@ -127,6 +174,7 @@ function ReplyText(props: {
   onRead?: (body: HTMLElement, itemId: string) => void;
   readingBlock?: (itemId: string) => number | undefined;
   action?: JSX.Element;
+  at?: number;
 }) {
   let body!: HTMLDivElement;
   const [renders, setRenders] = createSignal(0);
@@ -155,6 +203,7 @@ function ReplyText(props: {
         <Markdown text={props.text} cwd={props.cwd} onRendered={() => setRenders((n) => n + 1)} />
       </div>
       {props.action}
+      <Show when={props.at}>{(at) => <Stamp at={at()} />}</Show>
     </div>
   );
 }
@@ -316,6 +365,8 @@ export default function MessageList(props: {
   verifications?: Record<string, TurnCheck>;
   /** Off hides the verification marks a session's turns already carry. */
   showVerification?: boolean;
+  /** Which rows show their time. Absent shows none. */
+  timestamps?: Timestamps;
 }) {
   const [limit, setLimit] = createSignal(WINDOW_STEP);
   // Read once, deliberately: whether this list opens pinned to the bottom is an
@@ -326,6 +377,17 @@ export default function MessageList(props: {
   let scroller: HTMLDivElement | undefined;
 
   const shown = createMemo(() => windowed(props.items, limit()));
+  const stampsPrompts = () => props.timestamps === "prompts" || props.timestamps === "both";
+  const stampsReplies = () => props.timestamps === "replies" || props.timestamps === "both";
+  // One time per reply, on its last block: a turn's text is split by every
+  // tool call in it, and a time under each piece would repeat itself.
+  const replyEnds = createMemo(() => {
+    const last = new Map<string, string>();
+    if (!stampsReplies()) return new Set<string>();
+    for (const it of shown()) if (it.kind === "text" && it.agentId === null) last.set(it.turnId, it.id);
+    return new Set(last.values());
+  });
+  const replyAt = (it: TextItem) => (replyEnds().has(it.id) ? it.at : undefined);
   // Rows added above push everything down, so the reader is held where they
   // were measured from the bottom. Only while the old first row is still shown:
   // a first row that changed some other way (a lane switch) is not rows above.
@@ -878,6 +940,7 @@ export default function MessageList(props: {
                 </Show>
                 <SentPrompt blocks={peer()?.blocks ?? it().blocks} cwd={props.cwd} skills={props.skills ?? []} />
               </div>
+              <Show when={stampsPrompts() && it().at}>{(at) => <Stamp at={at()} />}</Show>
             </div>
           );
         }}
@@ -896,6 +959,7 @@ export default function MessageList(props: {
                   onRead={props.onRead}
                   readingBlock={props.readingBlock}
                   action={props.replyAction?.(it())}
+                  at={replyAt(it())}
                 />
               }
             >
@@ -909,6 +973,7 @@ export default function MessageList(props: {
                     onRead={props.onRead}
                     readingBlock={props.readingBlock}
                     action={props.replyAction?.(it())}
+                    at={replyAt(it())}
                   />
                 </div>
               )}
