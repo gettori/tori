@@ -40,6 +40,14 @@ export function __placementComputesForTests(): number {
   return placementComputes;
 }
 
+// Applied on read rather than stamped, so no reorder path can put a tab ahead
+// of a fixed one, however it got there.
+function fixedFirst(tabs: UnifiedTab[]): UnifiedTab[] {
+  return [...tabs.filter(isFixedTab), ...tabs.filter((t) => !isFixedTab(t))];
+}
+
+export const isFixedTab = (t: UnifiedTab) => !!maybeKindEntry(t.kind)?.fixed?.(t);
+
 function computePlacement(ws: string): PanePlacement | null {
   const root = layoutRoot(ws);
   if (!root) return null;
@@ -60,7 +68,7 @@ function computePlacement(ws: string): PanePlacement | null {
     if (own) own.push(t);
     else byPane.set(pane, [t]);
   }
-  for (const [pane, tabs] of byPane) byPane.set(pane, orderInPane(ws, tabs));
+  for (const [pane, tabs] of byPane) byPane.set(pane, fixedFirst(orderInPane(ws, tabs)));
   return { byPane, hostedByPane };
 }
 
@@ -197,10 +205,10 @@ export function paneRefusal(ws: string, tab: TabRef, paneId: string): string | n
 /** A tab's own pane menu (plan phase 8): where else it could go, and how to
  *  make somewhere else. Both halves emit, so the shell runs the same guards a
  *  palette command would. */
-export function paneMenuItems(ws: string, tab: TabRef): MenuItem[] {
+export function paneMenuItems(ws: string, tab: TabRef, movable = true): MenuItem[] {
   const root = layoutRoot(ws);
   const here = root ? paneOfTab(ws, tab, root) : null;
-  const others = root ? visibleLeaves(root).filter((l) => l.id !== here) : [];
+  const others = root && movable ? visibleLeaves(root).filter((l) => l.id !== here) : [];
   const order = root ? visibleLeaves(root).map((l) => l.id) : [];
   return [
     ...others.map((l) => ({

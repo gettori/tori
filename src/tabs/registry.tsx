@@ -38,6 +38,10 @@ export type TabDescriptor = {
   activate: (t: UnifiedTab) => void;
   close: (t: UnifiedTab, e: Event) => void;
   locked?: (t: UnifiedTab) => JSX.Element | undefined;
+  /** A tab that is the pane's subject rather than one of its tabs: no close,
+   *  no drag, and first in its strip. Its kind's own close has to refuse it as
+   *  well, since Cmd+W never reaches this strip. */
+  fixed?: (t: UnifiedTab) => boolean;
   /** A tab the next open of its kind replaces, drawn so it reads as one. */
   transient?: (t: UnifiedTab) => boolean;
   /** Double click, which every editor with a replaceable tab uses to keep it.
@@ -114,6 +118,7 @@ export type StripPlace = { ws: string; paneId: string };
 /** The one tab markup every strip draws, fed entirely from the descriptor. */
 export function renderRegistryTab(t: UnifiedTab, ghost?: boolean, place?: StripPlace): JSX.Element {
   const d = kindEntry(t.kind);
+  const fixed = !!d.fixed?.(t);
   const tab = (
     <Tab
       value={t.id}
@@ -121,7 +126,7 @@ export function renderRegistryTab(t: UnifiedTab, ghost?: boolean, place?: StripP
       tooltip={d.tooltip(t)}
       // Every tab moves between panes, so every tab drags (plan phase 10); what
       // a kind adds to the payload is still the kind's own business.
-      draggable={!ghost}
+      draggable={!ghost && !fixed}
       onDragStart={(e: DragEvent) => {
         if (e.dataTransfer) e.dataTransfer.effectAllowed = "copyMove";
         startTabDrag({ id: t.id, kind: t.kind, ws: place?.ws ?? t.workspace, fromPane: place?.paneId ?? null }, e);
@@ -132,7 +137,7 @@ export function renderRegistryTab(t: UnifiedTab, ghost?: boolean, place?: StripP
       data-transient={d.transient?.(t) ? "" : undefined}
       icon={d.icon(t)}
       trailing={d.dots?.(t)}
-      onClose={(e) => d.close(t, e)}
+      onClose={fixed ? undefined : (e) => d.close(t, e)}
       locked={d.locked?.(t)}
     >
       {d.title(t)}

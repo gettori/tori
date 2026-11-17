@@ -1055,7 +1055,7 @@ export default function Terminal(props: {
   // longer exists on disk and would still accept typing into a dead session.
   const offSessionDeleted = onWith<SessionDeleted>(SESSION_DELETED, ({ sessionId }) => {
     for (const t of open()) {
-      if (t.sessionId === sessionId) closeId(t.id);
+      if (t.sessionId === sessionId) closeId(t.id, "gone");
     }
   });
   onCleanup(offSessionDeleted);
@@ -2368,9 +2368,11 @@ export default function Terminal(props: {
   // A purge is a folder or workspace going away: a worker left running there
   // would outlive its folder, lock or not. A replace is a fork or rewind taking
   // the tab's place, which abandons nothing.
-  function closeId(id: string, reason: "close" | "purge" | "replace" = "close") {
+  // `gone` is the session itself being deleted, which takes even a fixed chat.
+  function closeId(id: string, reason: "close" | "gone" | "purge" | "replace" = "close") {
     const t = open().find((o) => o.id === id);
     if (t && reason !== "purge" && sessionLocked(t)) return;
+    if (t && reason === "close" && fixedChat(t)) return;
     if (reason !== "replace" && t?.kind === "chat" && t.sessionId)
       void invoke("autopilot_closed_by_hand", { session: t.sessionId }).catch(() => {});
     // A chat tab hosts no PTY: `pty_kill` on its id would find nothing, and the
@@ -2562,6 +2564,12 @@ export default function Terminal(props: {
   // the registry with no per-kind switches of their own.
   const asTerm = (u: UnifiedTab) => (u as TerminalUnifiedTab).term;
   const sessionLocked = (t: OpenTerm) => t.kind === "chat" && isLocked(t.sessionId);
+  // A Chats-section chat is what its pane is for, so its tab cannot be closed.
+  // Only the first chat tab: a fork opened beside it is an ordinary tab.
+  const fixedChat = (t: OpenTerm) =>
+    t.kind === "chat" &&
+    isChatKey(t.workspace) &&
+    open().find((o) => o.kind === "chat" && o.workspace === t.workspace)?.id === t.id;
   // Which surface is on screen. With a pane tree, that is per pane (two panes
   // can each show a terminal); with none, the workspace's own visible tab, as
   // it was before panes could split.
@@ -2999,7 +3007,7 @@ export default function Terminal(props: {
     // Where this tab could go, and how to make somewhere for it to go. The
     // registry skips the wrap for the measuring ghost row.
     wrapTab: (u, tab) => (
-      <ContextMenu class={styles.tabMenu} items={paneMenuItems(asTerm(u).workspace, u)}>
+      <ContextMenu class={styles.tabMenu} items={paneMenuItems(asTerm(u).workspace, u, !fixedChat(asTerm(u)))}>
         {tab}
       </ContextMenu>
     ),
@@ -3008,6 +3016,7 @@ export default function Terminal(props: {
     activate: (u) => selectTab(asTerm(u)),
     close: (u, e) => close(u.id, e),
     locked: (u) => (sessionLocked(asTerm(u)) ? <LockMark /> : undefined),
+    fixed: (u) => fixedChat(asTerm(u)),
     stage: kind === "chat" ? chatStage : ptyStage,
     // Pane hosting (plan phase 7): the shell-pinned pane draws this panel's
     // strip and adopts every open tab's host - all workspaces, so a workspace
