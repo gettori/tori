@@ -88,8 +88,10 @@ export type ChatFileEdit = {
  *  rather than one that opened a turn of its own. The transcript renders the
  *  two differently, because reading a steer as an ordinary prompt would suggest
  *  the reply below it answers only that. */
-export type UserItem = { kind: "user"; id: string; blocks: ContentBlock[]; steer: boolean };
-export type TextItem = { kind: "text"; id: string; turnId: string; text: string; agentId: string | null };
+/** `at` on both is epoch ms, absent where the time is unknown (an ACP replay). */
+export type UserItem = { kind: "user"; id: string; blocks: ContentBlock[]; steer: boolean; at?: number };
+/** `at` is when the reply's last text landed. */
+export type TextItem = { kind: "text"; id: string; turnId: string; text: string; agentId: string | null; at?: number };
 /** `startedAt` is when the model went quiet (the frame before this block),
  *  `endedAt` when its last delta landed, so a settled block can say how long the
  *  thinking took. **Not the first delta to the last**: thinking usually arrives
@@ -1171,7 +1173,14 @@ function noteModel(s: ChatState, resolvedModel: string) {
 /** Appends into the bubble of the lane the text came from. A subagent's prose
  *  arrives whole, in one frame, so it opens and closes in a single call and
  *  never interleaves with the main agent's the way two streams would. */
-function appendText(s: ChatState, turnId: string, text: string, thinking: boolean, laned: string | null) {
+function appendText(
+  s: ChatState,
+  turnId: string,
+  text: string,
+  thinking: boolean,
+  laned: string | null,
+  landedAt?: number,
+) {
   touchTurn(s, turnId);
   // Root-resolved the way `noteLane` resolves a card's, so a depth-2 agent's
   // paragraph lands in the same strip entry its cards do.
@@ -1183,6 +1192,7 @@ function appendText(s: ChatState, turnId: string, text: string, thinking: boolea
     const block = s.items[at] as TextItem | ThinkingItem;
     block.text += text;
     if (block.kind === "thinking") block.endedAt = Date.now();
+    else if (landedAt !== undefined) block.at = landedAt;
     return;
   }
   const item: TextItem | ThinkingItem = thinking
@@ -1197,7 +1207,7 @@ function appendText(s: ChatState, turnId: string, text: string, thinking: boolea
         endedAt: Date.now(),
         agentId,
       }
-    : { kind: "text", id: nextId(s, "text"), turnId, text, agentId };
+    : { kind: "text", id: nextId(s, "text"), turnId, text, agentId, at: landedAt };
   push(s, item);
   open[lane] = s.items.length - 1;
 }
@@ -1399,7 +1409,13 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       // agent read it first. Only the last row moves, and it is a user row, so
       // no index into `items` shifts.
       if (s.awaitingTurn && last?.kind === "user" && !toriNote(last.blocks) && toriNote(ev.blocks)) {
-        s.items.splice(s.items.length - 1, 0, { kind: "user", id: nextId(s, "user"), blocks: ev.blocks, steer: false });
+        s.items.splice(s.items.length - 1, 0, {
+          kind: "user",
+          id: nextId(s, "user"),
+          blocks: ev.blocks,
+          steer: false,
+          at: ev.at,
+        });
         return;
       }
       // A user turn the panel did not send. Deliberately does **not** touch the
@@ -1408,7 +1424,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       // as busy with nothing running.
       // Never a steer: the wire frame carries no such distinction, so a replayed
       // steer reads as an ordinary message rather than being guessed at.
-      push(s, { kind: "user", id: nextId(s, "user"), blocks: ev.blocks, steer: false });
+      push(s, { kind: "user", id: nextId(s, "user"), blocks: ev.blocks, steer: false, at: ev.at });
       return;
     }
     case "compacted": {
@@ -1499,7 +1515,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       return;
     }
     case "textDelta":
-      appendText(s, ev.turnId, ev.text, false, ev.agentId);
+      appendText(s, ev.turnId, ev.text, false, ev.agentId, ev.at);
       return;
     case "thinkingDelta":
       appendText(s, ev.turnId, ev.text, true, ev.agentId);
@@ -1789,7 +1805,7 @@ export function pushNotice(s: ChatState, text: string, level: NoticeItem["level"
 /** Record what the user actually sent, so their turn appears immediately rather
  *  than only once the child echoes it back, and mark the turn as in flight. */
 export function pushUserTurn(s: ChatState, blocks: ContentBlock[]) {
-  push(s, { kind: "user", id: nextId(s, "user"), blocks, steer: false });
+  push(s, { kind: "user", id: nextId(s, "user"), blocks, steer: false, at: Date.now() });
   s.awaitingTurn = true;
   s.limitStop = null;
   // Stamped here as well as in `applyEvent`: this is the frame that starts the
@@ -1806,7 +1822,7 @@ export function pushUserTurn(s: ChatState, blocks: ContentBlock[]) {
  * turn already started, and a steer does not open a second one.
  */
 export function pushSteer(s: ChatState, blocks: ContentBlock[]) {
-  push(s, { kind: "user", id: nextId(s, "steer"), blocks, steer: true });
+  push(s, { kind: "user", id: nextId(s, "steer"), blocks, steer: true, at: Date.now() });
   s.lastFrameAt = Date.now();
 }
 

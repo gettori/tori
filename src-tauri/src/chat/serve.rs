@@ -358,6 +358,7 @@ mod tests {
             turn_id: turn.into(),
             text: t.into(),
             agent_id: None,
+            at: None,
         }
     }
 

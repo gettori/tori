@@ -1767,6 +1767,7 @@ mod tests {
             session_id: "s1".into(),
             turn_id: turn.into(),
             blocks: Vec::new(),
+            at: None,
         }
     }
 
@@ -2133,6 +2134,7 @@ mod tests {
                 turn_id: reply.clone(),
                 text: "ok".into(),
                 agent_id: None,
+                at: None,
             },
         ];
         if edit {
@@ -2309,6 +2311,7 @@ mod tests {
             turn_id: turn.into(),
             text: "ok".into(),
             agent_id: None,
+            at: None,
         };
         let mut events = vec![user("h1"), reply("h2")];
         events.push(started("e1", "h3", ToolKind::Edit, "Edit", json!({})));

@@ -3636,12 +3636,14 @@ mod tests {
                 blocks: vec![ContentBlock::Text {
                     text: "Fix the login redirect".into(),
                 }],
+                at: None,
             },
             ChatEvent::TextDelta {
                 session_id: "old".into(),
                 turn_id: "t2".into(),
                 text: "Redirect fixed, tests next.".into(),
                 agent_id: None,
+                at: None,
             },
         ];
         let handed = crate::chat::model::RefTarget::Session {
@@ -3670,6 +3672,7 @@ mod tests {
             session_id: "old".into(),
             turn_id: "t1".into(),
             blocks: vec![ContentBlock::Text { text: long }],
+            at: None,
         }];
         let cut = handoff_brief(&handed, &events, &[], &check, None);
         assert!(cut.contains(" [cut]") && !cut.contains("Note from"));
@@ -4217,6 +4220,7 @@ mod tests {
             turn_id: turn.into(),
             text: text.into(),
             agent_id: agent_id.map(String::from),
+            at: None,
         }
     }
 
@@ -4853,6 +4857,7 @@ mod tests {
                     session_id: "s1".into(),
                     turn_id: "t1".into(),
                     blocks: vec![crate::chat::model::ContentBlock::Text { text: t.to_string() }],
+                    at: None,
                 })
                 .unwrap()
             })

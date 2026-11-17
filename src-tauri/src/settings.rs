@@ -399,6 +399,9 @@ pub struct ChatDefaults {
     /// The plan card above the composer.
     #[serde(default = "yes")]
     pub show_plan: bool,
+    /// Which transcript rows show the time they were sent or landed.
+    #[serde(default)]
+    pub timestamps: Timestamps,
     /// Read by the webview only, kept here so a save does not drop it.
     #[serde(default)]
     pub resume_at_reset: bool,
@@ -413,6 +416,16 @@ pub struct ChatDefaults {
     /// to still have running.
     #[serde(default = "default_max_concurrent_chats")]
     pub max_concurrent_chats: u32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum Timestamps {
+    Off,
+    #[default]
+    Prompts,
+    Replies,
+    Both,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -452,6 +465,7 @@ impl Default for ChatDefaults {
             attach_long_pastes: true,
             show_read_aloud: true,
             show_plan: true,
+            timestamps: Timestamps::default(),
             resume_at_reset: false,
             max_concurrent_chats: default_max_concurrent_chats(),
         }
@@ -2192,6 +2206,7 @@ mod tests {
                 attach_long_pastes: false,
                 show_read_aloud: false,
                 show_plan: false,
+                timestamps: Timestamps::Replies,
                 resume_at_reset: true,
                 max_concurrent_chats: 9,
             },
