@@ -1315,117 +1315,6 @@ fn range_diff_one(
     Ok((files, diff))
 }
 
-fn tree_has_file(repo: &str, tree: &str, file: &str) -> Result<bool, String> {
-    let out = crate::exec::git_in(repo)
-        .args(["ls-tree", "--name-only", tree, "--", file])
-        .output()
-        .map_err(|e| e.to_string())?;
-    Ok(out.status.success() && !String::from_utf8_lossy(&out.stdout).trim().is_empty())
-}
-
-/// Whether reverting `file` for this turn would undo a change this session
-/// never established it made: the turn is graded, and the file is not among the
-/// paths it reported. False for an unmeasured turn, which has no attribution to
-/// contradict.
-fn is_unattributed(repo: &str, session_id: &str, prompt_ts: u64, file: &str) -> bool {
-    let rec = read_touched(session_id, prompt_ts);
-    if attribution_state(rec.as_ref()) == AttributionState::Unmeasured {
-        return false;
-    }
-    !rec.iter()
-        .flat_map(|r| r.files.iter())
-        .filter_map(|p| relative_to(repo, p))
-        .any(|p| p == file)
-}
-
-/// Revert one file to its state *before* the turn starting at `prompt_ts`:
-/// edited -> restore the pre-turn blob; created during the turn -> delete it;
-/// deleted during the turn -> recreate it from the pre-turn blob. Returns
-/// which action was taken ("restored" | "deleted" | "recreated").
-///
-/// **Refuses an unattributed file unless `force`.** On a partial turn the list
-/// includes changes no session claims, on the reasoning that this session's own
-/// shell write is the likeliest author - likeliest, not established. If the
-/// author was in fact a live agent in the same folder, reverting undoes work in
-/// flight, and the backstop restores the bytes but not that agent's belief
-/// about them. So the default is to refuse and name the file; `force` is the
-/// separate per-file confirmation the caller collects.
-#[tauri::command]
-pub async fn checkpoint_revert_file(
-    repo_path: String,
-    session_id: String,
-    prompt_ts: u64,
-    file: String,
-    force: Option<bool>,
-) -> Result<String, String> {
-    crate::exec::git_write("checkpoint_revert_file", repo_path.clone(), move || {
-        checkpoint_revert_file_body(repo_path, session_id, prompt_ts, file, force)
-    })
-    .await
-}
-
-pub(crate) fn checkpoint_revert_file_body(
-    repo_path: String,
-    session_id: String,
-    prompt_ts: u64,
-    file: String,
-    force: Option<bool>,
-) -> Result<String, String> {
-    let Some(roots) = worktree_members(&repo_path) else {
-        return revert_file_one(repo_path, session_id, prompt_ts, file, force);
-    };
-    let (root, rel) = in_member(&roots, &file)?;
-    let lock = crate::exec::repo_lock(&root);
-    let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    revert_file_one(root, session_id, prompt_ts, rel, force)
-}
-
-fn revert_file_one(
-    repo_path: String,
-    session_id: String,
-    prompt_ts: u64,
-    file: String,
-    force: Option<bool>,
-) -> Result<String, String> {
-    if !force.unwrap_or(false) && is_unattributed(&repo_path, &session_id, prompt_ts, &file) {
-        return Err(format!(
-            "\"{file}\" changed during this turn, but nothing recorded which session wrote it. Reverting it may undo another agent's work in this folder. Confirm this file on its own to revert it anyway."
-        ));
-    }
-    let checkpoints = list_checkpoints(&repo_path, &session_id);
-    let before = tree_at_or_before(&checkpoints, prompt_ts);
-    let after = tree_after(&repo_path, &session_id, &checkpoints, prompt_ts)?;
-    let existed_before = tree_has_file(&repo_path, &before, &file)?;
-    let exists_after = tree_has_file(&repo_path, &after, &file)?;
-    let abs = Path::new(&repo_path).join(&file);
-
-    if !existed_before && !exists_after {
-        return Err("This file is not part of this turn's checkpoint.".into());
-    }
-    if !existed_before && exists_after {
-        // Created during the turn: undo the creation.
-        std::fs::remove_file(&abs).map_err(|e| e.to_string())?;
-        return Ok("deleted".into());
-    }
-    // Edited, or deleted during the turn: restore the pre-turn blob.
-    let out = crate::exec::git_in(&repo_path)
-        .args(["show", &format!("{before}:{file}")])
-        .output()
-        .map_err(|e| e.to_string())?;
-    if !out.status.success() {
-        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
-    }
-    if let Some(parent) = abs.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    std::fs::write(&abs, &out.stdout).map_err(|e| e.to_string())?;
-    Ok(if exists_after {
-        "restored".into()
-    } else {
-        "recreated".into()
-    })
-}
-
 #[derive(Serialize, Clone, PartialEq, Debug)]
 pub struct RevertOutcome {
     /// The pre-revert snapshot's timestamp, so the caller can name it in the
@@ -1558,8 +1447,7 @@ fn write_backstop(
 ///
 /// Scoping to the recorded set also means a partial turn's **unattributed**
 /// candidates are left on disk: they are listed in `checkpoint_turn_files` so
-/// the caller can name them, and reverted only one at a time through
-/// `checkpoint_revert_file`'s `force`, never in bulk here.
+/// the caller can name them, and never reverted here.
 pub async fn checkpoint_revert_tree(
     repo_path: String,
     session_id: String,
@@ -1745,6 +1633,14 @@ mod tests {
     use std::process::Command;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn tree_has_file(repo: &str, tree: &str, file: &str) -> Result<bool, String> {
+        let out = crate::exec::git_in(repo)
+            .args(["ls-tree", "--name-only", tree, "--", file])
+            .output()
+            .map_err(|e| e.to_string())?;
+        Ok(out.status.success() && !String::from_utf8_lossy(&out.stdout).trim().is_empty())
+    }
 
     fn git(dir: &Path, args: &[&str]) {
         let out = Command::new("git")
@@ -2053,33 +1949,6 @@ mod tests {
             dir.join("who-wrote-this.txt").exists(),
             "an unowned change may be a live agent's; the backstop restores bytes, not its context"
         );
-
-        cleanup(&dir, &sid);
-    }
-
-    /// The per-file revert refuses the same file, and takes it only when the
-    /// caller answers for that file specifically.
-    #[test]
-    fn a_file_revert_refuses_an_unattributed_file_until_it_is_forced() {
-        let (dir, sid) = tmp_repo();
-        let repo = dir.to_string_lossy().into_owned();
-        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
-
-        std::fs::write(dir.join("who-wrote-this.txt"), "nobody claims this").unwrap();
-        checkpoint_note_touched(sid.clone(), 100, "Bash".into(), vec![]).unwrap();
-
-        let refused = checkpoint_revert_file_body(repo.clone(), sid.clone(), 100, "who-wrote-this.txt".into(), None);
-        assert!(
-            refused.unwrap_err().contains("who-wrote-this.txt"),
-            "the refusal names the file"
-        );
-        assert!(dir.join("who-wrote-this.txt").exists());
-
-        let forced =
-            checkpoint_revert_file_body(repo.clone(), sid.clone(), 100, "who-wrote-this.txt".into(), Some(true))
-                .unwrap();
-        assert_eq!(forced, "deleted");
-        assert!(!dir.join("who-wrote-this.txt").exists());
 
         cleanup(&dir, &sid);
     }
@@ -2412,23 +2281,6 @@ mod tests {
         cleanup(&dir, &sid);
     }
 
-    #[test]
-    fn revert_edited_file_restores_pre_turn_content_only() {
-        let (dir, sid) = tmp_repo();
-        let repo = dir.to_string_lossy().into_owned();
-        std::fs::write(dir.join("a.txt"), "before").unwrap();
-        std::fs::write(dir.join("untouched.txt"), "stays").unwrap();
-        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
-        std::fs::write(dir.join("a.txt"), "after").unwrap();
-        checkpoint_snapshot_body(sid.clone(), repo.clone(), 200).unwrap();
-
-        let action = checkpoint_revert_file_body(repo.clone(), sid.clone(), 100, "a.txt".into(), None).unwrap();
-        assert_eq!(action, "restored");
-        assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "before");
-        assert_eq!(std::fs::read_to_string(dir.join("untouched.txt")).unwrap(), "stays");
-        cleanup(&dir, &sid);
-    }
-
     /// The blast radius the whole-tree snapshot used to have. Reverting session
     /// A's turn must leave session B's concurrent edits to *other* files exactly
     /// where they are - the snapshot spans the worktree, so without scoping the
@@ -2586,38 +2438,6 @@ mod tests {
 
         let now = write_tree_scratch(&repo, &checkpoint_index_path(&sid, &repo)).unwrap();
         assert_eq!(now, target);
-        cleanup(&dir, &sid);
-    }
-
-    #[test]
-    fn revert_created_file_deletes_it() {
-        let (dir, sid) = tmp_repo();
-        let repo = dir.to_string_lossy().into_owned();
-        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
-        std::fs::write(dir.join("new_file.txt"), "created this turn").unwrap();
-        checkpoint_snapshot_body(sid.clone(), repo.clone(), 200).unwrap();
-
-        let action = checkpoint_revert_file_body(repo.clone(), sid.clone(), 100, "new_file.txt".into(), None).unwrap();
-        assert_eq!(action, "deleted");
-        assert!(!dir.join("new_file.txt").exists());
-        cleanup(&dir, &sid);
-    }
-
-    #[test]
-    fn revert_deleted_file_recreates_it() {
-        let (dir, sid) = tmp_repo();
-        let repo = dir.to_string_lossy().into_owned();
-        std::fs::write(dir.join("gone.txt"), "will be deleted").unwrap();
-        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
-        std::fs::remove_file(dir.join("gone.txt")).unwrap();
-        checkpoint_snapshot_body(sid.clone(), repo.clone(), 200).unwrap();
-
-        let action = checkpoint_revert_file_body(repo.clone(), sid.clone(), 100, "gone.txt".into(), None).unwrap();
-        assert_eq!(action, "recreated");
-        assert_eq!(
-            std::fs::read_to_string(dir.join("gone.txt")).unwrap(),
-            "will be deleted"
-        );
         cleanup(&dir, &sid);
     }
 
