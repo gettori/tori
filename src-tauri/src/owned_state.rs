@@ -143,7 +143,7 @@ mod tests {
     fn state_stores_replace_their_files_in_one_step() {
         // Checkpoint restores put the user's own files back in their worktree,
         // where a rename would break hard links and swap the inode an editor has open.
-        let allowed = [("checkpoint.rs", 3)];
+        let allowed = [("checkpoint.rs", 2)];
         let stores = [
             "settings.rs",
             "backstop.rs",
