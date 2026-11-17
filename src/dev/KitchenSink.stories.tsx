@@ -178,7 +178,7 @@ function PromptsSection() {
   return (
     <Section
       heading="Prompts"
-      note="A permission prompt on an edit and on a long command, then two approval asks, a long draft and a short one. A pressed option holds a neutral fill until the ask clears; a failed answer gives the buttons back."
+      note="A permission prompt on an edit and on a long command, then two approval asks, a long draft and a short one. A pressed option holds the brand fill until the ask clears; a failed answer gives the buttons back."
     >
       <div style={row}>
         <Button onClick={() => prompts.askAgain()}>Ask again</Button>

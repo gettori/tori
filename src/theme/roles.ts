@@ -282,6 +282,8 @@ export const ROLE_BY_CSS_VAR = new Map(ROLES.map((r) => [r.cssVar, r]));
 export function buildRoleValues(palette: Palette): Record<string, string> {
   const p: PaletteColors = palette.colors;
   const v = variants(palette.appearance);
+  // Dark washes its hairline to 8%; light uses the stop solid.
+  const hairline = alpha(p.borderTint, v({ dark: 0.08, light: 1 }));
   const stack = (layers: [y: number, blur: number, spread: number, a: number][]) =>
     layers.map(([y, blur, spread, a]) => `0 ${y}px ${blur}px ${spread}px ${alpha(p.shadowTint, a)}`).join(", ");
 
@@ -304,8 +306,7 @@ export function buildRoleValues(palette: Palette): Record<string, string> {
     "canvas.head": p.head,
     "canvas.input": p.input,
 
-    // Dark washes its hairline to 8%; light uses the stop solid.
-    "border.default": alpha(p.borderTint, v({ dark: 0.08, light: 1 })),
+    "border.default": hairline,
     "border.strong": alpha(p.lineTint, 0.13),
     "border.rail": p.rail,
 
@@ -431,23 +432,11 @@ export function buildRoleValues(palette: Palette): Record<string, string> {
     // `canvas-card`, so nothing stopped them drifting and neither could be
     // restyled without moving the brand everywhere else too.
     //
-    // The fill is a warmer step ABOVE the chat pane, which is itself `card`, so
-    // until now a blocking card was identified by a gold hairline and nothing
-    // else. Mixed and opaque for the reason `brand.wash` documents: it has to
-    // read as a surface with elevation, and an alpha fill doubles wherever two
-    // of them touch.
-    //
-    // The amounts are a CEILING the palettes set, not a look that was chosen.
-    // Every step off `card` moves the surface toward the text drawn on it, and
-    // the card is full of recessive labels (a hint, a preview, "from a
-    // subagent"). Measured across all five bundled palettes: past 0.04 dark,
-    // `fg.subtle` falls under its 3.0 floor on Tori Dark, and past 0.07 light,
-    // `fg.muted` falls under 4.5 on Rose Pine Dawn. So the fill yields and the
-    // hierarchy inside the card stays. The gate holds the line from here:
-    // `fg.default`, `fg.muted` and `fg.subtle` all name this surface now, which
-    // they did not while it was `canvas.card` under another name.
-    "blocking.surface": mix(p.card, p.brandTint, v({ dark: 0.04, light: 0.07 })),
-    "blocking.border": p.brand,
+    // Fill and frame are the approval ask card's: the pane and a plain
+    // hairline. The gold "Waiting for approval" and the primary button already
+    // say "waiting"; a tint or a gold frame on top of them reads as an alarm.
+    "blocking.surface": p.card,
+    "blocking.border": hairline,
     "blocking.fg": p.text,
     // The one coloured word inside: inline code in the prompt's question, the
     // card's own emphasis. `brand.strong`, not `brand.default`, because it is

@@ -59,11 +59,11 @@ function recoveredPicks(record: string, question: ChatQuestion): string[] | null
  * none either. The only things that end an unanswered question are the user and
  * an explicit withdrawal, so a timer here would be an invention.
  *
- * **Three lives, told by the frame and a chip.** Active keeps the blocking
- * gold. Answered drops to the neutral border and shows the answer the way it
+ * **Three lives, told by a chip.** Active wears the blocking tier. Answered
+ * hands it back and shows the answer the way it
  * was given: the sent picks selected on the controls themselves, the free-text
  * box only where the answer used it. Closed without an answer says "Not
- * answered" and dims. Gold stays reserved for the card still waiting.
+ * answered" and dims. The tier stays reserved for the card still waiting.
  *
  * **Every question gets a free-text box while the form is open.** The tool
  * always offers Other, and a box that has to be revealed reads as an escape
