@@ -22,6 +22,27 @@
   height: auto;
 }
 
+/* Diamonds and the other drawn shapes are paths, with no corner to round. */
+.diagram :global(.node rect),
+.diagram :global(.cluster rect) {
+  rx: var(--tori-radius-md);
+  ry: var(--tori-radius-md);
+}
+
+.diagram :global(.edgeLabel foreignObject) {
+  overflow: visible;
+}
+
+/* Mermaid sizes the label's box to the bare text, so a negative margin pays the
+   padding back; !important beats its id-scoped `p { margin: 0 }`. A transform
+   or position instead makes WebKit paint the label at the diagram's corner. */
+.diagram :global(.edgeLabel p:not(:empty)) {
+  margin: 0 -6px !important;
+  padding: 0 6px;
+  border-radius: var(--tori-radius-sm);
+  box-shadow: 0 0 0 1px var(--border-strong);
+}
+
 /* The source holding a diagram's place until the drawing lands. */
 .pending {
   visibility: hidden;
