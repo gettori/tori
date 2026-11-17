@@ -41,7 +41,7 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 - A chat opened from the Chats section keeps its tab: it has no close button, stays first in the tab bar and can't be moved to another pane. Forks opened beside it still close as usual
 - Settings > Chat: new **Show the read aloud button** and **Show the plan** switches, both on by default
 - Settings > Chat: new **Timestamps** setting to show when a prompt was sent and a reply finished (Prompts, Replies, Prompts and replies, Off). Defaults to Prompts. Times read like "Today at 2:32 PM", hover for the full date
-- macOS 26.1117.0-beta ships; Android 26.1117.0-beta ships; browser extension 26.1117.0 ships, rolling out on the Chrome Web Store; push relay unchanged at 26.1030.0-beta.
+- macOS 26.1117.0-beta ships; Android 26.1117.0-beta ships; browser extension unchanged at 26.1029.0; push relay unchanged at 26.1030.0-beta.
 
 ## 26.1112.0-beta
 
