@@ -2678,7 +2678,7 @@ export default function ChatView(props: {
           onOpenWorktree={(folder, session) => emitWith<NavTarget>(NAVIGATE, { folder, session: session ?? undefined })}
           onRewind={onRewind}
           onRead={
-            LOCAL_SPEECH
+            LOCAL_SPEECH && settings.chatDefaults.showReadAloud
               ? (body, itemId) => void read(speakableChunks(body), `${props.sessionId}:${itemId}`)
               : undefined
           }
@@ -2733,7 +2733,9 @@ export default function ChatView(props: {
       {/* Last in the stack, on the input's own edge: the plan is the turn's
           running progress, folded to a count by default and opened on demand,
           and what waits on the user (asks, lanes) stays above it. */}
-      <PlanCard items={state.plan} stale={planStale(state)} />
+      <Show when={settings.chatDefaults.showPlan}>
+        <PlanCard items={state.plan} stale={planStale(state)} />
+      </Show>
 
       <Show
         when={!locked()}
