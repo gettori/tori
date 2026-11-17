@@ -104,10 +104,10 @@
   color: var(--fg-muted);
 }
 .pr_ready {
-  color: var(--accent-fg);
+  color: var(--fg-default);
 }
 .pr_commented {
-  color: var(--fg-default);
+  color: var(--accent-fg);
 }
 .pr_changesRequested,
 .pr_reReview,
