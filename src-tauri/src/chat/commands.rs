@@ -899,54 +899,6 @@ pub async fn chat_set_model(
     state.0.set_model(&session_id, &model, effort)
 }
 
-/// The before-state of the files a tool call wrote, for a card the user
-/// expanded. Read back out of the object store on demand, which is why only the
-/// sha was ever cached.
-///
-/// `None` for a call that was never captured or has been evicted: the card says
-/// the diff is unavailable and offers the file, rather than erroring.
-#[tauri::command]
-pub async fn chat_tool_before_state(
-    state: State<'_, ChatState>,
-    session_id: String,
-    tool_use_id: String,
-    cwd: String,
-) -> Result<serde_json::Value, String> {
-    state.0.call(
-        "tool_before_state",
-        serde_json::json!({ "session_id": session_id, "tool_use_id": tool_use_id, "cwd": cwd }),
-    )
-}
-
-pub(crate) fn tool_before_state(
-    host: &ChatHost,
-    session_id: &str,
-    tool_use_id: &str,
-    cwd: &str,
-) -> Result<Option<Vec<BeforeContent>>, String> {
-    let Some(cache) = host.snapshots(session_id) else {
-        return Ok(None);
-    };
-    let captured = {
-        let guard = cache.lock().map_err(|e| e.to_string())?;
-        guard.get(tool_use_id).cloned()
-    };
-    let repo = PathBuf::from(cwd);
-    Ok(captured.map(|entries| {
-        entries
-            .into_iter()
-            .map(|c| BeforeContent {
-                content: match &c.before {
-                    snapshot::BeforeState::Blob { sha } => snapshot::read_back(&repo, sha),
-                    _ => None,
-                },
-                path: c.path,
-                before: c.before,
-            })
-            .collect()
-    }))
-}
-
 /// One file a tool call wrote, as a diff the card can render.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -962,10 +914,8 @@ pub struct ToolDiff {
 
 /// The diffs for one tool call's writes, computed on demand when a card expands.
 ///
-/// Separate from `chat_tool_before_state`, which hands back raw content: a card
-/// wants hunks, and computing them in Rust keeps the object store, the context
-/// width and the hunk parser in one place instead of reimplementing git's
-/// grouping in TypeScript.
+/// Computed in Rust so the object store, the context width and the hunk parser
+/// stay in one place instead of reimplementing git's grouping in TypeScript.
 #[tauri::command]
 pub async fn chat_tool_diff(
     state: State<'_, ChatState>,
@@ -1137,17 +1087,6 @@ pub(crate) fn revert_tool_hunk(
         .map(|c| c.before)
         .ok_or_else(|| "No before-state was captured for this call, so there is nothing to revert to.".to_string())?;
     snapshot::revert_hunk(&PathBuf::from(cwd), &before, path, hunk_index, fingerprint).map(str::to_string)
-}
-
-/// One file's before-state, resolved to content where there is content to
-/// resolve. The `before` discriminant is kept so a creation renders as a
-/// creation rather than as an empty file.
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BeforeContent {
-    pub path: String,
-    pub before: snapshot::BeforeState,
-    pub content: Option<String>,
 }
 
 #[tauri::command]
