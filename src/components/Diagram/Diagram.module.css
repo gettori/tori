@@ -9,6 +9,9 @@
   border: 1px solid var(--border-default);
   border-radius: var(--tori-radius-md);
   background: var(--canvas-default);
+  background-image: radial-gradient(var(--border-strong) 1px, transparent 1.25px);
+  background-size: calc(22px * var(--ui-scale)) calc(22px * var(--ui-scale));
+  background-position: center;
   overflow-x: auto;
 }
 

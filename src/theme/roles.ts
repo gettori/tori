@@ -282,6 +282,8 @@ export const ROLE_BY_CSS_VAR = new Map(ROLES.map((r) => [r.cssVar, r]));
 export function buildRoleValues(palette: Palette): Record<string, string> {
   const p: PaletteColors = palette.colors;
   const v = variants(palette.appearance);
+  const stack = (layers: [y: number, blur: number, spread: number, a: number][]) =>
+    layers.map(([y, blur, spread, a]) => `0 ${y}px ${blur}px ${spread}px ${alpha(p.shadowTint, a)}`).join(", ");
 
   return {
     "fg.default": p.text,
@@ -472,10 +474,36 @@ export function buildRoleValues(palette: Palette): Record<string, string> {
     "ansi.brightWhite": p.ansiBrightWhite,
 
     // Light elevation is softer AND thinner: a dark ring reads as grime on a
-    // bright surface.
-    "shadow.sm": `0 1px 2px ${alpha(p.shadowTint, v({ dark: 0.4, light: 0.08 }))}`,
-    "shadow.md": `0 4px 12px ${alpha(p.shadowTint, v({ dark: 0.45, light: 0.12 }))}`,
-    "shadow.lg": `0 12px 32px ${alpha(p.shadowTint, v({ dark: 0.55, light: 0.18 }))}`,
+    // bright surface. Small stays contact only: switch and slider knobs wear
+    // it, and a far layer smudges under a knob that size.
+    "shadow.sm": v({
+      dark: `0 1px 2px ${alpha(p.shadowTint, 0.4)}`,
+      light: stack([
+        [2.3, 5.8, 0, 0.02],
+        [1.2, 3.1, 0, 0.03],
+        [0.5, 1.3, 0, 0.05],
+      ]),
+    }),
+    "shadow.md": v({
+      dark: `0 4px 12px ${alpha(p.shadowTint, 0.45)}`,
+      light: stack([
+        [17.5, 23.4, 0, 0.039],
+        [9.4, 12.5, 0, 0.031],
+        [5.25, 7, 0, 0.02],
+        [2.8, 3.7, -2, 0.012],
+        [1.2, 1.5, 0, 0.012],
+      ]),
+    }),
+    "shadow.lg": v({
+      dark: `0 12px 32px ${alpha(p.shadowTint, 0.55)}`,
+      light: stack([
+        [25, 50, 0, 0.051],
+        [12, 24, 0, 0.039],
+        [6, 12, 0, 0.031],
+        [3, 6, 0, 0.02],
+        [1.5, 3, 0, 0.02],
+      ]),
+    }),
 
     // The same hue as a bare channel triple, so the shell can mix its own
     // alpha. A space that carries a colour overrides the TRIPLE and inherits
