@@ -680,7 +680,8 @@ fn touch_roots(entries: &mut Vec<WatchEntry>, roots: &[String], cap: usize) -> V
 /// Directories whose churn must never reach the editor panes: VCS internals and
 /// build output. Terminal-driven git/build/install touch these constantly and a
 /// match here means "skip" so follow-mode and the git gutter only react to real
-/// source edits. (Best-effort gitignore beyond this explicit list is deferred.)
+/// source edits. The repo's own ignore rules are applied later, once per burst
+/// in the debounce thread; this list is the cheap cut at the handler.
 /// `.tori-attempts` is here for a different reason than the rest: it is not
 /// build output, it is several whole worktrees. Creating three attempts writes
 /// three checkouts plus three cloned dependency trees inside the project, and
@@ -911,7 +912,15 @@ fn install_watcher(
                     },
                 );
             }
-            let paths: Vec<String> = rest.into_iter().map(|p| p.to_string_lossy().into_owned()).collect();
+            // Build output the list in `IGNORED_DIRS` does not name. One
+            // `check-ignore` per burst, here rather than in the handler, where
+            // a spawn per event would stall the watcher on exactly the bursts
+            // this is for: a Storybook build wrote 1,300 files under
+            // `storybook-static/` and every one reached the tree, the git join
+            // and the checkpoints.
+            let candidates: Vec<String> = rest.into_iter().map(|p| p.to_string_lossy().into_owned()).collect();
+            let ignored = gitignored_paths(&emit_root, candidates.iter().map(String::as_str));
+            let paths: Vec<String> = candidates.into_iter().filter(|p| !ignored.contains(p)).collect();
             if !paths.is_empty() {
                 let _ = app_handle.emit(
                     "fs://changed",
