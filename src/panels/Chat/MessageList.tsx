@@ -468,10 +468,25 @@ export default function MessageList(props: {
     return lines;
   });
 
+  // The rows the turn marks are folded from: the window, plus the rest of the
+  // turn it opens in. A mark hangs on a turn's head, and only a shown turn has
+  // one, so the transcript above the window has nothing to say. A window that
+  // opens mid-turn still needs that turn's earlier cards, because they are what
+  // its head is there to tell about.
+  const marked = createMemo(() => {
+    const rows = shown();
+    const items = props.items;
+    const start = items.length - rows.length;
+    let from = start;
+    const turn = rows.length ? turnIdOf(rows[0]) : null;
+    while (turn && from > 0 && turnIdOf(items[from - 1]) === turn) from--;
+    return from === start ? rows : items.slice(from);
+  });
+
   // Said at the head of the turn, not only on the card that made the read: a
   // card can sit folded inside a run of calls nobody opens.
-  const secrets = createMemo(() => (props.showSecrets === false ? new Map() : turnSecrets(props.items)));
-  const secretRows = createMemo(() => (props.showSecrets === false ? new Map() : turnSecretRows(props.items)));
+  const secrets = createMemo(() => (props.showSecrets === false ? new Map() : turnSecrets(marked())));
+  const secretRows = createMemo(() => (props.showSecrets === false ? new Map() : turnSecretRows(marked())));
 
   // The call "Show call" asked for. Its card opens, and so does a shut run
   // holding it, since a card inside one is not drawn.
@@ -551,7 +566,7 @@ export default function MessageList(props: {
       </>
     );
   };
-  const blindEdits = createMemo(() => (props.showBlindEdits === false ? new Map() : turnBlindEdits(props.items)));
+  const blindEdits = createMemo(() => (props.showBlindEdits === false ? new Map() : turnBlindEdits(marked())));
 
   // Zero height: it exists to carry the turn id, not to take up room. The
   // negative bottom margin cancels the flex gap it would otherwise open.
