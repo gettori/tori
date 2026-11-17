@@ -10,6 +10,39 @@ matching section here fails the release rather than publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.1117.0-beta
+
+- Each account in Settings > Hosts can have a commit author. **Set author** fills it from the host (the noreply address on github.com and gitlab.com). Repos on the account commit as it in Tori, terminals, your editor and agents.
+- Each account can have an **SSH key** and a **Signing key**, chosen from `~/.ssh` and your ssh agent. The SSH key is used only for the account's host. **Test** tells you which login the key reaches.
+- Commits are signed with the account's signing key. If the key has a passphrase and isn't in your agent, Tori asks for it.
+- Project settings > Remote shows **Commits as**, with **Use**, **Use the repo's own** and **Remove it** when the account and the repo's own config disagree.
+- Cloning a repo whose host has two or more accounts shows an **Account** select, marking which accounts can read it. Over HTTPS it turns on Tori sign-in for that host and says so.
+- **Space settings** > General > **Git accounts** sets the account clones into that space start on.
+- A repo that still needs an account marks which accounts can read it, in the sidebar pick menu and in Project settings.
+- Removing an account that projects use lets you move each one to another account first, and shows who it will commit as.
+- With two or more accounts, the sidebar shows the account's avatar on each project row.
+- Tori's git now keeps your own `core.sshCommand` or `GIT_SSH_COMMAND`, and an SSH alias like `git@github-work:...` counts as the host it points to.
+- Menus, selects and popovers grow in from where they open. Buttons press in a little when clicked.
+- Checkbox ticks and radio dots scale in when you check them.
+- One highlight slides between rows in menus, selects, the `@` and `/` lists, the model picker, the omnibox and the sidebar, instead of each row lighting up on its own.
+- The send button fades to gold once you start typing. New attachments and queued messages pop in.
+- New transcript rows rise in as they arrive, the busy dots breathe while a turn runs, and code block buttons fade in on hover with a check after copy.
+- Permission prompts are a plain card with the answers in a footer. "Waiting for approval" stays gold. Questions from the agent lost the gold frame too.
+- Approval asks for opening or merging a PR are cards now, and the answer you press stays highlighted until the ask clears.
+- The selection toolbar is a rounded pill with icons.
+- Shadows in the light theme are softer.
+- Mermaid diagrams sit on a dot grid, with rounded boxes, edge labels in small chips and colours that follow the theme for every diagram kind.
+- A long chat no longer makes the whole app lag while its agent runs tools. Each tool call used to re-scan the entire transcript several times, so the cost grew with the length of the session.
+- Build output a project gitignores (a Storybook build, for example) no longer triggers file tree, git and checkpoint refreshes.
+- Setting Terminal font family to SF Mono in Settings > Appearance now sticks. Before, it went back to JetBrainsMono Nerd Font Mono the next time settings loaded.
+- When a backup can't be restored as a whole because the branch moved on since, the message now says to open a file from the backup and copy back what you need. It used to point at a one-file restore that didn't exist.
+- Removing a worktree now also deletes the backstops Tori saved for it, so they stop piling up in the repository.
+- Chats in the sidebar's Chats section show the agent's icon (Claude, Codex and so on) once the first message is sent
+- A chat opened from the Chats section keeps its tab: it has no close button, stays first in the tab bar and can't be moved to another pane. Forks opened beside it still close as usual
+- Settings > Chat: new **Show the read aloud button** and **Show the plan** switches, both on by default
+- Settings > Chat: new **Timestamps** setting to show when a prompt was sent and a reply finished (Prompts, Replies, Prompts and replies, Off). Defaults to Prompts. Times read like "Today at 2:32 PM", hover for the full date
+- macOS 26.1117.0-beta ships; Android 26.1117.0-beta ships; browser extension 26.1117.0 ships, rolling out on the Chrome Web Store; push relay unchanged at 26.1030.0-beta.
+
 ## 26.1112.0-beta
 
 - After a reload, opening a chat from the sidebar shows its tab again instead of the conversation with no tab
