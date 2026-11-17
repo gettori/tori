@@ -6,7 +6,6 @@
 
 use super::model::{AuthState, OrgAccess};
 use super::remote::{canonical_host, Remote};
-use super::token::Secret;
 use super::ForgeError;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -14,10 +13,6 @@ use std::path::PathBuf;
 
 pub const GITHUB_COM: &str = "github.com";
 pub const GITLAB_COM: &str = "gitlab.com";
-
-/// What the pre-accounts GitHub credential becomes. Fixed, so migrating again
-/// after a deleted accounts file updates this account instead of adding a twin.
-pub const MIGRATED_GITHUB_ID: &str = "github-com-migrated";
 
 const FILE_VERSION: u32 = 2;
 
@@ -135,10 +130,6 @@ pub struct AccountsFile {
     /// Keyed the way `remote::parse` spells a host.
     #[serde(default)]
     pub hosts: BTreeMap<String, HostRecord>,
-    /// The legacy GitHub token has been copied in. Without it, removing that
-    /// account would bring it back on the next launch.
-    #[serde(default)]
-    pub legacy_migrated: bool,
 }
 
 impl Default for AccountsFile {
@@ -146,7 +137,6 @@ impl Default for AccountsFile {
         Self {
             version: FILE_VERSION,
             hosts: BTreeMap::new(),
-            legacy_migrated: false,
         }
     }
 }
@@ -196,7 +186,7 @@ pub fn normalize_base_url(input: &str) -> Result<(String, String), ForgeError> {
 }
 
 /// The same login on a host updates that account instead of adding one, and a
-/// sign-in for an account with no login yet (the migrated one) adopts it.
+/// sign-in for an account with no login yet adopts it.
 pub fn add_account(
     file: &mut AccountsFile,
     provider: Provider,
@@ -206,8 +196,7 @@ pub fn add_account(
     source: Source,
     reauth: Option<&str>,
 ) -> Result<String, ForgeError> {
-    let mut taken: Vec<String> = all_accounts(file).map(|(_, a)| a.id.clone()).collect();
-    taken.push(MIGRATED_GITHUB_ID.to_string());
+    let taken: Vec<String> = all_accounts(file).map(|(_, a)| a.id.clone()).collect();
     if let Some(other) = file
         .hosts
         .get(host)
@@ -441,44 +430,6 @@ pub fn set_keys(
     account.ssh_public_key = ssh_public_key;
     account.signing_public_key = signing_public_key;
     Ok(true)
-}
-
-/// The old keychain entry is only read, never deleted, so a downgrade still
-/// signs in.
-pub fn migrate_legacy(
-    file: &mut AccountsFile,
-    load_legacy: impl FnOnce() -> Result<Option<String>, ForgeError>,
-    save: impl FnOnce(&str, &Secret) -> Result<(), ForgeError>,
-) -> Result<(), ForgeError> {
-    if file.legacy_migrated {
-        return Ok(());
-    }
-    let Some(token) = load_legacy()? else {
-        return Ok(());
-    };
-    save(MIGRATED_GITHUB_ID, &Secret::access(token))?;
-    let record = file.hosts.entry(GITHUB_COM.to_string()).or_default();
-    if !record.accounts.iter().any(|a| a.id == MIGRATED_GITHUB_ID) {
-        record.accounts.push(Account {
-            id: MIGRATED_GITHUB_ID.to_string(),
-            provider: Provider::Github,
-            base_url: format!("https://{GITHUB_COM}"),
-            login: None,
-            label: String::new(),
-            expires_at: None,
-            rejected_at: None,
-            scopes: None,
-            source: Source::default(),
-            org_access: Vec::new(),
-            commit_name: None,
-            commit_email: None,
-            ssh_public_key: None,
-            signing_public_key: None,
-            avatar_url: None,
-        });
-    }
-    file.legacy_migrated = true;
-    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -754,7 +705,6 @@ pub fn update<R>(change: impl FnOnce(&mut AccountsFile) -> Result<R, ForgeError>
 #[cfg(test)]
 mod tests {
     use super::super::remote;
-    use super::super::token::{self, tests::mock_entry_in};
     use super::*;
 
     const GH: &str = "https://github.com";
@@ -911,45 +861,6 @@ mod tests {
 
         assert_eq!(signed_in(&mut file, "skarif2"), id);
         assert_eq!(find(&file, &id).unwrap().1.rejected_at, None);
-    }
-
-    #[test]
-    fn the_legacy_token_becomes_one_github_account_and_stays_for_a_downgrade() {
-        let legacy = mock_entry_in("com.tori.forge.github.migration-test", "oauth");
-        token::save_to(&legacy, "gho_legacy").unwrap();
-        let store = |id: &str, secret: &Secret| {
-            token::save_secret_to(&mock_entry_in("com.tori.forge.migration-test", id), secret)
-        };
-        let read_legacy = || token::load_from(&legacy);
-
-        let mut file = AccountsFile::default();
-        migrate_legacy(&mut file, read_legacy, store).unwrap();
-        assert_eq!(file.hosts[GITHUB_COM].accounts.len(), 1);
-        let moved = mock_entry_in("com.tori.forge.migration-test", MIGRATED_GITHUB_ID);
-        assert_eq!(
-            token::load_secret_from(&moved).unwrap(),
-            Some(Secret::access("gho_legacy".into()))
-        );
-        let restored = super::super::auth::AuthStore::restored(
-            vec![super::super::auth::Restored {
-                id: MIGRATED_GITHUB_ID.into(),
-                token: Some("gho_legacy".into()),
-                login: None,
-                rejected: false,
-            }],
-            true,
-        );
-        assert!(restored.may_call(MIGRATED_GITHUB_ID), "comes up signed in");
-
-        let after_first = file.clone();
-        migrate_legacy(&mut file, || panic!("read once"), store).unwrap();
-        assert_eq!(file, after_first, "a second run adds nothing");
-        assert_eq!(token::load_from(&legacy).unwrap().as_deref(), Some("gho_legacy"));
-
-        // A deleted accounts file migrates again onto the same fixed id.
-        let mut fresh = AccountsFile::default();
-        migrate_legacy(&mut fresh, read_legacy, store).unwrap();
-        assert_eq!(fresh, after_first);
     }
 
     #[test]

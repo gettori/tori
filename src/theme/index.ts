@@ -15,39 +15,28 @@ export type { BundledTheme } from "./bundled";
 export { listUserThemes, reloadUserThemes } from "./userThemes";
 export type { UserTheme } from "./userThemes";
 
-// v2 because the cached token map is keyed by cssVar and Phase 4 renamed every
-// one of them. A v1 map is not stale data, it is data in a namespace nothing
-// reads: painting it would leave every current name unset, which is the flash
-// this cache exists to prevent. So the v1 map is discarded, never migrated.
-//
-// The *selection* is different. It holds only `{ kind, bundledId }`, neither of
-// which is a token name, so it survives the rename intact and is read once from
-// v1. That is what keeps the first boot after the upgrade correct: `kind` sets
-// data-theme, the token layer paints the right block, and the discarded map
-// costs nothing because tokens.css already carries those values.
+// v2 because the cached token map is keyed by cssVar, and Phase 4 renamed every
+// one of them. Renaming the keys again would throw away every install's cache.
 const LS_TOKENS = "tori.theme.v2"; // resolved { --var: value }, for FOUC-free boot
 const LS_SELECTED = "tori.theme.selected.v2";
-const LS_LEGACY = ["tori.theme.v1", "tori.theme.selected.v1"] as const;
 
 type Selected = { kind: Appearance | null; bundledId?: string };
 
 /** Just enough of `Storage` to read the cache. Named so the boot path can be
- *  tested without a DOM: vitest runs in node, and the v1 handoff is the one part
- *  of this file that has to be provably right on an upgrade. */
-export type CacheStore = Pick<Storage, "getItem" | "removeItem">;
+ *  tested without a DOM: vitest runs in node. */
+export type CacheStore = Pick<Storage, "getItem">;
 
 /** Pure core: what a boot should paint, given whatever is in storage. */
 export function readCache(store: CacheStore): { kind: Appearance | null; tokens: Record<string, string> } {
   let kind: Appearance | null = null;
   let tokens: Record<string, string> = {};
   try {
-    const raw = store.getItem(LS_SELECTED) ?? store.getItem(LS_LEGACY[1]);
+    const raw = store.getItem(LS_SELECTED);
     kind = (JSON.parse(raw || "null") as Selected | null)?.kind ?? null;
   } catch {
     // ignore
   }
   try {
-    // v2 only. A v1 map is keyed by names nothing reads any more.
     const cached: Record<string, string> = JSON.parse(store.getItem(LS_TOKENS) || "{}");
     // Filtered to the owned key set rather than trusted wholesale. These land as
     // inline props on <html>, which outrank every rule in the token layer, so a
@@ -61,16 +50,6 @@ export function readCache(store: CacheStore): { kind: Appearance | null; tokens:
     // ignore
   }
   return { kind, tokens };
-}
-
-/** Both v1 keys go once the selection has been read out of them. The next
- *  `persist()` writes the v2 pair, so this runs before any theme is applied. */
-export function dropLegacy(store: CacheStore) {
-  try {
-    for (const key of LS_LEGACY) store.removeItem(key);
-  } catch {
-    // ignore
-  }
 }
 
 function persist(sel: Selected, resolved: Record<string, string>) {
@@ -102,7 +81,6 @@ export function applyCachedTheme() {
   for (const [name, value] of Object.entries(tokens)) {
     if (value) style.setProperty(name, value);
   }
-  dropLegacy(localStorage);
 }
 
 /** A theme the picker can offer, from either source. `source` is `"bundled"` or

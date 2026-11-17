@@ -1964,8 +1964,7 @@ pub fn forge_reopen(project_path: String, number: u64) -> Result<(), ForgeErrorD
     Ok(landing(&c.repo, || attempt(&c, |f| f.reopen(&c.repo, number)))?)
 }
 
-/// Installs the keychain store, migrates the pre-accounts token, and restores
-/// every account's credential.
+/// Installs the keychain store and restores every account's credential.
 ///
 /// Failure is non-fatal and deliberately so: a keychain that will not open
 /// should leave Tori running signed-out, not stop it from starting, the same way
@@ -1976,9 +1975,6 @@ pub fn restore_at_startup(enabled: bool) {
         return;
     }
     if let Err(e) = accounts::update(|file| {
-        accounts::migrate_legacy(file, token::load_legacy, token::save_secret)?;
-        // After the migration, so the account it just wrote is read the same way
-        // as every other one.
         accounts::backfill_source(file, |id| token::load_secret(id).ok().flatten().map(|s| s.access_token));
         Ok(())
     }) {

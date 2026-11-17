@@ -1735,20 +1735,6 @@ pub async fn chat_orphans(state: State<'_, ChatState>) -> Result<Vec<Reaped>, St
     state.0.call_as("orphans", serde_json::json!({}))
 }
 
-/// Clear the rule store the retired gate left behind, and say what went.
-///
-/// Run from the frontend rather than from Tauri's `setup` for the same reason
-/// the reap above is pulled: nothing can be told to a webview that does not
-/// exist yet. Unlike the reap it needs no parking, because the sweep's own
-/// "once" is the disk - a second call finds nothing and answers `None`.
-///
-/// Late is fine. Nothing reads these files, which is the whole reason they are
-/// being removed, so there is no window in which their presence matters.
-#[tauri::command]
-pub async fn chat_retired_stores() -> Result<Option<super::retired::RetiredRuleStore>, String> {
-    Ok(super::retired::sweep_rule_store())
-}
-
 /// End a `claude` child left behind by a crashed Tori, so its session id becomes
 /// claimable again. Separate from `chat_close`, which only ever touches sessions
 /// this process owns.

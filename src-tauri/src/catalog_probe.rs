@@ -303,9 +303,6 @@ fn account_before_the_field() -> String {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelCatalog {
-    /// Aliased for the cache files written before the rename: a miss here reads
-    /// as a never-probed agent, quietly throwing away a real answer.
-    #[serde(alias = "harnessId")]
     pub agent_id: String,
     /// Which account answered. Half of this record's identity, because a
     /// catalogue is an account's answer and not an agent's: two profiles of one
