@@ -1,5 +1,5 @@
 import { Show, createSignal, createUniqueId, type Component, type JSX } from "solid-js";
-import { Check, ChevronDown, ChevronRight } from "lucide-solid";
+import { Check, ChevronDown } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import Dropdown from "../../components/Menu/Dropdown";
 import { MenuRow } from "../../components/Menu/rows";
@@ -288,19 +288,5 @@ export function PillToggle(props: {
       <Icon icon={props.on ? props.icon : props.iconOff} size={15} class={styles.pillIcon} />
       <Show when={props.label}>{(text) => <span class={styles.pillValue}>{text()}</span>}</Show>
     </Tooltip>
-  );
-}
-
-/** A row that leads to another page of the same menu, rather than choosing. */
-export function PickerMore(props: { label: string; onOpen: () => void }) {
-  return (
-    <MenuRow closeOnSelect={false} onClick={props.onOpen}>
-      <span class={styles.pickBody}>
-        <span class={styles.pickName}>{props.label}</span>
-      </span>
-      <span class={styles.pickInto} aria-hidden="true">
-        <Icon icon={ChevronRight} size={15} />
-      </span>
-    </MenuRow>
   );
 }

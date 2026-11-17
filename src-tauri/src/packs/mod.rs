@@ -338,15 +338,6 @@ pub fn reload(kind: Kind) {
 
 pub const CHANGED: &str = "packs:changed";
 
-/// Reload one kind and tell the frontend, which asks again for what it shows.
-/// A running language server or debugger keeps the config it started with.
-#[tauri::command(async)]
-pub fn packs_reload(app: tauri::AppHandle, kind: Kind) {
-    use tauri::Emitter;
-    reload(kind);
-    let _ = app.emit(CHANGED, kind);
-}
-
 /// Delete a pack Tori recorded, Tori's own copy of its server or adapter, and
 /// the record, then reload its kind. A file Tori never recorded is the user's
 /// own, and is theirs to delete.

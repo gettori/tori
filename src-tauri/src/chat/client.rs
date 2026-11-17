@@ -212,10 +212,6 @@ impl Chats {
         )
     }
 
-    pub fn grant_dirs(&self, session_id: &str, dirs: &[String]) -> Result<(), String> {
-        call("grant_dirs", json!({ "session_id": session_id, "dirs": dirs }))
-    }
-
     pub fn answer_permission(
         &self,
         session_id: &str,

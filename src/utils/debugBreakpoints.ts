@@ -61,10 +61,6 @@ const [dirty, setDirty] = createSignal<ReadonlySet<string>>(new Set());
 const key = (path: string, line: number) => `${path}\n${line}`;
 const lineOf = (k: string) => Number(k.slice(k.lastIndexOf("\n") + 1));
 
-/** Every workspace's breakpoints. The pane reads through `breakpointMarks`; this
- *  is exported for the tests and for a future panel listing them all. */
-export const breakpointStore = store;
-
 function write(next: BreakpointStore): void {
   if (next === store()) return;
   setStore(next);

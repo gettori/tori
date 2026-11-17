@@ -256,7 +256,6 @@ function across(pick: (f: FileStatus) => boolean | undefined): RootedFile[] {
 /** Every entered member's staged files, tagged with the member. */
 export const stagedAcross = (): RootedFile[] => across((f) => f.staged);
 export const changedAcross = (): RootedFile[] => across((f) => f.unstaged);
-export const conflictedAcross = (): RootedFile[] => across((f) => f.conflicted);
 
 /**
  * Is this file mid-conflict in the member that owns it?

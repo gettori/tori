@@ -26,7 +26,6 @@ export const filesLayout = createSectionLayout<FilesSection | FilesTab>({
 });
 
 export const sectionShown = filesLayout.shown;
-export const sectionOpen = filesLayout.open;
 export const setSectionShown = filesLayout.setShown;
 
 const TAB_KEY = "tori.files.viewTab";

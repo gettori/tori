@@ -133,7 +133,6 @@ impl Served {
             "set_config_option" => {
                 reply(host.set_config_option(&id()?, &arg::<String>(p, "config_id")?, arg(p, "value")?)?)
             }
-            "grant_dirs" => reply(host.grant_dirs(&id()?, &arg::<Vec<String>>(p, "dirs")?)?),
             "answer_permission" => reply(host.answer_permission(
                 &id()?,
                 &arg::<String>(p, "tool_use_id")?,

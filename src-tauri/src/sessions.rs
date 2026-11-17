@@ -1421,7 +1421,6 @@ pub(crate) fn scan_counts(reader: impl BufRead) -> RawCounts {
 /// Read the full transcript once (only on selection) for counts and tokens,
 /// then attach the touched-file count (which rides its own cache). The
 /// per-line scan lives in `scan_counts`.
-#[tauri::command(async)]
 pub fn session_detail(touched: State<TouchedIndex>, path: String, agent: String) -> Result<SessionDetail, String> {
     detail_of(&touched, &path, &agent)
 }

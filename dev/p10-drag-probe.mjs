@@ -1,6 +1,6 @@
-// Phase 10 task 1 verify: drive the TabDragCycle story with a real drag over
-// CDP and print what came out. Same harness as dev/p8-move-probe.mjs, plus the
-// drag itself: the mouse presses the tab and moves, Chrome intercepts the drag
+// Drive the TabDragCycle story with a real drag over CDP and print what came
+// out. Headless Chrome against Storybook on 6007, plus the drag itself: the
+// mouse presses the tab and moves, Chrome intercepts the drag
 // it starts (`Input.setInterceptDrags`), and the payload it hands back is what
 // the drag events are dispatched with. Nothing here synthesizes a DOM event, so
 // what runs in the page is the browser's own drag plumbing.
