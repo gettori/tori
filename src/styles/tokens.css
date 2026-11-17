@@ -181,6 +181,7 @@
      script runs, so it cannot depend on the runtime that resolves palettes. */
 
   /* ---- Semantic tokens, dark (default) ---- */
+  /* prettier-ignore */
   :root,
   :root[data-theme="dark"] {
     /* fg */
@@ -391,6 +392,7 @@
   }
 
   /* ---- Semantic tokens, light ---- */
+  /* prettier-ignore */
   :root[data-theme="light"] {
     /* fg */
     --fg-default: #1e1e1e;
@@ -540,17 +542,9 @@
     --ansi-bright-white: #8c8c8c;
 
     /* shadow */
-    --shadow-sm:
-      0 2.3px 5.8px 0px rgba(23, 23, 23, 0.02), 0 1.2px 3.1px 0px rgba(23, 23, 23, 0.03),
-      0 0.5px 1.3px 0px rgba(23, 23, 23, 0.05);
-    --shadow-md:
-      0 17.5px 23.4px 0px rgba(23, 23, 23, 0.039), 0 9.4px 12.5px 0px rgba(23, 23, 23, 0.031),
-      0 5.25px 7px 0px rgba(23, 23, 23, 0.02), 0 2.8px 3.7px -2px rgba(23, 23, 23, 0.012),
-      0 1.2px 1.5px 0px rgba(23, 23, 23, 0.012);
-    --shadow-lg:
-      0 25px 50px 0px rgba(23, 23, 23, 0.051), 0 12px 24px 0px rgba(23, 23, 23, 0.039),
-      0 6px 12px 0px rgba(23, 23, 23, 0.031), 0 3px 6px 0px rgba(23, 23, 23, 0.02),
-      0 1.5px 3px 0px rgba(23, 23, 23, 0.02);
+    --shadow-sm: 0 2.3px 5.8px 0px rgba(23, 23, 23, 0.02), 0 1.2px 3.1px 0px rgba(23, 23, 23, 0.03), 0 0.5px 1.3px 0px rgba(23, 23, 23, 0.05);
+    --shadow-md: 0 17.5px 23.4px 0px rgba(23, 23, 23, 0.039), 0 9.4px 12.5px 0px rgba(23, 23, 23, 0.031), 0 5.25px 7px 0px rgba(23, 23, 23, 0.02), 0 2.8px 3.7px -2px rgba(23, 23, 23, 0.012), 0 1.2px 1.5px 0px rgba(23, 23, 23, 0.012);
+    --shadow-lg: 0 25px 50px 0px rgba(23, 23, 23, 0.051), 0 12px 24px 0px rgba(23, 23, 23, 0.039), 0 6px 12px 0px rgba(23, 23, 23, 0.031), 0 3px 6px 0px rgba(23, 23, 23, 0.02), 0 1.5px 3px 0px rgba(23, 23, 23, 0.02);
 
     /* shell */
     --shell-glow-rgb: 23 23 23;
