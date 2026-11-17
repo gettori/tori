@@ -1,5 +1,4 @@
-// First-run state: the one flag the welcome modal reads, and the file it
-// shares with the other shown-once notices.
+// First-run state: the one flag the welcome modal reads.
 //
 // Whether the modal opens at all is not decided here. That is a question about
 // the config (is there a base folder, is there a space), which the frontend
@@ -22,10 +21,6 @@ pub struct State {
     /// intro replaced, and a user who saw that has no need of the intro either.
     #[serde(default, alias = "onboardingShown")]
     pub intro_seen: bool,
-    /// Whether the "your imported VS Code theme was dropped" notice has fired.
-    /// Same reasoning as `intro_seen`: shown-once state, not preference.
-    #[serde(default)]
-    pub theme_import_notice_shown: bool,
 }
 
 fn state_path() -> PathBuf {
@@ -58,21 +53,10 @@ pub struct FirstRunState {
 
 // --- thin wrappers over the real path ---
 
-/// Read state.json. Shared so other one-time notices (the dropped theme import
-/// in settings.rs) persist their flag in the same file rather than growing a
-/// second one, or worse, landing in settings.json.
-pub(crate) fn load_state() -> State {
-    load_from(&state_path())
-}
-
-pub(crate) fn save_state(state: &State) -> Result<(), String> {
-    save_to(&state_path(), state)
-}
-
 #[tauri::command]
 pub fn first_run_state() -> FirstRunState {
     FirstRunState {
-        intro_seen: load_state().intro_seen,
+        intro_seen: load_from(&state_path()).intro_seen,
     }
 }
 
@@ -135,30 +119,6 @@ mod tests {
         let p = tmp_dir("alias").join("state.json");
         std::fs::write(&p, r#"{"onboardingShown": true}"#).unwrap();
         assert!(load_from(&p).intro_seen);
-        std::fs::remove_dir_all(p.parent().unwrap()).ok();
-    }
-
-    #[test]
-    fn the_other_notice_flag_is_kept_on_save() {
-        let p = tmp_dir("keep").join("state.json");
-        save_to(
-            &p,
-            &State {
-                intro_seen: false,
-                theme_import_notice_shown: true,
-            },
-        )
-        .unwrap();
-        let mut state = load_from(&p);
-        state.intro_seen = true;
-        save_to(&p, &state).unwrap();
-        assert_eq!(
-            load_from(&p),
-            State {
-                intro_seen: true,
-                theme_import_notice_shown: true
-            }
-        );
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
 }

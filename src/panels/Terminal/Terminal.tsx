@@ -246,10 +246,6 @@ type Reaped =
   | { type: "stale"; sessionId: string };
 type ChatOrphan = Extract<Reaped, { type: "orphan" }>;
 
-// `RetiredRuleStore` from src-tauri/src/chat/retired.rs: what the one-time sweep
-// of the retired gate's rule store removed.
-type RetiredRuleStore = { path: string; files: number; projectRules: number };
-
 // Minimal shape of `list_sessions`' return, just what the backfill needs.
 type BackfillSession = { id: string; cwd: string; agent?: string; profile?: string | null; created_at: number };
 
@@ -1251,25 +1247,6 @@ export default function Terminal(props: {
     // an orphan the backend has just ended is not something to report as
     // stranded. Not awaited, so a slow listing does not hold up the rest.
     void reportStranded();
-    // Tori used to decide tool calls from a rule store of its own. It does not,
-    // the store is gone, and this is the once the user is told. Pulled here for
-    // the same reason as the reap above: the sweep answers `null` on every run
-    // after the first, so there is nothing to keep track of on this side.
-    void invoke<RetiredRuleStore | null>("chat_retired_stores")
-      .then((retired) => {
-        if (!retired) return;
-        // The project rules are the only part somebody wrote on purpose, so the
-        // notice leads with them and says where that intent lives now. Without
-        // any, this is bookkeeping and says so plainly.
-        const wrote = retired.projectRules
-          ? `${retired.projectRules} project rule${retired.projectRules === 1 ? "" : "s"} you had saved went with them - your agent's own permission settings are where those live now.`
-          : "None of them were rules you wrote.";
-        emitWith<ToastEvent>(TOAST, {
-          message: `Tori no longer decides tool calls, so it removed ${retired.files} leftover file${retired.files === 1 ? "" : "s"} from ${retired.path}. ${wrote}`,
-          kind: "info",
-        });
-      })
-      .catch(() => {});
     // The packs migration ran before this webview existed, so its report is
     // pulled the same way, and said once with the load errors beside it.
     void Promise.all([

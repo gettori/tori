@@ -41,14 +41,11 @@ globalThis.ResizeObserver ??= class {
   disconnect() {}
 } as unknown as typeof ResizeObserver;
 
-// What the legacy key stores. It still describes the sidebar and the chrome;
-// the pane tree has its own envelope, so nothing here reads the editor width.
+// What the layout key stores: the sidebar and the chrome. The pane tree has its
+// own envelope.
 const LEGACY = {
   sidebar: 280,
-  editor: 350,
   showSidebar: true,
-  showTerminal: true,
-  showEditor: true,
   showFiletree: true,
 };
 

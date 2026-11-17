@@ -122,16 +122,6 @@ struct Touched {
     files: Vec<String>,
 }
 
-/// A record written before tool names were recorded: a bare array of paths.
-/// Still read, never written; see `attribution_state` for why it can only ever
-/// be `Partial`.
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum StoredTouched {
-    Current(Touched),
-    Legacy(Vec<String>),
-}
-
 /// Tools whose write targets `files_touched` can read off the result frame, so
 /// a turn made only of these has a *complete* file list.
 ///
@@ -366,19 +356,12 @@ pub(crate) fn path_parseable(tool: &str) -> bool {
 /// `attributed_files` for why that means "do not filter".
 fn read_touched(session_id: &str, prompt_ts: u64) -> Option<Touched> {
     let text = std::fs::read_to_string(attribution_path(session_id, prompt_ts)).ok()?;
-    match serde_json::from_str::<StoredTouched>(&text).ok()? {
-        StoredTouched::Current(rec) => Some(rec),
-        StoredTouched::Legacy(files) => Some(Touched {
-            tools: Vec::new(),
-            files,
-        }),
-    }
+    serde_json::from_str(&text).ok()
 }
 
-/// Grade the turn's record. A record with no tools named is either the legacy
-/// shape or a turn whose tools went unreported; either way its completeness is
-/// unknown, and unknown is graded `Partial` rather than `Complete` so the
-/// honest branch is the default one.
+/// Grade the turn's record. A record with no tools named is a turn whose tools
+/// went unreported, so its completeness is unknown, and unknown is graded
+/// `Partial` rather than `Complete` so the honest branch is the default one.
 fn attribution_state(rec: Option<&Touched>) -> AttributionState {
     let Some(rec) = rec else {
         return AttributionState::Unmeasured;
@@ -1981,24 +1964,6 @@ mod tests {
             attribution_state(read_touched(&sid, 100).as_ref()),
             AttributionState::Partial
         );
-
-        cleanup(&dir, &sid);
-    }
-
-    /// A record written before tool names existed cannot claim completeness: it
-    /// was produced by the code that could not see a shell write in the first
-    /// place, so grading it `Complete` would assert exactly what was never
-    /// measured.
-    #[test]
-    fn a_pre_tool_name_record_grades_partial_rather_than_complete() {
-        let (dir, sid) = tmp_repo();
-        let path = attribution_path(&sid, 100);
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, r#"["/tmp/a.txt"]"#).unwrap();
-
-        let rec = read_touched(&sid, 100).expect("the old shape is still readable");
-        assert_eq!(rec.files, ["/tmp/a.txt"]);
-        assert_eq!(attribution_state(Some(&rec)), AttributionState::Partial);
 
         cleanup(&dir, &sid);
     }

@@ -200,11 +200,8 @@ const LS_SELECTION = "tori.selection.v1";
 
 type Layout = {
   sidebar: number;
-  editor: number;
   dock: number;
   showSidebar: boolean;
-  showTerminal: boolean;
-  showEditor: boolean;
   showFiletree: boolean;
   showDock: boolean;
 };
@@ -235,11 +232,8 @@ const WORKSPACE_PAD = 10;
 
 const DEFAULT_LAYOUT: Layout = {
   sidebar: 320,
-  editor: 640,
   dock: 240,
   showSidebar: true,
-  showTerminal: true,
-  showEditor: true,
   showFiletree: true,
   showDock: false,
 };
@@ -249,12 +243,6 @@ function loadLayout(): Layout {
     const raw = localStorage.getItem(LS_LAYOUT);
     if (raw) {
       const v = JSON.parse(raw);
-      const showTerminal = v.showTerminal ?? true;
-      const showEditor = v.showEditor ?? true;
-      // Enforce the ">=1 of terminal/editor visible" invariant on load: a stored
-      // both-hidden state (hand-edited, or a bug in a past build) would leave the
-      // work-card empty with no way back, so reset both to visible.
-      const bothHidden = !showTerminal && !showEditor;
       // Widths are taken as stored, without bounding them: the bounds depend on
       // the window and on which panes are visible, none of which is measured
       // yet. The clamp effect in App does it once the layout has a width, which
@@ -262,11 +250,8 @@ function loadLayout(): Layout {
       // one.
       return {
         sidebar: v.sidebar ?? DEFAULT_LAYOUT.sidebar,
-        editor: v.editor ?? DEFAULT_LAYOUT.editor,
         dock: v.dock ?? DEFAULT_LAYOUT.dock,
         showSidebar: v.showSidebar ?? true,
-        showTerminal: bothHidden ? true : showTerminal,
-        showEditor: bothHidden ? true : showEditor,
         showFiletree: v.showFiletree ?? true,
         showDock: v.showDock ?? false,
       };
@@ -282,10 +267,6 @@ function loadSelection(): Selection | null {
     const raw = localStorage.getItem(LS_SELECTION);
     if (raw) {
       const s = JSON.parse(raw) as Selection;
-      // Shells was a selection before it was the dock, and it names no folder.
-      if ((s as { kind?: string } | null)?.kind === "shells") return null;
-      // Backfill the folder anchor for selections persisted before Phase 3.
-      if (s && !s.folderPath) s.folderPath = s.projectPath;
       // Backfill the space name for selections persisted under the old `groupName` key.
       if (s && !s.spaceName) s.spaceName = (s as unknown as { groupName?: string }).groupName ?? "";
       // Backfill the kind for selections persisted before Topics existed.
@@ -432,8 +413,7 @@ function App() {
     return Math.min(Math.max((r.size / 100) * shared(), px(EDITOR_MIN)), editorMax());
   };
   // The tree's own dividers write straight to the model (PaneTree measures each
-  // split itself); the legacy px width above is only still computed so an older
-  // build reading tori.layout.v1 finds a sane one.
+  // split itself).
   function resizePaneTo(paneId: string, percent: number) {
     updateLayout(wsKey(), (t) => resizePane(t, paneId, percent), {
       persist: false,
@@ -655,11 +635,8 @@ function App() {
         LS_LAYOUT,
         JSON.stringify({
           sidebar: sidebar(),
-          editor: editor() || initial.editor,
           dock: dock(),
           showSidebar: showSidebar(),
-          showTerminal: showTerminal(),
-          showEditor: showEditor(),
           showFiletree: showFiletree(),
           showDock: dockOpen(),
         }),
@@ -725,7 +702,6 @@ function App() {
       blurIfInside(`[data-pane-id="${pane.id}"]`);
       updateLayout(ws, () => next);
     }
-    persistLayout();
   }
   /** Bring a kind's most recently focused tab to the front of a pane. The
    *  kind's own `activate` is what makes its store claim the tab, which is what
@@ -779,7 +755,6 @@ function App() {
       return;
     }
     setFocusedPane(ws, leaf.id);
-    persistLayout();
     // After the tree edit: the pane has to exist for the placement guard to
     // accept it. A refusal would leave the new pane empty, and the collapse
     // effect only takes panes that have held a tab, so it says so out loud.
@@ -799,7 +774,6 @@ function App() {
     mergePaneInto({ ws, from: paneId, to, root, tabsInWs: tabRefs() });
     updateLayout(ws, (r) => closePane(r, paneId));
     setFocusedPane(ws, to);
-    persistLayout();
   }
 
   /** The pane a "move it over" step lands in: the next visible one, wrapping. */
@@ -854,8 +828,6 @@ function App() {
     }
     updateLayout(ws, (r) => setPaneHidden(r, target, false));
     setFocusedPane(ws, target);
-    // The move can reveal a hidden pane, and the legacy key carries visibility.
-    persistLayout();
   }
 
   const held = new Set<string>();
@@ -884,10 +856,7 @@ function App() {
     roleOf: (id) => (id === filePane() ? "editor" : id === termPane() ? "terminal" : "split"),
     px,
     onResize: resizePaneTo,
-    onCommit: () => {
-      persistEnvelopes();
-      persistLayout();
-    },
+    onCommit: () => persistEnvelopes(),
   });
 
   function revealEditorPane() {
@@ -1087,22 +1056,6 @@ function App() {
       });
     });
     initSettings();
-    // Tori no longer imports VS Code themes. An install that had one has been
-    // migrated to a bundled palette, so say so once, naming the file, rather
-    // than letting the user discover their theme changed on its own. The
-    // backend owns the once-ness (a state.json flag), so a repeated call is a
-    // no-op and this never becomes a launch nag.
-    invoke<string | null>("take_theme_import_notice")
-      .then((path) => {
-        if (!path) return;
-        emitWith<ToastEvent>(TOAST, {
-          message: `Imported VS Code themes are no longer supported, so ${path} was dropped. Tori now ships named themes; pick one in Settings.`,
-          kind: "info",
-        });
-      })
-      .catch(() => {
-        // Never block startup on a notice.
-      });
     invoke<GitReport>("git_health")
       .then((r) => {
         if (r.health.kind === "ready") return;
