@@ -718,7 +718,6 @@ pub fn run() {
             backstop::backstop_files,
             backstop::backstop_diff_file,
             backstop::backstop_restore_tree,
-            backstop::backstop_prune,
             hooks::agent_hook_launch_args,
             hooks::tab_launch_refusal,
             hooks::hooks_status_prune,

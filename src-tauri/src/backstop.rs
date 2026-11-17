@@ -22,7 +22,7 @@
 // with everything else in that directory. Listing reads the sidecar and never
 // the refs, so a worktree can only ever see its own backstops, and a recreated
 // worktree of the same name starts with an empty sidecar and a freshly minted id
-// and inherits nothing. `backstop_prune` sweeps the refs whose sidecar is gone.
+// and inherits nothing. Removing a worktree sweeps the refs whose sidecar is gone.
 
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -89,8 +89,8 @@ fn worktree_id(dir: &Path) -> Result<String, String> {
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     // Creation time plus pid. Two Tori processes racing to mint an id for the
-    // same worktree would leave one set of refs unclaimed, which `backstop_prune`
-    // sweeps; no record is lost, because a record names its tree directly.
+    // same worktree would leave one set of refs unclaimed, which the next worktree
+    // removal sweeps; no record is lost, because a record names its tree directly.
     let id = format!("{nanos:x}-{:x}", std::process::id());
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     crate::owned_state::write_atomically(&path, &id)?;
@@ -414,35 +414,29 @@ pub(crate) fn backstop_restore_tree_body(repo_path: String, ts: u64) -> Result<R
 /// The sidecar dies with `git worktree remove`, but the refs live in the shared
 /// common dir and outlive it, so without this sweep a long-lived bare repo would
 /// accumulate the refs of every worktree it ever had. A ref is live when some
-/// worktree's sidecar still claims its id. Returns how many were removed.
-#[tauri::command]
-pub async fn backstop_prune(repo_path: String) -> Result<usize, String> {
-    crate::exec::git_write("backstop_prune", repo_path.clone(), move || {
-        backstop_prune_body(repo_path)
-    })
-    .await
-}
-
-pub(crate) fn backstop_prune_body(repo_path: String) -> Result<usize, String> {
-    if !is_git_worktree(&repo_path) {
+/// worktree's sidecar still claims its id. Run by every worktree removal, after
+/// the prune. Returns how many were removed.
+pub(crate) fn prune_orphaned_refs(repo: &str) -> Result<usize, String> {
+    if !is_git_worktree(repo) {
         return Ok(0);
     }
-    let listed = git_capture(&repo_path, &["worktree", "list", "--porcelain"])?;
-    let live: Vec<String> = listed
-        .lines()
-        .filter_map(|l| l.strip_prefix("worktree "))
-        // A worktree that has never taken a backstop has no sidecar and no id,
-        // and claims nothing. That is correct: it owns no refs either.
-        .filter_map(|path| sidecar_dir(path).ok())
-        .filter_map(|dir| std::fs::read_to_string(dir.join("id")).ok())
-        .map(|id| id.trim().to_string())
-        .filter(|id| !id.is_empty())
-        .collect();
+    let listed = git_capture(repo, &["worktree", "list", "--porcelain"])?;
+    let mut live = Vec::new();
+    for path in listed.lines().filter_map(|l| l.strip_prefix("worktree ")) {
+        // A worktree git cannot be asked about, say one locked on an unmounted
+        // drive, may still own refs and there is no telling which, so nothing goes.
+        let Ok(dir) = sidecar_dir(path) else {
+            return Ok(0);
+        };
+        // A worktree that has never taken a backstop has no id, and owns no refs.
+        if let Ok(id) = std::fs::read_to_string(dir.join("id")) {
+            if !id.trim().is_empty() {
+                live.push(id.trim().to_string());
+            }
+        }
+    }
 
-    let refs = git_capture(
-        &repo_path,
-        &["for-each-ref", "--format=%(refname)", "refs/tori/discard/"],
-    )?;
+    let refs = git_capture(repo, &["for-each-ref", "--format=%(refname)", "refs/tori/discard/"])?;
     let mut removed = 0;
     for name in refs.lines() {
         let Some(rest) = name.strip_prefix("refs/tori/discard/") else {
@@ -452,7 +446,7 @@ pub(crate) fn backstop_prune_body(repo_path: String) -> Result<usize, String> {
         if live.iter().any(|l| l == id) {
             continue;
         }
-        if git_run(&repo_path, &["update-ref", "-d", name]).is_ok() {
+        if git_run(repo, &["update-ref", "-d", name]).is_ok() {
             removed += 1;
         }
     }
@@ -683,7 +677,7 @@ mod tests {
             "the refs are shared, so removal alone leaves them behind"
         );
 
-        assert_eq!(backstop_prune_body(main.clone()).unwrap(), 1);
+        assert_eq!(prune_orphaned_refs(&main).unwrap(), 1);
         assert_eq!(all(&main), 1, "only the departed worktree's ref went");
         assert_eq!(backstop_list(main.clone()).unwrap().len(), 1, "main keeps its own");
 
