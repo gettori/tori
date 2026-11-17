@@ -1,4 +1,4 @@
-import { mockIPC } from "@tauri-apps/api/mocks";
+import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 
 /** One fixture's answers to the host: a value for a command it owns, and
  *  `undefined` for one it does not. */
@@ -7,12 +7,16 @@ export type HostHandler = (cmd: string, args: Record<string, unknown>) => unknow
 /** `mockIPC` replaces the whole host, so two fixtures each stubbing it would
  *  silently unplug the first. */
 export function stubHost(handlers: HostHandler[]): void {
-  mockIPC((cmd, args) => {
-    const q = (args ?? {}) as Record<string, unknown>;
-    for (const handle of handlers) {
-      const answer = handle(cmd, q);
-      if (answer !== undefined) return answer;
-    }
-    return null;
-  });
+  mockWindows("main");
+  mockIPC(
+    (cmd, args) => {
+      const q = (args ?? {}) as Record<string, unknown>;
+      for (const handle of handlers) {
+        const answer = handle(cmd, q);
+        if (answer !== undefined) return answer;
+      }
+      return null;
+    },
+    { shouldMockEvents: true },
+  );
 }

@@ -1,6 +1,8 @@
 import { Show, onCleanup, type JSX } from "solid-js";
 import { type SpaceTint } from "./TopicItem";
 import TopicRows, { type TopicFold } from "./TopicRows";
+import { RowGlide } from "./SidebarRows";
+import rows from "./SidebarRows.module.css";
 import { TriangleAlert } from "lucide-solid";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
@@ -96,12 +98,13 @@ export default function TopicList(props: {
 
   return (
     <div
-      class={styles.list}
+      class={`${styles.list} ${rows.glideFrame}`}
       classList={{ [props.class ?? ""]: !!props.class }}
       hidden={props.hidden}
       onContextMenu={(e) => props.onContextMenu?.(e)}
       data-topic-list
     >
+      <RowGlide />
       <Show when={error()}>{(msg) => <p class={styles.error}>{msg()}</p>}</Show>
       {props.lead}
       <Show when={listed().length > 0} fallback={props.empty}>
