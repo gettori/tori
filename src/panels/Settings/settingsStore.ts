@@ -149,6 +149,10 @@ export type ChatDefaults = {
   /** A paste over 30 lines or 3000 characters becomes a `pasted.txt` chip
    *  rather than text in the box. Off keeps every paste inline. */
   attachLongPastes: boolean;
+  /** The read aloud button beside each reply. */
+  showReadAloud: boolean;
+  /** The plan card above the composer. */
+  showPlan: boolean;
   /** Send a continue by itself once the usage limit a chat stopped on resets.
    *  Off by default; the limit banner can still arm a single chat. */
   resumeAtReset: boolean;
@@ -541,6 +545,8 @@ export const DEFAULT_SETTINGS: Settings = {
     collapseWork: false,
     answerQuestionsInline: true,
     attachLongPastes: true,
+    showReadAloud: true,
+    showPlan: true,
     resumeAtReset: false,
     maxConcurrentChats: 4,
   },

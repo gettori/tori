@@ -393,6 +393,12 @@ pub struct ChatDefaults {
     /// bare default so a file predating the switch does not read as off.
     #[serde(default = "yes")]
     pub attach_long_pastes: bool,
+    /// The read aloud button beside each reply.
+    #[serde(default = "yes")]
+    pub show_read_aloud: bool,
+    /// The plan card above the composer.
+    #[serde(default = "yes")]
+    pub show_plan: bool,
     /// Read by the webview only, kept here so a save does not drop it.
     #[serde(default)]
     pub resume_at_reset: bool,
@@ -444,6 +450,8 @@ impl Default for ChatDefaults {
             collapse_work: false,
             answer_questions_inline: true,
             attach_long_pastes: true,
+            show_read_aloud: true,
+            show_plan: true,
             resume_at_reset: false,
             max_concurrent_chats: default_max_concurrent_chats(),
         }
@@ -2182,6 +2190,8 @@ mod tests {
                 collapse_work: true,
                 answer_questions_inline: false,
                 attach_long_pastes: false,
+                show_read_aloud: false,
+                show_plan: false,
                 resume_at_reset: true,
                 max_concurrent_chats: 9,
             },

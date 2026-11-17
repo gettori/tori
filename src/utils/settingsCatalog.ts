@@ -689,6 +689,12 @@ export const SETTINGS: SettingEntry[] = [
     hint: "A paste over 30 lines or 3000 characters becomes a file chip. Off keeps every paste in the box.",
   },
   {
+    id: "show-plan",
+    section: "chat",
+    label: "Show the plan",
+    hint: "The agent's task list above the input box, folded to a count until you open it.",
+  },
+  {
     id: "secret-watch",
     section: "chat",
     label: "Mark secret file reads",
@@ -717,6 +723,12 @@ export const SETTINGS: SettingEntry[] = [
     section: "chat",
     label: "Resume at reset",
     hint: "A claude chat that stopped on a usage limit continues by itself once the limit resets.",
+  },
+  {
+    id: "show-read-aloud",
+    section: "chat",
+    label: "Show the read aloud button",
+    hint: "The speaker button beside each reply. The voice model stays installed either way.",
   },
   {
     id: "read-aloud-voice",
