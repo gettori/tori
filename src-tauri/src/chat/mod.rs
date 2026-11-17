@@ -53,6 +53,3 @@ pub mod stash_store;
 pub mod tail;
 pub mod transport;
 pub mod usage;
-
-#[cfg(test)]
-mod neutrality_check;

@@ -1,13 +1,10 @@
 //! The normalized chat event model: the one vocabulary every chat surface in
 //! Tori speaks, and the only thing the frontend ever sees.
 //!
-//! A transport (today only `claude` stream-json, tomorrow possibly Codex or an
-//! ACP agent) maps its own wire format *into* these types, and nothing above
-//! the transport layer knows which agent produced an event. That is what lets
-//! the chat panel, the tool cards, the diff rendering and the status tier be
-//! written once. `neutrality_check.rs` is the compiling proof that the model is
-//! actually general enough to absorb a second agent rather than merely being
-//! asserted to be.
+//! A transport (`claude` stream-json, or an ACP agent) maps its own wire format
+//! *into* these types, and nothing above the transport layer knows which agent
+//! produced an event. That is what lets the chat panel, the tool cards, the diff
+//! rendering and the status tier be written once.
 //!
 //! **Agent-specific data goes in `extra`, never in a new field.** Claude
 //! reports things nobody else does (`ttft_ms`, `modelUsage`, cache-tier token
@@ -2455,6 +2452,26 @@ mod tests {
             let json = serde_json::to_string(&ev).expect("serialize");
             let back: ChatEvent = serde_json::from_str(&json).unwrap_or_else(|e| panic!("deserialize {json}: {e}"));
             assert_eq!(ev, back, "round trip changed the value: {json}");
+        }
+    }
+
+    /// A string compiles whatever it holds, so only a test notices a mode that
+    /// was renamed, lowercased or mapped to its nearest Claude id on the way
+    /// through. The frontend reads it off the wire, so serde is checked too.
+    #[test]
+    fn a_foreign_mode_id_crosses_the_model_unchanged() {
+        // Gemini's `--approval-mode` values; `auto_edit` is the near-miss of `acceptEdits`.
+        for id in ["auto_edit", "yolo", "default", "plan"] {
+            let mode = PermissionMode::new(id);
+            assert_eq!(mode.as_str(), id, "the model altered a mode it was merely carrying");
+            let wire = serde_json::to_string(&mode).expect("a mode serializes");
+            assert_eq!(
+                wire,
+                format!("\"{id}\""),
+                "a mode must cross the boundary as its own id"
+            );
+            let back: PermissionMode = serde_json::from_str(&wire).expect("a mode deserializes");
+            assert_eq!(back, mode);
         }
     }
 
