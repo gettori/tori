@@ -554,22 +554,113 @@ function ChecksSection() {
   );
 }
 
-const FLOW = `flowchart LR
+const DIAGRAMS = [
+  {
+    name: "Flowchart",
+    code: `flowchart LR
   prompt[Prompt] --> gate{Needs approval?}
   gate -- yes --> ask[Ask card]
   gate -- no --> tool[Run tool]
   subgraph lane [Lane]
     ask --> tool
   end
-  tool --> reply[Reply]`;
+  tool --> reply[Reply]`,
+  },
+  {
+    name: "Shapes",
+    code: `flowchart TD
+  start([Session starts]) --> cfg[(Config store)]
+  cfg --> agent(Agent picks a tool)
+  agent --> hook{{Pre-tool hook}}
+  hook -->|allowed| run[/Run the command/]
+  hook -.->|denied| stop((Stop))
+  run ==> done>Reply streamed]`,
+  },
+  {
+    name: "Sequence",
+    code: `sequenceDiagram
+  participant U as User
+  participant T as Tori
+  participant A as Agent
+  U->>T: Send prompt
+  T->>A: Start turn
+  A-->>T: Ask permission for Bash
+  T->>U: Show the prompt
+  U->>T: Allow once
+  T->>A: Allowed
+  Note over A: Runs the command
+  A-->>T: Reply
+  T-->>U: Stream the rows`,
+  },
+  {
+    name: "State",
+    code: `stateDiagram-v2
+  [*] --> Idle
+  Idle --> Running: prompt sent
+  Running --> Waiting: needs approval
+  Waiting --> Running: answered
+  Running --> Idle: turn ends
+  Running --> Failed: error
+  Failed --> [*]`,
+  },
+  {
+    name: "Class",
+    code: `classDiagram
+  class Session {
+    +string id
+    +string cwd
+    +send(prompt) Turn
+  }
+  class Turn {
+    +Row[] rows
+    +state
+  }
+  class Row {
+    +kind
+    +render()
+  }
+  Session "1" --> "*" Turn
+  Turn "1" *-- "*" Row`,
+  },
+  {
+    name: "Entity relationship",
+    code: `erDiagram
+  PROJECT ||--o{ WORKTREE : has
+  WORKTREE ||--o{ SESSION : runs
+  SESSION ||--|{ TURN : holds
+  PROJECT {
+    string name
+    string root
+  }
+  SESSION {
+    string id
+    string model
+  }`,
+  },
+  {
+    name: "Pie",
+    code: `pie title Where a turn's time goes
+  "Thinking" : 42
+  "Tools" : 35
+  "Waiting on you" : 15
+  "Streaming" : 8`,
+  },
+];
 
 function DiagramSection() {
   return (
     <Section
       heading="Diagram"
-      note="A mermaid fence on its dot grid. Node, edge label and subgraph text stay readable over the dots."
+      note="Mermaid fences on the dot grid, one per kind. Fills, frames, lines and arrowheads are the text mixed into the ground at fixed strengths; boxes and subgraphs round their corners, edge labels sit in hairline chips."
     >
-      <Diagram code={FLOW} />
+      <For each={DIAGRAMS}>
+        {(diagram) => (
+          <div>
+            <div style={{ "font-size": "var(--tori-text-md)", color: "var(--fg-muted)" }}>{diagram.name}</div>
+            <Diagram code={diagram.code} />
+          </div>
+        )}
+      </For>
     </Section>
   );
 }
