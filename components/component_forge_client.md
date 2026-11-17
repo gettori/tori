@@ -1,7 +1,7 @@
 ---
 summary: forge client owns the OAuth device flow, keychain credential and caches in Rust, and the token never crosses the bridge
 status: current
-updated: 2026-09-24
+updated: 2026-11-16
 source: "Editor Wave 3: GitHub as a first-class surface (personal/tori, branch `wave-3`); Phases 1, 2, 3, 5, 13; commits 474f146, e73cf00, b16724c, 7f9be1a, 8aedaed, 945c1bd; gettori/tori#202 commit f8a61936"; gettori/tori#204 commits 424a5d26, aa67f28d, 29293fe2, 280f72e8
 ---
 
@@ -54,4 +54,5 @@ Everything Tori knows about a forge's HTTP API. It owns the provider trait, the 
 - [[gotcha_a_422s_actionable_text_is_in_errors_not_message]]
 - [[gotcha_paginate_graphql_drains_top_level_pages_before_nested_connections]]
 - [[component_issue_source]] - rides this client through `Forge::issues()`
+- [[component_git_account_identity]] - puts each account's author, SSH key and signing key into its repos; `Forge::can_read` answers the clone picker's access check
 - [[gotcha_string_of_an_invoke_rejection_can_be_object_object]] - how a `ForgeErrorDto` rejection reads in the webview

@@ -1,7 +1,7 @@
 ---
 summary: namedProfiles returns empty until there are two accounts, so every surface stays silent on a single-account install
 status: current
-updated: 2026-09-05
+updated: 2026-11-16
 source: "plan \"Multi-account: pick, lock and default an account per session\" (personal/tori, branch `multiaccount`), phases 2 and 3; `src/utils/agentHealth.ts` (`namedProfiles`, `profileLabel`), `src-tauri/src/sessions.rs` (`profile_label`)"
 ---
 
@@ -26,8 +26,11 @@ A label nobody can act on is noise, and on one-account installs (which is most o
 
 The cost is that `namedProfiles` reads the health sweep, so a surface that never loaded it answers "one account" forever. `Terminal` had exactly that bug until it called `ensureAgentHealthLoaded` beside `ensureAdaptersLoaded`.
 
+Git accounts follow the same rule: the clone picker, the Space settings Git accounts section and the sidebar project avatar appear only once a host, or the install, has a second account.
+
 ## Related
 
+- [[component_git_account_identity]] - the git account surfaces
 - [[concept_the_account_is_half_the_key]] - what is filed per account
 - [[component_agent_health_cards]] - the sweep this reads
 - [[adr_account_is_session_identity]]

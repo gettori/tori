@@ -1,7 +1,7 @@
 ---
 summary: askpass re execs Tori's own binary as the git credential helper over a private unix socket, failing closed on any error
 status: current
-updated: 2026-07-19
+updated: 2026-11-16
 source: Askpass credential bridge for backgrounded git (personal/tori, branch code-mirror-6); commit 3fff674; `src-tauri/src/askpass.rs`; `git_push` sibling added in Review-to-prompt + commit flow (branch `topbar`); commit 35bc401
 ---
 
@@ -30,8 +30,11 @@ Backgrounded ops (e.g. loading `origin/*` for a remote-branch picker) have no TT
 - Shares the augmented-PATH discipline of [[component_pty_host]] ([[gotcha_gui_launched_processes_inherit_a_minimal_path]]).
 - Supersedes the ambient-auth rationale of [[gotcha_clone_and_bootstrap_run_in_a_terminal_tab]] (injection-safety + clone-cleanup parts still hold).
 
+Commit signing rides the same bridge: `git::may_sign` gives every git that can commit (commit, merge, rebase, continue) `SSH_ASKPASS` and the bridge env, so `ssh-keygen` asks Tori's dialog for a signing key's passphrase.
+
 ## Related
 
+- [[component_git_account_identity]] - the signing key that needs it
 - [[component_app_socket]] - the app level JSON-RPC socket that copies this socket, token and bridge-file pattern
 - [[gotcha_darwin_caps_unix_socket_paths_at_104_bytes]]
 - [[gotcha_git_calls_askpass_once_per_field_as_separate_processes]]
