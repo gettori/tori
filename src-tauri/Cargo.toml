@@ -13,7 +13,9 @@ edition = "2021"
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "tori_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# Not Tauri's usual three: staticlib and cdylib exist for mobile targets, and
+# the phone app is its own crate (mobile/src-tauri). Only main.rs links this.
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
