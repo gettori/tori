@@ -42,6 +42,8 @@ function paint(tokens: Record<string, string> = TOKENS) {
   for (const [name, value] of Object.entries(tokens)) root.style.setProperty(name, value);
 }
 
+const SIZES = { fontSize: "13px", pieTitleTextSize: "15px", pieSectionTextSize: "13px", pieLegendTextSize: "13px" };
+
 /** The config of the most recent `initialize`. */
 function lastConfig() {
   const calls = vi.mocked(mermaid.initialize).mock.calls;
@@ -71,6 +73,7 @@ describe("seeding mermaid from the token layer", () => {
       lineColor: "fg-muted",
       textColor: "fg-default",
       titleColor: "fg-default",
+      ...SIZES,
     });
     expect(lastConfig().fontFamily).toBe("the-ui-font");
   });
@@ -84,6 +87,7 @@ describe("seeding mermaid from the token layer", () => {
       primaryTextColor: "fg-default",
       textColor: "fg-default",
       titleColor: "fg-default",
+      ...SIZES,
     });
     expect(lastConfig().fontFamily).toBeUndefined();
   });
