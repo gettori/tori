@@ -288,8 +288,10 @@ function ListsSection() {
             setIndex(0);
           }}
           onKeyDown={(e) => {
-            if (e.key === "ArrowDown") (e.preventDefault(), step(1));
-            if (e.key === "ArrowUp") (e.preventDefault(), step(-1));
+            const delta = { ArrowDown: 1, ArrowUp: -1 }[e.key];
+            if (delta === undefined) return;
+            e.preventDefault();
+            step(delta);
           }}
           style={{ width: "calc(260px * var(--ui-scale))" }}
           class={patterns.input}
