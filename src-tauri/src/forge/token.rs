@@ -19,10 +19,6 @@ use serde::{Deserialize, Serialize};
 /// The keychain service every account's secret is stored under, keyed by the
 /// account id. Stable, because changing it orphans every stored token.
 const ACCOUNT_SERVICE: &str = "com.tori.forge";
-/// The single GitHub credential from before accounts existed. Read once by the
-/// migration and left in place, so a downgraded build still finds it.
-const LEGACY_SERVICE: &str = "com.tori.forge.github";
-const LEGACY_USER: &str = "oauth";
 
 /// What one account keeps in the keychain. One entry for both tokens, so a
 /// refresh replaces the pair in a single write.
@@ -160,13 +156,6 @@ pub fn delete_secret(account_id: &str) -> Result<(), ForgeError> {
     return dev_file::delete(account_id);
     #[allow(unreachable_code)]
     delete_from(&account_entry(account_id)?)
-}
-
-pub fn load_legacy() -> Result<Option<String>, ForgeError> {
-    #[cfg(all(debug_assertions, not(test)))]
-    return Ok(None);
-    #[allow(unreachable_code)]
-    load_from(&Entry::new(LEGACY_SERVICE, LEGACY_USER).map_err(map_err)?)
 }
 
 /// Where a dev build keeps forge secrets, seeded from the keychain on first

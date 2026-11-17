@@ -284,23 +284,6 @@ describe("the dock", () => {
     await waitFor(() => expect(dock().querySelector("[data-verdict]")?.textContent).toBe("exit 127"));
   });
 
-  it("starts with nothing selected from a Shells selection an earlier build stored", async () => {
-    localStorage.setItem(
-      "tori.selection.v1",
-      JSON.stringify({
-        kind: "shells",
-        spaceName: "",
-        projectName: "Shells",
-        projectPath: "",
-        folderPath: "",
-        branch: "",
-      }),
-    );
-    mount();
-    await waitFor(() => expect(bridge.selected).toBeNull());
-    expect(localStorage.getItem("tori.selection.v1")).toBeNull();
-  });
-
   it("keeps the height it was dragged to across a reload", async () => {
     localStorage.setItem("tori.layout.v1", JSON.stringify({ showDock: true, dock: 300 }));
     const first = mount();

@@ -41,16 +41,6 @@ const THEMES: BundledTheme[] = Object.values(palettes).map(entry).sort(ownFirst)
 
 export const DEFAULT_THEME_ID = "tori-dark";
 
-// Ids persisted by the VS Code-theme era. Resolved here so an existing install
-// keeps the theme it chose the moment this ships; rewriting the stored settings
-// (and dropping appearance.importPath) is the migration's job, not the
-// registry's. Without this, a Light+ user silently lands on dark.
-const LEGACY_IDS = new Map([
-  ["dark-plus", "tori-dark"],
-  ["light-plus", "tori-light"],
-  ["import", "tori-dark"],
-]);
-
 export function listThemes(): BundledTheme[] {
   return THEMES;
 }
@@ -62,6 +52,5 @@ export function listSelectableBundled(): BundledTheme[] {
 }
 
 export function getBundledTheme(id: string): BundledTheme | undefined {
-  const canonical = LEGACY_IDS.get(id) ?? id;
-  return THEMES.find((t) => t.id === canonical);
+  return THEMES.find((t) => t.id === id);
 }

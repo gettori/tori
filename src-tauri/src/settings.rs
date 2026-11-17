@@ -29,19 +29,12 @@ fn settings_path() -> PathBuf {
 pub struct Appearance {
     /// Bundled theme id, e.g. "tori-dark".
     pub theme: String,
-    /// The VS Code-era `importPath`, read so the migration can name the file it
-    /// dropped in a one-time notice. `skip_serializing` is what actually drops
-    /// the key from settings.json: the next save writes the field out of
-    /// existence, and nothing in the app can set it again.
-    #[serde(rename = "importPath", default, skip_serializing)]
-    pub legacy_import_path: Option<String>,
 }
 
 impl Default for Appearance {
     fn default() -> Self {
         Self {
             theme: "tori-dark".into(),
-            legacy_import_path: None,
         }
     }
 }
@@ -161,20 +154,6 @@ pub struct Sidebar {
     pub space_views: std::collections::BTreeMap<String, SpaceView>,
 }
 
-/// Ids persisted by the VS Code-theme era, mapped on read so an install keeps
-/// the theme it chose. `"import"` has no equivalent - the import path is gone -
-/// so it lands on the default rather than on a name nothing resolves.
-///
-/// Mapping on read rather than rewriting the file means a user who never opens
-/// Settings is still migrated, and the rewrite happens whenever they next save.
-fn migrate_theme_id(id: &str) -> Option<&'static str> {
-    match id {
-        "dark-plus" | "import" => Some("tori-dark"),
-        "light-plus" => Some("tori-light"),
-        _ => None,
-    }
-}
-
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Typography {
@@ -199,11 +178,6 @@ pub struct Typography {
 fn default_terminal_font_family() -> String {
     "\"JetBrainsMono Nerd Font Mono\", \"SF Mono\", Menlo, Monaco, monospace".into()
 }
-
-/// What this default used to be. An install still carrying it verbatim never
-/// chose it - the value is just the old default written out - so it moves to
-/// the new one. A user who typed their own family keeps it.
-const LEGACY_TERMINAL_FONT_FAMILY: &str = "\"SF Mono\", Menlo, Monaco, monospace";
 
 fn default_terminal_font_size() -> u16 {
     15
@@ -1701,23 +1675,13 @@ fn migrate_space_strip(mut value: serde_json::Value) -> serde_json::Value {
 }
 
 fn load_from(path: &Path) -> Settings {
-    let mut settings: Settings = std::fs::read_to_string(path)
+    std::fs::read_to_string(path)
         .ok()
         .and_then(|t| json5::from_str::<serde_json::Value>(&t).ok())
         .map(migrate_editor_block)
         .map(migrate_space_strip)
         .and_then(|v| serde_json::from_value::<Settings>(v).ok())
-        .unwrap_or_default();
-    if let Some(id) = migrate_theme_id(&settings.appearance.theme) {
-        settings.appearance.theme = id.into();
-    }
-    // Same "map on read" shape as the theme migration, and for the same reason:
-    // a user who never opens Settings still gets the bundled font, and the file
-    // is rewritten whenever they next save.
-    if settings.typography.terminal_font_family == LEGACY_TERMINAL_FONT_FAMILY {
-        settings.typography.terminal_font_family = default_terminal_font_family();
-    }
-    settings
+        .unwrap_or_default()
 }
 
 /// What a save into an unreadable settings file is refused with. The window
@@ -1755,19 +1719,6 @@ fn save_to(path: &Path, settings: &Settings) -> Result<(), String> {
     }
     let json = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
     crate::owned_state::write_atomically(path, &json)
-}
-
-/// The dropped import path, if it has not been reported yet, marking `state` as
-/// reported when it returns one. Settings with no import path leave the flag
-/// alone, so the notice is never burned on an install that never had a theme
-/// to lose.
-fn take_notice_with(settings: &Settings, state: &mut crate::onboarding::State) -> Option<String> {
-    let path = settings.appearance.legacy_import_path.clone()?;
-    if state.theme_import_notice_shown {
-        return None;
-    }
-    state.theme_import_notice_shown = true;
-    Some(path)
 }
 
 // --- thin wrappers over the real path ---
@@ -1961,25 +1912,6 @@ fn drop_default_profile(agent: &mut Agent, adapter_id: &str, profile_id: &str) -
     }
     agent.default_profiles.remove(adapter_id);
     true
-}
-
-/// The VS Code theme file this install lost, returned exactly once.
-///
-/// Tori no longer imports VS Code themes, so an install that had one is
-/// silently switched to a bundled palette. Silently is the problem: the user
-/// picked that file, so they are told once, by name, that it is gone. The flag
-/// lives in state.json rather than settings.json for the same reason
-/// `intro_seen` does - "have we said this yet" is app state, not a
-/// preference the user should find in their hand-editable config.
-#[tauri::command]
-pub fn take_theme_import_notice() -> Option<String> {
-    let settings = load_from(&settings_path());
-    let mut state = crate::onboarding::load_state();
-    let path = take_notice_with(&settings, &mut state)?;
-    // A failed write means the notice may repeat on the next launch. Preferred
-    // over swallowing it here, which would lose it permanently.
-    let _ = crate::onboarding::save_state(&state);
-    Some(path)
 }
 
 /// Watch the settings file's directory; emit `settings://changed` on any write
@@ -2613,57 +2545,6 @@ mod tests {
         s.editor_defaults.vim_mode = true;
         save_to(&p, &s).unwrap();
         assert_eq!(load_from(&p), s);
-        let _ = std::fs::remove_file(&p);
-    }
-
-    /// Tori now bundles JetBrainsMono Nerd Font Mono, so the terminal default
-    /// names it. An install still carrying the previous default never chose
-    /// that value - it is just the old default written to disk - so it moves,
-    /// the same way a VS Code-era theme id does.
-    #[test]
-    fn the_old_terminal_font_default_moves_to_the_bundled_one() {
-        let p = tmp_file();
-        std::fs::write(
-            &p,
-            r#"{ "typography": { "uiFontFamily": "Inter", "uiFontSize": 15,
-                 "editorFontFamily": "\"SF Mono\", Menlo, Monaco, monospace", "editorFontSize": 15,
-                 "terminalFontFamily": "\"SF Mono\", Menlo, Monaco, monospace", "terminalFontSize": 15,
-                 "lineHeight": 1.5 } }"#,
-        )
-        .unwrap();
-        let back = load_from(&p);
-        assert_eq!(back.typography.terminal_font_family, default_terminal_font_family());
-        assert!(back
-            .typography
-            .terminal_font_family
-            .contains("JetBrainsMono Nerd Font Mono"));
-        // Only the terminal moves: the editor's identical value was left alone
-        // on purpose, since nothing bundled changes what an editor should use.
-        assert_eq!(
-            back.typography.editor_font_family,
-            "\"SF Mono\", Menlo, Monaco, monospace"
-        );
-        let _ = std::fs::remove_file(&p);
-    }
-
-    /// A family the user typed is theirs. The migration matches the old default
-    /// verbatim precisely so it cannot touch a real choice - including one that
-    /// merely mentions the same fonts in a different order.
-    #[test]
-    fn a_chosen_terminal_font_is_left_alone() {
-        let p = tmp_file();
-        std::fs::write(
-            &p,
-            r#"{ "typography": { "uiFontFamily": "Inter", "uiFontSize": 15,
-             "editorFontFamily": "Menlo", "editorFontSize": 15,
-             "terminalFontFamily": "Menlo, \"SF Mono\", monospace", "terminalFontSize": 15,
-             "lineHeight": 1.5 } }"#,
-        )
-        .unwrap();
-        assert_eq!(
-            load_from(&p).typography.terminal_font_family,
-            "Menlo, \"SF Mono\", monospace"
-        );
         let _ = std::fs::remove_file(&p);
     }
 
@@ -3437,80 +3318,6 @@ mod tests {
         s.appearance.theme = "tori-light".into();
         save_to(&p, &s).unwrap();
         assert_eq!(load_from(&p), s);
-        std::fs::remove_file(&p).ok();
-    }
-
-    /// Every id the VS Code-theme era could persist lands on a named Tori
-    /// theme. A Light+ install must land on Tori *Light*: mapping it to the
-    /// default would silently flip an existing user to dark.
-    #[test]
-    fn legacy_theme_ids_migrate_on_read() {
-        for (old, expected) in [
-            ("dark-plus", "tori-dark"),
-            ("light-plus", "tori-light"),
-            ("import", "tori-dark"),
-        ] {
-            let p = tmp_file();
-            std::fs::write(
-                &p,
-                format!("{{ \"appearance\": {{ \"theme\": \"{old}\", \"importPath\": \"/x/t.json\" }} }}"),
-            )
-            .unwrap();
-            let s = load_from(&p);
-            assert_eq!(s.appearance.theme, expected, "{old} should migrate to {expected}");
-            std::fs::remove_file(&p).ok();
-        }
-    }
-
-    /// The notice names the dropped file exactly once, and a restart (a fresh
-    /// read of the same still-unmigrated settings file) does not repeat it.
-    #[test]
-    fn import_notice_fires_once_and_never_again() {
-        let p = tmp_file();
-        std::fs::write(
-            &p,
-            "{ \"appearance\": { \"theme\": \"import\", \"importPath\": \"/x/t.json\" } }",
-        )
-        .unwrap();
-        let settings = load_from(&p);
-        let mut state = crate::onboarding::State::default();
-
-        assert_eq!(take_notice_with(&settings, &mut state).as_deref(), Some("/x/t.json"));
-        assert!(state.theme_import_notice_shown);
-        // Second launch: settings.json is untouched, so only the flag stops it.
-        assert_eq!(take_notice_with(&load_from(&p), &mut state), None);
-        std::fs::remove_file(&p).ok();
-    }
-
-    /// An install that never imported a theme must not burn the flag, or a
-    /// later hand-edit naming an import path would be silently swallowed.
-    #[test]
-    fn no_import_path_leaves_the_flag_untouched() {
-        let mut state = crate::onboarding::State::default();
-        assert_eq!(take_notice_with(&Settings::default(), &mut state), None);
-        assert!(!state.theme_import_notice_shown);
-    }
-
-    /// The import path survives the read (the one-time notice needs to name it)
-    /// but never survives a write.
-    #[test]
-    fn import_path_is_read_but_never_written_back() {
-        let p = tmp_file();
-        std::fs::write(
-            &p,
-            "{ \"appearance\": { \"theme\": \"import\", \"importPath\": \"/x/t.json\" } }",
-        )
-        .unwrap();
-        let s = load_from(&p);
-        assert_eq!(s.appearance.legacy_import_path.as_deref(), Some("/x/t.json"));
-
-        save_to(&p, &s).unwrap();
-        let written = std::fs::read_to_string(&p).unwrap();
-        assert!(
-            !written.contains("importPath"),
-            "importPath must be dropped on save: {written}"
-        );
-        assert!(load_from(&p).appearance.legacy_import_path.is_none());
         std::fs::remove_file(&p).ok();
     }
 

@@ -506,17 +506,10 @@ function loadActiveSpace(): string | null {
   }
 }
 
-// Two of the four key prefixes are gone with the session rows: `u:` (a branch
-// unit, a leaf now) and `h:` (its Historical sub-section, the History panel's
-// business). They are dropped on load rather than migrated, so the next toggle
-// writes the set back without them; a stored set that is never touched again
-// simply keeps a few strings nothing reads.
-const DEAD_KEY = /^[uh]:/;
-
 function loadExpanded(): Set<string> {
   try {
     const raw = localStorage.getItem(LS_EXPANDED);
-    if (raw) return new Set<string>((JSON.parse(raw) as string[]).filter((k) => !DEAD_KEY.test(k)));
+    if (raw) return new Set<string>(JSON.parse(raw) as string[]);
   } catch {
     // ignore
   }

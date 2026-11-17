@@ -46,7 +46,6 @@ pub mod pacing;
 pub mod pick;
 pub mod pulse;
 pub mod queue_store;
-pub mod retired;
 pub mod serve;
 pub mod side;
 pub mod snapshot;
