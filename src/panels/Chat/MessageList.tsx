@@ -161,9 +161,9 @@ function Stamp(props: { at: number }) {
   const now = useClock();
   const date = () => new Date(props.at);
   return (
-    <time class={styles.stamp} dateTime={date().toISOString()} title={date().toLocaleString()}>
-      {stampLabel(props.at, now())}
-    </time>
+    <Tooltip as="span" class={styles.stamp} label={date().toLocaleString()}>
+      <time dateTime={date().toISOString()}>{stampLabel(props.at, now())}</time>
+    </Tooltip>
   );
 }
 
