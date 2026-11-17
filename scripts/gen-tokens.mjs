@@ -32,7 +32,9 @@ const PALETTES = ["tori-dark", "tori-light"].map((id) =>
 /** Group roles for readability, in the order roles.ts declares them. */
 function emitBlock(selector, palette, marker) {
   const values = buildRoles(palette);
-  const lines = [`  /* ---- ${marker} ---- */`, `  ${selector} {`];
+  // The formatter wraps a long value (a layered shadow) and --check compares
+  // byte for byte, so the generated rules are kept out of its reach.
+  const lines = [`  /* ---- ${marker} ---- */`, "  /* prettier-ignore */", `  ${selector} {`];
   let group = null;
   for (const role of ROLES) {
     if (role.group !== group) {
