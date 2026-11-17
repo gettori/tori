@@ -26,18 +26,3 @@ export function prActivity(updatedAt: string | null, counts: PrCounts | null, fi
   if (counts && files) parts.push(plural(counts.changedFiles, "file"));
   return parts;
 }
-
-/**
- * The parts, for a caller to join.
- *
- * Every part after the author is optional because they arrive from different
- * reads: the author and the open date ride the `PullRequest` every list
- * carries, while `updatedAt` and the counts exist only on the detail read, and
- * the counts are null on a host that will not describe a pull request in one
- * read. Waiting for all of them would leave the line blank for facts nobody
- * needs to wait for.
- */
-export function prMetaParts(pr: PullRequest, updatedAt: string | null, counts: PrCounts | null): string[] {
-  const opened = prOpened(pr);
-  return [pr.author, ...(opened ? [opened] : []), ...prActivity(updatedAt, counts)];
-}

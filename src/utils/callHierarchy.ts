@@ -148,7 +148,6 @@ export function normalizeCalls(res: unknown, direction: CallDirection): CallItem
 // key: `null` means this file's server has no `callHierarchyProvider`, which is
 // what hides the tab, while absent means nobody has asked yet.
 const [roots, setRoots] = createSignal<Record<string, CallItem[] | null>>({});
-export { roots as callRoots };
 
 /** Publish what a file's server prepared at the caret, or `null` when it offers
  *  no call hierarchy at all. Called by the editor, the only holder of a live

@@ -42,11 +42,6 @@ pub(crate) fn repo_readable(repo: &str) -> bool {
         .unwrap_or(false)
 }
 
-#[tauri::command]
-pub async fn list_worktrees(repo_path: String) -> Result<Vec<Worktree>, String> {
-    crate::exec::blocking("list_worktrees", move || list_worktrees_body(repo_path)).await
-}
-
 pub(crate) fn list_worktrees_body(repo_path: String) -> Result<Vec<Worktree>, String> {
     let out = crate::exec::git_in(&repo_path)
         .args(["worktree", "list", "--porcelain"])

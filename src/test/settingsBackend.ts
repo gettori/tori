@@ -5,7 +5,7 @@
 // in a resource, outside any test, and fails the run without failing a test.
 import { DEFAULT_SETTINGS } from "../panels/Settings/settingsStore";
 
-const LISTS = new Set(["lsp_health", "trusted_projects", "untrusted_projects", "speech_voices"]);
+const LISTS = new Set(["lsp_health", "trusted_projects", "speech_voices"]);
 
 const NOT_DOWNLOADED = { installed: false, model: null, downloading: null, sizes: [] };
 

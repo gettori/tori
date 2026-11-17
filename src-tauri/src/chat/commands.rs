@@ -649,13 +649,6 @@ pub fn stash_discard(id: String) -> Result<Vec<serde_json::Value>, String> {
     super::stash_store::discard(&id)
 }
 
-/// A Topic member came or moved while this chat runs.
-#[tauri::command]
-pub async fn chat_grant_dirs(state: State<'_, ChatState>, session_id: String, dirs: Vec<String>) -> Result<(), String> {
-    crate::rpc::refuse_locked(&session_id)?;
-    state.0.grant_dirs(&session_id, &dirs)
-}
-
 #[tauri::command]
 pub async fn chat_interrupt(state: State<'_, ChatState>, session_id: String) -> Result<(), String> {
     crate::rpc::refuse_locked(&session_id)?;

@@ -11,11 +11,6 @@
 // forge trait speaks, so a second provider changes the mapping in Rust and
 // nothing at all up here.
 
-export type RepoRef = {
-  owner: string;
-  repo: string;
-};
-
 /// `merged` is its own state, not `closed` plus a flag. The sidebar chip and
 /// the merge guard both branch on it, and a boolean beside a state is exactly
 /// the pair that can end up disagreeing.
@@ -576,7 +571,6 @@ export const MERGEABLE_STATES: readonly MergeableState[] = [
 export const REVIEW_DECISIONS: readonly ReviewDecision[] = ["approved", "changesRequested", "reviewRequired", "none"];
 export const AUTH_STATE_KINDS: readonly AuthState["kind"][] = ["signedOut", "signedIn", "suspect"];
 export const DIFF_SIDES: readonly DiffSide[] = ["LEFT", "RIGHT"];
-export const REVIEW_EVENTS: readonly ReviewEvent[] = ["approve", "comment", "requestChanges"];
 export const MERGE_METHODS: readonly MergeMethod[] = ["merge", "squash", "rebase"];
 export const FILE_STATUSES: readonly FileStatus[] = [
   "added",

@@ -200,19 +200,6 @@ pub fn trusted_projects() -> Vec<String> {
     load_or_seed(&store_path(), crate::config::project_dirs).trusted
 }
 
-/// Every discovered project the store does not cover, where servers that run
-/// project code stay off.
-#[tauri::command(async)]
-pub fn untrusted_projects() -> Vec<String> {
-    let _guard = lock();
-    let store = load_or_seed(&store_path(), crate::config::project_dirs);
-    crate::config::project_dirs()
-        .into_iter()
-        .filter(|p| !covers(&store, p))
-        .map(|p| p.to_string_lossy().into_owned())
-        .collect()
-}
-
 // A project's branches are read through git and cached until its folder
 // changes, which a change of trust does not do.
 fn reprobe(app: &tauri::AppHandle, index: &crate::config::ProjectIndex) {

@@ -63,8 +63,6 @@ export const syntaxClassHighlighter = tagHighlighter(
   TABLE.map((entry) => ({ tag: entry.tag, class: SYNTAX_CLASS_PREFIX + roleOf(entry) })),
 );
 
-export const SYNTAX_ROLES: readonly string[] = [...new Set(TABLE.map(roleOf))];
-
 /** A path's language and the colours to paint it with, for a view that wants
  *  both and has no use for the rest of the editing stack. Empty when the
  *  suffix names no language. */

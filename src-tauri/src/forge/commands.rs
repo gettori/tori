@@ -1527,16 +1527,6 @@ impl From<NewPr> for CreatePr {
     }
 }
 
-/// Opens a pull request, then makes it immediately visible to the next lookup.
-#[tauri::command(async)]
-pub fn forge_create_pr(project_path: String, new_pr: NewPr) -> Result<PullRequest, ForgeErrorDto> {
-    let c = client_for(&project_path)?;
-    let req: CreatePr = new_pr.into();
-    let pr = attempt(&c, |f| f.create_pull_request(&c.repo, &req))?;
-    prs::record_created(&c.repo, pr.clone());
-    Ok(pr)
-}
-
 type PrStates = Vec<((String, u64), PrState)>;
 
 /// Each pull request's state, keyed by the `owner/name` it was asked of, through

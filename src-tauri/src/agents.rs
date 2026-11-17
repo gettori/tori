@@ -1662,10 +1662,6 @@ fn check_relative_segment_path(value: &str, entry_id: &str, field: &str, source:
 /// Separate from `apply_template` (which knows only `{id}`/`{file}`) because
 /// the chat templates carry a different, larger placeholder set; folding both
 /// into one function would mean every caller passes four empty strings.
-///
-/// Reachable only from tests and `ChatConfig`'s resolvers until Phase 3 spawns
-/// a session; the allow goes with theirs.
-#[allow(dead_code)]
 pub fn apply_chat_template(template: &[String], vars: &[(&str, &str)]) -> Vec<String> {
     template
         .iter()

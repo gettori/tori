@@ -3,7 +3,7 @@
 // surface that reads the poll, so a row and the Pull Requests panel cannot
 // disagree about a reused branch name.
 
-import { createStore, reconcile } from "solid-js/store";
+import { createStore } from "solid-js/store";
 import { invoke } from "@tauri-apps/api/core";
 import type { BranchSync } from "./gitActions";
 import type { PullRequest } from "./forgeTypes";
@@ -83,10 +83,4 @@ async function ask(key: string, stamp: string, projectPath: string, branch: stri
   );
   asking.delete(token);
   if (latest.get(key) === stamp) setAnswers(key, { stamp, relation });
-}
-
-export function resetPrRelationsForTests() {
-  setAnswers(reconcile({}));
-  asking.clear();
-  latest.clear();
 }

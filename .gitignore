@@ -1,6 +1,9 @@
 # Rust / Tauri
 /src-tauri/target/
 target/
+# Written by tauri-build on every build, for capability autocompletion.
+/src-tauri/gen/schemas/
+/mobile/src-tauri/gen/schemas/
 
 # Node / frontend
 node_modules/

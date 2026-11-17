@@ -1067,112 +1067,6 @@ code.secretReason {
   border-left: 2px solid var(--border-strong);
 }
 
-/* ---- the granted-rules list (inside the overflow menu) ---- */
-
-.rules {
-  min-width: 0;
-}
-
-.rulesToggle {
-  border: none;
-  padding: 0;
-  background: transparent;
-  color: var(--fg-muted);
-  font-size: var(--tori-text-md);
-  cursor: pointer;
-  text-align: left;
-}
-
-.rulesToggle:hover:not(:disabled) {
-  color: var(--fg-default);
-}
-
-.rulesToggle:disabled {
-  cursor: default;
-}
-
-/* Why there are no rules to show, for a agent with no approval hook. Prose,
-   not a dimmed control: the whole point is that there is nothing to operate. */
-.rulesUnsupported {
-  color: var(--fg-subtle);
-  font-size: var(--tori-text-md);
-  line-height: 1.5;
-}
-
-.rulesBody {
-  margin: calc(6px * var(--ui-scale)) 0 0;
-  padding: 0;
-  max-height: calc(200px * var(--ui-scale));
-  overflow-y: auto;
-  list-style: none;
-}
-
-.ruleRow {
-  display: flex;
-  align-items: center;
-  gap: calc(8px * var(--ui-scale));
-  padding: calc(3px * var(--ui-scale)) 0;
-}
-
-/* The one rule you type rather than click. Wraps rather than scrolls: the glob
-   is the part that decides where the rule bites, so it must never be the part
-   that runs off the edge. */
-.ruleAdd {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: calc(6px * var(--ui-scale));
-  margin-top: calc(8px * var(--ui-scale));
-  padding-top: calc(8px * var(--ui-scale));
-  border-top: 1px solid var(--border-default);
-}
-
-.ruleKind,
-.ruleInput {
-  padding: calc(3px * var(--ui-scale)) calc(6px * var(--ui-scale));
-  border: 1px solid var(--border-default);
-  border-radius: var(--tori-radius-sm);
-  background: var(--canvas-input);
-  color: var(--fg-default);
-  font: inherit;
-  font-size: var(--tori-text-md);
-}
-
-.ruleInput {
-  flex: 1;
-  min-width: calc(120px * var(--ui-scale));
-}
-
-.ruleLabel {
-  flex: 1;
-  min-width: 0;
-  color: var(--fg-default);
-  font-family: var(--tori-font-mono);
-  font-size: var(--tori-text-sm);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.ruleScope {
-  color: var(--fg-subtle);
-  font-size: var(--tori-text-sm);
-  white-space: nowrap;
-}
-
-.ruleRemove {
-  display: inline-flex;
-  border: none;
-  padding: 0;
-  background: transparent;
-  color: var(--fg-subtle);
-  cursor: pointer;
-}
-
-.ruleRemove:hover {
-  color: var(--danger-fg);
-}
-
 /* ---- tool calls ----
    The mock's rows: full-width rounded cards a shade above the canvas, mono
    throughout, the tool name as the row's one coloured word, duration on the
@@ -1647,20 +1541,6 @@ button.diffHunkHeader:hover {
 .hunkRevert:disabled {
   color: var(--fg-muted);
   cursor: default;
-}
-
-/* Same role tokens the Changes and Session panels use, so an added line is the
-   same colour wherever the user reads a diff. */
-.diffAdd {
-  color: var(--diff-added);
-}
-
-.diffDel {
-  color: var(--diff-deleted);
-}
-
-.diffCtx {
-  color: var(--fg-muted);
 }
 
 /* ---- the approval prompt ----
@@ -3272,10 +3152,6 @@ button.diffHunkHeader:hover {
   cursor: default;
 }
 
-/* ---- the control chips in the composer bar ----
-   Model, thinking effort, and permission mode: quiet stadium chips at the
-   standard control height, the way the mock draws them. */
-
 /* ---- the session control pills ----
    Mode, model and effort. A button that opens the app's <Menu>, not a chip with
    a native <select> stretched invisibly over it: the platform menu brought the
@@ -3416,12 +3292,6 @@ button.diffHunkHeader:hover {
   line-height: 1.3;
 }
 
-.pickDesc {
-  color: var(--fg-muted);
-  font-size: var(--tori-text-md);
-  line-height: 1.35;
-}
-
 /* The row's own reason for refusing, drawn under the label. Wraps, unlike
    `.barNote`: this one is a sentence in a menu that has width for it, not a
    fragment beside a pill in the composer. */
@@ -3455,20 +3325,6 @@ button.diffHunkHeader:hover {
 .pickCheckOn {
   color: var(--brand-bar);
   opacity: 1;
-}
-
-/* A "leads to another page" chevron, which is never conditional. */
-.pickInto {
-  display: inline-flex;
-  flex: none;
-  align-self: center;
-  color: var(--fg-subtle);
-}
-
-.pickSep {
-  height: 1px;
-  margin: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
-  background: var(--border-default);
 }
 
 /* What the next turn will run under, above the input. One line for all three
@@ -3509,23 +3365,6 @@ button.diffHunkHeader:hover {
   font-size: var(--tori-text-md);
   line-height: 1.3;
   white-space: nowrap;
-}
-
-.contextMeter {
-  display: inline-block;
-  width: calc(48px * var(--ui-scale));
-  height: calc(5px * var(--ui-scale));
-  margin-right: calc(6px * var(--ui-scale));
-  border-radius: var(--tori-radius-pill);
-  background: var(--neutral-hover);
-  overflow: hidden;
-  vertical-align: middle;
-}
-
-.contextMeterFill {
-  display: block;
-  height: 100%;
-  background: var(--brand-default);
 }
 
 /* The `@` / `/` completion menu, on the shared menuSurface recipe. Above the
@@ -3993,15 +3832,6 @@ button.attachmentBody:hover {
 .queueActions {
   display: flex;
   gap: calc(6px * var(--ui-scale));
-}
-
-/* A mirrored boolean, sized to sit in the same row as the picker pills. */
-.barToggle {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--tori-space-2);
-  font-size: var(--tori-text-md);
-  color: var(--fg-muted);
 }
 
 /* Announced, never drawn: an agent's own description of a toggle. */

@@ -1020,59 +1020,6 @@
     overflow-wrap: anywhere;
   }
 
-  /* Trusted projects: one bordered table whose body scrolls, since the list
-     keeps every project Tori has found. */
-  .trustTable {
-    margin-top: var(--tori-space-5);
-    border: var(--tori-border-thin) solid var(--border-default);
-    border-radius: var(--tori-radius-md);
-    overflow: hidden;
-  }
-  .trustHead,
-  .trustRow {
-    display: grid;
-    grid-template-columns:
-      calc(7px * var(--ui-scale)) minmax(0, 1fr) calc(120px * var(--ui-scale))
-      calc(64px * var(--ui-scale));
-    column-gap: var(--tori-space-5);
-    align-items: center;
-    padding: var(--tori-space-3) var(--tori-space-5);
-  }
-  .trustHead {
-    background: var(--neutral-subtle);
-    border-bottom: var(--tori-border-thin) solid var(--border-default);
-    font-family: var(--tori-font-mono);
-    font-size: var(--tori-text-2xs);
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--fg-subtle);
-  }
-  .trustRow + .trustRow {
-    border-top: var(--tori-border-thin) solid var(--border-default);
-  }
-  .trustRow:hover {
-    background: var(--neutral-hover);
-  }
-  .trustPath {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-family: var(--tori-font-mono);
-    font-size: var(--tori-text-xs);
-    color: var(--fg-default);
-  }
-  .trustPathOff {
-    color: var(--fg-muted);
-  }
-  .trustStatus {
-    font-size: var(--tori-text-xs);
-    color: var(--fg-muted);
-  }
-  .trustAction {
-    justify-self: end;
-  }
-
   .card {
     border: var(--tori-border-thin) solid var(--border-default);
     border-radius: var(--tori-radius-lg);
@@ -1091,7 +1038,6 @@
     font-weight: 600;
   }
 
-  .cardProgram,
   .cardMeta code,
   .cardStatus code {
     font-family: var(--tori-font-mono);
@@ -1855,14 +1801,6 @@
     white-space: nowrap;
   }
 
-  /* The sentence beside an action button, explaining it or its absence. */
-  .actionNote {
-    font-size: var(--tori-text-xs);
-    line-height: 1.5;
-    color: var(--fg-muted);
-    text-wrap: pretty;
-  }
-
   /* --- The models catalogue, boxed with its own filter --- */
 
   /* Nothing but rows: the filter lives on the heading, so the card carries no
@@ -1945,18 +1883,6 @@
     font-family: var(--tori-font-mono);
     font-size: var(--tori-text-2xs);
     color: var(--fg-subtle);
-  }
-  /* Pushed to the far end and clipped: the effort ladder is the longest string
-     on the row and the least urgent of the three. */
-  .modelFacts {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    font-size: var(--tori-text-xs);
-    color: var(--fg-muted);
-    text-align: right;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   /* Heads a list *inside* a section that already has a title, so it sits a rung

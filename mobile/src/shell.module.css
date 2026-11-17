@@ -1107,12 +1107,6 @@ li + li > .item {
   color: var(--fg-muted);
 }
 
-.stateLine .stateDot {
-  width: 6px;
-  height: 6px;
-  box-shadow: none;
-}
-
 .menuAnchor {
   position: relative;
   flex: none;

@@ -108,16 +108,6 @@
   font-weight: 400;
 }
 
-.headTitle {
-  flex: none;
-  font-family: var(--tori-font-mono);
-  font-size: var(--tori-text-2xs);
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--fg-muted);
-}
-
 .headRule {
   flex: 1;
   height: 1px;

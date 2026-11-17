@@ -35,7 +35,3 @@ export function saveProjectListOrder(space: string, paths: string[]) {
   setOrders({ ...all, [space]: paths });
   void invoke("project_order_write", { space, paths }).catch(() => {});
 }
-
-export function resetProjectListOrderForTests() {
-  setOrders(null);
-}
