@@ -8,6 +8,8 @@ const POINTER_MS = 100;
 // two; the fill waits that out, so it glides on instead of blinking.
 const GAP_MS = 80;
 
+const fillLists = new WeakSet<Element>();
+
 /** A listbox's option at `index`, for a cursor kept as an index. */
 export const optionAt = (list: HTMLElement, index: number) => list.querySelectorAll('[role="option"]')[index];
 
@@ -17,7 +19,7 @@ export const optionAt = (list: HTMLElement, index: number) => list.querySelector
  * the list `position: relative` and `isolation: isolate`: the fill is placed from
  * the rows' layout offsets, which a list opening mid-scale does not distort, and
  * it sits under each row's own fills. A list whose rows are not on the medium
- * radius sets `--glide-radius`.
+ * radius sets `--glide-radius`, and one that fades its fill sets `--glide-fill`.
  */
 export default function Glide(props: {
   /** The row the list's own cursor is on, read again whenever it is placed:
@@ -27,6 +29,11 @@ export default function Glide(props: {
   /** Rows that light under a moving pointer, for a list whose cursor does not
    *  follow the pointer itself. */
   hover?: string;
+  /** How far into a row its fill starts, in px. */
+  inset?: (row: HTMLElement) => number;
+  /** Row attributes that move the cursor without focus moving, watched while
+   *  the fill shows. */
+  attributes?: string[];
 }): JSX.Element {
   let el!: HTMLDivElement;
   let hovered: Element | null = null;
@@ -42,12 +49,18 @@ export default function Glide(props: {
   const list = () => el.parentElement as HTMLElement;
   const pointerMoved = () => performance.now() - lastMove < POINTER_MS;
 
+  function ownRow(row: Element | null | undefined): HTMLElement | null {
+    if (!(row instanceof HTMLElement) || !row.isConnected) return null;
+    let n = row.parentElement;
+    while (n && !fillLists.has(n)) n = n.parentElement;
+    return n === el.parentElement ? row : null;
+  }
+
   function target(): HTMLElement | null {
     if (!el.parentElement) return null;
-    const cursor = props.active?.(list());
-    const over = hovered?.isConnected ? hovered : null;
-    const row = lead === "hover" && over ? over : (cursor ?? over);
-    return row instanceof HTMLElement && row.isConnected ? row : null;
+    const cursor = ownRow(props.active?.(list()));
+    const over = ownRow(hovered);
+    return lead === "hover" && over ? over : (cursor ?? over);
   }
 
   function request(glide?: boolean) {
@@ -69,7 +82,8 @@ export default function Glide(props: {
     }
     clearTimeout(gap);
     gap = 0;
-    let x = 0;
+    const inset = props.inset?.(row) ?? 0;
+    let x = inset;
     let y = 0;
     for (let n: HTMLElement | null = row; n && n !== el.offsetParent; n = n.offsetParent as HTMLElement | null) {
       x += n.offsetLeft;
@@ -77,7 +91,7 @@ export default function Glide(props: {
     }
     el.toggleAttribute("data-glide", glideNext && shown !== null && row !== shown);
     el.style.transform = `translate(${x}px, ${y}px)`;
-    el.style.width = `${row.offsetWidth}px`;
+    el.style.width = `${row.offsetWidth - inset}px`;
     el.style.height = `${row.offsetHeight}px`;
     el.toggleAttribute("data-shown", true);
     glideNext = false;
@@ -98,7 +112,11 @@ export default function Glide(props: {
     resize = new ResizeObserver(() => request());
     rows = new MutationObserver(() => request());
     resize.observe(list());
-    rows.observe(list(), { childList: true, subtree: true });
+    rows.observe(list(), {
+      childList: true,
+      subtree: true,
+      ...(props.attributes ? { attributeFilter: props.attributes } : {}),
+    });
   }
 
   createEffect(() => {
@@ -109,12 +127,12 @@ export default function Glide(props: {
 
   onMount(() => {
     const host = list();
+    fillLists.add(host);
     const onMove = (e: PointerEvent) => {
       if (e.movementX !== 0 || e.movementY !== 0) lastMove = performance.now();
     };
     const onOver = (e: PointerEvent) => {
-      const row = (e.target as Element).closest(props.hover!);
-      const next = row && host.contains(row) ? row : null;
+      const next = ownRow((e.target as Element).closest(props.hover!));
       if (next === hovered) return;
       hovered = next;
       if (next && pointerMoved()) lead = "hover";
@@ -139,6 +157,7 @@ export default function Glide(props: {
       cancelAnimationFrame(frame);
       clearTimeout(gap);
       hide();
+      fillLists.delete(host);
       host.removeEventListener("pointermove", onMove);
       host.removeEventListener("focusin", onFocus);
       host.removeEventListener("focusout", onFocus);

@@ -327,6 +327,7 @@ import {
   GroupCard,
   LaneCard,
   ParkedLanes,
+  RowGlide,
   type GroupNameDraft,
 } from "./SidebarRows";
 import TopicRows, { matchesTopic, type TopicFold } from "./TopicRows";
@@ -4903,7 +4904,13 @@ export default function LeftSidebar(props: {
       />
 
       <Show when={!inGlobal()}>
-        <OverlayScroll class={styles.treeScroll} onContextMenu={onSpaceAreaMenu} data-spaces-tree>
+        <OverlayScroll
+          class={styles.treeScroll}
+          contentClass={rows.glideFrame}
+          onContextMenu={onSpaceAreaMenu}
+          data-spaces-tree
+        >
+          <RowGlide />
           {chatGroup(() => activeSpace()?.name ?? "", spaceChats)}
           <Show when={topicsGroupSpace()}>
             {(g) => {

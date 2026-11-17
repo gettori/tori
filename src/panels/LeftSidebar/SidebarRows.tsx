@@ -26,6 +26,7 @@ import {
   type LucideIcon,
 } from "lucide-solid";
 import ContextMenu from "../../components/Menu/ContextMenu";
+import Glide from "../../components/Glide/Glide";
 import Dropdown from "../../components/Menu/Dropdown";
 import IconButton from "../../components/IconButton/IconButton";
 import { type MenuItem } from "../../components/Menu/rows";
@@ -456,7 +457,10 @@ export function GroupCard(props: {
         <RowChevron open={props.open} />
       </ContextMenu>
       <Show when={props.open}>
-        <div class={styles.cardBody}>{props.children}</div>
+        <div class={`${styles.cardBody} ${styles.glideFrame}`}>
+          <RowGlide />
+          {props.children}
+        </div>
       </Show>
       <Show when={props.tailProps}>{(tail) => <div class={styles.dropTail} {...tail()} draggable={false} />}</Show>
     </div>
@@ -517,7 +521,10 @@ export function LaneCard(props: {
         <span class={styles.cardCount}>{props.count}</span>
         <RowChevron open />
       </button>
-      <div class={styles.cardBody}>{props.children}</div>
+      <div class={`${styles.cardBody} ${styles.glideFrame}`}>
+        <RowGlide />
+        {props.children}
+      </div>
     </div>
   );
 }
@@ -568,6 +575,26 @@ export const stackGroup = (size: number, baseRef: string) => ({
   badge: `${size} PRs -> ${baseRef}`,
   hint: "Pull requests stacked on GitHub, top layer first. Only the layers you have locally are listed.",
 });
+
+const LIT = `.${styles.row}:not(.${styles.dim}):not(.${styles.trunkRow}):not(.${styles.cardHead})`;
+
+/** The tree's one hover fill, for a list wearing `glideFrame`. It holds on the
+ *  row whose context menu is open, and on a branch it starts at the rail. */
+export function RowGlide() {
+  return (
+    <Glide
+      hover={LIT}
+      active={(list) => {
+        const open = list.querySelector("[data-expanded]");
+        return open?.closest(LIT) ?? open?.querySelector(LIT);
+      }}
+      attributes={["data-expanded"]}
+      inset={(row) =>
+        row.classList.contains(styles.branch) ? parseFloat(getComputedStyle(row, "::before").left) || 0 : 0
+      }
+    />
+  );
+}
 
 /** The branch a stack lands on, at the foot of its layers the way GitHub's
  *  stack map draws it. Inert: the branch has its own row in the list. */
