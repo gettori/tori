@@ -271,18 +271,16 @@ fn resolve(repo: &str, ts: u64) -> Result<BackstopRecord, String> {
     Ok(rec)
 }
 
-/// Write `target`'s version of every path that differs from the working tree,
-/// optionally narrowed to one file. Deletions in `target` become deletions on
-/// disk, so a file created after the snapshot goes away again.
-fn restore_from(repo: &str, target: &str, only: Option<&str>) -> Result<RestoreOutcome, String> {
+/// Write `target`'s version of every path that differs from the working tree.
+/// Deletions in `target` become deletions on disk, so a file created after the
+/// snapshot goes away again.
+fn restore_from(repo: &str, target: &str) -> Result<RestoreOutcome, String> {
     let dir = sidecar_dir(repo)?;
     let current = write_tree_scratch(repo, &index_path(&dir))?;
-    let mut args = vec!["diff", "--raw", "--no-abbrev", "--no-renames", &current, target];
-    if let Some(file) = only {
-        args.push("--");
-        args.push(file);
-    }
-    let raw = git_capture(repo, &args)?;
+    let raw = git_capture(
+        repo,
+        &["diff", "--raw", "--no-abbrev", "--no-renames", &current, target],
+    )?;
 
     let mut restored = Vec::new();
     let mut deleted = Vec::new();
@@ -404,44 +402,11 @@ pub(crate) fn backstop_restore_tree_body(repo_path: String, ts: u64) -> Result<R
     let rec = resolve(&repo_path, ts)?;
     if rec.head != head_now(&repo_path) {
         return Err(
-            "The branch has moved since that backup, so restoring the whole tree would undo commits too. Restore the files you need one at a time."
+            "The branch has moved since that backup, so restoring the whole tree would undo commits too. Open a file from this backup to see its diff and copy back what you need."
                 .into(),
         );
     }
-    restore_from(&repo_path, &rec.tree, None)
-}
-
-/// Put one file back to a backstop.
-///
-/// The blast radius is a single path, so a moved HEAD is a warning rather than a
-/// wall: it refuses by default, and `force` goes ahead. That mirrors
-/// `checkpoint_revert_file`, where the same trade-off already lives.
-#[tauri::command]
-pub async fn backstop_restore_file(
-    repo_path: String,
-    ts: u64,
-    file: String,
-    force: Option<bool>,
-) -> Result<RestoreOutcome, String> {
-    crate::exec::git_write("backstop_restore_file", repo_path.clone(), move || {
-        backstop_restore_file_body(repo_path, ts, file, force)
-    })
-    .await
-}
-
-pub(crate) fn backstop_restore_file_body(
-    repo_path: String,
-    ts: u64,
-    file: String,
-    force: Option<bool>,
-) -> Result<RestoreOutcome, String> {
-    let rec = resolve(&repo_path, ts)?;
-    if rec.head != head_now(&repo_path) && !force.unwrap_or(false) {
-        return Err(
-            "The branch has moved since that backup, so this file's contents come from a different commit.".into(),
-        );
-    }
-    restore_from(&repo_path, &rec.tree, Some(&file))
+    restore_from(&repo_path, &rec.tree)
 }
 
 /// Delete every `refs/tori/discard/` ref whose worktree no longer exists.
@@ -646,30 +611,6 @@ mod tests {
     }
 
     #[test]
-    fn restoring_one_file_leaves_the_rest_of_the_tree_alone() {
-        let dir = tmp_repo();
-        let repo = s(&dir);
-        std::fs::write(dir.join("one.txt"), "original\n").unwrap();
-        std::fs::write(dir.join("two.txt"), "original\n").unwrap();
-        let rec = take(&repo, "before").unwrap();
-
-        std::fs::write(dir.join("one.txt"), "clobbered\n").unwrap();
-        std::fs::write(dir.join("two.txt"), "deliberate\n").unwrap();
-
-        let out = backstop_restore_file_body(repo.clone(), rec.ts, "one.txt".into(), None).unwrap();
-
-        assert_eq!(out.restored, ["one.txt"]);
-        assert_eq!(std::fs::read_to_string(dir.join("one.txt")).unwrap(), "original\n");
-        assert_eq!(
-            std::fs::read_to_string(dir.join("two.txt")).unwrap(),
-            "deliberate\n",
-            "a single-file restore is not a tree restore"
-        );
-
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
     fn a_tree_restore_is_refused_once_head_has_moved() {
         let dir = tmp_repo();
         let repo = s(&dir);
@@ -682,10 +623,11 @@ mod tests {
 
         let err = backstop_restore_tree_body(repo.clone(), rec.ts).unwrap_err();
         assert!(err.contains("branch has moved"), "unhelpful refusal: {err}");
-        // One file at a time still works, with force, because the blast radius
-        // is a single path the user named.
-        backstop_restore_file_body(repo.clone(), rec.ts, "a.txt".into(), Some(true)).unwrap();
-        assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "one\n");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("a.txt")).unwrap(),
+            "two\n",
+            "a refusal writes nothing"
+        );
 
         std::fs::remove_dir_all(&dir).ok();
     }

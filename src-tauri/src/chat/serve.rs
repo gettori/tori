@@ -156,12 +156,6 @@ impl Served {
                 Ok(Value::Null)
             }
             "tool_output" => reply(host.tool_output(&id()?, &arg::<String>(p, "tool_use_id")?)),
-            "tool_before_state" => reply(commands::tool_before_state(
-                host,
-                &id()?,
-                &arg::<String>(p, "tool_use_id")?,
-                &arg::<String>(p, "cwd")?,
-            )?),
             "tool_diff" => reply(commands::tool_diff(
                 host,
                 &id()?,

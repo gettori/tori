@@ -151,8 +151,8 @@ pub fn store_text(repo: &Path, text: &str) -> BeforeState {
     }
 }
 
-/// Read a captured blob back, for a card the user expanded.
-pub fn read_back(repo: &Path, sha: &str) -> Option<String> {
+#[cfg(test)]
+pub(crate) fn read_back(repo: &Path, sha: &str) -> Option<String> {
     let out = crate::exec::git_in(repo).args(["cat-file", "-p", sha]).output().ok()?;
     if !out.status.success() {
         return None;
@@ -179,7 +179,7 @@ pub const DIFF_CONTEXT: u32 = 3;
 ///
 /// `None` when there is nothing to diff against (a non-repo folder, an evicted
 /// entry, a capture that failed). The card degrades to offering the file rather
-/// than erroring, which is the same contract `read_back` has.
+/// than erroring.
 pub fn diff_against_now(repo: &Path, before: &BeforeState, path: &str) -> Option<String> {
     let before_sha = match before {
         BeforeState::Blob { sha } => sha.clone(),

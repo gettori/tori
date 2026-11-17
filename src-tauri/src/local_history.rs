@@ -241,16 +241,6 @@ pub fn local_history_list(repo_path: String, path: String) -> Result<Vec<History
     Ok(entries_under(&repo_path, &prefix))
 }
 
-/// The text of one saved version, for the diff view.
-///
-/// `git_output`, not `git_capture`: the latter trims, and a version whose
-/// leading indentation or trailing newline had been shaved off would diff
-/// against the file as a change nobody made.
-#[tauri::command(async)]
-pub fn local_history_read(repo_path: String, blob: String) -> Result<String, String> {
-    git_output(&repo_path, &["cat-file", "blob", &blob])
-}
-
 /// One saved version against the file as it is now, as a unified diff.
 ///
 /// The working file is hashed into the object database so both sides are blobs
@@ -514,6 +504,11 @@ mod tests {
     use std::path::PathBuf;
     use std::process::Command;
     use std::sync::atomic::{AtomicU64, Ordering};
+
+    // `git_output`, not `git_capture`: the latter trims, and these compare bytes.
+    fn local_history_read(repo_path: String, blob: String) -> Result<String, String> {
+        git_output(&repo_path, &["cat-file", "blob", &blob])
+    }
 
     fn git(dir: &Path, args: &[&str]) {
         let out = Command::new("git")
