@@ -12,3 +12,4 @@ Do NOT format a `*.golden.json` file, or drop it from Oxfmt's `ignorePatterns`. 
 ## Related
 
 - [[adr_vite_plus_toolchain]]
+- [[gotcha_the_pre_commit_format_wraps_the_generated_token_region]]: the same collision in `tokens.css`, solved with `prettier-ignore` instead of the ignore list.

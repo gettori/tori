@@ -1,8 +1,8 @@
 ---
 summary: ContextMenu and Dropdown share one row layer, split only because a context menu cannot take a controlled open prop
 status: current
-updated: 2026-08-28
-source: "Menu onto Kobalte DropdownMenu and ContextMenu (personal/tori, branch `103-menu`, gettori/tori#103), all six phases; commits `b855a3c`, `bfb0014`, `7c610cb`, `a0913d9`, `1827ba1`, `3e0ddc4`; the heading variant from Repository identity on tabs, breadcrumbs, quick-open and menus (branch `feature-workspace`, #158), phase 5, commit `c422394`"
+updated: 2026-11-17
+source: "Menu onto Kobalte DropdownMenu and ContextMenu (personal/tori, branch `103-menu`, gettori/tori#103), all six phases; commits `b855a3c`, `bfb0014`, `7c610cb`, `a0913d9`, `1827ba1`, `3e0ddc4`; the heading variant from Repository identity on tabs, breadcrumbs, quick-open and menus (branch `feature-workspace`, #158), phase 5, commit `c422394`; the entrance and the gliding highlight from plan \"Visual polish pass with a Storybook kitchen sink\" (personal/tori, branch ui-rework), phases 2 and 8, commits `dccac448`, `d1ecb6fd`"
 ---
 
 # Menu wrappers (ContextMenu, Dropdown, rows)
@@ -71,7 +71,7 @@ Token names only. Values were taken from the reference named in [[adr_solid_ui_r
 | Row | gap to a leading glyph | `--tori-space-3` |
 | Row | radius | `--tori-radius-md` |
 | Row | type | `--tori-text-lg` |
-| Row | highlight | `--neutral-hover`, on `:hover` **and** `[data-highlighted]` |
+| Row | highlight | one `--neutral-hover` fill behind `[data-highlighted]`, gliding under the pointer ([[component_glide]] via `MenuGlide`); danger rows keep their own wash |
 | Row | danger / warn | `--danger-fg` / `--attention-fg` |
 | Row | disabled | `--fg-muted`, on `[data-disabled]` |
 | Separator | rhythm | `--tori-space-2` vertical, `--tori-space-3` inset |
@@ -80,20 +80,20 @@ Token names only. Values were taken from the reference named in [[adr_solid_ui_r
 | Trigger gutter | offset | 4px, a JS number (see below) |
 | Cursor gutter / shift | offset | 2px / 2px, Kobalte's own context-menu values |
 | Flyout | surface | the same `.content` class as its parent |
-| Flyout | opener row | the same `.item` class, plus `[data-expanded]` held at `--neutral-hover` |
+| Flyout | opener row | the same `.item` class; the fill holds on its `[data-expanded]` while the pointer is in the flyout |
 | Flyout | indicator | a chevron at the trailing edge by its own auto margin, `--fg-subtle` |
 | Flyout gutter / shift | offset | 10px / -6px, JS numbers (see below) |
 
 Two things the table cannot carry:
 
 - **The row's vertical padding moved.** It was a bare `5px`; it is now `--tori-space-3` (6px), which is both on the ramp and the reference's own value. This is the one place the migration changed a shipped proportion, and it was changed because the row stopped being a `div` and became a real menu item.
+- **The surface grows from its anchor.** Content enters on `[data-expanded]` with a fade and scale from .95 at `--tori-duration-med` and `--tori-ease-out`, `transform-origin` from `--kb-menu-content-transform-origin` with a `center` fallback (`Menu.module.css:32`); close stays instant. An overlay mounts fresh each time it opens, so a plain keyframe is safe here, unlike inside a pane ([[concept_one_shot_entrances]]).
 - **Gutters are not tokens and cannot be.** Kobalte hands them to floating-ui as numbers, so they never reach CSS and cannot read `--ui-scale`. Recorded here as literals for that reason. The flyout's two are derived rather than picked: 10 is the surface's own 6px padding plus the 4px a dropdown clears its button by, because the row a flyout is measured from is inset by that padding, and -6 undoes the padding on the other axis so a flyout's first row lines up with the row that opened it. jsdom gives floating-ui no geometry, so these are reviewable and not testable, and the derivation in the comment is the only guard they have.
 
 ## Considered and rejected from the reference
 
 - **A full-bleed separator.** The reference pulls the rule past the surface's own padding so it spans edge to edge. Tori keeps its inset rule: against a `--tori-radius-xl` container, a full-bleed rule runs into the curve.
 - **`opacity` for a disabled row.** A role is theme-correct and an opacity is not, so `--fg-muted` instead.
-- **`transform-origin` from Kobalte's popper variable.** Earns its keep only with an open/close animation, and there is none.
 - **The reference's proportions wholesale.** Its item gap and minimum width are web-app airy; [[adr_premium_design_system]]'s dense tier undercuts both.
 
 ## Key files & entry points
@@ -132,6 +132,8 @@ Focus restore in that mode is Tori's, for the reason [[component_dialog]]'s is: 
 
 ## Related
 
+- [[component_glide]]: the row highlight, and why the flyout's parent stays lit.
+- [[concept_one_shot_entrances]]: why an overlay may use a mount keyframe and a pane may not.
 - [[concept_repository_identity]] - what the heading variant was added for, and every other surface that says the same thing
 
 - [[gotcha_a_kobalte_menu_answers_no_plain_click]] - triggers open on `pointerdown`, rows act on `pointerup`, and `src/test/menus.ts` exports `pointerClick` for it.
