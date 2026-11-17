@@ -703,6 +703,7 @@ code.secretReason {
 /* A line of its own under the message. */
 .stamp {
   display: block;
+  width: fit-content;
   margin-top: calc(4px * var(--ui-scale));
   color: var(--fg-watermark);
   font-size: var(--tori-text-xs);
