@@ -13,7 +13,7 @@
 import { createEffect, createSignal, onCleanup, onMount, Show, type JSX } from "solid-js";
 import UnifiedTabStrip from "./UnifiedTabStrip";
 import { maybeKindEntry } from "./registry";
-import { isKindHome, paneActiveId, paneHostIds, paneRefusal, paneTabs, reorderPane } from "./paneTabs";
+import { isFixedTab, isKindHome, paneActiveId, paneHostIds, paneRefusal, paneTabs, reorderPane } from "./paneTabs";
 import { stageHost } from "./stageHost";
 import { draggingTab, dropAction, endTabDrag, hitTest, type DropZone } from "./tabDrag";
 import { setPaneActive } from "../layout/tabPlacement";
@@ -127,13 +127,21 @@ export default function PaneView(props: {
           rect: pillRect(el),
         }))
       : [];
-    return hitTest({
+    const z = hitTest({
       x: e.clientX,
       y: e.clientY,
       pane: root.getBoundingClientRect(),
       strip: strip?.getBoundingClientRect() ?? null,
       tabs,
     });
+    // Fixed tabs lead the strip, so a slot ahead of them is one the drop could
+    // never keep: it snaps to just after the last of them instead.
+    if (z?.kind === "strip" && z.afterId === null) {
+      const fixed = paneTabs(props.ws ?? "", props.paneId).filter(isFixedTab);
+      const lastFixed = fixed[fixed.length - 1];
+      if (lastFixed) return { kind: "strip", afterId: lastFixed.id };
+    }
+    return z;
   }
 
   /** The edit this zone means, or null for the drops that ask for the layout

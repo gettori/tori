@@ -797,6 +797,11 @@ function App() {
       say("No tab to move.");
       return;
     }
+    const unified = unifiedTabs().find((t) => t.id === tab.id);
+    if (unified && maybeKindEntry(unified.kind)?.fixed?.(unified)) {
+      say("This chat stays where it is.");
+      return;
+    }
     const from = paneOfTab(ws, tab, root);
     const target = p.paneId ?? (from ? stepPane(from, p.direction ?? "next") : null);
     if (!target) {
