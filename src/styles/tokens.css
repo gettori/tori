@@ -306,8 +306,8 @@
     --lane-accent-body: #19202c;
 
     /* blocking */
-    --blocking-surface: #222327;
-    --blocking-border: #d9a468;
+    --blocking-surface: #1b1e25;
+    --blocking-border: rgba(200, 215, 255, 0.08);
     --blocking-fg: #e4e8f0;
     --blocking-accent: #d9bd85;
 
@@ -516,8 +516,8 @@
     --lane-accent-body: #f0f5fb;
 
     /* blocking */
-    --blocking-surface: #ece9e6;
-    --blocking-border: #7e5e2f;
+    --blocking-surface: #f3f3f3;
+    --blocking-border: #e0e0e0;
     --blocking-fg: #1e1e1e;
     --blocking-accent: #6b4f27;
 

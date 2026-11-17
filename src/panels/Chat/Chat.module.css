@@ -1190,7 +1190,7 @@ code.secretReason {
      above. This used to be `--neutral-subtle`, which made the loudest surface in
      the transcript the one nobody reads, and made a long run of calls noisier
      the further a turn went. `.toolBlocked` still stands out: it signals through
-     border and label colour, which now has nothing competing with it.
+     its label colour, which now has nothing competing with it.
 
      The frame goes flat, not its contents. `.toolPre` and `.hunk` take the fill
      instead (see below), because the payload is the part anyone reads. */
@@ -1302,10 +1302,6 @@ code.secretReason {
 }
 
 /* A blocked call must not read as work in progress. */
-.toolBlocked {
-  border-color: var(--brand-default);
-}
-
 .toolBlocked .toolState {
   color: var(--brand-default);
 }
@@ -1668,25 +1664,29 @@ button.diffHunkHeader:hover {
 }
 
 /* ---- the approval prompt ----
-   The mock's card: a gold-bordered rounded container, the question as a
-   sentence, the primary action in the brand gold.
+   The approval ask card's shape: a hairline-framed rounded card, the question
+   as a sentence, the answers in a footer strip under a rule.
 
-   On the blocking tier (`--blocking-*`), which it shares with `.question`.
-   Those roles carried `--brand-default` over `--canvas-card` until Phase 5, and
-   `--canvas-card` is what the chat pane itself paints, so a card that had
-   stopped the turn was identified by a hairline and nothing else. The tier
-   lifts the fill off the pane and gives both blocking surfaces one name to be
-   restyled by. */
+   On the blocking tier (`--blocking-*`), which it shares with `.question`, so
+   both blocking surfaces have one name to be restyled by. */
 
 .prompt {
-  display: flex;
-  flex-direction: column;
-  gap: calc(10px * var(--ui-scale));
   margin-top: calc(8px * var(--ui-scale));
-  padding: calc(14px * var(--ui-scale)) calc(16px * var(--ui-scale));
   border: 1px solid var(--blocking-border);
   border-radius: var(--tori-radius-lg);
   background: var(--blocking-surface);
+}
+
+.promptBody {
+  display: flex;
+  flex-direction: column;
+  gap: calc(10px * var(--ui-scale));
+  padding: calc(14px * var(--ui-scale)) calc(16px * var(--ui-scale));
+}
+
+.promptFooter {
+  padding: calc(8px * var(--ui-scale)) calc(16px * var(--ui-scale));
+  border-top: 1px solid var(--border-default);
 }
 
 .promptQuestion {
@@ -1753,6 +1753,7 @@ button.diffHunkHeader:hover {
 .promptActions {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: calc(8px * var(--ui-scale));
 }
@@ -1865,8 +1866,8 @@ button.diffHunkHeader:hover {
   font-size: var(--tori-text-md);
 }
 
-/* Settled cards hand the gold back: only a question still waiting wears the
-   blocking border, so a scan down the transcript finds it by color alone. */
+/* Settled cards hand the tier back, so restyling the waiting look never
+   reaches a question that is done. */
 .questionDone,
 .questionClosed {
   border-color: var(--border-default);
@@ -2476,9 +2477,9 @@ button.diffHunkHeader:hover {
 
 .ask button[data-chosen]:disabled {
   opacity: 1;
-  background: var(--fg-default);
-  border-color: var(--fg-default);
-  color: var(--canvas-card);
+  background: var(--brand-default);
+  border-color: var(--brand-default);
+  color: var(--brand-on);
 }
 
 .askDraft {
