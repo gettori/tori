@@ -1,6 +1,8 @@
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { MessageSquare } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
+import { providerMarkKey } from "../../components/Icon/ProviderIcon";
+import { agentMark } from "../../components/Icon/agentMarks";
 import type { MenuItem } from "../../components/Menu/rows";
 import { needsYouOrWorking, type Rollup } from "../../utils/sessionStatus";
 import { NEW_CHAT_NAME, chatTime, type Chat } from "../../utils/chats";
@@ -40,10 +42,14 @@ export default function ChatList(props: {
   );
   const folds = () => !props.filtered && (props.moreOpen ? props.chats.length > GROUP_CAP : split().hidden.length > 0);
 
+  // An unsent chat has no session yet, and an adapter without a mark keeps the
+  // chat glyph rather than the generic brain.
+  const chatIcon = (c: Chat) => agentMark(providerMarkKey(null, c.sessions[0]?.agent)) ?? MessageSquare;
+
   const chatRow = (c: Chat) => (
     <BranchRow
       label={c.name ?? NEW_CHAT_NAME}
-      icon={<Icon icon={MessageSquare} />}
+      icon={<Icon icon={chatIcon(c)} />}
       selected={props.selectedId === c.id}
       end={
         <Show
