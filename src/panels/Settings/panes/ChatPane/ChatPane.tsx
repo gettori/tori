@@ -103,7 +103,13 @@ const NOTIFICATIONS = [
   "tray-count",
 ];
 const SAFETY = ["checkpoints"];
-const READ_ALOUD = ["read-aloud-voice", "read-aloud-rate", "read-aloud-model", "read-aloud-pronunciation"];
+const READ_ALOUD = [
+  "show-read-aloud",
+  "read-aloud-voice",
+  "read-aloud-rate",
+  "read-aloud-model",
+  "read-aloud-pronunciation",
+];
 const DICTATION = ["dictation-model"];
 
 const RATE_MIN = 0.5;
@@ -372,6 +378,19 @@ export default function ChatPane(props: PaneProps) {
 
         <Row
           {...props}
+          id="show-plan"
+          label="Show the plan"
+          hint="The agent's task list above the input box, folded to a count until you open it."
+        >
+          <Switch
+            checked={settings.chatDefaults.showPlan}
+            onChange={(showPlan) => setChatDefaults({ showPlan })}
+            aria-label="Show the plan"
+          />
+        </Row>
+
+        <Row
+          {...props}
           id="secret-watch"
           label="Mark secret file reads"
           hint="On, a turn in which an agent read a file like .env or a key, or ran a command naming one, says so in the chat, on its tab and in Checkpoints. Nothing is blocked either way. Add patterns under secretWatch.patterns in settings.json."
@@ -627,6 +646,19 @@ export default function ChatPane(props: PaneProps) {
             </Row>
           }
         >
+          <Row
+            {...props}
+            id="show-read-aloud"
+            label="Show the read aloud button"
+            hint="The speaker button beside each reply. The voice model stays installed either way."
+          >
+            <Switch
+              checked={settings.chatDefaults.showReadAloud}
+              onChange={(showReadAloud) => setChatDefaults({ showReadAloud })}
+              aria-label="Show the read aloud button"
+            />
+          </Row>
+
           <Row {...props} id="read-aloud-voice" label="Voice">
             <div class={styles.control}>
               <Select
