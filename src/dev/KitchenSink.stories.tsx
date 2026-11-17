@@ -4,6 +4,7 @@ import { Copy, PanelLeft, Settings, Trash2 } from "lucide-solid";
 import Button, { type ButtonSize, type ButtonVariant } from "../components/Button/Button";
 import Checkbox from "../components/Checkbox/Checkbox";
 import CheckboxGroup from "../components/CheckboxGroup/CheckboxGroup";
+import Diagram from "../components/Diagram/Diagram";
 import Dialog from "../components/Dialog/Dialog";
 import Glide, { optionAt } from "../components/Glide/Glide";
 import Icon from "../components/Icon/Icon";
@@ -429,7 +430,7 @@ function OverlaysSection() {
   return (
     <Section
       heading="Overlays"
-      note="Dropdown with a submenu and a danger row, a right-click menu, a select, a popover, a tooltip and a dialog. In the menus and the select one fill glides under the pointer and jumps with the arrows; a disabled row takes none, the danger row keeps its own wash, and the submenu's parent stays lit while the pointer is in the flyout."
+      note="Dropdown with a submenu and a danger row, a right-click menu, a select, a popover, a tooltip and a dialog. In the menus and the select one fill glides under the pointer and jumps with the arrows; a disabled row takes none, the danger row keeps its own wash, and the submenu's parent stays lit while the pointer is in the flyout. In tori-light their shadows are stacks of faint layers."
     >
       <div style={row}>
         <Dropdown
@@ -551,6 +552,26 @@ function ChecksSection() {
   );
 }
 
+const FLOW = `flowchart LR
+  prompt[Prompt] --> gate{Needs approval?}
+  gate -- yes --> ask[Ask card]
+  gate -- no --> tool[Run tool]
+  subgraph lane [Lane]
+    ask --> tool
+  end
+  tool --> reply[Reply]`;
+
+function DiagramSection() {
+  return (
+    <Section
+      heading="Diagram"
+      note="A mermaid fence on its dot grid. Node, edge label and subgraph text stay readable over the dots."
+    >
+      <Diagram code={FLOW} />
+    </Section>
+  );
+}
+
 function KitchenSink() {
   stubHost([chatInputHost, promptsHost, sidebarHost]);
   stubAssetUrls();
@@ -569,6 +590,7 @@ function KitchenSink() {
         <SelectionSection />
         <ListsSection />
         <SidebarSection />
+        <DiagramSection />
       </div>
     </div>
   );
