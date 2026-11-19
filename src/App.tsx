@@ -29,6 +29,7 @@ import { registerRecipeHost } from "./utils/perfRecipe";
 import { startRemoteFetch } from "./utils/remoteSync";
 import { startWorktreeCleanup } from "./utils/worktreeCleanup";
 import { startPrMemory } from "./utils/prMemory";
+import { watchSessionIssues } from "./utils/sessionIssues";
 import { tabsByWs } from "./panels/Editor/editorTabStore";
 import { open as openTerms } from "./panels/Terminal/terminalTabStore";
 import Toolbar from "./components/Toolbar/Toolbar";
@@ -619,6 +620,7 @@ function App() {
   // happens to be rendered, and it has to keep running with the sidebar shut.
   onCleanup(startRemoteFetch());
   onCleanup(startPrMemory());
+  onCleanup(watchSessionIssues());
   onCleanup(
     startWorktreeCleanup({
       selectedRoot: () => selectionRoot(selected()),

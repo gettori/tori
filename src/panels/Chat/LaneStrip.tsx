@@ -1,5 +1,7 @@
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
+import { Ticket, X } from "lucide-solid";
 import type { Lane } from "./chatStore";
+import Icon from "../../components/Icon/Icon";
 import agentStyles from "../../components/Icon/agentMarks.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import Tip, { excerptOf, type TipContent } from "./Tip";
@@ -41,6 +43,7 @@ export default function LaneStrip(props: {
   sessions?: readonly RelatedSession[];
   onOpenSession?: (id: string) => void;
   onUnlink?: (id: string) => void;
+  issueLink?: { label: string; to: string; onLink: () => void; onDismiss: () => void } | null;
 }) {
   // Ticks only while something is running, so an idle chat costs nothing. The
   // figure is what this panel has watched, the same basis the status strip's
@@ -158,7 +161,9 @@ export default function LaneStrip(props: {
   );
 
   return (
-    <Show when={props.lanes.length > 0 || props.tasks.length > 0 || (props.sessions?.length ?? 0) > 0}>
+    <Show
+      when={props.lanes.length > 0 || props.tasks.length > 0 || (props.sessions?.length ?? 0) > 0 || props.issueLink}
+    >
       <div class={styles.lanes}>
         <Show when={props.lanes.length > 0}>
           <div class={styles.laneGroup} role="group" aria-label="Subagent lanes">
@@ -199,6 +204,42 @@ export default function LaneStrip(props: {
           </div>
         </Show>
         <SessionChips sessions={props.sessions ?? []} onOpen={props.onOpenSession} onUnlink={props.onUnlink} />
+        <Show when={props.issueLink}>
+          {(offer) => (
+            <div class={styles.laneGroup} role="group" aria-label="Mentioned issue">
+              <span class={styles.laneGroupName}>Mentioned</span>
+              <Tooltip
+                as="button"
+                type="button"
+                class={styles.lane}
+                label={
+                  <Tip
+                    heading={`Link ${offer().label}`}
+                    lines={[`This chat mentioned ${offer().label}`, `Links it to ${offer().to}`]}
+                    hint="Click to link"
+                  />
+                }
+                data-mention-link={offer().label}
+                onClick={() => offer().onLink()}
+              >
+                <span class={styles.sessionGlyph} aria-hidden="true">
+                  <Icon icon={Ticket} size={12} />
+                </span>
+                <span class={styles.laneLabel}>{`Link ${offer().label}`}</span>
+              </Tooltip>
+              <Tooltip
+                as="button"
+                type="button"
+                class={`${styles.lane} ${styles.laneMore}`}
+                label={<Tip heading={`Not ${offer().label}`} lines={["Tori will not offer it again for this chat"]} />}
+                aria-label={`Dismiss ${offer().label}`}
+                onClick={() => offer().onDismiss()}
+              >
+                <Icon icon={X} size={12} />
+              </Tooltip>
+            </div>
+          )}
+        </Show>
       </div>
     </Show>
   );

@@ -6,8 +6,8 @@ import { numberHit, numberQuery, type IssueId } from "./navNumber";
 export type RankField = { slot: string; text: string; hidden?: boolean };
 
 /** A number on a row, weighed by kind in this order: the linked issue, the
- *  pull request, a number in the branch name. */
-export type RankNumber = { kind: "issue" | "pr" | "branch"; slot: string; id: IssueId; digitsAt: number };
+ *  pull request, a number in the branch name, an issue a session mentioned. */
+export type RankNumber = { kind: "issue" | "pr" | "branch" | "mention"; slot: string; id: IssueId; digitsAt: number };
 
 /** `penalty` is for commands and settings, so a place wins a tie with them. */
 export type RankInput = { fields: readonly RankField[]; numbers?: readonly RankNumber[]; penalty?: boolean };
@@ -23,8 +23,8 @@ const GAP = 6;
 const FIELD_DROP = 10;
 const HIDDEN_DROP = 15;
 const PENALTY = 6;
-const NUMBER_EXACT = { issue: 130, pr: 125, branch: 120 };
-const NUMBER_WITHIN = { issue: 70, pr: 65, branch: 60 };
+const NUMBER_EXACT = { issue: 130, pr: 125, branch: 120, mention: 115 };
+const NUMBER_WITHIN = { issue: 70, pr: 65, branch: 60, mention: 55 };
 
 type Hit = { score: number; ranges: Range[]; slot: string };
 

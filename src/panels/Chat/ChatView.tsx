@@ -152,6 +152,9 @@ import { loginJob, loginNote } from "../../utils/signIn";
 import type { AccountsView } from "../Settings/panes/AgentsPane/AgentAccounts";
 import { capNotice, markNoticed, noticed, pastCap, shouldNotice, MULTI_CHAT_NOTICE } from "../../utils/chatConcurrency";
 import { isChatKey } from "../../utils/topics";
+import { linkOffer } from "../../utils/mentionLink";
+import { dismissMention } from "../../utils/sessionIssues";
+import { errorText } from "../../utils/issues";
 import {
   emitWith,
   NAVIGATE,
@@ -1507,6 +1510,22 @@ export default function ChatView(props: {
     () => props.sessionId,
     () => raw().items,
   );
+  const mentionOffer = createMemo(() => linkOffer(props.sessionId, props.workspace));
+  const issueLink = () => {
+    const offer = mentionOffer();
+    if (!offer) return null;
+    return {
+      label: offer.label,
+      to: offer.to,
+      onLink: () =>
+        void offer
+          .link()
+          .catch((e) =>
+            emitWith<ToastEvent>(TOAST, { message: `${offer.label} was not linked: ${errorText(e)}`, kind: "error" }),
+          ),
+      onDismiss: () => dismissMention(props.sessionId, offer.mention),
+    };
+  };
   const [firstPrompt] = createResource(
     () => props.sessionId,
     (session) => invoke<{ sender: string; text: string } | null>("session_first_prompt", { session }).catch(() => null),
@@ -2778,6 +2797,7 @@ export default function ChatView(props: {
         onSelect={(agentId) => edit((s) => selectLane(s, agentId))}
         active={props.active}
         sessions={related()}
+        issueLink={issueLink()}
         onOpenSession={(session) => emitWith<NavTarget>(NAVIGATE, { session })}
         onUnlink={(other) =>
           void invoke("session_unlink", { a: props.sessionId, b: other }).catch((e) =>
