@@ -83,7 +83,11 @@ function inputs(over: Partial<PlaceInputs> = {}): PlaceInputs {
     ],
     statuses: [],
     prOf: (_project, branch) =>
-      branch === "side-panel" ? { number: 214, title: "Side panel", tone: "approved" } : undefined,
+      branch === "side-panel"
+        ? { number: 214, title: "Side panel", url: "https://example.test/pull/214", tone: "approved" }
+        : undefined,
+    originOf: () => null,
+    reviews: () => [],
     ...over,
   };
 }
@@ -106,7 +110,7 @@ describe("the navigator's places", () => {
     expect(byId(`unit:${WT} side-panel`)).toMatchObject({
       title: "side-panel",
       trail: "work / tori",
-      issue: { display: "#92" },
+      ticket: { label: "#92" },
       pr: { number: 214, tone: "approved" },
       target: { folder: WT, branch: "side-panel", select: true },
     });
@@ -117,7 +121,7 @@ describe("the navigator's places", () => {
   });
 
   it("lists a Topic with its members, one of them with its worktree missing", () => {
-    expect(byId("topic:side-1")).toMatchObject({ trail: "tori, relay", issue: { display: "#92" } });
+    expect(byId("topic:side-1")).toMatchObject({ trail: "tori, relay", ticket: { label: "#92" } });
     expect(byId(`member:side-1:${REPO}`)).toMatchObject({
       title: "tori",
       trail: "side-panel-rollout",
@@ -125,7 +129,7 @@ describe("the navigator's places", () => {
     });
     const missing = byId("member:side-1:/root/work/relay");
     expect(missing).toMatchObject({ title: "relay", target: { topic: "side-1" } });
-    expect(missing?.target.root).toBeUndefined();
+    expect(missing).not.toHaveProperty("target.root");
   });
 
   it("lists a chat under its space, Home when it has none", () => {

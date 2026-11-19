@@ -48,6 +48,7 @@ export type Parsed = {
  * is typed and then the query is thought about.
  */
 export function parseQuery(raw: string, home: OmniHome): Parsed {
+  if (home === "all" && /^#\d+(\s|$)/.test(raw)) return { mode: home, term: raw.trim() };
   const spec = MODES.find((m) => m.prefix && raw.startsWith(m.prefix));
   if (!spec) return { mode: home, term: raw.trim() };
   return { mode: spec.mode, term: raw.slice(spec.prefix.length).trim() };

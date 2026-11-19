@@ -137,6 +137,7 @@ export default function AddBranchDialog(props: {
    *  guess. */
   baseDefault?: string;
   issues?: IssueSourceProps;
+  issueKey?: string;
   onConfirm: (pick: BranchPick) => void;
   onCancel: () => void;
 }) {
@@ -174,7 +175,7 @@ export default function AddBranchDialog(props: {
   // delete, and git refuses a branch that is checked out anywhere.
   const deletable = (name: string) => !!props.onDeleteAsk && kinds().get(name) === "local" && !taken().has(name);
 
-  const [source, setSource] = createSignal<"branch" | "issue">("branch");
+  const [source, setSource] = createSignal<"branch" | "issue">(props.issueKey ? "issue" : "branch");
   const [issueQuery, setIssueQuery] = createSignal("");
   const [assigned, setAssigned] = createSignal<IssueRef[] | null>(null);
   const [issueError, setIssueError] = createSignal<string | null>(null);
@@ -186,22 +187,26 @@ export default function AddBranchDialog(props: {
   const [link, setLink] = createSignal(true);
   const [ahead, setAhead] = createSignal(false);
 
+  function loadAssigned() {
+    if (assigned() !== null || !props.issues) return;
+    props.issues
+      .assigned()
+      .then((list) => {
+        setAssigned(list.rows.filter((i) => i.kind === "issue"));
+        setUnread(list.skipped);
+      })
+      .catch((e) => {
+        setAssigned([]);
+        setIssueError(errorText(e));
+      });
+  }
+
   createEffect(
     on(
       source,
       (s) => {
         queueMicrotask(() => input?.focus());
-        if (s !== "issue" || assigned() !== null || !props.issues) return;
-        props.issues
-          .assigned()
-          .then((list) => {
-            setAssigned(list.rows.filter((i) => i.kind === "issue"));
-            setUnread(list.skipped);
-          })
-          .catch((e) => {
-            setAssigned([]);
-            setIssueError(errorText(e));
-          });
+        if (s === "issue") loadAssigned();
       },
       { defer: true },
     ),
@@ -253,6 +258,11 @@ export default function AddBranchDialog(props: {
       })
       .catch((e) => setIssueError(errorText(e)))
       .finally(() => setLoadingKey(null));
+  }
+
+  if (props.issueKey) {
+    loadAssigned();
+    loadIssue(props.issueKey);
   }
 
   const issueKind = (name: string): BranchKind => kinds().get(name) ?? "new";

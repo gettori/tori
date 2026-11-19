@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vite-plus/test";
-import { rank, type RankInput } from "./navRank";
+import { rank, type RankInput, type RankNumber } from "./navRank";
 
 type Row = { id: string; title: string; trail?: string; ticket?: string; command?: boolean };
 
@@ -73,5 +73,71 @@ describe("the navigator's ranker", () => {
     ];
     expect(ids(rows, "main")).toEqual(["b", "a"]);
     expect(ids(rows, "  ")).toEqual(["b", "a"]);
+  });
+});
+
+type Numbered = { id: string; title: string; numbers: RankNumber[] };
+
+const numbered = (r: Numbered): RankInput => ({ fields: [{ slot: "title", text: r.title }], numbers: r.numbers });
+const TORI = "gettori/tori";
+const TICKETS = "gettori/tickets";
+const issue = (repo: string, number: number): RankNumber => ({
+  kind: "issue",
+  slot: "ticket",
+  id: { repo, number },
+  digitsAt: 1,
+});
+const pr = (repo: string, number: number): RankNumber => ({
+  kind: "pr",
+  slot: "pr",
+  id: { repo, number },
+  digitsAt: 1,
+});
+
+describe("the ranker's numbers", () => {
+  it("puts the linked issue first, then the pull request, then a number in the branch name", () => {
+    const rows: Numbered[] = [
+      {
+        id: "branch",
+        title: "92-side",
+        numbers: [{ kind: "branch", slot: "title", id: { repo: TORI, number: 92 }, digitsAt: 0 }],
+      },
+      { id: "pr", title: "fix-tabs", numbers: [pr(TORI, 92)] },
+      { id: "issue", title: "side-panel", numbers: [issue(TICKETS, 92)] },
+      { id: "within", title: "tabs", numbers: [issue(TICKETS, 1924)] },
+    ];
+    expect(rank(rows, "92", numbered).map((r) => r.item.id)).toEqual(["issue", "pr", "branch", "within"]);
+  });
+
+  it("marks the digits on the chip or in the branch name that matched", () => {
+    const rows: Numbered[] = [
+      { id: "chip", title: "side-panel", numbers: [issue(TICKETS, 1924)] },
+      {
+        id: "branch",
+        title: "fix-92",
+        numbers: [{ kind: "branch", slot: "title", id: { repo: TORI, number: 92 }, digitsAt: 4 }],
+      },
+    ];
+    const out = rank(rows, "#92", numbered);
+    expect(out.find((r) => r.item.id === "chip")?.marks).toEqual({ ticket: [{ start: 2, end: 4 }] });
+    expect(out.find((r) => r.item.id === "branch")?.marks).toEqual({ title: [{ start: 4, end: 6 }] });
+  });
+
+  it("narrows two repos sharing a number to the one typed, and keeps both for a bare number", () => {
+    const rows: Numbered[] = [
+      { id: "tori", title: "a", numbers: [issue(TORI, 92)] },
+      { id: "tickets", title: "b", numbers: [issue(TICKETS, 92)] },
+    ];
+    expect(rank(rows, "92", numbered).map((r) => r.item.id)).toEqual(["tori", "tickets"]);
+    expect(rank(rows, "tickets#92", numbered).map((r) => r.item.id)).toEqual(["tickets"]);
+    expect(rank(rows, "gettori/tori#92", numbered).map((r) => r.item.id)).toEqual(["tori"]);
+  });
+
+  it("never matches a number as a subsequence", () => {
+    const rows: Numbered[] = [
+      { id: "scattered", title: "9-1-2", numbers: [issue(TORI, 912)] },
+      { id: "run", title: "release-92", numbers: [] },
+    ];
+    expect(rank(rows, "92", numbered).map((r) => r.item.id)).toEqual(["run"]);
   });
 });
