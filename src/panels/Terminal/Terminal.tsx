@@ -48,6 +48,9 @@ import {
   REVEAL_DOCK,
   type RevealDock,
   NEW_DOCK_SHELL,
+  SESSION_HISTORY,
+  NEW_TERMINAL,
+  CONTINUE_IN_CHAT,
   OPEN_SHELL_AT,
   type OpenShellAt,
   NEW_SESSION,
@@ -758,6 +761,30 @@ export default function Terminal(props: {
     setHistoryEl(e.currentTarget as HTMLElement);
     setHistoryOpen(!historyOpen());
   };
+
+  // The palette has no press to anchor on, so it takes the focused pane's
+  // History button, which is the one outside a `pane-blur` strip.
+  onCleanup(
+    onEvent(SESSION_HISTORY, () => {
+      const shown = [...document.querySelectorAll<HTMLButtonElement>(`.${styles.termHistory}`)].filter(
+        (b) => b.offsetParent && !b.disabled,
+      );
+      const button = shown.find((b) => !b.closest(".pane-blur")) ?? shown[0];
+      if (!button) {
+        emitWith<ToastEvent>(TOAST, { message: "Show the terminal to open Session history", kind: "info" });
+        return;
+      }
+      setHistoryEl(button);
+      setHistoryOpen(true);
+    }),
+  );
+  onCleanup(onEvent(NEW_TERMINAL, () => newShell()));
+  onCleanup(
+    onEvent(CONTINUE_IN_CHAT, () => {
+      const sel = props.selected;
+      if (sel?.sessionId) void continueInChat(sel, sel.agent ?? "claude");
+    }),
+  );
 
   // Which of this workspace's sessions are open in a tab: History lists those
   // first, whatever their age, and everything else falls into time buckets.

@@ -53,6 +53,10 @@ import {
   TOGGLE_AUTOPILOT_VIEW,
   TOGGLE_INBOX,
   OPEN_INBOX,
+  type OpenInbox,
+  SESSION_HISTORY,
+  NEW_TERMINAL,
+  CONTINUE_IN_CHAT,
   TOGGLE_AUTOPILOT_POPUP,
   RELOAD_APP,
   TOGGLE_SIDEBAR,
@@ -197,7 +201,11 @@ export type Requirement =
   | "frontUnit"
   /** A Topic is selected. Hides when unmet, for `frontUnit`'s reason. */
   | "frontTopic"
-  | "frontIssue";
+  | "frontIssue"
+  | "frontFolder"
+  /** A session is selected. Hides when unmet, for `frontUnit`'s reason. */
+  | "frontSession"
+  | "sessionAgent";
 
 export type Command = {
   id: string;
@@ -399,6 +407,18 @@ export const COMMANDS: Command[] = [
     scope: "global",
     run: () => emit(OPEN_DIGEST),
   },
+  ...(
+    [
+      ["needsYou", "Needs You"],
+      ["permissions", "Permissions"],
+      ["review", "Review"],
+    ] as const
+  ).map(([tab, label]): Command => ({
+    id: `inbox:${tab}`,
+    label: `Inbox: ${label}`,
+    group: "view",
+    run: () => emitWith<OpenInbox>(OPEN_INBOX, { tab }),
+  })),
   {
     id: "autopilot-view",
     keys: ["⌘", "⇧", "J"],
@@ -632,6 +652,13 @@ export const COMMANDS: Command[] = [
     run: () => emit(CLOSE_TAB),
   },
   {
+    id: "new-terminal",
+    label: "New Terminal",
+    group: "terminal",
+    run: () => emit(NEW_TERMINAL),
+    requires: ["frontFolder"],
+  },
+  {
     id: "chat-new",
     keys: ["⌘", "N"],
     label: "New Chat",
@@ -649,6 +676,20 @@ export const COMMANDS: Command[] = [
     scope: "global",
     match: cmdShift("a"),
     run: () => emit(NEXT_WAITING_SESSION),
+  },
+  {
+    id: "session-history",
+    label: "Session History",
+    group: "session",
+    run: () => emit(SESSION_HISTORY),
+    requires: ["frontFolder"],
+  },
+  {
+    id: "continue-in-chat",
+    label: "Continue This Session in Chat",
+    group: "session",
+    run: () => emit(CONTINUE_IN_CHAT),
+    requires: ["frontSession", "sessionAgent"],
   },
   {
     id: "stop-chat",
