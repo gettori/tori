@@ -1128,6 +1128,7 @@ pub fn delete_session(path: String, agent: String) -> Result<(), String> {
             ("its waiting messages", crate::chat_requests::forget(&id)),
             ("its read grants", crate::read_grants::forget(&id)),
             ("its links", crate::session_links::forget(&id)),
+            ("the issues it mentioned", crate::session_issues::forget(&id)),
             ("who spawned it", crate::session_spawners::forget(&id)),
         ] {
             if let Err(e) = forgot {

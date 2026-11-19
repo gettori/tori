@@ -133,6 +133,27 @@ describe("the ranker's numbers", () => {
     expect(rank(rows, "gettori/tori#92", numbered).map((r) => r.item.id)).toEqual(["tori"]);
   });
 
+  it("finds a chat by an issue it mentioned, below every row that has the number on it", () => {
+    const mention = (number: number, slot: string): RankNumber => ({
+      kind: "mention",
+      slot,
+      id: { repo: TICKETS, number },
+      digitsAt: 1,
+    });
+    const rows: Numbered[] = [
+      { id: "chat", title: "Release notes", numbers: [mention(7, "mention:0"), mention(92, "mention:1")] },
+      {
+        id: "branch",
+        title: "92-side",
+        numbers: [{ kind: "branch", slot: "title", id: { repo: TORI, number: 92 }, digitsAt: 0 }],
+      },
+      { id: "quiet", title: "Standup", numbers: [mention(7, "mention:0")] },
+    ];
+    const out = rank(rows, "92", numbered);
+    expect(out.map((r) => r.item.id)).toEqual(["branch", "chat"]);
+    expect(out[1].marks).toEqual({ "mention:1": [{ start: 1, end: 3 }] });
+  });
+
   it("never matches a number as a subsequence", () => {
     const rows: Numbered[] = [
       { id: "scattered", title: "9-1-2", numbers: [issue(TORI, 912)] },

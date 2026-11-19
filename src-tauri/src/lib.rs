@@ -77,6 +77,7 @@ mod scratch;
 mod search;
 mod second_opinion;
 mod secret_watch;
+mod session_issues;
 mod session_links;
 mod session_spawners;
 mod sessions;
@@ -854,6 +855,7 @@ pub fn run() {
             issues::commands::issues_link,
             issues::commands::issues_record,
             issues::commands::issues_forget,
+            session_issues::session_issues_list,
             issues::commands::issue_repos_get,
             issues::commands::issue_repos_set,
             issues::commands::issue_repos_access,

@@ -88,6 +88,7 @@ function inputs(over: Partial<PlaceInputs> = {}): PlaceInputs {
         : undefined,
     originOf: () => null,
     reviews: () => [],
+    mentionsOf: () => [],
     ...over,
   };
 }
