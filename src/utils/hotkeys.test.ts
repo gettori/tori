@@ -283,12 +283,14 @@ describe("dispatchHotkey (terminal-safe subset)", () => {
     expect(dispatched.map((e) => e.type)).toEqual(["tori:open-omnibox", "tori:open-omnibox", "tori:toggle-shortcuts"]);
   });
 
-  it("opens the one box at the mode each of its two keys is for", () => {
-    // ⌘P and ⌘K are an entry and its alias, not two overlays: same event, same
-    // component, different prefix. Asserted on the payload because the event
-    // name can no longer tell them apart, which is the point.
+  it("opens the one box on the home each of its two keys is for", () => {
+    // Asserted on the payload because the event name can no longer tell the
+    // two keys apart.
     dispatchWindowHotkey(key("p", { meta: true }));
     dispatchHotkey(key("k", { meta: true }));
-    expect(dispatched.map((e) => e.detail?.prefix)).toEqual(["", ">"]);
+    expect(dispatched.map((e) => e.detail)).toEqual([
+      { home: "file", prefix: "" },
+      { home: "all", prefix: "" },
+    ]);
   });
 });

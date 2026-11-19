@@ -457,12 +457,10 @@ function App() {
   // Settings, whose Projects list is one of the ways in, so closing it lands
   // back on that list.
   const [projectSettings, setProjectSettings] = createSignal<OpenProjectSettings | null>(null);
-  // The omnibox's opening prefix, and `null` for "not open". One signal where
-  // there were two, because there is one overlay: an open flag per shortcut is
-  // what let ⌘P and ⌘K be two boxes in the first place. A fresh object per open
-  // so the `keyed` Show below remounts, which is what lets ⌘K over an already
-  // open box put it in `>` mode instead of leaving it wherever it was.
-  const [omnibox, setOmnibox] = createSignal<{ prefix: string } | null>(null);
+  // `null` is "not open". A fresh object per open so the `keyed` Show below
+  // remounts, which is what lets ⌘K over an already open box put it on its
+  // own home instead of leaving it wherever it was.
+  const [omnibox, setOmnibox] = createSignal<OpenOmnibox | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = createSignal(false);
   const [aboutOpen, setAboutOpen] = createSignal(false);
 
@@ -959,11 +957,11 @@ function App() {
     offFocusIn = () => window.removeEventListener("focusin", onFocusIn);
     // The same hold for the menu bar's routes to these, which never pass
     // through the keydown above.
-    offOmnibox = onEventWith<OpenOmnibox>(OPEN_OMNIBOX, ({ prefix }) => {
+    offOmnibox = onEventWith<OpenOmnibox>(OPEN_OMNIBOX, ({ home, prefix }) => {
       if (firstRunOpen()) return;
       // Before the box takes focus, which moves the selection into its input.
       holdSelection();
-      setOmnibox({ prefix });
+      setOmnibox({ home, prefix });
     });
     offShortcuts = onEvent(TOGGLE_SHORTCUTS, () => {
       if (!firstRunOpen()) setShortcutsOpen((open) => !open);
@@ -1214,6 +1212,7 @@ function App() {
       <Show when={omnibox()} keyed>
         {(open) => (
           <Omnibox
+            home={open.home}
             prefix={open.prefix}
             selected={selected()}
             onOpenSettings={() => setSettingsOpen(true)}

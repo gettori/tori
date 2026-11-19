@@ -93,7 +93,7 @@ const topicSel = (topicId: string, roots: string[]) => ({
 let mounted: ReturnType<typeof render> | null = null;
 const open = (sel: unknown, prefix = "") => {
   mounted = render(() => (
-    <Omnibox prefix={prefix} selected={sel as never} onOpenSettings={() => {}} onClose={() => {}} />
+    <Omnibox home="file" prefix={prefix} selected={sel as never} onOpenSettings={() => {}} onClose={() => {}} />
   ));
 };
 
