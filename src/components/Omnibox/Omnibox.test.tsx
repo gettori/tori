@@ -161,9 +161,11 @@ describe("the prefix router", () => {
     open("", "file");
     expect(screen.getByText("Files")).toBeTruthy();
     mounted!.unmount();
+    bridge.calls.length = 0;
 
     open("", "all");
     expect((input() as HTMLInputElement).value).toBe("");
+    expect(bridge.calls).not.toContain("list_project_files");
     expect(screen.getByText("Everything")).toBeTruthy();
     expect(rowLabels()).toContain("Toggle Sidebar");
     expect(rowLabels()).toContain("Open Settings");
@@ -175,6 +177,7 @@ describe("the prefix router", () => {
 
     typeInto("/");
     expect(screen.getByText("Files")).toBeTruthy();
+    expect(bridge.calls).toContain("list_project_files");
   });
 
   // The whole reason for one box rather than two: a mode is a keystroke inside

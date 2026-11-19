@@ -543,7 +543,10 @@ impl Daemon {
         let Ok(req) = serde_json::from_value::<Request>(value) else {
             return;
         };
-        if matches!(req.method.as_str(), "sessions.list" | "session.wait" | "list_sessions") {
+        if matches!(
+            req.method.as_str(),
+            "sessions.list" | "session.wait" | "list_sessions" | "sessions_overview"
+        ) {
             let (composer, out) = (self.composer.clone(), window.out.clone());
             thread::spawn(move || {
                 let Some(id) = req.id.clone() else { return };
@@ -552,6 +555,13 @@ impl Daemon {
                         Ok(raw) => format!("{{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":{raw}}}\n"),
                         Err(e) => to_line(&Response::err(id, e)),
                     },
+                    "sessions_overview" => {
+                        let rows = crate::sessions::sessions_overview(&composer.index, &composer.projects);
+                        match serde_json::to_string(&rows) {
+                            Ok(raw) => format!("{{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":{raw}}}\n"),
+                            Err(e) => to_line(&Response::err(id, RpcError::new(REFUSED, e.to_string()))),
+                        }
+                    }
                     "sessions.list" => {
                         let outcome = params(&req.params).map(|p| composer.sessions_list(&p));
                         to_line(&Response::reply(id, outcome))

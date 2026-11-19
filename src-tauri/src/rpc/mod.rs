@@ -456,6 +456,14 @@ pub fn list_sessions(folder: String, inclusive: Option<bool>) -> Result<tauri::i
     .map_err(|e| e.message)
 }
 
+#[tauri::command(async)]
+pub fn sessions_overview() -> Result<tauri::ipc::Response, String> {
+    let link = LINK.get().ok_or("the daemon link is not up")?;
+    link.request_raw("sessions_overview", json!({}), DAEMON_WAIT)
+        .map(tauri::ipc::Response::new)
+        .map_err(|e| e.message)
+}
+
 #[derive(serde::Deserialize)]
 struct Shown {
     withdraw: Vec<String>,

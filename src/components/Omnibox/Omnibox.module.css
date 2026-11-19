@@ -110,6 +110,45 @@
   font-weight: 600;
 }
 
+.accessories {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--tori-space-3);
+}
+
+.chip {
+  color: var(--fg-muted);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
+  line-height: var(--tori-line-tight);
+  white-space: nowrap;
+}
+
+.dot {
+  flex: none;
+  width: var(--tori-space-4);
+  height: var(--tori-space-4);
+  border-radius: var(--tori-radius-pill);
+}
+
+.needsYou {
+  background: var(--status-needs-you);
+}
+
+.working {
+  background: var(--status-progress);
+}
+
+.word {
+  flex: none;
+  min-width: calc(56px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--tori-text-sm);
+  text-align: right;
+  white-space: nowrap;
+}
+
 .itemKeys {
   flex: none;
   display: flex;
