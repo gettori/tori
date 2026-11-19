@@ -474,6 +474,13 @@ pub fn issues_record(app: AppHandle, project_path: String, branch: String, issue
     Ok(())
 }
 
+#[tauri::command(async)]
+pub fn issues_forget(app: AppHandle, project_path: String, branch: String) -> Result<(), String> {
+    store::forget(&project_path, &branch)?;
+    let _ = app.emit("config://changed", ());
+    Ok(())
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;

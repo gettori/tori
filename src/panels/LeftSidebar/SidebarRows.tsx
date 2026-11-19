@@ -39,7 +39,7 @@ import TooltipLines from "../../components/Tooltip/TooltipLines";
 import type { UnitIssue } from "../../utils/issues";
 import styles from "./SidebarRows.module.css";
 
-/** The issue a branch or a Topic was started from, worn after its name. Opens
+/** The issue linked to a branch or a Topic, worn after its name. Opens
  *  the issue's page; the row's own click never fires. */
 export function IssueMark(props: { issue: UnitIssue }) {
   return (

@@ -25,6 +25,7 @@ import { emitWith, ROOT_MOVED, DRAFT_INTO_NEW, type RootMoved, type DraftIntoNew
 import { demoteMemberWorktree, removeMemberWorktree } from "../../utils/memberWorktree";
 import { purgeWorkspace } from "../../utils/purgeWorkspace";
 import type { Operation, WorktreeStatus } from "../../utils/worktreeOperation";
+import type { UnitIssue } from "../../utils/issues";
 
 export type TopicActionsHost = {
   activeId: () => string | null | undefined;
@@ -42,6 +43,7 @@ export type TopicActionsHost = {
   countRunning?: (path: string) => Promise<number> | undefined;
   /** The Topics whose member list is open, for the forge poller. */
   onExpanded?: (ids: string[]) => void;
+  askIssue?: (projectPath: string, title: string) => Promise<UnitIssue | null>;
 };
 
 const LS_EXPANDED = "tori.topics-expanded.v1";
@@ -200,6 +202,14 @@ export function createTopicActions(host: TopicActionsHost) {
     if (!trimmed || trimmed === topic.name) return;
     await mutate("rename_topic", { topicId: topic.id, name: trimmed });
   }
+
+  async function linkIssue(topic: Topic) {
+    const first = orderOf(topic)[0];
+    const issue = first ? await host.askIssue?.(first, `Link issue to ${topic.name}`) : null;
+    if (issue) await mutate("set_topic_issue", { topicId: topic.id, issue });
+  }
+
+  const unlinkIssue = (topic: Topic) => mutate("set_topic_issue", { topicId: topic.id, issue: null });
 
   function moved(topic: Topic) {
     setMoveReq(null);
@@ -483,6 +493,8 @@ export function createTopicActions(host: TopicActionsHost) {
     { label: "Rename…", onClick: () => setRenameReq(topic) },
     { label: "Move to…", onClick: () => setMoveReq(topic) },
     { label: "Add repository…", onClick: () => setDialog({ topic }) },
+    { label: "Link issue\u2026", onClick: () => void linkIssue(topic) },
+    ...(topic.issue ? [{ label: "Unlink issue", onClick: () => void unlinkIssue(topic) }] : []),
     { separator: true },
     { label: "Delete…", danger: true, onClick: () => openDelete(topic) },
   ];
@@ -554,6 +566,8 @@ export function createTopicActions(host: TopicActionsHost) {
     discard,
     sweep,
     openDelete,
+    linkIssue,
+    unlinkIssue,
     keepInGlobal: (topic: Topic) => void mutate("set_topic_space", { topicId: topic.id, space: null }),
     /** Take a repo out of a Topic without offering its worktree: the folder is
      *  being forgotten, and its worktree stays where it is. */
