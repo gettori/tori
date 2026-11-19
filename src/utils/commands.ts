@@ -129,6 +129,13 @@ import {
   GIT_BRANCH_DELETE,
   LINK_ISSUE,
   UNLINK_ISSUE,
+  OPEN_GROUPING,
+  NEW_TOPIC,
+  NEW_SPACE,
+  NEW_PROJECT,
+  ATTACH_FOLDER,
+  SPACE_SETTINGS,
+  OPEN_GRAPH,
 } from "./events";
 
 /** Where a command is listed, in the palette and in the Cmd+/ sheet. */
@@ -1263,6 +1270,25 @@ export const COMMANDS: Command[] = [
     group: "git",
     run: () => emit(UNLINK_ISSUE),
     requires: ["frontTopic", "frontIssue"],
+  },
+  {
+    id: "graph",
+    label: "Show Graph",
+    group: "git",
+    run: () => emit(OPEN_GRAPH),
+    requires: ["frontUnit"],
+  },
+  { id: "new-topic", label: "New Topic...", group: "navigate", run: () => emit(NEW_TOPIC) },
+  { id: "new-space", label: "New Space...", group: "navigate", run: () => emit(NEW_SPACE) },
+  { id: "new-project", label: "New Project...", group: "navigate", run: () => emit(NEW_PROJECT) },
+  { id: "attach-folder", label: "Attach Folder...", group: "navigate", run: () => emit(ATTACH_FOLDER) },
+  { id: "sort-projects", label: "Sort Projects into Spaces...", group: "navigate", run: () => emit(OPEN_GROUPING) },
+  { id: "space-settings", label: "Space Settings...", group: "settings", run: () => emit(SPACE_SETTINGS) },
+  {
+    id: "pair-phone",
+    label: "Pair a Phone...",
+    group: "settings",
+    run: () => emitWith<OpenSettings>(OPEN_SETTINGS, { entry: "remote" }),
   },
 
   // --- Preferences ---------------------------------------------------------

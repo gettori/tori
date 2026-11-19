@@ -772,6 +772,15 @@ export const UNLINK_ISSUE = "tori:unlink-issue";
 
 export const OPEN_GROUPING = "tori:open-grouping";
 
+// The sidebar's own menu items, for the palette. The sidebar answers: it owns
+// the dialogs, the active space they act in and the unit list.
+export const NEW_TOPIC = "tori:new-topic";
+export const NEW_SPACE = "tori:new-space";
+export const NEW_PROJECT = "tori:new-project";
+export const ATTACH_FOLDER = "tori:attach-folder";
+export const SPACE_SETTINGS = "tori:space-settings";
+export const OPEN_GRAPH = "tori:open-graph";
+
 // Payload-carrying event: surface a toast from anywhere. components/Toasts owns
 // the stack (ToastRegion listens, pushToast writes), so panels emit this instead
 // of holding their own notifier.

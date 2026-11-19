@@ -69,6 +69,12 @@ import {
   emitWith,
   FOCUS_SEARCH,
   OPEN_GROUPING,
+  NEW_TOPIC,
+  NEW_SPACE,
+  NEW_PROJECT,
+  ATTACH_FOLDER,
+  SPACE_SETTINGS,
+  OPEN_GRAPH,
   NAVIGATE,
   type NavTarget,
   SESSIONS_REFRESH,
@@ -1648,6 +1654,17 @@ export default function LeftSidebar(props: {
       else setError(`No project at "${d.projectPath}" is open here.`);
     }),
   );
+  function selectedUnit(): { g: Group; p: Project; u: BranchUnit } | null {
+    const sel = props.selected;
+    if (!sel || (sel.kind ?? "unit") !== "unit") return null;
+    for (const g of treeSpaces()) {
+      const p = g.projects.find((q) => q.path === sel.projectPath);
+      const u = p?.branchUnits.find((x) => x.folderPath === sel.folderPath && x.branch === sel.branch);
+      if (p && u) return { g, p, u };
+    }
+    setError(`No branch unit named "${sel.branch}" is open in this project.`);
+    return null;
+  }
   function issueCommand(unlink: boolean) {
     const sel = props.selected;
     if (sel?.kind === "topic") {
@@ -1655,16 +1672,28 @@ export default function LeftSidebar(props: {
       if (topic) void (unlink ? topicActions.unlinkIssue(topic) : topicActions.linkIssue(topic));
       return;
     }
-    if (!sel || (sel.kind ?? "unit") !== "unit") return;
-    const p = treeSpaces()
-      .flatMap((g) => g.projects)
-      .find((q) => q.path === sel.projectPath);
-    const u = p?.branchUnits.find((x) => x.folderPath === sel.folderPath && x.branch === sel.branch);
-    if (p && u) void (unlink ? unlinkUnitIssue(p, u) : linkUnitIssue(p, u));
-    else setError(`No branch unit named "${sel.branch}" is open in this project.`);
+    const at = selectedUnit();
+    if (at) void (unlink ? unlinkUnitIssue(at.p, at.u) : linkUnitIssue(at.p, at.u));
   }
   onCleanup(onEvent(LINK_ISSUE, () => issueCommand(false)));
   onCleanup(onEvent(UNLINK_ISSUE, () => issueCommand(true)));
+  onCleanup(
+    onEvent(OPEN_GRAPH, () => {
+      const at = selectedUnit();
+      if (at) void openGraph(at.g, at.p, at.u);
+    }),
+  );
+  onCleanup(onEvent(NEW_TOPIC, () => topicActions.openNew(activeSpace()?.name)));
+  onCleanup(onEvent(NEW_SPACE, () => addSpace()));
+  onCleanup(
+    onEvent(NEW_PROJECT, () => {
+      const g = activeSpace();
+      if (g) openNewProject(g);
+      else setError("Global has no folder to make a project in. Switch to a space first.", "info");
+    }),
+  );
+  onCleanup(onEvent(ATTACH_FOLDER, () => void attachFolder()));
+  onCleanup(onEvent(SPACE_SETTINGS, () => setSpaceSettings(activeSpace()?.name ?? GLOBAL_KEY)));
   onCleanup(onEvent(SESSIONS_REFRESH, () => refreshSessions()));
   onCleanup(onEvent(COLLAPSE_PROJECTS, () => setProjectsOpen(false)));
   onCleanup(onEvent(EXPAND_PROJECTS, () => setProjectsOpen(true)));
