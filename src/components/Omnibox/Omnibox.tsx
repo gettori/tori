@@ -39,6 +39,7 @@ import {
   linkedIssueAt,
   livePlaces,
   livePr,
+  liveProjects,
   placeNumbers,
   watchSessionsOverview,
   type Place,
@@ -49,7 +50,8 @@ import { numberHit, numberQuery, ticketLabel, type NumberQuery } from "../../uti
 import { errorText, type Found, type IssueRef, type IssueRepos } from "../../utils/issues";
 import { requestLspRestart, resolvedServerIds, serverById } from "../../utils/lspServers";
 import { rootOf, workspaceKey } from "../../utils/topics";
-import { createTopicMembers, memberFor } from "../../utils/topicMembers";
+import { createTopicMembers, memberFor, projectUnitKind } from "../../utils/topicMembers";
+import { openProjectSettings, SECTION_LABEL, sectionsFor } from "../../utils/projectSettings";
 import { loadFrecency, rankByFrecency, topFiles } from "../../utils/frecency";
 import { loadTasks, type Task } from "../../utils/tasks";
 import { loadTaskRuns } from "../../utils/taskRecents";
@@ -660,6 +662,36 @@ export default function Omnibox(props: {
           label: `Open localhost:${port}`,
           sub: unit.branch,
           run: () => openPort(port),
+        });
+    }
+    for (const { project: p, space } of liveProjects()) {
+      const kind = projectUnitKind(p);
+      if (kind === "plain" || kind === "worktree" || kind === "incomplete")
+        out.push({
+          kind: "command",
+          group: "git",
+          id: `add-unit:${p.path}`,
+          label: `${kind === "plain" ? "Add branch" : "Add worktree"} to ${p.name}...`,
+          sub: space,
+          run: () => emitWith<AddBranchUnit>(ADD_BRANCH_UNIT, { projectPath: p.path }),
+        });
+      out.push({
+        kind: "command",
+        group: "settings",
+        id: `project-settings:${p.path}`,
+        label: `Project settings: ${p.name}`,
+        sub: space,
+        run: () => openProjectSettings(p.path),
+      });
+      if (p.path !== unit?.projectPath) continue;
+      for (const section of sectionsFor(kind).filter((s) => s !== "general"))
+        out.push({
+          kind: "command",
+          group: "settings",
+          id: `project-settings:${p.path}:${section}`,
+          label: `Project settings: ${p.name} / ${SECTION_LABEL[section]}`,
+          sub: space,
+          run: () => openProjectSettings(p.path, section),
         });
     }
     if (settings.autopilot.available)
