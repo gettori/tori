@@ -265,6 +265,14 @@ export function noteNavTree(spaces: readonly NavSpace[], originUrls: Readonly<Re
   setOrigins(originUrls);
 }
 
+/** The issue on the unit at `folderPath` and `branch`, as the sidebar last resolved it. */
+export function linkedIssueAt(folderPath: string, branch: string): UnitIssue | null {
+  for (const s of tree())
+    for (const p of s.projects)
+      for (const u of p.branchUnits) if (u.folderPath === folderPath && u.branch === branch) return u.issue ?? null;
+  return null;
+}
+
 function liveOrigin(projectPath: string): string | null {
   const url = origins()[projectPath];
   return url ? originRepo(url) : null;

@@ -130,7 +130,7 @@ pub struct Topic {
     /// folder follows from where the record lives.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub home: Option<String>,
-    /// The issue the Topic was started from. On the record rather than in
+    /// The issue the Topic is linked to. On the record rather than in
     /// `unit_issues.json`, so deleting the Topic deletes the link with it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub issue: Option<crate::issues::store::UnitIssue>,
@@ -1610,6 +1610,27 @@ pub mod commands {
     }
 
     #[tauri::command]
+    pub async fn set_topic_issue(
+        topic_id: String,
+        issue: Option<crate::issues::store::UnitIssue>,
+    ) -> Result<Topic, String> {
+        let call = serde_json::json!({ "topic_id": topic_id, "issue": issue });
+        blocking("set_topic_issue", move || {
+            crate::rpc::office_call_as("topics.set_topic_issue", call)
+        })
+        .await
+    }
+
+    fn set_topic_issue_in(
+        desk: &Desk,
+        topic_id: String,
+        issue: Option<crate::issues::store::UnitIssue>,
+    ) -> Result<Topic, String> {
+        let store = Store::default_location();
+        announce_and_tell(desk, &store, &topic_id, || super::set_issue(&store, &topic_id, issue))
+    }
+
+    #[tauri::command]
     pub async fn delete_topic(topic_id: String) -> Result<(), String> {
         let call = serde_json::json!({ "topic_id": topic_id });
         blocking("delete_topic", move || {
@@ -1701,6 +1722,9 @@ pub mod commands {
             }
             "set_topic_space" => {
                 set_topic_space_in(desk, arg(args, "topic_id")?, arg(args, "space")?).map(|v| serde_json::json!(v))
+            }
+            "set_topic_issue" => {
+                set_topic_issue_in(desk, arg(args, "topic_id")?, arg(args, "issue")?).map(|v| serde_json::json!(v))
             }
             "delete_topic" => delete_topic_in(arg(args, "topic_id")?).map(|v| serde_json::json!(v)),
             _ => Err(format!("no Topic call {op}")),
@@ -2445,6 +2469,29 @@ mod tests {
         assert!(delete_topic(&store, "nope").is_err());
         delete_topic(&store, "f").unwrap();
         assert!(store.load().topics.is_empty());
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn an_issue_linked_after_the_fact_can_be_cleared() {
+        let tmp = unique_tmp();
+        let store = store_with(
+            &tmp,
+            vec![topic("f", vec![member("/r/a", None, MemberState::WorktreeMissing)])],
+        );
+        let issue = crate::issues::store::UnitIssue {
+            key: "gettori/tickets#7".into(),
+            display: "tickets#7".into(),
+            url: "https://github.com/gettori/tickets/issues/7".into(),
+            title: "Link later".into(),
+        };
+
+        set_issue(&store, "f", Some(issue.clone())).unwrap();
+        assert_eq!(store.load().topics[0].issue, Some(issue));
+
+        set_issue(&store, "f", None).unwrap();
+        assert_eq!(store.load().topics[0].issue, None);
+        assert!(set_issue(&store, "nope", None).is_err());
         std::fs::remove_dir_all(&tmp).ok();
     }
 
