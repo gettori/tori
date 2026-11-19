@@ -1,11 +1,16 @@
 import type { Range } from "./fuzzy";
+import { numberHit, numberQuery, type IssueId } from "./navNumber";
 
 /** One searchable text on a row. `title` is the slot a subsequence may match;
  *  a hidden field is matched but drawn only when it is what matched. */
 export type RankField = { slot: string; text: string; hidden?: boolean };
 
+/** A number on a row, weighed by kind in this order: the linked issue, the
+ *  pull request, a number in the branch name. */
+export type RankNumber = { kind: "issue" | "pr" | "branch"; slot: string; id: IssueId; digitsAt: number };
+
 /** `penalty` is for commands and settings, so a place wins a tie with them. */
-export type RankInput = { fields: readonly RankField[]; penalty?: boolean };
+export type RankInput = { fields: readonly RankField[]; numbers?: readonly RankNumber[]; penalty?: boolean };
 
 /** `marks` is keyed by slot, so it also says which fields matched. */
 export type Ranked<T> = { item: T; score: number; marks: Record<string, Range[]> };
@@ -18,6 +23,25 @@ const GAP = 6;
 const FIELD_DROP = 10;
 const HIDDEN_DROP = 15;
 const PENALTY = 6;
+const NUMBER_EXACT = { issue: 130, pr: 125, branch: 120 };
+const NUMBER_WITHIN = { issue: 70, pr: 65, branch: 60 };
+
+type Hit = { score: number; ranges: Range[]; slot: string };
+
+function matchNumber(word: string, numbers: readonly RankNumber[]): Hit | null {
+  const query = numberQuery(word);
+  if (!query) return null;
+  let best: Hit | null = null;
+  for (const n of numbers) {
+    const hit = numberHit(query, n.id);
+    if (!hit) continue;
+    const score = (hit.exact ? NUMBER_EXACT : NUMBER_WITHIN)[n.kind];
+    const start = n.digitsAt + hit.digitsAt;
+    if (!best || score > best.score)
+      best = { score, ranges: [{ start, end: start + query.digits.length }], slot: n.slot };
+  }
+  return best;
+}
 
 function boundary(text: string, i: number): boolean {
   if (i === 0) return true;
@@ -53,7 +77,7 @@ function matchWord(word: string, field: RankField): { score: number; ranges: Ran
   if (field.slot !== "title" || word.length < 2) return null;
   const at = lower.indexOf(word);
   if (at >= 0) return { score: SUBSEQUENCE, ranges: [{ start: at, end: at + word.length }] };
-  return subsequence(word, lower);
+  return /^#?\d+$/.test(word) ? null : subsequence(word, lower);
 }
 
 function merge(ranges: Range[]): Range[] {
@@ -74,11 +98,11 @@ export function rank<T>(items: readonly T[], query: string, input: (item: T) => 
   if (!words.length) return items.map((item) => ({ item, score: 0, marks: {} }));
   const out: (Ranked<T> & { at: number })[] = [];
   items.forEach((item, at) => {
-    const { fields, penalty } = input(item);
+    const { fields, numbers, penalty } = input(item);
     const marks: Record<string, Range[]> = {};
     let score = penalty ? -PENALTY : 0;
     for (const word of words) {
-      let best: { score: number; ranges: Range[]; slot: string } | null = null;
+      let best = numbers?.length ? matchNumber(word, numbers) : null;
       for (const field of fields) {
         const hit = matchWord(word, field);
         if (!hit) continue;

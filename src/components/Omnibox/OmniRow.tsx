@@ -10,11 +10,13 @@ import {
   FileCode,
   Folder,
   GitBranch,
+  GitPullRequest,
   Hash,
   LayoutGrid,
   Layers,
   MessageSquare,
   PanelsTopLeft,
+  Plus,
   Search,
   Settings,
   SquareTerminal,
@@ -63,6 +65,7 @@ const PLACE_GLYPHS: Record<PlaceKind, LucideIcon> = {
   unit: GitBranch,
   topic: Layers,
   member: GitBranch,
+  review: GitPullRequest,
   chat: MessageSquare,
   session: Bot,
 };
@@ -105,6 +108,12 @@ function Glyph(props: { icon: RowIcon }) {
         {(icon) => <Icon icon={MODE_GLYPHS[icon().mode]} />}
       </Match>
       <Match when={props.icon.kind === "place" && props.icon}>{(icon) => <PlaceGlyph icon={icon()} />}</Match>
+      <Match when={props.icon.kind === "lookup"}>
+        <Icon icon={Search} />
+      </Match>
+      <Match when={props.icon.kind === "create"}>
+        <Icon icon={Plus} />
+      </Match>
     </Switch>
   );
 }
@@ -133,7 +142,7 @@ export default function OmniRow(props: { view: RowView }) {
             {(ticket) => (
               <>
                 <span class={styles.chip} aria-hidden="true">
-                  {ticket().label}
+                  <Marked text={ticket().label} marks={ticket().marks} />
                 </span>
                 <span class={styles.srOnly}>{ticket().spoken}</span>
               </>
@@ -143,7 +152,7 @@ export default function OmniRow(props: { view: RowView }) {
             {(pr) => (
               <>
                 <span class={`${styles.chip} ${lineStyles[`pr_${pr().tone}`] ?? ""}`} aria-hidden="true">
-                  {pr().label}
+                  <Marked text={pr().label} marks={pr().marks} />
                 </span>
                 <span class={styles.srOnly}>{pr().spoken}</span>
               </>

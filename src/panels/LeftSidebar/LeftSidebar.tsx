@@ -81,8 +81,10 @@ import {
   PURGE_UNDER_PATH,
   TERMINAL_TAB_FOCUSED,
   ADD_BRANCH_UNIT,
+  OPEN_REVIEW,
   REMOVE_BRANCH_UNIT,
   type AddBranchUnit,
+  type OpenReview,
   type RemoveBranchUnit,
   type OpenJob,
   type NewSession,
@@ -929,6 +931,7 @@ export default function LeftSidebar(props: {
     prefill?: string;
     baseDefault?: string;
     issues: boolean;
+    issueKey?: string;
   } | null>(null);
 
   // Drag-to-reorder state for the space tiles.
@@ -1058,7 +1061,7 @@ export default function LeftSidebar(props: {
     ),
   );
 
-  createEffect(() => noteNavTree(spacesWithHome()));
+  createEffect(() => noteNavTree(spacesWithHome(), origins()));
 
   // Attention, the one input the store cannot see for itself: it is the sidebar
   // that knows what is selected, and this component that owns the window-focus
@@ -1261,6 +1264,16 @@ export default function LeftSidebar(props: {
     );
   }
 
+  async function openReview(p: Project, number: number) {
+    try {
+      const folder = await invoke<string>("create_review_worktree", { projectPath: p.path, number });
+      await loadConfig();
+      await navigateTo({ folder, select: true });
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
+
   function reviewRequestsNode(p: Project) {
     const pending = createMemo(() =>
       pendingReviews(
@@ -1269,20 +1282,11 @@ export default function LeftSidebar(props: {
         (b) => unitStatus(p.path, b)?.pullRequest?.number ?? null,
       ),
     );
-    const review = async (number: number) => {
-      try {
-        const folder = await invoke<string>("create_review_worktree", { projectPath: p.path, number });
-        await loadConfig();
-        selectUnitIn(p, (u) => samePath(u.folderPath, folder));
-      } catch (e) {
-        setError(errorText(e));
-      }
-    };
     const items = (): MenuItem[] => [
       { heading: "Review requested" },
       ...pending().map((r) => ({
         label: `${r.display} ${r.title}${r.author ? `, ${r.author}` : ""}`,
-        onClick: () => void review(Number(r.key)),
+        onClick: () => void openReview(p, Number(r.key)),
       })),
     ];
     const label = () => `${pending().length} pull request${pending().length === 1 ? "" : "s"} waiting on your review`;
@@ -1592,11 +1596,20 @@ export default function LeftSidebar(props: {
             setError(`"${p.name}" has no branches to add to.`);
             return;
           }
-          void openBranchDialog(p, kind === "plain" ? "branch" : "worktree", d.base ?? undefined);
+          void openBranchDialog(p, kind === "plain" ? "branch" : "worktree", d.base ?? undefined, d.issue);
           return;
         }
       }
       setError(`No project at "${d.projectPath}" is open here.`);
+    }),
+  );
+  onCleanup(
+    onWith<OpenReview>(OPEN_REVIEW, (d) => {
+      const p = treeSpaces()
+        .flatMap((g) => g.projects)
+        .find((q) => q.path === d.projectPath);
+      if (p) void openReview(p, d.number);
+      else setError(`No project at "${d.projectPath}" is open here.`);
     }),
   );
   onCleanup(onEvent(SESSIONS_REFRESH, () => refreshSessions()));
@@ -2380,7 +2393,7 @@ export default function LeftSidebar(props: {
   // last fetch left on disk, both of which are ref reads and neither of which
   // touches the network. One dialog for the two menu rows, because the question
   // is the same and only what is done with the answer differs.
-  async function openBranchDialog(p: Project, mode: "branch" | "worktree", prefill?: string) {
+  async function openBranchDialog(p: Project, mode: "branch" | "worktree", prefill?: string, issueKey?: string) {
     let branches: Branch[];
     try {
       branches = await invoke<Branch[]>("list_branches", { path: p.path });
@@ -2414,6 +2427,7 @@ export default function LeftSidebar(props: {
       prefill,
       baseDefault,
       issues,
+      issueKey,
     });
     // Quiet and floored at the schedule's cadence, so opening the picker on a
     // container the sweep just covered costs nothing and can never stop to ask
@@ -5349,6 +5363,7 @@ export default function LeftSidebar(props: {
             prefill={req().prefill}
             baseDefault={req().baseDefault}
             issues={req().issues ? issueSourceFor(req().p) : undefined}
+            issueKey={req().issues ? req().issueKey : undefined}
             onConfirm={(pick) => void confirmAddBranch(pick)}
             onCancel={() => setBranchReq(null)}
           />

@@ -15,6 +15,7 @@ type RowBase = {
   subMarks?: Range[];
   /** Why this cannot run right now, or null when it can. */
   disabled?: string | null;
+  href?: string;
   run?: () => void;
 };
 
@@ -24,14 +25,20 @@ export type Row =
   | (RowBase & { kind: "symbol"; symbolKind: number })
   | (RowBase & { kind: "line" })
   | (RowBase & { kind: "help"; mode: OmniMode; prefix: string })
-  | (RowBase & { kind: "place"; place: Place });
+  | (RowBase & { kind: "place"; place: Place; ticketMarks?: Range[]; prMarks?: Range[] })
+  | (RowBase & { kind: "lookup"; pending: boolean })
+  | (RowBase & { kind: "create" });
 
 export type RowIcon =
   | { kind: "file"; name: string }
   | { kind: "symbol"; symbolKind: number }
   | { kind: "group"; group: CommandGroup }
   | { kind: "mode"; mode: OmniMode }
-  | { kind: "place"; place: PlaceKind; unitKind?: string; look?: Place["look"] };
+  | { kind: "place"; place: PlaceKind; unitKind?: string; look?: Place["look"] }
+  | { kind: "lookup" }
+  | { kind: "create" };
+
+type Chip = { label: string; spoken: string; marks: Range[] };
 
 export type RowView = {
   icon: RowIcon;
@@ -40,8 +47,8 @@ export type RowView = {
   subtitle?: string;
   subMarks: Range[];
   keys?: { chips: string[]; spoken: string };
-  ticket?: { label: string; spoken: string };
-  pr?: { label: string; tone: string; spoken: string };
+  ticket?: Chip;
+  pr?: Chip & { tone: string };
   dot?: { tone: PlaceDot; spoken: string };
   word?: string;
 };
@@ -53,6 +60,8 @@ export const ENTER_LABEL: Record<Row["kind"], string> = {
   line: "Go",
   help: "Use filter",
   place: "Go",
+  lookup: "Look up",
+  create: "Create",
 };
 
 const DOT_SPOKEN: Record<PlaceDot, string> = { needsYou: "Waiting on you", working: "Working" };
@@ -101,15 +110,24 @@ export function rowView(row: Row): RowView {
     case "help":
       return { ...base, icon: { kind: "mode", mode: row.mode }, keys: row.prefix ? chord([row.prefix]) : undefined };
     case "place": {
-      const { kind, unitKind, look, issue, pr, dot } = row.place;
+      const { kind, unitKind, look, ticket, pr, dot } = row.place;
       return {
         ...base,
         icon: { kind: "place", place: kind, unitKind, look },
-        ticket: issue && { label: issue.display, spoken: `Issue ${issue.display}` },
-        pr: pr && { label: `#${pr.number}`, tone: pr.tone, spoken: `Pull request ${pr.number}, ${pr.title}` },
+        ticket: ticket && { label: ticket.label, spoken: `Issue ${ticket.label}`, marks: row.ticketMarks ?? [] },
+        pr: pr && {
+          label: `#${pr.number}`,
+          tone: pr.tone,
+          spoken: `Pull request ${pr.number}, ${pr.title}${pr.remembered ? ", as last seen" : ""}`,
+          marks: row.prMarks ?? [],
+        },
         dot: dot && { tone: dot, spoken: DOT_SPOKEN[dot] },
         word: placeWord(row.place),
       };
     }
+    case "lookup":
+      return { ...base, icon: { kind: "lookup" } };
+    case "create":
+      return { ...base, icon: { kind: "create" }, word: "Issue" };
   }
 }
