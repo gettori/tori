@@ -5,7 +5,7 @@ import styles from "./Dialog.module.css";
 
 /** How wide the panel is. `confirm` and `sheet` are fixed ladders on
  *  `--ui-scale`; `wide` grows with the viewport (see Dialog.module.css). */
-export type DialogSize = "confirm" | "sheet" | "table" | "wide";
+export type DialogSize = "confirm" | "sheet" | "palette" | "table" | "wide";
 
 export interface DialogProps {
   open: boolean;
@@ -17,6 +17,7 @@ export interface DialogProps {
   lead?: JSX.Element;
   description?: string;
   size?: DialogSize;
+  placement?: "center" | "top";
   /** What to focus when the dialog opens. Defaults to the panel itself. */
   initialFocus?: () => HTMLElement | undefined;
   onClose: () => void;
@@ -129,6 +130,7 @@ export default function Dialog(props: DialogProps) {
           classList={{
             [styles.panel]: true,
             [styles[props.size ?? "confirm"]]: true,
+            [styles.top]: props.placement === "top",
           }}
           onOpenAutoFocus={onOpenAutoFocus}
           onCloseAutoFocus={onCloseAutoFocus}
