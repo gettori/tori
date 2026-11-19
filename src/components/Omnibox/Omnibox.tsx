@@ -1,4 +1,4 @@
-import { createSignal, createMemo, createEffect, on, onCleanup, onMount } from "solid-js";
+import { createSignal, createMemo, createEffect, on, onCleanup, onMount, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import Combobox, { type ComboboxGroup, type ComboboxOption } from "../Combobox/Combobox";
 import Dialog from "../Dialog/Dialog";
@@ -39,8 +39,9 @@ import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
 import { heldSelection } from "../SelectionToolbar/SelectionToolbar";
 import { LOCAL_SPEECH } from "../../utils/localSpeech";
 import { frontReply, reading } from "../../utils/speech";
-import OmniRow from "./OmniRow";
-import { rowView, type Row } from "./rowView";
+import Icon from "../Icon/Icon";
+import OmniRow, { MODE_GLYPHS } from "./OmniRow";
+import { ENTER_LABEL, rowView, type Row } from "./rowView";
 import styles from "./Omnibox.module.css";
 
 /** How many project files the list holds. Past this the scroll bar is a hint
@@ -685,32 +686,42 @@ export default function Omnibox(props: {
     close(item.run);
   }
 
+  const [active, setActive] = createSignal<string | null>(null);
+  const activeRow = () => {
+    const id = active();
+    return id == null ? undefined : byId().get(id);
+  };
+  const filterOn = () => mode() !== props.home;
+
   return (
     <Dialog
       open
-      // Hidden, because the visible heading below names the *mode* rather than
-      // the surface: "Files" is what this box is looking at, "Command palette"
-      // is what it is. The accessibility tree needs the second one, and the
-      // layout would read as a stutter with both.
-      title="Command palette"
+      // Hidden: the tag in the field names the mode.
+      title="Go to anything"
       titleHidden
-      // The palette's width is `confirm`'s, character for character; only its
-      // height bound differs, and that arrives on the class below (which is
-      // also where `check-tokens.mjs` check 8 looks for it).
-      size="confirm"
+      size="palette"
+      placement="top"
       class={styles.panel}
       initialFocus={() => input}
       onClose={() => props.onClose()}
     >
-      {/* The title names the mode, so the box says what it is looking at
-          without the user having to read their own prefix back. */}
-      <div class={styles.title}>{specOf(mode()).label}</div>
       {/* The filter and the list are both the shared surface's now (#110): the
           `role="listbox"`, the `aria-activedescendant`, the arrow keys, the
           scroll-into-view and the headings all belong to `Combobox`. What is
           left here is what a palette row *says*, and what picking one means. */}
       <Combobox
-        class={styles.field}
+        bare
+        leading={
+          <span class={styles.lead} classList={{ [styles.isFilter]: filterOn() }}>
+            <Icon icon={MODE_GLYPHS[mode()]} />
+          </span>
+        }
+        trailing={
+          <span class={styles.tag} classList={{ [styles.isFilter]: filterOn() }}>
+            {specOf(mode()).label}
+          </span>
+        }
+        listClass={styles.list}
         options={options()}
         query={query()}
         onQueryChange={setQuery}
@@ -718,13 +729,28 @@ export default function Omnibox(props: {
           const item = byId().get(value);
           if (item) pick(item);
         }}
+        onActiveChange={setActive}
         itemComponent={rowContent}
         inputRef={(el) => (input = el)}
-        placeholder={`${specOf(mode()).placeholder}   (? for prefixes)`}
+        placeholder={specOf(props.home).placeholder}
         aria-label="Search files, actions and symbols"
         listLabel="Results"
         emptyLabel={emptyText()}
       />
+      <div class={styles.footer}>
+        <Show when={activeRow()}>
+          {(row) => (
+            <span class={styles.hint}>
+              <span>{"\u21b5"}</span>
+              {ENTER_LABEL[row().kind]}
+            </span>
+          )}
+        </Show>
+        <span class={`${styles.hint} ${styles.filters}`}>
+          <span>?</span>
+          Filters
+        </span>
+      </div>
     </Dialog>
   );
 }

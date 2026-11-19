@@ -1,63 +1,68 @@
-/* The command palette's own chrome, on top of `Dialog` (#110). The palette used
-   to hand-roll its own portal, backdrop and panel, staying native while every
-   dialog moved onto Kobalte, on the reasoning that a command bar is not a
-   dialog. It behaves like one in every way that matters (modal, dismissable,
-   focus-trapped), so it composes `Dialog` now and the hand-rolled shell is
-   gone.
-
-   What is left here is the one dimension `Dialog` does not supply. Its width is
-   `confirm`'s already, character for character, and its padding, surface,
-   border, radius and shadow are `Dialog`'s panel exactly; only the height bound
-   is the palette's own, because this list is longer than a dialog's body and
-   wants to stop sooner than 85vh.
-
-   The height bound is the whole reason this class still exists, and it is not
-   decoration: the panel is fixed and centred, so an unbounded one overflows in
-   both directions and the rows above the fold become unreachable. That has
-   already happened once, when a shared rule was deleted for the dialogs while
-   this file was still borrowing it. Guarded by check 8 of
-   scripts/check-tokens.mjs, because no test in this stack can see a CSS rule.
-
-   Set as `Dialog`'s hook rather than as a `max-height` of its own: both rules
-   would be a single class on the same element, so the winner would be whichever
-   CSS module the bundler emitted second, which is not something either file
-   states or controls. Setting the variable resolves on the element instead. */
+/* Set through `Dialog`'s hook rather than a `max-height` of its own: two rules
+   on one element are settled by bundle order (check 8 of check-tokens.mjs). */
 .panel {
-  --dialog-max-height: min(70vh, calc(520px * var(--ui-scale)));
+  --navigator-chrome: calc(44px * var(--ui-scale) + var(--tori-space-8) + 2px);
+  --dialog-max-height: calc(var(--navigator-chrome) + 13 * var(--tori-space-8) + 2 * var(--tori-space-2));
+  --dialog-body-padding: 0;
 }
 
-/* `Dialog`'s title recipe, on the palette's own heading. The real title is
-   `titleHidden` here, so this is the line a reader sees, and it has to match a
-   dialog title or the palette looks like a different kind of surface. Kept in
-   step with `Dialog.module.css`'s `.title` deliberately (#130 moved both),
-   except the size, which #181 left a step above a dialog title on purpose.
+/* The list scrolls inside what the panel's bound leaves after the input and the
+   footer, so a short window shrinks the list rather than hiding the footer. */
+.list {
+  max-height: calc(var(--dialog-bound, var(--dialog-max-height)) - var(--navigator-chrome));
+  padding: var(--tori-space-2);
+}
 
-   The margin is this file's own and stays: the heading sits inside the dialog's
-   *body*, which is a plain scroller rather than the gapped column the panel is,
-   so there is no gap here to inherit. It uses the head's inner step, because
-   heading-to-content is the same one-block relationship. */
-.title {
-  font-size: var(--tori-text-3xl);
+.lead {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--control-height-xs);
+  height: var(--control-height-xs);
+  color: var(--fg-muted);
+}
+
+.tag {
+  flex: none;
+  padding: var(--tori-space-1) var(--tori-space-3);
+  border-radius: var(--tori-radius-sm);
+  background: var(--neutral-subtle);
+  color: var(--fg-muted);
+  font-size: var(--tori-text-sm);
   line-height: var(--tori-line-tight);
-  font-weight: 600;
-  color: var(--fg-default);
-  margin-bottom: var(--tori-space-3);
-  white-space: pre-wrap;
+  white-space: nowrap;
 }
 
-/* The filter field, pinned to the top of the dialog's scrolling body. Every
-   row-and-list rule this file used to carry is the shared <Combobox>'s now
-   (#110); what is left below is only what a palette *row* says.
+.lead.isFilter {
+  color: var(--brand-default);
+}
 
-   Sticky rather than a flex header, because the scroller is `Dialog`'s body and
-   this is one of its children rather than a sibling of it. Same call
-   `PickerModal` makes for the same reason. The mode heading above scrolls away
-   with the rows, which is the right half to give up: it names what the box is
-   looking at, and the field is what you are typing into. */
-.field {
-  position: sticky;
-  top: 0;
-  z-index: 1;
+.tag.isFilter {
+  background: var(--brand-subtle);
+  color: var(--brand-strong);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: var(--tori-space-5);
+  height: var(--tori-space-8);
+  padding: 0 var(--tori-space-5);
+  overflow: hidden;
+  border-top: 1px solid var(--border-default);
+  color: var(--fg-muted);
+  font-size: var(--tori-text-sm);
+  white-space: nowrap;
+}
+
+.hint {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tori-space-2);
+}
+
+.filters {
+  margin-left: auto;
 }
 
 .itemIcon {
