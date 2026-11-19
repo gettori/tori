@@ -210,12 +210,15 @@ describe("the prefix router", () => {
 describe("? - what the prefixes do", () => {
   it("lists every other mode", () => {
     open("?");
-    expect(rowLabels()).toEqual([
-      "(no prefix)  Files",
-      ">  Commands",
-      "@  Symbols in this file",
-      "#  Symbols in the project",
-      ":  Go to line",
+    const rows = screen
+      .getAllByRole("option")
+      .map((row) => [row.querySelector('[class*="itemLabel"]')?.textContent, row.querySelector("kbd")?.textContent]);
+    expect(rows).toEqual([
+      ["Files", undefined],
+      ["Commands", ">"],
+      ["Symbols in this file", "@"],
+      ["Symbols in the project", "#"],
+      ["Go to line", ":"],
     ]);
   });
 
@@ -223,9 +226,7 @@ describe("? - what the prefixes do", () => {
     // A signpost, not a destination. Closing here would undo the reason the box
     // was opened, which was not knowing what to type.
     open("?");
-    // Matched loosely: the label's double space is what separates the prefix
-    // from its name on screen, and the DOM matcher collapses it.
-    fireEvent.click(screen.getByText(/^>\s+Commands$/));
+    fireEvent.click(screen.getByText("Commands"));
 
     expect(onClose).not.toHaveBeenCalled();
     expect((input() as HTMLInputElement).value).toBe(">");
@@ -239,11 +240,11 @@ describe("? - what the prefixes do", () => {
   // rather than the prefix.
   it("answers the same signpost twice, rather than going dead after the first", () => {
     open("?");
-    fireEvent.click(screen.getByText(/^>\s+Commands$/));
+    fireEvent.click(screen.getByText("Commands"));
     expect((input() as HTMLInputElement).value).toBe(">");
 
     typeInto("?");
-    fireEvent.click(screen.getByText(/^>\s+Commands$/));
+    fireEvent.click(screen.getByText("Commands"));
 
     expect((input() as HTMLInputElement).value).toBe(">");
     expect(rowLabels()).toContain("Toggle Sidebar");
@@ -260,8 +261,7 @@ describe("files", () => {
     open();
     await waitFor(() => expect(screen.getByText("src/alpha.ts")).toBeTruthy());
     typeInto("beta");
-    expect(screen.queryByText("src/alpha.ts")).toBeNull();
-    expect(screen.getByText("src/beta.ts")).toBeTruthy();
+    expect(rowLabels()).toEqual(["src/beta.ts"]);
   });
 
   it("opens one relative to the project root", async () => {
@@ -482,7 +482,7 @@ describe("> - actions", () => {
 
   it("shows the key chips of a command that also carries a binding", () => {
     open(">");
-    const row = screen.getByText("Toggle Terminal").parentElement!;
+    const row = screen.getByText("Toggle Terminal").closest('[role="option"]')!;
     expect([...row.querySelectorAll("kbd")].map((k) => k.textContent)).toEqual(["⌘", "⌥", "J"]);
   });
 
@@ -514,7 +514,7 @@ describe("> - actions", () => {
     typeInto(">Save");
     expect(rowLabels()[0]).toBe("Save");
 
-    const row = screen.getByText("Save").closest('[role="option"]')!;
+    const row = screen.getAllByRole("option")[0];
     expect(input().getAttribute("aria-activedescendant")).not.toBe(row.id);
   });
 
