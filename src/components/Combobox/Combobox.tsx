@@ -71,6 +71,8 @@ export default function Combobox(props: {
   /** Row content, when a bare label is not enough (the palette's icons, key
    *  chips and secondary text). Defaults to the label. */
   itemComponent?: (option: ComboboxOption) => JSX.Element;
+  bare?: boolean;
+  leading?: JSX.Element;
   /** An affordance inside the field, after the input (the picker's clear
    *  button). Inside `Control` rather than beside it, so it reads as part of
    *  the field and cannot drift away from it on a narrow surface. */
@@ -90,6 +92,7 @@ export default function Combobox(props: {
    *  caller with a second commit path that has to agree with the keyboard (the
    *  picker's Ok button), since the highlight lives inside the primitive. */
   onActiveChange?: (value: string | null) => void;
+  initialActive?: string | null;
   inputRef?: (el: HTMLInputElement) => void;
   class?: string;
   /** Layout for the list, as `class` is for the field. Lands on the scroll
@@ -205,8 +208,14 @@ export default function Combobox(props: {
         </Primitive.Item>
       )}
     >
-      <Bridge query={props.query} options={props.options} onActiveChange={props.onActiveChange} />
-      <Primitive.Control class={`${styles.control} ${props.class ?? ""}`.trim()}>
+      <Bridge
+        query={props.query}
+        options={props.options}
+        initialActive={props.initialActive}
+        onActiveChange={props.onActiveChange}
+      />
+      <Primitive.Control class={[styles.control, props.bare && styles.bare, props.class].filter(Boolean).join(" ")}>
+        {props.leading}
         <Primitive.Input
           ref={props.inputRef}
           class={styles.input}
@@ -310,6 +319,7 @@ function Highlight() {
 function Bridge(props: {
   query: string;
   options: ComboboxOption[] | ComboboxGroup[];
+  initialActive?: string | null;
   onActiveChange?: (value: string | null) => void;
 }) {
   const context = useComboboxContext();
@@ -336,17 +346,20 @@ function Bridge(props: {
     const current = manager.focusedKey();
     if (current != null && collection.getItem(current) != null) return;
 
-    let first: string | undefined;
-    for (const node of collection) {
-      if (node.type === "item" && !node.disabled) {
-        first = node.key;
-        break;
+    const named = props.initialActive == null ? undefined : collection.getItem(props.initialActive);
+    let seed = named?.type === "item" && !named.disabled ? named.key : undefined;
+    if (seed == null) {
+      for (const node of collection) {
+        if (node.type === "item" && !node.disabled) {
+          seed = node.key;
+          break;
+        }
       }
     }
-    if (first == null) return;
+    if (seed == null) return;
 
     manager.setFocused(true);
-    manager.setFocusedKey(first);
+    manager.setFocusedKey(seed);
   });
 
   return null;
