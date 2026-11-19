@@ -4,6 +4,7 @@ import type { AgentId } from "./agents";
 import type { EditorToggleKey } from "./settingsCatalog";
 import type { DraftOrigin } from "./chatCompose";
 import type { ProjectSection } from "./projectSettings";
+import type { OmniHome } from "./omniboxModes";
 
 // A live terminal tab, surfaced from the terminal area to the sidebar so its
 // confirms (checkout, destructive delete) can count what's actually running in a
@@ -81,17 +82,11 @@ export const READ_SELECTION = "tori:read-selection";
 export const READ_LAST_REPLY = "tori:read-last-reply";
 export const STOP_READING = "tori:stop-reading";
 
-// Payload-carrying event: open the omnibox, in the mode the prefix selects
-// (`""` files, `">"` actions, and the rest of `utils/omniboxModes.ts`). Consumed
-// by App.tsx, which owns the only signal behind it.
-//
-// One event and one overlay where there were two of each. Cmd+P and Cmd+K are
-// still two bindings, because the two questions ("which file" and "what can I
-// run") are asked differently often enough to deserve separate keys, but they
-// now open the same box at different prefixes, and either can be typed into the
-// other without closing anything.
+// Open the omnibox on a home, which is what a query with no prefix looks at
+// (`file` from Cmd+P, `all` from Cmd+K), with `prefix` already typed. One
+// event for both keys, since they open the same box. Consumed by App.tsx.
 export const OPEN_OMNIBOX = "tori:open-omnibox";
-export type OpenOmnibox = { prefix: string };
+export type OpenOmnibox = { home: OmniHome; prefix: string };
 
 // Toggles the Cmd+/ shortcut sheet. Consumed by App.tsx. A toggle rather than
 // an open, so the same key that summons it dismisses it.

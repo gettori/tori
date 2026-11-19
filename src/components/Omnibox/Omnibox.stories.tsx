@@ -88,6 +88,7 @@ const meta = {
   component: Omnibox,
   parameters: { layout: "fullscreen" },
   args: {
+    home: "file",
     selected: selection,
     onOpenSettings: () => {},
     onClose: () => {},

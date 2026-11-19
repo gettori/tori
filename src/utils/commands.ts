@@ -265,22 +265,21 @@ export const COMMANDS: Command[] = [
     group: "navigate",
     scope: "window",
     match: cmd("p"),
-    run: () => emitWith<OpenOmnibox>(OPEN_OMNIBOX, { prefix: "" }),
+    run: () => emitWith<OpenOmnibox>(OPEN_OMNIBOX, { home: "file", prefix: "" }),
     // Listing the box inside the box.
     hidden: true,
   },
   {
-    // An alias, not a second overlay: the same box, opened on the mode `>`
-    // selects. Two keys because "which file" and "what can I run" are asked
-    // differently often, and one of them being a prefix away does not make the
-    // other worth a detour through it.
+    // An alias, not a second overlay: the same box, opened on everything
+    // rather than on files. Two keys because the two questions are asked
+    // differently often.
     id: "command-palette",
     keys: ["⌘", "K"],
-    label: "Command Palette",
+    label: "Go to Anything",
     group: "navigate",
     scope: "global",
     match: cmd("k"),
-    run: () => emitWith<OpenOmnibox>(OPEN_OMNIBOX, { prefix: ">" }),
+    run: () => emitWith<OpenOmnibox>(OPEN_OMNIBOX, { home: "all", prefix: "" }),
     hidden: true,
   },
   {

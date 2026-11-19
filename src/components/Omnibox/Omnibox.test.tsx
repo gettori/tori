@@ -2,11 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test"
 import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
 
-// The one box, and its six modes. It carries what ⌘P and ⌘K each used to own, so
-// most of what is asserted here was asserted of one of them before: the files,
-// the actions, the two symbol modes. What is new is that they are one overlay
-// reached by a prefix, that switching modes never closes it, and that the empty
-// box leads with where you have just been.
+// The one box and its seven modes: one overlay reached by a prefix, where
+// switching modes never closes it and the empty file list leads with where
+// you have just been.
 
 const REPO = "/root/work/repo";
 
@@ -97,10 +95,11 @@ let searched: string[] = [];
 let offOpen: (() => void) | undefined;
 let offSearch: (() => void) | undefined;
 
-/** Open the box on a prefix: `""` is what ⌘P sends, `">"` what ⌘K sends. */
-function open(prefix = "") {
+/** Open the box the way a key does: ⌘P sends the `file` home and ⌘K the `all`
+ *  home, each with nothing typed. */
+function open(prefix = "", home: "all" | "file" = "file") {
   mounted = render(() => (
-    <Omnibox prefix={prefix} selected={selection} onOpenSettings={onOpenSettings} onClose={onClose} />
+    <Omnibox home={home} prefix={prefix} selected={selection} onOpenSettings={onOpenSettings} onClose={onClose} />
   ));
 }
 
@@ -158,14 +157,24 @@ afterEach(() => {
 });
 
 describe("the prefix router", () => {
-  it("opens on files from ⌘P and on actions from ⌘K", () => {
-    open("");
+  it("opens on files from ⌘P and on everything from ⌘K", () => {
+    open("", "file");
     expect(screen.getByText("Files")).toBeTruthy();
     mounted!.unmount();
 
-    open(">");
+    open("", "all");
+    expect((input() as HTMLInputElement).value).toBe("");
+    expect(screen.getByText("Everything")).toBeTruthy();
+    expect(rowLabels()).toContain("Toggle Sidebar");
+    expect(rowLabels()).toContain("Open Settings");
+
+    typeInto(">side");
     expect(screen.getByText("Commands")).toBeTruthy();
     expect(rowLabels()).toContain("Toggle Sidebar");
+    expect(rowLabels()).not.toContain("Open Settings");
+
+    typeInto("/");
+    expect(screen.getByText("Files")).toBeTruthy();
   });
 
   // The whole reason for one box rather than two: a mode is a keystroke inside
@@ -522,7 +531,13 @@ describe("> - actions", () => {
     // still up would open behind it and take its focus fight.
     const order: string[] = [];
     mounted = render(() => (
-      <Omnibox prefix=">" selected={selection} onOpenSettings={onOpenSettings} onClose={() => order.push("closed")} />
+      <Omnibox
+        home="all"
+        prefix=">"
+        selected={selection}
+        onOpenSettings={onOpenSettings}
+        onClose={() => order.push("closed")}
+      />
     ));
     const on = () => order.push("ran");
     window.addEventListener(SET_RIGHT_MODE, on);
