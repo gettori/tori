@@ -33,6 +33,23 @@
   border-color: var(--brand-default);
 }
 
+/* The field as the top edge of its surface: only the hairline that parts it
+   from the list is left. In this file because a caller's class redeclaring
+   `.control`'s border would be settled by bundle order. */
+.bare {
+  height: calc(44px * var(--ui-scale));
+  gap: var(--tori-space-3);
+  padding: 0 var(--tori-space-5);
+  background: none;
+  border-width: 0 0 1px;
+  border-radius: 0;
+}
+
+/* Focused for as long as it is on screen, so a lit hairline would say nothing. */
+.bare:has(.input:focus-visible) {
+  border-color: var(--border-default);
+}
+
 .input {
   flex: 1;
   min-width: 0;
@@ -48,6 +65,10 @@
 
 .input::placeholder {
   color: var(--fg-watermark);
+}
+
+.bare .input {
+  font-size: var(--tori-text-xl);
 }
 
 .listFrame {
@@ -121,9 +142,14 @@
 /* A group's heading row. Not focusable, not selectable; the muted size drop is
    what says "this names the rows below it". */
 .section {
-  padding: var(--tori-space-2) var(--tori-space-4);
+  display: flex;
+  align-items: flex-end;
+  height: var(--control-height);
+  padding: 0 var(--tori-space-4) var(--tori-space-2);
   font-size: var(--tori-text-sm);
-  color: var(--fg-subtle);
+  font-weight: 500;
+  line-height: var(--tori-line-tight);
+  color: var(--fg-muted);
 }
 
 /* Shown where the list would be, when nothing matches. Same muted register as a

@@ -27,7 +27,7 @@ const OPTIONS: ComboboxOption[] = [
 ];
 
 /** A caller, doing its own filtering the way the real ones do. */
-function host(all: ComboboxOption[] = OPTIONS) {
+function host(all: ComboboxOption[] = OPTIONS, initialActive?: string) {
   const onSelect = vi.fn();
   const [query, setQuery] = createSignal("");
   const options = () => all.filter((o) => o.label.includes(query().trim()));
@@ -42,6 +42,7 @@ function host(all: ComboboxOption[] = OPTIONS) {
       query={query()}
       onQueryChange={setQuery}
       onSelect={(v) => onSelect(v)}
+      initialActive={initialActive}
     />
   ));
 
@@ -205,6 +206,13 @@ describe("Combobox", () => {
       expect(rows()[0].hasAttribute("data-highlighted")).toBe(false);
       // The committed value, which these pickers never have while open.
       expect(rows().every((r) => r.getAttribute("aria-selected") === "false")).toBe(true);
+    });
+
+    it("starts on the row the caller names, and on the top match once the filter drops it", () => {
+      const { input, rows, active } = host(OPTIONS, "develop");
+      expect(active()).toBe(rows()[1]);
+      type(input(), "main");
+      expect(active()).toBe(rows()[0]);
     });
 
     it("pulls the highlight back into range when the filter drops the active row", () => {

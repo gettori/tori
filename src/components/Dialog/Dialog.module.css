@@ -16,7 +16,7 @@
 /* ---- Motion. The first animation in the component layer, so the shape here is
    the one the remaining wrapper tickets should copy.
 
-   **Four keyframes, not two reversed.** Kobalte keeps a closing dialog mounted
+   **One keyframe per direction.** Kobalte keeps a closing dialog mounted
    through `solid-presence`, which decides whether an exit is even running by
    comparing `animation-name` across the open/closed flip. One name used in both
    directions compares equal, presence concludes nothing is animating, and the
@@ -39,22 +39,19 @@
     opacity: 0;
   }
 }
-/* Both panel keyframes restate `.panel`'s own `translate(-50%, -50%)`. They have
-   to: `transform` is one property, so a keyframe that sets only `scale()` drops
-   the centering for the length of the animation and the panel flies in from the
-   window's middle-right. The cost is that the centering is now written in three
-   places and nothing checks they agree - if `.panel`'s transform ever changes,
-   change these two with it. */
+/* Both keyframes carry the panel's shift: `transform` is one property, so a
+   keyframe that sets only `scale()` drops the placement for the length of the
+   animation. They read it from `--dialog-shift`, which each placement sets. */
 @keyframes dialogPanelIn {
   from {
     opacity: 0;
-    transform: translate(-50%, -50%) scale(0.95);
+    transform: var(--dialog-shift) scale(0.95);
   }
 }
 @keyframes dialogPanelOut {
   to {
     opacity: 0;
-    transform: translate(-50%, -50%) scale(0.95);
+    transform: var(--dialog-shift) scale(0.95);
   }
 }
 
@@ -66,11 +63,12 @@
 }
 
 .panel {
+  --dialog-shift: translate(-50%, -50%);
   position: fixed;
   z-index: 1250;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%);
+  transform: var(--dialog-shift);
   display: flex;
   flex-direction: column;
   max-height: var(--dialog-max-height, min(85vh, calc(720px * var(--ui-scale))));
@@ -90,6 +88,19 @@
 }
 .panel[data-closed] {
   animation: dialogPanelOut var(--tori-duration-fast) var(--tori-ease);
+}
+
+/* Scaled from the top edge, so the entrance does not move the one edge this
+   placement exists to hold still. */
+.top {
+  --dialog-shift: translateX(-50%);
+  --dialog-top: 18vh;
+  top: var(--dialog-top);
+  transform-origin: top center;
+  max-height: min(
+    var(--dialog-max-height, calc(720px * var(--ui-scale))),
+    calc(100vh - var(--dialog-top) - var(--tori-space-7))
+  );
 }
 
 /* Reduced motion removes the animation, not the dialog. `solid-presence` reads
@@ -125,6 +136,9 @@
    anything from a wider window. */
 .table {
   width: min(calc(680px * var(--ui-scale)), calc(100vw - calc(48px * var(--ui-scale))));
+}
+.palette {
+  width: min(calc(640px * var(--ui-scale)), calc(100vw - calc(48px * var(--ui-scale))));
 }
 .wide {
   width: clamp(calc(680px * var(--ui-scale)), 52vw, calc(1040px * var(--ui-scale)));
@@ -171,9 +185,12 @@
   white-space: pre-wrap;
   margin: 0;
 }
+/* The padding is a hook because the body is this file's element: a caller's
+   class lands on the panel and cannot name it, but a variable set there
+   inherits down to here. */
 .body {
   flex: 1 1 auto;
-  padding: var(--tori-space-4) var(--tori-space-6) var(--tori-space-7);
+  padding: var(--dialog-body-padding, var(--tori-space-4) var(--tori-space-6) var(--tori-space-7));
   min-height: 0;
   overflow-y: auto;
 }

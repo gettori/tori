@@ -109,6 +109,25 @@ export const HiddenTitle: Story = {
   },
 };
 
+export const TopPlacement: Story = {
+  args: {
+    placement: "top",
+    size: "palette",
+    title: "Go to anything",
+    titleHidden: true,
+    description: undefined,
+    children: "Pinned by its top edge, at the 640px size.",
+  },
+  render: (args) => (
+    <>
+      <Dialog {...meta.args} actions={<Actions confirm="Delete" danger />}>
+        Centred on the window.
+      </Dialog>
+      <Dialog {...args} />
+    </>
+  ),
+};
+
 /** A body longer than the window. The panel is bounded, the body scrolls, and
  *  the actions row stays put: the page behind is scroll-locked, so an actions
  *  row pushed past the viewport would be unreachable. */
