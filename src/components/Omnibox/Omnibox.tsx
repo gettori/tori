@@ -1,8 +1,8 @@
-import { createSignal, createMemo, createEffect, on, onCleanup, onMount, For, Show } from "solid-js";
+import { createSignal, createMemo, createEffect, on, onCleanup, onMount } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import Combobox, { type ComboboxGroup, type ComboboxOption } from "../Combobox/Combobox";
 import Dialog from "../Dialog/Dialog";
-import { fuzzyScore } from "../../utils/fuzzy";
+import { fuzzyMatch, fuzzyScore } from "../../utils/fuzzy";
 import { traceWork } from "../../utils/perfTrace";
 import { ensureAgentHealthLoaded } from "../../utils/agentHealth";
 import { enabledAgents } from "../../utils/agentEnabled";
@@ -35,12 +35,12 @@ import { modesFrom, parseLine, parseQuery, specOf, type OmniHome } from "../../u
 import { debounce } from "../../utils/debounce";
 import { flattenSymbols, searchWorkspaceSymbols, symbolsFor, type SymbolNode } from "../../utils/symbols";
 import { mentionPath } from "../../utils/pathScope";
-import FileIcon from "../../seti/FileIcon";
-import SymbolIcon from "../SymbolIcon/SymbolIcon";
 import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
 import { heldSelection } from "../SelectionToolbar/SelectionToolbar";
 import { LOCAL_SPEECH } from "../../utils/localSpeech";
 import { frontReply, reading } from "../../utils/speech";
+import OmniRow from "./OmniRow";
+import { rowView, type Row } from "./rowView";
 import styles from "./Omnibox.module.css";
 
 /** How many project files the list holds. Past this the scroll bar is a hint
@@ -51,30 +51,6 @@ const MAX_RESULTS = 200;
  *  Short for the same reason the jump list is: this is a shortcut past typing,
  *  not a second file picker. */
 const MAX_RECENTS = 5;
-
-type Row = {
-  id: string;
-  label: string;
-  /** Heading this row sits under. Rows carrying the same one must be adjacent;
-   *  the header renders once, where the value changes. */
-  section?: string;
-  sub?: string;
-  /** Key chips, for commands that also carry a binding. */
-  keys?: string[];
-  /** Filename to take a glyph from. */
-  fileIcon?: string;
-  /** LSP symbol kind to take a glyph from. */
-  symbolKind?: number;
-  /** Right-aligned secondary text: a symbol's container or file. */
-  meta?: string;
-  /** Why this cannot run right now, or null when it can. */
-  disabled?: string | null;
-  /** A signpost rather than a destination: picking it retypes the box with this
-   *  prefix and leaves it open, and carries no `run` because it goes nowhere.
-   *  Only the `?` list uses it. */
-  enters?: string;
-  run?: () => void;
-};
 
 /** One listed file: which root it came from, and where it sits inside it.
  *  Inside a Topic the rel path alone no longer identifies a file. */
@@ -346,20 +322,22 @@ export default function Omnibox(props: {
    *  same-named files are two rows rather than one that collides. */
   function fileRow(f: ProjectFile, section?: string): Row {
     return {
+      kind: "file",
       id: `file:${f.root}:${f.rel}`,
       label: fileLabel(f),
       section,
-      fileIcon: basename(f.rel),
+      file: basename(f.rel),
       run: () => openAt(`${f.root}/${f.rel}`),
     };
   }
 
   function symbolRow(node: SymbolNode, showFile: boolean): Row {
     return {
+      kind: "symbol",
       id: `sym:${node.path}:${node.selectLine}:${node.name}`,
       label: node.name,
       symbolKind: node.kind,
-      meta: node.container ?? (showFile ? basename(node.path) : (node.detail ?? "")),
+      sub: node.container ?? (showFile ? basename(node.path) : (node.detail ?? "")),
       // The name, not the body: a class's opening brace is technically the
       // symbol and practically the wrong line to land on.
       run: () => openAt(node.path, node.selectLine, node.selectColumn),
@@ -376,10 +354,11 @@ export default function Omnibox(props: {
       const rel = pathLabel(entry.path);
       paths.add(entry.path);
       return {
+        kind: "file",
         id: `jump:${entry.path}:${entry.line ?? ""}`,
         label: entry.line ? `${rel}:${entry.line}` : rel,
         section: "Recently visited",
-        fileIcon: basename(entry.path),
+        file: basename(entry.path),
         run: () => openAt(entry.path, entry.line),
       };
     });
@@ -389,10 +368,11 @@ export default function Omnibox(props: {
           .map((path): Row => {
             paths.add(path);
             return {
+              kind: "file",
               id: `worked:${path}`,
               label: pathLabel(path),
               section: "Recent files",
-              fileIcon: basename(path),
+              file: basename(path),
               run: () => openAt(path),
             };
           })
@@ -438,7 +418,7 @@ export default function Omnibox(props: {
         if (s !== null) scored.push({ f, score: s });
       }
       scored.sort((a, b) => b.score - a.score);
-      return scored.slice(0, MAX_RESULTS).map((r) => fileRow(r.f));
+      return scored.slice(0, MAX_RESULTS).map((r) => marked(fileRow(r.f), q));
     });
   });
 
@@ -454,6 +434,8 @@ export default function Omnibox(props: {
     // slow or failed probe does not empty the list of what was chosen.
     for (const a of enabledAgents()) {
       out.push({
+        kind: "command",
+        group: "session",
         id: `new:${a.id}`,
         label: `New ${a.label} session`,
         sub: sel ? sel.projectName : "Select a branch first",
@@ -474,9 +456,11 @@ export default function Omnibox(props: {
       if (c.hidden || !c.run || suppressed(c)) continue;
       const why = refusal(c);
       out.push({
+        kind: "command",
+        group: c.group,
         id: c.id,
         label: c.label,
-        sub: why ?? c.sub,
+        sub: c.sub,
         keys: c.keys,
         disabled: why,
         run: () => c.run?.(),
@@ -488,6 +472,8 @@ export default function Omnibox(props: {
     if (active) {
       for (const serverId of resolvedServerIds(active) ?? []) {
         out.push({
+          kind: "command",
+          group: "editor",
           id: `lsp-restart:${serverId}`,
           label: `Restart language server: ${serverById(serverId)?.label ?? serverId}`,
           run: () => requestLspRestart(active, serverId),
@@ -502,6 +488,8 @@ export default function Omnibox(props: {
     if (at) {
       for (const t of tasks()) {
         out.push({
+          kind: "command",
+          group: "terminal",
           id: `task:${t.id}`,
           label: `Run task: ${t.name}`,
           sub: t.command,
@@ -514,6 +502,8 @@ export default function Omnibox(props: {
     // guess at, which is several chats running at once (see `chatToStop`).
     for (const c of stoppableChats(liveChats())) {
       out.push({
+        kind: "command",
+        group: "session",
         id: `stop:${c.sessionId}`,
         label: `Stop ${c.sessionName}`,
         sub: awaitingUser(c.status) ? STATUS_LABEL[c.status] : "Running a turn",
@@ -521,6 +511,8 @@ export default function Omnibox(props: {
       });
     }
     out.push({
+      kind: "command",
+      group: "settings",
       id: "settings",
       label: "Open Settings",
       run: () => props.onOpenSettings(),
@@ -544,7 +536,7 @@ export default function Omnibox(props: {
       if (s !== null) scored.push({ node, score: s });
     }
     scored.sort((a, b) => b.score - a.score);
-    return scored.slice(0, MAX_RESULTS).map((r) => symbolRow(r.node, false));
+    return scored.slice(0, MAX_RESULTS).map((r) => marked(symbolRow(r.node, false), q));
   });
 
   // Kept in the server's own order rather than re-scored here: it matched the
@@ -562,6 +554,7 @@ export default function Omnibox(props: {
     if (line === null || !path) return [];
     return [
       {
+        kind: "line",
         id: `line:${line}`,
         label: `Go to line ${line}`,
         sub: basename(path),
@@ -573,14 +566,13 @@ export default function Omnibox(props: {
   /** `?` is a mode whose results are the modes. It answers "what else can this
    *  box do", which is otherwise only answerable by having read this file. */
   const helpRows = createMemo((): Row[] =>
-    modesFrom(props.home).map((m) => ({
+    modesFrom(props.home).map((m): Row => ({
+      kind: "help",
       id: `help:${m.mode}`,
-      label: m.prefix ? `${m.prefix}  ${m.label}` : `(no prefix)  ${m.label}`,
-      sub: m.placeholder,
-      // Picking one enters that mode rather than closing: the list is a menu of
-      // where to go next, so a row that dismissed the box would undo the reason
-      // it was opened.
-      enters: m.prefix,
+      label: m.label,
+      sub: m.placeholder === m.label ? undefined : m.placeholder,
+      mode: m.mode,
+      prefix: m.prefix,
     })),
   );
 
@@ -613,7 +605,11 @@ export default function Omnibox(props: {
       if (s !== null) scored.push({ item, score: s });
     }
     scored.sort((a, b) => b.score - a.score);
-    return scored.map((r) => r.item);
+    return scored.map((r) => marked(r.item, q));
+  }
+
+  function marked(row: Row, q: string): Row {
+    return { ...row, marks: fuzzyMatch(q, row.label)?.ranges };
   }
 
   function emptyText(): string {
@@ -665,42 +661,10 @@ export default function Omnibox(props: {
     return groups;
   });
 
-  /** A row's contents: the glyph, the name, and whatever secondary text or key
-   *  chips it carries. The surface owns the row itself (its role, its highlight,
-   *  its disabled state), so what is here is only what a palette row says. */
   function rowContent(option: ComboboxOption) {
     const item = byId().get(option.value);
     if (!item) return option.label;
-    return (
-      <>
-        <Show when={item.fileIcon}>
-          {(name) => (
-            <span class={styles.itemIcon}>
-              <FileIcon name={name()} />
-            </span>
-          )}
-        </Show>
-        <Show when={item.symbolKind !== undefined}>
-          <span class={styles.itemIcon}>
-            <SymbolIcon kind={item.symbolKind!} />
-          </span>
-        </Show>
-        <span class={styles.itemLabel}>{item.label}</span>
-        <Show when={item.sub}>
-          <span class={styles.itemSub}>{item.sub}</span>
-        </Show>
-        <Show when={item.meta}>
-          <span class={styles.itemMeta}>{item.meta}</span>
-        </Show>
-        <Show when={item.keys}>
-          {(keys) => (
-            <span class={styles.itemKeys}>
-              <For each={keys()}>{(key) => <kbd class={styles.key}>{key}</kbd>}</For>
-            </span>
-          )}
-        </Show>
-      </>
-    );
+    return <OmniRow view={rowView(item)} />;
   }
 
   // A disabled row lists (that is how you learn why it is refused) but does not
@@ -713,8 +677,8 @@ export default function Omnibox(props: {
   // command does, so it stays.
   function pick(item: Row) {
     if (item.disabled) return;
-    if (item.enters !== undefined) {
-      setQuery(item.enters);
+    if (item.kind === "help") {
+      setQuery(item.prefix);
       input?.focus();
       return;
     }
