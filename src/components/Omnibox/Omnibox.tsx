@@ -2,7 +2,7 @@ import { createSignal, createMemo, createEffect, on, onCleanup, onMount, Show } 
 import { invoke } from "@tauri-apps/api/core";
 import Combobox, { type ComboboxGroup, type ComboboxOption } from "../Combobox/Combobox";
 import Dialog from "../Dialog/Dialog";
-import { fuzzyMatch, fuzzyScore } from "../../utils/fuzzy";
+import { fuzzyMatch, fuzzyScore, type Range } from "../../utils/fuzzy";
 import { traceWork } from "../../utils/perfTrace";
 import { ensureAgentHealthLoaded } from "../../utils/agentHealth";
 import { enabledAgents } from "../../utils/agentEnabled";
@@ -90,6 +90,11 @@ type Lookup =
   | { input: string; state: "failed"; message: string };
 
 const pending = (row: Row) => row.kind === "lookup" && row.pending;
+
+const MENTIONS = "mentions ";
+
+const shifted = (ranges: readonly Range[], by: number): Range[] =>
+  ranges.map((r) => ({ start: r.start + by, end: r.end + by }));
 
 function typedKey(q: NumberQuery): string {
   return `${q.repo ?? q.name ?? ""}#${q.digits}`;
@@ -761,12 +766,18 @@ export default function Omnibox(props: {
     const rows = ranked.slice(0, MAX_EVERYTHING).map(({ item, marks }): Row => {
       if (item.kind !== "place") return { ...item, marks: marks.title, subMarks: marks.trail };
       const viaTicket = marks.ticket || marks.ticketTitle;
+      const mentionSlot = Object.keys(marks).find((slot) => slot.startsWith("mention:"));
+      const mention = mentionSlot ? item.place.mentions?.[Number(mentionSlot.slice("mention:".length))] : undefined;
       return {
         ...item,
         marks: marks.title,
         ticketMarks: marks.ticket,
         prMarks: marks.pr,
-        ...(viaTicket ? { sub: item.place.ticket?.title, subMarks: marks.ticketTitle } : { subMarks: marks.trail }),
+        ...(viaTicket
+          ? { sub: item.place.ticket?.title, subMarks: marks.ticketTitle }
+          : mention
+            ? { sub: `${MENTIONS}${mention.label}`, subMarks: shifted(marks[mentionSlot!], MENTIONS.length) }
+            : { subMarks: marks.trail }),
       };
     });
     return [...rows, ...lookupRows()];

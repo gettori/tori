@@ -530,6 +530,16 @@ fn pr_ref(key: &str) -> Option<(String, String)> {
     web_ref(key, &["/pull/", "/merge_requests/"])
 }
 
+// A terminal agent's reads are out of scope.
+fn note_read(principal: &Principal, project: &str, key: &str) -> bool {
+    let Principal::Session(Caller::Chat(session)) = principal else {
+        return false;
+    };
+    let read =
+        crate::issues::commands::origin_of(project).and_then(|origin| crate::session_issues::qualified(key, &origin));
+    crate::session_issues::record(session, read.as_slice())
+}
+
 fn web_ref(key: &str, kinds: &[&str]) -> Option<(String, String)> {
     let key = key.trim().trim_end_matches('/');
     let (repo, number) = match key.split_once('#') {
@@ -3176,7 +3186,11 @@ impl Backend for DaemonBackend {
             (None, None) => self.project(principal, None)?,
         };
         let key = params.key;
-        let mut issue = to_json(crate::issues::commands::get(&project, &key).map_err(forge_refused)?)?;
+        let got = crate::issues::commands::get(&project, &key).map_err(forge_refused)?;
+        if note_read(principal, &project, &got.key) {
+            self.desk.ui.emit("mentions://changed", json!({}));
+        }
+        let mut issue = to_json(got)?;
         issue["project"] = json!(project);
         Ok(issue)
     }
@@ -3948,6 +3962,32 @@ mod tests {
         assert_eq!(sink.delivered.borrow().len(), 1);
         assert!(sink.texts.borrow()[0].starts_with("<tori kind=\"linked\" from=\"lnk-f\">"));
         assert!(crate::session_links::linked("lnk-t", "lnk-f"));
+    }
+
+    #[test]
+    fn a_chat_that_reads_an_issue_adds_it_to_the_store_with_its_repo() {
+        let dir = std::env::temp_dir().join(format!("tori-read-mentions-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let file = dir.join("session_issues.json");
+        crate::session_issues::seam(file.clone());
+        let project = crate::issues::commands::tests::repo_with_origin("reads", "https://github.com/gettori/tori.git");
+
+        let tab = Principal::Session(Caller::Terminal("tab".into()));
+        let chat = Principal::Session(Caller::Chat("chat-r".into()));
+        assert!(!note_read(&tab, &project, "92"));
+        assert!(!file.exists());
+        assert!(note_read(&chat, &project, "92"));
+        assert!(note_read(&chat, &project, "gettori/tickets#7"));
+
+        let on_disk: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+        assert_eq!(
+            on_disk["chat-r"],
+            json!([
+                { "owner": "gettori", "repo": "tori", "number": 92 },
+                { "owner": "gettori", "repo": "tickets", "number": 7 },
+            ])
+        );
+        let _ = std::fs::remove_dir_all(&project);
     }
 
     #[test]

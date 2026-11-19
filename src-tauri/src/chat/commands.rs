@@ -579,14 +579,44 @@ pub fn spawn_session(host: &ChatHost, req: SpawnRequest, emit: Emit) -> Result<S
     })
 }
 
+fn issue_urls(blocks: &[ContentBlock]) -> Vec<crate::session_issues::Mention> {
+    let mut out = Vec::new();
+    for block in blocks {
+        if let ContentBlock::Text { text } = block {
+            for m in crate::session_issues::mentions_in(text) {
+                if !out.contains(&m) {
+                    out.push(m);
+                }
+            }
+        }
+    }
+    out
+}
+
+fn deliver_noting_issues(
+    app: &tauri::AppHandle,
+    session_id: &str,
+    blocks: Vec<ContentBlock>,
+    deliver: impl FnOnce(Vec<ContentBlock>) -> Result<(), String>,
+) -> Result<(), String> {
+    let found = issue_urls(&blocks);
+    deliver(blocks)?;
+    if crate::session_issues::record(session_id, &found) {
+        use tauri::Emitter;
+        let _ = app.emit("mentions://changed", ());
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn chat_send(
+    app: tauri::AppHandle,
     state: State<'_, ChatState>,
     session_id: String,
     blocks: Vec<ContentBlock>,
 ) -> Result<(), String> {
     crate::rpc::refuse_locked(&session_id)?;
-    state.0.send(&session_id, blocks)
+    deliver_noting_issues(&app, &session_id, blocks, |b| state.0.send(&session_id, b))
 }
 
 /// The message a tab held until its session could take one: a draft's first
@@ -594,11 +624,12 @@ pub async fn chat_send(
 /// into a running session, so the autopilot's lock does not apply.
 #[tauri::command]
 pub async fn chat_send_held(
+    app: tauri::AppHandle,
     state: State<'_, ChatState>,
     session_id: String,
     blocks: Vec<ContentBlock>,
 ) -> Result<(), String> {
-    state.0.send(&session_id, blocks)
+    deliver_noting_issues(&app, &session_id, blocks, |b| state.0.send(&session_id, b))
 }
 
 /// Deliver a message into the turn already running, rather than opening one.
@@ -608,12 +639,13 @@ pub async fn chat_send_held(
 /// steer must leave for the turn it was promised to.
 #[tauri::command]
 pub async fn chat_steer(
+    app: tauri::AppHandle,
     state: State<'_, ChatState>,
     session_id: String,
     blocks: Vec<ContentBlock>,
 ) -> Result<(), String> {
     crate::rpc::refuse_locked(&session_id)?;
-    state.0.steer(&session_id, blocks)
+    deliver_noting_issues(&app, &session_id, blocks, |b| state.0.steer(&session_id, b))
 }
 
 #[tauri::command(async)]

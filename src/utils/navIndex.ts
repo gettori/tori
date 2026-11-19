@@ -15,12 +15,20 @@ import { forgeViewer, requestedReviews, reviewRequests, unitStatus } from "./for
 import { defaultBranchOf } from "./defaultBranch";
 import { prLineTone, type PrChildState } from "./prChildState";
 import { rememberedPr } from "./prMemory";
+import { mentionId, mentionsOf } from "./sessionIssues";
 import { originRepo } from "./prUrl";
 import { issueId, ticketLabel, type IssueId } from "./navNumber";
 import type { RankNumber } from "./navRank";
 import { GLOBAL_KEY, spaceLabel } from "./globalSpace";
 
-export type NavUnit = { folderPath: string; branch: string | null; label: string; kind: string; issue?: UnitIssue };
+export type NavUnit = {
+  folderPath: string;
+  branch: string | null;
+  label: string;
+  kind: string;
+  isCurrent?: boolean;
+  issue?: UnitIssue;
+};
 export type NavProject = {
   name: string;
   path: string;
@@ -52,6 +60,7 @@ export type PlacePr = {
   remembered?: boolean;
 };
 export type PlaceTicket = { label: string; title: string; url: string; id: IssueId | null };
+export type PlaceMention = { label: string; id: IssueId };
 
 type PlaceBase = {
   kind: PlaceKind;
@@ -63,6 +72,7 @@ type PlaceBase = {
   ticket?: PlaceTicket;
   pr?: PlacePr;
   repo?: string | null;
+  mentions?: PlaceMention[];
   dot?: PlaceDot;
 };
 
@@ -80,6 +90,7 @@ export type PlaceInputs = {
   prOf: (projectPath: string, branch: string | null) => PlacePr | undefined;
   originOf: (projectPath: string) => string | null;
   reviews: (projectPath: string) => readonly IssueRef[];
+  mentionsOf: (sessionId: string) => readonly IssueId[];
 };
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -101,6 +112,23 @@ function ticketOf(issue: UnitIssue | undefined, origin: string | null): PlaceTic
   return issue && { label: ticketLabel(issue), title: issue.title, url: issue.url, id: issueId(issue, origin) };
 }
 
+/** `#N` in `origin`'s own repo, `name#N` anywhere else. */
+export function mentionLabel(id: IssueId, origin: string | null): string {
+  return id.repo && id.repo !== origin ? `${id.repo.split("/").pop()}#${id.number}` : `#${id.number}`;
+}
+
+function mentionsAt(ids: readonly IssueId[], origin: string | null): PlaceMention[] | undefined {
+  const seen = new Set<string>();
+  const out: PlaceMention[] = [];
+  for (const id of ids) {
+    const key = `${id.repo}#${id.number}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ label: mentionLabel(id, origin), id });
+  }
+  return out.length ? out : undefined;
+}
+
 /** The numbers a place answers to, for the ranker. */
 export function placeNumbers(place: Place): RankNumber[] {
   const repo = place.repo ?? null;
@@ -114,6 +142,9 @@ export function placeNumbers(place: Place): RankNumber[] {
       out.push({ kind: "branch", slot: "title", id: { repo, number: Number(m[0]) }, digitsAt: m.index });
     }
   }
+  place.mentions?.forEach((m, i) =>
+    out.push({ kind: "mention", slot: `mention:${i}`, id: m.id, digitsAt: m.label.lastIndexOf("#") + 1 }),
+  );
   return out;
 }
 
@@ -231,6 +262,10 @@ export function buildPlaces(input: PlaceInputs): Place[] {
     id: `chat:${c.id}`,
     title: c.name ?? NEW_CHAT_NAME,
     trail: spaceLabel(c.space && known.has(c.space) ? c.space : GLOBAL_KEY),
+    mentions: mentionsAt(
+      c.sessions.flatMap((s) => input.mentionsOf(s.id)),
+      null,
+    ),
     dot: byFolder.get(c.folder),
     target: { chat: c.id },
   }));
@@ -245,6 +280,7 @@ export function buildPlaces(input: PlaceInputs): Place[] {
       id: `session:${s.id}`,
       title: s.name || s.title || "Untitled session",
       trail: s.profile_label ? `${where}, ${s.profile_label}` : where,
+      mentions: mentionsAt(input.mentionsOf(s.id), input.originOf(s.home.project)),
       dot: bySession.get(s.id),
       target: topic
         ? { topic, session: s.id }
@@ -273,7 +309,18 @@ export function linkedIssueAt(folderPath: string, branch: string): UnitIssue | n
   return null;
 }
 
-function liveOrigin(projectPath: string): string | null {
+/** The unit a chat in `folder` runs on: its worktree, or a plain repo's checked-out branch. */
+export function unitAt(folder: string): { projectPath: string; branch: string; issue?: UnitIssue } | null {
+  for (const s of tree())
+    for (const p of s.projects)
+      for (const u of p.branchUnits)
+        if (u.folderPath === folder && u.branch && (u.kind !== "plain" || u.isCurrent))
+          return { projectPath: p.path, branch: u.branch, issue: u.issue };
+  return null;
+}
+
+/** `owner/name`, lowercased, of the project's origin. */
+export function liveOrigin(projectPath: string): string | null {
   const url = origins()[projectPath];
   return url ? originRepo(url) : null;
 }
@@ -305,6 +352,7 @@ export function livePlaces(): Place[] {
     prOf: livePr,
     originOf: liveOrigin,
     reviews: (projectPath) => reviewRequests(projectPath)?.rows ?? [],
+    mentionsOf: (session) => mentionsOf(session).map(mentionId),
   });
 }
 
