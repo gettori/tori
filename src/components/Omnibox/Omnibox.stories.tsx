@@ -1,9 +1,16 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
+import { mockIPC } from "@tauri-apps/api/mocks";
 import Omnibox from "./Omnibox";
 import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
 import { clearEditorState, publishEditorState } from "../../utils/editorState";
 import { clearSymbols, normalizeDocumentSymbols, publishSymbols } from "../../utils/symbols";
 import { note, saveFrecency } from "../../utils/frecency";
+import { noteNavTree, type OverviewSession } from "../../utils/navIndex";
+import { applyTopic } from "../../utils/topicStore";
+import { ensureChatsRoot } from "../../utils/chats";
+import { noteDots, noteLiveTabs } from "../../utils/sessionActivity";
+import { noteForgeEnabled, noteWatchedProjects, pollNow, refreshForgeAccounts } from "../../utils/forgeStatus";
+import type { UnitStatus } from "../../utils/forgeTypes";
 
 // The command palette, one story per mode, since a mode is the whole shape of
 // what is on screen rather than a variant of it.
@@ -83,6 +90,161 @@ function seed(options: { file?: boolean; recents?: boolean; symbols?: boolean } 
   if (options.symbols) publishSymbols(active, SYMBOLS);
 }
 
+const WEB = "/Users/you/Projects/tori-web";
+const SEARCH = `${REPO}-wt/sidebar-search`;
+const SIDE = `${REPO}-wt/fix-side-effects`;
+const CHATS = "/Users/you/.config/tori/chats";
+
+const PULLS: Record<string, [number, string, Partial<UnitStatus>]> = {
+  "sidebar-search": [212, "Search the sidebar", { reviewDecision: "approved" }],
+  "fix-side-effects": [207, "Stop the save hook firing twice", { reviewDecision: "changesRequested" }],
+};
+
+const OVERVIEW: OverviewSession[] = [
+  {
+    id: "s-order",
+    title: "Keep the sidebar order across restarts",
+    name: null,
+    agent: "claude",
+    profile_label: null,
+    last_active: 3,
+    home: { project: REPO, folder: SEARCH, branch: "sidebar-search" },
+  },
+  {
+    id: "s-hook",
+    title: "t",
+    name: "Side effects in the save hook",
+    agent: "claude",
+    profile_label: null,
+    last_active: 2,
+    home: { project: REPO, folder: SIDE, branch: "fix-side-effects" },
+  },
+];
+
+function status(branch: string): UnitStatus {
+  const [number, title, over] = PULLS[branch];
+  return {
+    headRef: branch,
+    pullRequest: {
+      number,
+      title,
+      body: null,
+      state: "open",
+      isDraft: false,
+      author: "you",
+      createdAt: "2026-11-18T10:00:00Z",
+      mergedAt: null,
+      closedAt: null,
+      comments: 0,
+      headRef: branch,
+      baseRef: "main",
+      headSha: "sha",
+      headRepoIsOrigin: true,
+      url: `https://example.test/pull/${number}`,
+      mergeableState: "clean",
+      stack: null,
+    },
+    checks: { state: "none", total: 0, failing: 0, skipped: 0, contexts: [] },
+    reviewDecision: "none",
+    reviews: [],
+    requestedReviewers: [],
+    viewerReview: null,
+    ...over,
+  };
+}
+
+function seedPlaces() {
+  mockIPC(
+    (cmd, args) => {
+      const a = (args ?? {}) as Record<string, unknown>;
+      if (cmd === "sessions_overview") return OVERVIEW;
+      if (cmd === "chats_root") return CHATS;
+      if (cmd === "list_sessions" && a.folder === CHATS)
+        return [{ ...OVERVIEW[0], id: "c-1", cwd: `${CHATS}/.home/c-1`, name: "Sidecar ideas", path: "", branch: "" }];
+      if (cmd === "forge_accounts")
+        return [
+          {
+            host: "github.com",
+            accounts: [
+              {
+                id: "me",
+                provider: "github",
+                baseUrl: "https://github.com",
+                login: "you",
+                label: "you",
+                expiresAt: null,
+                auth: { kind: "signedIn", login: "you" },
+              },
+            ],
+          },
+        ];
+      if (cmd === "forge_repo_account") return { kind: "account", accountId: "me", host: "github.com" };
+      if (cmd === "forge_unit_statuses")
+        return {
+          statuses: Object.keys(PULLS).map(status),
+          uncovered: 0,
+          rate: { remaining: null, limit: null, resetAt: null },
+        };
+      return null;
+    },
+    { shouldMockEvents: true },
+  );
+  const unit = (folderPath: string, branch: string, kind = "worktree") => ({ folderPath, branch, label: branch, kind });
+  noteNavTree([
+    {
+      name: "Work",
+      icon: "Briefcase",
+      projects: [
+        {
+          name: "tori",
+          path: REPO,
+          branchUnits: [
+            unit(`${REPO}-wt/main`, "main"),
+            {
+              ...unit(SEARCH, "sidebar-search"),
+              issue: { key: "47", display: "#47", url: "https://example.test/47", title: "Search the sidebar" },
+            },
+            unit(SIDE, "fix-side-effects"),
+          ],
+        },
+        { name: "tori-web", path: WEB, branchUnits: [unit(WEB, "main", "plain")] },
+      ],
+    },
+    { name: "/global", projects: [] },
+  ]);
+  applyTopic({
+    id: "t-1",
+    name: "Sidebar rework",
+    branch: "sidebar-rework",
+    createdAt: 0,
+    space: "Work",
+    members: [
+      {
+        repoPath: REPO,
+        displayName: "tori",
+        mode: "worktree",
+        worktreePath: null,
+        state: { kind: "present" },
+        order: 0,
+      },
+      {
+        repoPath: WEB,
+        displayName: "tori-web",
+        mode: "reference",
+        worktreePath: null,
+        state: { kind: "present" },
+        order: 1,
+      },
+    ],
+  });
+  void ensureChatsRoot();
+  noteLiveTabs([{ id: "tab-1", workspace: SEARCH, kind: "agent", sessionId: "s-order", state: "live" }]);
+  noteDots([{ id: "s-order", dot: "needsYou", certainty: "exact", home: OVERVIEW[0].home }]);
+  noteForgeEnabled(true);
+  noteWatchedProjects([{ path: REPO, units: Object.keys(PULLS).map((branch) => ({ branch, visible: true })) }]);
+  void refreshForgeAccounts().then(() => pollNow("manual"));
+}
+
 const meta = {
   title: "Components/Omnibox",
   component: Omnibox,
@@ -116,6 +278,18 @@ export const Everything: Story = {
   render: (args) => {
     seed();
     return <Omnibox {...args} prefix="" />;
+  },
+};
+
+/** "side" typed from Cmd+K: places and commands in one ranked list, each
+ *  place with where it sits, its ticket and pull request, and a dot for the
+ *  session waiting on you. */
+export const Side: Story = {
+  args: { home: "all", prefix: "side" },
+  render: (args) => {
+    seed();
+    seedPlaces();
+    return <Omnibox {...args} />;
   },
 };
 

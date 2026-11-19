@@ -22,7 +22,7 @@ import TooltipLines from "../../components/Tooltip/TooltipLines";
 import { compactAge, compactAgo } from "../../utils/compactAge";
 import { forgeBadges, ranChecks, type BadgeTone, type PrChipState } from "../../utils/forgeChip";
 import { releaseShows, type UnitStatus } from "../../utils/forgeTypes";
-import { prChildState, type PrChildState } from "../../utils/prChildState";
+import { prChildState, prLineTone, type PrChildState } from "../../utils/prChildState";
 import type { BaseSync } from "../../utils/gitActions";
 import type { SessionUsage } from "../../utils/chatUsageStore";
 import { spendView } from "../../utils/spend";
@@ -171,9 +171,8 @@ export default function BranchLine(props: BranchLineProps) {
   };
   const conflicts = () => props.base?.conflicts ?? [];
   const child = () => prChildState(props.status, props.viewer ?? null, props.reviewAsked === true);
-  // A release that is approved or finished is routine, so it stays quiet.
-  const quietRelease = () => props.release && (child() === "approved" || state() !== "open");
-  const numberClass = () => (quietRelease() ? "pr_closed" : `pr_${child()}`);
+  const numberClass = () =>
+    `pr_${prLineTone(props.status, props.viewer ?? null, props.reviewAsked === true, props.release === true)}`;
   const checks = () => props.status!.checks;
   const ran = () => ranChecks(checks());
   const passed = () => ran() - checks().failing;

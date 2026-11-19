@@ -17,13 +17,17 @@ import { offersAnySourceAction } from "../../utils/sourceActions";
 import { activeServerProvides } from "../../utils/serverProviders";
 import {
   emitWith,
+  NAVIGATE,
   NEW_SESSION,
   OPEN_IN_EDITOR,
   STOP_CHAT,
+  type NavTarget,
   type OpenInEditor,
   type StopChat,
   type NewSession,
 } from "../../utils/events";
+import { livePlaces, watchSessionsOverview, type Place } from "../../utils/navIndex";
+import { rank, type RankInput } from "../../utils/navRank";
 import { requestLspRestart, resolvedServerIds, serverById } from "../../utils/lspServers";
 import { rootOf, workspaceKey } from "../../utils/topics";
 import { createTopicMembers, memberFor } from "../../utils/topicMembers";
@@ -52,6 +56,8 @@ const MAX_RESULTS = 200;
  *  Short for the same reason the jump list is: this is a shortcut past typing,
  *  not a second file picker. */
 const MAX_RECENTS = 5;
+
+const MAX_EVERYTHING = 50;
 
 /** One listed file: which root it came from, and where it sits inside it.
  *  Inside a Topic the rel path alone no longer identifies a file. */
@@ -164,9 +170,8 @@ export function refusal(c: Command): string | null {
  * is added around it: a row per registered agent and a row per running chat are
  * both lists that only exist at runtime.
  *
- * It lists no sessions: the terminal pane's History dropdown is the session
- * list, and it is branch-scoped and covers every session rather than only the
- * live ones, which is more than a fuzzy line of text here could say.
+ * From Cmd+K a typed query also reaches every place by name: spaces, projects,
+ * branches, Topics, chats and sessions, ranked in one list with the commands.
  */
 export default function Omnibox(props: {
   home: OmniHome;
@@ -224,10 +229,18 @@ export default function Omnibox(props: {
     // that can start. Cached in the backend, so this is a no-op after the first
     // call from anywhere.
     ensureAgentHealthLoaded();
+    if (props.home === "all") onCleanup(watchSessionsOverview());
+  });
+
+  // Not on mount: Cmd+K rarely reaches files, and a big repo's listing is the
+  // costliest thing the box asks for.
+  let filesRead = false;
+  createEffect(() => {
+    const at = roots();
+    if (mode() !== "file" || filesRead || !at.length) return;
+    filesRead = true;
     // All roots at once rather than streaming them in: rows that arrive one
     // member at a time shift under a cursor that is already moving.
-    const at = roots();
-    if (!at.length) return;
     void Promise.all(
       at.map((r) =>
         invoke<string[]>("list_project_files", { projectPath: r }).then(
@@ -577,9 +590,51 @@ export default function Omnibox(props: {
     })),
   );
 
+  // Built only while a query is typed in the all home: the inputs move on every
+  // status change, and nothing else here reads them.
+  const searchingPlaces = createMemo(() => mode() === "all" && !!term());
+  const places = createMemo(() => (searchingPlaces() ? livePlaces() : []));
+
+  function placeRow(place: Place): Row {
+    return {
+      kind: "place",
+      id: place.id,
+      label: place.title,
+      sub: place.trail,
+      place,
+      run: () => emitWith<NavTarget>(NAVIGATE, place.target),
+    };
+  }
+
+  function rankInput(row: Row): RankInput {
+    if (row.kind !== "place") return { fields: [{ slot: "title", text: row.label }], penalty: true };
+    const ticket = row.place.issue?.title;
+    return {
+      fields: [
+        { slot: "title", text: row.label },
+        { slot: "trail", text: row.sub ?? "" },
+        ...(ticket ? [{ slot: "ticket", text: ticket, hidden: true }] : []),
+      ],
+    };
+  }
+
+  const everythingRows = createMemo((): Row[] => {
+    const q = term();
+    if (!q) return commandRows();
+    const ranked = rank([...places().map(placeRow), ...commandRows()], q, rankInput);
+    return ranked
+      .slice(0, MAX_EVERYTHING)
+      .map(({ item, marks }) =>
+        marks.ticket && item.kind === "place"
+          ? { ...item, marks: marks.title, sub: item.place.issue?.title, subMarks: marks.ticket }
+          : { ...item, marks: marks.title, subMarks: marks.trail },
+      );
+  });
+
   const results = createMemo((): Row[] => {
     switch (mode()) {
       case "all":
+        return everythingRows();
       case "command":
         return filtered(commandRows(), term());
       case "doc":

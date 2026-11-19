@@ -956,6 +956,81 @@ pub fn folder_historical(index: State<SessionIndex>, folder: String) -> Result<b
     }
 }
 
+/// One session as the navigator lists it: what it is called and the row it
+/// sits under. The rest is read from the folder's own listing once it is picked.
+#[derive(Serialize, Debug)]
+pub struct Overview {
+    id: String,
+    title: String,
+    name: Option<String>,
+    agent: String,
+    profile_label: Option<String>,
+    last_active: u64,
+    home: crate::unit_home::Home,
+}
+
+/// Every session that has a home, in every space, newest first.
+pub fn sessions_overview(index: &SessionIndex, projects: &crate::config::ProjectIndex) -> Vec<Overview> {
+    let accounts = crate::accounts::load();
+    let all = ensure_index(index, &accounts);
+    overview_rows(
+        stamp_listing(all, &load_overlay(), &accounts),
+        &crate::unit_home::spaces(projects),
+        &crate::unit_home::topics(),
+        &load_adopted().paths,
+        |folder| folder_created(Path::new(folder)),
+    )
+}
+
+// The verdict `folder_historical` reaches, read and never acted on: adopting
+// here would drop the ghost protection of a folder the user never opened.
+fn overview_rows(
+    rows: Vec<SessionMeta>,
+    spaces: &[crate::config::ProjectGroup],
+    topics: &[crate::topics::Topic],
+    adopted: &HashSet<String>,
+    created: impl Fn(&str) -> u64,
+) -> Vec<Overview> {
+    let homed: Vec<(SessionMeta, crate::unit_home::Home)> = rows
+        .into_iter()
+        .filter_map(|meta| {
+            let branch = Some(meta.branch.as_str()).filter(|b| !b.is_empty());
+            let home = crate::unit_home::home_of(spaces, topics, &meta.cwd, branch)?;
+            Some((meta, home))
+        })
+        .collect();
+    let mut hidden: HashMap<String, bool> = HashMap::new();
+    for (_, home) in &homed {
+        if hidden.contains_key(&home.folder) {
+            continue;
+        }
+        let times: Vec<u64> = homed
+            .iter()
+            .filter(|(m, _)| {
+                m.cwd.starts_with(home.folder.trim_end_matches('/')) && owned_by_listing(&m.cwd, &home.folder)
+            })
+            .map(|(m, _)| m.last_active)
+            .collect();
+        let verdict = folder_verdict(adopted, &home.folder, &times, created(&home.folder));
+        hidden.insert(home.folder.clone(), matches!(verdict, FolderVerdict::Historical));
+    }
+    let mut out: Vec<Overview> = homed
+        .into_iter()
+        .filter(|(_, home)| !hidden[&home.folder])
+        .map(|(meta, home)| Overview {
+            id: meta.id,
+            title: meta.title,
+            name: meta.name,
+            agent: meta.agent,
+            profile_label: meta.profile_label,
+            last_active: meta.last_active,
+            home,
+        })
+        .collect();
+    out.sort_by_key(|o| std::cmp::Reverse(o.last_active));
+    out
+}
+
 // --- rename overlay (Claude has no native rename) ---
 
 /// Renames, and nothing else. An overlay written before archiving was removed
@@ -3846,6 +3921,97 @@ mod tests {
             folder_verdict(&set, "/p/a", &[50, 200], 100),
             FolderVerdict::Historical
         ));
+    }
+
+    fn overview_spaces() -> Vec<crate::config::ProjectGroup> {
+        let unit = |folder: &str| crate::config::BranchUnit {
+            label: String::new(),
+            folder_path: folder.into(),
+            branch: Some("main".into()),
+            kind: crate::config::ProjectKind::Worktree,
+            is_current: false,
+            issue: None,
+            made_by: None,
+            operation: None,
+        };
+        let project = |name: &str, folder: &str| crate::config::Project {
+            name: name.into(),
+            path: folder.into(),
+            branch_units: vec![unit(folder)],
+            icon: None,
+            icon_file: None,
+            favicon: None,
+            groups: Vec::new(),
+        };
+        vec![crate::config::ProjectGroup {
+            name: "s".into(),
+            projects: vec![project("old", "/p/old"), project("new", "/p/new")],
+            color: None,
+        }]
+    }
+
+    fn overview(
+        rows: Vec<SessionMeta>,
+        overlay: &HashMap<String, Overlay>,
+        adopted: &HashSet<String>,
+    ) -> Vec<Overview> {
+        let accounts = crate::accounts::AccountsFile::default();
+        let topics = [crate::unit_home::tests::topic()];
+        overview_rows(
+            stamp_listing(rows, overlay, &accounts),
+            &overview_spaces(),
+            &topics,
+            adopted,
+            |_| 100,
+        )
+    }
+
+    #[test]
+    fn the_sessions_overview_carries_a_rename_and_leaves_out_what_has_no_home() {
+        let mut overlay = HashMap::new();
+        overlay.insert(
+            "a".to_string(),
+            Overlay {
+                name: Some("Renamed".into()),
+            },
+        );
+        let rows = vec![
+            meta("a", "/p/new", "claude", 200),
+            meta("b", "/elsewhere", "claude", 300),
+        ];
+        let out = overview(rows, &overlay, &HashSet::new());
+        assert_eq!(out.len(), 1);
+        assert_eq!((out[0].id.as_str(), out[0].name.as_deref()), ("a", Some("Renamed")));
+        assert_eq!(out[0].home.folder, "/p/new");
+    }
+
+    #[test]
+    fn the_sessions_overview_places_a_topic_session_on_its_home() {
+        let out = overview(
+            vec![meta("t", "/cfg/topics/auth-1", "claude", 200)],
+            &HashMap::new(),
+            &HashSet::new(),
+        );
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].home.folder, "/cfg/topics/auth-1");
+        assert_eq!(out[0].home.topic.as_deref(), Some("auth-1"));
+    }
+
+    #[test]
+    fn the_sessions_overview_leaves_out_a_recreated_folder_until_it_is_adopted() {
+        let rows = || {
+            vec![
+                meta("ghost", "/p/old", "claude", 50),
+                meta("later", "/p/old", "claude", 150),
+                meta("fresh", "/p/new", "claude", 150),
+            ]
+        };
+        let ids = |out: Vec<Overview>| out.into_iter().map(|o| o.id).collect::<Vec<_>>();
+        assert_eq!(ids(overview(rows(), &HashMap::new(), &HashSet::new())), ["fresh"]);
+        let adopted = HashSet::from(["/p/old".to_string()]);
+        let mut shown = ids(overview(rows(), &HashMap::new(), &adopted));
+        shown.sort();
+        assert_eq!(shown, ["fresh", "ghost", "later"]);
     }
 
     /// Does `pattern` (an extended regex passed to `pgrep -f`) match `cmdline`?

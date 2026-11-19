@@ -659,6 +659,7 @@ pub fn run() {
             crash::crash_logs,
             crash::open_crash_issue,
             rpc::list_sessions,
+            rpc::sessions_overview,
             sessions::sessions_watch_start,
             sessions::set_session_name,
             sessions::delete_session,

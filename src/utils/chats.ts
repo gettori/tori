@@ -130,15 +130,20 @@ export function chatSelection(
     branch: "",
     projectKind: "chat",
     profile: asTabProfile(session?.profile),
-    ...(session && {
-      agent: session.agent,
-      sessionId: session.id,
-      sessionPath: session.path,
-      sessionFile: session.path,
-      sessionCwd: session.cwd,
-      sessionTitle: session.title,
-      sessionName: session.name,
-    }),
+    ...(session && sessionFields(session)),
+  };
+}
+
+export function sessionFields(session: SessionMeta) {
+  return {
+    profile: asTabProfile(session.profile),
+    agent: session.agent,
+    sessionId: session.id,
+    sessionPath: session.path,
+    sessionFile: session.path,
+    sessionCwd: session.cwd,
+    sessionTitle: session.title,
+    sessionName: session.name,
   };
 }
 
