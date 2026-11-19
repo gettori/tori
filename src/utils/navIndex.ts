@@ -325,7 +325,8 @@ export function liveOrigin(projectPath: string): string | null {
   return url ? originRepo(url) : null;
 }
 
-function livePr(projectPath: string, branch: string | null): PlacePr | undefined {
+/** The PR on `branch`: the forge's in the active space, the remembered one elsewhere. */
+export function livePr(projectPath: string, branch: string | null): PlacePr | undefined {
   const status = unitStatus(projectPath, branch);
   if (!status) {
     const last = branch ? rememberedPr(projectPath, branch) : null;

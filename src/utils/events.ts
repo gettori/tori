@@ -5,6 +5,7 @@ import type { EditorToggleKey } from "./settingsCatalog";
 import type { DraftOrigin } from "./chatCompose";
 import type { ProjectSection } from "./projectSettings";
 import type { OmniHome } from "./omniboxModes";
+import type { InboxTab } from "./reviewInbox";
 
 // A live terminal tab, surfaced from the terminal area to the sidebar so its
 // confirms (checkout, destructive delete) can count what's actually running in a
@@ -108,6 +109,7 @@ export const TOGGLE_AUTOPILOT_POPUP = "tori:toggle-autopilot-popup";
 export const TOGGLE_INBOX = "tori:toggle-inbox";
 // Open it and leave it open, for the tray, where a toggle could close it.
 export const OPEN_INBOX = "tori:open-inbox";
+export type OpenInbox = { tab?: InboxTab };
 // Open the Inbox on Since you looked, consumed by reviewInbox.ts.
 export const OPEN_DIGEST = "tori:open-digest";
 // Take the user somewhere in Tori: a branch-unit folder, a session's tab, or
@@ -162,6 +164,12 @@ export type RevealDock = { tabId: string };
 // A plain shell in the dock. The dock draws the `+`, and the terminal panel owns
 // the tab model it opens into.
 export const NEW_DOCK_SHELL = "tori:new-dock-shell";
+
+// The terminal strip's own buttons, for the palette. The terminal panel answers:
+// it owns the History dropdown, the tab model and the chat resume.
+export const SESSION_HISTORY = "tori:session-history";
+export const NEW_TERMINAL = "tori:new-terminal";
+export const CONTINUE_IN_CHAT = "tori:continue-in-chat";
 
 // Make a space the active one, by name. Emitted by the first-run modal when
 // the user picks the space Tori should open on. The sidebar owns the active
