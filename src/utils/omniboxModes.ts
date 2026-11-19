@@ -1,17 +1,10 @@
-// What the omnibox is looking at, decided by the first character of the query.
-//
-// One overlay with six modes rather than two overlays with three each. The
-// prefixes are VS Code's, and the reason to copy them is not familiarity for its
-// own sake: a prefix is a mode you can *type into*, so switching costs a
-// keystroke inside the box rather than Escape, a second shortcut, and a lost
-// query. That is also why this is a function of the query rather than a piece of
-// state, since anything the box remembers separately from its text can disagree
-// with it.
-//
-// Pure and free of imports, so the rule can be tested without a DOM and read
-// without opening the component.
+// The omnibox's mode comes from the query's first character, and from the key
+// that opened the box when there is no prefix. That home never changes while
+// the box is up. Free of imports, so the rule is testable without a DOM.
 
-export type OmniMode = "file" | "command" | "doc" | "workspace" | "line" | "help";
+export type OmniMode = "all" | "file" | "command" | "doc" | "workspace" | "line" | "help";
+
+export type OmniHome = "all" | "file";
 
 export type ModeSpec = {
   mode: OmniMode;
@@ -26,12 +19,13 @@ export type ModeSpec = {
 /**
  * Every mode, in the order the `?` list shows them.
  *
- * The file mode is first and prefixless because it is what ⌘P has always opened
- * onto, and because "which file" is the question asked most often. The rest earn
- * a keystroke.
+ * `all` is the one mode without a prefix: it is where Cmd+K lands, and a prefix
+ * is how you leave it. Files take `/` so they stay a keystroke away from there,
+ * while Cmd+P opens on them with nothing typed.
  */
 export const MODES: ModeSpec[] = [
-  { mode: "file", prefix: "", label: "Files", placeholder: "Go to file" },
+  { mode: "all", prefix: "", label: "Everything", placeholder: "Go to anything, or run a command" },
+  { mode: "file", prefix: "/", label: "Files", placeholder: "Go to file" },
   { mode: "command", prefix: ">", label: "Commands", placeholder: "Run an action" },
   { mode: "doc", prefix: "@", label: "Symbols in this file", placeholder: "Go to a symbol in this file" },
   { mode: "workspace", prefix: "#", label: "Symbols in the project", placeholder: "Search project symbols" },
@@ -48,19 +42,31 @@ export type Parsed = {
 /**
  * Which mode a raw query selects, and what is left to search with.
  *
- * The prefix is only read at position zero, so a `#` inside a filename is part
- * of the filename. Trimming the remainder makes `> save` behave as `>save`,
- * which matters because the prefix is typed and then the query is thought about.
+ * A query with no prefix selects `home`. The prefix is only read at position
+ * zero, so a `#` inside a filename is part of the filename. Trimming the
+ * remainder makes `> save` behave as `>save`, which matters because the prefix
+ * is typed and then the query is thought about.
  */
-export function parseQuery(raw: string): Parsed {
+export function parseQuery(raw: string, home: OmniHome): Parsed {
   const spec = MODES.find((m) => m.prefix && raw.startsWith(m.prefix));
-  if (!spec) return { mode: "file", term: raw.trim() };
+  if (!spec) return { mode: home, term: raw.trim() };
   return { mode: spec.mode, term: raw.slice(spec.prefix.length).trim() };
 }
 
 /** The mode's spec, which every mode has. */
 export function specOf(mode: OmniMode): ModeSpec {
   return MODES.find((m) => m.mode === mode)!;
+}
+
+/**
+ * The modes a box opened on `home` can be typed into, for the `?` list.
+ *
+ * The home's own mode leads and takes no prefix there, whatever `MODES` gives
+ * it. `all` has none to type, so a box opened on files does not list it.
+ */
+export function modesFrom(home: OmniHome): ModeSpec[] {
+  const typed = MODES.filter((m) => m.prefix && m.mode !== home && m.mode !== "help");
+  return [{ ...specOf(home), prefix: "" }, ...typed];
 }
 
 /**

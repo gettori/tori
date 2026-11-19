@@ -31,7 +31,7 @@ import { loadFrecency, rankByFrecency, topFiles } from "../../utils/frecency";
 import { loadTasks, type Task } from "../../utils/tasks";
 import { loadTaskRuns } from "../../utils/taskRecents";
 import { runTask } from "../../utils/runTask";
-import { MODES, parseLine, parseQuery, specOf } from "../../utils/omniboxModes";
+import { modesFrom, parseLine, parseQuery, specOf, type OmniHome } from "../../utils/omniboxModes";
 import { debounce } from "../../utils/debounce";
 import { flattenSymbols, searchWorkspaceSymbols, symbolsFor, type SymbolNode } from "../../utils/symbols";
 import { mentionPath } from "../../utils/pathScope";
@@ -192,7 +192,9 @@ export function refusal(c: Command): string | null {
  * live ones, which is more than a fuzzy line of text here could say.
  */
 export default function Omnibox(props: {
-  /** The prefix the box opens with: `""` from ⌘P, `">"` from ⌘K. */
+  home: OmniHome;
+  /** Text the box opens with already typed, which is how a caller opens it in
+   *  a prefixed mode. */
   prefix?: string;
   selected: Selection | null;
   onOpenSettings: () => void;
@@ -233,7 +235,7 @@ export default function Omnibox(props: {
   const openedAt = Date.now();
   const stats = loadFrecency(openedAt)[workspaceKey(props.selected)] ?? {};
 
-  const parsed = createMemo(() => parseQuery(query()));
+  const parsed = createMemo(() => parseQuery(query(), props.home));
   const mode = () => parsed().mode;
   const term = () => parsed().term;
 
@@ -261,13 +263,11 @@ export default function Omnibox(props: {
 
   // Not on mount, unlike the file list: `fs_read_dir` shells out to
   // `git check-ignore`, and ⌘P is the most-pressed key in the app while never
-  // showing a task row. Read the first time the box is actually in `>` mode, and
-  // once per open after that - a `scripts` block does not change while a picker
-  // is on screen, and the Scripts section re-reads on fs changes.
+  // showing a task row.
   let tasksRead = false;
   createEffect(() => {
     const at = root();
-    if (mode() !== "command" || tasksRead || !at) return;
+    if ((mode() !== "command" && mode() !== "all") || tasksRead || !at) return;
     tasksRead = true;
     void loadTasks(
       at,
@@ -573,7 +573,7 @@ export default function Omnibox(props: {
   /** `?` is a mode whose results are the modes. It answers "what else can this
    *  box do", which is otherwise only answerable by having read this file. */
   const helpRows = createMemo((): Row[] =>
-    MODES.filter((m) => m.mode !== "help").map((m) => ({
+    modesFrom(props.home).map((m) => ({
       id: `help:${m.mode}`,
       label: m.prefix ? `${m.prefix}  ${m.label}` : `(no prefix)  ${m.label}`,
       sub: m.placeholder,
@@ -586,6 +586,7 @@ export default function Omnibox(props: {
 
   const results = createMemo((): Row[] => {
     switch (mode()) {
+      case "all":
       case "command":
         return filtered(commandRows(), term());
       case "doc":
@@ -617,6 +618,7 @@ export default function Omnibox(props: {
 
   function emptyText(): string {
     switch (mode()) {
+      case "all":
       case "command":
         return "No matches";
       case "doc":
