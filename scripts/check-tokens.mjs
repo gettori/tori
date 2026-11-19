@@ -16,7 +16,6 @@
 //      cannot scroll the whole transcript sideways.
 //   8c. The sidebar's filter row wraps, and the field states the width it
 //      needs, which is what puts it beside the title or under it.
-//   9. The palette's own heading still matches Dialog's title recipe.
 //  10. The two blocking surfaces in the chat wear one tier, and nothing else
 //      wears it.
 //  11. The PDF text layer's copied stylesheet still names the pdf.js it was
@@ -595,9 +594,8 @@ if (semanticProblems.length > 0) {
 // ---- Check 8: the Omnibox palette declares its own height bound ----
 //
 // The palette composes `Dialog` now (#110), so it inherits a bound rather than
-// having none. But it wants a shorter one than a dialog's 85vh, because its list
-// is longer than a dialog's body, and with MAX_RESULTS at 200 a panel bounded
-// too generously still puts rows above the fold out of reach.
+// having none. But it wants its own: 13 rows plus the field and the footer, the
+// height its list is drawn to, rather than whatever a dialog would take.
 //
 // It asks for that through `Dialog`'s `--dialog-max-height` hook rather than by
 // redeclaring `max-height`. That is the part worth guarding: both rules would be
@@ -639,7 +637,7 @@ const OMNIBOX_BOUND = [
   [
     ".panel",
     "--dialog-max-height",
-    "the palette takes a dialog's 85vh instead of its own shorter bound, and the rows past it go out of reach",
+    "the palette takes a dialog's default bound instead of its own 13 rows, and its list sizes itself to the wrong height",
   ],
 ];
 
@@ -659,10 +657,9 @@ for (const [selector, property, consequence] of OMNIBOX_BOUND) {
 
 // The other half of the bound, in a file that has no reason to know this check
 // exists. Two things are asked of it: that it still reads the hook the palette
-// sets, and that its body is still the scroller. The palette's own list stopped
-// being one when it moved onto the shared <Combobox> (#110) - the rows are the
-// dialog body's children now, and a bound with nothing scrolling under it puts
-// the rows past it out of reach exactly as no bound at all does.
+// sets, and that its body still scrolls. The palette's list scrolls itself
+// inside the bound, and the body is what keeps the rows reachable when the
+// list's own bound and the panel's disagree.
 const DIALOG_CSS = "src/components/Dialog/Dialog.module.css";
 const dialogSource = sources.get(DIALOG_CSS);
 if (!dialogSource) {
@@ -755,25 +752,6 @@ if (filterProblems.length > 0) {
   process.exit(1);
 }
 
-// ---- Check 9: the palette's heading still reads as a dialog title ----
-//
-// The palette's real title is `titleHidden` (the visible line names the *mode*,
-// not the surface), so the heading a reader actually sees is the Omnibox's own
-// `.title`, and it exists to look exactly like a dialog title. That makes it a
-// copy of `Dialog`'s `.title` recipe living in another file.
-//
-// It cannot be shared: a cross-module `composes` is what this cluster
-// deliberately does not do (see the header of Dialogs.module.css), and both
-// rules landing on one element would put the winner in the bundler's hands. So
-// the copy stays and the agreement is guarded instead - which is the same shape
-// as check 8 above, for the same file pair and the same reason.
-//
-// #130 is what made this necessary: moving Dialog's title from 16px to 18px
-// silently left the palette's heading two steps smaller, and nothing failed.
-// The margin is deliberately not compared: the heading sits inside the dialog's
-// *body*, which is a plain scroller, so it needs a margin the head does not.
-// Nor is the size: #181 took dialog titles to 16px and left the palette's
-// heading at 18px on purpose.
 const valueOf = (rules, selector, property) => {
   for (const rule of rules.filter((r) => r.selectors.includes(selector))) {
     const m = rule.body.match(new RegExp(`(?:^|;)\\s*${property}\\s*:([^;]+)`));
@@ -781,31 +759,6 @@ const valueOf = (rules, selector, property) => {
   }
   return undefined;
 };
-
-// What a dialog title *is*, as opposed to where it sits.
-const TITLE_RECIPE = ["line-height", "font-weight", "color"];
-const titleProblems = [];
-const dialogRules = cssRules(dialogSource);
-for (const property of TITLE_RECIPE) {
-  const ours = valueOf(dialogRules, ".title", property);
-  const theirs = valueOf(omniboxRules, ".title", property);
-  if (ours === undefined) {
-    titleProblems.push(`${DIALOG_CSS} .title no longer declares ${property}, so there is nothing to match`);
-  } else if (theirs === undefined) {
-    titleProblems.push(
-      `${OMNIBOX_CSS} .title does not declare ${property}, so the palette heading drifts from a dialog title`,
-    );
-  } else if (ours !== theirs) {
-    titleProblems.push(`${property}: ${DIALOG_CSS} says ${ours}, ${OMNIBOX_CSS} says ${theirs}`);
-  }
-}
-
-if (titleProblems.length > 0) {
-  console.error(`${titleProblems.length} disagreement(s) between the dialog title and the palette's heading:\n`);
-  for (const problem of titleProblems) console.error(`  ${problem}`);
-  console.error("\nThe palette hides its real title and draws its own, so the two recipes must stay identical.");
-  process.exit(1);
-}
 
 // ---- Check 10: the blocking tier is worn by exactly two surfaces ----
 //
@@ -1092,7 +1045,6 @@ console.log(
     `the command palette bounding its own height, ` +
     `a tool row's 2 text cells able to shrink, ` +
     `the sidebar filter's row able to wrap under its title, ` +
-    `its heading matching a dialog title on all ${TITLE_RECIPE.length} recipe properties, ` +
     `the blocking tier's ${tierRoles.length} roles worn by the ${BLOCKING.length} surfaces that interrupt the user, ` +
     `the lane strip painting only the one surface its ${LANE_TEXT.length} text roles are measured against, ` +
     `the panel's two status rows agreeing on all ${TONES.length} tones, ` +

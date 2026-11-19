@@ -803,8 +803,7 @@ describe("the shell", () => {
     // than as an `aria-label`.
     const labelledBy = dialog.getAttribute("aria-labelledby");
     expect(labelledBy).toBeTruthy();
-    expect(document.getElementById(labelledBy!)?.textContent).toBe("Command palette");
-    // The visible heading names the *mode*, and is not the accessible name.
+    expect(document.getElementById(labelledBy!)?.textContent).toBe("Go to anything");
     expect(screen.getByText("Commands")).toBeTruthy();
   });
 

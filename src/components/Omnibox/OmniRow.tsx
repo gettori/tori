@@ -37,7 +37,7 @@ const GROUP_GLYPHS: Record<CommandGroup, LucideIcon> = {
   help: CircleHelp,
 };
 
-const MODE_GLYPHS: Record<OmniMode, LucideIcon> = {
+export const MODE_GLYPHS: Record<OmniMode, LucideIcon> = {
   all: Search,
   file: File,
   command: ChevronRight,

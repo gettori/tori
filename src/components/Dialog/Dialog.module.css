@@ -95,12 +95,13 @@
 .top {
   --dialog-shift: translateX(-50%);
   --dialog-top: 18vh;
-  top: var(--dialog-top);
-  transform-origin: top center;
-  max-height: min(
+  --dialog-bound: min(
     var(--dialog-max-height, calc(720px * var(--ui-scale))),
     calc(100vh - var(--dialog-top) - var(--tori-space-7))
   );
+  top: var(--dialog-top);
+  transform-origin: top center;
+  max-height: var(--dialog-bound);
 }
 
 /* Reduced motion removes the animation, not the dialog. `solid-presence` reads

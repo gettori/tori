@@ -157,7 +157,7 @@ const KEPT = new Map<string, Kept>([
     "components/Omnibox/Omnibox.tsx",
     {
       count: 1,
-      reason: `${HEADING}, and hidden at that: the palette's visible heading names the *mode* it is in, so its accessible name is carried by \`titleHidden\` instead`,
+      reason: `${HEADING}, and hidden at that: the tag in the palette's field names the *mode* it is in, so its accessible name is carried by \`titleHidden\` instead`,
     },
   ],
   ["components/ShortcutSheet/ShortcutSheet.tsx", { count: 1, reason: HEADING }],
