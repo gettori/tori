@@ -47,7 +47,7 @@ export function errorText(e: unknown): string {
   return typeof e === "object" && e && "message" in e ? String((e as { message: unknown }).message) : String(e);
 }
 
-export function unitIssueOf(issue: Issue): UnitIssue {
+export function unitIssueOf(issue: Pick<Issue, "key" | "display" | "url" | "title">): UnitIssue {
   return { key: issue.key, display: issue.display, url: issue.url, title: issue.title };
 }
 

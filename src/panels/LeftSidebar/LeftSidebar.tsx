@@ -81,8 +81,10 @@ import {
   PURGE_UNDER_PATH,
   TERMINAL_TAB_FOCUSED,
   ADD_BRANCH_UNIT,
+  LINK_ISSUE,
   OPEN_REVIEW,
   REMOVE_BRANCH_UNIT,
+  UNLINK_ISSUE,
   type AddBranchUnit,
   type OpenReview,
   type RemoveBranchUnit,
@@ -844,6 +846,40 @@ export default function LeftSidebar(props: {
     const req = pickReq();
     setPickReq(null);
     req?.resolve(v);
+  }
+
+  // A find hit already carries every field a link keeps, so there is no
+  // `issues_get` after it: that would be a second request for the same four.
+  async function askIssue(projectPath: string, title: string): Promise<UnitIssue | null> {
+    const input = (await askText(title, "", "A number, repo#N or an issue URL"))?.trim();
+    if (!input) return null;
+    const found = await invoke<Found>("issues_find", { projectPath, input }).catch((e) => {
+      setError(errorText(e));
+      return null;
+    });
+    if (!found) return null;
+    if (!found.hits.length) {
+      setError(`No issue found for ${input}`);
+      return null;
+    }
+    const labels = found.hits.map((h) => `${h.display} ${h.title}`);
+    const at = found.hits.length === 1 ? 0 : labels.indexOf((await askPick("Which issue?", labels)) ?? "");
+    const hit = found.hits[at];
+    return hit ? unitIssueOf(hit) : null;
+  }
+
+  async function linkUnitIssue(p: Project, u: BranchUnit) {
+    if (!u.branch) return;
+    const issue = await askIssue(p.path, `Link issue to ${u.branch}`);
+    if (!issue) return;
+    await invoke("issues_record", { projectPath: p.path, branch: u.branch, issue }).catch((e) =>
+      setError(errorText(e)),
+    );
+  }
+
+  async function unlinkUnitIssue(p: Project, u: BranchUnit) {
+    if (!u.branch) return;
+    await invoke("issues_forget", { projectPath: p.path, branch: u.branch }).catch((e) => setError(errorText(e)));
   }
 
   // The delete-space confirmation. Opened with provisional entry names from the
@@ -1612,6 +1648,23 @@ export default function LeftSidebar(props: {
       else setError(`No project at "${d.projectPath}" is open here.`);
     }),
   );
+  function issueCommand(unlink: boolean) {
+    const sel = props.selected;
+    if (sel?.kind === "topic") {
+      const topic = topics().find((t) => t.id === sel.topicId);
+      if (topic) void (unlink ? topicActions.unlinkIssue(topic) : topicActions.linkIssue(topic));
+      return;
+    }
+    if (!sel || (sel.kind ?? "unit") !== "unit") return;
+    const p = treeSpaces()
+      .flatMap((g) => g.projects)
+      .find((q) => q.path === sel.projectPath);
+    const u = p?.branchUnits.find((x) => x.folderPath === sel.folderPath && x.branch === sel.branch);
+    if (p && u) void (unlink ? unlinkUnitIssue(p, u) : linkUnitIssue(p, u));
+    else setError(`No branch unit named "${sel.branch}" is open in this project.`);
+  }
+  onCleanup(onEvent(LINK_ISSUE, () => issueCommand(false)));
+  onCleanup(onEvent(UNLINK_ISSUE, () => issueCommand(true)));
   onCleanup(onEvent(SESSIONS_REFRESH, () => refreshSessions()));
   onCleanup(onEvent(COLLAPSE_PROJECTS, () => setProjectsOpen(false)));
   onCleanup(onEvent(EXPAND_PROJECTS, () => setProjectsOpen(true)));
@@ -3191,6 +3244,10 @@ export default function LeftSidebar(props: {
     }
     items.push(...watchItems(p, u));
     if (checkedOut) items.push(secondOpinionItem(u.folderPath));
+    if (u.branch) {
+      items.push({ label: "Link issue\u2026", onClick: () => void linkUnitIssue(p, u) });
+      if (u.issue) items.push({ label: "Unlink issue", onClick: () => void unlinkUnitIssue(p, u) });
+    }
     if (u.kind === "worktree") {
       items.push({ separator: true });
       items.push({ label: "Move to topic…", onClick: () => setMoveReq({ g, p, u }) });
@@ -4072,6 +4129,7 @@ export default function LeftSidebar(props: {
     },
     countRunning: countRunningAgents,
     onExpanded: setExpandedTopics,
+    askIssue,
   });
   const watchedTopics = createMemo(() => {
     const open = props.selected?.kind === "topic" ? props.selected.topicId : null;

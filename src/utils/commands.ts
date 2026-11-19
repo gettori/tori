@@ -123,6 +123,8 @@ import {
   GIT_BRANCH_CREATE,
   GIT_BRANCH_RENAME,
   GIT_BRANCH_DELETE,
+  LINK_ISSUE,
+  UNLINK_ISSUE,
 } from "./events";
 
 /** Where a command is listed, in the palette and in the Cmd+/ sheet. */
@@ -189,7 +191,13 @@ export type Requirement =
   | "reading"
   /** This Mac can run Read aloud. Hides when unmet, since an Intel Mac never
    *  can. */
-  | "localSpeech";
+  | "localSpeech"
+  /** A branch is selected. Hides when unmet, so a Topic lists only its own
+   *  pair. */
+  | "frontUnit"
+  /** A Topic is selected. Hides when unmet, for `frontUnit`'s reason. */
+  | "frontTopic"
+  | "frontIssue";
 
 export type Command = {
   id: string;
@@ -1186,6 +1194,34 @@ export const COMMANDS: Command[] = [
     group: "git",
     run: () => emit(GIT_BRANCH_DELETE),
     requires: ["gitRoot"],
+  },
+  {
+    id: "issue-link",
+    label: "Link Issue to This Worktree...",
+    group: "git",
+    run: () => emit(LINK_ISSUE),
+    requires: ["frontUnit"],
+  },
+  {
+    id: "issue-unlink",
+    label: "Unlink Issue",
+    group: "git",
+    run: () => emit(UNLINK_ISSUE),
+    requires: ["frontUnit", "frontIssue"],
+  },
+  {
+    id: "topic-issue-link",
+    label: "Link Issue to This Topic...",
+    group: "git",
+    run: () => emit(LINK_ISSUE),
+    requires: ["frontTopic"],
+  },
+  {
+    id: "topic-issue-unlink",
+    label: "Unlink Issue from This Topic",
+    group: "git",
+    run: () => emit(UNLINK_ISSUE),
+    requires: ["frontTopic", "frontIssue"],
   },
 
   // --- Preferences ---------------------------------------------------------

@@ -540,7 +540,7 @@ function App() {
   // act on says why, the way the palette greys the row out.
   const runFromMenu = (id: string) => {
     const c = COMMANDS.find((c) => c.id === id);
-    const why = c && refusal(c);
+    const why = c && refusal(c, untrack(selected));
     if (why) emitWith<ToastEvent>(TOAST, { message: `${c.label}: ${why}`, kind: "info" });
     else c?.run?.();
   };

@@ -757,6 +757,11 @@ export type AddBranchUnit = { projectPath: string; base?: string | null; issue?:
 export const OPEN_REVIEW = "tori:open-review";
 export type OpenReview = { projectPath: string; number: number };
 
+// The sidebar answers these for whatever is selected, Topic or branch: it holds
+// the prompt and the unit list the commands cannot import.
+export const LINK_ISSUE = "tori:link-issue";
+export const UNLINK_ISSUE = "tori:unlink-issue";
+
 export const OPEN_GROUPING = "tori:open-grouping";
 
 // Payload-carrying event: surface a toast from anywhere. components/Toasts owns

@@ -30,7 +30,8 @@ import {
   type StopChat,
   type NewSession,
 } from "../../utils/events";
-import { livePlaces, placeNumbers, watchSessionsOverview, type Place } from "../../utils/navIndex";
+import { linkedIssueAt, livePlaces, placeNumbers, watchSessionsOverview, type Place } from "../../utils/navIndex";
+import { topics } from "../../utils/topicStore";
 import { rank, type RankInput } from "../../utils/navRank";
 import { numberHit, numberQuery, ticketLabel, type NumberQuery } from "../../utils/navNumber";
 import { errorText, type Found, type IssueRef, type IssueRepos } from "../../utils/issues";
@@ -112,7 +113,7 @@ function lookupWhere(q: NumberQuery, source: IssueSource): string {
  * the editor and git modules in the terminal's chunk. The omnibox is the leaf of
  * that graph, so reading them costs nothing.
  */
-function unmetReason(req: Requirement): string | null {
+function unmetReason(req: Requirement, sel: Selection | null): string | null {
   switch (req) {
     case "editorTab":
       return editorState().tabCount ? null : "No tab open";
@@ -151,6 +152,17 @@ function unmetReason(req: Requirement): string | null {
       return reading() ? null : "Nothing is being read";
     case "localSpeech":
       return LOCAL_SPEECH ? null : "Needs an Apple Silicon Mac";
+    case "frontUnit":
+      return sel && (sel.kind ?? "unit") === "unit" && sel.branch ? null : "Select a branch first";
+    case "frontTopic":
+      return sel?.kind === "topic" ? null : "Select a Topic first";
+    case "frontIssue": {
+      const linked =
+        sel?.kind === "topic"
+          ? topics().find((t) => t.id === sel.topicId)?.issue
+          : sel && linkedIssueAt(sel.folderPath, sel.branch);
+      return linked ? null : "No issue linked";
+    }
   }
 }
 
@@ -170,17 +182,19 @@ const HIDES_WHEN_UNMET = new Set<Requirement>([
   "runCommand",
   "heldSelection",
   "localSpeech",
+  "frontUnit",
+  "frontTopic",
 ]);
 
 /** Whether a command should not be listed at all right now. */
-function suppressed(c: Command): boolean {
-  return (c.requires ?? []).some((req) => HIDES_WHEN_UNMET.has(req) && unmetReason(req) !== null);
+function suppressed(c: Command, sel: Selection | null): boolean {
+  return (c.requires ?? []).some((req) => HIDES_WHEN_UNMET.has(req) && unmetReason(req, sel) !== null);
 }
 
 /** The first unmet requirement's reason, in the order the command listed them. */
-export function refusal(c: Command): string | null {
+export function refusal(c: Command, sel: Selection | null): string | null {
   for (const req of c.requires ?? []) {
-    const why = unmetReason(req);
+    const why = unmetReason(req, sel);
     if (why) return why;
   }
   return null;
@@ -500,8 +514,8 @@ export default function Omnibox(props: {
     // whose target is the key that fired it, the terminal-owned search, and the
     // unqualified stop that the per-chat rows below say better.
     for (const c of COMMANDS) {
-      if (c.hidden || !c.run || suppressed(c)) continue;
-      const why = refusal(c);
+      if (c.hidden || !c.run || suppressed(c, props.selected)) continue;
+      const why = refusal(c, props.selected);
       out.push({
         kind: "command",
         group: c.group,

@@ -130,8 +130,9 @@ fn record_in(file: &Path, repo: &str, branch: &str, issue: UnitIssue) -> Result<
     store.save_to(file)
 }
 
-/// Drops the record of `branch`, which Tori just deleted. A new branch given
-/// the same name later is not the one the issue was about.
+/// Drops the record of `branch`: the user unlinked it, or Tori deleted the
+/// branch, and a new branch given the same name later is not the one the issue
+/// was about.
 pub fn forget(repo: &str, branch: &str) -> Result<(), String> {
     forget_in(&store_path(), repo, branch)
 }
