@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createResource, onCleanup, type Accessor } from "solid-js";
+import { createEffect, createMemo, createResource, onCleanup, untrack, type Accessor } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ContentBlock } from "../../utils/chatTypes";
@@ -83,9 +83,19 @@ export function createRelatedSessions(
   items: Accessor<readonly ChatItem[]>,
   look: Lookups = LIVE,
 ): Accessor<RelatedSession[]> {
-  const ties = createMemo(
-    () => items().filter((i) => i.kind === "tool" && i.state === "ok" && TIES.has(toriCall(i)?.tool ?? "")).length,
-  );
+  // Both scans walk every row, so they are keyed on the row count rather than
+  // on the rows. A tie is a finished call, and the hook frame that follows
+  // every call adds a row, so a count change is never far behind the state.
+  const count = createMemo(() => items().length);
+  const ties = createMemo(() => {
+    count();
+    return untrack(items).filter((i) => i.kind === "tool" && i.state === "ok" && TIES.has(toriCall(i)?.tool ?? ""))
+      .length;
+  });
+  const senders = createMemo(() => {
+    count();
+    return incomingSenders(untrack(items));
+  });
   const [rows, { refetch }] = createResource(
     () => [session(), ties()] as const,
     ([id]) => invoke<RelationRow[]>("session_relations", { session: id }).catch(() => [] as RelationRow[]),
@@ -95,5 +105,5 @@ export function createRelatedSessions(
     onCleanup(() => void unlisten.then((stop) => stop()));
   }
   createEffect(() => void trackFolders(relatedFolders(rows() ?? [])));
-  return createMemo(() => mergeRelated(rows() ?? [], incomingSenders(items()), look));
+  return createMemo(() => mergeRelated(rows() ?? [], senders(), look));
 }

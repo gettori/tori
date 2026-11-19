@@ -10,7 +10,7 @@ import {
   onMount,
   untrack,
 } from "solid-js";
-import { createStore, produce } from "solid-js/store";
+import { createStore, produce, unwrap } from "solid-js/store";
 import { nextFrame } from "../../utils/nextFrame";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -236,7 +236,7 @@ import {
   blockedLanes,
   laneOf,
   toolCallsSeen,
-  visibleItems,
+  visibleIndexes,
   planStale,
   type ChatItem,
   type ChatState,
@@ -536,7 +536,28 @@ export default function ChatView(props: {
     req?.resolve(v);
   }
 
-  const edit = (fn: (s: ChatState) => void) => setState(produce(fn));
+  const edit = (fn: (s: ChatState) => void) =>
+    setState(
+      produce((s) => {
+        fn(s);
+        s.rev++;
+      }),
+    );
+
+  // The transcript read whole: the raw object behind the store, keyed on `rev`
+  // alone. Walking `state.items` through the proxy subscribes the reader to
+  // every row it touches, and re-subscribing thousands of rows on each write
+  // cost more than the walk itself (profiled at 4,000 rows: 40% of a write in
+  // Solid's bookkeeping). Every write bumps `rev`, so a reader keyed on it is
+  // as current as one tracking each row, at one subscription.
+  const raw = createMemo(
+    on(
+      () => state.rev,
+      () => unwrap(state),
+    ),
+    undefined,
+    { equals: false },
+  );
 
   // A hidden chat's render-only events, folded in when it is shown or when an event
   // that reads the state arrives, never on a timer: each write re-runs the status
@@ -580,15 +601,36 @@ export default function ChatView(props: {
   const running = () => isRunning(state);
   // One walk of the transcript per write, shared by the header and the Inbox
   // scroll, rather than one per reader.
-  const approvals = createMemo(() => pendingApprovals(state));
+  const approvals = createMemo(() => pendingApprovals(raw()));
 
   // Memoized, not a plain accessor. Solid props are getters and MessageList
   // reads `items` in three places (its window memo, its stick-to-bottom tail
   // probe, and the load-earlier check), so an accessor would re-filter the
   // whole transcript three times for every streaming delta.
+  //
+  // The rows handed out are the store's own proxies, so a card keeps updating
+  // in place; the walk that picks them is over the raw array (see `raw`). A
+  // write that moves no row in or out (a streaming delta) hands back the same
+  // array, so nothing downstream re-runs for it, and a write that appends
+  // re-reads only the rows past the ones already in hand: rows are appended
+  // far more often than anything else, and reading a row back through the
+  // store is what the whole-transcript walk used to pay per row.
+  let shownRaw: ChatItem[] = [];
+  let shownWrapped: ChatItem[] = [];
+  let shownRows: ChatItem[] = [];
   const shownItems = createMemo(() => {
-    const shown = visibleItems(state.items, settings.chatDefaults.showToriHooks, state.selectedLane);
-    return props.sideOf ? planAsReply(shown) : shown;
+    const s = raw();
+    const at = visibleIndexes(s.items, settings.chatDefaults.showToriHooks, s.selectedLane);
+    const rows = at.map((i) => s.items[i]);
+    let kept = 0;
+    while (kept < rows.length && kept < shownRaw.length && rows[kept] === shownRaw[kept]) kept++;
+    if (kept !== rows.length || kept !== shownRaw.length) {
+      shownRaw = rows;
+      const tail = untrack(() => at.slice(kept).map((i) => state.items[i]));
+      shownWrapped = kept ? shownWrapped.slice(0, kept).concat(tail) : tail;
+      shownRows = props.sideOf ? planAsReply(shownWrapped) : shownWrapped;
+    }
+    return shownRows;
   });
 
   // The palette's Read Last Reply reads the chat in front. The row's rendered
@@ -611,7 +653,11 @@ export default function ChatView(props: {
     );
   });
 
-  const sendable = createMemo(() => (props.sideOf ? lastReplies(shownItems(), state.turns) : new Set<string>()));
+  const sendable = createMemo(() => {
+    if (!props.sideOf) return new Set<string>();
+    shownItems();
+    return lastReplies(shownRaw, raw().turns);
+  });
   const sendableReply = (item: TextItem) =>
     props.sideOf && sendable().has(item.id) ? (
       <SendReply
@@ -637,8 +683,9 @@ export default function ChatView(props: {
   // The strip's three numbers. Derived from the transcript rather than kept as
   // counters, so a replayed history and a live session count the same way.
   const touchedFiles = createMemo(() => {
-    const paths = new Set<string>(state.unloaded.touched);
-    for (const it of state.items) {
+    const s = raw();
+    const paths = new Set<string>(s.unloaded.touched);
+    for (const it of s.items) {
       if (it.kind !== "tool") continue;
       for (const f of it.files) paths.add(f);
       for (const e of it.edits) paths.add(e.path);
@@ -1352,7 +1399,7 @@ export default function ChatView(props: {
   // cannot scroll the transcript on some later block.
   createEffect(() => {
     if (pendingCard() !== props.sessionId) return;
-    const waiting = approvals().length + pendingQuestions(state).length;
+    const waiting = approvals().length + pendingQuestions(raw()).length;
     if (!waiting && !numberingSettled()) return;
     setPendingCard(null);
     if (!waiting) return;
@@ -1416,6 +1463,10 @@ export default function ChatView(props: {
   // A chat opened only to read its transcript is the same phantom by another
   // route: it has a session id but no child, so it registers nothing until it
   // starts. Twelve of them must count as zero.
+  const status = createMemo(() => chatStatus(raw()));
+  const background = createMemo(() => outstandingBackground(raw()), undefined, {
+    equals: (a, b) => a.agents === b.agents && a.tasks === b.tasks,
+  });
   createEffect(() => {
     if (!props.started || refused()) {
       dropLiveChat(props.sessionId);
@@ -1427,8 +1478,8 @@ export default function ChatView(props: {
       agentId: props.agentId,
       folderPath: props.workspace,
       tabId: props.tabId,
-      status: asksFor(props.sessionId).length ? "waitingForAnswer" : chatStatus(state),
-      background: outstandingBackground(state),
+      status: asksFor(props.sessionId).length ? "waitingForAnswer" : status(),
+      background: background(),
       visible: props.active,
       spawner: props.spawner,
       doneAt: doneAt(),
@@ -1454,7 +1505,7 @@ export default function ChatView(props: {
 
   const related = createRelatedSessions(
     () => props.sessionId,
-    () => state.items,
+    () => raw().items,
   );
   const [firstPrompt] = createResource(
     () => props.sessionId,
@@ -2572,7 +2623,7 @@ export default function ChatView(props: {
         <StatusStrip
           health={connectionHealth(state)}
           running={running()}
-          background={outstandingBackground(state)}
+          background={background()}
           compacting={state.compactingItemId !== null}
           awaitingApproval={approvals().length > 0}
           files={touchedFiles()}
@@ -2720,7 +2771,7 @@ export default function ChatView(props: {
       <LaneStrip
         lanes={laneStrip(state)}
         tasks={backgroundTasks(state)}
-        blocked={blockedLanes(state)}
+        blocked={blockedLanes(raw())}
         selected={state.selectedLane}
         busy={running()}
         mark={providerMarkKey(state.model, props.agentId)}

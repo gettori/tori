@@ -400,11 +400,21 @@ export function toolCallsSeen(s: ChatState): number {
  * with nothing on screen explaining why.
  */
 export function visibleItems(items: readonly ChatItem[], showAllHooks: boolean, lane: string | null): ChatItem[] {
-  return items.filter((it) => {
-    if (laneOf(it) !== lane && !(lane === null && blocking(it))) return false;
-    if (it.kind === "notice" && it.hidden) return false;
-    return showAllHooks || it.kind !== "hook" || hookFailed(it);
-  });
+  return items.filter((it) => isVisible(it, showAllHooks, lane));
+}
+
+/** The positions `visibleItems` keeps, for a caller that reads the rows back
+ *  through the store and so needs where they are rather than what they are. */
+export function visibleIndexes(items: readonly ChatItem[], showAllHooks: boolean, lane: string | null): number[] {
+  const at: number[] = [];
+  for (let i = 0; i < items.length; i++) if (isVisible(items[i], showAllHooks, lane)) at.push(i);
+  return at;
+}
+
+function isVisible(it: ChatItem, showAllHooks: boolean, lane: string | null): boolean {
+  if (laneOf(it) !== lane && !(lane === null && blocking(it))) return false;
+  if (it.kind === "notice" && it.hidden) return false;
+  return showAllHooks || it.kind !== "hook" || hookFailed(it);
 }
 
 /** A row the session is stopped on until the user answers it: a call waiting on
@@ -675,6 +685,10 @@ export type ChatState = {
   /** Monotonic id source, so replaying the same events twice yields the same
    *  item ids and tests can assert on them. */
   seq: number;
+  /** Bumped by every write. A reader that walks the whole transcript keys on
+   *  this and reads the raw array, instead of subscribing to every row it
+   *  touches; see `raw` in ChatView. */
+  rev: number;
   /** What the rows not loaded yet would count, from the history summary. A
    *  page merged in front moves its share from here into `items`. */
   unloaded: { prompts: number; toolCalls: number; touched: string[] };
@@ -742,6 +756,7 @@ export function initialChat(sessionId: string, answerQuestionsInline = true): Ch
     limitStop: null,
     continuing: false,
     seq: 0,
+    rev: 0,
     unloaded: { prompts: 0, toolCalls: 0, touched: [] },
   };
 }
