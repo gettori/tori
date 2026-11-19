@@ -47,3 +47,18 @@ export function prChildState(
     return "approved";
   return others.some((r) => r.verdict !== "dismissed") ? "commented" : "ready";
 }
+
+/** The tone a branch line gives its pull request's number: the lane, except
+ *  that a release (the default branch's PR) stays quiet once it is approved,
+ *  a draft or finished, since merging it finishes nothing on the row. */
+export function prLineTone(
+  status: UnitStatus | null,
+  viewer: string | null,
+  reviewAsked: boolean,
+  release: boolean,
+): PrChildState | "unlaned" {
+  const child = prChildState(status, viewer, reviewAsked);
+  const pr = status?.pullRequest;
+  const ready = pr?.state === "open" && !pr.isDraft;
+  return release && (child === "approved" || !ready) ? "closed" : child;
+}

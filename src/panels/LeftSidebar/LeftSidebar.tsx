@@ -144,6 +144,7 @@ import {
   liveSessionStatuses,
   inUnit,
 } from "../../utils/sessionActivity";
+import { noteNavTree } from "../../utils/navIndex";
 import { forgeChip, forgeDoor } from "../../utils/forgeChip";
 import {
   finishedLook,
@@ -278,6 +279,7 @@ import {
   ensureChatsRoot,
   forgetChat,
   newChat,
+  sessionFields,
   type Chat,
 } from "../../utils/chats";
 import { purgeWorkspace } from "../../utils/purgeWorkspace";
@@ -665,6 +667,7 @@ export default function LeftSidebar(props: {
     icon: globalLook().icon,
     color: globalLook().color,
   });
+  const spacesWithHome = (): Group[] => [...visibleSpaces(), globalAsSpace()];
   const globalProjects = () => (config()?.global?.projects ?? []).filter(projectVisible);
 
   const [activeSpaceName, setActiveSpaceName] = createSignal<string | null>(loadActiveSpace());
@@ -1055,6 +1058,8 @@ export default function LeftSidebar(props: {
     ),
   );
 
+  createEffect(() => noteNavTree(spacesWithHome()));
+
   // Attention, the one input the store cannot see for itself: it is the sidebar
   // that knows what is selected, and this component that owns the window-focus
   // listener.
@@ -1410,33 +1415,78 @@ export default function LeftSidebar(props: {
   }
 
   // A link or a notification: the space shown, the project open, then the
-  // session's tab or the unit. Never a checkout, which would change the tree
-  // under whatever else is open in that repo behind a click that said "show me".
+  // session's tab or the unit. Only a `select` target may check out: a click
+  // that said "show me" must not change the tree under whatever else is open.
   // Answers whether the target ended up selected.
   async function navigateTo(t: NavTarget): Promise<boolean> {
+    if (t.chat) return openChatById(t.chat);
+    if (t.topic) return openTopicAt(t);
+    if (t.select && (t.project || t.space)) return switchToPlace(t);
     if (t.project || t.space) {
       showInSpaces(t);
       return false;
     }
     if (t.session && !findSession(t.session) && t.folder) await fetchSessions(t.folder);
     const hit = t.session ? findSession(t.session) : undefined;
-    const at = hit ? locate(hit.folder, hit.session.branch) : t.folder ? locate(t.folder) : undefined;
+    const at = hit ? locate(hit.folder, hit.session.branch) : t.folder ? locate(t.folder, t.branch) : undefined;
     if (!at) {
       if (t.session && (await selectSessionById(t.session))) return true;
       pushToast("That worktree is no longer in Tori.", "info");
       return false;
     }
-    if (at.u.kind === "plain" && at.u.branch && currentBranch(at.p) !== at.u.branch) {
+    if (!t.select && at.u.kind === "plain" && at.u.branch && currentBranch(at.p) !== at.u.branch) {
       pushToast(`${at.p.name} has another branch checked out, so Tori left it as it is.`, "info");
       return false;
     }
+    const was = activeSpaceName();
     setActiveSpaceName(at.g.name);
     const next = new Set([...expanded(), pkey(at.g, at.p)]);
     const stack = shownPr(at.p, at.u)?.stack;
     if (stack) next.delete(skey(at.g, at.p, stack.number));
     setExpanded(next);
+    if (t.select) {
+      const ok = hit ? await selectSession(at.g, at.p, at.u, hit.session) : await selectUnit(at.g, at.p, at.u);
+      if (!ok) setActiveSpaceName(was);
+      return ok;
+    }
     if (hit) void selectSession(at.g, at.p, at.u, hit.session);
     else void selectUnit(at.g, at.p, at.u);
+    return true;
+  }
+
+  function openChatById(id: string): boolean {
+    const c = chats().find((c) => c.id === id);
+    if (!c) {
+      pushToast("That chat is no longer in Tori.", "info");
+      return false;
+    }
+    openChat(c);
+    return true;
+  }
+
+  async function openTopicAt(t: NavTarget): Promise<boolean> {
+    const f = topics().find((f) => f.id === t.topic);
+    if (!f) {
+      pushToast("That Topic is no longer in Tori.", "info");
+      return false;
+    }
+    if (t.session && !findSession(t.session)) await fetchSessions(topicKey(f.id));
+    openTopic(f, t.root ?? null, t.session ? findSession(t.session)?.session : undefined);
+    return true;
+  }
+
+  function switchToPlace(t: NavTarget): boolean {
+    const g = t.project
+      ? treeSpaces().find((g) => g.projects.some((p) => samePath(p.path, t.project!)))
+      : spacesWithHome().find((g) => spaceLabel(g.name) === t.space);
+    if (!g) {
+      pushToast(`That ${t.project ? "project" : "space"} is no longer in Tori.`, "info");
+      return false;
+    }
+    if (g.name === GLOBAL_KEY) switchToGlobal();
+    else switchSpace(g);
+    const p = g.projects.find((p) => samePath(p.path, t.project ?? ""));
+    if (p) setExpanded(new Set([...expanded(), pkey(g, p)]));
     return true;
   }
 
@@ -3304,11 +3354,11 @@ export default function LeftSidebar(props: {
     }
   }
 
-  async function selectSession(g: Group, p: Project, u: BranchUnit, s: SessionMeta) {
+  async function selectSession(g: Group, p: Project, u: BranchUnit, s: SessionMeta): Promise<boolean> {
     traceSwitchStart("worktree", u.folderPath);
     // A session wants its recorded branch checked out, when it recorded one.
     const target = s.branch || u.branch;
-    if (!(await ensureBranch(p, u, target))) return;
+    if (!(await ensureBranch(p, u, target))) return false;
     props.onSelect({
       kind: "unit",
       spaceName: g.name,
@@ -3334,6 +3384,7 @@ export default function LeftSidebar(props: {
     // Probe on selection so the status reflects this session immediately, not
     // just on the next sessions://changed/window-focus trigger.
     void probeSession(s.id, s.agent ?? "claude");
+    return true;
   }
 
   // A branch-unit reads as selected when it is the direct selection OR when a
@@ -3360,15 +3411,15 @@ export default function LeftSidebar(props: {
       ? units
       : units.filter((u) => unitSelected(u) || topicsAt(u.folderPath).length === 0);
 
-  function selectTopic(f: Topic, preferredRoot: string | null) {
+  function selectTopic(f: Topic, preferredRoot: string | null, session?: SessionMeta) {
     // Keyed by the workspace key, not the bare id, so the legs the editor
     // reports (which key on the workspace) land on this span.
     traceSwitchStart("topic", topicKey(f.id));
-    props.onSelect(topicSelection(f, preferredRoot));
+    props.onSelect({ ...topicSelection(f, preferredRoot), ...(session && sessionFields(session)) });
   }
 
-  function openTopic(f: Topic, root: string | null) {
-    selectTopic(f, root);
+  function openTopic(f: Topic, root: string | null, session?: SessionMeta) {
+    selectTopic(f, root, session);
     const g = f.space ? config()?.spaces.find((g) => g.name === f.space) : undefined;
     setActiveSpaceName(g ? g.name : GLOBAL_KEY);
   }

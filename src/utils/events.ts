@@ -118,9 +118,18 @@ export const NAVIGATE = "tori:navigate";
  *  at least one field is set. */
 export type NavTarget = {
   folder?: string;
+  /** Which of a plain repo's units sharing `folder`. */
+  branch?: string;
   session?: string;
   project?: string;
   space?: string;
+  /** A Topic, opened on the member at `root` when given. */
+  topic?: string;
+  root?: string;
+  chat?: string;
+  /** Do what a click on the place's own row does: a space switches the work
+   *  with it, and a plain branch that is not checked out asks to switch. */
+  select?: boolean;
   /** A file to open once the folder is showing, at `line` when given. */
   file?: string;
   line?: number;

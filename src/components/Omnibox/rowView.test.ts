@@ -15,6 +15,7 @@ describe("which slots each kind of row fills", () => {
       title: "src/App.tsx",
       marks: [{ start: 4, end: 7 }],
       subtitle: undefined,
+      subMarks: [],
     });
   });
 
