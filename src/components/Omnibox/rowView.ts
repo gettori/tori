@@ -37,6 +37,14 @@ export type RowView = {
   keys?: { chips: string[]; spoken: string };
 };
 
+export const ENTER_LABEL: Record<Row["kind"], string> = {
+  file: "Open",
+  command: "Run",
+  symbol: "Go",
+  line: "Go",
+  help: "Use filter",
+};
+
 const SPOKEN: Record<string, string> = {
   "\u2318": "Command",
   "\u2325": "Option",

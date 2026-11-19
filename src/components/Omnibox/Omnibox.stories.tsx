@@ -109,6 +109,16 @@ export const Files: Story = {
   },
 };
 
+/** Cmd+K's home, with no filter typed: the tag names it and the lead glyph
+ *  stays muted. */
+export const Everything: Story = {
+  args: { home: "all" },
+  render: (args) => {
+    seed();
+    return <Omnibox {...args} prefix="" />;
+  },
+};
+
 /** The registry, with the two row shapes only this mode has: key chips for a
  *  command that also carries a binding, and a refusal reason for one whose
  *  requirement is unmet. Nothing is open here, so several are refused. */

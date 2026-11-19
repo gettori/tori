@@ -248,9 +248,9 @@ export default function Combobox(props: {
                native one this list used to grow. The caller's `listClass` is
                what bounds it (a `max-height` on the frame, per OverlayScroll),
                so the viewport below is the scroller and the list is its
-               content. A surface that sets no bound - the palette, which is
-               scrolled by the dialog body it sits in - is unaffected: a frame
-               with no height to exceed never scrolls. */
+               content. A surface that sets no bound - the picker without
+               `reserve`, scrolled by the dialog body it sits in - is
+               unaffected: a frame with no height to exceed never scrolls. */
             <OverlayScroll
               class={props.listClass}
               contentClass={styles.listFrame}
