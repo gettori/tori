@@ -7,6 +7,8 @@ import { COMMANDS } from "./commands";
 import { SETTINGS } from "./settingsCatalog";
 import * as events from "./events";
 
+const SOURCES = import.meta.glob<string>("../**/*.{ts,tsx}", { query: "?raw", import: "default", eager: true });
+
 describe("the canonical command table", () => {
   it("has a unique id per command", () => {
     const ids = COMMANDS.map((c) => c.id);
@@ -152,6 +154,25 @@ describe("the canonical command table", () => {
     expect([...imports].sort()).toEqual(["./events", "./settingsCatalog"]);
   });
 
+  it("emits no event nothing listens for", () => {
+    // A row whose listener was removed or never registered does nothing when
+    // picked, and nothing else would notice.
+    const heard = new Set(
+      Object.entries(SOURCES)
+        .filter(([path]) => !/\.(test|stories)\.tsx?$/.test(path))
+        .flatMap(([, source]) =>
+          [...source.matchAll(/\bon(?:Event)?(?:With)?(?:<[^>]*>)?\(\s*([A-Z][A-Z0-9_]*)\b/g)].map((m) => m[1]),
+        ),
+    );
+    const emitted = [...commandsSource.matchAll(/\bemit(?:With)?(?:<[^>]*>)?\(\s*([A-Z][A-Z0-9_]*)/g)].map((m) => m[1]);
+    expect(emitted.length).toBeGreaterThan(50);
+    for (const constant of new Set(emitted)) {
+      const value = (events as Record<string, unknown>)[constant];
+      expect(typeof value, `${constant} is emitted but not exported by events.ts`).toBe("string");
+      expect(heard.has(constant), `${constant} is emitted but nothing in src listens for it`).toBe(true);
+    }
+  });
+
   it("keeps the settings catalogue free of anything that survives the bundler", () => {
     // The catalogue is admitted above on the terms its own header states: a list
     // of labels. An ordinary import added to it would reach the terminal's chunk
@@ -165,25 +186,6 @@ describe("the canonical command table", () => {
 });
 
 describe("the registry after the omnibox absorbed the two pickers", () => {
-  it("emits no event nothing listens for", () => {
-    // The retirement half of merging them: `quick-open` and `command-palette`
-    // were two ids emitting two events into two App signals, and a table that
-    // kept naming either after the box replaced them would advertise a command
-    // that does nothing. Checked against the event module's own exports, so an
-    // event deleted there fails here rather than at runtime.
-    const names = new Set(
-      Object.entries(events)
-        .filter(([, v]) => typeof v === "string" && v.startsWith("tori:"))
-        .map(([, v]) => v as string),
-    );
-    const emitted = [...commandsSource.matchAll(/emitWith?<?[^(]*\(\s*([A-Z_]+)/g)].map((m) => m[1]);
-    for (const constant of new Set(emitted)) {
-      const value = (events as Record<string, unknown>)[constant];
-      expect(typeof value, `${constant} is emitted but not exported by events.ts`).toBe("string");
-      expect(names.has(value as string)).toBe(true);
-    }
-  });
-
   it("keeps ⌘P and ⌘K as one entry and its alias", () => {
     // Two keys, because "which file" and "what can I run" are asked differently
     // often. One overlay, because they are the same list read two ways.

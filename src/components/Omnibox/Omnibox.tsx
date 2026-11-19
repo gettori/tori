@@ -5,13 +5,16 @@ import Dialog from "../Dialog/Dialog";
 import { fuzzyMatch, fuzzyScore, type Range } from "../../utils/fuzzy";
 import { traceWork } from "../../utils/perfTrace";
 import { ensureAgentHealthLoaded } from "../../utils/agentHealth";
-import { enabledAgents } from "../../utils/agentEnabled";
+import { agentOffReason, enabledAgents } from "../../utils/agentEnabled";
 import { liveChats, stoppableChats } from "../../utils/chatSessions";
 import { awaitingUser, STATUS_LABEL } from "../../utils/sessionStatus";
 import { COMMANDS, type Command, type Requirement } from "../../utils/commands";
 import { editorState, frontWorktree } from "../../utils/editorState";
 import { runAt, runnable } from "../../utils/runStore";
-import { runProjectFor } from "../../panels/Settings/settingsStore";
+import { portLinksAt, runProjectFor, settings } from "../../panels/Settings/settingsStore";
+import { openPort, portsAt } from "../../utils/portsStore";
+import { copyText } from "../../utils/clipboard";
+import { autopilotNow, startAutopilot, stopAutopilot } from "../../utils/autopilotStore";
 import { stagedFiles, canPush } from "../../utils/gitActions";
 import { offersAnySourceAction } from "../../utils/sourceActions";
 import { activeServerProvides } from "../../utils/serverProviders";
@@ -23,6 +26,8 @@ import {
   OPEN_IN_EDITOR,
   OPEN_REVIEW,
   STOP_CHAT,
+  TOAST,
+  type ToastEvent,
   type AddBranchUnit,
   type NavTarget,
   type OpenInEditor,
@@ -30,7 +35,14 @@ import {
   type StopChat,
   type NewSession,
 } from "../../utils/events";
-import { linkedIssueAt, livePlaces, placeNumbers, watchSessionsOverview, type Place } from "../../utils/navIndex";
+import {
+  linkedIssueAt,
+  livePlaces,
+  livePr,
+  placeNumbers,
+  watchSessionsOverview,
+  type Place,
+} from "../../utils/navIndex";
 import { topics } from "../../utils/topicStore";
 import { rank, type RankInput } from "../../utils/navRank";
 import { numberHit, numberQuery, ticketLabel, type NumberQuery } from "../../utils/navNumber";
@@ -81,6 +93,18 @@ function basename(path: string): string {
 function openInBrowser(url: string) {
   void invoke("plugin:opener|open_url", { url }).catch(() => {});
 }
+
+function copyAndSay(text: string, what: string) {
+  void copyText(text).then((ok) =>
+    emitWith<ToastEvent>(
+      TOAST,
+      ok ? { message: `${what} copied.` } : { message: `Could not copy the ${what.toLowerCase()}.`, kind: "error" },
+    ),
+  );
+}
+
+const unitOf = (sel: Selection | null | undefined) =>
+  sel && (sel.kind ?? "unit") === "unit" && sel.branch ? sel : null;
 
 type IssueSource = { projectPath: string; projectName: string; repos: string[] };
 
@@ -158,7 +182,7 @@ function unmetReason(req: Requirement, sel: Selection | null): string | null {
     case "localSpeech":
       return LOCAL_SPEECH ? null : "Needs an Apple Silicon Mac";
     case "frontUnit":
-      return sel && (sel.kind ?? "unit") === "unit" && sel.branch ? null : "Select a branch first";
+      return unitOf(sel) ? null : "Select a branch first";
     case "frontTopic":
       return sel?.kind === "topic" ? null : "Select a Topic first";
     case "frontIssue": {
@@ -168,6 +192,12 @@ function unmetReason(req: Requirement, sel: Selection | null): string | null {
           : sel && linkedIssueAt(sel.folderPath, sel.branch);
       return linked ? null : "No issue linked";
     }
+    case "frontFolder":
+      return sel && sel.kind !== "chat" ? null : "Select a branch or Topic first";
+    case "frontSession":
+      return sel?.sessionId && sel.kind !== "chat" ? null : "Select a session first";
+    case "sessionAgent":
+      return sel ? agentOffReason(sel.agent ?? "claude", sel.profile) : null;
   }
 }
 
@@ -189,6 +219,7 @@ const HIDES_WHEN_UNMET = new Set<Requirement>([
   "localSpeech",
   "frontUnit",
   "frontTopic",
+  "frontSession",
 ]);
 
 /** Whether a command should not be listed at all right now. */
@@ -488,6 +519,11 @@ export default function Omnibox(props: {
     });
   });
 
+  const frontPorts = createMemo(() => {
+    const folder = unitOf(props.selected)?.folderPath;
+    return folder && portLinksAt(folder) ? portsAt(folder) : () => [];
+  });
+
   const commandRows = createMemo((): Row[] => {
     const out: Row[] = [];
     const sel = props.selected;
@@ -576,6 +612,68 @@ export default function Omnibox(props: {
         run: () => emitWith<StopChat>(STOP_CHAT, { sessionId: c.sessionId }),
       });
     }
+    const unit = unitOf(sel);
+    if (unit) {
+      const pr = livePr(unit.projectPath, unit.branch);
+      if (pr)
+        out.push({
+          kind: "command",
+          group: "git",
+          id: "open-pr",
+          label: `Open PR #${pr.number} in browser`,
+          sub: pr.title,
+          run: () => openInBrowser(pr.url),
+        });
+      const issue = linkedIssueAt(unit.folderPath, unit.branch);
+      if (issue)
+        out.push({
+          kind: "command",
+          group: "git",
+          id: "open-issue",
+          label: `Open issue ${ticketLabel(issue)} in browser`,
+          sub: issue.title,
+          run: () => openInBrowser(issue.url),
+        });
+      out.push(
+        {
+          kind: "command",
+          group: "git",
+          id: "copy-branch",
+          label: "Copy branch name",
+          sub: unit.branch,
+          run: () => copyAndSay(unit.branch, "Branch name"),
+        },
+        {
+          kind: "command",
+          group: "navigate",
+          id: "copy-path",
+          label: "Copy path",
+          sub: unit.folderPath,
+          run: () => copyAndSay(unit.folderPath, "Path"),
+        },
+      );
+      for (const port of frontPorts()())
+        out.push({
+          kind: "command",
+          group: "terminal",
+          id: `port:${port}`,
+          label: `Open localhost:${port}`,
+          sub: unit.branch,
+          run: () => openPort(port),
+        });
+    }
+    if (settings.autopilot.available)
+      out.push(
+        autopilotNow() === "off"
+          ? { kind: "command", group: "view", id: "autopilot-start", label: "Autopilot: Set sail", run: startAutopilot }
+          : {
+              kind: "command",
+              group: "view",
+              id: "autopilot-stop",
+              label: "Autopilot: Drop anchor",
+              run: stopAutopilot,
+            },
+      );
     out.push({
       kind: "command",
       group: "settings",

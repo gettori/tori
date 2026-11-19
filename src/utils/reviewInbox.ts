@@ -8,8 +8,10 @@ import {
   emitWith,
   NAVIGATE,
   on,
+  onWith,
   OPEN_DIGEST,
   OPEN_INBOX,
+  type OpenInbox,
   SET_RIGHT_MODE,
   TOAST,
   TOGGLE_AUTOPILOT_VIEW,
@@ -87,7 +89,7 @@ export function watchInbox() {
     else openInbox();
   });
   on(OPEN_DIGEST, () => openInbox("since"));
-  on(OPEN_INBOX, () => openInbox());
+  onWith<OpenInbox | null>(OPEN_INBOX, (asked) => openInbox(asked?.tab ?? null));
   on(TOGGLE_AUTOPILOT_VIEW, () => setInboxOpen(false));
   on(NAVIGATE, () => setInboxOpen(false));
   // fs://changed covers a commit or push in a watched worktree, which can take
