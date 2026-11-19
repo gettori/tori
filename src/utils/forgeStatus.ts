@@ -357,14 +357,23 @@ export function unitStatus(path: string, branch: string | null): UnitStatus | nu
   return statuses()[key(path, branch)] ?? null;
 }
 
+/** Every branch of this project the ticks so far have covered. */
+export function projectStatuses(path: string): Record<string, UnitStatus> {
+  const prefix = `${path}\n`;
+  const out: Record<string, UnitStatus> = {};
+  for (const [k, status] of Object.entries(statuses())) {
+    if (k.startsWith(prefix)) out[k.slice(prefix.length)] = status;
+  }
+  return out;
+}
+
 /** Each branch of this project whose pull request merged, with the head that
  *  merged, as far as the ticks so far have seen. */
 export function mergedHeads(path: string): Record<string, string> {
-  const prefix = `${path}\n`;
   const out: Record<string, string> = {};
-  for (const [k, status] of Object.entries(statuses())) {
+  for (const [branch, status] of Object.entries(projectStatuses(path))) {
     const pr = status.pullRequest;
-    if (k.startsWith(prefix) && pr?.state === "merged") out[k.slice(prefix.length)] = pr.headSha;
+    if (pr?.state === "merged") out[branch] = pr.headSha;
   }
   return out;
 }

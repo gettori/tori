@@ -750,7 +750,12 @@ export type RemoveBranchUnit = { projectPath: string; branch: string };
 // project gets. `base` is what the filter opens on, since a new branch cut here
 // starts from the commit the pane is standing on.
 export const ADD_BRANCH_UNIT = "tori:add-branch-unit";
-export type AddBranchUnit = { projectPath: string; base?: string | null };
+export type AddBranchUnit = { projectPath: string; base?: string | null; issue?: string };
+
+// An event for the reason `ADD_BRANCH_UNIT` is one: the sidebar owns the
+// branch-unit list a review worktree joins.
+export const OPEN_REVIEW = "tori:open-review";
+export type OpenReview = { projectPath: string; number: number };
 
 export const OPEN_GROUPING = "tori:open-grouping";
 

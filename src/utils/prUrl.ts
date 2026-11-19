@@ -71,6 +71,13 @@ export function originHost(url: string): string | null {
   return originParts(url)?.host ?? null;
 }
 
+/** An `origin` remote URL's `owner/name`, lowercased, or null when it does not
+ *  parse. */
+export function originRepo(url: string): string | null {
+  const parts = originParts(url);
+  return parts ? `${parts.owner}/${parts.repo}`.toLowerCase() : null;
+}
+
 /** Normalize an `origin` remote URL (https, ssh://, or scp-like
  *  `git@host:owner/repo.git`) into its provider, host, owner, and repo.
  *  Returns null for an unrecognized provider or an unparseable URL. */

@@ -16,18 +16,24 @@ import { stagedFiles, canPush } from "../../utils/gitActions";
 import { offersAnySourceAction } from "../../utils/sourceActions";
 import { activeServerProvides } from "../../utils/serverProviders";
 import {
+  ADD_BRANCH_UNIT,
   emitWith,
   NAVIGATE,
   NEW_SESSION,
   OPEN_IN_EDITOR,
+  OPEN_REVIEW,
   STOP_CHAT,
+  type AddBranchUnit,
   type NavTarget,
   type OpenInEditor,
+  type OpenReview,
   type StopChat,
   type NewSession,
 } from "../../utils/events";
-import { livePlaces, watchSessionsOverview, type Place } from "../../utils/navIndex";
+import { livePlaces, placeNumbers, watchSessionsOverview, type Place } from "../../utils/navIndex";
 import { rank, type RankInput } from "../../utils/navRank";
+import { numberHit, numberQuery, ticketLabel, type NumberQuery } from "../../utils/navNumber";
+import { errorText, type Found, type IssueRef, type IssueRepos } from "../../utils/issues";
 import { requestLspRestart, resolvedServerIds, serverById } from "../../utils/lspServers";
 import { rootOf, workspaceKey } from "../../utils/topics";
 import { createTopicMembers, memberFor } from "../../utils/topicMembers";
@@ -69,6 +75,33 @@ function absOf(f: ProjectFile): string {
 
 function basename(path: string): string {
   return path.split("/").pop() || path;
+}
+
+function openInBrowser(url: string) {
+  void invoke("plugin:opener|open_url", { url }).catch(() => {});
+}
+
+type IssueSource = { projectPath: string; projectName: string; repos: string[] };
+
+type Lookup =
+  | { input: string; state: "pending" }
+  | { input: string; state: "found"; hits: IssueRef[] }
+  | { input: string; state: "failed"; message: string };
+
+const pending = (row: Row) => row.kind === "lookup" && row.pending;
+
+function typedKey(q: NumberQuery): string {
+  return `${q.repo ?? q.name ?? ""}#${q.digits}`;
+}
+
+// Where `issues_find` will look, worded as `candidates` in issues/mod.rs reads
+// the same input.
+function lookupWhere(q: NumberQuery, source: IssueSource): string {
+  if (q.repo) return q.repo;
+  const repos = q.name ? source.repos.filter((r) => r.split("/").pop() === q.name) : source.repos;
+  if (repos.length === 1) return repos[0];
+  if (repos.length) return repos.map((r) => r.split("/").pop()).join(", ");
+  return q.name ?? source.projectName;
 }
 
 /**
@@ -602,33 +635,127 @@ export default function Omnibox(props: {
       label: place.title,
       sub: place.trail,
       place,
-      run: () => emitWith<NavTarget>(NAVIGATE, place.target),
+      href: place.pr?.url ?? place.ticket?.url,
+      run: () =>
+        "review" in place
+          ? emitWith<OpenReview>(OPEN_REVIEW, place.review)
+          : emitWith<NavTarget>(NAVIGATE, place.target),
     };
   }
 
   function rankInput(row: Row): RankInput {
     if (row.kind !== "place") return { fields: [{ slot: "title", text: row.label }], penalty: true };
-    const ticket = row.place.issue?.title;
+    const ticket = row.place.ticket?.title;
     return {
       fields: [
         { slot: "title", text: row.label },
         { slot: "trail", text: row.sub ?? "" },
-        ...(ticket ? [{ slot: "ticket", text: ticket, hidden: true }] : []),
+        ...(ticket ? [{ slot: "ticketTitle", text: ticket, hidden: true }] : []),
       ],
+      numbers: placeNumbers(row.place),
     };
   }
+
+  const wholeQueryNumber = createMemo(() => (mode() === "all" ? numberQuery(term()) : null));
+  const exactPlaceHit = createMemo(() => {
+    const q = wholeQueryNumber();
+    return !!q && places().some((p) => placeNumbers(p).some((n) => numberHit(q, n.id)?.exact));
+  });
+
+  const frontProject = () => {
+    const sel = props.selected;
+    return sel && (sel.kind ?? "unit") === "unit" && sel.projectPath ? sel : null;
+  };
+
+  const [issueSource, setIssueSource] = createSignal<IssueSource | null>(null);
+  let sourceAsked = false;
+  createEffect(() => {
+    const front = frontProject();
+    if (!wholeQueryNumber() || sourceAsked || !front) return;
+    sourceAsked = true;
+    const projectPath = front.projectPath;
+    void Promise.all([
+      invoke<boolean>("issues_source", { projectPath }).catch(() => false),
+      invoke<IssueRepos>("issue_repos_get", { projectPath }).catch(() => null),
+    ]).then(([offered, repos]) => {
+      if (offered) setIssueSource({ projectPath, projectName: front.projectName, repos: repos?.effective ?? [] });
+    });
+  });
+
+  const [lookup, setLookup] = createSignal<Lookup | null>(null);
+  let lookupSeq = 0;
+  function lookUp(input: string, projectPath: string) {
+    const mine = ++lookupSeq;
+    setLookup({ input, state: "pending" });
+    invoke<Found>("issues_find", { projectPath, input }).then(
+      (found) => {
+        if (mine !== lookupSeq) return;
+        setLookup(
+          found.hits.length
+            ? { input, state: "found", hits: found.hits }
+            : { input, state: "failed", message: `No issue found for ${input}` },
+        );
+      },
+      (e) => {
+        if (mine === lookupSeq) setLookup({ input, state: "failed", message: errorText(e) });
+      },
+    );
+  }
+
+  function createRow(hit: IssueRef, source: IssueSource): Row {
+    const label = ticketLabel(hit);
+    return {
+      kind: "create",
+      id: `create:${hit.key}`,
+      label: `Start a worktree from ${label}: ${hit.title}`,
+      sub: `New branch in ${source.projectName}, linked to the ticket`,
+      href: hit.url,
+      run: () => emitWith<AddBranchUnit>(ADD_BRANCH_UNIT, { projectPath: source.projectPath, issue: hit.key }),
+    };
+  }
+
+  const lookupRows = createMemo((): Row[] => {
+    const q = wholeQueryNumber();
+    const source = issueSource();
+    if (!q || !source) return [];
+    const input = term();
+    const mine = lookup()?.input === input ? lookup() : null;
+    if (mine?.state === "found") return mine.hits.map((hit) => createRow(hit, source));
+    if (!mine && exactPlaceHit()) return [];
+    const ask = `${typedKey(q)} in ${lookupWhere(q, source)}`;
+    const id = "lookup";
+    if (mine?.state === "pending") return [{ kind: "lookup", id, label: `Looking up ${ask}`, pending: true }];
+    const failed = mine?.state === "failed" ? mine.message : null;
+    return [
+      {
+        kind: "lookup",
+        id,
+        label: failed ?? `Look up ${ask}`,
+        sub: failed ? `Look up ${ask} again` : undefined,
+        pending: false,
+        run: () => lookUp(input, source.projectPath),
+      },
+    ];
+  });
+
+  const firstCreated = () => lookupRows().find((row) => row.kind === "create")?.id ?? null;
 
   const everythingRows = createMemo((): Row[] => {
     const q = term();
     if (!q) return commandRows();
     const ranked = rank([...places().map(placeRow), ...commandRows()], q, rankInput);
-    return ranked
-      .slice(0, MAX_EVERYTHING)
-      .map(({ item, marks }) =>
-        marks.ticket && item.kind === "place"
-          ? { ...item, marks: marks.title, sub: item.place.issue?.title, subMarks: marks.ticket }
-          : { ...item, marks: marks.title, subMarks: marks.trail },
-      );
+    const rows = ranked.slice(0, MAX_EVERYTHING).map(({ item, marks }): Row => {
+      if (item.kind !== "place") return { ...item, marks: marks.title, subMarks: marks.trail };
+      const viaTicket = marks.ticket || marks.ticketTitle;
+      return {
+        ...item,
+        marks: marks.title,
+        ticketMarks: marks.ticket,
+        prMarks: marks.pr,
+        ...(viaTicket ? { sub: item.place.ticket?.title, subMarks: marks.ticketTitle } : { subMarks: marks.trail }),
+      };
+    });
+    return [...rows, ...lookupRows()];
   });
 
   const results = createMemo((): Row[] => {
@@ -738,8 +865,14 @@ export default function Omnibox(props: {
       input?.focus();
       return;
     }
+    // A lookup answers in its own row, so the box stays open for the answer.
+    if (item.kind === "lookup") return item.run?.();
     close(item.run);
   }
+
+  // Kobalte commits on Enter whatever the modifiers, so the key is noted here
+  // and read when the commit arrives.
+  let browserNext = false;
 
   const [active, setActive] = createSignal<string | null>(null);
   const activeRow = () => {
@@ -780,11 +913,18 @@ export default function Omnibox(props: {
         options={options()}
         query={query()}
         onQueryChange={setQuery}
+        onKeyDown={(e) => (browserNext = e.key === "Enter" && e.metaKey)}
         onSelect={(value) => {
           const item = byId().get(value);
-          if (item) pick(item);
+          const browser = browserNext;
+          browserNext = false;
+          if (!item) return;
+          const href = item.href;
+          if (browser && href) close(() => openInBrowser(href));
+          else pick(item);
         }}
         onActiveChange={setActive}
+        initialActive={firstCreated()}
         itemComponent={rowContent}
         inputRef={(el) => (input = el)}
         placeholder={specOf(props.home).placeholder}
@@ -795,10 +935,28 @@ export default function Omnibox(props: {
       <div class={styles.footer}>
         <Show when={activeRow()}>
           {(row) => (
-            <span class={styles.hint}>
-              <span>{"\u21b5"}</span>
-              {ENTER_LABEL[row().kind]}
-            </span>
+            <>
+              <Show
+                when={pending(row())}
+                fallback={
+                  <span class={styles.hint}>
+                    <span>{"\u21b5"}</span>
+                    {ENTER_LABEL[row().kind]}
+                  </span>
+                }
+              >
+                <span class={styles.hint}>
+                  <span>esc</span>
+                  Cancel
+                </span>
+              </Show>
+              <Show when={row().href}>
+                <span class={styles.hint}>
+                  <span>{"\u2318\u21b5"}</span>
+                  Open in browser
+                </span>
+              </Show>
+            </>
           )}
         </Show>
         <span class={`${styles.hint} ${styles.filters}`}>

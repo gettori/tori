@@ -4,16 +4,20 @@
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { NavTarget } from "./events";
-import type { UnitIssue } from "./issues";
+import type { NavTarget, OpenReview } from "./events";
+import type { IssueRef, UnitIssue } from "./issues";
 import { blockedOnUser, isWorking, type SessionHome, type SessionStatus } from "./sessionStatus";
 import { liveSessionStatuses } from "./sessionActivity";
 import { topics } from "./topicStore";
 import { memberPrBranch, memberRoot, type Topic } from "./topics";
 import { chats, NEW_CHAT_NAME, type Chat } from "./chats";
-import { forgeViewer, requestedReviews, unitStatus } from "./forgeStatus";
+import { forgeViewer, requestedReviews, reviewRequests, unitStatus } from "./forgeStatus";
 import { defaultBranchOf } from "./defaultBranch";
 import { prLineTone, type PrChildState } from "./prChildState";
+import { rememberedPr } from "./prMemory";
+import { originRepo } from "./prUrl";
+import { issueId, ticketLabel, type IssueId } from "./navNumber";
+import type { RankNumber } from "./navRank";
 import { GLOBAL_KEY, spaceLabel } from "./globalSpace";
 
 export type NavUnit = { folderPath: string; branch: string | null; label: string; kind: string; issue?: UnitIssue };
@@ -38,22 +42,32 @@ export type OverviewSession = {
   home: SessionHome;
 };
 
-export type PlaceKind = "space" | "project" | "unit" | "topic" | "member" | "chat" | "session";
+export type PlaceKind = "space" | "project" | "unit" | "topic" | "member" | "review" | "chat" | "session";
 export type PlaceDot = "needsYou" | "working";
-export type PlacePr = { number: number; title: string; tone: PrChildState | "unlaned" };
+export type PlacePr = {
+  number: number;
+  title: string;
+  url: string;
+  tone: PrChildState | "unlaned";
+  remembered?: boolean;
+};
+export type PlaceTicket = { label: string; title: string; url: string; id: IssueId | null };
 
-export type Place = {
+type PlaceBase = {
   kind: PlaceKind;
   id: string;
   title: string;
   trail: string;
   unitKind?: string;
   look?: { icon?: string; iconFile?: string; favicon?: string; seed: string };
-  issue?: UnitIssue;
+  ticket?: PlaceTicket;
   pr?: PlacePr;
+  repo?: string | null;
   dot?: PlaceDot;
-  target: NavTarget;
 };
+
+/** A review request is not a place yet: Enter opens or makes its worktree. */
+export type Place = PlaceBase & ({ target: NavTarget } | { review: OpenReview });
 
 type Status = { sessionId: string; status: SessionStatus; folderPath: string; home?: SessionHome | null };
 
@@ -64,6 +78,8 @@ export type PlaceInputs = {
   sessions: readonly OverviewSession[];
   statuses: readonly Status[];
   prOf: (projectPath: string, branch: string | null) => PlacePr | undefined;
+  originOf: (projectPath: string) => string | null;
+  reviews: (projectPath: string) => readonly IssueRef[];
 };
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -79,6 +95,26 @@ function dotOf(status: SessionStatus): PlaceDot | undefined {
 
 function worse(a: PlaceDot | undefined, b: PlaceDot | undefined): PlaceDot | undefined {
   return a === "needsYou" || b === "needsYou" ? "needsYou" : (a ?? b);
+}
+
+function ticketOf(issue: UnitIssue | undefined, origin: string | null): PlaceTicket | undefined {
+  return issue && { label: ticketLabel(issue), title: issue.title, url: issue.url, id: issueId(issue, origin) };
+}
+
+/** The numbers a place answers to, for the ranker. */
+export function placeNumbers(place: Place): RankNumber[] {
+  const repo = place.repo ?? null;
+  const out: RankNumber[] = [];
+  const ticket = place.ticket;
+  if (ticket?.id)
+    out.push({ kind: "issue", slot: "ticket", id: ticket.id, digitsAt: ticket.label.lastIndexOf("#") + 1 });
+  if (place.pr) out.push({ kind: "pr", slot: "pr", id: { repo, number: place.pr.number }, digitsAt: 1 });
+  if (place.kind === "unit") {
+    for (const m of place.title.matchAll(/(?<!\d)[1-9]\d*/g)) {
+      out.push({ kind: "branch", slot: "title", id: { repo, number: Number(m[0]) }, digitsAt: m.index });
+    }
+  }
+  return out;
 }
 
 /** Every place, in the order a tie between two equal matches falls back to. */
@@ -103,6 +139,7 @@ export function buildPlaces(input: PlaceInputs): Place[] {
   const spaces: Place[] = [];
   const projects: Place[] = [];
   const units: Place[] = [];
+  const reviews: Place[] = [];
   for (const g of input.spaces) {
     const space = spaceLabel(g.name);
     spaces.push({
@@ -115,6 +152,7 @@ export function buildPlaces(input: PlaceInputs): Place[] {
     });
     for (const p of g.projects) {
       projectName.set(p.path, p.name);
+      const repo = input.originOf(p.path);
       let projectDot: PlaceDot | undefined;
       for (const u of p.branchUnits) {
         if (topicWorktrees.has(u.folderPath)) continue;
@@ -126,10 +164,24 @@ export function buildPlaces(input: PlaceInputs): Place[] {
           title: u.branch ?? u.label,
           trail: `${space} / ${p.name}`,
           unitKind: u.kind,
-          issue: u.issue,
+          ticket: ticketOf(u.issue, repo),
           pr: u.branch ? input.prOf(p.path, u.branch) : undefined,
+          repo,
           dot,
           target: { folder: u.folderPath, ...(u.branch && { branch: u.branch }), select: true },
+        });
+      }
+      for (const r of input.reviews(p.path)) {
+        const number = Number(r.key);
+        if (!Number.isInteger(number)) continue;
+        reviews.push({
+          kind: "review",
+          id: `review:${p.path}:${number}`,
+          title: r.title,
+          trail: r.author ? `${r.author} in ${p.name}` : p.name,
+          pr: { number, title: r.title, url: r.url, tone: "reviewRequested" },
+          repo,
+          review: { projectPath: p.path, number },
         });
       }
       projects.push({
@@ -155,7 +207,7 @@ export function buildPlaces(input: PlaceInputs): Place[] {
       id: `topic:${t.id}`,
       title: t.name,
       trail: memberNames.join(", "),
-      issue: t.issue,
+      ticket: ticketOf(t.issue, null),
       dot: byTopic.get(t.id),
       target: { topic: t.id },
     });
@@ -168,6 +220,7 @@ export function buildPlaces(input: PlaceInputs): Place[] {
         trail: t.name,
         unitKind: "worktree",
         pr: input.prOf(m.repoPath, memberPrBranch(m, t.branch)),
+        repo: input.originOf(m.repoPath),
         target: { topic: t.id, ...(root && { root }) },
       });
     }
@@ -199,24 +252,38 @@ export function buildPlaces(input: PlaceInputs): Place[] {
     };
   });
 
-  return [...spaces, ...projects, ...units, ...topicRows, ...members, ...chatRows, ...sessionRows];
+  return [...spaces, ...projects, ...units, ...topicRows, ...members, ...reviews, ...chatRows, ...sessionRows];
 }
 
 const [tree, setTree] = createSignal<readonly NavSpace[]>([]);
+const [origins, setOrigins] = createSignal<Readonly<Record<string, string | null>>>({});
 const [overview, setOverview] = createSignal<readonly OverviewSession[]>([]);
 
 /** Every space, Global included, as the sidebar resolved it. */
-export function noteNavTree(spaces: readonly NavSpace[]) {
+export function noteNavTree(spaces: readonly NavSpace[], originUrls: Readonly<Record<string, string | null>>) {
   setTree(spaces);
+  setOrigins(originUrls);
+}
+
+function liveOrigin(projectPath: string): string | null {
+  const url = origins()[projectPath];
+  return url ? originRepo(url) : null;
 }
 
 function livePr(projectPath: string, branch: string | null): PlacePr | undefined {
   const status = unitStatus(projectPath, branch);
-  const pr = status?.pullRequest;
-  if (!status || !pr) return undefined;
+  if (!status) {
+    const last = branch ? rememberedPr(projectPath, branch) : null;
+    return last
+      ? { number: last.number, title: last.title, url: last.url, tone: "closed", remembered: true }
+      : undefined;
+  }
+  const pr = status.pullRequest;
+  if (!pr) return undefined;
   const asked = pr.state === "open" && (requestedReviews(projectPath)?.includes(pr.number) ?? false);
   const release = branch !== null && branch === defaultBranchOf(projectPath);
-  return { number: pr.number, title: pr.title, tone: prLineTone(status, forgeViewer(projectPath), asked, release) };
+  const tone = prLineTone(status, forgeViewer(projectPath), asked, release);
+  return { number: pr.number, title: pr.title, url: pr.url, tone };
 }
 
 /** Every place from the live stores. Reactive, so call it inside a memo. */
@@ -228,6 +295,8 @@ export function livePlaces(): Place[] {
     sessions: overview(),
     statuses: liveSessionStatuses(),
     prOf: livePr,
+    originOf: liveOrigin,
+    reviews: (projectPath) => reviewRequests(projectPath)?.rows ?? [],
   });
 }
 
@@ -260,6 +329,7 @@ export function watchSessionsOverview(): () => void {
 /** Drop everything. Test support. */
 export function resetNavIndexForTests() {
   setTree([]);
+  setOrigins({});
   setOverview([]);
   seq = 0;
 }

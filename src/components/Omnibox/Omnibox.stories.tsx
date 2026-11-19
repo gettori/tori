@@ -190,28 +190,31 @@ function seedPlaces() {
     { shouldMockEvents: true },
   );
   const unit = (folderPath: string, branch: string, kind = "worktree") => ({ folderPath, branch, label: branch, kind });
-  noteNavTree([
-    {
-      name: "Work",
-      icon: "Briefcase",
-      projects: [
-        {
-          name: "tori",
-          path: REPO,
-          branchUnits: [
-            unit(`${REPO}-wt/main`, "main"),
-            {
-              ...unit(SEARCH, "sidebar-search"),
-              issue: { key: "47", display: "#47", url: "https://example.test/47", title: "Search the sidebar" },
-            },
-            unit(SIDE, "fix-side-effects"),
-          ],
-        },
-        { name: "tori-web", path: WEB, branchUnits: [unit(WEB, "main", "plain")] },
-      ],
-    },
-    { name: "/global", projects: [] },
-  ]);
+  noteNavTree(
+    [
+      {
+        name: "Work",
+        icon: "Briefcase",
+        projects: [
+          {
+            name: "tori",
+            path: REPO,
+            branchUnits: [
+              unit(`${REPO}-wt/main`, "main"),
+              {
+                ...unit(SEARCH, "sidebar-search"),
+                issue: { key: "47", display: "#47", url: "https://example.test/47", title: "Search the sidebar" },
+              },
+              unit(SIDE, "fix-side-effects"),
+            ],
+          },
+          { name: "tori-web", path: WEB, branchUnits: [unit(WEB, "main", "plain")] },
+        ],
+      },
+      { name: "/global", projects: [] },
+    ],
+    { [REPO]: "git@github.com:you/tori.git", [WEB]: "https://github.com/you/tori-web.git" },
+  );
   applyTopic({
     id: "t-1",
     name: "Sidebar rework",
