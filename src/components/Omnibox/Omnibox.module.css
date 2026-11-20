@@ -13,6 +13,19 @@
   padding: var(--tori-space-2);
 }
 
+/* Lined up with the row titles under it. */
+.message {
+  height: var(--tori-space-8);
+  padding: 0 var(--tori-space-4) 0
+    calc(var(--tori-space-2) + var(--tori-space-4) + var(--control-height-xs) + var(--tori-space-3));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  font-size: var(--tori-text-md);
+  line-height: var(--tori-space-8);
+}
+
 .lead {
   flex: none;
   display: grid;

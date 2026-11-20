@@ -1234,8 +1234,8 @@ export default function Terminal(props: {
       offerToComposer(id, offered.blocks);
       if (origin) setDraftOrigin(id, origin);
     });
-    offDraftIntoNew = onWith<DraftIntoNew>(DRAFT_INTO_NEW, ({ workspace, root, projectName }) => {
-      void draftIntoEmpty(workspace, root, projectName);
+    offDraftIntoNew = onWith<DraftIntoNew>(DRAFT_INTO_NEW, ({ workspace, root, projectName, prompt }) => {
+      void draftIntoEmpty(workspace, root, projectName, prompt);
     });
     unlistenAdopt = await listen<Adoptable>("sessions://adopt", (e) => void adopt(e.payload));
     // Chats the daemon started while this window was not listening: before it
@@ -1574,7 +1574,7 @@ export default function Terminal(props: {
     closeId(id);
   }
 
-  async function draftIntoEmpty(ws: string, root: string, projectName: string) {
+  async function draftIntoEmpty(ws: string, root: string, projectName: string, prompt?: string) {
     if (!(await stripEmpty(ws))) return;
     // The draft focuses its workspace, so one that resolved after the user moved
     // on would pull them back.
@@ -1583,7 +1583,9 @@ export default function Terminal(props: {
     if (!agent) return;
     const profile = draftProfile(ws, root, agent);
     if (profileSignedOut(agent, profile)) return;
-    autoDrafts.set(ws, openChatDraft(ws, root, projectName, agent, profile));
+    const id = openChatDraft(ws, root, projectName, agent, profile);
+    if (prompt) setDraft(id, prompt);
+    autoDrafts.set(ws, id);
   }
 
   // Extra launch args a Tori-launched session gets that an externally-typed
