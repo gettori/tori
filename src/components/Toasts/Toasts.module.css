@@ -11,10 +11,11 @@
   flex-direction: column;
   gap: calc(8px * var(--ui-scale));
 }
-/* Marked the way a selected sidebar row is: the accent bar down the left edge
-   over a wash that fades out to the right, square on the bar and rounded away
-   from it. The wash sits on an opaque card rather than on the column's own
-   canvas, because a toast floats over whatever the panes are showing. */
+/* Lifted one step off the panes by mixing the theme's own foreground into the
+   card, so it separates in any theme, light or dark, without a toast-only
+   token. The kind's tint is layered over that surface rather than replacing
+   it, because a theme may define its subtle tints as translucent. The accent
+   bar on the left keeps it reading as a selected sidebar row. */
 .toast {
   display: flex;
   align-items: flex-start;
@@ -23,26 +24,36 @@
     calc(12px * var(--ui-scale));
   font-size: var(--tori-text-lg);
   line-height: 1.4;
-  color: var(--fg-default);
-  background: linear-gradient(to right, var(--toast-wash), transparent), var(--canvas-card);
-  border: 0;
-  /* The only edge drawn. A hairline on the other three turned the toast into a
-     box with a bar stuck on one side, which is not what a selected row is; the
-     shadow already lifts it off whatever pane it covers. */
+  color: var(--toast-fg);
+  background:
+    linear-gradient(var(--toast-tint), var(--toast-tint)), color-mix(in srgb, var(--fg-default) 6%, var(--canvas-card));
+  border: 1px solid var(--toast-border);
   border-left: var(--tori-border-thick) solid var(--toast-accent);
   border-radius: 0 var(--tori-radius-lg) var(--tori-radius-lg) 0;
   box-shadow: var(--shadow-lg);
   pointer-events: auto;
-  animation: toast-in 140ms ease-out;
+  animation: toast-in 200ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 .toast.error {
   --toast-accent: var(--danger-fg);
-  --toast-wash: color-mix(in srgb, var(--danger-fg) 14%, transparent);
+  --toast-tint: var(--danger-subtle);
+  --toast-border: var(--danger-border);
+  --toast-fg: var(--danger-on-subtle);
+  --toast-icon: var(--danger-fg);
 }
-/* The same gold a selected row is marked with, at the same strength. */
 .toast.info {
   --toast-accent: var(--brand-bar);
-  --toast-wash: var(--brand-subtle);
+  --toast-tint: var(--brand-subtle);
+  --toast-border: var(--border-strong);
+  --toast-fg: var(--fg-default);
+  --toast-icon: var(--brand-bar);
+}
+/* Nudged down so the glyph centres on the first line of text, not the box. */
+.toastIcon {
+  flex: none;
+  display: flex;
+  margin-top: calc(2px * var(--ui-scale));
+  color: var(--toast-icon);
 }
 .toastMsg {
   flex: 1;
@@ -67,10 +78,10 @@
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translateY(calc(6px * var(--ui-scale)));
+    transform: translateY(calc(16px * var(--ui-scale))) scale(0.96);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }

@@ -35,6 +35,49 @@ export const Stack: Story = {
   },
 };
 
+// setTimeout fires at once for any delay past 2^31-1 ms, Infinity included.
+const HELD = 2 ** 31 - 1;
+
+/** Every variant at once, held on screen so they can be compared. Use the
+ *  toolbar's Theme menu to check each palette. The backdrop stands in for the
+ *  panes, since how well a toast separates from them is the point. */
+export const Gallery: Story = {
+  render: () => {
+    onMount(() => {
+      pushToast("Push rejected: the remote moved.", "error");
+      pushToast("Could not remove the worktree: it has uncommitted changes.", "error", {
+        label: "Force",
+        run: () => {},
+      });
+      pushToast(
+        "git fetch failed:\nfatal: unable to access 'https://github.com/gettori/tori/': Could not resolve host",
+        "error",
+      );
+      pushToast("Branch attached", "info");
+      pushToast("Renamed 12 files", "info", { label: "Undo", run: () => {} });
+    });
+    return (
+      <div
+        style={{
+          position: "fixed",
+          inset: "0",
+          display: "grid",
+          "grid-template-columns": "240px 1fr",
+          background: "var(--canvas-default)",
+        }}
+      >
+        <div style={{ background: "var(--canvas-card)", "border-right": "1px solid var(--border-default)" }} />
+        <div style={{ padding: "24px", color: "var(--fg-muted)", "font-family": "var(--tori-font-mono)" }}>
+          {Array.from({ length: 40 }, (_, i) => (
+            <div>{`${String(i + 1).padStart(3)}  const value = compute(input, options);`}</div>
+          ))}
+        </div>
+        <ToastRegion duration={HELD} />
+      </div>
+    );
+  },
+};
+
 /** Pushed on demand, which is how the app uses it: every toast in Tori arrives
  *  through `pushToast` or the TOAST event, never as a prop. */
 export const Interactive: Story = {
