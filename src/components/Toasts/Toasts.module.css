@@ -3,13 +3,35 @@
   right: calc(24px * var(--ui-scale));
   bottom: calc(24px * var(--ui-scale));
   z-index: 1200;
-  max-width: min(calc(380px * var(--ui-scale)), calc(100vw - calc(48px * var(--ui-scale))));
+  /* A fixed width, not a cap: the toasts are absolutely placed in the deck,
+     so nothing inside could size the region. */
+  width: min(calc(380px * var(--ui-scale)), calc(100vw - calc(48px * var(--ui-scale))));
   pointer-events: none;
+  --toast-peek: calc(10px * var(--ui-scale));
+  --toast-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
+/* The deck. Collapsed, the newest toast sits in front and the next two show a
+   strip above it; hovering the region or moving focus into it fans the deck
+   out to every toast's real height. The heights and offsets come from
+   observeStack in Toasts.tsx, since they depend on each toast's text. */
 .toastStack {
+  position: relative;
+  row-gap: calc(8px * var(--ui-scale));
+  height: calc(var(--toast-front-height, 0px) + var(--stack-peeks, 0) * var(--toast-peek));
+  transition: height 240ms var(--toast-ease);
+}
+.toastRegion:is(:hover, :focus-within) .toastStack {
+  height: var(--stack-expanded-height, 0px);
+}
+/* Gone rather than invisible while collapsed: the region takes the pointer
+   whenever it holds a toast, so a hidden row would still swallow clicks. */
+.clearAll {
+  display: none;
+  justify-content: flex-end;
+  margin-bottom: calc(8px * var(--ui-scale));
+}
+.toastRegion:is(:hover, :focus-within) .clearAll {
   display: flex;
-  flex-direction: column;
-  gap: calc(8px * var(--ui-scale));
 }
 /* Lifted one step off the panes by mixing the theme's own foreground into the
    card, so it separates in any theme, light or dark, without a toast-only
@@ -30,7 +52,53 @@
   border-radius: var(--tori-radius-lg);
   box-shadow: var(--shadow-lg);
   pointer-events: auto;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  transform-origin: bottom center;
+  transform: translateY(calc(var(--toast-index, 0) * -1 * var(--toast-peek)))
+    scale(calc(1 - var(--toast-index, 0) * 0.05));
+  transition:
+    transform 240ms var(--toast-ease),
+    height 240ms var(--toast-ease),
+    opacity 240ms var(--toast-ease);
   animation: toast-in 200ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+.toast[data-closed] {
+  animation: toast-out 160ms ease-in forwards;
+}
+/* Behind the front one, a toast is cut to the front's height and its text
+   hidden, so all that shows is an even strip of card above the front. */
+.toast:is([data-stack="peek"], [data-stack="tucked"], [data-stack="hidden"]) {
+  height: var(--toast-front-height);
+  overflow: hidden;
+}
+.toast:is([data-stack="peek"], [data-stack="tucked"], [data-stack="hidden"]) > * {
+  opacity: 0;
+  transition: opacity 240ms var(--toast-ease);
+}
+/* Out of sight but still in the tab order, so focusing it fans the deck out. */
+.toast[data-stack="tucked"] {
+  opacity: 0;
+  pointer-events: none;
+}
+/* Past what the fanned-out deck shows: it waits for a newer one to close. */
+.toast[data-stack="hidden"] {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+.toastRegion:is(:hover, :focus-within) .toast {
+  transform: translateY(calc(-1 * var(--toast-offset, 0px)));
+}
+.toastRegion:is(:hover, :focus-within) .toast:is([data-stack="peek"], [data-stack="tucked"]) {
+  height: var(--toast-height);
+  opacity: 1;
+  pointer-events: auto;
+}
+.toastRegion:is(:hover, :focus-within) .toast:is([data-stack="peek"], [data-stack="tucked"]) > * {
+  opacity: 1;
 }
 .toast.error {
   --toast-tint: var(--danger-subtle);
@@ -77,6 +145,11 @@
   white-space: nowrap;
 }
 
+@keyframes toast-out {
+  to {
+    opacity: 0;
+  }
+}
 @keyframes toast-in {
   from {
     opacity: 0;
