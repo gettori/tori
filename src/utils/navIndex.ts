@@ -325,6 +325,11 @@ export function liveProjects(): { project: NavProject; space: string }[] {
   return tree().flatMap((g) => g.projects.map((project) => ({ project, space: spaceLabel(g.name) })));
 }
 
+/** Every unit's folder, as the sidebar last resolved them. */
+export function unitFolders(): string[] {
+  return [...new Set(tree().flatMap((g) => g.projects.flatMap((p) => p.branchUnits.map((u) => u.folderPath))))];
+}
+
 /** The issue on the unit at `folderPath` and `branch`, as the sidebar last resolved it. */
 export function linkedIssueAt(folderPath: string, branch: string): UnitIssue | null {
   for (const s of tree())

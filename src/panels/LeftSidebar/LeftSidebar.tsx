@@ -114,6 +114,7 @@ import {
   ACTIVATE_SPACE,
   type ActivateSpace,
   NEW_CHAT,
+  type NewChat,
   OPEN_CHAT,
   type OpenChat,
   COLLAPSE_PROJECTS,
@@ -1638,7 +1639,7 @@ export default function LeftSidebar(props: {
             setError(`"${p.name}" has no branches to add to.`);
             return;
           }
-          void openBranchDialog(p, kind === "plain" ? "branch" : "worktree", d.base ?? undefined, d.issue);
+          void openBranchDialog(p, kind === "plain" ? "branch" : "worktree", d.name ?? d.base ?? undefined, d.issue);
           return;
         }
       }
@@ -2933,11 +2934,16 @@ export default function LeftSidebar(props: {
     if (c?.sessions.length) untrack(() => openChat(c));
   });
 
-  async function startChat(space: string | null) {
+  async function startChat(space: string | null, prompt?: string) {
     try {
       const c = await newChat(space);
       openChat(c);
-      emitWith<DraftIntoNew>(DRAFT_INTO_NEW, { workspace: chatKey(c.id), root: c.folder, projectName: NEW_CHAT_NAME });
+      emitWith<DraftIntoNew>(DRAFT_INTO_NEW, {
+        workspace: chatKey(c.id),
+        root: c.folder,
+        projectName: NEW_CHAT_NAME,
+        prompt,
+      });
     } catch (e) {
       setError(`Could not start a chat: ${e}`);
     }
@@ -4011,7 +4017,10 @@ export default function LeftSidebar(props: {
   onCleanup(startProjectListOrder());
   onMount(async () => {
     offActivateSpace = onWith<ActivateSpace>(ACTIVATE_SPACE, ({ name }) => setActiveSpaceName(name));
-    offNewChat = onEvent(NEW_CHAT, () => void startChat(inGlobal() ? null : (activeSpace()?.name ?? null)));
+    offNewChat = onWith<NewChat | null>(
+      NEW_CHAT,
+      (d) => void startChat(inGlobal() ? null : (activeSpace()?.name ?? null), d?.prompt),
+    );
     void ensureChatsRoot();
     await invoke("config_watch_start").catch(() => {});
     await invoke("sessions_watch_start").catch(() => {});

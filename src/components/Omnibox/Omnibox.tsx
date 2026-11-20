@@ -31,6 +31,7 @@ import {
   ADD_BRANCH_UNIT,
   emitWith,
   NAVIGATE,
+  NEW_CHAT,
   NEW_SESSION,
   OPEN_IN_EDITOR,
   OPEN_REVIEW,
@@ -44,6 +45,7 @@ import {
   type OpenReview,
   type OpenUsage,
   type StopChat,
+  type NewChat,
   type NewSession,
 } from "../../utils/events";
 import {
@@ -54,6 +56,8 @@ import {
   placeIdOf,
   placeNumbers,
   sessionPlaceId,
+  unitAt,
+  unitFolders,
   watchSessionsOverview,
   type Place,
 } from "../../utils/navIndex";
@@ -66,7 +70,7 @@ import { needsYouEvents, openEvent } from "../../utils/needsYouInbox";
 import { kindLabel, type NeedsYouEvent } from "../../utils/needsYouSignals";
 import { topics } from "../../utils/topicStore";
 import { rank, type RankInput } from "../../utils/navRank";
-import { numberHit, numberQuery, ticketLabel, type NumberQuery } from "../../utils/navNumber";
+import { numberHit, numberQuery, pathQuery, portQuery, ticketLabel, type NumberQuery } from "../../utils/navNumber";
 import { errorText, type Found, type IssueRef, type IssueRepos } from "../../utils/issues";
 import { requestLspRestart, resolvedServerIds, serverById } from "../../utils/lspServers";
 import { rootOf, workspaceKey } from "../../utils/topics";
@@ -144,6 +148,13 @@ type Lookup =
   | { input: string; state: "failed"; message: string };
 
 const pending = (row: Row) => row.kind === "lookup" && row.pending;
+
+const PASTED = "pasted";
+
+// What `git check-ref-format` takes, with a separator in it so a plain word
+// stays a search rather than offering a branch on every query.
+const BRANCH_NAME = /^(?!.*\.\.)(?!.*\.lock$)(?!.*\.$)\w[\w.-]*(?:\/[\w.-]+)*$/;
+const branchLike = (q: string) => BRANCH_NAME.test(q) && /[-/_]/.test(q);
 
 const MENTIONS = "mentions ";
 
@@ -330,7 +341,23 @@ export default function Omnibox(props: {
   const openedAt = Date.now();
   const stats = loadFrecency(openedAt)[workspaceKey(props.selected)] ?? {};
 
-  const parsed = createMemo(() => parseQuery(query(), props.home));
+  // Read before the prefix router, since an absolute path starts with the files
+  // prefix. Every unit is watched while a port is typed: the sidebar watches only
+  // the rows it draws.
+  const askedPort = createMemo(() => portQuery(query()));
+  const askingPort = createMemo(() => askedPort() !== null);
+  const portWatch = createMemo(() => (askingPort() ? unitFolders().map((f) => [f, portsAt(f)] as const) : []));
+  const pasted = createMemo(() => {
+    const port = askedPort();
+    if (port === null) return query().trimStart().startsWith("/") ? pathQuery(query(), unitFolders()) : null;
+    const folder = portWatch().find(([, at]) => at().includes(port))?.[0];
+    return folder ? { folder, port } : null;
+  });
+  const isPasted = createMemo(() => pasted() !== null);
+
+  const parsed = createMemo(() =>
+    isPasted() ? { mode: props.home, term: query().trim() } : parseQuery(query(), props.home),
+  );
   const mode = () => parsed().mode;
   const term = () => parsed().term;
 
@@ -857,25 +884,50 @@ export default function Omnibox(props: {
     })),
   );
 
-  // Built only in the all home: the inputs move on every status change, and
-  // nothing else here reads them.
+  // Built only in the all home and for a pasted path: the inputs move on every
+  // status change, and nothing else here reads them.
   const inAll = createMemo(() => mode() === "all");
-  const places = createMemo(() => (inAll() ? livePlaces() : []));
+  const places = createMemo(() => (inAll() || isPasted() ? livePlaces() : []));
 
   function placeRow(place: Place): Row {
+    const url = place.pr?.url ?? place.ticket?.url;
     return {
       kind: "place",
       id: place.id,
       label: place.title,
       sub: place.trail,
       place,
-      href: place.pr?.url ?? place.ticket?.url,
+      browse: url ? () => openInBrowser(url) : undefined,
       run: () =>
         "review" in place
           ? emitWith<OpenReview>(OPEN_REVIEW, place.review)
           : emitWith<NavTarget>(NAVIGATE, place.target),
     };
   }
+
+  function placeAt(folder: string) {
+    const branch = unitAt(folder)?.branch;
+    for (const p of places()) {
+      if (!("target" in p)) continue;
+      if (p.kind === "unit" && p.target.folder === folder && (!branch || p.target.branch === branch)) return p;
+      if (p.kind === "member" && p.target.root === folder) return p;
+    }
+    return undefined;
+  }
+
+  const pastedRow = createMemo((): Row | null => {
+    const hit = pasted();
+    const place = hit && placeAt(hit.folder);
+    if (!hit || !place) return null;
+    const row = { ...placeRow(place), id: PASTED };
+    if ("port" in hit) return { ...row, sub: `Serving localhost:${hit.port}`, browse: () => openPort(hit.port) };
+    if (!hit.rel) return row;
+    return {
+      ...row,
+      sub: hit.line ? `${hit.rel}:${hit.line}` : hit.rel,
+      run: () => emitWith<NavTarget>(NAVIGATE, { ...place.target, file: hit.path, line: hit.line }),
+    };
+  });
 
   function rankInput(row: Row): RankInput {
     const keywords = (row.keywords ?? []).map((text) => ({ slot: "keywords", text, hidden: true }));
@@ -946,7 +998,8 @@ export default function Omnibox(props: {
       id: `create:${hit.key}`,
       label: `Start a worktree from ${label}: ${hit.title}`,
       sub: `New branch in ${source.projectName}, linked to the ticket`,
-      href: hit.url,
+      word: "Issue",
+      browse: () => openInBrowser(hit.url),
       run: () => emitWith<AddBranchUnit>(ADD_BRANCH_UNIT, { projectPath: source.projectPath, issue: hit.key }),
     };
   }
@@ -1029,15 +1082,45 @@ export default function Omnibox(props: {
   const firstRecent = () =>
     inAll() && !term() ? (emptyAllRows().find((row) => row.section === "Recent")?.id ?? null) : null;
 
-  const everythingRows = createMemo((): Row[] => {
+  function draftRows(q: string): Row[] {
+    const out: Row[] = [];
+    const front = frontProject();
+    const project = front && branchLike(q) ? liveProjects().find((x) => x.project.path === front.projectPath) : null;
+    const kind = project && projectUnitKind(project.project);
+    if (
+      project &&
+      (kind === "plain" || kind === "worktree" || kind === "incomplete") &&
+      !project.project.branchUnits.some((u) => u.branch === q)
+    ) {
+      const noun = kind === "plain" ? "branch" : "worktree";
+      const projectPath = project.project.path;
+      out.push({
+        kind: "create",
+        id: "draft:branch",
+        label: `New ${noun} ${q} in ${project.project.name}`,
+        sub: `Opens Add ${noun} with this name`,
+        run: () => emitWith<AddBranchUnit>(ADD_BRANCH_UNIT, { projectPath, name: q }),
+      });
+    }
+    out.push({
+      kind: "create",
+      id: "draft:chat",
+      label: `New chat: ${q}`,
+      sub: "A new chat with this as its draft",
+      run: () => emitWith<NewChat>(NEW_CHAT, { prompt: q }),
+    });
+    return out;
+  }
+
+  const typedRows = createMemo((): Row[] => {
     const q = term();
-    if (!q) return emptyAllRows();
+    if (!q || !inAll() || pastedRow()) return [];
     const ranked = rank([...places().map(placeRow), ...commandRows()], q, rankInput, {
       picked: picksFor(picks, q),
       visited: visits,
       current: here,
     });
-    const rows = ranked.slice(0, MAX_EVERYTHING).map(({ item, marks }): Row => {
+    return ranked.slice(0, MAX_EVERYTHING).map(({ item, marks }): Row => {
       if (item.kind !== "place") return { ...item, marks: marks.title, subMarks: marks.trail };
       const viaTicket = marks.ticket || marks.ticketTitle;
       const mentionSlot = Object.keys(marks).find((slot) => slot.startsWith("mention:"));
@@ -1054,10 +1137,33 @@ export default function Omnibox(props: {
             : { subMarks: marks.trail }),
       };
     });
-    return [...rows, ...lookupRows()];
+  });
+
+  const noMatch = createMemo(() => inAll() && !!term() && !pastedRow() && !typedRows().length && !lookupRows().length);
+
+  const everythingRows = createMemo((): Row[] => {
+    const q = term();
+    if (!inAll() || pastedRow()) return [];
+    if (!q) return emptyAllRows();
+    if (!noMatch()) return [...typedRows(), ...lookupRows(), ...draftRows(q)];
+    const search: Row[] = roots().length
+      ? [
+          {
+            kind: "retype",
+            id: "retype:file",
+            label: `Search files for ${q}`,
+            sub: props.selected?.projectName,
+            mode: "file",
+            text: `${specOf("file").prefix}${q}`,
+          },
+        ]
+      : [];
+    return [...draftRows(q), ...search];
   });
 
   const results = createMemo((): Row[] => {
+    const at = pastedRow();
+    if (at) return [at];
     switch (mode()) {
       case "all":
         return everythingRows();
@@ -1159,8 +1265,8 @@ export default function Omnibox(props: {
   // command does, so it stays.
   function pick(item: Row) {
     if (item.disabled) return;
-    if (item.kind === "help") {
-      setQuery(item.prefix);
+    if (item.kind === "help" || item.kind === "retype") {
+      setQuery(item.kind === "help" ? item.prefix : item.text);
       input?.focus();
       return;
     }
@@ -1222,6 +1328,13 @@ export default function Omnibox(props: {
             {specOf(mode()).label}
           </span>
         }
+        aboveList={
+          <Show when={noMatch()}>
+            <div class={styles.message} role="status">
+              {`Nothing matches \u201c${term()}\u201d`}
+            </div>
+          </Show>
+        }
         listClass={styles.list}
         options={options()}
         query={query()}
@@ -1235,10 +1348,15 @@ export default function Omnibox(props: {
           const browser = browserNext;
           browserNext = false;
           if (!item) return;
-          if (inAll() && term() && (item.kind === "place" || item.kind === "command") && !item.disabled)
+          if (
+            inAll() &&
+            term() &&
+            (item.kind === "place" || item.kind === "command") &&
+            !item.disabled &&
+            item.id !== PASTED
+          )
             savePicks(withPick(picks, term(), item.id));
-          const href = item.href;
-          if (browser && href) close(() => openInBrowser(href));
+          if (browser && item.browse) close(item.browse);
           else pick(item);
         }}
         onActiveChange={(id) =>
@@ -1273,7 +1391,7 @@ export default function Omnibox(props: {
                   Cancel
                 </span>
               </Show>
-              <Show when={row().href}>
+              <Show when={row().browse}>
                 <span class={styles.hint}>
                   <span>{"\u2318\u21b5"}</span>
                   Open in browser

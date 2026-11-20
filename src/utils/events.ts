@@ -267,6 +267,7 @@ export const EDITOR_GOTO_LINE = "tori:editor-goto-line";
 // own.
 export const EDITOR_NEW_SCRATCH = "tori:editor-new-scratch";
 export const NEW_CHAT = "tori:new-chat";
+export type NewChat = { prompt?: string };
 // A chat made outside the sidebar, for it to select.
 export const OPEN_CHAT = "tori:open-chat";
 export type OpenChat = { id: string };
@@ -707,12 +708,12 @@ export type NewChatAt = {
   attach?: string[];
 };
 
-// Payload-carrying event: open an empty chat draft in a worktree or Topic the
+// Payload-carrying event: open a chat draft in a worktree, Topic or chat the
 // sidebar just created, if nothing comes back into its strip. Selecting an
 // existing one never drafts. `root` is where the chat starts, which for a Topic
 // is its home rather than the workspace key.
 export const DRAFT_INTO_NEW = "tori:draft-into-new";
-export type DraftIntoNew = { workspace: string; root: string; projectName: string };
+export type DraftIntoNew = { workspace: string; root: string; projectName: string; prompt?: string };
 
 // Payload-carrying event: tear down everything rooted under a path (used when a
 // space is deleted). The terminal area kills + closes PTY tabs whose cwd is under
@@ -768,7 +769,7 @@ export type RemoveBranchUnit = { projectPath: string; branch: string };
 // project gets. `base` is what the filter opens on, since a new branch cut here
 // starts from the commit the pane is standing on.
 export const ADD_BRANCH_UNIT = "tori:add-branch-unit";
-export type AddBranchUnit = { projectPath: string; base?: string | null; issue?: string };
+export type AddBranchUnit = { projectPath: string; base?: string | null; issue?: string; name?: string };
 
 // An event for the reason `ADD_BRANCH_UNIT` is one: the sidebar owns the
 // branch-unit list a review worktree joins.
