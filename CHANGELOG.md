@@ -37,7 +37,7 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 - **What's new** opens the releases list, since one update can skip several releases.
 - A theme file can set how strong its borders are: write `borderTint` or `lineTint` with an alpha, like `#e6edf33c`.
 - A theme that just misses the contrast floor no longer reports "4.50, needs 4.5".
-- macOS 26.1120.0-beta ships; Android 26.1120.0-beta ships; browser extension 26.1120.0 ships, rolling out on the Chrome Web Store; push relay unchanged at 26.1030.0-beta.
+- macOS 26.1120.0-beta ships; Android 26.1120.0-beta ships; browser extension unchanged at 26.1029.0; push relay unchanged at 26.1030.0-beta.
 
 ## 26.1117.0-beta
 
