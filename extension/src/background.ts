@@ -5,6 +5,8 @@ import { LOG_PORT, PANEL_PORT } from "./pick";
 import type {
   BatchRequest,
   Chat,
+  ChatLine,
+  ChatRow,
   ConnectionRequest,
   LogEntry,
   PanelIn,
@@ -21,6 +23,8 @@ import type {
   TrayState,
 } from "./pick";
 import { addressOf, keeperOf } from "./collapse";
+import { lastLine, phaseOf } from "./chatstatus";
+import type { ChatEvent } from "../../src/utils/chatTypes";
 import { pickShortcut } from "./shortcut";
 import {
   CLOSED,
@@ -335,6 +339,8 @@ async function restore(tab: chrome.tabs.Tab) {
 }
 
 const IMAGES_PER_SEND = 10;
+// A smaller window misses the text of a turn busy with tools.
+const TAIL_LIMIT = 50;
 const JPEG_QUALITY = 0.85;
 const UPLOAD_CHUNK = 144 * 1024;
 
@@ -381,6 +387,28 @@ async function chats(tab: chrome.tabs.Tab): Promise<Chat[]> {
       title: String(row.name || row.title || "New chat"),
       agent: String(row.agent ?? ""),
     }));
+}
+
+async function chatStatus(tab: chrome.tabs.Tab): Promise<ChatRow[]> {
+  const rows = (await call("sessions.list", { live: true }, tagOf(tab))) as Record<string, unknown>[];
+  return rows
+    .filter((row) => row.chat === true)
+    .map((row) => ({
+      id: String(row.id),
+      title: String(row.name || row.title || "New chat"),
+      agent: String(row.agent ?? ""),
+      phase: phaseOf(row),
+    }));
+}
+
+// Only the one line crosses to the page; the raw events stay here.
+async function chatLine(tab: chrome.tabs.Tab, id: string): Promise<ChatLine> {
+  try {
+    const events = (await call("session.tail", { id, limit: TAIL_LIMIT }, tagOf(tab))) as ChatEvent[];
+    return { id, line: lastLine(events) };
+  } catch {
+    return { id, line: null };
+  }
 }
 
 function base64(bytes: Uint8Array): string {
@@ -504,8 +532,10 @@ async function handle(message: BatchRequest, tab: chrome.tabs.Tab & { id: number
       const log = (await pageLogOn()) ? message.log : [];
       return batchToMarkdown(held?.picks ?? [], false, log, held?.worktree, (await setupOf(tab))?.dir);
     }
-    case "chats":
-      return chats(tab);
+    case "chat.status":
+      return chatStatus(tab);
+    case "chat.line":
+      return chatLine(tab, message.id);
     case "send":
       return sendBatch(tab, message.chat, message.log);
     case "reveal":
