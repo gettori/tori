@@ -15,7 +15,7 @@ type RowBase = {
   subMarks?: Range[];
   /** Why this cannot run right now, or null when it can. */
   disabled?: string | null;
-  href?: string;
+  browse?: () => void;
   keywords?: string[];
   run?: () => void;
 };
@@ -30,7 +30,8 @@ export type Row =
   | (RowBase & { kind: "help"; mode: OmniMode; prefix: string })
   | (RowBase & { kind: "place"; place: Place; ticketMarks?: Range[]; prMarks?: Range[] })
   | (RowBase & { kind: "lookup"; pending: boolean })
-  | (RowBase & { kind: "create" })
+  | (RowBase & { kind: "create"; word?: string })
+  | (RowBase & { kind: "retype"; mode: OmniMode; text: string })
   | (RowBase & { kind: "theme"; themeId: string; swatches: string[]; current: boolean })
   | (RowBase & { kind: "usage"; agentId: string; meter: Meter });
 
@@ -73,6 +74,7 @@ export const ENTER_LABEL: Record<Row["kind"], string> = {
   place: "Go",
   lookup: "Look up",
   create: "Create",
+  retype: "Search",
   theme: "Apply",
   usage: "Details",
 };
@@ -143,7 +145,9 @@ export function rowView(row: Row): RowView {
     case "lookup":
       return { ...base, icon: { kind: "lookup" } };
     case "create":
-      return { ...base, icon: { kind: "create" }, word: "Issue" };
+      return { ...base, icon: { kind: "create" }, word: row.word };
+    case "retype":
+      return { ...base, icon: { kind: "mode", mode: row.mode } };
     case "theme":
       return { ...base, icon: { kind: "theme" }, swatches: row.swatches, check: row.current ? "on" : "off" };
     case "usage":

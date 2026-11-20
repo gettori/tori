@@ -60,3 +60,31 @@ export function numberHit(query: NumberQuery, id: IssueId): { exact: boolean; di
   const at = digits.indexOf(query.digits);
   return at < 0 ? null : { exact: digits === query.digits, digitsAt: at };
 }
+
+/** A pasted absolute path inside one of `folders`: the deepest one holding it,
+ *  and the line a `:line` or `:line:col` after it names. */
+export type PathQuery = { folder: string; path: string; rel: string; line?: number };
+
+const bare = (path: string) => path.replace(/\/+$/, "");
+
+/** What a pasted path opens, or null when no folder holds it. */
+export function pathQuery(raw: string, folders: readonly string[]): PathQuery | null {
+  const m = /^(\/.*?)(?::(\d+)(?::\d+)?)?$/.exec(raw.trim());
+  if (!m) return null;
+  const path = bare(m[1]);
+  let folder: string | null = null;
+  for (const f of folders) {
+    const root = bare(f);
+    if ((path === root || path.startsWith(`${root}/`)) && (folder === null || root.length > bare(folder).length))
+      folder = f;
+  }
+  if (folder === null) return null;
+  return { folder, path, rel: path.slice(bare(folder).length + 1), line: Number(m[2]) || undefined };
+}
+
+/** The port a typed `localhost:<port>` names, with or without a scheme or a path after it. */
+export function portQuery(raw: string): number | null {
+  const m = /^(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):(\d{1,5})(?:\/\S*)?$/i.exec(raw.trim());
+  const port = m ? Number(m[1]) : 0;
+  return port > 0 && port < 65536 ? port : null;
+}

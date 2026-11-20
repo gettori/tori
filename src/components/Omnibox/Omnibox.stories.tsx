@@ -318,6 +318,17 @@ export const Side: Story = {
   },
 };
 
+/** "zzgy" typed from Cmd+K, which nothing answers: the line that says so, a new
+ *  chat holding the text, and the same text as a file search. */
+export const NoMatch: Story = {
+  args: { home: "all", prefix: "zzgy" },
+  render: (args) => {
+    seed();
+    seedPlaces();
+    return <Omnibox {...args} />;
+  },
+};
+
 /** Cmd+K with nothing typed, on `fix-side-effects`: what is waiting on you,
  *  where you were before (this worktree and a place that has gone left out,
  *  the first row highlighted), and what to do next here. */
