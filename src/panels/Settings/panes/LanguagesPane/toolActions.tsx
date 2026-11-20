@@ -81,7 +81,7 @@ export function createToolActions(opts: {
     const now = (await opts.onChange())?.find((x) => x.id === id);
     const found = !!now && now.status !== "notFound";
     const toast = (message: string, ok: boolean) =>
-      emitWith<ToastEvent>(TOAST, { message, kind: ok ? "info" : "error" });
+      emitWith<ToastEvent>(TOAST, { message, kind: ok ? "success" : "error" });
     if (verb === "install") {
       // Not "not on your PATH": `xcode-select --install` exits as soon as
       // Apple's installer opens, long before lldb-dap lands.

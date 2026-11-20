@@ -21,7 +21,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** The two kinds, stacked newest at the bottom. Each dismisses itself after 8
+/** The kinds, stacked newest at the bottom. Each dismisses itself after 8
  *  seconds; hovering or focusing the stack holds them, and Escape closes the
  *  focused one. ⌘⌥T moves focus into the stack in the app, where the command
  *  registry owns that key - here there is no registry, so use Tab. */
@@ -53,6 +53,8 @@ export const Gallery: Story = {
         "git fetch failed:\nfatal: unable to access 'https://github.com/gettori/tori/': Could not resolve host",
         "error",
       );
+      pushToast("Pulled.", "success");
+      pushToast("Setup finished in tori-toast", "success", { label: "Show log", run: () => {} });
       pushToast("Branch attached", "info");
       pushToast("Renamed 12 files", "info", { label: "Undo", run: () => {} });
     });
@@ -86,6 +88,7 @@ export const Interactive: Story = {
       <Button variant="danger" onClick={() => pushToast("Push rejected: the remote moved.", "error")}>
         Raise an error
       </Button>
+      <Button onClick={() => pushToast("Pushed tori-toast.", "success")}>Raise a success</Button>
       <Button onClick={() => pushToast("Branch attached", "info")}>Raise a notice</Button>
       <Button onClick={() => pushToast("Renamed 12 files", "info", { label: "Undo", run: () => {} })}>
         Raise one with an action

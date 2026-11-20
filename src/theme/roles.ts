@@ -164,6 +164,9 @@ export const ROLES: Role[] = [
   { id: "danger.subtle", cssVar: "--danger-subtle", group: "danger" },
   { id: "danger.border", cssVar: "--danger-border", group: "danger" },
   { id: "danger.onSubtle", cssVar: "--danger-on-subtle", group: "danger" },
+  { id: "success.subtle", cssVar: "--success-subtle", group: "success" },
+  { id: "success.border", cssVar: "--success-border", group: "success" },
+  { id: "success.onSubtle", cssVar: "--success-on-subtle", group: "success" },
 
   { id: "brand.default", cssVar: "--brand-default", group: "brand" },
   { id: "brand.strong", cssVar: "--brand-strong", group: "brand" },
@@ -367,6 +370,9 @@ export function buildRoleValues(palette: Palette): Record<string, string> {
     "danger.subtle": mix(p.card, p.danger, v({ dark: 0.12, light: 0.07 })),
     "danger.border": alpha(p.danger, v({ dark: 0.5, light: 0.42 })),
     "danger.onSubtle": mix(p.danger, p.text, 0.4),
+    "success.subtle": mix(p.card, p.success, v({ dark: 0.12, light: 0.07 })),
+    "success.border": alpha(p.success, v({ dark: 0.5, light: 0.42 })),
+    "success.onSubtle": mix(p.success, p.text, 0.4),
 
     "brand.default": p.brand,
     "brand.strong": p.brandStrong,

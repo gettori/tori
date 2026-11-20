@@ -228,6 +228,9 @@ export const CONTRAST_RULES: Record<string, ContrastRule> = {
   "danger.subtle": surface(),
   "danger.border": exempt("as progress.border"),
   "danger.onSubtle": text(["danger.subtle", ...CANVASES]),
+  "success.subtle": surface(),
+  "success.border": exempt("as progress.border"),
+  "success.onSubtle": text(["success.subtle", ...CANVASES]),
 
   // `accent.subtle` is in the list because the brand gold IS drawn on a selected
   // row, and that pairing is where it has historically been weakest: gold-600
