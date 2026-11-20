@@ -57,6 +57,11 @@ that introduced packs moved them from `~/.config/tori/themes/`.
 - `colors` (required): every key in `PALETTE_KEYS` in `src/theme/schema.ts`,
   each a hex colour written `#rgb`, `#rrggbb` or `#rrggbbaa`. A missing key and
   an unknown key are both errors. The example above shows two of them.
+  `borderTint` and `lineTint` are washed by Tori (the default border at 8% in
+  dark and solid in light, the strong border at 13%) unless written as
+  `#rrggbbaa`, in which case their own alpha sets the border's strength. A
+  release before this ignores that alpha and washes as usual, so keep the RGB
+  one that reads well at the wash too.
 - `description` (optional): one line for the theme's card.
 - `license` (optional): the SPDX id of the licence this file is shared under.
   A port carries its upstream theme's licence.
@@ -65,3 +70,10 @@ that introduced packs moved them from `~/.config/tori/themes/`.
 
 Any other top-level key is an error, not a warning: a palette is the one pack
 kind where a misspelt field can only mean a mistake.
+
+## Checking a theme
+
+`node scripts/check-theme-contrast.mjs <theme.json | folder>...` runs a file
+through the same structural check and contrast gate the app runs, and exits
+non-zero on any failure. It needs Node 22.18 or later and no installed
+dependencies, which is how the packs repository runs it from a release's source.
