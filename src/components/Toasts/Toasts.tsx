@@ -1,6 +1,6 @@
 import { For, onCleanup } from "solid-js";
 import { Portal } from "solid-js/web";
-import { X } from "lucide-solid";
+import { CircleAlert, Info, X } from "lucide-solid";
 import { Toast } from "../../lib/toast";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
@@ -39,6 +39,9 @@ export function pushToast(message: string, kind: ToastKind = "error", action?: T
       toastId={props.toastId}
       class={`${styles.toast} ${kind === "error" ? styles.error : styles.info}`}
     >
+      <span class={styles.toastIcon} aria-hidden="true">
+        <Icon icon={kind === "error" ? CircleAlert : Info} />
+      </span>
       <Toast.Title class={styles.toastMsg}>{text}</Toast.Title>
       <For each={actions}>
         {(a) => (
@@ -84,7 +87,7 @@ export function pushToast(message: string, kind: ToastKind = "error", action?: T
  *
  *  Listeners registered in the component body, not onMount: an async mount gap
  *  is a window where a startup toast lands on nobody. */
-export default function ToastRegion() {
+export default function ToastRegion(props: { duration?: number }) {
   let listEl: HTMLDivElement | undefined;
   onCleanup(onWith<ToastEvent>(TOAST, (d) => pushToast(d.message, d.kind ?? "error", d.action)));
   onCleanup(onEvent(FOCUS_TOASTS, () => listEl?.focus({ preventScroll: true })));
@@ -95,7 +98,7 @@ export default function ToastRegion() {
         // No key code is ever this string, which is the whole point: Kobalte
         // offers no off switch for its listener, only a combo to match.
         hotkey={["HandledByCommandRegistry"]}
-        duration={TTL}
+        duration={props.duration ?? TTL}
         limit={Infinity}
         pauseOnPageIdle={false}
         class={styles.toastRegion}
