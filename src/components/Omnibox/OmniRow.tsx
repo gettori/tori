@@ -3,6 +3,7 @@ import {
   ArrowDownToLine,
   AtSign,
   Bot,
+  Check,
   ChevronRight,
   CircleHelp,
   Compass,
@@ -15,6 +16,7 @@ import {
   LayoutGrid,
   Layers,
   MessageSquare,
+  Palette,
   PanelsTopLeft,
   Plus,
   Search,
@@ -23,6 +25,7 @@ import {
   type LucideIcon,
 } from "lucide-solid";
 import Icon from "../Icon/Icon";
+import AgentGlyph from "../Icon/AgentGlyph";
 import ProjectIcon from "../Icon/ProjectIcon";
 import { resolveIcon } from "../Icon/iconRegistry";
 import FileIcon from "../../seti/FileIcon";
@@ -114,6 +117,12 @@ function Glyph(props: { icon: RowIcon }) {
       <Match when={props.icon.kind === "create"}>
         <Icon icon={Plus} />
       </Match>
+      <Match when={props.icon.kind === "theme"}>
+        <Icon icon={Palette} />
+      </Match>
+      <Match when={props.icon.kind === "agent" && props.icon}>
+        {(icon) => <AgentGlyph id={icon().agentId} label={icon().label} size={16} />}
+      </Match>
     </Switch>
   );
 }
@@ -136,7 +145,17 @@ export default function OmniRow(props: { view: RowView }) {
           )}
         </Show>
       </span>
-      <Show when={props.view.ticket || props.view.pr || props.view.dot}>
+      <Show
+        when={
+          props.view.ticket ||
+          props.view.pr ||
+          props.view.dot ||
+          props.view.value ||
+          props.view.meter ||
+          props.view.swatches ||
+          props.view.check
+        }
+      >
         <span class={styles.accessories}>
           <Show when={props.view.ticket}>
             {(ticket) => (
@@ -163,6 +182,33 @@ export default function OmniRow(props: { view: RowView }) {
               <>
                 <span class={`${styles.dot} ${styles[dot().tone]}`} aria-hidden="true" />
                 <span class={styles.srOnly}>{dot().spoken}</span>
+              </>
+            )}
+          </Show>
+          <Show when={props.view.value}>{(value) => <span class={styles.value}>{value()}</span>}</Show>
+          <Show when={props.view.meter}>
+            {(meter) => (
+              <span class={styles.meter} classList={{ [styles.isWarn]: meter().warn }} aria-hidden="true">
+                <span class={styles.meterFill} style={{ width: `${Math.round(meter().level * 100)}%` }} />
+              </span>
+            )}
+          </Show>
+          <Show when={props.view.swatches}>
+            {(swatches) => (
+              <span class={styles.swatches} aria-hidden="true">
+                <For each={swatches()}>{(color) => <span class={styles.swatch} style={{ background: color }} />}</For>
+              </span>
+            )}
+          </Show>
+          <Show when={props.view.check}>
+            {(check) => (
+              <>
+                <span class={styles.check} classList={{ [styles.isOff]: check() === "off" }} aria-hidden="true">
+                  <Icon icon={Check} />
+                </span>
+                <Show when={check() === "on"}>
+                  <span class={styles.srOnly}>Current</span>
+                </Show>
               </>
             )}
           </Show>

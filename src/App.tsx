@@ -31,6 +31,7 @@ import { startWorktreeCleanup } from "./utils/worktreeCleanup";
 import { startPrMemory } from "./utils/prMemory";
 import { placeIdOf } from "./utils/navIndex";
 import { noteVisit } from "./utils/visitLog";
+import { setPref } from "./panels/Settings/utils/prefValues";
 import { watchSessionIssues } from "./utils/sessionIssues";
 import { tabsByWs } from "./panels/Editor/editorTabStore";
 import { open as openTerms } from "./panels/Terminal/terminalTabStore";
@@ -102,6 +103,8 @@ import {
   SET_RIGHT_MODE,
   PREFS_TOGGLE,
   type PrefsToggle,
+  PREFS_SET,
+  type PrefsSet,
   OPEN_SETTINGS,
   type OpenSettings,
   OPEN_PROJECT_SETTINGS,
@@ -942,6 +945,7 @@ function App() {
   let offSetRightMode: (() => void) | undefined;
   let offStopChat: (() => void) | undefined;
   let offPrefsToggle: (() => void) | undefined;
+  let offPrefsSet: (() => void) | undefined;
   let offOpenSettings: (() => void) | undefined;
   let offOpenProjectSettings: (() => void) | undefined;
   let offRunLastTask: (() => void) | undefined;
@@ -1009,6 +1013,7 @@ function App() {
     // shut: the store is global, and a toggle that first had to open a modal
     // would be slower than the modal.
     offPrefsToggle = onEventWith<PrefsToggle>(PREFS_TOGGLE, ({ key }) => toggleEditorDefault(key));
+    offPrefsSet = onEventWith<PrefsSet>(PREFS_SET, ({ id, value }) => setPref(id, value));
     offOpenSettings = onEventWith<OpenSettings>(OPEN_SETTINGS, ({ query, entry }) => {
       if (firstRunOpen()) return;
       setSettingsQuery(query ?? "");
@@ -1109,6 +1114,7 @@ function App() {
     offProjectSearch?.();
     offSetRightMode?.();
     offPrefsToggle?.();
+    offPrefsSet?.();
     offOpenSettings?.();
     offOpenProjectSettings?.();
     offRunLastTask?.();

@@ -11,6 +11,7 @@ import { copyText } from "../../../utils/clipboard";
 import { hintRanges, labelRanges, segments, type Range } from "../utils/searchHighlight";
 import {
   SETTINGS,
+  optionsOf,
   SETTING_TABS,
   tabOfEntry,
   type SettingEntry,
@@ -47,7 +48,7 @@ import {
 import styles from "../Settings.module.css";
 import Tooltip from "../../../components/Tooltip/Tooltip";
 import Switch from "../../../components/Switch/Switch";
-import Select, { type SelectOption } from "../../../components/Select/Select";
+import Select from "../../../components/Select/Select";
 
 // Font inputs show only the primary family; the app's fallback stack is kept
 // out of the field and re-attached on save, so a user types "JetBrains Mono"
@@ -560,14 +561,8 @@ export function TabSizeRow(props: PaneProps) {
 }
 
 /** Where the caret's line is marked: a dropdown, because four answers do not
- *  fit a checkbox. The labels say the place rather than VS Code's value names,
- *  which are only legible next to the setting's own title. */
-const ACTIVE_LINE_OPTIONS: SelectOption[] = [
-  { value: "none", label: "Nowhere" },
-  { value: "gutter", label: "Gutter only" },
-  { value: "line", label: "The line" },
-  { value: "all", label: "Gutter and line" },
-];
+ *  fit a checkbox. */
+const ACTIVE_LINE_OPTIONS = optionsOf("active-line-highlight");
 
 export function ActiveLineRow(props: PaneProps) {
   return (

@@ -202,11 +202,13 @@ describe("the registry after the omnibox absorbed the two pickers", () => {
 describe("the Preferences commands", () => {
   const prefs = COMMANDS.filter((c) => c.id.startsWith("prefs:"));
 
-  it("offers one per setting, and nothing the catalogue does not name", () => {
+  it("offers one per setting and one per value of a one-of setting, and nothing the catalogue does not name", () => {
     // The registration a later phase forgets. A setting wired to a feature but
     // missing from the catalogue is unreachable by name, which reads as the
     // feature being absent rather than as the row being missing.
-    expect(prefs.map((c) => c.id).sort()).toEqual(SETTINGS.map((s) => `prefs:${s.id}`).sort());
+    expect(prefs.map((c) => c.id).sort()).toEqual(
+      SETTINGS.flatMap((s) => [`prefs:${s.id}`, ...(s.options ?? []).map((o) => `prefs:${s.id}:${o.value}`)]).sort(),
+    );
   });
 
   it("names every one after its setting, under one prefix", () => {

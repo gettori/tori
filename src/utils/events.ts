@@ -335,6 +335,16 @@ export type EditorStashResult = { requestId: string; ok: boolean };
 export const PREFS_TOGGLE = "tori:prefs-toggle";
 export type PrefsToggle = { key: EditorToggleKey };
 
+// One event for every one-of setting, for the same reason. App.tsx sets it
+// through `panels/Settings/utils/prefValues`.
+export const PREFS_SET = "tori:prefs-set";
+export type PrefsSet = { id: string; value: string };
+
+// Payload-carrying event: pin one account's usage card, the way a click on its
+// cluster in the titlebar does. The strip answers, since it owns the card.
+export const OPEN_USAGE = "tori:open-usage";
+export type OpenUsage = { agentId: string; profile: string };
+
 // Payload-carrying event: open the Settings panel, optionally with its filter
 // box pre-filled so one setting is what the panel opens onto. Consumed by
 // App.tsx, which owns the panel's open flag.

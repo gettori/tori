@@ -4,6 +4,7 @@ import Select, { type SelectOption } from "../../../../components/Select/Select"
 import { settings, setFetchEveryMinutes } from "../../settingsStore";
 import Switch from "../../../../components/Switch/Switch";
 import type { Promotion } from "../../../../utils/topics";
+import { optionsOf } from "../../../../utils/settingsCatalog";
 import { CardSection, Group, Row, rowLabelId, setGit, type PaneProps } from "../../components/paneKit";
 
 /** How often the background fetch runs. Off is first, because it is the answer
@@ -27,11 +28,7 @@ const IDLE_OPTIONS: SelectOption[] = [
   { value: "30", label: "30 days" },
 ];
 
-const PROMOTION_OPTIONS: SelectOption[] = [
-  { value: "ask", label: "Ask me first" },
-  { value: "auto", label: "Create it" },
-  { value: "never", label: "Refuse" },
-];
+const PROMOTION_OPTIONS = optionsOf("topic-promotion");
 
 /** Git itself, what Tori does with remotes, how Topics treat worktrees, when
  *  Tori removes worktrees on its own, then the forge accounts and their kill
