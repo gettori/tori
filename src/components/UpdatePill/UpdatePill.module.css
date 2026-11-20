@@ -1,6 +1,6 @@
-/* Topbar update notice. Sits between the toolbar and the settings gear, and
-   stays quiet: this is information, not a call to action competing with the
-   user's actual work. */
+/* Topbar notices. Sits between the toolbar and the settings gear. `.pill` is
+   the daemon's quiet notice; `.update` is filled with the brand colour,
+   because an update nobody sees is never installed. */
 @layer components {
   .pill {
     flex: 0 0 auto;
@@ -34,25 +34,67 @@
     border-left: var(--tori-border-thin) solid var(--border-default);
   }
 
-  .dismiss {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: calc(16px * var(--ui-scale));
-    height: calc(16px * var(--ui-scale));
-    padding: 0;
-    background: none;
+  .update {
+    flex: 0 0 auto;
+    align-self: center;
+    height: calc(20px * var(--ui-scale));
+    padding: 0 var(--tori-space-3);
+    margin-right: var(--tori-space-3);
     border: none;
-    border-radius: var(--tori-radius-sm);
-    color: var(--fg-muted);
+    border-radius: var(--tori-radius-pill);
+    background: var(--brand-default);
+    color: var(--brand-on);
+    font: inherit;
+    font-size: var(--tori-text-xs);
+    font-weight: 600;
+    white-space: nowrap;
     cursor: pointer;
   }
-  .dismiss:hover {
-    color: var(--fg-default);
-    background: var(--neutral-hover);
+  .update:hover,
+  .update[aria-expanded="true"] {
+    background: var(--brand-strong);
   }
-  .dismiss svg {
-    width: calc(12px * var(--ui-scale));
-    height: calc(12px * var(--ui-scale));
+  .update:focus-visible {
+    outline: var(--tori-border-thick) solid var(--brand-ring);
+    outline-offset: 2px;
+  }
+
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-3);
+    width: calc(280px * var(--ui-scale));
+    padding: var(--tori-space-5);
+    font-size: var(--tori-text-md);
+    color: var(--fg-default);
+  }
+  .title {
+    font-weight: 600;
+  }
+  .note {
+    color: var(--fg-muted);
+    font-size: var(--tori-text-sm);
+  }
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-2);
+    margin-top: var(--tori-space-1);
+  }
+  .spacer {
+    flex: 1;
+  }
+
+  .track {
+    height: calc(6px * var(--ui-scale));
+    border-radius: var(--tori-radius-pill);
+    background: var(--brand-subtle);
+    overflow: hidden;
+  }
+  .fill {
+    height: 100%;
+    border-radius: inherit;
+    background: var(--brand-default);
+    transition: width 0.2s ease-out;
   }
 }
