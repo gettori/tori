@@ -18,9 +18,9 @@
 // index.ts takes nothing else. That is what makes "a theme cannot reach the
 // screen without passing the gate" a property of the types rather than of
 // everyone remembering to call it.
-import { checkPalette, formatReport } from "./contrast";
-import { validatePalette } from "./schema";
-import type { Palette } from "./schema";
+import { checkPalette, formatReport } from "./contrast.ts";
+import { validatePalette } from "./schema.ts";
+import type { Palette } from "./schema.ts";
 
 declare const ADMITTED: unique symbol;
 

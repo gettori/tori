@@ -44,6 +44,15 @@ export function alpha(hex: string, a: number): string {
   return `rgba(${r}, ${g}, ${b}, ${a})`;
 }
 
+/** `hex` at the alpha written into it as `#rrggbbaa`, or washed to `fallback`
+ *  when it carries none. Lets a palette set a border's strength itself. */
+export function ownAlphaOr(hex: string, fallback: number): string {
+  if (hex.replace("#", "").length !== 8) return alpha(hex, fallback);
+  const [r, g, b, a] = channels(hex);
+  if (a >= 1) return hex.slice(0, 7);
+  return `rgba(${r}, ${g}, ${b}, ${Math.round(a * 1000) / 1000})`;
+}
+
 /**
  * `hex` as a bare space-separated channel triple, for CSS to compose its own
  * alpha with: `rgb(var(--x) / 14%)`.
@@ -285,8 +294,9 @@ export const ROLE_BY_CSS_VAR = new Map(ROLES.map((r) => [r.cssVar, r]));
 export function buildRoleValues(palette: Palette): Record<string, string> {
   const p: PaletteColors = palette.colors;
   const v = variants(palette.appearance);
-  // Dark washes its hairline to 8%; light uses the stop solid.
-  const hairline = alpha(p.borderTint, v({ dark: 0.08, light: 1 }));
+  // Dark washes its hairline to 8%; light uses the stop solid. A tint written
+  // with its own alpha overrides both.
+  const hairline = ownAlphaOr(p.borderTint, v({ dark: 0.08, light: 1 }));
   const stack = (layers: [y: number, blur: number, spread: number, a: number][]) =>
     layers.map(([y, blur, spread, a]) => `0 ${y}px ${blur}px ${spread}px ${alpha(p.shadowTint, a)}`).join(", ");
 
@@ -310,7 +320,7 @@ export function buildRoleValues(palette: Palette): Record<string, string> {
     "canvas.input": p.input,
 
     "border.default": hairline,
-    "border.strong": alpha(p.lineTint, 0.13),
+    "border.strong": ownAlphaOr(p.lineTint, 0.13),
     "border.rail": p.rail,
 
     "scrollbar.thumb": alpha(p.lineTint, v({ dark: 0.11, light: 0.14 })),
