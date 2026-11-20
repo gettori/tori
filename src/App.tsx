@@ -29,6 +29,8 @@ import { registerRecipeHost } from "./utils/perfRecipe";
 import { startRemoteFetch } from "./utils/remoteSync";
 import { startWorktreeCleanup } from "./utils/worktreeCleanup";
 import { startPrMemory } from "./utils/prMemory";
+import { placeIdOf } from "./utils/navIndex";
+import { noteVisit } from "./utils/visitLog";
 import { watchSessionIssues } from "./utils/sessionIssues";
 import { tabsByWs } from "./panels/Editor/editorTabStore";
 import { open as openTerms } from "./panels/Terminal/terminalTabStore";
@@ -502,6 +504,8 @@ function App() {
 
   createEffect(() => {
     const s = selected();
+    const at = s && placeIdOf(s);
+    if (at) noteVisit(at);
     try {
       if (s) localStorage.setItem(LS_SELECTION, JSON.stringify(s));
       else localStorage.removeItem(LS_SELECTION);

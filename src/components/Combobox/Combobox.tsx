@@ -119,22 +119,6 @@ export default function Combobox(props: {
     (props.options as (ComboboxOption | ComboboxGroup)[]).some((entry) => "options" in entry),
   );
 
-  // Kobalte builds *every* section node with `key: ""` and the listbox renders
-  // the collection through `<Key by="key">`, so two headings are two entries
-  // claiming one key. That survives a first render but not an update: a list
-  // that goes from one heading to two comes back with one, in the other one's
-  // place. Rebuilding rather than reconciling the list when the headings change
-  // is the containable half of that; the rows themselves are unaffected, and a
-  // flat list yields a constant here so it never remounts.
-  const headings = createMemo(
-    () =>
-      "g:" +
-      (props.options as (ComboboxOption | ComboboxGroup)[])
-        .filter((entry): entry is ComboboxGroup => "options" in entry)
-        .map((group) => group.label)
-        .join("\n"),
-  );
-
   return (
     <Primitive.Root<ComboboxOption, ComboboxGroup>
       options={props.options}
@@ -238,48 +222,40 @@ export default function Combobox(props: {
           </Show>
         }
       >
-        {/* The child has to declare its parameter: `Show` only treats a
-            function child as a render callback when it takes one, and hands
-            back the function itself otherwise - which memoises to the same
-            reference and never rebuilds, quietly undoing `keyed`. */}
-        <Show when={headings()} keyed>
-          {(_signature) => (
-            /* The app's own scrollbar, which costs no width, rather than the
-               native one this list used to grow. The caller's `listClass` is
-               what bounds it (a `max-height` on the frame, per OverlayScroll),
-               so the viewport below is the scroller and the list is its
-               content. A surface that sets no bound - the picker without
-               `reserve`, scrolled by the dialog body it sits in - is
-               unaffected: a frame with no height to exceed never scrolls. */
-            <OverlayScroll
-              class={props.listClass}
-              contentClass={styles.listFrame}
-              viewportRef={setScroller}
-              // The rows are not focusable (the listbox is virtual-focus, the
-              // input keeps the caret), so a press would hand focus to the
-              // document and take the arrow keys and the typeahead with it. On
-              // the frame rather than the list, so the slack under the last row
-              // is covered too. The commit is the click, which still fires.
-              onMouseDown={(e: MouseEvent) => e.preventDefault()}
-            >
-              <Highlight />
-              <Primitive.Listbox
-                class={styles.listbox}
-                aria-label={props.listLabel}
-                // Which element to keep the active row inside: the viewport,
-                // not the list, now that the list no longer scrolls itself.
-                scrollRef={scroller}
-                // Hover must not move the highlight. Kobalte reads hover-focus as
-                // consent to commit on release over *whatever row is under the
-                // cursor then*, so a list that moves between press and release
-                // (the picker's, as fetched branches land in it) commits a row
-                // nobody pressed. Off, the commit is the click, and a click whose
-                // press and release differ lands on no row at all.
-                shouldFocusOnHover={false}
-              />
-            </OverlayScroll>
-          )}
-        </Show>
+        {/* The app's own scrollbar, which costs no width, rather than the
+           native one this list used to grow. The caller's `listClass` is
+           what bounds it (a `max-height` on the frame, per OverlayScroll),
+           so the viewport below is the scroller and the list is its
+           content. A surface that sets no bound - the picker without
+           `reserve`, scrolled by the dialog body it sits in - is
+           unaffected: a frame with no height to exceed never scrolls. */}
+        <OverlayScroll
+          class={props.listClass}
+          contentClass={styles.listFrame}
+          viewportRef={setScroller}
+          // The rows are not focusable (the listbox is virtual-focus, the
+          // input keeps the caret), so a press would hand focus to the
+          // document and take the arrow keys and the typeahead with it. On
+          // the frame rather than the list, so the slack under the last row
+          // is covered too. The commit is the click, which still fires.
+          onMouseDown={(e: MouseEvent) => e.preventDefault()}
+        >
+          <Highlight />
+          <Primitive.Listbox
+            class={styles.listbox}
+            aria-label={props.listLabel}
+            // Which element to keep the active row inside: the viewport,
+            // not the list, now that the list no longer scrolls itself.
+            scrollRef={scroller}
+            // Hover must not move the highlight. Kobalte reads hover-focus as
+            // consent to commit on release over *whatever row is under the
+            // cursor then*, so a list that moves between press and release
+            // (the picker's, as fetched branches land in it) commits a row
+            // nobody pressed. Off, the commit is the click, and a click whose
+            // press and release differ lands on no row at all.
+            shouldFocusOnHover={false}
+          />
+        </OverlayScroll>
       </Show>
     </Primitive.Root>
   );
