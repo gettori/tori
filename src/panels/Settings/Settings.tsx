@@ -204,7 +204,7 @@ export default function Settings(props: {
    *  list of switches. Deferred, since selecting the category is what un-hides
    *  the pane and nothing inside a `hidden` subtree can take focus. */
   function revealEntry(id: string) {
-    const tab = tabOfEntry(id);
+    const tab = tabOfEntry(id) ?? SETTING_TABS.find((t) => t.id === id)?.id;
     if (!tab) return;
     // Carrying a query, but naming one row: go there, do not search.
     setTyped(false);

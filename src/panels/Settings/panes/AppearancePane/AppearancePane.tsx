@@ -23,11 +23,9 @@ import NeedsFixing from "../../components/NeedsFixing";
 import BrowsePacks from "../../components/BrowsePacks";
 import PackControls from "../../components/PackControls";
 import { CatalogConflict } from "../../components/ProvenanceTag";
+import { optionsOf } from "../../../../utils/settingsCatalog";
 
-const SPACE_STRIPS: SelectOption[] = [
-  { value: "bottom", label: "Bottom" },
-  { value: "side", label: "Left" },
-];
+const SPACE_STRIPS = optionsOf("space-strip");
 
 /** A theme as a row: the id is what settings.json stores, the label is what the
  *  user reads. */

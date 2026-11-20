@@ -21,7 +21,7 @@ import {
   status as dictationStatus,
 } from "../../../../utils/dictationDownload";
 import type { DownloadStatus, DownloadStore } from "../../../../utils/modelDownload";
-import { SETTINGS } from "../../../../utils/settingsCatalog";
+import { optionsOf, SETTINGS } from "../../../../utils/settingsCatalog";
 import ConfirmDialog from "../../../../components/Dialogs/ConfirmDialog";
 import {
   Group,
@@ -89,23 +89,9 @@ const SESSIONS = [
   "resume-at-reset",
 ];
 
-/** The option lists, module-level so they are not rebuilt per render. The
- *  values are the store's own unions, so a typo here is a type error at the
- *  `onChange` cast rather than a row that silently never matches. */
-const SURFACES: SelectOption[] = [
-  { value: "chat", label: "Chat" },
-  { value: "agent", label: "Terminal (agent tab)" },
-];
-const DENSITIES: SelectOption[] = [
-  { value: "comfortable", label: "Comfortable" },
-  { value: "compact", label: "Compact" },
-];
-const TIMESTAMPS: SelectOption[] = [
-  { value: "prompts", label: "Prompts" },
-  { value: "both", label: "Prompts and replies" },
-  { value: "replies", label: "Replies" },
-  { value: "off", label: "Off" },
-];
+const SURFACES = optionsOf("default-surface");
+const DENSITIES = optionsOf("transcript-density");
+const TIMESTAMPS = optionsOf("timestamps");
 
 const NOTIFICATIONS = [
   "notify-needs-you",

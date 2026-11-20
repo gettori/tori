@@ -66,6 +66,30 @@ describe("the navigator's ranker", () => {
     expect(ids(rows, "sidebar")).toEqual(["place", "command"]);
   });
 
+  it("finds a row by a keyword it never draws, above a word in a title and below a whole title", () => {
+    const keyed = (r: { id: string; title: string; keywords?: string[] }): RankInput => ({
+      fields: [
+        { slot: "title", text: r.title },
+        ...(r.keywords ?? []).map((text) => ({ slot: "keywords", text, hidden: true })),
+      ],
+      penalty: true,
+    });
+    const rows = [
+      { id: "notify", title: "Preferences: Usage notifications" },
+      { id: "usage", title: "Claude, work", keywords: ["usage", "quota", "limits"] },
+      { id: "dark", title: "Theme: Tori Dark", keywords: ["dark"] },
+    ];
+    const quota = rank(rows, "quota", keyed);
+    expect(quota.map((r) => r.item.id)).toEqual(["usage"]);
+    expect(quota[0].marks).toEqual({ keywords: [{ start: 0, end: 5 }] });
+    expect(rank(rows, "usage", keyed).map((r) => r.item.id)).toEqual(["usage", "notify"]);
+    expect(rank([{ id: "a", title: "Usage" }, ...rows], "usage", keyed).map((r) => r.item.id)).toEqual([
+      "a",
+      "usage",
+      "notify",
+    ]);
+  });
+
   it("keeps the given order between equal scores, and for an empty query", () => {
     const rows: Row[] = [
       { id: "b", title: "main" },

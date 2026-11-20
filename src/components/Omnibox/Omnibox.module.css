@@ -173,3 +173,49 @@
 .srOnly {
   composes: srOnly from "../../styles/patterns.module.css";
 }
+
+.value {
+  color: var(--fg-muted);
+  font-size: var(--tori-text-md);
+  white-space: nowrap;
+}
+
+.meter {
+  width: calc(48px * var(--ui-scale));
+  height: var(--tori-space-2);
+  overflow: hidden;
+  border-radius: var(--tori-radius-pill);
+  background: var(--neutral-subtle);
+}
+
+.meterFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--fg-muted);
+}
+
+.meter.isWarn .meterFill {
+  background: var(--attention-fg);
+}
+
+.swatches {
+  display: flex;
+  gap: var(--tori-space-1);
+}
+
+.swatch {
+  width: var(--tori-space-5);
+  height: var(--tori-space-5);
+  border-radius: var(--tori-radius-pill);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+.check {
+  display: grid;
+  color: var(--brand-default);
+}
+
+.check.isOff {
+  visibility: hidden;
+}

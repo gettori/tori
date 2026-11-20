@@ -16,18 +16,23 @@ type RowBase = {
   /** Why this cannot run right now, or null when it can. */
   disabled?: string | null;
   href?: string;
+  keywords?: string[];
   run?: () => void;
 };
 
+export type Meter = { level: number; warn: boolean };
+
 export type Row =
   | (RowBase & { kind: "file"; file: string })
-  | (RowBase & { kind: "command"; group: CommandGroup; keys?: string[] })
+  | (RowBase & { kind: "command"; group: CommandGroup; keys?: string[]; value?: string; check?: "on" | "off" })
   | (RowBase & { kind: "symbol"; symbolKind: number })
   | (RowBase & { kind: "line" })
   | (RowBase & { kind: "help"; mode: OmniMode; prefix: string })
   | (RowBase & { kind: "place"; place: Place; ticketMarks?: Range[]; prMarks?: Range[] })
   | (RowBase & { kind: "lookup"; pending: boolean })
-  | (RowBase & { kind: "create" });
+  | (RowBase & { kind: "create" })
+  | (RowBase & { kind: "theme"; themeId: string; swatches: string[]; current: boolean })
+  | (RowBase & { kind: "usage"; agentId: string; meter: Meter });
 
 export type RowIcon =
   | { kind: "file"; name: string }
@@ -36,7 +41,9 @@ export type RowIcon =
   | { kind: "mode"; mode: OmniMode }
   | { kind: "place"; place: PlaceKind; unitKind?: string; look?: Place["look"] }
   | { kind: "lookup" }
-  | { kind: "create" };
+  | { kind: "create" }
+  | { kind: "theme" }
+  | { kind: "agent"; agentId: string; label: string };
 
 type Chip = { label: string; spoken: string; marks: Range[] };
 
@@ -51,6 +58,10 @@ export type RowView = {
   pr?: Chip & { tone: string };
   dot?: { tone: PlaceDot; spoken: string };
   word?: string;
+  swatches?: string[];
+  check?: "on" | "off";
+  value?: string;
+  meter?: Meter;
 };
 
 export const ENTER_LABEL: Record<Row["kind"], string> = {
@@ -62,6 +73,8 @@ export const ENTER_LABEL: Record<Row["kind"], string> = {
   place: "Go",
   lookup: "Look up",
   create: "Create",
+  theme: "Apply",
+  usage: "Details",
 };
 
 const DOT_SPOKEN: Record<PlaceDot, string> = { needsYou: "Waiting on you", working: "Working" };
@@ -102,6 +115,8 @@ export function rowView(row: Row): RowView {
         icon: { kind: "group", group: row.group },
         subtitle: base.subtitle ?? GROUP_LABELS[row.group],
         keys: row.keys && chord(row.keys),
+        value: row.value,
+        check: row.check,
       };
     case "symbol":
       return { ...base, icon: { kind: "symbol", symbolKind: row.symbolKind } };
@@ -129,5 +144,9 @@ export function rowView(row: Row): RowView {
       return { ...base, icon: { kind: "lookup" } };
     case "create":
       return { ...base, icon: { kind: "create" }, word: "Issue" };
+    case "theme":
+      return { ...base, icon: { kind: "theme" }, swatches: row.swatches, check: row.current ? "on" : "off" };
+    case "usage":
+      return { ...base, icon: { kind: "agent", agentId: row.agentId, label: row.label }, meter: row.meter };
   }
 }
