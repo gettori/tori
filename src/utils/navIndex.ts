@@ -129,6 +129,25 @@ function mentionsAt(ids: readonly IssueId[], origin: string | null): PlaceMentio
   return out.length ? out : undefined;
 }
 
+/** A unit's branch, or its label when it has none. */
+export const unitName = (u: { branch: string | null; label: string }) => u.branch ?? u.label;
+
+/** The id of a session's place. */
+export const sessionPlaceId = (id: string) => `session:${id}`;
+
+/** The id of the place a selection is on. */
+export function placeIdOf(sel: {
+  kind?: string;
+  topicId?: string;
+  chatId?: string;
+  folderPath: string;
+  branch: string;
+}): string | null {
+  if (sel.kind === "topic") return sel.topicId ? `topic:${sel.topicId}` : null;
+  if (sel.kind === "chat") return sel.chatId ? `chat:${sel.chatId}` : null;
+  return sel.folderPath ? `unit:${unitKey(sel.folderPath, sel.branch)}` : null;
+}
+
 /** The numbers a place answers to, for the ranker. */
 export function placeNumbers(place: Place): RankNumber[] {
   const repo = place.repo ?? null;
@@ -191,8 +210,8 @@ export function buildPlaces(input: PlaceInputs): Place[] {
         projectDot = worse(projectDot, dot);
         units.push({
           kind: "unit",
-          id: `unit:${unitKey(u.folderPath, u.branch)}`,
-          title: u.branch ?? u.label,
+          id: `unit:${unitKey(u.folderPath, unitName(u))}`,
+          title: unitName(u),
           trail: `${space} / ${p.name}`,
           unitKind: u.kind,
           ticket: ticketOf(u.issue, repo),
@@ -277,7 +296,7 @@ export function buildPlaces(input: PlaceInputs): Place[] {
       : `${projectName.get(s.home.project) ?? basename(s.home.project)} / ${s.home.branch ?? basename(s.home.folder)}`;
     return {
       kind: "session",
-      id: `session:${s.id}`,
+      id: sessionPlaceId(s.id),
       title: s.name || s.title || "Untitled session",
       trail: s.profile_label ? `${where}, ${s.profile_label}` : where,
       mentions: mentionsAt(input.mentionsOf(s.id), input.originOf(s.home.project)),

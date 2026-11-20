@@ -40,10 +40,16 @@ import {
   livePlaces,
   livePr,
   liveProjects,
+  placeIdOf,
   placeNumbers,
+  sessionPlaceId,
   watchSessionsOverview,
   type Place,
 } from "../../utils/navIndex";
+import { loadVisits, recentPlaces } from "../../utils/visitLog";
+import { loadPicks, picksFor, savePicks, withPick } from "../../utils/pickHistory";
+import { needsYouEvents, openEvent } from "../../utils/needsYouInbox";
+import { kindLabel, type NeedsYouEvent } from "../../utils/needsYouSignals";
 import { topics } from "../../utils/topicStore";
 import { rank, type RankInput } from "../../utils/navRank";
 import { numberHit, numberQuery, ticketLabel, type NumberQuery } from "../../utils/navNumber";
@@ -79,6 +85,7 @@ const MAX_RESULTS = 200;
 const MAX_RECENTS = 5;
 
 const MAX_EVERYTHING = 50;
+const RECENT_PLACES = 5;
 
 /** One listed file: which root it came from, and where it sits inside it.
  *  Inside a Topic the rel path alone no longer identifies a file. */
@@ -772,10 +779,10 @@ export default function Omnibox(props: {
     })),
   );
 
-  // Built only while a query is typed in the all home: the inputs move on every
-  // status change, and nothing else here reads them.
-  const searchingPlaces = createMemo(() => mode() === "all" && !!term());
-  const places = createMemo(() => (searchingPlaces() ? livePlaces() : []));
+  // Built only in the all home: the inputs move on every status change, and
+  // nothing else here reads them.
+  const inAll = createMemo(() => mode() === "all");
+  const places = createMemo(() => (inAll() ? livePlaces() : []));
 
   function placeRow(place: Place): Row {
     return {
@@ -793,9 +800,10 @@ export default function Omnibox(props: {
   }
 
   function rankInput(row: Row): RankInput {
-    if (row.kind !== "place") return { fields: [{ slot: "title", text: row.label }], penalty: true };
+    if (row.kind !== "place") return { id: row.id, fields: [{ slot: "title", text: row.label }], penalty: true };
     const ticket = row.place.ticket?.title;
     return {
+      id: row.id,
       fields: [
         { slot: "title", text: row.label },
         { slot: "trail", text: row.sub ?? "" },
@@ -889,10 +897,66 @@ export default function Omnibox(props: {
 
   const firstCreated = () => lookupRows().find((row) => row.kind === "create")?.id ?? null;
 
+  const visits = loadVisits();
+  const picks = loadPicks();
+  const here = props.selected ? placeIdOf(props.selected) : null;
+
+  function needsYouRow(e: NeedsYouEvent, byId: Map<string, Place>): Row {
+    const unit = e.branch ? placeIdOf({ folderPath: e.folder, branch: e.branch }) : null;
+    const live = (e.session && byId.get(sessionPlaceId(e.session))) || (unit ? byId.get(unit) : undefined);
+    const label = e.title || live?.title || basename(e.folder);
+    const place: Place = live
+      ? { ...live, dot: "needsYou" }
+      : {
+          kind: e.session ? "session" : "unit",
+          id: e.id,
+          title: label,
+          trail: "",
+          dot: "needsYou",
+          target: { folder: e.folder },
+        };
+    return {
+      ...placeRow(place),
+      id: `needs:${e.id}`,
+      label,
+      sub: kindLabel(e.kind),
+      section: "Needs you",
+      run: () => openEvent(e),
+    };
+  }
+
+  // The empty all home. Needs you is what the Inbox's Needs you tab counts.
+  const emptyAllRows = createMemo((): Row[] => {
+    const byId = new Map(places().map((p) => [p.id, p]));
+    const needs = needsYouEvents()
+      .filter((e) => e.resolvedAt === null)
+      .sort((a, b) => b.ts - a.ts)
+      .map((e) => needsYouRow(e, byId));
+    const recent = recentPlaces(visits, places(), here)
+      .slice(0, RECENT_PLACES)
+      .map((p): Row => ({ ...placeRow(p), section: "Recent" }));
+    const commands = commandRows();
+    const sel = props.selected;
+    const suggested = [
+      sel && sel.kind !== "chat" ? commands.find((r) => r.id.startsWith("new:")) : undefined,
+      commands.find((r) => r.id === `add-unit:${unitOf(sel)?.projectPath}`),
+      commands.find((r) => r.id === "open-pr"),
+    ].flatMap((r): Row[] => (r ? [{ ...r, section: "Suggested" }] : []));
+    const rows = [...needs, ...recent, ...suggested];
+    return rows.length ? rows : commands;
+  });
+
+  const firstRecent = () =>
+    inAll() && !term() ? (emptyAllRows().find((row) => row.section === "Recent")?.id ?? null) : null;
+
   const everythingRows = createMemo((): Row[] => {
     const q = term();
-    if (!q) return commandRows();
-    const ranked = rank([...places().map(placeRow), ...commandRows()], q, rankInput);
+    if (!q) return emptyAllRows();
+    const ranked = rank([...places().map(placeRow), ...commandRows()], q, rankInput, {
+      picked: picksFor(picks, q),
+      visited: visits,
+      current: here,
+    });
     const rows = ranked.slice(0, MAX_EVERYTHING).map(({ item, marks }): Row => {
       if (item.kind !== "place") return { ...item, marks: marks.title, subMarks: marks.trail };
       const viaTicket = marks.ticket || marks.ticketTitle;
@@ -1074,12 +1138,14 @@ export default function Omnibox(props: {
           const browser = browserNext;
           browserNext = false;
           if (!item) return;
+          if (inAll() && term() && (item.kind === "place" || item.kind === "command") && !item.disabled)
+            savePicks(withPick(picks, term(), item.id));
           const href = item.href;
           if (browser && href) close(() => openInBrowser(href));
           else pick(item);
         }}
         onActiveChange={setActive}
-        initialActive={firstCreated()}
+        initialActive={firstCreated() ?? firstRecent()}
         itemComponent={rowContent}
         inputRef={(el) => (input = el)}
         placeholder={specOf(props.home).placeholder}

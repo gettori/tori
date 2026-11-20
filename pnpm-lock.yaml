@@ -17,6 +17,11 @@ overrides:
   vite@*: npm:@voidzero-dev/vite-plus-core@1.3.0
   katex@<0.18.2: ^0.18.2
 
+patchedDependencies:
+  '@kobalte/core@0.13.13':
+    hash: 37a57dc3644c0543a87ac8bb985b6a9fed1679c62492a5fa6588e3c4a0181862
+    path: patches/@kobalte__core@0.13.13.patch
+
 importers:
 
   .:
@@ -62,7 +67,7 @@ importers:
         version: 6.43.4
       '@kobalte/core':
         specifier: ^0.13.13
-        version: 0.13.13(solid-js@1.9.17)
+        version: 0.13.13(patch_hash=37a57dc3644c0543a87ac8bb985b6a9fed1679c62492a5fa6588e3c4a0181862)(solid-js@1.9.17)
       '@lezer/common':
         specifier: ^1.5.2
         version: 1.5.2
@@ -3963,7 +3968,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  '@kobalte/core@0.13.13(solid-js@1.9.17)':
+  '@kobalte/core@0.13.13(patch_hash=37a57dc3644c0543a87ac8bb985b6a9fed1679c62492a5fa6588e3c4a0181862)(solid-js@1.9.17)':
     dependencies:
       '@floating-ui/dom': 1.8.0
       '@internationalized/number': 3.6.7
