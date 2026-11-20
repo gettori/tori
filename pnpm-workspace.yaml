@@ -5,6 +5,8 @@ overrides:
   vite@*: "catalog:"
   # mermaid still asks for ^0.16, which carries GHSA-238p-pmpm-9mq7.
   katex@<0.18.2: ^0.18.2
+patchedDependencies:
+  "@kobalte/core@0.13.13": patches/@kobalte__core@0.13.13.patch
 peerDependencyRules:
   allowedVersions:
     vite: 1.1.0

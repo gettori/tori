@@ -9,8 +9,19 @@ export type RankField = { slot: string; text: string; hidden?: boolean };
  *  pull request, a number in the branch name, an issue a session mentioned. */
 export type RankNumber = { kind: "issue" | "pr" | "branch" | "mention"; slot: string; id: IssueId; digitsAt: number };
 
-/** `penalty` is for commands and settings, so a place wins a tie with them. */
-export type RankInput = { fields: readonly RankField[]; numbers?: readonly RankNumber[]; penalty?: boolean };
+/** `penalty` is for commands and settings, so a place wins a tie with them.
+ *  `id` is what `RankHistory` names the row by. */
+export type RankInput = {
+  id?: string;
+  fields: readonly RankField[];
+  numbers?: readonly RankNumber[];
+  penalty?: boolean;
+};
+
+/** What orders rows of equal score: picked for this query, newest pick first,
+ *  then by how recently they were visited, then the rest, with the place you
+ *  are on after all of them. */
+export type RankHistory = { picked: readonly string[]; visited: readonly string[]; current: string | null };
 
 /** `marks` is keyed by slot, so it also says which fields matched. */
 export type Ranked<T> = { item: T; score: number; marks: Record<string, Range[]> };
@@ -91,14 +102,29 @@ function merge(ranges: Range[]): Range[] {
   return out;
 }
 
-/** The items every word of `query` matches somewhere, best first, ties in the
- *  order given. An empty query keeps every item, in order, unmarked. */
-export function rank<T>(items: readonly T[], query: string, input: (item: T) => RankInput): Ranked<T>[] {
+function tieOf(id: string | undefined, history: RankHistory | undefined): number {
+  if (!history || id === undefined) return 0;
+  if (id === history.current) return Number.MAX_SAFE_INTEGER;
+  const picked = history.picked.indexOf(id);
+  if (picked >= 0) return picked;
+  const visited = history.visited.indexOf(id);
+  return history.picked.length + (visited >= 0 ? visited : history.visited.length);
+}
+
+/** The items every word of `query` matches somewhere, best first, ties by
+ *  `history` and then in the order given. An empty query keeps every item, in
+ *  order, unmarked. */
+export function rank<T>(
+  items: readonly T[],
+  query: string,
+  input: (item: T) => RankInput,
+  history?: RankHistory,
+): Ranked<T>[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return items.map((item) => ({ item, score: 0, marks: {} }));
-  const out: (Ranked<T> & { at: number })[] = [];
+  const out: (Ranked<T> & { at: number; tie: number })[] = [];
   items.forEach((item, at) => {
-    const { fields, numbers, penalty } = input(item);
+    const { id, fields, numbers, penalty } = input(item);
     const marks: Record<string, Range[]> = {};
     let score = penalty ? -PENALTY : 0;
     for (const word of words) {
@@ -115,8 +141,8 @@ export function rank<T>(items: readonly T[], query: string, input: (item: T) => 
       marks[best.slot] = [...(marks[best.slot] ?? []), ...best.ranges];
     }
     for (const slot of Object.keys(marks)) marks[slot] = merge(marks[slot]);
-    out.push({ item, score, marks, at });
+    out.push({ item, score, marks, at, tie: tieOf(id, history) });
   });
-  out.sort((a, b) => b.score - a.score || a.at - b.at);
+  out.sort((a, b) => b.score - a.score || a.tie - b.tie || a.at - b.at);
   return out.map(({ item, score, marks }) => ({ item, score, marks }));
 }

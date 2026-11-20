@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vite-plus/test";
-import { rank, type RankInput, type RankNumber } from "./navRank";
+import { rank, type RankHistory, type RankInput, type RankNumber } from "./navRank";
 
 type Row = { id: string; title: string; trail?: string; ticket?: string; command?: boolean };
 
@@ -160,5 +160,37 @@ describe("the ranker's numbers", () => {
       { id: "run", title: "release-92", numbers: [] },
     ];
     expect(rank(rows, "92", numbered).map((r) => r.item.id)).toEqual(["run"]);
+  });
+});
+
+describe("the ranker's tie-breaks", () => {
+  const rows: Row[] = [
+    { id: "a", title: "side-a" },
+    { id: "b", title: "side-b" },
+    { id: "c", title: "side-c" },
+    { id: "d", title: "side-d" },
+  ];
+  const tied = (history: RankHistory) => rank(rows, "side", (r) => ({ ...fields(r), id: r.id }), history);
+  const order = (history: RankHistory) => tied(history).map((r) => r.item.id);
+
+  it("puts what was picked for the query first, newest pick first, then visits by recency", () => {
+    expect(order({ picked: ["c", "b"], visited: ["d", "b"], current: null })).toEqual(["c", "b", "d", "a"]);
+  });
+
+  it("puts the place you are on after every other tied row, even when it was picked", () => {
+    expect(order({ picked: ["a"], visited: ["a", "b"], current: "a" })).toEqual(["b", "c", "d", "a"]);
+  });
+
+  it("never lifts a row over a better score", () => {
+    const scored = rank(
+      [
+        { id: "exact", title: "side" },
+        { id: "picked", title: "side-panel" },
+      ],
+      "side",
+      (r) => ({ ...fields(r), id: r.id }),
+      { picked: ["picked"], visited: ["picked"], current: "exact" },
+    );
+    expect(scored.map((r) => r.item.id)).toEqual(["exact", "picked"]);
   });
 });

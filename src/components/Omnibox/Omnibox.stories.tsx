@@ -11,6 +11,8 @@ import { ensureChatsRoot } from "../../utils/chats";
 import { noteDots, noteLiveTabs } from "../../utils/sessionActivity";
 import { noteForgeEnabled, noteWatchedProjects, pollNow, refreshForgeAccounts } from "../../utils/forgeStatus";
 import type { UnitStatus } from "../../utils/forgeTypes";
+import { refreshNeedsYou } from "../../utils/needsYouInbox";
+import type { NeedsYouEvent } from "../../utils/needsYouSignals";
 
 // The command palette, one story per mode, since a mode is the whole shape of
 // what is on screen rather than a variant of it.
@@ -121,6 +123,25 @@ const OVERVIEW: OverviewSession[] = [
   },
 ];
 
+const waiting = (id: string, session: OverviewSession, kind: NeedsYouEvent["kind"], ts: number): NeedsYouEvent => ({
+  id,
+  ts,
+  session: session.id,
+  folder: session.home.folder,
+  branch: session.home.branch,
+  project: "tori",
+  title: session.name ?? session.title,
+  kind,
+  resolvedAt: null,
+  settled: false,
+  chat: false,
+});
+
+const NEEDS: NeedsYouEvent[] = [
+  waiting("n-1", OVERVIEW[0], "permission", 2),
+  waiting("n-2", OVERVIEW[1], "question", 1),
+];
+
 function status(branch: string): UnitStatus {
   const [number, title, over] = PULLS[branch];
   return {
@@ -158,6 +179,7 @@ function seedPlaces() {
     (cmd, args) => {
       const a = (args ?? {}) as Record<string, unknown>;
       if (cmd === "sessions_overview") return OVERVIEW;
+      if (cmd === "needs_you_list") return NEEDS;
       if (cmd === "chats_root") return CHATS;
       if (cmd === "list_sessions" && a.folder === CHATS)
         return [{ ...OVERVIEW[0], id: "c-1", cwd: `${CHATS}/.home/c-1`, name: "Sidecar ideas", path: "", branch: "" }];
@@ -293,6 +315,33 @@ export const Side: Story = {
     seed();
     seedPlaces();
     return <Omnibox {...args} />;
+  },
+};
+
+/** Cmd+K with nothing typed, on `fix-side-effects`: what is waiting on you,
+ *  where you were before (this worktree and a place that has gone left out,
+ *  the first row highlighted), and what to do next here. */
+export const Recents: Story = {
+  args: {
+    home: "all",
+    selected: { ...selection, folderPath: SIDE, branch: "fix-side-effects", projectKind: "worktree" },
+  },
+  render: (args) => {
+    seed();
+    localStorage.setItem(
+      "tori.visits",
+      JSON.stringify([
+        `unit:${SIDE} fix-side-effects`,
+        `unit:${SEARCH} sidebar-search`,
+        "topic:t-1",
+        `unit:${REPO}-wt/gone gone`,
+        "chat:c-1",
+        `unit:${WEB} main`,
+      ]),
+    );
+    seedPlaces();
+    void refreshNeedsYou();
+    return <Omnibox {...args} prefix="" />;
   },
 };
 

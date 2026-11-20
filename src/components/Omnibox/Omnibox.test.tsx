@@ -167,8 +167,7 @@ describe("the prefix router", () => {
     expect((input() as HTMLInputElement).value).toBe("");
     expect(bridge.calls).not.toContain("list_project_files");
     expect(screen.getByText("Everything")).toBeTruthy();
-    expect(rowLabels()).toContain("Toggle Sidebar");
-    expect(rowLabels()).toContain("Open Settings");
+    expect(rowLabels()).toEqual(["New Claude session"]);
 
     typeInto(">side");
     expect(screen.getByText("Commands")).toBeTruthy();

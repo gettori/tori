@@ -154,7 +154,7 @@ import {
   liveSessionStatuses,
   inUnit,
 } from "../../utils/sessionActivity";
-import { noteNavTree } from "../../utils/navIndex";
+import { noteNavTree, unitName } from "../../utils/navIndex";
 import { forgeChip, forgeDoor } from "../../utils/forgeChip";
 import {
   finishedLook,
@@ -724,7 +724,7 @@ export default function LeftSidebar(props: {
   function unitAt(p: Project, folderPath: string, branch?: string | null): BranchUnit | undefined {
     const here = p.branchUnits.filter((u) => sameCwd(u.folderPath, folderPath));
     if (here.length < 2) return here[0];
-    return (branch ? here.find((u) => unitLabel(u) === branch) : undefined) ?? here.find((u) => u.isCurrent) ?? here[0];
+    return (branch ? here.find((u) => unitName(u) === branch) : undefined) ?? here.find((u) => u.isCurrent) ?? here[0];
   }
 
   // No `ensureBranch`: navigating must not check anything out behind a click
@@ -760,7 +760,7 @@ export default function LeftSidebar(props: {
       projectName: p.name,
       projectPath: p.path,
       folderPath: u.folderPath,
-      branch: unitLabel(u),
+      branch: unitName(u),
       branchLabel: displayBranch(u),
       projectKind: u.kind,
       // A selection persisted before accounts existed has no profile field, so
@@ -2768,9 +2768,9 @@ export default function LeftSidebar(props: {
     // torn down here a moment later.
     const running = (await Promise.all(losers.map((l) => countRunningAgents(l.path)))).reduce((a, b) => a + b, 0);
     const ok = await askConfirm({
-      title: `Promote “${unitLabel(u)}”?`,
+      title: `Promote “${unitName(u)}”?`,
       message:
-        `“${unitLabel(u)}” is kept as it is, on its own branch and unmerged. ` +
+        `“${unitName(u)}” is kept as it is, on its own branch and unmerged. ` +
         (n === 0
           ? "It stops being an attempt."
           : `The other ${n} attempt${n === 1 ? "" : "s"} in this group ` +
@@ -3378,7 +3378,6 @@ export default function LeftSidebar(props: {
   // list is a deliberate act, and it should still be open next launch.
   const mkey = (g: Group, p: Project) => `m:${g.name}/${p.name}`;
 
-  const unitLabel = (u: BranchUnit) => u.branch ?? u.label;
   const currentBranch = (p: Project) => p.branchUnits.find((u) => u.isCurrent)?.branch ?? null;
 
   // Safe checkout guard (plain repos only). Opening/resuming a branch whose name
@@ -3425,7 +3424,7 @@ export default function LeftSidebar(props: {
       projectName: p.name,
       projectPath: p.path,
       folderPath: u.folderPath,
-      branch: unitLabel(u),
+      branch: unitName(u),
       branchLabel: displayBranch(u),
       projectKind: u.kind,
       // A unit with no session selected names no account: the profile arrives
@@ -3465,7 +3464,7 @@ export default function LeftSidebar(props: {
       projectName: p.name,
       projectPath: p.path,
       folderPath: u.folderPath,
-      branch: unitLabel(u),
+      branch: unitName(u),
       branchLabel: displayBranch(u),
       projectKind: u.kind,
       agent: s.agent,
@@ -3494,7 +3493,7 @@ export default function LeftSidebar(props: {
   // folder: the Topic row is its home, and the chip below points there.
   function unitSelected(u: BranchUnit) {
     const s = props.selected;
-    return s != null && s.kind !== "topic" && s.folderPath === u.folderPath && s.branch === unitLabel(u);
+    return s != null && s.kind !== "topic" && s.folderPath === u.folderPath && s.branch === unitName(u);
   }
 
   // The Topics this folder is a member of, so a unit row can point back at

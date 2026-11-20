@@ -1,0 +1,28 @@
+diff --git a/dist/chunk/3NGA46QE.js b/dist/chunk/3NGA46QE.js
+index 6921950581071a5c434cc08f4db240d30ac64c1f..afdecea01a380d500bcab063d5b653177cfbd454 100644
+--- a/dist/chunk/3NGA46QE.js
++++ b/dist/chunk/3NGA46QE.js
+@@ -56,8 +56,7 @@ function buildNodes(params) {
+       nodes.push({
+         type: "section",
+         rawValue: data,
+-        key: "",
+-        // not applicable here
++        key: `__kobalte_section_${index}`,
+         textValue: "",
+         // not applicable here
+         disabled: false,
+diff --git a/dist/chunk/FKUFPCQ6.jsx b/dist/chunk/FKUFPCQ6.jsx
+index 19485ef8cbf5c0d5b2cfd4d95f13356c18fe663c..95c2c0d7f28cf011a6a243f6919daef0ce887446 100644
+--- a/dist/chunk/FKUFPCQ6.jsx
++++ b/dist/chunk/FKUFPCQ6.jsx
+@@ -58,8 +58,7 @@ function buildNodes(params) {
+       nodes.push({
+         type: "section",
+         rawValue: data,
+-        key: "",
+-        // not applicable here
++        key: `__kobalte_section_${index}`,
+         textValue: "",
+         // not applicable here
+         disabled: false,
