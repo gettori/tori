@@ -31,6 +31,8 @@ static FOUND: Mutex<Option<Found>> = Mutex::new(None);
 
 static INSTALLING: AtomicBool = AtomicBool::new(false);
 
+static CANCEL: AtomicBool = AtomicBool::new(false);
+
 /// Gap after a check that actually reached GitHub.
 const CHECK_INTERVAL_SECS: u64 = 6 * 60 * 60;
 
@@ -73,14 +75,14 @@ impl Found {
 /// when no check in this process has found one.
 ///
 /// Deliberately not a general `open_url(url)` command: the frontend hands in
-/// no URL, the backend builds it from a tag GitHub returned, so the frontend
-/// cannot be talked into opening something arbitrary. Matches `launch.rs`'s
-/// "spawn the real tool" convention.
+/// no URL, so it cannot be talked into opening something arbitrary. Matches
+/// `launch.rs`'s "spawn the real tool" convention.
+///
+/// The list rather than the found tag's page: an update can skip several
+/// releases, and what changed is spread across all of them.
 #[tauri::command(async)]
 pub fn open_releases_page() -> Result<(), String> {
-    let found = FOUND.lock().ok().and_then(|f| f.as_ref().map(|f| f.tag.clone()));
-    let url = found.map_or_else(|| RELEASES_PAGE.to_string(), |tag| format!("{RELEASES_PAGE}/tag/{tag}"));
-    crate::exec::spawn_detached(Command::new("open").arg(url)).map_err(|e| e.to_string())
+    crate::exec::spawn_detached(Command::new("open").arg(RELEASES_PAGE)).map_err(|e| e.to_string())
 }
 
 /// Start this app's bundle again and quit this process.
@@ -357,9 +359,13 @@ struct Progress {
 /// Download the found update, verify it, and put it in place of the running
 /// bundle. The running process keeps its own files open, so it carries on
 /// until the user restarts; the daemon follows once no session is working.
+///
+/// Answers the version it installed. What the pill offered may be up to a
+/// throttle interval old, so the newest release is looked up again first and
+/// wins when it is newer; offline, the offered one is installed.
 #[tauri::command]
-pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
-    let found = FOUND
+pub async fn install_update(app: tauri::AppHandle) -> Result<String, String> {
+    let offered = FOUND
         .lock()
         .ok()
         .and_then(|f| f.clone())
@@ -368,7 +374,17 @@ pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
     if INSTALLING.swap(true, Ordering::SeqCst) {
         return Err("An update is already installing.".to_string());
     }
+    CANCEL.store(false, Ordering::SeqCst);
+    let current = app.package_info().version.to_string();
     let done = crate::exec::blocking("install_update", move || {
+        let found = fetch_releases()
+            .and_then(|releases| newest(&releases, &current, ASSET_ARCH))
+            .filter(|newer| parse_semver(&newer.version) > parse_semver(&offered.version))
+            .map_or(offered, |newer| {
+                write_throttle(&throttle_path(), CHECK_INTERVAL_SECS, Some(&newer));
+                remember(Some(newer.clone()));
+                newer
+            });
         let mut last = 0;
         install(&found.url, found.size, &found.version, &bundle, |received, total| {
             let percent = received * 100 / total.max(1);
@@ -377,10 +393,19 @@ pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
                 let _ = app.emit(PROGRESS_EVENT, Progress { received, total });
             }
         })
+        .map(|()| found.version)
     })
     .await;
     INSTALLING.store(false, Ordering::SeqCst);
     done
+}
+
+/// Stop a download in flight. Once the download is in, extracting, verifying
+/// and the swap run to the end: stopping between them would gain nothing and
+/// the swap must not be cut in half.
+#[tauri::command]
+pub fn cancel_update() {
+    CANCEL.store(true, Ordering::SeqCst);
 }
 
 fn install(url: &str, size: u64, version: &str, bundle: &Path, progress: impl FnMut(u64, u64)) -> Result<(), String> {
@@ -426,6 +451,9 @@ fn download(url: &str, size: u64, to: &Path, mut progress: impl FnMut(u64, u64))
     let mut buf = vec![0; 64 * 1024];
     let mut received = 0;
     loop {
+        if CANCEL.load(Ordering::SeqCst) {
+            return Err("Update cancelled.".to_string());
+        }
         let n = reader.read(&mut buf).map_err(|e| format!("download failed: {e}"))?;
         if n == 0 {
             break;

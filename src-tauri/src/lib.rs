@@ -656,6 +656,7 @@ pub fn run() {
             update::check_for_update_now,
             update::open_releases_page,
             update::install_update,
+            update::cancel_update,
             update::relaunch,
             crash::record_webview_error,
             crash::crash_logs,
