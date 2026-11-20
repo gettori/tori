@@ -10,6 +10,35 @@ matching section here fails the release rather than publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.1120.0-beta
+
+- Tooltips wait for you to stop on a control. Moving down the sidebar no longer pops a tooltip on every row you pass, and a tooltip no longer stays over the row you're moving to.
+- A chat that has been running all day no longer slows the whole app down a little more with every tool call. The cost of each incoming frame is now close to flat however long the session is.
+- Cmd+K is now **Go to Anything**: one list with your spaces, projects, branches and worktrees, Topics, chats, sessions in every space, and review requests, ranked together with commands and settings. Cmd+P still opens on files, and `/` reaches files from Cmd+K.
+- With nothing typed, Cmd+K shows **Needs you**, your last five places under **Recent** (Cmd+K then Enter takes you back), and **Suggested** actions for where you are.
+- Type an issue or PR number (`92`, `#92`, `tickets#92`, or paste its URL) to find the branch or Topic linked to it, the branch with that PR, a branch with the number in its name, or a chat that mentioned it. When nothing has it, **Look up** asks the host and offers **Start a worktree from** the issue.
+- `Cmd+Enter` on a row opens its PR, else its issue, in the browser.
+- Link an issue to a branch or Topic after the fact: **Link issue...** and **Unlink issue** in their menus and in Cmd+K.
+- When a chat reads an issue or you send it an issue URL, a **Mentioned** chip above the composer offers to link it to the chat's branch or Topic.
+- New rows in Cmd+K: Session History, New Terminal, Continue This Session in Chat, the Inbox tabs, Autopilot, Open PR or issue in browser, Copy branch name, Copy path, Open localhost ports, Add worktree to a project, Project settings and their sections, New Topic, New Space, New Project, Attach Folder, Space Settings, Sort Projects into Spaces, Pair a Phone and Show Graph.
+- Themes are rows in Cmd+K: arrow onto one to preview it, Enter keeps it, Escape puts yours back.
+- Settings with a few fixed values (Timestamps, Transcript density and four more) have a row per value, toggles show On or Off, and every Settings tab has a **Settings:** row.
+- Each usage account is a row with its levels and a meter; Enter opens its usage card.
+- Paste a file's absolute path into Cmd+K or Cmd+P to go to its worktree and open the file, at a line if you pasted `:12`. Paste `localhost:5173` to go to the worktree serving it.
+- Every typed list ends with **New chat:** and your text (a draft, not sent), and a branch-like name also offers **New worktree** with that name. When nothing matches, the box says so and offers **Search files for** your text.
+- Fixed: Pair a Phone and the phone indicator opened Settings on whatever tab was last, and a grouped list (Cmd+P's "Recently visited") lost its headings after an update.
+- Toasts are easier to spot: they sit on a lifted card with a border and an icon, and follow the theme you picked.
+- Finished actions like Pull, Push, Fetch and a finished setup show a green toast.
+- Error toasts stay until you close them. Other toasts still go away after 8 seconds, and now wait while Tori is in the background.
+- Toasts stack into a deck in the bottom right corner. Hover it, or press `Cmd+Opt+T`, to see them all. **Clear all** closes every toast at once.
+- The update notice in the title bar is easier to spot and shows the new version, for example **Update available 26.1120.0**. Click it to open the update panel with **Install**, **What's new** and **Later**.
+- While an update downloads, the panel shows a progress bar and **Cancel**. Close the panel any time, the notice keeps the progress and opens the panel again on click.
+- When you are several releases behind, **Install** gets the newest release, not the one Tori found when it last checked.
+- **What's new** opens the releases list, since one update can skip several releases.
+- A theme file can set how strong its borders are: write `borderTint` or `lineTint` with an alpha, like `#e6edf33c`.
+- A theme that just misses the contrast floor no longer reports "4.50, needs 4.5".
+- macOS 26.1120.0-beta ships; Android 26.1120.0-beta ships; browser extension 26.1120.0 ships, rolling out on the Chrome Web Store; push relay unchanged at 26.1030.0-beta.
+
 ## 26.1117.0-beta
 
 - Each account in Settings > Hosts can have a commit author. **Set author** fills it from the host (the noreply address on github.com and gitlab.com). Repos on the account commit as it in Tori, terminals, your editor and agents.
