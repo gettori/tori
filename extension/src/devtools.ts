@@ -6,6 +6,7 @@ const KEEP = 200;
 
 type Har = chrome.devtools.network.Request;
 export type PanelWindow = Window & { attach?: (network: DevToolsNetwork) => void };
+export type SidebarWindow = Window & { shown?: () => void; hidden?: () => void };
 
 let origin = "";
 let next = 0;
@@ -77,4 +78,16 @@ const network: DevToolsNetwork = {
 
 chrome.devtools.panels.create("Tori", "icons/32.png", "panel.html", (panel) => {
   panel.onShown.addListener((win) => (win as PanelWindow).attach?.(network));
+});
+
+// Pane events reach only this page, so it passes them on to the pane's own page.
+chrome.devtools.panels.elements.createSidebarPane("Tori", (pane) => {
+  let shownIn: SidebarWindow | null = null;
+  pane.setPage("sidebar.html");
+  pane.setHeight("160px");
+  pane.onShown.addListener((win) => {
+    shownIn = win as SidebarWindow;
+    shownIn.shown?.();
+  });
+  pane.onHidden.addListener(() => shownIn?.hidden?.());
 });
