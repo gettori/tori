@@ -1,8 +1,8 @@
 ---
 summary: Combobox renders its listbox as a plain sibling with no Content or Portal, since the dialog around it owns dismissal
 status: current
-updated: 2026-08-16
-source: "plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (personal/tori, branch `110-pickermodal-and-chatpicker`, issue #110, part of #93, PR #140); `src/components/Combobox/Combobox.tsx`, `Combobox.test.tsx`, `Combobox.stories.tsx`, `src/lib/combobox.ts`, `src/lib/combobox.test.tsx`; commits `bd86d48` (the seam), `3289a6e` (picker), `9d471b7` (palette)"
+updated: 2026-11-20
+source: "plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (personal/tori, branch `110-pickermodal-and-chatpicker`, issue #110, part of #93, PR #140); `src/components/Combobox/Combobox.tsx`, `Combobox.test.tsx`, `Combobox.stories.tsx`, `src/lib/combobox.ts`, `src/lib/combobox.test.tsx`; commits `bd86d48` (the seam), `3289a6e` (picker), `9d471b7` (palette); section keys patched in plan \"Cmd+K navigator\" (branch `cmdk-improvements`), commit `8cc77a78`"
 ---
 
 # Combobox (the one filter-and-pick surface)
@@ -50,7 +50,7 @@ Both behaviours have tests named after them, because the `Bridge` renders nothin
 
 `options` is `ComboboxOption[]` **or** `ComboboxGroup[]`, and the wrapper declares `optionGroupChildren` only for a grouped list. This is not a style preference: Kobalte reads that key off every top-level entry, so one bare option in a list that declares it throws on `undefined.filter` ([[gotcha_kobaltes_optiongroupchildren_is_all_or_nothing]]). A throw rather than a mis-render is the good version, and it is what makes a caller with a headed block and a bare tail name the tail too.
 
-The wrapper also **rebuilds** the list rather than reconciling it when the headings change (`Combobox.tsx:99,190`), because Kobalte builds every section node with `key: ""` and renders the collection through `<Key by="key">`. See [[gotcha_kobalte_builds_every_listbox_section_with_an_empty_key]]. A flat list yields a constant signature there, so it never remounts.
+Headings survive an update only because of our pnpm patch on Kobalte, which keys each section by its index: Kobalte builds every section node with `key: ""` and renders the collection through `<Key by="key">`, so unpatched every heading collapses into the last. The wrapper used to remount the list on a heading change instead; the patch replaced that in the Cmd+K navigator work, and the "keeps every heading" case guards it. See [[gotcha_kobalte_builds_every_listbox_section_with_an_empty_key]].
 
 ## Chrome
 
@@ -89,3 +89,5 @@ String in, string out: Kobalte traffics in the option object, the wrapper keeps 
 - [[lesson_characterize_the_contract_not_the_shape]] for how both consumers' suites were carried across
 - [[lesson_a_declaration_goes_inert_when_its_parent_changes]] for what the palette's scroller did on the way
 - [[gotcha_a_creatable_filter_picker_must_not_create_on_enter_while_rows_still_match]], the picker rule `onKeyDown` exists to serve
+- [[gotcha_kobalte_combobox_commits_on_enter_whatever_the_modifiers]] for a second action on Cmd+Enter
+- [[gotcha_kobalte_finds_an_option_by_an_unescaped_data_key_selector]] for which values are safe as option ids

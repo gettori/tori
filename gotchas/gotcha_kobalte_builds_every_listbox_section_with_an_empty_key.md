@@ -1,10 +1,15 @@
 ---
-summary: Kobalte gives every listbox section key empty string, so a second heading added on update collides with the first
+summary: Kobalte keys every listbox section "", so an update collapses its headings into one; fixed by our pnpm patch, not upstream
 status: current
-updated: 2026-08-16
-source: "plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (personal/tori, branch `110-pickermodal-and-chatpicker`, issue #110, PR #140); `src/components/Combobox/Combobox.tsx:99,190`; commit `9d471b7`"
+updated: 2026-11-20
+source: "plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (personal/tori, branch `110-pickermodal-and-chatpicker`, issue #110, PR #140), commit `9d471b7`; replaced by the patch in plan \"Cmd+K navigator\" (branch `cmdk-improvements`), Phase 11, commit `8cc77a78`; `patches/@kobalte__core@0.13.13.patch`; `pnpm-workspace.yaml` patchedDependencies"
 ---
 
 # Kobalte builds every listbox section with an empty key
 
-Do NOT assume a grouped Kobalte listbox survives gaining a second heading. The collection builder gives every `type: "section"` node `key: ""`, and the listbox renders the collection through `<Key each={[...collection()]} by="key">`, so two headings are two entries claiming one key. A first render is fine, which is what makes this hide: a statically-grouped list has always shown both headings. An **update** is not. Going from one heading to two comes back with one, sitting in the other one's place, and no error is raised. The Omnibox hits it the instant `list_project_files` answers and the project block appears under the recent blocks. Fix it in the wrapper rather than per consumer: derive a signature from the group labels and wrap the listbox in `<Show when={signature()} keyed>` so it is rebuilt instead of reconciled, which costs nothing for a flat list because the signature is then constant. See [[component_combobox]].
+Do NOT drop the pnpm patch on `@kobalte/core`, and do NOT expect an upgrade to fix this: 0.13.14 and 2.0.0-alpha.4 still ship it. Kobalte's collection builder gives every `type: "section"` node `key: ""`, and the listbox renders through `<Key by="key">`, so on any options update every heading maps onto one node and only the last one draws, with no error. A first render is fine, which is what hides it. `patches/@kobalte__core@0.13.13.patch` keys each section `__kobalte_section_${index}` in the two dist chunks; the keyboard delegate already skips non-item nodes. It replaced the keyed `<Show>` remount Combobox used to wrap the listbox in, and Combobox's "keeps every heading" case is the guard: it fails with the patch reverted. Why: the bug is in the dist build, so only a patch reaches it, and a remount reset the highlight and scroll on every heading change. `pnpm patch-commit` also reorders `overrides` in `pnpm-workspace.yaml`; put that back by hand.
+
+## Related
+
+- [[component_combobox]] the surface the patch serves
+- [[gotcha_kobaltes_optiongroupchildren_is_all_or_nothing]] the other grouped-list trap in the same surface

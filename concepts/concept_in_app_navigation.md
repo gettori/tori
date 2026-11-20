@@ -31,3 +31,4 @@ Anything that wants to take the user somewhere in Tori names a `NavTarget`, a fo
 - [[component_autopilot_cockpit]]: the main sender
 - [[component_presence]]: the notification click
 - [[gotcha_the_notification_plugins_desktop_send_never_reports_a_click]]: why a notification needed its own route here
+- [[component_nav_index]]: every Cmd+K place carries a `NavTarget`, a pasted path one with `file` and `line`
