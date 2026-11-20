@@ -15,8 +15,8 @@
 //
 // Pure and DOM-free on purpose: vitest runs in `node`, the guard script runs in
 // plain node, and Phase 7 runs this same module over user themes at load time.
-import { ROLES, ROLE_BY_ID, buildRoleValues } from "./roles";
-import type { Palette } from "./schema";
+import { ROLES, ROLE_BY_ID, buildRoleValues } from "./roles.ts";
+import type { Palette } from "./schema.ts";
 
 // ---- Colour maths (WCAG 2.1 relative luminance) ----
 
@@ -446,6 +446,9 @@ export function checkPalette(palette: Palette, rules = CONTRAST_RULES): Contrast
   return { paletteId: palette.id, failures, problems };
 }
 
+// Rounded down, because toFixed rounds 4.497 up to "4.50" beside "needs 4.5".
+const floor2 = (n: number) => (Math.floor(n * 100) / 100).toFixed(2);
+
 /** One line per finding, for a test message or the guard's stderr. */
 export function formatReport(report: ContrastReport): string[] {
   return [
@@ -453,7 +456,7 @@ export function formatReport(report: ContrastReport): string[] {
     ...report.failures.map(
       (f) =>
         `${report.paletteId}: ${f.role} (${f.cssVar}) on ${f.surface} ` +
-        `is ${f.ratio.toFixed(2)}, needs ${f.required.toFixed(1)} (${f.tier})`,
+        `is ${floor2(f.ratio)}, needs ${f.required.toFixed(1)} (${f.tier})`,
     ),
   ];
 }
