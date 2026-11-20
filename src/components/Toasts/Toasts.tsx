@@ -1,4 +1,4 @@
-import { For, onCleanup } from "solid-js";
+import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { CircleAlert, CircleCheck, Info, X } from "lucide-solid";
 import { Toast } from "../../lib/toast";
@@ -20,9 +20,14 @@ import styles from "./Toasts.module.css";
 export type ToastAction = { label: string; run: () => void };
 export type ToastKind = "error" | "info" | "success";
 
+// An error stays until it is closed: it is the one kind that carries something
+// to read or act on, and it often lands while the user is looking elsewhere.
+
 const ICON = { error: CircleAlert, info: Info, success: CircleCheck };
 
 const TTL = 8000;
+const PEEKING = 3;
+const SHOWN = 5;
 
 /** Surface a toast from anywhere. The write API for the whole app: the TOAST
  *  event lands here, and the sidebar's `setError` forwards here. Empty and
@@ -37,7 +42,12 @@ export function pushToast(message: string, kind: ToastKind = "error", action?: T
     // axe's `list` rule, because role="status" strips the li of its listitem
     // role and an ol may only contain listitems. A stack of independent
     // status elements is not a list in any meaningful sense anyway.
-    <Toast.Root as="div" toastId={props.toastId} class={`${styles.toast} ${styles[kind]}`}>
+    <Toast.Root
+      as="div"
+      toastId={props.toastId}
+      persistent={kind === "error"}
+      class={`${styles.toast} ${styles[kind]}`}
+    >
       <span class={styles.toastIcon} aria-hidden="true">
         <Icon icon={ICON[kind]} />
       </span>
@@ -72,13 +82,13 @@ export function pushToast(message: string, kind: ToastKind = "error", action?: T
 }
 
 /** The one toast region, mounted once by App. Kobalte owns the list, the
- *  timers (8s, paused while hovered or focused), and Escape-dismissal of a
- *  focused toast; this component owns where toasts appear (portalled,
- *  bottom-right, newest at the bottom) and the TOAST event bridge.
+ *  timers (8s, paused while hovered, focused or while the window is in the
+ *  background), and Escape-dismissal of a focused toast; this component owns
+ *  where toasts appear (portalled, bottom-right), the deck they stack into, and
+ *  the TOAST event bridge.
  *
- *  Deliberate overrides of Kobalte's defaults, per the #105 characterization:
- *  `limit` lifted (the old stack never capped), `pauseOnPageIdle` off (toasts
- *  keep dismissing while the window is blurred, as before), and the built-in
+ *  Deliberate overrides of Kobalte's defaults: `limit` lifted (the deck shows
+ *  the newest few and keeps the rest until those close), and the built-in
  *  Alt+T document listener disabled: Option+letter types a glyph on macOS and
  *  the listener never yields to a defaultPrevented key, so the combo lives in
  *  the command registry instead (`focus-toasts`, Cmd+Option+T) and arrives
@@ -88,8 +98,12 @@ export function pushToast(message: string, kind: ToastKind = "error", action?: T
  *  is a window where a startup toast lands on nobody. */
 export default function ToastRegion(props: { duration?: number }) {
   let listEl: HTMLDivElement | undefined;
+  const [count, setCount] = createSignal(0);
   onCleanup(onWith<ToastEvent>(TOAST, (d) => pushToast(d.message, d.kind ?? "error", d.action)));
   onCleanup(onEvent(FOCUS_TOASTS, () => listEl?.focus({ preventScroll: true })));
+  onMount(() => {
+    if (listEl) onCleanup(observeStack(listEl, setCount));
+  });
   return (
     <Portal>
       <Toast.Region
@@ -99,11 +113,71 @@ export default function ToastRegion(props: { duration?: number }) {
         hotkey={["HandledByCommandRegistry"]}
         duration={props.duration ?? TTL}
         limit={Infinity}
-        pauseOnPageIdle={false}
         class={styles.toastRegion}
       >
+        <Show when={count() > 1}>
+          <div class={styles.clearAll}>
+            <Button size="xs" onClick={() => Toast.toaster.clear()}>
+              Clear all
+            </Button>
+          </div>
+        </Show>
         <Toast.List as="div" ref={listEl} class={styles.toastStack} />
       </Toast.Region>
     </Portal>
   );
+}
+
+/** Lays the deck out from measured heights, which CSS cannot know: each toast
+ *  gets its place counted from the newest, its natural height and its offset
+ *  when fanned out, and the list gets the heights of both shapes. A toast on
+ *  its way out (`data-closed`) has already left the deck, so the rest close up
+ *  while it fades. */
+function observeStack(list: HTMLElement, setCount: (n: number) => void): () => void {
+  const layout = () => {
+    const gap = parseFloat(getComputedStyle(list).rowGap) || 0;
+    const open = [...list.children]
+      .filter((el): el is HTMLElement => el instanceof HTMLElement && !el.hasAttribute("data-closed"))
+      .reverse();
+    let offset = 0;
+    open.forEach((el, i) => {
+      const height = naturalHeight(el);
+      el.dataset.stack = i === 0 ? "front" : i < PEEKING ? "peek" : i < SHOWN ? "tucked" : "hidden";
+      el.style.setProperty("--toast-index", String(Math.min(i, PEEKING - 1)));
+      el.style.setProperty("--toast-offset", `${offset}px`);
+      el.style.setProperty("--toast-height", `${height}px`);
+      if (i < SHOWN) offset += height + gap;
+    });
+    const front = open[0] ? naturalHeight(open[0]) : 0;
+    const peeks = Math.min(open.length, PEEKING) - 1;
+    list.style.setProperty("--toast-front-height", `${front}px`);
+    list.style.setProperty("--stack-peeks", String(Math.max(0, peeks)));
+    list.style.setProperty("--stack-expanded-height", `${Math.max(0, offset - gap)}px`);
+    setCount(open.length);
+  };
+  const resize = new ResizeObserver(layout);
+  const mutate = new MutationObserver(() => {
+    for (const el of list.children) resize.observe(el);
+    layout();
+  });
+  mutate.observe(list, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-closed"] });
+  layout();
+  return () => {
+    mutate.disconnect();
+    resize.disconnect();
+  };
+}
+
+/** A toast behind the front one is clamped to the front's height, so its own
+ *  box cannot be measured; its parts are laid out at full size either way. */
+function naturalHeight(el: HTMLElement): number {
+  const cs = getComputedStyle(el);
+  const frame =
+    parseFloat(cs.paddingTop) +
+    parseFloat(cs.paddingBottom) +
+    parseFloat(cs.borderTopWidth) +
+    parseFloat(cs.borderBottomWidth);
+  let content = 0;
+  for (const child of el.children) content = Math.max(content, (child as HTMLElement).offsetHeight);
+  return content + (frame || 0);
 }
