@@ -14,7 +14,7 @@
 // editor and git stores costs nothing. The catalogue is admitted on the same
 // terms: it is a list of labels that imports nothing at runtime, which
 // `commands.test.ts` checks rather than takes on trust.
-import { SECTION_TITLES, SETTINGS } from "./settingsCatalog";
+import { SECTION_TITLES, SETTINGS, SETTING_TABS } from "./settingsCatalog";
 import {
   emit,
   emitWith,
@@ -89,6 +89,8 @@ import {
   EDITOR_JOIN_LINES,
   EDITOR_SPLIT_SELECTION,
   PREFS_TOGGLE,
+  PREFS_SET,
+  type PrefsSet,
   type PrefsToggle,
   OPEN_SETTINGS,
   type OpenSettings,
@@ -231,6 +233,7 @@ export type Command = {
   /** Keep out of the palette's list (it is the palette, or it needs a key event
    *  to mean anything). Still dispatched, still listed in the sheet. */
   hidden?: boolean;
+  keywords?: string[];
 };
 
 const cmd = (key: string) => (e: KeyboardEvent) =>
@@ -1290,6 +1293,12 @@ export const COMMANDS: Command[] = [
     group: "settings",
     run: () => emitWith<OpenSettings>(OPEN_SETTINGS, { entry: "remote" }),
   },
+  ...SETTING_TABS.map((t): Command => ({
+    id: `settings-tab:${t.id}`,
+    label: `Settings: ${t.label}`,
+    group: "settings",
+    run: () => emitWith<OpenSettings>(OPEN_SETTINGS, { entry: t.id }),
+  })),
 
   // --- Preferences ---------------------------------------------------------
   //
@@ -1310,8 +1319,19 @@ export const COMMANDS: Command[] = [
     label: `Preferences: ${s.label}`,
     sub: SECTION_TITLES[s.section],
     group: "settings",
+    keywords: ["prefs"],
     run: s.toggles
       ? () => emitWith<PrefsToggle>(PREFS_TOGGLE, { key: s.toggles! })
       : () => emitWith<OpenSettings>(OPEN_SETTINGS, { query: s.label, entry: s.id }),
   })),
+  ...SETTINGS.flatMap((s) =>
+    (s.options ?? []).map((o): Command => ({
+      id: `prefs:${s.id}:${o.value}`,
+      label: `${s.label}: ${o.label}`,
+      sub: SECTION_TITLES[s.section],
+      group: "settings",
+      keywords: ["prefs"],
+      run: () => emitWith<PrefsSet>(PREFS_SET, { id: s.id, value: o.value }),
+    })),
+  ),
 ];

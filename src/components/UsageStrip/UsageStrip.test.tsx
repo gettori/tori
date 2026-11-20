@@ -55,7 +55,8 @@ vi.mock("../../utils/agentHealth", async (orig) => ({
   profileLabel: (_id: string, profile: string | null) => (profile === "work" ? "Work" : null),
 }));
 
-const { default: UsageStrip, shouldCollapse, tightestWindow } = await import("./UsageStrip");
+const { default: UsageStrip, shouldCollapse } = await import("./UsageStrip");
+const { tightestWindow } = await import("../../utils/usageRows");
 const { resetUsageStoreForTests, seedUsageStoreForTests } = await import("../../utils/usageStore");
 const { default: styles } = await import("./UsageStrip.module.css");
 const { windowDragStart } = await import("../../utils/windowDrag");

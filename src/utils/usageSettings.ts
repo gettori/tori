@@ -18,10 +18,11 @@
 // permission. An empty list is the user's own no, and no later adapter bump
 // undoes it.
 import { findAdapter, type UsageRung } from "./agents";
-import { asProfileId } from "./agentHealth";
+import { asProfileId, asTabProfile, profileLabel } from "./agentHealth";
+import { agentEnabled } from "./agentEnabled";
 import { MODEL_FAMILIES, scopedModel, weekQualifier } from "./chatRateLimit";
 import { catalogFor } from "./modelCatalog";
-import { windowsFor } from "./usageStore";
+import { accountsWithReadings, splitAccountKey, windowsFor, type WindowReading } from "./usageStore";
 import { saveSettings, settings, type AccountUsage, type UsageSource } from "../panels/Settings/settingsStore";
 
 /**
@@ -232,4 +233,49 @@ export function modelWindowLabel(agentId: string, profile: string | null): strin
   }
   if (best === -1) return null;
   return FAMILIES[best][0].toUpperCase() + FAMILIES[best].slice(1);
+}
+
+/** One account with something to say. */
+export type UsageAccount = {
+  agentId: string;
+  /** The backend's spelling, so `"default"` rather than null. */
+  profile: string;
+  isDefault: boolean;
+  label: string;
+  warnAt: number;
+  windows: WindowReading[];
+};
+
+export function usageAccounts(): UsageAccount[] {
+  const out: UsageAccount[] = [];
+  for (const key of accountsWithReadings()) {
+    const { agentId, profile } = splitAccountKey(key);
+    if (!agentEnabled(agentId)) continue;
+    const tab = asTabProfile(profile);
+    // The chips are the whole answer: which windows this account shows is also
+    // whether it is on the strip at all, since none lit is none drawn.
+    const chips = accountWindows(agentId, tab);
+    if (chips.length === 0) continue;
+
+    const isDefault = profile === asProfileId(null);
+    const adapter = findAdapter(agentId);
+    // The account's own name wherever it has one, the default account included:
+    // two Claude logins are two rows, and the glyph beside them is what says
+    // which agent they are. A single-account install has no name to use, and
+    // there the agent's own is the one that identifies the row.
+    const label = profileLabel(agentId, tab) ?? adapter.label;
+    const warnAt = usageWarnAt(agentId, tab);
+    const lit = windowsFor(agentId, tab).filter((w) => chips.includes(chipFor(w.kind)));
+    out.push({ agentId, profile, isDefault, label, warnAt, windows: lit });
+  }
+  // Agent first, so the glyph on the leading row is the one thing every account
+  // under it shares. Then the default login, which is the one a single-account
+  // install has and the one a bar must not move away from when a second starts
+  // reporting.
+  return out.sort(
+    (a, b) =>
+      a.agentId.localeCompare(b.agentId) ||
+      Number(b.isDefault) - Number(a.isDefault) ||
+      a.profile.localeCompare(b.profile),
+  );
 }

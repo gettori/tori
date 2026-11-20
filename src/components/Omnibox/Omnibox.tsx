@@ -1,4 +1,4 @@
-import { createSignal, createMemo, createEffect, on, onCleanup, onMount, Show } from "solid-js";
+import { batch, createSignal, createMemo, createEffect, on, onCleanup, onMount, Show, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import Combobox, { type ComboboxGroup, type ComboboxOption } from "../Combobox/Combobox";
 import Dialog from "../Dialog/Dialog";
@@ -11,7 +11,16 @@ import { awaitingUser, STATUS_LABEL } from "../../utils/sessionStatus";
 import { COMMANDS, type Command, type Requirement } from "../../utils/commands";
 import { editorState, frontWorktree } from "../../utils/editorState";
 import { runAt, runnable } from "../../utils/runStore";
-import { portLinksAt, runProjectFor, settings } from "../../panels/Settings/settingsStore";
+import {
+  editorDefaults,
+  portLinksAt,
+  runProjectFor,
+  saveSettings,
+  settings,
+} from "../../panels/Settings/settingsStore";
+import { prefValue } from "../../panels/Settings/utils/prefValues";
+import { SETTINGS, type SettingEntry } from "../../utils/settingsCatalog";
+import { listSelectableThemes, previewTheme, setTheme } from "../../theme";
 import { openPort, portsAt } from "../../utils/portsStore";
 import { copyText } from "../../utils/clipboard";
 import { autopilotNow, startAutopilot, stopAutopilot } from "../../utils/autopilotStore";
@@ -25,6 +34,7 @@ import {
   NEW_SESSION,
   OPEN_IN_EDITOR,
   OPEN_REVIEW,
+  OPEN_USAGE,
   STOP_CHAT,
   TOAST,
   type ToastEvent,
@@ -32,6 +42,7 @@ import {
   type NavTarget,
   type OpenInEditor,
   type OpenReview,
+  type OpenUsage,
   type StopChat,
   type NewSession,
 } from "../../utils/events";
@@ -47,6 +58,9 @@ import {
   type Place,
 } from "../../utils/navIndex";
 import { loadVisits, recentPlaces } from "../../utils/visitLog";
+import { usageSummary } from "../../utils/usageRows";
+import { usageAccounts } from "../../utils/usageSettings";
+import { findAdapter } from "../../utils/agents";
 import { loadPicks, picksFor, savePicks, withPick } from "../../utils/pickHistory";
 import { needsYouEvents, openEvent } from "../../utils/needsYouInbox";
 import { kindLabel, type NeedsYouEvent } from "../../utils/needsYouSignals";
@@ -86,6 +100,13 @@ const MAX_RECENTS = 5;
 
 const MAX_EVERYTHING = 50;
 const RECENT_PLACES = 5;
+
+const PREF_ROWS = new Map<string, { entry: SettingEntry; value?: string }>(
+  SETTINGS.flatMap((entry) => [
+    [`prefs:${entry.id}`, { entry }] as const,
+    ...(entry.options ?? []).map((o) => [`prefs:${entry.id}:${o.value}`, { entry, value: o.value }] as const),
+  ]),
+);
 
 /** One listed file: which root it came from, and where it sits inside it.
  *  Inside a Topic the rel path alone no longer identifies a file. */
@@ -566,6 +587,8 @@ export default function Omnibox(props: {
     for (const c of COMMANDS) {
       if (c.hidden || !c.run || suppressed(c, props.selected)) continue;
       const why = refusal(c, props.selected);
+      const pref = PREF_ROWS.get(c.id);
+      const toggles = pref && pref.value === undefined ? pref.entry.toggles : undefined;
       out.push({
         kind: "command",
         group: c.group,
@@ -573,7 +596,10 @@ export default function Omnibox(props: {
         label: c.label,
         sub: c.sub,
         keys: c.keys,
+        keywords: c.keywords,
         disabled: why,
+        value: toggles && (editorDefaults()[toggles] ? "On" : "Off"),
+        check: pref?.value === undefined ? undefined : prefValue(pref.entry.id) === pref.value ? "on" : "off",
         run: () => c.run?.(),
       });
     }
@@ -680,6 +706,7 @@ export default function Omnibox(props: {
           id: `add-unit:${p.path}`,
           label: `${kind === "plain" ? "Add branch" : "Add worktree"} to ${p.name}...`,
           sub: space,
+          keywords: kind === "plain" ? undefined : ["wt"],
           run: () => emitWith<AddBranchUnit>(ADD_BRANCH_UNIT, { projectPath: p.path }),
         });
       out.push({
@@ -720,8 +747,59 @@ export default function Omnibox(props: {
       label: "Open Settings",
       run: () => props.onOpenSettings(),
     });
+    for (const t of listSelectableThemes()) {
+      const { canvas, brand, accent } = t.palette.colors;
+      out.push({
+        kind: "theme",
+        id: `theme:${t.id}`,
+        label: `Theme: ${t.label}`,
+        sub: t.appearance === "light" ? "Light" : "Dark",
+        themeId: t.id,
+        swatches: [canvas, brand, accent],
+        current: t.id === settings.appearance.theme,
+        keywords: [t.appearance],
+      });
+    }
+    const now = Date.now();
+    for (const a of usageAccounts()) {
+      const agent = findAdapter(a.agentId).label;
+      const { sub, level, warn } = usageSummary(a, now);
+      out.push({
+        kind: "usage",
+        id: `usage:${a.agentId}:${a.profile}`,
+        label: a.label === agent ? agent : `${agent}, ${a.label}`,
+        sub,
+        agentId: a.agentId,
+        meter: { level, warn },
+        keywords: ["usage", "quota", "limits"],
+        run: () => emitWith<OpenUsage>(OPEN_USAGE, { agentId: a.agentId, profile: a.profile }),
+      });
+    }
     return out;
   });
+
+  // The theme under an arrowed highlight is painted and not saved. Only an arrow
+  // previews: the highlight a query lands on is the ranker's, not a choice.
+  const [previewing, setPreviewing] = createSignal<string | null>(null);
+  const [arrowed, setArrowed] = createSignal(false);
+  let arrowKey = false;
+
+  function restoreTheme() {
+    if (!untrack(previewing)) return;
+    setPreviewing(null);
+    setTheme(settings.appearance.theme);
+  }
+
+  function keepTheme(id: string) {
+    setPreviewing(null);
+    if (id === settings.appearance.theme) return;
+    void saveSettings({ ...settings, appearance: { ...settings.appearance, theme: id } }).catch(() =>
+      setTheme(settings.appearance.theme),
+    );
+  }
+
+  createEffect(on(query, () => setArrowed(false), { defer: true }));
+  onCleanup(restoreTheme);
 
   // Flattened once per published tree rather than once per keystroke: the tree
   // can hold `MAX_SYMBOLS` nodes, and the query changes far more often than the
@@ -800,7 +878,9 @@ export default function Omnibox(props: {
   }
 
   function rankInput(row: Row): RankInput {
-    if (row.kind !== "place") return { id: row.id, fields: [{ slot: "title", text: row.label }], penalty: true };
+    const keywords = (row.keywords ?? []).map((text) => ({ slot: "keywords", text, hidden: true }));
+    if (row.kind !== "place")
+      return { id: row.id, fields: [{ slot: "title", text: row.label }, ...keywords], penalty: true };
     const ticket = row.place.ticket?.title;
     return {
       id: row.id,
@@ -1086,6 +1166,7 @@ export default function Omnibox(props: {
     }
     // A lookup answers in its own row, so the box stays open for the answer.
     if (item.kind === "lookup") return item.run?.();
+    if (item.kind === "theme") keepTheme(item.themeId);
     close(item.run);
   }
 
@@ -1098,6 +1179,19 @@ export default function Omnibox(props: {
     const id = active();
     return id == null ? undefined : byId().get(id);
   };
+
+  createEffect(() => {
+    const row = activeRow();
+    const want = arrowed() && row?.kind === "theme" && !row.current ? row.themeId : null;
+    untrack(() => {
+      if (want === previewing()) return;
+      if (want && previewTheme(want)) setPreviewing(want);
+      else restoreTheme();
+    });
+  });
+
+  const enterLabel = (row: Row) =>
+    row.kind === "theme" && (previewing() === row.themeId || row.current) ? "Keep" : ENTER_LABEL[row.kind];
   const filterOn = () => mode() !== props.home;
 
   return (
@@ -1132,7 +1226,10 @@ export default function Omnibox(props: {
         options={options()}
         query={query()}
         onQueryChange={setQuery}
-        onKeyDown={(e) => (browserNext = e.key === "Enter" && e.metaKey)}
+        onKeyDown={(e) => {
+          browserNext = e.key === "Enter" && e.metaKey;
+          arrowKey = e.key === "ArrowDown" || e.key === "ArrowUp";
+        }}
         onSelect={(value) => {
           const item = byId().get(value);
           const browser = browserNext;
@@ -1144,7 +1241,12 @@ export default function Omnibox(props: {
           if (browser && href) close(() => openInBrowser(href));
           else pick(item);
         }}
-        onActiveChange={setActive}
+        onActiveChange={(id) =>
+          batch(() => {
+            setActive(id);
+            if (arrowKey) setArrowed(true);
+          })
+        }
         initialActive={firstCreated() ?? firstRecent()}
         itemComponent={rowContent}
         inputRef={(el) => (input = el)}
@@ -1162,7 +1264,7 @@ export default function Omnibox(props: {
                 fallback={
                   <span class={styles.hint}>
                     <span>{"\u21b5"}</span>
-                    {ENTER_LABEL[row().kind]}
+                    {enterLabel(row())}
                   </span>
                 }
               >
@@ -1175,6 +1277,12 @@ export default function Omnibox(props: {
                 <span class={styles.hint}>
                   <span>{"\u2318\u21b5"}</span>
                   Open in browser
+                </span>
+              </Show>
+              <Show when={previewing()}>
+                <span class={styles.hint}>
+                  <span>esc</span>
+                  Restore
                 </span>
               </Show>
             </>

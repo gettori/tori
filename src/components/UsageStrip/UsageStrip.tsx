@@ -1,20 +1,13 @@
 import { Index, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import AgentGlyph from "../Icon/AgentGlyph";
 import UsageCard from "./UsageCard";
-import { findAdapter } from "../../utils/agents";
-import { asProfileId, asTabProfile, profileLabel } from "../../utils/agentHealth";
-import { agentEnabled } from "../../utils/agentEnabled";
-import { limitTypeLabel, limitTypeShort, quotaBand, quotaState, type QuotaState } from "../../utils/chatRateLimit";
-import { accountWindows, chipFor, usageWarnAt } from "../../utils/usageSettings";
+import { asTabProfile } from "../../utils/agentHealth";
+import { limitTypeLabel, limitTypeShort, quotaBand, quotaState } from "../../utils/chatRateLimit";
 import { pollUsage } from "../../utils/usageProbe";
-import {
-  accountsWithReadings,
-  splitAccountKey,
-  temporalOf,
-  windowsFor,
-  type Temporal,
-  type WindowReading,
-} from "../../utils/usageStore";
+import { temporalOf, type Temporal, type WindowReading } from "../../utils/usageStore";
+import { tightestWindow } from "../../utils/usageRows";
+import { usageAccounts, type UsageAccount } from "../../utils/usageSettings";
+import { onWith as onEventWith, OPEN_USAGE, type OpenUsage } from "../../utils/events";
 import styles from "./UsageStrip.module.css";
 
 // What every account's quota is at, in the titlebar, without opening anything.
@@ -48,71 +41,16 @@ export function shouldCollapse(topbarWidth: number): boolean {
   return topbarWidth > 0 && topbarWidth < COLLAPSE_BELOW_PX;
 }
 
-/** The window with the least headroom: what a one-bar row has to show, since
- *  the reason to glance at the strip is the limit you are nearest to. */
-export function tightestWindow(windows: WindowReading[], warnAt: number, now = Date.now()): WindowReading | null {
-  const rank: Record<QuotaState, number> = { reached: 3, approaching: 2, ok: 1, expired: 0 };
-  let best: WindowReading | null = null;
-  let bestScore = -1;
-  for (const w of windows) {
-    const score = rank[quotaState(w, warnAt, now)] * 2 + (w.utilization ?? 0);
-    if (score > bestScore) {
-      best = w;
-      bestScore = score;
-    }
-  }
-  return best;
-}
-
 /** One account with something to say, in the order the strip draws them. */
-type Cluster = {
-  agentId: string;
-  /** The backend's spelling, so `"default"` rather than null. */
-  profile: string;
-  isDefault: boolean;
-  label: string;
-  warnAt: number;
-  windows: WindowReading[];
+type Cluster = UsageAccount & {
   /** First of its agent: it carries the glyph and needs no name (the glyph is
    *  the name). Every other login on the same agent carries its own name. */
   lead: boolean;
 };
 
 function clusters(collapsed: boolean, now: number): Cluster[] {
-  const out: Omit<Cluster, "lead">[] = [];
-  for (const key of accountsWithReadings()) {
-    const { agentId, profile } = splitAccountKey(key);
-    if (!agentEnabled(agentId)) continue;
-    const tab = asTabProfile(profile);
-    // The chips are the whole answer: which windows this account shows is also
-    // whether it is on the strip at all, since none lit is none drawn.
-    const chips = accountWindows(agentId, tab);
-    if (chips.length === 0) continue;
-
-    const isDefault = profile === asProfileId(null);
-    const adapter = findAdapter(agentId);
-    // The account's own name wherever it has one, the default account included:
-    // two Claude logins are two rows, and the glyph beside them is what says
-    // which agent they are. A single-account install has no name to use, and
-    // there the agent's own is the one that identifies the row.
-    const label = profileLabel(agentId, tab) ?? adapter.label;
-    const warnAt = usageWarnAt(agentId, tab);
-    const lit = windowsFor(agentId, tab).filter((w) => chips.includes(chipFor(w.kind)));
-    out.push({ agentId, profile, isDefault, label, warnAt, windows: lit });
-  }
-  // Agent first, so the glyph on the leading row is the one thing every account
-  // under it shares. Then the default login, which is the one a single-account
-  // install has and the one a bar must not move away from when a second starts
-  // reporting.
-  out.sort(
-    (a, b) =>
-      a.agentId.localeCompare(b.agentId) ||
-      Number(b.isDefault) - Number(a.isDefault) ||
-      a.profile.localeCompare(b.profile),
-  );
-
   let lastAgent: string | null = null;
-  return out.map((row) => {
+  return usageAccounts().map((row) => {
     const lead = row.agentId !== lastAgent;
     lastAgent = row.agentId;
     // On a narrow topbar every row is one number: the window it is nearest to.
@@ -285,6 +223,17 @@ export default function UsageStrip() {
   // nearest to changes when one of them resets, and nothing sends an event for
   // that.
   const rows = createMemo(() => clusters(collapsed(), clock()));
+
+  // The palette's usage row, which has no button of its own to anchor on.
+  onCleanup(
+    onEventWith<OpenUsage>(OPEN_USAGE, ({ agentId, profile }) => {
+      const row = rows().find((r) => r.agentId === agentId && r.profile === profile);
+      const button = [...(el?.querySelectorAll<HTMLElement>("[data-agent]") ?? [])].find(
+        (b) => b.dataset.agent === agentId && b.dataset.profile === profile,
+      );
+      if (row && button) pin(row, button);
+    }),
+  );
 
   return (
     <Show when={rows().length > 0}>

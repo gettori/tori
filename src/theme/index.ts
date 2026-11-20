@@ -130,6 +130,19 @@ export function getTheme(id: string): ThemeChoice | undefined {
   return { id: user.id, label: user.label, appearance: user.appearance, palette: user.palette, source: user.source };
 }
 
+/** Paint a theme without remembering it, for a picker that shows a theme before
+ *  it is chosen. False when it is not installed or the gate refuses it. The
+ *  saved theme comes back through `setTheme`. */
+export function previewTheme(id: string): boolean {
+  const choice = getTheme(id);
+  if (!choice) return false;
+  const admission = admit(choice.palette, choice.source === "bundled" ? choice.id : choice.source);
+  if (!admission.ok) return false;
+  applyResolved(buildRoles(admission.palette), choice.appearance);
+  emit(THEME_APPLIED);
+  return true;
+}
+
 /** Select a theme by id, from either source. Returns the problems worth showing
  *  the user; empty means the theme was painted.
  *

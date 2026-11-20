@@ -9,6 +9,7 @@
 import { describe, it, expect } from "vite-plus/test";
 import { SECTION_TITLES, SETTINGS, SETTING_TABS, TAB_OF_SECTION, type SettingSection } from "./settingsCatalog";
 import { DEFAULT_SETTINGS, type EditorDefaults } from "../panels/Settings/settingsStore";
+import { PREF_IDS } from "../panels/Settings/utils/prefValues";
 
 describe("the settings catalogue", () => {
   it("has a unique id per setting", () => {
@@ -69,6 +70,15 @@ describe("the settings catalogue", () => {
     const editorKeys = new Set(Object.keys(DEFAULT_SETTINGS.editorDefaults));
     for (const s of SETTINGS.filter((s) => s.toggles)) {
       expect(editorKeys.has(s.toggles as keyof EditorDefaults), `${s.id}`).toBe(true);
+    }
+  });
+  it("lists the values of exactly the one-of settings the palette can set", () => {
+    // A value row for a setting nothing can write would do nothing when picked.
+    const valued = SETTINGS.filter((s) => s.options?.length);
+    expect(valued.map((s) => s.id).sort()).toEqual([...PREF_IDS].sort());
+    for (const s of valued) {
+      const values = s.options!.map((o) => o.value);
+      expect(new Set(values).size, `${s.id} repeats a value`).toBe(values.length);
     }
   });
 });

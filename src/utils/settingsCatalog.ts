@@ -17,7 +17,16 @@
  *  `EditorDefaults` because it is derived from that shape; re-exported here
  *  because this is where the catalog names it. */
 export type { EditorToggleKey } from "../panels/Settings/settingsStore";
-import type { EditorDefaults, EditorToggleKey } from "../panels/Settings/settingsStore";
+import type {
+  ActiveLineHighlight,
+  DefaultSurface,
+  EditorDefaults,
+  EditorToggleKey,
+  SpaceStrip,
+  Timestamps,
+  TranscriptDensity,
+} from "../panels/Settings/settingsStore";
+import type { Promotion } from "./topics";
 
 /**
  * A section of the panel, in the order the panel renders them.
@@ -160,6 +169,11 @@ export function tabOfEntry(id: string): SettingTab | undefined {
   return entry && TAB_OF_SECTION[entry.section];
 }
 
+/** The values one setting takes, or none for a setting that is not one-of. */
+export function optionsOf(id: string): SettingOption[] {
+  return SETTINGS.find((s) => s.id === id)?.options ?? [];
+}
+
 export const SECTION_TITLES: Record<SettingSection, string> = {
   agents: "Agents",
   lsp: "Language servers",
@@ -206,7 +220,14 @@ export type SettingEntry = {
    *  answers for is registered in this file, and a test compares the two lists
    *  so a setting cannot exist in the type and nowhere on screen. */
   edits?: Exclude<keyof EditorDefaults, EditorToggleKey>;
+  /** Every value a one-of setting takes, in the order its dropdown lists them.
+   *  The palette offers a row per value. */
+  options?: SettingOption[];
 };
+
+/** Narrowed per entry with `satisfies`, so a value the store's union does not
+ *  have is a type error here rather than a row that never matches. */
+export type SettingOption<V extends string = string> = { value: V; label: string };
 
 /**
  * Every setting, in panel order.
@@ -345,6 +366,11 @@ export const SETTINGS: SettingEntry[] = [
     id: "topic-promotion",
     section: "git",
     label: "When a chat needs a worktree",
+    options: [
+      { value: "ask", label: "Ask me first" },
+      { value: "auto", label: "Create it" },
+      { value: "never", label: "Refuse" },
+    ] satisfies SettingOption<Promotion>[],
     hint: "What happens when a chat in a Topic wants to change a repository it can only read. Ask me first asks you each time, Create it makes the Topic's worktree at once, and Refuse tells the chat to ask you to make one. Applies to every Topic, and to chats already running.",
   },
   {
@@ -385,6 +411,10 @@ export const SETTINGS: SettingEntry[] = [
     id: "space-strip",
     section: "appearance",
     label: "Space tiles",
+    options: [
+      { value: "bottom", label: "Bottom" },
+      { value: "side", label: "Left" },
+    ] satisfies SettingOption<SpaceStrip>[],
     hint: "A strip along the bottom of the sidebar, or a rail down its left edge that fits any number of spaces.",
   },
 
@@ -473,6 +503,14 @@ export const SETTINGS: SettingEntry[] = [
     section: "editing",
     edits: "activeLineHighlight",
     label: "Current line highlight",
+    // The place rather than VS Code's value names, which are only legible next
+    // to the setting's own title.
+    options: [
+      { value: "none", label: "Nowhere" },
+      { value: "gutter", label: "Gutter only" },
+      { value: "line", label: "The line" },
+      { value: "all", label: "Gutter and line" },
+    ] satisfies SettingOption<ActiveLineHighlight>[],
     hint: "Where the line the caret is on is marked: nowhere, in the gutter beside the line number, across the line itself, or both.",
   },
   {
@@ -618,14 +656,32 @@ export const SETTINGS: SettingEntry[] = [
     id: "default-surface",
     section: "chat",
     label: "Open sessions in",
+    options: [
+      { value: "chat", label: "Chat" },
+      { value: "agent", label: "Terminal (agent tab)" },
+    ] satisfies SettingOption<DefaultSurface>[],
     hint: "Which surface a click on a session opens: the chat pane or a terminal agent tab.",
   },
   { id: "streaming", section: "chat", label: "Stream responses" },
-  { id: "transcript-density", section: "chat", label: "Transcript density" },
+  {
+    id: "transcript-density",
+    section: "chat",
+    label: "Transcript density",
+    options: [
+      { value: "comfortable", label: "Comfortable" },
+      { value: "compact", label: "Compact" },
+    ] satisfies SettingOption<TranscriptDensity>[],
+  },
   {
     id: "timestamps",
     section: "chat",
     label: "Timestamps",
+    options: [
+      { value: "prompts", label: "Prompts" },
+      { value: "both", label: "Prompts and replies" },
+      { value: "replies", label: "Replies" },
+      { value: "off", label: "Off" },
+    ] satisfies SettingOption<Timestamps>[],
     hint: "When a prompt was sent and when a reply finished, on prompts, replies, both or neither.",
   },
   {
