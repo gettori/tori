@@ -1156,7 +1156,7 @@ export default function Terminal(props: {
     })
       .then(() => {
         clearRefusal(entry.tab.id);
-        emitWith<ToastEvent>(TOAST, { message: "Ended the leftover session. Reopen it to continue.", kind: "info" });
+        emitWith<ToastEvent>(TOAST, { message: "Ended the leftover session. Reopen it to continue.", kind: "success" });
       })
       .catch((e) => emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }));
   }
@@ -1434,7 +1434,7 @@ export default function Terminal(props: {
         : code === null
           ? `${t.title} ended without an exit code`
           : `${t.title} failed (exit ${code})`,
-      kind: failed ? "error" : "info",
+      kind: failed ? "error" : "success",
       ...(failed
         ? { action: { label: "Show", run: () => emitWith<RevealDock>(REVEAL_DOCK, { tabId: t.id }) } }
         : t.relaunchOnSuccess

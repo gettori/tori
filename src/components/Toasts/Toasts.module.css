@@ -38,6 +38,12 @@
   --toast-fg: var(--danger-on-subtle);
   --toast-icon: var(--danger-fg);
 }
+.toast.success {
+  --toast-tint: var(--success-subtle);
+  --toast-border: var(--success-border);
+  --toast-fg: var(--success-on-subtle);
+  --toast-icon: var(--success-fg);
+}
 .toast.info {
   --toast-tint: var(--brand-subtle);
   --toast-border: var(--border-strong);

@@ -270,6 +270,9 @@
     --danger-subtle: #33272f;
     --danger-border: rgba(224, 108, 117, 0.5);
     --danger-on-subtle: #e29ea6;
+    --success-subtle: #1d2e29;
+    --success-border: rgba(46, 160, 67, 0.5);
+    --success-on-subtle: #77bd88;
 
     /* brand */
     --brand-default: #d9a468;
@@ -480,6 +483,9 @@
     --danger-subtle: #f0e4e5;
     --danger-border: rgba(202, 33, 45, 0.42);
     --danger-on-subtle: #852027;
+    --success-subtle: #e4eae6;
+    --success-border: rgba(25, 120, 52, 0.42);
+    --success-on-subtle: #1b542b;
 
     /* brand */
     --brand-default: #7e5e2f;

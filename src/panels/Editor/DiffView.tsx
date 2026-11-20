@@ -402,7 +402,7 @@ export default function DiffView(props: {
     const ok = await copyText(text);
     emitWith<ToastEvent>(TOAST, {
       message: ok ? `Copied diff for ${file()}` : "Couldn't copy to the clipboard.",
-      kind: ok ? "info" : "error",
+      kind: ok ? "success" : "error",
     });
   }
 

@@ -148,7 +148,7 @@ describe("a command that reports", () => {
 
     await report("clone:1", 0);
     await waitFor(() => expect(commandTabs()).toHaveLength(0));
-    expect(bridge.toasts).toEqual([{ message: "Clone repo finished", kind: "info" }]);
+    expect(bridge.toasts).toEqual([{ message: "Clone repo finished", kind: "success" }]);
   });
 
   it("keeps the tab and its output on a non-zero exit", async () => {

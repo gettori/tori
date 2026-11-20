@@ -465,7 +465,7 @@ export default function CheckpointTimeline(props: {
       await Promise.all([loadList(), loadBackstops(), loadFiles()]);
       emitWith<ToastEvent>(TOAST, {
         message: `Restored ${outcome.restored.length + outcome.deleted.length} file(s) from before "${entry.label}".`,
-        kind: "info",
+        kind: "success",
       });
     } catch (e) {
       toastError(e);

@@ -59,7 +59,7 @@ import MoveToSpaceDialog from "../../components/Dialogs/MoveToSpaceDialog";
 import { claimProjectFolder, prepareClone, projectJob, type NewProjectMode } from "../../utils/newProject";
 import SpaceDialog from "../../components/Dialogs/SpaceDialog";
 import SpaceSettingsDialog from "../SpaceSettings/SpaceSettingsDialog";
-import { pushToast, type ToastAction } from "../../components/Toasts/Toasts";
+import { pushToast, type ToastAction, type ToastKind } from "../../components/Toasts/Toasts";
 import Button from "../../components/Button/Button";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import {
@@ -548,7 +548,7 @@ export default function LeftSidebar(props: {
   // pinned above the tree. setError keeps its old signature so all call sites are
   // unchanged; the stack itself moved to components/Toasts (#105), where the
   // empty-string no-op (the old "clear the banner" idiom) now lives too.
-  function setError(msg: string, kind: "error" | "info" = "error", action?: ToastAction) {
+  function setError(msg: string, kind: ToastKind = "error", action?: ToastAction) {
     pushToast(msg, kind, action);
   }
   const [expanded, setExpanded] = createSignal<Set<string>>(loadExpanded());
@@ -2254,7 +2254,7 @@ export default function LeftSidebar(props: {
         n === 0
           ? `${p.name} has no stale worktrees.`
           : `Pruned ${n} stale worktree${n === 1 ? "" : "s"} from ${p.name}.`,
-        "info",
+        n === 0 ? "info" : "success",
       );
     } catch (e) {
       setError(String(e));

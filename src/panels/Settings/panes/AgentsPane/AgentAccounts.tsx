@@ -505,7 +505,7 @@ function AccountCard(props: {
 
   const signOut = async () => {
     await invoke("sign_out_agent_account", { adapterId: props.agentId, profileId: p().id });
-    toast(`Signed ${p().label} out.`, "info");
+    toast(`Signed ${p().label} out.`, "success");
     props.onChanged();
   };
 
@@ -536,13 +536,13 @@ function AccountCard(props: {
     // "Needs confirming" arrives as a value rather than an error, so this never
     // has to tell it apart from a refusal by reading the message.
     if (first.type === "removed") {
-      toast(`Removed ${p().label}.`, "info");
+      toast(`Removed ${p().label}.`, "success");
       props.onChanged();
       return;
     }
     if (!(await props.confirm({ title: `Remove ${p().label}?`, message: first.message })).ok) return;
     await call(true, signOut);
-    toast(`Removed ${p().label}. Its tokens stay valid until they expire.`, "info");
+    toast(`Removed ${p().label}. Its tokens stay valid until they expire.`, "success");
     props.onChanged();
   };
 
@@ -966,7 +966,7 @@ export default function AgentAccounts(props: {
       }
       changed();
       if (!added.login) {
-        toast(`Added ${label}. It is already signed in.`, "info");
+        toast(`Added ${label}. It is already signed in.`, "success");
         return;
       }
       const job = loginJob(props.agentId, props.agentLabel, added.id, label, added.login, cwd() ?? "/");

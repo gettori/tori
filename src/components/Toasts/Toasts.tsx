@@ -1,6 +1,6 @@
 import { For, onCleanup } from "solid-js";
 import { Portal } from "solid-js/web";
-import { CircleAlert, Info, X } from "lucide-solid";
+import { CircleAlert, CircleCheck, Info, X } from "lucide-solid";
 import { Toast } from "../../lib/toast";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
@@ -9,7 +9,8 @@ import { on as onEvent, onWith, FOCUS_TOASTS, TOAST, type ToastEvent } from "../
 import styles from "./Toasts.module.css";
 
 // A transient notification. `error` toasts are the common case (a failed git op,
-// a rejected worktree removal); `info` is available for successes/notices.
+// a rejected worktree removal), `success` is for an action that finished, and
+// `info` is for a notice that is neither.
 //
 // `action` is for a notice whose undo has nowhere else to live: a cross-file
 // rename rewrote files the user is not looking at, and the moment they would
@@ -17,7 +18,9 @@ import styles from "./Toasts.module.css";
 // slot - a toast dismisses itself, so anything that matters later belongs
 // somewhere that persists.
 export type ToastAction = { label: string; run: () => void };
-export type ToastKind = "error" | "info";
+export type ToastKind = "error" | "info" | "success";
+
+const ICON = { error: CircleAlert, info: Info, success: CircleCheck };
 
 const TTL = 8000;
 
@@ -34,13 +37,9 @@ export function pushToast(message: string, kind: ToastKind = "error", action?: T
     // axe's `list` rule, because role="status" strips the li of its listitem
     // role and an ol may only contain listitems. A stack of independent
     // status elements is not a list in any meaningful sense anyway.
-    <Toast.Root
-      as="div"
-      toastId={props.toastId}
-      class={`${styles.toast} ${kind === "error" ? styles.error : styles.info}`}
-    >
+    <Toast.Root as="div" toastId={props.toastId} class={`${styles.toast} ${styles[kind]}`}>
       <span class={styles.toastIcon} aria-hidden="true">
-        <Icon icon={kind === "error" ? CircleAlert : Info} />
+        <Icon icon={ICON[kind]} />
       </span>
       <Toast.Title class={styles.toastMsg}>{text}</Toast.Title>
       <For each={actions}>

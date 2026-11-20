@@ -354,7 +354,7 @@ function toastError(e: unknown) {
 /** A remote action that finished. Said out loud because nothing else on screen
  *  moves when a fetch or a push lands with no news. */
 function toastDone(message: string, ok: boolean): boolean {
-  if (ok) emitWith<ToastEvent>(TOAST, { message, kind: "info" });
+  if (ok) emitWith<ToastEvent>(TOAST, { message, kind: "success" });
   return ok;
 }
 
@@ -643,7 +643,7 @@ async function integrate(root: string, cmd: string, args: Record<string, unknown
 export function reportIntegrate(outcome: IntegrateOutcome | null, verb: string, quietDone = false): void {
   if (!outcome) return;
   if (!outcome.conflicted) {
-    if (!quietDone) emitWith<ToastEvent>(TOAST, { message: `${verb} done.`, kind: "info" });
+    if (!quietDone) emitWith<ToastEvent>(TOAST, { message: `${verb} done.`, kind: "success" });
     return;
   }
   emitWith<ToastEvent>(TOAST, {

@@ -30,7 +30,7 @@ export function noteSetup(r: SetupReport): void {
   emitWith<ToastEvent>(
     TOAST,
     r.state === "done"
-      ? { message: `Setup finished in ${name}`, kind: "info" }
+      ? { message: `Setup finished in ${name}`, kind: "success" }
       : {
           message:
             r.code === null
