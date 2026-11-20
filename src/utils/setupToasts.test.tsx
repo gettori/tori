@@ -34,7 +34,7 @@ describe("noteSetup", () => {
     const seen = toasts();
     noteSetup({ kind: "setup", worktree: "/p/feat", state: "running", code: null, log: "/l" });
     noteSetup({ kind: "setup", worktree: "/p/feat", state: "done", code: 0, log: "/l" });
-    expect(seen).toEqual([{ message: "Setup finished in feat", kind: "info" }]);
+    expect(seen).toEqual([{ message: "Setup finished in feat", kind: "success" }]);
   });
 
   it("toasts a failed teardown with Show log and says nothing for one that finished", () => {

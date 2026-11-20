@@ -804,7 +804,7 @@ export const TOAST = "tori:toast";
 // mean anything.
 export type ToastEvent = {
   message: string;
-  kind?: "error" | "info";
+  kind?: "error" | "info" | "success";
   action?: ToastEventAction | ToastEventAction[];
 };
 type ToastEventAction = { label: string; run: () => void };

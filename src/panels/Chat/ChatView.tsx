@@ -2504,7 +2504,7 @@ export default function ChatView(props: {
       // which of the two it was is the difference between the two readings.
       emitWith<ToastEvent>(TOAST, {
         message: outcome === "deleted" ? `Removed ${name}, which this call created.` : `Reverted that hunk of ${name}.`,
-        kind: "info",
+        kind: "success",
       });
       return true;
     } catch (e) {
@@ -2524,7 +2524,7 @@ export default function ChatView(props: {
       agentId: props.agentId,
     })
       .then(() =>
-        emitWith<ToastEvent>(TOAST, { message: "Ended the leftover session. Reopen it to continue.", kind: "info" }),
+        emitWith<ToastEvent>(TOAST, { message: "Ended the leftover session. Reopen it to continue.", kind: "success" }),
       )
       .catch((e) => emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }));
   }
