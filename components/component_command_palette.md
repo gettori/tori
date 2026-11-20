@@ -1,8 +1,8 @@
 ---
 summary: one COMMANDS table drives the palette, the shortcut sheet and the dispatcher, so a binding cannot drift from its list
 status: current
-updated: 2026-08-28
-source: "v0.1 features: status indicators, search, input layer (personal/tori, branch `topbar`); Phase 3; binding table + sheet: v0.1 release gate, same branch, Phase 4, commit 0a0a1d3; merged into one registry by Editor wave 1: close out the fundamentals (branch `wave-1-4`), Phase 3, issue #15, commit bd9567c; shell and list moved onto shared surfaces by plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (branch `110-pickermodal-and-chatpicker`, issue #110, PR #140); commit `9d471b7`; quick-open across a Feature's members from Repository identity on tabs, breadcrumbs, quick-open and menus (branch `feature-workspace`, issue #158), Phase 4, commit `809c85b`"
+updated: 2026-11-20
+source: "v0.1 features: status indicators, search, input layer (personal/tori, branch `topbar`); Phase 3; binding table + sheet: v0.1 release gate, same branch, Phase 4, commit 0a0a1d3; merged into one registry by Editor wave 1: close out the fundamentals (branch `wave-1-4`), Phase 3, issue #15, commit bd9567c; shell and list moved onto shared surfaces by plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (branch `110-pickermodal-and-chatpicker`, issue #110, PR #140); commit `9d471b7`; quick-open across a Feature's members from Repository identity on tabs, breadcrumbs, quick-open and menus (branch `feature-workspace`, issue #158), Phase 4, commit `809c85b`; Cmd+K as a navigator from plan \"Cmd+K navigator\" (branch `cmdk-improvements`), commits `2e647536` to `938751d7`"
 ---
 
 # Command palette + hotkey remap
@@ -101,6 +101,46 @@ The box was single-root throughout: `files` was a `string[]` of rel paths, `MAX_
 - **Two caps, not one.** Untyped, `MAX_RESULTS` is applied **per root** while walking the globally frecency-ranked list, because one shared cap over eight members silently drops the last members entirely and a member with no rows reads as a member with no files. Once a query has scored the list, one global cap: scores are comparable across members, so the best 200 really are the best 200.
 - **Frecency reads `workspaceKey(props.selected)`**, matching the write. Entries inside stay absolute paths.
 
+## Cmd+K became a navigator (2026-11)
+
+Cmd+K is now **Go to Anything** (`command-palette` in `COMMANDS`, Go > Go to
+Anything in the menu bar) and opens the box on the `all` home: one ranked list
+of places, commands and settings. Cmd+P still opens on files. Why, and what it
+reversed, is [[adr_cmdk_is_a_navigator]].
+
+- **Places are back**, reversing the July section below: spaces, projects,
+  units, Topics and their members, review requests, chats and every space's
+  sessions, built by [[component_nav_index]] and ordered by
+  [[concept_navigator_ranking]].
+- **One row model.** `rowView.ts` turns every `Row` kind into five slots (icon,
+  title, subtitle, accessories, trailing kind word or key chips) and `OmniRow`
+  draws them, so a kind differs only by the slots it fills and every row is one
+  height. Accessories: ticket and PR chips, the needs-you or working dot,
+  theme swatches, a usage meter, a check, a value.
+- **Rows the table cannot hold are built in `commandRows()` from stores**: per
+  agent, per running chat, per task, per language server, the unit in front
+  (open PR or issue, copy branch or path, open each port), per project (add a
+  worktree or branch, project settings and, for the project in front, its
+  sections), autopilot, one per theme, one per usage account. Value rows for
+  one-of settings come from the table itself (`prefs:<id>:<value>`).
+- **Empty Cmd+K is three headed groups**: Needs you (the Inbox's Needs you
+  set), Recent (five places from `visitLog.ts`, the current one left out, the
+  first highlighted so Cmd+K Enter goes back), Suggested.
+- **Typed lists end with create rows**: "New chat: <query>" (a draft, never
+  sent) and, for a branch-like query with a git project in front, "New
+  worktree <name> in <project>". No match draws a "Nothing matches" line in
+  Combobox's `aboveList`, then those rows and "Search files for <query>".
+- **Enter and Cmd+Enter.** A row's `browse` is what Cmd+Enter does (PR, else
+  ticket, else the port through `openPort`); Kobalte commits on Enter whatever
+  the modifiers, so the key is noted in `onKeyDown`
+  ([[gotcha_kobalte_combobox_commits_on_enter_whatever_the_modifiers]]). The
+  footer names what Enter does per kind.
+- **Themes preview only after an arrow key** moves the highlight: the row a
+  query lands on is the ranker's choice, not the user's. Enter saves through
+  `saveSettings`, any other close puts the saved theme back.
+- **Row ids must be selector safe**: a lookup or pasted row has a constant id
+  ([[gotcha_kobalte_finds_an_option_by_an_unescaped_data_key_selector]]).
+
 ## Responsibilities
 
 - **A canonical command table** (`commands.ts`): every entry carries `id`, `label`, `group`, and optionally `sub`, `keys`, `scope`, `match(e)`, `run(e)`, `requires`, `hidden`. `BINDINGS` (`hotkeys.ts:44`) is the subset carrying `keys` + `scope` + `match`. Both the dispatchers and the Cmd+/ sheet read that subset, so the documented shortcuts cannot drift from the ones that fire. Nineteen key-carrying entries plus the keyless editor, git and right-panel-mode commands.
@@ -116,6 +156,9 @@ The box was single-root throughout: `files` was a `string[]` of rel paths, `MAX_
 - **Does NOT** list every session across every space for "resume" — only "focus" (live sessions) has that reach, by construction (see above).
 
 ## The palette lists no sessions (2026-07-31)
+
+Superseded in 2026-11: Cmd+K lists places again, sessions included. See
+[[adr_cmdk_is_a_navigator]].
 
 Both session halves are gone (branch `navigation`, phase 7, commit 022d6b6).
 `⌘K` is **actions only**: a new session per registered agent, right-panel modes,
@@ -158,6 +201,9 @@ mid-turn chat in the selected folder produces exactly one row naming it (the
 
 - [[gotcha_xterms_custom_key_handler_return_value_doesnt_stop_dom_propagation]] — the double-dispatch bug this component's terminal-focus wiring has to defend against.
 - [[gotcha_a_focused_xterm_swallows_keydown_before_window]] — why the sheet's Esc handler is capture-phase.
+
+- [[component_nav_index]] the places Cmd+K lists
+- [[concept_navigator_ranking]] how the all home orders them
 
 ## Known gaps
 

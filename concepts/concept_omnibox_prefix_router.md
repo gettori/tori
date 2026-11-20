@@ -1,8 +1,8 @@
 ---
-summary: one box resolves its mode purely from the query's own prefix, so nothing on screen can ever disagree with what it shows
+summary: the mode is the query's prefix, else the key that opened the box; a pasted path or port is read before the router
 status: current
-updated: 2026-08-05
-source: "Editor Wave 6: the IDE surface (personal/tori, branch `wave-6`); Phase 6, issue #59, commit b58c96a; `src/utils/omniboxModes.ts`, `src/components/Omnibox/Omnibox.tsx`"
+updated: 2026-11-20
+source: "Editor Wave 6: the IDE surface (personal/tori, branch `wave-6`); Phase 6, issue #59, commit b58c96a; `src/utils/omniboxModes.ts`, `src/components/Omnibox/Omnibox.tsx`; homes, `/` and paste from plan \"Cmd+K navigator\" (branch `cmdk-improvements`), commits `2e647536`, `84e3748d`, `938751d7`"
 ---
 
 # The omnibox: a mode is a function of the query, never state
@@ -28,6 +28,29 @@ Quick-open and the command palette became one box. Six modes hang off a prefix: 
 
 **Anything the box loads must be loaded lazily per mode.** Phase 14 added task rows and read them in `onMount`, which made every ⌘P pay for a `git check-ignore` subprocess it would never show a row from. Tasks now load the first time the box is actually in `>` mode.
 
+## Since the Cmd+K navigator (2026-11)
+
+The rule "nothing but the text sets the mode" no longer holds on its own. A
+query with no prefix means what the opening key asked for, so the box carries a
+**home** for its whole life: `file` from Cmd+P, `all` from Cmd+K
+(`parseQuery(raw, home)`, `src/utils/omniboxModes.ts`). The tag in the field
+shows the home's name and lights up only when a prefix has left it.
+
+- **Files took `/`**, so they stay one keystroke away from Cmd+K. `all` is the
+  one mode with no prefix, so the `?` list from Cmd+P does not offer it.
+- **`#` plus digits is a number in the all home**, not a workspace symbol
+  search (`/^#\d+(\s|$)/`); from Cmd+P it is still symbols. See
+  [[concept_navigator_ranking]].
+- **A paste is read before the router.** An absolute path inside a known unit
+  and a `localhost:<port>` (`pathQuery`, `portQuery` in `src/utils/navNumber.ts`)
+  resolve to a place in either home and keep the mode at the home. Without
+  that, an absolute path starts with the files prefix and would search files
+  for `Users/...`. A path no unit holds still goes to the router.
+
+The state the text cannot show is still small and fixed: the home, set by the
+key and never changed while the box is up. Why the home exists at all is in
+[[adr_cmdk_is_a_navigator]].
+
 ## Related
 
 - [[component_command_palette]] — the registry and hotkey dispatcher this box renders; the two components it replaced.
@@ -35,3 +58,5 @@ Quick-open and the command palette became one box. Six modes hang off a prefix: 
 - [[component_editor_navigation]] — the jump list behind "Recently visited".
 - [[component_editor_symbols]] — the `@` and `#` sources.
 - [[gotcha_fs_read_dir_shells_out_to_git_check_ignore]] — why an eager load in this component is expensive.
+- [[adr_cmdk_is_a_navigator]] why a bare query from Cmd+K is everything, not files.
+- [[component_nav_index]] what the all home searches.

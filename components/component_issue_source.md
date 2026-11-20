@@ -1,8 +1,8 @@
 ---
 summary: issue source: a second adapter axis beside the forge, canonical keys, read per contract source, gated in Rust
 status: current
-updated: 2026-10-08
-source: "gettori/tori#202 on branch orchestrator; commits f8a61936, 83aa08f4, 982c9bed; src-tauri/src/issues/{mod,github,gate,store,commands}.rs; src/components/Dialogs/AddBranchDialog.tsx; src/utils/issues.ts; gettori/tori#210 on branch orchestrator, plan 'Assigned pickup: poll my issues and review requests, queue them, start on ask or auto (#210)'; gettori/tickets#31 on branch phase-1-block-1, plan 'Issue sources per project, and the autopilot on Tori\'s own repo', commit e7d4df6f"
+updated: 2026-11-20
+source: "gettori/tori#202 on branch orchestrator; commits f8a61936, 83aa08f4, 982c9bed; src-tauri/src/issues/{mod,github,gate,store,commands}.rs; src/components/Dialogs/AddBranchDialog.tsx; src/utils/issues.ts; gettori/tori#210 on branch orchestrator, plan 'Assigned pickup: poll my issues and review requests, queue them, start on ask or auto (#210)'; gettori/tickets#31 on branch phase-1-block-1, plan 'Issue sources per project, and the autopilot on Tori\'s own repo', commit e7d4df6f; linking after the fact and number identity from plan \"Cmd+K navigator\" (branch `cmdk-improvements`), commits `84e3748d`, `86b6cce1`, `1bcfa5f1`; `src-tauri/src/issues/commands.rs`, `src-tauri/src/topics.rs`, `src/utils/navNumber.ts`"
 ---
 
 # Issue source
@@ -28,6 +28,31 @@ source: "gettori/tori#202 on branch orchestrator; commits f8a61936, 83aa08f4, 98
 - UI: the Issue tab of `AddBranchDialog`, shown when `issues_source` says yes. It links first when asked (the host makes the branch), then `create_worktree` with no base tracks `origin/<name>`, or a plain repo attaches and checks it out. The row shows `display` and opens the url. `NEW_CHAT_AT {prompt, origin}` seeds the draft with title and body, and `ChatDraft` shows "from #N" until the first send remounts it as `ChatView`.
 - A key that is not an issue, a base missing on the host and a token that cannot read issues all come back as `invalid` or `forbidden` with the sentence to show.
 
+## Linking after the fact (2026-11)
+
+A unit or a Topic can be linked to an issue later, not only at creation. Only
+a person links; agents never attach an issue, so neither command is in
+`rpc/methods.rs`.
+
+- **A unit** links through the same `issues_record` creation uses (it refuses a
+  branch that is not local) and unlinks through `issues_forget(project_path,
+  branch)` over `store::forget`. Both emit `config://changed`.
+- **A Topic** links through `set_topic_issue(topic_id, issue | null)`, which
+  goes through the office like `set_topic_space` but with `announce_and_tell`,
+  because `topic_home::body` prints the issue and a running home chat must hear
+  the change. It looks the issue up in its first member's issue repos.
+- **The prompt** (the sidebar's `askIssue`) takes a number, `repo#N` or a URL,
+  runs `issues_find`, and asks "Which issue?" when several repos answer. A find
+  hit already carries what `UnitIssue` keeps, so there is no `issues_get` step.
+
+**An issue's identity is repo plus number.** A stored key is bare `N` inside
+the issue's own project and `owner/name#N` elsewhere, so two keys can name one
+issue. `issueId(issue, origin)` in `src/utils/navNumber.ts` mirrors `split_key`
+and `candidates` and resolves both to `{repo, number}`, a bare key through the
+project's origin. Cmd+K's number search compares those
+([[concept_navigator_ranking]]). Issues a chat mentions are a separate store:
+[[component_session_issues]].
+
 ## Related
 
 - [[component_forge_client]]: the client this rides
@@ -37,3 +62,4 @@ source: "gettori/tori#202 on branch orchestrator; commits f8a61936, 83aa08f4, 98
 - [[gotcha_an_assigned_list_at_the_search_cap_proves_nothing_missing]]: why a full list closes nothing
 - [[adr_assigned_pickup_rides_the_forge_poll_tick]]: who polls this, and when
 - [[adr_issue_sources_live_on_the_contract]]: the decision behind sources and canonical keys
+- [[component_session_issues]]: the issues chats mention, and the Link chip that offers one

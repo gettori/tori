@@ -30,3 +30,4 @@ Never edit `check.sh` while it runs. Bash reads the file as it goes, and one run
 - [[component_git_hooks]] the subset that runs on commit and push
 - [[gotcha_brew_rustup_ships_an_old_default_toolchain]] the toolchain pin
 - [[gotcha_npm_test_is_check_tokens_plus_vitest_so_npx_vitest_run_skips_a_whole_guard]]
+- [[gotcha_check_all_rewrites_the_tori_push_permission_schema]] the file a full run leaves modified

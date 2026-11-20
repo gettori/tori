@@ -1,8 +1,8 @@
 ---
 summary: one COMMANDS table behind the palette, sheet and menu bar may only import events, keeping everything out of the terminal's chunk
 status: current
-updated: 2026-10-15
-source: "Editor wave 1: close out the fundamentals (personal/tori, branch `wave-1-4`); Phase 3, issue #15; commit bd9567c; menu bar and `editor` scope from plan \"Tray and menu bar improvements\" (branch `menu-options`), commit 10660fb1; `src/utils/commands.ts`, `src/utils/hotkeys.ts:44`"
+updated: 2026-11-20
+source: "Editor wave 1: close out the fundamentals (personal/tori, branch `wave-1-4`); Phase 3, issue #15; commit bd9567c; menu bar and `editor` scope from plan \"Tray and menu bar improvements\" (branch `menu-options`), commit 10660fb1; `src/utils/commands.ts`, `src/utils/hotkeys.ts:44`; listener guard and keywords from plan \"Cmd+K navigator\" (branch `cmdk-improvements`), commits `f25d30d6`, `6cef3f21`; `src/utils/commands.test.ts:157`"
 ---
 
 # One command registry behind the palette, the sheet and the dispatcher
@@ -29,6 +29,23 @@ Everything runnable by name lives in one table, `COMMANDS` in `src/utils/command
 
 **Save's key is shown, never dispatched.** CodeMirror's own `Mod-s` stays the only save key; a `global` or `window` binding would fire while a terminal had focus, saving a file nobody was looking at. Save is `editor` scope instead: the sheet and the menu list Cmd+S, but neither dispatcher includes that scope, and it never becomes a menu accelerator. `hotkeys.test.ts` pins that Cmd+S is claimed by neither dispatcher.
 
+## Every emitted event has a listener (2026-11)
+
+`commands.test.ts:157` ("emits no event nothing listens for") globs `src` as
+raw text, tests and stories left out, collects every constant passed to `on`,
+`onEvent`, `onWith` or `onEventWith`, and fails naming any event a command's
+`run` emits that nothing subscribes to. It matches by constant name, so an
+aliased import would slip past it. A table entry whose event nobody answers
+looks shipped in the palette and does nothing, which is
+[[lesson_a_registered_command_with_no_caller_is_not_shipped]] caught by a test
+instead of a walk. An event that grows a payload keeps its listener matched:
+`NEW_CHAT` moved from `onEvent` to `onWith<NewChat | null>`, since a
+payload-less `emit` still delivers `detail: null`.
+
+`Command.keywords` are words a row answers to without drawing them (`prefs`
+on every Preferences row, `wt`, the theme appearance, `usage`). The navigator
+ranks each keyword as its own hidden field; see [[concept_navigator_ranking]].
+
 ## Related
 
 - [[component_app_menu]] — the menu bar built from this table.
@@ -37,3 +54,4 @@ Everything runnable by name lives in one table, `COMMANDS` in `src/utils/command
 - [[concept_capability_resolution]] — the same "a gate is declared, never keyed on an id" rule, applied to session controls rather than commands.
 - [[lesson_a_registered_command_with_no_caller_is_not_shipped]] — why every `run`'s consumer needs a test that drives it, not just a table entry.
 - [[gotcha_a_listener_registered_after_an_await_in_onmount_misses_what_fires_in_that_window]] — the trap that bit the consumer side of two of these events.
+- [[concept_navigator_ranking]] how keywords and command rows rank against places in Cmd+K.

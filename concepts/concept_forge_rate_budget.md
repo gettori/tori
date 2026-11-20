@@ -38,3 +38,4 @@ The plan named the rate budget the binding constraint before any code was writte
 - [[concept_a_finished_pull_request_is_kept_by_relation]] - what the finished-PR aliases feed
 - [[component_pr_watch]] - the watched aliases and what reads them
 - [[concept_native_stacks_are_read_never_inferred]] - the stack fields on the branch aliases
+- [[component_nav_index]] - shows other spaces' PRs from a remembered last value instead of polling them
