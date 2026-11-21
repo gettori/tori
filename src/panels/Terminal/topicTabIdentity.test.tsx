@@ -2,7 +2,7 @@
 // file, so the cwd is what answers, and the member set comes from the same
 // module-wide resource the editor reads rather than a second `list_topics`.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { render, screen, waitFor } from "@solidjs/testing-library";
+import { render, screen, waitFor } from "../../test/harness";
 import { pointerClick } from "../../test/menus";
 import { setTabBarWidth } from "../../test/tabLayout";
 

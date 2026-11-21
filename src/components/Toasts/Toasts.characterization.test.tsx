@@ -10,7 +10,7 @@
 // the full TTL or resumes the remaining time. The assertions here are the
 // intersection both implementations honor.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { render, screen, fireEvent } from "@solidjs/testing-library";
+import { render, screen, fireEvent } from "../../test/harness";
 import ToastRegion, { pushToast } from "./Toasts";
 import { Toast } from "../../lib/toast";
 

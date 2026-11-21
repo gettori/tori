@@ -3,7 +3,7 @@
 // not in the store.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
-import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
+import { fireEvent, render, screen, waitFor } from "../../test/harness";
 import { wholeHistory } from "../../test/history";
 import { clearComposer, nextLabel, offerToComposer } from "../../utils/chatCompose";
 import { composerInput } from "./__fixtures__/composerInput";

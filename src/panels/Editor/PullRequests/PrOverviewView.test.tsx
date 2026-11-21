@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../../test/harness";
 import type { ForgeAccount, PrFile, PullRequest, StatusReport } from "../../../utils/forgeTypes";
 
 // The pull request itself, rather than one of its files.

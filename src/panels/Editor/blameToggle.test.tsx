@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import PaneView from "../../tabs/PaneView";
 import { createEffect } from "solid-js";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 
 // The blame toggle: a button in the pane's breadcrumb bar, a localStorage
 // preference, and a prop CodeEditor turns into a compartment reconfigure. The mechanism is

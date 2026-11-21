@@ -14,7 +14,7 @@
 // per-test `list_agents` would answer only the first test and silently reuse it
 // for the rest.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, waitFor, fireEvent } from "../../../../test/harness";
 import { invoke } from "@tauri-apps/api/core";
 import AgentsSection from "./AgentsSection";
 import { __resetModelCatalogsForTests } from "../../../../utils/modelCatalog";

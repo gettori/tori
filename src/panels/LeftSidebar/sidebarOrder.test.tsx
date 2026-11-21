@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { createEvent, fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
+import { createEvent, fireEvent, render, screen, waitFor } from "../../test/harness";
 import type { PullRequest, StatusReport, UnitStatus } from "../../utils/forgeTypes";
 
 const GH = "/root/work/gh";

@@ -2,7 +2,7 @@
 // agent's answer, not on the invoke, which resolves on staging. Recording there
 // wrote a refused mode into every later draft in the project (issue 164).
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, waitFor } from "@solidjs/testing-library";
+import { render, waitFor } from "../../test/harness";
 import { wholeHistory } from "../../test/history";
 import { pointerClick } from "../../test/menus";
 

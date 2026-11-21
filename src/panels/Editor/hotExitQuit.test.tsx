@@ -6,7 +6,7 @@
 // did not land. The third is the one worth a test, because getting it wrong
 // looks exactly like the first until the day somebody's disk is full.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { render, screen, waitFor } from "@solidjs/testing-library";
+import { render, screen, waitFor } from "../../test/harness";
 
 import { installResizeObserver, selectionFor, EMPTY_PANE } from "./__fixtures__/editorAgent";
 

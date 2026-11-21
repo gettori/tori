@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, onTestFinished } from "vite-plus/test";
-import { render, screen, fireEvent } from "@solidjs/testing-library";
+import { render, screen, fireEvent } from "../../test/harness";
 import { expectNoAxeViolations } from "../../test/axe";
 import { bindingsByGroup, GROUP_LABELS } from "../../utils/hotkeys";
 import styles from "./ShortcutSheet.module.css";

@@ -6,7 +6,7 @@
 // `pty_resize`, `chat_set_visible`) fire on real edges only, not on every
 // signal behind the derivation.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, waitFor } from "@solidjs/testing-library";
+import { render, waitFor } from "../test/harness";
 import { createEffect } from "solid-js";
 import { installAnimationFrame } from "../test/frames";
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, fireEvent, waitFor } from "@solidjs/testing-library";
+import { render, fireEvent, waitFor } from "../../test/harness";
 import { invoke } from "@tauri-apps/api/core";
 import SessionInfo from "./SessionInfo";
 import type { McpServer } from "../../utils/chatTypes";

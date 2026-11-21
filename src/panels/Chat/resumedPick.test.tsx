@@ -15,7 +15,7 @@
 // and the model per *turn*, which leaves the pills describing nobody from mount
 // until the first turn lands.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, waitFor, screen, fireEvent } from "@solidjs/testing-library";
+import { render, waitFor, screen, fireEvent } from "../../test/harness";
 import { wholeHistory } from "../../test/history";
 
 globalThis.ResizeObserver ??= class {

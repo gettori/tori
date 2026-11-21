@@ -13,7 +13,7 @@
 // (`state.update` for the buffers in no view) rather than through the
 // `prefsConf` dispatch beside it, and this is the test that says so.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { render, waitFor } from "@solidjs/testing-library";
+import { render, waitFor } from "../../test/harness";
 import { createSignal } from "solid-js";
 
 globalThis.ResizeObserver ??= class {

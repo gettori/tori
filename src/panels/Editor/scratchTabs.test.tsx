@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import PaneView from "../../tabs/PaneView";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 // Type-only, so it is erased and does not load the module ahead of the mocks
 // the dynamic imports below are waiting for.
 import type { ToastEvent } from "../../utils/events";

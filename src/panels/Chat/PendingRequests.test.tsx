@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, fireEvent, waitFor } from "@solidjs/testing-library";
+import { render, fireEvent, waitFor } from "../../test/harness";
 import PendingRequests, { type ChatRequest } from "./PendingRequests";
 import { setChatCall } from "./chatCalls";
 

@@ -7,7 +7,7 @@
 // stash rather than from a buffer that will not exist until somebody clicks.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { createEffect } from "solid-js";
-import { render, screen, waitFor } from "@solidjs/testing-library";
+import { render, screen, waitFor } from "../../test/harness";
 
 import { installResizeObserver, selectionFor, EMPTY_PANE } from "./__fixtures__/editorAgent";
 import { installAnimationFrame } from "../../test/frames";

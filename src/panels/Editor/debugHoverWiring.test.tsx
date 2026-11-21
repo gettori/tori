@@ -6,7 +6,7 @@
 // the real CodeEditor is mounted and its state is asked which file the hover
 // thinks it is in: absent means the extension never reached the buffer.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { render, waitFor } from "@solidjs/testing-library";
+import { render, waitFor } from "../../test/harness";
 import { EditorView } from "@codemirror/view";
 
 globalThis.ResizeObserver ??= class {

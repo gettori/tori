@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 
 // The tab bar's end of Phase 5: the History button that opens the dropdown, the
 // badge that is the only sign of a session running here with no tab, and the

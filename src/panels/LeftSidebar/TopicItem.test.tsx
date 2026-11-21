@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vite-plus/test";
 import { createSignal } from "solid-js";
-import { render, screen, fireEvent } from "@solidjs/testing-library";
+import { render, screen, fireEvent } from "../../test/harness";
 import { expectNoAxeViolations } from "../../test/axe";
 import TopicItem, { CHIP_CAP, type SpaceTint } from "./TopicItem";
 import type { Topic, Member, MemberState } from "../../utils/topics";

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vite-plus/test";
-import { render, screen, fireEvent } from "@solidjs/testing-library";
+import { render, screen, fireEvent } from "../../test/harness";
 import { For } from "solid-js";
 import MemberSection from "./MemberSection";
 import { memberSectionsHeaded, type MemberRoot } from "../../utils/topicMembers";

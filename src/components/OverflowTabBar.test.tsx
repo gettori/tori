@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vite-plus/test";
 import { createSignal, type JSX } from "solid-js";
-import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor } from "../test/harness";
 import OverflowTabBar from "./OverflowTabBar";
 import { expectNoAxeViolations } from "../test/axe";
 import { pointerClick } from "../test/menus";

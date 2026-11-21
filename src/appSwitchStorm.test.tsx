@@ -5,7 +5,7 @@
 // stubbed down to registered descriptors over the real stores, as in appSplits,
 // so the shell is the subject.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { cleanup, render } from "@solidjs/testing-library";
+import { cleanup, render } from "./test/harness";
 import { installAnimationFrame } from "./test/frames";
 
 const WS_A = "/space/proj/main";

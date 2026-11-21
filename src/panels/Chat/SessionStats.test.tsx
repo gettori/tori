@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render } from "@solidjs/testing-library";
+import { render } from "../../test/harness";
 import { invoke } from "@tauri-apps/api/core";
 import SessionStats, { type SessionDetail } from "./SessionStats";
 import { __resetModelCapsForTests } from "../../utils/modelCaps";

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
+import { fireEvent, render, screen, waitFor } from "../../test/harness";
 import { wholeHistory } from "../../test/history";
 import { composerInput } from "./__fixtures__/composerInput";
 

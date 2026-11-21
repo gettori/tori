@@ -2,7 +2,7 @@
 // an anchor the webview follows takes the whole app off the SPA; a remote
 // image still renders here, which is the one place it does.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, waitFor } from "@solidjs/testing-library";
+import { render, waitFor } from "../../test/harness";
 import { onWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
 
 globalThis.ResizeObserver ??= class {

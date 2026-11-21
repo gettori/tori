@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 
 let result: "sent" | "blocked" | "timeout" = "sent";
 const sent: { text: string; blocks?: unknown[]; submit?: boolean }[] = [];

@@ -7,7 +7,7 @@
 // anything touches the folder, or the panels keep showing a repo the Topic no
 // longer has.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 import { createSignal } from "solid-js";
 import { pointerClick } from "../../test/menus";
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor, cleanup, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, cleanup, fireEvent } from "../../../../test/harness";
 
 let calls: [string, unknown][] = [];
 

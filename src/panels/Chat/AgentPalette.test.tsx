@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { render, screen, fireEvent, waitFor, within } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor, within } from "../../test/harness";
 import AgentPalette from "./AgentPalette";
 import styles from "./AgentPalette.module.css";
 import { lockedProvider, type PaletteProvider } from "./agentPaletteData";

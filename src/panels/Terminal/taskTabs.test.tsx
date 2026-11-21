@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, waitFor } from "@solidjs/testing-library";
+import { render, waitFor } from "../../test/harness";
 
 // The other end of the run: the panel emits an `OPEN_TERMINAL` and *this* is
 // what receives it. What matters here is that the payload survives the handler

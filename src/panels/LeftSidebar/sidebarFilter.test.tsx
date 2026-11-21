@@ -4,7 +4,7 @@
 // here is when it exists at all and what closing it does.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { pointerClick } from "../../test/menus";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 
 const WORK = "/root/work/proj";
 

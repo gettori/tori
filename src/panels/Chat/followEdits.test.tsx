@@ -4,7 +4,7 @@
 // levers are on. `ChatView` is mounted for real, like `openedChat.test.tsx`,
 // because where the control sits in that bar is the whole of what is under test.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, fireEvent, within } from "@solidjs/testing-library";
+import { render, screen, fireEvent, within } from "../../test/harness";
 import { wholeHistory } from "../../test/history";
 
 globalThis.ResizeObserver ??= class {
