@@ -74,6 +74,8 @@ function DialogPanel(props: {
           panel.inert = true;
           panel.showModal();
           panel.inert = false;
+          // WebKit ignores preventScroll on a target it has not laid out yet.
+          void panel.offsetHeight;
           (props.dialog.initialFocus?.() ?? panel).focus({ preventScroll: true });
           // A disabled confirm in a dialog that opens busy refuses focus.
           if (!panel.contains(document.activeElement)) panel.focus({ preventScroll: true });

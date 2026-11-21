@@ -9,7 +9,6 @@
 .content {
   position: relative;
   isolation: isolate;
-  color: inherit;
   min-width: calc(180px * var(--ui-scale));
   max-width: calc(320px * var(--ui-scale));
   max-height: 60vh;

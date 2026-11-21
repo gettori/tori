@@ -13,6 +13,10 @@
   opacity: 1;
 }
 
+/* Not a transform: one in flight gets its own compositing layer, and the rows
+   above it visibly shift a pixel while it lasts. */
 .glide[data-glide] {
-  transition: transform var(--tori-duration-med) var(--tori-ease-out);
+  transition:
+    top var(--tori-duration-med) var(--tori-ease-out),
+    left var(--tori-duration-med) var(--tori-ease-out);
 }
