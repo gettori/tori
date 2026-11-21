@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, waitFor } from "@solidjs/testing-library";
+import { render, waitFor } from "../../test/harness";
 
 // A link or a notification names a folder, a session, or both, and the sidebar
 // takes the user there: the right space shown, the unit selected, never a

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import PaneView from "../../tabs/PaneView";
 import { createSignal } from "solid-js";
-import { render, screen, waitFor, fireEvent, cleanup, within } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent, cleanup, within } from "../../test/harness";
 
 // Execution controls and the call stack, from the pane's side.
 //

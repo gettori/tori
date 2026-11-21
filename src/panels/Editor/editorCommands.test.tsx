@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 
 // The command registry's editor and git entries land in Editor.tsx, and this is
 // the arrow nothing else checks: `commands.ts` emits, the palette lists, and both

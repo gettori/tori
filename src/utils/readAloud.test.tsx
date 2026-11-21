@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { render } from "@solidjs/testing-library";
+import { render } from "../test/harness";
 
 const speak = vi.hoisted(() => vi.fn(async (_cmd: string, _o?: { chunks: string[] }) => 1));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: speak }));

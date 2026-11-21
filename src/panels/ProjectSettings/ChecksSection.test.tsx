@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vite-plus/test";
-import { fireEvent, render, screen } from "@solidjs/testing-library";
+import { fireEvent, render, screen } from "../../test/harness";
 
 const BUILT_IN = ["cargo test", "pnpm test"];
 let saved: { verification: { enabled: boolean; commands: Record<string, string[]> } } | null = null;

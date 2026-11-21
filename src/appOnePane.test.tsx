@@ -6,7 +6,7 @@
 // Same stubbed panels as appSplits: registered descriptors over the real
 // stores, so the strips are the real ones and the shell is the subject.
 import { describe, it, expect, vi, afterEach, beforeEach } from "vite-plus/test";
-import { cleanup, render, waitFor, within } from "@solidjs/testing-library";
+import { cleanup, render, waitFor, within } from "./test/harness";
 
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));

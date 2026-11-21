@@ -1,7 +1,7 @@
 // The Remote section: a switch Rust owns, so it writes through `remote_set`
 // rather than `set_settings`, and the status line shows what Rust answered.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, fireEvent, waitFor, within } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor, within } from "../../test/harness";
 import { expectNoAxeViolations } from "../../test/axe";
 
 const invoke = vi.fn();

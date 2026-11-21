@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vite-plus/test";
-import { render, screen, fireEvent } from "@solidjs/testing-library";
+import { render, screen, fireEvent } from "../../test/harness";
 import OutlinePanel from "./OutlinePanel";
 import { publishSymbols, clearSymbols, normalizeDocumentSymbols } from "../../utils/symbols";
 import { onWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";

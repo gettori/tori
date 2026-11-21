@@ -3,7 +3,7 @@
 // in `ChatView`.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
-import { render, screen, waitFor } from "@solidjs/testing-library";
+import { render, screen, waitFor } from "../../test/harness";
 import { wholeHistory } from "../../test/history";
 import { clearComposer } from "../../utils/chatCompose";
 import { emitWith, onWith, CHAT_SUBMIT, SEND_TO_SESSION_RESULT, type SendToSessionResult } from "../../utils/events";

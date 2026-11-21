@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vite-plus/test";
-import { waitFor } from "@solidjs/testing-library";
+import { waitFor } from "../../test/harness";
 import { EditorView } from "@codemirror/view";
 import { lineAnchor, paneAligner, type AlignMember } from "./paneAlign";
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vite-plus/test";
-import { render, fireEvent } from "@solidjs/testing-library";
+import { render, fireEvent } from "../../test/harness";
 import { createSignal } from "solid-js";
 import DiffRows, { rovingHunk } from "./DiffRows";
 import { buildRows } from "../../utils/diffView";

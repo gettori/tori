@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, onTestFinished } from "vite-plus/test";
 import { createSignal, type JSX } from "solid-js";
-import { render, screen, fireEvent } from "@solidjs/testing-library";
+import { render, screen, fireEvent } from "../../test/harness";
 import { expectNoAxeViolations } from "../../test/axe";
 import styles from "./Dialog.module.css";
 import Dialog, { type DialogProps } from "./Dialog";

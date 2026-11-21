@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, fireEvent, cleanup, waitFor } from "@solidjs/testing-library";
+import { render, screen, fireEvent, cleanup, waitFor } from "../../../../test/harness";
 
 let status = {
   installed: true,

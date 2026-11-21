@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { fireEvent, render } from "@solidjs/testing-library";
+import { fireEvent, render } from "../../test/harness";
 import { For, createSignal } from "solid-js";
 import Glide from "./Glide";
 

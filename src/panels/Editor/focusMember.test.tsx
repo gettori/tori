@@ -6,7 +6,7 @@
 // in it, and that moving the active member no longer kills the run.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
-import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent, cleanup } from "../../test/harness";
 import PaneView from "../../tabs/PaneView";
 import { installAnimationFrame } from "../../test/frames";
 

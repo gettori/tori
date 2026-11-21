@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent, within } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent, within } from "../../test/harness";
 import type { Member, Topic } from "../../utils/topics";
 
 const bridge = vi.hoisted(() => ({

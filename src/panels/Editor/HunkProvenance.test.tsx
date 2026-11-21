@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, cleanup } from "@solidjs/testing-library";
+import { render, screen, cleanup } from "../../test/harness";
 import type { Claim, ClaimRange } from "../../utils/provenance";
 
 let answer: ClaimRange[] = [];

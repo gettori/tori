@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { render, screen, fireEvent, cleanup, within } from "@solidjs/testing-library";
+import { render, screen, fireEvent, cleanup, within } from "./test/harness";
 import { pointerClick } from "./test/menus";
 import "./test/tabLayout";
 import { drift, rows } from "./test/perfBudgets";

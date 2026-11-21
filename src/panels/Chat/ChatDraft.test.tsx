@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vite-plus/test";
-import { render, fireEvent, screen, within } from "@solidjs/testing-library";
+import { render, fireEvent, screen, within } from "../../test/harness";
 
 // Every call this surface makes to the backend, recorded. The draft's promise is
 // that none of them starts a chat: no `chat_spawn`, so no child process, no

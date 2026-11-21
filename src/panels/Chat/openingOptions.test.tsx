@@ -2,7 +2,7 @@
 // mounted for real here, unlike everywhere else, because what is under test is
 // *when* the apply fires rather than what it sends.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, waitFor } from "@solidjs/testing-library";
+import { render, waitFor } from "../../test/harness";
 import { wholeHistory } from "../../test/history";
 
 globalThis.ResizeObserver ??= class {

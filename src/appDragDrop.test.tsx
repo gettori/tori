@@ -9,7 +9,7 @@
 // leaves untested is the browser's own drag plumbing, which is what the CDP
 // probe (dev/p10-drag-probe.mjs) is for.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor, within } from "@solidjs/testing-library";
+import { render, screen, waitFor, within } from "./test/harness";
 
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vite-plus/test";
-import { render, screen, fireEvent } from "@solidjs/testing-library";
+import { render, screen, fireEvent } from "../../test/harness";
 import type { SendResult, SessionTarget } from "../../utils/safeSend";
 
 let result: SendResult = { kind: "sent" };

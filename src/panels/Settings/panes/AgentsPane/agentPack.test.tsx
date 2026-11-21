@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../../../test/harness";
 import { invoke } from "@tauri-apps/api/core";
 import AgentDetail from "./AgentDetail";
 import { reloadAdapters } from "../../../../utils/agents";

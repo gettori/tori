@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent, cleanup } from "../../../../test/harness";
 import { OPEN_JOB, onWith, type OpenJob } from "../../../../utils/events";
 import type { GitReport } from "../../../../utils/gitHealth";
 

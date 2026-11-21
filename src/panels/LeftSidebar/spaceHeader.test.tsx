@@ -2,7 +2,7 @@
 // The header carries the same menu the tile's right-click does, which was the
 // only way to it before.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 import { pointerClick, rightClick } from "../../test/menus";
 
 const WORK = "/root/work/proj";

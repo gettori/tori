@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vite-plus/test";
-import { render, fireEvent } from "@solidjs/testing-library";
+import { render, fireEvent } from "../../test/harness";
 import SessionChips, { grouped, ordered, type RelatedSession } from "./SessionChips";
 
 function s(id: string, over: Partial<RelatedSession> = {}): RelatedSession {

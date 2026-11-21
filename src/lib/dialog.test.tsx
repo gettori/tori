@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vite-plus/test";
-import { render, screen } from "@solidjs/testing-library";
+import { render, screen } from "../test/harness";
 import { Dialog } from "./dialog";
 
 // The smoke test for the whole `lib/` seam, not for Kobalte's dialog.

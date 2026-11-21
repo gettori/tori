@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor } from "@solidjs/testing-library";
+import { render, screen, waitFor } from "../../test/harness";
 import type { StatusReport, UnitStatus } from "../../utils/forgeTypes";
 
 // The forge chip where it actually lives: on a branch row, fed by the poller.

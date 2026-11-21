@@ -6,7 +6,7 @@
 // answers `list_project_files` with one flat array whatever root it is asked
 // about, and its selection is a branch unit throughout.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor } from "../../test/harness";
 
 const A = "/r/api/.tori/worktrees/auth";
 const B = "/r/web/.tori/worktrees/auth";

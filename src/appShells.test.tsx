@@ -2,7 +2,7 @@
 // whatever branch is selected. The real shell and terminal panel; the surfaces
 // are stubbed to what a real one does with focus.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent, cleanup } from "./test/harness";
 import { createEffect } from "solid-js";
 
 // What the backend answers, from import time on: modules the real panels load

@@ -3,7 +3,7 @@
 // workspace's files come back silently. Both panels mount into one tree, the
 // shape the two-pane shell gives them.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../test/harness";
 // The strip seeds its visible count from an empty item list and corrects it in a
 // frame, so without this every lookup by tab role races that correction.
 import { installAnimationFrame } from "../test/frames";

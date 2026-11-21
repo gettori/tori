@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vite-plus/test";
-import { render, fireEvent } from "@solidjs/testing-library";
+import { render, fireEvent } from "../../test/harness";
 import PlanCard from "./PlanCard";
 import { applyEvent, initialChat } from "./chatStore";
 import type { PlanItem } from "../../utils/chatTypes";

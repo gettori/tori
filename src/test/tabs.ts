@@ -1,4 +1,4 @@
-import { screen } from "@solidjs/testing-library";
+import { screen } from "./harness";
 
 /**
  * A tab from an `OverflowTabBar` strip, by its accessible name.

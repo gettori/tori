@@ -3,7 +3,7 @@
 // active, and while a Topic is selected no unit reads as active, not even
 // the member whose folder is the active root.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 
 const REPO = "/w/api";
 const MEMBER = "/w/api-auth";

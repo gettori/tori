@@ -8,7 +8,7 @@
 // that the moved lines are reported before the file is reported clean, so what
 // is armed is the file that is now on disk.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { render, waitFor } from "@solidjs/testing-library";
+import { render, waitFor } from "../../test/harness";
 import { LSPClient, languageServerExtensions, type Transport } from "@codemirror/lsp-client";
 
 globalThis.ResizeObserver ??= class {

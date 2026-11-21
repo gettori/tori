@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vite-plus/test";
-import { render, screen } from "@solidjs/testing-library";
+import { render, screen } from "../../test/harness";
 import BranchLine from "./BranchLine";
 import type { PullRequest, UnitStatus } from "../../utils/forgeTypes";
 

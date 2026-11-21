@@ -3,7 +3,7 @@
 // it: one branch unit's folder, or every member of a Topic at once.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
-import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor } from "../../test/harness";
 
 import { installResizeObserver } from "./__fixtures__/editorAgent";
 import { installAnimationFrame } from "../../test/frames";

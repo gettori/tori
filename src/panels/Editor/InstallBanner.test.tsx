@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor, cleanup } from "@solidjs/testing-library";
+import { render, screen, waitFor, cleanup } from "../../test/harness";
 
 let stored: Record<string, unknown> = {};
 let installs: string[] = [];

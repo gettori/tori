@@ -10,7 +10,7 @@
 // component's documented contract is what proves this one has teeth.
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createSignal } from "solid-js";
-import { fireEvent, render, screen } from "@solidjs/testing-library";
+import { fireEvent, render, screen } from "../../test/harness";
 import SegmentedControl from "./SegmentedControl";
 import { expectNoAxeViolations, runAxe } from "../../test/axe";
 

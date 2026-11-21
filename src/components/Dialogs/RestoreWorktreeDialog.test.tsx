@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vite-plus/test";
-import { render, screen, fireEvent } from "@solidjs/testing-library";
+import { render, screen, fireEvent } from "../../test/harness";
 import RestoreWorktreeDialog, { type Rescued } from "./RestoreWorktreeDialog";
 
 const now = Date.now();

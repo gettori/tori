@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 
 // A project card shows at most BRANCH_CAP (6) branch rows and puts the rest
 // behind a "N more branches" row. Its own fixture rather than the shared

@@ -5,7 +5,7 @@
 // no credential to assert on. Phase 0 measured that `claude` keeps its tokens in
 // the login Keychain, so a profile home holds nothing secret.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, waitFor, fireEvent, screen } from "@solidjs/testing-library";
+import { render, waitFor, fireEvent, screen } from "../../../../test/harness";
 import { invoke } from "@tauri-apps/api/core";
 import AgentsSection from "./AgentsSection";
 import { __resetModelCatalogsForTests, type ModelCatalog } from "../../../../utils/modelCatalog";
