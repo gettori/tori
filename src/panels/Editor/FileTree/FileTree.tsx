@@ -623,7 +623,7 @@ function TreeNode(props: {
     }
   });
 
-  // Read only once the menu is open: Kobalte mounts the portal on open, so a row
+  // Read only once the menu is open: `ContextMenu` mounts its content on open, so a row
   // that is never right-clicked never builds a list. Groups mirror VS Code's
   // Explorer menu, and each one only appears for the rows it applies to.
   function menuItems(): MenuItem[] {

@@ -629,12 +629,9 @@ const NAMED_BY_TEXT = new Set(["Tab", "MenuRow"]);
 /** Components that accept `tooltip` and take a *required* name prop of their
  *  own, so the tooltip is a description on a control that is already named and
  *  no backfill is wanted. `Picker`'s `ariaLabel` is required by its type, which
- *  is why there is nothing further to assert here. `Toast.CloseButton` is
- *  Kobalte's, which always carries an `aria-label` (its own translation when
- *  the caller passes none) and forwards the rest to `as={Button}`, so the
- *  tooltip reaches an implementation the `as=` hides from this scan.
- *  `PickerButton` is the same pill for a control whose choices are a dialog
- *  rather than a menu, and takes the same required `ariaLabel`. `PillToggle` is
+ *  is why there is nothing further to assert here. `PickerButton` is the same
+ *  pill for a control whose choices are a dialog rather than a menu, and takes
+ *  the same required `ariaLabel`. `PillToggle` is
  *  the two-state one, and has no visible text at all, so its required
  *  `ariaLabel` is the only name it will ever have. */
 const NAMES_ITSELF = new Set(["Picker", "PickerButton", "PillToggle", "Toast.CloseButton"]);
@@ -735,7 +732,7 @@ function tooltipSites(): TooltipSite[] {
       // prop it did not claim, so the component that implements `tooltip` is
       // the `as` target rather than the tag it is written on. That is how
       // `<ToggleGroup.Item as={IconButton} tooltip=…>` reaches a real tooltip:
-      // Kobalte's item owns the toggle behaviour and IconButton owns the name
+      // `ToggleGroup.Item` owns the toggle behaviour and IconButton owns the name
       // and the trigger. Resolving it here keeps the check strict rather than
       // widening it - an `as` naming something that does not implement the prop
       // still fails, and so does a tooltip on a raw element.

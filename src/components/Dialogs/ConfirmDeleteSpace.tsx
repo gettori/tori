@@ -54,7 +54,7 @@ const KIND_GLYPH = { repo: FolderGit2, folder: Folder, file: FileText } as const
  * The shell is `Dialog`. Enter stays on the **input**, deliberately not on the
  * panel as its siblings in this set do: the gate is a field, and answering the
  * key from anywhere in the dialog would widen it to the whole surface. Escape is
- * Kobalte's, reported as `onClose`.
+ * `Dialog`'s, reported as `onClose`.
  */
 export default function ConfirmDeleteSpace(props: {
   spaceName: string;

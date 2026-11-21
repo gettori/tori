@@ -93,8 +93,6 @@ const { resetUsageProbeForTests, seedUsageIdentityForTests } = await import("../
 const NOW = Date.UTC(2026, 8, 6, 12, 0, 0);
 const LATER = Math.floor(NOW / 1000) + 3 * 60 * 60;
 
-/** Kobalte installs its outside listener from a `setTimeout(0)`, so a dismissal
- *  test has to let one macrotask through first. */
 const settle = () => vi.advanceTimersByTimeAsync(0);
 
 beforeEach(() => {

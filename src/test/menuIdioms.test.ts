@@ -1,9 +1,9 @@
 // The guard for the two test idioms gettori/tori issue 103 had to sweep, so
 // they stay swept.
 //
-// Both exist because the menus moved from hand-rolled DOM onto Kobalte, and
-// both fail *quietly* rather than loudly, which is why they get a guard instead
-// of a note.
+// Both exist because the menus answer pointer events rather than a bare click,
+// and both fail *quietly* rather than loudly, which is why they get a guard
+// instead of a note.
 //
 //   1. **`fireEvent.click` reaches nothing in a menu.** A trigger opens on
 //      `pointerdown`; a row runs its action on `pointerup` with `button === 0`,
@@ -11,11 +11,9 @@
 //      test reads as "the menu did not open" or "the action did not fire"
 //      rather than as the wrong event. `pointerClick` in `./menus.ts` is the
 //      replacement.
-//   2. **`mousedown` dismisses nothing.** Kobalte's dismissable layer listens
-//      for `pointerdown`, and installs that listener from a `setTimeout(0)`, so
-//      a dismissal test also has to yield a macrotask first. The pre-migration
-//      surfaces composed `Popover`, which listens for `mousedown`, so every
-//      dismissal assertion in the repo was written that way.
+//   2. **`mousedown` dismisses nothing.** The layer stack in `lib/layer.ts`
+//      listens for `pointerdown`, so a dismissal test that sends only a
+//      `mousedown` reads as a menu that will not close.
 //
 // A `mouseDown` **paired** with a `pointerDown` is fine and is what the
 // migrated tests do: it spells out the pair a real pointer sends, and asserts
@@ -59,7 +57,7 @@ const PAIRED_WITHIN = 3;
 
 const lines = (source: string) => source.split("\n");
 
-describe("the test idioms the Kobalte menus need", () => {
+describe("the test idioms the menus need", () => {
   it("drives no menu with a plain click", () => {
     const found: string[] = [];
     for (const [path, source] of Object.entries(SOURCES)) {

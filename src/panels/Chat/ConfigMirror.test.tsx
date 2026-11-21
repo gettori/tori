@@ -13,7 +13,7 @@ import type { ChatConfigOption } from "../../utils/chatTypes";
  *  which is what an ACP agent publishes: the protocol cannot say "refused". */
 const live = <T extends object>(o: T) => ({ disabled: false, note: "", ...o });
 
-/** Open a tooltip the way a keyboard user does. Kobalte opens on focus with no
+/** Open a tooltip the way a keyboard user does. `Tooltip` opens on focus with no
  *  delay, so unlike the hover path this needs no timers - but it needs the real
  *  focus as well as the event. */
 function focusTrigger(trigger: HTMLElement) {

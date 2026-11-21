@@ -150,7 +150,8 @@ export default function Breadcrumbs(props: {
 /** One crumb, and the menu it opens under itself. `bottom-start` is the whole of
  *  what the old `right` anchor field bought: it never end-aligned anything, it
  *  described the crumb's span so the hand-rolled clamp could keep a wide menu on
- *  screen, and Kobalte anchors on the trigger's real rect and flips for itself. */
+ *  screen, and `anchorLayer` anchors on the trigger's real rect and flips for
+ *  itself. */
 function Crumb(props: { menu: JSX.Element; children: JSX.Element }) {
   return (
     <Dropdown as="button" type="button" class={styles.crumb} placement="bottom-start" menu={props.menu}>

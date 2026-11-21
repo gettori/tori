@@ -12,7 +12,7 @@ import Dialog from "../Dialog/Dialog";
 //
 // The shell is `Dialog`, which owns the portal, the backdrop, Escape and the
 // focus trap. Enter stays here, on the input, because it means "submit this
-// field" rather than "dismiss the dialog"; Escape does not, because Kobalte
+// field" rather than "dismiss the dialog"; Escape does not, because `Dialog`
 // already reports it as `onClose` and a second handler would resolve the same
 // request twice.
 export default function PromptModal(props: {

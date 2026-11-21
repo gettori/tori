@@ -7,10 +7,6 @@ import styles from "./Menu.module.css";
 import ContextMenu from "./ContextMenu";
 import type { MenuItem } from "./rows";
 
-// Kobalte's dismissable layer installs its outside-pointerdown listener from a
-// `setTimeout(0)`, the same seam `Dialog.test.tsx` documents. A test that
-// dispatches the outside click without yielding is asserting on a listener that
-// does not exist yet, and reads as "outside click does not close the menu".
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 /** A focusable sibling outside the menu, removed even when the test fails.
@@ -56,7 +52,7 @@ describe("ContextMenu", () => {
       // The separator is the primitive's own `<hr>`, so it is announced as a
       // separator and skipped by arrow navigation without this file saying so.
       // Queried by role rather than by attribute: `<hr>` carries the role
-      // implicitly and Kobalte writes no `role=` of its own.
+      // implicitly and `MenuSeparator` writes no `role=` of its own.
       expect(menu.querySelectorAll("hr")).toHaveLength(1);
     });
 
@@ -157,10 +153,9 @@ describe("ContextMenu", () => {
       await screen.findByRole("menu");
       await macrotask();
 
-      // Kobalte expresses modality by aria-hiding the rest of the document and
-      // locking the page. Both would be wrong here: HistoryPanel's row menus
-      // live inside the popover they belong to, and a modal one would aria-hide
-      // its own panel.
+      // A modal layer hides the rest of the document and locks the page scroll.
+      // Both would be wrong here: HistoryPanel's row menus live inside the
+      // popover they belong to, and a modal one would hide its own panel.
       expect(outside.getAttribute("aria-hidden")).toBeNull();
       expect(document.body.style.overflow).not.toBe("hidden");
     });

@@ -3,12 +3,10 @@ import { screen } from "./harness";
 /**
  * A tab from an `OverflowTabBar` strip, by its accessible name.
  *
- * This is the visible row: the copy a browser draws, the one carrying the
- * context menu, and the only one that will still be a tab once the strip moves
- * onto Kobalte (gettori/tori#111). It used to be the measuring ghost, reached
- * with `hidden: true`, because jsdom measured every width as 0 and the bar kept
- * exactly one tab on screen. `src/test/tabLayout.ts` gives the bar a real width
- * instead, so the visible row holds what it would hold in a browser.
+ * This is the visible row: the copy a browser draws and the one carrying the
+ * context menu. jsdom measures every width as 0, which keeps exactly one tab on
+ * screen, so `src/test/tabLayout.ts` gives the bar a real width and the visible
+ * row holds what it would hold in a browser.
  *
  * **Needs the measurement frame to have landed.** The bar seeds its visible
  * count from the item list it was created with (empty, in a panel that opens

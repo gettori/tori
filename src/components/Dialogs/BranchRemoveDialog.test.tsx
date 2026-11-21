@@ -15,8 +15,6 @@ import BranchRemoveDialog from "./BranchRemoveDialog";
 // leaves Tori's list. That is the assertion a careless migration would lose,
 // because it lives in a `Show` that renders nothing until the box is cleared.
 const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
-// Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so a
-// press fired before this yield lands on nobody.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 type Props = Parameters<typeof BranchRemoveDialog>[0];
@@ -158,9 +156,6 @@ describe("BranchRemoveDialog", () => {
   });
 
   describe("shape", () => {
-    // Rewritten at migration time, as the header said it would be: dismissal was
-    // a `mousedown` on a real backdrop element and is now Kobalte's outside
-    // `pointerdown`, from a listener it installs in a `setTimeout(0)`.
     it("cancels on a pointer down outside the panel", async () => {
       const { onCancel } = open();
       await macrotask();

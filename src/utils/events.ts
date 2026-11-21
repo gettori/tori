@@ -40,9 +40,7 @@ export type LiveTab = {
 export const FOCUS_SEARCH = "tori:focus-search";
 export const FOCUS_TERMINAL = "tori:focus-terminal";
 // Moves keyboard focus into the toast region (Cmd+Option+T), from which Tab
-// reaches each toast and Escape dismisses the focused one. Routed through the
-// command registry rather than Kobalte's own document-level hotkey listener,
-// which never checks defaultPrevented (the double-fire gotcha).
+// reaches each toast and Escape dismisses the focused one.
 export const FOCUS_TOASTS = "tori:focus-toasts";
 // Switches the editor's right panel to the project-wide Search mode and
 // focuses its input (Cmd+Shift+F). Distinct from FOCUS_SEARCH, which focuses
