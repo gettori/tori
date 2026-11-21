@@ -8,15 +8,14 @@
 }
 
 /* The whole row, so the reason a click does nothing is visible before the
-   click. Kobalte puts `data-disabled` on the root as well as on the control. */
+   click. */
 .root[data-disabled] {
   cursor: not-allowed;
 }
 
 /* Visually hidden, never removed: the native input is what Space toggles, what
    the label points at, and what `getByRole("checkbox")` finds. `display: none`
-   or `visibility: hidden` would take all three away. Kobalte positions it over
-   the control, so a pointer press lands on the input itself. */
+   or `visibility: hidden` would take all three away. */
 .input {
   position: absolute;
   width: 1px;
@@ -69,8 +68,7 @@
   color: var(--fg-on-emphasis);
 }
 
-/* Mounted whether or not the box is checked (see Checkbox.tsx), so the hidden
-   state is CSS: Kobalte stamps `data-checked` on the indicator itself. A
+/* Mounted whether or not the box is checked, so the hidden state is CSS. A
    transition, so a pane shown again does not replay the tick. */
 .indicator {
   display: flex;

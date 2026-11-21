@@ -1,13 +1,10 @@
-import { For, Show, type JSX } from "solid-js";
-import { RadioGroup as Primitive } from "../../lib/radio-group";
+import { createUniqueId, For, Show, type JSX } from "solid-js";
 import styles from "./RadioGroup.module.css";
 
 /** One choice: the string the app stores, the label the user reads, and an
  *  optional second line that is part of the choice rather than a hint about
  *  it. */
 export type RadioOption = {
-  /** Non-empty. `""` is how this component spells "nothing chosen", so an
-   *  option carrying it would be selected whenever the group is not. */
   value: string;
   label: JSX.Element;
   description?: JSX.Element;
@@ -15,37 +12,21 @@ export type RadioOption = {
 };
 
 /**
- * One choice out of a small fixed set, all of them visible at once: Kobalte's
- * radio group behind Tori's chrome and Tori's API.
+ * One choice out of a small fixed set, all of them visible at once.
  *
  * **Radio or Select is a density choice.** This is for a handful of options the
  * user should be able to compare side by side without opening anything, which
  * is what an agent's question is. A longer list, or one where the choice is
  * routine enough not to deserve the space, is a `<Select>`.
  *
- * **String in, string out**, the same contract `<Select>` keeps. Kobalte's own
- * `value`/`onChange` already traffic in the option's string here, so unlike
- * Select this needs no memo to get back to the option object.
- *
  * **`null` is a real value and means nothing is chosen.** A question that has
  * not been answered is the common case, not an edge one, and a group that
  * arrived pre-selected would answer it for the user.
  *
- * It maps to the **empty string**, not to `undefined`, and that is load
- * bearing. Kobalte reads `value === undefined` as "uncontrolled" and starts
- * keeping its own state, so a group handed `undefined` ticks the radio the user
- * pressed even when the caller's value never changed. Measured against the
- * installed 0.13.13: with `undefined`, a call site whose handler refuses the
- * change is left showing a state its store never took. The empty string is a
- * value like any other, so the group stays controlled and matches no option.
- * The cost is that `""` cannot itself be an option value here, which is why
- * `RadioOption.value` is documented as non-empty.
- *
- * The native inputs Kobalte renders are real `<input type="radio">`, so arrow
- * keys move between them and `getByRole("radio")` finds them without any JS of
- * ours. We draw the dot: each input is visually hidden and stays in the
- * accessibility tree, which is what keeps the label association and the focus
- * ring honest.
+ * The inputs are real `<input type="radio">`, so arrow keys move between them
+ * and `getByRole("radio")` finds them without any JS of ours. We draw the dot:
+ * each input is visually hidden and stays in the accessibility tree, which is
+ * what keeps the label association and the focus ring honest.
  *
  * **Labeling.** Pass `label` for a visible group label, or `aria-label` when
  * the group is named by something the caller already rendered. One of the two
@@ -59,8 +40,6 @@ export default function RadioGroup(props: {
   /** The visible group label. Omit it only when `aria-label` names the group. */
   label?: JSX.Element;
   disabled?: boolean;
-  /** Layout only. The keyboard model is Kobalte's either way; this tells the
-   *  primitive which arrow keys to treat as forward, and drives the CSS. */
   orientation?: "vertical" | "horizontal";
   class?: string;
   itemClass?: string;
@@ -68,44 +47,103 @@ export default function RadioGroup(props: {
   "aria-describedby"?: string;
 }) {
   const orientation = () => props.orientation ?? "vertical";
+  const baseId = createUniqueId();
+  const groupLabelId = `radiogroup-${baseId}-label`;
+  const name = `radiogroup-${baseId}`;
+  let root!: HTMLDivElement;
+
+  // A refused pick has already unchecked the previous radio natively.
+  const syncChecked = () => {
+    for (const radio of root.querySelectorAll<HTMLInputElement>('input[type="radio"]')) {
+      radio.checked = radio.value === props.value;
+    }
+  };
 
   return (
-    <Primitive.Root
+    <div
+      ref={root}
+      role="radiogroup"
       class={[styles.root, props.class].filter(Boolean).join(" ")}
-      // Never `undefined`: that is Kobalte's uncontrolled switch. See the note
-      // on `null` above.
-      value={props.value ?? ""}
-      onChange={props.onChange}
-      disabled={props.disabled}
-      orientation={orientation()}
       aria-label={props["aria-label"]}
+      aria-labelledby={props.label !== undefined ? groupLabelId : undefined}
       aria-describedby={props["aria-describedby"]}
+      aria-disabled={props.disabled || undefined}
+      aria-orientation={orientation()}
+      data-disabled={props.disabled ? "" : undefined}
     >
       <Show when={props.label !== undefined}>
-        <Primitive.Label class={styles.groupLabel}>{props.label}</Primitive.Label>
+        <span id={groupLabelId} class={styles.groupLabel} data-disabled={props.disabled ? "" : undefined}>
+          {props.label}
+        </span>
       </Show>
       <div class={styles.items} data-orientation={orientation()}>
         <For each={props.options}>
-          {(option) => (
-            <Primitive.Item
-              class={[styles.item, props.itemClass].filter(Boolean).join(" ")}
-              value={option.value}
-              disabled={option.disabled}
-            >
-              <Primitive.ItemInput class={styles.input} />
-              <Primitive.ItemControl class={styles.control}>
-                <Primitive.ItemIndicator class={styles.indicator} forceMount />
-              </Primitive.ItemControl>
-              <div class={styles.text}>
-                <Primitive.ItemLabel class={styles.label}>{option.label}</Primitive.ItemLabel>
-                <Show when={option.description !== undefined}>
-                  <Primitive.ItemDescription class={styles.description}>{option.description}</Primitive.ItemDescription>
-                </Show>
+          {(option) => {
+            const itemId = createUniqueId();
+            const inputId = `radio-${itemId}-input`;
+            const labelId = `radio-${itemId}-label`;
+            const descriptionId = `radio-${itemId}-description`;
+            const state = {
+              get "data-checked"() {
+                return props.value === option.value ? "" : undefined;
+              },
+              get "data-disabled"() {
+                return props.disabled || option.disabled ? "" : undefined;
+              },
+            };
+            let input!: HTMLInputElement;
+            return (
+              <div role="group" class={[styles.item, props.itemClass].filter(Boolean).join(" ")} {...state}>
+                <input
+                  ref={input}
+                  id={inputId}
+                  class={styles.input}
+                  type="radio"
+                  name={name}
+                  value={option.value}
+                  checked={props.value === option.value}
+                  disabled={props.disabled || option.disabled}
+                  aria-labelledby={labelId}
+                  aria-describedby={option.description !== undefined ? descriptionId : undefined}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    if (!props.disabled && !option.disabled) props.onChange(option.value);
+                    syncChecked();
+                  }}
+                  {...state}
+                />
+                <div
+                  class={styles.control}
+                  onClick={() => {
+                    input.click();
+                    input.focus({ preventScroll: true });
+                  }}
+                  {...state}
+                >
+                  <div class={styles.indicator} {...state} />
+                </div>
+                <div class={styles.text}>
+                  <label
+                    id={labelId}
+                    for={inputId}
+                    class={styles.label}
+                    // WebKit does not focus an input through its label.
+                    onClick={() => input.focus({ preventScroll: true })}
+                    {...state}
+                  >
+                    {option.label}
+                  </label>
+                  <Show when={option.description !== undefined}>
+                    <div id={descriptionId} class={styles.description} {...state}>
+                      {option.description}
+                    </div>
+                  </Show>
+                </div>
               </div>
-            </Primitive.Item>
-          )}
+            );
+          }}
         </For>
       </div>
-    </Primitive.Root>
+    </div>
   );
 }
