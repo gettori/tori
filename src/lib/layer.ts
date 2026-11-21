@@ -1,7 +1,7 @@
 import { createEffect, createMemo, createSignal, onCleanup, type Accessor } from "solid-js";
 
 type LayerSide = "top" | "bottom" | "left" | "right";
-export type LayerPlacement = LayerSide | `${LayerSide}-${"start" | "end"}`;
+export type LayerPlacement = LayerSide | `${LayerSide}-${"start" | "end"}` | "corner";
 
 export interface LayerOptions {
   element: HTMLElement;
@@ -11,6 +11,8 @@ export interface LayerOptions {
   modal?: boolean;
   returnFocus?: () => HTMLElement | null | undefined;
   ignorePress?: (target: Node) => boolean;
+  dismissOnFocusOutside?: boolean;
+  keepFocusOnPress?: boolean;
   passive?: boolean;
 }
 
@@ -53,6 +55,11 @@ export function takeEscape(e: KeyboardEvent) {
   top.onDismiss();
 }
 
+/** For a dialog not on this stack yet: an outside press belongs to the layer. */
+export function hasInteractiveLayer() {
+  return topInteractiveLayer() !== undefined;
+}
+
 function onPointerDown(e: PointerEvent) {
   const top = topInteractiveLayer();
   if (!top || isInside(top, e) || top.ignorePress?.(e.target as Node)) return;
@@ -62,6 +69,13 @@ function onPointerDown(e: PointerEvent) {
   } finally {
     dismissingByPress = false;
   }
+}
+
+function onFocusIn(e: FocusEvent) {
+  const top = topInteractiveLayer();
+  const target = e.target as Node;
+  if (!top?.dismissOnFocusOutside || top.element.contains(target) || top.ignorePress?.(target)) return;
+  top.onDismiss();
 }
 
 function lockScroll() {
@@ -84,6 +98,7 @@ function leave(layer: Layer) {
   if (stack.length > 0) return;
   document.removeEventListener("keydown", takeEscape);
   document.removeEventListener("pointerdown", onPointerDown, true);
+  document.removeEventListener("focusin", onFocusIn);
 }
 
 function closedNatively(layer: Layer) {
@@ -135,6 +150,7 @@ export function openLayer(options: LayerOptions) {
   if (stack.length === 0) {
     document.addEventListener("keydown", takeEscape);
     document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("focusin", onFocusIn);
   }
   stack.push(layer);
   if (options.modal) lockScroll();
@@ -145,7 +161,7 @@ export function openLayer(options: LayerOptions) {
     leave(layer);
     // A modal keeps the rest of the page inert, so hide before moving focus out.
     if (stillOpen) options.hide();
-    if (options.passive) return;
+    if (options.passive || (dismissingByPress && options.keepFocusOnPress)) return;
     const restore = () => {
       const at = document.activeElement;
       const unclaimed = !at || at === document.body || stack.some((open) => open.element === at);
@@ -164,6 +180,7 @@ const POSITION_AREA: Record<LayerPlacement, string> = {
   bottom: "bottom",
   left: "left",
   right: "right",
+  corner: "bottom right",
   "bottom-start": "bottom span-right",
   "bottom-end": "bottom span-left",
   "top-start": "top span-right",
@@ -183,6 +200,7 @@ const TRANSFORM_ORIGIN: Record<LayerPlacement, string> = {
   bottom: "top center",
   left: "center right",
   right: "center left",
+  corner: "top left",
   "bottom-start": "top left",
   "bottom-end": "top right",
   "top-start": "bottom left",
@@ -194,7 +212,13 @@ const TRANSFORM_ORIGIN: Record<LayerPlacement, string> = {
 };
 
 // One name per layer: a name shared across rows resolves to the last row.
-export function anchorLayer(anchor: HTMLElement, floating: HTMLElement, placement: LayerPlacement, gutter = 0) {
+export function anchorLayer(
+  anchor: HTMLElement,
+  floating: HTMLElement,
+  placement: LayerPlacement,
+  gutter = 0,
+  crossShift = 0,
+) {
   const name = `--layer-anchor-${++anchorCount}`;
   const names = () =>
     anchor.style
@@ -204,7 +228,7 @@ export function anchorLayer(anchor: HTMLElement, floating: HTMLElement, placemen
       .filter((part) => part && part !== "none");
   anchor.style.setProperty("anchor-name", [...names(), name].join(", "));
 
-  const side = placement.split("-")[0] as keyof typeof GUTTER_MARGIN;
+  const side = (placement === "corner" ? "bottom" : placement.split("-")[0]) as keyof typeof GUTTER_MARGIN;
   const first = side === "top" || side === "bottom" ? "flip-block" : "flip-inline";
   const second = first === "flip-block" ? "flip-inline" : "flip-block";
   const { style } = floating;
@@ -212,11 +236,12 @@ export function anchorLayer(anchor: HTMLElement, floating: HTMLElement, placemen
   style.setProperty("inset", "auto");
   style.setProperty("margin", "0");
   style.setProperty(GUTTER_MARGIN[side], `${gutter}px`);
+  style.setProperty(side === "top" || side === "bottom" ? "margin-left" : "margin-top", `${crossShift}px`);
   style.setProperty("position-anchor", name);
   style.setProperty("position-area", POSITION_AREA[placement]);
   style.setProperty("position-try-fallbacks", `${first}, ${second}, ${first} ${second}`);
   style.setProperty("--layer-origin", TRANSFORM_ORIGIN[placement]);
-  if (!placement.includes("-")) {
+  if (placement !== "corner" && !placement.includes("-")) {
     const crossInset = side === "top" || side === "bottom" ? "inset-inline" : "inset-block";
     style.setProperty(crossInset, `${WINDOW_MARGIN}px`);
   }
@@ -226,6 +251,14 @@ export function anchorLayer(anchor: HTMLElement, floating: HTMLElement, placemen
     if (rest.length > 0) anchor.style.setProperty("anchor-name", rest.join(", "));
     else anchor.style.removeProperty("anchor-name");
   };
+}
+
+/** A zero size fixed element at a point, for a layer opened at the pointer. */
+export function pointAnchor(x: number, y: number) {
+  const el = document.createElement("div");
+  el.style.cssText = `position:fixed;left:${x}px;top:${y}px;width:0;height:0;pointer-events:none`;
+  document.body.append(el);
+  return el;
 }
 
 function longestSeconds(list: string) {

@@ -12,6 +12,7 @@ import {
 } from "solid-js";
 import { Dynamic, Portal } from "solid-js/web";
 import { anchorLayer, openLayer } from "../../lib/layer";
+import { callHandler, type TriggerHandler } from "../callHandler";
 import { useDialogSurface } from "../Dialog/surface";
 import styles from "./Tooltip.module.css";
 
@@ -123,13 +124,6 @@ export type TooltipProps<T extends HTMLElement = HTMLButtonElement, P extends Re
     as?: keyof JSX.HTMLElementTags | Component<P>;
     children?: JSX.Element;
   };
-
-type TriggerHandler = JSX.EventHandlerUnion<HTMLElement, any> | undefined;
-
-function callHandler(e: Event, handler: TriggerHandler) {
-  if (typeof handler === "function") (handler as (event: Event) => void)(e);
-  else if (handler) (handler[0] as (data: unknown, event: Event) => void)(handler[1], e);
-}
 
 // Its own component so these effects run after the portal has connected it:
 // showPopover throws on a node that is not in the document.
