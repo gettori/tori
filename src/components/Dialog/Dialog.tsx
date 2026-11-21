@@ -1,5 +1,6 @@
 import { createSignal, Show, type JSX } from "solid-js";
 import { Dialog as Primitive } from "../../lib/dialog";
+import { takeEscape } from "../../lib/layer";
 import { DialogSurface } from "./surface";
 import styles from "./Dialog.module.css";
 
@@ -134,6 +135,7 @@ export default function Dialog(props: DialogProps) {
           }}
           onOpenAutoFocus={onOpenAutoFocus}
           onCloseAutoFocus={onCloseAutoFocus}
+          onEscapeKeyDown={takeEscape}
           onKeyDown={(e: KeyboardEvent) => props.onKeyDown?.(e)}
         >
           <DialogSurface.Provider value={surface}>
