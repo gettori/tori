@@ -26,9 +26,12 @@ export interface LedgerEntry {
 export const ENFORCED: readonly IdiomClass[] = [
   "boolean-attr",
   "destructured-props",
+  "effect-in-handler",
   "effect-writes",
   "lowercase-on",
   "on-namespace",
+  "read-after-write",
+  "timing",
   "use-directive",
 ];
 
@@ -407,6 +410,64 @@ export const LEDGER: Partial<Record<IdiomClass, readonly LedgerEntry[]>> = {
       file: "mobile/src/Pair.tsx",
       count: 1,
       reason: "seeds editable pairing fields from a link; 2.0: createSignal(fn) for each field",
+    },
+  ],
+  "read-after-write": [
+    {
+      file: "src/panels/Editor/CommitDetail.tsx",
+      count: 1,
+      reason: "the read of the open file comes after an await, so the write has flushed; 2.0: unchanged",
+    },
+    {
+      file: "src/panels/Editor/HunkProvenance.tsx",
+      count: 1,
+      reason: "the read is inside an interval callback, after the write has flushed; 2.0: unchanged",
+    },
+    {
+      file: "src/panels/Editor/ReviewPanel.tsx",
+      count: 1,
+      reason: "the amend check comes after an await and must see a toggle made meanwhile; 2.0: unchanged",
+    },
+    {
+      file: "src/panels/LeftSidebar/LeftSidebar.tsx",
+      count: 1,
+      reason: "the read is in a settle callback that runs after the config write returns; 2.0: unchanged",
+    },
+    {
+      file: "src/panels/LeftSidebar/topicActions.ts",
+      count: 1,
+      reason: "the dialog check comes after an await and must see a dismissal made meanwhile; 2.0: unchanged",
+    },
+    {
+      file: "src/panels/ProjectSettings/WorktreesSection.tsx",
+      count: 1,
+      reason:
+        "the select's value is a reactive JSX read and the confirm reads it on a later click; 2.0: the value updates on the flush",
+    },
+    {
+      file: "src/panels/Settings/panes/IntegrationsPane/AccountAuthor.tsx",
+      count: 3,
+      reason: "the three reads come after an await and must see edits made meanwhile; 2.0: unchanged",
+    },
+    {
+      file: "src/panels/Settings/panes/IntegrationsPane/deviceFlow.tsx",
+      count: 1,
+      reason: "the prompt check comes after an await and must see a cancel made meanwhile; 2.0: unchanged",
+    },
+    {
+      file: "src/panels/Settings/settingsStore.ts",
+      count: 1,
+      reason: "the root check comes after an await and must see a newer selection; 2.0: unchanged",
+    },
+    {
+      file: "src/utils/dictation.ts",
+      count: 1,
+      reason: "the state read is inside a timer callback, after the write has flushed; 2.0: unchanged",
+    },
+    {
+      file: "mobile/src/attach.ts",
+      count: 1,
+      reason: "the files read is in a callback that upload first calls after an await; 2.0: unchanged",
     },
   ],
 };

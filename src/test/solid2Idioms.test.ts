@@ -1,20 +1,9 @@
 import ts from "typescript";
 import { describe, expect, it } from "vite-plus/test";
-import { scan } from "../../scripts/solid2-idioms.mjs";
+import { appSources, scan } from "../../scripts/solid2-idioms.mjs";
 import { ENFORCED, LEDGER, type IdiomClass } from "./solid2Ledger";
 
-const SOURCES = Object.entries(
-  import.meta.glob<string>(
-    ["../**/*.{ts,tsx}", "../../mobile/src/**/*.{ts,tsx}", "../../extension/src/**/*.{ts,tsx}"],
-    {
-      query: "?raw",
-      import: "default",
-      eager: true,
-    },
-  ),
-)
-  .filter(([path]) => !path.endsWith(".d.ts"))
-  .map(([path, source]) => [path.replace(/^\.\.\/\.\.\//, "").replace(/^\.\.\//, "src/"), source] as const);
+const SOURCES = appSources();
 
 // Parsed at collection, which has no timeout, since it covers every source file.
 const HITS = SOURCES.flatMap(([file, source]) => scan(ts, file, source));

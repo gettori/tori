@@ -32,8 +32,10 @@ export default function HunkCommentInput(props: {
 
   function toggle() {
     if (blocked()) return;
-    setOpen((v) => !v);
-    if (open()) queueMicrotask(() => inputEl?.focus());
+    const opening = !open();
+    setOpen(opening);
+    // The input is not in the document until this update renders.
+    if (opening) queueMicrotask(() => inputEl?.focus());
   }
 
   function done() {

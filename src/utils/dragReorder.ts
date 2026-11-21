@@ -52,6 +52,7 @@ export function createDragReorder(opts: { keys: () => string[]; onCommit: (keys:
     setOver(null);
     recent = true;
     clearTimeout(settle);
+    // Lasts through the click a finished drag ends with, and no longer.
     settle = setTimeout(() => (recent = false), 0);
   }
 

@@ -45,11 +45,11 @@ function start() {
   });
 }
 
-// Released a microtask late: a computation re-running drops its hold and takes
-// it again in the same tick, which must not refetch.
 function release(key: string) {
   const held = asked.get(key);
   if (held) held.holders -= 1;
+  // Released a microtask late: a computation re-running drops its hold and takes
+  // it again in the same tick, which must not refetch.
   queueMicrotask(() => {
     if (asked.get(key)?.holders === 0) asked.delete(key);
   });

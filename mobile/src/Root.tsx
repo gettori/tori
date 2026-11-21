@@ -278,6 +278,7 @@ export default function Root(props: {
       <Show when={searching()}>
         <label class={styles.search}>
           <input
+            // A ref runs before the element is in the document.
             ref={(el) => queueMicrotask(() => el.focus())}
             type="search"
             placeholder="Projects, worktrees, sessions"

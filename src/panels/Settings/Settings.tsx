@@ -204,6 +204,7 @@ export default function Settings(props: {
     // Carrying a query, but naming one row: go there, do not search.
     setTyped(false);
     setActive(tab);
+    // The row belongs to the tab just activated, so it exists only after this render.
     queueMicrotask(() => {
       const el = document.getElementById(rowDomId(id));
       if (!el) return;

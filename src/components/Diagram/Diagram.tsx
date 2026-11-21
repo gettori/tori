@@ -16,9 +16,11 @@ async function loadEngine(): Promise<Engine> {
 // render queued there still lets the frame before it draw.
 function idle(): Promise<void> {
   return new Promise((resolve) => {
+    // A task, so the render starts after the frame that requested it has drawn.
+    const nextTask = () => setTimeout(resolve, 0);
     if (typeof requestIdleCallback === "function") requestIdleCallback(() => resolve(), { timeout: 1000 });
-    else if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => setTimeout(resolve, 0));
-    else setTimeout(resolve, 0);
+    else if (typeof requestAnimationFrame === "function") requestAnimationFrame(nextTask);
+    else nextTask();
   });
 }
 

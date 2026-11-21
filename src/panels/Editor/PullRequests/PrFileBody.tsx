@@ -472,6 +472,7 @@ export default function PrFileBody(props: {
                       <textarea
                         class={styles.composerInput}
                         rows={2}
+                        // A ref runs before the element is in the document.
                         ref={(el) => queueMicrotask(() => el.focus())}
                         aria-label={`Comment on ${anchorLabel(a())}`}
                         value={composerText(props.root, props.pr.number, a())}
