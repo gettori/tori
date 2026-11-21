@@ -190,7 +190,7 @@ export default function MoveToTopicDialog(props: {
                 onInput={(e) => setQuery(e.currentTarget.value)}
                 autocapitalize="off"
                 autocorrect="off"
-                spellcheck={false}
+                spellcheck="false"
               />
             </div>
             <Show when={groups().length > 0} fallback={<div class={styles.pickedEmpty}>No Topic matches.</div>}>

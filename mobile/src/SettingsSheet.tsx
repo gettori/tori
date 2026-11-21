@@ -58,7 +58,7 @@ export default function SettingsSheet(props: { client: RemoteClient; onDone: () 
                 onClick={() => void (alerts() ? turnOff(props.client) : turnOn(props.client))}
               >
                 <span class={styles.text}>Alerts when closed</span>
-                <span class={styles.toggle} role="switch" aria-checked={alerts()} />
+                <span class={styles.toggle} role="switch" aria-checked={alerts() ? "true" : "false"} />
               </button>
             </li>
           </ul>
@@ -73,10 +73,10 @@ export default function SettingsSheet(props: { client: RemoteClient; onDone: () 
               <div class={`${styles.item} ${styles.setting}`}>
                 <span class={styles.text}>Theme</span>
                 <span class={styles.segments}>
-                  <button aria-pressed={theme() === "dark"} onClick={() => setTheme("dark")}>
+                  <button aria-pressed={theme() === "dark" ? "true" : "false"} onClick={() => setTheme("dark")}>
                     Dark
                   </button>
-                  <button aria-pressed={theme() === "light"} onClick={() => setTheme("light")}>
+                  <button aria-pressed={theme() === "light" ? "true" : "false"} onClick={() => setTheme("light")}>
                     Light
                   </button>
                 </span>
@@ -93,7 +93,7 @@ export default function SettingsSheet(props: { client: RemoteClient; onDone: () 
                   <WheelGlyph size={17} />
                 </span>
                 <span class={styles.text}>Autopilot button</span>
-                <span class={styles.toggle} role="switch" aria-checked={showWheel()} />
+                <span class={styles.toggle} role="switch" aria-checked={showWheel() ? "true" : "false"} />
               </button>
             </li>
           </ul>

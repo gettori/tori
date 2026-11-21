@@ -22,7 +22,7 @@ export function moveKey(keys: readonly string[], key: string, target: string): s
 /** What a row spreads onto itself. Static by design: the reactive part is
  *  `dragging()` and `over()`, which a call site reads in a `classList`. */
 export type DragRowProps = {
-  draggable: true;
+  draggable: "true";
   onDragStart: JSX.EventHandler<HTMLElement, DragEvent>;
   onDragOver: JSX.EventHandler<HTMLElement, DragEvent>;
   onDrop: JSX.EventHandler<HTMLElement, DragEvent>;
@@ -62,7 +62,7 @@ export function createDragReorder(opts: { keys: () => string[]; onCommit: (keys:
     over,
     fromDrag: () => recent,
     rowProps: (key) => ({
-      draggable: true,
+      draggable: "true",
       onDragStart: (e) => {
         e.stopPropagation();
         setDragging(key);

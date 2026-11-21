@@ -73,7 +73,7 @@ export default function GroupProjects(props: { scan: RootScan; plan: Plan; onPla
                 aria-label={`Name for ${row.relative}`}
                 value={row.name}
                 disabled={!row.space}
-                spellcheck={false}
+                spellcheck="false"
                 onInput={(e) => setRow(row.path, { name: e.currentTarget.value })}
               />
               <Select
@@ -96,7 +96,7 @@ export default function GroupProjects(props: { scan: RootScan; plan: Plan; onPla
             aria-label="New space name"
             placeholder="work"
             value={newSpace()}
-            spellcheck={false}
+            spellcheck="false"
             onInput={(e) => setNewSpace(e.currentTarget.value)}
             onKeyDown={(e) => {
               if (e.key !== "Enter") return;

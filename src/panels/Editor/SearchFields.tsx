@@ -22,7 +22,7 @@ export function InlineToggle(props: {
       classList={{ [styles.on]: !!props.active }}
       label={props.label}
       aria-label={props.label}
-      aria-pressed={props.active}
+      aria-pressed={props.active === undefined ? undefined : props.active ? "true" : "false"}
       disabled={props.disabled}
       whenDisabled={props.disabled}
       onClick={(e: MouseEvent) => props.onClick(e)}
@@ -49,7 +49,7 @@ export function Field(props: {
         ref={props.ref}
         class={styles.input}
         type="text"
-        spellcheck={false}
+        spellcheck="false"
         placeholder={props.placeholder}
         aria-label={props.label}
         aria-describedby={props.describedBy}

@@ -111,7 +111,7 @@ export default function LaneStrip(props: {
         class={styles.lane}
         classList={{ [styles.laneOn]: props.selected === id() }}
         label={<Tip {...tip()} />}
-        aria-pressed={props.selected === id()}
+        aria-pressed={props.selected === id() ? "true" : "false"}
         onClick={() => props.onSelect(id())}
       >
         {/* The main agent's dot is the one that is not a status tone: it wears
@@ -187,7 +187,7 @@ export default function LaneStrip(props: {
                     hint={showDone() ? null : "Click to show them in the row"}
                   />
                 }
-                aria-expanded={showDone()}
+                aria-expanded={showDone() ? "true" : "false"}
                 onClick={() => setShowDone(!showDone())}
               >
                 {showDone() ? "Hide done" : `+${done().length - shownDone().length} done`}

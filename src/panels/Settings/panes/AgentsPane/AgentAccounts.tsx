@@ -373,8 +373,8 @@ function WindowChips(props: {
             class={styles.chip}
             classList={{ [styles.chipOn]: c.lit, [styles.chipIdle]: locked(c) }}
             label={why(c)}
-            aria-pressed={c.lit}
-            aria-disabled={blocked(c)}
+            aria-pressed={c.lit ? "true" : "false"}
+            aria-disabled={blocked(c) ? "true" : "false"}
             onClick={() => !blocked(c) && props.onAsk(c.id, !c.lit)}
           >
             {c.label}
@@ -644,7 +644,7 @@ function AccountCard(props: {
           <button
             type="button"
             class={styles.acctToggle}
-            aria-expanded={open()}
+            aria-expanded={open() ? "true" : "false"}
             aria-label={open() ? `Collapse ${p().label}` : `Expand ${p().label}`}
             onClick={() => setOpen(!open())}
           >

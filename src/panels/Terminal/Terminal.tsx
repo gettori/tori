@@ -2916,7 +2916,7 @@ export default function Terminal(props: {
               // (`wrapper` removes its `role` and tab stop, not its ARIA). The
               // button is what the keyboard reaches, so it says this too.
               aria-haspopup="menu"
-              aria-expanded={menuOpen()}
+              aria-expanded={menuOpen() ? "true" : "false"}
             >
               <Icon icon={ChevronDown} class={styles.termNewChevron} />
             </Tooltip>
@@ -2934,7 +2934,7 @@ export default function Terminal(props: {
           label="Session history"
           aria-label="Session history"
           aria-haspopup="dialog"
-          aria-expanded={historyOpen()}
+          aria-expanded={historyOpen() ? "true" : "false"}
           onClick={toggleHistory}
         >
           <Icon icon={History} />

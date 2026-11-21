@@ -181,7 +181,7 @@ function ModelsPane(props: {
                   <button
                     type="button"
                     class={styles.groupTab}
-                    aria-pressed={tab.label === props.account}
+                    aria-pressed={tab.label === props.account ? "true" : "false"}
                     onClick={() => props.onSelect?.(tab.id)}
                   >
                     {tab.label}

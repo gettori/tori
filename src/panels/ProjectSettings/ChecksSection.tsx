@@ -98,7 +98,7 @@ export default function ChecksSection(props: {
           classList={{ [styles.textareaDirty]: dirty() }}
           aria-label="Verification commands"
           rows={10}
-          spellcheck={false}
+          spellcheck="false"
           value={text()}
           onInput={(e) => setText(e.currentTarget.value)}
         />

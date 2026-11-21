@@ -521,7 +521,7 @@ export default function AddBranchDialog(props: {
                         value={issueName()}
                         onInput={(e) => setIssueName(e.currentTarget.value)}
                         aria-label="Branch name"
-                        spellcheck={false}
+                        spellcheck="false"
                       />
                       <Show when={issueKind(issueName().trim()) === "new"}>
                         <span class={styles.createFrom}>from</span>
@@ -730,7 +730,7 @@ function BasePicker(props: {
         size="xs"
         iconRight={<Icon icon={ChevronsUpDown} />}
         aria-haspopup="listbox"
-        aria-expanded={open()}
+        aria-expanded={open() ? "true" : "false"}
         aria-label={`Base branch: ${label()}`}
         onClick={() => {
           setQuery("");

@@ -481,7 +481,12 @@ export function TopicScreen(props: {
         onBack={props.onBack}
         end={
           <span class={styles.menuAnchor}>
-            <button class={styles.more} aria-label="More" aria-expanded={menu()} onClick={() => setMenu(!menu())}>
+            <button
+              class={styles.more}
+              aria-label="More"
+              aria-expanded={menu() ? "true" : "false"}
+              onClick={() => setMenu(!menu())}
+            >
               <Icon icon={Ellipsis} size={20} strokeWidth={2} />
             </button>
             <Show when={menu()}>

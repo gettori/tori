@@ -322,7 +322,7 @@ function ListsSection() {
                 <button
                   type="button"
                   role="option"
-                  aria-selected={i() === index()}
+                  aria-selected={i() === index() ? "true" : "false"}
                   onMouseEnter={() => setIndex(i())}
                   style={listRow}
                 >

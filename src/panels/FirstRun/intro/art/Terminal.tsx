@@ -278,7 +278,7 @@ function Checkpoints() {
             <div>
               <div class={timeline.fileRow}>
                 <span class={timeline.fileStatus}>M</span>
-                <button type="button" class={timeline.fileMain} aria-expanded={f.open}>
+                <button type="button" class={timeline.fileMain} aria-expanded={f.open ? "true" : "false"}>
                   <span class={timeline.fileName}>{f.name}</span>
                   <span class={timeline.fileDir}>{f.dir}</span>
                 </button>

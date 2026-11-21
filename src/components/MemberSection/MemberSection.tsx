@@ -51,7 +51,7 @@ export default function MemberSection(props: {
           <button
             type="button"
             class={`${styles.header} ${styles.toggle}`}
-            aria-expanded={open()}
+            aria-expanded={open() ? "true" : "false"}
             onClick={() => setOpen((o) => !o)}
           >
             <Chevron open={open()} />

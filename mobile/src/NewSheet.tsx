@@ -132,7 +132,7 @@ export default function NewSheet(props: {
                 <li>
                   <button
                     class={`${styles.item} ${styles.setting}`}
-                    aria-pressed={where() === w}
+                    aria-pressed={where() === w ? "true" : "false"}
                     onClick={() => {
                       setWhere(w);
                       setPicked(null);
@@ -180,7 +180,11 @@ export default function NewSheet(props: {
               >
                 {(row) => (
                   <li>
-                    <button class={styles.item} aria-pressed={picked()?.key === row.key} onClick={() => setPicked(row)}>
+                    <button
+                      class={styles.item}
+                      aria-pressed={picked()?.key === row.key ? "true" : "false"}
+                      onClick={() => setPicked(row)}
+                    >
                       <span class={styles.text}>
                         <span class={styles.name}>{row.title}</span>
                         <span class={styles.meta}>{row.display}</span>
@@ -199,7 +203,7 @@ export default function NewSheet(props: {
                 <li>
                   <button
                     class={`${styles.item} ${styles.setting}`}
-                    aria-pressed={agent() === a.id}
+                    aria-pressed={agent() === a.id ? "true" : "false"}
                     onClick={() => {
                       setAgent(a.id);
                       setAccount(null);
@@ -220,7 +224,7 @@ export default function NewSheet(props: {
                   <li>
                     <button
                       class={`${styles.item} ${styles.setting}`}
-                      aria-pressed={account() === a.id}
+                      aria-pressed={account() === a.id ? "true" : "false"}
                       onClick={() => setAccount(a.id)}
                     >
                       <span class={styles.text}>{a.label}</span>
@@ -253,7 +257,7 @@ export default function NewSheet(props: {
                 <button
                   class={styles.toggle}
                   role="switch"
-                  aria-checked={background()}
+                  aria-checked={background() ? "true" : "false"}
                   aria-label="Run in background"
                   onClick={() => setBackground(!background())}
                 />

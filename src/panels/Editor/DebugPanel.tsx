@@ -169,7 +169,7 @@ export default function DebugPanel(props: { root: string | null; selected: Selec
                 <button
                   type="button"
                   class={`${styles.varRow} ${styles.scopeRow}`}
-                  aria-expanded={isVariableExpanded(scope.key)}
+                  aria-expanded={isVariableExpanded(scope.key) ? "true" : "false"}
                   onClick={() => toggleVariables(scope.key, scope.variablesReference, scope.indexedVariables)}
                 >
                   <Twisty open={isVariableExpanded(scope.key)} />
@@ -566,7 +566,7 @@ function VariableRow(props: { row: VarRow; depth: number }) {
           <button
             type="button"
             class={styles.varToggle}
-            aria-expanded={isVariableExpanded(key())}
+            aria-expanded={isVariableExpanded(key()) ? "true" : "false"}
             aria-label={`Expand ${props.row.name}`}
             onClick={() => toggleVariables(key(), props.row.variablesReference, props.row.indexedVariables)}
           >

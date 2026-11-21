@@ -264,7 +264,7 @@ export default function AttachFolderDialog(props: {
             onInput={(e) => setName(e.currentTarget.value)}
             autocapitalize="off"
             autocorrect="off"
-            spellcheck={false}
+            spellcheck="false"
           />
         </div>
 

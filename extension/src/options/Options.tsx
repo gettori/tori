@@ -17,7 +17,7 @@ function Switch(props: { key: string; labelledBy: string }) {
       type="button"
       role="switch"
       class="switch"
-      aria-checked={on()}
+      aria-checked={on() ? "true" : "false"}
       aria-labelledby={props.labelledBy}
       onClick={toggle}
     >

@@ -564,7 +564,7 @@ export default function SearchResultsBuffer(props: {
               <IconButton
                 icon={<Icon icon={Rows3} />}
                 class={styles.pressable}
-                aria-pressed={f().showContext}
+                aria-pressed={f().showContext ? "true" : "false"}
                 tooltip="Toggle Context Lines"
                 onClick={() => edit({ showContext: !f().showContext })}
               />
@@ -577,8 +577,8 @@ export default function SearchResultsBuffer(props: {
               <IconButton
                 icon={<Icon icon={Ellipsis} />}
                 class={styles.pressable}
-                aria-pressed={details()}
-                aria-expanded={details()}
+                aria-pressed={details() ? "true" : "false"}
+                aria-expanded={details() ? "true" : "false"}
                 tooltip="Toggle Search Details"
                 onClick={() => setDetails((v) => !v)}
               />

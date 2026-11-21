@@ -130,7 +130,7 @@ export default function ProjectTrust() {
               <button
                 type="button"
                 class={styles.groupTab}
-                aria-pressed={filter() === f.id}
+                aria-pressed={filter() === f.id ? "true" : "false"}
                 onClick={() => setFilter(f.id)}
               >
                 {f.label}

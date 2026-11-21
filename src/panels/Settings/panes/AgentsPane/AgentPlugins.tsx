@@ -68,7 +68,7 @@ export default function AgentPlugins(props: {
                 <button
                   type="button"
                   class={styles.groupTab}
-                  aria-pressed={profile.profileId === shown()?.profileId}
+                  aria-pressed={profile.profileId === shown()?.profileId ? "true" : "false"}
                   onClick={() => setPicked(profile.profileId)}
                 >
                   {profile.label}

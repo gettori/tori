@@ -124,7 +124,7 @@ export default function PrDiffView(props: { workspace: string; arg: string }) {
 
         <IconButton
           size="sm"
-          aria-pressed={twoColumn()}
+          aria-pressed={twoColumn() ? "true" : "false"}
           icon={<Icon icon={Columns2} />}
           disabled={!wide()}
           tooltipWhenDisabled

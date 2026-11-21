@@ -96,9 +96,9 @@ export default function SpaceTile(props: {
         label={props.name}
         placement={props.rail ? "right" : undefined}
         aria-label={props.name}
-        aria-pressed={props.active}
+        aria-pressed={props.active === undefined ? undefined : props.active ? "true" : "false"}
         onClick={() => props.onClick?.()}
-        draggable={!props.fixed}
+        draggable={!props.fixed ? "true" : "false"}
         onDragStart={(e: DragEvent) => props.onDragStart?.(e)}
         onDragOver={(e: DragEvent) => props.onDragOver?.(e)}
         onDrop={(e: DragEvent) => props.onDrop?.(e)}

@@ -444,7 +444,10 @@ export function scan(ts, rel, src, report = {}) {
         if (CAMEL_ATTRS.has(name) && ts.isIdentifier(tagName) && /^[a-z]/.test(tagName.text)) hit("camelcase-attr", n);
       }
     }
-    if (ts.isPropertyAssignment(n) && ts.isStringLiteral(n.name) && isEnumerated(n.name.text)) {
+    if (
+      ts.isPropertyAssignment(n) &&
+      (ts.isStringLiteral(n.name) ? isEnumerated(n.name.text) : ts.isIdentifier(n.name) && ENUMERATED.has(n.name.text))
+    ) {
       if (!allowedValue(n.initializer, n.name.text)) hit("boolean-attr", n);
     }
     if (isDeferNow(n) && !hasReasonAbove(n)) hit("timing", n);

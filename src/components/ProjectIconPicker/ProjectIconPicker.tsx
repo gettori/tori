@@ -165,7 +165,7 @@ export default function ProjectIconPicker(props: {
         />
       }
     >
-      {(f) => <img src={convertFileSrc(f())} alt="" draggable={false} />}
+      {(f) => <img src={convertFileSrc(f())} alt="" draggable="false" />}
     </Show>
   );
 

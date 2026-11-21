@@ -195,7 +195,7 @@ export default function DiffRows(allProps: {
         // is. Reachable by keyboard for the same reason the conflicted row is
         // a button: a control only the mouse can reach is half a control.
         role={selectable ? "checkbox" : undefined}
-        aria-checked={selectable ? picked() : undefined}
+        aria-checked={selectable ? (picked() ? "true" : "false") : undefined}
         tabIndex={stop()}
         onKeyDown={
           selectable || props.keyboard === "roving"

@@ -21,7 +21,12 @@ export default function MisplacedProjects(props: {
   return (
     <Show when={count() > 0}>
       <div class={styles.misplaced}>
-        <button type="button" class={styles.head} aria-expanded={open()} onClick={() => setOpen(!open())}>
+        <button
+          type="button"
+          class={styles.head}
+          aria-expanded={open() ? "true" : "false"}
+          onClick={() => setOpen(!open())}
+        >
           <Chevron open={open()} />
           <span>
             {count()} {count() === 1 ? "project isn't" : "projects aren't"} in a space

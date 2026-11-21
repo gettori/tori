@@ -260,7 +260,7 @@ export default function SpaceSettingsDialog(props: {
                       class={s.railItem}
                       classList={{ [s.railItemActive]: selected() }}
                       aria-controls={selected() ? paneId(id) : undefined}
-                      aria-selected={selected()}
+                      aria-selected={selected() ? "true" : "false"}
                       tabindex={section() === id ? 0 : -1}
                       onClick={() => openSection(id)}
                     >
@@ -381,7 +381,7 @@ export default function SpaceSettingsDialog(props: {
                                 type="button"
                                 class={styles.chip}
                                 classList={{ [styles.on]: lanes().lit.includes(child) }}
-                                aria-pressed={lanes().lit.includes(child)}
+                                aria-pressed={lanes().lit.includes(child) ? "true" : "false"}
                                 disabled={!lanes().enabled}
                                 onClick={() => flip(child)}
                               >
@@ -431,7 +431,7 @@ export default function SpaceSettingsDialog(props: {
                         type="button"
                         class={styles.chip}
                         classList={{ [styles.on]: line().items[item.id] }}
-                        aria-pressed={line().items[item.id]}
+                        aria-pressed={line().items[item.id] ? "true" : "false"}
                         disabled={!full()}
                         onClick={() => toggleItem(item.id)}
                       >

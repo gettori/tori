@@ -318,7 +318,7 @@ export default function FilesPanel(props: {
                 <IconButton
                   size="sm"
                   icon={<Icon icon={viewsOpen() ? ChevronDown : ChevronUp} />}
-                  aria-expanded={viewsOpen()}
+                  aria-expanded={viewsOpen() ? "true" : "false"}
                   tooltip={viewsOpen() ? "Collapse" : "Expand"}
                   onClick={() => filesLayout.setOpen("views", !viewsOpen())}
                 />

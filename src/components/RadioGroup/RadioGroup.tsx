@@ -67,8 +67,8 @@ export default function RadioGroup(props: {
       aria-label={props["aria-label"]}
       aria-labelledby={props.label !== undefined ? groupLabelId : undefined}
       aria-describedby={props["aria-describedby"]}
-      aria-disabled={props.disabled || undefined}
-      aria-orientation={orientation()}
+      aria-disabled={props.disabled ? "true" : undefined}
+      aria-orientation={orientation() === "vertical" ? "vertical" : "horizontal"}
       data-disabled={props.disabled ? "" : undefined}
     >
       <Show when={props.label !== undefined}>

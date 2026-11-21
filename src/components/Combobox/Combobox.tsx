@@ -209,9 +209,9 @@ export default function Combobox(props: {
         id={rowIds().get(value)}
         role="option"
         class={styles.item}
-        aria-selected={false}
-        aria-disabled={!!option()?.disabled}
-        aria-current={isPicked() || undefined}
+        aria-selected="false"
+        aria-disabled={option()?.disabled ? "true" : "false"}
+        aria-current={isPicked() ? "true" : undefined}
         data-picked={isPicked() ? "" : undefined}
         data-disabled={option()?.disabled ? "" : undefined}
         data-highlighted={active() === value ? "" : undefined}
@@ -242,11 +242,11 @@ export default function Combobox(props: {
           role="combobox"
           autocomplete="off"
           autocorrect="off"
-          spellcheck={false}
+          spellcheck="false"
           aria-label={props["aria-label"]}
           aria-haspopup="listbox"
           aria-autocomplete="list"
-          aria-expanded={hasRows()}
+          aria-expanded={hasRows() ? "true" : "false"}
           aria-controls={hasRows() ? listId : undefined}
           aria-activedescendant={active() === null ? undefined : rowIds().get(active()!)}
           onInput={(e) => {
