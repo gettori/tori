@@ -51,9 +51,8 @@ describe("IconGrid", () => {
       expect(pressed[0].getAttribute("aria-label")).toBe("Icon 7");
     });
 
-    // Kobalte's single mode reports `null` when the pressed item is pressed
-    // again. Neither consumer has an empty state, so that change is dropped and
-    // the tile stays chosen.
+    // Neither consumer has an empty state, so pressing the chosen tile again
+    // leaves it chosen.
     it("refuses to clear the selection by pressing the chosen tile", () => {
       const { onChange, named } = openGrid({}, "icon-3");
 
@@ -171,7 +170,7 @@ describe("IconGrid", () => {
       fireEvent.keyDown(search, { key: "Home" });
 
       // The group's roving focus never took over: had the field been inside the
-      // group, Kobalte would have moved focus onto a tile and cancelled the
+      // group, the arrows would have moved focus onto a tile and cancelled the
       // caret move on its way.
       expect(document.activeElement).toBe(search);
     });
@@ -213,9 +212,8 @@ describe("IconGrid", () => {
       expect(named("Icon 4").getAttribute("tabindex")).toBe("0");
     });
 
-    // Kobalte parks the stop on its focused item and never clears that key when
-    // the item unmounts, so filtering the focused tile away leaves every item at
-    // -1 with the container at -1 too, and the grid falls out of the tab order.
+    // Filtering the focused tile away must hand the stop back to the group, or
+    // every tile sits at -1 and the grid falls out of the tab order.
     it("takes the stop back when the query filters the focused tile away", () => {
       const { group, named } = openGrid({
         search: { label: "Search icons", placeholder: "Search icons" },

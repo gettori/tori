@@ -8,7 +8,7 @@ import Slider from "../components/Slider/Slider";
 import SegmentedControl from "../components/SegmentedControl/SegmentedControl";
 import Select from "../components/Select/Select";
 import Tab from "../components/Tab/Tab";
-import { Tabs } from "../lib/tabs";
+import { Tabs } from "../components/Tab/Tabs";
 import type { ControlSize } from "../components/controls";
 import FileIcon from "../seti/FileIcon";
 import { checkPalette } from "../theme/contrast";

@@ -1,7 +1,7 @@
-// What this file is really proving is the composition: a Kobalte toggle item
+// What this file is really proving is the composition: a toggle group item
 // rendered *as* an `IconButton`, which is itself a `Tooltip` trigger. Three
 // layers of polymorphism deep, and the failure mode of getting it wrong is
-// quiet - a tooltip that never opens, a button outside the group's collection,
+// quiet - a tooltip that never opens, a button outside the group's key order,
 // a pressed state that never reaches the DOM - so each is asserted here.
 //
 // The terminal and editor toggles that used to sit beside the sidebar's are

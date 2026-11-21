@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { fireEvent, render, screen } from "../../test/harness";
 import { createSignal } from "solid-js";
 import { expectNoAxeViolations } from "../../test/axe";
-import { ToggleGroup } from "../../lib/toggle-group";
+import { ToggleGroup } from "../ToggleGroup/ToggleGroup";
 import Dialog from "../Dialog/Dialog";
 import IconButton from "../IconButton/IconButton";
 import Tooltip from "./Tooltip";
@@ -15,9 +15,8 @@ const Glyph = () => (
   </svg>
 );
 
-/** Open the tooltip the way a keyboard user does. Kobalte opens on focus with
- *  no delay at all (`openTooltip(immediate)` is passed the focused flag), so
- *  unlike the hover path this needs no timers. */
+/** Open the tooltip the way a keyboard user does. Focus opens it with no delay,
+ *  so unlike the hover path this needs no timers. */
 function focusTrigger(trigger: HTMLElement) {
   trigger.focus();
   fireEvent.focus(trigger);
@@ -100,7 +99,7 @@ describe("Tooltip", () => {
    * being read. `suppressed` closes it and holds it shut.
    *
    * Deliberately not `label={undefined}`: that path renders the bare control
-   * with none of Kobalte's context, so toggling it would rebuild the trigger at
+   * with no tooltip wiring, so toggling it would rebuild the trigger at
    * the moment it is being clicked.
    */
   it("holds the tooltip shut while the trigger's own surface is open", () => {
@@ -141,16 +140,11 @@ describe("Tooltip", () => {
     expect(clicked).toBe(1);
   });
 
-  // `as` takes a component, not only a tag name, for the control that cannot be
-  // built from the inside: one that *is* a headless primitive's part, and so
-  // exists only under that primitive's context. `IconGrid`'s tiles are the
-  // reason, and the thing worth pinning is that the description still lands on
-  // the control the component rendered rather than on a wrapper - Kobalte's
-  // trigger props have to survive being handed through a second polymorphic
-  // component to get there.
+  // `IconGrid`'s tiles exist only under the toggle group's context, so the
+  // description has to land on the control the host rendered, not a wrapper.
   it("renders a component host, and still describes the control it rendered", () => {
     render(() => (
-      <ToggleGroup.Root value="run" onChange={() => {}} aria-label="Actions">
+      <ToggleGroup.Root pressed={(value) => value === "run"} onPress={() => {}} aria-label="Actions">
         <Tooltip label="Run the file" as={ToggleGroup.ButtonItem} value="run">
           Run
         </Tooltip>
@@ -247,8 +241,8 @@ describe("Tooltip", () => {
       const button = screen.getByRole("button", { name: "Split the editor" });
       focusTrigger(button);
 
-      // On the button, not on a wrapper: Kobalte's trigger carries the wiring,
-      // and `focus` neither bubbles nor is delegated by Solid, so a trigger
+      // On the button, not on a wrapper: the trigger carries the wiring, and
+      // `focus` neither bubbles nor is delegated by Solid, so a trigger
       // anywhere else would leave this attribute on an element no assistive
       // technology is looking at.
       const tooltip = screen.getByRole("tooltip");

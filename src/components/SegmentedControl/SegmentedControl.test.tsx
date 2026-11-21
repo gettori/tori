@@ -73,10 +73,8 @@ describe("SegmentedControl accessibility", () => {
   });
 });
 
-// The keyboard model changed with the move onto Kobalte's toggle group: it used
-// to be a radiogroup where arrows moved the *selection*, and it is now the APG
-// toggle-button pattern where arrows move only focus. These pin the new
-// contract, since nothing else in the suite would notice it drifting back.
+// The APG toggle-button pattern, where arrows move only focus. Nothing else in
+// the suite would notice it drifting back to moving the selection.
 describe("SegmentedControl keyboard", () => {
   it("moves focus with arrows and Home/End without selecting", () => {
     const { value, onChange, seg } = mountPanes();
@@ -114,8 +112,8 @@ describe("SegmentedControl keyboard", () => {
   });
 
   it("keeps one tab stop, and Tab enters on the selected segment", () => {
-    // Kobalte parks the tab stop on the *group* until focus arrives, then hands
-    // it to the selected segment and takes its own away. Either way the strip is
+    // The group holds the tab stop until focus arrives, then hands it to the
+    // selected segment and takes its own away. Either way the strip is
     // one stop, so Tab steps past it rather than through three segments.
     const { seg } = mountPanes("changes");
     const group = screen.getByRole("group", { name: "Right panel" });
@@ -135,8 +133,7 @@ describe("SegmentedControl keyboard", () => {
   });
 
   it("holds the selection when the selected segment is pressed again", () => {
-    // Kobalte's single mode allows clearing (`onChange(null)`); this API has no
-    // empty state, so the press is a no-op rather than a deselect.
+    // This API has no empty state, so the press is a no-op rather than a deselect.
     const { value, onChange, seg } = mountPanes();
 
     fireEvent.click(seg("Files"));
@@ -146,8 +143,7 @@ describe("SegmentedControl keyboard", () => {
   });
 
   // Both dialog consumers wrap the strip in a form-level Enter handler that
-  // confirms the dialog. Kobalte activates on keydown and lets the event bubble,
-  // so without containment one Enter would select a segment *and* submit.
+  // confirms the dialog. A segment activates on keydown, so without containment one Enter would select a segment *and* submit.
   it("keeps its activation keys out of an enclosing Enter handler", () => {
     const onFormKeyDown = vi.fn();
     const [value, setValue] = createSignal<Pane>("files");

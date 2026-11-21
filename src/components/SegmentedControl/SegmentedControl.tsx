@@ -1,5 +1,5 @@
 import { For, type JSX } from "solid-js";
-import { ToggleGroup } from "../../lib/toggle-group";
+import { ToggleGroup } from "../ToggleGroup/ToggleGroup";
 import styles from "./SegmentedControl.module.css";
 import { type ControlSize } from "../controls";
 
@@ -54,26 +54,16 @@ export interface SegmentedControlProps<T extends string> {
 }
 
 /** A single-select strip of segments on the shared control tokens: one bordered
- *  group, the selected segment filled. Kobalte's toggle group underneath, so
- *  segments are toggle buttons (`aria-pressed`), arrows/Home/End move focus
- *  without selecting, and Space/Enter select the focused segment; Tab enters
- *  on the selected one.
+ *  group, the selected segment filled. Segments are toggle buttons
+ *  (`aria-pressed`), arrows/Home/End move focus without selecting, and
+ *  Space/Enter select the focused segment; Tab enters on the selected one.
  *
- *  Two contract points Kobalte does not give for free:
- *
- *  **Always exactly one selected.** Kobalte's single mode lets a press on the
- *  pressed segment clear the selection (`onChange(null)`); this control's API
- *  has no empty state, so that change is dropped and the controlled `value`
- *  holds.
- *
- *  **Activation keys stay inside.** Kobalte selects on Enter/Space keydown and
- *  lets the event bubble, and both dialog consumers confirm on a form-level
- *  Enter, so one keystroke would select a segment *and* submit the dialog.
- *  Stopping propagation here makes the rule predictable: Enter inside the
- *  strip selects, confirming needs focus outside it. */
+ *  **Activation keys stay inside.** Both dialog consumers confirm on a
+ *  form-level Enter, so one keystroke would otherwise select a segment *and*
+ *  submit the dialog. Enter inside the strip selects, confirming needs focus
+ *  outside it. */
 export default function SegmentedControl<T extends string>(props: SegmentedControlProps<T>) {
-  const onChange = (value: string | string[] | null) => {
-    if (value == null || Array.isArray(value)) return;
+  const onPress = (value: string) => {
     if (value !== props.value) props.onChange(value as T);
   };
 
@@ -83,16 +73,13 @@ export default function SegmentedControl<T extends string>(props: SegmentedContr
 
   return (
     <ToggleGroup.Root
-      value={props.value}
-      onChange={onChange}
+      pressed={(value) => value === props.value}
+      onPress={onPress}
       onKeyDown={onKeyDown}
       aria-label={props["aria-label"]}
-      class={props.class}
-      classList={{
-        [styles.group]: true,
-        [styles[props.size ?? "md"]]: true,
-        [styles.plain]: props.variant === "plain",
-      }}
+      class={[props.class, styles.group, styles[props.size ?? "md"], props.variant === "plain" && styles.plain]
+        .filter(Boolean)
+        .join(" ")}
     >
       <For each={props.options}>
         {(opt) => (
