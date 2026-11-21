@@ -18,7 +18,7 @@ Measured on 2026-11-21 in a WKWebView on macOS 27.2.1 and in Android System WebV
 - Placement is CSS only. `position-area` picks the side and `position-try-fallbacks` flips at the window edge, inside a modal dialog and for a submenu. No JS placement code.
 - A caller owned anchor gets a unique `anchor-name` per layer instance. A shared name without `anchor-scope` resolves to the last match in tree order, which is the wrong row in a list.
 - A menu at the pointer anchors to a zero size fixed element placed at the pointer.
-- Popovers are `popover="manual"`. One capture `keydown` listener pops the top layer and calls `preventDefault`. Intercepting the dialog's `cancel` event is not enough: Chromium's close watcher can deliver it as not cancelable, and the dialog then closes with its popovers still reporting open. The layer treats a native `close` as truth.
+- Popovers are `popover="manual"`. One `keydown` listener on `document`, in the bubble phase, closes the top layer and calls `preventDefault`. It skips an event already prevented, so a control inside a layer (a combobox list) can take Escape first. The spike tested capture, and the bubble listener was rechecked on both engines. Intercepting the dialog's `cancel` event is not enough: Chromium's close watcher can deliver it as not cancelable, and the dialog then closes with its popovers still reporting open. The layer treats a native `close` as truth.
 - A toast region outside a modal dialog is inert, even when shown after it. The region lives inside the topmost open modal while one is open.
 
 ## Alternatives rejected
