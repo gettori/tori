@@ -1,4 +1,4 @@
-import { Match, Switch, createEffect, createResource, createSignal, onCleanup } from "solid-js";
+import { Match, Switch, createEffect, createMemo, createResource, createSignal, onCleanup } from "solid-js";
 import { on as onEvent, THEME_APPLIED } from "../../utils/events";
 import { traceAsyncWork } from "../../utils/perfTrace";
 import styles from "./Diagram.module.css";
@@ -66,13 +66,8 @@ export default function Diagram(props: { code: string }) {
   // Latched: a diagram scrolled past stays drawn rather than being laid out
   // again on the way back. A theme switch reaches it only once it is on screen
   // again, so a switch redraws what is in view and not the whole transcript.
-  const [seen, setSeen] = createSignal(visible());
-  const [drawnTheme, setDrawnTheme] = createSignal(theme());
-  createEffect(() => {
-    if (!visible()) return;
-    setSeen(true);
-    setDrawnTheme(theme());
-  });
+  const seen = createMemo((was?: boolean) => was || visible());
+  const drawnTheme = createMemo((last?: number) => (visible() ? theme() : (last ?? theme())));
 
   const [svg] = createResource(
     () => (seen() ? ([props.code, drawnTheme()] as const) : null),
