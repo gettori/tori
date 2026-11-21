@@ -1,36 +1,32 @@
-import { createSignal, onCleanup, Show, splitProps, type Component, type JSX } from "solid-js";
-import { Dynamic } from "solid-js/web";
-import { Tooltip as Primitive } from "../../lib/tooltip";
+import {
+  createEffect,
+  createSignal,
+  createUniqueId,
+  mergeProps,
+  onCleanup,
+  Show,
+  splitProps,
+  untrack,
+  type Component,
+  type JSX,
+} from "solid-js";
+import { Dynamic, Portal } from "solid-js/web";
+import { anchorLayer, openLayer } from "../../lib/layer";
 import { useDialogSurface } from "../Dialog/surface";
 import styles from "./Tooltip.module.css";
 
-/** Which side of the control the tooltip sits on. Kobalte accepts twelve
- *  placements (each side plus `-start`/`-end`); these four are what Tori uses,
- *  and keeping the union local is what lets this file expose a placement type
- *  without the app importing one from the primitives package - which
- *  `boundary.test.ts` would fail it for, this file included. */
+/** Which side of the control the tooltip sits on. */
 export type TooltipPlacement = "top" | "bottom" | "left" | "right";
 
-/** Radix's and Kobalte's default. At 500 a tooltip opened while the pointer was
- *  only passing over its control on the way to a neighbour, and covered it. */
+/** At 500 a tooltip opened while the pointer was only passing over its control
+ *  on the way to a neighbour, and covered it. */
 const OPEN_DELAY = 700;
-/** Radix closes on leave with no delay too. A lingering tooltip sat over the
- *  neighbouring control the pointer was heading for. */
+/** A lingering tooltip sat over the neighbouring control the pointer was
+ *  heading for. */
 const CLOSE_DELAY = 0;
-/** No warm-up grouping. Kobalte's skip window is module-global and restarts on
- *  every close, so one tooltip opening set off instant tooltips on every row the
- *  pointer crossed down the sidebar. Each tooltip waits its own full delay. */
-const SKIP_DELAY = 0;
 
 /** How far the tooltip sits off its trigger. Enough to clear the trigger's own
- *  focus ring, which a flush tooltip sits on top of.
- *
- *  The one dimension in this component that is not a token and cannot be: the
- *  popper takes a number, not a length, so `--ui-scale` never reaches it. It
- *  could be computed by reading the scale back out of the settings store, but
- *  that would import a panel-level store into a `components/` primitive to move
- *  a tooltip by two pixels at the extremes of the zoom range. Recorded as a
- *  deliberate keep instead (#130). */
+ *  focus ring, which a flush tooltip sits on top of. */
 const GUTTER = 4;
 
 /** Generic in the trigger element so a caller's own handlers keep their element
@@ -52,8 +48,7 @@ export type TooltipProps<T extends HTMLElement = HTMLButtonElement, P extends Re
 > &
   Omit<P, "as" | "children"> & {
     /** Narrower than the native attribute, which Solid still types with the
-     *  long-dead `"menu"` value. Kobalte's trigger accepts the three real ones,
-     *  and nothing in Tori passes the fourth. */
+     *  long-dead `"menu"` value. */
     type?: "submit" | "reset" | "button";
     /** The tooltip text. Rendered as the control's *description*
      *  (`aria-describedby`), never as its name - see the module comment.
@@ -71,14 +66,9 @@ export type TooltipProps<T extends HTMLElement = HTMLButtonElement, P extends Re
      *  not a tooltip arriving late but one **already up** - the pointer rested
      *  long enough to open it, and the click that opens the menu comes after.
      *
-     *  Not `label={undefined}`: that path renders the bare control with none of
-     *  Kobalte's context around it, so toggling it would unmount and rebuild the
-     *  trigger at the moment it is being clicked.
-     *
-     *  Not Kobalte's `disabled` alone either, which only gates *opening*
-     *  (`isDisabled()` is read by the trigger before it calls `openTooltip`) and
-     *  leaves an open one open. Passing this at all therefore moves the tooltip
-     *  onto the controlled path below, the same one `whenDisabled` uses. */
+     *  Not `label={undefined}`: that path renders the bare control, so toggling
+     *  it would unmount and rebuild the trigger at the moment it is being
+     *  clicked. */
     suppressed?: boolean;
     placement?: TooltipPlacement;
     openDelay?: number;
@@ -87,10 +77,8 @@ export type TooltipProps<T extends HTMLElement = HTMLButtonElement, P extends Re
      *
      *  Defaults to the enclosing dialog's panel when there is one, and to
      *  `document.body` otherwise, so an in-dialog tooltip needs nothing at the
-     *  call site. Kobalte's `Dialog.Content` calls `createHideOutside`, which sets
-     *  `aria-hidden` on everything outside the panel while the dialog is open, so
-     *  a body-portalled tooltip would be painted on screen and invisible to a
-     *  screen reader at the same time. See `../Dialog/surface.ts`.
+     *  call site. A modal hides what is outside its panel from assistive tech,
+     *  see `../Dialog/surface.ts`.
      *
      *  Pass this explicitly only for a surface that hides outside content without
      *  being a `Dialog`. */
@@ -120,7 +108,8 @@ export type TooltipProps<T extends HTMLElement = HTMLButtonElement, P extends Re
      *  quietly satisfy it - it declares an optional `value` of its own - and the
      *  grid would compile and then register every tile under the same undefined
      *  key. Inference needs a *concrete* component, which is why `toggle-group.ts`
-     *  hands out a pinned `ButtonItem` beside the generic `Item`.
+     *  hands out a pinned `ButtonItem` beside the generic `Item`. A host has to
+     *  forward `ref` and the pointer and focus handlers to its element.
      *
      *  **Button-shaped tags only, in practice.** These props extend
      *  `ButtonHTMLAttributes`, so an attribute belonging to some other element -
@@ -135,92 +124,97 @@ export type TooltipProps<T extends HTMLElement = HTMLButtonElement, P extends Re
     children?: JSX.Element;
   };
 
+type TriggerHandler = JSX.EventHandlerUnion<HTMLElement, any> | undefined;
+
+function callHandler(e: Event, handler: TriggerHandler) {
+  if (typeof handler === "function") (handler as (event: Event) => void)(e);
+  else if (handler) (handler[0] as (data: unknown, event: Event) => void)(handler[1], e);
+}
+
+// Its own component so these effects run after the portal has connected it:
+// showPopover throws on a node that is not in the document.
+function TooltipSurface(props: {
+  id: string;
+  anchor: HTMLElement;
+  placement: TooltipPlacement;
+  onDismiss: () => void;
+  children: JSX.Element;
+}) {
+  let content!: HTMLDivElement;
+  createEffect(() =>
+    untrack(() => {
+      const unanchor = anchorLayer(props.anchor, content, props.placement, GUTTER);
+      const release = openLayer({
+        element: content,
+        show: () => content.showPopover(),
+        hide: () => content.hidePopover(),
+        onDismiss: () => props.onDismiss(),
+        passive: true,
+      });
+      onCleanup(() => {
+        release();
+        unanchor();
+      });
+    }),
+  );
+  return (
+    <div ref={content} id={props.id} popover="manual" role="tooltip" data-expanded="" class={styles.content}>
+      {props.children}
+    </div>
+  );
+}
+
 /**
- * The one tooltip surface: Kobalte's tooltip behind Tori's chrome and Tori's
- * API. Everything not listed below is a native attribute and lands on the
- * trigger, so a call site reads as the control it already was plus a `label`.
+ * The one tooltip surface. Everything not listed below is a native attribute
+ * and lands on the trigger, so a call site reads as the control it already was
+ * plus a `label`.
  *
- * **The trigger is the control, never a wrapper.** Kobalte puts every tooltip
- * behaviour on `Tooltip.Trigger` itself - `aria-describedby`, `onFocus`,
- * `onPointerEnter`, `onBlur`. Solid does not delegate `focus` and `focus` does
- * not bubble, so a trigger wrapped around the control would receive neither the
- * description nor the keyboard opening, and would look correct on hover while
- * being unreachable by keyboard. That is why `as` names a host for this
- * component to render, rather than accepting a built control as a child: a
- * Solid JSX element is already-constructed DOM, and nothing can inject the
- * trigger's props into it after the fact. A tag name is the usual host; a
- * component is the escape hatch for a control that is itself a headless
- * primitive's part, and it carries its own props with it (see `as`).
+ * **The trigger is the control, never a wrapper.** Solid does not delegate
+ * `focus` and `focus` does not bubble, so a trigger wrapped around the control
+ * would receive neither the description nor the keyboard opening, and would
+ * look correct on hover while being unreachable by keyboard. That is why `as`
+ * names a host for this component to render, rather than accepting a built
+ * control as a child: a Solid JSX element is already-constructed DOM, and
+ * nothing can inject the trigger's props into it after the fact.
  *
- * **A tooltip is a description, not a name.** `aria-describedby` is what
- * Kobalte wires, and a description is announced after the name and skipped by
- * some verbosity settings. A control whose only text is its tooltip therefore
- * still needs an `aria-label` - which is why `Button`, `IconButton` and `Tab`
- * backfill the name from their `tooltip` prop and this component does not: it
- * cannot know whether its trigger has visible text.
+ * **A tooltip is a description, not a name.** A description is announced after
+ * the name and skipped by some verbosity settings. A control whose only text is
+ * its tooltip therefore still needs an `aria-label`, which is why `Button`,
+ * `IconButton` and `Tab` backfill the name from their `tooltip` prop and this
+ * component does not: it cannot know whether its trigger has visible text.
  *
  * **`title` is a type error here, deliberately.** The two say the same thing to
- * a mouse and only one of them says anything to a keyboard, so there is no
- * reason to write the native attribute on a control that already has `label`.
- * The `Omit` above is what enforces it, and it could only be added once the
- * last call site was swept: rejecting `title` from the start would have meant
- * moving all 134 of them in one commit. `src/test/interactiveTitle.test.ts`
- * guards everything the type cannot see - a native title written straight onto
- * a raw button that never goes through this component. (Spelling it out as an
- * attribute here would trip that guard: it counts prose too, deliberately.)
+ * a mouse and only one of them says anything to a keyboard.
+ * `src/test/interactiveTitle.test.ts` guards everything the type cannot see.
+ * (Spelling the attribute out here would trip that guard: it counts prose too.)
  *
- * ## `whenDisabled`, and what no test here proves
- *
- * A `disabled` button fires no pointer events at all, so Kobalte's trigger
- * handlers never run and its tooltip cannot be reached by any means: the
- * control is also unfocusable, so the keyboard path is gone too. The only way
- * to reach it is an enabled element wrapping the control, which is what this
- * renders when `whenDisabled` is set - a span whose `pointerenter`/
- * `pointerleave` drive the tooltip's open state on their own timer.
- *
- * That state is controlled, so it runs on this component's timer rather than
- * Kobalte's. Kobalte's own requests are fed back into the same signal, so focus opening, click-to-
- * close and Escape keep working for the spells when the control is *not*
- * disabled.
- *
- * **jsdom cannot reproduce the behaviour this works around.** jsdom dispatches
- * whatever event a test tells it to, including pointer events on a disabled
- * button, so a test asserting "the tooltip opens while disabled" would pass
- * with the span removed. The tests here therefore assert only that the span and
- * its handlers exist when asked for, and the behaviour itself rests on the
- * manual walk recorded with the ticket.
+ * **`whenDisabled`.** A `disabled` button fires no pointer events and takes no
+ * focus, so the only way to reach its tooltip is an enabled element around it:
+ * a span whose pointer events drive the same open state. jsdom dispatches
+ * pointer events on a disabled button anyway, so a test asserting "opens while
+ * disabled" would pass with the span removed.
  */
 export default function Tooltip<T extends HTMLElement = HTMLButtonElement, P extends Record<string, any> = {}>(
   props: TooltipProps<T, P>,
 ) {
-  const [local, trigger] = splitProps(props, [
-    "label",
-    "suppressed",
-    "placement",
-    "openDelay",
-    "closeDelay",
-    "mount",
-    "whenDisabled",
-    "as",
-  ]);
+  const [local, handlers, trigger] = splitProps(
+    props,
+    ["label", "suppressed", "placement", "openDelay", "closeDelay", "mount", "whenDisabled", "as"],
+    ["ref", "onPointerEnter", "onPointerLeave", "onPointerDown", "onClick", "onFocus", "onBlur"],
+  );
 
   const openDelay = () => local.openDelay ?? OPEN_DELAY;
   const closeDelay = () => local.closeDelay ?? CLOSE_DELAY;
   const dialogSurface = useDialogSurface();
   const mount = () => local.mount ?? dialogSurface();
+  const id = createUniqueId();
 
-  // Only read on the controlled path. Kobalte's own open/close requests are
-  // routed through `onOpenChange` into this same signal, so the paths agree
-  // rather than fighting: the span drives it while the control is disabled,
-  // `suppressed` forces it shut, and focus/click/Escape drive it otherwise.
-  const [open, setOpen] = createSignal(false);
+  const [isOpen, setOpen] = createSignal(false);
+  const [triggerEl, setTriggerEl] = createSignal<HTMLElement>();
+  const shown = () => isOpen() && !local.suppressed;
 
-  // `whenDisabled` needs the signal to drive the tooltip from a hover surface;
-  // `suppressed` needs it so a *close* can be forced, which Kobalte's own
-  // `disabled` cannot do. Either one takes the tooltip off the uncontrolled
-  // default and Kobalte's timer.
-  const controlled = () => !!local.whenDisabled || local.suppressed !== undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let pointerDown = false;
   const clearTimer = () => {
     if (timer !== undefined) clearTimeout(timer);
     timer = undefined;
@@ -229,70 +223,106 @@ export default function Tooltip<T extends HTMLElement = HTMLButtonElement, P ext
     clearTimer();
     timer = setTimeout(() => setOpen(next), delay);
   };
-  onCleanup(clearTimer);
+  const closeNow = () => {
+    clearTimer();
+    setOpen(false);
+  };
+  const onPointerUp = () => {
+    pointerDown = false;
+  };
+  onCleanup(() => {
+    clearTimer();
+    document.removeEventListener("pointerup", onPointerUp);
+  });
 
-  // The trigger's props, widened for the two polymorphic hosts below.
-  //
-  // `T` buys the *caller* precise handler types - the whole reason this
-  // component is generic - and it is exactly that precision the hosts cannot
-  // accept: Kobalte types `TooltipTriggerProps` as `Omit<any, …>` and Solid's
-  // `Dynamic` resolves its props from the tag name, so both demand a concrete
-  // element and neither can be told which one `as` names. The cast is confined
-  // to this line, and the runtime is unaffected either way: `trigger` is the
-  // same props object whatever it is typed as.
-  const triggerProps = trigger as TooltipProps<HTMLButtonElement>;
+  // Cleared rather than masked, so lifting suppression cannot spring it back.
+  createEffect(() => {
+    if (local.suppressed) closeNow();
+  });
 
-  const control = () => <Primitive.Trigger as={local.as ?? "button"} {...triggerProps} />;
+  const behaviour = {
+    type: "button",
+    ref: (el: HTMLElement) => {
+      setTriggerEl(el);
+      (handlers.ref as ((el: HTMLElement) => void) | undefined)?.(el);
+    },
+    get "aria-describedby"() {
+      return shown() ? id : undefined;
+    },
+    get "data-expanded"() {
+      return shown() ? "" : undefined;
+    },
+    get "data-closed"() {
+      return shown() ? undefined : "";
+    },
+    onPointerEnter: (e: PointerEvent) => {
+      callHandler(e, handlers.onPointerEnter as TriggerHandler);
+      if (e.pointerType === "touch" || local.suppressed || e.defaultPrevented) return;
+      if (isOpen()) clearTimer();
+      else schedule(true, openDelay());
+    },
+    onPointerLeave: (e: PointerEvent) => {
+      callHandler(e, handlers.onPointerLeave as TriggerHandler);
+      if (e.pointerType === "touch") return;
+      if (isOpen()) schedule(false, closeDelay());
+      else clearTimer();
+    },
+    onPointerDown: (e: PointerEvent) => {
+      callHandler(e, handlers.onPointerDown as TriggerHandler);
+      pointerDown = true;
+      document.addEventListener("pointerup", onPointerUp, { once: true });
+    },
+    onClick: (e: MouseEvent) => {
+      callHandler(e, handlers.onClick as TriggerHandler);
+      closeNow();
+    },
+    onFocus: (e: FocusEvent) => {
+      callHandler(e, handlers.onFocus as TriggerHandler);
+      if (local.suppressed || e.defaultPrevented || pointerDown) return;
+      clearTimer();
+      setOpen(true);
+    },
+    onBlur: (e: FocusEvent) => {
+      callHandler(e, handlers.onBlur as TriggerHandler);
+      closeNow();
+    },
+  };
+
+  // The cast is confined to these two lines: `T` buys the caller precise handler
+  // types, and `Dynamic` resolves its props from a tag name it cannot know here.
+  const bareProps = mergeProps(handlers, trigger) as unknown as TooltipProps<HTMLButtonElement>;
+  const triggerProps = mergeProps(behaviour, trigger) as unknown as TooltipProps<HTMLButtonElement>;
+
+  const control = () => <Dynamic component={local.as ?? "button"} {...triggerProps} />;
 
   return (
     <Show
       when={local.label != null}
-      // No label, no tooltip: the bare control, with none of Kobalte's context,
-      // popper or portal built around it. This is what a wrapper's untooltipped
-      // call sites get, and there are hundreds of them - a `Tooltip.Root` per
-      // button in the editor's toolbars would be paid for nothing.
-      fallback={<Dynamic component={local.as ?? "button"} {...triggerProps} />}
+      // No label, no tooltip: the bare control. This is what a wrapper's
+      // untooltipped call sites get, and there are hundreds of them.
+      fallback={<Dynamic component={local.as ?? "button"} {...bareProps} />}
     >
-      <Primitive.Root
-        placement={local.placement ?? "top"}
-        // Stops it opening; `open` below is what shuts one already open. Both,
-        // because the second alone would still let a hover re-open it under the
-        // menu the moment the pointer crossed the pill again.
-        disabled={local.suppressed}
-        gutter={GUTTER}
-        openDelay={openDelay()}
-        closeDelay={closeDelay()}
-        skipDelayDuration={SKIP_DELAY}
-        // The content is `pointer-events: none`, so there is nothing to reach in
-        // it, and the safe area only held the tooltip over the row the pointer
-        // was heading for.
-        ignoreSafeArea
-        // `undefined` is how Kobalte is told this is uncontrolled, so the
-        // default path keeps Kobalte's timer rather than this component's.
-        //
-        // `false` while suppressed, and the signal still receives Kobalte's own
-        // closes underneath: the trigger blurs as the menu takes focus, that
-        // lands in `setOpen(false)`, and the tooltip is therefore already shut
-        // when suppression lifts rather than springing back.
-        open={controlled() ? (local.suppressed ? false : open()) : undefined}
-        onOpenChange={controlled() ? setOpen : undefined}
-      >
-        {local.whenDisabled ? (
-          <span
-            class={styles.hoverSurface}
-            data-tooltip-hover-surface=""
-            onPointerEnter={() => schedule(true, openDelay())}
-            onPointerLeave={() => schedule(false, closeDelay())}
-          >
-            {control()}
-          </span>
-        ) : (
-          control()
+      {local.whenDisabled ? (
+        <span
+          class={styles.hoverSurface}
+          data-tooltip-hover-surface=""
+          onPointerEnter={() => schedule(true, openDelay())}
+          onPointerLeave={() => schedule(false, closeDelay())}
+        >
+          {control()}
+        </span>
+      ) : (
+        control()
+      )}
+      <Show when={shown() && triggerEl()}>
+        {(anchor) => (
+          <Portal mount={mount()}>
+            <TooltipSurface id={id} anchor={anchor()} placement={local.placement ?? "top"} onDismiss={closeNow}>
+              {local.label}
+            </TooltipSurface>
+          </Portal>
         )}
-        <Primitive.Portal mount={mount()}>
-          <Primitive.Content class={styles.content}>{local.label}</Primitive.Content>
-        </Primitive.Portal>
-      </Primitive.Root>
+      </Show>
     </Show>
   );
 }

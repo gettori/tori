@@ -1,17 +1,5 @@
-/* Chrome for the one tooltip surface (src/components/Tooltip/Tooltip.tsx).
-
-   Above the dialog (1250) rather than beside it: a tooltip on a control *inside*
-   a dialog has to paint over the panel, and the same value has to serve the
-   tooltips outside one. Below nothing, because nothing else floats higher - the
-   ladder is menus 1000, omnibox 1100, toasts 1200, dialog 1250, tooltip 1300.
-
-   Kobalte positions the tooltip on a `[data-popper-positioner]` wrapper that is
-   `position: absolute` with no z-index of its own, so it creates no stacking
-   context and this value is read against the root. The content itself is
-   `position: relative` from Kobalte's inline style, which is what gives this
-   z-index something to apply to. */
+/* Chrome for the one tooltip surface (src/components/Tooltip/Tooltip.tsx). */
 .content {
-  z-index: 1300;
   max-width: calc(280px * var(--ui-scale));
   padding: var(--tori-space-3) var(--tori-space-5);
   background: var(--canvas-card);
@@ -21,14 +9,9 @@
   box-shadow: var(--shadow-md);
   font-size: var(--tori-text-md);
   line-height: var(--tori-line-normal);
-  /* Kobalte writes this as an inline style on the content, pointing at whichever
-     corner the popper actually resolved to, so the zoom below grows out of the
-     trigger instead of out of thin air. The fallback is not decoration: the name
-     is Kobalte's, so it exists nowhere in src/, and `check-tokens.mjs` check 3
-     fails any var() that resolves to nothing unless it handles its own absence.
-     Tooltip's own alias, not the popover's - they are different names and only
-     one of them is ever set here. */
-  transform-origin: var(--kb-tooltip-content-transform-origin, center);
+  transform-origin: var(--layer-origin, center);
+  /* The browser's popover default is `auto`, which can draw a scrollbar. */
+  overflow: visible;
   /* A tooltip label is a phrase, but the ones naming a path or a branch are not,
      and a 280px cap with no wrapping would clip them. Wrap, and keep an author's
      own newline. */
@@ -49,12 +32,8 @@
 
 /* ---- Motion, one direction only.
 
-   Kobalte's tooltip does not run its content through `solid-presence` the way
-   the dialog does, so the content is unmounted the instant the tooltip closes
-   and there is no closing frame for an exit keyframe to land on. A
-   `[data-closed]` rule here would be a rule that matches nothing, which reads
-   in review as motion that exists and is not. The reference agrees by omission:
-   solid-ui's tooltip ships an enter animation and no exit.
+   The content unmounts the instant the tooltip closes, so there is no closing
+   frame for an exit keyframe to land on.
 
    Fast rather than medium: the open delay already made the user wait 700ms, and
    the animation is confirming a pointer that has already arrived. ---- */
