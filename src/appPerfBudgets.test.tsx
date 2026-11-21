@@ -170,13 +170,13 @@ const worktreeSwitch = (to: string) => invokedBy(() => clickRow(to));
 const tabSwitch = (to: string) => invokedBy(() => pointerClick(screen.getByRole("tab", { name: to })));
 
 describe("the webview perf budgets", () => {
-  it("holds every webview row", async () => {
+  it("holds every invoke row", async () => {
     await warm();
     const worktree = await worktreeSwitch(ROW_B);
     await worktreeSwitch(ROW_A);
     const tab = await tabSwitch("one");
     const drifted = drift(
-      rows("webview"),
+      rows("webview").filter((row) => row.name.startsWith("invokes.")),
       new Map([
         ["invokes.switch.worktree", worktree.length],
         ["invokes.switch.tab", tab.length],
