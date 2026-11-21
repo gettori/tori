@@ -24,8 +24,14 @@ function togglePopover(el: HTMLElement, oldState: string, newState: string) {
     new ToggleEvent("beforetoggle", { oldState, newState, cancelable: newState === "open" }),
   );
   if (!proceed) return;
-  if (newState === "open") openPopovers.add(el);
-  else openPopovers.delete(el);
+  // jsdom's default sheet keeps every [popover] at display none.
+  if (newState === "open") {
+    openPopovers.add(el);
+    el.style.setProperty("display", "block");
+  } else {
+    openPopovers.delete(el);
+    el.style.removeProperty("display");
+  }
   queueMicrotask(() => el.dispatchEvent(new ToggleEvent("toggle", { oldState, newState })));
 }
 
