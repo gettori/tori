@@ -5,9 +5,7 @@ import { expectNoAxeViolations } from "../../test/axe";
 import { pointerClick } from "../../test/menus";
 import Select, { type SelectGroup, type SelectOption } from "./Select";
 
-// Kobalte's focus scope and dismissable layer both arm from `setTimeout(0)`,
-// the same seam `Dropdown.test.tsx` documents: assert without yielding and you
-// are asserting on machinery that does not exist yet.
+// A pick closes the list on a timer, behind the click its press belongs to.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 const FRUIT: SelectOption[] = [
@@ -22,9 +20,6 @@ const GROUPED: SelectGroup[] = [
   { label: "Yours", options: [{ value: "custom", label: "Custom" }] },
 ];
 
-/** The trigger, by the accessible name every consumer is required to give it.
- *  Not by role: whether Kobalte exposes the button as `button` or `combobox`
- *  is its business, and the queries here should outlive that choice. */
 const trigger = () => screen.getByLabelText("Fruit");
 
 const options = () =>
@@ -85,9 +80,6 @@ describe("Select", () => {
     const listbox = await screen.findByRole("listbox");
     await macrotask();
 
-    // Kobalte gives the listbox roving focus: the arrows move focus onto the
-    // rows themselves, so the commit key goes to the focused row rather than to
-    // the listbox. Same split `Dropdown.test.tsx` drives its menus with.
     fireEvent.keyDown(listbox, { key: "ArrowDown" });
     fireEvent.keyDown(document.activeElement!, { key: "Enter" });
     await macrotask();
@@ -125,9 +117,7 @@ describe("Select", () => {
 
   // The guard against normalizing the options at setup time: AppearancePane's
   // list arrives from a folder watcher, so a snapshot taken once would pin
-  // whatever themes existed at mount. Swapped while *closed*, which is the real
-  // sequence - a new array while the listbox is open resets Kobalte's list
-  // state and closes it, which is its behaviour rather than a Tori choice.
+  // whatever themes existed at mount.
   it("an options list swapped after mount reaches the next open", async () => {
     const [opts, setOpts] = createSignal<SelectOption[]>(FRUIT);
     render(() => <Select options={opts()} value="apple" onChange={() => {}} aria-label="Fruit" />);
@@ -174,7 +164,7 @@ describe("Select", () => {
     // `Dropdown.test.tsx` records: axe's `controlsWithinPopup` declines to
     // judge `aria-controls` on any element carrying `aria-haspopup`, because it
     // cannot tell whether the popup is open - in a real browser as much as
-    // here. An open Kobalte select trigger carries both. The closed scan above
+    // here. An open select trigger carries both. The closed scan above
     // runs the rule in full; a closed trigger has no `aria-controls` at all.
     await expectNoAxeViolations(document.body, {
       rules: { "aria-valid-attr-value": { enabled: false } },

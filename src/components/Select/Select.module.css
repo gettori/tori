@@ -88,7 +88,8 @@
   position: relative;
   isolation: isolate;
   z-index: 1000;
-  min-width: calc(140px * var(--ui-scale));
+  width: max-content;
+  min-width: max(anchor-size(width), calc(140px * var(--ui-scale)));
   max-width: calc(320px * var(--ui-scale));
   max-height: 60vh;
   overflow-y: auto;
@@ -99,10 +100,10 @@
   border: 1px solid var(--border-default);
   border-radius: var(--tori-radius-xl);
   box-shadow: var(--shadow-md);
-  transform-origin: var(--kb-select-content-transform-origin, center);
+  transform-origin: var(--layer-origin, center);
 }
 
-/* Enter only, so solid-presence unmounts at once on close. */
+/* Enter only: the surface unmounts at once on close. */
 @keyframes selectContentIn {
   from {
     opacity: 0;
@@ -138,7 +139,7 @@
 /* Wider and a fixed floor on the list, so the surface holds one size as the
    tabs swap lists of different lengths under the pointer. */
 .tabbed {
-  min-width: calc(260px * var(--ui-scale));
+  min-width: max(anchor-size(width), calc(260px * var(--ui-scale)));
 }
 .tabbed .listbox {
   min-height: calc(280px * var(--ui-scale));
@@ -166,7 +167,7 @@
 }
 
 /* Muted rather than opacity, because a role is theme-correct and an opacity is
-   not. Kobalte already blocks activation, so nothing here has to. */
+   not. */
 .item[data-disabled] {
   color: var(--fg-muted);
   cursor: default;
