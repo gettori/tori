@@ -134,7 +134,7 @@ export default function TopicItem(props: {
           <button
             type="button"
             class={styles.disclosure}
-            aria-expanded={open()}
+            aria-expanded={open() ? "true" : "false"}
             // Only while the list exists: a dangling `aria-controls` names an
             // element the assistive tech is then asked to go and not find.
             aria-controls={open() ? listId : undefined}

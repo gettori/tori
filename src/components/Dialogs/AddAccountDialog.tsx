@@ -80,7 +80,7 @@ export default function AddAccountDialog(props: {
               onInput={(e) => setFolder(e.currentTarget.value)}
               autocapitalize="off"
               autocorrect="off"
-              spellcheck={false}
+              spellcheck="false"
             />
             <Show when={props.browse}>
               <Button disabled={picking()} onClick={() => void browse()}>

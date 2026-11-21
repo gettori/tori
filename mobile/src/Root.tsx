@@ -263,7 +263,7 @@ export default function Root(props: {
         <button
           class={styles.circle}
           aria-label="Search"
-          aria-pressed={searching()}
+          aria-pressed={searching() ? "true" : "false"}
           onClick={() => {
             setSearching(!searching());
             setQuery("");

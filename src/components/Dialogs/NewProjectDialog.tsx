@@ -182,13 +182,13 @@ export default function NewProjectDialog(props: {
               <input
                 class={styles.spaceInput}
                 aria-labelledby={URL_LABEL}
-                aria-required={true}
+                aria-required="true"
                 value={url()}
                 placeholder="https://github.com/org/repo.git"
                 onInput={(e) => onUrlInput(e.currentTarget.value)}
                 autocapitalize="off"
                 autocorrect="off"
-                spellcheck={false}
+                spellcheck="false"
               />
             </div>
             <CloneAccountField
@@ -215,7 +215,7 @@ export default function NewProjectDialog(props: {
               ref={first}
               class={styles.spaceInput}
               aria-labelledby={NAME_LABEL}
-              aria-required={!needsUrl()}
+              aria-required={!needsUrl() ? "true" : "false"}
               value={name()}
               placeholder={needsUrl() ? "defaults from the URL" : "folder name"}
               onInput={(e) => {
@@ -224,7 +224,7 @@ export default function NewProjectDialog(props: {
               }}
               autocapitalize="off"
               autocorrect="off"
-              spellcheck={false}
+              spellcheck="false"
             />
             <Show when={!needsUrl()}>
               <div class={styles.spaceHelp}>Created directly inside {props.spaceName}.</div>

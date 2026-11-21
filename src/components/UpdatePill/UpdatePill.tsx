@@ -100,7 +100,7 @@ export default function UpdatePill(props: { suppressed?: boolean }) {
         type="button"
         class={styles.update}
         aria-label={`${label()}. Show update details`}
-        aria-expanded={open()}
+        aria-expanded={open() ? "true" : "false"}
         onClick={() => setOpen(!open())}
       >
         {label()}

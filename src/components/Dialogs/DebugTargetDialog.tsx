@@ -270,7 +270,7 @@ export default function DebugTargetDialog(props: {
             onInput={(e) => setProgram(e.currentTarget.value)}
             autocapitalize="off"
             autocorrect="off"
-            spellcheck={false}
+            spellcheck="false"
           />
           <Button onClick={() => void pickProgram()}>Choose</Button>
         </div>
@@ -292,7 +292,7 @@ export default function DebugTargetDialog(props: {
           onInput={(e) => setModule(e.currentTarget.value)}
           autocapitalize="off"
           autocorrect="off"
-          spellcheck={false}
+          spellcheck="false"
         />
         <div class={styles.msg}>
           Runs it the way <code>python -m</code> does, stopping on your breakpoints.
@@ -332,7 +332,7 @@ export default function DebugTargetDialog(props: {
           onInput={(e) => setPort(e.currentTarget.value)}
           autocapitalize="off"
           autocorrect="off"
-          spellcheck={false}
+          spellcheck="false"
         />
         <div class={styles.msg}>
           The target must already be running with <code>--inspect</code>. Tori attaches to it and leaves it running when

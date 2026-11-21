@@ -247,7 +247,7 @@ export default function OverflowTabBar<T>(props: {
             aria-label={`${overflow().length} more`}
             // The keyboard reaches the button, not the dropdown's wrapper.
             aria-haspopup="menu"
-            aria-expanded={menuOpen()}
+            aria-expanded={menuOpen() ? "true" : "false"}
           >
             +{overflow().length}
           </Tooltip>

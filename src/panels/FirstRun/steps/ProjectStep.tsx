@@ -125,7 +125,7 @@ export default function ProjectStep(props: {
                     value={props.name}
                     placeholder="api"
                     autocomplete="off"
-                    spellcheck={false}
+                    spellcheck="false"
                     onInput={(e) => props.onName(e.currentTarget.value)}
                     onKeyDown={onKeyDown}
                   />
@@ -143,7 +143,7 @@ export default function ProjectStep(props: {
                       value={props.url}
                       placeholder="git@github.com:acme/api.git"
                       autocomplete="off"
-                      spellcheck={false}
+                      spellcheck="false"
                       onInput={(e) => props.onUrl(e.currentTarget.value)}
                       onKeyDown={onKeyDown}
                     />

@@ -148,7 +148,7 @@ export default function SessionChips(props: {
             ref={more}
             type="button"
             class={`${styles.lane} ${styles.laneMore}`}
-            aria-expanded={listOpen()}
+            aria-expanded={listOpen() ? "true" : "false"}
             onClick={() => setListOpen(!listOpen())}
           >
             {`+${hidden()}`}

@@ -102,7 +102,7 @@ function SpaceForm(props: { client: RemoteClient; space: Space | null; onSaved: 
       </Show>
       <h2 class={styles.label}>Colour</h2>
       <div class={styles.swatches}>
-        <button class={styles.swatch} aria-pressed={color() === null} onClick={() => setColor(null)}>
+        <button class={styles.swatch} aria-pressed={color() === null ? "true" : "false"} onClick={() => setColor(null)}>
           Auto
         </button>
         <For each={SPACE_COLORS}>
@@ -110,7 +110,7 @@ function SpaceForm(props: { client: RemoteClient; space: Space | null; onSaved: 
             <button
               class={styles.swatch}
               aria-label={c.name}
-              aria-pressed={color() === c.name}
+              aria-pressed={color() === c.name ? "true" : "false"}
               style={{ background: c.hex }}
               onClick={() => setColor(c.name)}
             />
@@ -119,7 +119,7 @@ function SpaceForm(props: { client: RemoteClient; space: Space | null; onSaved: 
       </div>
       <h2 class={styles.label}>Icon</h2>
       <div class={styles.swatches} style={{ "--tint": tint() }}>
-        <button class={styles.swatch} aria-pressed={icon() === null} onClick={() => setIcon(null)}>
+        <button class={styles.swatch} aria-pressed={icon() === null ? "true" : "false"} onClick={() => setIcon(null)}>
           {spaceInitials(name() || "?")}
         </button>
         <For each={shelf}>
@@ -127,7 +127,7 @@ function SpaceForm(props: { client: RemoteClient; space: Space | null; onSaved: 
             <button
               class={styles.swatch}
               aria-label={i.name}
-              aria-pressed={icon() === i.name}
+              aria-pressed={icon() === i.name ? "true" : "false"}
               onClick={() => setIcon(i.name)}
             >
               <Icon icon={i.icon} size={18} strokeWidth={2} />
@@ -324,10 +324,10 @@ export function TopicForm(props: {
             <h2 class={styles.label}>Where</h2>
             <div class={styles.typedBody}>
               <span class={styles.segments} role="group" aria-label="Where">
-                <button aria-pressed={where() === "space"} onClick={() => setWhere("space")}>
+                <button aria-pressed={where() === "space" ? "true" : "false"} onClick={() => setWhere("space")}>
                   {space()}
                 </button>
-                <button aria-pressed={where() === "global"} onClick={() => setWhere("global")}>
+                <button aria-pressed={where() === "global" ? "true" : "false"} onClick={() => setWhere("global")}>
                   Topics
                 </button>
               </span>
@@ -351,17 +351,20 @@ export function TopicForm(props: {
                     <div class={`${styles.item} ${styles.setting}`}>
                       <span class={styles.text}>{project.name}</span>
                       <span class={styles.segments} role="group" aria-label={project.name}>
-                        <button aria-pressed={!picked()[project.path]} onClick={() => toggle(project.path, null)}>
+                        <button
+                          aria-pressed={!picked()[project.path] ? "true" : "false"}
+                          onClick={() => toggle(project.path, null)}
+                        >
                           Off
                         </button>
                         <button
-                          aria-pressed={picked()[project.path] === "worktree"}
+                          aria-pressed={picked()[project.path] === "worktree" ? "true" : "false"}
                           onClick={() => toggle(project.path, "worktree")}
                         >
                           Worktree
                         </button>
                         <button
-                          aria-pressed={picked()[project.path] === "reference"}
+                          aria-pressed={picked()[project.path] === "reference" ? "true" : "false"}
                           onClick={() => toggle(project.path, "reference")}
                         >
                           Reference

@@ -853,7 +853,7 @@ export default function ConflictView(props: {
                   <Button
                     size="xs"
                     variant={pairId() === p.id ? "primary" : "default"}
-                    aria-pressed={pairId() === p.id}
+                    aria-pressed={pairId() === p.id ? "true" : "false"}
                     aria-label={pairName(p, names())}
                     tooltip={pairName(p, names())}
                     onClick={() => setPairId(p.id)}
@@ -945,7 +945,7 @@ export default function ConflictView(props: {
             <Button
               size="xs"
               variant={keepFile() === true ? "primary" : "default"}
-              aria-pressed={keepFile() === true}
+              aria-pressed={keepFile() === true ? "true" : "false"}
               tooltip="Keep the file, with the surviving side's contents"
               onClick={() => setKeepFile(true)}
             >
@@ -955,7 +955,7 @@ export default function ConflictView(props: {
           <Button
             size="xs"
             variant={keepFile() === false ? "primary" : "default"}
-            aria-pressed={keepFile() === false}
+            aria-pressed={keepFile() === false ? "true" : "false"}
             tooltip="Accept the deletion"
             onClick={() => setKeepFile(false)}
           >
@@ -976,7 +976,7 @@ export default function ConflictView(props: {
                 <Button
                   size="xs"
                   variant={choices()[r().id] === c.choice ? "primary" : "default"}
-                  aria-pressed={choices()[r().id] === c.choice}
+                  aria-pressed={choices()[r().id] === c.choice ? "true" : "false"}
                   // Contains the visible text rather than replacing it ("Take
                   // Upstream" over "Upstream"), which is what keeps the name
                   // and the label agreeing.

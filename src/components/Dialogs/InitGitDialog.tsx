@@ -96,7 +96,7 @@ export default function InitGitDialog(props: {
             onInput={(e) => setBranch(e.currentTarget.value)}
             autocapitalize="off"
             autocorrect="off"
-            spellcheck={false}
+            spellcheck="false"
           />
           {/* Under the field rather than in it: a placeholder that states a rule
               cannot be read once anything is typed, which is exactly when a
@@ -117,7 +117,7 @@ export default function InitGitDialog(props: {
             onInput={(e) => setUrl(e.currentTarget.value)}
             autocapitalize="off"
             autocorrect="off"
-            spellcheck={false}
+            spellcheck="false"
           />
         </div>
       </div>

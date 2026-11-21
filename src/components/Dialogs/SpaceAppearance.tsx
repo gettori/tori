@@ -104,7 +104,7 @@ export default function SpaceAppearance(props: {
           type="button"
           class={styles.chip}
           aria-haspopup="dialog"
-          aria-expanded={open() === "color"}
+          aria-expanded={open() === "color" ? "true" : "false"}
           onClick={() => toggle("color")}
         >
           <span class={styles.chipDot} />
@@ -117,7 +117,7 @@ export default function SpaceAppearance(props: {
           type="button"
           class={styles.chip}
           aria-haspopup="dialog"
-          aria-expanded={open() === "icon"}
+          aria-expanded={open() === "icon" ? "true" : "false"}
           onClick={() => toggle("icon")}
         >
           {/* A text glyph where the space has none, so the chip previews the

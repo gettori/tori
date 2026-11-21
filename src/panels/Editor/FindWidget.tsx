@@ -159,7 +159,7 @@ function createFindPanel(view: EditorView): Panel {
             type="button"
             class={styles.expand}
             aria-label="Toggle Replace"
-            aria-expanded={replaceOpen()}
+            aria-expanded={replaceOpen() ? "true" : "false"}
             onClick={() => setReplaceOpen(!replaceOpen())}
           >
             {replaceOpen() ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -176,7 +176,7 @@ function createFindPanel(view: EditorView): Panel {
                 }}
                 class={styles.text}
                 type="text"
-                spellcheck={false}
+                spellcheck="false"
                 placeholder="Find"
                 aria-label="Find"
                 value={query().search}
@@ -224,7 +224,7 @@ function createFindPanel(view: EditorView): Panel {
                 <input
                   class={styles.text}
                   type="text"
-                  spellcheck={false}
+                  spellcheck="false"
                   placeholder="Replace"
                   aria-label="Replace"
                   value={query().replace}

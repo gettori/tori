@@ -54,7 +54,7 @@ export default function SpaceStep(props: {
                 value={props.name}
                 placeholder="work"
                 autocomplete="off"
-                spellcheck={false}
+                spellcheck="false"
                 disabled={props.busy}
                 onInput={(e) => props.onName(e.currentTarget.value)}
                 onKeyDown={(e) => {
@@ -96,7 +96,7 @@ export default function SpaceStep(props: {
               <button
                 type="button"
                 role="radio"
-                aria-checked={props.selected === s.name}
+                aria-checked={props.selected === s.name ? "true" : "false"}
                 class={styles.choice}
                 classList={{ [styles.choiceOn]: props.selected === s.name }}
                 onClick={() => props.onSelect(s.name)}

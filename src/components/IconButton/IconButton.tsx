@@ -44,7 +44,11 @@ export default function IconButton(props: IconButtonProps) {
   // `active` drives the brand-fill look and, by default, aria-pressed. A pane
   // toggle whose "on" state is the plain (not filled) look passes an explicit
   // aria-pressed instead, keeping the accent styling on a `class`.
-  const ariaPressed = () => local["aria-pressed"] ?? local.active;
+  const ariaPressed = () => {
+    if (local["aria-pressed"] !== undefined) return local["aria-pressed"];
+    if (local.active === undefined) return undefined;
+    return local.active ? "true" : "false";
+  };
 
   if (import.meta.env.DEV && ariaLabel() == null) {
     console.warn("[IconButton] is missing an accessible name; pass `aria-label` (or a `tooltip`).");

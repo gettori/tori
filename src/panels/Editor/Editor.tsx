@@ -585,7 +585,7 @@ export default function Editor(props: {
     <IconButton
       class={shown ? undefined : styles.paneToggleOff}
       icon={<Icon icon={PanelRight} />}
-      aria-pressed={shown}
+      aria-pressed={shown ? "true" : "false"}
       onClick={() => props.onToggleFiletree?.()}
       tooltip={shown ? "Hide the file tree (⌘⌥B)" : "Show the file tree (⌘⌥B)"}
     />
@@ -3008,7 +3008,7 @@ export default function Editor(props: {
       // `aria-pressed` by hand, and no `active`: the pressed look this control
       // wants is the composer's, which accents the glyph rather than filling
       // the button, and `active` is the fill.
-      aria-pressed={blameOn()}
+      aria-pressed={blameOn() ? "true" : "false"}
       icon={<Icon icon={UserRound} class={blameOn() ? crumbStyles.barToggleOn : undefined} />}
       onClick={toggleBlame}
       tooltip={
@@ -3022,7 +3022,7 @@ export default function Editor(props: {
   const previewBtn = (id: string) => (
     <IconButton
       size="sm"
-      aria-pressed={previewingOf(id)}
+      aria-pressed={previewingOf(id) ? "true" : "false"}
       icon={
         <Icon
           icon={previewingOf(id) ? FileCodeCorner : svgOf(id) ? FileHeart : FileTypeCorner}

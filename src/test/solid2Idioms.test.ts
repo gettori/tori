@@ -61,6 +61,7 @@ describe("the boolean attribute classifier", () => {
     ["a same name pass through", `<p aria-pressed={props["aria-pressed"]} />`],
     ["a pass through from split props", `<p aria-pressed={local["aria-pressed"]} />`],
     ["a draggable pass through", `<p draggable={props.draggable} />`],
+    ["a spreadable object key holding a string", `const attrs = { draggable: "true" };`],
     ["a free text attribute", `<p aria-label={label()} />`],
     ["a numeric attribute", `<p aria-valuenow={value()} />`],
   ])("passes %s", (_, source) => {
@@ -75,10 +76,12 @@ describe("the boolean attribute classifier", () => {
     ["an or undefined", `<p aria-disabled={off() || undefined} />`],
     ["a bare undefined", `<p aria-busy={undefined} />`],
     ["a different prop", `<p aria-pressed={props["aria-checked"]} />`],
+    ["a pass through inside a ternary", `<p aria-pressed={on() ? "true" : props["aria-pressed"]} />`],
     ["the same name on a data object", `<p draggable={row.draggable} />`],
     ["draggable", `<p draggable={can()} />`],
     ["spellcheck", `<p spellcheck={false} />`],
     ["an object key", `const attrs = { "aria-expanded": open() };`],
+    ["an unquoted object key", `const attrs = { draggable: true };`],
   ])("fails %s", (_, source) => {
     expect(classesIn(source)).toEqual(["boolean-attr"]);
   });

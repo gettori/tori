@@ -408,7 +408,7 @@ export default function Settings(props: {
                         // reader follows to jump into the panel, and while a
                         // search is running there is no one panel to jump to.
                         aria-controls={selected() ? paneId(t.id) : undefined}
-                        aria-selected={selected()}
+                        aria-selected={selected() ? "true" : "false"}
                         aria-label={tabName(t)}
                         // Roving tabindex: one stop for the whole rail, so Tab
                         // steps past it into the pane rather than through six.

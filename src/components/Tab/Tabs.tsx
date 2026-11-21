@@ -201,8 +201,8 @@ function Trigger(props: TabsTriggerProps) {
       role="tab"
       disabled={local.disabled}
       tabindex={local.disabled ? undefined : item.tabindex}
-      aria-selected={isSelected()}
-      aria-disabled={local.disabled ? true : undefined}
+      aria-selected={isSelected() ? "true" : "false"}
+      aria-disabled={local.disabled ? "true" : undefined}
       data-key={local.value}
       data-orientation="horizontal"
       data-selected={isSelected() ? "" : undefined}

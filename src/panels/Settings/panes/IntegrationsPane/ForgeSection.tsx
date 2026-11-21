@@ -513,7 +513,11 @@ export default function ForgeSection() {
                   </span>
                   <span class={cards.spacer} />
                   <Show when={family(host) === "GitLab" && host.host !== "gitlab.com"}>
-                    <Button variant="ghost" aria-expanded={appIdHost() === host.host} onClick={() => toggleAppId(host)}>
+                    <Button
+                      variant="ghost"
+                      aria-expanded={appIdHost() === host.host ? "true" : "false"}
+                      onClick={() => toggleAppId(host)}
+                    >
                       Application ID
                     </Button>
                   </Show>

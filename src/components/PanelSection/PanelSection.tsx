@@ -64,7 +64,7 @@ export default function PanelSection<Id extends string>(props: {
           <button
             type="button"
             class={styles.sectionToggle}
-            aria-expanded={open()}
+            aria-expanded={open() ? "true" : "false"}
             onClick={() => props.layout.setOpen(props.id, !open())}
           >
             <Chevron open={open()} class={styles.sectionChevron} />

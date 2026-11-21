@@ -57,7 +57,7 @@ export default function CodeBlock(props: { lang: string; code: string }) {
             type="button"
             class={styles.codeBtn}
             aria-label={toggleLabel()}
-            aria-pressed={rendered()}
+            aria-pressed={rendered() ? "true" : "false"}
             onClick={() => setFlipped(!flipped())}
           >
             <Icon icon={rendered() ? Code : Eye} size={13} aria-hidden="true" />

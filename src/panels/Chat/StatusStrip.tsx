@@ -149,7 +149,7 @@ export default function StatusStrip(props: {
         icon={<Icon icon={Ellipsis} />}
         tooltip="Session menu"
         aria-label="Session menu"
-        aria-expanded={menuOpen()}
+        aria-expanded={menuOpen() ? "true" : "false"}
         onClick={() => setMenuOpen(!menuOpen())}
       />
       <Show when={menuOpen()}>

@@ -71,7 +71,7 @@ export default function Checkbox(props: {
         aria-label={props["aria-label"]}
         aria-labelledby={props.label !== undefined ? labelId : undefined}
         aria-describedby={props["aria-describedby"]}
-        aria-disabled={props.disabled || undefined}
+        aria-disabled={props.disabled ? "true" : undefined}
         onChange={(e) => {
           e.stopPropagation();
           const el = e.currentTarget;

@@ -357,7 +357,7 @@ export default function NewTopicDialog(props: {
                 onKeyDown={onEnter}
                 autocapitalize="off"
                 autocorrect="off"
-                spellcheck={false}
+                spellcheck="false"
               />
             </div>
             <div>
@@ -372,7 +372,7 @@ export default function NewTopicDialog(props: {
                 onKeyDown={onEnter}
                 autocapitalize="off"
                 autocorrect="off"
-                spellcheck={false}
+                spellcheck="false"
               />
               <Show when={invalid()}>
                 <div class={styles.hint}>not a valid branch name</div>
@@ -400,7 +400,7 @@ export default function NewTopicDialog(props: {
                     }}
                     autocapitalize="off"
                     autocorrect="off"
-                    spellcheck={false}
+                    spellcheck="false"
                   />
                 }
               >
@@ -434,7 +434,7 @@ export default function NewTopicDialog(props: {
                 onInput={(e) => setFilter(e.currentTarget.value)}
                 autocapitalize="off"
                 autocorrect="off"
-                spellcheck={false}
+                spellcheck="false"
               />
             </div>
             <RepoChecklist

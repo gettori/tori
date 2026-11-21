@@ -615,7 +615,7 @@ export default function PullsPanel(props: {
             class={styles.rowOpen}
             role="button"
             tabIndex={0}
-            aria-expanded={open()}
+            aria-expanded={open() ? "true" : "false"}
             onClick={() => toggleDir(p.node.path)}
             onKeyDown={(e: KeyboardEvent) => {
               if (e.key !== "Enter" && e.key !== " ") return;
@@ -1080,7 +1080,7 @@ export default function PullsPanel(props: {
                         role="tab"
                         id={`pr-tab-${t.id}`}
                         class={styles.tab}
-                        aria-selected={prTab() === t.id}
+                        aria-selected={prTab() === t.id ? "true" : "false"}
                         aria-controls={`pr-panel-${t.id}`}
                         onClick={() => revealPrTab(t.id)}
                       >
@@ -1093,7 +1093,7 @@ export default function PullsPanel(props: {
                 <IconButton
                   size="sm"
                   icon={<Icon icon={detailOpen() ? ChevronDown : ChevronUp} />}
-                  aria-expanded={detailOpen()}
+                  aria-expanded={detailOpen() ? "true" : "false"}
                   tooltip={detailOpen() ? "Collapse" : "Expand"}
                   onClick={() => prLayout.setOpen("detail", !detailOpen())}
                 />

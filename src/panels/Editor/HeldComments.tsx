@@ -88,7 +88,7 @@ export default function HeldComments(props: {
 
   return (
     <Show when={held().length}>
-      <Button ref={setAnchor} size="xs" aria-expanded={open()} onClick={() => setOpen(!open())}>
+      <Button ref={setAnchor} size="xs" aria-expanded={open() ? "true" : "false"} onClick={() => setOpen(!open())}>
         {held().length === 1 ? "1 comment" : `${held().length} comments`}
       </Button>
       <Show when={open()}>
