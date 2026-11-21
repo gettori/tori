@@ -277,10 +277,8 @@ describe("a tori:// tab in the editor pane", () => {
     expect(screen.queryByText("File history")).toBeNull();
   });
 
-  // Written against the hand-rolled menu (gettori/tori#103, phase 1), now
-  // running against Kobalte's (phase 4). The test above proves a view is offered
-  // no file history; this proves what the tab does with the right-click itself,
-  // which is the half a migration can silently lose.
+  // The test above proves a view is offered no file history; this proves what
+  // the tab does with the right-click itself.
   //
   // **These need the drawn tab, not the measuring ghost**, which is rendered
   // menu-free and would answer a right-click with nothing. That used to need a
@@ -313,8 +311,8 @@ describe("a tori:// tab in the editor pane", () => {
 
     // The tab strip derives nothing from "a menu is open" (HistoryPanel does,
     // and phase 3 found what that costs), so what is at risk here is simpler and
-    // worse: a menu left on screen with no tab behind it. Kobalte reports no
-    // close for a trigger that unmounts, so this asserts the portal goes with
+    // worse: a menu left on screen with no tab behind it. `ContextMenu` reports
+    // no close for a trigger that unmounts, so this asserts the portal goes with
     // its owner rather than that anything was told about it.
     it("takes its menu with it when the tab is closed under it", async () => {
       await mountEditor();

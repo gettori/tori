@@ -566,9 +566,6 @@ export const COMMANDS: Command[] = [
     group: "view",
     scope: "global",
     match: cmdOpt("KeyT"),
-    // Kobalte ships its own Alt+T document listener for this; it is disabled in
-    // ToastRegion because Option+T types a glyph on macOS and the listener
-    // never yields to a defaultPrevented key. This entry is the one handler.
     run: () => emit(FOCUS_TOASTS),
   },
   {

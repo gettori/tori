@@ -27,14 +27,13 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /** The trigger case: the split buttons, the tab-overflow list, the model picker.
- *  Kobalte anchors the menu to the trigger itself, which is what deletes the
- *  `getBoundingClientRect` measuring every one of those sites does today. */
+ *  `anchorLayer` anchors the menu to the trigger itself, so no call site
+ *  measures it with `getBoundingClientRect`. */
 export const Playground: Story = {};
 
-/** Placement is a preference, not a promise: Kobalte flips a menu that would
+/** Placement is a preference, not a promise: `anchorLayer` flips a menu that would
  *  leave the viewport. Drag the preview short and `bottom-start` becomes
- *  `top-start` on its own, which is what the composer's picker used to need an
- *  `openAbove` flag for. */
+ *  `top-start` on its own. */
 export const Placements: Story = {
   render: () => (
     <div
@@ -64,8 +63,7 @@ export const Placements: Story = {
 /** No trigger at all. The menu is opened from state and placed at a point, which
  *  is what CodeEditor's code-action menu needs: the caret is not an element.
  *  Click anywhere in the box, then press Escape - focus goes back to where it
- *  was, which Kobalte cannot do on its own here because there is no trigger for
- *  it to aim at. */
+ *  was, since there is no trigger to return it to. */
 export const AtAPoint: Story = {
   render: () => {
     const [anchor, setAnchor] = createSignal<{ x: number; y: number }>();

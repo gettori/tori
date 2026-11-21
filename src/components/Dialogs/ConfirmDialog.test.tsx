@@ -14,20 +14,17 @@ import ConfirmDialog from "./ConfirmDialog";
 // Two blocks, and the split is load-bearing:
 //
 //   * **contract** - what a caller relies on. Every assertion is written to
-//     hold for the hand-rolled portal *and* for the Kobalte shell, so this
+//     hold for the hand-rolled portal *and* for the `Dialog` shell, so this
 //     block must survive the migration byte for byte.
 //   * **shape** - assertions coupled to how dismissal is wired today, a
-//     `mousedown` on a real backdrop element. Kobalte dismisses on a
-//     `pointerdown` anywhere outside the panel, from a listener installed in a
-//     `setTimeout(0)`, so no single `fireEvent` satisfies both and this block
-//     is knowingly rewritten at migration time.
+//     `mousedown` on a real backdrop element. `Dialog` dismisses on a
+//     `pointerdown` anywhere outside the panel, so no single `fireEvent`
+//     satisfies both and this block is knowingly rewritten at migration time.
 //
 // The dialog focuses its confirm button from a `requestAnimationFrame`, so a
 // test that asserts on focus, or that fires a key the focused element must
 // receive, has to wait a frame first.
 const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
-// Kobalte's focus scope and its dismiss layer both install from a
-// `setTimeout(0)`, so anything asserting on them has to yield a macrotask.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 type ConfirmProps = Parameters<typeof ConfirmDialog>[0];
@@ -139,8 +136,6 @@ describe("ConfirmDialog", () => {
 
     it("resolves false on a pointer down outside the panel", async () => {
       const { onCancel } = open();
-      // Kobalte installs its outside-pointerdown listener from a
-      // `setTimeout(0)`, so a press fired before this yield lands on nobody.
       await macrotask();
 
       fireEvent.pointerDown(document.body);

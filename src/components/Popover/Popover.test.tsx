@@ -5,13 +5,12 @@ import { expectNoAxeViolations } from "../../test/axe";
 
 // The old hand-rolled suite pinned pixel placement (style.left, the opacity
 // dance), which was that implementation's own RAF clamp. Position now belongs
-// to floating-ui, which jsdom cannot exercise past "it mounted", so what this
+// to CSS anchor positioning, which jsdom cannot exercise past "it mounted", so what this
 // suite holds is the wrapper's actual contract: who dismisses it, who gets
 // focus, and what the anchor's own press means. The panel-level invariants live
 // in HistoryPanel.test.tsx.
 //
-// Kobalte installs its outside listener from a setTimeout(0) and listens for
-// pointerdown, so dismissal tests yield a macrotask first and fire the
+// Dismissal listens for pointerdown, so dismissal tests fire the
 // pointerdown/mousedown pair a real pointer sends (see test/menuIdioms.test.ts).
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 

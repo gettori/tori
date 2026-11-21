@@ -126,7 +126,7 @@ function setup(over: Partial<Parameters<typeof ModelPicker>[0]> = {}) {
   };
 
   // The effort pill is still a menu. `pointerClick`, not `fireEvent.click`: a
-  // Kobalte trigger opens on `pointerdown` and answers a bare click with
+  // `Dropdown` trigger opens on `pointerdown` and answers a bare click with
   // nothing (src/test/menus.ts).
   const openEffort = () => {
     pointerClick(pills()[1]);
@@ -284,7 +284,8 @@ describe("ModelPicker", () => {
 
     const refused = [...menu.children].find((r) => r.textContent?.includes("Ultracode"))!;
     // Announced as refused, and still a row keyboard navigation can reach: a
-    // row Kobalte's `disabled` skipped would take its reason with it.
+    // row marked `data-disabled` is skipped by the arrows and would take its
+    // reason with it.
     expect(refused.getAttribute("aria-disabled")).toBe("true");
     expect(refused.getAttribute("data-disabled")).toBeNull();
     // Drawn as well as announced, so it is not screen-reader-only.

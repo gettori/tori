@@ -362,9 +362,8 @@ export default function Omnibox(props: {
   const term = () => parsed().term;
 
   onMount(() => {
-    // Focus is `Dialog`'s (`initialFocus` below), which fires from Kobalte's
-    // own open-auto-focus event rather than from a frame this component asks
-    // for. What is left here is the data the box needs to have anything to show.
+    // Focus is `Dialog`'s (`initialFocus` below), not asked for here. What is
+    // left here is the data the box needs to have anything to show.
     // Which agents exist, so the "New ... session" rows offer only the ones
     // that can start. Cached in the backend, so this is a no-op after the first
     // call from anywhere.
@@ -1225,8 +1224,8 @@ export default function Omnibox(props: {
 
   /** `Row.section` as the shared surface's group contract.
    *
-   *  A list is either wholly grouped or wholly flat, never both, because Kobalte
-   *  decides "group or option" per top-level entry and throws on the mix. Every
+   *  A list is either wholly grouped or wholly flat, never both, because
+   *  `Combobox` takes `options` as one shape or the other. Every
    *  mode but the empty file list is flat, and that one heads its project tail
    *  as well as its two recent blocks, so the two shapes never meet. Rows under
    *  one heading are already adjacent, which is the same thing the old
@@ -1276,7 +1275,7 @@ export default function Omnibox(props: {
     close(item.run);
   }
 
-  // Kobalte commits on Enter whatever the modifiers, so the key is noted here
+  // `Combobox` commits on Enter whatever the modifiers, so the key is noted here
   // and read when the commit arrives.
   let browserNext = false;
 

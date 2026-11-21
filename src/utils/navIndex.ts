@@ -95,8 +95,6 @@ export type PlaceInputs = {
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const basename = (path: string) => path.replace(/\/+$/, "").split("/").pop() || path;
-// A space, not a newline: Kobalte finds an option by an unescaped
-// `[data-key="..."]` selector, and no branch name can hold a space.
 const unitKey = (folder: string, branch: string | null | undefined) => `${folder} ${branch ?? ""}`;
 
 function dotOf(status: SessionStatus): PlaceDot | undefined {

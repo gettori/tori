@@ -15,7 +15,7 @@ import Checkbox from "../Checkbox/Checkbox";
 // out. Enter stays here, through `Dialog`'s `onKeyDown`, because the confirm
 // button is `disabled` while the removal runs and a disabled button is never
 // clicked by the browser, so there is nothing else to answer the key. Escape
-// does not: Kobalte reports it as `onClose`, and a second handler would cancel
+// does not: `Dialog` reports it as `onClose`, and a second handler would cancel
 // the same request twice.
 export default function BranchRemoveDialog(props: {
   branch: string;

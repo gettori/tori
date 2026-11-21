@@ -291,7 +291,7 @@ describe("what a History row can do", () => {
     expect(actions).toEqual([]);
   });
 
-  // Kobalte does not report a close for a trigger that simply goes away, so the
+  // The row's menu reports no close for a trigger that simply goes away, so the
   // row has to give the panel its keys back itself. Without that the panel is
   // left believing a menu is open forever: undismissable, arrows dead, and no
   // menu on screen to explain why.
@@ -331,10 +331,8 @@ describe("what a History row can do", () => {
 });
 
 // The invariants of gettori/tori#104: how the panel opens, closes, and hands
-// focus around must survive the move onto Kobalte exactly as pinned here.
-// Dismissal fires the pointerdown/mousedown pair a real pointer sends (see
-// test/menuIdioms.test.ts) and yields a macrotask after mounting, because the
-// migrated surface installs its outside listener from a `setTimeout(0)`.
+// focus around, as pinned here. Dismissal fires the pointerdown/mousedown pair a
+// real pointer sends (see test/menuIdioms.test.ts).
 describe("how the panel opens, closes, and hands focus", () => {
   beforeEach(() => {
     resetSessionStoreForTests();
@@ -405,13 +403,8 @@ describe("how the panel opens, closes, and hands focus", () => {
     await expectNoAxeViolations(document.body);
   });
 
-  // The dismissal semantics of the move onto Kobalte (gettori/tori#104), pinned
-  // as measured rather than assumed. One changed, one did not.
-
-  // Did NOT change: the old dismissable={!menuOpen()} behavior survives, now by
-  // Kobalte's layer stack instead of a hand-wired prop. A press outside
-  // everything dismisses only the topmost layer, so the menu goes, the panel
-  // stays for that press, and the next one reaches the panel.
+  // A press outside everything dismisses only the topmost layer, so the menu
+  // goes, the panel stays for that press, and the next one reaches the panel.
   it("gives up only the row menu to a press outside both, then itself", async () => {
     await open();
     fireEvent.contextMenu(screen.getAllByRole("option")[0]);
@@ -430,9 +423,8 @@ describe("how the panel opens, closes, and hands focus", () => {
     expect(closed).toBe(1);
   });
 
-  // DID change, and is adopted: the hand-rolled surface dismissed on pointer
-  // and Escape only, so the panel stayed open when the keyboard left it.
-  // Kobalte's interact-outside covers focus too, so focusing away closes it.
+  // Focus leaving the panel dismisses it too, not only a pointer press or
+  // Escape.
   it("closes when focus leaves it", async () => {
     await open();
     await settle();

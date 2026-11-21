@@ -32,8 +32,6 @@ import DebugTargetDialog from "./DebugTargetDialog";
 // over unchanged: the wrapper takes the same `aria-labelledby`, so the mode
 // stayed clean across the migration rather than being re-fixed by it.
 const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
-// Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so a
-// press fired before this yield lands on nobody.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 type Props = Parameters<typeof DebugTargetDialog>[0];
@@ -58,7 +56,7 @@ function open(props: Partial<Omit<Props, "onConfirm" | "onCancel">> = {}) {
   // Asked through the accessibility tree, not through the class. Each mode
   // renders at most one of these, and they keep their roles after phase 2 names
   // the select, so these queries outlive both changes. The segments are toggle
-  // buttons (Kobalte ToggleGroup), named uniquely, so `button` stays unambiguous.
+  // buttons (`ToggleGroup`), named uniquely, so `button` stays unambiguous.
   const mode = (name: string) => screen.getByRole("button", { name });
   const port = () => screen.getByRole("textbox") as HTMLInputElement;
   const script = () => screen.getByLabelText("Script") as HTMLButtonElement;
@@ -219,9 +217,6 @@ describe("DebugTargetDialog", () => {
   });
 
   describe("shape", () => {
-    // Rewritten at migration time: dismissal was a `mousedown` on a real
-    // backdrop element and is now Kobalte's outside `pointerdown`, from a
-    // listener it installs in a `setTimeout(0)`.
     it("cancels on a pointer down outside the panel", async () => {
       const { onCancel } = open();
       await macrotask();

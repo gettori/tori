@@ -20,8 +20,6 @@ import CreatePrDialog from "./CreatePrDialog";
 //     staring at "Opening…" and wants out keeps a way out; a stray click
 //     behind the panel does not throw the form away.
 const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
-// Kobalte's focus scope and its dismiss layer both install from a
-// `setTimeout(0)`, so anything asserting on them has to yield a macrotask.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 type PrProps = Parameters<typeof CreatePrDialog>[0];
@@ -225,8 +223,6 @@ describe("CreatePrDialog", () => {
   describe("shape", () => {
     it("cancels on a pointer down outside the panel", async () => {
       const { onCancel } = open();
-      // Kobalte installs its outside-pointerdown listener from a
-      // `setTimeout(0)`, so a press fired before this yield lands on nobody.
       await macrotask();
 
       fireEvent.pointerDown(document.body);

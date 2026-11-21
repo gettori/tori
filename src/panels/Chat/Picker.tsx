@@ -66,9 +66,8 @@ export default function Picker(props: {
         if (!next) props.onClose?.();
       }}
       // Above the pill, and left-aligned to it, so the menu reads as belonging
-      // to this control rather than to the bar. Kobalte flips it back down on
-      // its own if the space above ever runs out, which is what the old viewport
-      // clamp could only do by dragging the menu over the trigger.
+      // to this control rather than to the bar. `anchorLayer` flips it back
+      // down if the space above ever runs out.
       placement="top-start"
       menu={props.children}
     >
@@ -91,9 +90,9 @@ export default function Picker(props: {
         disabled={props.disabled}
         aria-disabled={props.ariaDisabled || undefined}
         aria-describedby={props.describedBy}
-        // Kobalte writes these on the trigger, which is the wrapper, and they
-        // cannot be taken off it (`wrapper` removes its `role` and tab stop, not
-        // its ARIA). The pill is what the keyboard reaches, so it says this too.
+        // `Dropdown` writes these on its trigger, which is the wrapper (`wrapper`
+        // removes its `role` and tab stop, not its ARIA). The pill is what the
+        // keyboard reaches, so it says this too.
         aria-haspopup="menu"
         aria-expanded={open()}
       >
@@ -204,8 +203,8 @@ export function PickerOption(props: {
       <span class={styles.pickBody} classList={{ [styles.pickRefusing]: !!props.refusing }}>
         {/* Beside the row, never above it. A menu's own rows are what is above,
             so the default `top` lands the tooltip on the choices the user is
-            reading past. Kobalte's popper flips on overflow by default, so a
-            menu near the right edge gets it on the left with nothing extra. */}
+            reading past. `anchorLayer` flips on overflow, so a menu near the
+            right edge gets it on the left with nothing extra. */}
         <Tooltip<HTMLSpanElement> as="span" class={styles.pickName} label={props.description} placement="right">
           {props.label}
         </Tooltip>

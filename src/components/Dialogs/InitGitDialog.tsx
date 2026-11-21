@@ -20,7 +20,7 @@ type Layout = "normal" | "bare";
 // The shell is `Dialog`, which owns the portal, the backdrop, Escape and the
 // focus trap. Enter stays here, on a wrapper around the fields, because it means
 // "submit this form" and every field it can be pressed in is inside that
-// wrapper; Escape does not, since Kobalte reports it as `onClose`.
+// wrapper; Escape does not, since `Dialog` reports it as `onClose`.
 const BRANCH_LABEL = "init-git-branch-label";
 const URL_LABEL = "init-git-url-label";
 

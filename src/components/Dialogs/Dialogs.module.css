@@ -369,7 +369,7 @@
   color: var(--fg-muted);
 }
 /* The checkbox root is the one `[data-checked]` element holding the input;
-   Kobalte stamps the same attribute on the box and the label inside it. The
+   `Checkbox` stamps the same attribute on the input, box and label inside it. The
    negative margin keeps a highlighted row's text in line with its neighbours. */
 .repoChecklist [data-checked]:has(> input) {
   margin: calc(-3px * var(--ui-scale)) calc(-6px * var(--ui-scale));

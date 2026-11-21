@@ -42,7 +42,7 @@ export function originHost(url: string): string | null {
  *
  * The shell is `Dialog`. Enter stays here, through its `onKeyDown`, because the
  * confirm button is `disabled` while the URL is unusable and a disabled button
- * is never clicked. Escape does not: Kobalte reports it as `onClose`.
+ * is never clicked. Escape does not: `Dialog` reports it as `onClose`.
  */
 export default function ChangeOriginDialog(props: {
   projectName: string;

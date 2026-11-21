@@ -107,7 +107,7 @@ beforeEach(() => {
   enterRoots([]);
 });
 
-/** The chip's tooltip text. Kobalte mounts the content only while the tooltip
+/** The chip's tooltip text. `Tooltip` mounts the content only while it
  *  is open and opens on focus with no delay, which is the path that needs no
  *  timers (see Tooltip.test.tsx). */
 const tipText = () => {

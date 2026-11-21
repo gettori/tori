@@ -3,8 +3,7 @@ import { render, screen, waitFor, fireEvent } from "../../test/harness";
 import { tab, tabs, closeOf } from "../../test/tabs";
 import { installAnimationFrame } from "../../test/frames";
 
-// The terminal tab strip, characterized before it moves onto Kobalte Tabs
-// (gettori/tori#111).
+// The terminal tab strip (gettori/tori#111).
 //
 // Every other terminal suite mounts this panel to watch what gets *spawned*;
 // none of them ever reached a tab. So the two gestures the strip exists for,
