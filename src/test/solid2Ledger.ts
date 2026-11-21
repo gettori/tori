@@ -299,5 +299,113 @@ export const LEDGER: Partial<Record<IdiomClass, readonly LedgerEntry[]>> = {
       count: 1,
       reason: "opens on a reveal, and the user can close it again; 2.0: createSignal(fn) reading the previous value",
     },
+    {
+      file: "src/App.tsx",
+      count: 2,
+      reason:
+        "freezes placements before pushing pins into the layout module, and rebuilds the selection after a topic reload; 2.0: createEffect(compute, apply) for both",
+    },
+    {
+      file: "src/lib/layer.ts",
+      count: 1,
+      reason:
+        "waits for an exit animation with listeners and a timer; 2.0: createEffect(compute, apply) returning the cleanup",
+    },
+    {
+      file: "src/panels/FirstRun/projectSetup.tsx",
+      count: 1,
+      reason: "cancels the job and clears its state on leaving the screen; 2.0: createEffect(compute, apply)",
+    },
+    {
+      file: "src/panels/Inbox/InboxView.tsx",
+      count: 1,
+      reason: "consumes a one shot tab request into a tab the user also picks; 2.0: createEffect(compute, apply)",
+    },
+    {
+      file: "src/panels/LeftSidebar/LeftSidebar.tsx",
+      count: 1,
+      reason: "probes each topic branch once and accumulates the answers; 2.0: createEffect(compute, apply)",
+    },
+    {
+      file: "src/panels/LeftSidebar/SpaceTile.tsx",
+      count: 1,
+      reason:
+        "delays a value by two frames for a transition; 2.0: createEffect(compute, apply) returning the frame cleanup",
+    },
+    {
+      file: "src/panels/LeftSidebar/topicActions.ts",
+      count: 1,
+      reason: "clears an action error on a topic reload; 2.0: createSignal(fn) keyed on the reload",
+    },
+    {
+      file: "src/panels/ProjectSettings/ChecksSection.tsx",
+      count: 1,
+      reason:
+        "loads stored checks and seeds editable text; 2.0: async createMemo for the stored list, createSignal(fn) for the text",
+    },
+    {
+      file: "src/panels/ProjectSettings/ProjectSettingsDialog.tsx",
+      count: 1,
+      reason:
+        "moves a user picked section to general when it goes; a memo would jump back when it returns; 2.0: createSignal(fn)",
+    },
+    {
+      file: "src/panels/Settings/Settings.tsx",
+      count: 1,
+      reason: "seeds an editable query and navigates to the entry; 2.0: createEffect(compute, apply)",
+    },
+    {
+      file: "src/panels/Settings/panes/AgentsPane/AgentsSection.tsx",
+      count: 1,
+      reason: "consumes a one shot request to open an agent card; 2.0: createEffect(compute, apply)",
+    },
+    {
+      file: "src/panels/Settings/panes/AutopilotPane/ProjectContract.tsx",
+      count: 1,
+      reason: "discards an edit in progress when the stored contract changes; 2.0: createEffect(compute, apply)",
+    },
+    {
+      file: "src/panels/Terminal/HistoryPanel.tsx",
+      count: 1,
+      reason: "clamps a cursor the user also moves; a memo would jump back when rows return; 2.0: createSignal(fn)",
+    },
+    {
+      file: "src/panels/Terminal/Terminal.tsx",
+      count: 1,
+      reason: "activates the workspace and opens the selected session; 2.0: createEffect(compute, apply)",
+    },
+    {
+      file: "src/tabs/PaneView.tsx",
+      count: 1,
+      reason:
+        "clears a drop zone when a drag ends; a memo would show the stale zone at the next drag start; 2.0: createSignal(fn)",
+    },
+    {
+      file: "src/utils/firstRun.ts",
+      count: 1,
+      reason:
+        "latches the first run gate and opens the flow, which finishing closes; 2.0: createEffect(compute, apply)",
+    },
+    {
+      file: "mobile/src/App.tsx",
+      count: 2,
+      reason:
+        "consumes a tapped notification once the list arrives, and closes and replaces the remote client; 2.0: createEffect(compute, apply) for both",
+    },
+    {
+      file: "mobile/src/Autopilot.tsx",
+      count: 1,
+      reason: "refetches the log on each reconnect; 2.0: async createMemo keyed on the client generation",
+    },
+    {
+      file: "mobile/src/NewSheet.tsx",
+      count: 1,
+      reason: "seeds an agent and account the user can change; 2.0: createSignal(fn) for each",
+    },
+    {
+      file: "mobile/src/Pair.tsx",
+      count: 1,
+      reason: "seeds editable pairing fields from a link; 2.0: createSignal(fn) for each field",
+    },
   ],
 };
