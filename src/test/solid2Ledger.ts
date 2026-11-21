@@ -253,5 +253,51 @@ export const LEDGER: Partial<Record<IdiomClass, readonly LedgerEntry[]>> = {
       count: 1,
       reason: "resets a user pick on a new profile; 2.0: createSignal(fn) keyed on the profile",
     },
+    {
+      file: "src/panels/Chat/ChatDraft.tsx",
+      count: 2,
+      reason:
+        "seeds and prunes the draft's pick in a store keyed by tab, which the user also edits; 2.0: createEffect(compute, apply) for both",
+    },
+    {
+      file: "src/panels/Chat/ChatView.tsx",
+      count: 6,
+      reason:
+        "connects once, applies the opening pick, sends a held message, scrolls to a pending card, publishes the live chat, and restores the composer when a queued edit goes; 2.0: createEffect(compute, apply) for all six",
+    },
+    {
+      file: "src/panels/Chat/Composer.tsx",
+      count: 2,
+      reason:
+        "clamps a stash cursor the keyboard and mouse also move, and resets history and focuses on an edit; a memo would jump back when rows return; 2.0: createSignal(fn) for the cursor, createEffect(compute, apply) for focus",
+    },
+    {
+      file: "src/panels/Chat/LaneStrip.tsx",
+      count: 1,
+      reason:
+        "runs a clock while anything is running; 2.0: createEffect(compute, apply) returning the interval cleanup",
+    },
+    {
+      file: "src/panels/Chat/Markdown.tsx",
+      count: 1,
+      reason: "throttles streamed text to one write per frame; 2.0: createEffect(compute, apply) owning the frame",
+    },
+    {
+      file: "src/panels/Chat/MessageList.tsx",
+      count: 3,
+      reason:
+        "ends a history load, repins on a sent prompt, and opens a held group on a reveal the user can close again; 2.0: createEffect(compute, apply) for the first two, createSignal(fn) for open",
+    },
+    {
+      file: "src/panels/Chat/StatusStrip.tsx",
+      count: 2,
+      reason:
+        "runs an elapsed timer and a document listener that closes the menu; 2.0: createEffect(compute, apply) returning each cleanup",
+    },
+    {
+      file: "src/panels/Chat/ToolCallCard.tsx",
+      count: 1,
+      reason: "opens on a reveal, and the user can close it again; 2.0: createSignal(fn) reading the previous value",
+    },
   ],
 };
