@@ -11,6 +11,7 @@
 // *unhandled* error after the test that caused it has already passed.
 import { afterEach } from "vite-plus/test";
 import { cleanup } from "./harness";
+import { installNativeLayers } from "./nativeLayers";
 import { installTabLayout, resetTabBarWidth } from "./tabLayout";
 
 Element.prototype.scrollTo ??= () => {};
@@ -74,6 +75,8 @@ CSSStyleDeclaration.prototype.setProperty = function (property, value, priority)
     // Unparseable: dropped, exactly as a browser drops it.
   }
 };
+
+installNativeLayers();
 
 // The one component whose behaviour is a measurement gets a measurable layout,
 // scoped to itself. See `tabLayout.ts` for why the ghost row was answering for
