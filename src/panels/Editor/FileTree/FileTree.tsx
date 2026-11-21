@@ -727,7 +727,7 @@ function TreeNode(props: {
           if (props.entry.is_dir || e.metaKey || e.ctrlKey) return;
           emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: props.entry.path });
         }}
-        draggable={true}
+        draggable="true"
         onDragStart={(e) => {
           e.dataTransfer?.setData(DRAG_PATH_MIME, props.entry.path);
           e.dataTransfer?.setData("text/plain", props.entry.path);

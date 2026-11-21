@@ -117,7 +117,7 @@ export default function PlanCard(props: {
               // two cannot drift into two descriptions of one plan.
               label={rows()}
               aria-label={`Plan: ${tally()} done. Show the list.`}
-              aria-expanded={false}
+              aria-expanded="false"
               onClick={() => setOpen(true)}
             >
               <Show when={active() && !props.stale}>
@@ -148,7 +148,7 @@ export default function PlanCard(props: {
                 hint="Click to fold it into a pill on the input"
               />
             }
-            aria-expanded
+            aria-expanded="true"
             onClick={() => setOpen(false)}
           >
             <span class={styles.planCaret} aria-hidden="true">

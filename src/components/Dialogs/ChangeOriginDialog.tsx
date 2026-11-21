@@ -130,14 +130,14 @@ export default function ChangeOriginDialog(props: {
             classList={{ [styles.invalid]: malformed() }}
             aria-labelledby={URL_LABEL}
             aria-describedby={URL_HELP}
-            aria-required={true}
-            aria-invalid={malformed()}
+            aria-required="true"
+            aria-invalid={malformed() ? "true" : "false"}
             value={url()}
             placeholder="git@github.com:org/repo.git"
             onInput={(e) => setUrl(e.currentTarget.value)}
             autocapitalize="off"
             autocorrect="off"
-            spellcheck={false}
+            spellcheck="false"
           />
           <div id={URL_HELP} class={styles.spaceHelp} classList={{ [styles.helpError]: malformed() }}>
             {help()}

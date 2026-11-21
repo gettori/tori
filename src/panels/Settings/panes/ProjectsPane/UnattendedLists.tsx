@@ -20,7 +20,7 @@ function ListRow(props: PaneProps & { id: string; label: string; key: keyof Unat
         class={styles.listField}
         aria-labelledby={rowLabelId(props.id)}
         rows={6}
-        spellcheck={false}
+        spellcheck="false"
         value={list().join("\n")}
         onChange={(e) => void setUnattended({ [props.key]: lines(e.currentTarget.value) })}
       />

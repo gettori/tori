@@ -41,7 +41,7 @@ export default function BottomBar(props: {
                     createEffect(() => current() && el.scrollIntoView({ inline: "nearest", block: "nearest" }))
                   }
                   class={styles.barItem}
-                  aria-current={current()}
+                  aria-current={current() ? "true" : "false"}
                   aria-label={spaceLabel(space.name)}
                   onClick={() => props.onSpace(space)}
                 >
@@ -65,7 +65,7 @@ export default function BottomBar(props: {
         <span class={styles.divider} />
         <button
           class={styles.barItem}
-          aria-current={props.tab === "topics"}
+          aria-current={props.tab === "topics" ? "true" : "false"}
           aria-label="Topics"
           onClick={() => props.onTopics()}
         >

@@ -249,7 +249,7 @@ export default function Panel() {
                               <button
                                 type="button"
                                 class="more"
-                                aria-expanded={open().has(row.key)}
+                                aria-expanded={open().has(row.key) ? "true" : "false"}
                                 onClick={() => void expand(row)}
                               >
                                 {open().has(row.key) ? "Hide" : "Bodies"}

@@ -132,7 +132,7 @@ export default function AgentsStep(props: {
           <button
             type="button"
             class={styles.othersToggle}
-            aria-expanded={otherOpen()}
+            aria-expanded={otherOpen() ? "true" : "false"}
             onClick={() => setOtherOpen((open) => !open)}
           >
             Other supported agents

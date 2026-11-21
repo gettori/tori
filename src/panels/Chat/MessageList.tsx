@@ -610,7 +610,7 @@ export default function MessageList(props: {
           type="button"
           ref={anchor}
           class={styles.turnSecret}
-          aria-expanded={open()}
+          aria-expanded={open() ? "true" : "false"}
           aria-haspopup="dialog"
           onClick={() => setOpen(!open())}
         >
@@ -1119,7 +1119,12 @@ export default function MessageList(props: {
             while the card is shut, so the card carries it and the rows do not. */}
         <For each={held()}>{(m) => <TurnAnchor itemId={m.id} />}</For>
         <div class={styles.work}>
-          <button type="button" class={styles.workToggle} aria-expanded={open()} onClick={() => setOpen(!open())}>
+          <button
+            type="button"
+            class={styles.workToggle}
+            aria-expanded={open() ? "true" : "false"}
+            onClick={() => setOpen(!open())}
+          >
             <Icon
               icon={ChevronRight}
               size={14}

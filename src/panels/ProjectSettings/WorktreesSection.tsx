@@ -256,7 +256,7 @@ export default function WorktreesSection(props: { workspace: string }) {
                       type="button"
                       class={styles.item}
                       classList={{ [styles.itemOn]: chosen()?.name === e.name }}
-                      aria-current={chosen()?.name === e.name}
+                      aria-current={chosen()?.name === e.name ? "true" : "false"}
                       onClick={() => setPick(e.name)}
                     >
                       <span class={styles.itemTop}>

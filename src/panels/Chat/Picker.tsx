@@ -88,13 +88,13 @@ export default function Picker(props: {
         // the same sentence twice, over the rows being read.
         suppressed={open()}
         disabled={props.disabled}
-        aria-disabled={props.ariaDisabled || undefined}
+        aria-disabled={props.ariaDisabled ? "true" : undefined}
         aria-describedby={props.describedBy}
         // `Dropdown` writes these on its trigger, which is the wrapper (`wrapper`
         // removes its `role` and tab stop, not its ARIA). The pill is what the
         // keyboard reaches, so it says this too.
         aria-haspopup="menu"
-        aria-expanded={open()}
+        aria-expanded={open() ? "true" : "false"}
       >
         <PillBody icon={props.icon} prefix={props.prefix} value={props.value} />
       </Tooltip>
@@ -155,7 +155,7 @@ export function PickerButton(props: {
       suppressed={props.open}
       disabled={props.disabled}
       aria-haspopup="dialog"
-      aria-expanded={props.open}
+      aria-expanded={props.open === undefined ? undefined : props.open ? "true" : "false"}
       onClick={() => props.onOpen()}
     >
       <PillBody icon={props.icon} prefix={props.prefix} value={props.value} />
@@ -280,8 +280,8 @@ export function PillToggle(props: {
       aria-label={props.ariaLabel}
       label={props.tooltip}
       disabled={props.disabled}
-      aria-disabled={props.ariaDisabled || undefined}
-      aria-pressed={props.on}
+      aria-disabled={props.ariaDisabled ? "true" : undefined}
+      aria-pressed={props.on ? "true" : "false"}
       onClick={() => !props.ariaDisabled && props.onChange(!props.on)}
     >
       <Icon icon={props.on ? props.icon : props.iconOff} size={15} class={styles.pillIcon} />

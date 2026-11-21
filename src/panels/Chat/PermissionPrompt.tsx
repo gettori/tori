@@ -129,7 +129,7 @@ export default function PermissionPrompt(props: {
         <button
           type="button"
           class={styles.promptDisclose}
-          aria-expanded={showInput()}
+          aria-expanded={showInput() ? "true" : "false"}
           onClick={() => setShowInput(!showInput())}
         >
           {showInput() ? "Hide the full arguments" : "Show the full arguments"}

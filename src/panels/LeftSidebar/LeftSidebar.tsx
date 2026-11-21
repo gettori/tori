@@ -1299,7 +1299,7 @@ export default function LeftSidebar(props: {
             data-forge-account={a().id}
           >
             <Show when={forgeAvatar(a())} fallback={forgeAccountName(a()).slice(0, 1).toUpperCase()}>
-              {(url) => <img src={url()} alt="" draggable={false} />}
+              {(url) => <img src={url()} alt="" draggable="false" />}
             </Show>
           </Tooltip>
         )}
@@ -5235,7 +5235,7 @@ export default function LeftSidebar(props: {
             label={dockOpen() ? "Hide the dock (⌘⌃J)" : "Show the dock (⌘⌃J)"}
             placement={railed() ? "right" : undefined}
             aria-label="Dock"
-            aria-pressed={dockOpen()}
+            aria-pressed={dockOpen() ? "true" : "false"}
             onClick={() => emit(TOGGLE_DOCK)}
           >
             <Icon icon={SquareTerminal} />

@@ -28,7 +28,7 @@ function Row(r: {
       role="radio"
       class={styles.moveRow}
       classList={{ [styles.moveRefused]: !!r.refused }}
-      aria-checked={r.picked}
+      aria-checked={r.picked ? "true" : "false"}
       tabIndex={r.tabbable ? 0 : -1}
       aria-disabled={r.refused ? "true" : undefined}
       data-picked={r.picked ? "" : undefined}

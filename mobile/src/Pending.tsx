@@ -24,7 +24,7 @@ function QuestionCard(props: { row: Extract<PendingRow, { kind: "question" }>; s
                 {(option) => (
                   <button
                     class={styles.choice}
-                    aria-pressed={answers()[at] === option.label}
+                    aria-pressed={answers()[at] === option.label ? "true" : "false"}
                     onClick={() => set(at, option.label)}
                   >
                     {option.label}
@@ -131,7 +131,7 @@ export default function Pending(props: {
   };
   return (
     <Show when={props.rows.length > 0 || error()}>
-      <div class={styles.pending} aria-busy={busy() !== null}>
+      <div class={styles.pending} aria-busy={busy() !== null ? "true" : "false"}>
         <Show when={error()}>{(e) => <p class={styles.error}>{e()}</p>}</Show>
         <For each={props.rows}>
           {(row) => {

@@ -78,7 +78,7 @@ export default function AutopilotSwitch(props: AutopilotSwitchProps) {
           classList={{ [styles.open]: !!props.popupOpen }}
           label={props.popupOpen ? "Hide autopilot (\u2318L)" : "Show autopilot (\u2318L)"}
           aria-pressed="true"
-          aria-expanded={!!props.popupOpen}
+          aria-expanded={props.popupOpen ? "true" : "false"}
           onClick={() => props.onTogglePopup?.()}
         >
           <Icon icon={PanelLeft} class={styles.icon} />

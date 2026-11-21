@@ -319,7 +319,7 @@ export function MenuItem(props: MenuItemProps) {
       id={id}
       role="menuitem"
       tabindex={-1}
-      aria-disabled={local.disabled ? true : undefined}
+      aria-disabled={local.disabled ? "true" : undefined}
       data-disabled={local.disabled ? "" : undefined}
       data-highlighted={menu.highlighted() === row ? "" : undefined}
       data-text-value={local.textValue}

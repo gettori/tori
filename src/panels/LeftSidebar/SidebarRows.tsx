@@ -127,7 +127,7 @@ export function ProjectRow(props: {
         classList={{ [styles.missing]: !!props.missing, [styles.attached]: !!props.attached }}
         onClick={() => props.onClick?.()}
         items={props.menu ?? []}
-        draggable={true}
+        draggable="true"
         onDragStart={(e: DragEvent) => props.onDragStart?.(e)}
         {...props.rowProps}
       >
@@ -233,7 +233,7 @@ export function BranchRow(props: {
         data-two-line={props.meta != null ? "true" : undefined}
         onClick={(e: MouseEvent) => props.onClick?.(e)}
         items={props.menu ?? []}
-        draggable={true}
+        draggable="true"
         onDragStart={(e: DragEvent) => props.onDragStart?.(e)}
         aria-current={props.selected ? "true" : undefined}
         {...props.rowProps}
@@ -292,7 +292,7 @@ export function MoreRow(props: {
       <button
         type="button"
         class={`${styles.row} ${styles.branch} ${styles.sub1} ${styles.moreRow}`}
-        aria-expanded={props.open}
+        aria-expanded={props.open ? "true" : "false"}
         onClick={() => props.onClick?.()}
       >
         <span class={styles.rowIcon}>
@@ -319,7 +319,7 @@ export function FoldRow(props: {
       <button
         type="button"
         class={`${styles.row} ${styles.moreRow}`}
-        aria-expanded={props.open}
+        aria-expanded={props.open ? "true" : "false"}
         onClick={() => props.onClick?.()}
       >
         <span class={styles.rowIcon}>
@@ -446,7 +446,7 @@ export function GroupCard(props: {
         classList={{ [styles.cardHeadSel]: props.holdsSelection === true, [styles.cardHeadOpen]: props.open }}
         items={props.menu ?? []}
         onClick={() => props.onToggle?.()}
-        aria-expanded={props.open}
+        aria-expanded={props.open ? "true" : "false"}
         {...props.rowProps}
       >
         <Show when={props.draft} fallback={<span class={`${styles.label} ${styles.cardLabel}`}>{props.name}</span>}>
@@ -462,7 +462,7 @@ export function GroupCard(props: {
           {props.children}
         </div>
       </Show>
-      <Show when={props.tailProps}>{(tail) => <div class={styles.dropTail} {...tail()} draggable={false} />}</Show>
+      <Show when={props.tailProps}>{(tail) => <div class={styles.dropTail} {...tail()} draggable="false" />}</Show>
     </div>
   );
 }
@@ -645,7 +645,7 @@ export function GroupHead(props: {
         <button
           type="button"
           class={styles.groupTitle}
-          aria-expanded={props.open === true}
+          aria-expanded={props.open === true ? "true" : "false"}
           onClick={() => props.onToggle?.()}
         >
           <Icon icon={props.open ? ChevronDown : ChevronRight} class={styles.groupChevron} />

@@ -516,7 +516,7 @@ function ReviewRow(props: { item: ReviewItem }) {
             )
           }
           aria-label="Mark reviewed"
-          aria-busy={marking()}
+          aria-busy={marking() ? "true" : "false"}
           tooltip={
             props.item.running
               ? "Still working. Mark it once its turn ends."

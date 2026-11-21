@@ -126,7 +126,7 @@ export function renderRegistryTab(t: UnifiedTab, ghost?: boolean, place?: StripP
       tooltip={d.tooltip(t)}
       // Every tab moves between panes, so every tab drags (plan phase 10); what
       // a kind adds to the payload is still the kind's own business.
-      draggable={!ghost && !fixed}
+      draggable={!ghost && !fixed ? "true" : "false"}
       onDragStart={(e: DragEvent) => {
         if (e.dataTransfer) e.dataTransfer.effectAllowed = "copyMove";
         startTabDrag({ id: t.id, kind: t.kind, ws: place?.ws ?? t.workspace, fromPane: place?.paneId ?? null }, e);

@@ -307,7 +307,7 @@ export default function ConfirmDeleteSpace(props: {
             onKeyDown={onKeyDown}
             autocapitalize="off"
             autocorrect="off"
-            spellcheck={false}
+            spellcheck="false"
           />
         </div>
       </div>

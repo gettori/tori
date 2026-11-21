@@ -195,7 +195,7 @@ export default function AgentsSection(props: {
           {/* Drawn in both modes, inert in one, so what Only mode would ask is
               visible before the switch. Every box is `disabled` too, so the
               hidden subtree holds nothing the keyboard could land on. */}
-          <div class={own.list} classList={{ [own.idle]: !only() }} aria-hidden={!only() || undefined}>
+          <div class={own.list} classList={{ [own.idle]: !only() }} aria-hidden={!only() ? "true" : undefined}>
             <For each={rows()}>
               {(row) => (
                 <Checkbox

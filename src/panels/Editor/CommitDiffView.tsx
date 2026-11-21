@@ -112,7 +112,7 @@ export default function CommitDiffView(props: { workspace: string; arg: string }
         <IconButton
           size="sm"
           class={styles.pressable}
-          aria-pressed={twoColumn()}
+          aria-pressed={twoColumn() ? "true" : "false"}
           icon={<Icon icon={Columns2} />}
           disabled={paneWidth() < SIDE_BY_SIDE_MIN_WIDTH}
           tooltipWhenDisabled

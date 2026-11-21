@@ -1137,9 +1137,9 @@ export default function SearchPanel(props: {
           size="sm"
           icon={<Icon icon={Star} />}
           class={styles.pressable}
-          aria-pressed={showSaved()}
+          aria-pressed={showSaved() ? "true" : "false"}
           tooltip="Saved Searches"
-          aria-expanded={showSaved()}
+          aria-expanded={showSaved() ? "true" : "false"}
           aria-controls={SAVED_ID}
           onClick={() => setShowSaved((v) => !v)}
         />
@@ -1162,9 +1162,9 @@ export default function SearchPanel(props: {
           <IconButton
             icon={<Icon icon={Replace} />}
             class={styles.pressable}
-            aria-pressed={showReplace()}
+            aria-pressed={showReplace() ? "true" : "false"}
             tooltip="Toggle Replace"
-            aria-expanded={showReplace()}
+            aria-expanded={showReplace() ? "true" : "false"}
             onClick={() => setShowReplace((v) => !v)}
           />
           {/* A description rather than a tooltip: a tooltip on a text box opens
@@ -1189,9 +1189,9 @@ export default function SearchPanel(props: {
           <IconButton
             icon={<Icon icon={SlidersHorizontal} />}
             class={styles.pressable}
-            aria-pressed={showGlobs()}
+            aria-pressed={showGlobs() ? "true" : "false"}
             tooltip="Toggle Search Details"
-            aria-expanded={showGlobs()}
+            aria-expanded={showGlobs() ? "true" : "false"}
             aria-controls={GLOBS_ID}
             onClick={() => setShowGlobs((v) => !v)}
           />

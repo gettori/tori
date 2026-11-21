@@ -556,7 +556,7 @@ export default function DiffView(props: {
         <IconButton
           size="sm"
           class={styles.pressable}
-          aria-pressed={ignoreWhitespace()}
+          aria-pressed={ignoreWhitespace() ? "true" : "false"}
           icon={<Icon icon={Pilcrow} />}
           tooltip={ignoreWhitespace() ? "Show whitespace changes, which staging needs" : "Ignore whitespace changes"}
           onClick={() => writeDiffIgnoreWhitespace(!ignoreWhitespace())}
@@ -564,7 +564,7 @@ export default function DiffView(props: {
         <IconButton
           size="sm"
           class={styles.pressable}
-          aria-pressed={!editorLayout() && twoColumn()}
+          aria-pressed={!editorLayout() && twoColumn() ? "true" : "false"}
           icon={<Icon icon={Columns2} />}
           disabled={editorLayout() || paneWidth() < SIDE_BY_SIDE_MIN_WIDTH}
           // Greyed out only because the pane is too narrow, which is exactly
@@ -584,7 +584,7 @@ export default function DiffView(props: {
         <IconButton
           size="sm"
           class={styles.pressable}
-          aria-pressed={editorLayout()}
+          aria-pressed={editorLayout() ? "true" : "false"}
           icon={<Icon icon={SquareCode} />}
           tooltip={editorLayout() ? "Switch back to diff rows" : "Show the diff in the file itself"}
           onClick={() => writeDiffEditorLayout(!editorLayout())}
@@ -717,7 +717,7 @@ export default function DiffView(props: {
               <Show when={!staged()}>
                 <IconButton
                   size="sm"
-                  aria-pressed={blameOn()}
+                  aria-pressed={blameOn() ? "true" : "false"}
                   icon={<Icon icon={UserRound} class={blameOn() ? crumbStyles.barToggleOn : undefined} />}
                   onClick={() => writeBlamePref(!blameOn())}
                   tooltip={

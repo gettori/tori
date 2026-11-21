@@ -147,7 +147,7 @@ export default function IconGrid(props: IconGridProps) {
             }}
             autocapitalize="off"
             autocorrect="off"
-            spellcheck={false}
+            spellcheck="false"
           />
         )}
       </Show>

@@ -69,11 +69,11 @@ export default function Switch(props: {
         role="switch"
         checked={props.checked}
         disabled={props.disabled}
-        aria-checked={props.checked}
+        aria-checked={props.checked ? "true" : "false"}
         aria-label={props["aria-label"]}
         aria-labelledby={props.label !== undefined ? labelId : undefined}
         aria-describedby={props["aria-describedby"]}
-        aria-disabled={props.disabled || props["aria-disabled"] || undefined}
+        aria-disabled={props.disabled || props["aria-disabled"] ? "true" : undefined}
         onChange={(e) => {
           e.stopPropagation();
           const el = e.currentTarget;

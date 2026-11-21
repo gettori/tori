@@ -90,7 +90,7 @@ export function MenuRow(props: {
         .filter(Boolean)
         .join(" ")}
       disabled={props.disabled}
-      aria-disabled={props.refusing || undefined}
+      aria-disabled={props.refusing ? "true" : undefined}
       aria-describedby={props.describedBy}
       // A refused row must not close the menu on its way to doing nothing.
       closeOnSelect={closesOnSelect()}
@@ -216,9 +216,9 @@ export function MenuSub(props: {
         tabindex={-1}
         class={styles.item}
         aria-haspopup="true"
-        aria-expanded={sub.isOpen()}
+        aria-expanded={sub.isOpen() ? "true" : "false"}
         aria-controls={sub.isOpen() ? sub.contentId : undefined}
-        aria-disabled={props.disabled ? true : undefined}
+        aria-disabled={props.disabled ? "true" : undefined}
         data-disabled={props.disabled ? "" : undefined}
         data-highlighted={parent.highlighted() === row ? "" : undefined}
         data-expanded={sub.isOpen() ? "" : undefined}

@@ -214,7 +214,7 @@ export default function ProjectSettingsDialog(props: { path: string; section?: P
                             class={s.railItem}
                             classList={{ [s.railItemActive]: selected() }}
                             aria-controls={selected() ? paneId(id) : undefined}
-                            aria-selected={selected()}
+                            aria-selected={selected() ? "true" : "false"}
                             aria-label={label()}
                             tabindex={section() === id ? 0 : -1}
                             onClick={() => openSection(id)}

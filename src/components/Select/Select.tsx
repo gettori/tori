@@ -237,8 +237,8 @@ export default function Select(props: {
         class={styles.item}
         hidden={!!option() && offTab(option()!)}
         tabindex={disabled() ? undefined : highlighted() === value ? 0 : -1}
-        aria-disabled={disabled()}
-        aria-selected={isSelected()}
+        aria-disabled={disabled() ? "true" : "false"}
+        aria-selected={isSelected() ? "true" : "false"}
         data-disabled={disabled() ? "" : undefined}
         data-selected={isSelected() ? "" : undefined}
         data-highlighted={highlighted() === value ? "" : undefined}
@@ -281,7 +281,7 @@ export default function Select(props: {
         class={[styles.trigger, styles[props.size ?? "md"], props.class].filter(Boolean).join(" ")}
         disabled={props.disabled}
         aria-haspopup="listbox"
-        aria-expanded={open()}
+        aria-expanded={open() ? "true" : "false"}
         aria-controls={open() ? listId : undefined}
         aria-label={props["aria-label"]}
         aria-labelledby={triggerLabelledBy()}

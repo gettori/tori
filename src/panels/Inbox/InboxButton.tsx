@@ -20,7 +20,7 @@ export default function InboxButton() {
           ref={anchor}
           variant="ghost"
           aria-label={count() ? `Inbox, ${count()} items` : "Inbox"}
-          aria-expanded={inboxOpen()}
+          aria-expanded={inboxOpen() ? "true" : "false"}
           tooltip="Inbox (⌘⇧X)"
           onClick={() => emit(TOGGLE_INBOX)}
           icon={<Icon icon={Inbox} />}
