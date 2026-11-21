@@ -1,8 +1,7 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { onMount, type JSX } from "solid-js";
 import Button from "../Button/Button";
-import { Toast } from "../../lib/toast";
-import ToastRegion, { pushToast } from "./Toasts";
+import ToastRegion, { clearToasts, pushToast } from "./Toasts";
 
 // The toast store is module-global and outlives any one Region, so an autodocs
 // page rendering several stories at once would otherwise show each toast in
@@ -12,7 +11,7 @@ const meta = {
   component: ToastRegion,
   decorators: [
     (Story) => {
-      Toast.toaster.clear();
+      clearToasts();
       return <Story />;
     },
   ],

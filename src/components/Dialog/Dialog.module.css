@@ -1,28 +1,13 @@
-/* Chrome for the one modal surface (src/components/Dialog/Dialog.tsx). Ported
-   from the hand-rolled chrome that used to head Dialogs.module.css, which is
-   gone now that all 14 dialogs compose this.
-
-   Above the toasts (1200) rather than beside the command palette (1100): a modal
-   aria-hides the toast region, so a toast painting *over* a dialog it is
-   hidden from is incoherent, and equal z-indexes would leave the order to
-   whichever portalled last. */
-.backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 1250;
+.panel::backdrop {
   background: var(--scrim-default);
 }
 
 /* ---- Motion. The first animation in the component layer, so the shape here is
    the one the remaining wrapper tickets should copy.
 
-   **One keyframe per direction.** Kobalte keeps a closing dialog mounted
-   through `solid-presence`, which decides whether an exit is even running by
-   comparing `animation-name` across the open/closed flip. One name used in both
-   directions compares equal, presence concludes nothing is animating, and the
-   panel is torn down instantly - the exit silently never plays, while the CSS
-   reads as though it should. So enter and exit are separately named, and must
-   stay that way.
+   **One keyframe per direction.** `createPresence` decides whether an exit is
+   running by comparing `animation-name` across the open/closed flip, so one name
+   used in both directions would tear the panel down with no exit.
 
    The backdrop only fades. A scrim that also zooms draws attention to itself,
    and it has no shape of its own to zoom.
@@ -55,23 +40,30 @@
   }
 }
 
-.backdrop[data-expanded] {
+.panel[data-expanded]::backdrop {
   animation: dialogBackdropIn var(--tori-duration-med) var(--tori-ease-out);
 }
-.backdrop[data-closed] {
+.panel[data-closed]::backdrop {
   animation: dialogBackdropOut var(--tori-duration-fast) var(--tori-ease);
 }
 
 .panel {
   --dialog-shift: translate(-50%, -50%);
   position: fixed;
-  z-index: 1250;
   top: 50%;
+  right: auto;
+  bottom: auto;
   left: 50%;
   transform: var(--dialog-shift);
   display: flex;
   flex-direction: column;
+  height: auto;
+  max-width: none;
   max-height: var(--dialog-max-height, min(85vh, calc(720px * var(--ui-scale))));
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  color: inherit;
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
   border-radius: var(--tori-radius-xl);
@@ -104,13 +96,11 @@
   max-height: var(--dialog-bound);
 }
 
-/* Reduced motion removes the animation, not the dialog. `solid-presence` reads
-   the computed `animation-name` and treats `none` as "nothing to wait for", so
-   it unmounts on the spot rather than hanging on an `animationend` that will
-   never fire - which is what makes this safe to declare so bluntly. */
+/* Reduced motion removes the animation, not the dialog: `createPresence` treats
+   `none` as nothing to wait for. */
 @media (prefers-reduced-motion: reduce) {
-  .backdrop[data-expanded],
-  .backdrop[data-closed],
+  .panel[data-expanded]::backdrop,
+  .panel[data-closed]::backdrop,
   .panel[data-expanded],
   .panel[data-closed] {
     animation: none;

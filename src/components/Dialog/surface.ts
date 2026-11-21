@@ -4,13 +4,9 @@ import { createContext, useContext, type Accessor } from "solid-js";
  * The open dialog's panel element, for the things that must portal *into* it
  * rather than onto `document.body`.
  *
- * A modal dialog expresses its modality by aria-hiding the rest of the
- * document: Kobalte's `Dialog.Content` calls `createHideOutside`, which walks
- * the tree and sets `aria-hidden` on every subtree that is not the panel. A
- * `<Portal>` mounts to the body by default, which is one of those subtrees, so
- * anything portalled from inside a dialog is painted on screen and absent from
- * the accessibility tree at the same time - the failure that is hardest to
- * catch, because it looks right.
+ * A native modal makes the rest of the document inert. A `<Portal>` mounts to
+ * the body by default, so anything portalled from inside a dialog would paint
+ * on screen while taking no input and leaving the accessibility tree.
  *
  * The panel is published here rather than passed down by hand because the
  * elements that need it (`Tooltip`, and whatever floats next) sit arbitrarily

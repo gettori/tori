@@ -40,6 +40,13 @@ function togglePopover(el: HTMLElement, oldState: string, newState: string) {
 export function installNativeLayers() {
   globalThis.ToggleEvent ??= ToggleEventShim as unknown as typeof ToggleEvent;
 
+  // axe asks this to find an open modal. Without one it stays absent, because
+  // the gate's "could not judge" case depends on jsdom not having it.
+  document.elementsFromPoint ??= () => {
+    if (!document.querySelector("dialog[open]")) throw new TypeError("jsdom has no layout");
+    return [];
+  };
+
   HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
     if (this.open) throw new DOMException("Already open", "InvalidStateError");
     this.setAttribute("open", "");
