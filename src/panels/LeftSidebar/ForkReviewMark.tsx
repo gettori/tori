@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { ShieldOff } from "lucide-solid";
+import { ShieldOff } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import { FORK_REVIEW, forkReview } from "../../utils/projectTrust";

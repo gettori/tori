@@ -1,5 +1,5 @@
 import { For, Show, createResource, createSignal, onCleanup } from "solid-js";
-import { Minus, Plus, RefreshCw } from "lucide-solid";
+import { Minus, Plus, RefreshCw } from "../../../../components/Icon/icons";
 import { invoke } from "@tauri-apps/api/core";
 import Button from "../../../../components/Button/Button";
 import Chevron from "../../../../components/Chevron/Chevron";

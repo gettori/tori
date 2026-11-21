@@ -1,6 +1,6 @@
 import { For, Show, createResource, createSignal, onCleanup } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { Check, Copy } from "lucide-solid";
+import { Check, Copy } from "../Icon/icons";
 import Dialog from "../Dialog/Dialog";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";

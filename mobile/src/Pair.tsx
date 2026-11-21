@@ -1,5 +1,5 @@
 import { Show, createEffect, createSignal, on } from "solid-js";
-import { ChevronRight, Keyboard, Link, QrCode } from "lucide-solid";
+import { ChevronRight, Keyboard, Link, QrCode } from "../../src/components/Icon/icons";
 import logo from "../../src-tauri/icons/128x128@2x.png";
 import Icon from "../../src/components/Icon/Icon";
 import { pair, parsePairLink, type Saved } from "./remote";

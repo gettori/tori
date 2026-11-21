@@ -19,7 +19,7 @@
 // this tab open beside the panel and four diff tabs is still one read of each.
 
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
-import { Check, ChevronDown, ChevronRight, ExternalLink, MessageSquare } from "lucide-solid";
+import { Check, ChevronDown, ChevronRight, ExternalLink, MessageSquare } from "../../../components/Icon/icons";
 import { parsePrArg } from "../../../utils/syntheticTabs";
 import { sideBySideOn as sideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../../utils/sideBySide";
 import { bareKey, stepFocus } from "../../../utils/keyNav";

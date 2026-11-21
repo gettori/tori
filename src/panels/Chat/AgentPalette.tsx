@@ -24,7 +24,7 @@ import {
   RefreshCw,
   Search,
   Wrench,
-} from "lucide-solid";
+} from "../../components/Icon/icons";
 import AgentGlyph from "../../components/Icon/AgentGlyph";
 import Glide, { optionAt } from "../../components/Glide/Glide";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";

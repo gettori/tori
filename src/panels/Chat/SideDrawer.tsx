@@ -1,5 +1,5 @@
 import { createSignal, For, Show } from "solid-js";
-import { Plus } from "lucide-solid";
+import { Plus } from "../../components/Icon/icons";
 import ChatView from "./ChatView";
 import OverflowTabBar from "../../components/OverflowTabBar";
 import Tab from "../../components/Tab/Tab";

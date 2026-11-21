@@ -26,7 +26,7 @@ import {
   ReplaceAll,
   WholeWord,
   X,
-} from "lucide-solid";
+} from "../../components/Icon/icons";
 import { InlineToggle } from "./SearchFields";
 import styles from "./FindWidget.module.css";
 

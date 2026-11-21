@@ -1,5 +1,5 @@
 import { For, Match, Show, Switch } from "solid-js";
-import { Folder } from "lucide-solid";
+import { Folder } from "../../../components/Icon/icons";
 import Button from "../../../components/Button/Button";
 import GroupProjects from "../../../components/GroupProjects/GroupProjects";
 import Icon from "../../../components/Icon/Icon";

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { For, Show, createSignal, type JSX } from "solid-js";
-import { Copy, PanelLeft, Settings, Trash2 } from "lucide-solid";
+import { Copy, PanelLeft, Settings, Trash2 } from "../components/Icon/icons";
 import Button, { type ButtonSize, type ButtonVariant } from "../components/Button/Button";
 import Checkbox from "../components/Checkbox/Checkbox";
 import CheckboxGroup from "../components/CheckboxGroup/CheckboxGroup";

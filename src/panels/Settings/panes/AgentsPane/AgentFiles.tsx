@@ -1,5 +1,5 @@
 import { For, Show, createResource, createSignal } from "solid-js";
-import { ArrowUpRight, File, Folder, X } from "lucide-solid";
+import { ArrowUpRight, File, Folder, X } from "../../../../components/Icon/icons";
 import { invoke } from "@tauri-apps/api/core";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";

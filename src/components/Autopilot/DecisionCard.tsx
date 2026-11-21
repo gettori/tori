@@ -6,15 +6,15 @@ import {
   GitMerge,
   GitPullRequest,
   MessageCircleQuestion,
-  type LucideIcon,
-} from "lucide-solid";
+  type IconGlyph,
+} from "../Icon/icons";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
 import { TicketLink, TicketNumber } from "./ShellParts";
 import type { DecisionKind, TicketHandlers, TicketRef } from "./autopilot";
 import styles from "./DecisionCard.module.css";
 
-const KINDS: Record<DecisionKind, { label: string; icon: LucideIcon }> = {
+const KINDS: Record<DecisionKind, { label: string; icon: IconGlyph }> = {
   pr: { label: "PR", icon: GitPullRequest },
   review: { label: "Review", icon: Eye },
   push: { label: "Push", icon: ArrowUpFromLine },

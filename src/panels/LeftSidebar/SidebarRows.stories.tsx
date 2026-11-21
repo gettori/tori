@@ -1,6 +1,6 @@
 import type { JSX } from "solid-js";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { Folder, Tag, Unlink } from "lucide-solid";
+import { Folder, Tag, Unlink } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
 import ProjectIcon from "../../components/Icon/ProjectIcon";

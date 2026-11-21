@@ -1,6 +1,6 @@
 import { createSignal, For, Show } from "solid-js";
 import { homeDir } from "@tauri-apps/api/path";
-import { GitBranch } from "lucide-solid";
+import { GitBranch } from "../Icon/icons";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Checkbox from "../Checkbox/Checkbox";

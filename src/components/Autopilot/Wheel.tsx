@@ -1,5 +1,5 @@
 import { Show, splitProps } from "solid-js";
-import type { LucideProps } from "lucide-solid";
+import type { IconGlyphProps } from "../Icon/icons";
 import { badgeCount, type AutopilotState } from "./autopilot";
 import styles from "./Wheel.module.css";
 
@@ -7,7 +7,7 @@ const SPOKES =
   "M14.6 12H22.2M13.84 13.84L19.21 19.21M12 14.6V22.2M10.16 13.84L4.79 19.21M9.4 12H1.8M10.16 10.16L4.79 4.79M12 9.4V1.8M13.84 10.16L19.21 4.79";
 
 /** The bare wheel, shaped like a lucide icon so an icon slot can take it. */
-export function WheelGlyph(props: LucideProps) {
+export function WheelGlyph(props: IconGlyphProps) {
   const [local, rest] = splitProps(props, ["size", "strokeWidth"]);
   return (
     <svg

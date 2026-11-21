@@ -1,6 +1,6 @@
 import { Show, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { CircleArrowUp, Trash2 } from "lucide-solid";
+import { CircleArrowUp, Trash2 } from "../../../components/Icon/icons";
 import Icon from "../../../components/Icon/Icon";
 import IconButton from "../../../components/IconButton/IconButton";
 import { emitWith, TOAST, type ToastEvent } from "../../../utils/events";

@@ -1,5 +1,5 @@
 import { createSignal, Show } from "solid-js";
-import { ChevronDown, Dices, Type } from "lucide-solid";
+import { ChevronDown, Dices, Type } from "../Icon/icons";
 import styles from "./Dialogs.module.css";
 import Icon from "../Icon/Icon";
 import IconGrid from "../IconGrid/IconGrid";

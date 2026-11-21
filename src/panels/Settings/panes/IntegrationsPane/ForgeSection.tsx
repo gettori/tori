@@ -1,6 +1,6 @@
 import { createSignal, createUniqueId, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { ArrowDown, ArrowUp, CircleAlert, CornerDownLeft, Plus } from "lucide-solid";
+import { ArrowDown, ArrowUp, CircleAlert, CornerDownLeft, Plus } from "../../../../components/Icon/icons";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
 import IconButton from "../../../../components/IconButton/IconButton";

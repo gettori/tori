@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { ExternalLink } from "lucide-solid";
+import { ExternalLink } from "../../../components/Icon/icons";
 import Button from "../../../components/Button/Button";
 import Icon from "../../../components/Icon/Icon";
 import { emitWith, TOAST, type ToastEvent } from "../../../utils/events";

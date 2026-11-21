@@ -1,6 +1,6 @@
 import { Show, createResource, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { ArrowLeftRight, Play, Trash2, X } from "lucide-solid";
+import { ArrowLeftRight, Play, Trash2, X } from "../../../../components/Icon/icons";
 import { homeDir } from "@tauri-apps/api/path";
 import { emitWith, OPEN_JOB, TOAST, type OpenJob, type ToastEvent } from "../../../../utils/events";
 import { preview, voices as listVoices } from "../../../../utils/speech";

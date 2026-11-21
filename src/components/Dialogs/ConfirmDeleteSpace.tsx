@@ -1,5 +1,5 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
-import { FileText, Folder, FolderGit2 } from "lucide-solid";
+import { FileText, Folder, FolderGit2 } from "../Icon/icons";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";

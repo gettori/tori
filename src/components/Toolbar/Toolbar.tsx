@@ -1,7 +1,7 @@
 import { Match, Show, Switch } from "solid-js";
 import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
 import Icon from "../Icon/Icon";
-import { ChevronRight } from "lucide-solid";
+import { ChevronRight } from "../Icon/icons";
 import SyncChip from "../SyncChip/SyncChip";
 import { topics } from "../../utils/topicStore";
 import { memberRoot } from "../../utils/topics";

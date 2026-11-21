@@ -1,5 +1,5 @@
 import { Show, createSignal } from "solid-js";
-import { Info } from "lucide-solid";
+import { Info } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import { type ToriNote } from "../../utils/toriNote";

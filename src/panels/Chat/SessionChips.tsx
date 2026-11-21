@@ -1,5 +1,5 @@
 import { For, Show, createSignal, type Component } from "solid-js";
-import { GitFork, Link2, MessageSquare } from "lucide-solid";
+import { GitFork, Link2, MessageSquare } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import { WorktreeMark } from "../../components/Icon/gitMarks";
 import Popover from "../../components/Popover/Popover";

@@ -1,4 +1,4 @@
-import { Lock } from "lucide-solid";
+import { Lock } from "../Icon/icons";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
 import styles from "./LockedBar.module.css";

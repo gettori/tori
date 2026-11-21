@@ -1,6 +1,6 @@
 import { Show, createSignal } from "solid-js";
 import { homeDir } from "@tauri-apps/api/path";
-import { CircleArrowUp, Download, Trash2 } from "lucide-solid";
+import { CircleArrowUp, Download, Trash2 } from "../../../../components/Icon/icons";
 import ConfirmDialog from "../../../../components/Dialogs/ConfirmDialog";
 import Icon from "../../../../components/Icon/Icon";
 import IconButton from "../../../../components/IconButton/IconButton";

@@ -10,7 +10,7 @@
 
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { CloudOff } from "lucide-solid";
+import { CloudOff } from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import SyncMarks from "../SyncMarks/SyncMarks";
 import Tooltip from "../Tooltip/Tooltip";

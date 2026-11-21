@@ -11,7 +11,7 @@ import {
   Square,
   SquarePen,
   X,
-} from "lucide-solid";
+} from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
 import { queuedText, type QueuedInput } from "./chatStore";

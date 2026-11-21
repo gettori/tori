@@ -1,5 +1,5 @@
 import { For, Show, type JSX } from "solid-js";
-import { ArrowUpRight, SquareArrowOutUpRight } from "lucide-solid";
+import { ArrowUpRight, SquareArrowOutUpRight } from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import IconButton from "../IconButton/IconButton";
 import DecisionCard from "./DecisionCard";

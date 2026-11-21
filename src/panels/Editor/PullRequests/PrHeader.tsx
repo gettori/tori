@@ -8,8 +8,15 @@
 
 import { Show } from "solid-js";
 import { Dynamic } from "solid-js/web";
-import { ArrowLeft, Copy, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft } from "lucide-solid";
-import type { LucideIcon } from "lucide-solid";
+import {
+  ArrowLeft,
+  Copy,
+  GitMerge,
+  GitPullRequest,
+  GitPullRequestClosed,
+  GitPullRequestDraft,
+} from "../../../components/Icon/icons";
+import type { IconGlyph } from "../../../components/Icon/icons";
 import type { PrCounts, PullRequest } from "../../../utils/forgeTypes";
 import { prOpened } from "../../../utils/prMeta";
 import { copyText } from "../../../utils/clipboard";
@@ -20,7 +27,7 @@ import styles from "./PrHeader.module.css";
 
 type StateKey = "open" | "draft" | "merged" | "closed";
 
-const STATE: Record<StateKey, { label: string; icon: LucideIcon }> = {
+const STATE: Record<StateKey, { label: string; icon: IconGlyph }> = {
   open: { label: "Open", icon: GitPullRequest },
   draft: { label: "Draft", icon: GitPullRequestDraft },
   merged: { label: "Merged", icon: GitMerge },

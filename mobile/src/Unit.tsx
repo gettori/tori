@@ -1,6 +1,6 @@
 import { For, Show, createResource, createSignal, onCleanup } from "solid-js";
 import { Dynamic } from "solid-js/web";
-import { Ellipsis, Plus } from "lucide-solid";
+import { Ellipsis, Plus } from "../../src/components/Icon/icons";
 import Icon from "../../src/components/Icon/Icon";
 import { WheelGlyph } from "../../src/components/Autopilot/Wheel";
 import { agentMark } from "../../src/components/Icon/agentMarks";

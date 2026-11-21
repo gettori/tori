@@ -14,8 +14,8 @@ import {
   MessageSquare,
   Eye,
   SquareStack,
-  type LucideIcon,
-} from "lucide-solid";
+  type IconGlyph,
+} from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import TooltipLines from "../../components/Tooltip/TooltipLines";
@@ -30,7 +30,7 @@ import { operationChip, type Operation } from "../../utils/worktreeOperation";
 import type { BranchLineItem, BranchLineMode } from "../Settings/settingsStore";
 import styles from "./BranchLine.module.css";
 
-const CHECK_ICON: Record<BadgeTone, LucideIcon> = {
+const CHECK_ICON: Record<BadgeTone, IconGlyph> = {
   good: CircleCheck,
   bad: CircleX,
   busy: CircleDotDashed,
@@ -44,7 +44,7 @@ const CHILD_SAYS: Partial<Record<PrChildState | "unlaned", string>> = {
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-function prIcon(state: PrChipState): LucideIcon {
+function prIcon(state: PrChipState): IconGlyph {
   switch (state) {
     case "draft":
       return GitPullRequestDraft;

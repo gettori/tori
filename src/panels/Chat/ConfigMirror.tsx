@@ -1,5 +1,5 @@
 import { For, Show, createMemo, type Component } from "solid-js";
-import { ListCheck, ListX, Settings2, ToggleLeft, ToggleRight, Zap, ZapOff } from "lucide-solid";
+import { ListCheck, ListX, Settings2, ToggleLeft, ToggleRight, Zap, ZapOff } from "../../components/Icon/icons";
 import Picker, { PickerOption, PillToggle } from "./Picker";
 import { mirroredOptions, type ChatConfigOption, type ChatConfigValue } from "../../utils/chatTypes";
 

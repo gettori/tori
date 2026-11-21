@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { createSignal } from "solid-js";
-import { List, LayoutGrid, Rows3 } from "lucide-solid";
+import { List, LayoutGrid, Rows3 } from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import SegmentedControl from "./SegmentedControl";
 import type { ControlSize } from "../controls";

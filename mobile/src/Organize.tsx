@@ -1,5 +1,5 @@
 import { For, Show, createSignal, type JSX } from "solid-js";
-import { ChevronDown, ChevronUp } from "lucide-solid";
+import { ChevronDown, ChevronUp } from "../../src/components/Icon/icons";
 import Icon from "../../src/components/Icon/Icon";
 import { PICKER_ICONS, resolveIcon } from "../../src/components/Icon/iconRegistry";
 import { SPACE_COLORS, spaceHueRgb } from "../../src/utils/spaceTint";

@@ -1,6 +1,6 @@
 import { Show, createEffect, createSignal, onMount } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { Check } from "lucide-solid";
+import { Check } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import type { OpenJob } from "../../utils/events";
 import { reloadFirstRunConfig, type FirstRunSpace } from "../../utils/firstRun";

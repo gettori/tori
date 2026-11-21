@@ -140,8 +140,8 @@ import {
   History,
   UserRound,
   Globe,
-  type LucideIcon,
-} from "lucide-solid";
+  type IconGlyph,
+} from "../../components/Icon/icons";
 import {
   on as onEvent,
   onWith,
@@ -398,7 +398,7 @@ import patterns from "../../styles/patterns.module.css";
 // rebuild every tab's DOM on any unrelated signal change
 // (gotchas#reordering-a-referentially-keyed-for-must-preserve-object-identity).
 type RightMode = "files" | "changes" | "pulls" | "problems" | "calls" | "session" | "search" | "debug" | "artifacts";
-type ModeTab = { mode: RightMode; label: string; icon: LucideIcon };
+type ModeTab = { mode: RightMode; label: string; icon: IconGlyph };
 /** The modes that answer for the member `activeRoot` points at, rather than for
  *  the whole Topic (Changes, Search, Problems) or for the file in front
  *  (Calls, Session, Debug). Pull requests is the one the chip row switches;
@@ -438,7 +438,7 @@ function repoRelative(path: string, root: string): string | null {
 
 // A synthetic view takes one glyph for the whole kind; a file keeps the seti
 // icon its extension earns it.
-const SYNTHETIC_ICONS: Record<string, LucideIcon> = {
+const SYNTHETIC_ICONS: Record<string, IconGlyph> = {
   search: Search,
   graph: GitGraph,
   pr: GitPullRequest,

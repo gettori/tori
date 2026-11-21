@@ -1,4 +1,4 @@
-import { Bot, BotOff } from "lucide-solid";
+import { Bot, BotOff } from "../../components/Icon/icons";
 import { PillToggle } from "./Picker";
 import { followEdits, setFollowEdits } from "../../utils/followPref";
 

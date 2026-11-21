@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, on, For, Show, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { CornerDownRight, Folder, GitBranch, RefreshCw, Trash2, TriangleAlert } from "lucide-solid";
+import { CornerDownRight, Folder, GitBranch, RefreshCw, Trash2, TriangleAlert } from "../../components/Icon/icons";
 
 import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
 import Button from "../../components/Button/Button";

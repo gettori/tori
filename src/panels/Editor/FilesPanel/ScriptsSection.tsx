@@ -1,7 +1,7 @@
 import { createEffect, createMemo, createSignal, on, onCleanup, onMount, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { Globe, MousePointerClick, Play } from "lucide-solid";
+import { Globe, MousePointerClick, Play } from "../../../components/Icon/icons";
 import Icon from "../../../components/Icon/Icon";
 import Chevron from "../../../components/Chevron/Chevron";
 import ContextMenu from "../../../components/Menu/ContextMenu";

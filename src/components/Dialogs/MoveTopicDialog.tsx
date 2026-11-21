@@ -1,6 +1,6 @@
 import { createSignal, For, Show, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { Ban, House } from "lucide-solid";
+import { Ban, House } from "../Icon/icons";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";

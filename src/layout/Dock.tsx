@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { Plus, X } from "lucide-solid";
+import { Plus, X } from "../components/Icon/icons";
 import Icon from "../components/Icon/Icon";
 import IconButton from "../components/IconButton/IconButton";
 import PaneView from "../tabs/PaneView";
