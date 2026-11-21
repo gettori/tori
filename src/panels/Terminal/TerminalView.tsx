@@ -186,8 +186,8 @@ export default function TerminalView(props: {
     term?.focus();
   }
 
-  // Focus the search box when it appears.
   createEffect(() => {
+    // The box is not in the document until this update renders.
     if (showSearch()) queueMicrotask(() => searchInput?.focus());
   });
 
@@ -382,6 +382,7 @@ export default function TerminalView(props: {
     // A pane was just revealed: refit now (the active view only) rather than
     // waiting on a ResizeObserver tick a display:none -> block flip can miss.
     offRefit = onEvent(REFIT_PANES, () => {
+      // Behind the reveal's own update, so the fit measures the visible pane.
       if (props.active) queueMicrotask(fitNow);
     });
   });
@@ -414,6 +415,7 @@ export default function TerminalView(props: {
       traceMark("term:reveal");
       webgl?.reveal();
       traceMark("term:revealed");
+      // Behind the reveal's render, so the fit and focus act on a visible pane.
       queueMicrotask(() => {
         fitNow();
         if (takesFocus()) term?.focus();

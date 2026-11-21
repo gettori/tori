@@ -743,6 +743,7 @@ export default function Composer(props: {
       () => props.editing,
       () => {
         setHistoryIndex(-1);
+        // Behind the render of the new draft, so the caret is measured against it.
         queueMicrotask(() => {
           if (!field) return;
           const end = field.value().length;

@@ -55,6 +55,7 @@ export default function RenameAccountDialog(props: {
           <input
             ref={(el) => {
               field = el;
+              // A ref runs before the element is in the document.
               queueMicrotask(() => el.select());
             }}
             class={styles.fieldInput}

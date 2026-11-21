@@ -6,6 +6,8 @@ export interface IdiomHit {
   line: number;
 }
 
+export function appSources(root?: string): [file: string, source: string][];
+
 export function scan(
   typescript: typeof ts,
   file: string,

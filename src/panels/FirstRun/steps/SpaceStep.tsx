@@ -47,6 +47,7 @@ export default function SpaceStep(props: {
                 id="first-run-space-name"
                 ref={(el) => {
                   field = el;
+                  // A ref runs before the element is in the document.
                   queueMicrotask(() => field?.focus());
                 }}
                 class={styles.input}

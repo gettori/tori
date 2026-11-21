@@ -1327,6 +1327,7 @@ export default function ReviewPanel(props: {
    *  resize the box, which only `input` would otherwise do. */
   function setMessage(text: string) {
     setCommitText(text);
+    // The box must hold the new text before it can be measured.
     queueMicrotask(fitMessage);
   }
 
@@ -1765,7 +1766,7 @@ export default function ReviewPanel(props: {
           <textarea
             ref={(el) => {
               msgRef = el;
-              // Remounted with a draft still in the signal, at one row.
+              // A remount holds a draft at one row, and a ref runs before it can be measured.
               queueMicrotask(fitMessage);
             }}
             class={styles.commitInput}

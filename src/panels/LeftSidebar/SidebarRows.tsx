@@ -418,9 +418,9 @@ export function GroupCard(props: {
           if (e.key === "Enter") props.onRename?.(input.value);
           else if (e.key === "Escape") props.onRename?.(null);
         }}
-        // A reload remounts the tree, and the new editor takes focus on mount;
-        // only a blur that leaves no editor focused is the user moving on.
         onBlur={() =>
+          // A reload remounts the tree, and the new editor takes focus on mount;
+          // only a blur that leaves no editor focused is the user moving on.
           setTimeout(() => {
             if (
               !(

@@ -480,8 +480,9 @@ export default function MessageList(props: {
   let pinnedTop = -1;
   function onListScroll() {
     if (stuck() && scroller?.scrollTop === pinnedTop) return;
-    setStuck(atBottom());
-    if (!armed && !stuck()) {
+    const atEnd = atBottom();
+    setStuck(atEnd);
+    if (!armed && !atEnd) {
       armed = true;
       lookAgain();
     }
@@ -747,9 +748,9 @@ export default function MessageList(props: {
     return current.dataset.turnId ?? null;
   }
 
-  /** Put `turnId`'s row at the top of the viewport. After the next paint, so the
-   *  rows it is measured against exist. */
+  /** Put `turnId`'s row at the top of the viewport. */
   function scrollToTurn(turnId: string) {
+    // The row renders from the update that asked for it, so it is found after.
     queueMicrotask(() => {
       const target = scroller?.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(turnId)}"]`);
       if (!target || !scroller) return;

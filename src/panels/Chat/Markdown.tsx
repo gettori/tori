@@ -219,17 +219,21 @@ export default function Markdown(props: { text: string; cwd: string; breaks?: bo
       {(seg) => (
         <Switch>
           <Match when={seg().kind === "prose" && seg()}>
-            {(s) => (
-              // The handler sits on the prose block rather than a wrapper: the
-              // transcript's spacing rules select `.mdProse` as a direct child
-              // of `.assistant`, so an extra element would break them.
-              <div
-                ref={(el) => createEffect(on(s, () => linkPaths(el, props.cwd)))}
-                class={styles.mdProse}
-                onClick={onLinkClick}
-                innerHTML={(s() as Extract<Segment, { kind: "prose" }>).html}
-              />
-            )}
+            {(s) => {
+              let prose!: HTMLDivElement;
+              createEffect(on(s, () => linkPaths(prose, props.cwd)));
+              return (
+                // The handler sits on the prose block rather than a wrapper: the
+                // transcript's spacing rules select `.mdProse` as a direct child
+                // of `.assistant`, so an extra element would break them.
+                <div
+                  ref={prose}
+                  class={styles.mdProse}
+                  onClick={onLinkClick}
+                  innerHTML={(s() as Extract<Segment, { kind: "prose" }>).html}
+                />
+              );
+            }}
           </Match>
           <Match when={seg().kind === "code" && seg()}>
             {(s) => {
