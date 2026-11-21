@@ -162,8 +162,7 @@ export const RichRows: Story = {
 };
 
 /** Grouped rows, the palette's file list: a heading names each run. A list is
- *  either wholly grouped or wholly flat, never mixed, because Kobalte reads the
- *  children key off every top-level entry and throws on the first bare one. */
+ *  either wholly grouped or wholly flat, never mixed. */
 export const Groups: Story = {
   render: () => (
     <Combobox
