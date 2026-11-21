@@ -205,6 +205,7 @@ export default function AddBranchDialog(props: {
     on(
       source,
       (s) => {
+        // Behind the update that swaps the fields, so focus lands on what it rendered.
         queueMicrotask(() => input?.focus());
         if (s === "issue") loadAssigned();
       },
@@ -254,6 +255,7 @@ export default function AddBranchDialog(props: {
       .then((i) => {
         setIssue(i);
         setIssueName(i.suggestedBranch);
+        // Behind the render of the issue just set, so focus lands on the updated button.
         queueMicrotask(() => primary?.focus());
       })
       .catch((e) => setIssueError(errorText(e)))
@@ -347,6 +349,7 @@ export default function AddBranchDialog(props: {
       parked,
       (name) => {
         if (!name) return;
+        // Behind the render of the pick, so focus lands on the updated button.
         queueMicrotask(() => {
           if (parked()) primary?.focus();
         });

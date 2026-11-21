@@ -1,4 +1,25 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 const isSetter = (n) => /^set[A-Z]/.test(n);
+
+// Read at run time: vitest caches a glob's expansion with the test's transform,
+// so a file added after that run would go unscanned.
+export function appSources(root = fileURLToPath(new URL("..", import.meta.url))) {
+  const out = [];
+  const walk = (rel) => {
+    for (const entry of readdirSync(join(root, rel), { withFileTypes: true })) {
+      const path = `${rel}/${entry.name}`;
+      if (entry.isDirectory()) walk(path);
+      else if (/\.tsx?$/.test(entry.name) && !entry.name.endsWith(".d.ts")) {
+        out.push([path, readFileSync(join(root, path), "utf8")]);
+      }
+    }
+  };
+  for (const dir of ["src", "mobile/src", "extension/src"]) walk(dir);
+  return out;
+}
 
 const LABEL_CLASS = {
   "createEffect: writes a setter in body": "effect-writes",
