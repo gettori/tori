@@ -10,6 +10,10 @@ matching section here fails the release rather than publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## Unreleased
+
+- **Tori now needs macOS 26 or later.** If your Mac is on macOS 13, 14 or 15, do not install this update: Tori will not open afterwards. Update macOS first, or stay on the version you have.
+
 ## 26.1120.0-beta
 
 - Tooltips wait for you to stop on a control. Moving down the sidebar no longer pops a tooltip on every row you pass, and a tooltip no longer stays over the row you're moving to.

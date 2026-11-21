@@ -79,7 +79,8 @@ Forgot one? `git commit --amend -s` fixes the last commit, and
 
 ### Prerequisites
 
-- **macOS.** Tori is macOS only today, developed and tested on macOS 15.
+- **macOS 26 or later.** Tori is macOS only today, developed on macOS 27 with
+  CI on macOS 26.
 - **Xcode Command Line Tools**: `xcode-select --install`
 - **Rust**, via [rustup](https://rustup.rs). `rust-toolchain.toml` pins the
   version: run `rustup toolchain install` once in the repo to fetch it.
