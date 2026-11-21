@@ -167,6 +167,15 @@ export default function DiffRows(allProps: {
       if (!row || index === null) return undefined;
       return hunk.at() === props.offset + index ? 0 : -1;
     };
+    let registered: { key: number; el: HTMLDivElement } | undefined;
+    if (index !== null && row) {
+      onCleanup(() => {
+        // Only if this row still owns the slot: a re-render registers the
+        // new element before the old one cleans up, and a blind delete
+        // would drop the live row out of the hunk's reach.
+        if (registered && hunk.rows.get(registered.key) === registered.el) hunk.rows.delete(registered.key);
+      });
+    }
     const rowClick = selectable ? toggle : undefined;
     const rowFocusIn =
       props.keyboard === "roving" && index !== null ? () => hunk.setAt(props.offset + index) : undefined;
@@ -206,12 +215,7 @@ export default function DiffRows(allProps: {
           if (index === null || !row) return;
           const key = props.offset + index;
           hunk.rows.set(key, el);
-          onCleanup(() => {
-            // Only if this row still owns the slot: a re-render registers the
-            // new element before the old one cleans up, and a blind delete
-            // would drop the live row out of the hunk's reach.
-            if (hunk.rows.get(key) === el) hunk.rows.delete(key);
-          });
+          registered = { key, el };
         }}
         data-old={only === "new" ? undefined : (row?.oldLine ?? undefined)}
         data-new={only === "old" ? undefined : (row?.newLine ?? undefined)}
@@ -219,11 +223,11 @@ export default function DiffRows(allProps: {
         onClick={rowClick}
         onFocusIn={rowFocusIn}
         // A line is in the selection or it is not, which is what a checkbox
-        // is. Reachable by keyboard for the same reason the conflicted row is
-        // a button: a control only the mouse can reach is half a control.
+        // is. Reachable by keyboard, since a control only the mouse can reach is
+        // half a control.
         role={selectable ? "checkbox" : undefined}
         aria-checked={selectable ? (picked() ? "true" : "false") : undefined}
-        tabIndex={stop()}
+        tabindex={stop()}
         onKeyDown={rowKeyDown}
       >
         {/* Never a tab stop of its own. Roving promises one stop per hunk, and
@@ -233,7 +237,7 @@ export default function DiffRows(allProps: {
           <button
             type="button"
             class={styles.commentAdd}
-            tabIndex={-1}
+            tabindex={-1}
             aria-label={props.comment!.label(index!)}
             onClick={(e) => {
               e.stopPropagation();

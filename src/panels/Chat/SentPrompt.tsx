@@ -37,29 +37,30 @@ function PromptTextField(props: {
   chipFor: (label: string) => ChipSpec | null;
 }) {
   let host!: HTMLDivElement;
+  let field: ReturnType<typeof createPromptField> | undefined;
   onMount(() => {
-    const field = createPromptField({
+    field = createPromptField({
       parent: host,
       doc: untrack(() => props.text),
       skills: untrack(() => props.skills),
       chipFor: props.chipFor,
     });
-    onCleanup(() => field.destroy());
-    createEffect(
-      on(
-        () => props.text,
-        (t) => field.set(t),
-        { defer: true },
-      ),
-    );
-    createEffect(
-      on(
-        () => props.skills,
-        (names) => field.setSkills(names),
-        { defer: true },
-      ),
-    );
+    onCleanup(() => field?.destroy());
   });
+  createEffect(
+    on(
+      () => props.text,
+      (t) => field?.set(t),
+      { defer: true },
+    ),
+  );
+  createEffect(
+    on(
+      () => props.skills,
+      (names) => field?.setSkills(names),
+      { defer: true },
+    ),
+  );
   return <div ref={host} class={styles.promptField} />;
 }
 

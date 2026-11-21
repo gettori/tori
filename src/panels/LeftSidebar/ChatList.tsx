@@ -55,7 +55,7 @@ export default function ChatList(props: {
         <Show
           when={needsYouOrWorking(props.status(c))}
           fallback={
-            <time class={styles.time} dateTime={new Date(c.updated).toISOString()}>
+            <time class={styles.time} datetime={new Date(c.updated).toISOString()}>
               {chatTime(c.updated, now())}
             </time>
           }

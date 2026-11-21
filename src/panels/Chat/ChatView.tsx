@@ -726,6 +726,8 @@ export default function ChatView(props: {
   // arguments. Held out here so the connection control can reach it without
   // lifting the whole event pipeline out of the closure it belongs in.
   let reconnect: (() => void) | undefined;
+  let connectFirst: (() => void) | undefined;
+  const [wired, setWired] = createSignal(false);
 
   onMount(() => {
     // What this agent last said it can run, so the picker has something true
@@ -1237,41 +1239,44 @@ export default function ChatView(props: {
       connect({ reconnect: true });
     };
 
-    // The spawn, and only the spawn, waits on the tab being started. Everything
-    // above - the backfill, the parking, the event pipeline - is set up either
-    // way, so a chat opened to read is a full transcript with nothing behind it
-    // and the first send has only the child left to add.
-    //
-    // `props.started` is the only thing tracked. `connect` reads `props.active`
-    // on its way past, so a plain effect would re-run on every switch to and
-    // from this tab - and the re-run would dispose the deadline timer below
-    // while the message it is the backstop for is still being held.
-    let spawned = false;
-    createEffect(() => {
-      if (!props.started || spawned) return;
-      spawned = true;
-      untrack(() => {
-        connect({ reconnect: false });
+    connectFirst = () => connect({ reconnect: false });
+    setWired(true);
+  });
 
-        // Nothing may hold a first message forever. The claude transport
-        // declares no handshake deadline at all, so a binary that spawns and
-        // then wedges would leave the message the user already pressed Enter on
-        // sitting in a tab that says "connecting" and never stops. A backstop
-        // rather than an expectation: a claude handshake is measured in seconds,
-        // an ACP agent fails its own 30s handshake deadline first, and a spawn
-        // that cannot start rejects immediately - so this fires only when
-        // something has genuinely hung.
-        //
-        // Read here rather than at mount: an opened chat marks its held message
-        // at the moment it starts, which is after mount and before this runs.
-        if (hasAutoSend(composerKey())) {
-          const timer = setTimeout(() => {
-            if (canSend()) return;
-            failFirstSend("that agent did not get a session open in time, so nothing was sent.");
-          }, FIRST_SEND_DEADLINE_MS);
-          onCleanup(() => clearTimeout(timer));
-        }
-      });
+  // The spawn, and only the spawn, waits on the tab being started. Everything
+  // above - the backfill, the parking, the event pipeline - is set up either
+  // way, so a chat opened to read is a full transcript with nothing behind it
+  // and the first send has only the child left to add.
+  //
+  // Only `props.started` and the wiring are tracked. `connect` reads `props.active`
+  // on its way past, so a plain effect would re-run on every switch to and
+  // from this tab - and the re-run would dispose the deadline timer below
+  // while the message it is the backstop for is still being held.
+  let spawned = false;
+  createEffect(() => {
+    if (!wired() || !props.started || spawned) return;
+    spawned = true;
+    untrack(() => {
+      connectFirst?.();
+
+      // Nothing may hold a first message forever. The claude transport
+      // declares no handshake deadline at all, so a binary that spawns and
+      // then wedges would leave the message the user already pressed Enter on
+      // sitting in a tab that says "connecting" and never stops. A backstop
+      // rather than an expectation: a claude handshake is measured in seconds,
+      // an ACP agent fails its own 30s handshake deadline first, and a spawn
+      // that cannot start rejects immediately - so this fires only when
+      // something has genuinely hung.
+      //
+      // Read here rather than at mount: an opened chat marks its held message
+      // at the moment it starts, which is after mount and before this runs.
+      if (hasAutoSend(composerKey())) {
+        const timer = setTimeout(() => {
+          if (canSend()) return;
+          failFirstSend("that agent did not get a session open in time, so nothing was sent.");
+        }, FIRST_SEND_DEADLINE_MS);
+        onCleanup(() => clearTimeout(timer));
+      }
     });
   });
 

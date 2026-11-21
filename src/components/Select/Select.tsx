@@ -227,11 +227,11 @@ export default function Select(props: {
     };
     const disabled = () => !option() || isDisabled(option()!);
     const isSelected = () => selected()?.value === value;
+    onCleanup(() => rowElements.delete(value));
     return (
       <li
         ref={(el) => {
           rowElements.set(value, el);
-          onCleanup(() => rowElements.delete(value));
         }}
         role="option"
         class={styles.item}
