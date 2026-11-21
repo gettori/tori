@@ -1,60 +1,19 @@
-import { onCleanup, onMount, type JSX } from "solid-js";
-import { Popover as Primitive } from "../../lib/popover";
+import { createEffect, onCleanup, untrack, type JSX } from "solid-js";
+import { Portal } from "solid-js/web";
+import { anchorLayer, openLayer } from "../../lib/layer";
 import { useDialogSurface } from "../Dialog/surface";
 import styles from "./Popover.module.css";
 
-/** Where the surface sits relative to its anchor. Kobalte accepts twelve
- *  placements; these four are what an anchored panel uses, and keeping the
- *  union local is what lets this file expose a placement type without the app
- *  importing one from the primitives package - which `boundary.test.ts` would
- *  fail it for, this file included. */
+/** Where the surface sits relative to its anchor. */
 export type PopoverPlacement = "bottom-start" | "bottom-end" | "top-start" | "top-end";
 
-/** The gap between the anchor and the surface, in px. Not a token: Kobalte
- *  takes a number and hands it to floating-ui, so it never reaches CSS and
- *  cannot read `--ui-scale`. 12 is the offset the hand-rolled panel opened at
- *  (`r.bottom + 12`), restated rather than re-derived. */
+/** The gap between the anchor and the surface, in px. */
 const ANCHOR_GUTTER = 12;
 
-/**
- * The anchored panel surface: Kobalte's popover behind Tori's chrome and Tori's
- * API. The menus have their own pair of wrappers (`Menu/`); this is for a panel
- * with arbitrary content that hangs off a control, and its one consumer is the
- * History dropdown.
- *
- * **Anchored controlled mode, and mounted is open.** There is no `Trigger`: the
- * opening button belongs to the caller, which mounts this inside a `<Show>`
- * while it is open. Kobalte's open state therefore never transitions while the
- * surface exists - Escape and outside presses arrive as `onOpenChange(false)`,
- * the caller flips its own signal, and the whole tree unmounts still "open".
- *
- * **Focus is owned here, at both ends.** On open, Kobalte's autofocus is
- * prevented and redirected to `initialFocus`, so the caller decides what the
- * keyboard lands on rather than whichever focusable happens to render first.
- * On close, the element focused at mount is restored from `onCleanup`, not
- * `onCloseAutoFocus`: the close pipeline that hook belongs to only runs on an
- * open-to-closed transition Kobalte gets to see, and unmounting is not one.
- * Only while focus is still the surface's, though: if it already moved on to
- * something else, pulling it back would undo where the user went.
- *
- * **The anchor's own press is excluded from dismissal.** Kobalte excludes only
- * its `Trigger`, and in anchor mode there is none, so without this a press on
- * the toggle would dismiss the surface and the button's own click would reopen
- * it in the same gesture. The exclusion covers focus too: shift-tabbing back
- * onto the anchor is not leaving.
- *
- * **Inside a dialog it portals into the panel**, the same default `ContextMenu`
- * takes. A modal dialog expresses modality by aria-hiding every subtree that is
- * not its panel, so a surface portalled to the body from inside one is painted
- * and absent from the accessibility tree at once - see `Dialog/surface.ts`.
- *
- * Chrome is split: this owns the base surface (background, border, shadow,
- * z-index, in `Popover.module.css`), the caller's `class` adds layout.
- */
-export default function Popover(props: {
-  /** The control the surface hangs off. Kobalte anchors to it directly, and a
-   *  press on it is the control's own to interpret rather than an outside
-   *  dismissal - see the module comment. */
+interface PopoverProps {
+  /** The control the surface hangs off. A press on it is the control's own to
+   *  interpret rather than an outside dismissal. With none, the surface stays
+   *  in its mount as plain content, which is how the FirstRun art shows it. */
   anchorEl?: HTMLElement;
   placement?: PopoverPlacement;
   /** What takes focus when the surface opens. An accessor, because the caller's
@@ -66,49 +25,73 @@ export default function Popover(props: {
   /** The content element, for callers that scroll or query inside it. */
   ref?: (el: HTMLDivElement) => void;
   children: JSX.Element;
-}) {
-  const dialogSurface = useDialogSurface();
-  let content: HTMLDivElement | undefined;
+}
 
-  onMount(() => {
-    const returnTo = document.activeElement as HTMLElement | null;
-    onCleanup(() => {
-      const at = document.activeElement;
-      if (!at || at === document.body || content?.contains(at)) returnTo?.focus?.();
-    });
+// Its own component so these effects run after the portal has connected it:
+// showPopover throws on a node that is not in the document.
+function Surface(props: PopoverProps) {
+  let content!: HTMLDivElement;
+  const anchored = untrack(() => props.anchorEl !== undefined);
+
+  createEffect(() => {
+    const anchor = props.anchorEl;
+    if (anchor) onCleanup(anchorLayer(anchor, content, props.placement ?? "bottom-end", ANCHOR_GUTTER));
   });
 
+  createEffect(() =>
+    untrack(() => {
+      if (!anchored) {
+        props.initialFocus?.()?.focus();
+        return;
+      }
+      const release = openLayer({
+        element: content,
+        show: () => content.showPopover(),
+        hide: () => content.hidePopover(),
+        onDismiss: () => props.onClose(),
+        ignorePress: (target) => !!props.anchorEl?.contains(target),
+        dismissOnFocusOutside: true,
+      });
+      onCleanup(release);
+      props.initialFocus?.()?.focus();
+    }),
+  );
+
   return (
-    <Primitive.Root
-      open
-      modal={false}
-      placement={props.placement ?? "bottom-end"}
-      gutter={ANCHOR_GUTTER}
-      anchorRef={() => props.anchorEl}
-      onOpenChange={(isOpen) => {
-        if (!isOpen) props.onClose();
+    <div
+      ref={(el) => {
+        content = el;
+        props.ref?.(el);
       }}
+      popover={anchored ? "manual" : undefined}
+      role="dialog"
+      tabindex={-1}
+      data-expanded=""
+      class={[styles.surface, props.class].filter(Boolean).join(" ")}
+      aria-label={props["aria-label"]}
     >
-      <Primitive.Portal mount={dialogSurface()}>
-        <Primitive.Content
-          class={[styles.surface, props.class].filter(Boolean).join(" ")}
-          aria-label={props["aria-label"]}
-          ref={(el) => {
-            content = el;
-            props.ref?.(el);
-          }}
-          onOpenAutoFocus={(e) => {
-            e.preventDefault();
-            props.initialFocus?.()?.focus();
-          }}
-          onInteractOutside={(e) => {
-            const target = e.detail.originalEvent.target as Node | null;
-            if (target && props.anchorEl?.contains(target)) e.preventDefault();
-          }}
-        >
-          {props.children}
-        </Primitive.Content>
-      </Primitive.Portal>
-    </Primitive.Root>
+      {props.children}
+    </div>
+  );
+}
+
+/**
+ * The anchored panel surface. The menus have their own pair of wrappers
+ * (`Menu/`); this is for a panel with arbitrary content that hangs off a
+ * control. The caller mounts it inside a `<Show>` while it is open, so mounted
+ * is open, and every dismissal arrives as `onClose`.
+ *
+ * Inside a dialog it portals into the panel, because a modal hides whatever is
+ * outside its panel from assistive tech (`Dialog/surface.ts`).
+ *
+ * Chrome is split: this owns the base surface (background, border, shadow, in
+ * `Popover.module.css`), the caller's `class` adds layout.
+ */
+export default function Popover(props: PopoverProps) {
+  const dialogSurface = useDialogSurface();
+  return (
+    <Portal mount={dialogSurface()}>
+      <Surface {...props} />
+    </Portal>
   );
 }

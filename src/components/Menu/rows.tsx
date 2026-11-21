@@ -1,19 +1,17 @@
-import { For, Show, createUniqueId, type JSX } from "solid-js";
+import { createContext, createUniqueId, For, onCleanup, Show, useContext, type JSX } from "solid-js";
+import { Portal } from "solid-js/web";
 import { ChevronRight, type LucideIcon } from "lucide-solid";
 import Glide from "../Glide/Glide";
 import Icon from "../Icon/Icon";
 import Tooltip from "../Tooltip/Tooltip";
-import { DropdownMenu as Primitive } from "../../lib/menu";
+import { createMenu, MenuContent, MenuItem as Item, MenuProvider, useMenu } from "./menuCore";
 import { useMenuSurface } from "./surface";
 import styles from "./Menu.module.css";
 
 /** A menu entry: an action row, a visual separator, or a heading naming what the
  *  menu is acting on. Covers the flat cases (right-click menus, button
- *  dropdowns). Rows that need custom content (icons, a close button) are
- *  expressed as `<MenuRow>` children instead.
- *
- *  Structurally identical to the type the hand-rolled `Menu.tsx` exports, so a
- *  call site migrating in phase 3 or 4 changes its import and nothing else. */
+ *  dropdowns). Rows that need custom content (a close button) are expressed as
+ *  `<MenuRow>` children instead. */
 export type MenuItem =
   | { separator: true }
   /** Plain text in every menu but the space menu, whose heading is the space's
@@ -46,29 +44,15 @@ export type MenuItem =
       hint?: string;
     };
 
-/**
- * The rows both wrappers share, so chrome cannot drift between the right-click
- * menus and the triggered dropdowns.
- *
- * **One namespace serves both roots, and this is load-bearing.** Kobalte builds
- * `DropdownMenu` and `ContextMenu` on the same `Menu` internals: `Item`,
- * `Separator`, `Portal`, `Sub`, `SubTrigger` and `SubContent` are re-exported
- * from one shared module by both entry points and are therefore the *same*
- * components, reading the same context. Only `Root`, `Trigger` and `Content`
- * genuinely differ. So this file names one of the two and works inside either
- * root, rather than taking the parts as props or through a context of its own.
- *
- * That is an implementation detail of a dependency, so `src/lib/menu.test.ts`
- * asserts the identity: a Kobalte release that splits the two fails there, with
- * a message naming this file, instead of failing as a mystery here.
- */
+/** The rows both wrappers share, so chrome cannot drift between the right-click
+ *  menus and the triggered dropdowns. */
 export function MenuRow(props: {
   onClick?: () => void;
   disabled?: boolean;
-  /** Refusing, but still reachable. Kobalte's `disabled` skips the row in arrow
-   *  navigation and typeahead, which takes any reason written on it out of a
-   *  keyboard user's reach; this keeps the row navigable and simply does not
-   *  act. Use it when the row says *why*, and `disabled` when it does not. */
+  /** Refusing, but still reachable. `disabled` skips the row in arrow navigation
+   *  and typeahead, which takes any reason written on it out of a keyboard
+   *  user's reach; this keeps the row navigable and simply does not act. Use it
+   *  when the row says *why*, and `disabled` when it does not. */
   refusing?: boolean;
   /** The choice currently in force, painted rather than only ticked. A tick
    *  alone is a mark the eye has to go looking for down the right-hand edge;
@@ -90,29 +74,27 @@ export function MenuRow(props: {
 }) {
   return (
     <Tooltip
-      as={Primitive.Item}
+      as={Item}
       label={props.tooltip}
       placement="right"
-      class={styles.item}
-      classList={{
-        [styles.danger]: !!props.danger,
-        [styles.warn]: !!props.warn,
-        [styles.refusing]: !!props.refusing,
-        [styles.selected]: !!props.selected,
-      }}
-      // Disabled is the primitive's own state, not a class: Kobalte blocks
-      // activation, skips the row in arrow navigation and typeahead, and stamps
-      // `data-disabled`, which is what the stylesheet paints. A class would only
-      // be able to do the last of those.
+      class={[
+        styles.item,
+        props.danger && styles.danger,
+        props.warn && styles.warn,
+        props.refusing && styles.refusing,
+        props.selected && styles.selected,
+      ]
+        .filter(Boolean)
+        .join(" ")}
       disabled={props.disabled}
       aria-disabled={props.refusing || undefined}
       aria-describedby={props.describedBy}
       // A refused row must not close the menu on its way to doing nothing.
       closeOnSelect={props.refusing ? false : props.closeOnSelect}
       onSelect={() => !props.refusing && props.onClick?.()}
-      // Kobalte selects on Enter's keydown; left to run, its keypress then
-      // clicks whatever the row's action focused, which for a confirm dialog is
-      // the confirm button.
+      // A row selects on Enter's keydown; left to run, its keypress then clicks
+      // whatever the row's action focused, which for a confirm dialog is the
+      // confirm button.
       onKeyDown={(e: KeyboardEvent) => e.key === "Enter" && e.preventDefault()}
     >
       {props.children}
@@ -134,10 +116,7 @@ export function MenuGlide() {
   );
 }
 
-/** How far a flyout sits from the row that opened it, and how far back up. Both
- *  in px and neither a token, for the reason `Dropdown`'s `TRIGGER_GUTTER`
- *  documents: floating-ui takes numbers, so these never reach CSS and cannot
- *  read `--ui-scale`.
+/** How far a flyout sits from the row that opened it, and how far back up.
  *
  *  The gutter is the surface's own `--tori-space-3` padding plus the same 4px a
  *  dropdown clears its button by, since the row it is measured from is inset by
@@ -148,20 +127,12 @@ export function MenuGlide() {
 const SUB_GUTTER = 10;
 const SUB_SHIFT = -6;
 
+const SUB_OPEN_DELAY = 100;
+
 /**
- * A row that opens another page of the menu beside itself.
- *
- * The four Kobalte parts arrive as one component rather than four exports,
- * because they are never composed apart and one of the four is easy to leave
- * out: the `Portal` is what makes a level *lazy*, since it renders its children
- * only while the submenu is present. A call site that forgot it would mount
- * every level of a tree at once, and a per-level `createResource` would fetch
- * every folder the moment the menu opened.
- *
- * `SubTrigger` is a `role="menuitem"` like any other row, so it carries the row
- * class: a flyout's opener is not a different kind of row, it is a row that
- * happens to lead somewhere. Kobalte writes `aria-haspopup` and `aria-expanded`
- * on it, and closes the whole stack when a row anywhere inside is picked.
+ * A row that opens another page of the menu beside itself. The level mounts only
+ * while it is open, so a per-level `createResource` does not fetch every folder
+ * the moment the menu opens.
  */
 export function MenuSub(props: {
   /** The trigger row's own content, the same shape a `MenuRow` takes. */
@@ -174,40 +145,128 @@ export function MenuSub(props: {
 }) {
   // The wrapper's mount, not this row's own reading of it: see `surface.ts`.
   const surface = useMenuSurface();
+  const parent = useMenu();
+  const sub = createMenu({ parent });
+  const id = createUniqueId();
+  let row!: HTMLDivElement;
+  let openTimer: ReturnType<typeof setTimeout> | undefined;
+  const cancelOpen = () => {
+    clearTimeout(openTimer);
+    openTimer = undefined;
+  };
+  onCleanup(cancelOpen);
+
+  const onPointerMove = (e: PointerEvent) => {
+    if (e.pointerType !== "mouse" || parent.movingToChild(e)) return;
+    if (props.disabled) {
+      parent.focusContent();
+      return;
+    }
+    if (!sub.isOpen() && openTimer === undefined) {
+      openTimer = setTimeout(() => {
+        openTimer = undefined;
+        sub.open("none");
+      }, SUB_OPEN_DELAY);
+    }
+    sub.clearHighlight();
+    if (parent.highlighted() !== row) parent.highlight(row);
+  };
+
+  const onPointerLeave = (e: PointerEvent) => {
+    if (e.pointerType !== "mouse") return;
+    cancelOpen();
+    const level = sub.content()?.getBoundingClientRect();
+    if (level) {
+      const towardsRight = level.left >= e.clientX;
+      const near = towardsRight ? level.left : level.right;
+      const far = towardsRight ? level.right : level.left;
+      parent.setGrace([
+        [e.clientX + (towardsRight ? -5 : 5), e.clientY],
+        [near, level.top],
+        [far, level.top],
+        [far, level.bottom],
+        [near, level.bottom],
+      ]);
+    }
+    if (!parent.movingToChild(e)) parent.focusContent();
+  };
+
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.repeat || props.disabled) return;
+    if (e.key !== "Enter" && e.key !== " " && e.key !== "ArrowRight") return;
+    e.stopPropagation();
+    e.preventDefault();
+    parent.clearHighlight();
+    if (sub.isOpen()) sub.focusEdge("first");
+    else sub.open("first");
+  };
 
   return (
-    <Primitive.Sub gutter={SUB_GUTTER} shift={SUB_SHIFT}>
-      <Primitive.SubTrigger class={styles.item} disabled={props.disabled} textValue={props.textValue}>
+    <MenuProvider value={sub}>
+      <div
+        ref={(el) => {
+          row = el;
+          sub.setTrigger(el);
+        }}
+        id={id}
+        role="menuitem"
+        tabindex={-1}
+        class={styles.item}
+        aria-haspopup="true"
+        aria-expanded={sub.isOpen()}
+        aria-controls={sub.isOpen() ? sub.contentId : undefined}
+        aria-disabled={props.disabled ? true : undefined}
+        data-disabled={props.disabled ? "" : undefined}
+        data-highlighted={parent.highlighted() === row ? "" : undefined}
+        data-expanded={sub.isOpen() ? "" : undefined}
+        data-text-value={props.textValue}
+        onClick={() => {
+          if (!sub.isOpen() && !props.disabled) sub.open("content");
+        }}
+        onPointerMove={onPointerMove}
+        onPointerLeave={onPointerLeave}
+        onKeyDown={onKeyDown}
+      >
         {props.label}
         <Icon icon={ChevronRight} class={styles.subInto} aria-hidden="true" />
-      </Primitive.SubTrigger>
-      <Primitive.Portal mount={surface()}>
-        <Primitive.SubContent class={styles.content} onContextMenu={(e: MouseEvent) => e.preventDefault()}>
-          <MenuGlide />
-          {props.children}
-        </Primitive.SubContent>
-      </Primitive.Portal>
-    </Primitive.Sub>
+      </div>
+      <Show when={sub.isOpen()}>
+        <Portal mount={surface()}>
+          <MenuContent
+            menu={sub}
+            placement="right-start"
+            gutter={SUB_GUTTER}
+            shift={SUB_SHIFT}
+            returnFocus={sub.trigger}
+            labelledBy={id}
+            class={styles.content}
+          >
+            <MenuGlide />
+            {props.children}
+          </MenuContent>
+        </Portal>
+      </Show>
+    </MenuProvider>
   );
 }
 
-/** A rule between groups of rows. Kobalte renders it as an `<hr>` carrying
- *  `role="separator"`, so arrow navigation and typeahead skip it without this
- *  file saying anything. */
+/** A rule between groups of rows. */
 export function MenuSeparator() {
-  return <Primitive.Separator class={styles.separator} />;
+  return <hr class={styles.separator} />;
 }
 
-/** What the menu is acting on, rather than something it offers to do. Kobalte's
- *  `GroupLabel`, so it is not a `menuitem`: the arrows and typeahead pass over
- *  it, and the group it names announces that name before its first row instead
- *  of the label being read as an option.
- *
- *  Unexported, unlike every other row here: it reads the id it registers from
- *  the enclosing group's context and throws without one, so it is only ever
- *  usable through `MenuRows`, which owns that group. */
+const GroupLabelId = createContext<string>();
+
+/** What the menu is acting on, rather than something it offers to do. Not a
+ *  `menuitem`, so the arrows and typeahead pass over it, and the group it names
+ *  announces that name before its first row. Only usable through `MenuRows`,
+ *  which owns that group. */
 function MenuHeading(props: { children: JSX.Element }) {
-  return <Primitive.GroupLabel class={styles.heading}>{props.children}</Primitive.GroupLabel>;
+  return (
+    <span id={useContext(GroupLabelId)} class={styles.heading} aria-hidden="true">
+      {props.children}
+    </span>
+  );
 }
 
 /** One action row of a flat list, with its `note` drawn under the label rather
@@ -269,9 +328,10 @@ export type MenuSwatch = { value: string; label: string; hex: string };
 
 function SwatchRow(props: { swatches: MenuSwatch[]; value: string | null; onPick: (value: string | null) => void }) {
   const swatch = (value: string | null, label: string, hex: string | null) => (
-    <Primitive.Item
-      class={styles.swatch}
-      classList={{ [styles.swatchNone]: hex === null, [styles.swatchOn]: props.value === value }}
+    <Item
+      class={[styles.swatch, hex === null && styles.swatchNone, props.value === value && styles.swatchOn]
+        .filter(Boolean)
+        .join(" ")}
       style={hex ? { "--swatch": hex } : undefined}
       aria-label={props.value === value ? `${label}, chosen` : label}
       onSelect={() => props.onPick(value)}
@@ -310,13 +370,16 @@ function FlatRows(props: { items: MenuItem[] }) {
  *
  *  The group appears only when something is there to name it: an unlabelled
  *  `role="group"` around every menu in the app would be structure that says
- *  nothing, and `GroupLabel` cannot stand outside one. */
+ *  nothing. */
 export function MenuRows(props: { items: MenuItem[] }) {
+  const labelId = createUniqueId();
   return (
     <Show when={props.items.some((it) => "heading" in it)} fallback={<FlatRows items={props.items} />}>
-      <Primitive.Group>
-        <FlatRows items={props.items} />
-      </Primitive.Group>
+      <GroupLabelId.Provider value={labelId}>
+        <div role="group" aria-labelledby={labelId}>
+          <FlatRows items={props.items} />
+        </div>
+      </GroupLabelId.Provider>
     </Show>
   );
 }

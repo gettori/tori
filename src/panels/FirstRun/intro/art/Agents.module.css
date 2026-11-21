@@ -27,14 +27,9 @@
     zoom: 0.74;
     animation: agents-rise 480ms cubic-bezier(0.2, 0.8, 0.2, 1) 420ms both;
   }
-  /* Kobalte places the panel against an anchor; here the box itself is the place. */
-  .palette [data-popper-positioner] {
-    position: static !important;
-    transform: none !important;
-  }
   /* Important because the palette's own sheet is unlayered, and its 420px
      would leave the model list half empty and bury the hosts. */
-  .palette [data-popper-positioner] > * {
+  .palette [role="dialog"] {
     height: calc(310px * var(--ui-scale)) !important;
   }
 

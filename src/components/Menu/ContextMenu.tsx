@@ -1,6 +1,8 @@
-import { splitProps, type JSX } from "solid-js";
-import { ContextMenu as Primitive } from "../../lib/menu";
+import { createSignal, createUniqueId, mergeProps, onCleanup, Show, splitProps, type JSX } from "solid-js";
+import { Dynamic, Portal } from "solid-js/web";
+import { callHandler, type TriggerHandler } from "../callHandler";
 import { useDialogSurface } from "../Dialog/surface";
+import { createMenu, CURSOR_GUTTER, CURSOR_SHIFT, MenuContent, MenuProvider } from "./menuCore";
 import { MenuGlide, MenuRows, type MenuItem } from "./rows";
 import { MenuSurface } from "./surface";
 import styles from "./Menu.module.css";
@@ -9,13 +11,10 @@ export interface ContextMenuProps<T extends HTMLElement = HTMLDivElement> extend
   JSX.HTMLAttributes<T>,
   "onContextMenu"
 > {
-  /** Runs before the menu opens, and can stop it: Kobalte's trigger calls this
-   *  first and bails if it finds the event already prevented.
+  /** Runs before the menu opens, and can stop it by preventing the event.
    *
-   *  Re-declared rather than inherited because Solid types the native attribute
-   *  against `PointerEvent` and Kobalte's trigger against `MouseEvent`, which do
-   *  not unify. The narrower one is the honest signature here: this handler only
-   *  ever sees the `contextmenu` event Kobalte passes it. */
+   *  Re-declared because Solid types the native attribute against `PointerEvent`,
+   *  and this handler only ever sees a `contextmenu` `MouseEvent`. */
   onContextMenu?: JSX.EventHandlerUnion<T, MouseEvent>;
   /** A flat menu, the common case. Ignored when `menu` is given. */
   items?: MenuItem[];
@@ -27,13 +26,8 @@ export interface ContextMenuProps<T extends HTMLElement = HTMLDivElement> extend
    *  JSX element is already-constructed DOM and nothing can inject the trigger's
    *  handlers into it afterwards. */
   as?: keyof JSX.HTMLElementTags;
-  /** Leave the right-click alone entirely, so the browser's own menu opens.
-   *  Kobalte's trigger returns before `preventDefault()` when this is set, which
-   *  is exactly the shape of the Editor's synthetic-tab case. */
+  /** Leave the right-click alone entirely, so the browser's own menu opens. */
   disabled?: boolean;
-  /** Opt in to Kobalte's modality: scroll lock, focus trap, and `aria-hidden` on
-   *  everything outside. Off by default, see the module comment. */
-  modal?: boolean;
   onOpenChange?: (open: boolean) => void;
   /** What the menu portals into. Defaults to the enclosing dialog's panel when
    *  there is one, and to `document.body` otherwise. */
@@ -42,70 +36,128 @@ export interface ContextMenuProps<T extends HTMLElement = HTMLDivElement> extend
   children?: JSX.Element;
 }
 
+const LONG_PRESS_MS = 700;
+
+const isTouchOrPen = (e: PointerEvent) => e.pointerType === "touch" || e.pointerType === "pen";
+
 /**
- * The right-click surface: Kobalte's context menu behind Tori's chrome and
- * Tori's API. Everything not listed above is a native attribute and lands on the
- * trigger, so a call site reads as the row it already was plus an `items`.
+ * The right-click surface. Everything not listed above is a native attribute and
+ * lands on the trigger, so a call site reads as the row it already was plus an
+ * `items`.
  *
- * **The trigger is the row, and it is per-row.** A context menu owns its own
- * cursor placement through its trigger - `ContextMenuRootOptions` is
- * `Omit<MenuRootOptions, "open" | "defaultOpen" | "getAnchorRect">`, so there is
- * no controlled mode and no anchor to hand it - which means every row that wants
- * a menu wraps itself in one of these. That is affordable here because nothing
- * in Tori's trees is virtualized and every row already computes its own items in
- * its own handler. A surface that needs one menu driven from state instead wants
- * `Dropdown`'s anchor mode.
+ * **The trigger is the row, and it is per-row.** Every row that wants a menu
+ * wraps itself in one of these. A surface that needs one menu driven from state
+ * instead wants `Dropdown`'s anchor mode.
  *
- * **Non-modal by default.** Kobalte defaults `modal: true`, and `preventScroll`
- * defaults to `isModal()`, so accepting the default would add a scroll lock, a
- * focus trap and `ariaHideOutside` to surfaces that have never had any of them.
- * The sharpest case is HistoryPanel, whose row menus live *inside* the popover
- * they belong to: a modal row menu would aria-hide its own panel. Dismissal does
- * not depend on modality - the dismissable layer handles Escape and outside
- * pointerdown either way - so the default costs nothing and `modal` is there for
- * a surface that genuinely wants to trap.
+ * **Not modal.** HistoryPanel's row menus live inside the popover they belong to,
+ * so a modal one would hide its own panel.
  *
- * **`onOpenChange` is exposed rather than swallowed.** An enclosing surface may
- * need to know a row menu is open: HistoryPanel holds its own popover open and
- * gates its document-level arrow handler on it.
+ * **`onOpenChange` is exposed rather than swallowed.** HistoryPanel holds its
+ * popover open and gates its document-level arrow handler on it.
  *
- * **Nesting needs nothing from the call site.** Kobalte's trigger calls
- * `stopPropagation()` on the right-click it claims, so a row inside a row opens
- * its own menu and not its parent's - which is what the hand-rolled menus each
- * wrote a manual `stopPropagation` for. A caller's own `onContextMenu` still
- * runs, and runs *first*: Kobalte bails when it finds the event already
- * prevented, so a row that wants the browser's menu conditionally can say so
- * there rather than toggling `disabled`.
+ * **Nesting needs nothing from the call site.** The trigger stops the right-click
+ * it claims, so a row inside a row opens its own menu and not its parent's. A
+ * caller's `onContextMenu` runs first, and preventing the event there leaves the
+ * browser's menu to open.
  */
 export default function ContextMenu<T extends HTMLElement = HTMLDivElement>(props: ContextMenuProps<T>) {
-  const [local, trigger] = splitProps(props, ["items", "menu", "as", "disabled", "modal", "onOpenChange", "mount"]);
+  const [local, trigger] = splitProps(props, ["items", "menu", "as", "disabled", "onOpenChange", "mount"]);
+  const [handlers, rest] = splitProps(trigger as ContextMenuProps<HTMLDivElement>, [
+    "ref",
+    "style",
+    "onContextMenu",
+    "onPointerDown",
+    "onPointerMove",
+    "onPointerCancel",
+    "onPointerUp",
+  ]);
 
   const dialogSurface = useDialogSurface();
   const mount = () => local.mount ?? dialogSurface();
+  const menu = createMenu({ onOpenChange: (open) => local.onOpenChange?.(open) });
+  const [point, setPoint] = createSignal({ x: 0, y: 0 });
 
-  // The same cast `Tooltip` documents: `T` buys the caller precise handler
-  // types, and it is exactly that precision the polymorphic host cannot accept.
-  // Confined to this line; `trigger` is the same props object either way.
-  const triggerProps = trigger as ContextMenuProps<HTMLDivElement>;
+  let longPress: ReturnType<typeof setTimeout> | undefined;
+  const cancelLongPress = () => clearTimeout(longPress);
+  onCleanup(cancelLongPress);
+
+  const behaviour = {
+    id: `contextmenu-${createUniqueId()}-trigger`,
+    ref: (el: HTMLElement) => {
+      menu.setTrigger(el);
+      (handlers.ref as ((el: HTMLElement) => void) | undefined)?.(el);
+    },
+    get style() {
+      const style = handlers.style;
+      return typeof style === "string"
+        ? `-webkit-touch-callout: none; ${style}`
+        : { "-webkit-touch-callout": "none", ...style };
+    },
+    get "data-disabled"() {
+      return local.disabled ? "" : undefined;
+    },
+    get "data-expanded"() {
+      return menu.isOpen() ? "" : undefined;
+    },
+    get "data-closed"() {
+      return menu.isOpen() ? undefined : "";
+    },
+    onContextMenu: (e: MouseEvent) => {
+      callHandler(e, handlers.onContextMenu as TriggerHandler);
+      if (local.disabled || e.defaultPrevented) return;
+      cancelLongPress();
+      e.preventDefault();
+      e.stopPropagation();
+      setPoint({ x: e.clientX, y: e.clientY });
+      if (menu.isOpen()) menu.focusContent();
+      else menu.open("content");
+    },
+    onPointerDown: (e: PointerEvent) => {
+      callHandler(e, handlers.onPointerDown as TriggerHandler);
+      if (local.disabled || !isTouchOrPen(e)) return;
+      cancelLongPress();
+      setPoint({ x: e.clientX, y: e.clientY });
+      longPress = setTimeout(() => menu.open("none"), LONG_PRESS_MS);
+    },
+    onPointerMove: (e: PointerEvent) => {
+      callHandler(e, handlers.onPointerMove as TriggerHandler);
+      if (isTouchOrPen(e)) cancelLongPress();
+    },
+    onPointerCancel: (e: PointerEvent) => {
+      callHandler(e, handlers.onPointerCancel as TriggerHandler);
+      if (isTouchOrPen(e)) cancelLongPress();
+    },
+    onPointerUp: (e: PointerEvent) => {
+      callHandler(e, handlers.onPointerUp as TriggerHandler);
+      if (isTouchOrPen(e)) cancelLongPress();
+    },
+  };
+
+  const triggerProps = mergeProps(behaviour, rest) as unknown as JSX.HTMLAttributes<HTMLDivElement>;
 
   return (
     // Published rather than only used here: a flyout inside this menu is its own
     // portal and mounts where the menu it belongs to does. See `surface.ts`.
     <MenuSurface.Provider value={mount}>
-      <Primitive.Root modal={local.modal ?? false} onOpenChange={local.onOpenChange}>
-        <Primitive.Trigger as={local.as ?? "div"} disabled={local.disabled} {...triggerProps} />
-        <Primitive.Portal mount={mount()}>
-          <Primitive.Content
-            class={styles.content}
-            // A right-click *inside* an open menu would otherwise open the
-            // browser's menu on top of Tori's. The hand-rolled Menu did the same.
-            onContextMenu={(e: MouseEvent) => e.preventDefault()}
-          >
-            <MenuGlide />
-            {local.menu ?? <MenuRows items={local.items ?? []} />}
-          </Primitive.Content>
-        </Primitive.Portal>
-      </Primitive.Root>
+      <MenuProvider value={menu}>
+        <Dynamic component={local.as ?? "div"} {...triggerProps} />
+        <Show when={menu.isOpen()}>
+          <Portal mount={mount()}>
+            <MenuContent
+              menu={menu}
+              placement="right-start"
+              gutter={CURSOR_GUTTER}
+              shift={CURSOR_SHIFT}
+              point={point}
+              keepFocusOnPress
+              class={styles.content}
+            >
+              <MenuGlide />
+              {local.menu ?? <MenuRows items={local.items ?? []} />}
+            </MenuContent>
+          </Portal>
+        </Show>
+      </MenuProvider>
     </MenuSurface.Provider>
   );
 }
