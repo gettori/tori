@@ -1,11 +1,13 @@
 ---
 summary: Kobalte supplies dialog, menu, tooltip and control behavior behind src lib, wrapped and styled only in src components
-status: current
+status: stale
 updated: 2026-08-12
 source: Design-system discussion following the settings-redesign planning session (2026-08-11); ticket gettori/tori#93; no code yet, decision precedes first implementation; amended by gettori/tori#95 and gettori/tori#94
 ---
 
 # Headless behavior comes from Kobalte, re-exported through `src/lib/`, styled only in `src/components/`
+
+Superseded on 2026-11-21 by [[adr_own_primitives_on_native_layers]]: Kobalte leaves and Tori owns its primitives. Kept for the reasoning behind the `src/lib` seam and the wrappers it produced.
 
 Tori's design system already owns the visual layer (tokens, roles, contrast gate, `/styleguide`); the missing layer was accessibility-correct component *behavior*: dialogs, menus and context menus, tooltips, toasts, popover, select and the native form controls (checkbox, switch, slider), tabs and toggle groups, and dismissal layering for stacked overlays. We adopt **Kobalte** (Solid-native headless primitives, WAI-ARIA APG per component) as that layer, consumed **only** through a `src/lib/` re-export module. Styled Tori components in `src/components/` compose those parts on design tokens via CSS Modules and expose Tori's own API (`ControlSize`, variants); app code imports `components/*`, never `lib/` and never `@kobalte/core` directly. A guard test (or lint rule) enforces the import boundary, in the same spirit as the `settings.rs?raw` scan tests. This is the same identity-vs-consumed-name split as [[lesson_split_identity_from_consumed_name]]: if Kobalte stalls, the swap edits `lib/` and a handful of wrappers, not the app.
 
