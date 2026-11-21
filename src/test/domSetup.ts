@@ -10,7 +10,7 @@
 // from `requestAnimationFrame`, which means the missing method surfaces as an
 // *unhandled* error after the test that caused it has already passed.
 import { afterEach } from "vite-plus/test";
-import { cleanup } from "./harness";
+import { cleanup } from "./mounted";
 import { installNativeLayers } from "./nativeLayers";
 import { installTabLayout, resetTabBarWidth } from "./tabLayout";
 

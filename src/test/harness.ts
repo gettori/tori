@@ -1,19 +1,14 @@
 import { configure, getQueriesForElement } from "@testing-library/dom";
 import type { JSX } from "solid-js";
 import { render as mount } from "solid-js/web";
+import { mounted } from "./mounted";
 
 export { createEvent, fireEvent, screen, waitFor, within } from "@testing-library/dom";
+export { cleanup } from "./mounted";
 
 // Solid 2 defers writes to a microtask, so its flush() goes here and every
 // dispatched event picks it up, the ones user-event sends included.
 configure({ eventWrapper: (dispatch) => dispatch() });
-
-interface Mounted {
-  container: HTMLElement;
-  unmount: () => void;
-}
-
-const mounted = new Set<Mounted>();
 
 export function render(ui: () => JSX.Element) {
   const container: HTMLElement = document.body.appendChild(document.createElement("div"));
@@ -26,12 +21,4 @@ export function render(ui: () => JSX.Element) {
   };
   mounted.add({ container, unmount });
   return { container, unmount, ...getQueriesForElement(container) };
-}
-
-export function cleanup() {
-  for (const { container, unmount } of mounted) {
-    unmount();
-    container.remove();
-  }
-  mounted.clear();
 }
