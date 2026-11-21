@@ -161,5 +161,97 @@ export const LEDGER: Partial<Record<IdiomClass, readonly LedgerEntry[]>> = {
       reason:
         "clears user picked tags and rescans on new roots or patterns; 2.0: createSignal(fn) for the tags, createEffect(compute, apply) for the scan",
     },
+    {
+      file: "src/components/Autopilot/Horizon.tsx",
+      count: 1,
+      reason: "cross fades scene layers on a timer; 2.0: createEffect(compute, apply) returning the timer cleanup",
+    },
+    {
+      file: "src/components/Diagram/Diagram.tsx",
+      count: 1,
+      reason: "an IntersectionObserver writes visibility; 2.0: createEffect(compute, apply) returning the disconnect",
+    },
+    {
+      file: "src/components/Dialogs/AddBranchDialog.tsx",
+      count: 2,
+      reason:
+        "an async ahead check, and a user pick dropped when its branch leaves the list; a memo would restore the pick if the branch came back; 2.0: async createMemo for ahead, createSignal(fn) for the pick",
+    },
+    {
+      file: "src/components/Dialogs/AskpassDialog.tsx",
+      count: 1,
+      reason:
+        "clears a typed secret and focuses for each prompt; 2.0: createSignal(fn) for the value, createEffect(compute, apply) for focus",
+    },
+    {
+      file: "src/components/Dialogs/AttachFolderDialog.tsx",
+      count: 1,
+      reason:
+        "inspects a folder, seeds an editable name and delays a reading hint; 2.0: createEffect(compute, apply) with the timer cleanup",
+    },
+    {
+      file: "src/components/Dialogs/CloneAccount.tsx",
+      count: 1,
+      reason: "debounced forge lookups keyed on the URL; 2.0: createEffect(compute, apply) with the timer cleanup",
+    },
+    {
+      file: "src/components/Dialogs/MoveIntoSpace.tsx",
+      count: 2,
+      reason:
+        "inspects a folder and seeds editable fields, and runs a move check; 2.0: createEffect(compute, apply) for the inspect, async createMemo for the check",
+    },
+    {
+      file: "src/components/Dialogs/NewTopicDialog.tsx",
+      count: 1,
+      reason: "debounces a stale branch probe; 2.0: createEffect(compute, apply) with the timer cleanup",
+    },
+    {
+      file: "src/components/Menu/menuCore.tsx",
+      count: 1,
+      reason: "opens a native layer once and links the parent menu; 2.0: onSettled returning the release",
+    },
+    {
+      file: "src/components/Omnibox/Omnibox.tsx",
+      count: 6,
+      reason:
+        "three one shot lazy loads, a workspace search, a theme preview, and an arrow flag reset on typing; 2.0: createEffect(compute, apply) for the loads, search and preview, createSignal(fn) for the flag",
+    },
+    {
+      file: "src/components/OverflowTabBar.tsx",
+      count: 1,
+      reason:
+        "closes a user opened menu when overflow empties; a memo would reopen it when tabs overflow again; 2.0: createSignal(fn)",
+    },
+    {
+      file: "src/components/ProjectIconPicker/ProjectIconPicker.tsx",
+      count: 1,
+      reason: "resets an editable draft when the stored icon changes; 2.0: createSignal(fn) for each draft field",
+    },
+    {
+      file: "src/components/Select/Select.tsx",
+      count: 1,
+      reason: "opens a native layer once and moves focus; 2.0: onSettled returning the release",
+    },
+    {
+      file: "src/components/SyncChip/SyncChip.tsx",
+      count: 1,
+      reason: "fetches the conflict op; 2.0: async createMemo keyed on the stop state",
+    },
+    {
+      file: "src/components/Tab/Tabs.tsx",
+      count: 1,
+      reason:
+        "falls back when the selected tab goes, notifies the owner and moves focus; 2.0: createEffect(compute, apply)",
+    },
+    {
+      file: "src/components/Toasts/Toasts.tsx",
+      count: 2,
+      reason: "removes a toast after its exit and runs its dismiss timer; 2.0: createEffect(compute, apply) for both",
+    },
+    {
+      file: "src/components/UsageStrip/UsageCard.tsx",
+      count: 1,
+      reason: "resets a user pick on a new profile; 2.0: createSignal(fn) keyed on the profile",
+    },
   ],
 };
