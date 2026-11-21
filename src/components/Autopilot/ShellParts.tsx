@@ -1,5 +1,5 @@
 import { For, Show, createSignal, type JSX } from "solid-js";
-import { ArrowUp, Bell, TriangleAlert } from "lucide-solid";
+import { ArrowUp, Bell, TriangleAlert } from "../Icon/icons";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
 import { WheelGlyph } from "./Wheel";

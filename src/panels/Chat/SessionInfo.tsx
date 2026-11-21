@@ -2,7 +2,7 @@ import { For, Show, createMemo, createResource, createSignal, type JSX } from "s
 import { invoke } from "@tauri-apps/api/core";
 import type { ChatAccount, McpServer } from "../../utils/chatTypes";
 import type { ChatPlugin, PublishedCapability } from "../../utils/chatCapabilities";
-import { ChevronRight, Plus } from "lucide-solid";
+import { ChevronRight, Plus } from "../../components/Icon/icons";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
 import Tooltip from "../../components/Tooltip/Tooltip";

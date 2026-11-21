@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { For } from "solid-js";
-import { Settings } from "lucide-solid";
+import { Settings } from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import Button, { type ButtonVariant, type ButtonSize } from "./Button";
 

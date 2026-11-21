@@ -1,4 +1,4 @@
-import { PanelLeft } from "lucide-solid";
+import { PanelLeft } from "../Icon/icons";
 import { ToggleGroup } from "../ToggleGroup/ToggleGroup";
 import Icon from "../Icon/Icon";
 import IconButton from "../IconButton/IconButton";

@@ -1,5 +1,5 @@
 import { Show, onMount } from "solid-js";
-import { Square, Volume2 } from "lucide-solid";
+import { Square, Volume2 } from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import IconButton from "../IconButton/IconButton";
 import Tooltip from "../Tooltip/Tooltip";

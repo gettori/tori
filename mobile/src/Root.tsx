@@ -1,5 +1,5 @@
 import { For, Match, Show, Switch, createSignal } from "solid-js";
-import { ChevronRight, Plus, Search, Settings, Tag } from "lucide-solid";
+import { ChevronRight, Plus, Search, Settings, Tag } from "../../src/components/Icon/icons";
 import Icon from "../../src/components/Icon/Icon";
 import { CheckMark, QuestionMark, WorkingMark } from "../../src/components/Icon/statusMarks";
 import StatusBubble from "../../src/panels/LeftSidebar/StatusBubble";

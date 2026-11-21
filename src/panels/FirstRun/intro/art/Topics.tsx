@@ -17,8 +17,8 @@ import {
   Star,
   Tag,
   TriangleAlert,
-  type LucideIcon,
-} from "lucide-solid";
+  type IconGlyph,
+} from "../../../../components/Icon/icons";
 import Button from "../../../../components/Button/Button";
 import Chevron from "../../../../components/Chevron/Chevron";
 import Icon from "../../../../components/Icon/Icon";
@@ -243,7 +243,7 @@ function EditorColumn() {
   );
 }
 
-type RightTab = { mode: string; label: string; icon: LucideIcon; count?: number };
+type RightTab = { mode: string; label: string; icon: IconGlyph; count?: number };
 
 const RIGHT_TABS: RightTab[] = [
   { mode: "files", label: "Files", icon: Files },

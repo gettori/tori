@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { Bot } from "lucide-solid";
+import { Bot } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import styles from "./Chat.module.css";
 

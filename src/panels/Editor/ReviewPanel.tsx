@@ -139,7 +139,7 @@ import {
   RefreshCw,
   Trash2,
   Undo2,
-} from "lucide-solid";
+} from "../../components/Icon/icons";
 import { diffTabId, syntheticId } from "../../utils/syntheticTabs";
 import styles from "./ReviewPanel.module.css";
 

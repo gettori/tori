@@ -10,7 +10,7 @@ import {
 } from "@codemirror/view";
 import { Annotation, EditorState, RangeSetBuilder, StateEffect, StateField, type Extension } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { Ellipsis, RefreshCw, Rows3 } from "lucide-solid";
+import { Ellipsis, RefreshCw, Rows3 } from "../../components/Icon/icons";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";

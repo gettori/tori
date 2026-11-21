@@ -1,14 +1,14 @@
 import { splitProps } from "solid-js";
 import { Dynamic } from "solid-js/web";
-import type { LucideIcon, LucideProps } from "lucide-solid";
+import type { IconGlyph, IconGlyphProps } from "./createIcon";
 
-export interface IconProps extends LucideProps {
-  /** A Lucide icon component, e.g. `import { Settings } from "lucide-solid"`. */
-  icon: LucideIcon;
+export interface IconProps extends IconGlyphProps {
+  /** An icon component, e.g. `import { Settings } from "./icons"`. */
+  icon: IconGlyph;
 }
 
-/** Thin wrapper around a Lucide icon that applies the app's icon defaults: 16px
- *  size and a 1.75 stroke for a refined (not chunky) look. Any Lucide prop
+/** Thin wrapper around an icon that applies the app's icon defaults: 16px
+ *  size and a 1.75 stroke for a refined (not chunky) look. Any glyph prop
  *  (`size`, `strokeWidth`, `color`, `class`, ...) overrides the default. Color
  *  inherits `currentColor`, so callers tint via CSS `color`. */
 export default function Icon(props: IconProps) {

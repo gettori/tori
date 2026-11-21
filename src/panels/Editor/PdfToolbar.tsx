@@ -1,4 +1,4 @@
-import { ZoomIn, ZoomOut } from "lucide-solid";
+import { ZoomIn, ZoomOut } from "../../components/Icon/icons";
 import { createMemo } from "solid-js";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";

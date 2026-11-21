@@ -1,6 +1,6 @@
 import { createResource, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { Footprints } from "lucide-solid";
+import { Footprints } from "../../components/Icon/icons";
 import {
   ASK_WHY,
   emitWith,

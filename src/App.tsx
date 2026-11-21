@@ -66,7 +66,7 @@ import PhoneIndicator from "./components/PhoneIndicator/PhoneIndicator";
 import DevBadge from "./components/DevBadge/DevBadge";
 import Button from "./components/Button/Button";
 import Icon from "./components/Icon/Icon";
-import { Settings as SettingsIcon } from "lucide-solid";
+import { Settings as SettingsIcon } from "./components/Icon/icons";
 import {
   on as onEvent,
   onWith as onEventWith,

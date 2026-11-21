@@ -241,7 +241,7 @@ import {
   GitPullRequest,
   Play,
   Square,
-} from "lucide-solid";
+} from "../../components/Icon/icons";
 import { BranchMark, WorktreeMark } from "../../components/Icon/gitMarks";
 import {
   attemptFolderName,

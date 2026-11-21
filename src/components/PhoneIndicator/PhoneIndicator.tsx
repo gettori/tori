@@ -1,7 +1,7 @@
 import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Smartphone } from "lucide-solid";
+import { Smartphone } from "../Icon/icons";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
 import Popover from "../Popover/Popover";

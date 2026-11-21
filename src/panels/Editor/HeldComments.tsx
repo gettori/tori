@@ -1,5 +1,5 @@
 import { createSignal, For, Show } from "solid-js";
-import { X } from "lucide-solid";
+import { X } from "../../components/Icon/icons";
 import { requestSend, composeHunkComments, type SessionTarget } from "../../utils/safeSend";
 import { hunkCommentsBlocks } from "../../utils/chatCompose";
 import { clearHeld, dropHeld, heldFor, type HeldComment } from "../../utils/heldComments";

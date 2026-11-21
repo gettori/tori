@@ -7,7 +7,7 @@ import IconButton from "../../components/IconButton/IconButton";
 import Button from "../../components/Button/Button";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import Icon from "../../components/Icon/Icon";
-import { RefreshCw } from "lucide-solid";
+import { RefreshCw } from "../../components/Icon/icons";
 import styles from "./FileHistory.module.css";
 
 /** One backend page. The list grows by this much per "Load more". */

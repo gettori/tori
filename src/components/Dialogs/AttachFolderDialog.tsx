@@ -1,6 +1,6 @@
 import { createEffect, createSignal, For, on, onCleanup, Show, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { Ban, Folder, FolderInput, GitBranch, GitFork, type LucideIcon } from "lucide-solid";
+import { Ban, Folder, FolderInput, GitBranch, GitFork, type IconGlyph } from "../Icon/icons";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
 import Icon from "../Icon/Icon";
@@ -34,7 +34,7 @@ export function remoteLabel(url: string): string {
     .replace(/\.git$/, "");
 }
 
-function Card(props: { icon: LucideIcon; heading: string; description: string; children?: JSX.Element }) {
+function Card(props: { icon: IconGlyph; heading: string; description: string; children?: JSX.Element }) {
   return (
     <div class={styles.detectCard}>
       <span class={styles.detectIcon}>

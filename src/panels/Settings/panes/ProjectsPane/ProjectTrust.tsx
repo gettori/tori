@@ -1,6 +1,6 @@
 import { For, Show, createResource, createSignal, onCleanup } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { ChevronRight, ListX, ShieldCheck, ShieldOff, TriangleAlert } from "lucide-solid";
+import { ChevronRight, ListX, ShieldCheck, ShieldOff, TriangleAlert } from "../../../../components/Icon/icons";
 
 import Button from "../../../../components/Button/Button";
 import ConfirmDialog from "../../../../components/Dialogs/ConfirmDialog";

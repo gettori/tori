@@ -1,5 +1,5 @@
 import { splitProps, type Component } from "solid-js";
-import { FolderGit2, GitMerge } from "lucide-solid";
+import { FolderGit2, GitMerge } from "./icons";
 import Icon, { type IconProps } from "./Icon";
 import { brandMark } from "./agentMarks";
 import styles from "./gitMarks.module.css";

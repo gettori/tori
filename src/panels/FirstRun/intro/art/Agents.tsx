@@ -15,8 +15,8 @@ import {
   Smartphone,
   WandSparkles,
   X,
-  type LucideIcon,
-} from "lucide-solid";
+  type IconGlyph,
+} from "../../../../components/Icon/icons";
 import { WheelGlyph } from "../../../../components/Autopilot/Wheel";
 import Button from "../../../../components/Button/Button";
 import { DialogSurface } from "../../../../components/Dialog/surface";
@@ -34,7 +34,7 @@ import { SETTING_TABS } from "../../../../utils/settingsCatalog";
 import MiniWindow from "./MiniWindow";
 import styles from "./Agents.module.css";
 
-const TAB_ICONS: Record<string, LucideIcon> = {
+const TAB_ICONS: Record<string, IconGlyph> = {
   bot: Bot,
   "message-square": MessageSquare,
   "file-code": FileCode,
@@ -44,7 +44,7 @@ const TAB_ICONS: Record<string, LucideIcon> = {
   "wand-sparkles": WandSparkles,
   "shield-check": ShieldCheck,
   palette: Palette,
-  wheel: WheelGlyph as LucideIcon,
+  wheel: WheelGlyph as IconGlyph,
   plug: Plug,
   "columns-2": Columns2,
   "folder-cog": FolderCog,

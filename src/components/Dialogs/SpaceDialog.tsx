@@ -1,5 +1,5 @@
 import { createSignal, Show } from "solid-js";
-import { Lock } from "lucide-solid";
+import { Lock } from "../Icon/icons";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";

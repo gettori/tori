@@ -1,5 +1,5 @@
 import { For, Show, type JSX } from "solid-js";
-import { ArrowRight, ChevronRight, Folder, Search, SquareTerminal } from "lucide-solid";
+import { ArrowRight, ChevronRight, Folder, Search, SquareTerminal } from "../../../../components/Icon/icons";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
 import ProjectIcon from "../../../../components/Icon/ProjectIcon";

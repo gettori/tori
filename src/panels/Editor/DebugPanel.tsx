@@ -11,7 +11,7 @@ import {
   RotateCcw,
   Square,
   X,
-} from "lucide-solid";
+} from "../../components/Icon/icons";
 
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";

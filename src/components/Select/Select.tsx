@@ -10,7 +10,7 @@ import {
   type JSX,
 } from "solid-js";
 import { Portal } from "solid-js/web";
-import { Check, ChevronsUpDown } from "lucide-solid";
+import { Check, ChevronsUpDown } from "../Icon/icons";
 import { createTypeahead } from "../../lib/keyboard";
 import { anchorLayer, openLayer } from "../../lib/layer";
 import { useDialogSurface } from "../Dialog/surface";

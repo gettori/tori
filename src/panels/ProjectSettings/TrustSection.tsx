@@ -1,7 +1,7 @@
 import { createResource, createSignal, onCleanup, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 
-import { TriangleAlert } from "lucide-solid";
+import { TriangleAlert } from "../../components/Icon/icons";
 
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";

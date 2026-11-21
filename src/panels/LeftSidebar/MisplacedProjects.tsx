@@ -1,5 +1,5 @@
 import { createSignal, For, Show } from "solid-js";
-import { FolderInput } from "lucide-solid";
+import { FolderInput } from "../../components/Icon/icons";
 import Button from "../../components/Button/Button";
 import Chevron from "../../components/Chevron/Chevron";
 import Icon from "../../components/Icon/Icon";

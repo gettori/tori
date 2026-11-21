@@ -1,6 +1,6 @@
 import { For, Show, createEffect, createResource, createSignal, on, onCleanup } from "solid-js";
 import { createStore, produce } from "solid-js/store";
-import { ArrowUp, ChevronLeft, Ellipsis, Paperclip, X } from "lucide-solid";
+import { ArrowUp, ChevronLeft, Ellipsis, Paperclip, X } from "../../src/components/Icon/icons";
 import Icon from "../../src/components/Icon/Icon";
 import MessageList from "../../src/panels/Chat/MessageList";
 import PlanCard from "../../src/panels/Chat/PlanCard";

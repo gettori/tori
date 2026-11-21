@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { Check } from "lucide-solid";
+import { Check } from "../../../../components/Icon/icons";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
 import { openInBrowser } from "./deviceFlow";

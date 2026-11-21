@@ -1,5 +1,5 @@
 import { For, Show, type JSX } from "solid-js";
-import { BookOpen, CaseSensitive, ListFilter, Regex, WholeWord, type LucideIcon } from "lucide-solid";
+import { BookOpen, CaseSensitive, ListFilter, Regex, WholeWord, type IconGlyph } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import { isUnsupported, unsupportedReason, type SearchOptions, type ToggleKey } from "../../utils/searchOptions";
@@ -8,7 +8,7 @@ import styles from "./SearchFields.module.css";
 /** A toggle drawn inside a field, VS Code's Aa / ab / .* look. Without
  *  `active` it is a plain action in the same dress. */
 export function InlineToggle(props: {
-  icon: LucideIcon;
+  icon: IconGlyph;
   label: string;
   active?: boolean;
   disabled?: boolean;
@@ -64,7 +64,7 @@ export function Field(props: {
   );
 }
 
-const MATCH_TOGGLES: { key: Exclude<ToggleKey, "noIgnore">; icon: LucideIcon; label: string }[] = [
+const MATCH_TOGGLES: { key: Exclude<ToggleKey, "noIgnore">; icon: IconGlyph; label: string }[] = [
   { key: "case", icon: CaseSensitive, label: "Match Case" },
   { key: "wholeWord", icon: WholeWord, label: "Match Whole Word" },
   { key: "regex", icon: Regex, label: "Use Regular Expression" },

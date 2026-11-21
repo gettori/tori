@@ -1,5 +1,5 @@
 import { createEffect, createUniqueId, Show, type JSX } from "solid-js";
-import { Check, Minus } from "lucide-solid";
+import { Check, Minus } from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import styles from "./Checkbox.module.css";
 

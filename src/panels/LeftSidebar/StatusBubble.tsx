@@ -1,5 +1,5 @@
 import { createMemo, Show, type JSX } from "solid-js";
-import { CircleDashed, GitPullRequest } from "lucide-solid";
+import { CircleDashed, GitPullRequest } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import { CheckMark, QuestionMark, WorkingMark } from "../../components/Icon/statusMarks";
 import type { Rollup } from "../../utils/sessionStatus";

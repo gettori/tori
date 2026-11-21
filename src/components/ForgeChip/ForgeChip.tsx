@@ -17,8 +17,8 @@ import {
   CircleDotDashed,
   MessageSquareWarning,
   MessageSquareCheck,
-  type LucideIcon,
-} from "lucide-solid";
+  type IconGlyph,
+} from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import { chipDraws, type BadgeTone, type ForgeChip, type PrChipState } from "../../utils/forgeChip";
 import styles from "./ForgeChip.module.css";
@@ -26,7 +26,7 @@ import styles from "./ForgeChip.module.css";
 // The glyph for a pull-request state. `none` is the branch with no PR: an
 // outline of the same shape, so the row reads as "this could have one" rather
 // than as a different kind of thing.
-function prIcon(state: PrChipState): LucideIcon {
+function prIcon(state: PrChipState): IconGlyph {
   switch (state) {
     case "draft":
       return GitPullRequestDraft;
@@ -42,12 +42,12 @@ function prIcon(state: PrChipState): LucideIcon {
 // Checks and the review verdict get different glyph families on purpose: both
 // can be green at once, and two identical ticks side by side say nothing about
 // which of the two passed.
-const CHECK_ICON: Record<BadgeTone, LucideIcon> = {
+const CHECK_ICON: Record<BadgeTone, IconGlyph> = {
   good: CircleCheck,
   bad: CircleX,
   busy: CircleDotDashed,
 };
-const REVIEW_ICON: Record<BadgeTone, LucideIcon> = {
+const REVIEW_ICON: Record<BadgeTone, IconGlyph> = {
   good: MessageSquareCheck,
   bad: MessageSquareWarning,
   busy: CircleDotDashed,

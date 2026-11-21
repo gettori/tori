@@ -47,8 +47,8 @@ import {
   MessageSquare,
   RefreshCw,
   SquarePen,
-  type LucideIcon,
-} from "lucide-solid";
+  type IconGlyph,
+} from "../../../components/Icon/icons";
 import {
   emitWith,
   onWith,
@@ -134,7 +134,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 /// The tone names the failing count rather than reporting that some are
 /// failing, which is the difference between a row that answers and one that
 /// sends the reader to github.com to find out how bad it is.
-function checksLine(checks: CheckRollup): { tone: "good" | "bad" | "busy"; text: string; icon: LucideIcon } | null {
+function checksLine(checks: CheckRollup): { tone: "good" | "bad" | "busy"; text: string; icon: IconGlyph } | null {
   switch (checks.state) {
     case "failure":
       return { tone: "bad", icon: CircleX, text: checksSentence(checks) };
@@ -1201,7 +1201,7 @@ export default function PullsPanel(props: {
 /// sentence they never have to read twice.
 const CHECK_GROUPS: {
   state: CheckState;
-  icon: LucideIcon;
+  icon: IconGlyph;
   title: (n: number) => string;
 }[] = [
   { state: "failure", icon: CircleX, title: (n) => `${plural(n, "failing check")}` },
