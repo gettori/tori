@@ -19,11 +19,8 @@ const toggle = () => screen.getByRole("switch") as HTMLInputElement;
 describe("Switch", () => {
   it("renders a native checkbox input carrying role=switch", () => {
     renderControlled();
-    // Verified against the installed Kobalte 0.13.13: the primitive sets
-    // role="switch" on a real `<input type="checkbox">`. That pairing is the
-    // whole reason Space toggles it with no JS of ours while screen readers
-    // still announce a switch, and it is what lets the migrated Settings tests
-    // keep querying an input.
+    // `type="checkbox"` is what makes Space toggle it with no JS of ours, and
+    // the role is what makes screen readers announce a switch.
     expect(toggle().tagName).toBe("INPUT");
     expect(toggle().getAttribute("type")).toBe("checkbox");
   });
@@ -95,8 +92,7 @@ describe("Switch", () => {
 
   // The tooltip hangs off the visible track, not off the input: the input is
   // hidden at 1px, so a popper anchored there would open nowhere near the
-  // switch. `data-closed` is Kobalte's own mark on a tooltip trigger, which is
-  // what says the machinery landed on that element and not on another.
+  // switch.
   it("puts a tooltip on the track, and leaves the switch's own name alone", () => {
     const { container } = render(() => (
       <Switch checked={false} onChange={() => {}} aria-label="Claude" tooltip="Enable in Tori" />

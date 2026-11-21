@@ -20,12 +20,8 @@ const box = () => screen.getByRole("checkbox") as HTMLInputElement;
 describe("Checkbox", () => {
   it("renders a native checkbox input, so Space toggles it without any JS of ours", () => {
     renderControlled();
-    // Kobalte has no Space handler on this primitive (verified against the
-    // installed 0.13.13): the key works because the element really is an
-    // `<input type="checkbox">`. Asserting the element type is asserting the
-    // keyboard behaviour at its actual source - jsdom does not synthesize the
-    // click a real browser generates from Space, so a keyDown test here would
-    // pass or fail on jsdom's fidelity rather than on the wrapper.
+    // jsdom does not synthesize the click a browser generates from Space, so
+    // the element type is the assertion a keyDown test could not make.
     expect(box().tagName).toBe("INPUT");
     expect(box().getAttribute("type")).toBe("checkbox");
   });

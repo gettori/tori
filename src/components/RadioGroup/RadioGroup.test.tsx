@@ -30,11 +30,8 @@ const radio = (name: string) => screen.getByRole("radio", { name }) as HTMLInput
 describe("RadioGroup", () => {
   it("renders native radio inputs, so the arrow keys work without any JS of ours", () => {
     renderControlled();
-    // Kobalte's roving focus is built on a real `<input type="radio">` group
-    // (verified against the installed 0.13.13): arrows move because the
-    // elements really are radios sharing a name. Asserting the element type is
-    // asserting the keyboard behaviour at its actual source, since jsdom does
-    // not synthesize the selection a real browser makes from an arrow key.
+    // jsdom does not synthesize the selection a browser makes from an arrow
+    // key, so the element type is the assertion a keyDown test could not make.
     const radios = screen.getAllByRole("radio") as HTMLInputElement[];
     expect(radios).toHaveLength(3);
     for (const el of radios) {
@@ -88,11 +85,6 @@ describe("RadioGroup", () => {
     // Controlled means the DOM follows the prop, not the click. A call site
     // whose handler refuses the change must not be left showing a state its
     // store never took.
-    //
-    // This is the test that caught the wrapper handing Kobalte `undefined` for
-    // an unanswered group: `undefined` is Kobalte's uncontrolled switch, and
-    // under it this assertion failed with the radio ticked. The empty string
-    // keeps it controlled. Do not "simplify" that back to `undefined`.
     const onChange = vi.fn();
     render(() => <RadioGroup options={OPTIONS} value={null} onChange={onChange} label="Pick" />);
 
