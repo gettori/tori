@@ -8,17 +8,9 @@ import Combobox, { type ComboboxGroup, type ComboboxOption } from "./Combobox";
 // accessibility tree rather than of a CSS Module class, per
 // lesson_characterize_the_contract_not_the_shape.
 //
-// Two of these cases exist because the primitive does *not* do the thing on its
-// own, and would regress silently if the wrapper's `Bridge` were ever deleted
-// as dead code: Kobalte only highlights a row inside its own `open()`, which a
-// combobox that is open from birth never calls, and it clears the highlight on
-// every keystroke. "starts on the first row" and "keeps the top match under
-// Enter while typing" are those two.
-//
-// The third is a genuine change of shape from the hand-rolled pickers: the
-// active row is `data-highlighted` and `aria-activedescendant`, *not*
-// `aria-selected`. In a combobox `aria-selected` means the committed value, and
-// both consumers commit and close, so no visible row ever carries it.
+// The active row is `data-highlighted` and `aria-activedescendant`, *not*
+// `aria-selected`. In a combobox `aria-selected` means the committed value, which
+// these surfaces never hold, so no visible row carries it.
 
 const OPTIONS: ComboboxOption[] = [
   { value: "main", label: "main" },
@@ -150,9 +142,6 @@ describe("Combobox", () => {
       expect(screen.getAllByRole("option").map((r) => r.textContent)).toEqual(["alpha", "beta"]);
     });
 
-    // Upstream Kobalte keys every section `""` and renders through `<Key by="key">`,
-    // so an update drew one heading in every heading's place. This fails if a
-    // Kobalte upgrade drops patches/@kobalte__core@0.13.13.patch.
     it("keeps every heading when a group is added to a list that already had one", () => {
       const [groups, setGroups] = createSignal<ComboboxGroup[]>([
         { label: "Recently visited", options: [{ value: "a", label: "alpha" }] },
@@ -178,17 +167,11 @@ describe("Combobox", () => {
       expect(input().getAttribute("aria-expanded")).toBe("true");
     });
 
-    // The prop survives only because Kobalte spreads its own `others` last over
-    // the `aria-label` it computes from context. Pinned here so a reordering
-    // upstream fails loudly instead of quietly leaving the list unnamed.
     it("names the list with the caller's label", () => {
       host();
       expect(screen.getByRole("listbox").getAttribute("aria-label")).toBe("Branches");
     });
 
-    // Withdrawing the list also withdraws Kobalte's count announcement, which is
-    // gated on the open state, so without this the one moment a filter has
-    // nothing to say is the one moment it says nothing.
     it("announces that nothing matched, rather than going silent", () => {
       const { input } = host();
       type(input(), "zzz");
@@ -228,7 +211,7 @@ describe("Combobox", () => {
     // `Select.test.tsx` and `Dropdown.test.tsx` record: axe's
     // `controlsWithinPopup` declines to judge `aria-controls` on any element
     // carrying `aria-haspopup`, because it cannot tell whether the popup is
-    // open, in a real browser as much as here. Kobalte's combobox input carries
+    // open, in a real browser as much as here. The combobox input carries
     // both. What the rule would have checked is asserted directly in "announces
     // the list as a listbox the filter drives" instead.
     it("has no accessibility violations", async () => {
