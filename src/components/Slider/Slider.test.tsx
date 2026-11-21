@@ -4,12 +4,6 @@ import { createSignal } from "solid-js";
 import Slider from "./Slider";
 import { expectNoAxeViolations } from "../../test/axe";
 
-// Pointer dragging is not testable here and deliberately untested: Kobalte maps
-// a pointer position onto a value through getBoundingClientRect, and jsdom
-// reports a zero-sized track, so every drag would land on the same value. The
-// keyboard path runs through Kobalte's own onKeyDown (verified present in
-// 0.13.13's slider chunk) and exercises the same value pipeline, so that is
-// what this suite drives.
 function renderControlled(over: Partial<Parameters<typeof Slider>[0]> = {}) {
   const [value, setValue] = createSignal(1);
   const r = render(() => (
@@ -73,9 +67,6 @@ describe("Slider", () => {
   });
 
   it("clamps at both ends rather than running past them", () => {
-    // Driven with the arrows rather than Home/End: those two route through the
-    // root's own handlers rather than the thumb's, and the arrows exercise the
-    // clamp on the same path a user actually nudges the value along.
     const { value } = renderControlled();
     const thumb = screen.getByRole("slider");
 
@@ -94,6 +85,38 @@ describe("Slider", () => {
 
     fireEvent.keyDown(screen.getByRole("slider"), { key: "ArrowRight" });
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("follows a drag past the end and back, and presses on the track", () => {
+    const { value } = renderControlled();
+    const thumb = screen.getByRole("slider");
+    const track = thumb.parentElement!;
+    // jsdom lays nothing out and has no pointer capture.
+    track.getBoundingClientRect = () => new DOMRect(0, 0, 110, 4);
+    const captured = new Set<number>();
+    for (const el of [track, thumb]) {
+      el.setPointerCapture = (id) => void captured.add(id);
+      el.hasPointerCapture = (id) => captured.has(id);
+      el.releasePointerCapture = (id) => void captured.delete(id);
+    }
+    const pointer = (type: string, el: HTMLElement, clientX: number) =>
+      el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, button: 0, pointerId: 1, clientX }));
+
+    pointer("pointerdown", thumb, 30);
+    expect(document.activeElement).toBe(thumb);
+    pointer("pointermove", thumb, 60);
+    expect(value()).toBeCloseTo(1.15, 5);
+    pointer("pointermove", thumb, 500);
+    expect(value()).toBeCloseTo(1.4, 5);
+    pointer("pointermove", thumb, 60);
+    expect(value()).toBeCloseTo(1.15, 5);
+    pointer("pointerup", thumb, 60);
+    pointer("pointermove", thumb, 90);
+    expect(value()).toBeCloseTo(1.15, 5);
+
+    pointer("pointerdown", track, 20);
+    expect(value()).toBeCloseTo(0.95, 5);
+    pointer("pointerup", track, 20);
   });
 
   it("passes the axe gate", async () => {

@@ -51,9 +51,7 @@
 
 /* Visually hidden, never removed: the native input is what the arrow keys move
    between, what the label points at, and what `getByRole("radio")` finds.
-   `display: none` or `visibility: hidden` would take all three away. Kobalte
-   positions it over the control, so a pointer press lands on the input itself.
-   Same idiom as Checkbox.module.css. */
+   `display: none` or `visibility: hidden` would take all three away. */
 .input {
   position: absolute;
   width: 1px;
@@ -110,7 +108,7 @@
   border-color: var(--fg-subtle);
 }
 
-/* Force-mounted, so the hidden state is CSS, and a transition so a pane shown
+/* Always mounted, so the hidden state is CSS, and a transition so a pane shown
    again does not replay the dot. A drawn dot rather than an icon: at 6px a
    Lucide glyph is mush, and the shape carries no meaning a circle does not. */
 .indicator {
