@@ -1,6 +1,15 @@
-import { createSignal, Show, type JSX } from "solid-js";
-import { Dialog as Primitive } from "../../lib/dialog";
-import { hasInteractiveLayer, takeEscape } from "../../lib/layer";
+import {
+  createEffect,
+  createSignal,
+  createUniqueId,
+  onCleanup,
+  Show,
+  untrack,
+  type Accessor,
+  type JSX,
+} from "solid-js";
+import { Portal } from "solid-js/web";
+import { createPresence, openLayer } from "../../lib/layer";
 import { DialogSurface } from "./surface";
 import styles from "./Dialog.module.css";
 
@@ -27,7 +36,7 @@ export interface DialogProps {
    *  has focus: a gated confirm button is `disabled` (so the browser fires no
    *  click on it), and a dialog that names no `initialFocus`, or names one that
    *  resolves to nothing, leaves focus on the panel where no control answers at
-   *  all. Escape is not this handler's business - Kobalte closes on it and
+   *  all. Escape is not this handler's business: the dialog closes on it and
    *  reports that through `onClose`, so handling it here would fire twice. */
   onKeyDown?: (e: KeyboardEvent) => void;
   /** The button row, pinned below the scrolling body. */
@@ -38,137 +47,126 @@ export interface DialogProps {
   children?: JSX.Element;
 }
 
-/**
- * The one modal surface: Kobalte's dialog behind Tori's chrome and Tori's API.
- * Every dialog in the app composes this, so the Portal, the backdrop, Escape,
- * the focus trap and focus restore are written once instead of fourteen times.
- *
- * Three things Kobalte does not do for this app, and this wrapper does:
- *
- * **`aria-modal` is ours.** `DialogContent` sets `role="dialog"` and wires
- * `aria-labelledby`/`aria-describedby`, but modality is expressed by
- * aria-hiding everything else, not by the attribute. Tori asserts the attribute
- * in its own tests, so it is passed explicitly.
- *
- * **Focus restore is ours.** In modal mode Kobalte's close handler calls
- * `preventDefault()` and then focuses its `Trigger`. Tori's dialogs are opened
- * from app state (`askConfirm`, a hotkey, an `askpass://prompt` event) and have
- * no trigger element, so that restore is a no-op and the default one has
- * already been suppressed: focus would land nowhere and the next keystroke
- * would go to `document.body` rather than back to the terminal. So the element
- * that had focus at open time is captured and restored here.
- *
- * Both auto-focus events are dispatched by Kobalte's focus scope, and the
- * unmount one fires from a `setTimeout(0)` after cleanup, so a test asserting
- * on restored focus has to await a macrotask. When the element captured at open
- * time is gone by the time the dialog closes, which is every dialog opened from
- * a context-menu row, the restore is a no-op and focus lands on `<body>`.
- *
- * **A key seam is ours.** `onKeyDown` reaches the whole panel, including the
- * actions row, which is this component's markup rather than the caller's
- * children. A dialog whose confirm is gated cannot lean on the browser clicking
- * its focused button (a `disabled` button is not clicked), and one whose
- * `initialFocus` resolves to nothing leaves focus on the panel, where no
- * control answers at all. See `DebugTargetDialog` in file mode for both at once.
- */
-export default function Dialog(props: DialogProps) {
-  let panel: HTMLElement | undefined;
-  let restoreTo: HTMLElement | null = null;
-  // The same element as `panel`, published reactively for whatever inside the
-  // dialog has to portal into it rather than onto the body (see surface.ts).
-  // A plain `let` cannot serve: the panel does not exist when the children
-  // first run, so a consumer reading it once would read `undefined` forever.
-  const [surface, setSurface] = createSignal<HTMLElement>();
+// Its own component so the effect runs after the portal has connected it:
+// showModal throws on a node that is not in the document.
+function DialogPanel(props: {
+  dialog: DialogProps;
+  surface: Accessor<HTMLDialogElement | undefined>;
+  onSurface: (el: HTMLDialogElement | undefined) => void;
+  closed: boolean;
+}) {
+  const id = createUniqueId();
+  const titleId = `dialog-${id}-title`;
+  const descriptionId = `dialog-${id}-description`;
+  let panel!: HTMLDialogElement;
 
-  function onOpenAutoFocus(e: Event) {
-    // Kobalte dispatches this *before* focusing anything, so the active element
-    // is still whatever the dialog interrupted.
-    const previous = document.activeElement;
-    restoreTo = previous instanceof HTMLElement && previous !== document.body ? previous : null;
+  createEffect(() =>
+    untrack(() => {
+      // Not the pressed opener: in WebKit that would pop its tooltip on close.
+      const active = document.activeElement;
+      const restoreTo = active instanceof HTMLElement && active !== document.body ? active : null;
+      const release = openLayer({
+        element: panel,
+        modal: true,
+        returnFocus: () => restoreTo,
+        show: () => {
+          // Inert while opening, or showModal focuses the first control and fires its handlers.
+          panel.inert = true;
+          panel.showModal();
+          panel.inert = false;
+          (props.dialog.initialFocus?.() ?? panel).focus({ preventScroll: true });
+          // A disabled confirm in a dialog that opens busy refuses focus.
+          if (!panel.contains(document.activeElement)) panel.focus({ preventScroll: true });
+        },
+        hide: () => panel.close(),
+        onDismiss: () => {
+          if (props.dialog.open) props.dialog.onClose();
+        },
+        closing: () => !props.dialog.open,
+      });
+      onCleanup(release);
+    }),
+  );
+  onCleanup(() => props.onSurface(undefined));
 
-    e.preventDefault();
-    (props.initialFocus?.() ?? panel)?.focus({ preventScroll: true });
-
-    // The named element can refuse focus, and the common way is being
-    // `disabled`: a dialog that names its confirm button and opens in a busy
-    // state (a removal already running, see WorktreeRemoveDialog) names a
-    // button the browser will not focus. Without this, focus stays on whatever
-    // was outside the dialog, the trap has nothing to hold, and closing a
-    // dialog stacked on top of this one restores focus to nowhere.
-    if (panel && !panel.contains(document.activeElement)) {
-      panel.focus({ preventScroll: true });
-    }
-  }
-
-  function onCloseAutoFocus(e: Event) {
-    // Already prevented means the focus scope found focus outside the panel on
-    // something focusable: something else deliberately took it, so leave it.
-    if (e.defaultPrevented) {
-      restoreTo = null;
-      return;
-    }
-    e.preventDefault();
-    restoreTo?.focus({ preventScroll: true });
-    restoreTo = null;
-  }
+  const panelClass = () =>
+    [
+      props.dialog.class,
+      styles.panel,
+      styles[props.dialog.size ?? "confirm"],
+      props.dialog.placement === "top" && styles.top,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  const titleClass = () =>
+    [props.dialog.titleHidden ? styles.titleHidden : styles.title, props.dialog.lead && styles.titleLed]
+      .filter(Boolean)
+      .join(" ");
 
   return (
-    <Primitive.Root
-      open={props.open}
-      onOpenChange={(open) => {
-        if (!open) props.onClose();
+    <dialog
+      ref={(el) => {
+        panel = el;
+        props.onSurface(el);
       }}
+      role="dialog"
+      // The panel is the focus target when a dialog names none, which Solid's types forbid.
+      {...{ tabindex: -1 as never }}
+      aria-modal="true"
+      aria-labelledby={titleId}
+      aria-describedby={props.dialog.description ? descriptionId : undefined}
+      data-expanded={props.closed ? undefined : ""}
+      data-closed={props.closed ? "" : undefined}
+      class={panelClass()}
+      onKeyDown={(e) => props.dialog.onKeyDown?.(e)}
     >
-      <Primitive.Portal>
-        <Primitive.Overlay class={styles.backdrop} />
-        <Primitive.Content
-          ref={(el: HTMLElement) => {
-            panel = el;
-            setSurface(el);
-          }}
-          aria-modal="true"
-          class={props.class}
-          classList={{
-            [styles.panel]: true,
-            [styles[props.size ?? "confirm"]]: true,
-            [styles.top]: props.placement === "top",
-          }}
-          onOpenAutoFocus={onOpenAutoFocus}
-          onCloseAutoFocus={onCloseAutoFocus}
-          onEscapeKeyDown={takeEscape}
-          onPointerDownOutside={(e: Event) => {
-            if (hasInteractiveLayer()) e.preventDefault();
-          }}
-          onKeyDown={(e: KeyboardEvent) => props.onKeyDown?.(e)}
-        >
-          <DialogSurface.Provider value={surface}>
-            <div class={props.titleHidden && !props.description ? styles.headHidden : styles.head}>
-              <Primitive.Title
-                class={props.titleHidden ? styles.titleHidden : styles.title}
-                classList={{ [styles.titleLed]: !!props.lead }}
-              >
-                <Show when={props.lead}>
-                  <span class={styles.lead} aria-hidden="true">
-                    {props.lead}
-                  </span>
-                </Show>
-                {props.title}
-              </Primitive.Title>
-              <Show when={props.description}>
-                <Primitive.Description class={styles.description}>{props.description}</Primitive.Description>
-              </Show>
-            </div>
-            <Show when={props.children != null}>
-              <div class={styles.body} tabindex={0}>
-                {props.children}
-              </div>
+      <DialogSurface.Provider value={props.surface}>
+        <div class={props.dialog.titleHidden && !props.dialog.description ? styles.headHidden : styles.head}>
+          <h2 id={titleId} class={titleClass()}>
+            <Show when={props.dialog.lead}>
+              <span class={styles.lead} aria-hidden="true">
+                {props.dialog.lead}
+              </span>
             </Show>
-            <Show when={props.actions}>
-              <div class={styles.actions}>{props.actions}</div>
-            </Show>
-          </DialogSurface.Provider>
-        </Primitive.Content>
-      </Primitive.Portal>
-    </Primitive.Root>
+            {props.dialog.title}
+          </h2>
+          <Show when={props.dialog.description}>
+            <p id={descriptionId} class={styles.description}>
+              {props.dialog.description}
+            </p>
+          </Show>
+        </div>
+        <Show when={props.dialog.children != null}>
+          <div class={styles.body} tabindex={0}>
+            {props.dialog.children}
+          </div>
+        </Show>
+        <Show when={props.dialog.actions}>
+          <div class={styles.actions}>{props.dialog.actions}</div>
+        </Show>
+      </DialogSurface.Provider>
+    </dialog>
+  );
+}
+
+/**
+ * The one modal surface. Every dialog in the app composes this, so the portal,
+ * the backdrop, Escape, focus and focus restore are written once.
+ *
+ * `onKeyDown` reaches the whole panel, including the actions row. A dialog whose
+ * confirm is gated cannot lean on the browser clicking its focused button, and
+ * one whose `initialFocus` resolves to nothing leaves focus on the panel. See
+ * `DebugTargetDialog` in file mode for both at once.
+ */
+export default function Dialog(props: DialogProps) {
+  const [surface, setSurface] = createSignal<HTMLDialogElement>();
+  const presence = createPresence(() => props.open, surface);
+
+  return (
+    <Show when={presence.mounted()}>
+      <Portal>
+        <DialogPanel dialog={props} surface={surface} onSurface={setSurface} closed={presence.closed()} />
+      </Portal>
+    </Show>
   );
 }

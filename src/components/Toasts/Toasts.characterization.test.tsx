@@ -1,18 +1,6 @@
-// Characterization of the toast stack's observable behavior, written against
-// the hand-rolled implementation before the Kobalte migration (#105) and kept
-// green, assertions unmodified, across it.
-//
-// The agent below is the only part that knows which implementation is
-// mounted; everything the tests assert goes through it or through
-// `document.body.textContent`. Deliberately not characterized, because the two
-// implementations disagree by design (see grimoire/plan.md, Decisions): what
-// hovering does to a *sibling* toast's timer, and whether mouse-leave re-arms
-// the full TTL or resumes the remaining time. The assertions here are the
-// intersection both implementations honor.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { render, screen, fireEvent } from "../../test/harness";
-import ToastRegion, { pushToast } from "./Toasts";
-import { Toast } from "../../lib/toast";
+import ToastRegion, { clearToasts, pushToast } from "./Toasts";
 
 type Agent = {
   push: (message: string) => void;
@@ -25,8 +13,6 @@ function mount(): Agent {
   render(() => <ToastRegion />);
   return {
     push: (message) => pushToast(message, "info"),
-    // Kobalte pauses on pointermove anywhere in the list and resumes when the
-    // pointer leaves the list, so the events target the toast and the list.
     hover: (message) => fireEvent.pointerMove(screen.getByText(message).closest('[role="status"]')!),
     unhover: (message) => fireEvent.pointerLeave(screen.getByText(message).closest('[role="status"]')!.parentElement!),
   };
@@ -44,7 +30,7 @@ beforeEach(() => {
 afterEach(() => {
   // The toast store is module-global and Region unmount clears nothing, so a
   // toast left alive here would render again in the next test's region.
-  Toast.toaster.clear();
+  clearToasts();
   vi.useRealTimers();
 });
 
@@ -93,8 +79,6 @@ describe("toast stack characterization", () => {
     vi.advanceTimersByTime(60_000);
     expect(visible("held under the pointer")).toBe(true);
     h.unhover("held under the pointer");
-    // One full TTL covers both implementations: the old one re-arms the full
-    // 8s on leave, the new one resumes the 4s that remained.
     vi.advanceTimersByTime(8000);
     expect(visible("held under the pointer")).toBe(false);
   });
