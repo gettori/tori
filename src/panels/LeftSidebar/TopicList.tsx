@@ -3,7 +3,7 @@ import { type SpaceTint } from "./TopicItem";
 import TopicRows, { type TopicFold } from "./TopicRows";
 import { RowGlide } from "./SidebarRows";
 import rows from "./SidebarRows.module.css";
-import { TriangleAlert } from "lucide-solid";
+import { TriangleAlert } from "../../components/Icon/icons";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
 import NewTopicDialog from "../../components/Dialogs/NewTopicDialog";

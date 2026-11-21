@@ -33,8 +33,8 @@ import {
   SquareTerminal,
   Terminal as TerminalIcon,
   Zap,
-  type LucideIcon,
-} from "lucide-solid";
+  type IconGlyph,
+} from "../../components/Icon/icons";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import {
   on as onEvent,
@@ -269,7 +269,7 @@ const DRAFT_SAVE_MS = 500;
 // The glyphs the new tab menu and the Scripts section already use, so a tab
 // reads as the thing that opened it. Chat and agent only fall back to theirs
 // when the session mark is refused.
-const KIND_GLYPHS: Record<TabKind, LucideIcon> = {
+const KIND_GLYPHS: Record<TabKind, IconGlyph> = {
   shell: SquareTerminal,
   command: SquareChevronRight,
   task: Play,

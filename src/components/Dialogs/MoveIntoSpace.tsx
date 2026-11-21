@@ -1,6 +1,6 @@
 import { createEffect, createSignal, on, onCleanup, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { Folder } from "lucide-solid";
+import { Folder } from "../Icon/icons";
 import Button from "../Button/Button";
 import Checkbox from "../Checkbox/Checkbox";
 import Icon from "../Icon/Icon";

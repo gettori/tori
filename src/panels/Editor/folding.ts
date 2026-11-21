@@ -49,7 +49,7 @@ const MAX_SCAN = 10_000;
 const SVG_NS = "http://www.w3.org/2000/svg";
 // Lucide's chevron-down and chevron-right, drawn by hand for codeActionBulb.ts's
 // reason: this module sits behind the lazy editor edge and builds its DOM
-// without Solid, so it cannot render `lucide-solid`.
+// without Solid, so it cannot render an icon component.
 const CHEVRON_DOWN = "m6 9 6 6 6-6";
 const CHEVRON_RIGHT = "m9 18 6-6-6-6";
 

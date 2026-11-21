@@ -1,4 +1,4 @@
-import { Folder } from "lucide-solid";
+import { Folder } from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import styles from "./Dialogs.module.css";
 

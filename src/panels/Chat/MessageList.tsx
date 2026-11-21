@@ -25,7 +25,7 @@ import {
   TriangleAlert,
   Volume2,
   Webhook,
-} from "lucide-solid";
+} from "../../components/Icon/icons";
 import {
   hasEarlier,
   turnBlindEdits,

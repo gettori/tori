@@ -1,5 +1,12 @@
 import { For, Show } from "solid-js";
-import { ChevronDown, ChevronLeft, ChevronRight, History, Plus, SquareTerminal } from "lucide-solid";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  History,
+  Plus,
+  SquareTerminal,
+} from "../../../../components/Icon/icons";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
 import OverflowTabBar from "../../../../components/OverflowTabBar";

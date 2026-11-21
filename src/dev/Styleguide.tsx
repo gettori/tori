@@ -1,5 +1,14 @@
 import { createSignal, createEffect, createMemo, For, Show } from "solid-js";
-import { Settings, Search, ChevronRight, GitBranch, FileCode, Bot, PanelRight, FileText } from "lucide-solid";
+import {
+  Settings,
+  Search,
+  ChevronRight,
+  GitBranch,
+  FileCode,
+  Bot,
+  PanelRight,
+  FileText,
+} from "../components/Icon/icons";
 import Icon from "../components/Icon/Icon";
 import Button from "../components/Button/Button";
 import type { ButtonVariant, ButtonSize } from "../components/Button/Button";

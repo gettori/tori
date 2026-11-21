@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-solid";
+import { ChevronRight } from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import styles from "./Chevron.module.css";
 

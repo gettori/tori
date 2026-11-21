@@ -1,8 +1,8 @@
 import { For, Show, createEffect, createSignal, on, onCleanup, onMount } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { File, FileCode, FileImage, FileSpreadsheet, FileText } from "lucide-solid";
-import type { LucideIcon } from "lucide-solid";
+import { File, FileCode, FileImage, FileSpreadsheet, FileText } from "../../components/Icon/icons";
+import type { IconGlyph } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import { WorkingMark } from "../../components/Icon/statusMarks";
 import { GroupHead } from "../LeftSidebar/SidebarRows";
@@ -16,7 +16,7 @@ import styles from "./ArtifactsPanel.module.css";
 export type Artifact = { path: string; name: string; size: number; modified: number };
 type Artifacts = { made: Artifact[]; added: Artifact[] };
 
-const KINDS: [RegExp, string, LucideIcon][] = [
+const KINDS: [RegExp, string, IconGlyph][] = [
   [/\.(md|markdown)$/i, "Markdown", FileText],
   [/\.(txt|log)$/i, "Text", FileText],
   [/\.csv$/i, "CSV", FileSpreadsheet],
@@ -26,7 +26,7 @@ const KINDS: [RegExp, string, LucideIcon][] = [
   [/\.(json|ya?ml|toml|html?|css|[jt]sx?|py|rs|go|sh|sql)$/i, "Code", FileCode],
 ];
 
-export function artifactKind(name: string): { label: string; icon: LucideIcon } {
+export function artifactKind(name: string): { label: string; icon: IconGlyph } {
   const hit = KINDS.find(([re]) => re.test(name));
   if (hit) return { label: hit[1], icon: hit[2] };
   const ext = name.includes(".") ? name.split(".").pop()!.toUpperCase() : "";

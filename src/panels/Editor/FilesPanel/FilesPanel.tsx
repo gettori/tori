@@ -9,7 +9,7 @@ import {
   FolderPlus,
   GitBranch,
   RefreshCw,
-} from "lucide-solid";
+} from "../../../components/Icon/icons";
 import Button from "../../../components/Button/Button";
 import Icon from "../../../components/Icon/Icon";
 import IconButton from "../../../components/IconButton/IconButton";

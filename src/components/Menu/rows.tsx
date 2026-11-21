@@ -1,6 +1,6 @@
 import { createContext, createUniqueId, For, onCleanup, Show, useContext, type JSX } from "solid-js";
 import { Portal } from "solid-js/web";
-import { ChevronRight, type LucideIcon } from "lucide-solid";
+import { ChevronRight, type IconGlyph } from "../Icon/icons";
 import Glide from "../Glide/Glide";
 import Icon from "../Icon/Icon";
 import Tooltip from "../Tooltip/Tooltip";
@@ -27,7 +27,7 @@ export type MenuItem =
       /** A leading glyph, for a menu whose rows are read by shape before they
        *  are read as words. Decorative: the label still carries the meaning, so
        *  it is hidden from the accessibility tree. */
-      icon?: LucideIcon;
+      icon?: IconGlyph;
       danger?: boolean;
       warn?: boolean;
       disabled?: boolean;

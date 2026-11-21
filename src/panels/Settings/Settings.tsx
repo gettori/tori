@@ -17,8 +17,8 @@ import {
   Smartphone,
   WandSparkles,
   X,
-  type LucideIcon,
-} from "lucide-solid";
+  type IconGlyph,
+} from "../../components/Icon/icons";
 import { WheelGlyph } from "../../components/Autopilot/Wheel";
 import { matchingEntries } from "./utils/settingsSearch";
 import { SETTING_TABS, tabOfEntry, type SettingTab } from "../../utils/settingsCatalog";
@@ -59,7 +59,7 @@ export { EDITOR_TOGGLES } from "./components/paneKit";
  * and `settingsPanel.test.tsx` fails if a tab names an icon this map has not
  * got.
  */
-const TAB_ICONS: Record<string, LucideIcon> = {
+const TAB_ICONS: Record<string, IconGlyph> = {
   bot: Bot,
   "message-square": MessageSquare,
   "file-code": FileCode,

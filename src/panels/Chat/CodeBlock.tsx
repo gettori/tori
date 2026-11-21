@@ -1,5 +1,5 @@
 import { Match, Show, Switch, createMemo, createSignal, onCleanup } from "solid-js";
-import { Check, Code, Copy, Eye } from "lucide-solid";
+import { Check, Code, Copy, Eye } from "../../components/Icon/icons";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { copyText } from "../../utils/clipboard";
 import { createHighlight } from "./highlight";

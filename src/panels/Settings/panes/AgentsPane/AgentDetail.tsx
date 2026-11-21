@@ -1,5 +1,5 @@
 import { For, Show, Switch, Match, createResource, createSignal, onMount } from "solid-js";
-import { Check, ChevronLeft, RefreshCw } from "lucide-solid";
+import { Check, ChevronLeft, RefreshCw } from "../../../../components/Icon/icons";
 import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
 import Button from "../../../../components/Button/Button";

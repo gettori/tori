@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { createSignal, For } from "solid-js";
-import { FileText, FileCode, Braces } from "lucide-solid";
+import { FileText, FileCode, Braces } from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import { Tabs } from "./Tabs";
 import Tab from "./Tab";

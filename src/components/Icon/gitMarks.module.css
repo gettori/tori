@@ -1,10 +1,6 @@
-/* The state half of the git marks, drawn onto Lucide's own elements. Still on
-   purpose: these sit in a dense column of static Lucide glyphs, and motion
-   inside an SVG lays out and repaints the window every frame.
-
-   The selectors pin to element order inside `folder-git-2` (stem, outline,
-   fork node, leaf node) and `git-merge` (tip node, top node, line), which is
-   fixed for the pinned lucide-solid version. */
+/* Still on purpose: motion inside an SVG repaints the window every frame. The
+   selectors pin to element order in `folder-git-2` and `git-merge`, which is
+   fixed for the pinned lucide version. */
 @layer components {
   /* The repo's checked-out branch, said in the row's own glyph instead of in a
      coloured bullet at the row's end: the branch tip fills in, and the whole

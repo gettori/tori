@@ -1,6 +1,6 @@
 import { For, Show, onMount, type JSX } from "solid-js";
 import { Portal } from "solid-js/web";
-import { Check } from "lucide-solid";
+import { Check } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import { FOCUSABLE } from "../../utils/focusable";

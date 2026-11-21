@@ -1,5 +1,5 @@
 import { For } from "solid-js";
-import { ShieldCheck } from "lucide-solid";
+import { ShieldCheck } from "../../components/Icon/icons";
 import Picker, { PickerOption } from "./Picker";
 import type { ChatMode } from "../../utils/agents";
 import type { PermissionMode } from "../../utils/chatTypes";

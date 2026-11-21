@@ -11,7 +11,7 @@
 
 import { createEffect, createMemo, createSignal, on, onCleanup, onMount, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { ArrowDown, Columns2, ExternalLink, FileCode } from "lucide-solid";
+import { ArrowDown, Columns2, ExternalLink, FileCode } from "../../../components/Icon/icons";
 import { emitWith, OPEN_IN_EDITOR } from "../../../utils/events";
 import { parsePrDiffArg, prDiffTabId } from "../../../utils/syntheticTabs";
 import { sideBySideOn as sideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../../utils/sideBySide";

@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { PanelLeft } from "lucide-solid";
+import { PanelLeft } from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import Tooltip from "../Tooltip/Tooltip";
 import Wheel from "./Wheel";

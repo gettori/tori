@@ -1,5 +1,5 @@
 import { createEffect, createSignal, on, onCleanup, untrack, Show } from "solid-js";
-import { type LucideIcon } from "lucide-solid";
+import { type IconGlyph } from "../../components/Icon/icons";
 import ContextMenu from "../../components/Menu/ContextMenu";
 import { type MenuItem } from "../../components/Menu/rows";
 import Tooltip from "../../components/Tooltip/Tooltip";
@@ -121,7 +121,7 @@ export default function SpaceTile(props: {
  *  wearing the real lit-tile CSS so what it reports is what the row would
  *  actually take. The caller owns the measuring pass and so owns the refs. */
 export function TileProbe(props: {
-  glyph: LucideIcon;
+  glyph: IconGlyph;
   ref?: (el: HTMLSpanElement) => void;
   nameRef?: (el: HTMLSpanElement) => void;
   textRef?: (el: HTMLSpanElement) => void;

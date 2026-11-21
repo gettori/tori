@@ -1,4 +1,4 @@
-import { Lock } from "lucide-solid";
+import { Lock } from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import Wheel from "./Wheel";
 import styles from "./SessionMarks.module.css";

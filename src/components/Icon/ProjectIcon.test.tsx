@@ -12,9 +12,6 @@ vi.mock("@tauri-apps/api/core", () => ({
 function shown(src: ProjectIconSource): { img?: string; glyph?: string } {
   const { container, unmount } = render(() => <ProjectIcon {...src} />);
   const img = container.querySelector("img")?.getAttribute("src") ?? undefined;
-  // lucide-solid tags each glyph with a `lucide-<kebab-name>` class alongside
-  // the generic `lucide-icon`; the named one is the only stable way to tell one
-  // rendered icon from another.
   const glyph = container
     .querySelector("svg")
     ?.getAttribute("class")

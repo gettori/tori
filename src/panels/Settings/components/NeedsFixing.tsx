@@ -1,6 +1,6 @@
 import { For, Show, onMount } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { RotateCcw, Trash2 } from "lucide-solid";
+import { RotateCcw, Trash2 } from "../../../components/Icon/icons";
 import Icon from "../../../components/Icon/Icon";
 import IconButton from "../../../components/IconButton/IconButton";
 import { emitWith, TOAST, type ToastEvent } from "../../../utils/events";

@@ -1,5 +1,5 @@
 import { For, Show, createMemo, createSignal, createUniqueId, type JSX } from "solid-js";
-import { Ellipsis, Lock } from "lucide-solid";
+import { Ellipsis, Lock } from "../../components/Icon/icons";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";

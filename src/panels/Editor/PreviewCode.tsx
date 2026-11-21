@@ -1,5 +1,5 @@
 import { Show, createSignal, onCleanup } from "solid-js";
-import { Check, Copy } from "lucide-solid";
+import { Check, Copy } from "../../components/Icon/icons";
 import { copyText } from "../../utils/clipboard";
 import Icon from "../../components/Icon/Icon";
 import Diagram from "../../components/Diagram/Diagram";

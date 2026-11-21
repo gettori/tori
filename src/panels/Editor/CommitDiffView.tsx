@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, on, onCleanup, onMount, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { Columns2, Copy, FileCode } from "lucide-solid";
+import { Columns2, Copy, FileCode } from "../../components/Icon/icons";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type ToastEvent } from "../../utils/events";
 import { parseDiffHunks, DIFF_CONTEXT } from "../../utils/diffHunks";
 import { buildRows } from "../../utils/diffView";

@@ -1,5 +1,5 @@
 import { For, Show, createEffect, createMemo, createSignal, on } from "solid-js";
-import { Check, ChevronDown, Circle, LoaderCircle } from "lucide-solid";
+import { Check, ChevronDown, Circle, LoaderCircle } from "../../components/Icon/icons";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import type { PlanItem } from "../../utils/chatTypes";
 import type { PlanStale } from "./chatStore";

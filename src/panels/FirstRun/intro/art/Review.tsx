@@ -20,7 +20,7 @@ import {
   Search,
   SquareCode,
   Undo2,
-} from "lucide-solid";
+} from "../../../../components/Icon/icons";
 import AutopilotSwitch from "../../../../components/Autopilot/AutopilotSwitch";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";

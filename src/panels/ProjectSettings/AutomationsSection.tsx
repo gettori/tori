@@ -1,7 +1,7 @@
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { TriangleAlert } from "lucide-solid";
+import { TriangleAlert } from "../../components/Icon/icons";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
 import Select, { type SelectOption } from "../../components/Select/Select";

@@ -18,8 +18,8 @@ import {
   ShieldAlert,
   SquareTerminal,
   UserRoundSearch,
-  type LucideIcon,
-} from "lucide-solid";
+  type IconGlyph,
+} from "../../components/Icon/icons";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
@@ -61,7 +61,7 @@ type Tone = "attention" | "danger" | "success" | "progress" | "muted";
 
 const folderName = (path: string) => path.split("/").filter(Boolean).pop() ?? path;
 
-const KINDS: Record<NeedsYouKind, { icon: LucideIcon; tone: Tone }> = {
+const KINDS: Record<NeedsYouKind, { icon: IconGlyph; tone: Tone }> = {
   permission: { icon: Hand, tone: "attention" },
   question: { icon: Hand, tone: "attention" },
   workerQuestion: { icon: Hand, tone: "attention" },
@@ -147,7 +147,7 @@ function Group(props: {
 }
 
 function EventLine(props: {
-  icon: LucideIcon;
+  icon: IconGlyph;
   tone: Tone;
   name: string;
   meta: JSX.Element[];
@@ -191,7 +191,7 @@ function EventRow(props: { event: NeedsYouEvent; withProject?: boolean; time?: s
 
 function FinishedRow(props: { row: Finished }) {
   const verdict = () => props.row.verdict;
-  const look = (): { icon: LucideIcon; tone: Tone } =>
+  const look = (): { icon: IconGlyph; tone: Tone } =>
     verdict() === "verified"
       ? { icon: CircleCheck, tone: "success" }
       : verdict() === "failed"
@@ -408,7 +408,7 @@ export function PermissionList(props: {
   );
 }
 
-function opinionLook(o: SecondOpinion): { icon: LucideIcon; tone: Tone | "brand" } {
+function opinionLook(o: SecondOpinion): { icon: IconGlyph; tone: Tone | "brand" } {
   if (o.state === "running") return { icon: LoaderCircle, tone: "progress" };
   if (o.state === "failed") return { icon: CircleAlert, tone: "danger" };
   return o.open ? { icon: MessageSquareText, tone: "brand" } : { icon: CircleCheck, tone: "muted" };
@@ -566,7 +566,7 @@ export default function InboxView(props: { landing?: (el: HTMLElement) => void }
     setTab(asked);
     setAskedTab(null);
   });
-  const views: { id: InboxTab; label: string; icon: LucideIcon; count: () => number }[] = [
+  const views: { id: InboxTab; label: string; icon: IconGlyph; count: () => number }[] = [
     { id: "since", label: "Since you looked", icon: Clock, count: () => digestCount(digest()) },
     { id: "needsYou", label: "Needs you", icon: Hand, count: needsYouCount },
     { id: "permissions", label: "Permissions", icon: ShieldAlert, count: permissionCount },

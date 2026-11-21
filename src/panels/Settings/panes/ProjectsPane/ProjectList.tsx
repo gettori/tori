@@ -1,5 +1,5 @@
 import { For, Show } from "solid-js";
-import { ChevronRight } from "lucide-solid";
+import { ChevronRight } from "../../../../components/Icon/icons";
 
 import Icon from "../../../../components/Icon/Icon";
 import ProjectIcon from "../../../../components/Icon/ProjectIcon";

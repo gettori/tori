@@ -20,15 +20,15 @@ import {
   Type,
   Variable,
   Zap,
-  type LucideIcon,
-} from "lucide-solid";
+  type IconGlyph,
+} from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import { symbolKindName } from "../../utils/symbols";
 
 // LSP `SymbolKind` to a glyph. Shared because both surfaces that list symbols
 // want the same one: a method has to look like a method in the outline and in
 // the palette, or the two read as different kinds of thing.
-const KIND_ICONS: Record<number, LucideIcon> = {
+const KIND_ICONS: Record<number, IconGlyph> = {
   1: FileCode, // File
   2: Package, // Module
   3: Boxes, // Namespace

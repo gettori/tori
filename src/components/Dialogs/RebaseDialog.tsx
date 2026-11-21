@@ -1,6 +1,6 @@
 import { createMemo, For, Show } from "solid-js";
 import { createStore, produce } from "solid-js/store";
-import { ArrowDown, ArrowUp } from "lucide-solid";
+import { ArrowDown, ArrowUp } from "../Icon/icons";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
 import Icon from "../Icon/Icon";

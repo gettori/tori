@@ -1,5 +1,5 @@
 import { For, type JSX } from "solid-js";
-import { FileCode, Search, SquareTerminal, Tag } from "lucide-solid";
+import { FileCode, Search, SquareTerminal, Tag } from "../../../../components/Icon/icons";
 import AutopilotSwitch from "../../../../components/Autopilot/AutopilotSwitch";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";

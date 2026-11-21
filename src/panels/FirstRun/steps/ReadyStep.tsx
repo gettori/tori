@@ -1,5 +1,5 @@
 import { For } from "solid-js";
-import { Check, Minus } from "lucide-solid";
+import { Check, Minus } from "../../../components/Icon/icons";
 import Icon from "../../../components/Icon/Icon";
 import { shortHome } from "../../../utils/names";
 import styles from "../FirstRun.module.css";

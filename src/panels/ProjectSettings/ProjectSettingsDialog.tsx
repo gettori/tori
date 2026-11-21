@@ -1,5 +1,5 @@
 import { createEffect, createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js";
-import { Bot, FolderSymlink, SlidersHorizontal, Wrench, X, Zap, type LucideIcon } from "lucide-solid";
+import { Bot, FolderSymlink, SlidersHorizontal, Wrench, X, Zap, type IconGlyph } from "../../components/Icon/icons";
 
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
@@ -26,7 +26,7 @@ import TrustSection from "./TrustSection";
 import WorktreesSection from "./WorktreesSection";
 import styles from "./ProjectSettingsDialog.module.css";
 
-const SECTION_ICON: Record<ProjectSection, LucideIcon> = {
+const SECTION_ICON: Record<ProjectSection, IconGlyph> = {
   general: SlidersHorizontal,
   worktrees: FolderSymlink,
   agents: Bot,

@@ -1,5 +1,5 @@
 import { For, Show, createEffect, createMemo, createResource, createSignal, on, onCleanup } from "solid-js";
-import { ArrowUp, ChevronLeft } from "lucide-solid";
+import { ArrowUp, ChevronLeft } from "../../src/components/Icon/icons";
 import Icon from "../../src/components/Icon/Icon";
 import Horizon, { pickScene } from "../../src/components/Autopilot/Horizon";
 import { WheelGlyph } from "../../src/components/Autopilot/Wheel";

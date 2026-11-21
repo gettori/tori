@@ -1,5 +1,13 @@
 import { createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js";
-import { Copy, GitBranch, GitPullRequest, Palette, SlidersHorizontal, X, type LucideIcon } from "lucide-solid";
+import {
+  Copy,
+  GitBranch,
+  GitPullRequest,
+  Palette,
+  SlidersHorizontal,
+  X,
+  type IconGlyph,
+} from "../../components/Icon/icons";
 import { invoke } from "@tauri-apps/api/core";
 
 import Button from "../../components/Button/Button";
@@ -50,7 +58,7 @@ const SECTION_LABEL: Record<SpaceSection, string> = {
   branchLine: "Branch line",
 };
 
-const SECTION_ICON: Record<SpaceSection, LucideIcon> = {
+const SECTION_ICON: Record<SpaceSection, IconGlyph> = {
   general: SlidersHorizontal,
   cards: Palette,
   lanes: GitPullRequest,

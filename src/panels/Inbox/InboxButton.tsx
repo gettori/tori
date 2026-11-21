@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { Inbox } from "lucide-solid";
+import { Inbox } from "../../components/Icon/icons";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
 import Popover from "../../components/Popover/Popover";

@@ -1,5 +1,5 @@
 import { Show, createSignal, createUniqueId, type Component, type JSX } from "solid-js";
-import { Check, ChevronDown } from "lucide-solid";
+import { Check, ChevronDown } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import Dropdown from "../../components/Menu/Dropdown";
 import { MenuRow } from "../../components/Menu/rows";

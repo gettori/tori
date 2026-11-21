@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, on, onCleanup, onMount, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { ChevronRight } from "lucide-solid";
+import { ChevronRight } from "../../components/Icon/icons";
 import Chevron from "../../components/Chevron/Chevron";
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";

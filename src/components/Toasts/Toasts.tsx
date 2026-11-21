@@ -1,6 +1,6 @@
 import { createEffect, createSignal, createUniqueId, For, onCleanup, Show, untrack, type Accessor } from "solid-js";
 import { Portal } from "solid-js/web";
-import { CircleAlert, CircleCheck, Info, X } from "lucide-solid";
+import { CircleAlert, CircleCheck, Info, X } from "../Icon/icons";
 import { createPresence, watchTopModal } from "../../lib/layer";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";

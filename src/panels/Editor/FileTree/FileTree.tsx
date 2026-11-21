@@ -21,7 +21,7 @@ import Chevron from "../../../components/Chevron/Chevron";
 import IconButton from "../../../components/IconButton/IconButton";
 import Icon from "../../../components/Icon/Icon";
 import OverlayScroll from "../../../components/Scrollbar/OverlayScroll";
-import { FilePlus, FolderPlus, Crosshair, ChevronsDownUp } from "lucide-solid";
+import { FilePlus, FolderPlus, Crosshair, ChevronsDownUp } from "../../../components/Icon/icons";
 import ContextMenu from "../../../components/Menu/ContextMenu";
 import { type MenuItem } from "../../../components/Menu/rows";
 import { type ConfirmOpts } from "../../../components/Dialogs/ConfirmDialog";
