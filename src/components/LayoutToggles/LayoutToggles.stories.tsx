@@ -28,7 +28,7 @@ export const Default: Story = {
 };
 
 /** A hidden pane accents its glyph as a "click to bring it back" cue. The rule
- *  hangs off Kobalte's `data-pressed` rather than a class passed in, which is
+ *  hangs off `data-pressed` rather than a class passed in, which is
  *  what keeps it from being clobbered by IconButton's own `classList`. */
 export const SidebarHidden: Story = {
   args: { showSidebar: false },

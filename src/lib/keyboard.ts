@@ -8,6 +8,45 @@ export interface RovingFocusOptions {
   selected?: Accessor<string | null | undefined>;
   wrap?: boolean;
   rootTabStop?: boolean;
+  followSelected?: boolean;
+  allowModifiers?: boolean;
+  preventScroll?: boolean;
+}
+
+interface OrderedItem {
+  key: string;
+  element: HTMLElement;
+  disabled: Accessor<boolean>;
+}
+
+const inDocumentOrder = (a: OrderedItem, b: OrderedItem) => {
+  const position = a.element.compareDocumentPosition(b.element);
+  if (position & Node.DOCUMENT_POSITION_DISCONNECTED) return 0;
+  return position & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+};
+
+const sameKeys = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && a.every((key, i) => key === b[i]);
+
+export function createItemOrder() {
+  const [items, setItems] = createSignal<readonly OrderedItem[]>([]);
+  const keys = createMemo(() => items().flatMap((item) => (item.disabled() ? [] : [item.key])), [], {
+    equals: sameKeys,
+  });
+  const allKeys = createMemo(() => items().map((item) => item.key), [], { equals: sameKeys });
+  return {
+    keys,
+    allKeys,
+    register(item: OrderedItem) {
+      setItems((list) => [...list, item]);
+      onCleanup(() => setItems((list) => list.filter((other) => other !== item)));
+    },
+    watch(container: HTMLElement) {
+      const observer = new MutationObserver(() => setItems((list) => [...list].sort(inDocumentOrder)));
+      observer.observe(container, { childList: true });
+      onCleanup(() => observer.disconnect());
+    },
+  };
 }
 
 function stepFor(key: string, orientation: RovingOrientation) {
@@ -37,13 +76,18 @@ export function createRovingFocus(options: RovingFocusOptions) {
     return selected != null && keys.includes(selected) ? selected : keys[0];
   };
 
-  const tabStop = () => active() ?? (options.rootTabStop ? null : (entry() ?? null));
+  const tabStop = () => {
+    const key = active();
+    if (key !== null && (!options.followSelected || elements.get(key)?.contains(document.activeElement))) return key;
+    return options.rootTabStop ? key : (entry() ?? null);
+  };
   const focus = (key: string | undefined) => {
-    if (key !== undefined) elements.get(key)?.focus();
+    if (key !== undefined) elements.get(key)?.focus({ preventScroll: options.preventScroll });
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (e.defaultPrevented) return;
+    if (!options.allowModifiers && (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey)) return;
     const keys = options.keys();
     const from = keys.findIndex((key) => elements.get(key)?.contains(e.target as Node));
     if (from < 0) return;

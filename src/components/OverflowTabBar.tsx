@@ -1,7 +1,7 @@
-import { createSignal, createEffect, createMemo, onMount, onCleanup, children, For, Show, type JSX } from "solid-js";
+import { createSignal, createEffect, createMemo, onCleanup, children, For, Show, untrack, type JSX } from "solid-js";
 import { computeVisibleCount, moveIntoView, type Reserves } from "../utils/tabOverflow";
 import { tabGesture } from "../utils/tabGesture";
-import { Tabs } from "../lib/tabs";
+import { Tabs } from "./Tab/Tabs";
 import { TabRow } from "./Tab/Tab";
 import Dropdown from "./Menu/Dropdown";
 import { MenuRow } from "./Menu/rows";
@@ -90,25 +90,18 @@ export default function OverflowTabBar<T>(props: {
     setVisibleCount(computeVisibleCount(extents, bar.clientWidth, reserves));
   }
 
-  /** What the bar is handling right now, and whether it is a user selecting a
-   *  tab. Marked in the capture phase and read from inside a handler Kobalte
-   *  owns; `tabGesture` is where the lifetime and the exclusions are explained,
-   *  and it is deliberately not a flag this file clears by hand. */
   const gesture = tabGesture();
 
   /**
    * Keep activation on the click rather than on the press.
    *
-   * Kobalte's tab trigger selects on mouse press and offers no way to ask for
-   * press-up: `shouldSelectOnPressUp` is not a `Tabs.Trigger` prop, and
-   * `composeEventHandlers` ignores `defaultPrevented`, so a handler passed in
-   * beside Kobalte's cannot veto it. The editor's tabs are `draggable` and a
-   * drag is a press that never becomes a click, so without this, carrying a
+   * A tab trigger selects on mouse press. The editor's tabs are `draggable` and
+   * a drag is a press that never becomes a click, so without this, carrying a
    * tab's path out to the terminal would load that file first.
    *
    * Capture on the bar, so the trigger's own listeners never run. This stops
    * *listeners*, not default actions, so focus-on-press and the drag itself are
-   * untouched. With no press recorded, Kobalte's click handler takes the
+   * untouched. With no press recorded, the trigger's click handler takes the
    * selection instead, which is the branch it uses for touch and pen.
    *
    * Scoped to the triggers: the `+N` button and the close buttons are not tabs
@@ -121,20 +114,22 @@ export default function OverflowTabBar<T>(props: {
   }
 
   let ro: ResizeObserver | undefined;
-  onMount(() => {
-    bar.addEventListener("pointerdown", onPress, true);
-    bar.addEventListener("click", gesture.mark, true);
-    bar.addEventListener("keydown", gesture.mark, true);
-    onCleanup(() => {
-      bar.removeEventListener("pointerdown", onPress, true);
-      bar.removeEventListener("click", gesture.mark, true);
-      bar.removeEventListener("keydown", gesture.mark, true);
-    });
-    requestAnimationFrame(measure);
-    ro = new ResizeObserver(() => measure());
-    ro.observe(bar);
-    ro.observe(ghost); // content-width changes (tab added, dirty dot) re-measure
-  });
+  createEffect(() =>
+    untrack(() => {
+      bar.addEventListener("pointerdown", onPress, true);
+      bar.addEventListener("click", gesture.mark, true);
+      bar.addEventListener("keydown", gesture.mark, true);
+      onCleanup(() => {
+        bar.removeEventListener("pointerdown", onPress, true);
+        bar.removeEventListener("click", gesture.mark, true);
+        bar.removeEventListener("keydown", gesture.mark, true);
+      });
+      requestAnimationFrame(measure);
+      ro = new ResizeObserver(() => measure());
+      ro.observe(bar);
+      ro.observe(ghost); // content-width changes (tab added, dirty dot) re-measure
+    }),
+  );
   onCleanup(() => ro?.disconnect());
 
   // On the ids, not the list: every strip gets a fresh array whenever any pane's
@@ -165,25 +160,9 @@ export default function OverflowTabBar<T>(props: {
   }
 
   /**
-   * Kobalte's selection, filtered down to the changes a user actually made.
-   *
-   * `TabsRoot` force-selects the first key whenever the value it is given names
-   * no rendered tab, and calls `onChange` on the way. That is a heal, not a
-   * click, and forwarding it would not blank the selection, it would open a
-   * different file: closing the active tab puts the strip in exactly that state
-   * for one render, before the panel has picked what comes next.
-   *
-   * The gesture is what separates the two, rather than the state: a heal runs
-   * from an effect with nothing but a render behind it. Gating on the state
-   * instead would swallow a real click on a strip that starts with nothing
-   * selected, since Kobalte's heal picks the leftmost tab and so does a user.
-   *
-   * Closing a tab is the case that makes this worth getting right, and both
-   * ways of closing one land on the same side of the line. A click on the close
-   * button has no tab above it, because the button is a *sibling* of the
-   * trigger. A Delete or Backspace does land on the tab, and the heal it causes
-   * arrives while that keystroke is still dispatching, which is why
-   * `tabGesture` refuses to call a close keystroke a selection.
+   * The strip's selection, filtered down to the changes a user actually made.
+   * Closing the active tab leaves the value naming no tab for one render, and
+   * nothing but a gesture on a tab may open a different file from there.
    */
   function onChange(next: string) {
     if (!gesture.live()) return;
@@ -214,18 +193,13 @@ export default function OverflowTabBar<T>(props: {
         props.ref?.(el);
       }}
       style={{ position: "relative" }}
-      activationMode="automatic"
-      // Never null: Kobalte reads `undefined` as "uncontrolled" and takes the
-      // selection over for good. An empty key keeps it controlled and names
-      // nothing, which `onChange` above is what handles.
+      // Never undefined, which would hand the selection to the strip. An empty
+      // key keeps it controlled and names nothing.
       value={props.activeId ?? ""}
       onChange={onChange}
     >
-      {/* Inert ghost row: every tab in canonical order + a count sample, used
-          only to measure true widths (gaps/padding/borders included). `TabRow
-          inert` is what keeps it out of both the accessibility tree and
-          Kobalte's collection, where it would register a second item under
-          every key the real row already holds. */}
+      {/* `TabRow inert` keeps the measuring copy out of the accessibility tree
+          and the strip's key order, where every key would register twice. */}
       <TabRow inert>
         <div class={`${props.class ?? ""} otab-ghost`} ref={ghost} aria-hidden="true">
           <For each={props.items}>{(t) => props.renderTab(t, true)}</For>
@@ -268,14 +242,10 @@ export default function OverflowTabBar<T>(props: {
           <Tooltip
             as="button"
             type="button"
-            class="tab-overflow-count"
-            classList={{ active: menuOpen() }}
+            class={menuOpen() ? "tab-overflow-count active" : "tab-overflow-count"}
             label={`${overflow().length} more`}
             aria-label={`${overflow().length} more`}
-            // Kobalte writes these on the trigger, which is the wrapper, and
-            // they cannot be taken off it (`wrapper` removes its `role` and tab
-            // stop, not its ARIA). The button is what the keyboard reaches, so
-            // it says this too.
+            // The keyboard reaches the button, not the dropdown's wrapper.
             aria-haspopup="menu"
             aria-expanded={menuOpen()}
           >

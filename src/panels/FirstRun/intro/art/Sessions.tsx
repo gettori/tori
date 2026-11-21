@@ -8,7 +8,7 @@ import ProjectIcon from "../../../../components/Icon/ProjectIcon";
 import { BranchMark, WorktreeMark } from "../../../../components/Icon/gitMarks";
 import SyncMarks from "../../../../components/SyncMarks/SyncMarks";
 import Tab from "../../../../components/Tab/Tab";
-import { Tabs } from "../../../../lib/tabs";
+import { Tabs } from "../../../../components/Tab/Tabs";
 import type { UnitStatus } from "../../../../utils/forgeTypes";
 import type { Rollup } from "../../../../utils/sessionStatus";
 import type { ToolSummary } from "../../../../utils/chatTypes";

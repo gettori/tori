@@ -1,5 +1,5 @@
 import { For, Show } from "solid-js";
-import { Tabs } from "../../lib/tabs";
+import { Tabs } from "../Tab/Tabs";
 import Tab from "../Tab/Tab";
 import ProjectIcon from "../Icon/ProjectIcon";
 import type { TintedMember } from "../../utils/topicMembers";
