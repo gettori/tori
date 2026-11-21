@@ -11,7 +11,6 @@ const meta = {
   component: Dropdown,
   argTypes: {
     placement: { control: "select", options: PLACEMENTS },
-    modal: { control: "boolean" },
   },
   args: {
     children: "Actions",
