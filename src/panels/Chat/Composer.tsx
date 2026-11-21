@@ -997,25 +997,25 @@ export default function Composer(props: {
       onBlur: closeMenu,
     });
     onCleanup(() => field?.destroy());
-    // The draft is owned outside (per session, surviving a tab switch), so a
-    // change made there - a restored stash, a queued message taken back to edit -
-    // is written into the field. Typing round-trips to the same text and is
-    // left alone.
-    createEffect(() => {
-      const t = text();
-      if (field && field.value() !== t) field.set(t, t.length);
-    });
-    createEffect(() => field?.setPlaceholder(placeholderText()));
-    createEffect(
-      on(
-        () => props.skills,
-        (names) => field?.setSkills(names ?? []),
-        { defer: true },
-      ),
-    );
-    createEffect(() => field?.setReadOnly(!!props.linked || dictation() !== "idle", props.disabled));
-    createEffect(on(held, () => field?.refreshChips(), { defer: true }));
   });
+  // The draft is owned outside (per session, surviving a tab switch), so a
+  // change made there - a restored stash, a queued message taken back to edit -
+  // is written into the field. Typing round-trips to the same text and is
+  // left alone.
+  createEffect(() => {
+    const t = text();
+    if (field && field.value() !== t) field.set(t, t.length);
+  });
+  createEffect(() => field?.setPlaceholder(placeholderText()));
+  createEffect(
+    on(
+      () => props.skills,
+      (names) => field?.setSkills(names ?? []),
+      { defer: true },
+    ),
+  );
+  createEffect(() => field?.setReadOnly(!!props.linked || dictation() !== "idle", props.disabled));
+  createEffect(on(held, () => field?.refreshChips(), { defer: true }));
 
   const ComposerInlineChip = (p: { a: PendingBlock; label: string }) => {
     const block = p.a.block;

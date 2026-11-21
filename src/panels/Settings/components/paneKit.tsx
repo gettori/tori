@@ -289,7 +289,7 @@ export function CmdField(props: { text: string }) {
   };
   return (
     <div class={styles.cmdField}>
-      <input class={styles.cmdFieldText} readOnly value={props.text} aria-label="Command" spellcheck="false" />
+      <input class={styles.cmdFieldText} readonly value={props.text} aria-label="Command" spellcheck="false" />
       <IconButton
         size="sm"
         icon={<Icon icon={copied() ? Check : Copy} />}

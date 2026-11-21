@@ -14,7 +14,7 @@
 // One slot per root, not one slot total: inside a Topic every member is a
 // repo of its own, and the member in front is a pointer into the set rather
 // than the only one whose numbers are true.
-import { createMemo, createRoot, createSignal, type Accessor } from "solid-js";
+import { createMemo, createRoot, createSignal, type Accessor, runWithOwner } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitWith, SET_RIGHT_MODE, TOAST, type FsChanged, type SetRightMode, type ToastEvent } from "./events";
@@ -215,16 +215,18 @@ const views = new Map<string, RootView>();
 function viewOf(root: string): RootView {
   let view = views.get(root);
   if (!view) {
-    view = createRoot(() => {
-      const state = createMemo(() => slots().get(root) ?? NO_SLOT);
-      const files = createMemo(() => state().files);
-      return {
-        state,
-        staged: createMemo(() => files().filter((f) => f.staged)),
-        changed: createMemo(() => files().filter((f) => f.unstaged)),
-        conflicted: createMemo(() => files().filter((f) => !!f.conflicted)),
-      };
-    });
+    view = runWithOwner(null, () =>
+      createRoot(() => {
+        const state = createMemo(() => slots().get(root) ?? NO_SLOT);
+        const files = createMemo(() => state().files);
+        return {
+          state,
+          staged: createMemo(() => files().filter((f) => f.staged)),
+          changed: createMemo(() => files().filter((f) => f.unstaged)),
+          conflicted: createMemo(() => files().filter((f) => !!f.conflicted)),
+        };
+      }),
+    )!;
     views.set(root, view);
   }
   return view;

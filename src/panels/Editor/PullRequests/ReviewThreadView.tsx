@@ -68,7 +68,7 @@ export default function ReviewThreadView(props: {
     // would put a stop in front of every reply box in a long diff.
     <div
       class={styles.thread}
-      tabIndex={-1}
+      tabindex={-1}
       data-thread-id={props.thread.id}
       data-resolved={props.thread.isResolved ? "yes" : "no"}
       data-outdated={props.thread.isOutdated ? "yes" : "no"}

@@ -364,12 +364,10 @@ export default function ConflictView(props: {
     // The choices describe the stages that are being replaced, so they cannot
     // outlive a read: a different file's ids would not match, and the same
     // file's would match the wrong lines.
-    batch(() => {
-      setChoices({});
-      setIgnored({});
-      setKeepFile(null);
-      setDone(false);
-    });
+    setChoices({});
+    setIgnored({});
+    setKeepFile(null);
+    setDone(false);
     try {
       const [read, operation, behind] = await Promise.all([
         invoke<ConflictStages>("git_conflict_stages", { projectPath: workspace, file }),

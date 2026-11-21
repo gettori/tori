@@ -24,14 +24,19 @@ export interface LedgerEntry {
 }
 
 export const ENFORCED: readonly IdiomClass[] = [
+  "batch",
   "boolean-attr",
+  "camelcase-attr",
+  "cleanup-in-ref",
   "destructured-props",
   "effect-in-handler",
   "effect-writes",
   "function-signal",
   "handler-ternary",
   "lowercase-on",
+  "nested-root",
   "on-namespace",
+  "onmount-primitive",
   "read-after-write",
   "timing",
   "top-prop-read",
@@ -39,6 +44,19 @@ export const ENFORCED: readonly IdiomClass[] = [
 ];
 
 export const LEDGER: Partial<Record<IdiomClass, readonly LedgerEntry[]>> = {
+  batch: [
+    {
+      file: "src/panels/Editor/ConflictView.tsx",
+      count: 2,
+      reason:
+        "writes after an await that build the panes once from one read; 1.9 does not batch there; 2.0: delete the batch",
+    },
+    {
+      file: "src/panels/Editor/DiffView.tsx",
+      count: 1,
+      reason: "lands a reload's diff, text, blame and gaps together after an await; 2.0: delete the batch",
+    },
+  ],
   "boolean-attr": [
     {
       file: "src/components/IconButton/IconButton.tsx",
