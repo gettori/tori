@@ -271,7 +271,13 @@ export const TabDragCycle: Story = {
       <div style={{ width: "900px", height: "360px", display: "flex" }}>
         <style>{PANE_CSS}</style>
         <Portal mount={stageHost("sh:1")}>
-          <div style={{ width: "100%", height: "100%" }} ref={(e) => queueMicrotask(() => (live = makeTerm(e)))} />
+          <div
+            style={{ width: "100%", height: "100%" }}
+            ref={(e) =>
+              // A ref runs before the element is in the document.
+              queueMicrotask(() => (live = makeTerm(e)))
+            }
+          />
         </Portal>
         <Portal mount={stageHost("sh:2")}>
           <div style={{ width: "100%", height: "100%" }} />

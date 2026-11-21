@@ -275,8 +275,9 @@ export function createTranscript() {
     moreHistory: () => pages() < HISTORY_PAGES,
     deliverHistory() {
       if (pages() >= HISTORY_PAGES) return;
-      setPages(pages() + 1);
-      edit((s) => prependHistory(s, historyPage(pages())));
+      const page = pages() + 1;
+      setPages(page);
+      edit((s) => prependHistory(s, historyPage(page)));
     },
     selectLane: (agentId: string | null) => edit((s) => selectLane(s, agentId)),
     reset() {

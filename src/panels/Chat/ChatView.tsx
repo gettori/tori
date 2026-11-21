@@ -1406,6 +1406,7 @@ export default function ChatView(props: {
     if (!waiting && !numberingSettled()) return;
     setPendingCard(null);
     if (!waiting) return;
+    // The card renders from this same update, so it can only be found after it.
     queueMicrotask(() =>
       transcriptEl?.querySelector<HTMLElement>("[data-pending-card]")?.scrollIntoView({ block: "center" }),
     );

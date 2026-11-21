@@ -2327,6 +2327,7 @@ export default function CodeEditor(props: {
   function sweepParked() {
     if (sweeping) return;
     sweeping = true;
+    // A microtask would run before the replacing pane gets its mount element.
     setTimeout(() => {
       sweeping = false;
       while (parked.length) {

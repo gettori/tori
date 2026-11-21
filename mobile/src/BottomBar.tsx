@@ -35,11 +35,11 @@ export default function BottomBar(props: {
             {(space) => {
               const current = () => props.tab === "projects" && space.name === props.space?.name;
               const glyph = () => resolveIcon(space.icon);
+              let item!: HTMLButtonElement;
+              createEffect(() => current() && item.scrollIntoView({ inline: "nearest", block: "nearest" }));
               return (
                 <button
-                  ref={(el) =>
-                    createEffect(() => current() && el.scrollIntoView({ inline: "nearest", block: "nearest" }))
-                  }
+                  ref={item}
                   class={styles.barItem}
                   aria-current={current() ? "true" : "false"}
                   aria-label={spaceLabel(space.name)}

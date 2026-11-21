@@ -112,6 +112,7 @@ function onLoss(e: Entry) {
   e.losses++;
   detach(e);
   if (!e.pinned || e.losses >= MAX_LOSSES) return;
+  // Not from inside the addon's context loss callback, which is still running.
   e.retry = setTimeout(() => {
     e.retry = undefined;
     attach(e);

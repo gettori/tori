@@ -404,9 +404,9 @@ export default function Terminal(props: {
     setRestored(new Set(restored()).add(ws));
     const entry = restorable[ws];
     if (!entry?.tabs.length) return;
-    setRestoring(restoring() + 1);
+    setRestoring((n) => n + 1);
     const done = restoreInto(ws, entry).finally(() => {
-      setRestoring(restoring() - 1);
+      setRestoring((n) => n - 1);
       inFlight.delete(ws);
     });
     inFlight.set(ws, done);
@@ -1027,19 +1027,19 @@ export default function Terminal(props: {
   // Only inert tabs can be here, the move is refused while one is live, so a
   // fresh object per moved tab costs nothing but a remount.
   const offMoved = onWith<WorkspaceMoved>(WORKSPACE_MOVED, ({ moves }) => {
-    setOpen(
-      open().map((t) => {
-        const workspace = movedPath(t.workspace, moves);
-        const cwd = movedPath(t.cwd, moves);
-        return workspace || cwd ? { ...t, workspace: workspace ?? t.workspace, cwd: cwd ?? t.cwd } : t;
-      }),
-    );
-    setActiveByWorkspace(moveDeep(activeByWorkspace(), moves));
+    const tabs = open().map((t) => {
+      const workspace = movedPath(t.workspace, moves);
+      const cwd = movedPath(t.cwd, moves);
+      return workspace || cwd ? { ...t, workspace: workspace ?? t.workspace, cwd: cwd ?? t.cwd } : t;
+    });
+    const active = moveDeep(activeByWorkspace(), moves);
+    setOpen(tabs);
+    setActiveByWorkspace(active);
     for (const m of moves) {
       touched.add(m.from);
       touched.add(m.to);
     }
-    saveTabStore(open(), activeByWorkspace());
+    saveTabStore(tabs, active);
   });
   onCleanup(offMoved);
 
@@ -1070,10 +1070,11 @@ export default function Terminal(props: {
     autoDrafts.delete(from);
     setOpen(next);
     const { [from]: was, ...active } = activeByWorkspace();
-    setActiveByWorkspace(was && !active[to] ? { ...active, [to]: was } : active);
+    const joined = was && !active[to] ? { ...active, [to]: was } : active;
+    setActiveByWorkspace(joined);
     touched.add(from);
     touched.add(to);
-    saveTabStore(open(), activeByWorkspace());
+    saveTabStore(next, joined);
   }
 
   // A session's transcript was deleted: close whatever tab was driving it. The

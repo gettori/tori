@@ -244,7 +244,12 @@ export default function RemotePane(props: PaneProps) {
               Allow {r().name} from {r().addr}?
             </span>
             {/* Focused, so Enter on a request nobody expected turns it away. */}
-            <Button size="sm" ref={(el) => queueMicrotask(() => el.focus())} onClick={() => answer(false)}>
+            <Button
+              size="sm"
+              // A ref runs before the element is in the document.
+              ref={(el) => queueMicrotask(() => el.focus())}
+              onClick={() => answer(false)}
+            >
               Deny
             </Button>
             <Button size="sm" variant="primary" onClick={() => answer(true)}>

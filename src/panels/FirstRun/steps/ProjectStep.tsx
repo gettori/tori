@@ -85,6 +85,7 @@ export default function ProjectStep(props: {
   // switch, would take focus off the segment the user just pressed.
   let opening = true;
   onMount(() => (opening = false));
+  // A ref runs before the element is in the document.
   const focusFirst = (el: HTMLInputElement) => opening && queueMicrotask(() => el.focus());
 
   const onKeyDown = (e: KeyboardEvent) => {
