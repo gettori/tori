@@ -26,6 +26,7 @@ export interface LedgerEntry {
 export const ENFORCED: readonly IdiomClass[] = [
   "boolean-attr",
   "destructured-props",
+  "effect-writes",
   "lowercase-on",
   "on-namespace",
   "use-directive",
