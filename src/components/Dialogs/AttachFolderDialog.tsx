@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, on, onCleanup, Show, type JSX } from "solid-js";
+import { createEffect, createSignal, For, Match, on, onCleanup, Show, Switch, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { Ban, Folder, FolderInput, GitBranch, GitFork, type IconGlyph } from "../Icon/icons";
 import Button from "../Button/Button";
@@ -56,75 +56,82 @@ export function LayoutCard(props: {
   tilde: (p: string) => string;
   root?: string | null;
 }) {
-  const layout = props.layout;
-  const tilde = props.tilde;
   // A worktree inside the project's folder by its place there, since every row
-  // would otherwise repeat the same root. One outside it keeps its full path.
+  // would otherwise repeat the same root. One outside it shows its path from home.
   const where = (path: string) => {
     const root = props.root?.replace(/\/+$/, "");
-    return root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : tilde(path);
+    return root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : props.tilde(path);
   };
-  if (layout.kind === "clone")
-    return (
-      <Card
-        icon={GitBranch}
-        heading={`Git repository on ${layout.branch ?? "a detached HEAD"}`}
-        description={`A clone with ${count(layout.branches, "local branch", "local branches")}. It appears with its branches and worktrees like any project.`}
-      >
-        <dl class={styles.detectGrid}>
-          <Show when={layout.remote}>
-            {(url) => (
-              <>
-                <dt>Remote</dt>
-                <dd>{remoteLabel(url())}</dd>
-              </>
-            )}
-          </Show>
-          <dt>Worktrees</dt>
-          <dd>
-            {layout.worktrees.length === 0
-              ? `none besides ${layout.branch ?? "the checkout"}`
-              : count(layout.worktrees.length, "more", "more")}
-          </dd>
-        </dl>
-      </Card>
-    );
-  if (layout.kind === "bare")
-    return (
-      <Card
-        icon={GitFork}
-        heading={`Bare repository with ${count(layout.worktrees.length, "worktree", "worktrees")}`}
-        description={
-          layout.worktrees.length === 0
-            ? "It has no worktrees yet. Add one once it is attached."
-            : layout.worktrees.length === 1
-              ? "Its worktree is attached with it."
-              : `All ${WORDS[layout.worktrees.length] ?? layout.worktrees.length} are attached with it.`
-        }
-      >
-        <Show when={layout.worktrees.length > 0}>
-          <ul class={styles.detectWorktrees}>
-            <For each={layout.worktrees}>
-              {(w) => (
-                <li>
-                  <Icon icon={GitBranch} />
-                  <span class={styles.detectBranch}>{w.branch ?? "detached"}</span>
-                  <span class={styles.detectPath} title={w.path}>
-                    {where(w.path)}
-                  </span>
-                </li>
-              )}
-            </For>
-          </ul>
-        </Show>
-      </Card>
-    );
+  const clone = () => (props.layout.kind === "clone" ? props.layout : null);
+  const bare = () => (props.layout.kind === "bare" ? props.layout : null);
   return (
-    <Card
-      icon={Folder}
-      heading="Plain folder"
-      description="Not a git repository. Sessions run in this folder; there are no branches or worktrees to show."
-    />
+    <Switch
+      fallback={
+        <Card
+          icon={Folder}
+          heading="Plain folder"
+          description="Not a git repository. Sessions run in this folder; there are no branches or worktrees to show."
+        />
+      }
+    >
+      <Match when={clone()}>
+        {(layout) => (
+          <Card
+            icon={GitBranch}
+            heading={`Git repository on ${layout().branch ?? "a detached HEAD"}`}
+            description={`A clone with ${count(layout().branches, "local branch", "local branches")}. It appears with its branches and worktrees like any project.`}
+          >
+            <dl class={styles.detectGrid}>
+              <Show when={layout().remote}>
+                {(url) => (
+                  <>
+                    <dt>Remote</dt>
+                    <dd>{remoteLabel(url())}</dd>
+                  </>
+                )}
+              </Show>
+              <dt>Worktrees</dt>
+              <dd>
+                {layout().worktrees.length === 0
+                  ? `none besides ${layout().branch ?? "the checkout"}`
+                  : count(layout().worktrees.length, "more", "more")}
+              </dd>
+            </dl>
+          </Card>
+        )}
+      </Match>
+      <Match when={bare()}>
+        {(layout) => (
+          <Card
+            icon={GitFork}
+            heading={`Bare repository with ${count(layout().worktrees.length, "worktree", "worktrees")}`}
+            description={
+              layout().worktrees.length === 0
+                ? "It has no worktrees yet. Add one once it is attached."
+                : layout().worktrees.length === 1
+                  ? "Its worktree is attached with it."
+                  : `All ${WORDS[layout().worktrees.length] ?? layout().worktrees.length} are attached with it.`
+            }
+          >
+            <Show when={layout().worktrees.length > 0}>
+              <ul class={styles.detectWorktrees}>
+                <For each={layout().worktrees}>
+                  {(w) => (
+                    <li>
+                      <Icon icon={GitBranch} />
+                      <span class={styles.detectBranch}>{w.branch ?? "detached"}</span>
+                      <span class={styles.detectPath} title={w.path}>
+                        {where(w.path)}
+                      </span>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </Show>
+          </Card>
+        )}
+      </Match>
+    </Switch>
   );
 }
 

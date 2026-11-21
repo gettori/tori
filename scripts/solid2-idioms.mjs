@@ -21,6 +21,13 @@ export function appSources(root = fileURLToPath(new URL("..", import.meta.url)))
   return out;
 }
 
+const holdsFunction = (ts, t) =>
+  ts.isParenthesizedTypeNode(t)
+    ? holdsFunction(ts, t.type)
+    : ts.isUnionTypeNode(t)
+      ? t.types.some((member) => holdsFunction(ts, member))
+      : ts.isFunctionTypeNode(t);
+
 const LABEL_CLASS = {
   "createEffect: writes a setter in body": "effect-writes",
   "createEffect: inside JSX attribute callback": "effect-in-handler",
@@ -243,7 +250,7 @@ export function scan(ts, rel, src, report = {}) {
           tally(`createSignal: function as initial value`, n);
           note("signal-fn-init", loc(n));
         }
-        if (n.typeArguments?.[0] && /=>/.test(n.typeArguments[0].getText())) {
+        if (n.typeArguments?.[0] && holdsFunction(ts, n.typeArguments[0])) {
           tally(`createSignal: type arg contains a function type`, n);
           note("signal-fn-type", loc(n));
         }
@@ -306,7 +313,9 @@ export function scan(ts, rel, src, report = {}) {
           n.initializer &&
           ts.isJsxExpression(n.initializer) &&
           n.initializer.expression &&
-          ts.isConditionalExpression(n.initializer.expression)
+          ts.isConditionalExpression(n.initializer.expression) &&
+          ts.isIdentifier(n.parent.parent.tagName) &&
+          /^[a-z]/.test(n.parent.parent.tagName.text)
         ) {
           tally(`JSX handler chosen by ternary (binds once in 2.0)`, n);
           note("handler-ternary", loc(n));
@@ -350,11 +359,18 @@ export function scan(ts, rel, src, report = {}) {
         n.body &&
         ts.isBlock(n.body)
       ) {
-        let flagged = false;
+        const owner = ts.isFunctionDeclaration(n)
+          ? n.name?.text
+          : ts.isVariableDeclaration(n.parent) && ts.isIdentifier(n.parent.name)
+            ? n.parent.name.text
+            : undefined;
+        const isComponent = /^[A-Z]/.test(owner ?? "");
+        let flagged = !isComponent;
         for (const s of n.body.statements) {
           if (ts.isVariableStatement(s))
             for (const d of s.declarationList.declarations) {
               if (
+                isComponent &&
                 d.initializer &&
                 ts.isIdentifier(d.initializer) &&
                 d.initializer.text === "props" &&
