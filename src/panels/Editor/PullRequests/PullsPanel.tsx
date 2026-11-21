@@ -614,7 +614,7 @@ export default function PullsPanel(props: {
           <div
             class={styles.rowOpen}
             role="button"
-            tabIndex={0}
+            tabindex={0}
             aria-expanded={open() ? "true" : "false"}
             onClick={() => toggleDir(p.node.path)}
             onKeyDown={(e: KeyboardEvent) => {
@@ -660,7 +660,7 @@ export default function PullsPanel(props: {
           class={styles.rowOpen}
           data-file-row={p.file.path}
           role="button"
-          tabIndex={0}
+          tabindex={0}
           aria-label={fileRowName(p.file, unresolvedIn(p.file.path), viewed())}
           onClick={() => openFile(p.file.path)}
           onKeyDown={(e: KeyboardEvent) => {

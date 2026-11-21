@@ -157,7 +157,7 @@ export function InlineChip(props: {
       onMouseLeave={() => props.onPoint(false)}
       // Out of the tab order: the field is one stop, and the chip's file is
       // reachable from its tile above.
-      tabIndex={-1}
+      tabindex={-1}
       draggable={props.onDragStart ? "true" : "false"}
       onDragStart={(e: DragEvent) => props.onDragStart?.(e)}
       onDragEnd={() => props.onDragEnd?.()}

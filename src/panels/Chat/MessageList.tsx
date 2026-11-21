@@ -162,7 +162,7 @@ function Stamp(props: { at: number }) {
   const date = () => new Date(props.at);
   return (
     <Tooltip as="span" class={styles.stamp} label={date().toLocaleString()}>
-      <time dateTime={date().toISOString()}>{stampLabel(props.at, now())}</time>
+      <time datetime={date().toISOString()}>{stampLabel(props.at, now())}</time>
     </Tooltip>
   );
 }

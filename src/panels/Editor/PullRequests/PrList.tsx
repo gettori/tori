@@ -142,7 +142,7 @@ export default function PrList(props: {
               <div
                 class={styles.row}
                 role="button"
-                tabIndex={0}
+                tabindex={0}
                 onClick={() => props.onPick(pr)}
                 onKeyDown={(e: KeyboardEvent) => {
                   if (e.key !== "Enter" && e.key !== " ") return;
