@@ -91,7 +91,7 @@ export default function PdfToolbar(props: { path: string }) {
       <input
         class={styles.field}
         type="text"
-        inputMode="numeric"
+        inputmode="numeric"
         aria-label="Zoom percentage"
         value={percent()}
         onBlur={(e) => commitPercent(e.currentTarget)}
@@ -116,7 +116,7 @@ export default function PdfToolbar(props: { path: string }) {
         <input
           class={styles.field}
           type="text"
-          inputMode="numeric"
+          inputmode="numeric"
           aria-label="Page"
           value={view().page}
           onBlur={(e) => commitPage(e.currentTarget)}

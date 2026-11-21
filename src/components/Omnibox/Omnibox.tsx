@@ -1,4 +1,4 @@
-import { batch, createSignal, createMemo, createEffect, on, onCleanup, onMount, Show, untrack } from "solid-js";
+import { createSignal, createMemo, createEffect, on, onCleanup, onMount, Show, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import Combobox, { type ComboboxGroup, type ComboboxOption } from "../Combobox/Combobox";
 import Dialog from "../Dialog/Dialog";
@@ -1358,12 +1358,10 @@ export default function Omnibox(props: {
           if (browser && item.browse) close(item.browse);
           else pick(item);
         }}
-        onActiveChange={(id) =>
-          batch(() => {
-            setActive(id);
-            if (arrowKey) setArrowed(true);
-          })
-        }
+        onActiveChange={(id) => {
+          setActive(id);
+          if (arrowKey) setArrowed(true);
+        }}
         initialActive={firstCreated() ?? firstRecent()}
         itemComponent={rowContent}
         inputRef={(el) => (input = el)}
