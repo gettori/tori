@@ -136,8 +136,8 @@ opens without a warning. However it got there, Tori updates itself from then
 on. **[docs/INSTALL.md](docs/INSTALL.md)** covers the phone app, updating and
 uninstalling.
 
-**Requirements:** macOS 13.4 or later, on Apple Silicon or Intel (one DMG
-each). Tori is developed and tested on macOS 15. At least one agent
+**Requirements:** macOS 26 or later, on Apple Silicon or Intel (one DMG
+each). Tori is developed on macOS 27 and CI runs on macOS 26. At least one agent
 CLI installed. Node.js if you want the bundled TypeScript language server to
 run.
 
