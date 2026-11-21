@@ -63,7 +63,7 @@ describe("Glide", () => {
     setIndex(2);
     await frame();
     expect(fill.hasAttribute("data-glide")).toBe(true);
-    expect(fill.style.transform).toBe(`translate(0px, ${2 * ROW}px)`);
+    expect([fill.style.left, fill.style.top]).toEqual(["0px", `${2 * ROW}px`]);
   });
 
   it("jumps to a row a key moved onto", async () => {
@@ -72,7 +72,7 @@ describe("Glide", () => {
     setIndex(1);
     await frame();
     expect(fill.hasAttribute("data-glide")).toBe(false);
-    expect(fill.style.transform).toBe(`translate(0px, ${ROW}px)`);
+    expect([fill.style.left, fill.style.top]).toEqual(["0px", `${ROW}px`]);
   });
 
   it("hides with no active row and stops observing the list", async () => {

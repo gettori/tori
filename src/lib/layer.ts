@@ -199,6 +199,7 @@ export function openLayer(options: LayerOptions) {
   noteOpeningPress();
   if (options.modal) lockScroll();
   options.show();
+  settleAnchored.get(options.element)?.();
   if (options.modal) announceTopModal();
 
   return () => {
@@ -257,6 +258,50 @@ const TRANSFORM_ORIGIN: Record<LayerPlacement, string> = {
   "left-end": "bottom right",
 };
 
+const settleAnchored = new WeakMap<HTMLElement, () => void>();
+
+// Measured with the entrance off, since its scale moves the box.
+function restingRect(floating: HTMLElement) {
+  const { style } = floating;
+  const animation = style.animation;
+  style.animation = "none";
+  const rect = floating.getBoundingClientRect();
+  style.animation = animation;
+  return rect;
+}
+
+// A scroller too tall for either side would otherwise slide over its anchor,
+// where the press that opened it lands on a row.
+function fitBesideAnchor(anchor: HTMLElement, floating: HTMLElement, placement: LayerPlacement, gutter: number) {
+  const side = placement.split("-")[0];
+  if (side !== "top" && side !== "bottom") return;
+  if (!/auto|scroll/.test(getComputedStyle(floating).overflowY)) return;
+  const at = anchor.getBoundingClientRect();
+  const rect = restingRect(floating);
+  if (rect.bottom <= at.top || rect.top >= at.bottom) return;
+  const above = at.top - gutter - WINDOW_MARGIN;
+  const below = window.innerHeight - at.bottom - gutter - WINDOW_MARGIN;
+  const to = above > below ? "top" : "bottom";
+  const fitted = placement.replace(side, to) as LayerPlacement;
+  const { style } = floating;
+  style.setProperty(GUTTER_MARGIN[side], "0");
+  style.setProperty(GUTTER_MARGIN[to], `${gutter}px`);
+  style.setProperty("position-area", POSITION_AREA[fitted]);
+  style.setProperty("position-try-fallbacks", "flip-inline");
+  style.setProperty("--layer-origin", TRANSFORM_ORIGIN[fitted]);
+  style.setProperty("max-height", `${Math.max(above, below)}px`);
+}
+
+// Anchor positioning lands between device pixels, which blurs the text.
+function snapToPixels(floating: HTMLElement) {
+  floating.style.removeProperty("translate");
+  const { x, y } = restingRect(floating);
+  const ratio = window.devicePixelRatio || 1;
+  const dx = Math.round(x * ratio) / ratio - x;
+  const dy = Math.round(y * ratio) / ratio - y;
+  if (dx !== 0 || dy !== 0) floating.style.setProperty("translate", `${dx}px ${dy}px`);
+}
+
 // One name per layer: a name shared across rows resolves to the last row.
 export function anchorLayer(
   anchor: HTMLElement,
@@ -291,6 +336,13 @@ export function anchorLayer(
     const crossInset = side === "top" || side === "bottom" ? "inset-inline" : "inset-block";
     style.setProperty(crossInset, `${WINDOW_MARGIN}px`);
   }
+  style.removeProperty("max-height");
+  const settle = () => {
+    fitBesideAnchor(anchor, floating, placement, gutter);
+    snapToPixels(floating);
+  };
+  settleAnchored.set(floating, settle);
+  if (floating.getClientRects().length > 0) settle();
 
   return () => {
     const rest = names().filter((part) => part !== name);
