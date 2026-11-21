@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test"
 import { render, screen, waitFor, fireEvent, within, cleanup } from "../../test/harness";
 import { pointerClick } from "../../test/menus";
 import { expectNoAxeViolations } from "../../test/axe";
-import { Toast } from "../../lib/toast";
 import { splitProps, type ComponentProps } from "solid-js";
 import { LAST_MEMBER, topicKey, type Topic, type Member, type MemberState } from "../../utils/topics";
 import type { TopicActions, TopicActionsHost } from "./topicActions";
@@ -191,7 +190,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 const { default: TopicList } = await import("./TopicList");
-const { default: ToastRegion } = await import("../../components/Toasts/Toasts");
+const { default: ToastRegion, clearToasts } = await import("../../components/Toasts/Toasts");
 const { PURGE_WORKSPACE, PURGE_UNDER_PATH, ROOT_MOVED } = await import("../../utils/events");
 
 // A reference member reads the repo's own checkout and owns no worktree.
@@ -263,7 +262,7 @@ describe("TopicList", () => {
     bridge.status = {};
     enterRoots([]);
   });
-  afterEach(() => Toast.toaster.clear());
+  afterEach(() => clearToasts());
 
   it("renders one row per Topic and filters by name or member", async () => {
     const [query, setQuery] = (await import("solid-js")).createSignal("");

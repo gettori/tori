@@ -5,10 +5,8 @@ import { expectNoAxeViolations } from "../../test/axe";
 import styles from "./Dialog.module.css";
 import Dialog, { type DialogProps } from "./Dialog";
 
-// Kobalte's focus scope dispatches its unmount auto-focus event, and installs
-// its outside-pointerdown listener, from a `setTimeout(0)`. A test that asserts
-// on either without yielding is asserting on a listener that does not exist yet
-// or a restore that has not run, and reads as "Kobalte does not do this".
+// Closing runs through effects and a press restores focus behind itself, so a
+// test that asserts on the result yields first.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 // A button outside the dialog, removed even when the test fails. `cleanup`
@@ -40,8 +38,6 @@ describe("Dialog", () => {
       openDialog({ description: "This cannot be undone." });
 
       const dialog = screen.getByRole("dialog");
-      // `aria-modal` is the wrapper's own doing: Kobalte expresses modality by
-      // aria-hiding everything else and never sets the attribute.
       expect(dialog.getAttribute("aria-modal")).toBe("true");
       expect(dialog.getAttribute("aria-labelledby")).toBe(screen.getByText("Delete branch").id);
       expect(dialog.getAttribute("aria-describedby")).toBe(screen.getByText("This cannot be undone.").id);
@@ -53,6 +49,14 @@ describe("Dialog", () => {
       const title = screen.getByText("Delete branch");
       expect(title.className).toBe(styles.titleHidden);
       expect(screen.getByRole("dialog").getAttribute("aria-labelledby")).toBe(title.id);
+    });
+
+    it("leaves the tree when closed", () => {
+      const { setOpen } = openDialog();
+
+      setOpen(false);
+
+      expect(screen.queryByRole("dialog")).toBeNull();
     });
 
     it("carries a caller's class beside its own", () => {
@@ -234,8 +238,6 @@ describe("Dialog", () => {
       setOpen(false);
       await macrotask();
 
-      // Kobalte's own modal restore focuses a `Trigger` this app never renders,
-      // so without the wrapper's capture-and-restore this lands on <body>.
       expect(document.activeElement).toBe(opener);
     });
 
@@ -260,37 +262,16 @@ describe("Dialog", () => {
       expect(document.activeElement).toBe(document.body);
     });
 
-    it("wraps focus back into the panel at the trap sentinels", () => {
-      openDialog(
-        {},
-        <>
-          <button>First</button>
-          <button>Last</button>
-        </>,
-      );
+    // The focus trap is the browser's: a native modal makes the page inert,
+    // which jsdom does not model, so what is pinned is that it is a real modal.
+    it("opens as a native modal", () => {
+      const showModal = vi.spyOn(HTMLDialogElement.prototype, "showModal");
+      onTestFinished(() => showModal.mockRestore());
 
-      const sentinels = screen.getByRole("dialog").querySelectorAll<HTMLElement>("[data-focus-trap]");
-      expect(sentinels).toHaveLength(2);
+      openDialog();
 
-      // Tabbing past the last control lands on the end sentinel, which throws
-      // focus back to the first tabbable. That is the body, not the first
-      // button: the body carries `tabindex=0` because it is the scroll region.
-      // Real Tab traversal is not simulated: jsdom implements no sequential
-      // focus navigation and this repo has no user-event, so a keydown-based
-      // assertion would pass without moving anything.
-      sentinels[1].focus();
-      expect(document.activeElement).toBe(screen.getByRole("dialog").querySelector(`.${styles.body}`));
-    });
-
-    it("pulls focus back when something outside steals it", () => {
-      const outside = buttonOutsideTheDialog();
-      openDialog({}, <button>Inside</button>);
-      const inside = screen.getByRole("button", { name: "Inside" });
-      inside.focus();
-
-      outside.focus();
-
-      expect(document.activeElement).toBe(inside);
+      expect(showModal).toHaveBeenCalledOnce();
+      expect(screen.getByRole("dialog").tagName).toBe("DIALOG");
     });
   });
 

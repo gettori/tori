@@ -3,29 +3,13 @@ import { render, screen, fireEvent, waitFor, within } from "../../test/harness";
 import { expectNoAxeViolations } from "../../test/axe";
 import styles from "./Dialogs.module.css";
 
-// Two modal dialogs open at once, which the migration onto `Dialog` (#99) makes
-// reachable in a way it was not before. `AskpassDialog` is mounted app-wide and
+// Two modal dialogs open at once. `AskpassDialog` is mounted app-wide and
 // a backgrounded fetch can raise `askpass://prompt` at any moment, including
-// while a `ConfirmDialog` is up. Before the migration those were two independent
-// portals sharing nothing; now they are two Kobalte focus scopes and two
-// dismiss layers stacked on each other.
+// while a `ConfirmDialog` is up.
 //
 // This is a characterization: it pins what the stack actually does, in the
 // order a user would hit it.
 //
-// The accessibility assertion at the bottom carries the one measured surprise.
-// Once the stack settles, the covered panel is aria-hidden with focusable
-// buttons still inside it, which is what axe's `aria-hidden-focus` rule is for,
-// and under jsdom that rule cannot answer at all: it comes back `incomplete`,
-// which this agent treats as a failure rather than a pass, because a rule that
-// cannot produce an answer is not coverage. It is disabled for this one
-// assertion with that reason, rather than in `src/test/axe.ts`, because it is
-// judgeable everywhere except in a stack.
-//
-// The timing matters when reading this. A probe that measured after a macrotask
-// saw a clean run and no such rule at all: Kobalte aria-hides from its own
-// async work, so the state a user meets is the settled one an animation frame
-// later, not the one immediately after the event.
 const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -127,16 +111,10 @@ describe("two dialogs open at once", () => {
     expect(bridge.calls.filter((c) => c.cmd === "askpass_respond")).toEqual([]);
   });
 
-  it("has no accessibility violations while stacked, bar the one jsdom cannot judge", async () => {
+  it("has no accessibility violations while stacked", async () => {
     await stack();
 
-    // `aria-hidden-focus` is exactly what a stack produces and exactly what
-    // jsdom cannot decide, since it has no way to tell whether the buttons
-    // under an aria-hidden layer are really reachable. Every other rule still
-    // runs, so a real regression in the stacked state is still caught here.
-    await expectNoAxeViolations(document.body, {
-      rules: { "aria-hidden-focus": { enabled: false } },
-    });
+    await expectNoAxeViolations(document.body);
   });
 });
 
@@ -237,12 +215,9 @@ describe("a credential prompt over a removal that is already running", () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
-  it("has no accessibility violations while stacked, bar the one jsdom cannot judge", async () => {
+  it("has no accessibility violations while stacked", async () => {
     await stackOverRemoval();
 
-    // Same measured exception as the stack above, and for the same reason.
-    await expectNoAxeViolations(document.body, {
-      rules: { "aria-hidden-focus": { enabled: false } },
-    });
+    await expectNoAxeViolations(document.body);
   });
 });
