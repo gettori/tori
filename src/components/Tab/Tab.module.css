@@ -16,7 +16,7 @@
   align-items: center;
 }
 
-/* Selected off Kobalte's own `data-selected` rather than off a prop, so the
+/* Selected off `data-selected` rather than off a prop, so the
    underline cannot drift from the selection the strip actually holds. */
 .pill:has([data-selected])::after {
   content: "";

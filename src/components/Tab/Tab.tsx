@@ -1,5 +1,5 @@
 import { splitProps, Show, createContext, useContext, type JSX } from "solid-js";
-import { Tabs } from "../../lib/tabs";
+import { Tabs } from "./Tabs";
 import Tooltip, { type TooltipPlacement } from "../Tooltip/Tooltip";
 import styles from "./Tab.module.css";
 
@@ -17,7 +17,7 @@ const RowContext = createContext<TabRowValue>({
 });
 
 /**
- * What a strip tells the tabs inside it, over and above Kobalte's own context.
+ * What a strip tells the tabs inside it, over and above the `Tabs` context.
  *
  * Both facts belong to the strip and neither can travel as a prop, because a
  * strip like `OverflowTabBar` does not build its tabs: the consumer hands it a
@@ -94,7 +94,7 @@ export interface TabProps extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElemen
  *  hovered. Icon + label, with an optional close button. Used by the editor,
  *  terminal and Settings strips so they read and scale identically.
  *
- *  **The selected look comes from Kobalte, not from a prop.** The trigger
+ *  **The selected look comes from the strip, not from a prop.** The trigger
  *  carries `data-selected` when the strip above it says so, and the pill paints
  *  off that, so what is highlighted and what is selected cannot drift.
  *
@@ -126,8 +126,8 @@ export interface TabProps extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElemen
  *  Inside a `TabRow inert` this renders the same boxes with every interactive
  *  part disabled and no `role` at all. That is what `OverflowTabBar`'s
  *  measuring ghost needs: it has to lay out exactly like the real row to be
- *  worth measuring, while joining neither the accessibility tree nor Kobalte's
- *  collection, where it would register a second item under every key. `disabled`
+ *  worth measuring, while joining neither the accessibility tree nor the strip's
+ *  key order, where it would register a second item under every key. `disabled`
  *  rather than a `<span>`, so the boxes stay identical and `aria-hidden-focus`
  *  has nothing to find. */
 export default function Tab(props: TabProps) {
@@ -185,8 +185,7 @@ export default function Tab(props: TabProps) {
       // The tab's whole box. `data-tab-id` rides the trigger, which stops short
       // of the close, so a reader that wants the tab measures this instead.
       data-tab-pill=""
-      class={local.class}
-      classList={{ [styles.pill]: true }}
+      class={local.class ? `${local.class} ${styles.pill}` : styles.pill}
       data-locked={local.locked ? "" : undefined}
       data-quiet={local.quiet ? "" : undefined}
       onAuxClick={onAuxClick}
@@ -202,23 +201,14 @@ export default function Tab(props: TabProps) {
         <Tabs.Trigger
           {...rest}
           value={local.value}
-          // The trigger has to *be* the tooltip's control, so the two
-          // polymorphics stack rather than nest. Kobalte types `as` as a bare
-          // `ValidComponent` and resolves the child's props from it, which a
-          // component generic in its element cannot satisfy; the runtime is one
-          // props object either way.
-          as={Tooltip as unknown as "button"}
+          as={Tooltip}
           label={local.tooltip}
           placement={local.tooltipPlacement}
           whenDisabled={local.tooltipWhenDisabled}
-          // Same cast, one prop further: `as` above types the child's props as
-          // a `<button>`'s, and Kobalte narrows `type` to its own `"button"`
-          // default. Nothing in Tori passes a tab the other two values.
-          type={(local.type ?? "button") as "button"}
+          type={local.type ?? "button"}
           // Counted over the strip's canonical list rather than the rendered
-          // one. Kobalte writes neither, and a strip that drops tabs to fit
-          // would otherwise announce "3 of 5" for the third of twelve open
-          // files.
+          // one: a strip that drops tabs to fit would otherwise announce
+          // "3 of 5" for the third of twelve open files.
           aria-posinset={at()?.index}
           aria-setsize={at()?.total}
           class={styles.tab}

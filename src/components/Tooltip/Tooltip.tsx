@@ -108,7 +108,7 @@ export type TooltipProps<T extends HTMLElement = HTMLButtonElement, P extends Re
      *  that item needs is a type error. Without that, `ButtonHTMLAttributes` would
      *  quietly satisfy it - it declares an optional `value` of its own - and the
      *  grid would compile and then register every tile under the same undefined
-     *  key. Inference needs a *concrete* component, which is why `toggle-group.ts`
+     *  key. Inference needs a *concrete* component, which is why `ToggleGroup`
      *  hands out a pinned `ButtonItem` beside the generic `Item`. A host has to
      *  forward `ref` and the pointer and focus handlers to its element.
      *

@@ -28,7 +28,7 @@ import IconButton from "../../../../components/IconButton/IconButton";
 import OverflowTabBar from "../../../../components/OverflowTabBar";
 import Tab from "../../../../components/Tab/Tab";
 import Tooltip from "../../../../components/Tooltip/Tooltip";
-import { Tabs } from "../../../../lib/tabs";
+import { Tabs } from "../../../../components/Tab/Tabs";
 import FileIcon from "../../../../seti/FileIcon";
 import { parseDiffHunks } from "../../../../utils/diffHunks";
 import { buildRows } from "../../../../utils/diffView";

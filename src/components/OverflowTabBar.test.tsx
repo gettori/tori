@@ -60,8 +60,7 @@ function mount(onActivate: (id: string) => void = () => {}) {
 }
 
 describe("what fits", () => {
-  // Characterization, written before the Kobalte migration (gettori/tori#111)
-  // and expected to survive it unchanged: the widths at which the strip
+  // Characterization (gettori/tori#111): the widths at which the strip
   // collapses are the contract, not the markup underneath.
   const MANY: Item[] = Array.from({ length: 12 }, (_, i) => ({
     id: `t${i}`,
@@ -106,7 +105,7 @@ describe("what fits", () => {
     // never becomes a click: pressing a tab and dragging its path out to the
     // terminal must not load that file first.
     //
-    // `pointerType: "mouse"` is the whole test. Kobalte's trigger selects on
+    // `pointerType: "mouse"` is the whole test. A tab trigger selects on
     // press for a mouse and only for a mouse, and jsdom's default pointerdown
     // carries no pointer type at all - so the version of this without it passed
     // against a bar that selects on press in every real browser. The bar
@@ -137,8 +136,8 @@ describe("what fits", () => {
 
   it("counts every open tab, not the ones that fit", async () => {
     // The harm #114 names. Three of twelve are drawn at this width, and a strip
-    // announcing "3 of 3" tells a reader the other nine do not exist. Kobalte
-    // writes neither attribute, so the bar supplies both off the list the
+    // announcing "3 of 3" tells a reader the other nine do not exist. The
+    // trigger writes neither attribute, so the bar supplies both off the list the
     // consumer holds.
     mountMany(500);
 
@@ -149,8 +148,8 @@ describe("what fits", () => {
   });
 
   it("keeps the heal to itself when the active tab is closed under it", async () => {
-    // Kobalte's tab root force-selects the first key whenever the value it
-    // holds names no rendered tab, and calls `onChange` doing it. Closing the
+    // `Tabs.Root` falls back to the first key whenever the value it holds names
+    // no rendered tab, and calls `onChange` doing it. Closing the
     // active tab puts the strip in exactly that state for one render, before
     // the panel has picked what comes next - so an unguarded bar would not
     // blank the selection, it would open whatever file happens to be leftmost.
@@ -183,7 +182,7 @@ describe("what fits", () => {
     // writes (drop the tab, then move the id), Solid does not batch a delegated
     // handler, so the heal fires between them while this keystroke is still
     // dispatching. Without the close keys excluded at the mark, the bar reads
-    // Kobalte's leftmost pick as the user's and opens the wrong tab.
+    // the strip's leftmost pick as the user's and opens the wrong tab.
     const picked: string[] = [];
     const [items, setItems] = createSignal(MANY);
     const [active, setActive] = createSignal<string | null>("t0");
@@ -272,7 +271,7 @@ describe("what fits", () => {
     // The heal guard keys off the gesture rather than off `activeId`, so a
     // strip that starts with no selection is still clickable. Gating on the
     // state instead would swallow this, and the two are indistinguishable from
-    // the value alone: Kobalte's heal picks the leftmost tab, which is also
+    // the value alone: the fallback picks the leftmost tab, which is also
     // something a user can click.
     const picked: string[] = [];
     setTabBarWidth(2000);
@@ -310,9 +309,8 @@ describe("what fits", () => {
 
   it("always draws the active tab, however far down the list it is", async () => {
     // `displayOrder` pulls the active tab into the last visible slot for
-    // rendering only, never reordering what the consumer holds. Kobalte is
-    // about to depend on this harder than the strip does today: its tab root
-    // force-selects the first key, and calls `onChange` doing it, whenever the
+    // rendering only, never reordering what the consumer holds. `Tabs.Root`
+    // depends on this: it falls back to the first key, and calls `onChange` doing it, whenever the
     // selected value is not among the tabs actually rendered. So a regression
     // here would not blank the selection, it would switch the user's file.
     mountActive(500, "t9");
@@ -448,7 +446,7 @@ describe("the overflow button", () => {
   });
 
   it("still says it opens a menu, from the element a keyboard reaches", async () => {
-    // The cost of the wrapper, and the one a scan can catch. Kobalte writes
+    // The cost of the wrapper, and the one a scan can catch. The dropdown writes
     // `aria-haspopup` and `aria-expanded` on its trigger, which here is the
     // wrapper: not focusable, not what a screen reader lands on. The button
     // inside it is both, so it says this for itself, and this is the one open
@@ -465,7 +463,7 @@ describe("the overflow button", () => {
     // One rule off, for the reason `Dropdown.test.tsx` records: axe raises
     // `controlsWithinPopup` for any trigger carrying both `aria-haspopup` and
     // `aria-controls`, in a real browser as much as here, because it cannot
-    // tell whether the popup is open. Every Kobalte trigger has both.
+    // tell whether the popup is open. Every menu trigger has both.
     //
     // `aria-required-parent` and `aria-hidden-focus` used to be named here too,
     // and were this bar's own: its tabs carried `role="tab"` with no tablist

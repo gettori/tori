@@ -479,13 +479,8 @@ export default function Settings(props: {
                   in-flight edits, and `hidden` is what keeps the inactive ones
                   out of the focus trap. A search un-hides every one.
 
-                  Plain containers rather than `Tabs.Content`: Kobalte writes
-                  `hidden` on every panel but the selected one and wins over
-                  the prop, so the search state - six panes open and nothing
-                  selected - cannot be expressed through it. The rail is still
-                  Kobalte's; `src/lib/tabs` documents that a list with no
-                  `Content` claiming its values simply omits `aria-controls`,
-                  so the pairing here is `aria-labelledby` on the panel. */}
+                  Plain containers, because the search state is six panes open
+                  and nothing selected. */}
           <For each={SETTING_TABS}>
             {(t) => (
               <div
