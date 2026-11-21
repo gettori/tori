@@ -100,9 +100,9 @@ export function createMoveForm(opts: {
 }
 
 export function MoveFields(props: { form: MoveForm; path: string | null; home: string; onChange?: () => void }) {
-  const f = props.form;
   const tilde = (p: string) => shortHome(p, props.home);
-  const alerts = () => [f.error(), f.check(), ...f.blockers()].filter((x): x is string => !!x);
+  const alerts = () =>
+    [props.form.error(), props.form.check(), ...props.form.blockers()].filter((x): x is string => !!x);
 
   return (
     <>
@@ -123,20 +123,22 @@ export function MoveFields(props: { form: MoveForm; path: string | null; home: s
         </div>
       </div>
 
-      <Show when={f.found()}>{(found) => <LayoutCard layout={found().layout} tilde={tilde} root={props.path} />}</Show>
+      <Show when={props.form.found()}>
+        {(found) => <LayoutCard layout={found().layout} tilde={tilde} root={props.path} />}
+      </Show>
 
-      <Show when={f.found()?.layout.kind === "clone"}>
+      <Show when={props.form.found()?.layout.kind === "clone"}>
         <Checkbox
           class={styles.wtCheck}
-          checked={f.convert()}
-          disabled={!!f.refusal()}
-          onChange={f.setConvert}
+          checked={props.form.convert()}
+          disabled={!!props.form.refusal()}
+          onChange={props.form.setConvert}
           label="Convert to worktree layout"
         />
         <Show
-          when={f.refusal()}
+          when={props.form.refusal()}
           fallback={
-            <Show when={f.convert()}>
+            <Show when={props.form.convert()}>
               <p class={styles.attachFine}>
                 Tori trusts the folder, then makes it a .bare repo with the default branch and the checked-out branch as
                 worktrees.
@@ -155,9 +157,9 @@ export function MoveFields(props: { form: MoveForm; path: string | null; home: s
         <input
           class={styles.spaceInput}
           aria-labelledby={NAME_LABEL}
-          value={f.name()}
-          placeholder={f.found()?.name ?? "name"}
-          onInput={(e) => f.setName(e.currentTarget.value)}
+          value={props.form.name()}
+          placeholder={props.form.found()?.name ?? "name"}
+          onInput={(e) => props.form.setName(e.currentTarget.value)}
           autocapitalize="off"
           autocorrect="off"
           spellcheck="false"

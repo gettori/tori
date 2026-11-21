@@ -27,28 +27,27 @@ const firstNotInstalled = <Id extends string>(sizes: SizeChoice<Id>[], installed
   sizes.find((s) => s.id !== installed)?.id ?? sizes[0].id;
 
 function Ask<Id extends string>(props: { store: DownloadStore<Id, DownloadStatus<Id>>; copy: Copy }) {
-  const { status, failed, download, cancelDownload, dismissAsk, sizeLabel, sizes } = props.store;
-  const [size, setSize] = createSignal<Id>(firstNotInstalled(sizes, status().model));
-  const running = () => status().downloading;
+  const [size, setSize] = createSignal<Id>(firstNotInstalled(props.store.sizes, props.store.status().model));
+  const running = () => props.store.status().downloading;
   return (
     <Dialog
       open
       title={props.copy.title}
-      onClose={dismissAsk}
+      onClose={props.store.dismissAsk}
       actions={
         <Show
           when={running()}
           fallback={
             <>
-              <Button onClick={dismissAsk}>Not now</Button>
-              <Button variant="primary" onClick={() => void download(size())}>
-                {failed() ? "Retry" : "Download"}
+              <Button onClick={props.store.dismissAsk}>Not now</Button>
+              <Button variant="primary" onClick={() => void props.store.download(size())}>
+                {props.store.failed() ? "Retry" : "Download"}
               </Button>
             </>
           }
         >
-          <Button onClick={() => void cancelDownload()}>Cancel download</Button>
-          <Button onClick={dismissAsk}>Close</Button>
+          <Button onClick={() => void props.store.cancelDownload()}>Cancel download</Button>
+          <Button onClick={props.store.dismissAsk}>Close</Button>
         </Show>
       }
     >
@@ -60,7 +59,11 @@ function Ask<Id extends string>(props: { store: DownloadStore<Id, DownloadStatus
             aria-label={props.copy.pick}
             value={size()}
             onChange={(v) => setSize(() => v as Id)}
-            options={sizes.map((s) => ({ value: s.id, label: sizeLabel(s.id), description: s.description }))}
+            options={props.store.sizes.map((s) => ({
+              value: s.id,
+              label: props.store.sizeLabel(s.id),
+              description: s.description,
+            }))}
           />
         }
       >
@@ -70,7 +73,7 @@ function Ask<Id extends string>(props: { store: DownloadStore<Id, DownloadStatus
           </div>
         )}
       </Show>
-      <Show when={failed()}>
+      <Show when={props.store.failed()}>
         {(error) => (
           <div class={styles.msg} role="alert">
             {props.copy.failed}: {error()}

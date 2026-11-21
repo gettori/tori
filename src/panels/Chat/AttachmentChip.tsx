@@ -55,22 +55,21 @@ export function AttachmentChip(props: {
   /** Name it in the message, by Cmd+click. Also what makes it draggable. */
   onInsert?: (token: string) => void;
 }) {
-  const block = props.block;
   // A tile is its picture, or its Seti icon in the same box, above its name.
   // A pill is prose (a hunk comment, a diagnostic) or a link with no file.
-  const src = thumbSrc(block);
-  const path = block.type === "fileRef" ? block.path : null;
-  const token = props.onInsert ? tokenOf(block) : null;
-  const name = tileName(block);
-  const note = tileNote(block);
-  const tile = isTile(block);
-  const reason = () => (props.missing && path ? `. No file at ${path}` : "");
+  const src = () => thumbSrc(props.block);
+  const path = () => (props.block.type === "fileRef" ? props.block.path : null);
+  const token = () => (props.onInsert ? tokenOf(props.block) : null);
+  const name = () => tileName(props.block);
+  const note = () => tileNote(props.block);
+  const tile = () => isTile(props.block);
+  const reason = () => (props.missing && path() ? `. No file at ${path()}` : "");
   return (
     <div
       ref={props.ref}
       class={styles.attachment}
       classList={{
-        [styles.attachmentTile]: tile,
+        [styles.attachmentTile]: tile(),
         [styles.attachmentMissing]: !!props.missing,
         [styles.attachmentPointed]: !!props.pointed,
       }}
@@ -82,16 +81,18 @@ export function AttachmentChip(props: {
         as="button"
         type="button"
         class={styles.attachmentBody}
-        label={<Tip {...attachmentTip(block, { missing: props.missing, nameable: token !== null })} />}
-        aria-label={`Preview ${chipLabel(block)}${reason()}`}
-        draggable={token !== null ? "true" : "false"}
+        label={<Tip {...attachmentTip(props.block, { missing: props.missing, nameable: token() !== null })} />}
+        aria-label={`Preview ${chipLabel(props.block)}${reason()}`}
+        draggable={token() !== null ? "true" : "false"}
         onDragStart={(e: DragEvent) => {
-          if (!token) return;
-          e.dataTransfer?.setData(ATTACHMENT_TOKEN_MIME, token);
+          const dragged = token();
+          if (!dragged) return;
+          e.dataTransfer?.setData(ATTACHMENT_TOKEN_MIME, dragged);
           if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
         }}
         onClick={(e: MouseEvent) => {
-          if (e.metaKey && token) props.onInsert?.(token);
+          const named = token();
+          if (e.metaKey && named) props.onInsert?.(named);
           else props.onPreview();
         }}
         // The keyboard's way to the remove button's job, on the control the
@@ -102,13 +103,15 @@ export function AttachmentChip(props: {
           props.onRemove();
         }}
       >
-        <Show when={tile} fallback={<span class={styles.attachmentName}>{name}</span>}>
+        <Show when={tile()} fallback={<span class={styles.attachmentName}>{name()}</span>}>
           <span class={styles.attachmentPreview}>
-            {src ? <img class={styles.attachmentThumb} src={src} alt="" /> : <FileIcon name={name} />}
+            <Show when={src()} fallback={<FileIcon name={name()} />}>
+              {(url) => <img class={styles.attachmentThumb} src={url()} alt="" />}
+            </Show>
           </span>
-          <span class={styles.attachmentName}>{name}</span>
-          <Show when={note}>
-            <span class={styles.attachmentNote}>{note}</span>
+          <span class={styles.attachmentName}>{name()}</span>
+          <Show when={note()}>
+            <span class={styles.attachmentNote}>{note()}</span>
           </Show>
         </Show>
       </Tooltip>
@@ -120,7 +123,7 @@ export function AttachmentChip(props: {
             // Named after the action and after which attachment: an image
             // chip's own content is a picture, so without this the button
             // answers to nothing.
-            aria-label={`Remove ${chipLabel(block)}${reason()}`}
+            aria-label={`Remove ${chipLabel(props.block)}${reason()}`}
             onClick={() => remove()()}
           >
             <Icon icon={X} size={12} aria-hidden="true" />
