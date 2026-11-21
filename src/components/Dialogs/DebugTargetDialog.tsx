@@ -55,7 +55,7 @@ const KIND_LABELS: Record<TargetKind, string> = {
 // so focus sits on the panel itself, where no control would answer the key. The
 // Start button cannot answer it either while a mode is blocked, since it is
 // `disabled` and a disabled button is never clicked. Escape does not stay here:
-// Kobalte reports it as `onClose`.
+// `Dialog` reports it as `onClose`.
 export default function DebugTargetDialog(props: {
   /** The debuggers to choose among. One when the active file or the palette
    *  row already decided it, and then there is nothing to choose. */

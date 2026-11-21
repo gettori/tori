@@ -97,7 +97,7 @@ export function worktreeFolder(branch: string): string {
  * or the primary, commits it. The shared `Combobox` draws the parked row, which
  * is what `picked` is for there.
  *
- * The shell is `Dialog`. Escape is Kobalte's, reported as `onClose`.
+ * The shell is `Dialog`. Escape is the layer's, reported as `onClose`.
  */
 export default function AddBranchDialog(props: {
   /** "branch" attaches to a plain repo, "worktree" opens a folder off a bare
@@ -339,14 +339,9 @@ export default function AddBranchDialog(props: {
   const parked = createMemo(() => (source() === "issue" || choice()?.kind === "new" ? null : (choice()?.name ?? null)));
 
   // Picking answers the list's question, so the next thing to press is the one
-  // that commits it. Kobalte hands the filter its focus back as part of
-  // selecting, which is right for a palette that commits on the press and wrong
-  // for a dialog whose confirm is a button. Solid flushes this effect inside
-  // the `setPicked` that triggered it, which is still before that, so the move
-  // waits for the press to finish being handled - otherwise the two take turns
-  // and the primitive has the last one. Deferred, because a row the dialog
-  // *opened* on is not a pick: a `prefill` parks one before anybody has pressed
-  // anything, and someone about to type a new name wants the filter.
+  // that commits it. Deferred, because a row the dialog *opened* on is not a
+  // pick: a `prefill` parks one before anybody has pressed anything, and
+  // someone about to type a new name wants the filter.
   createEffect(
     on(
       parked,
@@ -400,7 +395,7 @@ export default function AddBranchDialog(props: {
 
   // Enter with nothing listed, the one key the surface cannot answer: there is
   // no row to commit, so the typed name is the answer. Every other Enter is
-  // Kobalte's, and arrives through `onSelect`.
+  // `Combobox`'s, and arrives through `onSelect`.
   function onKeyDown(e: KeyboardEvent) {
     if (e.key !== "Enter" || matches().length) return;
     if (!newName()) return;
@@ -557,9 +552,6 @@ export default function AddBranchDialog(props: {
           options={options()}
           query={query()}
           onQueryChange={(q) => {
-            // Kobalte echoes a value written into the field back as an input
-            // change, so without this a prefill would clear the pick it opened on
-            // before anybody touched the keyboard.
             if (q === query()) return;
             setQuery(q);
             setPicked(null);
@@ -681,10 +673,9 @@ export default function AddBranchDialog(props: {
  *
  * **A filter, because the choices are the repo's branches.** This is the same
  * list the dialog itself is filtering, and on a repo with hundreds of them a
- * plain listbox is a scroll and a guess. Kobalte's select has nowhere to put a
- * text field - its listbox holds the keyboard - so the surface is `Popover`
- * over the shared `Combobox`, which is that pair already and brings the arrow
- * keys, the active row and the empty state with it.
+ * plain listbox is a scroll and a guess. So the surface is `Popover` over the
+ * shared `Combobox`, which is a text field and a listbox already and brings the
+ * arrow keys, the active row and the empty state with it.
  *
  * **Escape closes the list and leaves the dialog open.** Both are dismissable
  * layers and only the topmost answers the key, so nothing here has to say so.

@@ -22,14 +22,6 @@ function focusTrigger(trigger: HTMLElement) {
   fireEvent.focus(trigger);
 }
 
-/** Let a modal dialog finish aria-hiding what is outside it.
- *
- *  Kobalte's `ariaHideOutside` watches the document with a `MutationObserver`
- *  and writes the attribute from inside `setTimeout(() =>
- *  requestAnimationFrame(...))`, so a node portalled onto the body is hidden two
- *  turns after it is inserted. Asserting synchronously would read the tree
- *  before that happens, and pass whether or not the tooltip was mounted in the
- *  right place - the shape of a test that cannot fail. */
 function settleAriaHidden(): Promise<void> {
   return new Promise((resolve) => setTimeout(() => requestAnimationFrame(() => resolve())));
 }

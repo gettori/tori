@@ -420,7 +420,7 @@ export default function Styleguide() {
             )}
           </For>
           {/* A Root and a List around the demo, because a `Tab` with a `value`
-              is a Kobalte trigger and reads its selection from the strip above
+              is a `Tabs` trigger and reads its selection from the strip above
               it. The signal stays so the demo still shows what a controlled
               strip looks like. */}
           <Tabs.Root value={String(activeTab())} onChange={(v) => setActiveTab(Number(v))}>

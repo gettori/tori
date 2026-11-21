@@ -38,8 +38,6 @@ import SpaceDialog from "./SpaceDialog";
 // back to being a hint. Edit mode has no control left to name: its name is
 // static text, read in order after that same line.
 const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
-// Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so a
-// press fired before this yield lands on nobody.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 type Props = Parameters<typeof SpaceDialog>[0];
@@ -373,9 +371,6 @@ describe("SpaceDialog", () => {
   });
 
   describe("shape", () => {
-    // Rewritten at migration time: dismissal was a `mousedown` on a real
-    // backdrop element and is now Kobalte's outside `pointerdown`, from a
-    // listener it installs in a `setTimeout(0)`.
     it("cancels on a pointer down outside the panel", async () => {
       const { onCancel } = open();
       await macrotask();
@@ -409,8 +404,8 @@ describe("SpaceDialog", () => {
 });
 
 // The `mount` seam, on a real dialog rather than the synthetic one in
-// `Tooltip.test.tsx`. `Dialog.Content` calls Kobalte's `createHideOutside`,
-// which aria-hides everything outside the panel, so a tooltip portalled onto
+// `Tooltip.test.tsx`. A modal `Dialog` makes everything outside
+// the panel inert, so a tooltip portalled onto
 // the body would be styled correctly and invisible to a screen reader. The
 // panel publishes itself through `Dialog/surface.ts`, and both `Tooltip` and
 // `Popover` mount into it - which is why the swatch below, two portals deep,

@@ -78,8 +78,6 @@ const pickWithWorktree = (label: string) => {
 };
 const done = () => screen.getByRole("button", { name: /Create Topic|Add to Topic|Working/ }) as HTMLButtonElement;
 const probeCalls = () => bridge.calls.filter((c) => c.cmd === "probe_topic_branch");
-// Kobalte's focus scope settles from a `setTimeout(0)`; a test that moved focus
-// has to let that run before the render is torn down under it.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 function open(over: Partial<Parameters<typeof NewTopicDialog>[0]> = {}) {

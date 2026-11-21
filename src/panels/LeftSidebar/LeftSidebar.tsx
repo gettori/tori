@@ -702,7 +702,7 @@ export default function LeftSidebar(props: {
   // the trigger would swallow every row's own menu on the way past.
   const [spaceAnchor, setSpaceAnchor] = createSignal<{ x: number; y: number }>();
 
-  // A right-click nobody claimed belongs to the space. Kobalte's trigger stops
+  // A right-click nobody claimed belongs to the space. `ContextMenu`'s trigger stops
   // the ones it takes (see ContextMenu on nesting), and the guard covers a
   // plain handler that only prevents, so what reaches here is the empty area.
   function onSpaceAreaMenu(e: MouseEvent) {

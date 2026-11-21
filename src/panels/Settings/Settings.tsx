@@ -95,13 +95,8 @@ const PANES: Record<SettingTab, Component<PaneProps>> = {
   advanced: AdvancedPane,
 };
 
-/** Trigger and panel ids, supplied rather than left to Kobalte.
- *
- *  Kobalte generates both, but it hands a panel its `aria-labelledby` out of a
- *  plain `Map` that the triggers fill from an effect - so the panel renders
- *  before the map has anything in it, reads `undefined`, and never re-reads,
- *  because a `Map` is not reactive. Naming both ends removes the ordering from
- *  the question entirely. */
+/** Trigger and panel ids, named on both ends so each can point at the other
+ *  without depending on render order. */
 const tabId = (id: SettingTab) => `settings-tab-${id}`;
 const paneId = (id: SettingTab) => `settings-pane-${id}`;
 
@@ -308,9 +303,8 @@ export default function Settings(props: {
   /**
    * Arrow, Home and End across the rail.
    *
-   * Hand-rolled, and this is the one strip in Tori that is: #93 moved the tab
-   * strips onto Kobalte, but Kobalte's tabs always hold a selection, and this
-   * rail holds none while a search is running - it forces a value back and
+   * Hand-rolled rather than `Tabs`, which always holds a selection, and this
+   * rail holds none while a search is running: `Tabs` forces a value back and
    * fires `onChange`, which lands here as the query being cleared under the
    * user. Vertical, so Up and Down move it; both orientations wrap, because a
    * six-item rail has no edge worth stopping at.
@@ -383,10 +377,7 @@ export default function Settings(props: {
             />
           </div>
           {/* The headings are plain text, not items: they group, they do not
-                go anywhere, so neither Tab nor an arrow key stops on one.
-                Roving tabindex and arrow wrap come from Kobalte, so the rail
-                carries no keyboard code of its own; `orientation` on the Root
-                is what makes Up and Down the keys that move it. */}
+                go anywhere, so neither Tab nor an arrow key stops on one. */}
           {/* Tori's own bar rather than the platform's, the same one the
                   sidebar and the models list draw: it floats over the items
                   instead of taking a gutter out of a 206px column. */}

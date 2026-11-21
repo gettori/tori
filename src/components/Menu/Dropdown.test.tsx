@@ -7,10 +7,8 @@ import Dialog from "../Dialog/Dialog";
 import Dropdown, { cursorRect } from "./Dropdown";
 import { MenuRow, MenuSub, type MenuItem } from "./rows";
 
-// Kobalte's focus scope focuses the content from a `setTimeout(0)`, and its
-// dismissable layer installs the outside-pointerdown listener from another one.
-// The same seam `Dialog.test.tsx` documents: assert without yielding and you are
-// asserting on machinery that does not exist yet.
+// A menu opened by a pointer press moves focus into itself from a `setTimeout`
+// (`MenuContent`), so a focus or keyboard assertion after one yields first.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 // Actions nothing here asserts on: every test that cares about one declares its
@@ -21,7 +19,7 @@ const items = (): MenuItem[] => [
   { label: "Gamma", onClick: () => {} },
 ];
 
-/** Which rows are highlighted, in order. `data-highlighted` is what Kobalte
+/** Which rows are highlighted, in order. `data-highlighted` is what `MenuItem`
  *  stamps on the row the arrows, Home/End or typeahead landed on, and what
  *  `Menu.module.css` paints. */
 const highlighted = () =>
@@ -76,11 +74,9 @@ describe("Dropdown", () => {
 
   describe("at a point, with no trigger at all", () => {
     it("maps the anchor onto the rect the popper is given", () => {
-      // The one thing about this mode that is ours rather than Kobalte's, and
-      // the one thing jsdom cannot show: floating-ui has no geometry to work
-      // with, so the positioner reads `top: 0; left: 0` whatever it is anchored
-      // to. An x/y swap would render identically and pass every DOM assertion
-      // in this file.
+      // The one thing jsdom cannot show: it has no anchor positioning, so the
+      // menu renders the same wherever it is anchored. An x/y swap would render
+      // identically and pass every DOM assertion in this file.
       expect(cursorRect({ x: 120, y: 340 })).toEqual({ x: 120, y: 340 });
       // The popper asks on its own schedule, so a menu closing by clearing its
       // anchor and its open state in one update can be asked once more on the
@@ -105,9 +101,9 @@ describe("Dropdown", () => {
     });
 
     it("hands focus back to wherever it came from when it closes", async () => {
-      // Kobalte's close handler focuses its Trigger, and there is none here, so
-      // its restore is a no-op and focus would land on `<body>`: for CodeEditor
-      // that means the next keystroke goes nowhere instead of into the editor.
+      // There is no trigger to return focus to, so it has to go back to what
+      // had it at open, or it lands on `<body>`: for CodeEditor that means the
+      // next keystroke goes nowhere instead of into the editor.
       const editor = focusableOutside();
       editor.focus();
 
@@ -327,7 +323,7 @@ describe("Dropdown", () => {
       // `controlsWithinPopup` for *any* trigger carrying both `aria-haspopup`
       // and `aria-controls`: it cannot tell whether the popup is currently
       // open, so it asks a human, in a real browser as much as here. Every
-      // dropdown trigger Kobalte renders has both attributes. The rule still
+      // open dropdown trigger has both attributes. The rule still
       // runs in full over the anchor-mode scan below, which has no trigger, and
       // over `ContextMenu.test.tsx`, whose trigger carries neither.
       await expectNoAxeViolations(document.body, {

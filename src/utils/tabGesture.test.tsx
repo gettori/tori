@@ -27,7 +27,7 @@ describe("tabGesture", () => {
   it("stays live for the whole dispatch, and dies with it", () => {
     // The bug this replaces: the flag was cleared in a `queueMicrotask`, and a
     // browser runs a microtask checkpoint after every listener callback of a
-    // user-initiated dispatch. So it was already gone by the time Kobalte's own
+    // user-initiated dispatch. So it was already gone by the time the tab's own
     // handler ran, and clicking a tab did nothing in the app while every
     // `fireEvent` test passed. Reading the event's own phase has no window.
     const g = tabGesture();
@@ -35,7 +35,7 @@ describe("tabGesture", () => {
     let seenLater: boolean | null = null;
 
     bar.addEventListener("click", (e) => g.mark(e), true);
-    // Stands in for Kobalte's handler, which Solid delegates to `document` and
+    // Stands in for `Tabs.Trigger`'s handler, which Solid delegates to `document` and
     // therefore runs after everything on the bar.
     document.addEventListener("click", () => (seenLater = g.live()), { once: true });
 
@@ -48,7 +48,7 @@ describe("tabGesture", () => {
   it("does not read a close keystroke as a selection", () => {
     // Delete and Backspace on a focused tab close it, and a close writes the tab
     // list before the panel has picked what comes next - the one render where
-    // Kobalte force-selects the leftmost key. Solid does not batch a delegated
+    // `Tabs.Root` falls back to the leftmost key. Solid does not batch a delegated
     // handler, so that heal arrives while this very keystroke is still
     // dispatching, and a bar that trusted it would open the leftmost tab.
     const g = tabGesture();

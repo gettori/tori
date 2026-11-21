@@ -35,7 +35,7 @@ export const Playground: Story = {};
 
 /** The four sides. `top` is the default and the right answer for a toolbar row;
  *  `right` is for a vertical rail, where a tooltip above would cover the
- *  neighbour above it. Kobalte flips a placement that would leave the viewport,
+ *  neighbour above it. A tooltip flips a placement that would leave the viewport,
  *  so these are preferences rather than promises - drag the preview narrow and
  *  `left` becomes `right` on its own. */
 export const Placements: Story = {

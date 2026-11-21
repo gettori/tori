@@ -12,7 +12,7 @@ import Dialog from "../Dialog/Dialog";
 // The shell is `Dialog`: the portal, the backdrop, Escape and the focus trap all
 // come from there. Two things that used to be written here and are not any more:
 //
-//   * **Escape.** Kobalte closes on it and `Dialog` reports that as `onClose`,
+//   * **Escape.** `Dialog` closes on it and reports that as `onClose`,
 //     which is the cancel. A second handler here would resolve the same request
 //     twice.
 //   * **Enter.** The confirm button takes focus on open, and a browser fires a

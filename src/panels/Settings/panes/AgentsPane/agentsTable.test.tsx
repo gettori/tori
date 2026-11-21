@@ -246,7 +246,7 @@ describe("the agents table", () => {
   });
 
   // The switch carries no words of its own, so a hover description is where it
-  // says what it does. `data-closed` is Kobalte's mark on a tooltip trigger,
+  // says what it does. `Tooltip` marks its trigger `data-closed` while shut,
   // which is what says the machinery landed on the visible track.
   it("describes the switch on hover", async () => {
     const r = await mount(undefined, undefined, { claude: true });

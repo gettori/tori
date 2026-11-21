@@ -398,23 +398,16 @@ describe("the sidebar levels that outlive the session rows", () => {
     expect(screen.getByRole("group", { name: "Move to" })).toBeTruthy();
   });
 
-  // Written against the hand-rolled menu (gettori/tori#103, phase 1), now
-  // running against Kobalte's (phase 3). What the three menus *contain* is
-  // asserted above; this is how they open and close. Where a menu opens is
-  // pinned in `ContextMenu.test.tsx`, since no position assertion could span
-  // both implementations.
-  //
-  // What the migration actually had to rewrite here, against phase 1's list:
-  //   - `role="menu"` on the surface: unchanged, Kobalte's Content sets it too.
-  //   - `defaultPrevented` on the dispatched event: unchanged, and still the
-  //     whole difference between a row that owns its right-click and one that
-  //     lets the browser's own menu through. Kobalte's trigger is what calls
-  //     `preventDefault` now.
-  //   - The outside click had to become `pointerDown`: Popover listened for
-  //     `mousedown`, the dismissable layer listens for `pointerdown`.
-  //   - Picking a row had to become `pointerClick` (`src/test/menus.ts`).
-  //   - Replacing an open menu had to spell out the pointerdown a right-click
-  //     carries, which the single shared menu signal never needed.
+  // What the three menus *contain* is asserted above; this is how they open and
+  // close. Where a menu opens is pinned in `ContextMenu.test.tsx`.
+  //   - `defaultPrevented` on the dispatched event is the whole difference
+  //     between a row that owns its right-click and one that lets the browser's
+  //     own menu through. `ContextMenu`'s trigger is what calls `preventDefault`.
+  //   - The outside click is a `pointerDown`: the layer listens for it, not
+  //     `mousedown`.
+  //   - Picking a row is a `pointerClick` (`src/test/menus.ts`).
+  //   - Replacing an open menu has to spell out the pointerdown a right-click
+  //     carries.
   describe("how the context menus open and close", () => {
     it("claims the right-click on every row that has a menu", async () => {
       mount(["p:work/repo"]);
@@ -442,8 +435,6 @@ describe("the sidebar levels that outlive the session rows", () => {
       mount(["p:work/repo"]);
       fireEvent.contextMenu(await row("repo"));
       await screen.findByRole("menu");
-      // Kobalte installs the outside listener from a `setTimeout(0)`, so a click
-      // dispatched before this yield lands on a listener that does not exist yet.
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       fireEvent.pointerDown(document.body);

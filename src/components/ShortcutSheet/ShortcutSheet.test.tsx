@@ -15,13 +15,9 @@ import ShortcutSheet from "./ShortcutSheet";
 // the migration deletes both halves of it: a capture-phase `window` keydown
 // (there because a focused xterm swallows the event before it reaches window)
 // and a manual focus save/restore. So the assertions here are exactly the ones
-// that say whether Kobalte's focus trap really replaces them, rather than the
+// that say whether `Dialog`'s focus handling really replaces them, rather than the
 // sheet merely still rendering.
 //
-// Kobalte's focus scope dispatches its unmount auto-focus from a
-// `setTimeout(0)`, so the restore assertion has to yield a macrotask. The
-// current implementation restores synchronously in `onCleanup`, and a yield is
-// harmless there, which is what lets one assertion cover both.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 /** A focusable outside the sheet, removed even when the test fails. */
@@ -123,8 +119,6 @@ describe("ShortcutSheet", () => {
   describe("shape", () => {
     it("closes on a pointer down outside the sheet", async () => {
       const { onClose } = open();
-      // Kobalte installs its outside-pointerdown listener from a
-      // `setTimeout(0)`, so a press fired before this yield lands on nobody.
       await macrotask();
 
       fireEvent.pointerDown(document.body);

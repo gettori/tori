@@ -17,8 +17,6 @@ import styles from "./Dialogs.module.css";
 // typed secret survive into the next prompt, would leak or hang rather than
 // look wrong.
 const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
-// Kobalte's focus scope and its dismiss layer both install from a
-// `setTimeout(0)`, so anything asserting on them has to yield a macrotask.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 type Prompt = { id: number; op_id: string; prompt: string; kind: string };
@@ -189,8 +187,6 @@ describe("AskpassDialog", () => {
       const emit = await mount();
 
       emit(prompt());
-      // Kobalte installs its outside-pointerdown listener from a
-      // `setTimeout(0)`, so a press fired before this yield lands on nobody.
       await macrotask();
       fireEvent.pointerDown(document.body);
 

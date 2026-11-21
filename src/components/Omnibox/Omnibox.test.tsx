@@ -383,8 +383,8 @@ describe("the empty box's recent blocks", () => {
 
   // Once any block is headed, the rest of the project is headed too rather than
   // trailing off unlabelled. A half-grouped list reads as a bug on screen, and
-  // it is also the one shape the shared surface cannot render: Kobalte decides
-  // "group or option" per entry, so one bare row in a grouped list throws.
+  // it is also the one shape the shared surface cannot render: `Combobox` takes
+  // a list either flat or grouped, never mixed.
   it("heads the project's own files too, rather than trailing off unlabelled", async () => {
     bridge.files = ["src/alpha.ts", "src/beta.ts"];
     worked("src/hot.ts");
@@ -395,8 +395,8 @@ describe("the empty box's recent blocks", () => {
     expect(screen.getByText("Project")).toBeTruthy();
   });
 
-  // Kobalte's default, adopted in #110 over the `aria-hidden` heading #100 wrote.
-  // The worry was the same either way: the listbox promises selectable children,
+  // The heading is presentational rather than `aria-hidden`. The worry was the
+  // same either way: the listbox promises selectable children,
   // so a heading announced *as one* would look like a row the arrow keys skip.
   // Presentational answers it without hiding the text, which is the better half
   // of the trade - the heading is still readable, and still not an option.
@@ -505,10 +505,9 @@ describe("> - actions", () => {
     expect(fired).toBe(false);
   });
 
-  // Kobalte's default, adopted in #110. #100 deliberately let the arrow keys
-  // land on a refused command so its reason could be read by keyboard; the
-  // shared surface skips a disabled row entirely, so the reason is now only
-  // readable on screen. An accepted regression, not an oversight.
+  // The shared surface skips a disabled row entirely, so a refused command's
+  // reason is readable on screen only, not by keyboard. Accepted, not an
+  // oversight.
   it("never puts a refused command under Enter, since the arrows skip it", () => {
     open(">");
     // Filtered down first, so the row at the top is unambiguously the refused
@@ -791,8 +790,6 @@ describe(": - go to line", () => {
 // whole shell was replaced and the 48 assertions above stayed green, which is
 // evidence about their coverage rather than about the change.
 describe("the shell", () => {
-  // Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so
-  // a press fired before this yield lands on nobody.
   const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
   it("names itself as a modal, whatever mode it is showing", () => {

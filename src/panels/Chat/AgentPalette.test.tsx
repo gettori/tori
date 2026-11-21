@@ -77,9 +77,8 @@ const active = (filter: HTMLElement) =>
 const inAgents = () => within(screen.getByRole("listbox", { name: "Agents" }));
 const inModels = () => within(screen.getByRole("listbox", { name: "Models" }));
 
-// Kobalte installs its outside listener from a setTimeout(0) and listens for
-// pointerdown, so a dismissal test yields a macrotask first and fires the pair a
-// real pointer sends (src/test/menuIdioms.test.ts).
+// Dismissal listens for pointerdown, so a dismissal test fires the pair a real
+// pointer sends (src/test/menuIdioms.test.ts).
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("AgentPalette", () => {

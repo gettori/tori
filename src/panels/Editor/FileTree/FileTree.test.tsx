@@ -817,21 +817,12 @@ describe("dragging in the tree", () => {
   });
 });
 
-// Written against the hand-rolled menu (gettori/tori#103, phase 1), now running
-// against Kobalte's (phase 3). Every assertion below is the one phase 1 wrote:
-// what a right-click menu *does* was chosen to survive the change, and it did.
-// Where it opens is pinned in `ContextMenu.test.tsx` instead, since no position
-// assertion could span both implementations.
-//
-// What the migration actually had to rewrite here, against phase 1's list:
-//   - `role="menu"` on the surface: unchanged, Kobalte's Content sets it too.
-//   - `within(menu).getByText(...)`: unchanged, the labels are the contract.
-//   - Escape: unchanged, though it is now the dismissable layer answering.
-//   - The outside click had to become `pointerDown`. Popover listened for
-//     `mousedown`, Kobalte's dismissable layer listens for `pointerdown`, which
-//     is why phase 1 asserted only the closing and never the mechanism.
-//   - Picking a row had to become `pointerClick`. Rows are real menu items now
-//     and act on `pointerup`; see `src/test/menus.ts`.
+// What a right-click menu *does*, the labels being the contract. Where it opens
+// is pinned in `ContextMenu.test.tsx`.
+//   - The outside click is a `pointerDown`: the layer listens for `pointerdown`,
+//     not `mousedown`.
+//   - Picking a row is a `pointerClick`: rows act on `pointerup`; see
+//     `src/test/menus.ts`.
 describe("the row context menu", () => {
   it("offers a file only the actions a file has", async () => {
     mountProject();
@@ -893,8 +884,6 @@ describe("the row context menu", () => {
     await screen.findByText("README.md");
     fireEvent.contextMenu(screen.getByText("README.md"));
     await screen.findByRole("menu");
-    // Kobalte installs the outside listener from a `setTimeout(0)`, so a click
-    // dispatched before this yield lands on a listener that does not exist yet.
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     fireEvent.pointerDown(document.body);

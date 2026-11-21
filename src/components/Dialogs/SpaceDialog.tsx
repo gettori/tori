@@ -45,7 +45,7 @@ function collides(name: string, taken: string[]): boolean {
  *
  * The shell is `Dialog`. Enter stays here, through its `onKeyDown`, because the
  * confirm button is `disabled` while the name is invalid and a disabled button
- * is never clicked. Escape does not: Kobalte reports it as `onClose`.
+ * is never clicked. Escape does not: `Dialog` reports it as `onClose`.
  */
 export default function SpaceDialog(props: {
   mode: SpaceDialogMode;
