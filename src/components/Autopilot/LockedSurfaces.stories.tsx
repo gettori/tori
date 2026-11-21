@@ -3,7 +3,7 @@ import { createSignal, For, type JSX } from "solid-js";
 import { FileCode } from "lucide-solid";
 import Icon from "../Icon/Icon";
 import { WorktreeMark } from "../Icon/gitMarks";
-import { Tabs } from "../../lib/tabs";
+import { Tabs } from "../Tab/Tabs";
 import Tab from "../Tab/Tab";
 import { BranchRow } from "../../panels/LeftSidebar/SidebarRows";
 import rows from "../../panels/LeftSidebar/SidebarRows.module.css";

@@ -8,26 +8,9 @@ const CLOSE_KEYS = new Set(["Delete", "Backspace"]);
 /**
  * A gesture that lives exactly as long as the browser is dispatching it.
  *
- * The bar marks an event in the capture phase and reads `live()` later, from
- * inside a handler Kobalte owns. Both halves are subtle enough to be worth
- * naming:
- *
- * **The lifetime is the dispatch, not a timer.** A flag cleared in a
- * `queueMicrotask` looks like it covers the handler chain and does not: the
- * browser runs a microtask checkpoint after *every* listener callback of a
- * user-initiated dispatch, so the flag is already gone one listener later.
- * Kobalte's handlers are JSX props, which Solid delegates to a single
- * `document` listener, so they run several checkpoints after anything captured
- * on the bar - and a scripted `fireEvent` keeps the JS stack busy, which is why
- * jsdom never sees any of this. Reading `eventPhase` asks the event itself, so
- * there is no window to get wrong and nothing to clean up.
- *
- * **A close keystroke is not a selection.** Delete and Backspace on a focused
- * tab close it, and closing writes the tab list before the panel has picked
- * what comes next, which is the render where Kobalte force-selects the leftmost
- * key. Solid does not batch a delegated handler, so that heal lands while the
- * keystroke is still dispatching; without this exclusion the bar would read it
- * as the user asking for the leftmost tab.
+ * A browser runs a microtask checkpoint after every listener of a real event,
+ * so a flag cleared in a microtask is gone before Solid's delegated handler
+ * runs. jsdom hides this, so the lifetime is read from `eventPhase` instead.
  */
 export function tabGesture() {
   let current: Event | null = null;

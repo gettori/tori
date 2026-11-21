@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { createSignal, For } from "solid-js";
 import { FileText, FileCode, Braces } from "lucide-solid";
 import Icon from "../Icon/Icon";
-import { Tabs } from "../../lib/tabs";
+import { Tabs } from "./Tabs";
 import Tab from "./Tab";
 
 const meta = {
@@ -22,7 +22,7 @@ const FILES = [
 
 /** The pill on its own strip.
  *
- *  A `Tab` is always a Kobalte trigger, so it needs a `Tabs.Root` and a
+ *  A `Tab` is always a strip's trigger, so it needs a `Tabs.Root` and a
  *  `Tabs.List` over it: selection, the roving tab stop and arrow navigation all
  *  come from the strip rather than from the call site. Rendered on its own it
  *  throws, deliberately, rather than quietly becoming a button wearing

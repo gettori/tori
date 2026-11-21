@@ -1,5 +1,5 @@
 import { createMemo, createSignal, For, Show, type JSX } from "solid-js";
-import { ToggleGroup } from "../../lib/toggle-group";
+import { ToggleGroup } from "../ToggleGroup/ToggleGroup";
 import Tooltip from "../Tooltip/Tooltip";
 import styles from "./IconGrid.module.css";
 
@@ -76,70 +76,15 @@ export interface IconGridProps {
   class?: string;
 }
 
-/** A single-select grid of icon tiles, and the same control shaped as a row of
- *  colour swatches. Kobalte's toggle group underneath, so the whole set is one
- *  tab stop with a roving tabindex inside it, arrows and Home/End move focus
- *  without selecting, and Space/Enter select the focused tile.
- *
- *  Four contract points, each of them a thing the primitive does not give:
- *
- *  **Always exactly one selected.** Kobalte's single mode lets a press on the
- *  pressed item clear the selection (`onChange(null)`); "nothing chosen" is not
- *  a state either consumer has, so that change is dropped and the controlled
- *  `value` holds. The leading tile is how "none" is expressed, and it is a
- *  value like any other.
- *
- *  **ArrowUp/ArrowDown move a row, and only here.** Kobalte's group is
- *  one-dimensional and its vertical keys are inert: the root builds a
- *  *horizontal* keyboard delegate but hands `createSelectableCollection` no
- *  orientation at all, so that switch takes its `"vertical"` default and routes
- *  ArrowUp/ArrowDown into the delegate's `getKeyAbove`/`getKeyBelow` - which a
- *  horizontal delegate answers with `undefined`. Left and Right are the only
- *  keys that move, in a set that is visibly eight wide.
- *
- *  The handler that fixes it sits on the *item* rather than on the group, and
- *  stops the event there. A group-level handler would be at the mercy of that
- *  orientation mismatch staying exactly as it is: the group composes a caller's
- *  `onKeyDown` with its own through `composeEventHandlers`, which ignores
- *  `defaultPrevented`, so the day those vertical keys start resolving to a key
- *  this would silently move a row and then one tile more. Stopping at the item
- *  makes the behaviour ours outright instead of borrowed.
- *
- *  The swatch row keeps the plain linear behaviour: it is one wrapped row, so
- *  there is no second axis to be wrong about.
- *
- *  **The search field is outside the group, deliberately.** Kobalte's keydown
- *  guard is containment in the group's own element, not "the target is a tile",
- *  so an input inside it loses ArrowLeft/ArrowRight and Home/End to the roving
- *  focus and its caret stops moving.
- *
- *  **The group keeps a tab stop when the query eats the focused tile.** Kobalte
- *  parks the tab stop on the focused item and takes it off the container
- *  (`tabIndex` is `focusedKey == null ? 0 : -1` on the group, and
- *  `key === focusedKey ? 0 : -1` on each item), and nothing clears `focusedKey`
- *  when that item unmounts. Filter away the tile you last focused and every
- *  item reads -1 while the container reads -1 too, which takes the whole grid
- *  out of the tab order. `tabIndex` below is the same rule computed against the
- *  tiles that are actually on screen, and it wins because Kobalte spreads
- *  incoming props after its own.
- */
+// The search field stays outside the group: inside it, the roving keys would
+// take the arrows and Home/End from the input's caret.
 export default function IconGrid(props: IconGridProps) {
   const [query, setQuery] = createSignal("");
-  // Mirrors Kobalte's internal `focusedKey`, which is not readable from here.
-  // It is set from the same events the primitive sets its own from - an item
-  // taking focus, however it got there - so the two agree.
-  const [focused, setFocused] = createSignal<string | null>(null);
 
   const tiles = createMemo(() => props.tiles(props.search ? query() : ""));
-  const shown = createMemo(() => {
-    const values = new Set(tiles().map((t) => t.value));
-    if (props.leading) values.add(LEADING);
-    return values;
-  });
 
   const selected = () => props.value ?? LEADING;
-  const onChange = (next: string | string[] | null) => {
-    if (next == null || Array.isArray(next)) return;
+  const onPress = (next: string) => {
     const value = next === LEADING ? null : next;
     if (value !== props.value) props.onChange(value);
   };
@@ -158,9 +103,6 @@ export default function IconGrid(props: IconGridProps) {
     if (!group) return;
 
     e.preventDefault();
-    // Before the bounds check, not after: a clamped move is still this
-    // component's answer, and letting the refused one through would put the
-    // edges back under the primitive's control.
     e.stopPropagation();
 
     const all = Array.from(group.querySelectorAll<HTMLButtonElement>("button"));
@@ -184,7 +126,6 @@ export default function IconGrid(props: IconGridProps) {
       class={styles.tile}
       style={spec().tint != null ? { "--tile-tint": spec().tint } : undefined}
       onKeyDown={onTileKeyDown}
-      onFocus={() => setFocused(value)}
     >
       {spec().content}
     </Tooltip>
@@ -211,16 +152,11 @@ export default function IconGrid(props: IconGridProps) {
         )}
       </Show>
       <ToggleGroup.Root
-        value={selected()}
-        onChange={onChange}
+        pressed={(value) => value === selected()}
+        onPress={onPress}
         onKeyDown={onKeyDown}
         aria-label={props["aria-label"]}
-        tabIndex={focused() != null && shown().has(focused()!) ? -1 : 0}
-        class={props.class}
-        classList={{
-          [styles.group]: true,
-          [styles[props.variant ?? "grid"]]: true,
-        }}
+        class={[props.class, styles.group, styles[props.variant ?? "grid"]].filter(Boolean).join(" ")}
         style={props.variant === "swatch" ? undefined : { "grid-template-columns": `repeat(${COLUMNS}, 1fr)` }}
       >
         <Show when={props.leading}>{(spec) => tile(LEADING, spec)}</Show>

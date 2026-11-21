@@ -32,7 +32,7 @@ const PANES = [
 
 /** The default strip: one bordered group, the selected segment filled with the
  *  quiet tab-active token rather than a brand fill, so a dialog holding one
- *  stays calm. Keyboard is the toggle-button pattern Kobalte gives: Tab enters
+ *  stays calm. Keyboard is the toggle-button pattern: Tab enters
  *  on the selected segment, arrows and Home/End move focus without selecting,
  *  and Space or Enter commits. Those activation keys stop at the strip, so a
  *  dialog's own Enter-to-confirm cannot fire from inside it. */

@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from "vite-plus/test";
 import { render, screen, fireEvent } from "../../test/harness";
-import { Tabs } from "../../lib/tabs";
+import { Tabs } from "./Tabs";
 import { expectNoAxeViolations } from "../../test/axe";
 import Tab from "./Tab";
 
-// The tab pill on Kobalte, from the component's own side (gettori/tori#111,
+// The tab pill, from the component's own side (gettori/tori#111,
 // #115, #116).
 //
 // The strips have their own suites; what is pinned here is the part none of
@@ -72,8 +72,7 @@ describe("the tab pill", () => {
   });
 
   it("leaves other keys to the strip", () => {
-    // Arrow keys are Kobalte's, and swallowing one here would take the strip's
-    // navigation with it.
+    // Swallowing an arrow key here would take the strip's navigation with it.
     const onClose = vi.fn();
     mount({ onClose });
     const b = screen.getByRole("tab", { name: "b.ts" });
@@ -84,7 +83,7 @@ describe("the tab pill", () => {
 
   it("closes from the pointer without selecting the tab it closed", () => {
     // The close is a sibling of the trigger rather than a child of it, so a
-    // click on it is not a click on the tab. Kobalte selects on pointerdown,
+    // click on it is not a click on the tab. A tab selects on pointerdown,
     // which no `stopPropagation` in a click handler would have caught.
     const onClose = vi.fn();
     mount({ onClose });
