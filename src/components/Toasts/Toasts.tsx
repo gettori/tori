@@ -1,7 +1,7 @@
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createSignal, createUniqueId, For, onCleanup, Show, untrack, type Accessor } from "solid-js";
 import { Portal } from "solid-js/web";
 import { CircleAlert, CircleCheck, Info, X } from "lucide-solid";
-import { Toast } from "../../lib/toast";
+import { createPresence, watchTopModal } from "../../lib/layer";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
 import IconButton from "../IconButton/IconButton";
@@ -29,6 +29,23 @@ const TTL = 8000;
 const PEEKING = 3;
 const SHOWN = 5;
 
+const SWIPE_START_MOUSE = 2;
+const SWIPE_START_TOUCH = 10;
+const SWIPE_DISMISS = 50;
+
+type ToastItem = {
+  id: number;
+  text: string;
+  kind: ToastKind;
+  actions: ToastAction[];
+  dismissed: Accessor<boolean>;
+  dismiss: () => void;
+};
+
+const [toasts, setToasts] = createSignal<readonly ToastItem[]>([]);
+let nextId = 0;
+let regions = 0;
+
 /** Surface a toast from anywhere. The write API for the whole app: the TOAST
  *  event lands here, and the sidebar's `setError` forwards here. Empty and
  *  whitespace-only messages are a no-op, preserving the old "clear the banner"
@@ -36,94 +53,255 @@ const SHOWN = 5;
 export function pushToast(message: string, kind: ToastKind = "error", action?: ToastAction | ToastAction[]) {
   const text = String(message ?? "").trim();
   if (!text) return;
-  const actions = action ? [action].flat() : [];
-  Toast.toaster.show((props) => (
-    // `as="div"`, and the same on the List: Kobalte's default ol/li fails
-    // axe's `list` rule, because role="status" strips the li of its listitem
-    // role and an ol may only contain listitems. A stack of independent
-    // status elements is not a list in any meaningful sense anyway.
-    <Toast.Root
-      as="div"
-      toastId={props.toastId}
-      persistent={kind === "error"}
-      class={`${styles.toast} ${styles[kind]}`}
-    >
-      <span class={styles.toastIcon} aria-hidden="true">
-        <Icon icon={ICON[kind]} />
-      </span>
-      <Toast.Title class={styles.toastMsg}>{text}</Toast.Title>
-      <For each={actions}>
-        {(a) => (
-          // CloseButton rather than a bare Button: Kobalte runs our onClick
-          // first, then closes, which is exactly the old run-then-dismiss.
-          // The aria-label restates the visible label so the accessible name
-          // is never CloseButton's default "Close" under an "Undo" label.
-          <Toast.CloseButton
-            as={Button}
-            size="xs"
-            class={styles.toastAction}
-            aria-label={a.label}
-            onClick={() => a.run()}
-          >
-            {a.label}
-          </Toast.CloseButton>
-        )}
-      </For>
-      <Toast.CloseButton
-        as={IconButton}
-        icon={<Icon icon={X} />}
-        size="xs"
-        class={styles.toastClose}
-        aria-label="Dismiss"
-        tooltip="Dismiss"
-      />
-    </Toast.Root>
-  ));
+  const [dismissed, setDismissed] = createSignal(false);
+  const item: ToastItem = {
+    id: nextId++,
+    text,
+    kind,
+    actions: action ? [action].flat() : [],
+    dismissed,
+    dismiss: () => setDismissed(true),
+  };
+  setToasts((list) => [...list, item]);
 }
 
-/** The one toast region, mounted once by App. Kobalte owns the list, the
- *  timers (8s, paused while hovered, focused or while the window is in the
- *  background), and Escape-dismissal of a focused toast; this component owns
- *  where toasts appear (portalled, bottom-right), the deck they stack into, and
- *  the TOAST event bridge.
- *
- *  Deliberate overrides of Kobalte's defaults: `limit` lifted (the deck shows
- *  the newest few and keeps the rest until those close), and the built-in
- *  Alt+T document listener disabled: Option+letter types a glyph on macOS and
- *  the listener never yields to a defaultPrevented key, so the combo lives in
- *  the command registry instead (`focus-toasts`, Cmd+Option+T) and arrives
- *  here as FOCUS_TOASTS.
- *
- *  Listeners registered in the component body, not onMount: an async mount gap
- *  is a window where a startup toast lands on nobody. */
-export default function ToastRegion(props: { duration?: number }) {
-  let listEl: HTMLDivElement | undefined;
-  const [count, setCount] = createSignal(0);
-  onCleanup(onWith<ToastEvent>(TOAST, (d) => pushToast(d.message, d.kind ?? "error", d.action)));
-  onCleanup(onEvent(FOCUS_TOASTS, () => listEl?.focus({ preventScroll: true })));
-  onMount(() => {
-    if (listEl) onCleanup(observeStack(listEl, setCount));
+export function clearToasts() {
+  if (regions === 0) setToasts([]);
+  else for (const toast of toasts()) toast.dismiss();
+}
+
+function ToastCard(props: { toast: ToastItem; duration: number; paused: Accessor<boolean> }) {
+  const toast = props.toast;
+  const titleId = `toast-${createUniqueId()}-title`;
+  const [element, setElement] = createSignal<HTMLDivElement>();
+  const presence = createPresence(() => !toast.dismissed(), element);
+
+  createEffect(() => {
+    if (!presence.mounted()) setToasts((list) => list.filter((other) => other !== toast));
   });
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let startedAt = 0;
+  let remaining = props.duration;
+  const stopTimer = () => {
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    timer = undefined;
+    remaining -= Date.now() - startedAt;
+  };
+  createEffect(() => {
+    if (toast.kind === "error") return;
+    if (toast.dismissed() || props.paused()) {
+      stopTimer();
+      return;
+    }
+    startedAt = Date.now();
+    timer = setTimeout(toast.dismiss, remaining);
+  });
+  onCleanup(stopTimer);
+
+  let swipeFrom: { x: number; y: number } | null = null;
+  let swipedBy: number | null = null;
+  const onPointerDown = (e: PointerEvent) => {
+    if (e.button === 0) swipeFrom = { x: e.clientX, y: e.clientY };
+  };
+  const onPointerMove = (e: PointerEvent) => {
+    if (!swipeFrom) return;
+    const x = Math.max(0, e.clientX - swipeFrom.x);
+    const rawX = e.clientX - swipeFrom.x;
+    const y = e.clientY - swipeFrom.y;
+    if (swipedBy !== null) {
+      swipedBy = x;
+      return;
+    }
+    const buffer = e.pointerType === "touch" ? SWIPE_START_TOUCH : SWIPE_START_MOUSE;
+    if (x > Math.abs(y) && x > buffer) {
+      swipedBy = x;
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    } else if (Math.abs(rawX) > buffer || Math.abs(y) > buffer) {
+      swipeFrom = null;
+    }
+  };
+  const onPointerUp = (e: PointerEvent & { currentTarget: HTMLDivElement }) => {
+    const swiped = swipedBy;
+    const target = e.target as HTMLElement;
+    if (target.hasPointerCapture?.(e.pointerId)) target.releasePointerCapture(e.pointerId);
+    swipeFrom = null;
+    swipedBy = null;
+    if (swiped === null) return;
+    if (swiped > SWIPE_DISMISS) toast.dismiss();
+    // The release of a swipe must not also press the button under it.
+    e.currentTarget.addEventListener("click", (click) => click.preventDefault(), { once: true });
+  };
+
+  return (
+    <Show when={presence.mounted()}>
+      {/* A div, and the same on the list: role="status" strips an li of its
+          listitem role, which fails axe's `list` rule. */}
+      <div
+        ref={setElement}
+        role="status"
+        tabindex={0}
+        style={{ "user-select": "none", "touch-action": "none" }}
+        aria-live="assertive"
+        aria-atomic="true"
+        aria-labelledby={titleId}
+        data-opened={presence.closed() ? undefined : ""}
+        data-closed={presence.closed() ? "" : undefined}
+        data-swipe-direction="right"
+        class={`${styles.toast} ${styles[toast.kind]}`}
+        onKeyDown={(e) => {
+          if (e.key !== "Escape" || e.defaultPrevented) return;
+          // Spent here, so a dialog around the region stays open.
+          e.preventDefault();
+          toast.dismiss();
+        }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+      >
+        <span class={styles.toastIcon} aria-hidden="true">
+          <Icon icon={ICON[toast.kind]} />
+        </span>
+        <div id={titleId} class={styles.toastMsg}>
+          {toast.text}
+        </div>
+        <For each={toast.actions}>
+          {(a) => (
+            <Button
+              size="xs"
+              class={styles.toastAction}
+              aria-label={a.label}
+              onClick={() => {
+                a.run();
+                toast.dismiss();
+              }}
+            >
+              {a.label}
+            </Button>
+          )}
+        </For>
+        <IconButton
+          icon={<Icon icon={X} />}
+          size="xs"
+          class={styles.toastClose}
+          aria-label="Dismiss"
+          tooltip="Dismiss"
+          onClick={toast.dismiss}
+        />
+      </div>
+    </Show>
+  );
+}
+
+function RegionSurface(props: { duration: number }) {
+  let region!: HTMLDivElement;
+  let list!: HTMLDivElement;
+  const [count, setCount] = createSignal(0);
+  const [paused, setPaused] = createSignal(false);
+
+  onCleanup(onEvent(FOCUS_TOASTS, () => list.focus({ preventScroll: true })));
+
+  const pause = () => setPaused(true);
+  const resume = () => setPaused(false);
+  window.addEventListener("blur", pause);
+  window.addEventListener("focus", resume);
+  onCleanup(() => {
+    window.removeEventListener("blur", pause);
+    window.removeEventListener("focus", resume);
+  });
+
+  const raise = (parent: HTMLElement, fresh?: Element | null) => {
+    const focused = region.contains(document.activeElement) ? (document.activeElement as HTMLElement) : null;
+    region.hidePopover();
+    if (region.parentElement !== parent) parent.append(region);
+    region.showPopover();
+    for (const toast of list.children) {
+      if (toast === fresh || toast.hasAttribute("data-closed")) continue;
+      // Showing again restarts the entrance on toasts already on screen.
+      for (const animation of toast.getAnimations?.() ?? []) animation.finish();
+    }
+    focused?.focus({ preventScroll: true });
+  };
+
+  createEffect(() =>
+    untrack(() => {
+      const home = region.parentElement!;
+      region.showPopover();
+      onCleanup(observeStack(list, setCount));
+      // Inside the top modal, because everything outside one is inert. A move
+      // drops the popover from the top layer, so it is shown again after.
+      const stop = watchTopModal((modal) => {
+        const parent = modal ?? home;
+        if (region.parentElement !== parent) raise(parent);
+      });
+      onCleanup(() => {
+        stop();
+        region.remove();
+      });
+    }),
+  );
+
+  // The top layer paints in show order, so a new toast has to clear an open menu.
+  createEffect((before: number) => {
+    const now = toasts().length;
+    if (now > before) untrack(() => raise(region.parentElement!, list.lastElementChild));
+    return now;
+  }, toasts().length);
+
+  return (
+    <div
+      ref={region}
+      popover="manual"
+      role="region"
+      tabindex={-1}
+      aria-label="Notifications"
+      style={{ "pointer-events": toasts().length > 0 ? "auto" : "none" }}
+      class={styles.toastRegion}
+      // Only inside a dialog: its Enter-to-confirm must not hear a toast's keys.
+      onKeyDown={(e) => {
+        if (region.closest("dialog")) e.stopPropagation();
+      }}
+    >
+      <Show when={count() > 1}>
+        <div class={styles.clearAll}>
+          <Button size="xs" onClick={clearToasts}>
+            Clear all
+          </Button>
+        </div>
+      </Show>
+      <div
+        ref={list}
+        tabindex={-1}
+        class={styles.toastStack}
+        onFocusIn={pause}
+        onFocusOut={(e) => {
+          if (!list.contains(e.relatedTarget as Node | null)) resume();
+        }}
+        onPointerMove={pause}
+        onPointerLeave={() => {
+          if (!list.contains(document.activeElement)) resume();
+        }}
+      >
+        <For each={toasts()}>{(toast) => <ToastCard toast={toast} duration={props.duration} paused={paused} />}</For>
+      </div>
+    </div>
+  );
+}
+
+/** The one toast region, mounted once by App: where toasts appear, the deck
+ *  they stack into, and the TOAST event bridge. Timers run 8s, paused while the
+ *  deck is hovered or focused or the window is in the background.
+ *
+ *  The listener is registered in the component body: an async mount gap is a
+ *  window where a startup toast lands on nobody. */
+export default function ToastRegion(props: { duration?: number }) {
+  regions++;
+  onCleanup(() => regions--);
+  onCleanup(onWith<ToastEvent>(TOAST, (d) => pushToast(d.message, d.kind ?? "error", d.action)));
   return (
     <Portal>
-      <Toast.Region
-        aria-label="Notifications"
-        // No key code is ever this string, which is the whole point: Kobalte
-        // offers no off switch for its listener, only a combo to match.
-        hotkey={["HandledByCommandRegistry"]}
-        duration={props.duration ?? TTL}
-        limit={Infinity}
-        class={styles.toastRegion}
-      >
-        <Show when={count() > 1}>
-          <div class={styles.clearAll}>
-            <Button size="xs" onClick={() => Toast.toaster.clear()}>
-              Clear all
-            </Button>
-          </div>
-        </Show>
-        <Toast.List as="div" ref={listEl} class={styles.toastStack} />
-      </Toast.Region>
+      <RegionSurface duration={props.duration ?? TTL} />
     </Portal>
   );
 }

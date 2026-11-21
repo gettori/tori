@@ -9,11 +9,13 @@ export interface LayerOptions {
   hide: () => void;
   onDismiss: () => void;
   modal?: boolean;
+  /** `null` restores nothing, `undefined` falls back to what had focus at open. */
   returnFocus?: () => HTMLElement | null | undefined;
   ignorePress?: (target: Node) => boolean;
   dismissOnFocusOutside?: boolean;
   keepFocusOnPress?: boolean;
   passive?: boolean;
+  closing?: () => boolean;
 }
 
 interface Layer extends LayerOptions {
@@ -25,14 +27,43 @@ let scrollLocks = 0;
 let rootOverflow = "";
 let anchorCount = 0;
 let dismissingByPress = false;
+let openingPress = false;
 
-const topLayer = (): Layer | undefined => stack[stack.length - 1];
+const modalWatchers = new Set<(modal: HTMLElement | null) => void>();
+
+function topLayer() {
+  for (let at = stack.length - 1; at >= 0; at--) {
+    if (!stack[at].closing?.()) return stack[at];
+  }
+  return undefined;
+}
 
 function topInteractiveLayer() {
   for (let at = stack.length - 1; at >= 0; at--) {
-    if (!stack[at].passive) return stack[at];
+    if (!stack[at].passive && !stack[at].closing?.()) return stack[at];
   }
   return undefined;
+}
+
+function topModal() {
+  for (let at = stack.length - 1; at >= 0; at--) {
+    if (stack[at].modal) return stack[at].element;
+  }
+  return null;
+}
+
+function announceTopModal() {
+  const modal = topModal();
+  for (const watcher of modalWatchers) watcher(modal);
+}
+
+/** A native modal makes everything outside it inert, so what must stay usable follows it. */
+export function watchTopModal(watcher: (modal: HTMLElement | null) => void) {
+  modalWatchers.add(watcher);
+  watcher(topModal());
+  return () => {
+    modalWatchers.delete(watcher);
+  };
 }
 
 function isInside({ element }: Layer, e: PointerEvent) {
@@ -43,8 +74,7 @@ function isInside({ element }: Layer, e: PointerEvent) {
   return e.clientX >= box.left && e.clientX <= box.right && e.clientY >= box.top && e.clientY <= box.bottom;
 }
 
-/** For a dialog not on this stack yet, whose own Escape listener runs first. */
-export function takeEscape(e: KeyboardEvent) {
+function takeEscape(e: KeyboardEvent) {
   if (e.key !== "Escape" || e.isComposing || e.defaultPrevented) return;
   const top = topLayer();
   if (!top) return;
@@ -53,11 +83,6 @@ export function takeEscape(e: KeyboardEvent) {
   e.preventDefault();
   e.stopPropagation();
   top.onDismiss();
-}
-
-/** For a dialog not on this stack yet: an outside press belongs to the layer. */
-export function hasInteractiveLayer() {
-  return topInteractiveLayer() !== undefined;
 }
 
 function onPointerDown(e: PointerEvent) {
@@ -71,7 +96,22 @@ function onPointerDown(e: PointerEvent) {
   }
 }
 
+// WebKit hands a pressed button's focus to its nearest focusable ancestor, which
+// lands after the press has opened the layer and must not read as leaving it.
+function noteOpeningPress() {
+  if (openingPress || window.event?.type !== "pointerdown") return;
+  openingPress = true;
+  const released = () => {
+    openingPress = false;
+    document.removeEventListener("pointerup", released, true);
+    document.removeEventListener("pointercancel", released, true);
+  };
+  document.addEventListener("pointerup", released, true);
+  document.addEventListener("pointercancel", released, true);
+}
+
 function onFocusIn(e: FocusEvent) {
+  if (openingPress) return;
   const top = topInteractiveLayer();
   const target = e.target as Node;
   if (!top?.dismissOnFocusOutside || top.element.contains(target) || top.ignorePress?.(target)) return;
@@ -94,7 +134,10 @@ function leave(layer: Layer) {
   if (at < 0) return;
   stack.splice(at, 1);
   layer.detach();
-  if (layer.modal) unlockScroll();
+  if (layer.modal) {
+    unlockScroll();
+    announceTopModal();
+  }
   if (stack.length > 0) return;
   document.removeEventListener("keydown", takeEscape);
   document.removeEventListener("pointerdown", onPointerDown, true);
@@ -153,8 +196,10 @@ export function openLayer(options: LayerOptions) {
     document.addEventListener("focusin", onFocusIn);
   }
   stack.push(layer);
+  noteOpeningPress();
   if (options.modal) lockScroll();
   options.show();
+  if (options.modal) announceTopModal();
 
   return () => {
     const stillOpen = stack.includes(layer);
@@ -166,7 +211,8 @@ export function openLayer(options: LayerOptions) {
       const at = document.activeElement;
       const unclaimed = !at || at === document.body || stack.some((open) => open.element === at);
       if (unclaimed || options.element.contains(at)) {
-        (options.returnFocus?.() ?? previous)?.focus({ preventScroll: true });
+        const target = options.returnFocus?.();
+        (target === undefined ? previous : target)?.focus({ preventScroll: true });
       }
     };
     // The press's own mousedown moves focus after this, so restore behind it.

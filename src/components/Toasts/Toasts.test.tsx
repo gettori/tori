@@ -12,14 +12,13 @@
 // each test, so a body-scoped run only ever sees the current test's DOM.
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { render, screen, fireEvent } from "../../test/harness";
-import ToastRegion, { pushToast } from "./Toasts";
-import { Toast } from "../../lib/toast";
+import ToastRegion, { clearToasts, pushToast } from "./Toasts";
 import { emit, FOCUS_TOASTS } from "../../utils/events";
 import { expectNoAxeViolations } from "../../test/axe";
 
 // The toast store is module-global; Region unmount clears nothing, so without
 // this a toast pushed here would render again in the next test's region.
-afterEach(() => Toast.toaster.clear());
+afterEach(() => clearToasts());
 
 function mountTwo() {
   const result = render(() => <ToastRegion />);
@@ -62,10 +61,6 @@ describe("ToastRegion accessibility", () => {
     expect(document.activeElement).toBe(screen.getByRole("status", { name: "push rejected" }).parentElement);
   });
 
-  // Kobalte matches its built-in hotkey with `hotkey.every(...)`, and `every`
-  // on an empty array is true: emptying that prop would focus the stack on
-  // every keystroke in the app. The sentinel string in ToastRegion is what
-  // keeps the listener dead, and this is what says so out loud.
   it("does not grab focus on an unrelated keystroke", () => {
     render(() => <ToastRegion />);
     pushToast("branch attached", "info");
