@@ -9,7 +9,7 @@
 // seam under test is between the panel and the child.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 import { wholeHistory } from "../../test/history";
 import { composerInput } from "./__fixtures__/composerInput";
 

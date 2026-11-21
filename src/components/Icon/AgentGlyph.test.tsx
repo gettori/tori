@@ -1,7 +1,7 @@
 // The glyph resolves a logo or it does not, and what it does when it does not
 // is the whole point: an initial, never a borrowed mark and never a hole.
 import { describe, it, expect, vi } from "vite-plus/test";
-import { render } from "@solidjs/testing-library";
+import { render } from "../../test/harness";
 import AgentGlyph from "./AgentGlyph";
 import { FALLBACK_ADAPTERS, reloadAdapters } from "../../utils/agents";
 

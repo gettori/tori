@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { render } from "@solidjs/testing-library";
+import { render } from "../../test/harness";
 import ProjectIcon, { type ProjectIconSource } from "./ProjectIcon";
 
 // The asset protocol is the app's route to a local file; here it only has to be

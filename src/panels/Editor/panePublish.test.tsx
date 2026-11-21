@@ -3,7 +3,7 @@
 // git commands and the breadcrumb all read the same published snapshot, so this
 // asserts the snapshot follows pane focus.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { render, waitFor } from "@solidjs/testing-library";
+import { render, waitFor } from "../../test/harness";
 
 globalThis.ResizeObserver ??= class {
   observe() {}

@@ -8,7 +8,7 @@
 // `toggleVimMode` carried before Phase 4's self-review, and generating a command
 // per setting is what would have multiplied it by thirty.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor } from "../../test/harness";
 import appSource from "../../App.tsx?raw";
 
 const invoke = vi.fn();

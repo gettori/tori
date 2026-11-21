@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 import { installAnimationFrame } from "../../test/frames";
 import { pointerClick } from "../../test/menus";
 import { COMPOSE_DRAFT, TOAST, emitWith, type ComposeDraft, type ToastEvent } from "../../utils/events";

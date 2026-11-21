@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vite-plus/test";
-import { render, screen, fireEvent } from "@solidjs/testing-library";
+import { render, screen, fireEvent } from "../../src/test/harness";
 import UnitScreen from "./Unit";
 import { RpcError, type RemoteClient } from "./remote";
 

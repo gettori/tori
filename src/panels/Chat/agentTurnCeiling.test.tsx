@@ -7,7 +7,7 @@
 // panel's own event handler, so a stand-in would fake the thing under test.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
-import { render, screen, waitFor } from "@solidjs/testing-library";
+import { render, screen, waitFor } from "../../test/harness";
 import { wholeHistory } from "../../test/history";
 
 globalThis.ResizeObserver ??= class {

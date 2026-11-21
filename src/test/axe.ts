@@ -26,7 +26,7 @@
 //
 // ## Scope: which element to pass
 //
-//   * **Inline components** - pass the `container` from `@solidjs/testing-library`'s
+//   * **Inline components** - pass the `container` from the harness's
 //     `render`.
 //   * **Anything portalled** - pass `document.body`. A `<Portal>` mounts to the
 //     body, which is a *sibling* of `container`, not a descendant, so a

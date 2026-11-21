@@ -9,7 +9,7 @@
 // `ChatView` is mounted for real, like `openedChat.test.tsx`: the wiring from
 // the event to the account store to the surface *is* the thing being asserted.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor } from "@solidjs/testing-library";
+import { render, screen, waitFor } from "../../test/harness";
 import { wholeHistory } from "../../test/history";
 
 globalThis.ResizeObserver ??= class {

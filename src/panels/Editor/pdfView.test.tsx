@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
+import { fireEvent, render, screen, waitFor } from "../../test/harness";
 import { createSignal } from "solid-js";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import PdfView from "./PdfView";

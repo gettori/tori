@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { fireEvent, render, screen } from "@solidjs/testing-library";
+import { fireEvent, render, screen } from "../../test/harness";
 import SpendFigure from "./SpendFigure";
 
 describe("SpendFigure", () => {

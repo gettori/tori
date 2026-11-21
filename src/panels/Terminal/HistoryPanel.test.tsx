@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor } from "../../test/harness";
 import { pointerClick } from "../../test/menus";
 
 // The History dropdown is the only way to reach a session once the sidebar's

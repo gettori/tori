@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 import { pointerClick, rightClick } from "../../test/menus";
 
 // Creating a branch-unit is asking to work in it. Both creation paths used to

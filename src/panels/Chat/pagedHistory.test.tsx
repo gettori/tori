@@ -2,7 +2,7 @@
 // in front, the reader held in place. `ChatView` is mounted for real because the
 // in-flight guard and the cursor live there.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 import golden from "./__fixtures__/historyTail.golden.json";
 
 globalThis.ResizeObserver ??= class {

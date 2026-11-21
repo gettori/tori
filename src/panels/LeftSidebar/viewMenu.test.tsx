@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { pointerClick } from "../../test/menus";
-import { render, screen, waitFor } from "@solidjs/testing-library";
+import { render, screen, waitFor } from "../../test/harness";
 
 const WORK = "/root/work";
 

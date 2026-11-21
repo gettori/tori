@@ -2,7 +2,7 @@
 // Ctrl+Tab act on the file tabs only while the file pane holds pane focus, and
 // Cmd+W rides closeTab, so a dirty buffer is asked about before it is lost.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 
 globalThis.ResizeObserver ??= class {
   observe() {}

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor } from "@solidjs/testing-library";
+import { render, screen, waitFor } from "../../test/harness";
 
 // "New branch from base", raised by the Pull Requests panel from the one state
 // where a review has no branch to propose yet: the pane is standing on the base.

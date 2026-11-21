@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent, cleanup, within } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent, cleanup, within } from "../../../../test/harness";
 import { pointerClick } from "../../../../test/menus";
 import userEvent from "@testing-library/user-event";
 import type {

@@ -4,7 +4,7 @@
 // PTY agent that is not quiet (inferred status) ask first, and the
 // programmatic "take me to this tab" paths reveal a hidden pane.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 import { createSignal } from "solid-js";
 import { installAnimationFrame } from "../../test/frames";
 

@@ -4,7 +4,7 @@
 // on screen. Same stubbed panels as appSplits: registered descriptors over the
 // real stores, so this is about the shell.
 import { describe, it, expect, vi, afterEach, beforeEach } from "vite-plus/test";
-import { cleanup, render, screen, waitFor, within } from "@solidjs/testing-library";
+import { cleanup, render, screen, waitFor, within } from "./test/harness";
 
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));

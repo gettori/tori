@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vite-plus/test";
-import { render, fireEvent } from "@solidjs/testing-library";
+import { render, fireEvent } from "../../test/harness";
 import PromptFrom from "./PromptFrom";
 
 describe("PromptFrom", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { render } from "@solidjs/testing-library";
+import { render } from "../../test/harness";
 import AutopilotView from "./AutopilotView";
 import { VIEW } from "./shellFixtures";
 import type { SessionUsage } from "../../utils/chatUsageStore";

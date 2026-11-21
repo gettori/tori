@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor } from "@solidjs/testing-library";
+import { render, screen, waitFor } from "../../test/harness";
 
 // A plain repo is the case where a folder attributes nothing: `main` and `feat`
 // are two rows over one working directory, told apart only by the unit row Rust

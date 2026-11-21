@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, onTestFinished } from "vite-plus/test";
-import { render, screen, waitFor, cleanup, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, cleanup, fireEvent } from "../../../../test/harness";
 import type { LspHealth } from "./LspSection";
 import type { LoadError } from "../../../../utils/packs";
 

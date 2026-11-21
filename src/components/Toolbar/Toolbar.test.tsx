@@ -1,7 +1,7 @@
 // The Toolbar: the crumb to the selected branch and its sync chip, and for a
 // Topic just `Topics > name`, with no member row to switch from.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 import { expectNoAxeViolations } from "../../test/axe";
 import { pointerClick } from "../../test/menus";
 

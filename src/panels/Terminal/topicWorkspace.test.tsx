@@ -3,7 +3,7 @@
 // sessions across every member root, and the History crumb names the Topic.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 
 const A = "/r/a/.tori/worktrees/auth";
 const B = "/r/b/.tori/worktrees/auth";

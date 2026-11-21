@@ -9,7 +9,7 @@
 // buffer, because it has not been saved.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
-import { render, waitFor } from "@solidjs/testing-library";
+import { render, waitFor } from "../../test/harness";
 import { EditorView } from "@codemirror/view";
 
 globalThis.ResizeObserver ??= class {

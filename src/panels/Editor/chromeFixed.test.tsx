@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vite-plus/test";
 import PaneView from "../../tabs/PaneView";
-import { render, screen, waitFor } from "@solidjs/testing-library";
+import { render, screen, waitFor } from "../../test/harness";
 
 // The editor chrome as fixed furniture (plan phase 7): it portals into its own
 // stage host beside the pane. Reordering tabs rewrites the pane's strip; the

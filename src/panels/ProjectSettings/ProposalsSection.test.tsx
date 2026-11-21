@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vite-plus/test";
-import { fireEvent, render, screen } from "@solidjs/testing-library";
+import { fireEvent, render, screen } from "../../test/harness";
 
 import { TOAST } from "../../utils/events";
 

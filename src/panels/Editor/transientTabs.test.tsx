@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import PaneView from "../../tabs/PaneView";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 import { tab } from "../../test/tabs";
 import { installAnimationFrame } from "../../test/frames";
 

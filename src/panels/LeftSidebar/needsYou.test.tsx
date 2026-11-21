@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 
 // The whole needs-you pipeline, driven from a tree that is entirely collapsed -
 // which is now the only state the tree has for sessions, since a branch row is a

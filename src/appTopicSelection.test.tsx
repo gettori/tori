@@ -2,7 +2,7 @@
 // `topic:<id>` rather than a folder, re-resolves a stored Topic against the
 // live record, and backfills `kind` on a selection persisted before Topics.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { cleanup, render, waitFor } from "@solidjs/testing-library";
+import { cleanup, render, waitFor } from "./test/harness";
 import { installAnimationFrame } from "./test/frames";
 
 const A = "/r/a/.tori/worktrees/auth";

@@ -9,7 +9,7 @@
 // to hide, and their keys bring a kind's tab to the front instead.
 import { describe, expect, it, vi, afterEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
-import { fireEvent, render, screen } from "@solidjs/testing-library";
+import { fireEvent, render, screen } from "../../test/harness";
 import LayoutToggles from "./LayoutToggles";
 import { on, TOGGLE_SIDEBAR } from "../../utils/events";
 import { expectNoAxeViolations } from "../../test/axe";

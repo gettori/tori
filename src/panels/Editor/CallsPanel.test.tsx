@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vite-plus/test";
-import { render, cleanup, fireEvent } from "@solidjs/testing-library";
+import { render, cleanup, fireEvent } from "../../test/harness";
 import CallsPanel from "./CallsPanel";
 import {
   clearCallRoots,

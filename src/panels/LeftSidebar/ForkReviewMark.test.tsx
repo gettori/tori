@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { render, screen } from "@solidjs/testing-library";
+import { render, screen } from "../../test/harness";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn((cmd: string, args: { worktreePath: string }) =>

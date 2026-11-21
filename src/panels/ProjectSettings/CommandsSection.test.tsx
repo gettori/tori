@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vite-plus/test";
-import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
+import { fireEvent, render, screen, waitFor } from "../../test/harness";
 
 const accepted = (digest: string, setupCommand: string) => ({ state: "accepted", digest, values: { setupCommand } });
 

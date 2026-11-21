@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vite-plus/test";
-import { createEvent, fireEvent, render } from "@solidjs/testing-library";
+import { createEvent, fireEvent, render } from "../../test/harness";
 import { createSidebarDrag, zoneAt, type DragCommit } from "./sidebarDrag";
 import { DRAG_ABS_PATH_MIME } from "../../utils/events";
 

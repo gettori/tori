@@ -7,7 +7,7 @@
 // conflict banner all come back the way the ticket describes.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
-import { render, waitFor } from "@solidjs/testing-library";
+import { render, waitFor } from "../../test/harness";
 import { EditorView } from "@codemirror/view";
 import { undo } from "@codemirror/commands";
 

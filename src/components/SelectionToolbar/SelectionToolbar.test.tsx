@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vite-plus/test";
-import { render, fireEvent, screen } from "@solidjs/testing-library";
+import { render, fireEvent, screen } from "../../test/harness";
 import SelectionToolbar, { quoteAction, quoteBlock, readAction, selectionWithin } from "./SelectionToolbar";
 
 // jsdom never fires selectionchange on its own, so every test sets the

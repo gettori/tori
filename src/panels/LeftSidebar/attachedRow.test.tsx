@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vite-plus/test";
-import { render, screen } from "@solidjs/testing-library";
+import { render, screen } from "../../test/harness";
 import { ProjectRow } from "./SidebarRows";
 
 describe("an attached folder's project row", () => {

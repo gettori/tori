@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor } from "@solidjs/testing-library";
+import { render, screen, waitFor } from "../../../test/harness";
 import type { AuthState, PullRequest } from "../../../utils/forgeTypes";
 
 // Every open pull request on a project, in one list.

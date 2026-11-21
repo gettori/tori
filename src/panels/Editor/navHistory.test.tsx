@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import PaneView from "../../tabs/PaneView";
 import { createSignal } from "solid-js";
-import { render, screen, waitFor, fireEvent, within } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent, within } from "../../test/harness";
 import { pointerClick } from "../../test/menus";
 
 // Back and Forward, from the pane's side.

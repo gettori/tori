@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vite-plus/test";
-import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor } from "../../src/test/harness";
 
 const { pair } = vi.hoisted(() => ({
   pair: vi.fn(async () => ({ url: "ws://100.64.0.1:7878", credential: "c", id: "d1", name: "Phone" })),

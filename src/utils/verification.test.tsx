@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { createRoot, createSignal } from "solid-js";
-import { render, screen, waitFor } from "@solidjs/testing-library";
+import { render, screen, waitFor } from "../test/harness";
 
 const answers: Record<string, unknown[]> = {};
 const listeners: Record<string, ((e: { payload: unknown }) => void)[]> = {};

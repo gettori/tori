@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library";
+import { cleanup, fireEvent, render, screen } from "../../test/harness";
 import Rules from "./Rules";
 import type { RuleCard } from "./autopilot";
 

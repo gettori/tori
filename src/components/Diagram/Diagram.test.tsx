@@ -4,7 +4,7 @@
 // either way - draw when there is a diagram, show the source when there is not,
 // and never leave the fence's own text unreachable.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, waitFor } from "@solidjs/testing-library";
+import { render, waitFor } from "../../test/harness";
 import { expectNoAxeViolations } from "../../test/axe";
 import Diagram from "./Diagram";
 

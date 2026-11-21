@@ -1,7 +1,7 @@
 // A launch-only adapter (schema v6, `capabilities.sessions = false`): Tori
 // starts it in a terminal tab and has no session list or chat pane to offer.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, waitFor, fireEvent } from "../../../../test/harness";
 import { invoke } from "@tauri-apps/api/core";
 import AgentsSection from "./AgentsSection";
 import styles from "../../Settings.module.css";

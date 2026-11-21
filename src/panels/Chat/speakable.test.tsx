@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vite-plus/test";
-import { render } from "@solidjs/testing-library";
+import { render } from "../../test/harness";
 import Markdown from "./Markdown";
 import { CODE_SKIPPED, speakableBlocks } from "./speakable";
 
