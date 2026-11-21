@@ -1,5 +1,5 @@
 /* Label above, track below. The track is the positioning context for both the
-   fill and the thumb, which Kobalte places by percentage. */
+   fill and the thumb, which are placed by percentage. */
 .root {
   display: flex;
   flex-direction: column;
@@ -23,7 +23,6 @@
   background: var(--neutral-hover);
 }
 
-/* Kobalte sizes this from the value; the wrapper only says what it looks like. */
 .fill {
   position: absolute;
   height: 100%;
@@ -31,9 +30,6 @@
   background: var(--accent-fg);
 }
 
-/* Kobalte positions the thumb by percentage from the track's left edge, so the
-   negative top pulls it back over the centre line and the margin-left offsets
-   it by half its own width. */
 .thumb {
   display: block;
   top: calc(-5px * var(--ui-scale));

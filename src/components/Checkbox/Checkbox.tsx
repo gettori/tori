@@ -1,12 +1,10 @@
-import { Show, type JSX } from "solid-js";
+import { createEffect, createUniqueId, Show, type JSX } from "solid-js";
 import { Check, Minus } from "lucide-solid";
-import { Checkbox as Primitive } from "../../lib/checkbox";
 import Icon from "../Icon/Icon";
 import styles from "./Checkbox.module.css";
 
 /**
- * A boolean option that scopes an action: Kobalte's checkbox behind Tori's
- * chrome and Tori's API.
+ * A boolean option that scopes an action.
  *
  * **Checkbox or Switch is a semantic choice, not a visual one** (#107). This is
  * for an option the user sets *before* confirming something - the dialog
@@ -14,7 +12,7 @@ import styles from "./Checkbox.module.css";
  * as "included in what I am about to do". A setting that takes effect the
  * instant it flips is a `<Switch>` instead.
  *
- * The native input Kobalte renders is a real `<input type="checkbox">`, so
+ * The control is a real `<input type="checkbox">`, so
  * Space toggles it without any JS of ours and `getByRole("checkbox")` finds it.
  * We draw the box: the input itself is visually hidden and stays in the accessi-
  * bility tree, which is what keeps the label association and the focus ring
@@ -41,31 +39,72 @@ export default function Checkbox(props: {
   "aria-label"?: string;
   "aria-describedby"?: string;
 }) {
+  const baseId = createUniqueId();
+  const inputId = `checkbox-${baseId}-input`;
+  const labelId = `checkbox-${baseId}-label`;
+  const state = {
+    get "data-checked"() {
+      return props.checked ? "" : undefined;
+    },
+    get "data-indeterminate"() {
+      return props.indeterminate ? "" : undefined;
+    },
+    get "data-disabled"() {
+      return props.disabled ? "" : undefined;
+    },
+  };
+  let input!: HTMLInputElement;
+
+  createEffect(() => {
+    input.indeterminate = !!props.indeterminate;
+  });
+
   return (
-    <Primitive.Root
-      class={[styles.root, props.class].filter(Boolean).join(" ")}
-      checked={props.checked}
-      indeterminate={props.indeterminate}
-      onChange={props.onChange}
-      disabled={props.disabled}
-    >
-      <Primitive.Input
+    <div role="group" class={[styles.root, props.class].filter(Boolean).join(" ")} {...state}>
+      <input
+        ref={input}
+        id={inputId}
         class={styles.input}
+        type="checkbox"
+        checked={props.checked}
+        disabled={props.disabled}
         aria-label={props["aria-label"]}
+        aria-labelledby={props.label !== undefined ? labelId : undefined}
         aria-describedby={props["aria-describedby"]}
+        aria-disabled={props.disabled || undefined}
+        onChange={(e) => {
+          e.stopPropagation();
+          const el = e.currentTarget;
+          if (!props.disabled) props.onChange(el.checked);
+          el.checked = props.checked;
+          el.indeterminate = !!props.indeterminate;
+        }}
+        {...state}
       />
-      <Primitive.Control class={[styles.control, props.size === "sm" && styles.sm].filter(Boolean).join(" ")}>
-        {/* Always mounted: Kobalte's mount-on-check runs the tick through
-            solid-presence, whose lazily computed style under jsdom 30 reads a
-            document the element has left, and an uncheck inside a Dialog throws.
-            CSS hides it instead. */}
-        <Primitive.Indicator class={styles.indicator} forceMount>
+      <div
+        class={[styles.control, props.size === "sm" && styles.sm].filter(Boolean).join(" ")}
+        onClick={() => {
+          input.click();
+          input.focus({ preventScroll: true });
+        }}
+        {...state}
+      >
+        <div class={styles.indicator} {...state}>
           <Icon icon={props.indeterminate ? Minus : Check} size={props.size === "sm" ? 11 : 15} strokeWidth={3} />
-        </Primitive.Indicator>
-      </Primitive.Control>
+        </div>
+      </div>
       <Show when={props.label !== undefined}>
-        <Primitive.Label class={styles.label}>{props.label}</Primitive.Label>
+        <label
+          id={labelId}
+          for={inputId}
+          class={styles.label}
+          // WebKit does not focus an input through its label.
+          onClick={() => input.focus({ preventScroll: true })}
+          {...state}
+        >
+          {props.label}
+        </label>
       </Show>
-    </Primitive.Root>
+    </div>
   );
 }
