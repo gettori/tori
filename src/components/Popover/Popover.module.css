@@ -3,13 +3,6 @@
    own class; what lives here is what makes it read as the same family of
    surface as <Menu>'s .content, minus the menu's row machinery. */
 
-/* Zero specificity: it clears the browser's popover defaults and still loses to
-   a caller's own padding. */
-:where(.surface) {
-  padding: 0;
-  color: inherit;
-}
-
 .surface {
   background: var(--canvas-card);
   border: 1px solid var(--border-default);

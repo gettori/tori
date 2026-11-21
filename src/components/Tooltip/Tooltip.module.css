@@ -10,8 +10,6 @@
   font-size: var(--tori-text-md);
   line-height: var(--tori-line-normal);
   transform-origin: var(--layer-origin, center);
-  /* The browser's popover default is `auto`, which can draw a scrollbar. */
-  overflow: visible;
   /* A tooltip label is a phrase, but the ones naming a path or a branch are not,
      and a 280px cap with no wrapping would clip them. Wrap, and keep an author's
      own newline. */

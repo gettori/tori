@@ -72,6 +72,9 @@ export function MenuRow(props: {
   tooltip?: string;
   children: JSX.Element;
 }) {
+  // A call, not an inline ternary: Solid memoises a ternary prop on every read,
+  // and a row's select handler reads this one outside any owner.
+  const closesOnSelect = () => (props.refusing ? false : props.closeOnSelect);
   return (
     <Tooltip
       as={Item}
@@ -90,7 +93,7 @@ export function MenuRow(props: {
       aria-disabled={props.refusing || undefined}
       aria-describedby={props.describedBy}
       // A refused row must not close the menu on its way to doing nothing.
-      closeOnSelect={props.refusing ? false : props.closeOnSelect}
+      closeOnSelect={closesOnSelect()}
       onSelect={() => !props.refusing && props.onClick?.()}
       // A row selects on Enter's keydown; left to run, its keypress then clicks
       // whatever the row's action focused, which for a confirm dialog is the

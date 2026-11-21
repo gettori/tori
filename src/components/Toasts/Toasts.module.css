@@ -1,13 +1,6 @@
 .toastRegion {
   position: fixed;
   inset: auto calc(24px * var(--ui-scale)) calc(24px * var(--ui-scale)) auto;
-  height: auto;
-  margin: 0;
-  padding: 0;
-  overflow: visible;
-  color: inherit;
-  background: none;
-  border: 0;
   /* A fixed width, not a cap: the toasts are absolutely placed in the deck,
      so nothing inside could size the region. */
   width: min(calc(380px * var(--ui-scale)), calc(100vw - calc(48px * var(--ui-scale))));
