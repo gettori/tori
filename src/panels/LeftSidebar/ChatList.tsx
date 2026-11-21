@@ -1,5 +1,5 @@
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
-import { MessageSquare } from "lucide-solid";
+import { MessageSquare } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import { providerMarkKey } from "../../components/Icon/ProviderIcon";
 import { agentMark } from "../../components/Icon/agentMarks";

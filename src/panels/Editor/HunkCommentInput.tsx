@@ -4,7 +4,7 @@ import { sendHunkCommentsNow } from "../../utils/hunkCommentPref";
 import { requestSend, composeHunkComment, type SessionTarget } from "../../utils/safeSend";
 import { hunkCommentBlocks } from "../../utils/chatCompose";
 import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
-import { MessageSquare } from "lucide-solid";
+import { MessageSquare } from "../../components/Icon/icons";
 import Button from "../../components/Button/Button";
 import IconButton from "../../components/IconButton/IconButton";
 import Icon from "../../components/Icon/Icon";

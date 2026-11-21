@@ -1,5 +1,5 @@
 import { For, Show, type JSX } from "solid-js";
-import { Anchor, ArrowUpRight, Sailboat } from "lucide-solid";
+import { Anchor, ArrowUpRight, Sailboat } from "../Icon/icons";
 import Button from "../Button/Button";
 import SpendFigure from "../SpendFigure/SpendFigure";
 import Tooltip from "../Tooltip/Tooltip";

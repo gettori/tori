@@ -23,8 +23,8 @@ import {
   SquareStack,
   Ticket,
   TriangleAlert,
-  type LucideIcon,
-} from "lucide-solid";
+  type IconGlyph,
+} from "../../components/Icon/icons";
 import ContextMenu from "../../components/Menu/ContextMenu";
 import Glide from "../../components/Glide/Glide";
 import Dropdown from "../../components/Menu/Dropdown";
@@ -339,7 +339,7 @@ export function FoldRow(props: {
 export function GroupRow(props: {
   label: string;
   /** Carried at all so every branch-level row lines its label up on the same x. */
-  icon: LucideIcon;
+  icon: IconGlyph;
   badge: string;
   hint: string;
   open: boolean;
@@ -475,7 +475,7 @@ const tintVars = (hex: string) => ({
   "--card-icon": hex,
 });
 
-const LANE_ICON: Record<LaneId, LucideIcon> = {
+const LANE_ICON: Record<LaneId, IconGlyph> = {
   working: Activity,
   inReview: GitPullRequest,
   reviewing: Eye,

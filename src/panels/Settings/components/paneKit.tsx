@@ -6,7 +6,7 @@
 // closes over anything per-render - only over the imported store - so the move
 // was a move rather than a rewrite.
 import { createSignal, For, Show, type JSX } from "solid-js";
-import { Check, Copy } from "lucide-solid";
+import { Check, Copy } from "../../../components/Icon/icons";
 import { copyText } from "../../../utils/clipboard";
 import { hintRanges, labelRanges, segments, type Range } from "../utils/searchHighlight";
 import {

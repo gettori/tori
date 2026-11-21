@@ -9,8 +9,8 @@ import {
   ScrollText,
   UnfoldVertical,
   X,
-  type LucideIcon,
-} from "lucide-solid";
+  type IconGlyph,
+} from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
 import Tooltip from "../../components/Tooltip/Tooltip";
@@ -20,7 +20,7 @@ import styles from "./Chat.module.css";
 // The status strip closes its menu on a click that lands on one of these.
 const CLOSES = { "data-closes-menu": "" };
 
-function MenuButton(props: { icon: LucideIcon; hint: string; onClick: () => void; children: JSX.Element }) {
+function MenuButton(props: { icon: IconGlyph; hint: string; onClick: () => void; children: JSX.Element }) {
   return (
     <Tooltip as="button" type="button" class={styles.menuRow} label={props.hint} onClick={props.onClick} {...CLOSES}>
       <Icon icon={props.icon} />

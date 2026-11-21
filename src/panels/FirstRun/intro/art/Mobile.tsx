@@ -1,5 +1,5 @@
 import type { JSX } from "solid-js";
-import { ArrowUp, ChevronLeft } from "lucide-solid";
+import { ArrowUp, ChevronLeft } from "../../../../components/Icon/icons";
 import Icon from "../../../../components/Icon/Icon";
 import MessageList from "../../../Chat/MessageList";
 import type { ChatItem } from "../../../Chat/chatStore";

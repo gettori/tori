@@ -1,5 +1,5 @@
 import { For, Show, type JSX } from "solid-js";
-import { X } from "lucide-solid";
+import { X } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import FileIcon from "../../seti/FileIcon";

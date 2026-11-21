@@ -16,8 +16,8 @@ import {
   Star,
   Trash2,
   X,
-  type LucideIcon,
-} from "lucide-solid";
+  type IconGlyph,
+} from "../../components/Icon/icons";
 import Button from "../../components/Button/Button";
 import Chevron from "../../components/Chevron/Chevron";
 import Icon from "../../components/Icon/Icon";
@@ -133,7 +133,7 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 
 /** A hover action at a row's right edge. It stops the click, since the row
  *  under it has a click of its own. */
-function RowAction(props: { icon: LucideIcon; label: string; disabled?: boolean; onClick: () => void }) {
+function RowAction(props: { icon: IconGlyph; label: string; disabled?: boolean; onClick: () => void }) {
   return (
     <InlineToggle
       icon={props.icon}

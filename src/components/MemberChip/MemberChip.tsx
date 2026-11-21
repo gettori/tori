@@ -1,5 +1,5 @@
 import { Show, createMemo, splitProps, type JSX } from "solid-js";
-import { Lock } from "lucide-solid";
+import { Lock } from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import ProjectIcon, { type ProjectIconSource } from "../Icon/ProjectIcon";
 import type { ChipStyle, TintedMember } from "../../utils/topicMembers";

@@ -16,14 +16,9 @@ import solid from "vite-plugin-solid";
 // mounted test next to its unit test, and makes which environment a file gets a
 // property of the file rather than of where somebody put it.
 
-// Resolve solid-js to its browser build. The default node condition pulls in
-// solid's server build, whose Icon module throws a "client-only API" error at
-// import time, which would break any test that imports a lucide-solid icon (e.g.
-// the icon registry). Externalized node_modules bypass Vite's resolve conditions
-// and get the node build anyway, so they are inlined too.
-//
-// Both projects need this, and a project does not inherit the root's copy, so it
-// is defined once here and spread into each rather than written three times.
+// Resolve solid-js to its browser build: the default node condition pulls in
+// its server build, which cannot render a component. Both projects need this,
+// and a project does not inherit the root's copy.
 const solidResolve = {
   resolve: { conditions: ["browser", "development"] },
   ssr: { resolve: { conditions: ["browser", "development"] } },
@@ -32,7 +27,7 @@ const solidResolve = {
 // loading a second Solid whose reactive graph is separate, so a portalled
 // dropdown would survive `cleanup` into the next test.
 const inlineSolid = {
-  deps: { inline: [/lucide-solid/, /solid-js/] },
+  deps: { inline: [/solid-js/] },
 };
 
 export default defineConfig({

@@ -1,4 +1,4 @@
-import { Copy } from "lucide-solid";
+import { Copy } from "../../components/Icon/icons";
 
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";

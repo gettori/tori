@@ -1,6 +1,6 @@
 import { createSignal, createEffect, on, onCleanup, For, Show, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { Search, Ticket, TriangleAlert, X } from "lucide-solid";
+import { Search, Ticket, TriangleAlert, X } from "../Icon/icons";
 import styles from "./Dialogs.module.css";
 import { spaceLabel } from "../../utils/globalSpace";
 import Button from "../Button/Button";

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { createSignal } from "solid-js";
-import { FileText, Plus } from "lucide-solid";
+import { FileText, Plus } from "./Icon/icons";
 import Icon from "./Icon/Icon";
 import IconButton from "./IconButton/IconButton";
 import OverflowTabBar from "./OverflowTabBar";

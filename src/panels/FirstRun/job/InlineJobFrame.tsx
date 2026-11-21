@@ -1,5 +1,5 @@
 import { Match, Show, Switch, createSignal, type JSX } from "solid-js";
-import { Check, X } from "lucide-solid";
+import { Check, X } from "../../../components/Icon/icons";
 import Icon from "../../../components/Icon/Icon";
 import styles from "./InlineJob.module.css";
 

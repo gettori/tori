@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
-import { Check, ChevronsUpDown, CircleDot, Cloud, GitCommitHorizontal, Plus, RefreshCw, Trash2 } from "lucide-solid";
+import { Check, ChevronsUpDown, CircleDot, Cloud, GitCommitHorizontal, Plus, RefreshCw, Trash2 } from "../Icon/icons";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Checkbox from "../Checkbox/Checkbox";

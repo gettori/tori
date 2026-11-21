@@ -1,5 +1,5 @@
 import { For, Show, createEffect, createSignal, on, onCleanup, onMount } from "solid-js";
-import { Clock, RefreshCw } from "lucide-solid";
+import { Clock, RefreshCw } from "../Icon/icons";
 import AgentGlyph from "../Icon/AgentGlyph";
 import Icon from "../Icon/Icon";
 import IconButton from "../IconButton/IconButton";

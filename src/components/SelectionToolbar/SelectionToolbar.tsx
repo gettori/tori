@@ -1,5 +1,5 @@
 import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
-import { TextQuote, Volume2, type LucideIcon } from "lucide-solid";
+import { TextQuote, Volume2, type IconGlyph } from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import patterns from "../../styles/patterns.module.css";
 import { enterOnce } from "../../utils/enterOnce";
@@ -39,7 +39,7 @@ export function holdSelection() {
 
 export const heldSelection = () => held;
 
-export type SelectionAction = { label: string; icon: LucideIcon; run: (text: string) => void };
+export type SelectionAction = { label: string; icon: IconGlyph; run: (text: string) => void };
 
 export const quoteAction = (run: SelectionAction["run"]): SelectionAction => ({ label: "Quote", icon: TextQuote, run });
 export const readAction = (run: SelectionAction["run"]): SelectionAction => ({ label: "Read", icon: Volume2, run });

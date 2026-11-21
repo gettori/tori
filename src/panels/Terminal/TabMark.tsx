@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { Check, CircleDashed, Files, KeyRound, X } from "lucide-solid";
+import { Check, CircleDashed, Files, KeyRound, X } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import { providerIcon, providerMarkKey } from "../../components/Icon/ProviderIcon";
 import agentStyles from "../../components/Icon/agentMarks.module.css";

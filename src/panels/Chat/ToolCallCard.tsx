@@ -1,5 +1,5 @@
 import { For, Show, Switch, Match, createEffect, createMemo, createSignal, createResource } from "solid-js";
-import { ChevronRight, EyeOff, KeyRound } from "lucide-solid";
+import { ChevronRight, EyeOff, KeyRound } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import { chatCall } from "./chatCalls";

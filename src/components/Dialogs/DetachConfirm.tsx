@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { Unlink } from "lucide-solid";
+import { Unlink } from "../Icon/icons";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
 import Icon from "../Icon/Icon";

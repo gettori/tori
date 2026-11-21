@@ -11,7 +11,7 @@ import {
   FileCode,
   Files,
   KeyRound,
-} from "lucide-solid";
+} from "../../components/Icon/icons";
 import {
   emitWith,
   OPEN_IN_EDITOR,

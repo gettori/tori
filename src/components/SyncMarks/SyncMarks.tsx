@@ -17,8 +17,8 @@ import {
   FilePen,
   Files,
   GitMergeConflict,
-  type LucideIcon,
-} from "lucide-solid";
+  type IconGlyph,
+} from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import Tooltip from "../Tooltip/Tooltip";
 import type { SyncMark } from "../../utils/branchSync";
@@ -27,7 +27,7 @@ import styles from "./SyncMarks.module.css";
 /// Push and pull are exact mirrors of each other, which is what lets both lit
 /// at once read as "diverged" without a word for it. `FilePen` rather than a
 /// bare dot because a dot is what every other status in this app already is.
-const MARK_ICON: Record<SyncMark["kind"], LucideIcon> = {
+const MARK_ICON: Record<SyncMark["kind"], IconGlyph> = {
   conflict: GitMergeConflict,
   overlap: Files,
   checks: CircleX,

@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, on, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { GitCommitHorizontal } from "lucide-solid";
+import { GitCommitHorizontal } from "../../components/Icon/icons";
 
 import { emitWith, OPEN_IN_EDITOR } from "../../utils/events";
 import { gitStateFor, type LogEntry } from "../../utils/gitActions";

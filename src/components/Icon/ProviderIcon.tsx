@@ -1,5 +1,5 @@
 import { type Component } from "solid-js";
-import { Brain } from "lucide-solid";
+import { Brain } from "./icons";
 import { agentMark, type MarkProps } from "./agentMarks";
 
 /**

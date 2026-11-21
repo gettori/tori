@@ -1,5 +1,5 @@
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
-import { Ticket, X } from "lucide-solid";
+import { Ticket, X } from "../../components/Icon/icons";
 import type { Lane } from "./chatStore";
 import Icon from "../../components/Icon/Icon";
 import agentStyles from "../../components/Icon/agentMarks.module.css";

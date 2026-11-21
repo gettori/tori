@@ -1,5 +1,5 @@
 import { For, Show, createSignal } from "solid-js";
-import { Brain } from "lucide-solid";
+import { Brain } from "../../components/Icon/icons";
 import { providerIcon } from "../../components/Icon/ProviderIcon";
 import AgentPalette from "./AgentPalette";
 import Picker, { PickerButton, PickerOption } from "./Picker";

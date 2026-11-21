@@ -1,5 +1,5 @@
 import { For, Show, createEffect } from "solid-js";
-import { Inbox, Tag } from "lucide-solid";
+import { Inbox, Tag } from "../../src/components/Icon/icons";
 import Icon from "../../src/components/Icon/Icon";
 import { resolveIcon } from "../../src/components/Icon/iconRegistry";
 import { WheelGlyph } from "../../src/components/Autopilot/Wheel";

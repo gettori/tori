@@ -1,6 +1,6 @@
 import { createEffect, createSignal, on, Show } from "solid-js";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { Upload } from "lucide-solid";
+import { Upload } from "../Icon/icons";
 import styles from "./ProjectIconPicker.module.css";
 import Icon from "../Icon/Icon";
 import IconGrid from "../IconGrid/IconGrid";

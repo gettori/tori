@@ -1,5 +1,5 @@
 import { Show, createEffect, createSignal, on, onCleanup, type JSX } from "solid-js";
-import { Ellipsis } from "lucide-solid";
+import { Ellipsis } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
 import IconButton from "../../components/IconButton/IconButton";

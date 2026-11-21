@@ -22,8 +22,8 @@ import {
   Search,
   Settings,
   SquareTerminal,
-  type LucideIcon,
-} from "lucide-solid";
+  type IconGlyph,
+} from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import AgentGlyph from "../Icon/AgentGlyph";
 import ProjectIcon from "../Icon/ProjectIcon";
@@ -40,7 +40,7 @@ import styles from "./Omnibox.module.css";
 // The PR number takes the colour the sidebar's branch line gives it.
 import lineStyles from "../../panels/LeftSidebar/BranchLine.module.css";
 
-const GROUP_GLYPHS: Record<CommandGroup, LucideIcon> = {
+const GROUP_GLYPHS: Record<CommandGroup, IconGlyph> = {
   navigate: Compass,
   view: PanelsTopLeft,
   search: Search,
@@ -52,7 +52,7 @@ const GROUP_GLYPHS: Record<CommandGroup, LucideIcon> = {
   help: CircleHelp,
 };
 
-export const MODE_GLYPHS: Record<OmniMode, LucideIcon> = {
+export const MODE_GLYPHS: Record<OmniMode, IconGlyph> = {
   all: Search,
   file: File,
   command: ChevronRight,
@@ -62,7 +62,7 @@ export const MODE_GLYPHS: Record<OmniMode, LucideIcon> = {
   help: CircleHelp,
 };
 
-const PLACE_GLYPHS: Record<PlaceKind, LucideIcon> = {
+const PLACE_GLYPHS: Record<PlaceKind, IconGlyph> = {
   space: LayoutGrid,
   project: Folder,
   unit: GitBranch,
@@ -75,7 +75,7 @@ const PLACE_GLYPHS: Record<PlaceKind, LucideIcon> = {
 
 type PlaceIcon = Extract<RowIcon, { kind: "place" }>;
 
-function placeGlyph(icon: PlaceIcon): LucideIcon {
+function placeGlyph(icon: PlaceIcon): IconGlyph {
   if (icon.place === "space") return resolveIcon(icon.look?.icon) ?? LayoutGrid;
   if (icon.place === "unit" && icon.unitKind !== "worktree" && icon.unitKind !== "plain") return Folder;
   return PLACE_GLYPHS[icon.place];

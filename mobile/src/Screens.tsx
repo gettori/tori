@@ -1,5 +1,5 @@
 import { For, Match, Show, Switch, createResource, createSignal, onCleanup, type JSX } from "solid-js";
-import { ChevronLeft, Ellipsis, Folder, Tag } from "lucide-solid";
+import { ChevronLeft, Ellipsis, Folder, Tag } from "../../src/components/Icon/icons";
 import Icon from "../../src/components/Icon/Icon";
 import { BranchMark, WorktreeMark } from "../../src/components/Icon/gitMarks";
 import SyncMarks from "../../src/components/SyncMarks/SyncMarks";

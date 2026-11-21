@@ -1,7 +1,7 @@
 import { createResource, createSignal, onMount, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
-import { FileWarning, Folder, SquareTerminal } from "lucide-solid";
+import { FileWarning, Folder, SquareTerminal } from "../../../../components/Icon/icons";
 import Button from "../../../../components/Button/Button";
 import ConfirmDialog from "../../../../components/Dialogs/ConfirmDialog";
 import Icon from "../../../../components/Icon/Icon";

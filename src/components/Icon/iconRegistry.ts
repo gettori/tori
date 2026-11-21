@@ -119,14 +119,14 @@ import {
   Sparkles,
   Eye,
   Glasses,
-} from "lucide-solid";
-import type { LucideIcon } from "lucide-solid";
+} from "./icons";
+import type { IconGlyph } from "./icons";
 
 /** One picker entry: the stored key (Lucide PascalCase name) and its component. */
 export interface PickerIcon {
   /** The name stored in `tori.toml` and used by `resolveIcon`. */
   name: string;
-  icon: LucideIcon;
+  icon: IconGlyph;
 }
 
 // The fixed picker set: 120 statically imported icons, no barrel / lazy load, so
@@ -269,11 +269,11 @@ export const PICKER_ICONS: PickerIcon[] = [
 ];
 
 // Synchronous name → component lookup, built once from PICKER_ICONS.
-const BY_NAME: Map<string, LucideIcon> = new Map(PICKER_ICONS.map((e) => [e.name, e.icon]));
+const BY_NAME: Map<string, IconGlyph> = new Map(PICKER_ICONS.map((e) => [e.name, e.icon]));
 
 /** Resolve a stored icon name to its Lucide component, or `undefined` when the
  *  key is unknown/blank so the caller can fall back to the space's letter. */
-export function resolveIcon(name: string | undefined | null): LucideIcon | undefined {
+export function resolveIcon(name: string | undefined | null): IconGlyph | undefined {
   if (!name) return undefined;
   return BY_NAME.get(name);
 }
@@ -333,7 +333,7 @@ export function restingShelf(shelf: PickerIcon[], chosen: string | null): Picker
  *  reads as an arbitrary icon, but it is the *same* arbitrary icon on every
  *  render and every run - a genuinely random pick would reshuffle the whole
  *  sidebar each time the tree re-rendered. */
-export function fallbackIcon(seed: string): LucideIcon {
+export function fallbackIcon(seed: string): IconGlyph {
   // FNV-1a over the seed's UTF-16 units; `>>> 0` keeps every step unsigned.
   let h = 0x811c9dc5;
   for (let i = 0; i < seed.length; i++) {

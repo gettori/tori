@@ -1,6 +1,6 @@
 import { For, Show, createMemo, createResource, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { ChevronRight } from "lucide-solid";
+import { ChevronRight } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import { TabMemberChip } from "../../components/MemberChip/MemberChip";
 import Dropdown from "../../components/Menu/Dropdown";

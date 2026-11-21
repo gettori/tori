@@ -14,7 +14,7 @@ import {
   SquareCode,
   Undo2,
   UserRound,
-} from "lucide-solid";
+} from "../../components/Icon/icons";
 import {
   emitWith,
   onWith,

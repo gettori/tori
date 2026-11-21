@@ -1,6 +1,6 @@
 import { For, Show, Switch, Match, createEffect, createMemo, createResource, createSignal, onMount } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { RefreshCw } from "lucide-solid";
+import { RefreshCw } from "../../../../components/Icon/icons";
 import Icon from "../../../../components/Icon/Icon";
 import IconButton from "../../../../components/IconButton/IconButton";
 // Aliased: this module already imports Solid's control-flow `Switch`, and the

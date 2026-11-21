@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { ArrowDown, FoldVertical, Pencil, RefreshCw, Wrench } from "lucide-solid";
+import { ArrowDown, FoldVertical, Pencil, RefreshCw, Wrench } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import { providerIcon } from "../../components/Icon/ProviderIcon";
 import { contextPercent } from "../../utils/chatModels";
