@@ -151,10 +151,9 @@ export default function DiffRows(allProps: {
   }
 
   function cell(row: DiffRow | null, index: number | null, only?: "old" | "new") {
-    // Read once, not per render: whether a surface offers line staging is a
-    // property of the surface, so a read-only diff (a commit, a transcript)
-    // gets no handlers and no roles at all rather than inert ones on every
-    // line of a five-thousand-line diff.
+    // Read once, not per render: staging and roving keys are properties of the
+    // surface, so a diff with neither gets no handlers or roles, rather than
+    // inert ones on every line of a five-thousand-line diff.
     const selectable = !!props.selection && !!row && (row.kind === "add" || row.kind === "del") && index !== null;
     const commentable = !!props.comment && !!row && index !== null;
     const toggle = () => props.selection!.toggle(index!);
@@ -168,6 +167,34 @@ export default function DiffRows(allProps: {
       if (!row || index === null) return undefined;
       return hunk.at() === props.offset + index ? 0 : -1;
     };
+    const rowClick = selectable ? toggle : undefined;
+    const rowFocusIn =
+      props.keyboard === "roving" && index !== null ? () => hunk.setAt(props.offset + index) : undefined;
+    const rowKeyDown =
+      selectable || props.keyboard === "roving"
+        ? (e: KeyboardEvent) => {
+            if (index !== null && props.onRowKey?.(index, e)) {
+              e.preventDefault();
+              return;
+            }
+            if (props.keyboard === "roving" && index !== null) {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                rove(props.offset + index + 1);
+                return;
+              }
+              if (e.key === "ArrowUp") {
+                e.preventDefault();
+                rove(props.offset + index - 1);
+                return;
+              }
+            }
+            if (!selectable) return;
+            if (e.key !== "Enter" && e.key !== " ") return;
+            e.preventDefault();
+            toggle();
+          }
+        : undefined;
     return (
       <div
         class={`${styles.diffLine} ${row ? (styles[rowClass(row)] ?? "") : styles.sideEmpty} ${
@@ -189,40 +216,15 @@ export default function DiffRows(allProps: {
         data-old={only === "new" ? undefined : (row?.oldLine ?? undefined)}
         data-new={only === "old" ? undefined : (row?.newLine ?? undefined)}
         style={digits() > 4 ? { "--diff-num-digits": digits() } : undefined}
-        onClick={selectable ? toggle : undefined}
-        onFocusIn={props.keyboard === "roving" && index !== null ? () => hunk.setAt(props.offset + index) : undefined}
+        onClick={rowClick}
+        onFocusIn={rowFocusIn}
         // A line is in the selection or it is not, which is what a checkbox
         // is. Reachable by keyboard for the same reason the conflicted row is
         // a button: a control only the mouse can reach is half a control.
         role={selectable ? "checkbox" : undefined}
         aria-checked={selectable ? (picked() ? "true" : "false") : undefined}
         tabIndex={stop()}
-        onKeyDown={
-          selectable || props.keyboard === "roving"
-            ? (e: KeyboardEvent) => {
-                if (index !== null && props.onRowKey?.(index, e)) {
-                  e.preventDefault();
-                  return;
-                }
-                if (props.keyboard === "roving" && index !== null) {
-                  if (e.key === "ArrowDown") {
-                    e.preventDefault();
-                    rove(props.offset + index + 1);
-                    return;
-                  }
-                  if (e.key === "ArrowUp") {
-                    e.preventDefault();
-                    rove(props.offset + index - 1);
-                    return;
-                  }
-                }
-                if (!selectable) return;
-                if (e.key !== "Enter" && e.key !== " ") return;
-                e.preventDefault();
-                toggle();
-              }
-            : undefined
-        }
+        onKeyDown={rowKeyDown}
       >
         {/* Never a tab stop of its own. Roving promises one stop per hunk, and
             a button per row would put thousands back; `c` on the focused row is

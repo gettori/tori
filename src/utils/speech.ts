@@ -28,12 +28,12 @@ export type Reading = { source: string; block: number | undefined };
 const [reading, setReading] = createSignal<Reading | null>(null);
 export { reading };
 
-const [frontReply, setFrontReply] = createSignal<(() => void) | null>(null);
+const [frontReply, setFrontReply] = createSignal<{ read: () => void } | null>(null);
 export { frontReply };
 
 export function offerLastReply(readLast: () => void): () => void {
-  setFrontReply(() => readLast);
-  return () => setFrontReply((now) => (now === readLast ? null : now));
+  setFrontReply({ read: readLast });
+  return () => setFrontReply((now) => (now?.read === readLast ? null : now));
 }
 
 export function readingBlockOf(from: string): number | undefined {

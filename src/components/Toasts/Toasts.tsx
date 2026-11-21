@@ -71,18 +71,17 @@ export function clearToasts() {
 }
 
 function ToastCard(props: { toast: ToastItem; duration: number; paused: Accessor<boolean> }) {
-  const toast = props.toast;
   const titleId = `toast-${createUniqueId()}-title`;
   const [element, setElement] = createSignal<HTMLDivElement>();
-  const presence = createPresence(() => !toast.dismissed(), element);
+  const presence = createPresence(() => !props.toast.dismissed(), element);
 
   createEffect(() => {
-    if (!presence.mounted()) setToasts((list) => list.filter((other) => other !== toast));
+    if (!presence.mounted()) setToasts((list) => list.filter((other) => other !== props.toast));
   });
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   let startedAt = 0;
-  let remaining = props.duration;
+  let remaining = untrack(() => props.duration);
   const stopTimer = () => {
     if (timer === undefined) return;
     clearTimeout(timer);
@@ -90,13 +89,13 @@ function ToastCard(props: { toast: ToastItem; duration: number; paused: Accessor
     remaining -= Date.now() - startedAt;
   };
   createEffect(() => {
-    if (toast.kind === "error") return;
-    if (toast.dismissed() || props.paused()) {
+    if (props.toast.kind === "error") return;
+    if (props.toast.dismissed() || props.paused()) {
       stopTimer();
       return;
     }
     startedAt = Date.now();
-    timer = setTimeout(toast.dismiss, remaining);
+    timer = setTimeout(props.toast.dismiss, remaining);
   });
   onCleanup(stopTimer);
 
@@ -129,7 +128,7 @@ function ToastCard(props: { toast: ToastItem; duration: number; paused: Accessor
     swipeFrom = null;
     swipedBy = null;
     if (swiped === null) return;
-    if (swiped > SWIPE_DISMISS) toast.dismiss();
+    if (swiped > SWIPE_DISMISS) props.toast.dismiss();
     // The release of a swipe must not also press the button under it.
     e.currentTarget.addEventListener("click", (click) => click.preventDefault(), { once: true });
   };
@@ -149,24 +148,24 @@ function ToastCard(props: { toast: ToastItem; duration: number; paused: Accessor
         data-opened={presence.closed() ? undefined : ""}
         data-closed={presence.closed() ? "" : undefined}
         data-swipe-direction="right"
-        class={`${styles.toast} ${styles[toast.kind]}`}
+        class={`${styles.toast} ${styles[props.toast.kind]}`}
         onKeyDown={(e) => {
           if (e.key !== "Escape" || e.defaultPrevented) return;
           // Spent here, so a dialog around the region stays open.
           e.preventDefault();
-          toast.dismiss();
+          props.toast.dismiss();
         }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
       >
         <span class={styles.toastIcon} aria-hidden="true">
-          <Icon icon={ICON[toast.kind]} />
+          <Icon icon={ICON[props.toast.kind]} />
         </span>
         <div id={titleId} class={styles.toastMsg}>
-          {toast.text}
+          {props.toast.text}
         </div>
-        <For each={toast.actions}>
+        <For each={props.toast.actions}>
           {(a) => (
             <Button
               size="xs"
@@ -174,7 +173,7 @@ function ToastCard(props: { toast: ToastItem; duration: number; paused: Accessor
               aria-label={a.label}
               onClick={() => {
                 a.run();
-                toast.dismiss();
+                props.toast.dismiss();
               }}
             >
               {a.label}
@@ -187,7 +186,7 @@ function ToastCard(props: { toast: ToastItem; duration: number; paused: Accessor
           class={styles.toastClose}
           aria-label="Dismiss"
           tooltip="Dismiss"
-          onClick={toast.dismiss}
+          onClick={props.toast.dismiss}
         />
       </div>
     </Show>

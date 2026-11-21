@@ -28,10 +28,13 @@ export const ENFORCED: readonly IdiomClass[] = [
   "destructured-props",
   "effect-in-handler",
   "effect-writes",
+  "function-signal",
+  "handler-ternary",
   "lowercase-on",
   "on-namespace",
   "read-after-write",
   "timing",
+  "top-prop-read",
   "use-directive",
 ];
 
