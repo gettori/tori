@@ -47,5 +47,110 @@
     "unit": "count",
     "budget": 0,
     "reason": "a switch between two shell tabs of one worktree: the tab hands the sidebar a selection equal to the one it has, so nothing that reads the selection wakes and nothing is fetched"
+  },
+  {
+    "name": "renders.chat.tool_frame.mutations",
+    "runtime": "webview",
+    "unit": "count",
+    "budget": 4,
+    "reason": "mutations for one toolCallStarted into the open turn of a 201 turn transcript, through applyEvent and a mounted MessageList"
+  },
+  {
+    "name": "renders.chat.tool_frame.memos",
+    "runtime": "webview",
+    "unit": "count",
+    "budget": 62,
+    "reason": "memos for one toolCallStarted into the open turn of a 201 turn transcript, through applyEvent and a mounted MessageList. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
+  },
+  {
+    "name": "renders.chat.tool_frame.effects",
+    "runtime": "webview",
+    "unit": "count",
+    "budget": 32,
+    "reason": "effects for one toolCallStarted into the open turn of a 201 turn transcript, through applyEvent and a mounted MessageList. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
+  },
+  {
+    "name": "renders.sidebar.branch_status.mutations",
+    "runtime": "webview",
+    "unit": "count",
+    "budget": 1,
+    "reason": "mutations for one branch going two ahead of its upstream, with two worktree rows drawn"
+  },
+  {
+    "name": "renders.sidebar.branch_status.memos",
+    "runtime": "webview",
+    "unit": "count",
+    "budget": 25,
+    "reason": "memos for one branch going two ahead of its upstream, with two worktree rows drawn. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
+  },
+  {
+    "name": "renders.sidebar.branch_status.effects",
+    "runtime": "webview",
+    "unit": "count",
+    "budget": 36,
+    "reason": "effects for one branch going two ahead of its upstream, with two worktree rows drawn. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
+  },
+  {
+    "name": "renders.file_tree.fs_changed.mutations",
+    "runtime": "webview",
+    "unit": "count",
+    "budget": 5,
+    "reason": "mutations for one fs://changed adding a file to an expanded directory"
+  },
+  {
+    "name": "renders.file_tree.fs_changed.memos",
+    "runtime": "webview",
+    "unit": "count",
+    "budget": 25,
+    "reason": "memos for one fs://changed adding a file to an expanded directory. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
+  },
+  {
+    "name": "renders.file_tree.fs_changed.effects",
+    "runtime": "webview",
+    "unit": "count",
+    "budget": 44,
+    "reason": "effects for one fs://changed adding a file to an expanded directory. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
+  },
+  {
+    "name": "renders.editor.tab_switch.mutations",
+    "runtime": "webview",
+    "unit": "count",
+    "budget": 0,
+    "reason": "mutations for back to an open file with CodeEditor mocked, so the pane writes no DOM of its own and only the runs mean anything"
+  },
+  {
+    "name": "renders.editor.tab_switch.memos",
+    "runtime": "webview",
+    "unit": "count",
+    "budget": 13,
+    "reason": "memos for back to an open file with CodeEditor mocked, so the pane writes no DOM of its own and only the runs mean anything. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
+  },
+  {
+    "name": "renders.editor.tab_switch.effects",
+    "runtime": "webview",
+    "unit": "count",
+    "budget": 14,
+    "reason": "effects for back to an open file with CodeEditor mocked, so the pane writes no DOM of its own and only the runs mean anything. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
+  },
+  {
+    "name": "renders.editor.gap_open.mutations",
+    "runtime": "webview",
+    "unit": "count",
+    "budget": 7,
+    "reason": "mutations for opening one six line collapsed gap between two hunks in the diff view"
+  },
+  {
+    "name": "renders.editor.gap_open.memos",
+    "runtime": "webview",
+    "unit": "count",
+    "budget": 0,
+    "reason": "memos for opening one six line collapsed gap between two hunks in the diff view. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
+  },
+  {
+    "name": "renders.editor.gap_open.effects",
+    "runtime": "webview",
+    "unit": "count",
+    "budget": 7,
+    "reason": "effects for opening one six line collapsed gap between two hunks in the diff view. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
   }
 ]

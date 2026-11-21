@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { drift, type BudgetRow } from "./perfBudgets";
+import { drift, rows, type BudgetRow } from "./perfBudgets";
 
 const row = (name: string, unit: BudgetRow["unit"], budget: number): BudgetRow => ({
   name,
@@ -10,6 +10,21 @@ const row = (name: string, unit: BudgetRow["unit"], budget: number): BudgetRow =
 });
 
 const check = (rows: BudgetRow[], measured: [string, number][]) => drift(rows, new Map(measured));
+
+const SCENARIOS = Object.values(
+  import.meta.glob<string>("../**/renderBudget.test.tsx", { query: "?raw", import: "default", eager: true }),
+).join("\n");
+
+describe("the render rows", () => {
+  it("has a scenario measuring every row", () => {
+    const names = rows("webview")
+      .map((r) => r.name)
+      .filter((name) => name.startsWith("renders."))
+      .map((name) => name.slice("renders.".length, name.lastIndexOf(".")));
+    expect(names.length).toBeGreaterThan(0);
+    expect([...new Set(names)].filter((name) => !SCENARIOS.includes(`renderDrift("${name}"`))).toEqual([]);
+  });
+});
 
 describe("the budget comparator", () => {
   it("holds a count to exactly its budget", () => {
