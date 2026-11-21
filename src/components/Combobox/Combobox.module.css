@@ -10,10 +10,9 @@
    surface the caller already painted (a dialog panel, the palette), so a second
    border and shadow here would draw a box inside a box. */
 
-/* `Control` is the field, not a wrapper around one: the chrome lives here so a
-   trailing affordance (the picker's clear button) sits *inside* the border
-   rather than beside it, which is also the split Kobalte's own part names
-   imply. `Input` is then just the text. */
+/* The control is the field, not a wrapper around one: the chrome lives here so
+   a trailing affordance (the picker's clear button) sits *inside* the border
+   rather than beside it. The input is then just the text. */
 .control {
   display: flex;
   align-items: center;
@@ -112,8 +111,7 @@
 }
 
 /* Muted rather than opacity, because a role is theme-correct and an opacity is
-   not. Kobalte already blocks activation and skips these rows with the arrow
-   keys, so nothing here has to. */
+   not. */
 .item[data-disabled] {
   color: var(--fg-muted);
   cursor: default;
