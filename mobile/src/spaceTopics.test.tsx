@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vite-plus/test";
-import { render, screen, fireEvent, waitFor, within } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor, within } from "../../src/test/harness";
 import Root from "./Root";
 import { TopicForm } from "./Organize";
 import { TopicScreen } from "./Screens";

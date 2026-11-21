@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
-import { render, screen, fireEvent, waitFor, within } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor, within } from "../../test/harness";
 import Breadcrumbs from "./Breadcrumbs";
 import type { TintedMember } from "../../utils/topicMembers";
 import { pointerClick } from "../../test/menus";

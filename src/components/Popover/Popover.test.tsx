@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vite-plus/test";
-import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor } from "../../test/harness";
 import Popover from "./Popover";
 import { expectNoAxeViolations } from "../../test/axe";
 

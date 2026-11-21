@@ -10,7 +10,7 @@
 // (plan phase 12), so the layout is stored the way one that had been split
 // would have it. The single-pane default has its own suite, appOnePane.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render } from "@solidjs/testing-library";
+import { render } from "./test/harness";
 
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));

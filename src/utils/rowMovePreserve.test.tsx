@@ -5,7 +5,7 @@
 // terminal stage actually is.
 import { describe, it, expect } from "vite-plus/test";
 import { createSignal, For } from "solid-js";
-import { render } from "@solidjs/testing-library";
+import { render } from "../test/harness";
 import { preserveScrollAndFocus } from "./rowMovePreserve";
 
 describe("preserveScrollAndFocus", () => {

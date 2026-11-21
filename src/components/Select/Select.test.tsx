@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vite-plus/test";
 import { createSignal } from "solid-js";
-import { render, screen, fireEvent } from "@solidjs/testing-library";
+import { render, screen, fireEvent } from "../../test/harness";
 import { expectNoAxeViolations } from "../../test/axe";
 import { pointerClick } from "../../test/menus";
 import Select, { type SelectGroup, type SelectOption } from "./Select";

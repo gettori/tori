@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 
 // Written for the control migration (#107): "Show reads" is now a `<Switch>`,
 // and it had no test at all before, so a migration that left it inert would

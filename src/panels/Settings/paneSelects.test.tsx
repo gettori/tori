@@ -24,7 +24,7 @@
 // what these tests add is the association, asserted by querying each control
 // *through* its visible label.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, fireEvent } from "@solidjs/testing-library";
+import { render, screen, fireEvent } from "../../test/harness";
 
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));

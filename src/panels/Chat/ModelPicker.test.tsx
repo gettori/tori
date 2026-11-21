@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vite-plus/test";
 import initializeCapture from "../../../dev/fixtures/claude/initialize.jsonl?raw";
-import { fireEvent, render, screen } from "@solidjs/testing-library";
+import { fireEvent, render, screen } from "../../test/harness";
 import { pointerClick } from "../../test/menus";
 import { expectNoAxeViolations } from "../../test/axe";
 import ModelPicker from "./ModelPicker";

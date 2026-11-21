@@ -10,7 +10,7 @@
 // from `requestAnimationFrame`, which means the missing method surfaces as an
 // *unhandled* error after the test that caused it has already passed.
 import { afterEach } from "vite-plus/test";
-import { cleanup } from "@solidjs/testing-library";
+import { cleanup } from "./harness";
 import { installTabLayout, resetTabBarWidth } from "./tabLayout";
 
 Element.prototype.scrollTo ??= () => {};

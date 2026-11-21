@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 import { expectNoAxeViolations } from "../../test/axe";
 
 // Backstops are owned by the *worktree*, not by a session: a discard happens

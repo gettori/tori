@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, fireEvent } from "@solidjs/testing-library";
+import { render, screen, fireEvent } from "../../test/harness";
 import { createSignal } from "solid-js";
 
 const [reading, setReading] = createSignal<{ source: string; block?: number } | null>(null);

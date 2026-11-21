@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, fireEvent } from "@solidjs/testing-library";
+import { render, fireEvent } from "../../test/harness";
 import { ToolInput, ToolOutput } from "./ToolBody";
 import ToolCallCard from "./ToolCallCard";
 import { onWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";

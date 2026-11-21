@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vite-plus/test";
-import { render, screen, fireEvent, waitFor, within } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor, within } from "../../../../test/harness";
 import { createSignal } from "solid-js";
 import ProjectContract from "./ProjectContract";
 import { pointerClick } from "../../../../test/menus";

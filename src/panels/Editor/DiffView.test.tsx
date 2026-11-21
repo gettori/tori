@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent, cleanup } from "../../test/harness";
 import type { FileStatus } from "../../utils/gitActions";
 import { tintedMember } from "../../utils/topicMembers";
 

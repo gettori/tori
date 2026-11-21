@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 
 // History's end of the seam: it names a session and an action, and the sidebar
 // answers exactly as its own row would. What matters is that the answer is the

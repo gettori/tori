@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen } from "@solidjs/testing-library";
+import { render, screen } from "../../test/harness";
 
 const backend = vi.hoisted(() => ({ model: null as "moonshine" | "parakeet" | null }));
 const invoke = vi.hoisted(() =>

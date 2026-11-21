@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vite-plus/test";
-import { render } from "@solidjs/testing-library";
+import { render } from "../../test/harness";
 import { pointerClick } from "../../test/menus";
 import ModeSelector from "./ModeSelector";
 import { capabilitiesFor, pickableModels } from "../../utils/chatModels";

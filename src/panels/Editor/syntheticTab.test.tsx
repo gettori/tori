@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import PaneView from "../../tabs/PaneView";
 import { createEffect } from "solid-js";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "../../test/harness";
 import { tab, tabs, closeOf } from "../../test/tabs";
 import { pointerClick, rightClick } from "../../test/menus";
 

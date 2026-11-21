@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vite-plus/test";
-import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor } from "../../test/harness";
 import { setDiagnostics } from "@codemirror/lint";
 import { EditorState } from "@codemirror/state";
 import { expectNoAxeViolations } from "../../test/axe";

@@ -11,7 +11,7 @@
 // component audits an empty div and passes. `src/test/domSetup.ts` unmounts after
 // each test, so a body-scoped run only ever sees the current test's DOM.
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { render, screen, fireEvent } from "@solidjs/testing-library";
+import { render, screen, fireEvent } from "../../test/harness";
 import ToastRegion, { pushToast } from "./Toasts";
 import { Toast } from "../../lib/toast";
 import { emit, FOCUS_TOASTS } from "../../utils/events";

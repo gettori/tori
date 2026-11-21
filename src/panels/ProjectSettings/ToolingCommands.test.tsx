@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
+import { cleanup, fireEvent, render, screen, waitFor } from "../../test/harness";
 
 const saves = vi.hoisted(() => [] as { worktree: Record<string, { ports?: number }> }[]);
 

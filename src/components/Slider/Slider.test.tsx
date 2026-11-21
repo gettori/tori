@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vite-plus/test";
-import { render, screen, fireEvent } from "@solidjs/testing-library";
+import { render, screen, fireEvent } from "../../test/harness";
 import { createSignal } from "solid-js";
 import Slider from "./Slider";
 import { expectNoAxeViolations } from "../../test/axe";

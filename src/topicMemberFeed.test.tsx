@@ -10,7 +10,7 @@
 // by design, one read per generation) and a consumer follows. The panels that
 // take those members as a prop assert the prop drives them in their own files.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, waitFor } from "@solidjs/testing-library";
+import { render, waitFor } from "./test/harness";
 import { For } from "solid-js";
 
 const A = "/w/api/.tori/worktrees/auth";

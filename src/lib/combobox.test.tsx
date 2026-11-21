@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vite-plus/test";
-import { render, screen } from "@solidjs/testing-library";
+import { render, screen } from "../test/harness";
 import { Combobox } from "./combobox";
 
 // The smoke test for the `lib/` seam, not for Kobalte's combobox, the same job

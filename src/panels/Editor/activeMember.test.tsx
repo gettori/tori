@@ -3,7 +3,7 @@
 // its Scripts section is the pane that visibly reloads for the member picked.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
-import { render, screen, waitFor, cleanup } from "@solidjs/testing-library";
+import { render, screen, waitFor, cleanup } from "../../test/harness";
 import { installAnimationFrame } from "../../test/frames";
 import { pointerClick } from "../../test/menus";
 

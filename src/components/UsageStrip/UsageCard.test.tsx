@@ -8,7 +8,7 @@
 // pointer travelling from a bar to the card is briefly over neither surface; a
 // card that closed on `mouseleave` could never be reached at all.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor } from "../../test/harness";
 
 globalThis.ResizeObserver ??= class {
   observe() {}

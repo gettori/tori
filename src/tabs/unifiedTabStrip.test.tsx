@@ -5,7 +5,7 @@
 // cluster, and the wrap-skipping ghost.
 import { describe, it, expect, beforeEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
-import { render, screen, waitFor } from "@solidjs/testing-library";
+import { render, screen, waitFor } from "../test/harness";
 import { pointerClick } from "../test/menus";
 import { setTabBarWidth } from "../test/tabLayout";
 import { expectNoAxeViolations } from "../test/axe";

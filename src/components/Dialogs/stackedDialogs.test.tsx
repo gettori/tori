@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, screen, fireEvent, waitFor, within } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor, within } from "../../test/harness";
 import { expectNoAxeViolations } from "../../test/axe";
 import styles from "./Dialogs.module.css";
 

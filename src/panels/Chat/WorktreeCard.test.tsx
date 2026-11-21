@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { render, fireEvent } from "@solidjs/testing-library";
+import { render, fireEvent } from "../../test/harness";
 import WorktreeCard from "./WorktreeCard";
 import type { ToolItem } from "./chatStore";
 import { noteForgeUnits, resetSessionActivityForTests, type ForgeUnit } from "../../utils/sessionActivity";

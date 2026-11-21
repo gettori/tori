@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vite-plus/test";
-import { render, cleanup } from "@solidjs/testing-library";
+import { render, cleanup } from "../../test/harness";
 import { EditorView, runScopeHandlers } from "@codemirror/view";
 import { SearchQuery, setSearchQuery } from "@codemirror/search";
 import { UNCOMMITTED, type Blame } from "../../utils/blame";

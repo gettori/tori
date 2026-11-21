@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vite-plus/test";
-import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor } from "../../src/test/harness";
 import InboxScreen, { watchDigest, watchInbox, watchNeedsYou, watchPermissions } from "./Inbox";
 import type { RemoteClient } from "./remote";
 import type { Digest } from "../../src/utils/digest";

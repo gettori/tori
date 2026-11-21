@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vite-plus/test";
-import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor } from "../../test/harness";
 
 const invokes = vi.hoisted(() => [] as { cmd: string; args: Record<string, unknown> }[]);
 

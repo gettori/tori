@@ -8,7 +8,7 @@ import solid from "vite-plugin-solid";
 //     JSX transform, no jsdom to construct. This is the bulk of the suite and it
 //     stays fast; nothing here should ever need a document.
 //   * **dom** (`*.test.tsx`) - components actually mounted, through
-//     `@solidjs/testing-library`. Needs jsdom and needs `vite-plugin-solid`,
+//     `src/test/harness.ts`. Needs jsdom and needs `vite-plugin-solid`,
 //     since Solid's JSX compiles to reactive DOM calls rather than to a
 //     runtime `h()` a plain esbuild transform could produce.
 //
@@ -35,15 +35,6 @@ const solidResolve = {
 // would survive `cleanup` into the next test, which is precisely what
 // `src/test/domSetup.ts` exists to prevent.
 //
-// **`@solidjs/testing-library` has to be listed separately**, and this is the
-// trap: its path reads `@solidjs`, with no hyphen, so `/solid-js/` never matched
-// it. Left externalized, it imported its own copy of Solid, and `render` opened
-// a root in a reactive graph the components under test were not in: every
-// component ran as an orphan ("computations created outside a `createRoot`"),
-// `cleanup` disposed nothing of theirs, and the DOM only appeared to clear
-// because the library removes its own container by hand. Portals, which hang off
-// `document.body` instead, then piled up across the whole file.
-//
 // `@kobalte/core` is deliberately *not* on this list. It looks like it belongs
 // - its `solid` export is untransformed `.jsx`, and the `default` export Node
 // would otherwise pick resolves `solid-js/web` itself - but vitest 4 no longer
@@ -53,7 +44,7 @@ const solidResolve = {
 // cleaned up between tests. If a future vitest brings the old default back,
 // that test is what will say so.
 const inlineSolid = {
-  deps: { inline: [/lucide-solid/, /solid-js/, /@solidjs\/testing-library/] },
+  deps: { inline: [/lucide-solid/, /solid-js/] },
 };
 
 export default defineConfig({

@@ -10,7 +10,7 @@
 // writing. In root, nothing changes: the watcher got there first, and a second
 // answer read at save time would only ever be staler.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { render, waitFor } from "@solidjs/testing-library";
+import { render, waitFor } from "../../test/harness";
 import { EditorView } from "@codemirror/view";
 
 globalThis.ResizeObserver ??= class {

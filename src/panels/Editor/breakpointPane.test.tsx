@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { createSignal } from "solid-js";
-import { render, waitFor, cleanup } from "@solidjs/testing-library";
+import { render, waitFor, cleanup } from "../../test/harness";
 
 // Breakpoints from the pane's side.
 //
