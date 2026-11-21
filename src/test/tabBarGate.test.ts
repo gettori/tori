@@ -31,7 +31,7 @@ describe("the tab bar's activation gate", () => {
     // whole reason it is a source guard. The bar used to set a flag in a capture
     // listener and clear it in a `queueMicrotask`; a browser runs a microtask
     // checkpoint after every listener callback of a user-initiated dispatch, so
-    // the flag was gone before Kobalte's handler ran and no tab could be clicked
+    // the flag was gone before the tab's own handler ran and no tab could be clicked
     // in the app - while every `fireEvent` test stayed green, because a scripted
     // dispatch never lets the stack empty. Any timer put back here would fail
     // the same way and pass the same tests.

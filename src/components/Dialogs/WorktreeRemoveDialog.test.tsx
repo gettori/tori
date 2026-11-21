@@ -23,15 +23,12 @@ import WorktreeRemoveDialog from "./WorktreeRemoveDialog";
 // fires Enter on a *child* element, which bubbles to the handler in both
 // arrangements, so it is the same assertion before and after.
 //
-// Escape is contract for the same reason from the other direction: today the
-// panel's own handler answers it, afterwards Kobalte's dismiss layer does and
-// reports it through `onClose`. Both end in exactly one `onCancel`.
+// Escape is contract for the same reason from the other direction: the dialog
+// reports it through `onClose`, and that ends in exactly one `onCancel`.
 //
 // The dialog focuses its confirm button from a `requestAnimationFrame`, so a
 // test that asserts on focus has to yield one first.
 const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
-// Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so a
-// press fired before this yield lands on nobody.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 type Props = Parameters<typeof WorktreeRemoveDialog>[0];
@@ -253,9 +250,6 @@ describe("WorktreeRemoveDialog", () => {
   });
 
   describe("shape", () => {
-    // Rewritten at migration time, as the header said it would be: dismissal was
-    // a `mousedown` on a real backdrop element and is now Kobalte's outside
-    // `pointerdown`, from a listener it installs in a `setTimeout(0)`.
     it("cancels on a pointer down outside the panel", async () => {
       const { onCancel } = open();
       await macrotask();

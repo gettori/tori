@@ -40,8 +40,6 @@ import PickerModal from "./PickerModal";
 // could never see the gap. The field carries a real `aria-label` now, and one
 // axe assertion below deliberately renders the picker the way the callers do.
 const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
-// Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so a
-// press fired before this yield lands on nobody.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 type Props = Parameters<typeof PickerModal>[0];
@@ -261,7 +259,7 @@ describe("PickerModal", () => {
     // `Select.test.tsx` and `Dropdown.test.tsx` set: axe's `controlsWithinPopup`
     // declines to judge `aria-controls` on anything carrying `aria-haspopup`,
     // because it cannot tell whether the popup is open, in a real browser as
-    // much as here. Kobalte's combobox input carries both (#110). The withdrawn
+    // much as here. `Combobox`'s input carries both (#110). The withdrawn
     // case below still runs the rule in full, and what it would have checked is
     // asserted directly in "announces the list as a listbox the filter drives".
     it("has no accessibility violations", async () => {
@@ -393,9 +391,6 @@ describe("PickerModal", () => {
       expect(active()?.textContent).toBe("feature/omnibox");
     });
 
-    // Rewritten at migration time: dismissal was a `mousedown` on a real
-    // backdrop element and is now Kobalte's outside `pointerdown`, from a
-    // listener it installs in a `setTimeout(0)`.
     it("cancels on a pointer down outside the panel", async () => {
       const { onCancel } = open();
       await macrotask();

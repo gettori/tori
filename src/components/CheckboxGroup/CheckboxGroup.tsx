@@ -18,12 +18,9 @@ export type CheckboxOption = {
  * Any number of choices out of a small fixed set: the multi-select counterpart
  * to `<RadioGroup>`.
  *
- * **Composed from `<Checkbox>` rather than wrapped around a primitive**, because
- * Kobalte 0.13.13 has a `checkbox` and no `checkbox-group`. There is nothing to
- * re-export through `src/lib/`, so this component is the group behaviour: the
+ * **Composed from `<Checkbox>`.** This component is the group behaviour: the
  * `role="group"` and its accessible name, the value array, and the per-option
- * toggle. Everything the boxes themselves do is already `<Checkbox>`'s, which
- * is where the Kobalte seam stays.
+ * toggle. Everything the boxes themselves do is `<Checkbox>`'s.
  *
  * **Array in, array out.** The caller owns the selection; every toggle reports
  * the whole next array rather than a delta, so a call site cannot end up

@@ -60,11 +60,11 @@ export default function HistoryPanel(props: {
   // this cannot be a boolean that two rows write to: one closing as the next
   // opens would report "closed" last and hand the arrows back underneath an
   // open menu. Each row only ever clears its own id, and clears it on unmount
-  // too - Kobalte does not fire `onOpenChange(false)` for a trigger that goes
-  // away, and a store refresh remounts every row, so without that the panel
-  // would be left with its arrow keys dead. Dismissal is not involved anymore:
-  // the panel and the row menus share Kobalte's layer stack, which already
-  // knows a press in a menu is not a press outside the panel.
+  // too: the menu does not report closing when its trigger goes away, and a
+  // store refresh remounts every row, so without that the panel would be left
+  // with its arrow keys dead. Dismissal is not involved: the panel and the row
+  // menus share `layer.ts`'s stack, which already knows a press in a menu is
+  // not a press outside the panel.
   const [menuRow, setMenuRow] = createSignal<string | null>(null);
   const menuOpen = () => menuRow() != null;
   const releaseMenu = (id: string) => setMenuRow((cur) => (cur === id ? null : cur));

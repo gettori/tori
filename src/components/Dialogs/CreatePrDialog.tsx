@@ -24,7 +24,7 @@ import Checkbox from "../Checkbox/Checkbox";
 // work, because someone watching "Opening…" and wanting out needs a way out.
 // `Dialog.onClose` reports both routes without saying which, so the pointer half
 // is refused there and the key half is handled here, only while `busy`. Outside
-// that window Escape is left entirely to Kobalte, or both would fire and the
+// that window Escape is left entirely to `Dialog`, or both would fire and the
 // same request would be cancelled twice.
 const TITLE_LABEL = "create-pr-title-label";
 const BODY_LABEL = "create-pr-body-label";
@@ -77,7 +77,7 @@ export default function CreatePrDialog(props: {
       open
       title="Open a pull request"
       onClose={() => {
-        // The pointer half of the busy guard. Kobalte reports an outside press
+        // The pointer half of the busy guard. `Dialog` reports an outside press
         // and an Escape through this one callback without distinguishing them,
         // so while busy nothing is done here and `onKeyDown` above keeps the
         // key route alive.

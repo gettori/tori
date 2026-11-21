@@ -17,7 +17,7 @@ import { CloneAccountField, createCloneAccount } from "./CloneAccount";
 //
 // The shell is `Dialog`, which owns the portal, the backdrop, Escape and the
 // focus trap. Enter stays here, on a wrapper around the fields, because it means
-// "submit this form"; Escape does not, since Kobalte reports it as `onClose`.
+// "submit this form"; Escape does not, since `Dialog` reports it as `onClose`.
 const URL_LABEL = "new-project-url-label";
 const NAME_LABEL = "new-project-name-label";
 

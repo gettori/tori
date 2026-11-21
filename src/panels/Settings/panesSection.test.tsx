@@ -51,7 +51,7 @@ describe("the Panes settings section", () => {
 
   it("writes the rule it was given, and leaves the other two alone", async () => {
     render(() => <Settings onClose={() => {}} />);
-    // A Kobalte select opens on pointerdown and picks on pointerup; a bare
+    // A `Select` opens on pointerdown and picks on pointerup; a bare
     // click reaches both and changes neither (see the helper).
     pointerClick(selectFor("Files open in") as HTMLElement);
     // By role, not by text: the trigger shows the current value, so a listbox

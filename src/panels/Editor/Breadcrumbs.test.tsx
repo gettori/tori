@@ -83,9 +83,8 @@ afterEach(() => {
 
 const crumbs = () => [...document.querySelectorAll("nav button")].map((b) => b.textContent);
 
-// Kobalte's focus scope focuses the content from a `setTimeout(0)`; asserting on
-// the keyboard before yielding is asserting on machinery that does not exist
-// yet. Same seam `Dropdown.test.tsx` documents.
+// A menu opened by a pointer press moves focus into itself from a `setTimeout`
+// (`MenuContent`), so a keyboard assertion after one yields first.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("the path half of the bar", () => {
@@ -335,7 +334,7 @@ describe("picking somewhere else from a crumb", () => {
   it("takes its menu with it when the crumb goes", async () => {
     // The other half of one menu per crumb: the menu belongs to the crumb, so a
     // trail that loses the crumb loses the menu with it. Nothing here is
-    // listening for that, and Kobalte reports no close for a trigger that
+    // listening for that, and `Dropdown` reports no close for a trigger that
     // unmounts, so a shared open-menu signal would have been left holding one.
     publishSymbols(PATH, TREE);
     const [caret, setCaret] = createSignal<{ line: number; column: number } | null>({

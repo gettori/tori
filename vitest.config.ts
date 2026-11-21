@@ -29,20 +29,8 @@ const solidResolve = {
   ssr: { resolve: { conditions: ["browser", "development"] } },
 };
 // Patterns, not bare names: a bare "solid-js" leaves `solid-js/web` externalized,
-// which loads a *second* copy of Solid ("You appear to have multiple instances of
-// Solid"). The two copies do not share a reactive graph, so a `<Portal>` created
-// by one is not disposed when the other's root is - and a portalled dropdown
-// would survive `cleanup` into the next test, which is precisely what
-// `src/test/domSetup.ts` exists to prevent.
-//
-// `@kobalte/core` is deliberately *not* on this list. It looks like it belongs
-// - its `solid` export is untransformed `.jsx`, and the `default` export Node
-// would otherwise pick resolves `solid-js/web` itself - but vitest 4 no longer
-// externalizes dependencies by default, so Vite transforms it either way. The
-// entry was added, measured against `src/lib/dialog.test.tsx`, and removed
-// again: with it gone the dialog still mounts, still portals, and still gets
-// cleaned up between tests. If a future vitest brings the old default back,
-// that test is what will say so.
+// loading a second Solid whose reactive graph is separate, so a portalled
+// dropdown would survive `cleanup` into the next test.
 const inlineSolid = {
   deps: { inline: [/lucide-solid/, /solid-js/] },
 };

@@ -14,8 +14,6 @@ import NewProjectDialog from "./NewProjectDialog";
 // URL keystroke is the failure this pins, and it is invisible in review because
 // both behaviors look like "the name updates".
 const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
-// Kobalte's focus scope and its dismiss layer both install from a
-// `setTimeout(0)`, so anything asserting on them has to yield a macrotask.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 type NewProps = Parameters<typeof NewProjectDialog>[0];
@@ -220,8 +218,6 @@ describe("NewProjectDialog", () => {
   describe("shape", () => {
     it("cancels on a pointer down outside the panel", async () => {
       const { onCancel } = open();
-      // Kobalte installs its outside-pointerdown listener from a
-      // `setTimeout(0)`, so a press fired before this yield lands on nobody.
       await macrotask();
 
       fireEvent.pointerDown(document.body);

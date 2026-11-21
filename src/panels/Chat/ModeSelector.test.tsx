@@ -34,7 +34,7 @@ function foreign(modes: ChatMode[]): ChatConfig {
 
 /** The last portaled menu, since earlier renders leave theirs in the document. */
 function openMenu(getByLabelText: (t: string) => HTMLElement) {
-  // `pointerClick`, not `fireEvent.click`: a Kobalte trigger opens on
+  // `pointerClick`, not `fireEvent.click`: a `Dropdown` trigger opens on
   // `pointerdown` and answers a bare click with nothing (src/test/menus.ts).
   pointerClick(getByLabelText("Permission mode"));
   const menus = document.querySelectorAll('[role="menu"]');

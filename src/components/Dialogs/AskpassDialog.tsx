@@ -23,7 +23,7 @@ import Dialog from "../Dialog/Dialog";
 // body keeps its own `<Show>`: `open` is a boolean, but the body still needs a
 // non-null prompt to read. Enter and the reset-and-refocus effect stay here
 // (`initialFocus` fires once, on open, and the second prompt arrives with the
-// dialog already open); Escape does not, since Kobalte reports it as `onClose`.
+// dialog already open); Escape does not, since `Dialog` reports it as `onClose`.
 
 type Prompt = { id: number; op_id: string; prompt: string; kind: string };
 

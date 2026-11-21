@@ -513,7 +513,7 @@ html {
   background: var(--canvas-card);
   border-bottom: 1px solid var(--border-default);
   /* clip: the +N model depends on the strip never scrolling. A focused tab
-     (Kobalte's roving tabindex) would otherwise drag hidden tabs halfway in. */
+     would otherwise drag hidden tabs halfway in. */
   overflow: clip;
 }
 

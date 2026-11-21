@@ -23,8 +23,6 @@ import type { Member, Topic } from "../../utils/topics";
 // "Type <name> to confirm" line, so the announcement and the instruction on
 // screen are the same words, and the rule override is gone.
 const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
-// Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so a
-// press fired before this yield lands on nobody.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 type Props = Parameters<typeof ConfirmDeleteSpace>[0];
@@ -241,9 +239,6 @@ describe("ConfirmDeleteSpace", () => {
   });
 
   describe("shape", () => {
-    // Rewritten at migration time: dismissal was a `mousedown` on a real
-    // backdrop element and is now Kobalte's outside `pointerdown`, from a
-    // listener it installs in a `setTimeout(0)`.
     it("cancels on a pointer down outside the panel", async () => {
       const { onCancel } = open();
       await macrotask();

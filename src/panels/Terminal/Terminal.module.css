@@ -134,7 +134,7 @@
   transition: transform var(--tori-duration-fast) ease;
 }
 
-/* Kobalte stamps the open state on the trigger, which is the wrapper now, not
+/* `Dropdown` stamps the open state on the trigger, which is the wrapper, not
    the button. The chevron is still the button's. */
 .termNewCaretWrap[data-expanded] .termNewChevron {
   transform: rotate(180deg);
