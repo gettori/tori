@@ -45,7 +45,7 @@ export default function PhoneIndicator() {
         data-lit={connected() > 0}
         variant="ghost"
         aria-label="Phones"
-        aria-expanded={open()}
+        aria-expanded={open() ? "true" : "false"}
         tooltip={tooltip()}
         onClick={() => setOpen(!open())}
         icon={<Icon icon={Smartphone} />}

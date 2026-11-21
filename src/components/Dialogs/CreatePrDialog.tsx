@@ -120,7 +120,7 @@ export default function CreatePrDialog(props: {
           onInput={(e) => props.onTitleChange(e.currentTarget.value)}
           autocapitalize="off"
           autocorrect="off"
-          spellcheck={false}
+          spellcheck="false"
         />
 
         <div id={BODY_LABEL} class={styles.label}>
@@ -145,7 +145,7 @@ export default function CreatePrDialog(props: {
           onInput={(e) => props.onBaseChange(e.currentTarget.value)}
           autocapitalize="off"
           autocorrect="off"
-          spellcheck={false}
+          spellcheck="false"
         />
 
         <div class={styles.msg}>

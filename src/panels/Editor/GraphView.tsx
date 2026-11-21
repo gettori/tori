@@ -258,7 +258,7 @@ export default function GraphView(props: { workspace: string }) {
                   <button
                     type="button"
                     class={styles.twist}
-                    aria-expanded={open().has(row.entry.sha)}
+                    aria-expanded={open().has(row.entry.sha) ? "true" : "false"}
                     aria-label={open().has(row.entry.sha) ? "Hide files" : "Show files"}
                     onClick={() => void toggle(row.entry.sha)}
                   >

@@ -1169,7 +1169,7 @@ export default function Composer(props: {
                       <button
                         type="button"
                         class={styles.queueHandle}
-                        draggable={true}
+                        draggable="true"
                         data-queue-handle={q.id}
                         aria-label={`Move in the queue: ${named()}`}
                         onDragStart={row.onDragStart}
@@ -1282,7 +1282,7 @@ export default function Composer(props: {
                 type="button"
                 class={styles.completion}
                 role="option"
-                aria-selected={i() === stashIndex()}
+                aria-selected={i() === stashIndex() ? "true" : "false"}
                 onMouseEnter={() => setStashIndex(i())}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
@@ -1326,7 +1326,7 @@ export default function Composer(props: {
                 type="button"
                 class={styles.completion}
                 role="option"
-                aria-selected={i() === menuIndex()}
+                aria-selected={i() === menuIndex() ? "true" : "false"}
                 onMouseEnter={() => setMenuIndex(i())}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={accept}
@@ -1344,7 +1344,7 @@ export default function Composer(props: {
                   type="button"
                   class={styles.completion}
                   role="option"
-                  aria-selected={i() === menuIndex()}
+                  aria-selected={i() === menuIndex() ? "true" : "false"}
                   onMouseEnter={() => setMenuIndex(i())}
                   // Blur fires before click, and closing on blur would leave
                   // `accept` with no token to complete. Keeping focus on the
@@ -1363,7 +1363,7 @@ export default function Composer(props: {
                 type="button"
                 class={styles.completion}
                 role="option"
-                aria-selected={i() === menuIndex()}
+                aria-selected={i() === menuIndex() ? "true" : "false"}
                 onMouseEnter={() => setMenuIndex(i())}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={accept}
@@ -1382,7 +1382,7 @@ export default function Composer(props: {
                 type="button"
                 class={styles.completion}
                 role="option"
-                aria-selected={i() === menuIndex()}
+                aria-selected={i() === menuIndex() ? "true" : "false"}
                 onMouseEnter={() => setMenuIndex(i())}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={accept}
@@ -1407,7 +1407,7 @@ export default function Composer(props: {
                 type="button"
                 class={styles.completion}
                 role="option"
-                aria-selected={i() === menuIndex()}
+                aria-selected={i() === menuIndex() ? "true" : "false"}
                 onMouseEnter={() => setMenuIndex(i())}
                 // Blur fires before click, and closing on blur would leave
                 // `accept` with no token to complete. Keeping focus on the
@@ -1506,7 +1506,7 @@ export default function Composer(props: {
               aria-label={
                 dictation() === "idle" ? "Dictate" : dictation() === "recording" ? "Stop dictating" : "Transcribing"
               }
-              aria-busy={dictation() === "transcribing"}
+              aria-busy={dictation() === "transcribing" ? "true" : "false"}
               disabled={props.disabled || !!props.linked}
               onClick={() => {
                 // Back to the box, so Escape reaches it while the wave covers it.

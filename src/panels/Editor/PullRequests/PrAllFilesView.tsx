@@ -237,7 +237,7 @@ export default function PrAllFilesView(props: { workspace: string; arg: string }
                       <button
                         type="button"
                         class={styles.fileToggle}
-                        aria-expanded={expanded()}
+                        aria-expanded={expanded() ? "true" : "false"}
                         aria-label={fileRowName(f, unresolvedIn(f.path), viewed())}
                         onClick={() => setFileExpanded(props.workspace, number(), f.path, !expanded())}
                       >

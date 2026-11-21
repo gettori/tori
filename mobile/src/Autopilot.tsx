@@ -145,7 +145,7 @@ function CallCard(props: {
   const decision = () => decisionOf(props.ask, props.watch.items(), props.watch.holds(), asker);
   const ref = () => [decision().ticket?.label, decision().worker, decision().age].filter(Boolean).join(` ${DOT} `);
   return (
-    <div class={styles.callCard} aria-busy={props.busy}>
+    <div class={styles.callCard} aria-busy={props.busy ? "true" : "false"}>
       <span class={styles.callText}>
         <Show when={ref()}>
           <span class={styles.callRef}>{ref()}</span>
@@ -284,7 +284,7 @@ export default function AutopilotScreen(props: {
           <button
             class={`${styles.glass} ${styles.glassPill}`}
             role="switch"
-            aria-checked={!off()}
+            aria-checked={!off() ? "true" : "false"}
             aria-label="Autopilot"
             disabled={busy() === "switch" || !runner()}
             onClick={flip}

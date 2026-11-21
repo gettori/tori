@@ -94,7 +94,7 @@ export default function IssuesSection(props: { projectPath: string; onDirty?: (d
           classList={{ [styles.textareaDirty]: dirty() }}
           aria-label="Issue repos"
           rows={4}
-          spellcheck={false}
+          spellcheck="false"
           placeholder={repos()?.origin ?? "owner/name"}
           value={text()}
           onInput={(e) => setText(e.currentTarget.value)}

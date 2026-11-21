@@ -222,7 +222,7 @@ export default function SessionDiffView(props: {
                           <button
                             type="button"
                             class={styles.whyToggle}
-                            aria-expanded={openHunks().has(key())}
+                            aria-expanded={openHunks().has(key()) ? "true" : "false"}
                             onClick={() => toggleHunk(key())}
                           >
                             {openHunks().has(key()) ? "hide why" : "why"}

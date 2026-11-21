@@ -302,7 +302,7 @@ export default function UsageCard(props: {
                   type="button"
                   class={styles.tab}
                   classList={{ [styles.tabOn]: p.id === shown() }}
-                  aria-pressed={p.id === shown()}
+                  aria-pressed={p.id === shown() ? "true" : "false"}
                   onClick={() => setPicked(p.id)}
                 >
                   {p.label}

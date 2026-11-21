@@ -84,7 +84,7 @@ export function AttachmentChip(props: {
         class={styles.attachmentBody}
         label={<Tip {...attachmentTip(block, { missing: props.missing, nameable: token !== null })} />}
         aria-label={`Preview ${chipLabel(block)}${reason()}`}
-        draggable={token !== null}
+        draggable={token !== null ? "true" : "false"}
         onDragStart={(e: DragEvent) => {
           if (!token) return;
           e.dataTransfer?.setData(ATTACHMENT_TOKEN_MIME, token);
@@ -155,7 +155,7 @@ export function InlineChip(props: {
       // Out of the tab order: the field is one stop, and the chip's file is
       // reachable from its tile above.
       tabIndex={-1}
-      draggable={!!props.onDragStart}
+      draggable={props.onDragStart ? "true" : "false"}
       onDragStart={(e: DragEvent) => props.onDragStart?.(e)}
       onDragEnd={() => props.onDragEnd?.()}
       onClick={() => props.onPreview()}

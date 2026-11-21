@@ -151,14 +151,14 @@ export default function SpaceDialog(props: {
               classList={{ [styles.invalid]: !!nameError() }}
               aria-labelledby={NAME_LABEL}
               aria-describedby={NAME_HELP}
-              aria-required={true}
-              aria-invalid={!!nameError()}
+              aria-required="true"
+              aria-invalid={nameError() ? "true" : "false"}
               value={name()}
               placeholder="space name"
               onInput={(e) => setName(e.currentTarget.value)}
               autocapitalize="off"
               autocorrect="off"
-              spellcheck={false}
+              spellcheck="false"
             />
           </Show>
           <div id={NAME_HELP} class={styles.spaceHelp} classList={{ [styles.helpError]: !!nameError() }}>

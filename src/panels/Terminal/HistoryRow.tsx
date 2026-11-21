@@ -35,7 +35,7 @@ export default function HistoryRow(props: {
       class={styles.row}
       classList={{ [styles.rowActive]: props.active }}
       role="option"
-      aria-selected={props.active}
+      aria-selected={props.active ? "true" : "false"}
       title={props.label}
       onClick={() => props.onOpen()}
       items={props.items}

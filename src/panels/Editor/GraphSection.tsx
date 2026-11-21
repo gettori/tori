@@ -96,7 +96,7 @@ export default function GraphSection(props: {
                   as="button"
                   type="button"
                   class={styles.row}
-                  aria-expanded={open().has(c.sha)}
+                  aria-expanded={open().has(c.sha) ? "true" : "false"}
                   label={`${c.short} - ${c.author}, ${c.relative_date}`}
                   onClick={() => toggle(c.sha)}
                 >

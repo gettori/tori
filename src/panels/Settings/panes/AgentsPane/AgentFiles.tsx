@@ -193,7 +193,12 @@ function FileRow(props: {
           there is one control rather than a row of competing ones. Nothing on
           it opens a file: a folder has none to open, and a rule that holds for
           some rows is a rule nobody learns. */}
-      <button type="button" class={styles.fileHead} aria-expanded={open()} onClick={() => setOpen(!open())}>
+      <button
+        type="button"
+        class={styles.fileHead}
+        aria-expanded={open() ? "true" : "false"}
+        onClick={() => setOpen(!open())}
+      >
         <span class={styles.fileGlyph} aria-hidden="true">
           <Icon icon={e().kind === "dir" ? Folder : File} />
         </span>
@@ -420,7 +425,7 @@ export default function AgentFiles(props: {
                     <button
                       type="button"
                       class={styles.groupTab}
-                      aria-pressed={profile.profileId === shown()?.profileId}
+                      aria-pressed={profile.profileId === shown()?.profileId ? "true" : "false"}
                       onClick={() => setPicked(profile.profileId)}
                     >
                       {profile.label}

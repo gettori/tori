@@ -65,7 +65,7 @@ export default function ToriNoteRow(props: { note: ToriNote }) {
           class={styles.toriInfo}
           label={open() ? "Hide what Tori sent" : "Show what Tori sent"}
           aria-label="What Tori sent"
-          aria-expanded={open()}
+          aria-expanded={open() ? "true" : "false"}
           onClick={() => setOpen(!open())}
         >
           <Icon icon={Info} />

@@ -46,7 +46,12 @@ function Fold(props: { label: string; count: number; open?: boolean; children: J
   const [open, setOpen] = createSignal(!!props.open);
   return (
     <div>
-      <button type="button" class={styles.detailsFold} aria-expanded={open()} onClick={() => setOpen(!open())}>
+      <button
+        type="button"
+        class={styles.detailsFold}
+        aria-expanded={open() ? "true" : "false"}
+        onClick={() => setOpen(!open())}
+      >
         <Icon icon={ChevronRight} />
         <span class={styles.detailsFoldLabel}>{props.label}</span>
         <span class={styles.detailsCount}>{props.count}</span>
@@ -203,7 +208,12 @@ export default function SessionInfo(props: {
   return (
     <Show when={!empty()}>
       <div class={styles.sessionInfo}>
-        <button type="button" class={styles.sessionInfoToggle} aria-expanded={open()} onClick={() => setOpen(!open())}>
+        <button
+          type="button"
+          class={styles.sessionInfoToggle}
+          aria-expanded={open() ? "true" : "false"}
+          onClick={() => setOpen(!open())}
+        >
           <span class={styles.sessionInfoText}>
             <span class={styles.sessionInfoTitle}>Session details</span>
             <span class={styles.sessionInfoSummary}>

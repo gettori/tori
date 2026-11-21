@@ -195,7 +195,7 @@ function Levers(props: {
             <button
               type="button"
               class={shell.chip}
-              aria-pressed={option.value}
+              aria-pressed={option.value ? "true" : "false"}
               data-permissive={option.value}
               onClick={() => void setOption(option.id, !option.value)}
             >
@@ -228,7 +228,12 @@ function ChatMenu(props: {
   };
   return (
     <span class={shell.menuAnchor}>
-      <button class={shell.more} aria-label="More" aria-expanded={open()} onClick={() => setOpen(!open())}>
+      <button
+        class={shell.more}
+        aria-label="More"
+        aria-expanded={open() ? "true" : "false"}
+        onClick={() => setOpen(!open())}
+      >
         <Icon icon={Ellipsis} size={20} strokeWidth={2} />
       </button>
       <Show when={open()}>
@@ -296,7 +301,7 @@ function AttachMenu(props: { onFiles: (files: File[]) => void }) {
         type="button"
         class={shell.chip}
         aria-label="Attach"
-        aria-expanded={open()}
+        aria-expanded={open() ? "true" : "false"}
         onClick={() => setOpen(!open())}
       >
         <Icon icon={Paperclip} size={14} strokeWidth={2.2} />

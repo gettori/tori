@@ -267,7 +267,7 @@ export default function AgentPalette(props: {
                     // over there.
                     classList={{ [styles.rowActive]: p === provider() }}
                     role="option"
-                    aria-selected={isCurrent(p)}
+                    aria-selected={isCurrent(p) ? "true" : "false"}
                     onClick={() => {
                       highlightProvider(p);
                       setPane("models");
@@ -359,8 +359,8 @@ export default function AgentPalette(props: {
                       [styles.rowCurrent]: inForce(m),
                     }}
                     role="option"
-                    aria-selected={inForce(m)}
-                    aria-disabled={!provider()?.selectable}
+                    aria-selected={inForce(m) ? "true" : "false"}
+                    aria-disabled={!provider()?.selectable ? "true" : "false"}
                     onClick={() => {
                       const target = provider();
                       if (target?.selectable) props.onSelect(target.agentId, target.profile, m);

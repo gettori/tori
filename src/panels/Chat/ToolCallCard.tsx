@@ -187,7 +187,7 @@ export default function ToolCallCard(props: {
       data-pending-card={props.card.state === "awaitingApproval" ? "" : undefined}
       data-tool-use-id={props.card.toolUseId}
     >
-      <button type="button" class={styles.toolRow} onClick={toggleOpen} aria-expanded={open()}>
+      <button type="button" class={styles.toolRow} onClick={toggleOpen} aria-expanded={open() ? "true" : "false"}>
         <span class={styles.toolCaret} classList={{ [styles.toolCaretOpen]: open() }} aria-hidden="true">
           <Icon icon={ChevronRight} size={12} />
         </span>

@@ -160,7 +160,7 @@ export function MoveFields(props: { form: MoveForm; path: string | null; home: s
           onInput={(e) => f.setName(e.currentTarget.value)}
           autocapitalize="off"
           autocorrect="off"
-          spellcheck={false}
+          spellcheck="false"
         />
       </div>
 

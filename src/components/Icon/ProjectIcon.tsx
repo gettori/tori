@@ -36,7 +36,7 @@ export default function ProjectIcon(props: ProjectIconSource) {
 
   return (
     <Show when={image()} fallback={<Icon icon={picked() ?? fallbackIcon(props.seed)} />}>
-      {(src) => <img src={convertFileSrc(src())} alt="" draggable={false} />}
+      {(src) => <img src={convertFileSrc(src())} alt="" draggable="false" />}
     </Show>
   );
 }

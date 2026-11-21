@@ -1739,7 +1739,7 @@ export default function ReviewPanel(props: {
                       as="button"
                       type="button"
                       class={styles.chip}
-                      aria-pressed={on()}
+                      aria-pressed={on() ? "true" : "false"}
                       aria-label={action()}
                       label={action()}
                       onClick={() => {
@@ -1923,7 +1923,7 @@ export default function ReviewPanel(props: {
                 <IconButton
                   size="sm"
                   icon={<Icon icon={historyOpen() ? ChevronDown : ChevronUp} />}
-                  aria-expanded={historyOpen()}
+                  aria-expanded={historyOpen() ? "true" : "false"}
                   tooltip={historyOpen() ? "Collapse" : "Expand"}
                   onClick={() => changesLayout.setOpen("history", !historyOpen())}
                 />
@@ -1952,7 +1952,7 @@ export default function ReviewPanel(props: {
                     as="button"
                     type="button"
                     class={styles.stripToggle}
-                    aria-pressed={allBranches()}
+                    aria-pressed={allBranches() ? "true" : "false"}
                     label={allBranches() ? "Show this branch only" : "Show every branch"}
                     onClick={() => setAllBranches(!allBranches())}
                   >

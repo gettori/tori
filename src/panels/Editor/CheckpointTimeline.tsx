@@ -693,7 +693,7 @@ export default function CheckpointTimeline(props: {
       <div>
         <div class={styles.fileRow} onClick={() => void toggleDiff(f.path)}>
           <span class={`${styles.fileStatus} ${styles[f.status] ?? ""}`}>{f.status[0].toUpperCase()}</span>
-          <button type="button" class={styles.fileMain} aria-expanded={expanded() === f.path}>
+          <button type="button" class={styles.fileMain} aria-expanded={expanded() === f.path ? "true" : "false"}>
             <span class={styles.fileName}>{baseName(f.path)}</span>
             <Show when={dirName(f.path)}>
               <span class={styles.fileDir}>{dirName(f.path)}</span>

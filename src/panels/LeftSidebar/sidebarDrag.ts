@@ -30,7 +30,7 @@ export type RowSpot = {
 };
 
 export type SidebarDragProps = {
-  draggable: true;
+  draggable: "true";
   onDragStart: JSX.EventHandler<HTMLElement, DragEvent>;
   onDragOver: JSX.EventHandler<HTMLElement, DragEvent>;
   onDragLeave: JSX.EventHandler<HTMLElement, DragEvent>;
@@ -77,7 +77,7 @@ export function createSidebarDrag(opts: {
     dragging,
     refused: () => over()?.refused ?? null,
     rowProps: (spot) => ({
-      draggable: true,
+      draggable: "true",
       onDragStart: (e) => {
         e.stopPropagation();
         const value = (Array.isArray(spot.paths) ? spot.paths : [spot.paths]).filter(Boolean).join("\n");

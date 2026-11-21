@@ -182,7 +182,13 @@ function AgentRow(props: {
   const state = () => rowState(h());
   return (
     <div class={styles.agentRowWrap}>
-      <button type="button" class={styles.agentRow} data-agent={a().id} aria-busy={!h()} onClick={() => props.onOpen()}>
+      <button
+        type="button"
+        class={styles.agentRow}
+        data-agent={a().id}
+        aria-busy={!h() ? "true" : "false"}
+        onClick={() => props.onOpen()}
+      >
         <span class={styles.agentCell}>
           {/* The logo keeps the leading slot, with the status dot on its corner:
             the mark says which agent, the dot says whether it is usable. No dot

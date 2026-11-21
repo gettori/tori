@@ -152,7 +152,7 @@ export default function ProjectContract(props: {
                     placeholder="Any"
                     onChange={(e) => edit(at(), change(e.currentTarget.value))}
                     aria-label={`Source ${at() + 1} ${label.toLowerCase()}`}
-                    spellcheck={false}
+                    spellcheck="false"
                   />
                 </label>
               );
