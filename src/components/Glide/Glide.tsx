@@ -90,7 +90,8 @@ export default function Glide(props: {
       y += n.offsetTop;
     }
     el.toggleAttribute("data-glide", glideNext && shown !== null && row !== shown);
-    el.style.transform = `translate(${x}px, ${y}px)`;
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
     el.style.width = `${row.offsetWidth - inset}px`;
     el.style.height = `${row.offsetHeight}px`;
     el.toggleAttribute("data-shown", true);
