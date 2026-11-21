@@ -76,7 +76,7 @@ export default function PlanCard(props: {
       ref={ref}
       class={styles.planList}
       classList={{ [styles.planListAbove]: !!ref && above(), [styles.planListBelow]: !!ref && below() }}
-      onScroll={ref ? edges : undefined}
+      onScroll={() => ref && edges()}
     >
       <For each={props.items}>
         {(item) => (

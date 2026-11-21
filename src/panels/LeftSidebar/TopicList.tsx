@@ -76,24 +76,7 @@ export default function TopicList(props: {
   empty?: JSX.Element;
 }) {
   onCleanup(watchTopics());
-  const actions = props.actions;
-  const {
-    dialog,
-    setDialog,
-    renameReq,
-    setRenameReq,
-    moveReq,
-    setMoveReq,
-    memberRenameReq,
-    setMemberRenameReq,
-    wtReq,
-    setWtReq,
-    deleteReq,
-    setDeleteReq,
-    sweepReq,
-    setSweepReq,
-  } = actions;
-  const error = () => actions.error() ?? topicsError();
+  const error = () => props.actions.error() ?? topicsError();
   const listed = () => (props.listing ? topics().filter((t) => props.listing!(t)) : topics());
 
   return (
@@ -114,7 +97,7 @@ export default function TopicList(props: {
             topics={listed()}
             query={props.query}
             spaces={props.spaces}
-            actions={actions}
+            actions={props.actions}
             activeId={props.activeId}
             activeRoot={props.activeRoot}
             onOpenMember={props.onOpenMember}
@@ -122,7 +105,7 @@ export default function TopicList(props: {
             fold={props.fold}
             note={(t) => (
               <Show when={props.listing?.(t) === "gone"}>
-                <GoneSpaceNote topic={t} actions={actions} />
+                <GoneSpaceNote topic={t} actions={props.actions} />
               </Show>
             )}
             fallback={
@@ -135,57 +118,57 @@ export default function TopicList(props: {
       </Show>
       {props.tail}
 
-      <Show when={dialog()}>
+      <Show when={props.actions.dialog()}>
         {(req) => (
           <NewTopicDialog
             spaces={props.spaces}
             topics={topics()}
             {...dialogScope(req())}
-            onDone={actions.settled}
-            onCancel={() => setDialog(null)}
+            onDone={props.actions.settled}
+            onCancel={() => props.actions.setDialog(null)}
           />
         )}
       </Show>
 
-      <Show when={renameReq()}>
+      <Show when={props.actions.renameReq()}>
         {(f) => (
           <PromptModal
             title={`Rename ${f().name}`}
             initial={f().name}
             note={`${f().branch} stays as it is; only the name shown here changes.`}
             okLabel="Rename"
-            onSubmit={(v) => void actions.rename(f(), v)}
-            onCancel={() => setRenameReq(null)}
+            onSubmit={(v) => void props.actions.rename(f(), v)}
+            onCancel={() => props.actions.setRenameReq(null)}
           />
         )}
       </Show>
 
-      <Show when={moveReq()}>
+      <Show when={props.actions.moveReq()}>
         {(f) => (
           <MoveTopicDialog
             topic={topics().find((t) => t.id === f().id) ?? f()}
             spaces={props.targets ?? props.spaces}
             homes={props.spaces}
-            onDone={actions.moved}
-            onCancel={() => setMoveReq(null)}
+            onDone={props.actions.moved}
+            onCancel={() => props.actions.setMoveReq(null)}
           />
         )}
       </Show>
 
-      <Show when={memberRenameReq()}>
+      <Show when={props.actions.memberRenameReq()}>
         {(req) => (
           <PromptModal
             title={`Rename ${req().member.displayName}`}
             initial={req().member.displayName}
             note="The repository and its worktree stay as they are; only the name shown here changes."
             okLabel="Rename"
-            onSubmit={(v) => void actions.renameMember(req().topic, req().member, v)}
-            onCancel={() => setMemberRenameReq(null)}
+            onSubmit={(v) => void props.actions.renameMember(req().topic, req().member, v)}
+            onCancel={() => props.actions.setMemberRenameReq(null)}
           />
         )}
       </Show>
 
-      <Show when={wtReq()}>
+      <Show when={props.actions.wtReq()}>
         {(req) => (
           <WorktreeRemoveDialog
             label={req().member.displayName}
@@ -204,13 +187,13 @@ export default function TopicList(props: {
             runningCount={req().runningCount}
             busy={req().busy}
             keepLabel={req().demote ? undefined : "Keep worktree"}
-            onConfirm={(opts) => void actions.confirmRemoveWorktree(opts)}
-            onCancel={() => setWtReq(null)}
+            onConfirm={(opts) => void props.actions.confirmRemoveWorktree(opts)}
+            onCancel={() => props.actions.setWtReq(null)}
           />
         )}
       </Show>
 
-      <Show when={deleteReq()}>
+      <Show when={props.actions.deleteReq()}>
         {(req) => (
           <ConfirmDeleteTopic
             topicName={req().topic.name}
@@ -218,13 +201,13 @@ export default function TopicList(props: {
             members={req().members}
             running={req().running}
             busy={req().busy}
-            onConfirm={(choices) => void actions.remove(req().topic, req().members, choices)}
-            onCancel={() => setDeleteReq(null)}
+            onConfirm={(choices) => void props.actions.remove(req().topic, req().members, choices)}
+            onCancel={() => props.actions.setDeleteReq(null)}
           />
         )}
       </Show>
 
-      <Show when={sweepReq()}>
+      <Show when={props.actions.sweepReq()}>
         {(req) => (
           <TopicWorktreeSweepDialog
             topicName={req().topic.name}
@@ -233,8 +216,8 @@ export default function TopicList(props: {
             busy={req().busy}
             failures={req().failures}
             running={req().running}
-            onApply={(choices) => void actions.sweep(choices)}
-            onClose={() => setSweepReq(null)}
+            onApply={(choices) => void props.actions.sweep(choices)}
+            onClose={() => props.actions.setSweepReq(null)}
           />
         )}
       </Show>

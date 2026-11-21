@@ -8,6 +8,6 @@ export function watchReadAloud() {
   if (started) return;
   started = true;
   on(READ_SELECTION, () => void readSelection(heldSelection()));
-  on(READ_LAST_REPLY, () => frontReply()?.());
+  on(READ_LAST_REPLY, () => frontReply()?.read());
   on(STOP_READING, () => void stop());
 }
