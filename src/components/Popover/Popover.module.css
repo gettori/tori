@@ -1,14 +1,16 @@
 /* The anchored panel surface, shared so the base chrome cannot drift per call
    site. Layout (width, height ceiling, padding vars) stays with the caller's
    own class; what lives here is what makes it read as the same family of
-   surface as <Menu>'s .content, minus the menu's row machinery.
+   surface as <Menu>'s .content, minus the menu's row machinery. */
 
-   Written against Kobalte's DOM: the container is positioned by floating-ui,
-   not `position: fixed` from a hand-computed rect. */
+/* Zero specificity: it clears the browser's popover defaults and still loses to
+   a caller's own padding. */
+:where(.surface) {
+  padding: 0;
+  color: inherit;
+}
+
 .surface {
-  /* Below <Menu>'s 1000, so a row's own context menu still lands on top of the
-     panel that opened it. */
-  z-index: 900;
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
   border-radius: var(--tori-radius-xl);
@@ -16,10 +18,10 @@
   overflow: hidden;
   -webkit-user-select: none;
   user-select: none;
-  transform-origin: var(--kb-popover-content-transform-origin, center);
+  transform-origin: var(--layer-origin, center);
 }
 
-/* Enter only, so solid-presence unmounts at once on close. `scale` rather than
+/* Enter only, because the surface unmounts at once on close. `scale` rather than
    `transform`: the caller's own class shares this element. */
 @keyframes popoverSurfaceIn {
   from {
@@ -37,8 +39,7 @@
 }
 
 .surface:focus {
-  /* The content is focusable (Kobalte's tabIndex -1) so dismissal can see focus
-     leave it. A ring around the whole surface indicates no target; whatever
+  /* The content is focusable so a caller can land the keyboard on the panel. A ring around the whole surface indicates no target; whatever
      `initialFocus` named is what says where the keyboard is. Same call
      `.content:focus` makes in Menu.module.css. */
   outline: none;

@@ -1,15 +1,14 @@
-import { Show, splitProps, type JSX } from "solid-js";
-import { DropdownMenu as Primitive } from "../../lib/menu";
+import { createUniqueId, mergeProps, Show, splitProps, type JSX } from "solid-js";
+import { Dynamic, Portal } from "solid-js/web";
+import type { LayerPlacement } from "../../lib/layer";
+import { callHandler, type TriggerHandler } from "../callHandler";
 import { useDialogSurface } from "../Dialog/surface";
+import { createMenu, CURSOR_GUTTER, CURSOR_SHIFT, MenuContent, MenuProvider } from "./menuCore";
 import { MenuGlide, MenuRows, type MenuItem } from "./rows";
 import { MenuSurface } from "./surface";
 import styles from "./Menu.module.css";
 
-/** Where the menu sits relative to its anchor. Kobalte accepts twelve
- *  placements; these are the ones Tori's dropdowns use, and keeping the union
- *  local is what lets this file expose a placement type without the app
- *  importing one from the primitives package - which `boundary.test.ts` would
- *  fail it for, this file included. */
+/** Where the menu sits relative to its anchor. */
 export type MenuPlacement =
   | "bottom-start"
   | "bottom-end"
@@ -21,27 +20,12 @@ export type MenuPlacement =
    *  small button at the end of a row whose menu should not cover the row. */
   | "corner";
 
-/** The gutter between a trigger and its menu, in px. Not a token: Kobalte takes
- *  a number and passes it to floating-ui, so it never reaches CSS and cannot
- *  read `--ui-scale`. 4px is the reference's value (adr_solid_ui_reference). */
+/** The gutter between a trigger and its menu, in px. */
 const TRIGGER_GUTTER = 4;
-/** Kobalte's own context-menu offsets, restated here because the anchor mode is
- *  a cursor-placed menu with no trigger and should read identically to one. */
-const CURSOR_GUTTER = 2;
-const CURSOR_SHIFT = 2;
 
-/** A cursor as an anchor: a point, not a box, which is the same two-field rect
- *  Kobalte's own context menu hands its popper.
- *
- *  Takes `undefined` because the popper asks for the rect on its own schedule,
- *  not the caller's: a menu closing by clearing its `anchor` and its `open` in
- *  one update can be asked once more in between. The origin is the honest answer
- *  for a menu that is on its way out, and the alternative is a throw.
- *
- *  Exported only so `Dropdown.test.tsx` can pin the mapping. jsdom gives
- *  floating-ui no geometry at all - the positioner reads `top: 0; left: 0`
- *  whatever it is anchored to - so there is no rendered value an x/y swap would
- *  show up in, and the alternative to this is no guard. */
+/** A cursor as an anchor. Takes `undefined` because a menu closing by clearing
+ *  its `anchor` and its `open` in one update can be read once more in between.
+ *  Exported so `Dropdown.test.tsx` can pin the mapping, which jsdom cannot show. */
 export function cursorRect(anchor: { x: number; y: number } | undefined) {
   return { x: anchor?.x ?? 0, y: anchor?.y ?? 0 };
 }
@@ -54,24 +38,20 @@ export interface DropdownProps<T extends HTMLElement = HTMLButtonElement> extend
   menu?: JSX.Element;
   /** Open at a point instead of off a trigger, for the one surface that has no
    *  trigger element to hang off: CodeEditor's code-action menu at the caret.
-   *  Requires `open`, since there is nothing for Kobalte to toggle. */
+   *  Requires `open`, since there is nothing to toggle. */
   anchor?: { x: number; y: number };
   /** Controlled open state. Optional in trigger mode, required in anchor
    *  mode. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   placement?: MenuPlacement;
-  /** Opt in to Kobalte's modality: scroll lock, focus trap, and `aria-hidden` on
-   *  everything outside. Off by default, see `ContextMenu`'s module comment. */
-  modal?: boolean;
   /** The element the trigger renders as. A tag name, not a component, for the
    *  reason `Tooltip`'s `as` documents. */
   as?: keyof JSX.HTMLElementTags;
   /** The trigger is a *wrapper* around a control that is already interactive,
-   *  rather than being the control itself. Kobalte makes any non-`button`
-   *  trigger a `role="button"` with `tabindex="0"`, and a button inside a button
-   *  is two tab stops and one nested control. See `notAControl` below for what
-   *  this does and does not take back. */
+   *  rather than being the control itself. A non-`button` trigger is otherwise a
+   *  `role="button"` with `tabindex="0"`, and a button inside a button is two tab
+   *  stops and one nested control. */
   wrapper?: boolean;
   /** What the menu portals into. Defaults to the enclosing dialog's panel when
    *  there is one, and to `document.body` otherwise. */
@@ -81,28 +61,14 @@ export interface DropdownProps<T extends HTMLElement = HTMLButtonElement> extend
 }
 
 /**
- * The triggered surface: Kobalte's dropdown menu behind Tori's chrome and Tori's
- * API. Everything not listed above is a native attribute and lands on the
- * trigger, so a call site reads as the button it already was plus an `items`.
+ * The triggered surface. Everything not listed above is a native attribute and
+ * lands on the trigger, so a call site reads as the button it already was plus
+ * an `items`. Shares its rows, its stylesheet and its behaviour with
+ * `ContextMenu`; what differs is where the menu is anchored.
  *
- * Shares its rows, its stylesheet and its non-modal default with `ContextMenu`;
- * what differs is where the menu is anchored, and that is the whole reason there
- * are two wrappers rather than one. See `src/lib/menu.ts` on the asymmetry.
- *
- * **Anchor mode has no trigger at all.** `DropdownMenu.Root` accepts both `open`
- * and `getAnchorRect`, which `ContextMenu.Root` explicitly omits, so a menu
- * driven entirely from app state and placed at a point is possible here and
- * nowhere else. This is how Kobalte's own context menu is built internally - a
- * signal of `{x, y}` handed straight to `getAnchorRect` - so the offsets below
- * are its numbers rather than invented ones, and a caret menu reads exactly like
- * a right-click menu.
- *
- * **Focus restore in anchor mode is ours,** for the reason `Dialog`'s is: on
- * close Kobalte focuses its `Trigger`, and in anchor mode there is none, so the
- * default restore is a no-op and focus would land on `<body>`. For CodeEditor
- * that means the next keystroke goes nowhere instead of back into the editor.
- * The element focused at open time is captured and restored here. Trigger mode
- * needs none of this: Kobalte's own restore has something to aim at.
+ * **Anchor mode has no trigger at all.** A menu driven from app state and placed
+ * at a point, for CodeEditor's caret menu. Focus goes back to whatever the menu
+ * interrupted, so the next keystroke lands in the editor.
  */
 export default function Dropdown<T extends HTMLElement = HTMLButtonElement>(props: DropdownProps<T>) {
   const [local, trigger] = splitProps(props, [
@@ -112,111 +78,129 @@ export default function Dropdown<T extends HTMLElement = HTMLButtonElement>(prop
     "open",
     "onOpenChange",
     "placement",
-    "modal",
     "as",
     "wrapper",
     "mount",
+  ]);
+  const [handlers, rest] = splitProps(trigger as DropdownProps<HTMLButtonElement>, [
+    "ref",
+    "id",
+    "disabled",
+    "onPointerDown",
+    "onClick",
+    "onKeyDown",
   ]);
 
   const dialogSurface = useDialogSurface();
   const mount = () => local.mount ?? dialogSurface();
   const atCursor = () => local.anchor != null;
+  const fallbackId = createUniqueId();
+  const triggerId = () => handlers.id ?? fallbackId;
+  const tag = () => local.as ?? "button";
+  const isButton = () => tag() === "button";
 
-  // The same cast `Tooltip` documents: `T` buys the caller precise handler
-  // types, and it is exactly that precision the polymorphic host cannot accept.
-  const triggerProps = trigger as DropdownProps<HTMLButtonElement>;
+  const menu = createMenu({ open: () => local.open, onOpenChange: (open) => local.onOpenChange?.(open) });
+  let pointerType = "";
 
-  /**
-   * A trigger that is only a wrapper, said out loud.
-   *
-   * Kobalte makes every non-`button` trigger a control: `role="button"`,
-   * `tabindex="0"`, and the popup semantics. Around a control that is already
-   * all three, that is two tab stops and a button inside a button, which axe
-   * reports as `nested-interactive`. Nothing is lost by taking it back:
-   * everything the trigger listens for (pointerdown, and Enter/Space/ArrowDown
-   * as keydown) reaches it by bubbling up from the control inside.
-   *
-   * `group` and not `presentation`, which reads like the obvious choice. Kobalte
-   * also writes `aria-haspopup`, `aria-expanded` and `aria-controls` here, and
-   * those cannot be spread away (an `undefined` value falls through to the one
-   * Kobalte set rather than deleting it). `presentation` is the one role that
-   * forbids the global ARIA attributes, so it would trade `nested-interactive`
-   * for `aria-allowed-attr`. `group` is non-interactive and allows them.
-   *
-   * An object rather than attributes because the keys have to be *absent* in the
-   * normal case, where Kobalte's own values are the right ones.
-   */
+  const placement = (): LayerPlacement =>
+    local.placement === "corner" ? "corner" : (local.placement ?? (atCursor() ? "right-start" : "bottom-start"));
+
+  const toggle = () => (menu.isOpen() ? menu.close() : menu.open("content"));
+
+  const behaviour = {
+    ref: (el: HTMLElement) => {
+      menu.setTrigger(el);
+      (handlers.ref as ((el: HTMLElement) => void) | undefined)?.(el);
+    },
+    get id() {
+      return triggerId();
+    },
+    get type() {
+      return isButton() ? "button" : undefined;
+    },
+    get role() {
+      return isButton() ? undefined : "button";
+    },
+    get tabIndex() {
+      return isButton() || handlers.disabled ? undefined : 0;
+    },
+    get disabled() {
+      return isButton() ? handlers.disabled : undefined;
+    },
+    get "aria-disabled"() {
+      return !isButton() && handlers.disabled ? true : undefined;
+    },
+    get "data-disabled"() {
+      return handlers.disabled ? "" : undefined;
+    },
+    "aria-haspopup": "true",
+    get "aria-expanded"() {
+      return menu.isOpen();
+    },
+    get "aria-controls"() {
+      return menu.isOpen() ? menu.contentId : undefined;
+    },
+    get "data-expanded"() {
+      return menu.isOpen() ? "" : undefined;
+    },
+    get "data-closed"() {
+      return menu.isOpen() ? undefined : "";
+    },
+    onPointerDown: (e: PointerEvent) => {
+      callHandler(e, handlers.onPointerDown as TriggerHandler);
+      pointerType = e.pointerType;
+      if (!handlers.disabled && e.pointerType !== "touch" && e.button === 0) toggle();
+    },
+    onClick: (e: MouseEvent) => {
+      callHandler(e, handlers.onClick as TriggerHandler);
+      if (!handlers.disabled && pointerType === "touch") toggle();
+    },
+    onKeyDown: (e: KeyboardEvent) => {
+      callHandler(e, handlers.onKeyDown as TriggerHandler);
+      if (handlers.disabled) return;
+      if (e.key !== "Enter" && e.key !== " " && e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      e.stopPropagation();
+      e.preventDefault();
+      menu.open(e.key === "ArrowUp" ? "last" : "first");
+    },
+  };
+
+  // The keys have to be absent in the normal case, where the values above are
+  // the right ones. `group` rather than `presentation`, which forbids the
+  // `aria-haspopup` and `aria-expanded` this element still carries.
   const notAControl = () => (local.wrapper ? { role: "group", tabIndex: -1 } : {});
-
-  let restoreTo: HTMLElement | null = null;
-
-  function onOpenAutoFocus() {
-    if (!atCursor()) return;
-    // Dispatched before Kobalte focuses anything, so the active element is still
-    // whatever the menu interrupted. Not prevented: the menu still wants focus,
-    // this only records where to hand it back.
-    const previous = document.activeElement;
-    restoreTo = previous instanceof HTMLElement && previous !== document.body ? previous : null;
-  }
-
-  function onCloseAutoFocus(e: Event) {
-    if (!atCursor()) return;
-    // Already prevented means something outside deliberately took focus; leave
-    // it where it is.
-    if (e.defaultPrevented) {
-      restoreTo = null;
-      return;
-    }
-    e.preventDefault();
-    restoreTo?.focus({ preventScroll: true });
-    restoreTo = null;
-  }
+  const triggerProps = mergeProps(
+    behaviour,
+    notAControl,
+    rest,
+  ) as unknown as JSX.ButtonHTMLAttributes<HTMLButtonElement>;
 
   return (
     // Published rather than only used here: a flyout inside this menu is its own
     // portal and mounts where the menu it belongs to does. See `surface.ts`.
     <MenuSurface.Provider value={mount}>
-      <Primitive.Root
-        modal={local.modal ?? false}
-        open={local.open}
-        onOpenChange={local.onOpenChange}
-        placement={
-          local.placement === "corner"
-            ? "bottom-start"
-            : (local.placement ?? (atCursor() ? "right-start" : "bottom-start"))
-        }
-        gutter={atCursor() ? CURSOR_GUTTER : local.placement === "corner" ? 0 : TRIGGER_GUTTER}
-        shift={atCursor() ? CURSOR_SHIFT : undefined}
-        // Floating-ui treats the point as a zero-size anchor and flips or slides
-        // the menu against the viewport from there.
-        getAnchorRect={
-          atCursor()
-            ? () => cursorRect(local.anchor)
-            : local.placement === "corner"
-              ? (el) => {
-                  const r = el?.getBoundingClientRect();
-                  return r && { x: r.right, y: r.top, width: 0, height: r.height };
-                }
-              : undefined
-        }
-      >
+      <MenuProvider value={menu}>
         <Show when={!atCursor()}>
-          <Primitive.Trigger as={local.as ?? "button"} {...notAControl()} {...triggerProps} />
+          <Dynamic component={tag()} {...triggerProps} />
         </Show>
-        <Primitive.Portal mount={mount()}>
-          <Primitive.Content
-            class={styles.content}
-            onOpenAutoFocus={onOpenAutoFocus}
-            onCloseAutoFocus={onCloseAutoFocus}
-            // A right-click inside an open menu would otherwise open the
-            // browser's menu on top of Tori's. The hand-rolled Menu did the same.
-            onContextMenu={(e: MouseEvent) => e.preventDefault()}
-          >
-            <MenuGlide />
-            {local.menu ?? <MenuRows items={local.items ?? []} />}
-          </Primitive.Content>
-        </Primitive.Portal>
-      </Primitive.Root>
+        <Show when={menu.isOpen()}>
+          <Portal mount={mount()}>
+            <MenuContent
+              menu={menu}
+              placement={placement()}
+              gutter={atCursor() ? CURSOR_GUTTER : local.placement === "corner" ? 0 : TRIGGER_GUTTER}
+              shift={atCursor() ? CURSOR_SHIFT : 0}
+              point={atCursor() ? () => cursorRect(local.anchor) : undefined}
+              returnFocus={atCursor() ? undefined : menu.trigger}
+              labelledBy={atCursor() ? undefined : triggerId()}
+              class={styles.content}
+            >
+              <MenuGlide />
+              {local.menu ?? <MenuRows items={local.items ?? []} />}
+            </MenuContent>
+          </Portal>
+        </Show>
+      </MenuProvider>
     </MenuSurface.Provider>
   );
 }
