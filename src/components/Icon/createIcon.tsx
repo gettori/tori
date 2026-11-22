@@ -1,11 +1,10 @@
-import { For, splitProps, type JSX } from "solid-js";
-import { Dynamic } from "solid-js/web";
+import { For, omit } from "solid-js";
+import { type JSX, dynamic } from "@solidjs/web";
 import type { IconNode } from "lucide";
 
 export interface IconGlyphProps extends Partial<JSX.SvgSVGAttributes<SVGSVGElement>> {
-  class?: string;
   size?: string | number;
-  color?: string;
+  color?: JSX.SvgSVGAttributes<SVGSVGElement>["color"];
   strokeWidth?: string | number;
 }
 
@@ -23,7 +22,7 @@ export function createIcon(name: string, node: IconNode): IconGlyph {
     .toLowerCase();
   const base = [...new Set(["lucide", "lucide-icon", `lucide-${compact}`, `lucide-${name}`])].join(" ");
   return (props) => {
-    const [local, rest] = splitProps(props, ["size", "color", "strokeWidth", "class", "children"]);
+    const rest = omit(props, "size", "color", "strokeWidth", "class", "children");
     return (
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -31,15 +30,20 @@ export function createIcon(name: string, node: IconNode): IconGlyph {
         fill="none"
         stroke-linecap="round"
         stroke-linejoin="round"
-        width={local.size ?? 24}
-        height={local.size ?? 24}
-        stroke={local.color ?? "currentColor"}
-        stroke-width={Number(local.strokeWidth ?? 2)}
-        class={local.class ? `${base} ${local.class}` : base}
-        aria-hidden={!local.children && !isNamed(rest) ? "true" : undefined}
+        width={props.size ?? 24}
+        height={props.size ?? 24}
+        stroke={props.color ?? "currentColor"}
+        stroke-width={Number(props.strokeWidth ?? 2)}
+        class={[base, props.class]}
+        aria-hidden={!props.children && !isNamed(rest) ? "true" : undefined}
         {...rest}
       >
-        <For each={node}>{([tag, attrs]) => <Dynamic component={tag} {...(attrs as object)} />}</For>
+        <For each={node}>
+          {([tag, attrs]) => {
+            const Part = dynamic(() => tag);
+            return <Part {...(attrs as object)} />;
+          }}
+        </For>
       </svg>
     );
   };

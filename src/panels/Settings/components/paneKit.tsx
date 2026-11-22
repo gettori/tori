@@ -5,7 +5,8 @@
 // became six panes, and six components cannot share one closure. Nothing here
 // closes over anything per-render - only over the imported store - so the move
 // was a move rather than a rewrite.
-import { createSignal, For, Show, type JSX } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { Check, Copy } from "../../../components/Icon/icons";
 import { copyText } from "../../../utils/clipboard";
 import { hintRanges, labelRanges, segments, type Range } from "../utils/searchHighlight";
@@ -405,7 +406,7 @@ export function Row(
       {/* Siblings placed by grid, never nested columns: a wrapper div would lay
           out identically and quietly break `label.closest("div")`, which is how
           the suite reaches every control here. */}
-      <div id={rowDomId(props.id)} class={styles.row} classList={{ [styles.rowStack]: !!props.stack }}>
+      <div id={rowDomId(props.id)} class={[styles.row, { [styles.rowStack]: !!props.stack }]}>
         <label id={rowLabelId(props.id)} class={styles.label}>
           <MarkedLabel query={props.query} text={props.label} />
         </label>
@@ -439,7 +440,7 @@ export function CardSection(props: PaneProps & { id: string; children: JSX.Eleme
           the `<section>` makes it `:first-child` of its own div, so the
           `.section:first-child` rule zeroes its top margin and two stacked card
           sections would butt together - the wrapper takes over that rhythm. */}
-      <div id={rowDomId(props.id)} classList={{ [styles.cardSection]: true, [styles.cardSectionHit]: matched() }}>
+      <div id={rowDomId(props.id)} class={{ [styles.cardSection]: true, [styles.cardSectionHit]: matched() }}>
         {/* A result, not the section: a agent grid and a 31-entry catalogue
             unfolding into a list of matching *settings* is the wall this
             redesign removes. So it says where the thing is and offers to go. */}

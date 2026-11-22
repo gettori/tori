@@ -1,4 +1,4 @@
-import type { JSX } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { ArrowUp, ChevronLeft } from "../../../../components/Icon/icons";
 import Icon from "../../../../components/Icon/Icon";
 import MessageList from "../../../Chat/MessageList";

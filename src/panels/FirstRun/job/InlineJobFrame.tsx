@@ -1,4 +1,5 @@
-import { Match, Show, Switch, createSignal, type JSX } from "solid-js";
+import { Match, Show, Switch, createSignal } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { Check, X } from "../../../components/Icon/icons";
 import Icon from "../../../components/Icon/Icon";
 import styles from "./InlineJob.module.css";

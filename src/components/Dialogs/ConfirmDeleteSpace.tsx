@@ -170,7 +170,7 @@ export default function ConfirmDeleteSpace(props: {
               </div>
             }
           >
-            <div class={styles.stat} classList={{ [styles.statAtRisk]: unpushedCount() > 0 }}>
+            <div class={[styles.stat, { [styles.statAtRisk]: unpushedCount() > 0 }]}>
               <div class={styles.statLabel}>Unpushed</div>
               <div class={styles.statValue}>
                 <Show when={!props.loading} fallback="…">
@@ -279,7 +279,7 @@ export default function ConfirmDeleteSpace(props: {
                             icon={m.icon}
                             chipStyle={m.style}
                             reference={isReference(m.member)}
-                            classList={{ [styles.lostChip]: m.lost }}
+                            class={{ [styles.lostChip]: m.lost }}
                             decorative
                           />
                         )}
@@ -298,8 +298,7 @@ export default function ConfirmDeleteSpace(props: {
           </div>
           <input
             ref={input}
-            class={`${styles.spaceInput} ${styles.monoInput}`}
-            classList={{ [styles.armed]: matches() }}
+            class={[`${styles.spaceInput} ${styles.monoInput}`, { [styles.armed]: matches() }]}
             aria-labelledby={CONFIRM_LABEL}
             value={value()}
             placeholder={props.spaceName}

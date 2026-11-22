@@ -1,4 +1,5 @@
-import { For, Show, createMemo, type JSX } from "solid-js";
+import { For, Show, createMemo } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import TopicItem from "./TopicItem";
 import { FoldRow } from "./SidebarRows";
 import StatusBubble from "./StatusBubble";

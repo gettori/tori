@@ -9,7 +9,8 @@
 // Every decision about *which* marks is `utils/branchSync.ts`'s. What lives
 // here is the icon each one wears and the size it is drawn at.
 
-import { For, Show, type JSX } from "solid-js";
+import { For, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,

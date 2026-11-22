@@ -1,5 +1,6 @@
 import type { SidebarDragProps } from "./sidebarDrag";
-import { For, Show, onMount, type JSX } from "solid-js";
+import { For, Show, onMount } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import {
   Activity,
   ArrowUpRight,
@@ -75,7 +76,7 @@ export function AliasBadge() {
  *  expanded. */
 export function RowChevron(props: { open: boolean }) {
   return (
-    <span class={styles.rowChevron} classList={{ [styles.open]: props.open }}>
+    <span class={[styles.rowChevron, { [styles.open]: props.open }]}>
       <Icon icon={ChevronDown} />
     </span>
   );
@@ -123,8 +124,10 @@ export function ProjectRow(props: {
   return (
     <div class={`node ${styles.projectCard}`} data-no-window-drag>
       <ContextMenu
-        class={`${styles.row} ${styles.project} ${props.editing ? styles.editing : ""}`.trim()}
-        classList={{ [styles.missing]: !!props.missing, [styles.attached]: !!props.attached }}
+        class={[
+          `${styles.row} ${styles.project} ${props.editing ? styles.editing : ""}`.trim(),
+          { [styles.missing]: !!props.missing, [styles.attached]: !!props.attached },
+        ]}
         onClick={() => props.onClick?.()}
         items={props.menu ?? []}
         draggable="true"
@@ -218,18 +221,18 @@ export function BranchRow(props: {
   const name = () => (
     <>
       {props.lead}
-      <span class={styles.label} classList={{ [styles.labelHugged]: props.trail != null }}>
-        {props.label}
-      </span>
+      <span class={[styles.label, { [styles.labelHugged]: props.trail != null }]}>{props.label}</span>
       {props.trail}
     </>
   );
   const end = () => <span class={styles.rowEnd}>{props.end}</span>;
   return (
-    <div class={`node ${styles.branchNode}`} classList={{ [styles.attemptNode]: props.nested }}>
+    <div class={[`node ${styles.branchNode}`, { [styles.attemptNode]: props.nested }]}>
       <ContextMenu
-        class={`${styles.row} ${styles.branch} ${styles.sub1} ${props.selected ? styles.sel : ""} ${props.look ? styles[props.look] : ""}`}
-        classList={{ [styles.picked]: props.picked === true }}
+        class={[
+          `${styles.row} ${styles.branch} ${styles.sub1} ${props.selected ? styles.sel : ""} ${props.look ? styles[props.look] : ""}`,
+          { [styles.picked]: props.picked === true },
+        ]}
         data-two-line={props.meta != null ? "true" : undefined}
         onClick={(e: MouseEvent) => props.onClick?.(e)}
         items={props.menu ?? []}
@@ -442,8 +445,10 @@ export function GroupCard(props: {
       style={props.tint ? tintVars(props.tint) : undefined}
     >
       <ContextMenu
-        class={`${styles.row} ${styles.cardHead}`}
-        classList={{ [styles.cardHeadSel]: props.holdsSelection === true, [styles.cardHeadOpen]: props.open }}
+        class={[
+          `${styles.row} ${styles.cardHead}`,
+          { [styles.cardHeadSel]: props.holdsSelection === true, [styles.cardHeadOpen]: props.open },
+        ]}
         items={props.menu ?? []}
         onClick={() => props.onToggle?.()}
         aria-expanded={props.open ? "true" : "false"}
@@ -539,8 +544,7 @@ export function ParkedLanes(props: { lanes: ParkedLane[]; onOpen: (lane: LaneId)
         {(l) => (
           <button
             type="button"
-            class={styles.parkedCard}
-            classList={{ [styles.cardHeadSel]: l.holdsSelection }}
+            class={[styles.parkedCard, { [styles.cardHeadSel]: l.holdsSelection }]}
             data-lane={l.lane}
             data-hue={l.hue ?? undefined}
             style={l.hue ? HUE_VARS[l.hue] : undefined}

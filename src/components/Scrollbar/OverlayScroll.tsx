@@ -1,4 +1,5 @@
-import { createSignal, onCleanup, onMount, splitProps, type JSX } from "solid-js";
+import { createSignal, onCleanup, onMount, omit } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import styles from "./OverlayScroll.module.css";
 
 /**
@@ -26,7 +27,7 @@ import styles from "./OverlayScroll.module.css";
  */
 export default function OverlayScroll(
   props: {
-    class?: string;
+    class?: JSX.HTMLAttributes<HTMLDivElement>["class"];
     /** The scrolling element itself, for a caller that owns scroll state (a
      *  reading-position hand-off, a restored offset). The frame never scrolls,
      *  so a ref to it is the wrong element for anything scroll-shaped. */
@@ -37,7 +38,7 @@ export default function OverlayScroll(
     children: JSX.Element;
   } & JSX.HTMLAttributes<HTMLDivElement>,
 ) {
-  const [local, rest] = splitProps(props, ["class", "viewportRef", "contentClass", "children"]);
+  const rest = omit(props, "class", "viewportRef", "contentClass", "children");
   let viewport!: HTMLDivElement;
   let content!: HTMLDivElement;
   let track!: HTMLDivElement;
@@ -111,7 +112,7 @@ export default function OverlayScroll(
   return (
     <div
       {...rest}
-      class={`${styles.frame} ${local.class ?? ""}`}
+      class={[styles.frame, props.class]}
       onMouseEnter={() => setHovering(true)}
       onMouseLeave={() => setHovering(false)}
     >
@@ -119,12 +120,12 @@ export default function OverlayScroll(
         class={styles.viewport}
         ref={(el) => {
           viewport = el;
-          local.viewportRef?.(el);
+          props.viewportRef?.(el);
         }}
         onScroll={onScroll}
       >
-        <div ref={content} class={local.contentClass}>
-          {local.children}
+        <div ref={content} class={props.contentClass}>
+          {props.children}
         </div>
       </div>
       {/* Purely presentational: the real scroller above is what assistive
@@ -132,16 +133,9 @@ export default function OverlayScroll(
       {/* `data-no-window-drag`: the track sits inside surfaces that move the
           window on a press (utils/windowDrag), and a scrollbar is the one thing
           there that must keep its own drag. */}
-      <div
-        class={styles.track}
-        classList={{ [styles.shown]: shown() }}
-        ref={track}
-        aria-hidden="true"
-        data-no-window-drag
-      >
+      <div class={[styles.track, { [styles.shown]: shown() }]} ref={track} aria-hidden="true" data-no-window-drag>
         <div
-          class={styles.thumb}
-          classList={{ [styles.dragging]: dragging() }}
+          class={[styles.thumb, { [styles.dragging]: dragging() }]}
           style={{ height: `${thumb().size}px`, transform: `translateY(${thumb().offset}px)` }}
           onPointerDown={startDrag}
         />

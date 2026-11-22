@@ -1,4 +1,5 @@
-import { onMount, type JSX } from "solid-js";
+import { onMount } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { noteForgeUnits, type ForgeUnit } from "../../utils/sessionActivity";
@@ -332,7 +333,7 @@ function Strip(props: { sessions: RelatedSession[]; withLanes?: boolean; openLis
 
 function Prompt(props: { text: string; from?: string; steer?: boolean }) {
   return (
-    <div class={styles.userRow} classList={{ [styles.steerRow]: !!props.steer }}>
+    <div class={[styles.userRow, { [styles.steerRow]: !!props.steer }]}>
       <div class={styles.userBubble}>
         {props.from ? <PromptFrom name={props.from} onOpen={() => {}} /> : null}
         {props.steer ? <span class={styles.steerLabel}>Steer</span> : null}

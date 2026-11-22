@@ -4,12 +4,12 @@ import {
   createSignal,
   createUniqueId,
   onCleanup,
-  splitProps,
+  omit,
   untrack,
   useContext,
   type Accessor,
-  type JSX,
 } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { anchorLayer, openLayer, pointAnchor, type LayerPlacement } from "../../lib/layer";
 import { createTypeahead } from "../../lib/keyboard";
 import { callHandler, type TriggerHandler } from "../callHandler";
@@ -55,8 +55,8 @@ export interface MenuState {
   movingToChild: (e: PointerEvent) => boolean;
 }
 
-const MenuContext = createContext<MenuState>();
-export const MenuProvider = MenuContext.Provider;
+const MenuContext = createContext<MenuState | null>(null);
+export const MenuProvider = MenuContext;
 
 export function useMenu() {
   const menu = useContext(MenuContext);
@@ -65,7 +65,7 @@ export function useMenu() {
 }
 
 export function useParentMenu() {
-  return useContext(MenuContext);
+  return useContext(MenuContext) ?? undefined;
 }
 
 export function createMenu(options: {
@@ -289,7 +289,8 @@ export type MenuItemProps = Omit<JSX.HTMLAttributes<HTMLDivElement>, "onSelect">
 export function MenuItem(props: MenuItemProps) {
   const menu = useMenu();
   const id = createUniqueId();
-  const [local, others] = splitProps(props, [
+  const others = omit(
+    props,
     "ref",
     "disabled",
     "closeOnSelect",
@@ -300,46 +301,46 @@ export function MenuItem(props: MenuItemProps) {
     "onPointerLeave",
     "onPointerUp",
     "onKeyDown",
-  ]);
+  );
   let row!: HTMLDivElement;
 
   const select = () => {
-    local.onSelect?.();
+    props.onSelect?.();
     // After the click this pointerup belongs to, which would otherwise land on
     // whatever sits under the menu.
-    if (local.closeOnSelect ?? true) setTimeout(() => menu.close(true), 1);
+    if (props.closeOnSelect ?? true) setTimeout(() => menu.close(true), 1);
   };
 
   return (
     <div
       ref={(el) => {
         row = el;
-        (local.ref as ((el: HTMLDivElement) => void) | undefined)?.(el);
+        (props.ref as ((el: HTMLDivElement) => void) | undefined)?.(el);
       }}
       id={id}
       role="menuitem"
       tabindex={-1}
-      aria-disabled={local.disabled ? "true" : undefined}
-      data-disabled={local.disabled ? "" : undefined}
+      aria-disabled={props.disabled ? "true" : undefined}
+      data-disabled={props.disabled ? "" : undefined}
       data-highlighted={menu.highlighted() === row ? "" : undefined}
-      data-text-value={local.textValue}
+      data-text-value={props.textValue}
       onPointerMove={(e) => {
-        callHandler(e, local.onPointerMove as TriggerHandler);
+        callHandler(e, props.onPointerMove as TriggerHandler);
         if (e.pointerType !== "mouse" || menu.movingToChild(e)) return;
-        if (local.disabled) menu.focusContent();
+        if (props.disabled) menu.focusContent();
         else if (menu.highlighted() !== row) menu.highlight(row);
       }}
       onPointerLeave={(e) => {
-        callHandler(e, local.onPointerLeave as TriggerHandler);
+        callHandler(e, props.onPointerLeave as TriggerHandler);
         if (e.pointerType === "mouse" && !menu.movingToChild(e)) menu.focusContent();
       }}
       onPointerUp={(e) => {
-        callHandler(e, local.onPointerUp as TriggerHandler);
-        if (!local.disabled && e.button === 0) select();
+        callHandler(e, props.onPointerUp as TriggerHandler);
+        if (!props.disabled && e.button === 0) select();
       }}
       onKeyDown={(e) => {
-        callHandler(e, local.onKeyDown as TriggerHandler);
-        if (e.repeat || local.disabled || (e.key !== "Enter" && e.key !== " ")) return;
+        callHandler(e, props.onKeyDown as TriggerHandler);
+        if (e.repeat || props.disabled || (e.key !== "Enter" && e.key !== " ")) return;
         e.preventDefault();
         select();
       }}

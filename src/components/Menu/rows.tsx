@@ -1,5 +1,5 @@
-import { createContext, createUniqueId, For, onCleanup, Show, useContext, type JSX } from "solid-js";
-import { Portal } from "solid-js/web";
+import { createContext, createUniqueId, For, onCleanup, Show, useContext } from "solid-js";
+import { type JSX, Portal } from "@solidjs/web";
 import { ChevronRight, type IconGlyph } from "../Icon/icons";
 import Glide from "../Glide/Glide";
 import Icon from "../Icon/Icon";
@@ -258,7 +258,7 @@ export function MenuSeparator() {
   return <hr class={styles.separator} />;
 }
 
-const GroupLabelId = createContext<string>();
+const GroupLabelId = createContext<string | null>(null);
 
 /** What the menu is acting on, rather than something it offers to do. Not a
  *  `menuitem`, so the arrows and typeahead pass over it, and the group it names
@@ -266,7 +266,7 @@ const GroupLabelId = createContext<string>();
  *  which owns that group. */
 function MenuHeading(props: { children: JSX.Element }) {
   return (
-    <span id={useContext(GroupLabelId)} class={styles.heading} aria-hidden="true">
+    <span id={useContext(GroupLabelId) ?? undefined} class={styles.heading} aria-hidden="true">
       {props.children}
     </span>
   );
@@ -378,11 +378,11 @@ export function MenuRows(props: { items: MenuItem[] }) {
   const labelId = createUniqueId();
   return (
     <Show when={props.items.some((it) => "heading" in it)} fallback={<FlatRows items={props.items} />}>
-      <GroupLabelId.Provider value={labelId}>
+      <GroupLabelId value={labelId}>
         <div role="group" aria-labelledby={labelId}>
           <FlatRows items={props.items} />
         </div>
-      </GroupLabelId.Provider>
+      </GroupLabelId>
     </Show>
   );
 }

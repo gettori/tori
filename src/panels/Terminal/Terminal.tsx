@@ -1,6 +1,6 @@
 import { createSignal, createEffect, createMemo, on, onCleanup, onMount, untrack, For, Show } from "solid-js";
+import { Portal } from "@solidjs/web";
 import type { DaemonStatus } from "../../utils/daemonStatus";
-import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { sessionSecret, watchSecrets } from "../../utils/secretReads";
@@ -2733,7 +2733,7 @@ export default function Terminal(props: {
     // Past the branch above, so this tab has a session by construction: the two
     // states are exactly "has a session id" and "does not".
     return (
-      <div class={sideStyles.row} classList={{ [sideStyles.hidden]: !active() }}>
+      <div class={[sideStyles.row, { [sideStyles.hidden]: !active() }]}>
         <div class={sideStyles.main}>
           <ChatView
             sessionId={t.sessionId!}

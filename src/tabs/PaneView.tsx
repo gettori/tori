@@ -10,7 +10,8 @@
 // the pane sees those drops; the center is left to whatever is on the stage and
 // only becomes "put it in this pane" when nothing there took it, which is what
 // keeps a file tab dropped on a terminal inserting its path.
-import { createEffect, createSignal, onCleanup, onMount, Show, type JSX } from "solid-js";
+import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import UnifiedTabStrip from "./UnifiedTabStrip";
 import { maybeKindEntry } from "./registry";
 import { isFixedTab, isKindHome, paneActiveId, paneHostIds, paneRefusal, paneTabs, reorderPane } from "./paneTabs";
@@ -350,18 +351,20 @@ function DropOverlay(props: { zone: DropZone; caret: number; refused: boolean })
   const edge = () => (props.zone.kind === "edge" ? props.zone.dir : null);
   return (
     <div
-      class={styles.dropZone}
+      class={[
+        styles.dropZone,
+        {
+          [styles.dropRefused]: props.refused,
+          [styles.dropCaret]: props.zone.kind === "strip",
+          [styles.dropHalf]: !!edge(),
+          [styles.dropLeft]: edge() === "left",
+          [styles.dropRight]: edge() === "right",
+          [styles.dropTop]: edge() === "top",
+          [styles.dropBottom]: edge() === "bottom",
+        },
+      ]}
       data-drop-zone={edge() ? `edge-${edge()}` : props.zone.kind}
       data-drop-refused={props.refused ? "" : undefined}
-      classList={{
-        [styles.dropRefused]: props.refused,
-        [styles.dropCaret]: props.zone.kind === "strip",
-        [styles.dropHalf]: !!edge(),
-        [styles.dropLeft]: edge() === "left",
-        [styles.dropRight]: edge() === "right",
-        [styles.dropTop]: edge() === "top",
-        [styles.dropBottom]: edge() === "bottom",
-      }}
       style={props.zone.kind === "strip" ? { left: `${props.caret}px` } : undefined}
     />
   );

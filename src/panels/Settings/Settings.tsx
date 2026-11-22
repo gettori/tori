@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createSignal, on, onCleanup, onMount, For, Show, type Component } from "solid-js";
-import { Dynamic } from "solid-js/web";
+import { dynamic } from "@solidjs/web";
 import {
   Bot,
   Braces,
@@ -403,8 +403,7 @@ export default function Settings(props: {
                         type="button"
                         role="tab"
                         id={tabId(t.id)}
-                        class={styles.railItem}
-                        classList={{ [styles.railItemActive]: selected() }}
+                        class={[styles.railItem, { [styles.railItemActive]: selected() }]}
                         // On the selected tab only: the attribute is what a
                         // reader follows to jump into the panel, and while a
                         // search is running there is no one panel to jump to.
@@ -474,28 +473,30 @@ export default function Settings(props: {
                   Plain containers, because the search state is six panes open
                   and nothing selected. */}
           <For each={SETTING_TABS}>
-            {(t) => (
-              <div
-                id={paneId(t.id)}
-                data-pane={t.id}
-                // A tabpanel only while it is one: six open panels under a
-                // tablist with nothing selected is not the tab pattern.
-                role={searching() ? "group" : "tabpanel"}
-                aria-label={searching() ? t.label : undefined}
-                aria-labelledby={searching() ? undefined : tabId(t.id)}
-                hidden={!searching() && active() !== t.id}
-              >
-                <Dynamic
-                  component={PANES[t.id]}
-                  shown={shown}
-                  query={query()}
-                  prefix={searching() ? t.label : undefined}
-                  openTab={openTab}
-                  projectRoot={props.projectRoot ?? null}
-                  onClose={props.onClose}
-                />
-              </div>
-            )}
+            {(t) => {
+              const Pane = dynamic(() => PANES[t.id]);
+              return (
+                <div
+                  id={paneId(t.id)}
+                  data-pane={t.id}
+                  // A tabpanel only while it is one: six open panels under a
+                  // tablist with nothing selected is not the tab pattern.
+                  role={searching() ? "group" : "tabpanel"}
+                  aria-label={searching() ? t.label : undefined}
+                  aria-labelledby={searching() ? undefined : tabId(t.id)}
+                  hidden={!searching() && active() !== t.id}
+                >
+                  <Pane
+                    shown={shown}
+                    query={query()}
+                    prefix={searching() ? t.label : undefined}
+                    openTab={openTab}
+                    projectRoot={props.projectRoot ?? null}
+                    onClose={props.onClose}
+                  />
+                </div>
+              );
+            }}
           </For>
         </OverlayScroll>
       </div>

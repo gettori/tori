@@ -8,8 +8,8 @@ import styles from "./Chevron.module.css";
  *  the icon itself so it stays in place. */
 export default function Chevron(props: { open: boolean; class?: string }) {
   return (
-    <span class={styles.chevron} classList={{ [props.class ?? ""]: !!props.class }}>
-      <span class={styles.chev} classList={{ [styles.open]: props.open }}>
+    <span class={[styles.chevron, props.class]}>
+      <span class={[styles.chev, { [styles.open]: props.open }]}>
         <Icon icon={ChevronRight} />
       </span>
     </span>

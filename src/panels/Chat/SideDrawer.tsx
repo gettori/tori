@@ -53,7 +53,7 @@ export default function SideDrawer(props: {
         />
         <For each={drawer().sides}>
           {(side) => (
-            <div class={styles.body} classList={{ [styles.hidden]: drawer().active !== side.tabId }}>
+            <div class={[styles.body, { [styles.hidden]: drawer().active !== side.tabId }]}>
               <ChatView
                 sessionId={side.sessionId}
                 tabId={side.tabId}

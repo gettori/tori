@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { onMount, type JSX } from "solid-js";
+import { onMount } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import Button from "../Button/Button";
 import ToastRegion, { clearToasts, pushToast } from "./Toasts";
 

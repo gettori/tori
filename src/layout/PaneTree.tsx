@@ -11,7 +11,8 @@
 // of a split is the filler (it absorbs the slack and any rounding), every other
 // child gets an explicit px size derived from its stored share of the measured
 // box. That is why a seeded two-pane layout renders the DOM it always did.
-import { For, Show, createSignal, onCleanup, onMount, type JSX } from "solid-js";
+import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import Resizer from "../components/Resizer/Resizer";
 import PaneView from "../tabs/PaneView";
 import { leaves, type PaneNode, type PaneSplit } from "./paneLayout";
@@ -86,7 +87,7 @@ function Split(props: { node: PaneSplit; roles: PaneRoles; filler: boolean }) {
   const leading = (c: PaneNode) => !hiddenNode(c) && !filler(c);
 
   return (
-    <div class="pane-split" classList={{ row: row(), column: !row(), filler: props.filler }} ref={el}>
+    <div class={["pane-split", { row: row(), column: !row(), filler: props.filler }]} ref={el}>
       <For each={props.node.children}>
         {(child) => (
           <>
@@ -115,12 +116,14 @@ function Split(props: { node: PaneSplit; roles: PaneRoles; filler: boolean }) {
             >
               {(s) => (
                 <div
-                  class="pane-slot"
-                  classList={{
-                    filler: filler(s()),
-                    sized: !filler(s()),
-                    hidden: hiddenNode(s()),
-                  }}
+                  class={[
+                    "pane-slot",
+                    {
+                      filler: filler(s()),
+                      sized: !filler(s()),
+                      hidden: hiddenNode(s()),
+                    },
+                  ]}
                   style={filler(s()) ? undefined : { [dim()]: `${sizeOf(s())}px` }}
                 >
                   <Split node={s()} roles={props.roles} filler />
@@ -138,13 +141,15 @@ function Leaf(props: { node: PaneNode; roles: PaneRoles; filler: boolean; style?
   const pin = () => props.roles.pinKindOf(props.node.id);
   return (
     <div
-      class="pane"
-      classList={{
-        [props.roles.roleOf(props.node.id)]: true,
-        filler: props.filler,
-        sized: !props.filler,
-        hidden: hiddenNode(props.node),
-      }}
+      class={[
+        "pane",
+        {
+          [props.roles.roleOf(props.node.id)]: true,
+          filler: props.filler,
+          sized: !props.filler,
+          hidden: hiddenNode(props.node),
+        },
+      ]}
       data-pane-id={props.node.id}
       style={props.style}
     >

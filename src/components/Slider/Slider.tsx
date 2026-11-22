@@ -1,4 +1,5 @@
-import { createUniqueId, Show, type JSX } from "solid-js";
+import { createUniqueId, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import styles from "./Slider.module.css";
 
 function snapToStep(value: number, min: number, max: number, step: number) {

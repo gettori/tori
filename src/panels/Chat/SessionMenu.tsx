@@ -1,4 +1,5 @@
-import { For, Show, type JSX } from "solid-js";
+import { For, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import {
   FileDiff,
   FoldVertical,
@@ -65,7 +66,7 @@ function SideChats(props: { parentTab: string; canOpen: boolean; onNew: () => vo
               }
               {...CLOSES}
             >
-              <span class={styles.sideDot} classList={{ [styles.sideDotOpen]: isOpen(side) }} aria-hidden="true" />
+              <span class={[styles.sideDot, { [styles.sideDotOpen]: isOpen(side) }]} aria-hidden="true" />
               <span class={styles.menuRowLabel}>{sideLabel(side)}</span>
               <span class={styles.menuRowHint}>{state(side)}</span>
             </Tooltip>

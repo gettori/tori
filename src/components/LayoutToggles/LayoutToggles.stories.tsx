@@ -27,9 +27,6 @@ export const Default: Story = {
   render: (args) => <Live {...args} />,
 };
 
-/** A hidden pane accents its glyph as a "click to bring it back" cue. The rule
- *  hangs off `data-pressed` rather than a class passed in, which is
- *  what keeps it from being clobbered by IconButton's own `classList`. */
 export const SidebarHidden: Story = {
   args: { showSidebar: false },
   render: (args) => <Live {...args} />,

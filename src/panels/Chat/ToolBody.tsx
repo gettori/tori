@@ -1,4 +1,5 @@
-import { For, Show, Switch, Match, createMemo, createSignal, type JSX } from "solid-js";
+import { For, Show, Switch, Match, createMemo, createSignal } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { createHighlight, langOfPath } from "./highlight";
 import { BODY_ROWS, hitRows, pathRows, prettyJson, readLines, stripAnsi } from "./toolOutput";
 import { toolDiffBody, type DiffHunk, type DiffRow } from "./toolDiff";
@@ -200,11 +201,13 @@ function CodeRow(props: { line: Extract<DiffLine, { row: DiffRow }> }) {
   const row = () => props.line.row;
   return (
     <div
-      class={styles.diffRow}
-      classList={{
-        [styles.diffRowAdd]: row().kind === "add",
-        [styles.diffRowDel]: row().kind === "del",
-      }}
+      class={[
+        styles.diffRow,
+        {
+          [styles.diffRowAdd]: row().kind === "add",
+          [styles.diffRowDel]: row().kind === "del",
+        },
+      ]}
     >
       <span class={styles.diffNum}>{row().oldLine ?? ""}</span>
       <span class={styles.diffNum}>{row().newLine ?? ""}</span>

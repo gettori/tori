@@ -1,5 +1,5 @@
-import { createContext, splitProps, useContext, type Component, type JSX, type ValidComponent } from "solid-js";
-import { Dynamic } from "solid-js/web";
+import { createContext, omit, useContext, type Component, type ValidComponent } from "solid-js";
+import { type JSX, dynamic } from "@solidjs/web";
 import { createItemOrder, createRovingFocus } from "../../lib/keyboard";
 import { callHandler, type TriggerHandler } from "../callHandler";
 
@@ -10,7 +10,7 @@ type GroupValue = {
   press: (value: string) => void;
 };
 
-const GroupContext = createContext<GroupValue>();
+const GroupContext = createContext<GroupValue | null>(null);
 
 export interface ToggleGroupRootProps extends JSX.HTMLAttributes<HTMLDivElement> {
   pressed: (value: string) => boolean;
@@ -18,12 +18,12 @@ export interface ToggleGroupRootProps extends JSX.HTMLAttributes<HTMLDivElement>
 }
 
 function Root(props: ToggleGroupRootProps) {
-  const [local, rest] = splitProps(props, ["pressed", "onPress", "ref", "onKeyDown", "onMouseDown"]);
+  const rest = omit(props, "pressed", "onPress", "ref", "onKeyDown", "onMouseDown");
   const order = createItemOrder();
   const roving = createRovingFocus({
     keys: order.keys,
     orientation: "horizontal",
-    selected: () => order.keys().find((key) => local.pressed(key)),
+    selected: () => order.keys().find((key) => props.pressed(key)),
     wrap: true,
     rootTabStop: true,
     allowModifiers: true,
@@ -31,7 +31,7 @@ function Root(props: ToggleGroupRootProps) {
   });
 
   const onKeyDown = (e: KeyboardEvent & { currentTarget: HTMLDivElement }) => {
-    callHandler(e, local.onKeyDown as TriggerHandler);
+    callHandler(e, props.onKeyDown as TriggerHandler);
     roving.root.onKeyDown(e);
     // A vertical arrow inside the strip must not scroll the pane behind it.
     if ((e.key === "ArrowUp" || e.key === "ArrowDown") && e.currentTarget.contains(e.target as Node)) {
@@ -40,14 +40,14 @@ function Root(props: ToggleGroupRootProps) {
   };
 
   const onMouseDown = (e: MouseEvent & { currentTarget: HTMLDivElement }) => {
-    callHandler(e, local.onMouseDown as TriggerHandler);
+    callHandler(e, props.onMouseDown as TriggerHandler);
     if (e.target === e.currentTarget) e.preventDefault();
   };
 
   return (
-    <GroupContext.Provider value={{ order, roving, pressed: local.pressed, press: (v) => local.onPress(v) }}>
+    <GroupContext value={{ order, roving, pressed: props.pressed, press: (v) => props.onPress(v) }}>
       <div
-        ref={local.ref}
+        ref={props.ref}
         role="group"
         data-orientation="horizontal"
         tabindex={roving.root.tabindex}
@@ -56,7 +56,7 @@ function Root(props: ToggleGroupRootProps) {
         onMouseDown={onMouseDown}
         {...rest}
       />
-    </GroupContext.Provider>
+    </GroupContext>
   );
 }
 
@@ -70,7 +70,9 @@ function Item<P extends Record<string, any> = {}>(
 ) {
   const group = useContext(GroupContext);
   if (!group) throw new Error("ToggleGroup.Item needs a ToggleGroup.Root");
-  const [local, rest] = splitProps(props as ToggleGroupItemProps & { as?: ValidComponent }, [
+  const local = props as ToggleGroupItemProps & { as?: ValidComponent };
+  const rest = omit(
+    local,
     "as",
     "value",
     "disabled",
@@ -80,7 +82,7 @@ function Item<P extends Record<string, any> = {}>(
     "onKeyDown",
     "onMouseDown",
     "onFocus",
-  ]);
+  );
   const item = group.roving.item(local.value);
   let pointerType: string | undefined;
 
@@ -117,9 +119,9 @@ function Item<P extends Record<string, any> = {}>(
     },
   };
 
+  const Control = dynamic(() => (local.as ?? "button") as "button");
   return (
-    <Dynamic
-      component={(local.as ?? "button") as "button"}
+    <Control
       type="button"
       disabled={local.disabled}
       tabindex={local.disabled ? undefined : item.tabindex}

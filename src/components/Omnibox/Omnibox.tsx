@@ -1318,15 +1318,11 @@ export default function Omnibox(props: {
       <Combobox
         bare
         leading={
-          <span class={styles.lead} classList={{ [styles.isFilter]: filterOn() }}>
+          <span class={[styles.lead, { [styles.isFilter]: filterOn() }]}>
             <Icon icon={MODE_GLYPHS[mode()]} />
           </span>
         }
-        trailing={
-          <span class={styles.tag} classList={{ [styles.isFilter]: filterOn() }}>
-            {specOf(mode()).label}
-          </span>
-        }
+        trailing={<span class={[styles.tag, { [styles.isFilter]: filterOn() }]}>{specOf(mode()).label}</span>}
         aboveList={
           <Show when={noMatch()}>
             <div class={styles.message} role="status">

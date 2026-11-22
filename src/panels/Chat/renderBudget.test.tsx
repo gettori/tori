@@ -1,6 +1,5 @@
 import { expect, it, vi } from "vite-plus/test";
-import { createMemo } from "solid-js";
-import { createStore, produce } from "solid-js/store";
+import { createMemo, createStore, produce } from "solid-js";
 import { render } from "../../test/harness";
 import { renderCost, renderDrift } from "../../test/perfCounters";
 import type { ChatEvent } from "../../utils/chatTypes";

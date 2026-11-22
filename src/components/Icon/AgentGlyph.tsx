@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { Dynamic } from "solid-js/web";
+import { dynamic } from "@solidjs/web";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { agents } from "../../utils/agents";
 import { agentMark } from "./agentMarks";
@@ -50,7 +50,10 @@ export default function AgentGlyph(props: {
           </Show>
         }
       >
-        {(Mark) => <Dynamic component={Mark()} size={`calc(${Math.round(size() * 0.7)}px * var(--ui-scale))`} />}
+        {(Mark) => {
+          const Glyph = dynamic(() => Mark());
+          return <Glyph size={`calc(${Math.round(size() * 0.7)}px * var(--ui-scale))`} />;
+        }}
       </Show>
     </span>
   );

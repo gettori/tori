@@ -1,4 +1,4 @@
-import { Index, Match, Switch, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
+import { For, Match, Switch, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
 import type { Token } from "marked";
 import { invoke } from "@tauri-apps/api/core";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
@@ -215,7 +215,7 @@ export default function Markdown(props: { text: string; cwd: string; breaks?: bo
   // `Index`, not `For`: segments are positional. While streaming, positions
   // keep their DOM and only a segment whose content changed updates.
   return (
-    <Index each={segments()}>
+    <For keyed={false} each={segments()}>
       {(seg) => (
         <Switch>
           <Match when={seg().kind === "prose" && seg()}>
@@ -243,6 +243,6 @@ export default function Markdown(props: { text: string; cwd: string; breaks?: bo
           </Match>
         </Switch>
       )}
-    </Index>
+    </For>
   );
 }

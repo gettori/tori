@@ -1,4 +1,5 @@
-import { For, Index, Match, Show, Switch, createSignal, type JSX } from "solid-js";
+import { For, Match, Show, Switch, createSignal } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import Button from "../../../components/Button/Button";
 import AgentGlyph from "../../../components/Icon/AgentGlyph";
 import type { AgentHealth } from "../../../utils/agentHealth";
@@ -50,7 +51,7 @@ export default function AgentsStep(props: {
         fallback={
           <>
             <div class={styles.agents}>
-              <Index each={[130, 104, 120]}>
+              <For keyed={false} each={[130, 104, 120]}>
                 {(width) => (
                   <div class={`${styles.agent} ${styles.skeleton}`}>
                     <span class={styles.agentPlate} />
@@ -58,7 +59,7 @@ export default function AgentsStep(props: {
                     <span class={`${styles.bar} ${styles.barEnd}`} />
                   </div>
                 )}
-              </Index>
+              </For>
             </div>
             <div class={styles.probing}>Probing PATH for known agent CLIs</div>
           </>

@@ -245,8 +245,7 @@ export default function ScriptsSection(props: { root: string | null }) {
                         onClick={() => runOrShow(t)}
                       >
                         <span
-                          class={styles.play}
-                          classList={{ [styles.running]: !!running(t) }}
+                          class={[styles.play, { [styles.running]: !!running(t) }]}
                           title={running(t) ? "Running" : undefined}
                         >
                           <Icon icon={Play} />

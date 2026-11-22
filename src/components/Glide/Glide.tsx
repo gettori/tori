@@ -1,4 +1,5 @@
-import { createEffect, onCleanup, onMount, type JSX } from "solid-js";
+import { createEffect, onCleanup, onMount } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import styles from "./Glide.module.css";
 
 // A row reached within this long of a real pointer move is the pointer's doing.

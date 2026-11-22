@@ -1,5 +1,5 @@
-import { createEffect, onCleanup, untrack, type JSX } from "solid-js";
-import { Portal } from "solid-js/web";
+import { createEffect, onCleanup, untrack } from "solid-js";
+import { type JSX, Portal } from "@solidjs/web";
 import { anchorLayer, openLayer } from "../../lib/layer";
 import { useDialogSurface } from "../Dialog/surface";
 import styles from "./Popover.module.css";

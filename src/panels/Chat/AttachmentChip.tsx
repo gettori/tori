@@ -1,4 +1,5 @@
-import { For, Show, type JSX } from "solid-js";
+import { For, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { X } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import Tooltip from "../../components/Tooltip/Tooltip";
@@ -67,12 +68,14 @@ export function AttachmentChip(props: {
   return (
     <div
       ref={props.ref}
-      class={styles.attachment}
-      classList={{
-        [styles.attachmentTile]: tile(),
-        [styles.attachmentMissing]: !!props.missing,
-        [styles.attachmentPointed]: !!props.pointed,
-      }}
+      class={[
+        styles.attachment,
+        {
+          [styles.attachmentTile]: tile(),
+          [styles.attachmentMissing]: !!props.missing,
+          [styles.attachmentPointed]: !!props.pointed,
+        },
+      ]}
     >
       {/* Two controls, because the chip means two things: look at it, or take
           it away. Cmd+click keeps the tile's other job of naming it in the
@@ -150,8 +153,10 @@ export function InlineChip(props: {
   return (
     <button
       type="button"
-      class={styles.inlineChip}
-      classList={{ [styles.inlineChipMissing]: !!props.missing, [styles.inlineChipFixed]: !props.onDragStart }}
+      class={[
+        styles.inlineChip,
+        { [styles.inlineChipMissing]: !!props.missing, [styles.inlineChipFixed]: !props.onDragStart },
+      ]}
       aria-label={`Preview ${chipLabel(props.block)}`}
       onMouseEnter={() => props.onPoint(true)}
       onMouseLeave={() => props.onPoint(false)}

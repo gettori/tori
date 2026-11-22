@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from "vite-plus/test";
 import { render, screen, fireEvent, waitFor } from "../../test/harness";
-import { Show, createSignal } from "solid-js";
-import { createStore } from "solid-js/store";
+import { Show, createSignal, createStore } from "solid-js";
 import { expectNoAxeViolations } from "../../test/axe";
 import MessageList from "./MessageList";
 import { lastReply, speakableChunks } from "./speakable";

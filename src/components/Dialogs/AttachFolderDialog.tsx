@@ -1,4 +1,5 @@
-import { createEffect, createSignal, For, Match, on, onCleanup, Show, Switch, type JSX } from "solid-js";
+import { createEffect, createSignal, For, Match, on, onCleanup, Show, Switch } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import { Ban, Folder, FolderInput, GitBranch, GitFork, type IconGlyph } from "../Icon/icons";
 import Button from "../Button/Button";

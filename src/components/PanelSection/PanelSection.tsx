@@ -1,4 +1,5 @@
-import { Show, type JSX } from "solid-js";
+import { Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 
 import Chevron from "../Chevron/Chevron";
 import Resizer from "../Resizer/Resizer";
@@ -34,8 +35,7 @@ export default function PanelSection<Id extends string>(props: {
   const height = () => props.layout.size(props.id) * chromeScale();
   return (
     <section
-      class={styles.section}
-      classList={{ [styles.fill]: open() && props.fill }}
+      class={[styles.section, { [styles.fill]: open() && props.fill }]}
       style={fixed() ? { flex: `0 1 ${height()}px` } : undefined}
       data-section={props.id}
     >

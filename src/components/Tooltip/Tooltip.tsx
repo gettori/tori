@@ -2,19 +2,19 @@ import {
   createEffect,
   createSignal,
   createUniqueId,
-  mergeProps,
+  merge,
   onCleanup,
   Show,
-  splitProps,
+  omit,
   untrack,
   type Component,
-  type JSX,
 } from "solid-js";
-import { Dynamic, Portal } from "solid-js/web";
+import { type JSX, dynamic, Portal } from "@solidjs/web";
 import { anchorLayer, openLayer } from "../../lib/layer";
 import { callHandler, type TriggerHandler } from "../callHandler";
 import { useDialogSurface } from "../Dialog/surface";
 import styles from "./Tooltip.module.css";
+import { defined } from "../../lib/props";
 
 /** Which side of the control the tooltip sits on. */
 export type TooltipPlacement = "top" | "bottom" | "left" | "right";
@@ -191,21 +191,37 @@ function TooltipSurface(props: {
 export default function Tooltip<T extends HTMLElement = HTMLButtonElement, P extends Record<string, any> = {}>(
   props: TooltipProps<T, P>,
 ) {
-  const [local, handlers, trigger] = splitProps(
+  const bare = omit(
     props,
-    ["label", "suppressed", "placement", "openDelay", "closeDelay", "mount", "whenDisabled", "as"],
-    ["ref", "onPointerEnter", "onPointerLeave", "onPointerDown", "onClick", "onFocus", "onBlur"],
+    "label",
+    "suppressed",
+    "placement",
+    "openDelay",
+    "closeDelay",
+    "mount",
+    "whenDisabled",
+    "as",
+  );
+  const trigger = omit(
+    bare,
+    "ref",
+    "onPointerEnter",
+    "onPointerLeave",
+    "onPointerDown",
+    "onClick",
+    "onFocus",
+    "onBlur",
   );
 
-  const openDelay = () => local.openDelay ?? OPEN_DELAY;
-  const closeDelay = () => local.closeDelay ?? CLOSE_DELAY;
+  const openDelay = () => props.openDelay ?? OPEN_DELAY;
+  const closeDelay = () => props.closeDelay ?? CLOSE_DELAY;
   const dialogSurface = useDialogSurface();
-  const mount = () => local.mount ?? dialogSurface();
+  const mount = () => props.mount ?? dialogSurface();
   const id = createUniqueId();
 
   const [isOpen, setOpen] = createSignal(false);
   const [triggerEl, setTriggerEl] = createSignal<HTMLElement>();
-  const shown = () => isOpen() && !local.suppressed;
+  const shown = () => isOpen() && !props.suppressed;
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   let pointerDown = false;
@@ -231,14 +247,14 @@ export default function Tooltip<T extends HTMLElement = HTMLButtonElement, P ext
 
   // Cleared rather than masked, so lifting suppression cannot spring it back.
   createEffect(() => {
-    if (local.suppressed) closeNow();
+    if (props.suppressed) closeNow();
   });
 
   const behaviour = {
     type: "button",
     ref: (el: HTMLElement) => {
       setTriggerEl(el);
-      (handlers.ref as ((el: HTMLElement) => void) | undefined)?.(el);
+      (props.ref as ((el: HTMLElement) => void) | undefined)?.(el);
     },
     get "aria-describedby"() {
       return shown() ? id : undefined;
@@ -250,53 +266,54 @@ export default function Tooltip<T extends HTMLElement = HTMLButtonElement, P ext
       return shown() ? undefined : "";
     },
     onPointerEnter: (e: PointerEvent) => {
-      callHandler(e, handlers.onPointerEnter as TriggerHandler);
-      if (e.pointerType === "touch" || local.suppressed || e.defaultPrevented) return;
+      callHandler(e, props.onPointerEnter as TriggerHandler);
+      if (e.pointerType === "touch" || props.suppressed || e.defaultPrevented) return;
       if (isOpen()) clearTimer();
       else schedule(true, openDelay());
     },
     onPointerLeave: (e: PointerEvent) => {
-      callHandler(e, handlers.onPointerLeave as TriggerHandler);
+      callHandler(e, props.onPointerLeave as TriggerHandler);
       if (e.pointerType === "touch") return;
       if (isOpen()) schedule(false, closeDelay());
       else clearTimer();
     },
     onPointerDown: (e: PointerEvent) => {
-      callHandler(e, handlers.onPointerDown as TriggerHandler);
+      callHandler(e, props.onPointerDown as TriggerHandler);
       pointerDown = true;
       document.addEventListener("pointerup", onPointerUp, { once: true });
     },
     onClick: (e: MouseEvent) => {
-      callHandler(e, handlers.onClick as TriggerHandler);
+      callHandler(e, props.onClick as TriggerHandler);
       closeNow();
     },
     onFocus: (e: FocusEvent) => {
-      callHandler(e, handlers.onFocus as TriggerHandler);
-      if (local.suppressed || e.defaultPrevented || pointerDown) return;
+      callHandler(e, props.onFocus as TriggerHandler);
+      if (props.suppressed || e.defaultPrevented || pointerDown) return;
       clearTimer();
       setOpen(true);
     },
     onBlur: (e: FocusEvent) => {
-      callHandler(e, handlers.onBlur as TriggerHandler);
+      callHandler(e, props.onBlur as TriggerHandler);
       closeNow();
     },
   };
 
   // The cast is confined to these two lines: `T` buys the caller precise handler
-  // types, and `Dynamic` resolves its props from a tag name it cannot know here.
-  const bareProps = mergeProps(handlers, trigger) as unknown as TooltipProps<HTMLButtonElement>;
-  const triggerProps = mergeProps(behaviour, trigger) as unknown as TooltipProps<HTMLButtonElement>;
+  // types, and `dynamic` resolves its props from a tag name it cannot know here.
+  const bareProps = bare as unknown as TooltipProps<HTMLButtonElement>;
+  const triggerProps = merge(behaviour, defined(trigger)) as unknown as TooltipProps<HTMLButtonElement>;
 
-  const control = () => <Dynamic component={local.as ?? "button"} {...triggerProps} />;
+  const Control = dynamic(() => props.as ?? "button");
+  const control = () => <Control {...triggerProps} />;
 
   return (
     <Show
-      when={local.label != null}
+      when={props.label != null}
       // No label, no tooltip: the bare control. This is what a wrapper's
       // untooltipped call sites get, and there are hundreds of them.
-      fallback={<Dynamic component={local.as ?? "button"} {...bareProps} />}
+      fallback={<Control {...bareProps} />}
     >
-      {local.whenDisabled ? (
+      {props.whenDisabled ? (
         <span
           class={styles.hoverSurface}
           data-tooltip-hover-surface=""
@@ -311,8 +328,8 @@ export default function Tooltip<T extends HTMLElement = HTMLButtonElement, P ext
       <Show when={shown() && triggerEl()}>
         {(anchor) => (
           <Portal mount={mount()}>
-            <TooltipSurface id={id} anchor={anchor()} placement={local.placement ?? "top"} onDismiss={closeNow}>
-              {local.label}
+            <TooltipSurface id={id} anchor={anchor()} placement={props.placement ?? "top"} onDismiss={closeNow}>
+              {props.label}
             </TooltipSurface>
           </Portal>
         )}

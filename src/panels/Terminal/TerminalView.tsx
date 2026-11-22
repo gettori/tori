@@ -442,8 +442,7 @@ export default function TerminalView(props: {
 
   return (
     <div
-      class={styles.termHostWrap}
-      classList={{ [styles.hidden]: !props.active }}
+      class={[styles.termHostWrap, { [styles.hidden]: !props.active }]}
       onDragOver={(e) => {
         e.preventDefault();
         if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";

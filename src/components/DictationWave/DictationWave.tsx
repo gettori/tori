@@ -7,7 +7,7 @@ export default function DictationWave(props: { levels: number[]; busy: boolean }
   const mirrored = createMemo(() => [...props.levels, ...[...props.levels].reverse()]);
   const centre = () => (mirrored().length - 1) / 2;
   return (
-    <div class={styles.wave} classList={{ [styles.busy]: props.busy }}>
+    <div class={[styles.wave, { [styles.busy]: props.busy }]}>
       <div class={styles.bars} aria-hidden="true">
         <For each={mirrored()}>
           {(level, i) => {

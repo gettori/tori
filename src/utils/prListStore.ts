@@ -17,7 +17,7 @@
 // Uncached in Rust on purpose: `forge_list_prs` bypasses the poll layer's
 // pacing, which exists for a tick that runs forever and not for a click.
 
-import { createStore, reconcile } from "solid-js/store";
+import { createStore, reconcile } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { forgeErrorMessage, type Paged, type PullRequest } from "./forgeTypes";
 

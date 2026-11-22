@@ -149,8 +149,7 @@ export default function LocalHistory(props: { workspace: string; file: string })
               {(entry, i) => (
                 <>
                   <div
-                    class={styles.row}
-                    classList={{ [styles.rowOn]: picked() === entry.ts }}
+                    class={[styles.row, { [styles.rowOn]: picked() === entry.ts }]}
                     onClick={() => void pick(entry.ts)}
                   >
                     <span class={styles.when}>{shortTime(entry.ts)}</span>

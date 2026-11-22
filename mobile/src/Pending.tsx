@@ -1,4 +1,4 @@
-import { For, Index, Match, Show, Switch, createSignal } from "solid-js";
+import { For, Match, Show, Switch, createSignal } from "solid-js";
 import ApprovalDraft from "../../src/panels/Chat/ApprovalDraft";
 import type { AskApproval } from "../../src/utils/socketAsks";
 import type { ChatQuestion } from "../../src/utils/chatTypes";
@@ -15,7 +15,7 @@ function QuestionCard(props: { row: Extract<PendingRow, { kind: "question" }>; s
   const set = (at: number, value: string) => setAnswers(answers().map((a, i) => (i === at ? value : a)));
   return (
     <div class={styles.card}>
-      <Index each={props.row.questions}>
+      <For keyed={false} each={props.row.questions}>
         {(q, at) => (
           <div class={styles.question}>
             <strong>{q().question}</strong>
@@ -40,7 +40,7 @@ function QuestionCard(props: { row: Extract<PendingRow, { kind: "question" }>; s
             />
           </div>
         )}
-      </Index>
+      </For>
       <div class={styles.cardActions}>
         <button
           class={styles.primarySmall}

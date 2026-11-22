@@ -1,5 +1,5 @@
 import { onCleanup, onMount, createEffect, createMemo, on, createSignal, For, Show } from "solid-js";
-import { Portal } from "solid-js/web";
+import { Portal } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {

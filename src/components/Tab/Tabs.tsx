@@ -5,13 +5,12 @@ import {
   createSignal,
   createUniqueId,
   onCleanup,
-  splitProps,
+  omit,
   untrack,
   useContext,
   type Component,
-  type JSX,
 } from "solid-js";
-import { Dynamic } from "solid-js/web";
+import { type JSX, dynamic } from "@solidjs/web";
 import { createItemOrder, createRovingFocus } from "../../lib/keyboard";
 import { callHandler, type TriggerHandler } from "../callHandler";
 
@@ -25,7 +24,7 @@ type TabsValue = {
   noteBlur: () => void;
 };
 
-const TabsContext = createContext<TabsValue>();
+const TabsContext = createContext<TabsValue | null>(null);
 
 const APPLE = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 
@@ -36,17 +35,17 @@ export interface TabsRootProps extends Omit<JSX.HTMLAttributes<HTMLDivElement>, 
 }
 
 function Root(props: TabsRootProps) {
-  const [local, rest] = splitProps(props, ["value", "defaultValue", "onChange", "id"]);
+  const rest = omit(props, "value", "defaultValue", "onChange", "id");
   const fallbackId = `tabs-${createUniqueId()}`;
-  const [uncontrolled, setUncontrolled] = createSignal(local.defaultValue);
+  const [uncontrolled, setUncontrolled] = createSignal(props.defaultValue);
   const order = createItemOrder();
 
-  const selected = createMemo(() => local.value ?? uncontrolled());
+  const selected = createMemo(() => props.value ?? uncontrolled());
 
   const select = (value: string) => {
     if (value === selected()) return;
-    if (local.value === undefined) setUncontrolled(value);
-    local.onChange?.(value);
+    if (props.value === undefined) setUncontrolled(value);
+    props.onChange?.(value);
   };
   const roving = createRovingFocus({
     keys: order.keys,
@@ -57,7 +56,7 @@ function Root(props: TabsRootProps) {
     allowModifiers: true,
     preventScroll: true,
   });
-  const id = () => local.id ?? fallbackId;
+  const id = () => (props.id ?? fallbackId) as string;
 
   let focusedTabRemoved = false;
 
@@ -70,8 +69,8 @@ function Root(props: TabsRootProps) {
     untrack(() => {
       if (all.length > 0 && (current === undefined || !all.includes(current))) {
         const fallback = enabled[0] ?? all[0];
-        if (local.value === undefined) setUncontrolled(fallback);
-        local.onChange?.(fallback);
+        if (props.value === undefined) setUncontrolled(fallback);
+        props.onChange?.(fallback);
       }
       if (!focusedTabRemoved) return;
       focusedTabRemoved = false;
@@ -89,9 +88,9 @@ function Root(props: TabsRootProps) {
   };
 
   return (
-    <TabsContext.Provider value={{ id, order, roving, selected, select, noteRemoved, noteBlur }}>
+    <TabsContext value={{ id, order, roving, selected, select, noteRemoved, noteBlur }}>
       <div id={id()} data-orientation="horizontal" {...rest} />
-    </TabsContext.Provider>
+    </TabsContext>
   );
 }
 
@@ -103,10 +102,10 @@ function useTabs() {
 
 function List(props: JSX.HTMLAttributes<HTMLDivElement>) {
   const tabs = useTabs();
-  const [local, rest] = splitProps(props, ["ref", "onKeyDown"]);
+  const rest = omit(props, "ref", "onKeyDown");
 
   const onKeyDown = (e: KeyboardEvent) => {
-    callHandler(e, local.onKeyDown as TriggerHandler);
+    callHandler(e, props.onKeyDown as TriggerHandler);
     const handled = e.defaultPrevented;
     tabs.roving.root.onKeyDown(e);
     const landed = tabs.roving.active();
@@ -118,7 +117,7 @@ function List(props: JSX.HTMLAttributes<HTMLDivElement>) {
     <div
       ref={(el) => {
         tabs.order.watch(el);
-        (local.ref as ((el: HTMLDivElement) => void) | undefined)?.(el);
+        (props.ref as ((el: HTMLDivElement) => void) | undefined)?.(el);
       }}
       role="tablist"
       aria-orientation="horizontal"
@@ -138,7 +137,8 @@ export type TabsTriggerProps = Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>,
 
 function Trigger(props: TabsTriggerProps) {
   const tabs = useTabs();
-  const [local, rest] = splitProps(props, [
+  const rest = omit(
+    props,
     "as",
     "value",
     "disabled",
@@ -150,64 +150,64 @@ function Trigger(props: TabsTriggerProps) {
     "onMouseDown",
     "onFocus",
     "onBlur",
-  ]);
-  const item = tabs.roving.item(local.value);
-  const isSelected = () => tabs.selected() === local.value;
+  );
+  const item = tabs.roving.item(props.value);
+  const isSelected = () => tabs.selected() === props.value;
   let pointerType: string | undefined;
 
   const handlers = {
     ref: (el: HTMLButtonElement) => {
       item.ref(el);
-      tabs.order.register({ key: local.value, element: el, disabled: () => !!local.disabled });
+      tabs.order.register({ key: props.value, element: el, disabled: () => !!props.disabled });
       onCleanup(() => tabs.noteRemoved(el));
-      (local.ref as ((el: HTMLButtonElement) => void) | undefined)?.(el);
+      (props.ref as ((el: HTMLButtonElement) => void) | undefined)?.(el);
     },
     onPointerDown: (e: PointerEvent) => {
-      callHandler(e, local.onPointerDown as TriggerHandler);
-      if (local.disabled) return;
+      callHandler(e, props.onPointerDown as TriggerHandler);
+      if (props.disabled) return;
       pointerType = e.pointerType;
-      if (e.pointerType === "mouse" && e.button === 0) tabs.select(local.value);
+      if (e.pointerType === "mouse" && e.button === 0) tabs.select(props.value);
     },
     onClick: (e: MouseEvent & { currentTarget: HTMLElement }) => {
-      callHandler(e, local.onClick as TriggerHandler);
-      if (local.disabled) return;
-      if (pointerType !== "mouse") tabs.select(local.value);
+      callHandler(e, props.onClick as TriggerHandler);
+      if (props.disabled) return;
+      if (pointerType !== "mouse") tabs.select(props.value);
       // WebKit does not focus a clicked button.
       e.currentTarget.focus({ preventScroll: true });
     },
     onKeyDown: (e: KeyboardEvent) => {
-      callHandler(e, local.onKeyDown as TriggerHandler);
-      if (!local.disabled && !e.defaultPrevented && (e.key === "Enter" || e.key === " ")) tabs.select(local.value);
+      callHandler(e, props.onKeyDown as TriggerHandler);
+      if (!props.disabled && !e.defaultPrevented && (e.key === "Enter" || e.key === " ")) tabs.select(props.value);
     },
     onMouseDown: (e: MouseEvent) => {
-      callHandler(e, local.onMouseDown as TriggerHandler);
-      if (local.disabled) e.preventDefault();
+      callHandler(e, props.onMouseDown as TriggerHandler);
+      if (props.disabled) e.preventDefault();
     },
     onFocus: (e: FocusEvent) => {
-      callHandler(e, local.onFocus as TriggerHandler);
-      if (!local.disabled) item.onFocus();
+      callHandler(e, props.onFocus as TriggerHandler);
+      if (!props.disabled) item.onFocus();
     },
     onBlur: (e: FocusEvent) => {
-      callHandler(e, local.onBlur as TriggerHandler);
+      callHandler(e, props.onBlur as TriggerHandler);
       tabs.noteBlur();
     },
   };
 
+  const Control = dynamic(() => (props.as ?? "button") as "button");
   return (
-    <Dynamic
-      component={(local.as ?? "button") as "button"}
+    <Control
       type="button"
-      id={local.id ?? `${tabs.id()}-trigger-${local.value}`}
+      id={props.id ?? `${tabs.id()}-trigger-${props.value}`}
       role="tab"
-      disabled={local.disabled}
-      tabindex={local.disabled ? undefined : item.tabindex}
+      disabled={props.disabled}
+      tabindex={props.disabled ? undefined : item.tabindex}
       aria-selected={isSelected() ? "true" : "false"}
-      aria-disabled={local.disabled ? "true" : undefined}
-      data-key={local.value}
+      aria-disabled={props.disabled ? "true" : undefined}
+      data-key={props.value}
       data-orientation="horizontal"
       data-selected={isSelected() ? "" : undefined}
-      data-highlighted={!local.disabled && item.tabindex === 0 ? "" : undefined}
-      data-disabled={local.disabled ? "" : undefined}
+      data-highlighted={!props.disabled && item.tabindex === 0 ? "" : undefined}
+      data-disabled={props.disabled ? "" : undefined}
       {...handlers}
       {...(rest as JSX.ButtonHTMLAttributes<HTMLButtonElement>)}
     />

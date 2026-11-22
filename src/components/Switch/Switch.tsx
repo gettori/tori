@@ -1,4 +1,5 @@
-import { createUniqueId, Show, type JSX } from "solid-js";
+import { createUniqueId, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import Tooltip from "../Tooltip/Tooltip";
 import styles from "./Switch.module.css";
 
