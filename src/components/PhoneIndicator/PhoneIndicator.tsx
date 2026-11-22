@@ -1,4 +1,4 @@
-import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createSignal, onSettled } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Smartphone } from "../Icon/icons";
@@ -21,10 +21,10 @@ export default function PhoneIndicator() {
     void invoke<Device[]>("devices_list")
       .then(setDevices)
       .catch(() => {});
-  onMount(() => {
+  onSettled(() => {
     load();
     const unlisten = listen("remote://devices", load);
-    onCleanup(() => void unlisten.then((f) => f()));
+    return () => void unlisten.then((f) => f());
   });
 
   const connected = () => devices().filter((d) => d.connected).length;

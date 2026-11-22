@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, createUniqueId, For, onCleanup, Show, untrack } from "solid-js";
+import { createEffect, createMemo, createSignal, createUniqueId, For, onCleanup, Show, onSettled } from "solid-js";
 import { type JSX, Portal } from "@solidjs/web";
 import { Check, ChevronsUpDown } from "../Icon/icons";
 import { createTypeahead } from "../../lib/keyboard";
@@ -376,36 +376,32 @@ function ListSurface(props: {
     onMatch: (value) => props.highlight(value),
   });
 
-  createEffect(() => {
-    const anchor = props.trigger;
-    if (!anchor) return;
-    onCleanup(anchorLayer(anchor, surface, "bottom", TRIGGER_GUTTER));
-  });
-
-  createEffect(() =>
-    untrack(() => {
-      onCleanup(
-        openLayer({
-          element: surface,
-          show: () => surface.showPopover(),
-          hide: () => surface.hidePopover(),
-          onDismiss: () => props.onDismiss(),
-          ignorePress: (target) => !!props.trigger?.contains(target),
-          dismissOnFocusOutside: true,
-          returnFocus: () => props.trigger,
-        }),
-      );
-      const moveFocus = () => {
-        if (!surface.isConnected) return;
-        const start = props.highlighted();
-        if (start === null) listbox.focus({ preventScroll: true });
-        else props.highlight(start);
-      };
-      // The press's own mousedown moves focus after this, so land behind it.
-      if (window.event?.type === "pointerdown") setTimeout(moveFocus);
-      else moveFocus();
-    }),
+  createEffect(
+    () => props.trigger,
+    (anchor) => (anchor ? anchorLayer(anchor, surface, "bottom", TRIGGER_GUTTER) : undefined),
   );
+
+  onSettled(() => {
+    const release = openLayer({
+      element: surface,
+      show: () => surface.showPopover(),
+      hide: () => surface.hidePopover(),
+      onDismiss: () => props.onDismiss(),
+      ignorePress: (target) => !!props.trigger?.contains(target),
+      dismissOnFocusOutside: true,
+      returnFocus: () => props.trigger,
+    });
+    const moveFocus = () => {
+      if (!surface.isConnected) return;
+      const start = props.highlighted();
+      if (start === null) listbox.focus({ preventScroll: true });
+      else props.highlight(start);
+    };
+    // The press's own mousedown moves focus after this, so land behind it.
+    if (window.event?.type === "pointerdown") setTimeout(moveFocus);
+    else moveFocus();
+    return release;
+  });
 
   const onSurfaceKeyDown = (e: KeyboardEvent) => {
     if (e.key !== "Tab") return;

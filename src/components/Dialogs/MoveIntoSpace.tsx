@@ -1,4 +1,4 @@
-import { createEffect, createSignal, on, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { Folder } from "../Icon/icons";
 import Button from "../Button/Button";
@@ -33,44 +33,43 @@ export function createMoveForm(opts: {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 
-  createEffect(
-    on(opts.path, (at) => {
-      setFound(null);
-      setRefusal(null);
-      setError(null);
-      setBlockers([]);
-      if (!at) return;
-      let live = true;
-      onCleanup(() => (live = false));
-      invoke<Inspection>("inspect_folder", { path: at })
-        .then(async (f) => {
-          if (!live) return;
-          setFound(f);
-          setName(f.name);
-          const clone = f.layout.kind === "clone";
-          setConvert(clone);
-          if (!clone || !projectTrusted(at)) return;
-          const why = await conversionRefusal(at);
-          if (live && why) {
-            setRefusal(why);
-            setConvert(false);
-          }
-        })
-        .catch((e) => live && setError(String(e)));
-      opts.countRunning(at).then((n) => live && setBlockers(moveBlockers(n, [at])));
-    }),
-  );
+  createEffect(opts.path, (at) => {
+    setFound(null);
+    setRefusal(null);
+    setError(null);
+    setBlockers([]);
+    if (!at) return;
+    let live = true;
+    invoke<Inspection>("inspect_folder", { path: at })
+      .then(async (f) => {
+        if (!live) return;
+        setFound(f);
+        setName(f.name);
+        const clone = f.layout.kind === "clone";
+        setConvert(clone);
+        if (!clone || !projectTrusted(at)) return;
+        const why = await conversionRefusal(at);
+        if (live && why) {
+          setRefusal(why);
+          setConvert(false);
+        }
+      })
+      .catch((e) => live && setError(String(e)));
+    opts.countRunning(at).then((n) => live && setBlockers(moveBlockers(n, [at])));
+    return () => (live = false);
+  });
 
   createEffect(
-    on([opts.path, opts.space, name], ([at, space, n]) => {
+    () => [opts.path(), opts.space(), name()] as const,
+    ([at, space, n]) => {
       setCheck(null);
       if (!at || !space || !n.trim()) return;
       let live = true;
-      onCleanup(() => (live = false));
       invoke<string | null>("move_check", { base: opts.base(), space, name: n.trim(), path: at })
         .then((why) => live && setCheck(why))
         .catch((e) => live && setCheck(String(e)));
-    }),
+      return () => (live = false);
+    },
   );
 
   const canMove = () =>

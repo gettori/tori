@@ -1,4 +1,4 @@
-import { createEffect, createSignal, on, Show } from "solid-js";
+import { createEffect, createSignal, Show } from "solid-js";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Upload } from "../Icon/icons";
 import styles from "./ProjectIconPicker.module.css";
@@ -69,15 +69,13 @@ export default function ProjectIconPicker(props: {
   // A change made elsewhere (the sidebar, another window) lands here through
   // the stored props, and the picker follows it rather than showing the past.
   createEffect(
-    on(
-      () => [props.icon, props.iconFile] as const,
-      ([storedIcon, storedFile]) => {
-        setIcon(storedIcon);
-        setFile(storedFile);
-        setSource(sourceOf(storedIcon, storedFile));
-      },
-      { defer: true },
-    ),
+    () => [props.icon, props.iconFile] as const,
+    ([storedIcon, storedFile]) => {
+      setIcon(storedIcon);
+      setFile(storedFile);
+      setSource(sourceOf(storedIcon, storedFile));
+    },
+    { defer: true },
   );
 
   const resting = () => restingShelf(shelf, icon());

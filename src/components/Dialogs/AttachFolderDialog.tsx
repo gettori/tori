@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, Match, on, onCleanup, Show, Switch } from "solid-js";
+import { createEffect, createSignal, For, Match, Show, Switch } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import { Ban, Folder, FolderInput, GitBranch, GitFork, type IconGlyph } from "../Icon/icons";
@@ -150,25 +150,23 @@ export default function AttachFolderDialog(props: {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 
-  createEffect(
-    on(path, (at) => {
-      setFound(null);
-      setError(null);
-      const slow = setTimeout(() => setReading(true), READING_AFTER_MS);
-      onCleanup(() => clearTimeout(slow));
-      invoke<Inspection>("inspect_folder", { path: at })
-        .then((f) => {
-          if (path() !== at) return;
-          setFound(f);
-          setName(f.name);
-        })
-        .catch((e) => path() === at && setError(String(e)))
-        .finally(() => {
-          clearTimeout(slow);
-          if (path() === at) setReading(false);
-        });
-    }),
-  );
+  createEffect(path, (at) => {
+    setFound(null);
+    setError(null);
+    const slow = setTimeout(() => setReading(true), READING_AFTER_MS);
+    invoke<Inspection>("inspect_folder", { path: at })
+      .then((f) => {
+        if (path() !== at) return;
+        setFound(f);
+        setName(f.name);
+      })
+      .catch((e) => path() === at && setError(String(e)))
+      .finally(() => {
+        clearTimeout(slow);
+        if (path() === at) setReading(false);
+      });
+    return () => clearTimeout(slow);
+  });
 
   const canAttach = () => !!found() && !found()!.refused && !busy() && name().trim().length > 0;
 

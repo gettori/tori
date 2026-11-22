@@ -1,4 +1,4 @@
-import { createSignal, createEffect, on, onCleanup, For, Show } from "solid-js";
+import { createSignal, createEffect, onCleanup, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import { Search, Ticket, TriangleAlert, X } from "../Icon/icons";
@@ -132,22 +132,22 @@ export default function NewTopicDialog(props: {
       return next;
     });
   }
-  function probeStale() {
-    const b = branch();
+  function probeStale(b = branch(), repos = withWorktree()) {
     if (!b) return;
-    for (const repoPath of withWorktree()) {
+    for (const repoPath of repos) {
       const have = probes().get(repoPath);
       if (have?.branch !== b) probe(repoPath, b);
     }
   }
   createEffect(
-    on([branch, withWorktree], () => {
+    () => ({ b: branch(), repos: withWorktree() }),
+    ({ b, repos }) => {
       clearTimeout(timer);
-      const branchChanged = branch() !== lastBranch;
-      lastBranch = branch();
-      if (branchChanged) timer = setTimeout(probeStale, PROBE_DEBOUNCE_MS);
-      else probeStale();
-    }),
+      const branchChanged = b !== lastBranch;
+      lastBranch = b;
+      if (branchChanged) timer = setTimeout(() => probeStale(), PROBE_DEBOUNCE_MS);
+      else probeStale(b, repos);
+    },
   );
   onCleanup(() => clearTimeout(timer));
 

@@ -1,7 +1,8 @@
-import { Match, Show, Switch, createSignal, createResource, onCleanup } from "solid-js";
+import { Match, Show, Switch, createMemo, createSignal, onCleanup } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
+import { createFetchState } from "../../lib/fetchState";
 import Button from "../Button/Button";
 import Popover from "../Popover/Popover";
 import { pushToast } from "../Toasts/Toasts";
@@ -18,8 +19,10 @@ export default function UpdatePill(props: { suppressed?: boolean }) {
   const [dismissed, setDismissed] = createSignal(false);
   const [open, setOpen] = createSignal(false);
   const [stage, setStage] = createSignal<Stage>({ kind: "found" });
-  const [update, { mutate }] = createResource(() => invoke<UpdateInfo | null>("check_for_update").catch(() => null));
-  const [current] = createResource(() => getVersion().catch(() => null));
+  const [update, { mutate }] = createFetchState(() => invoke<UpdateInfo | null>("check_for_update").catch(() => null));
+  const current = createMemo<string | null | undefined>(() => getVersion().catch(() => null), {
+    loadingValue: undefined,
+  });
   let anchor: HTMLButtonElement | undefined;
   let primary: HTMLButtonElement | undefined;
   let cancelling = false;

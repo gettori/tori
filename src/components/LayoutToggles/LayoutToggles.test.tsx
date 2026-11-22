@@ -8,7 +8,7 @@
 // gone (phase 13): with one pane holding every kind there is nothing for them
 // to hide, and their keys bring a kind's tab to the front instead.
 import { describe, expect, it, vi, afterEach } from "vite-plus/test";
-import { createSignal } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import { fireEvent, render, screen } from "../../test/harness";
 import LayoutToggles from "./LayoutToggles";
 import { on, TOGGLE_SIDEBAR } from "../../utils/events";
@@ -49,6 +49,8 @@ describe("LayoutToggles", () => {
     expect(sidebar).toHaveBeenCalledTimes(1);
 
     setShown(false);
+
+    flush();
     expect(toggle(SIDEBAR).hasAttribute("data-pressed")).toBe(false);
     fireEvent.click(toggle(SIDEBAR));
     expect(sidebar).toHaveBeenCalledTimes(2);
@@ -66,6 +68,7 @@ describe("LayoutToggles", () => {
     const before = toggle(SIDEBAR);
     before.focus();
     setSidebar(false);
+    flush();
 
     expect(toggle(SIDEBAR)).toBe(before);
     expect(document.activeElement).toBe(before);

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vite-plus/test";
 import { render, screen, fireEvent } from "../../test/harness";
-import { createSignal } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import { expectNoAxeViolations } from "../../test/axe";
 import Combobox, { type ComboboxGroup, type ComboboxOption } from "./Combobox";
 
@@ -101,9 +101,11 @@ describe("Combobox", () => {
     it("writes the filter text when the caller changes it, including back to empty", () => {
       const { input, setQuery, rows } = host();
       setQuery("dev");
+      flush();
       expect(input().value).toBe("dev");
       expect(rows()).toHaveLength(1);
       setQuery("");
+      flush();
       expect(input().value).toBe("");
       expect(rows()).toHaveLength(3);
     });
@@ -152,6 +154,8 @@ describe("Combobox", () => {
       expect(screen.getByText("Recently visited")).toBeTruthy();
 
       setGroups((prev) => [...prev, { label: "Everything else", options: [{ value: "b", label: "beta" }] }]);
+
+      flush();
 
       expect(screen.getByText("Recently visited")).toBeTruthy();
       expect(screen.getByText("Everything else")).toBeTruthy();

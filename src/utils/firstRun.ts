@@ -77,9 +77,12 @@ export function firstRunOpen(): boolean {
 createRoot(() => {
   createEffect(config, (current) => {
     if (current === null) return;
-    if (gateMet(current)) return void setMetBefore(true);
-    setOpened(true);
-    setFinished(false);
+    // Live state flushes on write, which an effect callback cannot do.
+    queueMicrotask(() => {
+      if (gateMet(current)) return void setMetBefore(true);
+      setOpened(true);
+      setFinished(false);
+    });
   });
 });
 

@@ -1,4 +1,4 @@
-import { createSignal, onMount, Show } from "solid-js";
+import { createSignal, onSettled, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
@@ -16,7 +16,7 @@ export default function GroupingDialog(props: {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 
-  onMount(() => {
+  onSettled(() => {
     invoke<RootScan>("scan_root", { path: props.base })
       .then((s) => {
         setScan(s);

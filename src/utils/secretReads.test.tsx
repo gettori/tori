@@ -93,6 +93,7 @@ describe("a live session's secret mark", () => {
     await waitFor(() => expect(sessionSecret("s")?.strength).toBe("read"));
     setTargets([]);
     flush();
+    await Promise.resolve();
     expect(sessionSecret("s")).toBeNull();
   });
 

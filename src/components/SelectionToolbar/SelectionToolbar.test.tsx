@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, vi, afterEach } from "vite-plus/test";
 import { render, fireEvent, screen } from "../../test/harness";
 import SelectionToolbar, { quoteAction, quoteBlock, readAction, selectionWithin } from "./SelectionToolbar";
@@ -11,6 +12,7 @@ function select(node: Node) {
   sel.removeAllRanges();
   sel.addRange(range);
   document.dispatchEvent(new Event("selectionchange"));
+  flush();
 }
 
 function mount() {

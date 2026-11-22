@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createSignal, on, onCleanup, onMount } from "solid-js";
+import { For, Show, createEffect, createSignal, onSettled } from "solid-js";
 import { Clock, RefreshCw } from "../Icon/icons";
 import AgentGlyph from "../Icon/AgentGlyph";
 import Icon from "../Icon/Icon";
@@ -193,11 +193,11 @@ export default function UsageCard(props: {
    *  was hovered on and follows it when the pointer moves to another row. */
   const [picked, setPicked] = createSignal<string | null>(null);
   createEffect(
-    on(
-      () => props.profile,
-      () => setPicked(null),
-      { defer: true },
-    ),
+    () => props.profile,
+    () => {
+      setPicked(null);
+    },
+    { defer: true },
   );
   const shown = () => picked() ?? props.profile;
 
@@ -250,9 +250,9 @@ export default function UsageCard(props: {
   // which is right for a reset and wrong here: a stamp that says "59s ago" and
   // holds it for a minute looks like a refresh that did nothing.
   const [second, setSecond] = createSignal(Date.now());
-  onMount(() => {
+  onSettled(() => {
     const tick = setInterval(() => setSecond(Date.now()), 1000);
-    onCleanup(() => clearInterval(tick));
+    return () => clearInterval(tick);
   });
   const ago = () => {
     const read = readWindows(props.agentId, tab()).map((w) => w.sampledAt);

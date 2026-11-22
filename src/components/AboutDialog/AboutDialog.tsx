@@ -1,4 +1,4 @@
-import { For, Show, createResource, createSignal, onCleanup } from "solid-js";
+import { For, Show, createMemo, createSignal, onCleanup } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { Check, Copy } from "../Icon/icons";
 import Dialog from "../Dialog/Dialog";
@@ -24,7 +24,9 @@ const openUrl = (url: string) => void invoke("plugin:opener|open_url", { url }).
  * icon but no controls: nothing to copy the version from, no links to follow.
  */
 export default function AboutDialog(props: { onClose: () => void }) {
-  const [info] = createResource(() => invoke<AboutInfo>("about_info").catch(() => null));
+  const info = createMemo<AboutInfo | null | undefined>(() => invoke<AboutInfo>("about_info").catch(() => null), {
+    loadingValue: undefined,
+  });
   const [copied, setCopied] = createSignal(false);
   let copiedTimer: ReturnType<typeof setTimeout> | undefined;
   onCleanup(() => clearTimeout(copiedTimer));

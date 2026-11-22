@@ -1,4 +1,15 @@
-import { createEffect, createSignal, createUniqueId, For, onCleanup, Show, untrack, type Accessor } from "solid-js";
+import {
+  createEffect,
+  createSignal,
+  createUniqueId,
+  For,
+  onCleanup,
+  Show,
+  untrack,
+  type Accessor,
+  onSettled,
+} from "solid-js";
+import { createLiveSignal } from "../../lib/liveState";
 import { Portal } from "@solidjs/web";
 import { CircleAlert, CircleCheck, Info, X } from "../Icon/icons";
 import { createPresence, watchTopModal } from "../../lib/layer";
@@ -42,7 +53,7 @@ type ToastItem = {
   dismiss: () => void;
 };
 
-const [toasts, setToasts] = createSignal<readonly ToastItem[]>([]);
+const [toasts, setToasts] = createLiveSignal<readonly ToastItem[]>([]);
 let nextId = 0;
 let regions = 0;
 
@@ -75,8 +86,11 @@ function ToastCard(props: { toast: ToastItem; duration: number; paused: Accessor
   const [element, setElement] = createSignal<HTMLDivElement>();
   const presence = createPresence(() => !props.toast.dismissed(), element);
 
-  createEffect(() => {
-    if (!presence.mounted()) setToasts((list) => list.filter((other) => other !== props.toast));
+  createEffect(presence.mounted, (mounted) => {
+    if (mounted) return;
+    const gone = props.toast;
+    // Live state flushes on write, which an effect callback cannot do.
+    queueMicrotask(() => setToasts((list) => list.filter((other) => other !== gone)));
   });
 
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -88,15 +102,18 @@ function ToastCard(props: { toast: ToastItem; duration: number; paused: Accessor
     timer = undefined;
     remaining -= Date.now() - startedAt;
   };
-  createEffect(() => {
-    if (props.toast.kind === "error") return;
-    if (props.toast.dismissed() || props.paused()) {
-      stopTimer();
-      return;
-    }
-    startedAt = Date.now();
-    timer = setTimeout(props.toast.dismiss, remaining);
-  });
+  createEffect(
+    () => props.toast.kind !== "error" && { holding: props.toast.dismissed() || props.paused() },
+    (state) => {
+      if (!state) return;
+      if (state.holding) {
+        stopTimer();
+        return;
+      }
+      startedAt = Date.now();
+      timer = setTimeout(props.toast.dismiss, remaining);
+    },
+  );
   onCleanup(stopTimer);
 
   let swipeFrom: { x: number; y: number } | null = null;
@@ -223,30 +240,32 @@ function RegionSurface(props: { duration: number }) {
     focused?.focus({ preventScroll: true });
   };
 
-  createEffect(() =>
-    untrack(() => {
-      const home = region.parentElement!;
-      region.showPopover();
-      onCleanup(observeStack(list, setCount));
-      // Inside the top modal, because everything outside one is inert. A move
-      // drops the popover from the top layer, so it is shown again after.
-      const stop = watchTopModal((modal) => {
-        const parent = modal ?? home;
-        if (region.parentElement !== parent) raise(parent);
-      });
-      onCleanup(() => {
-        stop();
-        region.remove();
-      });
-    }),
-  );
+  onSettled(() => {
+    const home = region.parentElement!;
+    region.showPopover();
+    const stopObserving = observeStack(list, setCount);
+    // Inside the top modal, because everything outside one is inert. A move
+    // drops the popover from the top layer, so it is shown again after.
+    const stop = watchTopModal((modal) => {
+      const parent = modal ?? home;
+      if (region.parentElement !== parent) raise(parent);
+    });
+    return () => {
+      stopObserving();
+      stop();
+      region.remove();
+    };
+  });
 
   // The top layer paints in show order, so a new toast has to clear an open menu.
-  createEffect((before: number) => {
-    const now = toasts().length;
-    if (now > before) untrack(() => raise(region.parentElement!, list.lastElementChild));
-    return now;
-  }, toasts().length);
+  let shownCount: number | undefined;
+  createEffect(
+    () => toasts().length,
+    (now) => {
+      if (shownCount !== undefined && now > shownCount) raise(region.parentElement!, list.lastElementChild);
+      shownCount = now;
+    },
+  );
 
   return (
     <div
