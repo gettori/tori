@@ -126,6 +126,13 @@ describe("the classes already at zero", () => {
     expect(classesIn(`import "solid-js";\n${source}`)).toEqual([idiom]);
   });
 
+  it.each([
+    ["effect-writes", `createEffect(() => id(), (next) => { setValue(next); });`],
+    ["cleanup-in-ref", `const item = { ref: (el) => { onCleanup(() => drop(el)); } };`],
+  ])("finds %s in its 2.0 form", (idiom, source) => {
+    expect(classesIn(`import "solid-js";\n${source}`)).toContain(idiom);
+  });
+
   it("leaves test files out", () => {
     expect(classesIn(`<p aria-expanded={open()} />`, "src/fixture.test.tsx")).toEqual([]);
   });
