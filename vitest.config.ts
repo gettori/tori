@@ -1,5 +1,5 @@
 import { defineConfig } from "vite-plus";
-import solid from "vite-plugin-solid";
+import solid from "@solidjs/vite-plugin";
 
 // Standalone test config (takes precedence over vite.config.ts), split into two
 // projects because the two kinds of test want opposite things.
@@ -8,7 +8,7 @@ import solid from "vite-plugin-solid";
 //     JSX transform, no jsdom to construct. This is the bulk of the suite and it
 //     stays fast; nothing here should ever need a document.
 //   * **dom** (`*.test.tsx`) - components actually mounted, through
-//     `src/test/harness.ts`. Needs jsdom and needs `vite-plugin-solid`,
+//     `src/test/harness.ts`. Needs jsdom and needs `@solidjs/vite-plugin`,
 //     since Solid's JSX compiles to reactive DOM calls rather than to a
 //     runtime `h()` a plain esbuild transform could produce.
 //
@@ -23,11 +23,11 @@ const solidResolve = {
   resolve: { conditions: ["browser", "development"] },
   ssr: { resolve: { conditions: ["browser", "development"] } },
 };
-// Patterns, not bare names: a bare "solid-js" leaves `solid-js/web` externalized,
+// Patterns, not bare names: a bare "solid-js" leaves `@solidjs/web` externalized,
 // loading a second Solid whose reactive graph is separate, so a portalled
 // dropdown would survive `cleanup` into the next test.
 const inlineSolid = {
-  deps: { inline: [/solid-js/] },
+  deps: { inline: [/solid-js/, /@solidjs\//] },
 };
 
 export default defineConfig({
@@ -50,7 +50,7 @@ export default defineConfig({
           environment: "jsdom",
           include: ["src/**/*.test.tsx", "mobile/src/**/*.test.tsx"],
           // `@testing-library/jest-dom` is a devDependency for one reason, and
-          // it is not that any test uses its matchers. vite-plugin-solid has an
+          // it is not that any test uses its matchers. @solidjs/vite-plugin has an
           // optional peer on it, and when that peer resolves the plugin appends
           // `@testing-library/jest-dom/vitest` to setupFiles by itself. Adding
           // Storybook pulled jest-dom into the tree, which satisfied the peer

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createRoot, createSignal, For } from "solid-js";
+import { createRoot, createSignal, flush, For } from "solid-js";
 import { cleanup, fireEvent, render, screen } from "../test/harness";
 import { createRovingFocus, createTypeahead, type RovingFocusOptions } from "./keyboard";
 
@@ -102,6 +102,7 @@ describe("createRovingFocus", () => {
     expect(item("b").getAttribute("tabindex")).toBe("-1");
 
     group.focus();
+    flush();
 
     expect(document.activeElement).toBe(item("b"));
     expect(group.getAttribute("tabindex")).toBe("-1");
@@ -122,9 +123,11 @@ describe("createRovingFocus", () => {
     render(() => <Group keys={keys} orientation="horizontal" rootTabStop />);
     const group = screen.getByRole("group");
     item("b").focus();
+    flush();
     expect(group.getAttribute("tabindex")).toBe("-1");
 
     setKeys(["a"]);
+    flush();
 
     expect(group.getAttribute("tabindex")).toBe("0");
   });
@@ -133,9 +136,11 @@ describe("createRovingFocus", () => {
     const [keys, setKeys] = createSignal(["a", "b", "c"]);
     render(() => <Group keys={keys} selected={() => "a"} orientation="horizontal" />);
     item("b").focus();
+    flush();
     expect(item("b").getAttribute("tabindex")).toBe("0");
 
     setKeys(["a", "c"]);
+    flush();
 
     expect(item("a").getAttribute("tabindex")).toBe("0");
     expect(item("c").getAttribute("tabindex")).toBe("-1");
@@ -157,6 +162,7 @@ describe("createTypeahead", () => {
     const key = (value: string, init: KeyboardEventInit = {}) => {
       const event = new KeyboardEvent("keydown", { ...init, key: value, cancelable: true, bubbles: true });
       type(event);
+      flush();
       return event;
     };
     return { key, onMatch, current, dispose };

@@ -1,4 +1,4 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, flush, Show } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { fireEvent, render } from "../test/harness";
 import { anchorLayer, createPresence, openLayer } from "./layer";
@@ -389,7 +389,11 @@ describe("createPresence", () => {
         </Show>
       );
     });
-    return { setOpen, panel: () => queryByText("panel") };
+    const set = (next: boolean) => {
+      setOpen(next);
+      flush();
+    };
+    return { setOpen: set, panel: () => queryByText("panel") };
   }
 
   it("unmounts at once with no animation", () => {
@@ -422,9 +426,12 @@ describe("createPresence", () => {
 
     const child = held.appendChild(document.createElement("span"));
     child.dispatchEvent(new Event("animationend", { bubbles: true }));
+    flush();
     expect(panel()).not.toBeNull();
 
     held.dispatchEvent(new Event("animationend"));
+
+    flush();
     expect(panel()).toBeNull();
   });
 
@@ -438,6 +445,7 @@ describe("createPresence", () => {
     expect(panel()).not.toBeNull();
 
     vi.advanceTimersByTime(200);
+    flush();
     expect(panel()).toBeNull();
     vi.useRealTimers();
   });
@@ -451,6 +459,7 @@ describe("createPresence", () => {
 
     setOpen(true);
     held.dispatchEvent(new Event("animationend"));
+    flush();
 
     expect(panel()).toBe(held);
     expect(held.hasAttribute("data-closed")).toBe(false);

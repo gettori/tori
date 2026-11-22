@@ -1,5 +1,5 @@
 import { defineConfig, type Plugin } from "vite-plus";
-import solid from "vite-plugin-solid";
+import solid from "@solidjs/vite-plugin";
 import { readFileSync } from "node:fs";
 import { bundledInputs } from "../scripts/bundled-inputs";
 
