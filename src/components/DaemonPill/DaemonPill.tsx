@@ -1,4 +1,4 @@
-import { Show, createSignal, onCleanup, onMount } from "solid-js";
+import { Show, createSignal, onSettled } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import Tooltip from "../Tooltip/Tooltip";
@@ -13,7 +13,7 @@ type Seen = { status: DaemonStatus | null; sessions: number | null };
 export default function DaemonPill() {
   const [seen, setSeen] = createSignal<Seen>({ status: null, sessions: null });
 
-  onMount(() => {
+  onSettled(() => {
     void invoke<DaemonStatus | null>("daemon_status")
       .then((status) => setSeen({ status, sessions: null }))
       .catch((e) => console.error("daemon_status:", e));
@@ -23,10 +23,10 @@ export default function DaemonPill() {
     const offWaiting = listen<{ sessions: number }>("daemon://update-waiting", ({ payload }) =>
       setSeen({ ...seen(), sessions: payload.sessions }),
     );
-    onCleanup(() => {
+    return () => {
       void offStatus.then((f) => f());
       void offWaiting.then((f) => f());
-    });
+    };
   });
 
   const restart = () =>

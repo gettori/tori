@@ -1,4 +1,4 @@
-import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createSignal, onSettled } from "solid-js";
 import { TextQuote, Volume2, type IconGlyph } from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import patterns from "../../styles/patterns.module.css";
@@ -78,13 +78,13 @@ export default function SelectionToolbar(props: {
     if (r) place(r);
   }
 
-  onMount(() => {
+  onSettled(() => {
     document.addEventListener("selectionchange", sync);
     document.addEventListener("scroll", follow, true);
-    onCleanup(() => {
+    return () => {
       document.removeEventListener("selectionchange", sync);
       document.removeEventListener("scroll", follow, true);
-    });
+    };
   });
 
   return (

@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { Check, ChevronsUpDown, CircleDot, Cloud, GitCommitHorizontal, Plus, RefreshCw, Trash2 } from "../Icon/icons";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
@@ -202,15 +202,13 @@ export default function AddBranchDialog(props: {
   }
 
   createEffect(
-    on(
-      source,
-      (s) => {
-        // Behind the update that swaps the fields, so focus lands on what it rendered.
-        queueMicrotask(() => input?.focus());
-        if (s === "issue") loadAssigned();
-      },
-      { defer: true },
-    ),
+    source,
+    (s) => {
+      // Behind the update that swaps the fields, so focus lands on what it rendered.
+      queueMicrotask(() => input?.focus());
+      if (s === "issue") loadAssigned();
+    },
+    { defer: true },
   );
 
   const issueMatches = createMemo(() => {
@@ -235,8 +233,8 @@ export default function AddBranchDialog(props: {
     props.issues
       .find(input)
       .then((f) => {
+        if (f.hits.length === 1) return fetchIssue(f.hits[0].key);
         setLoadingKey(null);
-        if (f.hits.length === 1) return loadIssue(f.hits[0].key);
         setFound(f);
         if (!f.hits.length) setIssueError(`No issue found for ${input}`);
       })
@@ -247,10 +245,15 @@ export default function AddBranchDialog(props: {
   }
 
   function loadIssue(key: string) {
-    if (!props.issues || loadingKey()) return;
+    if (!loadingKey()) fetchIssue(key);
+  }
+
+  function fetchIssue(key: string) {
+    const issues = props.issues;
+    if (!issues) return void setLoadingKey(null);
     setLoadingKey(key);
     setIssueError(null);
-    props.issues
+    issues
       .get(key)
       .then((i) => {
         setIssue(i);
@@ -281,15 +284,25 @@ export default function AddBranchDialog(props: {
     return null;
   };
 
-  createEffect(() => {
-    const b = base();
-    if (source() !== "issue" || !link() || !props.issues || !props.locals.includes(b)) return setAhead(false);
-    const current = (v: boolean) => base() === b && setAhead(v);
-    props.issues
-      .ahead(b)
-      .then(current)
-      .catch(() => current(false));
-  });
+  createEffect(
+    () => {
+      const b = base();
+      const issues = props.issues;
+      const wanted = source() === "issue" && link() && !!issues && props.locals.includes(b);
+      return { b, issues: wanted ? issues : undefined };
+    },
+    ({ b, issues }) => {
+      if (!issues) {
+        setAhead(false);
+        return;
+      }
+      const current = (v: boolean) => base() === b && setAhead(v);
+      issues
+        .ahead(b)
+        .then(current)
+        .catch(() => current(false));
+    },
+  );
 
   const issueChoice = (): BranchPick | null => {
     const found = issue();
@@ -306,10 +319,12 @@ export default function AddBranchDialog(props: {
 
   // A parked row the list no longer has - its branch was just deleted - is not
   // an answer to anything.
-  createEffect(() => {
-    const parked = picked();
-    if (parked && !entries().some((e) => e.name === parked.name)) setPicked(null);
-  });
+  createEffect(
+    () => ({ parked: picked(), list: entries() }),
+    ({ parked, list }) => {
+      if (parked && !list.some((e) => e.name === parked.name)) setPicked(null);
+    },
+  );
 
   const heading = () => {
     if (query().trim()) return `${matches().length} matching`;
@@ -345,17 +360,15 @@ export default function AddBranchDialog(props: {
   // pick: a `prefill` parks one before anybody has pressed anything, and
   // someone about to type a new name wants the filter.
   createEffect(
-    on(
-      parked,
-      (name) => {
-        if (!name) return;
-        // Behind the render of the pick, so focus lands on the updated button.
-        queueMicrotask(() => {
-          if (parked()) primary?.focus();
-        });
-      },
-      { defer: true },
-    ),
+    parked,
+    (name) => {
+      if (!name) return;
+      // Behind the render of the pick, so focus lands on the updated button.
+      queueMicrotask(() => {
+        if (parked()) primary?.focus();
+      });
+    },
+    { defer: true },
   );
 
   // Where the branch is, until it is the one you picked: then the glyph's job
@@ -385,9 +398,12 @@ export default function AddBranchDialog(props: {
 
   // A confirmation nobody can answer is worse than none: the press that armed
   // this was a mouse on a row, so the answer has to come to the keyboard.
-  createEffect(() => {
-    if (props.deleting) deleteButton?.focus();
-  });
+  createEffect(
+    () => props.deleting,
+    (deleting) => {
+      if (deleting) deleteButton?.focus();
+    },
+  );
 
   // A row press parks the choice; pressing the row that is already parked is
   // the second half of a double-click, and means "this one, go".

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { onMount } from "solid-js";
+import { onSettled } from "solid-js";
 import UsageStrip from "./UsageStrip";
 import { resetUsageStoreForTests, seedUsageStoreForTests } from "../../utils/usageStore";
 import type { QuotaReading } from "../../utils/chatRateLimit";
@@ -42,7 +42,7 @@ type Story = StoryObj<typeof meta>;
 /** The account you are signed into: every generic window, with its own bar. */
 export const FullRow: Story = {
   render: () => {
-    onMount(() =>
+    onSettled(() =>
       seed([
         {
           agentId: "claude",
@@ -59,7 +59,7 @@ export const FullRow: Story = {
  *  it is nearest to. The default row keeps both, which is the contrast. */
 export const CompactRow: Story = {
   render: () => {
-    onMount(() =>
+    onSettled(() =>
       seed([
         {
           agentId: "claude",
@@ -83,7 +83,7 @@ export const CompactRow: Story = {
  *  card. */
 export const EveryState: Story = {
   render: () => {
-    onMount(() =>
+    onSettled(() =>
       seed([
         { agentId: "claude", profile: null, windows: [win("five_hour", 0.85, soon(1)), win("seven_day", 1, soon(72))] },
         { agentId: "codex", profile: null, windows: [win("five_hour", 0.2, soon(4))] },
@@ -98,7 +98,7 @@ export const EveryState: Story = {
  *  because drawing 98% on a quota that has since emptied is a lie. */
 export const StaleAndReset: Story = {
   render: () => {
-    onMount(() =>
+    onSettled(() =>
       seed([
         {
           agentId: "claude",

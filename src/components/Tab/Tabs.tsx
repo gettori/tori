@@ -6,7 +6,6 @@ import {
   createUniqueId,
   onCleanup,
   omit,
-  untrack,
   useContext,
   type Component,
 } from "solid-js";
@@ -62,11 +61,9 @@ function Root(props: TabsRootProps) {
 
   // Owners learn of a fallback through `onChange`: closing the selected tab
   // relies on it to pick a neighbour, and a panel with no active member to pick one.
-  createEffect(() => {
-    const all = order.allKeys();
-    const enabled = order.keys();
-    const current = selected();
-    untrack(() => {
+  createEffect(
+    () => ({ all: order.allKeys(), enabled: order.keys(), current: selected() }),
+    ({ all, enabled, current }) => {
       if (all.length > 0 && (current === undefined || !all.includes(current))) {
         const fallback = enabled[0] ?? all[0];
         if (props.value === undefined) setUncontrolled(fallback);
@@ -74,10 +71,13 @@ function Root(props: TabsRootProps) {
       }
       if (!focusedTabRemoved) return;
       focusedTabRemoved = false;
-      const next = selected();
-      roving.focus(next !== undefined && enabled.includes(next) ? next : enabled[0]);
-    });
-  });
+      // After the fallback above commits, which cannot happen inside this callback.
+      queueMicrotask(() => {
+        const next = selected();
+        roving.focus(next !== undefined && enabled.includes(next) ? next : enabled[0]);
+      });
+    },
+  );
 
   const noteRemoved = (el: HTMLElement) => {
     if (el.contains(document.activeElement)) focusedTabRemoved = true;
@@ -103,20 +103,21 @@ function useTabs() {
 function List(props: JSX.HTMLAttributes<HTMLDivElement>) {
   const tabs = useTabs();
   const rest = omit(props, "ref", "onKeyDown");
+  let stopWatching: (() => void) | undefined;
+  onCleanup(() => stopWatching?.());
 
   const onKeyDown = (e: KeyboardEvent) => {
     callHandler(e, props.onKeyDown as TriggerHandler);
     const handled = e.defaultPrevented;
-    tabs.roving.root.onKeyDown(e);
-    const landed = tabs.roving.active();
+    const landed = tabs.roving.root.onKeyDown(e);
     const focusOnly = e.key.startsWith("Arrow") && (APPLE ? e.altKey : e.ctrlKey);
-    if (!handled && e.defaultPrevented && landed !== null && !focusOnly) tabs.select(landed);
+    if (!handled && landed !== undefined && !focusOnly) tabs.select(landed);
   };
 
   return (
     <div
       ref={(el) => {
-        tabs.order.watch(el);
+        stopWatching = tabs.order.watch(el);
         (props.ref as ((el: HTMLDivElement) => void) | undefined)?.(el);
       }}
       role="tablist"
@@ -154,12 +155,18 @@ function Trigger(props: TabsTriggerProps) {
   const item = tabs.roving.item(props.value);
   const isSelected = () => tabs.selected() === props.value;
   let pointerType: string | undefined;
+  let element: HTMLButtonElement | undefined;
+  let unregister: (() => void) | undefined;
+  onCleanup(() => {
+    if (element) tabs.noteRemoved(element);
+    unregister?.();
+  });
 
   const handlers = {
     ref: (el: HTMLButtonElement) => {
+      element = el;
       item.ref(el);
-      tabs.order.register({ key: props.value, element: el, disabled: () => !!props.disabled });
-      onCleanup(() => tabs.noteRemoved(el));
+      unregister = tabs.order.register({ key: props.value, element: el, disabled: () => !!props.disabled });
       (props.ref as ((el: HTMLButtonElement) => void) | undefined)?.(el);
     },
     onPointerDown: (e: PointerEvent) => {

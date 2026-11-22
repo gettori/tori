@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, onMount, omit } from "solid-js";
+import { createSignal, omit, onSettled } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import styles from "./OverlayScroll.module.css";
 
@@ -93,18 +93,18 @@ export default function OverlayScroll(
     window.addEventListener("pointerup", up);
   };
 
-  onMount(() => {
+  onSettled(() => {
     measure();
     // Guarded because jsdom implements neither ResizeObserver nor layout:
     // there, every measurement is zero anyway, so observing nothing loses
     // nothing and the tests that render through this keep working.
-    if (typeof ResizeObserver !== "undefined") {
-      const ro = new ResizeObserver(measure);
-      ro.observe(viewport);
-      ro.observe(content);
-      onCleanup(() => ro.disconnect());
-    }
-    onCleanup(() => clearTimeout(fadeTimer));
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : undefined;
+    ro?.observe(viewport);
+    ro?.observe(content);
+    return () => {
+      ro?.disconnect();
+      clearTimeout(fadeTimer);
+    };
   });
 
   const shown = () => scrollable() && (hovering() || scrolling() || dragging());

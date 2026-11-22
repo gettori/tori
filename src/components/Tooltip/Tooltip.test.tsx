@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { fireEvent, render, screen } from "../../test/harness";
-import { createSignal } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import { expectNoAxeViolations } from "../../test/axe";
 import { ToggleGroup } from "../ToggleGroup/ToggleGroup";
 import Dialog from "../Dialog/Dialog";
@@ -108,6 +108,7 @@ describe("Tooltip", () => {
 
     // Closes one already open, not merely refusing to open the next.
     setOpen(true);
+    flush();
     expect(screen.queryByRole("tooltip")).toBeNull();
 
     // And the trigger is the same element throughout, so nothing it was in the
@@ -115,6 +116,8 @@ describe("Tooltip", () => {
     expect(screen.getByRole("button", { name: "Run" })).toBe(trigger);
 
     setOpen(false);
+
+    flush();
     focusTrigger(trigger);
     expect(screen.getByRole("tooltip")).toBeTruthy();
   });

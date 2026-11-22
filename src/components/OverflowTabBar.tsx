@@ -1,4 +1,4 @@
-import { createSignal, createEffect, createMemo, onCleanup, children, For, Show, untrack } from "solid-js";
+import { createSignal, createEffect, createMemo, children, For, Show, onSettled } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { computeVisibleCount, moveIntoView, type Reserves } from "../utils/tabOverflow";
 import { tabGesture } from "../utils/tabGesture";
@@ -114,38 +114,37 @@ export default function OverflowTabBar<T>(props: {
     if (gesture.live()) e.stopPropagation();
   }
 
-  let ro: ResizeObserver | undefined;
-  createEffect(() =>
-    untrack(() => {
-      bar.addEventListener("pointerdown", onPress, true);
-      bar.addEventListener("click", gesture.mark, true);
-      bar.addEventListener("keydown", gesture.mark, true);
-      onCleanup(() => {
-        bar.removeEventListener("pointerdown", onPress, true);
-        bar.removeEventListener("click", gesture.mark, true);
-        bar.removeEventListener("keydown", gesture.mark, true);
-      });
-      requestAnimationFrame(measure);
-      ro = new ResizeObserver(() => measure());
-      ro.observe(bar);
-      ro.observe(ghost); // content-width changes (tab added, dirty dot) re-measure
-    }),
-  );
-  onCleanup(() => ro?.disconnect());
+  onSettled(() => {
+    bar.addEventListener("pointerdown", onPress, true);
+    bar.addEventListener("click", gesture.mark, true);
+    bar.addEventListener("keydown", gesture.mark, true);
+    requestAnimationFrame(measure);
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(bar);
+    ro.observe(ghost); // content-width changes (tab added, dirty dot) re-measure
+    return () => {
+      bar.removeEventListener("pointerdown", onPress, true);
+      bar.removeEventListener("click", gesture.mark, true);
+      bar.removeEventListener("keydown", gesture.mark, true);
+      ro.disconnect();
+    };
+  });
 
   // On the ids, not the list: every strip gets a fresh array whenever any pane's
   // placement changes, so a click in one pane re-measured the ghost in all of
   // them. A NUL joins, since a tab id is a path and a path can hold a space.
   const idKey = createMemo(() => props.items.map(props.idOf).join("\u0000"));
-  createEffect(() => {
-    idKey();
+  createEffect(idKey, () => {
     requestAnimationFrame(measure);
   });
 
   // Close the menu if its contents drained (last overflow tab closed).
-  createEffect(() => {
-    if (menuOpen() && overflow().length === 0) setMenuOpen(false);
-  });
+  createEffect(
+    () => menuOpen() && overflow().length === 0,
+    (drained) => {
+      if (drained) setMenuOpen(false);
+    },
+  );
 
   function pickOverflow(id: string) {
     props.onReorder(moveIntoView(props.items, id, visibleCount() - 1, props.idOf));

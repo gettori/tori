@@ -1,4 +1,4 @@
-import { Show, onMount } from "solid-js";
+import { Show, onSettled } from "solid-js";
 import { Square, Volume2 } from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import IconButton from "../IconButton/IconButton";
@@ -18,7 +18,9 @@ const speedLabel = (rate: number) => `${+rate.toFixed(2)}x`;
 export default function ReadingChip() {
   // Speech is native and outlives a webview reload, which would come back
   // with no chip for what is still playing.
-  onMount(() => void reset());
+  onSettled(() => {
+    void reset();
+  });
   return (
     <Show when={reading()}>
       <div class={styles.chip} role="status">

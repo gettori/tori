@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createMemo, createSignal, onCleanup, onSettled } from "solid-js";
 import AgentGlyph from "../Icon/AgentGlyph";
 import UsageCard from "./UsageCard";
 import { asTabProfile } from "../../utils/agentHealth";
@@ -208,15 +208,17 @@ export default function UsageStrip() {
   // ago. Same 60s tick the chat's banner runs on, and the same reason.
   const [clock, setClock] = createSignal(Date.now());
 
-  onMount(() => {
+  onSettled(() => {
     const tick = setInterval(() => setClock(Date.now()), 60_000);
-    onCleanup(() => clearInterval(tick));
 
     const topbar = el?.parentElement;
-    if (!topbar || typeof ResizeObserver === "undefined") return;
+    if (!topbar || typeof ResizeObserver === "undefined") return () => clearInterval(tick);
     const ro = new ResizeObserver(([entry]) => setCollapsed(shouldCollapse(entry.contentRect.width)));
     ro.observe(topbar);
-    onCleanup(() => ro.disconnect());
+    return () => {
+      clearInterval(tick);
+      ro.disconnect();
+    };
   });
 
   // On the clock as well as on the readings: which window a compact row is

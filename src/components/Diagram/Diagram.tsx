@@ -1,4 +1,4 @@
-import { Match, Switch, createEffect, createMemo, createResource, createSignal, onCleanup } from "solid-js";
+import { Match, Switch, createDeferred, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { on as onEvent, THEME_APPLIED } from "../../utils/events";
 import { traceAsyncWork } from "../../utils/perfTrace";
 import styles from "./Diagram.module.css";
@@ -55,14 +55,13 @@ export default function Diagram(props: { code: string }) {
   // No observer at all (tests) means always on screen.
   const [visible, setVisible] = createSignal(typeof IntersectionObserver === "undefined");
   const [el, setEl] = createSignal<Element>();
-  createEffect(() => {
-    const node = el();
+  createEffect(el, (node) => {
     if (!node || typeof IntersectionObserver === "undefined") return;
     const io = new IntersectionObserver((entries) => setVisible(entries.some((e) => e.isIntersecting)), {
       rootMargin: "200px",
     });
     io.observe(node);
-    onCleanup(() => io.disconnect());
+    return () => io.disconnect();
   });
 
   // Latched: a diagram scrolled past stays drawn rather than being laid out
@@ -71,29 +70,34 @@ export default function Diagram(props: { code: string }) {
   const seen = createMemo((was?: boolean) => was || visible());
   const drawnTheme = createMemo((last?: number) => (visible() ? theme() : (last ?? theme())));
 
-  const [svg] = createResource(
-    () => (seen() ? ([props.code, drawnTheme()] as const) : null),
-    async ([code]) => {
-      try {
-        const m = await loadEngine();
-        return await inTurn(async () => {
-          // A streaming fence queues a render per delta; only the newest is
-          // kept by the resource, so the older ones need not lay out at all.
-          if (code !== props.code) return null;
-          m.configure();
-          return traceAsyncWork("mermaid", () => m.render(code));
-        });
-      } catch {
-        // A failed chunk load is answered the same way an unparseable fence is:
-        // the source stands in, and nothing retries because nothing would change.
-        return null;
-      }
+  const svg = createDeferred<string | null | undefined>(
+    (was) => {
+      if (!seen()) return was;
+      drawnTheme();
+      const code = props.code;
+      return (async () => {
+        try {
+          const m = await loadEngine();
+          return await inTurn(async () => {
+            // A streaming fence queues a render per delta; only the newest is
+            // kept, so the older ones need not lay out at all.
+            if (code !== props.code) return null;
+            m.configure();
+            return traceAsyncWork("mermaid", () => m.render(code));
+          });
+        } catch {
+          // A failed chunk load is answered the same way an unparseable fence is:
+          // the source stands in, and nothing retries because nothing would change.
+          return null;
+        }
+      })();
     },
+    { loadingValue: undefined },
   );
 
-  // `latest` rather than the value: while a streaming fence re-renders, the
+  // Deferred rather than a plain memo: while a streaming fence re-renders, the
   // diagram already on screen stays there instead of blanking every delta.
-  const drawn = () => svg.latest;
+  const drawn = () => svg();
 
   return (
     <Switch>

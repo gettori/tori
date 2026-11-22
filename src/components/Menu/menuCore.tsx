@@ -8,6 +8,7 @@ import {
   untrack,
   useContext,
   type Accessor,
+  onSettled,
 } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { anchorLayer, openLayer, pointAnchor, type LayerPlacement } from "../../lib/layer";
@@ -182,43 +183,55 @@ export function MenuContent(props: MenuContentProps) {
     },
   });
 
-  createEffect(() => {
-    const point = props.point?.();
-    const anchor = point ? pointAnchor(point.x, point.y) : menu.trigger();
-    if (point) onCleanup(() => anchor?.remove());
-    if (anchor) onCleanup(anchorLayer(anchor, el, props.placement, props.gutter, props.shift));
-  });
-
-  createEffect(() =>
-    untrack(() => {
-      menu.parent?.setChild(menu);
-      const release = openLayer({
-        element: el,
-        show: () => el.showPopover(),
-        hide: () => el.hidePopover(),
-        onDismiss: () => menu.close(true),
-        ignorePress: (target) => inMenuTree(menu, target),
-        dismissOnFocusOutside: true,
-        returnFocus: props.returnFocus,
-        keepFocusOnPress: props.keepFocusOnPress,
-      });
-      onCleanup(() => {
-        menu.parent?.setChild(undefined);
-        menu.setContent(undefined);
-        menu.clearHighlight();
-        release();
-      });
-      const focus = menu.focusOnOpen();
-      const moveFocus = () => {
-        if (!el.isConnected) return;
-        if (focus === "first" || focus === "last") menu.focusEdge(focus);
-        else if (focus === "content") el.focus({ preventScroll: true });
-      };
-      // The press's own mousedown moves focus after this, so land behind it.
-      if (window.event?.type === "pointerdown") setTimeout(moveFocus);
-      else moveFocus();
+  createEffect(
+    () => ({
+      point: props.point?.(),
+      trigger: menu.trigger(),
+      placement: props.placement,
+      gutter: props.gutter,
+      shift: props.shift,
     }),
+    ({ point, trigger, placement, gutter, shift }) => {
+      const anchor = point ? pointAnchor(point.x, point.y) : trigger;
+      const unanchor = anchor ? anchorLayer(anchor, el, placement, gutter, shift) : undefined;
+      return () => {
+        unanchor?.();
+        if (point) anchor?.remove();
+      };
+    },
   );
+
+  // A compiled prop can be a memo, and an effect callback cannot create one.
+  const returnFocus = untrack(() => props.returnFocus);
+  const keepFocusOnPress = untrack(() => props.keepFocusOnPress);
+  onSettled(() => {
+    menu.parent?.setChild(menu);
+    const release = openLayer({
+      element: el,
+      show: () => el.showPopover(),
+      hide: () => el.hidePopover(),
+      onDismiss: () => menu.close(true),
+      ignorePress: (target) => inMenuTree(menu, target),
+      dismissOnFocusOutside: true,
+      returnFocus,
+      keepFocusOnPress,
+    });
+    const focus = menu.focusOnOpen();
+    const moveFocus = () => {
+      if (!el.isConnected) return;
+      if (focus === "first" || focus === "last") menu.focusEdge(focus);
+      else if (focus === "content") el.focus({ preventScroll: true });
+    };
+    // The press's own mousedown moves focus after this, so land behind it.
+    if (window.event?.type === "pointerdown") setTimeout(moveFocus);
+    else moveFocus();
+    return () => {
+      menu.parent?.setChild(undefined);
+      menu.setContent(undefined);
+      menu.clearHighlight();
+      release();
+    };
+  });
 
   const move = (row: HTMLElement | undefined) => {
     if (!row) return;

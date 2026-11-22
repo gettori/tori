@@ -104,6 +104,7 @@ export function createRovingFocus(options: RovingFocusOptions) {
     }
     e.preventDefault();
     focus(keys[to]);
+    return keys[to];
   };
 
   return {

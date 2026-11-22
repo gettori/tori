@@ -56,9 +56,12 @@ export default function Checkbox(props: {
   };
   let input!: HTMLInputElement;
 
-  createEffect(() => {
-    input.indeterminate = !!props.indeterminate;
-  });
+  createEffect(
+    () => !!props.indeterminate,
+    (indeterminate) => {
+      input.indeterminate = indeterminate;
+    },
+  );
 
   return (
     <div role="group" class={[styles.root, props.class].filter(Boolean).join(" ")} {...state}>

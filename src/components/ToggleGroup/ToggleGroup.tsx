@@ -1,4 +1,4 @@
-import { createContext, omit, useContext, type Component, type ValidComponent } from "solid-js";
+import { createContext, omit, useContext, type Component, type ValidComponent, onCleanup } from "solid-js";
 import { type JSX, dynamic } from "@solidjs/web";
 import { createItemOrder, createRovingFocus } from "../../lib/keyboard";
 import { callHandler, type TriggerHandler } from "../callHandler";
@@ -85,11 +85,13 @@ function Item<P extends Record<string, any> = {}>(
   );
   const item = group.roving.item(local.value);
   let pointerType: string | undefined;
+  let unregister: (() => void) | undefined;
+  onCleanup(() => unregister?.());
 
   const handlers = {
     ref: (el: HTMLButtonElement) => {
       item.ref(el);
-      group.order.register({ key: local.value, element: el, disabled: () => !!local.disabled });
+      unregister = group.order.register({ key: local.value, element: el, disabled: () => !!local.disabled });
       (local.ref as ((el: HTMLButtonElement) => void) | undefined)?.(el);
     },
     onPointerDown: (e: PointerEvent) => {
