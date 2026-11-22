@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createRoot, createSignal, flush, For } from "solid-js";
+import { createRoot, createSignal, flush, For, onCleanup } from "solid-js";
 import { cleanup, fireEvent, render, screen } from "../test/harness";
-import { createRovingFocus, createTypeahead, type RovingFocusOptions } from "./keyboard";
+import { createItemOrder, createRovingFocus, createTypeahead, type RovingFocusOptions } from "./keyboard";
 
 afterEach(cleanup);
 
@@ -224,5 +224,33 @@ describe("createTypeahead", () => {
 
     expect(onMatch).not.toHaveBeenCalled();
     dispose();
+  });
+});
+
+describe("createItemOrder", () => {
+  it("drops an item from the order when the component that registered it unmounts", () => {
+    const order = createRoot(() => createItemOrder());
+    const [shown, setShown] = createSignal(["a", "b", "c"]);
+    function Row(props: { name: string }) {
+      let unregister: (() => void) | undefined;
+      onCleanup(() => unregister?.());
+      return (
+        <button
+          ref={(element) => {
+            unregister = order.register({ key: props.name, element, disabled: () => false });
+          }}
+        >
+          {props.name}
+        </button>
+      );
+    }
+    render(() => <For each={shown()}>{(name) => <Row name={name} />}</For>);
+    flush();
+    expect(order.keys()).toEqual(["a", "b", "c"]);
+
+    setShown(["a", "c"]);
+    flush();
+
+    expect(order.keys()).toEqual(["a", "c"]);
   });
 });

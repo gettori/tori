@@ -1,4 +1,4 @@
-import { createEffect, createSignal, createUniqueId, onCleanup, Show, untrack, type Accessor } from "solid-js";
+import { createSignal, createUniqueId, onCleanup, Show, type Accessor, onSettled } from "solid-js";
 import { type JSX, Portal } from "@solidjs/web";
 import { createPresence, openLayer } from "../../lib/layer";
 import { DialogSurface } from "./surface";
@@ -51,35 +51,32 @@ function DialogPanel(props: {
   const descriptionId = `dialog-${id}-description`;
   let panel!: HTMLDialogElement;
 
-  createEffect(() =>
-    untrack(() => {
-      // Not the pressed opener: in WebKit that would pop its tooltip on close.
-      const active = document.activeElement;
-      const restoreTo = active instanceof HTMLElement && active !== document.body ? active : null;
-      const release = openLayer({
-        element: panel,
-        modal: true,
-        returnFocus: () => restoreTo,
-        show: () => {
-          // Inert while opening, or showModal focuses the first control and fires its handlers.
-          panel.inert = true;
-          panel.showModal();
-          panel.inert = false;
-          // WebKit ignores preventScroll on a target it has not laid out yet.
-          void panel.offsetHeight;
-          (props.dialog.initialFocus?.() ?? panel).focus({ preventScroll: true });
-          // A disabled confirm in a dialog that opens busy refuses focus.
-          if (!panel.contains(document.activeElement)) panel.focus({ preventScroll: true });
-        },
-        hide: () => panel.close(),
-        onDismiss: () => {
-          if (props.dialog.open) props.dialog.onClose();
-        },
-        closing: () => !props.dialog.open,
-      });
-      onCleanup(release);
-    }),
-  );
+  onSettled(() => {
+    // Not the pressed opener: in WebKit that would pop its tooltip on close.
+    const active = document.activeElement;
+    const restoreTo = active instanceof HTMLElement && active !== document.body ? active : null;
+    return openLayer({
+      element: panel,
+      modal: true,
+      returnFocus: () => restoreTo,
+      show: () => {
+        // Inert while opening, or showModal focuses the first control and fires its handlers.
+        panel.inert = true;
+        panel.showModal();
+        panel.inert = false;
+        // WebKit ignores preventScroll on a target it has not laid out yet.
+        void panel.offsetHeight;
+        (props.dialog.initialFocus?.() ?? panel).focus({ preventScroll: true });
+        // A disabled confirm in a dialog that opens busy refuses focus.
+        if (!panel.contains(document.activeElement)) panel.focus({ preventScroll: true });
+      },
+      hide: () => panel.close(),
+      onDismiss: () => {
+        if (props.dialog.open) props.dialog.onClose();
+      },
+      closing: () => !props.dialog.open,
+    });
+  });
   onCleanup(() => props.onSurface(undefined));
 
   const panelClass = () =>

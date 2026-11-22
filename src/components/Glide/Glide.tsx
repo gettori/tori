@@ -1,4 +1,4 @@
-import { createEffect, onCleanup, onMount } from "solid-js";
+import { createEffect, onSettled, createSignal } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import styles from "./Glide.module.css";
 
@@ -37,6 +37,7 @@ export default function Glide(props: {
   attributes?: string[];
 }): JSX.Element {
   let el!: HTMLDivElement;
+  const [mounted, setMounted] = createSignal(false);
   let hovered: Element | null = null;
   let lead: "cursor" | "hover" = "cursor";
   let lastMove = Number.NEGATIVE_INFINITY;
@@ -121,13 +122,18 @@ export default function Glide(props: {
     });
   }
 
-  createEffect(() => {
-    if (el.parentElement) props.active?.(list());
-    lead = "cursor";
-    request(pointerMoved());
-  });
+  createEffect(
+    () => {
+      if (mounted() && el.parentElement) props.active?.(list());
+    },
+    () => {
+      lead = "cursor";
+      request(pointerMoved());
+    },
+  );
 
-  onMount(() => {
+  onSettled(() => {
+    setMounted(true);
     const host = list();
     fillLists.add(host);
     const onMove = (e: PointerEvent) => {
@@ -155,7 +161,7 @@ export default function Glide(props: {
       host.addEventListener("pointerover", onOver);
       host.addEventListener("pointerleave", onLeave);
     }
-    onCleanup(() => {
+    return () => {
       cancelAnimationFrame(frame);
       clearTimeout(gap);
       hide();
@@ -165,7 +171,7 @@ export default function Glide(props: {
       host.removeEventListener("focusout", onFocus);
       host.removeEventListener("pointerover", onOver);
       host.removeEventListener("pointerleave", onLeave);
-    });
+    };
   });
 
   return <div ref={el} class={styles.glide} aria-hidden="true" />;

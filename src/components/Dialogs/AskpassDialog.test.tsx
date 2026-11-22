@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, fireEvent, waitFor } from "../../test/harness";
 import { expectNoAxeViolations } from "../../test/axe";
@@ -54,7 +55,10 @@ const prompt = (over: Partial<Prompt> = {}): Prompt => ({
 async function mount() {
   render(() => <AskpassDialog />);
   await waitFor(() => expect(bridge.handlers["askpass://prompt"]).toBeTruthy());
-  return (p: Prompt) => bridge.handlers["askpass://prompt"]({ payload: p });
+  return (p: Prompt) => {
+    bridge.handlers["askpass://prompt"]({ payload: p });
+    flush();
+  };
 }
 
 const input = () => document.querySelector<HTMLInputElement>(`.${styles.input}`);

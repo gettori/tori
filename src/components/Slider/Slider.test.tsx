@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vite-plus/test";
 import { render, screen, fireEvent } from "../../test/harness";
-import { createSignal } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import Slider from "./Slider";
 import { expectNoAxeViolations } from "../../test/axe";
 
@@ -99,8 +99,13 @@ describe("Slider", () => {
       el.hasPointerCapture = (id) => captured.has(id);
       el.releasePointerCapture = (id) => void captured.delete(id);
     }
-    const pointer = (type: string, el: HTMLElement, clientX: number) =>
-      el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, button: 0, pointerId: 1, clientX }));
+    const pointer = (type: string, el: HTMLElement, clientX: number) => {
+      const handled = el.dispatchEvent(
+        new PointerEvent(type, { bubbles: true, cancelable: true, button: 0, pointerId: 1, clientX }),
+      );
+      flush();
+      return handled;
+    };
 
     pointer("pointerdown", thumb, 30);
     expect(document.activeElement).toBe(thumb);

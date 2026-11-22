@@ -1,4 +1,4 @@
-import { createEffect, createSignal, createUniqueId, on, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, createUniqueId, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import Select from "../Select/Select";
 import { forgeAccountName, type ForgeAccount } from "../../utils/forgeTypes";
@@ -22,35 +22,33 @@ export function createCloneAccount(url: () => string, space: () => string | null
   const [pending, setPending] = createSignal(false);
 
   createEffect(
-    on(
-      () => url().trim(),
-      (u) => {
-        setChoice(null);
-        setAccess(null);
-        setChosen(null);
-        setPending(u !== "");
-        if (!u) return;
-        let live = true;
-        const timer = setTimeout(async () => {
-          const found = await invoke<CloneAccounts | null>("forge_clone_accounts", { url: u, space: space() }).catch(
-            () => null,
-          );
-          if (!live) return;
-          setChoice(found);
-          setPending(false);
-          if (!found) return;
-          const rows = await invoke<{ accountId: string; access: Access }[]>("forge_repo_access", { url: u }).catch(
-            () => [],
-          );
-          const known = Array.isArray(rows) ? rows : [];
-          if (live) setAccess(Object.fromEntries(known.map((r) => [r.accountId, r.access])));
-        }, SETTLE_MS);
-        onCleanup(() => {
-          live = false;
-          clearTimeout(timer);
-        });
-      },
-    ),
+    () => url().trim(),
+    (u) => {
+      setChoice(null);
+      setAccess(null);
+      setChosen(null);
+      setPending(u !== "");
+      if (!u) return;
+      let live = true;
+      const timer = setTimeout(async () => {
+        const found = await invoke<CloneAccounts | null>("forge_clone_accounts", { url: u, space: space() }).catch(
+          () => null,
+        );
+        if (!live) return;
+        setChoice(found);
+        setPending(false);
+        if (!found) return;
+        const rows = await invoke<{ accountId: string; access: Access }[]>("forge_repo_access", { url: u }).catch(
+          () => [],
+        );
+        const known = Array.isArray(rows) ? rows : [];
+        if (live) setAccess(Object.fromEntries(known.map((r) => [r.accountId, r.access])));
+      }, SETTLE_MS);
+      return () => {
+        live = false;
+        clearTimeout(timer);
+      };
+    },
   );
 
   const onlyReader = () => {

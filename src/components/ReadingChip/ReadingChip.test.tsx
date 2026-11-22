@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, fireEvent } from "../../test/harness";
-import { createSignal } from "solid-js";
+import { createSignal, flush } from "solid-js";
 
 const [reading, setReading] = createSignal<{ source: string; block?: number } | null>(null);
 const stop = vi.fn(async () => setReading(null));
@@ -23,9 +23,11 @@ describe("ReadingChip", () => {
     render(() => <ReadingChip />);
     expect(screen.queryByRole("status")).toBeNull();
     setReading({ source: "s1:t1", block: 0 });
+    flush();
     expect(screen.getByRole("status").textContent).toContain("Reading aloud");
     fireEvent.click(screen.getByRole("button", { name: "Stop reading" }));
     await Promise.resolve();
+    flush();
     expect(stop).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("status")).toBeNull();
   });

@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { render, screen, fireEvent } from "../../test/harness";
 import ToastRegion, { clearToasts, pushToast } from "./Toasts";
@@ -54,8 +55,10 @@ describe("toast stack characterization", () => {
     const h = mount();
     h.push("gone in eight");
     vi.advanceTimersByTime(7999);
+    flush();
     expect(visible("gone in eight")).toBe(true);
     vi.advanceTimersByTime(1);
+    flush();
     expect(visible("gone in eight")).toBe(false);
   });
 
@@ -63,11 +66,14 @@ describe("toast stack characterization", () => {
     const h = mount();
     h.push("early");
     vi.advanceTimersByTime(3000);
+    flush();
     h.push("late");
     vi.advanceTimersByTime(5000);
+    flush();
     expect(visible("early")).toBe(false);
     expect(visible("late")).toBe(true);
     vi.advanceTimersByTime(3000);
+    flush();
     expect(visible("late")).toBe(false);
   });
 
@@ -75,11 +81,14 @@ describe("toast stack characterization", () => {
     const h = mount();
     h.push("held under the pointer");
     vi.advanceTimersByTime(4000);
+    flush();
     h.hover("held under the pointer");
     vi.advanceTimersByTime(60_000);
+    flush();
     expect(visible("held under the pointer")).toBe(true);
     h.unhover("held under the pointer");
     vi.advanceTimersByTime(8000);
+    flush();
     expect(visible("held under the pointer")).toBe(false);
   });
 });

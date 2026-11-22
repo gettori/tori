@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vite-plus/test";
-import { createSignal } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import { render, screen, fireEvent } from "../../test/harness";
 import { expectNoAxeViolations } from "../../test/axe";
 import { pointerClick } from "../../test/menus";
@@ -38,6 +38,7 @@ describe("Select", () => {
     // The empty render is the wrapper's documented answer for a value naming no
     // option; resolving what absence *means* belongs to the call site.
     setValue("gone");
+    flush();
     expect(trigger().textContent).not.toContain("Banana");
   });
 

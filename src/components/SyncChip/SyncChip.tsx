@@ -8,7 +8,7 @@
 // "in sync" pill on a clean branch spends the reader's attention on the news
 // that there is no news.
 
-import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { CloudOff } from "../Icon/icons";
 import Icon from "../Icon/Icon";
@@ -135,14 +135,16 @@ export default function SyncChip(props: { root: string | null }) {
     return `${props.root}\u0000${st.head ?? ""}\u0000${conflictedFiles(props.root).length}`;
   });
   createEffect(
-    on(mayBeStopped, async (key) => {
-      const root = props.root;
-      const now =
-        key && root
-          ? await invoke<ConflictOp>("git_conflict_op", { projectPath: root }).catch(() => "none" as const)
-          : "none";
-      if (root === props.root) setOp(now in OP_WORD ? now : "none");
-    }),
+    () => ({ key: mayBeStopped(), root: untrack(() => props.root) }),
+    ({ key, root }) => {
+      void (async () => {
+        const now =
+          key && root
+            ? await invoke<ConflictOp>("git_conflict_op", { projectPath: root }).catch(() => "none" as const)
+            : "none";
+        if (root === props.root) setOp(now in OP_WORD ? now : "none");
+      })();
+    },
   );
   const stopped = () => op() !== "none";
   const busy = () => busyIn(props.root);

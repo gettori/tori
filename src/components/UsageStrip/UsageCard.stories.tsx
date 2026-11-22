@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { createSignal, onMount } from "solid-js";
+import { createSignal, onSettled } from "solid-js";
 import UsageCard from "./UsageCard";
 import Button from "../Button/Button";
 import { resetUsageStoreForTests, seedUsageStoreForTests } from "../../utils/usageStore";
@@ -26,7 +26,7 @@ const win = (kind: string, utilization: number, resetsAt: number, over: Partial<
 
 function anchored(pinned: boolean, windows: Seed[]) {
   const [anchor, setAnchor] = createSignal<HTMLElement | null>(null);
-  onMount(() => {
+  onSettled(() => {
     resetUsageStoreForTests();
     seedUsageStoreForTests("claude", null, windows);
   });

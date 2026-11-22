@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { createSignal } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import { fireEvent, render, screen } from "../../test/harness";
 import { expectNoAxeViolations } from "../../test/axe";
 import IconGrid, { type IconGridTile } from "./IconGrid";
@@ -196,6 +196,7 @@ describe("IconGrid", () => {
     expect(auto().getAttribute("style")).toContain("10 20 30");
 
     setSeed("99 98 97");
+    flush();
 
     expect(auto().getAttribute("style")).toContain("99 98 97");
   });
