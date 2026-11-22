@@ -30,21 +30,21 @@ const sameKeys = (a: readonly string[], b: readonly string[]) =>
 
 export function createItemOrder() {
   const [items, setItems] = createSignal<readonly OrderedItem[]>([]);
-  const keys = createMemo(() => items().flatMap((item) => (item.disabled() ? [] : [item.key])), [], {
+  const keys = createMemo(() => items().flatMap((item) => (item.disabled() ? [] : [item.key])), {
     equals: sameKeys,
   });
-  const allKeys = createMemo(() => items().map((item) => item.key), [], { equals: sameKeys });
+  const allKeys = createMemo(() => items().map((item) => item.key), { equals: sameKeys });
   return {
     keys,
     allKeys,
     register(item: OrderedItem) {
       setItems((list) => [...list, item]);
-      onCleanup(() => setItems((list) => list.filter((other) => other !== item)));
+      return () => setItems((list) => list.filter((other) => other !== item));
     },
     watch(container: HTMLElement) {
       const observer = new MutationObserver(() => setItems((list) => [...list].sort(inDocumentOrder)));
       observer.observe(container, { childList: true });
-      onCleanup(() => observer.disconnect());
+      return () => observer.disconnect();
     },
   };
 }
@@ -119,18 +119,22 @@ export function createRovingFocus(options: RovingFocusOptions) {
       },
       onKeyDown,
     },
-    item: (key: string) => ({
-      ref: (el: HTMLElement) => {
-        elements.set(key, el);
-        onCleanup(() => {
-          if (elements.get(key) === el) elements.delete(key);
-        });
-      },
-      get tabindex() {
-        return tabStop() === key ? 0 : -1;
-      },
-      onFocus: () => setLastFocused(key),
-    }),
+    item: (key: string) => {
+      let own: HTMLElement | undefined;
+      onCleanup(() => {
+        if (own && elements.get(key) === own) elements.delete(key);
+      });
+      return {
+        ref: (el: HTMLElement) => {
+          own = el;
+          elements.set(key, el);
+        },
+        get tabindex() {
+          return tabStop() === key ? 0 : -1;
+        },
+        onFocus: () => setLastFocused(key),
+      };
+    },
   };
 }
 

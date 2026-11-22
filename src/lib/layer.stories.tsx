@@ -1,20 +1,20 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { createEffect, createSignal, onCleanup, Show, type JSX } from "solid-js";
+import { createEffect, createSignal, onSettled, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import Button from "../components/Button/Button";
 import { anchorLayer, openLayer, type LayerPlacement } from "./layer";
 
 function ModalLayer(props: { onClose: () => void; children: JSX.Element }) {
   let el!: HTMLDialogElement;
-  createEffect(() => {
-    const release = openLayer({
+  onSettled(() =>
+    openLayer({
       element: el,
       show: () => el.showModal(),
       hide: () => el.close(),
       modal: true,
       onDismiss: () => props.onClose(),
-    });
-    onCleanup(release);
-  });
+    }),
+  );
   return (
     <dialog ref={el} aria-label="Outer dialog" data-testid="layer-dialog" style={{ padding: "24px", width: "420px" }}>
       {props.children}
@@ -30,21 +30,23 @@ function FloatingLayer(props: {
   children: JSX.Element;
 }) {
   let el!: HTMLDivElement;
-  createEffect(() => {
-    const anchor = props.anchor;
-    const unanchor = anchorLayer(anchor, el, props.placement, 4);
-    const release = openLayer({
-      element: el,
-      show: () => el.showPopover(),
-      hide: () => el.hidePopover(),
-      onDismiss: () => props.onClose(),
-      ignorePress: (target) => anchor.contains(target),
-    });
-    onCleanup(() => {
-      release();
-      unanchor();
-    });
-  });
+  createEffect(
+    () => ({ anchor: props.anchor, placement: props.placement }),
+    ({ anchor, placement }) => {
+      const unanchor = anchorLayer(anchor, el, placement, 4);
+      const release = openLayer({
+        element: el,
+        show: () => el.showPopover(),
+        hide: () => el.hidePopover(),
+        onDismiss: () => props.onClose(),
+        ignorePress: (target) => anchor.contains(target),
+      });
+      return () => {
+        release();
+        unanchor();
+      };
+    },
+  );
   return (
     <div
       ref={el}

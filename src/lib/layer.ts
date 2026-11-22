@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, onCleanup, type Accessor } from "solid-js";
+import { createEffect, createMemo, createSignal, type Accessor } from "solid-js";
 
 type LayerSide = "top" | "bottom" | "left" | "right";
 export type LayerPlacement = LayerSide | `${LayerSide}-${"start" | "end"}` | "corner";
@@ -367,44 +367,46 @@ const EXIT_GRACE_MS = 50;
 
 export function createPresence(open: Accessor<boolean>, element: Accessor<HTMLElement | undefined>) {
   const [exited, setExited] = createSignal(false);
-  const mounted = createMemo<boolean>((was) => open() || (was && !exited()), open());
+  const mounted = createMemo<boolean>((was) => open() || (!!was && !exited()));
   let enterAnimation = "none";
 
-  createEffect(() => {
-    const el = element();
-    if (open()) {
-      setExited(false);
-      enterAnimation = el ? getComputedStyle(el).animationName || "none" : "none";
-      return;
-    }
-    if (!mounted()) return;
-    if (!el) {
-      setExited(true);
-      return;
-    }
+  createEffect(
+    () => ({ el: element(), isOpen: open(), isMounted: mounted() }),
+    ({ el, isOpen, isMounted }) => {
+      if (isOpen) {
+        setExited(false);
+        enterAnimation = el ? getComputedStyle(el).animationName || "none" : "none";
+        return;
+      }
+      if (!isMounted) return;
+      if (!el) {
+        setExited(true);
+        return;
+      }
 
-    const style = getComputedStyle(el);
-    const name = style.animationName || "none";
-    const seconds = longestSeconds(style.animationDuration) + longestSeconds(style.animationDelay);
-    if (name === "none" || name === enterAnimation || seconds <= 0) {
-      setExited(true);
-      return;
-    }
+      const style = getComputedStyle(el);
+      const name = style.animationName || "none";
+      const seconds = longestSeconds(style.animationDuration) + longestSeconds(style.animationDelay);
+      if (name === "none" || name === enterAnimation || seconds <= 0) {
+        setExited(true);
+        return;
+      }
 
-    const finish = (e: Event) => {
-      const { pseudoElement } = e as AnimationEvent;
-      if (e.target === el && !pseudoElement) setExited(true);
-    };
-    // A window that is not painting never fires animationend.
-    const timer = setTimeout(() => setExited(true), seconds * 1000 + EXIT_GRACE_MS);
-    el.addEventListener("animationend", finish);
-    el.addEventListener("animationcancel", finish);
-    onCleanup(() => {
-      clearTimeout(timer);
-      el.removeEventListener("animationend", finish);
-      el.removeEventListener("animationcancel", finish);
-    });
-  });
+      const finish = (e: Event) => {
+        const { pseudoElement } = e as AnimationEvent;
+        if (e.target === el && !pseudoElement) setExited(true);
+      };
+      // A window that is not painting never fires animationend.
+      const timer = setTimeout(() => setExited(true), seconds * 1000 + EXIT_GRACE_MS);
+      el.addEventListener("animationend", finish);
+      el.addEventListener("animationcancel", finish);
+      return () => {
+        clearTimeout(timer);
+        el.removeEventListener("animationend", finish);
+        el.removeEventListener("animationcancel", finish);
+      };
+    },
+  );
 
   return { mounted, closed: () => mounted() && !open() };
 }
