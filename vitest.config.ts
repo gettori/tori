@@ -61,7 +61,8 @@ export default defineConfig({
           // `setup 0ms`, so this file never ran either. Declaring it makes the
           // link deterministic. Note the plugin's entry is *appended* to this
           // array rather than replacing it, so both run.
-          setupFiles: ["src/test/domSetup.ts"],
+          // Hooks unwind in reverse, so the tally is taken after `cleanup` has run.
+          setupFiles: ["src/test/solidDiagnostics.ts", "src/test/domSetup.ts"],
           // Vitest's default is 5s, and the heaviest axe scans (the icon grid in
           // `ProjectIconDialog`, the one in `SpaceDialog`) measure ~5s on their
           // own under a full run's parallel load - fast in isolation, over the
