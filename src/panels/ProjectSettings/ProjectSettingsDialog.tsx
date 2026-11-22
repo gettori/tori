@@ -1,4 +1,5 @@
-import { createEffect, createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js";
+import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { Bot, FolderSymlink, SlidersHorizontal, Wrench, X, Zap, type IconGlyph } from "../../components/Icon/icons";
 
 import Icon from "../../components/Icon/Icon";
@@ -137,7 +138,7 @@ export default function ProjectSettingsDialog(props: { path: string; section?: P
           aria-labelledby={searching() ? undefined : tabId(id)}
           hidden={searching() ? !matches() : section() !== id}
         >
-          <ProjectSearch.Provider value={{ query: q, paneHit }}>{body()}</ProjectSearch.Provider>
+          <ProjectSearch value={{ query: q, paneHit }}>{body()}</ProjectSearch>
         </div>
       </Show>
     );
@@ -211,8 +212,7 @@ export default function ProjectSettingsDialog(props: { path: string; section?: P
                             type="button"
                             role="tab"
                             id={tabId(id)}
-                            class={s.railItem}
-                            classList={{ [s.railItemActive]: selected() }}
+                            class={[s.railItem, { [s.railItemActive]: selected() }]}
                             aria-controls={selected() ? paneId(id) : undefined}
                             aria-selected={selected() ? "true" : "false"}
                             aria-label={label()}

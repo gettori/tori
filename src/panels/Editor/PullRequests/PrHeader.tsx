@@ -7,7 +7,7 @@
 // panel's file list already heads.
 
 import { Show } from "solid-js";
-import { Dynamic } from "solid-js/web";
+import { dynamic } from "@solidjs/web";
 import {
   ArrowLeft,
   Copy,
@@ -37,9 +37,10 @@ const STATE: Record<StateKey, { label: string; icon: IconGlyph }> = {
 export default function PrHeader(props: { pr: PullRequest; counts: PrCounts | null; compact?: boolean }) {
   const state = (): StateKey => (props.pr.state === "open" && props.pr.isDraft ? "draft" : props.pr.state);
 
+  const Title = dynamic(() => (props.compact ? "h2" : "h1"));
   return (
     <div class={styles.header} data-compact={props.compact ? "" : undefined}>
-      <Dynamic component={props.compact ? "h2" : "h1"} class={styles.title}>
+      <Title class={styles.title}>
         {props.pr.title}{" "}
         {/* An anchor and not a button, so the middle click and the Cmd+click
             that every other link in the app answers work here too. Named in
@@ -54,7 +55,7 @@ export default function PrHeader(props: { pr: PullRequest; counts: PrCounts | nu
         >
           #{props.pr.number}
         </a>
-      </Dynamic>
+      </Title>
 
       <div class={styles.summary}>
         <span class={styles.state} data-state={state()}>

@@ -1,4 +1,4 @@
-import { For, Index, Show, createResource, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createResource, createSignal, onCleanup, onMount } from "solid-js";
 import SegmentedControl from "../../src/components/SegmentedControl/SegmentedControl";
 import {
   digestCount,
@@ -141,7 +141,7 @@ function Rows(props: { label: string; rows: { title: string; meta: string; open:
     <Show when={props.rows.length}>
       <h2 class={styles.label}>{props.label}</h2>
       <ul class={styles.group}>
-        <Index each={props.rows}>
+        <For keyed={false} each={props.rows}>
           {(row) => (
             <li>
               <button class={styles.item} onClick={() => row().open()}>
@@ -152,7 +152,7 @@ function Rows(props: { label: string; rows: { title: string; meta: string; open:
               </button>
             </li>
           )}
-        </Index>
+        </For>
       </ul>
     </Show>
   );

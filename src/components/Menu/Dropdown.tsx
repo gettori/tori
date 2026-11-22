@@ -1,5 +1,5 @@
-import { createUniqueId, mergeProps, Show, splitProps, type JSX } from "solid-js";
-import { Dynamic, Portal } from "solid-js/web";
+import { createUniqueId, merge, Show, omit } from "solid-js";
+import { type JSX, dynamic, Portal } from "@solidjs/web";
 import type { LayerPlacement } from "../../lib/layer";
 import { callHandler, type TriggerHandler } from "../callHandler";
 import { useDialogSurface } from "../Dialog/surface";
@@ -7,6 +7,7 @@ import { createMenu, CURSOR_GUTTER, CURSOR_SHIFT, MenuContent, MenuProvider } fr
 import { MenuGlide, MenuRows, type MenuItem } from "./rows";
 import { MenuSurface } from "./surface";
 import styles from "./Menu.module.css";
+import { defined } from "../../lib/props";
 
 /** Where the menu sits relative to its anchor. */
 export type MenuPlacement =
@@ -71,39 +72,23 @@ export interface DropdownProps<T extends HTMLElement = HTMLButtonElement> extend
  * interrupted, so the next keystroke lands in the editor.
  */
 export default function Dropdown<T extends HTMLElement = HTMLButtonElement>(props: DropdownProps<T>) {
-  const [local, trigger] = splitProps(props, [
-    "items",
-    "menu",
-    "anchor",
-    "open",
-    "onOpenChange",
-    "placement",
-    "as",
-    "wrapper",
-    "mount",
-  ]);
-  const [handlers, rest] = splitProps(trigger as DropdownProps<HTMLButtonElement>, [
-    "ref",
-    "id",
-    "disabled",
-    "onPointerDown",
-    "onClick",
-    "onKeyDown",
-  ]);
+  const trigger = omit(props, "items", "menu", "anchor", "open", "onOpenChange", "placement", "as", "wrapper", "mount");
+  const handlers = trigger as DropdownProps<HTMLButtonElement>;
+  const rest = omit(handlers, "ref", "id", "disabled", "onPointerDown", "onClick", "onKeyDown");
 
   const dialogSurface = useDialogSurface();
-  const mount = () => local.mount ?? dialogSurface();
-  const atCursor = () => local.anchor != null;
+  const mount = () => props.mount ?? dialogSurface();
+  const atCursor = () => props.anchor != null;
   const fallbackId = createUniqueId();
-  const triggerId = () => handlers.id ?? fallbackId;
-  const tag = () => local.as ?? "button";
+  const triggerId = () => (handlers.id ?? fallbackId) as string;
+  const tag = () => props.as ?? "button";
   const isButton = () => tag() === "button";
 
-  const menu = createMenu({ open: () => local.open, onOpenChange: (open) => local.onOpenChange?.(open) });
+  const menu = createMenu({ open: () => props.open, onOpenChange: (open) => props.onOpenChange?.(open) });
   let pointerType = "";
 
   const placement = (): LayerPlacement =>
-    local.placement === "corner" ? "corner" : (local.placement ?? (atCursor() ? "right-start" : "bottom-start"));
+    props.placement === "corner" ? "corner" : (props.placement ?? (atCursor() ? "right-start" : "bottom-start"));
 
   const toggle = () => (menu.isOpen() ? menu.close() : menu.open("content"));
 
@@ -121,7 +106,7 @@ export default function Dropdown<T extends HTMLElement = HTMLButtonElement>(prop
     get role() {
       return isButton() ? undefined : "button";
     },
-    get tabIndex() {
+    get tabindex() {
       return isButton() || handlers.disabled ? undefined : 0;
     },
     get disabled() {
@@ -168,39 +153,40 @@ export default function Dropdown<T extends HTMLElement = HTMLButtonElement>(prop
   // The keys have to be absent in the normal case, where the values above are
   // the right ones. `group` rather than `presentation`, which forbids the
   // `aria-haspopup` and `aria-expanded` this element still carries.
-  const notAControl = () => (local.wrapper ? { role: "group", tabIndex: -1 } : {});
-  const triggerProps = mergeProps(
+  const notAControl = () => (props.wrapper ? { role: "group", tabindex: -1 } : {});
+  const triggerProps = merge(
     behaviour,
     notAControl,
-    rest,
+    defined(rest),
   ) as unknown as JSX.ButtonHTMLAttributes<HTMLButtonElement>;
 
+  const Control = dynamic(() => tag());
   return (
     // Published rather than only used here: a flyout inside this menu is its own
     // portal and mounts where the menu it belongs to does. See `surface.ts`.
-    <MenuSurface.Provider value={mount}>
+    <MenuSurface value={mount}>
       <MenuProvider value={menu}>
         <Show when={!atCursor()}>
-          <Dynamic component={tag()} {...triggerProps} />
+          <Control {...triggerProps} />
         </Show>
         <Show when={menu.isOpen()}>
           <Portal mount={mount()}>
             <MenuContent
               menu={menu}
               placement={placement()}
-              gutter={atCursor() ? CURSOR_GUTTER : local.placement === "corner" ? 0 : TRIGGER_GUTTER}
+              gutter={atCursor() ? CURSOR_GUTTER : props.placement === "corner" ? 0 : TRIGGER_GUTTER}
               shift={atCursor() ? CURSOR_SHIFT : 0}
-              point={atCursor() ? () => cursorRect(local.anchor) : undefined}
+              point={atCursor() ? () => cursorRect(props.anchor) : undefined}
               returnFocus={atCursor() ? undefined : menu.trigger}
               labelledBy={atCursor() ? undefined : triggerId()}
               class={styles.content}
             >
               <MenuGlide />
-              {local.menu ?? <MenuRows items={local.items ?? []} />}
+              {props.menu ?? <MenuRows items={props.items ?? []} />}
             </MenuContent>
           </Portal>
         </Show>
       </MenuProvider>
-    </MenuSurface.Provider>
+    </MenuSurface>
   );
 }

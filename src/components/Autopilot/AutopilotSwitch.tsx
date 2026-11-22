@@ -74,8 +74,7 @@ export default function AutopilotSwitch(props: AutopilotSwitchProps) {
         <Tooltip
           as="button"
           type="button"
-          class={`${styles.segment} ${styles.active}`}
-          classList={{ [styles.open]: !!props.popupOpen }}
+          class={[`${styles.segment} ${styles.active}`, { [styles.open]: !!props.popupOpen }]}
           label={props.popupOpen ? "Hide autopilot (\u2318L)" : "Show autopilot (\u2318L)"}
           aria-pressed="true"
           aria-expanded={props.popupOpen ? "true" : "false"}

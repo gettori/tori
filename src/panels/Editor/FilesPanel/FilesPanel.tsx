@@ -282,8 +282,7 @@ export default function FilesPanel(props: {
             pinned under the tree. */}
         <Show when={shownTabs().length}>
           <section
-            class={styles.views}
-            classList={{ [styles.viewsOpen]: viewsOpen() }}
+            class={[styles.views, { [styles.viewsOpen]: viewsOpen() }]}
             style={viewsOpen() ? { flex: `0 1 ${viewsHeight()}px` } : undefined}
             data-section="views"
           >

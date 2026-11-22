@@ -1,4 +1,5 @@
-import { For, Show, type JSX } from "solid-js";
+import { For, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { BookOpen, CaseSensitive, ListFilter, Regex, WholeWord, type IconGlyph } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import Tooltip from "../../components/Tooltip/Tooltip";
@@ -18,8 +19,7 @@ export function InlineToggle(props: {
     <Tooltip
       as="button"
       type="button"
-      class={styles.toggle}
-      classList={{ [styles.on]: !!props.active }}
+      class={[styles.toggle, { [styles.on]: !!props.active }]}
       label={props.label}
       aria-label={props.label}
       aria-pressed={props.active === undefined ? undefined : props.active ? "true" : "false"}

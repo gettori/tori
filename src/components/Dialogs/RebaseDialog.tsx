@@ -1,5 +1,4 @@
-import { createMemo, For, Show } from "solid-js";
-import { createStore, produce } from "solid-js/store";
+import { createMemo, For, Show, createStore, produce } from "solid-js";
 import { ArrowDown, ArrowUp } from "../Icon/icons";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
@@ -94,11 +93,13 @@ export default function RebaseDialog(props: {
         <For each={rows}>
           {(row, i) => (
             <div
-              class={styles.item}
-              classList={{
-                [styles.folded]: row.action === "squash" || row.action === "fixup",
-                [styles.dropped]: row.action === "drop",
-              }}
+              class={[
+                styles.item,
+                {
+                  [styles.folded]: row.action === "squash" || row.action === "fixup",
+                  [styles.dropped]: row.action === "drop",
+                },
+              ]}
             >
               <div class={styles.line}>
                 <span class={styles.sha}>{row.commit.short}</span>

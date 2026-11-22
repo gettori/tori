@@ -55,7 +55,7 @@ const PR_EVENTS: { value: PrEvent; label: string }[] = [
 
 function Needs(props: { label: string; on: boolean }) {
   return (
-    <span class={styles.need} classList={{ [styles.needOn]: props.on }}>
+    <span class={[styles.need, { [styles.needOn]: props.on }]}>
       <span class={styles.needDot} aria-hidden="true" />
       {props.label}
       <span class={styles.srOnly}>{props.on ? ", on" : ", off"}</span>

@@ -1,4 +1,5 @@
-import { For, Show, createEffect, createSignal, onCleanup, onMount, type JSX } from "solid-js";
+import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import {
   ArrowRight,
   Check,
@@ -172,7 +173,7 @@ function EventRow(props: { event: NeedsYouEvent; withProject?: boolean; time?: s
   const answered = () => props.event.resolvedAt !== null;
   const kind = () => KINDS[props.event.kind];
   return (
-    <li classList={{ [styles.answered]: answered() }}>
+    <li class={{ [styles.answered]: answered() }}>
       <EventLine
         icon={answered() ? Check : kind().icon}
         tone={answered() ? "muted" : kind().tone}
@@ -586,8 +587,7 @@ export default function InboxView(props: { landing?: (el: HTMLElement) => void }
               <button
                 type="button"
                 ref={(el) => view.id === tab() && props.landing?.(el)}
-                class={`${s.railItem} ${styles.railItem}`}
-                classList={{ [s.railItemActive]: tab() === view.id }}
+                class={[`${s.railItem} ${styles.railItem}`, { [s.railItemActive]: tab() === view.id }]}
                 aria-current={tab() === view.id ? "page" : undefined}
                 onClick={() => setTab(view.id)}
               >

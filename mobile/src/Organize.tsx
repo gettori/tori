@@ -1,4 +1,5 @@
-import { For, Show, createSignal, type JSX } from "solid-js";
+import { For, Show, createSignal } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { ChevronDown, ChevronUp } from "../../src/components/Icon/icons";
 import Icon from "../../src/components/Icon/Icon";
 import { PICKER_ICONS, resolveIcon } from "../../src/components/Icon/iconRegistry";

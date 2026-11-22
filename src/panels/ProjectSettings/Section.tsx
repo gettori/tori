@@ -1,4 +1,5 @@
-import { createContext, createSignal, onCleanup, Show, useContext, type Accessor, type JSX } from "solid-js";
+import { createContext, createSignal, onCleanup, Show, useContext, type Accessor } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import s from "../Settings/Settings.module.css";
 import own from "./ProjectSettingsDialog.module.css";
 
@@ -13,7 +14,7 @@ const SectionScope = createContext<{
   query: Accessor<string>;
   narrow: Accessor<boolean>;
   register: (hit: Accessor<boolean>) => void;
-}>();
+} | null>(null);
 
 // Read off the DOM rather than off props: a row's label, hint and control are
 // JSX, and what a reader searches for is the text they see.
@@ -41,7 +42,7 @@ export function Section(props: { heading: string; meta?: JSX.Element; children: 
   };
 
   return (
-    <SectionScope.Provider value={{ query: search.query, narrow, register }}>
+    <SectionScope value={{ query: search.query, narrow, register }}>
       <section ref={el} class={`${s.section} ${own.section}`} hidden={!shown()} data-narrow={narrow() ? "" : undefined}>
         <div class={`${s.sectionTitle} ${own.sectionTitle}`}>
           <span>{props.heading}</span>
@@ -52,7 +53,7 @@ export function Section(props: { heading: string; meta?: JSX.Element; children: 
         </div>
         {props.children}
       </section>
-    </SectionScope.Provider>
+    </SectionScope>
   );
 }
 
@@ -66,12 +67,7 @@ export function Row(props: { label: JSX.Element; hint?: JSX.Element; stack?: boo
   scope?.register(hit);
 
   return (
-    <div
-      ref={el}
-      class={`${s.row} ${own.row}`}
-      classList={{ [s.rowStack]: !!props.stack }}
-      hidden={!!scope?.narrow() && !hit()}
-    >
+    <div ref={el} class={[`${s.row} ${own.row}`, { [s.rowStack]: !!props.stack }]} hidden={!!scope?.narrow() && !hit()}>
       <span class={s.label}>{props.label}</span>
       <div class={s.control}>{props.children}</div>
       <Show when={props.hint}>

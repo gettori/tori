@@ -795,8 +795,7 @@ export default function CheckpointTimeline(props: {
                           <Tooltip
                             as="button"
                             type="button"
-                            class={styles.row}
-                            classList={{ [styles.active]: lastOpened() === targetKey(target) }}
+                            class={[styles.row, { [styles.active]: lastOpened() === targetKey(target) }]}
                             label={titleOf(g.sessionId, e.prompt_ts)}
                             onClick={() => show(target)}
                           >
@@ -845,8 +844,10 @@ export default function CheckpointTimeline(props: {
                       <Tooltip
                         as="button"
                         type="button"
-                        class={`${styles.row} ${styles.backstop}`}
-                        classList={{ [styles.active]: lastOpened() === targetKey(target) }}
+                        class={[
+                          `${styles.row} ${styles.backstop}`,
+                          { [styles.active]: lastOpened() === targetKey(target) },
+                        ]}
                         label={
                           b.sessionId
                             ? `The tree as ${describe(b.sessionId).name} left it, saved before a revert`

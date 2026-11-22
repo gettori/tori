@@ -2,7 +2,8 @@
 // heterogeneous UnifiedTab list, every per-kind decision resolved through the
 // registry. A pane holds whatever kinds were put in it, so the list is mixed by
 // default and the trailing controls are every kind's at once (phase 13).
-import { For, type JSX } from "solid-js";
+import { For } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import OverflowTabBar from "../components/OverflowTabBar";
 import { kindEntry, renderRegistryTab, trailingClusters, type StripPlace } from "../tabs/registry";
 import { idOf, type UnifiedTab } from "./unifiedTabs";

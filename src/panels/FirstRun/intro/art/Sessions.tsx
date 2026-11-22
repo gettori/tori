@@ -1,4 +1,5 @@
-import { For, type JSX } from "solid-js";
+import { For } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { FileCode, Search, SquareTerminal, Tag } from "../../../../components/Icon/icons";
 import AutopilotSwitch from "../../../../components/Autopilot/AutopilotSwitch";
 import Button from "../../../../components/Button/Button";

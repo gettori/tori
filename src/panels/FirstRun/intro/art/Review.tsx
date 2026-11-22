@@ -109,7 +109,7 @@ const CHAT: ChatItem[] = [
 
 function FileRow(props: { change: Change; staged: boolean; active?: boolean }) {
   return (
-    <div class={review.reviewRow} classList={{ [review.active]: props.active }}>
+    <div class={[review.reviewRow, { [review.active]: props.active }]}>
       <FileIcon name={baseName(props.change.path)} />
       <span class={review.reviewName}>{baseName(props.change.path)}</span>
       <Show when={dirName(props.change.path)}>

@@ -1,4 +1,4 @@
-import type { JSX } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import styles from "./MiniWindow.module.css";
 
 /** A Tori window in miniature: real components laid out at their own size,

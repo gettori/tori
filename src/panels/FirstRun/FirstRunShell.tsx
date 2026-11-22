@@ -1,5 +1,5 @@
-import { For, Show, onMount, type JSX } from "solid-js";
-import { Portal } from "solid-js/web";
+import { For, Show, onMount } from "solid-js";
+import { type JSX, Portal } from "@solidjs/web";
 import { Check } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
@@ -34,15 +34,13 @@ export function StepRail(props: {
     return (
       <button
         type="button"
-        class={styles.step}
-        classList={{ [styles.stepCurrent]: state() === "current" }}
+        class={[styles.step, { [styles.stepCurrent]: state() === "current" }]}
         aria-current={state() === "current" ? "step" : undefined}
         disabled={!props.reachable(s.id) || state() === "current"}
         onClick={() => props.onJump(s.id)}
       >
         <span
-          class={styles.num}
-          classList={{ [styles.numCurrent]: state() === "current", [styles.numDone]: state() === "done" }}
+          class={[styles.num, { [styles.numCurrent]: state() === "current", [styles.numDone]: state() === "done" }]}
           aria-hidden="true"
         >
           <Show when={state() === "done"} fallback={n()}>

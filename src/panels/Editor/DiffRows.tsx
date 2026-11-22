@@ -1,8 +1,9 @@
-import { createMemo, createSignal, mergeProps, onCleanup, For, Show } from "solid-js";
+import { createMemo, createSignal, merge, onCleanup, For, Show } from "solid-js";
 import { changedRange, toSideBySide, type DiffRow } from "../../utils/diffView";
 import { overlay, paintRows, type Span } from "../../utils/syntaxRows";
 import { editorDefaults } from "../Settings/settingsStore";
 import styles from "./DiffRows.module.css";
+import { defined } from "../../lib/props";
 
 // One hunk's rows, rendered the same way wherever a diff appears.
 //
@@ -125,7 +126,7 @@ export default function DiffRows(allProps: {
    *  render plain. */
   path?: string;
 }) {
-  const props = mergeProps({ offset: 0 }, allProps);
+  const props = merge({ offset: 0 }, defined(allProps));
   const painted = createMemo(() => (props.path ? paintRows(props.rows, props.path) : null));
   const numbered = createMemo(() => props.rows.some((r) => r.oldLine !== null || r.newLine !== null));
   const digits = createMemo(

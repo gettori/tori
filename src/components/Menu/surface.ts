@@ -14,7 +14,7 @@ import { createContext, useContext, type Accessor } from "solid-js";
  * outside one, which nothing does today), and `<Portal>` reads it as "no mount
  * given" and uses the body.
  */
-export const MenuSurface = createContext<Accessor<HTMLElement | undefined>>();
+export const MenuSurface = createContext<Accessor<HTMLElement | undefined> | null>(null);
 
 /** What the enclosing wrapper portals into. Call during component setup, like
  *  any `useContext`: the returned accessor is what stays live. */

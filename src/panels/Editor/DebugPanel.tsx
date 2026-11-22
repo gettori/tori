@@ -1,4 +1,4 @@
-import { For, Index, Show, createMemo, createSignal } from "solid-js";
+import { For, Show, createMemo, createSignal } from "solid-js";
 import {
   ArrowDown,
   ArrowDownToLine,
@@ -265,9 +265,9 @@ function Watches(props: { root: string }) {
             keying by identity would re-create all of them N times per stop and
             take the focus out of anything being clicked. Keyed by position,
             only the fields that changed are written. */}
-        <Index each={rows()}>
+        <For keyed={false} each={rows()}>
           {(row, i) => <WatchRowView root={props.root} row={row()} index={i} last={rows().length - 1} />}
-        </Index>
+        </For>
       </Show>
     </div>
   );
@@ -424,7 +424,7 @@ function Controls() {
 function FrameRow(props: { session: string; frame: StackFrame; selected: Selection | null }) {
   const isCurrent = () => selectedFrame()?.session === props.session && selectedFrame()?.frameId === props.frame.id;
   return (
-    <div class={styles.frameRow} classList={{ [styles.selected]: isCurrent() }}>
+    <div class={[styles.frameRow, { [styles.selected]: isCurrent() }]}>
       {/* No `aria-label`: the two spans below are the frame's name and where it
           is, which is what the row should be called. A label here would replace
           both with the bare path. */}

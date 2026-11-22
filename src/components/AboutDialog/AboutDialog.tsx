@@ -70,8 +70,7 @@ export default function AboutDialog(props: { onClose: () => void }) {
             opens at its final height instead of growing and shifting. */}
         <button
           type="button"
-          class={styles.version}
-          classList={{ [styles.pending]: !info() }}
+          class={[styles.version, { [styles.pending]: !info() }]}
           disabled={!info()}
           aria-label={copied() ? "Version copied" : `Copy version, ${versionLine()}`}
           onClick={() => void copyVersion()}

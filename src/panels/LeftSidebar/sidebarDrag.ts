@@ -1,7 +1,8 @@
 // Not `utils/dragReorder.ts`: that one stays inside a single list, and this
 // drag crosses sections and still carries the row's path for a terminal drop.
 
-import { createSignal, onCleanup, type JSX } from "solid-js";
+import { createSignal, onCleanup } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { DRAG_ABS_PATH_MIME } from "../../utils/events";
 
 export type Zone = "top" | "middle" | "bottom";

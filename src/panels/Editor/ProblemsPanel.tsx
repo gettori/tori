@@ -1,4 +1,4 @@
-import { For, Index, Show } from "solid-js";
+import { For, Show } from "solid-js";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type ToastEvent } from "../../utils/events";
 import { diagnostics, fixesFor, orderFiles, summarize, type Problem, type Severity } from "../../utils/diagnostics";
 import { composeDiagnosticWithFixes, requestSend, type SessionTarget } from "../../utils/safeSend";
@@ -108,7 +108,7 @@ export default function ProblemsPanel(props: { selected: Selection | null; roots
         {/* `Index`, not `For`: the sections are rebuilt from scratch on every
             diagnostic, and a referentially-keyed list would remount each one
             and reopen a member the reader had collapsed. */}
-        <Index each={sections()}>
+        <For keyed={false} each={sections()}>
           {(section) => (
             <MemberSection root={section().root} headed={headed()} count={section().count}>
               <For each={section().files}>
@@ -161,7 +161,7 @@ export default function ProblemsPanel(props: { selected: Selection | null; roots
               </For>
             </MemberSection>
           )}
-        </Index>
+        </For>
       </Show>
     </div>
   );

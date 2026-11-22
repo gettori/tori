@@ -552,11 +552,13 @@ export default function ForgeSection() {
                       account.auth.kind === "signedIn" && (needsWorkflow(account) || expiry() !== null);
                     return (
                       <div
-                        class={cards.account}
-                        classList={{
-                          [cards.rejected]: account.auth.kind === "suspect" || expiry()?.state === "lapsed",
-                          [cards.nudged]: nudged(),
-                        }}
+                        class={[
+                          cards.account,
+                          {
+                            [cards.rejected]: account.auth.kind === "suspect" || expiry()?.state === "lapsed",
+                            [cards.nudged]: nudged(),
+                          },
+                        ]}
                         data-testid="forge-account"
                       >
                         <div class={cards.line}>
@@ -640,8 +642,7 @@ export default function ForgeSection() {
                         <Show when={account.auth.kind === "signedIn" && expiry()}>
                           {(due) => (
                             <div
-                              class={cards.reason}
-                              classList={{ [cards.nudge]: due().state === "soon" }}
+                              class={[cards.reason, { [cards.nudge]: due().state === "soon" }]}
                               data-testid="expiry-notice"
                             >
                               {expiryText(due())}
@@ -652,7 +653,7 @@ export default function ForgeSection() {
                     );
                   }}
                 </For>
-                <div class={cards.footer} classList={{ [cards.footerInert]: usable().length === 0 }}>
+                <div class={[cards.footer, { [cards.footerInert]: usable().length === 0 }]}>
                   <div class={cards.footerText}>
                     <div class={cards.footerLabel}>
                       <Show
@@ -683,7 +684,7 @@ export default function ForgeSection() {
                     onChange={(v) => void setGitCredentials(host, v)}
                   />
                 </div>
-                <div class={cards.footer} classList={{ [cards.footerInert]: !host.gitCredentials }}>
+                <div class={[cards.footer, { [cards.footerInert]: !host.gitCredentials }]}>
                   <div class={cards.footerText}>
                     <div class={cards.footerLabel}>
                       <span>Use for git everywhere</span>
@@ -985,7 +986,7 @@ export default function ForgeSection() {
           Without one it stays on screen and inert rather than disappearing:
           hidden, "where did that setting go?" has no answer, and the row is
           also the only place that says what adding an account is *for*. */}
-      <div class={cards.global} classList={{ [styles.inert]: !connected() }}>
+      <div class={[cards.global, { [styles.inert]: !connected() }]}>
         <div class={styles.row}>
           {/* Chrome rather than a form label, the same way `ToggleRow`'s is: the
               grid makes it a sibling of the control, and the shared `Switch`

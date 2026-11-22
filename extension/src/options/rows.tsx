@@ -1,4 +1,5 @@
-import { createResource, Show, type JSX } from "solid-js";
+import { createResource, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import type { ConnectionRequest } from "../pick";
 import { pickShortcut } from "../shortcut";
 import { MIN_TORI, NOT_SET_UP, sentenceOf } from "../tab";
@@ -81,7 +82,7 @@ export function ConnectionRow() {
       label="Connection"
       hint={
         <span class="reach">
-          <span classList={{ dot: true, ok: reach() === null && !reach.loading }} aria-hidden="true" />
+          <span class={{ dot: true, ok: reach() === null && !reach.loading }} aria-hidden="true" />
           <span role="status">
             {reach.loading
               ? "Asking Tori."

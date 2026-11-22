@@ -34,7 +34,7 @@ const settingsMock = vi.hoisted(() => ({
   set: (_: { cleanupAfterMerge?: boolean; cleanupAfterIdleDays?: number }) => {},
 }));
 vi.mock("../panels/Settings/settingsStore", async () => {
-  const { createStore } = await import("solid-js/store");
+  const { createStore } = await import("solid-js");
   const [settings, setSettings] = createStore({ git: { cleanupAfterMerge: false, cleanupAfterIdleDays: 0 } });
   settingsMock.set = (g) => setSettings("git", (prev) => ({ ...prev, ...g }));
   return { settings };

@@ -1,14 +1,5 @@
-import {
-  createEffect,
-  createSignal,
-  createUniqueId,
-  onCleanup,
-  Show,
-  untrack,
-  type Accessor,
-  type JSX,
-} from "solid-js";
-import { Portal } from "solid-js/web";
+import { createEffect, createSignal, createUniqueId, onCleanup, Show, untrack, type Accessor } from "solid-js";
+import { type JSX, Portal } from "@solidjs/web";
 import { createPresence, openLayer } from "../../lib/layer";
 import { DialogSurface } from "./surface";
 import styles from "./Dialog.module.css";
@@ -122,7 +113,7 @@ function DialogPanel(props: {
       class={panelClass()}
       onKeyDown={(e) => props.dialog.onKeyDown?.(e)}
     >
-      <DialogSurface.Provider value={props.surface}>
+      <DialogSurface value={props.surface}>
         <div class={props.dialog.titleHidden && !props.dialog.description ? styles.headHidden : styles.head}>
           <h2 id={titleId} class={titleClass()}>
             <Show when={props.dialog.lead}>
@@ -146,7 +137,7 @@ function DialogPanel(props: {
         <Show when={props.dialog.actions}>
           <div class={styles.actions}>{props.dialog.actions}</div>
         </Show>
-      </DialogSurface.Provider>
+      </DialogSurface>
     </dialog>
   );
 }

@@ -1,4 +1,5 @@
-import { Show, createMemo, splitProps, type JSX } from "solid-js";
+import { Show, createMemo, omit } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { Lock } from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import ProjectIcon, { type ProjectIconSource } from "../Icon/ProjectIcon";
@@ -41,7 +42,8 @@ export interface MemberChipProps extends Omit<JSX.HTMLAttributes<HTMLSpanElement
  *  its accessible name carries the repo already, while the sidebar's chip holds
  *  the only spoken account of a broken member. */
 export default function MemberChip(props: MemberChipProps) {
-  const [local, rest] = splitProps(props, [
+  const rest = omit(
+    props,
     "icon",
     "tint",
     "chipStyle",
@@ -52,35 +54,35 @@ export default function MemberChip(props: MemberChipProps) {
     "reference",
     "children",
     "class",
-    "classList",
-  ]);
+  );
 
   const style = createMemo<ChipStyle | { "--chip-hue": string } | undefined>(
-    () => local.chipStyle ?? (local.tint ? { "--chip-hue": local.tint } : undefined),
+    () => props.chipStyle ?? (props.tint ? { "--chip-hue": props.tint } : undefined),
   );
 
   return (
     <span
       {...rest}
-      aria-hidden={local.decorative ? "true" : undefined}
-      class={local.class}
-      classList={{
-        ...local.classList,
-        [styles.chip]: true,
-        [styles.md]: local.size === "md",
-        [styles.outlined]: !!local.outlined,
-        [styles.bare]: !!local.bare,
-        [styles.neutral]: !style(),
-      }}
+      aria-hidden={props.decorative ? "true" : undefined}
+      class={[
+        props.class,
+        {
+          [styles.chip]: true,
+          [styles.md]: props.size === "md",
+          [styles.outlined]: !!props.outlined,
+          [styles.bare]: !!props.bare,
+          [styles.neutral]: !style(),
+        },
+      ]}
       style={style()}
     >
-      <ProjectIcon {...local.icon} />
-      <Show when={local.reference}>
+      <ProjectIcon {...props.icon} />
+      <Show when={props.reference}>
         <span class={styles.lock} role="img" aria-label="Reference, read only" data-reference>
           <Icon icon={Lock} />
         </span>
       </Show>
-      {local.children}
+      {props.children}
     </span>
   );
 }

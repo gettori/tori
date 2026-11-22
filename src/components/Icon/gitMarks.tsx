@@ -1,4 +1,4 @@
-import { splitProps, type Component } from "solid-js";
+import { omit, type Component } from "solid-js";
 import { FolderGit2, GitMerge } from "./icons";
 import Icon, { type IconProps } from "./Icon";
 import { brandMark } from "./agentMarks";
@@ -30,14 +30,14 @@ export type GitMarkProps = Omit<IconProps, "icon"> & {
 };
 
 function Mark(props: GitMarkProps & { icon: IconProps["icon"]; mark: string }) {
-  const [local, rest] = splitProps(props, ["active", "current", "class", "mark"]);
+  const rest = omit(props, "active", "current", "class", "mark");
   return (
     <Icon
       aria-hidden="true"
-      data-mark={local.mark}
-      data-active={local.active ? "true" : "false"}
-      data-current={local.current ? "true" : undefined}
-      classList={{ [styles.mark]: true, [local.class ?? ""]: !!local.class }}
+      data-mark={props.mark}
+      data-active={props.active ? "true" : "false"}
+      data-current={props.current ? "true" : undefined}
+      class={[styles.mark, props.class]}
       {...rest}
     />
   );
@@ -55,8 +55,8 @@ export const BranchMark: Component<GitMarkProps> = (props) => <Mark {...props} i
  *  thing in an end cluster that already carries the sync run, the forge chip
  *  and the rollup, and this says it in the glyph the row has anyway. */
 export const WorktreeMark: Component<GitMarkProps & { stub?: boolean }> = (props) => {
-  const [local, rest] = splitProps(props, ["stub"]);
-  return <Mark {...rest} icon={FolderGit2} mark="worktree" data-stub={local.stub ? "true" : undefined} />;
+  const rest = omit(props, "stub");
+  return <Mark {...rest} icon={FolderGit2} mark="worktree" data-stub={props.stub ? "true" : undefined} />;
 };
 
 /** Git's logo, where the tool itself is named. Jason Long's mark, CC BY 3.0

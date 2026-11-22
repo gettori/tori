@@ -1,4 +1,5 @@
-import { createEffect, createMemo, createSignal, createUniqueId, For, Show, untrack, type JSX } from "solid-js";
+import { createEffect, createMemo, createSignal, createUniqueId, For, Show, untrack } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import Glide from "../Glide/Glide";
 import { createListRows, optionKey, valueOfKey } from "../listRows";
 import OverlayScroll from "../Scrollbar/OverlayScroll";

@@ -19,7 +19,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 // anyone it changed - which is exactly the bug this file has to be able to see.
 const settingsMock = vi.hoisted(() => ({ set: (_: number) => {} }));
 vi.mock("../panels/Settings/settingsStore", async () => {
-  const { createStore } = await import("solid-js/store");
+  const { createStore } = await import("solid-js");
   const [settings, setSettings] = createStore({ git: { fetchEveryMinutes: 10 } });
   settingsMock.set = (n: number) => setSettings("git", "fetchEveryMinutes", n);
   return { settings };

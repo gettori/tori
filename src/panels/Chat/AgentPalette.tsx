@@ -13,7 +13,8 @@
 // Anchored rather than centred, since a model is a property of the composer bar
 // and a modal over the transcript claimed more of the screen, and more of the
 // user's attention, than picking one is worth.
-import { For, Show, createMemo, createSignal, createUniqueId, type JSX } from "solid-js";
+import { For, Show, createMemo, createSignal, createUniqueId } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import {
   ArrowDown,
   ArrowRightToLine,
@@ -261,11 +262,10 @@ export default function AgentPalette(props: {
                 {(p) => (
                   <div
                     id={rowId("providers", p.key)}
-                    class={styles.row}
                     // Not gated on the pane: this row names what the list on
                     // the right is *of*, which stays true while the arrows are
                     // over there.
-                    classList={{ [styles.rowActive]: p === provider() }}
+                    class={[styles.row, { [styles.rowActive]: p === provider() }]}
                     role="option"
                     aria-selected={isCurrent(p) ? "true" : "false"}
                     onClick={() => {
@@ -316,10 +316,12 @@ export default function AgentPalette(props: {
                         <Tooltip
                           as="button"
                           type="button"
-                          class={styles.recheck}
-                          classList={{
-                            [styles.recheckBusy]: p.health.kind === "probing",
-                          }}
+                          class={[
+                            styles.recheck,
+                            {
+                              [styles.recheckBusy]: p.health.kind === "probing",
+                            },
+                          ]}
                           aria-label={`Check ${p.label} for new models`}
                           label="Check again"
                           disabled={p.health.kind === "probing"}
@@ -351,13 +353,15 @@ export default function AgentPalette(props: {
                 {(m) => (
                   <div
                     id={rowId("models", m.value)}
-                    class={styles.row}
-                    classList={{
-                      [styles.modelRow]: true,
-                      [styles.rowActive]: pane() === "models" && m === shownModel(),
-                      [styles.rowInert]: !provider()?.selectable,
-                      [styles.rowCurrent]: inForce(m),
-                    }}
+                    class={[
+                      styles.row,
+                      {
+                        [styles.modelRow]: true,
+                        [styles.rowActive]: pane() === "models" && m === shownModel(),
+                        [styles.rowInert]: !provider()?.selectable,
+                        [styles.rowCurrent]: inForce(m),
+                      },
+                    ]}
                     role="option"
                     aria-selected={inForce(m) ? "true" : "false"}
                     aria-disabled={!provider()?.selectable ? "true" : "false"}
@@ -368,7 +372,7 @@ export default function AgentPalette(props: {
                   >
                     <span class={styles.rowText}>
                       <span class={styles.rowTitle}>
-                        <span class={styles.rowName} classList={{ [styles.rowId]: m.userConfigured }}>
+                        <span class={[styles.rowName, { [styles.rowId]: m.userConfigured }]}>
                           {display(m)?.name ?? m.label}
                         </span>
                         <Show when={inForce(m)}>
@@ -383,10 +387,12 @@ export default function AgentPalette(props: {
                           <Show when={rowSub(m)}>
                             {(d) => (
                               <span
-                                class={styles.rowDesc}
-                                classList={{
-                                  [styles.rowDescId]: !m.description,
-                                }}
+                                class={[
+                                  styles.rowDesc,
+                                  {
+                                    [styles.rowDescId]: !m.description,
+                                  },
+                                ]}
                               >
                                 {d()}
                               </span>
@@ -403,7 +409,7 @@ export default function AgentPalette(props: {
                                     <span class={styles.sep} aria-hidden="true" />
                                   </Show>
                                   <span
-                                    classList={{
+                                    class={{
                                       [styles.rowDescId]: i() === d().segments.length - 1,
                                     }}
                                   >

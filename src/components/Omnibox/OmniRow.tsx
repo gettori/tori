@@ -188,7 +188,7 @@ export default function OmniRow(props: { view: RowView }) {
           <Show when={props.view.value}>{(value) => <span class={styles.value}>{value()}</span>}</Show>
           <Show when={props.view.meter}>
             {(meter) => (
-              <span class={styles.meter} classList={{ [styles.isWarn]: meter().warn }} aria-hidden="true">
+              <span class={[styles.meter, { [styles.isWarn]: meter().warn }]} aria-hidden="true">
                 <span class={styles.meterFill} style={{ width: `${Math.round(meter().level * 100)}%` }} />
               </span>
             )}
@@ -203,7 +203,7 @@ export default function OmniRow(props: { view: RowView }) {
           <Show when={props.view.check}>
             {(check) => (
               <>
-                <span class={styles.check} classList={{ [styles.isOff]: check() === "off" }} aria-hidden="true">
+                <span class={[styles.check, { [styles.isOff]: check() === "off" }]} aria-hidden="true">
                   <Icon icon={Check} />
                 </span>
                 <Show when={check() === "on"}>

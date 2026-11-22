@@ -1,5 +1,5 @@
 import { Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, untrack } from "solid-js";
-import { render } from "solid-js/web";
+import { render } from "@solidjs/web";
 import type { ContentBlock, RefTarget } from "../../utils/chatTypes";
 import { emitWith, NAVIGATE, OPEN_IN_EDITOR, SESSION_ACTION } from "../../utils/events";
 import type { NavTarget, OpenInEditor, SessionAction } from "../../utils/events";

@@ -103,7 +103,7 @@ export default function Diagram(props: { code: string }) {
             markdown gives every other fence, in the chat and in the preview.
             Hidden while a drawing is still coming, so it holds the space
             without flashing source that is about to be replaced. */}
-        <pre ref={setEl} classList={{ [styles.pending]: drawn() === undefined }}>
+        <pre ref={setEl} class={{ [styles.pending]: drawn() === undefined }}>
           <code>{props.code}</code>
         </pre>
       </Match>

@@ -45,9 +45,7 @@ function FormatterCard(props: { formatter: FormatterHealth }) {
     <div class={styles.toolCard}>
       <div class={styles.toolHead}>
         <span class={`${styles.dot} ${off() ? styles.dotOff : TONE[f().status]}`} />
-        <span class={styles.toolName} classList={{ [styles.toolNameOff]: off() }}>
-          {f().label}
-        </span>
+        <span class={[styles.toolName, { [styles.toolNameOff]: off() }]}>{f().label}</span>
         <span class={styles.kindTag}>Formatter</span>
         <ProvenanceTag provenance={f().provenance} contributor={f().contributor} />
         <Show when={off() || f().status !== "notFound" || f().runsPerProject}>

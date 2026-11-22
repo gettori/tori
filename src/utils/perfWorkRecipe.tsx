@@ -8,9 +8,8 @@
  * frame line comes back as a gap of seconds.
  */
 
-import type { JSX } from "solid-js";
-import { render } from "solid-js/web";
-import { createStore, produce } from "solid-js/store";
+import { createStore, produce } from "solid-js";
+import { type JSX, render } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import { applyEvent, initialChat, type ChatState, type ToolItem } from "../panels/Chat/chatStore";
 import MessageList from "../panels/Chat/MessageList";

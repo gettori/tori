@@ -1,5 +1,5 @@
 import { For, Show, createResource, createSignal, onCleanup } from "solid-js";
-import { Dynamic } from "solid-js/web";
+import { dynamic } from "@solidjs/web";
 import { Ellipsis, Plus } from "../../src/components/Icon/icons";
 import Icon from "../../src/components/Icon/Icon";
 import { WheelGlyph } from "../../src/components/Autopilot/Wheel";
@@ -25,7 +25,10 @@ const REMOVE_REPLY_MS = 160_000;
 export function AgentMark(props: { agent: string | undefined; size: number }) {
   return (
     <Show when={agentMark(props.agent)} fallback={<span>{(props.agent ?? "?").slice(0, 1).toUpperCase()}</span>}>
-      {(mark) => <Dynamic component={mark()} size={`${props.size}px`} />}
+      {(mark) => {
+        const Mark = dynamic(() => mark());
+        return <Mark size={`${props.size}px`} />;
+      }}
     </Show>
   );
 }

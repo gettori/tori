@@ -574,7 +574,7 @@ export default function AgentDetail(props: {
         </div>
         <div class={styles.setupSteps}>
           {/* Step 1: the binary. */}
-          <div class={styles.setupStep} classList={{ [styles.stepDone]: installed() }}>
+          <div class={[styles.setupStep, { [styles.stepDone]: installed() }]}>
             <span class={styles.stepBadge}>{installed() ? <Icon icon={Check} size={12} /> : "1"}</span>
             <div class={styles.stepBody}>
               <div class={styles.stepHead}>
@@ -614,7 +614,7 @@ export default function AgentDetail(props: {
           </div>
 
           {/* Step 2: the login. Inert until there is a binary to run it. */}
-          <div class={styles.setupStep} classList={{ [styles.stepInert]: !installed() }}>
+          <div class={[styles.setupStep, { [styles.stepInert]: !installed() }]}>
             <span class={styles.stepBadge}>2</span>
             <div class={styles.stepBody}>
               <div class={styles.stepHead}>

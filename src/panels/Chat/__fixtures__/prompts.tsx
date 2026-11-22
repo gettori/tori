@@ -1,5 +1,4 @@
-import { For, createSignal, onCleanup } from "solid-js";
-import { createStore } from "solid-js/store";
+import { For, createSignal, onCleanup, createStore } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import ToolCallCard from "../ToolCallCard";
 import AskCard from "../AskCard";

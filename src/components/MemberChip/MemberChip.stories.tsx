@@ -18,7 +18,7 @@ const MEMBERS = [
   { icon: { seed: "/repos/docs", icon: "Book" }, tint: undefined },
 ];
 
-const Row = (props: { children: import("solid-js").JSX.Element }) => (
+const Row = (props: { children: import("@solidjs/web").JSX.Element }) => (
   <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>{props.children}</div>
 );
 

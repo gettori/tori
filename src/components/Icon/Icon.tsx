@@ -1,5 +1,5 @@
-import { splitProps } from "solid-js";
-import { Dynamic } from "solid-js/web";
+import { omit } from "solid-js";
+import { dynamic } from "@solidjs/web";
 import type { IconGlyph, IconGlyphProps } from "./createIcon";
 
 export interface IconProps extends IconGlyphProps {
@@ -12,8 +12,9 @@ export interface IconProps extends IconGlyphProps {
  *  (`size`, `strokeWidth`, `color`, `class`, ...) overrides the default. Color
  *  inherits `currentColor`, so callers tint via CSS `color`. */
 export default function Icon(props: IconProps) {
-  const [local, rest] = splitProps(props, ["icon", "size", "strokeWidth"]);
-  // Dynamic (not `const Glyph = local.icon`) so a changing `icon` prop swaps the
+  const rest = omit(props, "icon", "size", "strokeWidth");
+  // dynamic() (not `const Glyph = props.icon`) so a changing `icon` prop swaps the
   // glyph reactively - e.g. a toggle button that flips between two icons.
-  return <Dynamic component={local.icon} size={local.size ?? 16} strokeWidth={local.strokeWidth ?? 1.75} {...rest} />;
+  const Glyph = dynamic(() => props.icon);
+  return <Glyph size={props.size ?? 16} strokeWidth={props.strokeWidth ?? 1.75} {...rest} />;
 }

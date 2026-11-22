@@ -14,8 +14,7 @@
 //
 // The trust boundary is unchanged and is the whole point: blocks land in the
 // composer as removable chips and wait there. Nothing here sends anything.
-import { createSignal } from "solid-js";
-import { createStore } from "solid-js/store";
+import { createSignal, createStore } from "solid-js";
 import type { ContentBlock } from "./chatTypes";
 import { isPdfPath } from "./pathScope";
 import { attributed, type HunkNote } from "./safeSend";

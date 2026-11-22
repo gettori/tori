@@ -1,4 +1,5 @@
-import { createEffect, createUniqueId, Show, type JSX } from "solid-js";
+import { createEffect, createUniqueId, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { Check, Minus } from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import styles from "./Checkbox.module.css";
