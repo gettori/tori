@@ -270,7 +270,7 @@ export default function GraphView(props: { workspace: string }) {
                   </span>
                   <For each={foldPills(row.entry.refs, base())}>
                     {(pill) => (
-                      <span class={`${styles.ref} ${styles[pill.kind]}`} classList={{ [styles.base]: pill.base }}>
+                      <span class={[`${styles.ref} ${styles[pill.kind]}`, { [styles.base]: pill.base }]}>
                         {pill.label}
                       </span>
                     )}

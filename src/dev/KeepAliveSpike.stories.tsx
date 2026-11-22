@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { onCleanup, onMount } from "solid-js";
-import { Portal } from "solid-js/web";
+import { Portal } from "@solidjs/web";
 import { stageHost } from "../tabs/stageHost";
 import PaneTree, { type PaneRoles } from "../layout/PaneTree";
 import { leaves, splitPane } from "../layout/paneLayout";

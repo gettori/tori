@@ -98,8 +98,7 @@ export default function SpaceStep(props: {
                 type="button"
                 role="radio"
                 aria-checked={props.selected === s.name ? "true" : "false"}
-                class={styles.choice}
-                classList={{ [styles.choiceOn]: props.selected === s.name }}
+                class={[styles.choice, { [styles.choiceOn]: props.selected === s.name }]}
                 onClick={() => props.onSelect(s.name)}
               >
                 <span>{s.name}</span>

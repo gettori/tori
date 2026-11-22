@@ -126,8 +126,7 @@ export default function ChangeOriginDialog(props: {
           </div>
           <input
             ref={first}
-            class={`${styles.spaceInput} ${styles.monoInput}`}
-            classList={{ [styles.invalid]: malformed() }}
+            class={[`${styles.spaceInput} ${styles.monoInput}`, { [styles.invalid]: malformed() }]}
             aria-labelledby={URL_LABEL}
             aria-describedby={URL_HELP}
             aria-required="true"
@@ -139,7 +138,7 @@ export default function ChangeOriginDialog(props: {
             autocorrect="off"
             spellcheck="false"
           />
-          <div id={URL_HELP} class={styles.spaceHelp} classList={{ [styles.helpError]: malformed() }}>
+          <div id={URL_HELP} class={[styles.spaceHelp, { [styles.helpError]: malformed() }]}>
             {help()}
           </div>
         </div>

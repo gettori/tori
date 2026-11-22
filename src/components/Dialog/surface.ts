@@ -21,7 +21,7 @@ import { createContext, useContext, type Accessor } from "solid-js";
  * `<Portal>` reads it as "no mount given" and uses the body, which is correct
  * when there is no panel to be hidden by.
  */
-export const DialogSurface = createContext<Accessor<HTMLElement | undefined>>();
+export const DialogSurface = createContext<Accessor<HTMLElement | undefined> | null>(null);
 
 /** The enclosing dialog's panel, or `undefined` outside a dialog.
  *

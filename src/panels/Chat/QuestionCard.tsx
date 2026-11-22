@@ -1,5 +1,4 @@
-import { For, Show, createMemo, createSignal, createUniqueId } from "solid-js";
-import { createStore } from "solid-js/store";
+import { For, Show, createMemo, createSignal, createUniqueId, createStore } from "solid-js";
 import Button from "../../components/Button/Button";
 import CheckboxGroup from "../../components/CheckboxGroup/CheckboxGroup";
 import RadioGroup from "../../components/RadioGroup/RadioGroup";
@@ -139,7 +138,7 @@ export default function QuestionCard(props: {
 
   return (
     <form
-      classList={{
+      class={{
         [styles.question]: true,
         [styles.questionDone]: state() === "answered",
         [styles.questionClosed]: state() === "unanswered",

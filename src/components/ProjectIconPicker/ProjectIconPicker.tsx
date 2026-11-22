@@ -205,8 +205,7 @@ export default function ProjectIconPicker(props: {
       <Show when={source() === "upload"}>
         <button
           type="button"
-          class={styles.dropzone}
-          classList={{ [styles.dropzoneOver]: over() }}
+          class={[styles.dropzone, { [styles.dropzoneOver]: over() }]}
           disabled={picking() || props.busy}
           onClick={() => void upload()}
           onDragOver={(e) => {

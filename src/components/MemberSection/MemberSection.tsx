@@ -1,4 +1,5 @@
-import { createSignal, Show, type JSX } from "solid-js";
+import { createSignal, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import Chevron from "../Chevron/Chevron";
 import MemberChip from "../MemberChip/MemberChip";
 import { OUTSIDE_MEMBERS_LABEL, type MemberRoot } from "../../utils/topicMembers";

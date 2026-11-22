@@ -1187,8 +1187,7 @@ export default function ReviewPanel(props: {
     const tab = () => diffTabId(opts.root, f.path, opts.staged);
     return (
       <div
-        class={styles.reviewRow}
-        classList={{ [styles.active]: props.activePath === tab() }}
+        class={[styles.reviewRow, { [styles.active]: props.activePath === tab() }]}
         // The two rows of a partially staged file open two tabs: they are
         // different comparisons, so one tab could only ever show one of them.
         onClick={() => emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: tab(), preview: true })}
@@ -1879,8 +1878,7 @@ export default function ReviewPanel(props: {
             all that is left of the section, pinned under the file list. */}
         <Show when={shownTabs().length}>
           <section
-            class={styles.history}
-            classList={{ [styles.historyOpen]: historyOpen() }}
+            class={[styles.history, { [styles.historyOpen]: historyOpen() }]}
             style={historyOpen() ? { flex: `0 1 ${historyHeight()}px` } : undefined}
             data-section="history"
           >
@@ -2028,8 +2026,7 @@ export default function ReviewPanel(props: {
                       {(st) => (
                         <>
                           <div
-                            class={styles.stashRow}
-                            classList={{ [styles.active]: openStashes().has(st.sha) }}
+                            class={[styles.stashRow, { [styles.active]: openStashes().has(st.sha) }]}
                             title={`${st.selector}${st.branch ? ` on ${st.branch}` : ""} - ${st.relative_date}`}
                             onClick={() => toggleStash(st.sha)}
                           >

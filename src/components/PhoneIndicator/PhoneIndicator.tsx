@@ -70,7 +70,7 @@ export default function PhoneIndicator() {
             <For each={devices()}>
               {(d) => (
                 <div class={styles.device}>
-                  <span class={styles.dot} classList={{ [styles.on]: d.connected }} />
+                  <span class={[styles.dot, { [styles.on]: d.connected }]} />
                   <span class={styles.name}>{d.name}</span>
                   <span class={styles.state}>{d.connected ? "Connected" : "Offline"}</span>
                   <Button size="sm" variant="danger" aria-label={`Revoke ${d.name}`} onClick={() => revoke(d)}>

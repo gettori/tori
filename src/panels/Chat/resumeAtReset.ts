@@ -1,7 +1,7 @@
 // Here and not in Rust: the spend ceiling and the queue hold exist only in the
 // webview, and a timer firing through `ChatHost::deliver` would walk past both.
 // A restart drops every arm, since restored tabs are inert by design.
-import { createStore } from "solid-js/store";
+import { createStore } from "solid-js";
 
 export type Arm = {
   sessionId: string;

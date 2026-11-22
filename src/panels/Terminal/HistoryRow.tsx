@@ -1,4 +1,5 @@
-import { Show, type JSX } from "solid-js";
+import { Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import ContextMenu from "../../components/Menu/ContextMenu";
 import { type MenuItem } from "../../components/Menu/rows";
 import type { SessionStatus } from "../../utils/sessionStatus";
@@ -32,8 +33,7 @@ export default function HistoryRow(props: {
 }) {
   return (
     <ContextMenu
-      class={styles.row}
-      classList={{ [styles.rowActive]: props.active }}
+      class={[styles.row, { [styles.rowActive]: props.active }]}
       role="option"
       aria-selected={props.active ? "true" : "false"}
       title={props.label}

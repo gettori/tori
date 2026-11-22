@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { createSignal, type JSX } from "solid-js";
+import { createSignal } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import Button from "../../components/Button/Button";
 import type { AgentHealth } from "../../utils/agentHealth";
 import type { FirstRunSpace } from "../../utils/firstRun";

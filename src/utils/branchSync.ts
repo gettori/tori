@@ -9,7 +9,7 @@
 // carries no label on purpose: a row that draws "in sync" on every clean branch
 // spends the reader's attention on the news that there is no news.
 
-import { createStore, produce } from "solid-js/store";
+import { createStore, produce } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import type { BranchSync } from "./gitActions";
 import type { PrRelation } from "./prRelation";

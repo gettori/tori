@@ -81,8 +81,7 @@ export default function ArtifactsPanel(props: { chatId: string; root: string; ac
       <li>
         <button
           type="button"
-          class={styles.row}
-          classList={{ [styles.sel]: props.activePath === a.path }}
+          class={[styles.row, { [styles.sel]: props.activePath === a.path }]}
           aria-current={props.activePath === a.path ? "true" : undefined}
           data-artifact={a.path}
           onClick={() => emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: a.path })}

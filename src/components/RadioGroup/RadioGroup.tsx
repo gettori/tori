@@ -1,4 +1,5 @@
-import { createUniqueId, For, Show, type JSX } from "solid-js";
+import { createUniqueId, For, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import styles from "./RadioGroup.module.css";
 
 /** One choice: the string the app stores, the label the user reads, and an

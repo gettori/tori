@@ -1,5 +1,4 @@
-import { For, Show, createEffect, createResource, createSignal, on, onCleanup } from "solid-js";
-import { createStore, produce } from "solid-js/store";
+import { For, Show, createEffect, createResource, createSignal, on, onCleanup, createStore, produce } from "solid-js";
 import { ArrowUp, ChevronLeft, Ellipsis, Paperclip, X } from "../../src/components/Icon/icons";
 import Icon from "../../src/components/Icon/Icon";
 import MessageList from "../../src/panels/Chat/MessageList";

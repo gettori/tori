@@ -147,8 +147,7 @@ export default function SpaceDialog(props: {
           >
             <input
               ref={first}
-              class={styles.spaceInput}
-              classList={{ [styles.invalid]: !!nameError() }}
+              class={[styles.spaceInput, { [styles.invalid]: !!nameError() }]}
               aria-labelledby={NAME_LABEL}
               aria-describedby={NAME_HELP}
               aria-required="true"
@@ -161,7 +160,7 @@ export default function SpaceDialog(props: {
               spellcheck="false"
             />
           </Show>
-          <div id={NAME_HELP} class={styles.spaceHelp} classList={{ [styles.helpError]: !!nameError() }}>
+          <div id={NAME_HELP} class={[styles.spaceHelp, { [styles.helpError]: !!nameError() }]}>
             <Show
               when={isNew()}
               fallback="The folder on disk carries this name, so it can’t change here. Colour and icon can."

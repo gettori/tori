@@ -60,9 +60,7 @@ export default function ReadyStep(props: { summary: ReadySummary; home: string }
           <div class={styles.summaryRow} data-done={row.done}>
             <Icon icon={row.done ? Check : Minus} size={14} strokeWidth={2.5} />
             <span class={styles.summaryLabel}>{row.label}</span>
-            <span class={styles.summaryValue} classList={{ [styles.mono]: !!row.mono }}>
-              {row.value}
-            </span>
+            <span class={[styles.summaryValue, { [styles.mono]: !!row.mono }]}>{row.value}</span>
           </div>
         )}
       </For>

@@ -1,4 +1,5 @@
-import { For, Show, onMount, type JSX } from "solid-js";
+import { For, Show, onMount } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import Button from "../../../components/Button/Button";
 import SegmentedControl from "../../../components/SegmentedControl/SegmentedControl";
 import Checkbox from "../../../components/Checkbox/Checkbox";

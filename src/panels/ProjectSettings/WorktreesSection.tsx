@@ -1,4 +1,5 @@
-import { createEffect, createMemo, createSignal, on, For, Show, type JSX } from "solid-js";
+import { createEffect, createMemo, createSignal, on, For, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import { CornerDownRight, Folder, GitBranch, RefreshCw, Trash2, TriangleAlert } from "../../components/Icon/icons";
 
@@ -254,8 +255,7 @@ export default function WorktreesSection(props: { workspace: string }) {
                   {(e) => (
                     <button
                       type="button"
-                      class={styles.item}
-                      classList={{ [styles.itemOn]: chosen()?.name === e.name }}
+                      class={[styles.item, { [styles.itemOn]: chosen()?.name === e.name }]}
                       aria-current={chosen()?.name === e.name ? "true" : "false"}
                       onClick={() => setPick(e.name)}
                     >

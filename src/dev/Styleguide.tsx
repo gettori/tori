@@ -231,7 +231,7 @@ export default function Styleguide() {
           <div class={styles.ansiRow}>
             <For each={ANSI_SLOTS}>
               {(role) => (
-                <div class={styles.ansiCell} classList={{ [styles.failing]: failedVars().has(role.cssVar) }}>
+                <div class={[styles.ansiCell, { [styles.failing]: failedVars().has(role.cssVar) }]}>
                   <div class={styles.ansiChip} style={{ background: `var(${role.cssVar})` }} />
                   <code>{role.id.slice("ansi.".length)}</code>
                 </div>
@@ -258,7 +258,7 @@ export default function Styleguide() {
                   {(role) => (
                     <span
                       style={{ color: `var(${role.cssVar})` }}
-                      classList={{ [styles.failing]: failedVars().has(role.cssVar) }}
+                      class={{ [styles.failing]: failedVars().has(role.cssVar) }}
                     >
                       {text}
                     </span>
@@ -317,7 +317,7 @@ export default function Styleguide() {
                 <div class={styles.roleGrid}>
                   <For each={ROLES.filter((r) => r.group === group)}>
                     {(role) => (
-                      <div class={styles.roleCell} classList={{ [styles.failing]: failedVars().has(role.cssVar) }}>
+                      <div class={[styles.roleCell, { [styles.failing]: failedVars().has(role.cssVar) }]}>
                         <div class={styles.roleChip} style={{ background: `var(${role.cssVar})` }} />
                         <code>{role.cssVar}</code>
                       </div>

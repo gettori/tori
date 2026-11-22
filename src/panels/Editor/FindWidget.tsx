@@ -1,5 +1,5 @@
 import { createMemo, createSignal, Show } from "solid-js";
-import { render } from "solid-js/web";
+import { render } from "@solidjs/web";
 import { EditorSelection, type EditorState, type Extension, type SelectionRange } from "@codemirror/state";
 import { EditorView, keymap, runScopeHandlers, type Command, type Panel } from "@codemirror/view";
 import {
@@ -167,7 +167,7 @@ function createFindPanel(view: EditorView): Panel {
         </Show>
         <div class={styles.rows}>
           <div class={styles.row}>
-            <div class={styles.field} classList={{ [styles.miss]: !!query().search && none() }}>
+            <div class={[styles.field, { [styles.miss]: !!query().search && none() }]}>
               <input
                 ref={(el) => {
                   // What `openSearchPanel` looks for when Mod-f is pressed again.

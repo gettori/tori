@@ -1,4 +1,5 @@
-import { createSignal, onCleanup, type JSX } from "solid-js";
+import { createSignal, onCleanup } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import { copyText } from "../../../../utils/clipboard";
 import { isForgeError, type DevicePrompt } from "../../../../utils/forgeTypes";

@@ -1,4 +1,5 @@
-import { splitProps, type JSX } from "solid-js";
+import { omit } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import Tooltip, { type TooltipPlacement } from "../Tooltip/Tooltip";
 import styles from "./Button.module.css";
 
@@ -34,7 +35,8 @@ export interface ButtonProps extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonEle
  *  A native `title` does not reach here any more: issue 102 swept the app onto
  *  `tooltip` and `src/test/interactiveTitle.test.ts` keeps it that way. */
 export default function Button(props: ButtonProps) {
-  const [local, rest] = splitProps(props, [
+  const rest = omit(
+    props,
     "variant",
     "size",
     "icon",
@@ -46,12 +48,12 @@ export default function Button(props: ButtonProps) {
     "tooltip",
     "tooltipPlacement",
     "tooltipWhenDisabled",
-  ]);
+  );
 
-  const iconOnly = () => local.icon != null && local.children == null;
+  const iconOnly = () => props.icon != null && props.children == null;
   // Explicit aria-label wins; for an icon-only button the tooltip backfills the
   // name, so the text a mouse user hovers for doubles as the accessible name.
-  const ariaLabel = () => local["aria-label"] ?? (iconOnly() ? local.tooltip : undefined);
+  const ariaLabel = () => props["aria-label"] ?? (iconOnly() ? props.tooltip : undefined);
 
   if (import.meta.env.DEV && iconOnly() && ariaLabel() == null) {
     console.warn("[Button] icon-only button is missing an accessible name; pass `aria-label` (or a `tooltip`).");
@@ -61,22 +63,24 @@ export default function Button(props: ButtonProps) {
     <Tooltip
       {...rest}
       as="button"
-      label={local.tooltip}
-      placement={local.tooltipPlacement}
-      whenDisabled={local.tooltipWhenDisabled}
-      type={local.type ?? "button"}
+      label={props.tooltip}
+      placement={props.tooltipPlacement}
+      whenDisabled={props.tooltipWhenDisabled}
+      type={props.type ?? "button"}
       aria-label={ariaLabel()}
-      class={local.class}
-      classList={{
-        [styles.btn]: true,
-        [styles[local.variant ?? "default"]]: true,
-        [styles[local.size ?? "md"]]: true,
-        [styles.iconOnly]: iconOnly(),
-      }}
+      class={[
+        props.class,
+        {
+          [styles.btn]: true,
+          [styles[props.variant ?? "default"]]: true,
+          [styles[props.size ?? "md"]]: true,
+          [styles.iconOnly]: iconOnly(),
+        },
+      ]}
     >
-      {local.icon}
-      {local.children != null && <span class={styles.label}>{local.children}</span>}
-      {local.iconRight}
+      {props.icon}
+      {props.children != null && <span class={styles.label}>{props.children}</span>}
+      {props.iconRight}
     </Tooltip>
   );
 }

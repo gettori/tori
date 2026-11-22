@@ -1,4 +1,5 @@
-import { createEffect, createSignal, For, on, Show, type JSX } from "solid-js";
+import { createEffect, createSignal, For, on, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import Select, { type SelectOption } from "../../../../components/Select/Select";
 import SegmentedControl from "../../../../components/SegmentedControl/SegmentedControl";
 import Button from "../../../../components/Button/Button";

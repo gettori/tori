@@ -1,4 +1,5 @@
-import { createSignal, createEffect, createMemo, on, onMount, onCleanup, For, Show, type JSX } from "solid-js";
+import { createSignal, createEffect, createMemo, on, onMount, onCleanup, For, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {

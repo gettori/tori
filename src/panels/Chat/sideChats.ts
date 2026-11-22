@@ -1,7 +1,6 @@
 // The lock itself lives in Rust, keyed by the `sideOf` every spawn carries, so
 // nothing here decides what a side chat may do.
-import { createSignal } from "solid-js";
-import { createStore, produce } from "solid-js/store";
+import { createSignal, createStore, produce } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import type { ChatItem, ToolItem, TurnRecord } from "./chatStore";
 import { canFork } from "../../utils/agentForks";

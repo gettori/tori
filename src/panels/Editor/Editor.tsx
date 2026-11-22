@@ -4,7 +4,7 @@ import {
   createSignal,
   createEffect,
   createMemo,
-  ErrorBoundary,
+  Errored,
   on,
   onCleanup,
   onMount,
@@ -12,11 +12,10 @@ import {
   untrack,
   Match,
   Show,
-  Suspense,
+  Loading,
   Switch,
-  type JSX,
 } from "solid-js";
-import { Portal } from "solid-js/web";
+import { type JSX, Portal } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -2954,8 +2953,7 @@ export default function Editor(props: {
         </Show>
         <Show when={isTouched(t.path) || isEditingNow(t.path)}>
           <span
-            class={styles.tabTouched}
-            classList={{ [styles.tabEditing]: isEditingNow(t.path) }}
+            class={[styles.tabTouched, { [styles.tabEditing]: isEditingNow(t.path) }]}
             title={isEditingNow(t.path) ? "Being edited right now" : "Changed by the selected session"}
           >
             ●
@@ -3090,8 +3088,7 @@ export default function Editor(props: {
     };
     return (
       <div
-        class={styles.editorMain}
-        classList={{ [styles.hidden]: !shown() }}
+        class={[styles.editorMain, { [styles.hidden]: !shown() }]}
         // Registered by pane id; the width observer effect above picks the
         // focused one, so the right panel's bound tracks focus and remounts
         // rather than whichever column happened to be focused at mount.
@@ -3180,8 +3177,7 @@ export default function Editor(props: {
           </div>
         </Show>
         <div
-          class={styles.codeSlot}
-          classList={{ [styles.hidden]: !editablePathOf(fileId()) }}
+          class={[styles.codeSlot, { [styles.hidden]: !editablePathOf(fileId()) }]}
           ref={(el) => holdSlot(p.paneId, el)}
         />
         <Show
@@ -3264,7 +3260,7 @@ export default function Editor(props: {
                     file buffer has (its line count is fixed, and only a result's
                     own text is editable). */}
                 <Show when={t().kind === "search"}>
-                  <Suspense fallback={<div class={styles.editorEmpty}>Loading editor…</div>}>
+                  <Loading fallback={<div class={styles.editorEmpty}>Loading editor…</div>}>
                     <SearchResultsBuffer
                       id={fileId()!}
                       roots={searchRootsHere()}
@@ -3272,7 +3268,7 @@ export default function Editor(props: {
                       openPaths={filePaths()}
                       confirm={askConfirm}
                     />
-                  </Suspense>
+                  </Loading>
                 </Show>
                 {/* Code with no file behind it, fetched from the adapter by
                     reference. Read-only by construction: there is nothing to
@@ -3300,13 +3296,13 @@ export default function Editor(props: {
               chips and the jump list already speak in `line`, and inside Tori
               that is what a PDF's line is. */}
           <Show when={pdfOf(fileId())}>
-            <Suspense fallback={<div class={styles.editorEmpty}>Loading viewer...</div>}>
+            <Loading fallback={<div class={styles.editorEmpty}>Loading viewer...</div>}>
               <PdfView
                 path={fileId()!}
                 goto={gotoTarget()}
                 onQuote={(text, first, last) => void quoteFromPdf(fileId()!, text, first, last)}
               />
-            </Suspense>
+            </Loading>
           </Show>
           <Show when={previewingOf(fileId())}>
             <Show when={svgOf(fileId())} fallback={<MarkdownPreview path={fileId()!} />}>
@@ -3440,18 +3436,18 @@ export default function Editor(props: {
           <Portal mount={stageHost(editorStageId(paneId))}>
             {/* The buffers live in CodeEditor, not in the column, so Reopen
                 only rebuilds what is drawn around them. */}
-            <ErrorBoundary
+            <Errored
               fallback={(err, reset) => (
                 <div class={styles.editorCrashed} role="alert">
-                  <span>This pane stopped drawing: {String(err)}</span>
-                  <Button size="sm" onClick={reset}>
+                  <span>This pane stopped drawing: {String(err())}</span>
+                  <Button size="sm" onClick={() => reset()}>
                     Reopen
                   </Button>
                 </div>
               )}
             >
               <EditorColumn paneId={paneId} />
-            </ErrorBoundary>
+            </Errored>
           </Portal>
         )}
       </For>
@@ -3462,10 +3458,10 @@ export default function Editor(props: {
           unsaved edits, which is the loss `openPaths` carrying the union exists
           to prevent. */}
       <Show when={allOpenPaths().length}>
-        {/* No fallback: this Suspense is the panel's one unportalled render
+        {/* No fallback: this Loading is the panel's one unportalled render
             site, so a fallback lands in `.workspace` above the pane tree and
             squashes it. The pane's `.codeSlot` already holds the box. */}
-        <Suspense>
+        <Loading>
           <CodeEditor
             // What the watcher covers, so a tab on a file outside all of it
             // knows it will hear about an outside write from nobody.
@@ -3500,7 +3496,7 @@ export default function Editor(props: {
             softWrap={wrapById()[activeId() ?? ""] ?? null}
             confirm={askConfirm}
           />
-        </Suspense>
+        </Loading>
       </Show>
       <Portal mount={stageHost("editor-nav")}>{editorNav()}</Portal>
       <Portal mount={stageHost("editor-chrome")}>
@@ -3515,11 +3511,7 @@ export default function Editor(props: {
             onCommit={persistRightW}
           />
         </Show>
-        <div
-          class={styles.rightPanel}
-          classList={{ [styles.hidden]: !filetreeOn() }}
-          style={{ width: `${rightWidth()}px` }}
-        >
+        <div class={[styles.rightPanel, { [styles.hidden]: !filetreeOn() }]} style={{ width: `${rightWidth()}px` }}>
           <ContextMenu
             class={styles.rightTabsMenu}
             disabled={!!chatId()}

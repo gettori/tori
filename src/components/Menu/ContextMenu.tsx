@@ -1,11 +1,12 @@
-import { createSignal, createUniqueId, mergeProps, onCleanup, Show, splitProps, type JSX } from "solid-js";
-import { Dynamic, Portal } from "solid-js/web";
+import { createSignal, createUniqueId, merge, onCleanup, Show, omit } from "solid-js";
+import { type JSX, dynamic, Portal } from "@solidjs/web";
 import { callHandler, type TriggerHandler } from "../callHandler";
 import { useDialogSurface } from "../Dialog/surface";
 import { createMenu, CURSOR_GUTTER, CURSOR_SHIFT, MenuContent, MenuProvider } from "./menuCore";
 import { MenuGlide, MenuRows, type MenuItem } from "./rows";
 import { MenuSurface } from "./surface";
 import styles from "./Menu.module.css";
+import { defined } from "../../lib/props";
 
 export interface ContextMenuProps<T extends HTMLElement = HTMLDivElement> extends Omit<
   JSX.HTMLAttributes<T>,
@@ -61,8 +62,10 @@ const isTouchOrPen = (e: PointerEvent) => e.pointerType === "touch" || e.pointer
  * browser's menu to open.
  */
 export default function ContextMenu<T extends HTMLElement = HTMLDivElement>(props: ContextMenuProps<T>) {
-  const [local, trigger] = splitProps(props, ["items", "menu", "as", "disabled", "onOpenChange", "mount"]);
-  const [handlers, rest] = splitProps(trigger as ContextMenuProps<HTMLDivElement>, [
+  const trigger = omit(props, "items", "menu", "as", "disabled", "onOpenChange", "mount");
+  const handlers = trigger as ContextMenuProps<HTMLDivElement>;
+  const rest = omit(
+    handlers,
     "ref",
     "style",
     "onContextMenu",
@@ -70,11 +73,11 @@ export default function ContextMenu<T extends HTMLElement = HTMLDivElement>(prop
     "onPointerMove",
     "onPointerCancel",
     "onPointerUp",
-  ]);
+  );
 
   const dialogSurface = useDialogSurface();
-  const mount = () => local.mount ?? dialogSurface();
-  const menu = createMenu({ onOpenChange: (open) => local.onOpenChange?.(open) });
+  const mount = () => props.mount ?? dialogSurface();
+  const menu = createMenu({ onOpenChange: (open) => props.onOpenChange?.(open) });
   const [point, setPoint] = createSignal({ x: 0, y: 0 });
 
   let longPress: ReturnType<typeof setTimeout> | undefined;
@@ -94,7 +97,7 @@ export default function ContextMenu<T extends HTMLElement = HTMLDivElement>(prop
         : { "-webkit-touch-callout": "none", ...style };
     },
     get "data-disabled"() {
-      return local.disabled ? "" : undefined;
+      return props.disabled ? "" : undefined;
     },
     get "data-expanded"() {
       return menu.isOpen() ? "" : undefined;
@@ -104,7 +107,7 @@ export default function ContextMenu<T extends HTMLElement = HTMLDivElement>(prop
     },
     onContextMenu: (e: MouseEvent) => {
       callHandler(e, handlers.onContextMenu as TriggerHandler);
-      if (local.disabled || e.defaultPrevented) return;
+      if (props.disabled || e.defaultPrevented) return;
       cancelLongPress();
       e.preventDefault();
       e.stopPropagation();
@@ -114,7 +117,7 @@ export default function ContextMenu<T extends HTMLElement = HTMLDivElement>(prop
     },
     onPointerDown: (e: PointerEvent) => {
       callHandler(e, handlers.onPointerDown as TriggerHandler);
-      if (local.disabled || !isTouchOrPen(e)) return;
+      if (props.disabled || !isTouchOrPen(e)) return;
       cancelLongPress();
       setPoint({ x: e.clientX, y: e.clientY });
       longPress = setTimeout(() => menu.open("none"), LONG_PRESS_MS);
@@ -133,14 +136,15 @@ export default function ContextMenu<T extends HTMLElement = HTMLDivElement>(prop
     },
   };
 
-  const triggerProps = mergeProps(behaviour, rest) as unknown as JSX.HTMLAttributes<HTMLDivElement>;
+  const triggerProps = merge(behaviour, defined(rest)) as unknown as JSX.HTMLAttributes<HTMLDivElement>;
 
+  const Control = dynamic(() => props.as ?? "div");
   return (
     // Published rather than only used here: a flyout inside this menu is its own
     // portal and mounts where the menu it belongs to does. See `surface.ts`.
-    <MenuSurface.Provider value={mount}>
+    <MenuSurface value={mount}>
       <MenuProvider value={menu}>
-        <Dynamic component={local.as ?? "div"} {...triggerProps} />
+        <Control {...triggerProps} />
         <Show when={menu.isOpen()}>
           <Portal mount={mount()}>
             <MenuContent
@@ -153,11 +157,11 @@ export default function ContextMenu<T extends HTMLElement = HTMLDivElement>(prop
               class={styles.content}
             >
               <MenuGlide />
-              {local.menu ?? <MenuRows items={local.items ?? []} />}
+              {props.menu ?? <MenuRows items={props.items ?? []} />}
             </MenuContent>
           </Portal>
         </Show>
       </MenuProvider>
-    </MenuSurface.Provider>
+    </MenuSurface>
   );
 }

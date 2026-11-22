@@ -1,4 +1,5 @@
-import { For, Show, type JSX } from "solid-js";
+import { For, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { ArrowUpRight, SquareArrowOutUpRight } from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import IconButton from "../IconButton/IconButton";

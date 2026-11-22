@@ -713,14 +713,16 @@ function TreeNode(props: {
         // tree you want to get out of.
         items={menuItems()}
         ref={row}
-        class={styles.treeRow}
-        classList={{
-          [styles.ignored]: props.entry.ignored,
-          [styles.cut]: !!held()?.cut && held()!.paths.includes(props.entry.path),
-          [styles.dropInto]: dropInto(),
-          [styles.selected]: !!props.ctx?.selected().has(props.entry.path),
-          [styles.active]: !props.entry.is_dir && props.activePath === props.entry.path,
-        }}
+        class={[
+          styles.treeRow,
+          {
+            [styles.ignored]: props.entry.ignored,
+            [styles.cut]: !!held()?.cut && held()!.paths.includes(props.entry.path),
+            [styles.dropInto]: dropInto(),
+            [styles.selected]: !!props.ctx?.selected().has(props.entry.path),
+            [styles.active]: !props.entry.is_dir && props.activePath === props.entry.path,
+          },
+        ]}
         style={{ "padding-left": `${props.depth * 12 + 8}px` }}
         onClick={activate}
         onDblClick={(e) => {
@@ -781,23 +783,24 @@ function TreeNode(props: {
       >
         {props.entry.is_dir ? <Chevron open={open()} /> : <FileIcon name={props.entry.name} />}
         <span
-          class={styles.treeName}
-          classList={{
-            [styles.isDir]: props.entry.is_dir,
-            // Only files carry the marker: a dir's tint would have to mean
-            // "something below me changed", which is a different claim.
-            [styles.touched]: !props.entry.is_dir && isTouched(props.entry.path),
-            // The live indicator is a strict subset of touched: a file being
-            // written right now is by definition one this session wrote.
-            [styles.editing]: !props.entry.is_dir && isEditingNow(props.entry.path),
-          }}
+          class={[
+            styles.treeName,
+            {
+              [styles.isDir]: props.entry.is_dir,
+              // Only files carry the marker: a dir's tint would have to mean
+              // "something below me changed", which is a different claim.
+              [styles.touched]: !props.entry.is_dir && isTouched(props.entry.path),
+              // The live indicator is a strict subset of touched: a file being
+              // written right now is by definition one this session wrote.
+              [styles.editing]: !props.entry.is_dir && isEditingNow(props.entry.path),
+            },
+          ]}
         >
           {props.label}
         </span>
         <Show when={!props.entry.is_dir && (isTouched(props.entry.path) || isEditingNow(props.entry.path))}>
           <span
-            class={styles.touchedDot}
-            classList={{ [styles.editingDot]: isEditingNow(props.entry.path) }}
+            class={[styles.touchedDot, { [styles.editingDot]: isEditingNow(props.entry.path) }]}
             title={isEditingNow(props.entry.path) ? "Being edited right now" : "Changed by the selected session"}
           >
             ●
@@ -839,8 +842,7 @@ function FilterResults(props: { root: string; matches: { rel: string; score: num
       <For each={props.matches}>
         {(m) => (
           <div
-            class={styles.treeRow}
-            classList={{ [styles.active]: props.activePath === `${props.root}/${m.rel}` }}
+            class={[styles.treeRow, { [styles.active]: props.activePath === `${props.root}/${m.rel}` }]}
             onClick={() => emitWith(OPEN_IN_EDITOR, { path: `${props.root}/${m.rel}` })}
           >
             <FileIcon name={m.rel.slice(m.rel.lastIndexOf("/") + 1)} />
@@ -1203,9 +1205,8 @@ export default function FileTree(props: {
 
   return (
     <OverlayScroll
-      class={styles.fileTree}
+      class={[styles.fileTree, { [styles.dropInto]: dropRoot() }]}
       contentClass={styles.treeContent}
-      classList={{ [styles.dropInto]: dropRoot() }}
       // The whole panel background means the root, which is how a file dragged
       // into `src/` gets back out.
       onDragOver={(e) => {

@@ -1,15 +1,4 @@
-import {
-  createSignal,
-  createEffect,
-  createMemo,
-  on,
-  onMount,
-  onCleanup,
-  lazy,
-  Suspense,
-  Show,
-  untrack,
-} from "solid-js";
+import { createSignal, createEffect, createMemo, on, onMount, onCleanup, lazy, Loading, Show, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { forgetWorkspace as forgetLayout, moveWorkspaceLayouts } from "./layout/layoutStore";
@@ -292,9 +281,9 @@ function App() {
   // scale/theme controls.
   if (import.meta.env.DEV && window.location.hash === "#styleguide") {
     return (
-      <Suspense>
+      <Loading>
         <Styleguide />
-      </Suspense>
+      </Loading>
     );
   }
 
@@ -1157,8 +1146,7 @@ function App() {
 
       <div class="body" ref={bodyEl}>
         <aside
-          class="pane sidebar"
-          classList={{ hidden: !showSidebar() && !railOnly(), full: showSidebar() }}
+          class={["pane sidebar", { hidden: !showSidebar() && !railOnly(), full: showSidebar() }]}
           style={{ width: `${railOnly() ? px(SPACE_RAIL) : sidebarW()}px` }}
           onMouseDown={windowDragStart}
         >
@@ -1185,7 +1173,7 @@ function App() {
           />
         </Show>
 
-        <div class="workspace" classList={{ "no-sidebar": !showSidebar() && !railOnly() }}>
+        <div class={["workspace", { "no-sidebar": !showSidebar() && !railOnly() }]}>
           <Terminal selected={selected()} onOpenChange={setLiveTabs} onboarding={firstRunOpen()} />
           <Editor
             selected={selected()}
@@ -1211,7 +1199,7 @@ function App() {
           </Show>
           {/* Hidden rather than unmounted, so a hide never detaches a running
               command's terminal from the pane that adopted it. */}
-          <div class="dock" classList={{ hidden: !dockOpen() }} style={{ height: `${dockH()}px` }} data-dock>
+          <div class={["dock", { hidden: !dockOpen() }]} style={{ height: `${dockH()}px` }} data-dock>
             <Dock />
           </div>
         </div>

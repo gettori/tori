@@ -1,5 +1,4 @@
-import { createMemo, createSignal, onCleanup } from "solid-js";
-import { createStore, produce } from "solid-js/store";
+import { createMemo, createSignal, onCleanup, createStore, produce } from "solid-js";
 import MessageList from "../MessageList";
 import StatusStrip from "../StatusStrip";
 import LaneStrip from "../LaneStrip";

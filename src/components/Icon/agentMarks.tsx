@@ -1,4 +1,5 @@
-import { splitProps, type Component, type JSX } from "solid-js";
+import { omit, type Component } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import styles from "./agentMarks.module.css";
 
 /**
@@ -52,15 +53,15 @@ export type MarkProps = JSX.SvgSVGAttributes<SVGSVGElement> & {
  *  Cropping to the ink is what makes one `size` mean one size. */
 export function brandMark(path: string, viewBox = "0 0 24 24"): Component<MarkProps> {
   return (props) => {
-    const [local, rest] = splitProps(props, ["size", "strokeWidth", "animated", "class"]);
+    const rest = omit(props, "size", "strokeWidth", "animated", "class");
     return (
       <svg
         viewBox={viewBox}
-        width={local.size ?? 16}
-        height={local.size ?? 16}
+        width={props.size ?? 16}
+        height={props.size ?? 16}
         fill="currentColor"
         aria-hidden="true"
-        classList={{ [styles.thinking]: !!local.animated, [local.class ?? ""]: !!local.class }}
+        class={[{ [styles.thinking]: !!props.animated }, props.class]}
         {...rest}
       >
         <path d={path} />

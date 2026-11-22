@@ -91,19 +91,21 @@ export default function TabMark(props: {
 
   return (
     <span
-      class={styles.mark}
-      classList={{
-        // One colour class at a time, so the tint never has to beat the rest
-        // tone in the cascade (it could not: see TabMark.module.css).
-        [styles.rest]: !working() && !needsYou(),
-        [agentStyles.tint]: working(),
-        // The same breathe chat wears, from the marks' own stylesheet: one
-        // keyframe, so the two surfaces cannot drift to two rhythms. On the
-        // wrapper rather than the glyph because the fallback brain is a Lucide
-        // component with no `animated` prop to take.
-        [agentStyles.thinking]: working(),
-        [styles.needsYou]: needsYou(),
-      }}
+      class={[
+        styles.mark,
+        {
+          // One colour class at a time, so the tint never has to beat the rest
+          // tone in the cascade (it could not: see TabMark.module.css).
+          [styles.rest]: !working() && !needsYou(),
+          [agentStyles.tint]: working(),
+          // The same breathe chat wears, from the marks' own stylesheet: one
+          // keyframe, so the two surfaces cannot drift to two rhythms. On the
+          // wrapper rather than the glyph because the fallback brain is a Lucide
+          // component with no `animated` prop to take.
+          [agentStyles.thinking]: working(),
+          [styles.needsYou]: needsYou(),
+        },
+      ]}
       // What the colour keys on, and what a test reads to check it.
       data-mark={markKey() ?? undefined}
       title={title()}

@@ -1,4 +1,5 @@
-import { createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js";
+import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import {
   Copy,
   GitBranch,
@@ -149,7 +150,7 @@ export default function SpaceSettingsDialog(props: {
           aria-labelledby={searching() ? undefined : tabId(id)}
           hidden={searching() ? !matches() : section() !== id}
         >
-          <ProjectSearch.Provider value={{ query: q, paneHit }}>{body()}</ProjectSearch.Provider>
+          <ProjectSearch value={{ query: q, paneHit }}>{body()}</ProjectSearch>
         </div>
       </>
     );
@@ -257,8 +258,7 @@ export default function SpaceSettingsDialog(props: {
                       type="button"
                       role="tab"
                       id={tabId(id)}
-                      class={s.railItem}
-                      classList={{ [s.railItemActive]: selected() }}
+                      class={[s.railItem, { [s.railItemActive]: selected() }]}
                       aria-controls={selected() ? paneId(id) : undefined}
                       aria-selected={selected() ? "true" : "false"}
                       tabindex={section() === id ? 0 : -1}
@@ -379,8 +379,7 @@ export default function SpaceSettingsDialog(props: {
                             {(child) => (
                               <button
                                 type="button"
-                                class={styles.chip}
-                                classList={{ [styles.on]: lanes().lit.includes(child) }}
+                                class={[styles.chip, { [styles.on]: lanes().lit.includes(child) }]}
                                 aria-pressed={lanes().lit.includes(child) ? "true" : "false"}
                                 disabled={!lanes().enabled}
                                 onClick={() => flip(child)}
@@ -429,8 +428,7 @@ export default function SpaceSettingsDialog(props: {
                     {(item) => (
                       <button
                         type="button"
-                        class={styles.chip}
-                        classList={{ [styles.on]: line().items[item.id] }}
+                        class={[styles.chip, { [styles.on]: line().items[item.id] }]}
                         aria-pressed={line().items[item.id] ? "true" : "false"}
                         disabled={!full()}
                         onClick={() => toggleItem(item.id)}

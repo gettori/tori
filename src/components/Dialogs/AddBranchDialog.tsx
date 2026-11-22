@@ -477,8 +477,7 @@ export default function AddBranchDialog(props: {
             <>
               <Icon
                 icon={issue()?.key === option.value ? Check : CircleDot}
-                class={styles.branchGlyph}
-                classList={{ [styles.branchGlyphPicked]: issue()?.key === option.value }}
+                class={[styles.branchGlyph, { [styles.branchGlyphPicked]: issue()?.key === option.value }]}
                 aria-hidden="true"
               />
               <span class={styles.issueKey}>{displays().get(option.value)}</span>
@@ -571,8 +570,7 @@ export default function AddBranchDialog(props: {
             <>
               <Icon
                 icon={glyphFor(option.value)}
-                class={styles.branchGlyph}
-                classList={{ [styles.branchGlyphPicked]: parked() === option.value }}
+                class={[styles.branchGlyph, { [styles.branchGlyphPicked]: parked() === option.value }]}
                 aria-hidden="true"
               />
               <span class={styles.branchName}>{option.label}</span>

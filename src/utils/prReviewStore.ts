@@ -22,8 +22,7 @@
 // The cache it fills lives here because it is per pull request and a tab switch
 // must not throw away a stretch the reader already expanded.
 
-import { createSignal } from "solid-js";
-import { createStore, reconcile } from "solid-js/store";
+import { createSignal, createStore, reconcile } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { parseDiffHunks } from "./diffHunks";
 import { newSideLines, oldSideLines } from "./reviewThreads";

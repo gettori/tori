@@ -1,4 +1,5 @@
-import { For, Show, createMemo, createResource, createSignal, type JSX } from "solid-js";
+import { For, Show, createMemo, createResource, createSignal } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import type { ChatAccount, McpServer } from "../../utils/chatTypes";
 import type { ChatPlugin, PublishedCapability } from "../../utils/chatCapabilities";
@@ -271,12 +272,14 @@ export default function SessionInfo(props: {
                     <div class={styles.detailsServer}>
                       <div class={styles.detailsRow}>
                         <span
-                          class={styles.detailsDot}
-                          classList={{
-                            [styles.detailsDotOk]: !isBroken(s.status),
-                            [styles.detailsDotWarn]: s.status === NEEDS_AUTH,
-                            [styles.detailsDotBad]: isBroken(s.status) && s.status !== NEEDS_AUTH,
-                          }}
+                          class={[
+                            styles.detailsDot,
+                            {
+                              [styles.detailsDotOk]: !isBroken(s.status),
+                              [styles.detailsDotWarn]: s.status === NEEDS_AUTH,
+                              [styles.detailsDotBad]: isBroken(s.status) && s.status !== NEEDS_AUTH,
+                            },
+                          ]}
                           aria-hidden="true"
                         />
                         <span class={styles.detailsName}>{s.name}</span>
@@ -314,7 +317,7 @@ export default function SessionInfo(props: {
                           connected to until approved. Tori deliberately does not
                           force-enable it: the approval lives in Claude's own
                           state file, which we never write. */}
-                      <span classList={{ [styles.sessionInfoWarn]: e.approval !== "approved" }}>
+                      <span class={{ [styles.sessionInfoWarn]: e.approval !== "approved" }}>
                         {e.approval === "pending"
                           ? "pending approval (run `claude` to approve)"
                           : e.approval === "disabled"

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, fireEvent, screen } from "../../test/harness";
-import { createStore } from "solid-js/store";
+import { createStore } from "solid-js";
 import ToolCallCard from "./ToolCallCard";
 import type { ToolItem } from "./chatStore";
 

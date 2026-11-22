@@ -1,4 +1,5 @@
-import { splitProps, type JSX } from "solid-js";
+import { omit } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import Tooltip, { type TooltipPlacement } from "../Tooltip/Tooltip";
 import styles from "./IconButton.module.css";
 import type { ControlSize } from "../controls";
@@ -27,7 +28,8 @@ export interface IconButtonProps extends Omit<JSX.ButtonHTMLAttributes<HTMLButto
  *  required: pass `aria-label` (a `tooltip` backfills it and is also what a
  *  hover or a keyboard focus shows), since there is no visible text. */
 export default function IconButton(props: IconButtonProps) {
-  const [local, rest] = splitProps(props, [
+  const rest = omit(
+    props,
     "icon",
     "size",
     "active",
@@ -38,16 +40,16 @@ export default function IconButton(props: IconButtonProps) {
     "tooltip",
     "tooltipPlacement",
     "tooltipWhenDisabled",
-  ]);
+  );
 
-  const ariaLabel = () => local["aria-label"] ?? local.tooltip;
+  const ariaLabel = () => props["aria-label"] ?? props.tooltip;
   // `active` drives the brand-fill look and, by default, aria-pressed. A pane
   // toggle whose "on" state is the plain (not filled) look passes an explicit
   // aria-pressed instead, keeping the accent styling on a `class`.
   const ariaPressed = () => {
-    if (local["aria-pressed"] !== undefined) return local["aria-pressed"];
-    if (local.active === undefined) return undefined;
-    return local.active ? "true" : "false";
+    if (props["aria-pressed"] !== undefined) return props["aria-pressed"];
+    if (props.active === undefined) return undefined;
+    return props.active ? "true" : "false";
   };
 
   if (import.meta.env.DEV && ariaLabel() == null) {
@@ -58,20 +60,22 @@ export default function IconButton(props: IconButtonProps) {
     <Tooltip
       {...rest}
       as="button"
-      label={local.tooltip}
-      placement={local.tooltipPlacement}
-      whenDisabled={local.tooltipWhenDisabled}
-      type={local.type ?? "button"}
+      label={props.tooltip}
+      placement={props.tooltipPlacement}
+      whenDisabled={props.tooltipWhenDisabled}
+      type={props.type ?? "button"}
       aria-label={ariaLabel()}
       aria-pressed={ariaPressed()}
-      class={local.class}
-      classList={{
-        [styles.iconBtn]: true,
-        [styles[local.size ?? "md"]]: true,
-        [styles.active]: !!local.active,
-      }}
+      class={[
+        props.class,
+        {
+          [styles.iconBtn]: true,
+          [styles[props.size ?? "md"]]: true,
+          [styles.active]: !!props.active,
+        },
+      ]}
     >
-      {local.icon}
+      {props.icon}
     </Tooltip>
   );
 }

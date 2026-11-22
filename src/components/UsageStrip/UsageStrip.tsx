@@ -1,4 +1,4 @@
-import { Index, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import AgentGlyph from "../Icon/AgentGlyph";
 import UsageCard from "./UsageCard";
 import { asTabProfile } from "../../utils/agentHealth";
@@ -244,13 +244,13 @@ export default function UsageStrip() {
             button on the strip - including the one a pinned card is anchored
             to, leaving the popover hanging off a removed node. Position is the
             stable key here: rows come and go with accounts, not with readings. */}
-        <Index each={rows()}>
+        <For keyed={false} each={rows()}>
           {(row, i) => (
             <>
               {/* Between every two rows: a thin one between two logins of one
                   agent, a taller one where the next agent starts. */}
               <Show when={i > 0}>
-                <span class={styles.divider} classList={{ [styles.agentDivider]: row().lead }} aria-hidden="true" />
+                <span class={[styles.divider, { [styles.agentDivider]: row().lead }]} aria-hidden="true" />
               </Show>
               <button
                 type="button"
@@ -270,15 +270,15 @@ export default function UsageStrip() {
                 <Show when={row().lead} fallback={<span class={styles.name}>{row().label}</span>}>
                   <AgentGlyph id={row().agentId} label={row().label} size={18} />
                 </Show>
-                <Index each={row().windows}>
+                <For keyed={false} each={row().windows}>
                   {(w) => (
                     <UsageBar reading={w()} warnAt={row().warnAt} now={clock()} compact={collapsed() && !row().lead} />
                   )}
-                </Index>
+                </For>
               </button>
             </>
           )}
-        </Index>
+        </For>
       </div>
       <Show when={opened()}>
         {(open) => (

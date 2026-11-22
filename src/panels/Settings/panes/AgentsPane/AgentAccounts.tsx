@@ -198,8 +198,7 @@ function WindowCard(props: {
 
   return (
     <div
-      class={styles.winCard}
-      classList={{ [styles.winDim]: props.dim }}
+      class={[styles.winCard, { [styles.winDim]: props.dim }]}
       data-state={state() ?? "none"}
       data-band={band()}
       data-temporal={props.reading ? temporalOf(props.reading, props.now) : "none"}
@@ -370,8 +369,7 @@ function WindowChips(props: {
           <Tooltip
             as="button"
             type="button"
-            class={styles.chip}
-            classList={{ [styles.chipOn]: c.lit, [styles.chipIdle]: locked(c) }}
+            class={[styles.chip, { [styles.chipOn]: c.lit, [styles.chipIdle]: locked(c) }]}
             label={why(c)}
             aria-pressed={c.lit ? "true" : "false"}
             aria-disabled={blocked(c) ? "true" : "false"}
@@ -606,10 +604,7 @@ function AccountCard(props: {
           {/* Lit from the same answer the radio is checked from, not from the
               backend's snapshot of it: picking another account moves the
               setting now and the snapshot only on the next refetch. */}
-          <label
-            class={styles.defaultPill}
-            classList={{ [styles.defaultOn]: defaultProfile(props.agentId) === p().id }}
-          >
+          <label class={[styles.defaultPill, { [styles.defaultOn]: defaultProfile(props.agentId) === p().id }]}>
             <input
               type="radio"
               name={`default-account-${props.agentId}`}

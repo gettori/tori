@@ -1,4 +1,5 @@
-import { For, Show, createSignal, type JSX } from "solid-js";
+import { For, Show, createSignal } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { ArrowUp, Bell, TriangleAlert } from "../Icon/icons";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";

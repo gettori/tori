@@ -108,8 +108,7 @@ export default function LaneStrip(props: {
       <Tooltip
         as="button"
         type="button"
-        class={styles.lane}
-        classList={{ [styles.laneOn]: props.selected === id() }}
+        class={[styles.lane, { [styles.laneOn]: props.selected === id() }]}
         label={<Tip {...tip()} />}
         aria-pressed={props.selected === id() ? "true" : "false"}
         onClick={() => props.onSelect(id())}

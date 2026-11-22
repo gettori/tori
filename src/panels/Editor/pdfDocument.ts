@@ -9,7 +9,7 @@
 // the open-tab set rather than off a mount, for exactly that reason.
 
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { createStore, produce } from "solid-js/store";
+import { createStore, produce } from "solid-js";
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFWorker } from "pdfjs-dist";
 import type { PdfZoom } from "./pdfLayout";
 

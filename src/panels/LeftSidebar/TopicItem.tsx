@@ -1,4 +1,5 @@
-import { For, Show, createMemo, createSignal, createUniqueId, type JSX } from "solid-js";
+import { For, Show, createMemo, createSignal, createUniqueId } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { Ellipsis, Lock } from "../../components/Icon/icons";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
@@ -126,7 +127,7 @@ export default function TopicItem(props: {
       data-topic={props.topic.id}
       aria-current={props.active ? "true" : undefined}
     >
-      <div class={`${rows.row} ${rows.project}`} classList={{ [styles.headSel]: headSelected() }} onClick={toggle}>
+      <div class={[`${rows.row} ${rows.project}`, { [styles.headSel]: headSelected() }]} onClick={toggle}>
         <span class={`${rows.rowIcon} ${rows.projectIcon}`}>
           <span class={rows.projectIconArt}>
             <TopicGlyph members={members()} />
@@ -148,12 +149,7 @@ export default function TopicItem(props: {
             <IconChevron open={open()} />
           </button>
         </span>
-        <span
-          class={rows.label}
-          classList={{ [rows.labelHugged]: !!props.topic.issue }}
-          data-name
-          title={props.topic.branch}
-        >
+        <span class={[rows.label, { [rows.labelHugged]: !!props.topic.issue }]} data-name title={props.topic.branch}>
           {props.topic.name}
         </span>
         <Show when={props.topic.issue}>{(issue) => <IssueMark issue={issue()} />}</Show>
@@ -352,9 +348,7 @@ function TopicGlyph(props: { members: TintedMember[] }) {
   const cells = () => Array.from({ length: 4 }, (_, i) => props.members[i] ?? null);
   return (
     <span class={styles.glyph} aria-hidden="true">
-      <For each={cells()}>
-        {(m) => <span class={styles.cell} classList={{ [styles.cellEmpty]: !m }} style={m?.style} />}
-      </For>
+      <For each={cells()}>{(m) => <span class={[styles.cell, { [styles.cellEmpty]: !m }]} style={m?.style} />}</For>
     </span>
   );
 }

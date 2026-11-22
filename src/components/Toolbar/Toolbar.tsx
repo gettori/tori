@@ -67,7 +67,7 @@ export default function Toolbar(props: { selected: Selection | null }) {
                 <nav class={styles.tbCrumb} aria-label="location">
                   <span class={`${styles.crumb} dim`}>{sel()!.spaceName || GLOBAL_NAME}</span>
                   <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
-                  <span class={styles.crumb} classList={{ dim: !!member(), [styles.leaf]: !member() }}>
+                  <span class={[styles.crumb, { dim: !!member(), [styles.leaf]: !member() }]}>
                     {sel()!.topicName ?? sel()!.projectName}
                   </span>
                   <Show when={member()}>

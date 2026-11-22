@@ -4,7 +4,8 @@
 // ever lands inside the same list, and reading it back is what would tie this
 // to a MIME type every other drag source in the app would then have to avoid.
 
-import { createSignal, onCleanup, type JSX } from "solid-js";
+import { createSignal, onCleanup } from "solid-js";
+import type { JSX } from "@solidjs/web";
 
 /** `key` moved to where `target` sits, as a new key order. Move up and Move
  *  down commit the same call with the neighbour as the target, so the keyboard
@@ -19,8 +20,6 @@ export function moveKey(keys: readonly string[], key: string, target: string): s
   return next;
 }
 
-/** What a row spreads onto itself. Static by design: the reactive part is
- *  `dragging()` and `over()`, which a call site reads in a `classList`. */
 export type DragRowProps = {
   draggable: "true";
   onDragStart: JSX.EventHandler<HTMLElement, DragEvent>;

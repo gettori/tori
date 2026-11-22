@@ -1,4 +1,5 @@
-import { For, type JSX } from "solid-js";
+import { For } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { ToggleGroup } from "../ToggleGroup/ToggleGroup";
 import styles from "./SegmentedControl.module.css";
 import { type ControlSize } from "../controls";

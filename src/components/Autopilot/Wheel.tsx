@@ -1,4 +1,4 @@
-import { Show, splitProps } from "solid-js";
+import { Show, omit } from "solid-js";
 import type { IconGlyphProps } from "../Icon/icons";
 import { badgeCount, type AutopilotState } from "./autopilot";
 import styles from "./Wheel.module.css";
@@ -8,15 +8,15 @@ const SPOKES =
 
 /** The bare wheel, shaped like a lucide icon so an icon slot can take it. */
 export function WheelGlyph(props: IconGlyphProps) {
-  const [local, rest] = splitProps(props, ["size", "strokeWidth"]);
+  const rest = omit(props, "size", "strokeWidth");
   return (
     <svg
-      width={local.size ?? 24}
-      height={local.size ?? 24}
+      width={props.size ?? 24}
+      height={props.size ?? 24}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      stroke-width={local.strokeWidth ?? 2.3}
+      stroke-width={props.strokeWidth ?? 2.3}
       stroke-linecap="round"
       {...rest}
     >
@@ -47,8 +47,7 @@ export interface WheelProps {
 export default function Wheel(props: WheelProps) {
   return (
     <span
-      class={styles.wheel}
-      classList={{ [props.class ?? ""]: !!props.class }}
+      class={[styles.wheel, props.class]}
       data-state={props.state}
       data-active={props.active ? "true" : "false"}
       data-quiet={props.quiet ? "true" : undefined}

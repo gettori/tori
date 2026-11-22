@@ -1,4 +1,5 @@
-import { For, Show, createUniqueId, type JSX } from "solid-js";
+import { For, Show, createUniqueId } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import Checkbox from "../Checkbox/Checkbox";
 import styles from "./CheckboxGroup.module.css";
 

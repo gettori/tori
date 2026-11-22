@@ -1,4 +1,5 @@
-import { Show, createEffect, createSignal, on, onCleanup, type JSX } from "solid-js";
+import { Show, createEffect, createSignal, on, onCleanup } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { Ellipsis } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";

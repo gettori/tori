@@ -1,4 +1,4 @@
-import type { JSX } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { WorktreeMark } from "../../components/Icon/gitMarks";
 import SyncMarks from "../../components/SyncMarks/SyncMarks";

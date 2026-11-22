@@ -1,4 +1,4 @@
-import { type Component } from "solid-js";
+import type { Component } from "solid-js";
 import { Brain } from "./icons";
 import { agentMark, type MarkProps } from "./agentMarks";
 

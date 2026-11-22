@@ -74,8 +74,7 @@ export default function PlanCard(props: {
   const rows = (ref?: (el: HTMLUListElement) => void) => (
     <ul
       ref={ref}
-      class={styles.planList}
-      classList={{ [styles.planListAbove]: !!ref && above(), [styles.planListBelow]: !!ref && below() }}
+      class={[styles.planList, { [styles.planListAbove]: !!ref && above(), [styles.planListBelow]: !!ref && below() }]}
       onScroll={() => ref && edges()}
     >
       <For each={props.items}>
@@ -130,7 +129,7 @@ export default function PlanCard(props: {
           </div>
         }
       >
-        <div class={styles.planCard} classList={{ [styles.planStale]: !!props.stale }}>
+        <div class={[styles.planCard, { [styles.planStale]: !!props.stale }]}>
           {/* The head is the fold, the way a tool call's row is: one control,
               on the thing it folds, rather than a separate affordance beside
               it. */}
