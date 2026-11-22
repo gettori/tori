@@ -9,8 +9,10 @@ import {
   onCleanup,
   onMount,
   untrack,
+  createStore,
+  produce,
+  unwrap,
 } from "solid-js";
-import { createStore, produce, unwrap } from "solid-js/store";
 import { nextFrame } from "../../utils/nextFrame";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";

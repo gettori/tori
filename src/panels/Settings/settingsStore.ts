@@ -2,8 +2,7 @@
 // backend, applies typography to CSS tokens, and re-applies live when the
 // file changes (hand edit or set_settings) through the settings://changed
 // watcher event. The reactive store backs the settings panel (Phase 4).
-import { createMemo, createSignal } from "solid-js";
-import { createStore } from "solid-js/store";
+import { createMemo, createSignal, createStore } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { emit, emitWith, SETTINGS_CHANGED, TOAST } from "../../utils/events";

@@ -1050,8 +1050,7 @@ export default function PullsPanel(props: {
         <Show when={shown()}>
           {(s) => (
             <section
-              class={styles.views}
-              classList={{ [styles.viewsOpen]: detailOpen() }}
+              class={[styles.views, { [styles.viewsOpen]: detailOpen() }]}
               style={detailOpen() ? { flex: `0 1 ${detailHeight()}px` } : undefined}
               data-section="detail"
             >

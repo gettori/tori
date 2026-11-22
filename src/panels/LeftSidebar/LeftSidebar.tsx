@@ -3715,8 +3715,7 @@ export default function LeftSidebar(props: {
                 <Tooltip
                   as="button"
                   type="button"
-                  class={rows.portChip}
-                  classList={{ [rows.portChipConnected]: extensionConnected() }}
+                  class={[rows.portChip, { [rows.portChipConnected]: extensionConnected() }]}
                   aria-label={`Open localhost:${port}`}
                   label={
                     extensionConnected()
@@ -4902,8 +4901,10 @@ export default function LeftSidebar(props: {
 
   return (
     <div
-      class={`${styles.tree} ${rows.rowScope}`}
-      classList={{ [styles.railed]: railed(), [styles.railOnly]: railed() && props.railOnly }}
+      class={[
+        `${styles.tree} ${rows.rowScope}`,
+        { [styles.railed]: railed(), [styles.railOnly]: railed() && props.railOnly },
+      ]}
       onPointerEnter={() => setPointerIn(true)}
       onPointerLeave={() => setPointerIn(false)}
     >
@@ -5187,11 +5188,13 @@ export default function LeftSidebar(props: {
           exists. */}
       <Show when={config()}>
         <div
-          class={styles.spaceBar}
-          classList={{
-            [styles.rail]: railed(),
-            [styles.belowMisplaced]: !!config()?.misplaced?.length || !!unfinished(),
-          }}
+          class={[
+            styles.spaceBar,
+            {
+              [styles.rail]: railed(),
+              [styles.belowMisplaced]: !!config()?.misplaced?.length || !!unfinished(),
+            },
+          ]}
         >
           <TileProbe
             glyph={House}
@@ -5230,8 +5233,7 @@ export default function LeftSidebar(props: {
           <Tooltip
             as="button"
             type="button"
-            class={`${styles.stripBtn} ${styles.dockBtn}`}
-            classList={{ [styles.active]: dockOpen() }}
+            class={[`${styles.stripBtn} ${styles.dockBtn}`, { [styles.active]: dockOpen() }]}
             label={dockOpen() ? "Hide the dock (⌘⌃J)" : "Show the dock (⌘⌃J)"}
             placement={railed() ? "right" : undefined}
             aria-label="Dock"

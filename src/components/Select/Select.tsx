@@ -1,15 +1,5 @@
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  createUniqueId,
-  For,
-  onCleanup,
-  Show,
-  untrack,
-  type JSX,
-} from "solid-js";
-import { Portal } from "solid-js/web";
+import { createEffect, createMemo, createSignal, createUniqueId, For, onCleanup, Show, untrack } from "solid-js";
+import { type JSX, Portal } from "@solidjs/web";
 import { Check, ChevronsUpDown } from "../Icon/icons";
 import { createTypeahead } from "../../lib/keyboard";
 import { anchorLayer, openLayer } from "../../lib/layer";

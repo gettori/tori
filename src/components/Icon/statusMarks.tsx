@@ -1,4 +1,5 @@
-import { splitProps, type Component, type JSX } from "solid-js";
+import { omit, type Component } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import styles from "./statusMarks.module.css";
 
 /**
@@ -35,24 +36,24 @@ export type StatusMarkProps = JSX.SvgSVGAttributes<SVGSVGElement> & {
 };
 
 function Frame(props: StatusMarkProps & { mark: string; children: JSX.Element }) {
-  const [local, rest] = splitProps(props, ["size", "strokeWidth", "animate", "class", "mark", "children"]);
+  const rest = omit(props, "size", "strokeWidth", "animate", "class", "mark", "children");
   return (
     <svg
       viewBox="0 0 24 24"
-      width={local.size ?? 16}
-      height={local.size ?? 16}
+      width={props.size ?? 16}
+      height={props.size ?? 16}
       fill="none"
       stroke="currentColor"
-      stroke-width={local.strokeWidth ?? DEFAULT_STROKE}
+      stroke-width={props.strokeWidth ?? DEFAULT_STROKE}
       stroke-linecap="round"
       stroke-linejoin="round"
       aria-hidden="true"
-      data-mark={local.mark}
-      data-animate={local.animate ? "true" : "false"}
-      classList={{ [styles.mark]: true, [local.class ?? ""]: !!local.class }}
+      data-mark={props.mark}
+      data-animate={props.animate ? "true" : "false"}
+      class={[styles.mark, props.class]}
       {...rest}
     >
-      {local.children}
+      {props.children}
     </svg>
   );
 }
@@ -106,7 +107,7 @@ export const WorkingMark: Component<Pick<StatusMarkProps, "size" | "strokeWidth"
       aria-hidden="true"
       data-mark="working"
       data-animate={props.animate ? "true" : "false"}
-      classList={{ [styles.mark]: true, [styles.working]: true, [props.class ?? ""]: !!props.class }}
+      class={[styles.mark, styles.working, props.class]}
     >
       {piece(`${styles.dot} ${styles.dot2}`, "M12 12h.01")}
       {piece(`${styles.dot} ${styles.dot3}`, "M16 12h.01")}

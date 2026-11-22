@@ -1,4 +1,5 @@
-import { splitProps, Show, createContext, useContext, type JSX } from "solid-js";
+import { omit, Show, createContext, useContext } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { Tabs } from "./Tabs";
 import Tooltip, { type TooltipPlacement } from "../Tooltip/Tooltip";
 import styles from "./Tab.module.css";
@@ -34,7 +35,7 @@ export function TabRow(props: {
   children: JSX.Element;
 }) {
   return (
-    <RowContext.Provider
+    <RowContext
       value={{
         get inert() {
           return props.inert ?? false;
@@ -45,7 +46,7 @@ export function TabRow(props: {
       }}
     >
       {props.children}
-    </RowContext.Provider>
+    </RowContext>
   );
 }
 
@@ -132,7 +133,8 @@ export interface TabProps extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElemen
  *  has nothing to find. */
 export default function Tab(props: TabProps) {
   const row = useContext(RowContext);
-  const [local, rest] = splitProps(props, [
+  const rest = omit(
+    props,
     "value",
     "icon",
     "children",
@@ -145,33 +147,33 @@ export default function Tab(props: TabProps) {
     "tooltipPlacement",
     "tooltipWhenDisabled",
     "quiet",
-  ]);
+  );
 
   // Composed rather than assigned: this handler is written after `{...rest}`,
   // so a call site's own `onKeyDown` would otherwise be dropped without a word.
   const onKeyDown = (e: KeyboardEvent) => {
     (rest.onKeyDown as ((e: KeyboardEvent) => void) | undefined)?.(e);
-    if (!local.onClose || local.locked) return;
+    if (!props.onClose || props.locked) return;
     if (e.key !== "Delete" && e.key !== "Backspace") return;
     e.preventDefault();
     e.stopPropagation();
-    local.onClose(e);
+    props.onClose(e);
   };
 
   // `auxclick` fires for the right button too, and that one opens the menu.
   const onAuxClick = (e: MouseEvent) => {
-    if (row.inert || !local.onClose || local.locked || e.button !== 1) return;
+    if (row.inert || !props.onClose || props.locked || e.button !== 1) return;
     e.preventDefault();
-    local.onClose(e);
+    props.onClose(e);
   };
 
-  const at = () => row.position(local.value);
+  const at = () => row.position(props.value);
 
   const content = () => (
     <>
-      {local.icon}
-      {local.children != null && <span class={styles.label}>{local.children}</span>}
-      {local.trailing}
+      {props.icon}
+      {props.children != null && <span class={styles.label}>{props.children}</span>}
+      {props.trailing}
     </>
   );
 
@@ -185,9 +187,9 @@ export default function Tab(props: TabProps) {
       // The tab's whole box. `data-tab-id` rides the trigger, which stops short
       // of the close, so a reader that wants the tab measures this instead.
       data-tab-pill=""
-      class={local.class ? `${local.class} ${styles.pill}` : styles.pill}
-      data-locked={local.locked ? "" : undefined}
-      data-quiet={local.quiet ? "" : undefined}
+      class={props.class ? `${props.class} ${styles.pill}` : styles.pill}
+      data-locked={props.locked ? "" : undefined}
+      data-quiet={props.quiet ? "" : undefined}
       onAuxClick={onAuxClick}
     >
       <Show
@@ -200,12 +202,12 @@ export default function Tab(props: TabProps) {
       >
         <Tabs.Trigger
           {...rest}
-          value={local.value}
+          value={props.value}
           as={Tooltip}
-          label={local.tooltip}
-          placement={local.tooltipPlacement}
-          whenDisabled={local.tooltipWhenDisabled}
-          type={local.type ?? "button"}
+          label={props.tooltip}
+          placement={props.tooltipPlacement}
+          whenDisabled={props.tooltipWhenDisabled}
+          type={props.type ?? "button"}
           // Counted over the strip's canonical list rather than the rendered
           // one: a strip that drops tabs to fit would otherwise announce
           // "3 of 5" for the third of twelve open files.
@@ -217,12 +219,12 @@ export default function Tab(props: TabProps) {
           {content()}
         </Tabs.Trigger>
       </Show>
-      {local.locked ? (
+      {props.locked ? (
         <span class={styles.lockSlot} aria-hidden="true">
-          {local.locked}
+          {props.locked}
         </span>
       ) : (
-        local.onClose && (
+        props.onClose && (
           <button
             type="button"
             class={styles.close}
@@ -232,7 +234,7 @@ export default function Tab(props: TabProps) {
             disabled={row.inert}
             onClick={(e) => {
               e.stopPropagation();
-              local.onClose!(e);
+              props.onClose!(e);
             }}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

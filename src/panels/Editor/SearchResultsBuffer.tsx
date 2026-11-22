@@ -614,7 +614,7 @@ export default function SearchResultsBuffer(props: {
           </div>
         )}
       </Show>
-      <div class={styles.editorHost} classList={{ [styles.blank]: !hasDoc() }} ref={host} />
+      <div class={[styles.editorHost, { [styles.blank]: !hasDoc() }]} ref={host} />
       <Show when={form() && !hasDoc()}>
         <div class={styles.blankHint}>
           {running() ? "Searching..." : "Type to search. Double-click a result to open it."}

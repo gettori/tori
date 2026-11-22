@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { createSignal, For, type JSX } from "solid-js";
+import { createSignal, For } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { FileCode } from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import { WorktreeMark } from "../Icon/gitMarks";

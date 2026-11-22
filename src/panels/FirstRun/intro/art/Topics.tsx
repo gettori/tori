@@ -96,7 +96,7 @@ function Crumb() {
       <span class={toolbar.members}>
         <For each={MEMBERS}>
           {(m) => (
-            <span class={toolbar.member} classList={{ [toolbar.memberActive]: m === API }} style={m.style}>
+            <span class={[toolbar.member, { [toolbar.memberActive]: m === API }]} style={m.style}>
               <ProjectIcon {...m.icon} />
             </span>
           )}
@@ -198,7 +198,7 @@ function Code(props: { path: string; text: string }) {
     <div class={styles.code}>
       <For each={lines}>
         {(line, i) => (
-          <div class={styles.line} classList={{ [styles.caretLine]: i() + 1 === CARET_LINE }}>
+          <div class={[styles.line, { [styles.caretLine]: i() + 1 === CARET_LINE }]}>
             <span class={styles.lineNo}>{i() + 1}</span>
             <span>
               <Show when={painted()?.[i()]} fallback={line || " "}>

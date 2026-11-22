@@ -1,4 +1,4 @@
-import type { JSX } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { Folder, Tag, Unlink } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";

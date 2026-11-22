@@ -1,4 +1,5 @@
-import { createSignal, type JSX } from "solid-js";
+import { createSignal } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import styles from "./Resizer.module.css";
 
 type Props = {
@@ -97,14 +98,16 @@ export default function Resizer(props: Props): JSX.Element {
   return (
     <div
       ref={el}
-      class={styles.resizer}
-      classList={{
-        [styles.x]: axis() === "x",
-        [styles.y]: axis() === "y",
-        [styles.hairline]: (props.variant ?? "gutter") === "hairline",
-        [styles.edge]: props.variant === "edge",
-        [styles.dragging]: dragging(),
-      }}
+      class={[
+        styles.resizer,
+        {
+          [styles.x]: axis() === "x",
+          [styles.y]: axis() === "y",
+          [styles.hairline]: (props.variant ?? "gutter") === "hairline",
+          [styles.edge]: props.variant === "edge",
+          [styles.dragging]: dragging(),
+        },
+      ]}
       role="separator"
       aria-orientation={axis() === "x" ? "vertical" : "horizontal"}
       onPointerDown={onPointerDown}

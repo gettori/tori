@@ -1,4 +1,5 @@
-import { createSignal, For, Show, type JSX } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import { Ban, House } from "../Icon/icons";
 import styles from "./Dialogs.module.css";
@@ -26,8 +27,7 @@ function Row(r: {
     <button
       type="button"
       role="radio"
-      class={styles.moveRow}
-      classList={{ [styles.moveRefused]: !!r.refused }}
+      class={[styles.moveRow, { [styles.moveRefused]: !!r.refused }]}
       aria-checked={r.picked ? "true" : "false"}
       tabindex={r.tabbable ? 0 : -1}
       aria-disabled={r.refused ? "true" : undefined}

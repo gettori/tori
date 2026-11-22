@@ -9,8 +9,7 @@ export default function SpaceMark(props: { name: string; icon?: string | null; c
   return (
     // Decorative: the space's name always sits beside it.
     <span
-      class={styles.mark}
-      classList={{ [styles.sm]: props.size === "sm" }}
+      class={[styles.mark, { [styles.sm]: props.size === "sm" }]}
       style={{ "--space-hue-rgb": spaceHueRgb(props.name, props.color) }}
       aria-hidden="true"
     >

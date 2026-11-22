@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
 import { render } from "../../test/harness";
-import { Dynamic } from "solid-js/web";
+import { dynamic } from "@solidjs/web";
 import { providerIcon } from "./ProviderIcon";
 
 /** The brand marks are filled paths; every Lucide glyph is `fill="none"` and
  *  stroked. That one attribute is the whole difference, and it is stable. */
 function isBrandMark(model: string | null, agentId?: string): boolean {
-  const { container, unmount } = render(() => <Dynamic component={providerIcon(model, agentId)} />);
+  const { container, unmount } = render(() => {
+    const Mark = dynamic(() => providerIcon(model, agentId));
+    return <Mark />;
+  });
   const fill = container.querySelector("svg")?.getAttribute("fill");
   unmount();
   return fill === "currentColor";

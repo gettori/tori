@@ -104,8 +104,7 @@ export default function RestoreWorktreeDialog(props: {
             <>
               <Icon
                 icon={isPicked() ? Check : History}
-                class={styles.branchGlyph}
-                classList={{ [styles.branchGlyphPicked]: isPicked() }}
+                class={[styles.branchGlyph, { [styles.branchGlyphPicked]: isPicked() }]}
                 aria-hidden="true"
               />
               <span class={styles.branchName}>{option.label}</span>

@@ -1,5 +1,5 @@
 import { For, Show, type Component } from "solid-js";
-import { Dynamic } from "solid-js/web";
+import { dynamic } from "@solidjs/web";
 import Button from "../../../components/Button/Button";
 import FirstRunShell from "../FirstRunShell";
 import AgentsArt from "./art/Agents";
@@ -75,6 +75,7 @@ export default function Intro(props: { slide: number; onSlide: (index: number) =
     }
   }
 
+  const Art = dynamic(() => current().art);
   return (
     <FirstRunShell
       title="Tori"
@@ -85,8 +86,7 @@ export default function Intro(props: { slide: number; onSlide: (index: number) =
             {(s, i) => (
               <button
                 type="button"
-                class={styles.slide}
-                classList={{ [styles.slideOn]: i() === props.slide }}
+                class={[styles.slide, { [styles.slideOn]: i() === props.slide }]}
                 aria-current={i() === props.slide ? "step" : undefined}
                 onClick={() => props.onSlide(i())}
               >
@@ -133,7 +133,7 @@ export default function Intro(props: { slide: number; onSlide: (index: number) =
       }
       onKeyDown={onKeyDown}
     >
-      <Dynamic component={current().art} />
+      <Art />
     </FirstRunShell>
   );
 }

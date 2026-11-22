@@ -1,4 +1,5 @@
-import { For, Match, Show, Switch, createResource, type JSX } from "solid-js";
+import { For, Match, Show, Switch, createResource } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import Dialog from "../../components/Dialog/Dialog";
 import Button from "../../components/Button/Button";

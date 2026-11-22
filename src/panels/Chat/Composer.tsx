@@ -1,5 +1,5 @@
-import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, untrack, type JSX } from "solid-js";
-import { render } from "solid-js/web";
+import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, untrack } from "solid-js";
+import { type JSX, render } from "@solidjs/web";
 import {
   ArrowUp,
   AudioWaveform,
@@ -1101,8 +1101,7 @@ export default function Composer(props: {
 
   return (
     <div
-      class={styles.composer}
-      classList={{ [styles.composerDragging]: dragging() }}
+      class={[styles.composer, { [styles.composerDragging]: dragging() }]}
       onDragOver={(e) => {
         // Required for a drop to fire at all. Only shows the target state for an
         // actual payload, so dragging a pane splitter across does not light up.
@@ -1157,12 +1156,14 @@ export default function Composer(props: {
                 return (
                   <div
                     ref={popIfNew(`queue:${q.id}`)}
-                    class={styles.queueItem}
-                    classList={{
-                      [styles.queueItemEditing]: props.editing === q.id,
-                      [styles.queueItemDragging]: drag.dragging() === q.id,
-                      [styles.queueItemOver]: drag.over() === q.id,
-                    }}
+                    class={[
+                      styles.queueItem,
+                      {
+                        [styles.queueItemEditing]: props.editing === q.id,
+                        [styles.queueItemDragging]: drag.dragging() === q.id,
+                        [styles.queueItemOver]: drag.over() === q.id,
+                      },
+                    ]}
                     onDragOver={row.onDragOver}
                     onDrop={row.onDrop}
                   >
@@ -1495,8 +1496,7 @@ export default function Composer(props: {
             <Tooltip
               as="button"
               type="button"
-              class={styles.attachButton}
-              classList={{ [styles.micRecording]: dictation() === "recording" }}
+              class={[styles.attachButton, { [styles.micRecording]: dictation() === "recording" }]}
               label={
                 dictation() === "idle"
                   ? "Dictate a message"

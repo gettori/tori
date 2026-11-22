@@ -1,4 +1,5 @@
-import { For, Show, createMemo, createResource, type JSX } from "solid-js";
+import { For, Show, createMemo, createResource } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import { ChevronRight } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
@@ -207,12 +208,14 @@ function DirLevel(props: { dir: string; here: string | null; onPick: (d: OpenInE
 function EntryName(props: { entry: Entry; here: string | null }) {
   return (
     <span
-      class="tab-name"
+      class={[
+        "tab-name",
+        {
+          [styles.dimmed]: props.entry.ignored,
+          [styles.here]: props.entry.path === props.here,
+        },
+      ]}
       aria-current={props.entry.path === props.here ? "true" : undefined}
-      classList={{
-        [styles.dimmed]: props.entry.ignored,
-        [styles.here]: props.entry.path === props.here,
-      }}
     >
       {props.entry.name}
     </span>

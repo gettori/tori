@@ -88,7 +88,7 @@ export default function GraphSection(props: {
       <OverlayScroll class={styles.scroll}>
         <For each={entries()}>
           {(c) => (
-            <div class={styles.entry} classList={{ [styles.open]: open().has(c.sha), [styles.local]: c.off_base }}>
+            <div class={[styles.entry, { [styles.open]: open().has(c.sha), [styles.local]: c.off_base }]}>
               {/* The button expands; the commit itself opens from the control
                   beside it, kept outside since a button cannot hold one. */}
               <div class={styles.rowWrap}>
@@ -101,12 +101,12 @@ export default function GraphSection(props: {
                   onClick={() => toggle(c.sha)}
                 >
                   <span class={styles.lane} aria-hidden="true">
-                    <span class={styles.dot} classList={{ [styles.head]: pills(c).some((p) => p.kind === "head") }} />
+                    <span class={[styles.dot, { [styles.head]: pills(c).some((p) => p.kind === "head") }]} />
                   </span>
                   <span class={styles.subject}>{c.subject}</span>
                   <For each={pills(c)}>
                     {(pill) => (
-                      <span class={`${styles.ref} ${styles[pill.kind]}`} classList={{ [styles.base]: pill.base }}>
+                      <span class={[`${styles.ref} ${styles[pill.kind]}`, { [styles.base]: pill.base }]}>
                         {pill.label}
                       </span>
                     )}

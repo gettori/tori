@@ -94,8 +94,7 @@ export default function ChecksSection(props: {
         </p>
         <RepoValues values={repo()} overridden={own()} show={(list) => list.join(", ")} />
         <textarea
-          class={styles.textarea}
-          classList={{ [styles.textareaDirty]: dirty() }}
+          class={[styles.textarea, { [styles.textareaDirty]: dirty() }]}
           aria-label="Verification commands"
           rows={10}
           spellcheck="false"
@@ -103,9 +102,7 @@ export default function ChecksSection(props: {
           onInput={(e) => setText(e.currentTarget.value)}
         />
         <div class={styles.actions}>
-          <span class={styles.actionHint} classList={{ [styles.unsaved]: dirty() }}>
-            {status()}
-          </span>
+          <span class={[styles.actionHint, { [styles.unsaved]: dirty() }]}>{status()}</span>
           <Button disabled={busy() || isBuiltIn()} onClick={() => setText((builtIn() ?? []).join("\n"))}>
             Reset to defaults
           </Button>

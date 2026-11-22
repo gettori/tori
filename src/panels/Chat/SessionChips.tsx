@@ -107,8 +107,7 @@ export default function SessionChips(props: {
     <Tooltip
       as="button"
       type="button"
-      class={styles.lane}
-      classList={{ [styles.laneStill]: !props.onOpen }}
+      class={[styles.lane, { [styles.laneStill]: !props.onOpen }]}
       label={
         <Tip
           heading={p.session.name}

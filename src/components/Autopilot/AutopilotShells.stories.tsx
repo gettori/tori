@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { For, type JSX } from "solid-js";
+import { For } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import AutopilotPopup from "./AutopilotPopup";
 import AutopilotSwitch from "./AutopilotSwitch";
 import AutopilotView from "./AutopilotView";

@@ -3,7 +3,7 @@
 // surface that reads the poll, so a row and the Pull Requests panel cannot
 // disagree about a reused branch name.
 
-import { createStore } from "solid-js/store";
+import { createStore } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import type { BranchSync } from "./gitActions";
 import type { PullRequest } from "./forgeTypes";

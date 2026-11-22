@@ -1,4 +1,5 @@
-import { children, createSignal, onCleanup, onMount, type JSX } from "solid-js";
+import { children, createSignal, onCleanup, onMount } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import LayoutToggles from "../LayoutToggles/LayoutToggles";
 import { stageHost } from "../../tabs/stageHost";
@@ -49,8 +50,8 @@ export default function WindowControls(props: {
     });
   });
   return (
-    <div class={styles.winControls} classList={{ [styles.fullscreen]: fullscreen() }}>
-      <div class={styles.toggleSlot} classList={{ [styles.joined]: joined() }}>
+    <div class={[styles.winControls, { [styles.fullscreen]: fullscreen() }]}>
+      <div class={[styles.toggleSlot, { [styles.joined]: joined() }]}>
         <LayoutToggles showSidebar={props.showSidebar} />
         {status()}
       </div>

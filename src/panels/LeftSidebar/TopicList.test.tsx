@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test"
 import { render, screen, waitFor, fireEvent, within, cleanup } from "../../test/harness";
 import { pointerClick } from "../../test/menus";
 import { expectNoAxeViolations } from "../../test/axe";
-import { splitProps, type ComponentProps } from "solid-js";
+import { omit, type ComponentProps } from "solid-js";
 import { LAST_MEMBER, topicKey, type Topic, type Member, type MemberState } from "../../utils/topics";
 import type { TopicActions, TopicActionsHost } from "./topicActions";
 
@@ -215,16 +215,16 @@ type HostProps = {
 
 // The list as the sidebar hosts it: the actions made from the host's callbacks.
 function Listed(props: Omit<ComponentProps<typeof TopicList>, "actions"> & HostProps) {
-  const [host, rest] = splitProps(props, ["onSelect", "onDeleted", "countRunning", "onExpanded", "onActions"]);
+  const rest = omit(props, "onSelect", "onDeleted", "countRunning", "onExpanded", "onActions");
   const actions = createTopicActions({
     activeId: () => rest.activeId,
     guard: { confirm: async () => false, refuse: () => {} },
-    onSelect: (topic, moved) => host.onSelect?.(topic, moved),
-    onDeleted: (topic) => host.onDeleted?.(topic),
-    countRunning: (path) => host.countRunning?.(path),
-    onExpanded: (ids) => host.onExpanded?.(ids),
+    onSelect: (topic, moved) => props.onSelect?.(topic, moved),
+    onDeleted: (topic) => props.onDeleted?.(topic),
+    countRunning: (path) => props.countRunning?.(path),
+    onExpanded: (ids) => props.onExpanded?.(ids),
   });
-  host.onActions?.(actions);
+  props.onActions?.(actions);
   return <TopicList {...rest} actions={actions} />;
 }
 

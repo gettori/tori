@@ -90,8 +90,7 @@ export default function IssuesSection(props: { projectPath: string; onDirty?: (d
           add any repo, only the listed repos are searched, so add {origin()} too if its issues matter.
         </p>
         <textarea
-          class={styles.textarea}
-          classList={{ [styles.textareaDirty]: dirty() }}
+          class={[styles.textarea, { [styles.textareaDirty]: dirty() }]}
           aria-label="Issue repos"
           rows={4}
           spellcheck="false"
@@ -100,9 +99,7 @@ export default function IssuesSection(props: { projectPath: string; onDirty?: (d
           onInput={(e) => setText(e.currentTarget.value)}
         />
         <div class={styles.actions}>
-          <span class={styles.actionHint} classList={{ [styles.unsaved]: dirty() }}>
-            {dirty() ? "Unsaved." : ""}
-          </span>
+          <span class={[styles.actionHint, { [styles.unsaved]: dirty() }]}>{dirty() ? "Unsaved." : ""}</span>
           <Show when={dirty()}>
             <Button disabled={busy()} onClick={() => setText((repos()?.stored ?? []).join("\n"))}>
               Discard

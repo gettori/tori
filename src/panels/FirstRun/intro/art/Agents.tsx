@@ -151,7 +151,7 @@ function HostCard(props: Host) {
         </div>
         <Switch aria-label={`Use ${props.host} for git push and fetch`} checked={props.push} onChange={noop} />
       </div>
-      <div class={cards.footer} classList={{ [cards.footerInert]: !props.push }}>
+      <div class={[cards.footer, { [cards.footerInert]: !props.push }]}>
         <div class={cards.footerText}>
           <div class={cards.footerLabel}>
             <span>Use for git everywhere</span>
@@ -184,7 +184,7 @@ function SettingsWindow() {
                     <Show when={i() === 0 || SETTING_TABS[i() - 1].group !== t.group}>
                       <div class={settings.railGroup}>{t.group}</div>
                     </Show>
-                    <div class={settings.railItem} classList={{ [settings.railItemActive]: t.id === "integrations" }}>
+                    <div class={[settings.railItem, { [settings.railItemActive]: t.id === "integrations" }]}>
                       <Icon icon={TAB_ICONS[t.icon] ?? Plug} />
                       <span class={settings.railLabel}>{t.label}</span>
                     </div>
@@ -232,7 +232,7 @@ export default function AgentsArt() {
           lands here and not on the body. */}
       <div class={styles.palette} ref={setMount}>
         <Show when={mount()}>
-          <DialogSurface.Provider value={mount}>
+          <DialogSurface value={mount}>
             <AgentPalette
               providers={PROVIDERS}
               agentId="claude"
@@ -241,7 +241,7 @@ export default function AgentsArt() {
               onSelect={noop}
               onClose={noop}
             />
-          </DialogSurface.Provider>
+          </DialogSurface>
         </Show>
       </div>
     </div>

@@ -1,4 +1,5 @@
-import { createMemo, createSignal, For, Show, type JSX } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { ToggleGroup } from "../ToggleGroup/ToggleGroup";
 import Tooltip from "../Tooltip/Tooltip";
 import styles from "./IconGrid.module.css";

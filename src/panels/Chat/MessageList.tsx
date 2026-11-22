@@ -10,8 +10,8 @@ import {
   on,
   onCleanup,
   onMount,
-  type JSX,
 } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import {
   Brain,
   ChevronRight,
@@ -110,7 +110,7 @@ function ThinkingBlock(props: { text: string; live: boolean; thoughtMs: number }
             the label beside each one already says it, and a second announcement
             is noise on the one output that cannot be skimmed. */}
         <Icon icon={Brain} size={14} aria-hidden="true" />
-        <span classList={{ [styles.thinkingLive]: props.live }}>
+        <span class={{ [styles.thinkingLive]: props.live }}>
           {open() ? "Hide thinking" : props.live ? "Thinking" : thoughtLabel(props.thoughtMs)}
         </span>
       </button>
@@ -230,7 +230,7 @@ function HookRow(props: { item: Extract<ChatItem, { kind: "hook" }> }) {
     return parts.length ? parts.join(", ") : "finished";
   };
   return (
-    <div class={styles.notice} classList={{ [styles.noticeError]: failed() }}>
+    <div class={[styles.notice, { [styles.noticeError]: failed() }]}>
       <span class={styles.noticeLine}>
         {/* The glyph says "a hook ran" whether or not it failed; the colour and
             the stderr below say how it went. Swapping it for a warning sign on
@@ -682,7 +682,7 @@ export default function MessageList(props: {
           </Show>
           <Show when={blindEdits().get(id())}>
             {(paths) => (
-              <Tooltip<HTMLSpanElement> as="span" tabIndex={0} class={styles.turnBlindEdit} label={paths().join("\n")}>
+              <Tooltip<HTMLSpanElement> as="span" tabindex={0} class={styles.turnBlindEdit} label={paths().join("\n")}>
                 <Icon icon={EyeOff} size={12} />
                 Edited without reading
               </Tooltip>
@@ -692,7 +692,7 @@ export default function MessageList(props: {
             {(v) => (
               <Tooltip<HTMLSpanElement>
                 as="span"
-                tabIndex={0}
+                tabindex={0}
                 class={styles.turnVerification}
                 data-verdict={v().verdict}
                 label={verdictDetail(v().verdict, v().checks, v().settledLater)}
@@ -913,7 +913,7 @@ export default function MessageList(props: {
                 : null),
           );
           return (
-            <div class={styles.userRow} classList={{ [styles.steerRow]: it().steer }}>
+            <div class={[styles.userRow, { [styles.steerRow]: it().steer }]}>
               <div class={styles.userBubble}>
                 <Show when={peer()}>
                   {(peer) => (
@@ -1013,11 +1013,13 @@ export default function MessageList(props: {
       <Match when={p.item.kind === "notice" && p.item}>
         {(it) => (
           <div
-            class={styles.notice}
-            classList={{
-              [styles.noticeError]: it().level === "error",
-              [styles.noticeAttention]: it().level === "attention",
-            }}
+            class={[
+              styles.notice,
+              {
+                [styles.noticeError]: it().level === "error",
+                [styles.noticeAttention]: it().level === "attention",
+              },
+            ]}
           >
             <Show
               when={it().pendingSince}
@@ -1133,9 +1135,7 @@ export default function MessageList(props: {
               aria-hidden="true"
             />
             <span class={styles.workText}>
-              <span class={styles.workLabel} classList={{ [styles.thinkingLive]: label().live }}>
-                {label().text}
-              </span>
+              <span class={[styles.workLabel, { [styles.thinkingLive]: label().live }]}>{label().text}</span>
               <Show when={label().failed}>
                 <span class={styles.workFailed}>{`, ${label().failed} failed`}</span>
               </Show>

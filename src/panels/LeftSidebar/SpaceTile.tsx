@@ -80,18 +80,20 @@ export default function SpaceTile(props: {
       <Tooltip
         as="button"
         type="button"
-        class={styles.space}
+        class={[
+          styles.space,
+          {
+            [styles.active]: props.active,
+            [styles.titled]: titled(),
+            [styles.rail]: props.rail,
+            [styles.dragging]: props.dragging,
+            [styles.dropBefore]: props.dropBefore,
+            [styles.dropAfter]: props.dropAfter,
+          },
+        ]}
         style={{
           "--space-hue-rgb": spaceHueRgb(props.name, props.color),
           "--name-w": props.nameWidth,
-        }}
-        classList={{
-          [styles.active]: props.active,
-          [styles.titled]: titled(),
-          [styles.rail]: props.rail,
-          [styles.dragging]: props.dragging,
-          [styles.dropBefore]: props.dropBefore,
-          [styles.dropAfter]: props.dropAfter,
         }}
         label={props.name}
         placement={props.rail ? "right" : undefined}

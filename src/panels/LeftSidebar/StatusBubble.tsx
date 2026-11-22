@@ -1,4 +1,5 @@
-import { createMemo, Show, type JSX } from "solid-js";
+import { createMemo, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { CircleDashed, GitPullRequest } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import { CheckMark, QuestionMark, WorkingMark } from "../../components/Icon/statusMarks";
@@ -62,11 +63,7 @@ export default function StatusBubble(props: {
       .join(", ");
   return (
     <Show when={counts().some((n) => n > 0)}>
-      <span
-        class={styles.statusBubble}
-        classList={{ [styles.spaceBubble]: tile() }}
-        title={tile() ? tileTitle() : undefined}
-      >
+      <span class={[styles.statusBubble, { [styles.spaceBubble]: tile() }]} title={tile() ? tileTitle() : undefined}>
         <Show when={shown(0)}>
           <span
             class={`${styles.statusBubbleItem} ${styles.waitingForApproval}`}

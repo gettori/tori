@@ -1,4 +1,5 @@
-import { Show, createSignal, createUniqueId, type Component, type JSX } from "solid-js";
+import { Show, createSignal, createUniqueId, type Component } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { Check, ChevronDown } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import Dropdown from "../../components/Menu/Dropdown";
@@ -74,13 +75,15 @@ export default function Picker(props: {
       <Tooltip
         as="button"
         type="button"
-        class={styles.pill}
-        classList={{
-          [styles.pillPending]: !!props.pending,
-          [styles.pillAttention]: !!props.attention,
-          [styles.pillOpen]: open(),
-          [styles.pillRefusing]: !!props.ariaDisabled,
-        }}
+        class={[
+          styles.pill,
+          {
+            [styles.pillPending]: !!props.pending,
+            [styles.pillAttention]: !!props.attention,
+            [styles.pillOpen]: open(),
+            [styles.pillRefusing]: !!props.ariaDisabled,
+          },
+        ]}
         aria-label={props.ariaLabel}
         label={props.tooltip}
         // The menu is the better answer to "what is this pill", and it is
@@ -142,12 +145,14 @@ export function PickerButton(props: {
       as="button"
       type="button"
       ref={props.ref}
-      class={styles.pill}
-      classList={{
-        [styles.pillPending]: !!props.pending,
-        [styles.pillAttention]: !!props.attention,
-        [styles.pillOpen]: !!props.open,
-      }}
+      class={[
+        styles.pill,
+        {
+          [styles.pillPending]: !!props.pending,
+          [styles.pillAttention]: !!props.attention,
+          [styles.pillOpen]: !!props.open,
+        },
+      ]}
       aria-label={props.ariaLabel}
       label={props.tooltip}
       // Same rule as `Picker`: the palette this opens is a whole surface, and a
@@ -200,7 +205,7 @@ export function PickerOption(props: {
       describedBy={props.description ? descId : undefined}
       onClick={props.onSelect}
     >
-      <span class={styles.pickBody} classList={{ [styles.pickRefusing]: !!props.refusing }}>
+      <span class={[styles.pickBody, { [styles.pickRefusing]: !!props.refusing }]}>
         {/* Beside the row, never above it. A menu's own rows are what is above,
             so the default `top` lands the tooltip on the choices the user is
             reading past. `anchorLayer` flips on overflow, so a menu near the
@@ -222,7 +227,7 @@ export function PickerOption(props: {
       </span>
       {/* Held whatever the state, so rows do not shift sideways as the
           selection moves down the list. */}
-      <span class={styles.pickCheck} classList={{ [styles.pickCheckOn]: props.selected }} aria-hidden="true">
+      <span class={[styles.pickCheck, { [styles.pickCheckOn]: props.selected }]} aria-hidden="true">
         <Icon icon={Check} size={15} />
       </span>
     </MenuRow>
@@ -271,12 +276,14 @@ export function PillToggle(props: {
     <Tooltip
       as="button"
       type="button"
-      class={styles.pill}
-      classList={{
-        [styles.pillToggle]: !props.label,
-        [styles.pillToggleOn]: props.on && !props.ariaDisabled,
-        [styles.pillRefusing]: !!props.ariaDisabled,
-      }}
+      class={[
+        styles.pill,
+        {
+          [styles.pillToggle]: !props.label,
+          [styles.pillToggleOn]: props.on && !props.ariaDisabled,
+          [styles.pillRefusing]: !!props.ariaDisabled,
+        },
+      ]}
       aria-label={props.ariaLabel}
       label={props.tooltip}
       disabled={props.disabled}

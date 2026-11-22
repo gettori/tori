@@ -182,21 +182,25 @@ export default function ToolCallCard(props: {
 
   return (
     <div
-      class={styles.tool}
-      classList={{ [styles.toolBlocked]: props.card.state === "awaitingApproval", [styles.toolSecret]: secretShown() }}
+      class={[
+        styles.tool,
+        { [styles.toolBlocked]: props.card.state === "awaitingApproval", [styles.toolSecret]: secretShown() },
+      ]}
       data-pending-card={props.card.state === "awaitingApproval" ? "" : undefined}
       data-tool-use-id={props.card.toolUseId}
     >
       <button type="button" class={styles.toolRow} onClick={toggleOpen} aria-expanded={open() ? "true" : "false"}>
-        <span class={styles.toolCaret} classList={{ [styles.toolCaretOpen]: open() }} aria-hidden="true">
+        <span class={[styles.toolCaret, { [styles.toolCaretOpen]: open() }]} aria-hidden="true">
           <Icon icon={ChevronRight} size={12} />
         </span>
         <span
-          class={styles.toolName}
-          classList={{
-            [styles.toolNameEdit]: isEditCall(props.card),
-            [styles.toolNameError]: props.card.state === "error" || props.card.state === "denied",
-          }}
+          class={[
+            styles.toolName,
+            {
+              [styles.toolNameEdit]: isEditCall(props.card),
+              [styles.toolNameError]: props.card.state === "error" || props.card.state === "denied",
+            },
+          ]}
         >
           {/* The agent's prose wins where there is any, which is what keeps an
               ACP row reading "Read the file README.md" rather than "read". The

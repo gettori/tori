@@ -1,4 +1,5 @@
-import { For, Show, type JSX } from "solid-js";
+import { For, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { ArrowRight, ChevronRight, Folder, Search, SquareTerminal } from "../../../../components/Icon/icons";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
@@ -74,11 +75,13 @@ function Disk() {
               <For each={c.entries}>
                 {(e) => (
                   <div
-                    class={`${styles.entry} ${styles.rise}`}
-                    classList={{
-                      [styles.on]: e.on,
-                      [styles.dim]: e.dim,
-                    }}
+                    class={[
+                      `${styles.entry} ${styles.rise}`,
+                      {
+                        [styles.on]: e.on,
+                        [styles.dim]: e.dim,
+                      },
+                    ]}
                     style={{ "--i": 3 + i() * 2 }}
                   >
                     <span class={styles.glyph}>{e.glyph()}</span>

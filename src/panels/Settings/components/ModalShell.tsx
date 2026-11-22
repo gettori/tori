@@ -1,5 +1,5 @@
-import { onCleanup, type JSX } from "solid-js";
-import { Portal } from "solid-js/web";
+import { onCleanup } from "solid-js";
+import { type JSX, Portal } from "@solidjs/web";
 import { COMPOSE_DRAFT, OPEN_IN_EDITOR, OPEN_JOB, OPEN_TERMINAL, onWith } from "../../../utils/events";
 import { FOCUSABLE } from "../../../utils/focusable";
 import styles from "../Settings.module.css";

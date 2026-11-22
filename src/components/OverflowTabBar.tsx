@@ -1,4 +1,5 @@
-import { createSignal, createEffect, createMemo, onCleanup, children, For, Show, untrack, type JSX } from "solid-js";
+import { createSignal, createEffect, createMemo, onCleanup, children, For, Show, untrack } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { computeVisibleCount, moveIntoView, type Reserves } from "../utils/tabOverflow";
 import { tabGesture } from "../utils/tabGesture";
 import { Tabs } from "./Tab/Tabs";
