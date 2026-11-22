@@ -102,6 +102,19 @@ export function scan(ts, rel, src, report = {}) {
       })(node);
       return hit;
     };
+    const localFunction = (arg) => {
+      if (!ts.isIdentifier(arg)) return arg;
+      for (let scope = arg.parent; scope; scope = scope.parent) {
+        for (const st of scope.statements ?? []) {
+          if (ts.isFunctionDeclaration(st) && st.name?.text === arg.text) return st;
+          if (!ts.isVariableStatement(st)) continue;
+          for (const d of st.declarationList.declarations) {
+            if (ts.isIdentifier(d.name) && d.name.text === arg.text) return d.initializer ?? arg;
+          }
+        }
+      }
+      return arg;
+    };
     const enclosingKinds = (n) => {
       // is it inside a JSX attribute handler or a nested callback of a non-component function?
       let p = n.parent,
@@ -122,28 +135,31 @@ export function scan(ts, rel, src, report = {}) {
         const a0 = n.arguments[0];
         const usesOn = a0 && callName(a0) === "on";
         const body = usesOn ? a0.arguments[1] : a0;
+        const halves = usesOn ? [body] : n.arguments.slice(0, 2).map((arg, i) => (i === 1 ? localFunction(arg) : arg));
+        const inHalves = (pred) => halves.some((half) => scan(half, pred));
         if (usesOn) tally(`createEffect: on() form`, n);
         if (body) {
-          const writes = scan(body, (x) => {
+          const writes = inHalves((x) => {
             const cn = callName(x);
             return cn && isSetter(cn);
           });
           const asyncy =
-            scan(
-              body,
+            inHalves(
               (x) =>
                 x.kind === ts.SyntaxKind.AwaitExpression ||
                 (ts.isCallExpression(x) &&
                   ts.isPropertyAccessExpression(x.expression) &&
                   x.expression.name.text === "then"),
             ) ||
-            (ts.isFunctionLike(body) && body.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword));
-          const cleanup = scan(body, (x) => callName(x) === "onCleanup");
-          const nested = scan(body, (x) =>
+            halves.some(
+              (half) => ts.isFunctionLike(half) && half.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword),
+            );
+          const cleanup = inHalves((x) => callName(x) === "onCleanup");
+          const nested = inHalves((x) =>
             ["createEffect", "createMemo", "createRoot", "createSignal", "createResource"].includes(callName(x)),
           );
-          const untr = scan(body, (x) => callName(x) === "untrack");
-          const invoke = scan(body, (x) => callName(x) === "invoke" || callName(x) === "listen");
+          const untr = inHalves((x) => callName(x) === "untrack");
+          const invoke = inHalves((x) => callName(x) === "invoke" || callName(x) === "listen");
           const prev = ts.isFunctionLike(body) && body.parameters.length > 0 && !usesOn;
           if (writes) {
             tally(`createEffect: writes a setter in body`, n);
@@ -187,8 +203,8 @@ export function scan(ts, rel, src, report = {}) {
         }
         if (fnDepth(n) === 0) tally(`createResource: module level`, n);
       }
-      if (name === "onMount") {
-        tally(`onMount`, n);
+      if (name === "onMount" || name === "onSettled") {
+        tally(name, n);
         const b = n.arguments[0];
         if (b && ts.isFunctionLike(b) && b.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword))
           tally(`onMount: async`, n);
@@ -216,7 +232,11 @@ export function scan(ts, rel, src, report = {}) {
         let p = n.parent,
           inRef = false;
         while (p) {
-          if (ts.isJsxAttribute(p) && p.name.getText() === "ref") inRef = true;
+          if (
+            (ts.isJsxAttribute(p) || ts.isPropertyAssignment(p) || ts.isMethodDeclaration(p)) &&
+            p.name.getText() === "ref"
+          )
+            inRef = true;
           p = p.parent;
         }
         if (inRef) {
