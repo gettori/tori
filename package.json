@@ -39,6 +39,7 @@
     "@replit/codemirror-indentation-markers": "^6.5.3",
     "@replit/codemirror-minimap": "^0.5.2",
     "@replit/codemirror-vim": "^6.4.0",
+    "@solidjs/web": "2.0.3",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
     "@tauri-apps/plugin-notification": "^2",
@@ -55,9 +56,10 @@
     "mermaid": "^11.17.2",
     "pdfjs-dist": "^6.3.289",
     "shiki": "^4.4.3",
-    "solid-js": "^1.9.17"
+    "solid-js": "2.0.3"
   },
   "devDependencies": {
+    "@solidjs/vite-plugin": "3.0.1",
     "@storybook/addon-a11y": "^10.5.7",
     "@tauri-apps/cli": "^2",
     "@testing-library/dom": "^10.4.1",
@@ -71,7 +73,6 @@
     "storybook-solidjs-vite": "^10.6.0",
     "typescript": "~5.6.2",
     "vite": "catalog:",
-    "vite-plugin-solid": "^2.11.14",
     "vite-plus": "catalog:"
   },
   "packageManager": "pnpm@10.32.1"
