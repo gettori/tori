@@ -1,7 +1,7 @@
 // Every entry point goes through `openProjectSettings`, so a section request
 // reaches the dialog however it opens.
 
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { emitWith, OPEN_PROJECT_SETTINGS, type OpenProjectSettings } from "./events";
 import { sameCwd } from "./pathScope";
 
@@ -30,7 +30,7 @@ export function sectionsFor(kind: string | undefined): ProjectSection[] {
   ];
 }
 
-const [shown, setShown] = createSignal<string[]>([]);
+const [shown, setShown] = createLiveSignal<string[]>([]);
 
 /** Mark `path` as having its settings on screen, until the returned call. */
 export function markProjectShown(path: string): () => void {

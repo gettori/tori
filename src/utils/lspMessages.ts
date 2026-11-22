@@ -1,6 +1,6 @@
 // A server's `window/showMessageRequest`, queued for the one dialog that asks
 // it. Here rather than on the client so the dialog can sit in the app shell.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 
 export type MessageAction = { title: string };
 
@@ -13,7 +13,7 @@ export type MessageRequest = {
   answer: (action: MessageAction | null) => void;
 };
 
-const [queue, setQueue] = createSignal<readonly MessageRequest[]>([]);
+const [queue, setQueue] = createLiveSignal<readonly MessageRequest[]>([]);
 
 export const pendingMessageRequest = () => queue()[0];
 

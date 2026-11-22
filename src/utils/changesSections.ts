@@ -2,7 +2,7 @@
 // showing one of three tabs. Same store as the Files tab's (`sectionLayout.ts`),
 // its own instance, plus the tab, which is a choice of its own.
 
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { createSectionLayout } from "./sectionLayout";
 
 export type ChangesSection = "changes" | "history";
@@ -33,7 +33,7 @@ function loadTab(): HistoryTab {
   return HISTORY_TABS.some((t) => t.id === raw) ? (raw as HistoryTab) : "graph";
 }
 
-const [historyTab, setHistoryTabSignal] = createSignal<HistoryTab>(loadTab());
+const [historyTab, setHistoryTabSignal] = createLiveSignal<HistoryTab>(loadTab());
 
 export { historyTab };
 
@@ -48,7 +48,7 @@ export function setHistoryTab(tab: HistoryTab): void {
 
 const COMMIT_BOX_KEY = "tori.changes.commitBox";
 
-const [commitBoxShown, setCommitBoxSignal] = createSignal(localStorage.getItem(COMMIT_BOX_KEY) === "1");
+const [commitBoxShown, setCommitBoxSignal] = createLiveSignal(localStorage.getItem(COMMIT_BOX_KEY) === "1");
 
 export { commitBoxShown };
 

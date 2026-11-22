@@ -26,7 +26,7 @@
 // `id: 1`, in the `setBreakpoints` response *and* in every `breakpoint` event.
 // Trusting the id would flip the wrong marker.
 
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 
 import {
   breakpointFiles,
@@ -47,16 +47,16 @@ export type BreakpointState = "pending" | "armed" | "bound";
 /** One line and what it is currently doing, which is all the gutter renders. */
 export type BreakpointMark = { line: number; state: BreakpointState };
 
-const [store, setStore] = createSignal<BreakpointStore>(loadBreakpoints());
+const [store, setStore] = createLiveSignal<BreakpointStore>(loadBreakpoints());
 
 /** Bound lines as `path\nline`. A run's answer, not the reader's, so it is
  *  dropped when the run ends rather than persisted. */
-const [bound, setBound] = createSignal<ReadonlySet<string>>(new Set());
+const [bound, setBound] = createLiveSignal<ReadonlySet<string>>(new Set());
 
 /** Paths with unsaved edits. Kept here rather than read from the pane's own
  *  dirty map, because the answer is needed by the session-configuration seam
  *  below, which runs with no component in scope. */
-const [dirty, setDirty] = createSignal<ReadonlySet<string>>(new Set());
+const [dirty, setDirty] = createLiveSignal<ReadonlySet<string>>(new Set());
 
 const key = (path: string, line: number) => `${path}\n${line}`;
 const lineOf = (k: string) => Number(k.slice(k.lastIndexOf("\n") + 1));

@@ -4,10 +4,10 @@
 // same time: the palette's "Fix" row opens Settings, and the agents pane only
 // mounts after that, so an event fired at the moment of the click would have
 // nobody listening. A pending value survives the gap and is consumed on arrival.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { emitWith, OPEN_SETTINGS, type OpenSettings } from "./events";
 
-const [wanted, setWanted] = createSignal<string | null>(null);
+const [wanted, setWanted] = createLiveSignal<string | null>(null);
 
 /** Take the reader to one agent's health card. The two calls are one action:
  *  the panel has to be open before the pane can honour the ask. */

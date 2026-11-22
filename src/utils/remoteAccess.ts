@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { loadSettings, settings, type Settings } from "../panels/Settings/settingsStore";
 import { pushToast } from "../components/Toasts/Toasts";
@@ -9,7 +9,7 @@ export type RemoteStatus = { state: "off" } | { state: "listening"; url: string 
 /** What `devices_list` returns. */
 export type Device = { id: string; name: string; created_ms: number; connected: boolean };
 
-export const [remoteStatus, setRemoteStatus] = createSignal<RemoteStatus>({ state: "off" });
+export const [remoteStatus, setRemoteStatus] = createLiveSignal<RemoteStatus>({ state: "off" });
 
 let saving: Promise<void> = Promise.resolve();
 

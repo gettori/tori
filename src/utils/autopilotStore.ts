@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import type {
   ActivityItem,
   AutopilotError,
@@ -47,11 +47,11 @@ const OFF: RunnerStatus = {
   error: null,
 };
 
-const [runner, setRunner] = createSignal<RunnerStatus>(OFF);
+const [runner, setRunner] = createLiveSignal<RunnerStatus>(OFF);
 export { runner };
 
-const [view, setView] = createSignal<AutopilotView>("workspace");
-const [popupOpen, setPopupOpen] = createSignal(false);
+const [view, setView] = createLiveSignal<AutopilotView>("workspace");
+const [popupOpen, setPopupOpen] = createLiveSignal(false);
 export { view, setView, popupOpen, setPopupOpen };
 
 /** Whether a view can attach to the session: it exists once a turn has started,
@@ -82,7 +82,7 @@ export function threadFrom(events: ChatEvent[]): ThreadMessage[] {
   return out.slice(-THREAD_KEPT);
 }
 
-const [thread, setThread] = createSignal<ThreadMessage[]>([]);
+const [thread, setThread] = createLiveSignal<ThreadMessage[]>([]);
 export { thread };
 
 export async function loadThread() {
@@ -108,11 +108,11 @@ export async function sendToAutopilot(text: string) {
   });
 }
 
-const [items, setItems] = createSignal<ItemRow[]>([]);
-const [holds, setHolds] = createSignal<Hold[]>([]);
-const [activity, setActivity] = createSignal<ActivityItem[]>([]);
-const [schedules, setSchedules] = createSignal<ScheduleRow[]>([]);
-const [rules, setRules] = createSignal<RuleRow[]>([]);
+const [items, setItems] = createLiveSignal<ItemRow[]>([]);
+const [holds, setHolds] = createLiveSignal<Hold[]>([]);
+const [activity, setActivity] = createLiveSignal<ActivityItem[]>([]);
+const [schedules, setSchedules] = createLiveSignal<ScheduleRow[]>([]);
+const [rules, setRules] = createLiveSignal<RuleRow[]>([]);
 export { items, activity, schedules, rules };
 
 export async function loadRules() {
@@ -130,7 +130,7 @@ export async function resumeSchedule(id: string) {
   if (row) setSchedules((prev) => applySchedule(prev, { ts: Date.now(), schedule: row }));
 }
 
-const [locked, setLocked] = createSignal<ReadonlySet<string>>(new Set());
+const [locked, setLocked] = createLiveSignal<ReadonlySet<string>>(new Set());
 export const isLocked = (session: string | null | undefined) => !!session && locked().has(session);
 
 export async function refreshLocked() {

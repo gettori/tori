@@ -10,7 +10,7 @@
 //
 // Scoped to one session at a time: all-sessions attribution (who touched what,
 // historically) stays in the blame-by-session backlog item.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 
 export type TouchOp = "read" | "create" | "edit" | "delete";
 
@@ -19,7 +19,7 @@ export function writtenPaths(files: readonly { path: string; op: TouchOp }[]): S
   return new Set(files.filter((f) => f.op !== "read").map((f) => f.path));
 }
 
-const [touchedPaths, setTouchedPathsSignal] = createSignal<ReadonlySet<string>>(new Set());
+const [touchedPaths, setTouchedPathsSignal] = createLiveSignal<ReadonlySet<string>>(new Set());
 export { touchedPaths };
 
 /// Called by Editor (the sole owner of the selected session's touched fetch)

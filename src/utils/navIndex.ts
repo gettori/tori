@@ -1,7 +1,7 @@
 // The tree is fed by the sidebar, the only place that resolves the config.
 // Other spaces' sessions come from one read-only listing and never enter the
 // session store, which would put them on the needs-you pipeline and the probe.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { NavTarget, OpenReview } from "./events";
@@ -308,9 +308,9 @@ export function buildPlaces(input: PlaceInputs): Place[] {
   return [...spaces, ...projects, ...units, ...topicRows, ...members, ...reviews, ...chatRows, ...sessionRows];
 }
 
-const [tree, setTree] = createSignal<readonly NavSpace[]>([]);
-const [origins, setOrigins] = createSignal<Readonly<Record<string, string | null>>>({});
-const [overview, setOverview] = createSignal<readonly OverviewSession[]>([]);
+const [tree, setTree] = createLiveSignal<readonly NavSpace[]>([]);
+const [origins, setOrigins] = createLiveSignal<Readonly<Record<string, string | null>>>({});
+const [overview, setOverview] = createLiveSignal<readonly OverviewSession[]>([]);
 
 /** Every space, Global included, as the sidebar resolved it. */
 export function noteNavTree(spaces: readonly NavSpace[], originUrls: Readonly<Record<string, string | null>>) {

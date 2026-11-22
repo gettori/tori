@@ -11,13 +11,13 @@
 // import on that path would drag the editor graph into the startup chunk. The
 // editor side publishes into it; nothing here imports the editor.
 
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { SOURCE_KINDS } from "./events";
 
 // Null means "nobody has said", which is the state before a file is open or
 // before its server has answered `initialize`. Distinct from `[]`, which is a
 // server that answered and offers nothing.
-const [kinds, setKinds] = createSignal<readonly string[] | null>(null);
+const [kinds, setKinds] = createLiveSignal<readonly string[] | null>(null);
 
 /** What the active file's server advertises, or null when nothing has said. */
 export function sourceActionKinds(): readonly string[] | null {

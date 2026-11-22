@@ -1,7 +1,8 @@
 // The ports listening from each worktree on screen, from one scan shared by
 // every row and panel that shows them. Rust attributes a listener to the
 // deepest worktree holding its cwd, so a server shows on any port it picked.
-import { createSignal, getOwner, onCleanup } from "solid-js";
+import { getOwner, onCleanup } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -9,8 +10,8 @@ import { listen } from "@tauri-apps/api/event";
 // long after the quiet finds it listening.
 const SETTLE_MS = 3_000;
 
-const [ports, setPorts] = createSignal<Record<string, number[]>>({});
-const [connected, setConnected] = createSignal(false);
+const [ports, setPorts] = createLiveSignal<Record<string, number[]>>({});
+const [connected, setConnected] = createLiveSignal(false);
 const watched = new Map<string, number>();
 let started = false;
 let scanning = false;

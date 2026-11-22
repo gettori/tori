@@ -9,7 +9,7 @@
 // carries no label on purpose: a row that draws "in sync" on every clean branch
 // spends the reader's attention on the news that there is no news.
 
-import { createStore, produce } from "solid-js";
+import { createLiveStore } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import type { BranchSync } from "./gitActions";
 import type { PrRelation } from "./prRelation";
@@ -39,7 +39,7 @@ const ASKABLE = new Set(["worktree", "plain"]);
 
 const keyOf = (folderPath: string, branch: string | null | undefined) => `${folderPath}\u0000${branch ?? ""}`;
 
-const [answers, setAnswers] = createStore<Record<string, BranchSync>>({});
+const [answers, setAnswers] = createLiveStore<Record<string, BranchSync>>({});
 
 /** The units currently drawn, so a reply that outlived its row is dropped and
  *  a container refresh knows which branches it covers. */
@@ -70,7 +70,11 @@ export function syncUnits(units: readonly SyncUnit[]): Promise<void> {
   const added = [...next].filter(([key]) => !drawn.has(key)).map(([, unit]) => unit);
   const gone = [...drawn.keys()].filter((key) => !next.has(key));
   drawn = next;
-  if (gone.length) setAnswers(produce((state) => gone.forEach((key) => delete state[key])));
+  if (gone.length) {
+    setAnswers((state) => {
+      for (const key of gone) delete state[key];
+    });
+  }
   void invoke("radar_set_drawn", { units: [...next.values()] }).catch(() => {});
   return ask(added);
 }
@@ -97,12 +101,10 @@ export function resyncRadar(units: readonly { path: string }[]): Promise<void> {
 export function adoptSync(root: string, branch: string | null, sync: BranchSync | null): void {
   const key = keyOf(root, branch);
   if (!drawn.has(key)) return;
-  setAnswers(
-    produce((state) => {
-      if (sync) state[key] = sync;
-      else delete state[key];
-    }),
-  );
+  setAnswers((state) => {
+    if (sync) state[key] = sync;
+    else delete state[key];
+  });
 }
 
 async function ask(units: { path: string; branch: string }[]): Promise<void> {
@@ -115,18 +117,16 @@ async function ask(units: { path: string; branch: string }[]): Promise<void> {
     for (const unit of units) drawn.delete(keyOf(unit.path, unit.branch));
     return;
   }
-  setAnswers(
-    produce((state) => {
-      for (const unit of units) {
-        const key = keyOf(unit.path, unit.branch);
-        // The row left while the batch ran, or the backend left it out: a path
-        // that stopped being a repo must lose its old answer, not keep it.
-        if (!drawn.has(key)) continue;
-        if (reply[key]) state[key] = reply[key];
-        else delete state[key];
-      }
-    }),
-  );
+  setAnswers((state) => {
+    for (const unit of units) {
+      const key = keyOf(unit.path, unit.branch);
+      // The row left while the batch ran, or the backend left it out: a path
+      // that stopped being a repo must lose its old answer, not keep it.
+      if (!drawn.has(key)) continue;
+      if (reply[key]) state[key] = reply[key];
+      else delete state[key];
+    }
+  });
 }
 
 /** The levels, most severe first. The order here is the order `syncState`

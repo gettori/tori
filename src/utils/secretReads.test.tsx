@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { createRoot, createSignal } from "solid-js";
+import { createRoot, createSignal, flush } from "solid-js";
 import { render, screen, waitFor } from "../test/harness";
 
 const calls: { sessionId: string }[] = [];
@@ -92,6 +92,7 @@ describe("a live session's secret mark", () => {
     const { setTargets } = watch([{ id: "s", agent: "claude", cwd: "/repo", status: "idle" }]);
     await waitFor(() => expect(sessionSecret("s")?.strength).toBe("read"));
     setTargets([]);
+    flush();
     expect(sessionSecret("s")).toBeNull();
   });
 
