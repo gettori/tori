@@ -10,7 +10,8 @@
 // changing the selection drops the whole tree rather than reconciling it: the
 // references it was built from belong to the frame that is gone.
 
-import { createEffect, createRoot, createSignal, on } from "solid-js";
+import { createEffect, createRoot } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 
 import { debugSession } from "./dapSessions";
 import { currentFrame, selectedFrame } from "./debugStack";
@@ -59,13 +60,13 @@ export const VARIABLE_PAGE = 100;
 /** What a container needs for its next page. */
 type Paging = { reference: number; indexed: number; loaded: number };
 
-const [scopes, setScopes] = createSignal<readonly VarScope[]>([]);
-const [rows, setRows] = createSignal<ReadonlyMap<string, readonly VarRow[]>>(new Map());
-const [expanded, setExpanded] = createSignal<ReadonlySet<string>>(new Set());
-const [busy, setBusy] = createSignal<ReadonlySet<string>>(new Set());
+const [scopes, setScopes] = createLiveSignal<readonly VarScope[]>([]);
+const [rows, setRows] = createLiveSignal<ReadonlyMap<string, readonly VarRow[]>>(new Map());
+const [expanded, setExpanded] = createLiveSignal<ReadonlySet<string>>(new Set());
+const [busy, setBusy] = createLiveSignal<ReadonlySet<string>>(new Set());
 // A signal rather than a plain Map, because the "show more" row is drawn from
 // it: a page count the pane cannot see is a truncated list that says nothing.
-const [paging, setPaging] = createSignal<ReadonlyMap<string, Paging>>(new Map());
+const [paging, setPaging] = createLiveSignal<ReadonlyMap<string, Paging>>(new Map());
 
 function notePaging(key: string, page: Paging | null): void {
   const next = new Map(paging());
@@ -398,5 +399,5 @@ async function loadScopes(): Promise<void> {
 // is already paused loads that frame's scopes rather than waiting for the next
 // selection ([[lesson_the_handshake_succeeded_and_the_feature_is_silent]]).
 createRoot(() => {
-  createEffect(on(selectedFrame, () => void loadScopes()));
+  createEffect(selectedFrame, () => void loadScopes());
 });

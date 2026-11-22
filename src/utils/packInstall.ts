@@ -1,6 +1,6 @@
 // A second request while one is open is dropped rather than queued: a page
 // could otherwise line up installs behind the one the user is reading.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { emitWith, TOAST, type ToastEvent } from "./events";
 import type { PackKind } from "./packs";
 
@@ -12,7 +12,7 @@ export type PackInstallRequest = {
   origin: PackInstallOrigin;
 };
 
-const [pendingPackInstall, setPending] = createSignal<PackInstallRequest | null>(null);
+const [pendingPackInstall, setPending] = createLiveSignal<PackInstallRequest | null>(null);
 export { pendingPackInstall };
 
 export function requestPackInstall(request: PackInstallRequest): boolean {

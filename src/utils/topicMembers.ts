@@ -3,7 +3,8 @@
 // Toolbar's crumb chips, the sidebar's Topic rows and now the editor's file
 // tree, each carrying its own copy of the Space-to-repo match.
 
-import { createMemo, createResource, createSignal } from "solid-js";
+import { createDeferred, createMemo } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { memberRoot, memberState, rootOf, type Member, type MemberStateSummary, type Topic } from "./topics";
@@ -271,7 +272,7 @@ export function focusMemberRoot(
 // same switch, and three of each is what this replaces. The listeners are never
 // removed: they outlive every consumer by design, and refcounting them would
 // buy nothing in a window that always has a sidebar in it.
-const [tick, setTick] = createSignal(0);
+const [tick, setTick] = createLiveSignal(0);
 let listening = false;
 
 function watchTopicSources(): void {
@@ -304,21 +305,23 @@ function readAt(at: number) {
  *  what keeps a plain worktree selection off `list_topics` entirely. */
 export function createTopicMembers(topicId: () => string | null): () => TintedMember[] {
   watchTopicSources();
-  const [topic] = createResource(
-    () => (topicId() ? { id: topicId()!, at: tick() } : null),
-    async ({ id, at }) => (await readAt(at).topics).find((f) => f.id === id) ?? null,
+  const topic = createDeferred<Topic | null | undefined>(
+    (was) => {
+      const id = topicId();
+      if (!id) return was;
+      return readAt(tick()).topics.then((list) => list.find((f) => f.id === id) ?? null);
+    },
+    { loadingValue: undefined },
   );
-  const [spaces] = createResource(
-    () => (topicId() ? tick() : null),
-    (at: number) => readAt(at).spaces,
-  );
+  const spaces = createDeferred<SpaceTint[] | undefined>((was) => (topicId() ? readAt(tick()).spaces : was), {
+    loadingValue: undefined,
+  });
   return createMemo(() => tintedMembers(topic() ?? null, spaces() ?? []));
 }
 
 export function createSpaces(): () => SpaceTint[] | undefined {
   watchTopicSources();
-  const [spaces] = createResource(tick, (at: number) => readAt(at).spaces);
-  return spaces;
+  return createDeferred<SpaceTint[] | undefined>(() => readAt(tick()).spaces, { loadingValue: undefined });
 }
 
 /** The live record of the project at `path`, with the Space holding it,

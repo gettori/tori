@@ -11,7 +11,7 @@
 // import from `@codemirror/*` would pull the editor's dependency graph into the
 // startup chunk and defeat the lazy boundary around CodeEditor.
 
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 
 import { debugRoots, debugSession, onDebugChange, type DapSession } from "./dapSessions";
 
@@ -73,9 +73,9 @@ export const MAX_CONSOLE_LINES = 5000;
 /** A build a run waits on, as the pane shows it. */
 export type DebugBuild = { label: string; cancel: () => void };
 
-const [tree, setTree] = createSignal<DebugNode[]>([]);
-const [lines, setLines] = createSignal<ConsoleLine[]>([]);
-const [build, setBuild] = createSignal<DebugBuild | null>(null);
+const [tree, setTree] = createLiveSignal<DebugNode[]>([]);
+const [lines, setLines] = createLiveSignal<ConsoleLine[]>([]);
+const [build, setBuild] = createLiveSignal<DebugBuild | null>(null);
 
 /** Every live run, as a tree. Empty when nothing is being debugged. */
 export const debugTree = tree;

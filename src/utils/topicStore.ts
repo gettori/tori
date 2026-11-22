@@ -1,16 +1,16 @@
 // Watched rather than always on, so a window with nothing Topic-shaped on
 // screen never asks for the list.
 
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { noteTopics, type Topic } from "./topics";
 
 export type Promoted = { topic: Topic; from: string | null; to: string | null };
 
-const [records, setRecords] = createSignal<Topic[]>([]);
-const [reloads, setReloads] = createSignal(0);
-const [loadError, setLoadError] = createSignal<string | null>(null);
+const [records, setRecords] = createLiveSignal<Topic[]>([]);
+const [reloads, setReloads] = createLiveSignal(0);
+const [loadError, setLoadError] = createLiveSignal<string | null>(null);
 
 export const topics = records;
 export const topicsReloaded = reloads;

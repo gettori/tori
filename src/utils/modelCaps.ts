@@ -13,10 +13,11 @@
 // Claude session" true by intention only: nothing would have failed if the call
 // had been unconditional, because it always was. Now the one thing that starts
 // it is a lookup with nowhere else to go, so the claim is checkable.
-import { createMemo, createSignal } from "solid-js";
+import { createMemo } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 
-const [modelCaps, setModelCaps] = createSignal<Record<string, number>>({});
+const [modelCaps, setModelCaps] = createLiveSignal<Record<string, number>>({});
 let capsRequested = false;
 
 function ensureModelCaps() {

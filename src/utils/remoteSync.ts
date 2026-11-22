@@ -100,7 +100,7 @@ export function startRemoteFetch(): () => void {
   // `SETTINGS_CHANGED`, so a listener would arm on the built-in default and
   // keep sweeping every ten minutes for somebody who had switched it off -
   // until their next save, and never for an edit made to the file by hand.
-  createEffect(arm);
+  createEffect(() => [running(), minutes()], arm);
   document.addEventListener("visibilitychange", onVisibility);
   window.addEventListener("focus", onFocus);
 

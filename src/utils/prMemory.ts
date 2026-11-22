@@ -1,7 +1,7 @@
 // The forge polls the active space only, so after a restart every other space
 // has no pull requests until it is opened. This keeps the last answer per
 // branch so the navigator can still find a branch by its pull request number.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import type { PrState, UnitStatus } from "./forgeTypes";
 import { onForgeReport, projectStatuses } from "./forgeStatus";
 
@@ -52,7 +52,7 @@ function capped(store: Store): Store {
   return out;
 }
 
-const [memory, setMemory] = createSignal<Store>(load());
+const [memory, setMemory] = createLiveSignal<Store>(load());
 
 const same = (a: RememberedPr | undefined, b: Omit<RememberedPr, "changedAt">) =>
   !!a && a.number === b.number && a.title === b.title && a.state === b.state && a.url === b.url;

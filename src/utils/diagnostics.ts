@@ -18,7 +18,7 @@
 // defeats the lazy boundary around CodeEditor. The one helper that needs
 // CodeMirror lives in `panels/Editor/problemsFromState.ts`.
 
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { isUnderPath } from "./pathScope";
 
 export type Severity = "error" | "warning" | "info" | "hint";
@@ -77,7 +77,7 @@ export function orderFiles(entries: [string, Problem[]][]): [string, Problem[]][
 
 // ---- store -------------------------------------------------------------
 
-const [diagnostics, setDiagnostics] = createSignal<Record<string, Problem[]>>({});
+const [diagnostics, setDiagnostics] = createLiveSignal<Record<string, Problem[]>>({});
 
 export { diagnostics };
 

@@ -8,9 +8,9 @@
 // Not persisted, unlike blame. Following takes the editor away from whatever
 // you had open the moment a session touches a file, so it is a thing you switch
 // on for an afternoon rather than a preference a launch should assume.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 
-const [followEdits, setFollowEdits] = createSignal(false);
+const [followEdits, setFollowEdits] = createLiveSignal(false);
 
 /** The live setting. Every surface reads this rather than a copy of its own. */
 export { followEdits, setFollowEdits };

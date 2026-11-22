@@ -5,7 +5,7 @@
 // Snake_case field names, matching the Rust struct and `utils/agents.ts`: these
 // registry mirrors are the one place Tori keeps the backend's spelling rather
 // than camel-casing at the boundary.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import type { PackMeta } from "./packs";
 import { isToriSettingsFile } from "./toriSettingsFiles";
@@ -59,7 +59,7 @@ export type Resolution = { primary: string | null; secondaries: string[] };
 // files open and edit exactly as they do for a language Tori has no server for.
 // The load fires `onLspChange` through its subscriber, which is what makes a
 // file opened during startup attach once the registry lands.
-const [servers, setServers] = createSignal<LspServer[]>([]);
+const [servers, setServers] = createLiveSignal<LspServer[]>([]);
 export { servers };
 
 let requested: Promise<void> | null = null;

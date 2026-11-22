@@ -7,7 +7,8 @@
 // Every watch is re-read on every frame change, which is every stop and every
 // step. That is what a watch is for, and it is also why `MAX_WATCHES` exists.
 
-import { createEffect, createRoot, createSignal, on } from "solid-js";
+import { createEffect, createRoot } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 
 import { debugSession } from "./dapSessions";
 import { currentFrame, selectedFrame } from "./debugStack";
@@ -31,11 +32,11 @@ export type WatchRow = {
 
 type Answer = { value: string | null; type: string | null; error: string | null; pending: boolean };
 
-const [store, setStore] = createSignal<WatchStore>(loadWatches());
+const [store, setStore] = createLiveSignal<WatchStore>(loadWatches());
 // Keyed by workspace *and* expression. `orders.length` means one thing in one
 // worktree and nothing in another, so an answer keyed on the text alone would
 // show one project's value in another project's list.
-const [answers, setAnswers] = createSignal<ReadonlyMap<string, Answer>>(new Map());
+const [answers, setAnswers] = createLiveSignal<ReadonlyMap<string, Answer>>(new Map());
 
 const answerKey = (ws: string, expression: string) => `${ws}\n${expression}`;
 
@@ -183,5 +184,5 @@ export function refreshWatches(): void {
 // any component reading it. No `defer`, so a module imported while something is
 // already paused answers that frame rather than waiting for the next one.
 createRoot(() => {
-  createEffect(on(selectedFrame, () => refreshWatches()));
+  createEffect(selectedFrame, () => void refreshWatches());
 });

@@ -1,7 +1,7 @@
 // Installing a language server from the editor. The backend does the work
 // (`src-tauri/src/lsp/managed.rs`); this module holds the banner's offers and
 // announces an arrival without importing the editor, so Settings can use it too.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 
 /** Mirrors `managed::NOT_INSTALLED`, what `lsp_start` rejects a server with
@@ -22,7 +22,7 @@ export type InstallOffer = {
   error: string | null;
 };
 
-const [offers, setOffers] = createSignal<InstallOffer[]>([]);
+const [offers, setOffers] = createLiveSignal<InstallOffer[]>([]);
 
 // Not now is an answer for the session: every file of that language would ask
 // again otherwise.

@@ -1,13 +1,13 @@
 // Each worktree's live run command, from `run_list` once and `setup://changed`
 // after, so a webview reload still sees the servers Rust kept running.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 import { emitWith, TOAST, type ToastEvent } from "./events";
 import type { SetupReport } from "./setupToasts";
 
-const [runs, setRuns] = createSignal<Readonly<Record<string, SetupReport>>>({});
+const [runs, setRuns] = createLiveSignal<Readonly<Record<string, SetupReport>>>({});
 
 const live = (r: SetupReport) => r.state === "running" || r.state === "stopping";
 
@@ -37,7 +37,7 @@ export async function seedRuns(): Promise<void> {
 
 export const runAt = (worktree: string): SetupReport | null => runs()[worktree] ?? null;
 
-const [allowed, setAllowed] = createSignal<Readonly<Record<string, boolean>>>({});
+const [allowed, setAllowed] = createLiveSignal<Readonly<Record<string, boolean>>>({});
 const asked = new Set<string>();
 
 /** Whether Rust would let this worktree run its command. False until Rust has
@@ -54,7 +54,7 @@ export function runnable(worktree: string): boolean {
 
 export type RepoRun = { project: string; command: string };
 
-const [repoRuns, setRepoRuns] = createSignal<Readonly<Record<string, RepoRun | null>>>({});
+const [repoRuns, setRepoRuns] = createLiveSignal<Readonly<Record<string, RepoRun | null>>>({});
 const repoAsked = new Set<string>();
 let repoListening = false;
 

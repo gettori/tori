@@ -1,7 +1,7 @@
 // The one move rule (#159 phase 1). Drag and Move up / Move down commit the
 // same call, so the keyboard route cannot land somewhere the pointer would not.
 import { describe, it, expect, vi } from "vite-plus/test";
-import { createRoot } from "solid-js";
+import { createRoot, flush } from "solid-js";
 import { moveKey, createDragReorder } from "./dragReorder";
 
 const KEYS = ["a", "b", "c", "d"];
@@ -24,48 +24,53 @@ describe("moveKey", () => {
 /** The parts of a DragEvent the handlers touch. */
 const evt = () => ({ preventDefault: vi.fn(), stopPropagation: vi.fn(), dataTransfer: null }) as never;
 
+const mounted = (onCommit: (keys: string[]) => void) =>
+  createRoot((dispose) => ({ drag: createDragReorder({ keys: () => KEYS, onCommit }), dispose }));
+
+const act = (handler: (e: never) => void) => {
+  handler(evt());
+  flush();
+};
+
 describe("createDragReorder", () => {
-  it("commits the dropped order once and marks the click that follows", () =>
-    createRoot((dispose) => {
-      const onCommit = vi.fn();
-      const drag = createDragReorder({ keys: () => KEYS, onCommit });
+  it("commits the dropped order once and marks the click that follows", () => {
+    const onCommit = vi.fn();
+    const { drag, dispose } = mounted(onCommit);
 
-      drag.rowProps("d").onDragStart(evt());
-      expect(drag.dragging()).toBe("d");
-      drag.rowProps("a").onDragOver(evt());
-      expect(drag.over()).toBe("a");
-      drag.rowProps("a").onDrop(evt());
+    act(drag.rowProps("d").onDragStart);
+    expect(drag.dragging()).toBe("d");
+    act(drag.rowProps("a").onDragOver);
+    expect(drag.over()).toBe("a");
+    act(drag.rowProps("a").onDrop);
 
-      expect(onCommit).toHaveBeenCalledExactlyOnceWith(["d", "a", "b", "c"]);
-      expect(drag.dragging()).toBeNull();
-      // The window a click landing right after the drop falls in.
-      expect(drag.fromDrag()).toBe(true);
-      dispose();
-    }));
+    expect(onCommit).toHaveBeenCalledExactlyOnceWith(["d", "a", "b", "c"]);
+    expect(drag.dragging()).toBeNull();
+    // The window a click landing right after the drop falls in.
+    expect(drag.fromDrag()).toBe(true);
+    dispose();
+  });
 
-  it("ignores a drop on the row the drag started from", () =>
-    createRoot((dispose) => {
-      const onCommit = vi.fn();
-      const drag = createDragReorder({ keys: () => KEYS, onCommit });
+  it("ignores a drop on the row the drag started from", () => {
+    const onCommit = vi.fn();
+    const { drag, dispose } = mounted(onCommit);
 
-      drag.rowProps("b").onDragStart(evt());
-      drag.rowProps("b").onDragOver(evt());
-      expect(drag.over()).toBeNull();
-      drag.rowProps("b").onDrop(evt());
+    act(drag.rowProps("b").onDragStart);
+    act(drag.rowProps("b").onDragOver);
+    expect(drag.over()).toBeNull();
+    act(drag.rowProps("b").onDrop);
 
-      expect(onCommit).not.toHaveBeenCalled();
-      dispose();
-    }));
+    expect(onCommit).not.toHaveBeenCalled();
+    dispose();
+  });
 
-  it("leaves an ordinary click alone once the drag has settled", () =>
-    createRoot(async (dispose) => {
-      const drag = createDragReorder({ keys: () => KEYS, onCommit: vi.fn() });
-      drag.rowProps("a").onDragStart(evt());
-      drag.rowProps("a").onDragEnd(evt());
-      expect(drag.fromDrag()).toBe(true);
+  it("leaves an ordinary click alone once the drag has settled", async () => {
+    const { drag, dispose } = mounted(vi.fn());
+    act(drag.rowProps("a").onDragStart);
+    act(drag.rowProps("a").onDragEnd);
+    expect(drag.fromDrag()).toBe(true);
 
-      await new Promise((r) => setTimeout(r, 0));
-      expect(drag.fromDrag()).toBe(false);
-      dispose();
-    }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(drag.fromDrag()).toBe(false);
+    dispose();
+  });
 });

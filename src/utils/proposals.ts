@@ -1,7 +1,8 @@
 // A repo's `.tori/project.json` for a worktree, and the user's answer to it.
 // Rust owns the answer; this asks for it, raises one toast per proposal, and
 // holds the proposal the Review dialog is showing.
-import { createResource, createSignal, onCleanup, onMount } from "solid-js";
+import { createDeferred, onSettled, refresh } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -27,7 +28,7 @@ export type Reviewing = {
   proposal: Extract<Proposal, { state: "unaccepted" | "declined" }>;
 };
 
-const [reviewing, setReviewing] = createSignal<Reviewing | null>(null);
+const [reviewing, setReviewing] = createLiveSignal<Reviewing | null>(null);
 export { reviewing };
 
 const askedThisLaunch = new Set<string>();
@@ -48,11 +49,10 @@ export const projectFolders = (project: SpaceProject) => [
 ];
 
 export function createProposals(project: () => SpaceProject) {
-  const [answered, { refetch }] = createResource(
-    () => projectFolders(project()),
-    async (paths) => {
+  const answered = createDeferred<Answered[] | undefined>(
+    async () => {
       const answers = await Promise.all(
-        paths.map((worktree) =>
+        projectFolders(project()).map((worktree) =>
           proposalFor(worktree).then(
             (proposal): Answered => ({ worktree, proposal }),
             (e) => {
@@ -64,10 +64,11 @@ export function createProposals(project: () => SpaceProject) {
       );
       return answers.filter((a): a is Answered => a !== null);
     },
+    { loadingValue: undefined },
   );
-  onMount(() => {
-    const off = listen("proposals://changed", () => void refetch());
-    onCleanup(() => void off.then((stop) => stop()));
+  onSettled(() => {
+    const off = listen("proposals://changed", () => refresh(answered));
+    return () => void off.then((stop) => stop());
   });
   return answered;
 }
