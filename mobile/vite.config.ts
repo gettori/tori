@@ -1,5 +1,5 @@
 import { defineConfig } from "vite-plus";
-import solid from "vite-plugin-solid";
+import solid from "@solidjs/vite-plugin";
 import { bundledInputs } from "../scripts/bundled-inputs";
 
 // @ts-expect-error process is a nodejs global
