@@ -13,7 +13,7 @@
 // later passive sample replaced the whole account, the scoped window would blink
 // out every turn. So a sample updates the kinds it names and leaves the rest
 // alone, and a window is missing only when nothing has ever returned it.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { asProfileId } from "./agentHealth";
 import type { QuotaReading, QuotaState } from "./chatRateLimit";
@@ -85,8 +85,8 @@ type Readings = Record<AccountKey, Record<string, WindowReading>>;
  */
 type Fired = Record<string, number | null>;
 
-const [readings, setReadings] = createSignal<Readings>({});
-const [fired, setFired] = createSignal<Fired>({});
+const [readings, setReadings] = createLiveSignal<Readings>({});
+const [fired, setFired] = createLiveSignal<Fired>({});
 
 /** Every account with at least one window on record, whatever state it is in. */
 export function accountsWithReadings(): AccountKey[] {

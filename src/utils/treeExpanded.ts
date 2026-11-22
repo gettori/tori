@@ -13,7 +13,7 @@
 // reason: an entry naming a trashed folder can never be removed by hand, since
 // there is no row left to click.
 
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { moveDeep, type PathMove } from "./moveWorkspace";
 
 /** One workspace's tree state: the directories left open, and the section
@@ -126,7 +126,7 @@ export function saveExpanded(store: ExpandedStore): void {
 // gets written back: a save built from what is on screen right now would erase
 // every workspace this run has not visited.
 
-const [store, setStore] = createSignal<ExpandedStore>(loadExpanded());
+const [store, setStore] = createLiveSignal<ExpandedStore>(loadExpanded());
 
 function write(next: ExpandedStore, persist = true): void {
   if (next === store()) return;

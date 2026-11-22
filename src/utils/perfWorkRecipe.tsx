@@ -8,7 +8,7 @@
  * frame line comes back as a gap of seconds.
  */
 
-import { createStore, produce } from "solid-js";
+import { createStore, flush } from "solid-js";
 import { type JSX, render } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import { applyEvent, initialChat, type ChatState, type ToolItem } from "../panels/Chat/chatStore";
@@ -115,7 +115,12 @@ function mount(view: () => JSX.Element): () => void {
 
 async function stream(): Promise<void> {
   const [state, setState] = createStore<ChatState>(initialChat(SESSION));
-  const edit = (fn: (s: ChatState) => void) => setState(produce(fn));
+  const edit = (fn: (s: ChatState) => void) => {
+    setState((s) => {
+      fn(s);
+    });
+    flush();
+  };
   const turnId = "perf-turn";
   edit((s) =>
     applyEvent(s, {

@@ -18,7 +18,7 @@
 // a folder the user never opened loses its ghost protection before they ever
 // see it. `checkHistorical` is the deliberate call, made only where the
 // Historical section is about to render.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import type { SessionHome } from "./sessionStatus";
 
@@ -57,14 +57,14 @@ export type FolderScan = { folder: string; list: SessionMeta[] };
  *  covered folder refreshes. */
 export type SessionsChanged = { folders: string[] | null };
 
-const [sessions, setSessions] = createSignal<Record<string, SessionMeta[]>>({});
+const [sessions, setSessions] = createLiveSignal<Record<string, SessionMeta[]>>({});
 export { sessions };
 
 // Per-folder "historical" flag: sessions predating a recreated folder, hidden
 // under a collapsed "Historical" section until adopted. That section lives in
 // the terminal pane's History dropdown, which is also the only caller of
 // `checkHistorical` - see its note below on why that matters.
-const [historical, setHistorical] = createSignal<Record<string, boolean>>({});
+const [historical, setHistorical] = createLiveSignal<Record<string, boolean>>({});
 export { historical };
 
 // Observers of "these folders just rescanned". They get the lists themselves,

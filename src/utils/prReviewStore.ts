@@ -22,7 +22,8 @@
 // The cache it fills lives here because it is per pull request and a tab switch
 // must not throw away a stretch the reader already expanded.
 
-import { createSignal, createStore, reconcile } from "solid-js";
+import { reconcile, snapshot } from "solid-js";
+import { createLiveSignal, createLiveStore } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { parseDiffHunks } from "./diffHunks";
 import { newSideLines, oldSideLines } from "./reviewThreads";
@@ -148,8 +149,8 @@ const blank = (): PrReviewEntry => ({
 
 const EMPTY = blank();
 
-const [entries, setEntries] = createStore<Record<string, PrReviewEntry>>({});
-const [viewingMap, setViewingMap] = createSignal<Record<string, number | null>>({});
+const [entries, writeEntries] = createLiveStore<Record<string, PrReviewEntry>>({});
+const [viewingMap, setViewingMap] = createLiveSignal<Record<string, number | null>>({});
 
 const key = (root: string, number: number) => `${root}\n${number}`;
 const anchorKey = (a: DraftAnchor) => `${a.path}\n${a.side}\n${a.startLine ?? ""}\n${a.line}`;
@@ -174,8 +175,23 @@ const ensured = new Set<string>();
 /** Pull requests whose head commit is already in the local object store. */
 const fetchedHeads = new Map<string, Promise<void>>();
 
+function edit(k: string, fn: (entry: PrReviewEntry) => void) {
+  writeEntries((all) => {
+    fn((all[k] ??= blank()));
+  });
+}
+
+type ListField = "threads" | "pending" | "composers" | "viewed" | "openGaps";
+
+function editList<F extends ListField>(k: string, field: F, fn: (list: PrReviewEntry[F]) => PrReviewEntry[F]) {
+  const next = fn(snapshot(entries[k][field]));
+  edit(k, (entry) => {
+    entry[field] = next;
+  });
+}
+
 function slot(k: string) {
-  if (!entries[k]) setEntries(k, blank());
+  if (!entries[k]) edit(k, () => {});
 }
 
 // --- reading ----------------------------------------------------------------
@@ -193,7 +209,9 @@ export function prEntry(root: string, number: number): PrReviewEntry {
 export function notePr(root: string, number: number, pr: PullRequest): void {
   const k = key(root, number);
   slot(k);
-  setEntries(k, "pr", pr);
+  edit(k, (entry) => {
+    entry.pr = pr;
+  });
 }
 
 /** Whether the head has moved since the patches in hand were read.
@@ -244,7 +262,10 @@ export function setFileExpanded(root: string, number: number, path: string, on: 
   // The first toggle is also what settles the default: past here the list says
   // exactly which sections are open, including the ones nobody has touched.
   const now = e.expandedFiles ?? e.files.slice(0, EXPANDED_ON_OPEN).map((f) => f.path);
-  setEntries(k, "expandedFiles", on ? (now.includes(path) ? now : [...now, path]) : now.filter((p) => p !== path));
+  const next = on ? (now.includes(path) ? [...now] : [...now, path]) : now.filter((p) => p !== path);
+  edit(k, (entry) => {
+    entry.expandedFiles = next;
+  });
 }
 
 export function gapOpen(root: string, number: number, gapKey: string): boolean {
@@ -304,21 +325,24 @@ export function refresh(root: string, number: number, part: RefreshPart): Promis
 async function loadFiles(root: string, number: number): Promise<void> {
   const k = key(root, number);
   const mine = claim(k, "files");
-  setEntries(k, { filesLoading: true, filesError: null });
+  edit(k, (entry) => {
+    entry.filesLoading = true;
+    entry.filesError = null;
+  });
   try {
     const page = await invoke<Paged<PrFile>>("forge_pr_files", { projectPath: root, number });
     if (!holds(k, "files", mine)) return;
     const covered = unitStatusForPr(root, number)?.pullRequest ?? null;
-    setEntries(k, {
+    edit(k, (entry) => {
       // Only as a fallback: an opener that already knows is a better source
       // than a poll that may never have covered this branch at all.
-      pr: entries[k].pr ?? covered,
-      files: page.items,
-      filesTruncated: page.truncated,
+      entry.pr ??= covered;
+      entry.files = page.items;
+      entry.filesTruncated = page.truncated;
       // Replaced outright, never merged with what a restored draft was written
       // against: this field is what the patches in hand describe, and null for
       // "cannot tell" is the only other thing it may say.
-      headSha: covered?.headSha ?? null,
+      entry.headSha = covered?.headSha ?? null;
     });
     recheckAnchors(k);
   } catch (e) {
@@ -326,9 +350,15 @@ async function loadFiles(root: string, number: number): Promise<void> {
     // The patches already in hand survive. On the first read there are none and
     // this empties nothing; on a re-read, one transient failure would otherwise
     // take away the diff somebody is halfway through reading.
-    setEntries(k, "filesError", forgeErrorMessage(e));
+    edit(k, (entry) => {
+      entry.filesError = forgeErrorMessage(e);
+    });
   } finally {
-    if (holds(k, "files", mine)) setEntries(k, "filesLoading", false);
+    if (holds(k, "files", mine)) {
+      edit(k, (entry) => {
+        entry.filesLoading = false;
+      });
+    }
   }
 }
 
@@ -343,10 +373,15 @@ async function loadThreads(root: string, number: number): Promise<void> {
       number,
     });
     if (!holds(k, "threads", mine)) return;
-    setEntries(k, { threads: page.items, threadsTruncated: page.truncated });
+    edit(k, (entry) => {
+      entry.threads = page.items;
+      entry.threadsTruncated = page.truncated;
+    });
   } catch (e) {
     if (!holds(k, "threads", mine)) return;
-    setEntries(k, "threadsError", forgeErrorMessage(e));
+    edit(k, (entry) => {
+      entry.threadsError = forgeErrorMessage(e);
+    });
   }
 }
 
@@ -370,7 +405,11 @@ async function loadSummary(root: string, number: number): Promise<void> {
       projectPath: root,
       number,
     });
-    if (holds(k, "summary", mine)) setEntries(k, "summary", summary);
+    if (holds(k, "summary", mine)) {
+      edit(k, (entry) => {
+        entry.summary = summary;
+      });
+    }
   } catch {
     // Deliberately silent, and deliberately not an error banner: the diff and
     // the conversations are worth reading without it.
@@ -383,7 +422,7 @@ async function loadSummary(root: string, number: number): Promise<void> {
 export function updateThreads(root: string, number: number, fn: (list: ReviewThread[]) => ReviewThread[]): void {
   const k = key(root, number);
   slot(k);
-  setEntries(k, "threads", (list) => fn([...list]));
+  editList(k, "threads", (list) => fn([...list]));
 }
 
 /** What went wrong with the conversations, from a read or from a write. One
@@ -392,7 +431,9 @@ export function updateThreads(root: string, number: number, fn: (list: ReviewThr
 export function setThreadsError(root: string, number: number, message: string | null): void {
   const k = key(root, number);
   slot(k);
-  setEntries(k, "threadsError", message);
+  edit(k, (entry) => {
+    entry.threadsError = message;
+  });
 }
 
 // --- the draft --------------------------------------------------------------
@@ -410,21 +451,25 @@ export function addPending(root: string, number: number, comment: DraftComment &
     ...comment,
     anchor: anchorStateFor(entries[k].files, comment, comment.rowText),
   };
-  setEntries(k, "pending", (list) => [...list, held]);
+  editList(k, "pending", (list) => [...list, held]);
   saveDraft(root, number);
 }
 
 export function setReviewBody(root: string, number: number, body: string): void {
   const k = key(root, number);
   slot(k);
-  setEntries(k, "reviewBody", body);
+  edit(k, (entry) => {
+    entry.reviewBody = body;
+  });
   saveDraft(root, number);
 }
 
 export function setReviewVerdict(root: string, number: number, event: ReviewEvent): void {
   const k = key(root, number);
   slot(k);
-  setEntries(k, "verdict", event);
+  edit(k, (entry) => {
+    entry.verdict = event;
+  });
 }
 
 /** Give up the whole draft, which only a landed submit may do. A failed one
@@ -435,7 +480,9 @@ export function clearDraft(root: string, number: number): void {
   slot(k);
   // The verdict goes with it: the next review of this pull request starts from
   // the same place the first one did, not from the answer that just went out.
-  setEntries(k, { pending: [], reviewBody: "", composers: [], verdict: "comment" });
+  edit(k, (entry) => {
+    Object.assign(entry, { pending: [], reviewBody: "", composers: [], verdict: "comment" });
+  });
   saveDraft(root, number);
 }
 
@@ -456,7 +503,7 @@ export function setComposerText(root: string, number: number, anchor: DraftAncho
   const k = key(root, number);
   slot(k);
   const want = anchorKey(anchor);
-  setEntries(k, "composers", (list) => {
+  editList(k, "composers", (list) => {
     const rest = list.filter((c) => anchorKey(c.anchor) !== want);
     return text ? [...rest, { path: anchor.path, anchor, text }] : rest;
   });
@@ -470,7 +517,7 @@ export function closeComposer(root: string, number: number, anchor: DraftAnchor)
 export function setViewedFile(root: string, number: number, path: string, on: boolean): void {
   const k = key(root, number);
   slot(k);
-  setEntries(k, "viewed", (list) =>
+  editList(k, "viewed", (list) =>
     on ? (list.includes(path) ? list : [...list, path]) : list.filter((p) => p !== path),
   );
   saveDraft(root, number);
@@ -504,13 +551,15 @@ export function ensurePrHead(root: string, number: number, sha: string): Promise
 export function noteGapLines(root: string, number: number, gapKey: string, lines: string[]): void {
   const k = key(root, number);
   slot(k);
-  setEntries(k, "gapLines", gapKey, lines);
+  edit(k, (entry) => {
+    entry.gapLines[gapKey] = lines;
+  });
 }
 
 export function setGapOpen(root: string, number: number, gapKey: string, on: boolean): void {
   const k = key(root, number);
   slot(k);
-  setEntries(k, "openGaps", (list) =>
+  editList(k, "openGaps", (list) =>
     on ? (list.includes(gapKey) ? list : [...list, gapKey]) : list.filter((g) => g !== gapKey),
   );
 }
@@ -536,7 +585,7 @@ export function anchorStateFor(files: readonly PrFile[], at: DraftAnchor, rowTex
 
 function recheckAnchors(k: string): void {
   const files = entries[k]?.files ?? [];
-  setEntries(k, "pending", (list) =>
+  editList(k, "pending", (list) =>
     list.map((c) => {
       const anchor = anchorStateFor(files, c, c.rowText);
       return anchor === c.anchor ? c : { ...c, anchor };
@@ -639,19 +688,21 @@ function restoreDraft(root: string, number: number): void {
   const k = key(root, number);
   const stored = readDrafts()[k];
   if (!stored) return;
-  setEntries(k, {
-    headSha: stored.headSha,
-    pending: stored.pending,
-    reviewBody: stored.reviewBody,
-    composers: stored.composers,
-    viewed: stored.viewed,
+  edit(k, (entry) => {
+    Object.assign(entry, {
+      headSha: stored.headSha,
+      pending: stored.pending,
+      reviewBody: stored.reviewBody,
+      composers: stored.composers,
+      viewed: stored.viewed,
+    });
   });
 }
 
 /** Test seam: this outlives any one component, and the key outlives the
  *  process. */
 export function resetPrReviewStoreForTests(): void {
-  setEntries(reconcile({}));
+  writeEntries(reconcile({}));
   setViewingMap({});
   ensured.clear();
   fetchedHeads.clear();

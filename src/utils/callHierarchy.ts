@@ -14,7 +14,7 @@
 // how the editor's graph gets back into the startup chunk. The half that holds a
 // live client is `panels/Editor/lspCallHierarchy.ts`.
 
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 
 /** Which way the tree runs from its root. */
 export type CallDirection = "incoming" | "outgoing";
@@ -147,7 +147,7 @@ export function normalizeCalls(res: unknown, direction: CallDirection): CallItem
 // Keyed by absolute path, and `null` is a real answer distinct from an absent
 // key: `null` means this file's server has no `callHierarchyProvider`, which is
 // what hides the tab, while absent means nobody has asked yet.
-const [roots, setRoots] = createSignal<Record<string, CallItem[] | null>>({});
+const [roots, setRoots] = createLiveSignal<Record<string, CallItem[] | null>>({});
 
 /** Publish what a file's server prepared at the caret, or `null` when it offers
  *  no call hierarchy at all. Called by the editor, the only holder of a live

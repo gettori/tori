@@ -9,7 +9,7 @@
 //
 // The list is a signal because the whole point of the watcher is that a file
 // dropped into the folder shows up in Settings without a restart.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { admit } from "./admit";
 import { listThemes } from "./bundled";
@@ -35,7 +35,7 @@ export type UserTheme = {
   provenance?: Provenance;
 };
 
-const [userThemes, setUserThemes] = createSignal<UserTheme[]>([]);
+const [userThemes, setUserThemes] = createLiveSignal<UserTheme[]>([]);
 
 /** Every user theme, including the ones the gate refused. */
 export function listUserThemes(): UserTheme[] {

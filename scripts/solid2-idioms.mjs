@@ -88,7 +88,7 @@ export function scan(ts, rel, src, report = {}) {
     return d;
   };
 
-  if (/solid-js|createSignal|createEffect/.test(src)) {
+  if (/solid-js|createSignal|createLiveSignal|createEffect/.test(src)) {
     const loc = (n) => rel + ":" + (sf.getLineAndCharacterOfPosition(n.getStart()).line + 1);
     const scan = (node, pred) => {
       let hit = false;
@@ -129,7 +129,9 @@ export function scan(ts, rel, src, report = {}) {
       return { inJsxAttr, inCallCb };
     };
     (function visit(n) {
-      const name = callName(n);
+      const called = callName(n);
+      const name =
+        called === "createLiveSignal" ? "createSignal" : called === "createLiveStore" ? "createStore" : called;
       if (name === "createEffect") {
         tally(`createEffect`, n);
         const a0 = n.arguments[0];

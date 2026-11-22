@@ -4,7 +4,7 @@
 // Fed its UI inputs by App rather than importing the panels, the same shape as
 // `forgeStatus.ts`: whoever knows a fact passes it in.
 
-import { createEffect, on } from "solid-js";
+import { createEffect } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { settings } from "../panels/Settings/settingsStore";
 import { pushToast } from "../components/Toasts/Toasts";
@@ -151,10 +151,8 @@ export function startWorktreeCleanup(inputs: CleanupInputs): () => void {
   };
 
   createEffect(
-    on(
-      () => [settings.git.cleanupAfterMerge, settings.git.cleanupAfterIdleDays],
-      () => void run(full),
-    ),
+    () => [settings.git.cleanupAfterMerge, settings.git.cleanupAfterIdleDays],
+    () => void run(full),
   );
   const timer = window.setInterval(() => void run(full), HOUR_MS);
   const stopReports = onForgeReport((project) => void run(recheck(project)));

@@ -1,7 +1,7 @@
 // Work a language server reports as it goes, per session, for the breadcrumb
 // bar. Here rather than on the client, which the bar cannot import without
 // pulling CodeMirror into the startup chunk.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 
 type Handle = { serverId: string; root: string };
 
@@ -15,12 +15,12 @@ type WorkDone =
 export type LspProgress = Handle & { token: Token; title: string; message?: string; percentage?: number };
 
 // In begin order, so the last entry for a session is its newest piece of work.
-const [active, setActive] = createSignal<readonly LspProgress[]>([]);
+const [active, setActive] = createLiveSignal<readonly LspProgress[]>([]);
 
 // Which session answers a path is the client's call, and the client is behind
 // the lazy edge, so it registers the answer here and says when it may change.
 let answering: (path: string) => Handle | null = () => null;
-const [scope, setScope] = createSignal(0);
+const [scope, setScope] = createLiveSignal(0);
 
 export function setProgressScope(fn: (path: string) => Handle | null): void {
   answering = fn;

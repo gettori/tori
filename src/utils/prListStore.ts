@@ -17,7 +17,8 @@
 // Uncached in Rust on purpose: `forge_list_prs` bypasses the poll layer's
 // pacing, which exists for a tick that runs forever and not for a click.
 
-import { createStore, reconcile } from "solid-js";
+import { reconcile } from "solid-js";
+import { createLiveStore } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { forgeErrorMessage, type Paged, type PullRequest } from "./forgeTypes";
 
@@ -34,7 +35,7 @@ const blank = (): PrListEntry => ({ items: [], truncated: false, loading: false,
 
 const EMPTY = blank();
 
-const [entries, setEntries] = createStore<Record<string, PrListEntry>>({});
+const [entries, setEntries] = createLiveStore<Record<string, PrListEntry>>({});
 
 /** Roots `ensure` has already read, so remounting a view is free. */
 const read = new Set<string>();
@@ -53,6 +54,12 @@ export function prListEntry(root: string): PrListEntry {
   return entries[root] ?? EMPTY;
 }
 
+function patch(root: string, fields: Partial<ReturnType<typeof blank>>) {
+  setEntries((all) => {
+    Object.assign((all[root] ??= blank()), fields);
+  });
+}
+
 /** Read this project's pull requests, once, however many views ask. */
 export function ensurePrList(root: string): void {
   if (read.has(root)) return;
@@ -69,20 +76,19 @@ export async function reloadPrList(root: string): Promise<void> {
   read.add(root);
   const mine = (seq.get(root) ?? 0) + 1;
   seq.set(root, mine);
-  if (!entries[root]) setEntries(root, blank());
-  setEntries(root, { loading: true, error: null });
+  patch(root, { loading: true, error: null });
   try {
     const page = await invoke<Paged<PullRequest>>("forge_list_prs", { projectPath: root });
     if (seq.get(root) !== mine) return;
-    setEntries(root, { items: page.items, truncated: page.truncated });
+    patch(root, { items: page.items, truncated: page.truncated });
   } catch (e) {
     if (seq.get(root) !== mine) return;
     // Emptied, unlike a failed files read. A listing that failed has no partial
     // answer worth keeping: whatever is in hand describes a moment the caller
     // has already been told this read could not confirm.
-    setEntries(root, { items: [], truncated: false, error: forgeErrorMessage(e) });
+    patch(root, { items: [], truncated: false, error: forgeErrorMessage(e) });
   } finally {
-    if (seq.get(root) === mine) setEntries(root, "loading", false);
+    if (seq.get(root) === mine) patch(root, { loading: false });
   }
 }
 
@@ -94,7 +100,11 @@ export async function reloadPrList(root: string): Promise<void> {
 export function forgetPrList(root: string): void {
   read.delete(root);
   seq.delete(root);
-  if (entries[root]) setEntries(root, reconcile(blank()));
+  if (entries[root]) {
+    setEntries((all) => {
+      reconcile(blank(), "id")(all[root]);
+    });
+  }
 }
 
 /** Test seam: this outlives any one component. */

@@ -12,7 +12,8 @@
 // Rust takes only a spend ceiling stop from it.
 import type { UnitOrigin } from "./unitOrigin";
 import type { PrState } from "./forgeTypes";
-import { createSignal, createMemo, createEffect, createRoot } from "solid-js";
+import { createMemo, createEffect, createRoot } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { LiveTab } from "./events";
@@ -59,9 +60,9 @@ export type ForgeUnit = {
 
 // --- fed inputs -------------------------------------------------------------
 
-const [liveTabs, setLiveTabs] = createSignal<readonly LiveTab[]>([]);
-const [folderOwners, setFolderOwners] = createSignal<Record<string, FolderOwner>>({});
-const [forgeUnits, setForgeUnits] = createSignal<readonly ForgeUnit[]>([]);
+const [liveTabs, setLiveTabs] = createLiveSignal<readonly LiveTab[]>([]);
+const [folderOwners, setFolderOwners] = createLiveSignal<Record<string, FolderOwner>>({});
+const [forgeUnits, setForgeUnits] = createLiveSignal<readonly ForgeUnit[]>([]);
 
 /** The tab set, from whoever owns it (App, through the sidebar). */
 export function noteLiveTabs(tabs: readonly LiveTab[]) {
@@ -93,7 +94,7 @@ export function noteForgeUnits(units: readonly ForgeUnit[]) {
 // session id, plus the agent used (so a later re-probe of a detached session
 // does not need a session-store lookup). Probing is trigger-driven only (row
 // selection, sessions://changed, window focus) - never a periodic pgrep.
-const [probes, setProbes] = createSignal<Record<string, { agent: string; running: boolean }>>({});
+const [probes, setProbes] = createLiveSignal<Record<string, { agent: string; running: boolean }>>({});
 
 // What Rust last composed per session: the dot, how it knows it, and the unit
 // row the session sits under.
@@ -106,7 +107,7 @@ export type RustDot = {
   denied?: boolean;
   home: SessionHome | null;
 };
-const [rustDots, setRustDots] = createSignal<Record<string, RustDot>>({});
+const [rustDots, setRustDots] = createLiveSignal<Record<string, RustDot>>({});
 
 export function noteDots(changes: readonly RustDot[] | undefined) {
   if (!changes?.length) return;
@@ -370,15 +371,19 @@ createRoot(() => {
     .catch(() => {});
 
   let pushed = "";
-  createEffect(() => {
-    const facts = sessionFacts();
-    const key = JSON.stringify(facts);
-    if (key === pushed) return;
-    pushed = key;
-    void Promise.resolve()
-      .then(() => invoke("rpc_session_facts", { facts }))
-      .catch(() => {});
-  });
+  createEffect(
+    () => {
+      const facts = sessionFacts();
+      return { facts, key: JSON.stringify(facts) };
+    },
+    ({ facts, key }) => {
+      if (key === pushed) return;
+      pushed = key;
+      void Promise.resolve()
+        .then(() => invoke("rpc_session_facts", { facts }))
+        .catch(() => {});
+    },
+  );
 });
 
 /** Drop every measurement. Test support, named so it cannot be mistaken for

@@ -1,4 +1,5 @@
-import { createEffect, createSignal, on, onCleanup } from "solid-js";
+import { createEffect, onCleanup } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { isUnderPath, sameCwd } from "./pathScope";
@@ -16,7 +17,7 @@ const BUSY_EVERY_MS = 10_000;
 /** Per-turn answers a backend command reads off each live session's
  *  transcript, kept for exactly the sessions a strip is driving. */
 export function turnWatch<T>(command: string) {
-  const [bySession, setBySession] = createSignal<Record<string, T[]>>({});
+  const [bySession, setBySession] = createLiveSignal<Record<string, T[]>>({});
   const asked = new Map<string, number>();
   const lastRead = new Map<string, number>();
   const due = new Map<string, ReturnType<typeof setTimeout>>();
@@ -66,7 +67,8 @@ export function turnWatch<T>(command: string) {
   function watch(targets: () => SessionTarget[]) {
     const seen = new Map<string, string>();
     createEffect(
-      on(targets, (list) => {
+      () => targets(),
+      (list) => {
         const live = new Set(list.map((t) => t.id));
         for (const id of [...seen.keys()]) {
           if (live.has(id)) continue;
@@ -79,7 +81,7 @@ export function turnWatch<T>(command: string) {
           seen.set(t.id, key);
           void refresh(t);
         }
-      }),
+      },
     );
     const all = () => targets().forEach((t) => void refresh(t));
     // Only the sessions in the folders whose transcripts moved: a mid-turn agent

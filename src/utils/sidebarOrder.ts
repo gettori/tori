@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -9,7 +9,7 @@ const NO_LANES: Readonly<Record<string, string>> = {};
 
 // `null` until the file has been read. Nothing saves before then, so a first
 // render, or a read that failed, cannot overwrite it with discovery order.
-const [orders, setOrders] = createSignal<Record<string, ProjectOrder> | null>(null);
+const [orders, setOrders] = createLiveSignal<Record<string, ProjectOrder> | null>(null);
 
 export const projectOrder = (path: string): readonly string[] => orders()?.[path]?.entries ?? NONE;
 export const projectLanes = (path: string): Readonly<Record<string, string>> => orders()?.[path]?.lanes ?? NO_LANES;

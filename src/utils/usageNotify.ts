@@ -10,7 +10,7 @@
 //
 // Deduped on the store's persisted fired set rather than a local one, because a
 // notice repeated after every restart is the failure that set exists to prevent.
-import { createEffect, createRoot, untrack, runWithOwner } from "solid-js";
+import { createEffect, createRoot, runWithOwner } from "solid-js";
 import { findAdapter } from "./agents";
 import { asTabProfile, profileLabel } from "./agentHealth";
 import { agentEnabled } from "./agentEnabled";
@@ -43,7 +43,7 @@ const focusedNow = () => (typeof document === "undefined" ? false : document.has
  * you were looking at Tori has been delivered, by the strip; firing it later
  * when you tab away would be news about something you already saw.
  */
-export function collectQuotaNotifications(now = Date.now(), focused = focusedNow()): QuotaNotification[] {
+export function takeQuotaNotifications(now = Date.now(), focused = focusedNow()): QuotaNotification[] {
   const out: QuotaNotification[] = [];
 
   for (const key of accountsWithReadings()) {
@@ -85,14 +85,8 @@ export function watchQuotaNotifications() {
   watching = true;
   runWithOwner(null, () =>
     createRoot(() => {
-      createEffect(() => {
-        // The trigger is read here and the body is untracked, because collecting
-        // *writes* the fired set it also reads: tracked, every send would schedule
-        // one more pass of this effect to discover it had nothing left to say.
-        accountsWithReadings();
-        untrack(() => {
-          for (const n of collectQuotaNotifications()) void notifyQuota(n.title, n.body);
-        });
+      createEffect(accountsWithReadings, () => {
+        for (const n of takeQuotaNotifications()) void notifyQuota(n.title, n.body);
       });
     }),
   );
