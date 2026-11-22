@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -6,7 +6,7 @@ const NONE: readonly string[] = [];
 
 // `null` until the file has been read. Nothing saves before then, so a first
 // render, or a read that failed, cannot overwrite it with alphabetical order.
-const [orders, setOrders] = createSignal<Record<string, string[]> | null>(null);
+const [orders, setOrders] = createLiveSignal<Record<string, string[]> | null>(null);
 
 /** A space's projects as paths, top to bottom. */
 export const projectListOrder = (space: string): readonly string[] => orders()?.[space] ?? NONE;

@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 
 /** A file to open once the editor is showing the worktree it lives in. Held
  *  rather than emitted, because a link into another worktree moves the
@@ -10,5 +10,5 @@ export type PendingFileOpen = { path: string; line?: number; at: number };
  *  answer a click nobody remembers making. */
 export const PENDING_OPEN_TTL_MS = 10_000;
 
-const [pendingFileOpen, setPendingFileOpen] = createSignal<PendingFileOpen | null>(null);
+const [pendingFileOpen, setPendingFileOpen] = createLiveSignal<PendingFileOpen | null>(null);
 export { pendingFileOpen, setPendingFileOpen };

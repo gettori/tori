@@ -1,7 +1,8 @@
 // Mirrors `packs::Meta`, `packs::LoadError`, `packs::provenance::Provenance`,
 // `packs::migrate::Report`, `packs::catalog::Catalog` and `packs::manage::Next`
 // in src-tauri/src/packs/.
-import { createSignal, onCleanup } from "solid-js";
+import { onCleanup } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -50,15 +51,16 @@ export type MigrationReport = {
   skipped: { path: string; reason: string }[];
 };
 
-const [loadErrors, setLoadErrors] = createSignal<LoadError[]>([]);
+const [loadErrors, setLoadErrors] = createLiveSignal<LoadError[]>([]);
 export { loadErrors };
 
 /** Ask again. A failed ask, or an answer that is not a list, keeps the last
  *  answer rather than clearing it. */
 export async function refreshLoadErrors(): Promise<LoadError[]> {
   const errors = await invoke<unknown>("packs_load_errors").catch(() => null);
-  if (Array.isArray(errors)) setLoadErrors(errors as LoadError[]);
-  return loadErrors();
+  if (!Array.isArray(errors)) return loadErrors();
+  setLoadErrors(errors as LoadError[]);
+  return errors as LoadError[];
 }
 
 /** `packs::CHANGED`: one kind was reloaded from its folder. */

@@ -14,7 +14,7 @@
 // origin: the resolved `RepoAccount` is what every pause and budget is read
 // through, so one account's 401 or rate limit leaves the others polling.
 
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import {
   forgeAccountName,
@@ -77,7 +77,7 @@ export function prWatchProjects(polled: readonly PrWatchPolled[]): WatchedProjec
   return polled.map((p) => ({ path: p.project, units: [{ branch: p.branch, visible: false }] }));
 }
 
-const [cardWatches, setCardWatches] = createSignal<ReadonlyMap<string, number>>(new Map());
+const [cardWatches, setCardWatches] = createLiveSignal<ReadonlyMap<string, number>>(new Map());
 const watchKey = (project: string, branch: string) => `${project}\n${branch}`;
 
 // Polling covers the active space only, so a card showing a pull request from
@@ -125,10 +125,10 @@ export function mergeWatched(lists: readonly (readonly WatchedProject[])[]): Wat
 
 // --- fed inputs -------------------------------------------------------------
 
-const [accounts, setAccounts] = createSignal<readonly ForgeAccount[]>([]);
-const [viewers, setViewers] = createSignal<Record<string, string>>({});
-const [enabled, setEnabled] = createSignal(true);
-const [projects, setProjects] = createSignal<readonly WatchedProject[]>([]);
+const [accounts, setAccounts] = createLiveSignal<readonly ForgeAccount[]>([]);
+const [viewers, setViewers] = createLiveSignal<Record<string, string>>({});
+const [enabled, setEnabled] = createLiveSignal(true);
+const [projects, setProjects] = createLiveSignal<readonly WatchedProject[]>([]);
 
 const signedOut: AuthState = { kind: "signedOut" };
 const accountAuth = (id: string): AuthState => accounts().find((a) => a.id === id)?.auth ?? signedOut;
@@ -246,26 +246,26 @@ export function noteWatchedProjects(list: readonly WatchedProject[]) {
 
 // --- owned state ------------------------------------------------------------
 
-const [repos, setRepos] = createSignal<Record<string, RepoAccount>>({});
-const [resolvedAt, setResolvedAt] = createSignal<Record<string, number>>({});
-const [statuses, setStatuses] = createSignal<Record<string, UnitStatus>>({});
-const [uncovered, setUncovered] = createSignal<Record<string, number>>({});
+const [repos, setRepos] = createLiveSignal<Record<string, RepoAccount>>({});
+const [resolvedAt, setResolvedAt] = createLiveSignal<Record<string, number>>({});
+const [statuses, setStatuses] = createLiveSignal<Record<string, UnitStatus>>({});
+const [uncovered, setUncovered] = createLiveSignal<Record<string, number>>({});
 /** Epoch ms before which nothing on an account may poll, by account id. A rate
  *  limit belongs to the token, so it stops that account's projects and no
  *  other's. */
-const [accountBlocked, setAccountBlocked] = createSignal<Record<string, number>>({});
+const [accountBlocked, setAccountBlocked] = createLiveSignal<Record<string, number>>({});
 /** Per-project blocks, for the failures that belong to one repo (no origin, a
  *  remote this forge does not serve). */
-const [projectBlocked, setProjectBlocked] = createSignal<Record<string, number>>({});
-const [lastPollAt, setLastPollAt] = createSignal<Record<string, number>>({});
+const [projectBlocked, setProjectBlocked] = createLiveSignal<Record<string, number>>({});
+const [lastPollAt, setLastPollAt] = createLiveSignal<Record<string, number>>({});
 /** The organisation standing in front of a checkout, by path. Rust names it on
  *  the `404`; nothing else in this store keeps a last error, because nothing
  *  else has an answer to offer for one. */
-const [orgBlocked, setOrgBlocked] = createSignal<Record<string, string>>({});
-const [reviewLists, setReviewLists] = createSignal<Record<string, ReviewRequests | null>>({});
+const [orgBlocked, setOrgBlocked] = createLiveSignal<Record<string, string>>({});
+const [reviewLists, setReviewLists] = createLiveSignal<Record<string, ReviewRequests | null>>({});
 /** Whether `gh` is on this machine, read once. It decides which route an
  *  organisation notice can offer, and a path lookup does not change under us. */
-const [cliInstalled, setCliInstalled] = createSignal(false);
+const [cliInstalled, setCliInstalled] = createLiveSignal(false);
 
 const key = (path: string, branch: string) => `${path}\n${branch}`;
 
@@ -282,7 +282,7 @@ export async function resolveForgeRepo(path: string): Promise<RepoAccount | null
 
 export type RepoAccess = "yes" | "no" | "unknown";
 
-const [access, setAccess] = createSignal<Record<string, Record<string, RepoAccess>>>({});
+const [access, setAccess] = createLiveSignal<Record<string, Record<string, RepoAccess>>>({});
 
 // Once per checkout and session: it costs one request per account on the host.
 async function loadAccess(path: string) {
@@ -304,7 +304,7 @@ export function accountWithAccess(path: string, account: ForgeAccount): string {
   return reach === "yes" ? `${name} (can read it)` : reach === "no" ? `${name} (no access)` : name;
 }
 
-const [avatars, setAvatars] = createSignal<Record<string, { url: string | null; at: number }>>({});
+const [avatars, setAvatars] = createLiveSignal<Record<string, { url: string | null; at: number }>>({});
 const AVATAR_RETRY_MS = 5 * 60 * 1000;
 
 // Asked lazily, for an account signed in before Tori kept the host's avatar.

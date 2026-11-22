@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { kindLabel, type NeedsYouEvent, type NeedsYouKind } from "./needsYouSignals";
@@ -68,7 +68,7 @@ export function finishedParts(f: Finished, now = Date.now()): string[] {
 /** The facts under a pull request or limit row. */
 export const happenedParts = (e: NeedsYouEvent, now = Date.now()) => [kindLabel(e.kind), digestTime(e.ts, now)];
 
-const [digest, setDigest] = createSignal<Digest | null>(null);
+const [digest, setDigest] = createLiveSignal<Digest | null>(null);
 export { digest };
 
 // While the tab shows, its start stays where it opened, so reading it does not

@@ -15,7 +15,7 @@
 //
 // The key keeps its original `review` name so an existing preference survives
 // this becoming shared; renaming it would silently reset everyone.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 
 export const SIDE_BY_SIDE_KEY = "tori.review.sideBySide";
 
@@ -27,7 +27,7 @@ export function readSideBySide(): boolean {
   return localStorage.getItem(SIDE_BY_SIDE_KEY) === "1";
 }
 
-const [sideBySideOn, setSideBySideSignal] = createSignal(readSideBySide());
+const [sideBySideOn, setSideBySideSignal] = createLiveSignal(readSideBySide());
 
 /** The live preference, read by every diff surface and by the Settings row. */
 export { sideBySideOn };

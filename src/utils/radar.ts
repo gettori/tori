@@ -5,7 +5,7 @@
 // overlap arrives twice, once from each side, so a surface filters by its own
 // session or folder and never has to look at the other half.
 
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { sameCwd } from "./pathScope";
@@ -23,7 +23,7 @@ export type Overlap = {
 
 export type RadarChanged = { units: { path: string; branch: string }[]; overlaps?: Overlap[] };
 
-const [overlaps, setOverlaps] = createSignal<Overlap[]>([]);
+const [overlaps, setOverlaps] = createLiveSignal<Overlap[]>([]);
 
 let started = false;
 

@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { emitWith, TOAST, type ToastEvent } from "./events";
@@ -19,8 +19,8 @@ const WITHHELD_AFTER = 1500;
 export const BARS = 32;
 const silent = () => Array<number>(BARS).fill(0);
 
-const [state, setState] = createSignal<DictationState>("idle");
-const [levels, setLevels] = createSignal<number[]>(silent());
+const [state, setState] = createLiveSignal<DictationState>("idle");
+const [levels, setLevels] = createLiveSignal<number[]>(silent());
 export { state, levels };
 
 let listening: Promise<unknown> | null = null;

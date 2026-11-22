@@ -1,4 +1,5 @@
-import { createSignal, getOwner, onCleanup } from "solid-js";
+import { getOwner, onCleanup } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { USAGE_CHANGED, type SessionUsage } from "./chatUsageStore";
@@ -7,7 +8,7 @@ export type SpendQuery = { kind: "branch"; project: string; branch: string } | {
 
 const keyOf = (q: SpendQuery) => (q.kind === "item" ? `item\0${q.id}` : `branch\0${q.project}\0${q.branch}`);
 
-const [figures, setFigures] = createSignal<Record<string, SessionUsage>>({});
+const [figures, setFigures] = createLiveSignal<Record<string, SessionUsage>>({});
 const asked = new Map<string, { query: SpendQuery; holders: number }>();
 let started = false;
 let soon: ReturnType<typeof setTimeout> | undefined;

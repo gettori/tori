@@ -14,7 +14,8 @@
 // One slot per root, not one slot total: inside a Topic every member is a
 // repo of its own, and the member in front is a pointer into the set rather
 // than the only one whose numbers are true.
-import { createMemo, createRoot, createSignal, type Accessor, runWithOwner } from "solid-js";
+import { createMemo, createRoot, type Accessor, runWithOwner } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitWith, SET_RIGHT_MODE, TOAST, type FsChanged, type SetRightMode, type ToastEvent } from "./events";
@@ -189,9 +190,9 @@ const NO_SLOT: GitState = {
 };
 
 // The slot map, in the order the roots were entered, which is member order.
-const [slots, setSlots] = createSignal<ReadonlyMap<string, GitState>>(new Map());
+const [slots, setSlots] = createLiveSignal<ReadonlyMap<string, GitState>>(new Map());
 // Which slot the surfaces that only ever describe one repo are about.
-const [activeRoot, setActiveRoot] = createSignal<string | null>(null);
+const [activeRoot, setActiveRoot] = createLiveSignal<string | null>(null);
 export { setActiveRoot };
 
 /** This root's numbers. A root nobody entered reads blank rather than reading
@@ -308,7 +309,7 @@ export type GitBusy = "push" | "pull" | "fetch" | "reset" | "merge";
 // flag would label every one of them "Pushing..." for a push in any one. Per
 // kind as well, so a fetch in flight does not swallow a push pressed during it;
 // the backend already queues the two on the repo lock.
-const [busyRoots, setBusyRoots] = createSignal<ReadonlyMap<string, ReadonlySet<GitBusy>>>(new Map());
+const [busyRoots, setBusyRoots] = createLiveSignal<ReadonlyMap<string, ReadonlySet<GitBusy>>>(new Map());
 
 /** What is in flight in this member: `kind` when it is, or with no kind, the
  *  first thing running there. Null when nothing is. */

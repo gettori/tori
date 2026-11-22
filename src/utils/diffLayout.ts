@@ -1,11 +1,11 @@
 // Whether a file's diff tab shows the file itself instead of rows. One signal
 // for every open diff tab, for `sideBySide.ts`'s reason: tabs that each read the
 // key at mount disagree the moment one of them is toggled.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 
 const DIFF_EDITOR_LAYOUT_KEY = "tori.diff.editorLayout";
 
-const [diffEditorLayoutOn, setDiffEditorLayoutSignal] = createSignal(
+const [diffEditorLayoutOn, setDiffEditorLayoutSignal] = createLiveSignal(
   localStorage.getItem(DIFF_EDITOR_LAYOUT_KEY) === "1",
 );
 

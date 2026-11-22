@@ -1,11 +1,11 @@
 // Whether diff tabs ask git to ignore whitespace. One signal for every open
 // diff tab, for `sideBySide.ts`'s reason: tabs that each read the key at mount
 // disagree the moment one of them is toggled.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 
 const DIFF_IGNORE_WHITESPACE_KEY = "tori.diff.ignoreWhitespace";
 
-const [diffIgnoreWhitespaceOn, setDiffIgnoreWhitespaceSignal] = createSignal(
+const [diffIgnoreWhitespaceOn, setDiffIgnoreWhitespaceSignal] = createLiveSignal(
   localStorage.getItem(DIFF_IGNORE_WHITESPACE_KEY) === "1",
 );
 

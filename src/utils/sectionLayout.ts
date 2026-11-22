@@ -5,7 +5,7 @@
 // their section names are different sets, and one store would let a tab hide a
 // section the other one owns.
 
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 
 /** A section nobody has dragged yet: the header and about seven rows. */
 export const SECTION_DEFAULT_H = 230;
@@ -64,7 +64,7 @@ export function createSectionLayout<Id extends string>(opts: {
     }
   }
 
-  const [layout, setLayout] = createSignal<Layout<Id>>(load());
+  const [layout, setLayout] = createLiveSignal<Layout<Id>>(load());
 
   function write(next: Layout<Id>, persist = true) {
     setLayout(next);

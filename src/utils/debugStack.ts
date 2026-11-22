@@ -10,7 +10,7 @@
 // the root never does. So the stack is a list of stopped sessions, each with its
 // own frames, and a selected frame names both.
 
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 
 import { debugRoots, debugSession, onDebugChange, type DapSession } from "./dapSessions";
 import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "./events";
@@ -52,8 +52,8 @@ export type FrameRef = { session: string; frameId: number };
  *  before anything could be drawn. */
 export const MAX_FRAMES = 50;
 
-const [stops, setStops] = createSignal<readonly StoppedSession[]>([]);
-const [selected, setSelected] = createSignal<FrameRef | null>(null);
+const [stops, setStops] = createLiveSignal<readonly StoppedSession[]>([]);
+const [selected, setSelected] = createLiveSignal<FrameRef | null>(null);
 
 /** Every paused session, in the order they stopped. Empty while the program is
  *  running. Arrival order rather than tree order, because it is append-only:
