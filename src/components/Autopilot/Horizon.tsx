@@ -1,4 +1,4 @@
-import { For, createEffect, createSignal, on, onCleanup } from "solid-js";
+import { For, createEffect, createSignal } from "solid-js";
 import dawn from "./scenes/dawn.svg?raw";
 import morning from "./scenes/morning.svg?raw";
 import midday from "./scenes/midday.svg?raw";
@@ -34,15 +34,13 @@ const FADE_MS = 1200;
 export default function Horizon(props: { scene: SceneKey }) {
   const [layers, setLayers] = createSignal<SceneKey[]>([props.scene]);
   createEffect(
-    on(
-      () => props.scene,
-      (next) => {
-        setLayers((l) => [...l.filter((k) => k !== next), next]);
-        const done = setTimeout(() => setLayers((l) => l.slice(-1)), FADE_MS);
-        onCleanup(() => clearTimeout(done));
-      },
-      { defer: true },
-    ),
+    () => props.scene,
+    (next) => {
+      setLayers((l) => [...l.filter((k) => k !== next), next]);
+      const done = setTimeout(() => setLayers((l) => l.slice(-1)), FADE_MS);
+      return () => clearTimeout(done);
+    },
+    { defer: true },
   );
   return (
     <div class={styles.horizon} aria-hidden="true">

@@ -1,4 +1,4 @@
-import { createSignal, onMount, onCleanup, Show, createEffect } from "solid-js";
+import { createSignal, onSettled, onCleanup, Show, createEffect } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import styles from "./Dialogs.module.css";
@@ -35,8 +35,7 @@ export default function AskpassDialog() {
   const current = () => queue()[0];
 
   // Reset the input and focus it whenever a new prompt reaches the front.
-  createEffect(() => {
-    const c = current();
+  createEffect(current, (c) => {
     if (c) {
       setValue("");
       requestAnimationFrame(() => input?.focus());
@@ -69,10 +68,12 @@ export default function AskpassDialog() {
   }
 
   let unlisten: UnlistenFn | undefined;
-  onMount(async () => {
-    unlisten = await listen<Prompt>("askpass://prompt", (e) => {
-      setQueue((q) => [...q, e.payload]);
-    });
+  onSettled(() => {
+    void (async () => {
+      unlisten = await listen<Prompt>("askpass://prompt", (e) => {
+        setQueue((q) => [...q, e.payload]);
+      });
+    })();
   });
   onCleanup(() => unlisten?.());
 

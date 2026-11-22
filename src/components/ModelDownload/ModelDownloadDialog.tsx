@@ -27,7 +27,9 @@ const firstNotInstalled = <Id extends string>(sizes: SizeChoice<Id>[], installed
   sizes.find((s) => s.id !== installed)?.id ?? sizes[0].id;
 
 function Ask<Id extends string>(props: { store: DownloadStore<Id, DownloadStatus<Id>>; copy: Copy }) {
-  const [size, setSize] = createSignal<Id>(firstNotInstalled(props.store.sizes, props.store.status().model));
+  const [size, setSize] = createSignal<Id>(
+    firstNotInstalled(props.store.sizes, props.store.status().model) as Exclude<Id, Function>,
+  );
   const running = () => props.store.status().downloading;
   return (
     <Dialog

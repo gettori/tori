@@ -1,4 +1,4 @@
-import { createSignal, createMemo, createEffect, on, onCleanup, onMount, Show, untrack } from "solid-js";
+import { createSignal, createMemo, createEffect, onCleanup, onSettled, Show, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import Combobox, { type ComboboxGroup, type ComboboxOption } from "../Combobox/Combobox";
 import Dialog from "../Dialog/Dialog";
@@ -361,49 +361,54 @@ export default function Omnibox(props: {
   const mode = () => parsed().mode;
   const term = () => parsed().term;
 
-  onMount(() => {
+  const startHome = untrack(() => props.home);
+  onSettled(() => {
     // Focus is `Dialog`'s (`initialFocus` below), not asked for here. What is
     // left here is the data the box needs to have anything to show.
     // Which agents exist, so the "New ... session" rows offer only the ones
     // that can start. Cached in the backend, so this is a no-op after the first
     // call from anywhere.
     ensureAgentHealthLoaded();
-    if (props.home === "all") onCleanup(watchSessionsOverview());
+    if (startHome === "all") return watchSessionsOverview();
   });
 
   // Not on mount: Cmd+K rarely reaches files, and a big repo's listing is the
   // costliest thing the box asks for.
   let filesRead = false;
-  createEffect(() => {
-    const at = roots();
-    if (mode() !== "file" || filesRead || !at.length) return;
-    filesRead = true;
-    // All roots at once rather than streaming them in: rows that arrive one
-    // member at a time shift under a cursor that is already moving.
-    void Promise.all(
-      at.map((r) =>
-        invoke<string[]>("list_project_files", { projectPath: r }).then(
-          (rels) => rels.map((rel) => ({ root: r, rel })),
-          () => [],
+  createEffect(
+    () => [roots(), mode()] as const,
+    ([at, m]) => {
+      if (m !== "file" || filesRead || !at.length) return;
+      filesRead = true;
+      // All roots at once rather than streaming them in: rows that arrive one
+      // member at a time shift under a cursor that is already moving.
+      void Promise.all(
+        at.map((r) =>
+          invoke<string[]>("list_project_files", { projectPath: r }).then(
+            (rels) => rels.map((rel) => ({ root: r, rel })),
+            () => [],
+          ),
         ),
-      ),
-    ).then((lists) => setFiles(lists.flat()));
-  });
+      ).then((lists) => setFiles(lists.flat()));
+    },
+  );
 
   // Not on mount, unlike the file list: `fs_read_dir` shells out to
   // `git check-ignore`, and ⌘P is the most-pressed key in the app while never
   // showing a task row.
   let tasksRead = false;
-  createEffect(() => {
-    const at = root();
-    if ((mode() !== "command" && mode() !== "all") || tasksRead || !at) return;
-    tasksRead = true;
-    void loadTasks(
-      at,
-      (path) => invoke<{ name: string }[]>("fs_read_dir", { path }),
-      (path) => invoke<string>("fs_read_file", { path }),
-    ).then(setTasks, () => setTasks([]));
-  });
+  createEffect(
+    () => [root(), mode()] as const,
+    ([at, m]) => {
+      if ((m !== "command" && m !== "all") || tasksRead || !at) return;
+      tasksRead = true;
+      void loadTasks(
+        at,
+        (path) => invoke<{ name: string }[]>("fs_read_dir", { path }),
+        (path) => invoke<string>("fs_read_file", { path }),
+      ).then(setTasks, () => setTasks([]));
+    },
+  );
 
   // `workspace/symbol` is a round trip per running server, so it is not sent on
   // every keystroke. A token guards the order: a slow answer to an older query
@@ -428,14 +433,15 @@ export default function Omnibox(props: {
   }, 180);
 
   createEffect(
-    on([mode, term], ([m, q]) => {
+    () => [mode(), term()] as const,
+    ([m, q]) => {
       if (m !== "workspace") return;
       // Cleared first, so the previous query's hits are never shown under the
       // current one's text while the request is in flight.
       setWsHits([]);
       wsToken += 1;
       if (q) runWorkspaceSearch(q);
-    }),
+    },
   );
 
   function close(fn?: () => void) {
@@ -824,7 +830,13 @@ export default function Omnibox(props: {
     );
   }
 
-  createEffect(on(query, () => setArrowed(false), { defer: true }));
+  createEffect(
+    query,
+    () => {
+      setArrowed(false);
+    },
+    { defer: true },
+  );
   onCleanup(restoreTheme);
 
   // Flattened once per published tree rather than once per keystroke: the tree
@@ -957,18 +969,20 @@ export default function Omnibox(props: {
 
   const [issueSource, setIssueSource] = createSignal<IssueSource | null>(null);
   let sourceAsked = false;
-  createEffect(() => {
-    const front = frontProject();
-    if (!wholeQueryNumber() || sourceAsked || !front) return;
-    sourceAsked = true;
-    const projectPath = front.projectPath;
-    void Promise.all([
-      invoke<boolean>("issues_source", { projectPath }).catch(() => false),
-      invoke<IssueRepos>("issue_repos_get", { projectPath }).catch(() => null),
-    ]).then(([offered, repos]) => {
-      if (offered) setIssueSource({ projectPath, projectName: front.projectName, repos: repos?.effective ?? [] });
-    });
-  });
+  createEffect(
+    () => [frontProject(), wholeQueryNumber()] as const,
+    ([front, wholeNumber]) => {
+      if (!wholeNumber || sourceAsked || !front) return;
+      sourceAsked = true;
+      const projectPath = front.projectPath;
+      void Promise.all([
+        invoke<boolean>("issues_source", { projectPath }).catch(() => false),
+        invoke<IssueRepos>("issue_repos_get", { projectPath }).catch(() => null),
+      ]).then(([offered, repos]) => {
+        if (offered) setIssueSource({ projectPath, projectName: front.projectName, repos: repos?.effective ?? [] });
+      });
+    },
+  );
 
   const [lookup, setLookup] = createSignal<Lookup | null>(null);
   let lookupSeq = 0;
@@ -1285,15 +1299,17 @@ export default function Omnibox(props: {
     return id == null ? undefined : byId().get(id);
   };
 
-  createEffect(() => {
-    const row = activeRow();
-    const want = arrowed() && row?.kind === "theme" && !row.current ? row.themeId : null;
-    untrack(() => {
-      if (want === previewing()) return;
+  createEffect(
+    () => {
+      const row = activeRow();
+      return arrowed() && row?.kind === "theme" && !row.current ? row.themeId : null;
+    },
+    (want) => {
+      if (want === untrack(previewing)) return;
       if (want && previewTheme(want)) setPreviewing(want);
       else restoreTheme();
-    });
-  });
+    },
+  );
 
   const enterLabel = (row: Row) =>
     row.kind === "theme" && (previewing() === row.themeId || row.current) ? "Keep" : ENTER_LABEL[row.kind];

@@ -118,20 +118,23 @@ export default function Combobox(props: {
   });
   const active = createMemo(() => cursor()?.value ?? null);
 
-  createEffect(() => props.onActiveChange?.(active()));
-
-  createEffect(() => {
-    const value = active();
-    const frame = scroller();
-    if (value === null || !frame) return;
-    const id = untrack(() => rowIds().get(value));
-    const row = id ? document.getElementById(id) : null;
-    if (!row) return;
-    const rowBox = row.getBoundingClientRect();
-    const frameBox = frame.getBoundingClientRect();
-    if (rowBox.top < frameBox.top) frame.scrollTop -= frameBox.top - rowBox.top;
-    else if (rowBox.bottom > frameBox.bottom) frame.scrollTop += rowBox.bottom - frameBox.bottom;
+  createEffect(active, (value) => {
+    props.onActiveChange?.(value);
   });
+
+  createEffect(
+    () => ({ value: active(), frame: scroller() }),
+    ({ value, frame }) => {
+      if (value === null || !frame) return;
+      const id = untrack(rowIds).get(value);
+      const row = id ? document.getElementById(id) : null;
+      if (!row) return;
+      const rowBox = row.getBoundingClientRect();
+      const frameBox = frame.getBoundingClientRect();
+      if (rowBox.top < frameBox.top) frame.scrollTop -= frameBox.top - rowBox.top;
+      else if (rowBox.bottom > frameBox.bottom) frame.scrollTop += rowBox.bottom - frameBox.bottom;
+    },
+  );
 
   const moveTo = (value: string | undefined) => {
     if (value !== undefined) setMoved({ value, search: search() });

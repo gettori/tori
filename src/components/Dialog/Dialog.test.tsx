@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, onTestFinished } from "vite-plus/test";
-import { createSignal } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { render, screen, fireEvent } from "../../test/harness";
 import { expectNoAxeViolations } from "../../test/axe";
@@ -56,6 +56,8 @@ describe("Dialog", () => {
       const { setOpen } = openDialog();
 
       setOpen(false);
+
+      flush();
 
       expect(screen.queryByRole("dialog")).toBeNull();
     });
@@ -237,6 +239,8 @@ describe("Dialog", () => {
       expect(document.activeElement).not.toBe(opener);
 
       setOpen(false);
+
+      flush();
       await macrotask();
 
       expect(document.activeElement).toBe(opener);
@@ -258,6 +262,8 @@ describe("Dialog", () => {
       opener.remove();
 
       setOpen(false);
+
+      flush();
       await macrotask();
 
       expect(document.activeElement).toBe(document.body);

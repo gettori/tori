@@ -1,8 +1,9 @@
-import { createResource, createSignal, For, Match, Show, Switch } from "solid-js";
+import { createSignal, For, Match, Show, Switch } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
+import { createFetchState } from "../../lib/fetchState";
 import { dismissPackInstall, pendingPackInstall, type PackInstallOrigin } from "../../utils/packInstall";
 import { KIND_NOUN, type CatalogRow, type InstallNext, type PackKind } from "../../utils/packs";
 
@@ -50,7 +51,7 @@ export default function PackInstallDialog() {
     <Show when={pendingPackInstall()} keyed>
       {(request) => {
         let cancel: HTMLButtonElement | undefined;
-        const [row] = createResource(() =>
+        const [row] = createFetchState(() =>
           invoke<CatalogRow>("packs_resolve", {
             kind: request.kind,
             id: request.id,

@@ -6,8 +6,9 @@ import {
   onCleanup,
   Show,
   omit,
-  untrack,
   type Component,
+  onSettled,
+  untrack,
 } from "solid-js";
 import { type JSX, dynamic, Portal } from "@solidjs/web";
 import { anchorLayer, openLayer } from "../../lib/layer";
@@ -135,22 +136,22 @@ function TooltipSurface(props: {
   children: JSX.Element;
 }) {
   let content!: HTMLDivElement;
-  createEffect(() =>
-    untrack(() => {
-      const unanchor = anchorLayer(props.anchor, content, props.placement, GUTTER);
-      const release = openLayer({
-        element: content,
-        show: () => content.showPopover(),
-        hide: () => content.hidePopover(),
-        onDismiss: () => props.onDismiss(),
-        passive: true,
-      });
-      onCleanup(() => {
-        release();
-        unanchor();
-      });
-    }),
-  );
+  const anchor = untrack(() => props.anchor);
+  const placement = untrack(() => props.placement);
+  onSettled(() => {
+    const unanchor = anchorLayer(anchor, content, placement, GUTTER);
+    const release = openLayer({
+      element: content,
+      show: () => content.showPopover(),
+      hide: () => content.hidePopover(),
+      onDismiss: () => props.onDismiss(),
+      passive: true,
+    });
+    return () => {
+      release();
+      unanchor();
+    };
+  });
   return (
     <div ref={content} id={props.id} popover="manual" role="tooltip" data-expanded="" class={styles.content}>
       {props.children}
@@ -246,9 +247,12 @@ export default function Tooltip<T extends HTMLElement = HTMLButtonElement, P ext
   });
 
   // Cleared rather than masked, so lifting suppression cannot spring it back.
-  createEffect(() => {
-    if (props.suppressed) closeNow();
-  });
+  createEffect(
+    () => props.suppressed,
+    (suppressed) => {
+      if (suppressed) closeNow();
+    },
+  );
 
   const behaviour = {
     type: "button",

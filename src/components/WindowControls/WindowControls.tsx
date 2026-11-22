@@ -1,4 +1,4 @@
-import { children, createSignal, onCleanup, onMount } from "solid-js";
+import { children, createSignal, onSettled } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import LayoutToggles from "../LayoutToggles/LayoutToggles";
@@ -25,7 +25,7 @@ export default function WindowControls(props: {
   // A fullscreen window has no traffic lights, so their reserved space would
   // sit empty. Entering and leaving fullscreen both arrive as a resize.
   const [fullscreen, setFullscreen] = createSignal(false);
-  onMount(() => {
+  onSettled(() => {
     let win: ReturnType<typeof getCurrentWindow>;
     try {
       win = getCurrentWindow();
@@ -44,10 +44,10 @@ export default function WindowControls(props: {
       .onResized(sync)
       .then((un) => (disposed ? un() : (off = un)))
       .catch(() => {});
-    onCleanup(() => {
+    return () => {
       disposed = true;
       off?.();
-    });
+    };
   });
   return (
     <div class={[styles.winControls, { [styles.fullscreen]: fullscreen() }]}>

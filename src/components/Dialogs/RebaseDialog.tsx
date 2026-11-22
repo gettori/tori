@@ -1,4 +1,4 @@
-import { createMemo, For, Show, createStore, produce } from "solid-js";
+import { createMemo, For, Show, createStore } from "solid-js";
 import { ArrowDown, ArrowUp } from "../Icon/icons";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
@@ -33,16 +33,14 @@ export default function RebaseDialog(props: {
   onCancel: () => void;
 }) {
   const [rows, setRows] = createStore<Row[]>(
-    props.plan.commits.map((commit) => ({ commit, action: "pick", message: commit.message })),
+    props.plan.commits.map((commit): Row => ({ commit, action: "pick", message: commit.message })),
   );
 
   const move = (from: number, to: number) =>
-    setRows(
-      produce((list) => {
-        const [row] = list.splice(from, 1);
-        list.splice(to, 0, row);
-      }),
-    );
+    setRows((list) => {
+      const [row] = list.splice(from, 1);
+      list.splice(to, 0, row);
+    });
 
   const changed = createMemo(() =>
     rows.some((r, i) => r.commit.sha !== props.plan.commits[i].sha || r.action !== "pick"),
@@ -114,7 +112,12 @@ export default function RebaseDialog(props: {
                   class={styles.action}
                   options={ACTIONS}
                   value={row.action}
-                  onChange={(v) => setRows(i(), "action", v as RebaseAction)}
+                  onChange={(v) => {
+                    const at = i();
+                    setRows((list) => {
+                      list[at].action = v as RebaseAction;
+                    });
+                  }}
                   aria-label={`Action for ${row.commit.short}`}
                 />
                 <IconButton
@@ -138,7 +141,13 @@ export default function RebaseDialog(props: {
                   rows={3}
                   value={row.message}
                   aria-label={`New message for ${row.commit.short}`}
-                  onInput={(e) => setRows(i(), "message", e.currentTarget.value)}
+                  onInput={(e) => {
+                    const at = i();
+                    const value = e.currentTarget.value;
+                    setRows((list) => {
+                      list[at].message = value;
+                    });
+                  }}
                 />
               </Show>
             </div>

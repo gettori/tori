@@ -1,4 +1,4 @@
-import { createEffect, onCleanup, untrack } from "solid-js";
+import { createEffect, untrack, onSettled } from "solid-js";
 import { type JSX, Portal } from "@solidjs/web";
 import { anchorLayer, openLayer } from "../../lib/layer";
 import { useDialogSurface } from "../Dialog/surface";
@@ -33,29 +33,27 @@ function Surface(props: PopoverProps) {
   let content!: HTMLDivElement;
   const anchored = untrack(() => props.anchorEl !== undefined);
 
-  createEffect(() => {
-    const anchor = props.anchorEl;
-    if (anchor) onCleanup(anchorLayer(anchor, content, props.placement ?? "bottom-end", ANCHOR_GUTTER));
-  });
-
-  createEffect(() =>
-    untrack(() => {
-      if (!anchored) {
-        props.initialFocus?.()?.focus();
-        return;
-      }
-      const release = openLayer({
-        element: content,
-        show: () => content.showPopover(),
-        hide: () => content.hidePopover(),
-        onDismiss: () => props.onClose(),
-        ignorePress: (target) => !!props.anchorEl?.contains(target),
-        dismissOnFocusOutside: true,
-      });
-      onCleanup(release);
-      props.initialFocus?.()?.focus();
-    }),
+  createEffect(
+    () => ({ anchor: props.anchorEl, placement: props.placement ?? "bottom-end" }),
+    ({ anchor, placement }) => (anchor ? anchorLayer(anchor, content, placement, ANCHOR_GUTTER) : undefined),
   );
+
+  onSettled(() => {
+    if (!anchored) {
+      props.initialFocus?.()?.focus();
+      return;
+    }
+    const release = openLayer({
+      element: content,
+      show: () => content.showPopover(),
+      hide: () => content.hidePopover(),
+      onDismiss: () => props.onClose(),
+      ignorePress: (target) => !!props.anchorEl?.contains(target),
+      dismissOnFocusOutside: true,
+    });
+    props.initialFocus?.()?.focus();
+    return release;
+  });
 
   return (
     <div

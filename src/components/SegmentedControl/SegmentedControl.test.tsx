@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 // The pattern to copy for accessibility assertions on a component.
 //
 // `expectNoAxeViolations(container)` is the whole of it for an inline component.
@@ -124,6 +125,7 @@ describe("SegmentedControl keyboard", () => {
     }
 
     group.focus();
+    flush();
 
     expect(document.activeElement).toBe(seg("Changes"));
     expect(group.getAttribute("tabindex")).toBe("-1");

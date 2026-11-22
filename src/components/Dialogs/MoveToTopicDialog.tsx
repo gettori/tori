@@ -1,4 +1,4 @@
-import { createSignal, onMount, For, Show } from "solid-js";
+import { createSignal, onSettled, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { House, Search } from "../Icon/icons";
 import styles from "./Dialogs.module.css";
@@ -68,7 +68,7 @@ export default function MoveToTopicDialog(props: {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 
-  onMount(() => {
+  onSettled(() => {
     invoke<string | null>("check_moved_worktree", { repoPath: props.repoPath, worktreePath: props.worktreePath })
       .then((why) => setRefusal(why ?? null))
       // A check that cannot answer must not block: `add_member` runs the same

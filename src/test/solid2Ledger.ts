@@ -65,13 +65,6 @@ export const LEDGER: Partial<Record<IdiomClass, readonly LedgerEntry[]>> = {
         "merges an explicit aria-pressed with active in an accessor that returns strings; written inline, the compiler wraps the nested ternary in memos and the tab switch row gains 4 runs; 2.0: keep the accessor",
     },
   ],
-  "cleanup-in-ref": [
-    {
-      file: "src/components/Tab/Tabs.tsx",
-      count: 1,
-      reason: "onCleanup in an object property ref, which throws on 2.0; 2.0: register in the component body",
-    },
-  ],
   "effect-writes": [
     {
       file: "src/panels/Editor/CheckpointDiffView.tsx",
@@ -238,11 +231,6 @@ export const LEDGER: Partial<Record<IdiomClass, readonly LedgerEntry[]>> = {
       reason: "debounces a stale branch probe; 2.0: createEffect(compute, apply) with the timer cleanup",
     },
     {
-      file: "src/components/Menu/menuCore.tsx",
-      count: 1,
-      reason: "opens a native layer once and links the parent menu; 2.0: onSettled returning the release",
-    },
-    {
       file: "src/components/Omnibox/Omnibox.tsx",
       count: 6,
       reason:
@@ -258,11 +246,6 @@ export const LEDGER: Partial<Record<IdiomClass, readonly LedgerEntry[]>> = {
       file: "src/components/ProjectIconPicker/ProjectIconPicker.tsx",
       count: 1,
       reason: "resets an editable draft when the stored icon changes; 2.0: createSignal(fn) for each draft field",
-    },
-    {
-      file: "src/components/Select/Select.tsx",
-      count: 1,
-      reason: "opens a native layer once and moves focus; 2.0: onSettled returning the release",
     },
     {
       file: "src/components/SyncChip/SyncChip.tsx",
