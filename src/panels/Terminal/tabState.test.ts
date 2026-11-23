@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 // The three tab states and the moves between them (plan phase 2). A restored
 // tab is a strip entry with no process until it is reached for, so a tab now
 // has a position on `inert -> open -> live` rather than simply existing.
@@ -88,11 +89,13 @@ describe("advanceTabState", () => {
           // A `from` this kind does not have is unreachable, and that is the
           // only reason it may be. Asserted rather than skipped over, or a
           // model that stopped reaching `open` at all would pass every row.
+          flush();
           if (tabState(t) !== from) {
             expect(statesFor(kind), `${kind} cannot reach ${from}`).not.toContain(from);
             return;
           }
           expect(advanceTabState(t, to)).toBe(want);
+          flush();
           expect(tabState(t)).toBe(want ? to : from);
         });
       }
@@ -103,6 +106,7 @@ describe("advanceTabState", () => {
     const t = tab({ kind: "shell" });
     seedInert(t.id);
     expect(advanceTabState(t, "open")).toBe(false);
+    flush();
     expect(tabState(t)).toBe("inert");
   });
 
@@ -118,6 +122,7 @@ describe("seedInert", () => {
   it("puts a tab behind its default, which is the only way back", () => {
     const t = tab({ kind: "shell" });
     seedInert(t.id);
+    flush();
     expect(tabState(t)).toBe("inert");
   });
 
@@ -136,6 +141,7 @@ describe("stateOnActivate", () => {
   it("wakes an inert chat to open, never straight to live", () => {
     const t = chat();
     seedInert(t.id);
+    flush();
     expect(stateOnActivate(t)).toBe("open");
   });
 

@@ -190,6 +190,7 @@ describe("a tab strip", () => {
     setPaneActive(WS_A, "left", "sh:2");
     expect(__measuresForTests()).toBe(before);
     setOpen([...open(), term("sh:4", WS_A)]);
+    flush();
     expect(__measuresForTests()).toBeGreaterThan(before);
   });
 });

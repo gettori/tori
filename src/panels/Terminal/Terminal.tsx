@@ -185,7 +185,6 @@ import {
   seedInert,
   setOpen,
   setTabTitles,
-  tabTitles,
   stateOnActivate,
   tabState,
   tabTitle,
@@ -201,6 +200,7 @@ import {
   resetTerminalTabModel,
   type OpenTerm,
   type TabKind,
+  latestTerminalModel,
 } from "./terminalTabStore";
 import { nextActiveAfterClose } from "../../layout/paneLayout";
 import { kindPaneFocused, layoutRoot, revealKindPane } from "../../layout/layoutStore";
@@ -213,7 +213,6 @@ import ContextMenu from "../../components/Menu/ContextMenu";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
 import { unifiedTabs, unifyTerm, type TerminalUnifiedTab, type UnifiedTab } from "../../tabs/unifiedTabs";
 import { registerKind, kindEntry, type TabDescriptor } from "../../tabs/registry";
-import { withoutFlush } from "../../lib/liveState";
 import { isLocked } from "../../utils/autopilotStore";
 import { LockMark } from "../../components/Autopilot/SessionMarks";
 import styles from "./Terminal.module.css";
@@ -933,7 +932,10 @@ export default function Terminal(props: {
   // every workspace, so writing it per keypress is the one frequency it cannot
   // afford. What is lost by the delay is the last few hundred ms of typing in a
   // draft, on a quit that lands inside the window.
-  const saveDrafts = debounce(() => saveTabStore(open(), activeByWorkspace()), DRAFT_SAVE_MS);
+  const saveDrafts = debounce(() => {
+    const { tabs, active } = latestTerminalModel();
+    saveTabStore(tabs, active);
+  }, DRAFT_SAVE_MS);
   createEffect(
     () => {
       for (const t of open()) {
@@ -1011,7 +1013,7 @@ export default function Terminal(props: {
   // Command palette "focus session" action: the session is already open in a
   // tab, so just reveal it (no resume needed).
   const offFocusSessionTab = onWith<FocusSessionTab>(FOCUS_SESSION_TAB, ({ tabId }) => {
-    const tab = open().find((t) => t.id === tabId);
+    const tab = latestTerminalModel().tabs.find((t) => t.id === tabId);
     if (tab) {
       revealKindPane(tab.workspace, tab.kind);
       bringToFront(tab.workspace, tab.id);
@@ -1038,7 +1040,8 @@ export default function Terminal(props: {
       if (t.workspace === workspace) closeId(t.id, "purge");
     }
     touched.add(workspace);
-    saveTabStore(open(), activeByWorkspace());
+    const latest = latestTerminalModel();
+    saveTabStore(latest.tabs, latest.active);
   });
   onCleanup(offPurgeWs);
 
@@ -1046,12 +1049,13 @@ export default function Terminal(props: {
   // Only inert tabs can be here, the move is refused while one is live, so a
   // fresh object per moved tab costs nothing but a remount.
   const offMoved = onWith<WorkspaceMoved>(WORKSPACE_MOVED, ({ moves }) => {
-    const tabs = open().map((t) => {
+    const latest = latestTerminalModel();
+    const tabs = latest.tabs.map((t) => {
       const workspace = movedPath(t.workspace, moves);
       const cwd = movedPath(t.cwd, moves);
       return workspace || cwd ? { ...t, workspace: workspace ?? t.workspace, cwd: cwd ?? t.cwd } : t;
     });
-    const active = moveDeep(activeByWorkspace(), moves);
+    const active = moveDeep(latest.active, moves);
     setOpen(tabs);
     setActiveByWorkspace(active);
     for (const m of moves) {
@@ -1078,7 +1082,8 @@ export default function Terminal(props: {
   async function joinTabs({ from, to, home }: TabsJoined) {
     await Promise.all([stripReady(from), stripReady(to), fileStripReady(from), fileStripReady(to)]);
     let moved = false;
-    const next = open().map((t) => {
+    const latest = latestTerminalModel();
+    const next = latest.tabs.map((t) => {
       if (t.workspace !== from) return t;
       moved = true;
       if (isChatDraft(t)) return { ...t, workspace: to, cwd: home ?? t.cwd };
@@ -1088,7 +1093,7 @@ export default function Terminal(props: {
     if (!moved) return;
     autoDrafts.delete(from);
     setOpen(next);
-    const { [from]: was, ...active } = activeByWorkspace();
+    const { [from]: was, ...active } = latest.active;
     const joined = was && !active[to] ? { ...active, [to]: was } : active;
     setActiveByWorkspace(joined);
     touched.add(from);
@@ -1349,9 +1354,7 @@ export default function Terminal(props: {
   // *wake* each in turn - a tab on screen is not inert - so a lazy restore
   // would spawn the very processes it exists to avoid.
   function openOrActivate(t: OpenTerm, focus = true) {
-    if (!open().some((o) => o.id === t.id)) {
-      setOpen([...open(), t]);
-    }
+    setOpen((list) => (list.some((o) => o.id === t.id) ? list : [...list, t]));
     if (focus) bringToFront(t.workspace, t.id);
   }
 
@@ -1360,7 +1363,7 @@ export default function Terminal(props: {
   // it would overwrite is the one the user left.
   function bringToFront(ws: string, id: string) {
     focusTab(ws, id);
-    const tab = open().find((o) => o.id === id);
+    const tab = latestTerminalModel().tabs.find((o) => o.id === id);
     const root = layoutRoot(ws);
     const pane = tab && root && !isShellsKey(ws) ? paneOfTab(ws, tab, root) : null;
     if (pane) setPaneActive(ws, pane, id);
@@ -1399,7 +1402,7 @@ export default function Terminal(props: {
       ...(j.relaunchOnSuccess ? { relaunchOnSuccess: true } : {}),
       ...(j.interactive ? { interactive: true } : {}),
     };
-    setOpen([...open(), tab]);
+    setOpen((list) => [...list, tab]);
     revealDock(tab.id);
   }
 
@@ -1416,12 +1419,12 @@ export default function Terminal(props: {
       args: [],
       profile: null,
     };
-    setOpen([...open(), tab]);
+    setOpen((list) => [...list, tab]);
     revealDock(tab.id);
   }
 
   function revealDock(tabId: string) {
-    if (!tabsIn(SHELLS_KEY).some((t) => t.id === tabId)) return;
+    if (!latestTerminalModel().tabs.some((t) => t.workspace === SHELLS_KEY && t.id === tabId)) return;
     showDock(true);
     focusDockTab(tabId);
   }
@@ -1510,7 +1513,7 @@ export default function Terminal(props: {
         // reconciles without remounting anything (gotcha #64 - a rebuilt item
         // ref would kill this tab's PTY).
         tab.sessionId = candidates[0].id;
-        setOpen([...open()]);
+        setOpen((list) => [...list]);
       }
     }
   }
@@ -1559,7 +1562,7 @@ export default function Terminal(props: {
       prevSelected = sel;
       const ws = workspaceKey(sel);
       if (!sel || !ws) return;
-      withoutFlush(() => setActiveWorkspace(ws));
+      setActiveWorkspace(ws);
       // These write live state and read it back, which an effect callback cannot flush for.
       queueMicrotask(() => {
         if (sel.sessionId) {
@@ -2059,22 +2062,24 @@ export default function Terminal(props: {
   function remountAsOpen(dead: OpenTerm[]) {
     if (!dead.length) return;
     const moved = new Map(dead.map((t) => [t.id, chatId()]));
-    const titles = { ...tabTitles() };
-    for (const [from, to] of moved) {
-      seedInert(to);
-      if (titles[from]) titles[to] = titles[from];
-    }
-    setTabTitles(titles);
-    setOpen(open().map((t) => (moved.has(t.id) ? { ...t, id: moved.get(t.id)!, resume: true } : t)));
+    for (const to of moved.values()) seedInert(to);
+    setTabTitles((was) => {
+      const titles = { ...was };
+      for (const [from, to] of moved) if (titles[from]) titles[to] = titles[from];
+      return titles;
+    });
+    setOpen((list) => list.map((t) => (moved.has(t.id) ? { ...t, id: moved.get(t.id)!, resume: true } : t)));
     for (const t of dead) {
       advanceTabState({ ...t, id: moved.get(t.id)!, resume: true }, "open");
       dropTabState(t.id);
     }
-    const active = { ...activeByWorkspace() };
-    for (const [ws, id] of Object.entries(active)) {
-      if (moved.has(id)) active[ws] = moved.get(id)!;
-    }
-    setActiveByWorkspace(active);
+    setActiveByWorkspace((was) => {
+      const active = { ...was };
+      for (const [ws, id] of Object.entries(active)) {
+        if (moved.has(id)) active[ws] = moved.get(id)!;
+      }
+      return active;
+    });
   }
 
   // Not focused and not a draft: a tab with a session id mounts started, so it
@@ -2114,9 +2119,9 @@ export default function Terminal(props: {
    * and an account that are not the ones on the other end of the socket.
    */
   function setChatDraftAgent(tabId: string, agentId: string, profile: string | null) {
-    const tab = open().find((t) => t.id === tabId);
+    const tab = latestTerminalModel().tabs.find((t) => t.id === tabId);
     if (!tab || !isChatDraft(tab)) return;
-    setOpen(open().map((t) => (t.id === tabId ? { ...t, program: agentId, profile } : t)));
+    setOpen((list) => list.map((t) => (t.id === tabId ? { ...t, program: agentId, profile } : t)));
   }
 
   /**
@@ -2129,21 +2134,21 @@ export default function Terminal(props: {
    * has just spawned, and its remount would spawn again.
    */
   function recordChatProfile(tabId: string, profile: string | null) {
-    const tab = open().find((t) => t.id === tabId);
+    const tab = latestTerminalModel().tabs.find((t) => t.id === tabId);
     if (!tab || tab.profile === profile) return;
     tab.profile = profile;
-    setOpen([...open()]);
+    setOpen((list) => [...list]);
   }
 
   function startChatDraft(tabId: string) {
     clearDraftError(tabId);
-    const tab = open().find((t) => t.id === tabId);
+    const tab = latestTerminalModel().tabs.find((t) => t.id === tabId);
     // A draft sits at `open` until here. Advanced before the record swap so the
     // chat that mounts in its place is already started: read as `open`, it would
     // render as a transcript-only tab and wait for a first send that has just
     // happened.
     if (tab) advanceTabState(tab, "live");
-    setOpen(open().map((t) => (t.id === tabId ? { ...t, sessionId: crypto.randomUUID() } : t)));
+    setOpen((list) => list.map((t) => (t.id === tabId ? { ...t, sessionId: crypto.randomUUID() } : t)));
   }
 
   /**
@@ -2155,10 +2160,10 @@ export default function Terminal(props: {
    * back in the composer by the time this runs; this decides what the tab is.
    */
   function revertChatDraft(tabId: string, reason: string) {
-    const tab = open().find((t) => t.id === tabId);
+    const tab = latestTerminalModel().tabs.find((t) => t.id === tabId);
     if (!tab || !canRevertToDraft(tab)) return;
     setDraftErrors({ ...draftErrors(), [tabId]: reason });
-    setOpen(open().map((t) => (t.id === tabId ? { ...t, sessionId: undefined } : t)));
+    setOpen((list) => list.map((t) => (t.id === tabId ? { ...t, sessionId: undefined } : t)));
   }
 
   /**
@@ -2428,7 +2433,8 @@ export default function Terminal(props: {
   // the tab's place, which abandons nothing.
   // `gone` is the session itself being deleted, which takes even a fixed chat.
   function closeId(id: string, reason: "close" | "gone" | "purge" | "replace" = "close") {
-    const t = open().find((o) => o.id === id);
+    const latest = latestTerminalModel();
+    const t = latest.tabs.find((o) => o.id === id);
     if (t && reason !== "purge" && sessionLocked(t)) return;
     if (t && reason === "close" && fixedChat(t)) return;
     if (reason !== "replace" && t?.kind === "chat" && t.sessionId)
@@ -2457,18 +2463,18 @@ export default function Terminal(props: {
     // tab). Recorded directly rather than through focusTab, so closing a tab
     // in a background workspace cannot pull that workspace on screen.
     if (t) {
-      const wsTabs = tabsIn(t.workspace);
-      const recorded = activeByWorkspace()[t.workspace];
+      const wsTabs = latest.tabs.filter((o) => o.workspace === t.workspace);
+      const recorded = latest.active[t.workspace];
       const activeNow = recorded && wsTabs.some((o) => o.id === recorded) ? recorded : wsTabs[0]?.id;
       if (activeNow === id) {
         const next = nextActiveAfterClose(
           wsTabs.map((o) => o.id),
           id,
         );
-        if (next) setActiveByWorkspace({ ...activeByWorkspace(), [t.workspace]: next });
+        if (next) setActiveByWorkspace((all) => ({ ...all, [t.workspace]: next }));
       }
     }
-    setOpen(open().filter((o) => o.id !== id));
+    setOpen((list) => list.filter((o) => o.id !== id));
     if (t) forgetTab(t.workspace, id);
     dropTabState(id);
     // Or a later tab reusing this id would inherit its verdict: command ids are
@@ -2612,9 +2618,9 @@ export default function Terminal(props: {
     // The splice is positional, so it is only sound when `next` covers exactly
     // this workspace's slots; a shorter list (a mixed pane list filtered down)
     // must refuse rather than splice undefined into open[].
-    if (next.length !== open().filter((t) => t.workspace === ws).length) return;
+    if (next.length !== latestTerminalModel().tabs.filter((t) => t.workspace === ws).length) return;
     let i = 0;
-    setOpen(open().map((t) => (t.workspace === ws ? next[i++] : t)));
+    setOpen((list) => list.map((t) => (t.workspace === ws ? next[i++] : t)));
   }
 
   // Phase 4: every terminal kind registers its tab descriptor and stage view,
@@ -2698,7 +2704,7 @@ export default function Terminal(props: {
         //
         // A signal, so clearing it re-runs this effect: the tab that is genuinely
         // in front then wakes, and no wake is lost.
-        if (onTop) withoutFlush(() => advanceTabState(t, stateOnActivate(t)));
+        if (onTop) advanceTabState(t, stateOnActivate(t));
       },
     );
 

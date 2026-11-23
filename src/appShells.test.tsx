@@ -154,7 +154,7 @@ function branchShell(): OpenTerm {
     args: [],
     profile: null,
   };
-  setOpen([...open(), t]);
+  setOpen((list) => [...list, t]);
   focusTab(REPO, t.id);
   return t;
 }
