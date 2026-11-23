@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 // Pin rules and pane locks through the shell (plan phase 11 tasks 2, 3 and 4).
 // A rule says which end of the split a family of tabs opens at, a lock says a
 // pane takes one kind and nothing else, and neither may disturb what is already
@@ -187,6 +188,7 @@ describe("a pane locked to one kind", () => {
     await waitFor(() => expect(tabsIn(pane(1))).toEqual([A]));
 
     click(paneMenuItems(REPO, { id: A, kind: "file" }), "Only file tabs in this pane");
+    flush();
     expect(paneLock(REPO, "right")).toBe("file");
 
     emitWith<MoveTabToPane>(MOVE_TAB_TO_PANE, { tabId: "sh:2", kind: "shell", paneId: "right" });
@@ -200,7 +202,9 @@ describe("a pane locked to one kind", () => {
     await waitFor(() => expect(tabsIn(pane(1))).toEqual([A]));
     click(paneMenuItems(REPO, { id: A, kind: "file" }), "Only file tabs in this pane");
 
+    flush();
     click(paneMenuItems(REPO, { id: A, kind: "file" }), "Let this pane take any tab");
+    flush();
     expect(paneLock(REPO, "right")).toBeNull();
 
     emitWith<MoveTabToPane>(MOVE_TAB_TO_PANE, { tabId: "sh:2", kind: "shell", paneId: "right" });

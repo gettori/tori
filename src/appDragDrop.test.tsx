@@ -315,6 +315,7 @@ describe("a drop the shell cannot honour", () => {
     emitWith<SplitPane>(SPLIT_PANE, { dir: "row" });
     layout();
     // Four panes already: an edge drop would need a fifth.
+    flush();
     dragTo(tabEl(pane(0), "sh:2"), column(3), 1210, 150);
 
     expect(await screen.findByText(/4 panes is as many as fit/)).toBeTruthy();

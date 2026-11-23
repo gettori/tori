@@ -7,7 +7,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { cleanup, render } from "./test/harness";
 import { installAnimationFrame } from "./test/frames";
-import { untrack } from "solid-js";
+import { flush, untrack } from "solid-js";
 
 const WS_A = "/space/proj/main";
 const WS_B = "/space/proj/feature";
@@ -173,6 +173,7 @@ describe("what still refits", () => {
     render(() => <App />);
     refits = 0;
     emitWith<SplitPane>(SPLIT_PANE, { dir: "row" });
+    flush();
     expect(refits).toBeGreaterThan(0);
   });
 });

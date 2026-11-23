@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { admit } from "./admit";
 import type { AdmittedPalette } from "./admit";
@@ -121,6 +122,7 @@ describe("selecting a theme", () => {
 
   it("refuses an illegible user theme without painting anything", () => {
     publishUserThemes({ themes: [{ palette: invisible, source: "/themes/bad.json" }], errors: [] });
+    flush();
     const problems = setTheme("user-theme");
     expect(problems.join("\n")).toContain("fg.default");
     expect(problems.join("\n")).toContain("cannot apply theme");
@@ -131,6 +133,7 @@ describe("selecting a theme", () => {
   it("hides a refused theme from the picker but keeps it findable", () => {
     publishUserThemes({ themes: [{ palette: invisible, source: "/themes/bad.json" }], errors: [] });
     expect(listSelectableThemes().map((t) => t.id)).not.toContain("user-theme");
+    flush();
     expect(getTheme("user-theme")?.source).toBe("/themes/bad.json");
   });
 
@@ -139,6 +142,7 @@ describe("selecting a theme", () => {
       themes: [{ palette: { ...dark, id: "mine", label: "Mine" }, source: "/themes/mine.json" }],
       errors: [],
     });
+    flush();
     const mine = listSelectableThemes().find((t) => t.id === "mine");
     expect(mine?.source).toBe("/themes/mine.json");
   });

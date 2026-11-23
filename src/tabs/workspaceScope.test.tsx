@@ -7,7 +7,7 @@
 // signal behind the derivation.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, waitFor } from "../test/harness";
-import { createEffect } from "solid-js";
+import { flush, createEffect } from "solid-js";
 import { installAnimationFrame } from "../test/frames";
 
 const WS1 = "/root/work/repo-a";
@@ -257,6 +257,7 @@ describe("workspace-scoped active", () => {
 
     focusDockTab("clone:1");
     setFocusedSurface("dock");
+    flush();
     emit(TAB_CYCLE);
     await waitFor(() => expect(dockActiveId()).toBe("clone:2"));
     emitWith(REVEAL_DOCK, { tabId: "clone:1" });

@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 // The pattern to copy for a *portalled* component.
 //
 // `ToastRegion` renders inside a `<Portal>`, which mounts to `document.body`.
@@ -41,6 +42,7 @@ describe("ToastRegion accessibility", () => {
     const { container } = mountTwo();
 
     expect(container.textContent).toBe("");
+    flush();
     expect(document.body.textContent).toContain("Could not remove the worktree");
   });
 
@@ -48,6 +50,7 @@ describe("ToastRegion accessibility", () => {
     mountTwo();
 
     expect(screen.getByRole("region", { name: "Notifications" })).toBeTruthy();
+    flush();
     expect(screen.getByRole("status", { name: "Could not remove the worktree" })).toBeTruthy();
     expect(screen.getByRole("status", { name: "Renamed 12 files" })).toBeTruthy();
   });
@@ -58,6 +61,7 @@ describe("ToastRegion accessibility", () => {
 
     emit(FOCUS_TOASTS);
 
+    flush();
     expect(document.activeElement).toBe(screen.getByRole("status", { name: "push rejected" }).parentElement);
   });
 
@@ -76,6 +80,7 @@ describe("ToastRegion accessibility", () => {
     render(() => <ToastRegion />);
     pushToast("push rejected", "error");
 
+    flush();
     const toast = screen.getByRole("status", { name: "push rejected" });
     toast.focus();
     fireEvent.keyDown(toast, { key: "Escape" });
@@ -101,6 +106,7 @@ describe("pushToast", () => {
     });
     pushToast("Renamed 12 files", "info", { label: "Undo", run: ran });
 
+    flush();
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
 
     expect(ran).toHaveBeenCalledOnce();

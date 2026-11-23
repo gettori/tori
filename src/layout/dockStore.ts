@@ -1,13 +1,13 @@
 // Module-level rather than App's own signals because the tab model asks it what
 // is on screen, and the terminal panel opens it for a command. App.tsx resets it
 // at setup with the stored open state.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 
 /** Which of the two strips on screen the tab keys address. */
 export type Surface = "workspace" | "dock";
 
-const [dockOpen, setDockOpen] = createLiveSignal(false);
-const [focusedSurface, setFocusedSurface] = createLiveSignal<Surface>("workspace");
+const [dockOpen, setDockOpen] = createSignal(false);
+const [focusedSurface, setFocusedSurface] = createSignal<Surface>("workspace");
 
 export { dockOpen, focusedSurface, setFocusedSurface };
 

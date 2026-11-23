@@ -1,4 +1,6 @@
 import {
+  flush,
+  getOwner,
   createSignal,
   createEffect,
   createMemo,
@@ -699,10 +701,17 @@ function AppShell() {
     persistLayout();
   }
 
+  // Pane commands read the tree and placement back between their steps, through
+  // memos, so each step lands first. A caller under an owner cannot flush.
+  const settle = () => {
+    if (!getOwner()) flush();
+  };
+
   const TERMINAL_KINDS = ["shell", "agent", "command", "chat", "task"];
   function togglePaneFor(kinds: string[], pinKind: string) {
     const ws = wsKey();
     ensureEnvelope(ws, seedEnvelope);
+    settle();
     const root = env().layout;
     const matches = unifiedTabs()
       .filter((t) => t.workspace === ws && kinds.includes(t.kind))
@@ -764,6 +773,7 @@ function AppShell() {
   function splitPaneFor(p: SplitPane) {
     const ws = wsKey();
     ensureEnvelope(ws, seedEnvelope);
+    settle();
     const from = p.paneId ?? activePane();
     if (!from) return;
     const leaf: PaneLeaf = {
@@ -781,6 +791,7 @@ function AppShell() {
       return;
     }
     setFocusedPane(ws, leaf.id);
+    settle();
     // After the tree edit: the pane has to exist for the placement guard to
     // accept it. A refusal would leave the new pane empty, and the collapse
     // effect only takes panes that have held a tab, so it says so out loud.
@@ -790,6 +801,7 @@ function AppShell() {
   /** Close a pane, its tabs going to the neighbor (right first, then left).
    *  Nothing is dropped: the merge runs while the pane still exists. */
   function closePaneWithTabs(paneId: string) {
+    settle();
     const ws = wsKey();
     const root = env().layout;
     const to = neighborPane(root, paneId);
@@ -847,6 +859,7 @@ function AppShell() {
       say(refusal);
       return;
     }
+    settle();
     // A drop names the slot it landed on; the palette and the menu append.
     if (p.index != null) {
       const list = paneTabs(ws, target);
