@@ -8,10 +8,9 @@ import {
   getOwner,
   onCleanup,
   onSettled,
-  runWithOwner,
   untrack,
 } from "solid-js";
-import { type JSX, render } from "@solidjs/web";
+import type { JSX } from "@solidjs/web";
 import {
   ArrowUp,
   AudioWaveform,
@@ -32,7 +31,7 @@ import type { ComposerAttachments, UploadFile } from "./composerAttachments";
 import type { StashEntry } from "./promptStash";
 import { ago } from "../../utils/relativeTime";
 import AttachmentPreview from "./AttachmentPreview";
-import { createComposerField, type ComposerField } from "./composerField";
+import { createComposerField, mountChip, type ComposerField } from "./composerField";
 import Tip, { excerptOf } from "./Tip";
 import { thumbSrc, tileName, tokenOf } from "./attachmentInfo";
 import { ATTACHMENT_TOKEN_MIME, AttachmentChip, AttachmentGrid, InlineChip } from "./AttachmentChip";
@@ -1098,7 +1097,7 @@ export default function Composer(props: {
       if (!a) return null;
       return {
         key: a.id,
-        mount: (dom) => runWithOwner(owner, () => render(() => <ComposerInlineChip a={a} label={label} />, dom))!,
+        mount: (dom) => mountChip(owner, () => <ComposerInlineChip a={a} label={label} />, dom),
       };
     },
     onInput: (value) => {

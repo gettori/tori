@@ -1,3 +1,4 @@
+import { lazyArg } from "../../../.storybook/lazyArg";
 import type { JSX } from "@solidjs/web";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { Folder, Tag, Unlink } from "../../components/Icon/icons";
@@ -92,7 +93,7 @@ const meta = {
   // and leave these untouched.
   args: {
     name: "api",
-    icon: <ProjectIcon seed="/w/api" />,
+    icon: lazyArg(() => <ProjectIcon seed="/w/api" />),
     disclosure: true,
     menu: MENU,
   },
@@ -114,10 +115,10 @@ type Story = StoryObj<typeof meta>;
 export const Collapsed: Story = {
   args: {
     name: "api",
-    icon: <ProjectIcon seed="/w/api" />,
+    icon: lazyArg(() => <ProjectIcon seed="/w/api" />),
     disclosure: true,
     menu: MENU,
-    end: bubble({ executing: 2, idle: 1 }),
+    end: lazyArg(() => bubble({ executing: 2, idle: 1 })),
   },
 };
 
@@ -127,11 +128,11 @@ export const Collapsed: Story = {
 export const Open: Story = {
   args: {
     name: "api",
-    icon: <ProjectIcon seed="/w/api" />,
+    icon: lazyArg(() => <ProjectIcon seed="/w/api" />),
     disclosure: true,
     open: true,
     menu: MENU,
-    children: (
+    children: lazyArg(() => (
       <>
         <BranchRow
           label="main"
@@ -159,7 +160,7 @@ export const Open: Story = {
           end={bubble({ idle: 1 })}
         />
       </>
-    ),
+    )),
   },
 };
 
@@ -169,25 +170,25 @@ export const Open: Story = {
 export const PlainFolder: Story = {
   args: {
     name: "notes",
-    icon: <Icon icon={Folder} />,
+    icon: lazyArg(() => <Icon icon={Folder} />),
     menu: MENU,
-    end: bubble({ running: 1 }),
+    end: lazyArg(() => bubble({ running: 1 })),
   },
 };
 
 export const Attached: Story = {
   args: {
     name: "acme-site",
-    icon: <ProjectIcon seed="/Users/me/Documents/clients/acme-site" />,
+    icon: lazyArg(() => <ProjectIcon seed="/Users/me/Documents/clients/acme-site" />),
     attached: { parent: "~/Documents/clients", full: "~/Documents/clients/acme-site" },
-    end: bubble({ executing: 1 }),
+    end: lazyArg(() => bubble({ executing: 1 })),
   },
 };
 
 export const Missing: Story = {
   args: {
     name: "thesis",
-    icon: <ProjectIcon seed="/Volumes/Archive/thesis" />,
+    icon: lazyArg(() => <ProjectIcon seed="/Volumes/Archive/thesis" />),
     disclosure: false,
     attached: { parent: "/Volumes/Archive", full: "/Volumes/Archive/thesis" },
     missing: true,
@@ -200,10 +201,10 @@ export const Missing: Story = {
 export const Drifted: Story = {
   args: {
     name: "web",
-    icon: <ProjectIcon seed="/w/web" />,
+    icon: lazyArg(() => <ProjectIcon seed="/w/web" />),
     disclosure: true,
     menu: MENU,
-    end: (
+    end: lazyArg(() => (
       <>
         <IconButton
           size="xs"
@@ -214,7 +215,7 @@ export const Drifted: Story = {
         />
         {bubble({ executing: 1 })}
       </>
-    ),
+    )),
   },
 };
 

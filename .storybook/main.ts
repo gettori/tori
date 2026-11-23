@@ -11,11 +11,6 @@ import type { StorybookConfig } from "storybook-solidjs-vite";
 // The app's `server.port`/`strictPort` come along but are inert: Storybook runs
 // Vite in middleware mode, so nothing binds the app's dev port.
 //
-// The framework picks its renderer from the installed Solid major
-// (`solidVersion === 2 ? solid-next : solid-legacy`), so this repo gets the
-// Solid 1 renderer without a pin. `@solidjs/web` is an optional peer and is
-// deliberately NOT installed; installing it would flip nothing, since the
-// selection reads solid-js itself.
 // `docgen` is off because the generator is broken for this codebase's export
 // style. It appends `<displayName>.__docgenInfo = {...}` to each component
 // module, and for `export default function Button()` it emits the displayName

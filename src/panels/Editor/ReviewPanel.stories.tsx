@@ -1,3 +1,4 @@
+import { runWithOwner } from "solid-js";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import ReviewPanel from "./ReviewPanel";
@@ -56,6 +57,8 @@ function stubHost() {
         return [{ name: "feat/notifications", current: true }];
       case "git_ahead_behind":
         return AHEAD[root] ?? null;
+      case "git_conflict_op":
+        return "none";
       case "git_head_sha":
         return "abc1234";
       case "git_stash_list":
@@ -97,8 +100,10 @@ const MEMBERS: MemberRoot[] = [
  *  one, so a story that only refreshed would paint nothing. */
 function loadRoots(roots: MemberRoot[], active: string) {
   const paths = roots.filter((m) => m.state?.usable !== false).map((m) => m.path);
-  enterRoots(paths, active);
-  for (const p of paths) void refreshGit(p);
+  runWithOwner(null, () => {
+    enterRoots(paths, active);
+    for (const p of paths) void refreshGit(p);
+  });
 }
 
 const meta = {
