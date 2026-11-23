@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { createSignal } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import { render, screen, waitFor, fireEvent, within } from "../../../test/harness";
 import { expectNoAxeViolations } from "../../../test/axe";
 import { pointerClick } from "../../../test/menus";
@@ -1044,6 +1044,7 @@ describe("one member of a Topic at a time", () => {
     // What was cut outlives the switch, and a move across members would be
     // half a history in each repo.
     setRoot(B);
+    flush();
     fireEvent.contextMenu(await screen.findByText("src"));
     pointerClick(await screen.findByText("Paste"));
 

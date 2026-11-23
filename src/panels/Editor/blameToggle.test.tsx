@@ -47,7 +47,12 @@ const seen: (boolean | undefined)[] = [];
 const last = () => seen[seen.length - 1];
 vi.mock("./CodeEditor", () => ({
   default: (props: { blame?: boolean }) => {
-    createEffect(() => seen.push(props.blame));
+    createEffect(
+      () => props.blame,
+      (blame) => {
+        seen.push(blame);
+      },
+    );
     return null;
   },
 }));

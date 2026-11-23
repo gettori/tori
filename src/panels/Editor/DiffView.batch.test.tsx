@@ -33,7 +33,12 @@ vi.mock("./DiffBufferView", async () => {
   const { createRenderEffect } = await import("solid-js");
   return {
     default: (props: { text: string; hunks: DiffHunk[] }) => {
-      createRenderEffect(() => bridge.drawn.push({ text: props.text, hunks: JSON.stringify(props.hunks) }));
+      createRenderEffect(
+        () => ({ text: props.text, hunks: JSON.stringify(props.hunks) }),
+        (drawn) => {
+          bridge.drawn.push(drawn);
+        },
+      );
       return <div>buffer</div>;
     },
   };

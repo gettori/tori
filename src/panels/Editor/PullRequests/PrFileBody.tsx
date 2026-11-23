@@ -24,7 +24,7 @@
 // four-thousand-row diff, and `keyboard: "roving"` answers that directly by
 // giving the hunk one.
 
-import { createEffect, createMemo, createSignal, on, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { parseDiffHunks } from "../../../utils/diffHunks";
 import { buildRows, hunkGaps, type DiffRow, type Gap } from "../../../utils/diffView";
@@ -107,14 +107,12 @@ export default function PrFileBody(props: {
   // A different file means a different set of rows, so a selection made against
   // the old one names lines that are not there.
   createEffect(
-    on(
-      () => props.file.path,
-      () => {
-        setPicked(null);
-        whyOpen.clear();
-      },
-      { defer: true },
-    ),
+    () => props.file.path,
+    () => {
+      setPicked(null);
+      whyOpen.clear();
+    },
+    { defer: true },
   );
 
   const prClaims: ClaimReader = async (hunk) => {
@@ -297,26 +295,29 @@ export default function PrFileBody(props: {
   /// as zero bytes.
   const [sizes, setSizes] = createSignal<{ head: number | null; base: number | null } | null>(null);
   createEffect(
-    on([() => props.file.path, skip], async ([, why]) => {
+    () => [props.file.path, skip()] as const,
+    ([, why]) => {
       setSizes(null);
       if (why !== "noText") return;
-      try {
-        await ensurePrHead(props.root, props.pr.number, props.pr.headSha);
-        const got = await invoke<{ head: number | null; base: number | null }>("git_blob_sizes", {
-          projectPath: props.root,
-          head: props.pr.headSha,
-          // The remote's base, not this checkout's branch of that name: a local
-          // `main` is whatever the reader last pulled. Rust takes the merge
-          // base from here, and answers with no size when it cannot.
-          base: `origin/${props.pr.baseRef}`,
-          path: props.file.path,
-        });
-        setSizes(got);
-      } catch {
-        // The sentence above it is the answer; a size is an extra the reader
-        // can do without, and an error line about `cat-file` would not help.
-      }
-    }),
+      void (async () => {
+        try {
+          await ensurePrHead(props.root, props.pr.number, props.pr.headSha);
+          const got = await invoke<{ head: number | null; base: number | null }>("git_blob_sizes", {
+            projectPath: props.root,
+            head: props.pr.headSha,
+            // The remote's base, not this checkout's branch of that name: a local
+            // `main` is whatever the reader last pulled. Rust takes the merge
+            // base from here, and answers with no size when it cannot.
+            base: `origin/${props.pr.baseRef}`,
+            path: props.file.path,
+          });
+          setSizes(got);
+        } catch {
+          // The sentence above it is the answer; a size is an extra the reader
+          // can do without, and an error line about `cat-file` would not help.
+        }
+      })();
+    },
   );
 
   const SKIP_TITLE: Record<FileSkip, string> = {

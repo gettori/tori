@@ -6,7 +6,7 @@
 // is the refusal and the in-flight flag, which are about this mount's own
 // submit.
 
-import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../../utils/events";
 import { prDiffTabId } from "../../../utils/syntheticTabs";
@@ -142,10 +142,11 @@ export default function ReviewForm(props: { workspace: string; number: number })
   /// pull request, which the counter guards.
   let current = 0;
   createEffect(
-    on([() => props.workspace, () => props.number], () => {
+    () => [props.workspace, props.number] as const,
+    () => {
       ++current;
       setSubmitError(null);
-    }),
+    },
   );
 
   return (

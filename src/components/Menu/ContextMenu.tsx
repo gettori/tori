@@ -1,4 +1,4 @@
-import { createSignal, createUniqueId, merge, onCleanup, Show, omit } from "solid-js";
+import { createSignal, createUniqueId, onCleanup, Show, omit } from "solid-js";
 import { type JSX, dynamic, Portal } from "@solidjs/web";
 import { callHandler, type TriggerHandler } from "../callHandler";
 import { useDialogSurface } from "../Dialog/surface";
@@ -6,7 +6,7 @@ import { createMenu, CURSOR_GUTTER, CURSOR_SHIFT, MenuContent, MenuProvider } fr
 import { MenuGlide, MenuRows, type MenuItem } from "./rows";
 import { MenuSurface } from "./surface";
 import styles from "./Menu.module.css";
-import { defined } from "../../lib/props";
+import { mergeDefined } from "../../lib/props";
 
 export interface ContextMenuProps<T extends HTMLElement = HTMLDivElement> extends Omit<
   JSX.HTMLAttributes<T>,
@@ -136,7 +136,7 @@ export default function ContextMenu<T extends HTMLElement = HTMLDivElement>(prop
     },
   };
 
-  const triggerProps = merge(behaviour, defined(rest)) as unknown as JSX.HTMLAttributes<HTMLDivElement>;
+  const triggerProps = mergeDefined(behaviour, rest) as unknown as JSX.HTMLAttributes<HTMLDivElement>;
 
   const Control = dynamic(() => props.as ?? "div");
   return (

@@ -90,7 +90,7 @@ export function MenuRow(props: {
         .filter(Boolean)
         .join(" ")}
       disabled={props.disabled}
-      aria-disabled={props.refusing ? "true" : undefined}
+      aria-disabled={props.refusing || props.disabled ? "true" : undefined}
       aria-describedby={props.describedBy}
       // A refused row must not close the menu on its way to doing nothing.
       closeOnSelect={closesOnSelect()}

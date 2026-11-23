@@ -1,4 +1,4 @@
-import { onCleanup, onMount, createEffect, createMemo, on, createSignal, For, Show } from "solid-js";
+import { onCleanup, onSettled, createEffect, createMemo, createSignal, untrack, For, Show } from "solid-js";
 import { Portal } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -2348,59 +2348,61 @@ export default function CodeEditor(props: {
     afterShow(rec.path);
   }
 
-  onMount(async () => {
-    // Subscribed before the first await, and before the opening swap, because
-    // the client can finish starting inside either. A fire that lands with no
-    // subscriber leaves the buffer holding no plugin for good, which is the bug
-    // this whole compartment exists to fix. One subscription for the component
-    // rather than one per buffer: the client is one per project, and every open
-    // buffer wants the same news about it.
-    offLsp = onLspChange(relinkLsp);
-    // Genuine external changes to any open buffer: reload (clean) or banner
-    // (dirty). Tori's own saves are skipped via isSelfWrite. handleExternalChange
-    // also resyncs the gutter for the active file.
-    unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
-      if (e.payload.root && e.payload.root !== props.projectRoot) return;
-      for (const p of e.payload.paths) {
-        // Every path, not only the open ones: the language workspace holds
-        // snapshots of files the user never opened, and a snapshot that keeps
-        // describing the old text is worse than no snapshot at all. Not gated
-        // on `isSelfWrite` - Tori only ever writes the file it is showing, and
-        // that one is view-backed, which `fileChanged` ignores anyway.
-        notifyLspFileChanged(p);
-        if (buffers.has(p) && !isSelfWrite(p)) void handleExternalChange(p);
-      }
-      if (e.payload.paths.some((p) => p.endsWith("/.editorconfig"))) void rereadEditorConfig();
-    });
-    // A chat session reporting its own writes, ~250ms before the watcher's
-    // debounce would. Same handler and the same isSelfWrite check, so the two
-    // routes cannot disagree; the watcher's echo re-runs it against a file that
-    // by then matches what is already loaded, which is a no-op rather than a
-    // second reload.
-    offAgentWrites = onWith<AgentFilesWritten>(AGENT_FILES_WRITTEN, ({ paths }) => {
-      for (const p of paths) agentWritten.add(p);
-      flushAgentWrites();
-    });
-    // Re-measure when a pane is revealed: an editor that laid out while
-    // display:none has a stale viewport until CodeMirror re-reads its geometry.
-    //
-    // Every pane's view and not the focused one: a split builds a view in the
-    // pane that did not take focus, and a view that never measures never
-    // renders - it keeps CM6's placeholder height. Measured at the split, that
-    // view reported a scrollHeight of 33554432 (2^25) before this loop and a
-    // real 4628 after it.
-    offRefit = onEvent(REFIT_PANES, () => {
-      for (const rec of views.values()) {
-        rec.view.requestMeasure();
-        // A reveal is the first moment a view adopted into a hidden pane has a
-        // box to scroll inside, so it is also the first moment the position it
-        // was moved away from can land.
-        if (rec.moved) {
-          rec.moved = false;
-          restoreScroll(rec);
+  onSettled(() => {
+    void (async () => {
+      // Subscribed before the first await, and before the opening swap, because
+      // the client can finish starting inside either. A fire that lands with no
+      // subscriber leaves the buffer holding no plugin for good, which is the bug
+      // this whole compartment exists to fix. One subscription for the component
+      // rather than one per buffer: the client is one per project, and every open
+      // buffer wants the same news about it.
+      offLsp = onLspChange(relinkLsp);
+      // Genuine external changes to any open buffer: reload (clean) or banner
+      // (dirty). Tori's own saves are skipped via isSelfWrite. handleExternalChange
+      // also resyncs the gutter for the active file.
+      unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
+        if (e.payload.root && e.payload.root !== props.projectRoot) return;
+        for (const p of e.payload.paths) {
+          // Every path, not only the open ones: the language workspace holds
+          // snapshots of files the user never opened, and a snapshot that keeps
+          // describing the old text is worse than no snapshot at all. Not gated
+          // on `isSelfWrite` - Tori only ever writes the file it is showing, and
+          // that one is view-backed, which `fileChanged` ignores anyway.
+          notifyLspFileChanged(p);
+          if (buffers.has(p) && !isSelfWrite(p)) void handleExternalChange(p);
         }
-      }
-    });
+        if (e.payload.paths.some((p) => p.endsWith("/.editorconfig"))) void rereadEditorConfig();
+      });
+      // A chat session reporting its own writes, ~250ms before the watcher's
+      // debounce would. Same handler and the same isSelfWrite check, so the two
+      // routes cannot disagree; the watcher's echo re-runs it against a file that
+      // by then matches what is already loaded, which is a no-op rather than a
+      // second reload.
+      offAgentWrites = onWith<AgentFilesWritten>(AGENT_FILES_WRITTEN, ({ paths }) => {
+        for (const p of paths) agentWritten.add(p);
+        flushAgentWrites();
+      });
+      // Re-measure when a pane is revealed: an editor that laid out while
+      // display:none has a stale viewport until CodeMirror re-reads its geometry.
+      //
+      // Every pane's view and not the focused one: a split builds a view in the
+      // pane that did not take focus, and a view that never measures never
+      // renders - it keeps CM6's placeholder height. Measured at the split, that
+      // view reported a scrollHeight of 33554432 (2^25) before this loop and a
+      // real 4628 after it.
+      offRefit = onEvent(REFIT_PANES, () => {
+        for (const rec of views.values()) {
+          rec.view.requestMeasure();
+          // A reveal is the first moment a view adopted into a hidden pane has a
+          // box to scroll inside, so it is also the first moment the position it
+          // was moved away from can land.
+          if (rec.moved) {
+            rec.moved = false;
+            restoreScroll(rec);
+          }
+        }
+      });
+    })();
   });
 
   // The palette's "Save". It lands here rather than in Editor because the
@@ -2631,124 +2633,114 @@ export default function CodeEditor(props: {
   // no tabs open, so revealing it again is a case that did not exist when the
   // pane was simply unmounted.
   createEffect(
-    on(
-      () =>
-        paneIds()
-          .map((id) => hiddenOf(id))
-          .join(","),
-      () => {
-        for (const rec of views.values()) rec.view.requestMeasure();
-      },
-      { defer: true },
-    ),
+    () =>
+      paneIds()
+        .map((id) => hiddenOf(id))
+        .join(","),
+    () => {
+      for (const rec of views.values()) rec.view.requestMeasure();
+    },
+    { defer: true },
   );
   // What each pane shows, and which one is being acted in. Both are props, and
   // both move a view rather than re-create one.
-  createEffect(() => {
-    for (const id of paneIds()) {
-      const rec = views.get(id);
-      const path = pathOf(id);
-      if (rec && rec.path !== path) void swapTo(id, path);
-    }
-  });
   createEffect(
-    on(
-      () => focusedId(),
-      (id) => focusPane(id),
-      { defer: true },
-    ),
+    () => paneIds().map((id) => [id, pathOf(id)] as const),
+    (wanted) => {
+      // Deferred: a swap publishes into live stores, and a flush from here is a no-op.
+      queueMicrotask(() => {
+        for (const [id, path] of wanted) {
+          const rec = views.get(id);
+          if (rec && rec.path !== path) void swapTo(id, path);
+        }
+      });
+    },
+  );
+  createEffect(
+    () => focusedId(),
+    (id) => {
+      // Deferred: refocusing republishes the file's state into live stores.
+      queueMicrotask(() => focusPane(id));
+    },
+    { defer: true },
   );
   // Opening the panel roots it at once; waiting for the next caret move would
   // show an empty panel over a caret that is already on a function.
   createEffect(
-    on(
-      () => props.callsVisible,
-      (visible) => {
-        if (visible) void refreshCalls();
-      },
-      { defer: true },
-    ),
+    () => props.callsVisible,
+    (visible) => {
+      if (visible) void refreshCalls();
+    },
+    { defer: true },
   );
   createEffect(
-    on(
-      () => props.openPaths,
-      (paths) => evictClosed(paths),
-      { defer: true },
-    ),
+    () => props.openPaths,
+    () => {
+      // Deferred: eviction drops entries from live stores, and a flush from here is a no-op.
+      // Read when it runs, so a tab reopened in the meantime keeps its buffer.
+      queueMicrotask(() => evictClosed(untrack(() => props.openPaths)));
+    },
+    { defer: true },
   );
   // A memo, so only a real change to the list re-resolves: every settings write
-  // replaces the store, and `on` alone would fire for each one.
+  // replaces the store.
   const lspDisabled = createMemo(() => (settings.lsp?.disabled ?? []).join("\n"));
-  createEffect(on(lspDisabled, () => lspSettingsChanged(), { defer: true }));
+  createEffect(lspDisabled, () => lspSettingsChanged(), { defer: true });
   // Toggling blame reconfigures the compartment, which takes the field, the
   // gutter and the inline widget with it in one go, so switching off leaves
   // nothing behind to clean up.
   createEffect(
-    on(
-      () => props.blame,
-      () => syncBlame(),
-      { defer: true },
-    ),
+    () => props.blame,
+    () => syncBlame(),
+    { defer: true },
   );
   // The pane's answer changed: a click toggled one, or a rename swept them.
   // `defer` because the swap already seeds the buffer it shows, and doing it
   // twice on open would be a dispatch nobody asked for.
   createEffect(
-    on(
-      () => props.breakpoints,
-      () => syncBreakpoints(),
-      { defer: true },
-    ),
+    () => props.breakpoints,
+    () => syncBreakpoints(),
+    { defer: true },
   );
   createEffect(
-    on(
-      () => props.frameLine,
-      () => syncFrameLine(),
-      { defer: true },
-    ),
+    () => props.frameLine,
+    () => syncFrameLine(),
+    { defer: true },
   );
   // Every editing-comfort key at once: `Object.values` reads all of them, so a
   // change to any one re-runs this without the list having to be repeated here
   // each time a phase adds a key. The per-tab override rides along, since the
   // palette can flip it without any setting moving.
   createEffect(
-    on(
-      () => [...Object.values(editorDefaults()), props.softWrap],
-      () => syncEditorPrefs(),
-      { defer: true },
-    ),
+    () => [...Object.values(editorDefaults()), props.softWrap],
+    () => syncEditorPrefs(),
+    { defer: true },
   );
   // Its own effect rather than a line in the one above: this one reaches every
   // buffer's compartment, and doing that for a whitespace toggle would be work
   // for nothing.
   createEffect(
-    on(
-      () => editorDefaults().wordCompletion,
-      () => syncFallbackCompletion(),
-      { defer: true },
-    ),
+    () => editorDefaults().wordCompletion,
+    () => syncFallbackCompletion(),
+    { defer: true },
   );
   // Its own effect for the same reason, and one more: switching this on is what
   // asks the server for the first time, so it has to be told apart from a
   // whitespace toggle rather than folded into the list above.
   createEffect(
-    on(
-      () => editorDefaults().codeLens,
-      () => syncCodeLens(),
-      { defer: true },
-    ),
+    () => editorDefaults().codeLens,
+    () => syncCodeLens(),
+    { defer: true },
   );
   createEffect(
-    on(
-      () => [editorDefaults().tabSize, editorDefaults().insertSpaces],
-      () => syncIndent(),
-      { defer: true },
-    ),
+    () => [editorDefaults().tabSize, editorDefaults().insertSpaces],
+    () => syncIndent(),
+    { defer: true },
   );
   // Toggling vim from Settings takes effect where the caret already is, with
   // the file's text and undo history untouched: a compartment reconfigure, not
   // a rebuild.
-  createEffect(on(vimModeOn, () => syncVim(), { defer: true }));
+  createEffect(vimModeOn, () => syncVim(), { defer: true });
   // A commit or a checkout moved HEAD, so the blame that was read at the old one
   // no longer describes this file. Reading `head` alone (a memo, not the store
   // signal) keeps this off the path of every file save, which rewrites the
@@ -2766,30 +2758,26 @@ export default function CodeEditor(props: {
       .map((c) => `${c.sessionId} ${c.sessionName}`)
       .join(""),
   );
-  createEffect(on(head, () => void refreshBlame(), { defer: true }));
-  createEffect(on(chatNames, () => void refreshAgentLines(), { defer: true }));
+  createEffect(head, () => void refreshBlame(), { defer: true });
+  createEffect(chatNames, () => void refreshAgentLines(), { defer: true });
   // Editor font size (base setting × global zoom) reaches .cm-content through the
   // --editor-font-size CSS var, but CM6 caches the char/line geometry it measured
   // at the old size. Re-measure when either input changes so the cursor, gutter
   // and scroll geometry reflow to the new font rather than lagging a frame.
   createEffect(
-    on(
-      () => [settings.typography.editorFontSize, zoom()],
-      () => view?.requestMeasure(),
-      { defer: true },
-    ),
+    () => [settings.typography.editorFontSize, zoom()],
+    () => view?.requestMeasure(),
+    { defer: true },
   );
   // Jump to line/col (nonce makes a repeated click on the same target retrigger).
   createEffect(
-    on(
-      () => props.goto,
-      (g) => {
-        if (!g) return;
-        gotoReq = { path: g.path, line: g.line, col: g.col ?? 1 };
-        applyGoto(); // applies now if shown; otherwise swapTo() applies it
-      },
-      { defer: true },
-    ),
+    () => props.goto,
+    (g) => {
+      if (!g) return;
+      gotoReq = { path: g.path, line: g.line, col: g.col ?? 1 };
+      applyGoto(); // applies now if shown; otherwise swapTo() applies it
+    },
+    { defer: true },
   );
 
   // Files rewritten under us by something the app did on purpose: a tree
@@ -2798,14 +2786,12 @@ export default function CodeEditor(props: {
   // watcher timing, and an unsaved buffer gets Reload / Keep mine rather than
   // quietly writing the discarded content back on the next save.
   createEffect(
-    on(
-      () => props.reverted,
-      (r) => {
-        if (!r) return;
-        for (const p of r.paths) if (buffers.has(p)) void handleExternalChange(p);
-      },
-      { defer: true },
-    ),
+    () => props.reverted,
+    (r) => {
+      if (!r) return;
+      for (const p of r.paths) if (buffers.has(p)) void handleExternalChange(p);
+    },
+    { defer: true },
   );
 
   onCleanup(() => {
@@ -2849,6 +2835,17 @@ export default function CodeEditor(props: {
    *  and the element its view lives in for as long as the pane does. */
   function PaneEditor(p: { id: string }) {
     onCleanup(() => detachView(p.id));
+    let host: HTMLDivElement | undefined;
+    let gone = false;
+    onCleanup(() => (gone = true));
+    // The view is built once settled, not in the ref: a ref runs while the pane
+    // is being created, where the update listeners' signal writes are refused.
+    onSettled(() => {
+      // Deferred: building the view writes live state, and a flush from onSettled throws.
+      queueMicrotask(() => {
+        if (!gone && host) attachView(p.id, host);
+      });
+    });
     const unopenable = () => {
       bannerTick();
       const path = pathOf(p.id);
@@ -2888,7 +2885,7 @@ export default function CodeEditor(props: {
         <div
           class={styles.codeEditor}
           style={{ display: unopenable() ? "none" : undefined }}
-          ref={(el) => attachView(p.id, el)}
+          ref={(el) => (host = el)}
         />
       </div>
     );

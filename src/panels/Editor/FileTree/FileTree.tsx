@@ -1,4 +1,5 @@
-import { createSignal, createEffect, on, onMount, onCleanup, For, Show } from "solid-js";
+import { createSignal, createEffect, onSettled, onCleanup, For, Show } from "solid-js";
+import { createLiveSignal } from "../../../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
@@ -267,7 +268,7 @@ function relTo(root: string, path: string): string {
  *  the pasteboard's: a paste has to know a cut from a copy, and module-level so
  *  it survives switching members or tabs in between. */
 type Held = { paths: string[]; cut: boolean };
-const [held, setHeld] = createSignal<Held | null>(null);
+const [held, setHeld] = createLiveSignal<Held | null>(null);
 
 // --- editable mutations (each scoped to ctx.root, then reloads the caller) ---
 
@@ -553,16 +554,23 @@ function TreeNode(props: {
 
   // Lazily, and on restore too: a directory that comes back open on mount has
   // never read its children.
-  createEffect(() => {
-    if (open() && children() === null) void listChildrenCached(props.entry.path, !!props.compactFolders, setChildren);
-  });
+  createEffect(
+    () => ({
+      want: open() && children() === null,
+      path: props.entry.path,
+      compact: !!props.compactFolders,
+    }),
+    ({ want, path, compact }) => {
+      if (want) void listChildrenCached(path, compact, setChildren);
+    },
+  );
 
   // Publish this directory's reload so a mutation elsewhere in the tree can
   // refresh it. Only mounted dirs are registered, which is exactly the set whose
   // contents are on screen and could go stale.
-  onMount(() => {
-    if (props.entry.is_dir) props.ctx?.mounted.set(props.entry.path, reloadSelf);
-  });
+  // In the body rather than onSettled: `ctx` is built from props the parent
+  // passes as computed expressions, which an onSettled callback cannot read.
+  if (props.entry.is_dir) props.ctx?.mounted.set(props.entry.path, reloadSelf);
   onCleanup(() => {
     if (props.entry.is_dir) props.ctx?.mounted.delete(props.entry.path);
   });
@@ -597,31 +605,38 @@ function TreeNode(props: {
   // The recorded directories are cleared in one go by the tree itself; this
   // broadcast is only what reaches a row held open by a reveal, which is
   // recorded nowhere it could be cleared from.
+  let collapsedAt: number | undefined;
   createEffect(
-    on(
-      () => props.collapseAll?.() ?? 0,
-      (n, prev) => {
-        if (prev !== undefined && n !== prev) setTransient(false);
-      },
-    ),
+    () => props.collapseAll?.() ?? 0,
+    (n) => {
+      const prev = collapsedAt;
+      collapsedAt = n;
+      if (prev !== undefined && n !== prev) setTransient(false);
+    },
   );
 
-  createEffect(() => {
-    const target = props.revealing?.()?.path;
-    if (!target) return;
-    if (props.entry.is_dir && target.startsWith(`${props.entry.path}/`)) {
-      setTransient(true);
-    } else if (props.entry.path === target) {
-      // After the switch that asked for it has painted: the scroll reads the
-      // tree's layout, which inside the switch flushes everything it changed.
-      // Guarded: jsdom has no layout, so it does not implement this.
-      afterPaint(() => row?.isConnected && row.scrollIntoView?.({ block: "nearest" }));
-      // Arriving ends the walk. Leaving the target set would outlive the reveal:
-      // collapsing an ancestor unmounts these rows, and remounting them would
-      // replay the cascade and re-open the chain the user just closed.
-      props.onRevealed?.();
-    }
-  });
+  createEffect(
+    () => ({
+      target: props.revealing?.()?.path,
+      isDir: props.entry.is_dir,
+      path: props.entry.path,
+    }),
+    ({ target, isDir, path }) => {
+      if (!target) return;
+      if (isDir && target.startsWith(`${path}/`)) {
+        setTransient(true);
+      } else if (path === target) {
+        // After the switch that asked for it has painted: the scroll reads the
+        // tree's layout, which inside the switch flushes everything it changed.
+        // Guarded: jsdom has no layout, so it does not implement this.
+        afterPaint(() => row?.isConnected && row.scrollIntoView?.({ block: "nearest" }));
+        // Arriving ends the walk. Leaving the target set would outlive the reveal:
+        // collapsing an ancestor unmounts these rows, and remounting them would
+        // replay the cascade and re-open the chain the user just closed.
+        props.onRevealed?.();
+      }
+    },
+  );
 
   // Read only once the menu is open: `ContextMenu` mounts its content on open, so a row
   // that is never right-clicked never builds a list. Groups mirror VS Code's
@@ -907,8 +922,8 @@ function RootBody(props: {
   const mounted = new Map<string, () => Promise<void>>();
   const view: ViewCtx = { root: props.path, repoPath: props.repoPath, container: props.container };
 
-  async function reloadRoot() {
-    await listChildrenCached(props.path, props.compactFolders, setEntries);
+  async function reloadRoot(compact = props.compactFolders) {
+    await listChildrenCached(props.path, compact, setEntries);
   }
 
   const ctx = (): EditCtx | undefined => {
@@ -940,7 +955,8 @@ function RootBody(props: {
     }
     if (allFiles() !== null) {
       setAllFiles(null);
-      void ensureFileList();
+      // The null above has not landed yet, so the guard would still see the old list.
+      void ensureFileList(true);
     }
     await reloadMounted();
   }
@@ -950,17 +966,19 @@ function RootBody(props: {
   let unwatch: UnlistenFn | undefined;
   let gone = false;
   const mine: RootApi = { ctx, reload: reloadRoot, reloadAll };
-  onMount(async () => {
+  onSettled(() => {
     mounted.set(props.path, reloadRoot);
     props.onApi(mine, true);
     void reloadRoot().then(() => props.onLoaded());
-    // Only this root's bursts. Inside a Topic every member is unmuted at once,
-    // so the backend's `root` tag is the only thing separating them.
-    const off = await listen<FsChanged>("fs://changed", (e) => {
-      if (e.payload.root === props.path) refresh();
-    });
-    if (gone) off();
-    else unwatch = off;
+    void (async () => {
+      // Only this root's bursts. Inside a Topic every member is unmuted at once,
+      // so the backend's `root` tag is the only thing separating them.
+      const off = await listen<FsChanged>("fs://changed", (e) => {
+        if (e.payload.root === props.path) refresh();
+      });
+      if (gone) off();
+      else unwatch = off;
+    })();
   });
   onCleanup(() => {
     gone = true;
@@ -972,19 +990,17 @@ function RootBody(props: {
   // Turning compaction on or off restructures every row, so the visible level
   // is rebuilt rather than left describing the other setting.
   createEffect(
-    on(
-      () => props.compactFolders,
-      () => void reloadRoot(),
-      { defer: true },
-    ),
+    () => props.compactFolders,
+    (compact) => void reloadRoot(compact),
+    { defer: true },
   );
 
   // Filtering searches the whole root, not the rows that happen to be expanded:
   // a lazily-loaded tree has most of itself unread, so filtering the visible
   // rows would answer a question nobody asked. `list_project_files` already
   // respects .gitignore, and is read once per root and cached.
-  async function ensureFileList() {
-    if (allFiles() !== null) return;
+  async function ensureFileList(force = false) {
+    if (!force && allFiles() !== null) return;
     try {
       setAllFiles(await invoke<string[]>("list_project_files", { projectPath: props.path }));
     } catch {
@@ -992,9 +1008,12 @@ function RootBody(props: {
     }
   }
 
-  createEffect(() => {
-    if (props.wantFiles()) void ensureFileList();
-  });
+  createEffect(
+    () => props.wantFiles(),
+    (want) => {
+      if (want) void ensureFileList();
+    },
+  );
 
   // Matches, best first. Nobody reads past the first screen.
   const matches = () => {
@@ -1131,23 +1150,27 @@ export default function FileTree(props: {
   // switch, an open - walk to it: expand what it sits under and scroll its row
   // in. Deferred, so mounting the panel does not undo a chain you just
   // collapsed; only a change of file moves the tree.
-  createEffect(on(revealable, (p) => p && reveal(), { defer: true }));
+  createEffect(
+    revealable,
+    (p) => {
+      if (p) reveal();
+    },
+    { defer: true },
+  );
 
   const compactFolders = () => editorDefaults().compactFolders;
 
   createEffect(
-    on(
-      () => props.root,
-      () => {
-        // A different root is a different file list; keeping the old one would
-        // filter this tree against someone else's files, and a selection made
-        // over there would light up any path that happens to match here.
-        setOwnFilter("");
-        setOwnWant(false);
-        setSelected(new Set<string>());
-        setRevealing(null);
-      },
-    ),
+    () => props.root,
+    () => {
+      // A different root is a different file list; keeping the old one would
+      // filter this tree against someone else's files, and a selection made
+      // over there would light up any path that happens to match here.
+      setOwnFilter("");
+      setOwnWant(false);
+      setSelected(new Set<string>());
+      setRevealing(null);
+    },
   );
 
   const toggleSelected = (path: string) =>
@@ -1175,7 +1198,9 @@ export default function FileTree(props: {
     },
     reveal,
   };
-  onMount(() => props.onControls?.(controls));
+  onSettled(() => {
+    props.onControls?.(controls);
+  });
   onCleanup(() => props.onControls?.(null));
 
   // The row menu for the root itself, less what a root cannot be: it is the

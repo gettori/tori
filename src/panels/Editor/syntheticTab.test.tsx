@@ -77,7 +77,12 @@ let mountedCodeEditor = 0;
 vi.mock("./CodeEditor", () => ({
   default: (props: { activePath: string | null; openPaths: string[] }) => {
     mountedCodeEditor++;
-    createEffect(() => handed.push({ activePath: props.activePath, openPaths: [...props.openPaths] }));
+    createEffect(
+      () => ({ activePath: props.activePath, openPaths: [...props.openPaths] }),
+      (seen) => {
+        handed.push({ activePath: seen.activePath, openPaths: [...seen.openPaths] });
+      },
+    );
     return null;
   },
 }));

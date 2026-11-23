@@ -1,4 +1,4 @@
-import { createSignal, createEffect, on, onMount, onCleanup, For, Show } from "solid-js";
+import { createSignal, createEffect, onSettled, onCleanup, untrack, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitWith, OPEN_IN_EDITOR, type FsChanged, type LiveTab } from "../../utils/events";
@@ -67,14 +67,13 @@ export default function SessionPanel(props: {
   // (the same race phase 2's loadTouchedCount fix addressed in LeftSidebar).
   let requestFor: string | null = null;
 
-  async function refreshTouched() {
-    const path = props.path;
+  async function refreshTouched(path = props.path, agent = props.agent) {
     requestFor = path;
     if (!path) {
       setFiles([]);
       return;
     }
-    const files = await invoke<TouchedFile[]>("session_touched_files", { path, agent: props.agent }).catch(
+    const files = await invoke<TouchedFile[]>("session_touched_files", { path, agent }).catch(
       () => [] as TouchedFile[],
     );
     if (requestFor !== path) return;
@@ -84,12 +83,18 @@ export default function SessionPanel(props: {
   // Bounded to sessions with a live tab under this folder (the same
   // list_sessions + liveTabs join the sidebar's countRunningAgents uses), so
   // this never fans out into a historical transcript scan.
-  async function refreshCollisions() {
-    const path = props.path;
-    const root = props.projectRoot;
+  // Read apart from the refresh so an effect can take it in its compute: the
+  // parent passes these as computed expressions, which an apply cannot read.
+  const collisionArgs = () => ({
+    path: props.path,
+    root: props.projectRoot,
+    liveTabs: props.liveTabs,
+    selfSessionId: props.selfSessionId,
+  });
+  async function refreshCollisions({ path, root, liveTabs, selfSessionId } = collisionArgs()) {
     const liveIds = new Set(
-      props.liveTabs
-        .filter((t) => t.kind === "agent" && t.sessionId && t.sessionId !== props.selfSessionId)
+      liveTabs
+        .filter((t) => t.kind === "agent" && t.sessionId && t.sessionId !== selfSessionId)
         .map((t) => t.sessionId!),
     );
     if (!root || !liveIds.size) {
@@ -173,39 +178,37 @@ export default function SessionPanel(props: {
   }
 
   createEffect(
-    on(
-      () => [props.path, props.agent] as const,
-      () => {
-        setExpanded(new Set<string>());
-        setDiffs({});
-        refreshTouched();
-        refreshCollisions();
-      },
-    ),
+    () => ({ path: props.path, agent: props.agent, collisions: untrack(collisionArgs) }),
+    ({ path, agent, collisions }) => {
+      setExpanded(new Set<string>());
+      setDiffs({});
+      void refreshTouched(path, agent);
+      void refreshCollisions(collisions);
+    },
   );
 
   // Re-run collisions when the live-tab set itself changes (a session or its
   // tab appears/disappears), not just when this panel's own session changes.
   createEffect(
-    on(
-      () => props.liveTabs.map((t) => t.sessionId ?? "").join(","),
-      () => refreshCollisions(),
-    ),
+    () => ({ key: props.liveTabs.map((t) => t.sessionId ?? "").join(","), collisions: untrack(collisionArgs) }),
+    ({ collisions }) => void refreshCollisions(collisions),
   );
 
   let unlistenFs: UnlistenFn | undefined;
   let unlistenSessions: UnlistenFn | undefined;
-  onMount(async () => {
-    // fs://changed only refreshes the git join (diffs of already-expanded
-    // rows) - the touched list itself is a transcript read, driven separately.
-    unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
-      if (e.payload.root && e.payload.root !== props.projectRoot) return;
-      for (const p of expanded()) void loadDiff(p);
-    });
-    unlistenSessions = await listen("sessions://changed", () => {
-      refreshTouched();
-      refreshCollisions();
-    });
+  onSettled(() => {
+    void (async () => {
+      // fs://changed only refreshes the git join (diffs of already-expanded
+      // rows) - the touched list itself is a transcript read, driven separately.
+      unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
+        if (e.payload.root && e.payload.root !== props.projectRoot) return;
+        for (const p of expanded()) void loadDiff(p);
+      });
+      unlistenSessions = await listen("sessions://changed", () => {
+        void refreshTouched();
+        void refreshCollisions();
+      });
+    })();
   });
   onCleanup(() => {
     unlistenFs?.();

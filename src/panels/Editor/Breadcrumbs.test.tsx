@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { createSignal } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import { render, screen, fireEvent, waitFor, within } from "../../test/harness";
 import Breadcrumbs from "./Breadcrumbs";
 import type { TintedMember } from "../../utils/topicMembers";
@@ -165,8 +165,10 @@ describe("the symbol half of the bar", () => {
     render(() => <Breadcrumbs root={ROOT} path={PATH} caret={caret()} />);
     expect(crumbs()).toEqual(["src", "panels", "thing.ts", "Thing"]);
     setCaret({ line: 5, column: 4 });
+    flush();
     expect(crumbs()).toEqual(["src", "panels", "thing.ts", "Thing", "stop"]);
     setCaret({ line: 9, column: 1 });
+    flush();
     expect(crumbs()).toEqual(["src", "panels", "thing.ts", "helper"]);
   });
 

@@ -1,4 +1,4 @@
-import { createSignal, createMemo, createEffect, on, onMount, onCleanup, For, Show } from "solid-js";
+import { createSignal, createMemo, createEffect, onSettled, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import { buildRows } from "../../utils/diffView";
@@ -70,21 +70,24 @@ export default function CommitDetail(props: { workspace: string; sha: string }) 
   let current = 0;
 
   createEffect(
-    on([() => props.workspace, () => props.sha], async ([workspace, sha]) => {
+    () => [props.workspace, props.sha] as const,
+    ([workspace, sha]) => {
       const mine = ++current;
       setOpenFile(null);
       setDiff("");
-      try {
-        const read = await invoke<CommitDetailData>("git_commit_detail", { projectPath: workspace, sha });
-        if (mine !== current) return;
-        setDetail(read);
-        setError("");
-      } catch (e) {
-        if (mine !== current) return;
-        setDetail(null);
-        setError(String(e));
-      }
-    }),
+      void (async () => {
+        try {
+          const read = await invoke<CommitDetailData>("git_commit_detail", { projectPath: workspace, sha });
+          if (mine !== current) return;
+          setDetail(read);
+          setError("");
+        } catch (e) {
+          if (mine !== current) return;
+          setDetail(null);
+          setError(String(e));
+        }
+      })();
+    },
   );
 
   async function toggleFile(f: CommitFile) {
@@ -124,11 +127,11 @@ export default function CommitDetail(props: { workspace: string; sha: string }) 
   }
 
   let paneRef: HTMLDivElement | undefined;
-  onMount(() => {
+  onSettled(() => {
     if (!paneRef) return;
     const ro = new ResizeObserver(([entry]) => setPaneWidth(entry.contentRect.width));
     ro.observe(paneRef);
-    onCleanup(() => ro.disconnect());
+    return () => ro.disconnect();
   });
 
   return (

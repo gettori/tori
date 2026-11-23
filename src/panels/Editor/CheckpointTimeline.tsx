@@ -1,4 +1,4 @@
-import { createSignal, createEffect, createMemo, on, onMount, onCleanup, For, Show } from "solid-js";
+import { createSignal, createEffect, createMemo, onSettled, onCleanup, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
@@ -219,7 +219,12 @@ export default function CheckpointTimeline(props: {
     return [...ofSessions, ...ofWorktree].sort((a, b) => b.ts - a.ts);
   });
 
-  createEffect(() => props.onCount?.(groups().reduce((n, g) => n + g.turns.length, 0)));
+  createEffect(
+    () => ({ count: groups().reduce((n, g) => n + g.turns.length, 0), report: props.onCount }),
+    ({ count, report }) => {
+      report?.(count);
+    },
+  );
 
   const titleOf = (sessionId: string, ts: number) => promptTitle(prompts()[sessionId], ts) ?? "Untitled turn";
 
@@ -274,23 +279,25 @@ export default function CheckpointTimeline(props: {
   // earlier root's sessions must not land over the later one's.
   let listRead = 0;
 
-  async function loadList() {
+  // The defaults read props, so an effect passes what it read in its compute:
+  // `sessionId` reaches this panel as a computed expression, which an apply
+  // cannot read.
+  async function loadList(root = props.root, sessionId = props.sessionId, folderPath = props.folderPath) {
     const mine = ++listRead;
-    const root = props.root;
     if (!root) {
       setListed([]);
       return;
     }
     const found = await invoke<string[]>("checkpoint_sessions", { repoPath: root }).catch(() => null);
     const ids = new Set(isList<string>(found) ? found : []);
-    if (props.sessionId) ids.add(props.sessionId);
+    if (sessionId) ids.add(sessionId);
     // The refs are shared by every worktree of the repo, so a sibling
     // worktree's sessions are in the answer too. The selected session is kept
     // whatever its folder: a Topic chat runs from the Topic's home.
     const here = [...ids].filter((id) => {
-      if (id === props.sessionId) return true;
+      if (id === sessionId) return true;
       const folder = describe(id).folder;
-      return !!folder && !!props.folderPath && sameCwd(folder, props.folderPath);
+      return !!folder && !!folderPath && sameCwd(folder, folderPath);
     });
     // A failed read keeps what was there. The list snapshots through a scratch
     // index a turn in flight may be holding, and reading that as "no
@@ -313,8 +320,7 @@ export default function CheckpointTimeline(props: {
 
   /** Keyed on the worktree alone, so this runs whether or not a session is
    *  selected. */
-  async function loadBackstops() {
-    const root = props.root;
+  async function loadBackstops(root = props.root) {
     if (!root) {
       setBackstops([]);
       return;
@@ -580,45 +586,56 @@ export default function CheckpointTimeline(props: {
   }
 
   createEffect(
-    on([() => props.root, () => props.sessionId, () => props.folderPath], () => {
+    () => [props.root, props.sessionId, props.folderPath] as const,
+    ([root, sessionId, folderPath]) => {
       setOpen(null);
-      void loadList();
-    }),
+      void loadList(root, sessionId, folderPath);
+    },
   );
   createEffect(
-    on(
-      () => props.root,
-      () => void loadBackstops(),
-    ),
+    () => props.root,
+    (root) => void loadBackstops(root),
   );
-  createEffect(on(open, () => void loadFiles()));
+  createEffect(open, () => void loadFiles());
   // Asked for before the list may hold the turn, and before a navigation lands,
   // so it waits for both rather than being shown and then reset.
-  createEffect(() => {
-    const want = pendingReveal();
-    if (!want || props.sessionId !== want.sessionId) return;
-    const there = listed().some(
-      (s) => s.sessionId === want.sessionId && s.entries.some((e) => e.prompt_ts === want.promptTs),
-    );
-    if (!there) return;
-    setPendingReveal(null);
-    show({ kind: "turn", sessionId: want.sessionId, ts: want.promptTs });
-  });
+  createEffect(
+    () => {
+      const want = pendingReveal();
+      if (!want || props.sessionId !== want.sessionId) return null;
+      const there = listed().some(
+        (s) => s.sessionId === want.sessionId && s.entries.some((e) => e.prompt_ts === want.promptTs),
+      );
+      return there ? want : null;
+    },
+    (want) => {
+      if (!want) return;
+      // The reveal is live state, and flush is refused in an effect callback.
+      queueMicrotask(() => setPendingReveal(null));
+      show({ kind: "turn", sessionId: want.sessionId, ts: want.promptTs });
+    },
+  );
   // A checkpoint pruned while its detail is open has nothing left to show or
   // to revert to.
-  createEffect(() => {
-    const target = open();
-    if (!target) return;
-    const there = target.sessionId
-      ? listed().some((s) => s.sessionId === target.sessionId && s.entries.some((e) => e.prompt_ts === target.ts))
-      : backstops().some((b) => b.ts === target.ts);
-    if (!there) setOpen(null);
-  });
   createEffect(
-    on([open, activeScope], () => {
+    () => {
+      const target = open();
+      if (!target) return false;
+      const there = target.sessionId
+        ? listed().some((s) => s.sessionId === target.sessionId && s.entries.some((e) => e.prompt_ts === target.ts))
+        : backstops().some((b) => b.ts === target.ts);
+      return !there;
+    },
+    (pruned) => {
+      if (pruned) setOpen(null);
+    },
+  );
+  createEffect(
+    () => [open(), activeScope()] as const,
+    () => {
       setExpanded(null);
       setShowAll(false);
-    }),
+    },
   );
 
   // checkpoint_list costs a `git diff --raw` per checkpoint plus a write-tree,
@@ -627,17 +644,19 @@ export default function CheckpointTimeline(props: {
   let unlistenFs: UnlistenFn | undefined;
   let unlistenSettings: UnlistenFn | undefined;
   let refreshTimer: ReturnType<typeof setTimeout> | undefined;
-  onMount(async () => {
-    unlistenSettings = await listen("settings://changed", () => loadMarks(listed()));
-    unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
-      if (e.payload.root && e.payload.root !== props.root) return;
-      clearTimeout(refreshTimer);
-      refreshTimer = setTimeout(() => {
-        void loadList();
-        void loadBackstops();
-        if (open()) void loadFiles();
-      }, 500);
-    });
+  onSettled(() => {
+    void (async () => {
+      unlistenSettings = await listen("settings://changed", () => loadMarks(listed()));
+      unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
+        if (e.payload.root && e.payload.root !== props.root) return;
+        clearTimeout(refreshTimer);
+        refreshTimer = setTimeout(() => {
+          void loadList();
+          void loadBackstops();
+          if (open()) void loadFiles();
+        }, 500);
+      });
+    })();
   });
   onCleanup(() => {
     unlistenFs?.();

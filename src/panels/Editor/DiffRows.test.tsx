@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vite-plus/test";
 import { render, fireEvent } from "../../test/harness";
-import { createSignal } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import DiffRows, { rovingHunk } from "./DiffRows";
 import { buildRows } from "../../utils/diffView";
 
@@ -298,6 +298,7 @@ describe("DiffRows", () => {
     expect(hunk.at()).toBe(3);
 
     setLong(false);
+    flush();
     expect(container.querySelectorAll("[class*=diffLine]")).toHaveLength(2);
     // The stop came back into the rows that exist rather than pointing past
     // them. Reached by an arrow, which is what a reader has to hand.
