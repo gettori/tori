@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vite-plus/test";
+import { createSignal } from "solid-js";
 import { render, screen } from "../../test/harness";
-import { renderCost, renderDrift } from "../../test/perfCounters";
+import { renderCost, renderDrift, rerunBudget } from "../../test/perfCounters";
 import type { BranchSync } from "../../utils/gitActions";
 
 vi.mock("solid-js", async (original) => {
@@ -59,6 +60,7 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promise.resolve() }));
 
 const { default: LeftSidebar } = await import("./LeftSidebar");
+type Selection = import("./LeftSidebar").Selection;
 const { adoptSync } = await import("../../utils/branchSync");
 
 const ahead: BranchSync = {
@@ -77,8 +79,34 @@ it("holds the render budget for one branch status change", async () => {
   const { container } = render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={[]} />);
   await screen.findByText("beta");
 
-  const cost = await renderCost(container, () => adoptSync(`${REPO}/alpha`, "alpha", ahead));
+  const { cost, artifact } = await renderCost(container, () => adoptSync(`${REPO}/alpha`, "alpha", ahead));
 
   expect(cost.mutations).toBeGreaterThan(0);
+  expect(artifact).toStayWithinRerunBudget(rerunBudget("sidebar.branch_status"));
   expect(renderDrift("sidebar.branch_status", cost), JSON.stringify(cost)).toEqual([]);
+});
+
+it("holds the render budget for one selection change", async () => {
+  Element.prototype.scrollIntoView = () => {};
+  localStorage.clear();
+  localStorage.setItem("tori.active-space.v1", "work");
+  localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:work/repo"]));
+  const unit = (branch: string): Selection => ({
+    spaceName: "work",
+    projectName: "repo",
+    projectPath: REPO,
+    folderPath: `${REPO}/${branch}`,
+    branch,
+    projectKind: "worktree",
+    profile: null,
+  });
+  const [selected, setSelected] = createSignal<Selection>(unit("alpha"));
+  const { container } = render(() => <LeftSidebar selected={selected()} onSelect={() => {}} liveTabs={[]} />);
+  await screen.findByText("beta");
+
+  const { cost, artifact } = await renderCost(container, () => setSelected(unit("beta")));
+
+  expect(cost.mutations).toBeGreaterThan(0);
+  expect(artifact).toStayWithinRerunBudget(rerunBudget("sidebar.selection"));
+  expect(renderDrift("sidebar.selection", cost), JSON.stringify(cost)).toEqual([]);
 });

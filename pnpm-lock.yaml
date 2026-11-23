@@ -133,6 +133,9 @@ importers:
         specifier: 2.0.3
         version: 2.0.3
     devDependencies:
+      '@solidjs/diagnostics':
+        specifier: 2.0.3
+        version: 2.0.3(@solidjs/web@2.0.3(solid-js@2.0.3))(solid-js@2.0.3)(vitest@5.0.5)
       '@solidjs/vite-plugin':
         specifier: 3.0.1
         version: 3.0.1(@babel/core@7.29.7)(@solidjs/web@2.0.3(solid-js@2.0.3))(@testing-library/jest-dom@6.9.1)(@voidzero-dev/vite-plus-core@1.3.0(@volar/typescript@2.4.28)(esbuild@0.28.2)(typescript@5.6.3))(solid-js@2.0.3)
@@ -1406,6 +1409,16 @@ packages:
 
   '@solidjs/compiler@2.0.2':
     resolution: {integrity: sha512-z7ZlbBQaCeNt4wt12xLS86pdgwet2QwAjyB/+enhDkPL2LUF4jWt7Q8NIlLkXVxm6RJWvZRL5hwcVmrH6JZhZA==}
+
+  '@solidjs/diagnostics@2.0.3':
+    resolution: {integrity: sha512-MnEn1gWzPhSeItEVE6ksp5SzJzOq/yTmzSEH8x03SvFc+Ydp2vVLa9xMf403GVH4mE3toflqo1XXsoXXtFvDfA==}
+    peerDependencies:
+      '@solidjs/web': ^2.0.3
+      solid-js: ^2.0.3
+      vitest: '>=2.0.0'
+    peerDependenciesMeta:
+      vitest:
+        optional: true
 
   '@solidjs/signals@2.0.3':
     resolution: {integrity: sha512-M6+kiJflqSvJRHRcmdsdIXpPLPkQrY817zWKKfxZ3z3ZRE5eEtddtWPrDXY4IM1Wz3zAqG+3Fx/HQIkAtpRwnA==}
@@ -4353,6 +4366,14 @@ snapshots:
       '@solidjs/compiler-linux-x64-gnu': 2.0.2
       '@solidjs/compiler-wasm32-wasi': 2.0.2
       '@solidjs/compiler-win32-x64-msvc': 2.0.2
+
+  '@solidjs/diagnostics@2.0.3(@solidjs/web@2.0.3(solid-js@2.0.3))(solid-js@2.0.3)(vitest@5.0.5)':
+    dependencies:
+      '@solidjs/signals': 2.0.3
+      '@solidjs/web': 2.0.3(solid-js@2.0.3)
+      solid-js: 2.0.3
+    optionalDependencies:
+      vitest: 5.0.5(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5(vitest@5.0.5))(@voidzero-dev/vite-plus-core@1.3.0(@volar/typescript@2.4.28)(esbuild@0.28.2)(typescript@5.6.3))(jsdom@30.0.0)
 
   '@solidjs/signals@2.0.3': {}
 
