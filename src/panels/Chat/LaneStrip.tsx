@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
+import { For, Show, createEffect, createSignal } from "solid-js";
 import { Ticket, X } from "../../components/Icon/icons";
 import type { Lane } from "./chatStore";
 import Icon from "../../components/Icon/Icon";
@@ -62,40 +62,38 @@ export default function LaneStrip(props: {
   const shown = () => [...props.lanes.filter(isLive), ...shownDone()];
 
   createEffect(
-    on(
-      // Background tasks count as running too. Gated on lanes alone, a chat
-      // with a task and no subagent never started the timer, and every task
-      // wore the clock the strip mounted with: 0s, forever.
-      () => props.lanes.some((l) => l.status === null) || props.tasks.length > 0,
-      (running) => {
-        if (!running) return;
-        // Read the clock on the way in as well as on the tick: the signal is as
-        // stale as the gap since the last run, which a chip would wear for a
-        // second before the first tick corrected it.
-        setNow(Date.now());
-        const timer = setInterval(() => setNow(Date.now()), 1000);
-        onCleanup(() => clearInterval(timer));
-      },
-    ),
+    () => props.lanes.some((l) => l.status === null) || props.tasks.length > 0,
+    (running) => {
+      if (!running) return;
+      // Read the clock on the way in as well as on the tick: the signal is as
+      // stale as the gap since the last run, which a chip would wear for a
+      // second before the first tick corrected it.
+      setNow(Date.now());
+      const timer = setInterval(() => setNow(Date.now()), 1000);
+      return () => clearInterval(timer);
+    },
   );
 
-  createEffect(() => {
-    if (!props.active) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (!e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
-      // On `e.code`, never `e.key`: macOS rewrites the key while Option is
-      // held, so a key-based match would silently never fire.
-      const digit = /^Digit([1-9])$/.exec(e.code);
-      if (!digit) return;
-      const at = Number(digit[1]) - 1;
-      // Numbered as drawn, so a folded lane has no key and a finished one's moves.
-      if (at > shown().length) return;
-      e.preventDefault();
-      props.onSelect(at === 0 ? null : shown()[at - 1]!.agentId);
-    };
-    window.addEventListener("keydown", onKey);
-    onCleanup(() => window.removeEventListener("keydown", onKey));
-  });
+  createEffect(
+    () => props.active,
+    (active) => {
+      if (!active) return;
+      const onKey = (e: KeyboardEvent) => {
+        if (!e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
+        // On `e.code`, never `e.key`: macOS rewrites the key while Option is
+        // held, so a key-based match would silently never fire.
+        const digit = /^Digit([1-9])$/.exec(e.code);
+        if (!digit) return;
+        const at = Number(digit[1]) - 1;
+        // Numbered as drawn, so a folded lane has no key and a finished one's moves.
+        if (at > shown().length) return;
+        e.preventDefault();
+        props.onSelect(at === 0 ? null : shown()[at - 1]!.agentId);
+      };
+      window.addEventListener("keydown", onKey);
+      return () => window.removeEventListener("keydown", onKey);
+    },
+  );
 
   // A component rather than a factory returning JSX: a lane is mutated in place
   // by the store, so a chip built from plain strings would show the figure and

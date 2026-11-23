@@ -1,4 +1,4 @@
-import { Show, createEffect, createMemo, onCleanup } from "solid-js";
+import { Show, createEffect, createMemo } from "solid-js";
 import Button from "../../components/Button/Button";
 import { WorktreeMark } from "../../components/Icon/gitMarks";
 import { projectPathFor, unitAt, unitGone } from "../../utils/sessionActivity";
@@ -62,10 +62,9 @@ export default function WorktreeCard(props: {
     return reply()?.setup === "failed" ? "Setup failed" : null;
   };
 
-  createEffect(() => {
-    const u = unit();
+  createEffect(unit, (u) => {
     if (!u?.branch) return;
-    onCleanup(watchFromCard(u.projectPath, u.branch));
+    return watchFromCard(u.projectPath, u.branch);
   });
 
   return (

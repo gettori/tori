@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, fireEvent, screen } from "../../test/harness";
-import { createStore } from "solid-js";
+import { createStore, flush } from "solid-js";
 import ToolCallCard from "./ToolCallCard";
 import type { ToolItem } from "./chatStore";
 
@@ -385,7 +385,10 @@ describe("a call that failed", () => {
   it("stays collapsed when this tab watches the call fail", async () => {
     const [live, setLive] = createStore(failed(0, { state: "running" }));
     const { container } = mount(live);
-    setLive("state", "error");
+    setLive((s) => {
+      s.state = "error";
+    });
+    flush();
     expect(container.querySelector('[aria-expanded="true"]')).toBeNull();
     expect(await diffFetches()).toHaveLength(0);
   });
@@ -393,7 +396,10 @@ describe("a call that failed", () => {
   it("stays collapsed on a denial too, which is the other way a call fails", () => {
     const [live, setLive] = createStore(failed(0, { state: "awaitingApproval" }));
     const { container } = mount(live);
-    setLive("state", "denied");
+    setLive((s) => {
+      s.state = "denied";
+    });
+    flush();
     expect(container.querySelector('[aria-expanded="true"]')).toBeNull();
   });
 });

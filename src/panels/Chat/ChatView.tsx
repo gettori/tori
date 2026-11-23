@@ -1,17 +1,17 @@
 import {
   For,
   Show,
+  createDeferred,
   createEffect,
   createMemo,
-  createResource,
   createSignal,
-  on,
-  onCleanup,
-  onMount,
-  untrack,
   createStore,
-  produce,
-  unwrap,
+  deep,
+  flush,
+  onCleanup,
+  onSettled,
+  snapshot,
+  untrack,
 } from "solid-js";
 import { nextFrame } from "../../utils/nextFrame";
 import { Channel, invoke } from "@tauri-apps/api/core";
@@ -382,25 +382,50 @@ export default function ChatView(props: {
    *  common path. */
   onProfileResolved: (profile: string | null) => void;
 }) {
-  // The preference is read once, at store creation, and not tracked: a live
-  // chat swapping its question cards for permission prompts mid-turn would be
-  // worse than waiting for the next session. Same rule the backend applies when
-  // it spawns.
-  const [state, setState] = createStore<ChatState>(
-    initialChat(props.sessionId, settings.chatDefaults.answerQuestionsInline),
-  );
+  // What this tab opens on, read once. All-null for a fork or a rewind, which
+  // start from the conversation rather than from a pick.
+  const opening = untrack(() => draftPick(props.tabId));
+  // Read once: a live chat swapping its question cards for permission prompts
+  // mid-turn would be worse than waiting for the next session.
+  const initial = untrack(() => initialChat(props.sessionId, settings.chatDefaults.answerQuestionsInline));
+  // The opening level rode the child's argv, and nothing on the wire will mention
+  // it again. Seeded here because a store write in the body is refused.
+  if (opening.effort !== null) {
+    seedEffort(initial, opening.effort);
+    initial.rev++;
+  }
+  // Mode and model only where the pick *is* argv: an ACP pick is a request sent
+  // after the session opens and may be refused, so it is not yet in force.
+  // Safe in the body: replay emits no `sessionStarted` and no `turnStarted`.
+  if (untrack(() => pickRidesArgv(findAdapter(props.agentId).chat?.transport))) {
+    // Read out first: narrowing a property does not survive into the closure.
+    const { mode: openedMode, model: openedModel } = opening;
+    if (openedMode !== null) {
+      seedMode(initial, openedMode);
+      initial.rev++;
+    }
+    if (openedModel !== null) {
+      seedModel(initial, openedModel);
+      initial.rev++;
+    }
+  }
+  const [state, setState] = createStore<ChatState>(initial);
   const [ownership, setOwnership] = createSignal<ClaimOutcome | null>(null);
   const [confirmReq, setConfirmReq] = createSignal<ConfirmReq | null>(null);
   /** The account this session runs as, which everything account-scoped in here
    *  reads instead of `props.profile`: the tab's value is what was *asked* for,
    *  and a resume can land on a different one. */
-  const [resolvedProfile, setResolvedProfile] = createSignal<string | null>(props.profile);
+  const [resolvedProfile, setResolvedProfile] = createSignal<string | null>(untrack(() => props.profile));
   /** Take the backend's claim as this session's account. Compared against the
    *  signal and the tab separately: the tab record is not reactive, so the two
    *  can disagree, and a view that only checked the tab kept a stale account. */
   const adoptClaim = (claimed: string) => {
     const resolved = asTabProfile(claimed);
-    if (resolved !== resolvedProfile()) setResolvedProfile(resolved);
+    if (resolved !== resolvedProfile()) {
+      setResolvedProfile(resolved);
+      // The rate limit path reads the account straight after this.
+      flush();
+    }
     if (resolved !== props.profile) props.onProfileResolved(resolved);
   };
   // What the composer's contents are filed under. The **tab**, not the session:
@@ -413,15 +438,6 @@ export default function ChatView(props: {
    *  transport, lives with the rest of the store's decisions. */
   const canSend = () => sendCapable(state, findAdapter(props.agentId).chat?.transport);
 
-  // What this tab is set to run as, read once: it is what the session is
-  // *opened* on, and every change after that goes through the session's own
-  // controls - which write back here as they land, so a tab restored next
-  // launch opens on what this conversation was actually running.
-  //
-  // All-null for a fork or a rewind, which start from the conversation rather
-  // than from a pick.
-  const opening = draftPick(props.tabId);
-
   /** Whether the opening pick is in force, so the held first message may go.
    *
    *  True from the start for claude, whose pick rides the argv: the session that
@@ -430,7 +446,7 @@ export default function ChatView(props: {
    *  the pick is a request made after the session opens and awaited before the
    *  first message is sent on it. */
   const [pickApplied, setPickApplied] = createSignal(
-    pickRidesArgv(findAdapter(props.agentId).chat?.transport) || !hasPick(opening),
+    untrack(() => pickRidesArgv(findAdapter(props.agentId).chat?.transport) || !hasPick(opening)),
   );
   let pickTried = false;
   /** Whether this session has already been written down as the project's
@@ -495,9 +511,9 @@ export default function ChatView(props: {
   // The draft's scratch tab, while it has one: the editor reports each save
   // and the close, and this composer answers only for its own linked path.
   const linkedName = () => linkedScratchFor(composerKey())?.split("/").pop() ?? null;
-  onMount(() => {
+  onSettled(() => {
     void loadStash();
-    onCleanup(followScratch(composerKey(), props.tabId));
+    return followScratch(composerKey(), props.tabId);
   });
   // This run's first turn boundary. The diff view's attribution spans from
   // here, which is exactly the span the in-memory before-states cover: a
@@ -542,25 +558,22 @@ export default function ChatView(props: {
   }
 
   const edit = (fn: (s: ChatState) => void) =>
-    setState(
-      produce((s) => {
-        fn(s);
-        s.rev++;
-      }),
-    );
+    setState((s) => {
+      fn(s);
+      s.rev++;
+    });
 
-  // The transcript read whole: the raw object behind the store, keyed on `rev`
-  // alone. Walking `state.items` through the proxy subscribes the reader to
+  // The transcript read whole: a snapshot of the store, keyed on `rev` alone.
+  // Walking `state.items` through the proxy subscribes the reader to
   // every row it touches, and re-subscribing thousands of rows on each write
   // cost more than the walk itself (profiled at 4,000 rows: 40% of a write in
   // Solid's bookkeeping). Every write bumps `rev`, so a reader keyed on it is
   // as current as one tracking each row, at one subscription.
   const raw = createMemo(
-    on(
-      () => state.rev,
-      () => unwrap(state),
-    ),
-    undefined,
+    () => {
+      void state.rev;
+      return snapshot(state);
+    },
     { equals: false },
   );
 
@@ -581,28 +594,12 @@ export default function ChatView(props: {
   // live channel is wired.
   let settleLive = () => {};
   createEffect(
-    on(
-      () => props.active,
-      (active) => {
-        if (active) applyHeld();
-      },
-    ),
+    () => props.active,
+    (active) => {
+      if (active) applyHeld();
+    },
   );
 
-  // The level this session opened on is in force from the first frame: it rode
-  // the argv the child was started with, and nothing on the wire will ever
-  // mention it again. Without this the control read "Default" over a child
-  // running `--effort high`, on a fresh session as much as on a restored one.
-  if (opening.effort !== null) edit((s) => seedEffort(s, opening.effort));
-  // Mode and model only where the pick *is* argv: an ACP pick is a request sent
-  // after the session opens and may be refused, so it is not yet in force.
-  // Safe in the body: replay emits no `sessionStarted` and no `turnStarted`.
-  if (pickRidesArgv(findAdapter(props.agentId).chat?.transport)) {
-    // Read out first: narrowing a property does not survive into the closure.
-    const { mode: openedMode, model: openedModel } = opening;
-    if (openedMode !== null) edit((s) => seedMode(s, openedMode));
-    if (openedModel !== null) edit((s) => seedModel(s, openedModel));
-  }
   const running = () => isRunning(state);
   // One walk of the transcript per write, shared by the header and the Inbox
   // scroll, rather than one per reader.
@@ -630,10 +627,15 @@ export default function ChatView(props: {
     let kept = 0;
     while (kept < rows.length && kept < shownRaw.length && rows[kept] === shownRaw[kept]) kept++;
     if (kept !== rows.length || kept !== shownRaw.length) {
+      const before = shownWrapped.slice(kept);
       shownRaw = rows;
       const tail = untrack(() => at.slice(kept).map((i) => state.items[i]));
-      shownWrapped = kept ? shownWrapped.slice(0, kept).concat(tail) : tail;
-      shownRows = props.sideOf ? planAsReply(shownWrapped) : shownWrapped;
+      // A snapshot copies a row that was written to, so a streaming delta reads as
+      // a moved row here. The proxies tell whether any row really changed.
+      if (tail.length !== before.length || tail.some((row, i) => row !== before[i])) {
+        shownWrapped = kept ? shownWrapped.slice(0, kept).concat(tail) : tail;
+        shownRows = props.sideOf ? planAsReply(shownWrapped) : shownWrapped;
+      }
     }
     return shownRows;
   });
@@ -641,22 +643,36 @@ export default function ChatView(props: {
   // The palette's Read Last Reply reads the chat in front. The row's rendered
   // text is what is read, so a reply the window has not drawn has nothing to
   // offer.
-  createEffect(() => {
-    if (LOCAL_SPEECH && props.active && shownItems().some((it) => it.kind === "text")) warm();
-  });
-  createEffect(() => {
-    if (!LOCAL_SPEECH || !props.active) return;
-    onCleanup(
-      offerLastReply(() => {
-        const last = lastReply(shownItems(), transcriptEl);
-        if (!last) {
-          emitWith<ToastEvent>(TOAST, { message: "There is no reply on screen to read.", kind: "info" });
-          return;
-        }
-        void read(speakableChunks(last.body), `${props.sessionId}:${last.id}`);
-      }),
-    );
-  });
+  createEffect(
+    () => LOCAL_SPEECH && props.active && shownItems().some((it) => it.kind === "text"),
+    (warmable) => {
+      if (warmable) warm();
+    },
+  );
+  createEffect(
+    () => LOCAL_SPEECH && !!props.active,
+    (offered) => {
+      if (!offered) return;
+      let stop: (() => void) | undefined;
+      let gone = false;
+      // Deferred: the front reply is live state, and a flush from here is a no-op.
+      queueMicrotask(() => {
+        if (gone) return;
+        stop = offerLastReply(() => {
+          const last = lastReply(shownItems(), transcriptEl);
+          if (!last) {
+            emitWith<ToastEvent>(TOAST, { message: "There is no reply on screen to read.", kind: "info" });
+            return;
+          }
+          void read(speakableChunks(last.body), `${props.sessionId}:${last.id}`);
+        });
+      });
+      return () => {
+        gone = true;
+        stop?.();
+      };
+    },
+  );
 
   const sendable = createMemo(() => {
     if (!props.sideOf) return new Set<string>();
@@ -710,7 +726,10 @@ export default function ChatView(props: {
       .then(setDetail)
       .catch(() => {});
   }
-  createEffect(on(() => state.turnsCompleted, loadDetail));
+  createEffect(
+    () => state.turnsCompleted,
+    () => loadDetail(),
+  );
   // A refused claim means no child was started, so nothing may be typed at it.
   // Narrowed so the banners below read their own fields without casting.
   const refusal = () => refusalOf(ownership());
@@ -731,7 +750,7 @@ export default function ChatView(props: {
   let connectFirst: (() => void) | undefined;
   const [wired, setWired] = createSignal(false);
 
-  onMount(() => {
+  onSettled(() => {
     // What this agent last said it can run, so the picker has something true
     // before the handshake lands, and an ask when that answer is missing or
     // describes a binary that has since changed. Scoped to this agent: opening
@@ -743,9 +762,12 @@ export default function ChatView(props: {
     // the turn the user actually wanted is that plus their instruction rather
     // than a turn spent on the announcement alone. Only into an empty composer:
     // a remount must not overwrite what they have since typed.
-    if (props.rewindTo && !draftFor(composerKey()).trim()) {
-      setDraft(composerKey(), rewindSeed());
-    }
+    // Deferred: the draft is live state, and a flush from here is a no-op.
+    queueMicrotask(() => {
+      if (props.rewindTo && !draftFor(composerKey()).trim()) {
+        setDraft(composerKey(), rewindSeed());
+      }
+    });
 
     // The budget this tab is resuming, and how much of the session it can
     // actually vouch for. Both are reads of what happened before this tab
@@ -753,15 +775,18 @@ export default function ChatView(props: {
     void invoke<UsageTotals>("chat_usage_totals", { cwd: props.cwd, sessionId: chargedSession() })
       .then((totals) => {
         setSpent(totals);
+        // `applyBudget` reads the spend straight back.
+        flush();
         return applyBudget();
       })
       .catch(() => {});
     const unlistenSpend = listen<UsageChanged>(USAGE_CHANGED, ({ payload }) => {
       if (payload.sessionId !== chargedSession()) return;
       setSpent(payload.totals);
+      // `applyBudget` reads the spend straight back.
+      flush();
       void applyBudget();
     });
-    onCleanup(() => void unlistenSpend.then((unlisten) => unlisten()));
     // Where this agent's earlier turns come from. `session-replay` means the
     // agent hands them back on the live channel and Tori's log is only a cache
     // of that, which is what the reset, the notice and the prompt-count re-read
@@ -839,8 +864,9 @@ export default function ChatView(props: {
         // Replayed history is folded straight in rather than through
         // `handleLive`: it is finished work, so it must not re-snapshot
         // checkpoints or re-record attribution for turns that already ran.
+        let labels: string[] = [];
         edit((s) => {
-          const labels = foldHistory(s, tail);
+          labels = foldHistory(s, tail);
           setEarlier(tail.cursor);
           // A restored tab for an agent that keeps its own conversation, with
           // nothing saved yet. Blank is the one thing this must not be: an
@@ -850,10 +876,10 @@ export default function ChatView(props: {
             emptyNoticeShown = true;
             pushNotice(s, "This agent keeps the conversation itself; it loads when the chat starts", "info");
           }
-          // In the same edit as the turns, so no send can slip between the
-          // history landing and the numbering being raised above it.
-          seedLabels(composerKey(), labels);
         });
+        // Right behind the edit, so no send can slip between the history landing
+        // and the numbering being raised above it.
+        seedLabels(composerKey(), labels);
         openTrace?.folded();
       })
       // History is an enhancement, not a precondition: a transcript that cannot
@@ -926,9 +952,6 @@ export default function ChatView(props: {
     const live: ChatEvent[] = [];
     let flushArmed = false;
     let gone = false;
-    onCleanup(() => {
-      gone = true;
-    });
     function handleLive(ev: ChatEvent) {
       if (flushArmed) {
         live.push(ev);
@@ -954,6 +977,8 @@ export default function ChatView(props: {
       edit((s) => {
         for (const ev of batch) if (foldLive(s, ev)) folded.push(ev);
       });
+      // The effects below, and a send right behind this, read the folded state.
+      flush();
       for (const ev of folded) liveEffects(ev);
     }
     settleLive = () => {
@@ -1243,6 +1268,10 @@ export default function ChatView(props: {
 
     connectFirst = () => connect({ reconnect: false });
     setWired(true);
+    return () => {
+      gone = true;
+      void unlistenSpend.then((unlisten) => unlisten());
+    };
   });
 
   // The spawn, and only the spawn, waits on the tab being started. Everything
@@ -1255,10 +1284,11 @@ export default function ChatView(props: {
   // from this tab - and the re-run would dispose the deadline timer below
   // while the message it is the backstop for is still being held.
   let spawned = false;
-  createEffect(() => {
-    if (!wired() || !props.started || spawned) return;
-    spawned = true;
-    untrack(() => {
+  createEffect(
+    () => wired() && props.started,
+    (go) => {
+      if (!go || spawned) return;
+      spawned = true;
       connectFirst?.();
 
       // Nothing may hold a first message forever. The claude transport
@@ -1277,10 +1307,10 @@ export default function ChatView(props: {
           if (canSend()) return;
           failFirstSend("that agent did not get a session open in time, so nothing was sent.");
         }, FIRST_SEND_DEADLINE_MS);
-        onCleanup(() => clearTimeout(timer));
+        return () => clearTimeout(timer);
       }
-    });
-  });
+    },
+  );
 
   /**
    * Put the draft's pick to an ACP session, now that it has one.
@@ -1289,46 +1319,52 @@ export default function ChatView(props: {
    * the transport refuses synchronously (`Switch::Unsupported` or `Unknown`);
    * the agent's own refusal is an event that lands after the message has gone.
    */
-  createEffect(() => {
-    if (pickApplied() || !canSend() || pickTried) return;
-    pickTried = true;
-    void untrack(async () => {
-      try {
-        if (opening.model !== null) {
-          await invoke("chat_set_model", {
-            sessionId: props.sessionId,
-            model: opening.model,
-            effort: opening.effort,
-          });
+  createEffect(
+    () => !pickApplied() && canSend(),
+    (due) => {
+      if (!due || pickTried) return;
+      pickTried = true;
+      void (async () => {
+        try {
+          if (opening.model !== null) {
+            await invoke("chat_set_model", {
+              sessionId: props.sessionId,
+              model: opening.model,
+              effort: opening.effort,
+            });
+          }
+          if (opening.mode !== null) {
+            await invoke("chat_set_mode", { sessionId: props.sessionId, mode: opening.mode });
+          }
+          setPickApplied(true);
+        } catch (e) {
+          edit((s) =>
+            applyEvent(s, {
+              type: "sessionError",
+              sessionId: props.sessionId,
+              message: `That model was refused, so nothing was sent: ${String(e)}`,
+              fatal: false,
+            }),
+          );
         }
-        if (opening.mode !== null) {
-          await invoke("chat_set_mode", { sessionId: props.sessionId, mode: opening.mode });
-        }
-        setPickApplied(true);
-      } catch (e) {
-        edit((s) =>
-          applyEvent(s, {
-            type: "sessionError",
-            sessionId: props.sessionId,
-            message: `That model was refused, so nothing was sent: ${String(e)}`,
-            fatal: false,
-          }),
-        );
-      }
-    });
-  });
+      })();
+    },
+  );
 
   let optionsTried = false;
   /** The draft's option picks, once there is a session. Apart from the pick
    *  above because an option rides no argv on any transport, and a refused one
    *  toasts rather than holding the message: it cannot change the answer. */
-  createEffect(() => {
-    if (optionsTried || !canSend()) return;
-    optionsTried = true;
-    for (const [configId, value] of Object.entries(opening.optionValues)) {
-      applyConfigOption(configId, value);
-    }
-  });
+  createEffect(
+    () => canSend(),
+    (sendable) => {
+      if (optionsTried || !sendable) return;
+      optionsTried = true;
+      for (const [configId, value] of Object.entries(opening.optionValues)) {
+        applyConfigOption(configId, value);
+      }
+    },
+  );
 
   /**
    * Record what this project's next draft should open on.
@@ -1349,37 +1385,42 @@ export default function ChatView(props: {
    * one-account install, "the default account" would later outrank a Settings
    * default the user set after adding their second login.
    */
-  createEffect(() => {
-    // A background worker runs on its project contract's picks, not the user's.
-    if (remembered || props.background || !canSend()) return;
-    remembered = true;
-    rememberChatPrefs(props.workspace, {
-      agent: props.agentId,
-      ...(namedProfiles(props.agentId).length ? { profile: asProfileId(resolvedProfile()) } : {}),
-      ...(opening.model !== null ? { model: opening.model, effort: opening.effort } : {}),
-      ...(opening.mode !== null ? { mode: opening.mode } : {}),
-    });
-  });
+  createEffect(
+    () => {
+      // A background worker runs on its project contract's picks, not the user's.
+      if (remembered || props.background || !canSend()) return null;
+      return { workspace: props.workspace, agent: props.agentId, profile: resolvedProfile() };
+    },
+    (now) => {
+      if (!now || remembered) return;
+      remembered = true;
+      rememberChatPrefs(now.workspace, {
+        agent: now.agent,
+        ...(namedProfiles(now.agent).length ? { profile: asProfileId(now.profile) } : {}),
+        ...(opening.model !== null ? { model: opening.model, effort: opening.effort } : {}),
+        ...(opening.mode !== null ? { mode: opening.mode } : {}),
+      });
+    },
+  );
 
   // A message written before this session could take it: a draft tab's first
   // send, or one handed over by "send to a new chat". Sent here rather than at
   // spawn, because a spawned child is not yet a session that can answer.
-  createEffect(() => {
-    // And the label seed: a held `[Image 1]` may still be renamed by the
-    // transcript, and it has to go out under the name it ends up with.
-    if (!canSend() || !pickApplied() || !numberingSettled()) return;
-    // Only readiness is tracked. `onSend` reads half the store on its way
-    // through, and tracking that would re-run this on every turn boundary for
-    // the rest of the session.
-    untrack(() => {
-      const held = takeAutoSend(composerKey());
-      if (held === null) return;
-      // The composer showed it while it waited; the turn now appearing above is
-      // where it lives from here.
-      setDraft(composerKey(), "");
-      onSend(held, "chat_send_held");
-    });
-  });
+  createEffect(
+    // The label seed counts as readiness: a held `[Image 1]` may still be
+    // renamed by the transcript, and goes out under the name it ends up with.
+    () => canSend() && pickApplied() && numberingSettled(),
+    (ready) => {
+      if (!ready) return;
+      // Deferred: the composer is live state, and a flush from here is a no-op.
+      queueMicrotask(() => {
+        const held = takeAutoSend(composerKey());
+        if (held === null) return;
+        setDraft(composerKey(), "");
+        onSend(held, "chat_send_held");
+      });
+    },
+  );
 
   // This surface ends the child. `chat_close` is a no-op for a session that
   // already ended, so this is safe on every unmount path - including the one
@@ -1394,7 +1435,9 @@ export default function ChatView(props: {
   // Gated on this tab having started one. A chat opened only to read mounts
   // over a session id it never claimed, and that id can be live in another tab:
   // closing the reader would end somebody else's child.
+  let disposed = false;
   onCleanup(() => {
+    disposed = true;
     dropLiveChat(props.sessionId);
     if (!props.started) return;
     if (props.detach) {
@@ -1407,17 +1450,26 @@ export default function ChatView(props: {
   // The Inbox opened this session at its waiting card. Held while a fresh
   // mount is still loading, then dropped when there is none, so a stale ask
   // cannot scroll the transcript on some later block.
-  createEffect(() => {
-    if (pendingCard() !== props.sessionId) return;
-    const waiting = approvals().length + pendingQuestions(raw()).length;
-    if (!waiting && !numberingSettled()) return;
-    setPendingCard(null);
-    if (!waiting) return;
-    // The card renders from this same update, so it can only be found after it.
-    queueMicrotask(() =>
-      transcriptEl?.querySelector<HTMLElement>("[data-pending-card]")?.scrollIntoView({ block: "center" }),
-    );
-  });
+  createEffect(
+    () => {
+      if (pendingCard() !== props.sessionId) return null;
+      const waiting = approvals().length + pendingQuestions(raw()).length;
+      if (!waiting && !numberingSettled()) return null;
+      return waiting;
+    },
+    (waiting) => {
+      if (waiting === null) return;
+      // Deferred: the pending card is live state, and a flush from here is a no-op.
+      queueMicrotask(() => {
+        setPendingCard(null);
+        if (!waiting) return;
+        // The card renders from this same update, so it can only be found after it.
+        queueMicrotask(() =>
+          transcriptEl?.querySelector<HTMLElement>("[data-pending-card]")?.scrollIntoView({ block: "center" }),
+        );
+      });
+    },
+  );
 
   // A blame widget in the editor pointed at one of this session's turns.
   //
@@ -1475,43 +1527,48 @@ export default function ChatView(props: {
   // route: it has a session id but no child, so it registers nothing until it
   // starts. Twelve of them must count as zero.
   const status = createMemo(() => chatStatus(raw()));
-  const background = createMemo(() => outstandingBackground(raw()), undefined, {
+  const background = createMemo(() => outstandingBackground(raw()), {
     equals: (a, b) => a.agents === b.agents && a.tasks === b.tasks,
   });
-  createEffect(() => {
-    if (!props.started || refused()) {
-      dropLiveChat(props.sessionId);
-      return;
-    }
-    setLiveChat({
-      sessionId: props.sessionId,
-      sessionName: props.title,
-      agentId: props.agentId,
-      folderPath: props.workspace,
-      tabId: props.tabId,
-      status: asksFor(props.sessionId).length ? "waitingForAnswer" : status(),
-      background: background(),
-      visible: props.active,
-      spawner: props.spawner,
-      doneAt: doneAt(),
-      side: props.sideOf,
-    });
-  });
+  createEffect(
+    () => {
+      if (!props.started || refused()) return null;
+      return {
+        sessionId: props.sessionId,
+        sessionName: props.title,
+        agentId: props.agentId,
+        folderPath: props.workspace,
+        tabId: props.tabId,
+        status: asksFor(props.sessionId).length ? ("waitingForAnswer" as const) : status(),
+        background: background(),
+        visible: props.active,
+        spawner: props.spawner,
+        doneAt: doneAt(),
+        side: props.sideOf,
+      };
+    },
+    (entry) => {
+      // Deferred: the registry is live state, and a flush from here is a no-op.
+      queueMicrotask(() => {
+        if (disposed) return;
+        if (entry) setLiveChat(entry);
+        else dropLiveChat(untrack(() => props.sessionId));
+      });
+    },
+  );
 
   // Tell the host which tab is on screen, so a session behind this one has its
   // per-token deltas coalesced instead of paying to repaint a transcript nobody
   // can see. Deferred: the spawn above already carried the opening value, and
   // re-sending it would race the invoke that establishes the session.
   createEffect(
-    on(
-      () => props.active,
-      (active) => {
-        // Nothing to coalesce for a session with no child on the other end.
-        if (!props.started) return;
-        void invoke("chat_set_visible", { sessionId: props.sessionId, visible: active }).catch(() => {});
-      },
-      { defer: true },
-    ),
+    () => props.active,
+    (active) => {
+      // Nothing to coalesce for a session with no child on the other end.
+      if (!props.started) return;
+      void invoke("chat_set_visible", { sessionId: props.sessionId, visible: active }).catch(() => {});
+    },
+    { defer: true },
   );
 
   const related = createRelatedSessions(
@@ -1534,9 +1591,13 @@ export default function ChatView(props: {
       onDismiss: () => dismissMention(props.sessionId, offer.mention),
     };
   };
-  const [firstPrompt] = createResource(
-    () => props.sessionId,
-    (session) => invoke<{ sender: string; text: string } | null>("session_first_prompt", { session }).catch(() => null),
+  const firstPrompt = createDeferred<{ sender: string; text: string } | null | undefined>(
+    (was) => {
+      const session = props.sessionId;
+      if (!session) return was;
+      return invoke<{ sender: string; text: string } | null>("session_first_prompt", { session }).catch(() => null);
+    },
+    { loadingValue: undefined },
   );
 
   // The second chat on a worktree: say once, per worktree, that the two share
@@ -1610,15 +1671,19 @@ export default function ChatView(props: {
       }
     }),
   );
-  createEffect(() => {
-    if (state.ended) cancelResume(props.sessionId);
-  });
+  createEffect(
+    () => state.ended,
+    (ended) => {
+      // Deferred: the resume table is live state, and a flush from here is a no-op.
+      if (ended) queueMicrotask(() => cancelResume(props.sessionId));
+    },
+  );
 
   // Until the saved queue is in, nothing is written back (the first write would
   // be an empty queue over the saved one) and nothing is sent, since a saved
   // entry's labels are not yet counted as spent.
   const [queueLoaded, setQueueLoaded] = createSignal(false);
-  onMount(() => {
+  onSettled(() => {
     void loadQueue(props.sessionId).then((entries) => {
       edit((s) => restoreQueue(s, entries));
       raiseLabels(
@@ -1628,9 +1693,12 @@ export default function ChatView(props: {
       setQueueLoaded(true);
     });
   });
-  createEffect(() => {
-    if (queueLoaded()) void saveQueue(props.sessionId, state.queue);
-  });
+  createEffect(
+    () => (queueLoaded() ? { sessionId: props.sessionId, queue: deep(state.queue) } : null),
+    (now) => {
+      if (now) void saveQueue(now.sessionId, now.queue);
+    },
+  );
   const numberingSettled = () => labelsSeeded(composerKey()) && queueLoaded();
 
   // The flush driver. `takeForSend` is atomic precisely because this re-runs the
@@ -1638,18 +1706,16 @@ export default function ChatView(props: {
   // in flight separately would let it observe the gap and flush the whole
   // backlog at once.
   createEffect(
-    on(
-      () => pendingFlush(state),
-      (next) => {
-        if (!next) return;
-        const taken: QueuedInput[] = [];
-        edit((s) => {
-          const t = takeForSend(s);
-          if (t) taken.push(t);
-        });
-        if (taken.length) void sendBlocks(taken[0].blocks, taken[0].held ? "chat_send_held" : "chat_send");
-      },
-    ),
+    () => pendingFlush(state),
+    (next) => {
+      if (!next) return;
+      const taken: QueuedInput[] = [];
+      edit((s) => {
+        const t = takeForSend(s);
+        if (t) taken.push(t);
+      });
+      if (taken.length) void sendBlocks(taken[0].blocks, taken[0].held ? "chat_send_held" : "chat_send");
+    },
   );
 
   /**
@@ -1830,18 +1896,25 @@ export default function ChatView(props: {
   }
 
   // Words typed into an edit are never thrown away just because the entry left.
-  createEffect(() => {
-    const current = queueEdit();
-    if (!current || state.queue.some((q) => q.id === current.id)) return;
-    untrack(() => {
+  createEffect(
+    () => {
+      const current = queueEdit();
+      if (!current || state.queue.some((q) => q.id === current.id)) return null;
+      return current;
+    },
+    (current) => {
+      if (!current) return;
       setQueueEdit(null);
-      const changed = composerSnapshot() !== current.original;
-      if (changed && !current.stash.draft.trim() && !current.stash.chips.length) return;
-      if (changed) pushHistory(composerKey(), draftFor(composerKey()));
-      clearPending(composerKey());
-      unstashComposer(composerKey(), current.stash);
-    });
-  });
+      // Deferred: the composer is live state, and a flush from here is a no-op.
+      queueMicrotask(() => {
+        const changed = composerSnapshot() !== current.original;
+        if (changed && !current.stash.draft.trim() && !current.stash.chips.length) return;
+        if (changed) pushHistory(composerKey(), draftFor(composerKey()));
+        clearPending(composerKey());
+        unstashComposer(composerKey(), current.stash);
+      });
+    },
+  );
 
   function sayHeld(held: BudgetBreach) {
     if (heldSaid()) return;
@@ -1923,11 +1996,9 @@ export default function ChatView(props: {
   // turn end. Tracked on the limits alone, so an unrelated settings change (a
   // font size) does not re-run the budget check.
   createEffect(
-    on(
-      () => [settings.budgets?.sessionUsd, settings.budgets?.projectUsd, settings.budgets?.contextPercent],
-      () => void applyBudget(),
-      { defer: true },
-    ),
+    () => [settings.budgets?.sessionUsd, settings.budgets?.projectUsd, settings.budgets?.contextPercent],
+    () => void applyBudget(),
+    { defer: true },
   );
 
   /**
@@ -1940,9 +2011,9 @@ export default function ChatView(props: {
    * minute is finer than any of these windows needs.
    */
   const [clock, setClock] = createSignal(Date.now());
-  onMount(() => {
+  onSettled(() => {
     const tick = setInterval(() => setClock(Date.now()), 60_000);
-    onCleanup(() => clearInterval(tick));
+    return () => clearInterval(tick);
   });
 
   /** This tab's account, its windows, and what the two thresholds make of them.
@@ -1986,17 +2057,27 @@ export default function ChatView(props: {
     if (!stop || !canResume()) return;
     arm({ sessionId: props.sessionId, accountKey: accountKey(props.agentId, resolvedProfile()), ...stop, byHand });
   };
-  createEffect(() => {
-    if (settings.chatDefaults.resumeAtReset) armResume();
-  });
   createEffect(
-    on(
-      () => settings.chatDefaults.resumeAtReset,
-      (enabled) => {
+    () => {
+      if (!settings.chatDefaults.resumeAtReset) return null;
+      const stop = state.limitStop;
+      if (!stop || !canResume()) return null;
+      return { sessionId: props.sessionId, accountKey: accountKey(props.agentId, resolvedProfile()), ...stop };
+    },
+    (a) => {
+      // Deferred: the resume table is live state, and a flush from here is a no-op.
+      if (a) queueMicrotask(() => arm({ ...a, byHand: false }));
+    },
+  );
+  createEffect(
+    () => settings.chatDefaults.resumeAtReset,
+    (enabled) => {
+      // Deferred: the resume table is live state, and a flush from here is a no-op.
+      queueMicrotask(() => {
         if (!enabled && armedFor(props.sessionId)?.byHand === false) cancelResume(props.sessionId);
-      },
-      { defer: true },
-    ),
+      });
+    },
+    { defer: true },
   );
 
   /** The windows this chat has already spoken about, keyed the way the store
@@ -2007,21 +2088,30 @@ export default function ChatView(props: {
 
   // One attention notice per window per reset, in this chat. `approaching` only:
   // `reached` has the banner, `expired` and `ok` have nothing to say.
-  createEffect(() => {
-    // A window kept off the strip is one the user said they do not want to hear
-    // about, the same rule the OS notification follows.
-    const shown = accountWindows(props.agentId, resolvedProfile());
-    for (const w of quotaWindows()) {
-      if (w.state !== "approaching") continue;
-      if (!shown.includes(chipFor(w.reading.kind))) continue;
-      const key = transitionKey(props.agentId, resolvedProfile(), w.reading.kind, w.reading.resetsAt, "approaching");
-      if (said.has(key)) continue;
-      const sentence = w.sentence();
-      if (!sentence) continue;
-      said.add(key);
-      edit((s) => pushNotice(s, sentence, "attention"));
-    }
-  });
+  createEffect(
+    () => {
+      // A window kept off the strip is one the user said they do not want to hear
+      // about, the same rule the OS notification follows.
+      const shown = accountWindows(props.agentId, resolvedProfile());
+      const due: { key: string; sentence: string }[] = [];
+      for (const w of quotaWindows()) {
+        if (w.state !== "approaching") continue;
+        if (!shown.includes(chipFor(w.reading.kind))) continue;
+        const key = transitionKey(props.agentId, resolvedProfile(), w.reading.kind, w.reading.resetsAt, "approaching");
+        const sentence = w.sentence();
+        if (!sentence) continue;
+        due.push({ key, sentence });
+      }
+      return due;
+    },
+    (due) => {
+      for (const { key, sentence } of due) {
+        if (said.has(key)) continue;
+        said.add(key);
+        edit((s) => pushNotice(s, sentence, "attention"));
+      }
+    },
+  );
 
   /** Arm or clear the stop, and warn once on the way up. */
   async function applyBudget() {
@@ -2224,7 +2314,10 @@ export default function ChatView(props: {
   // Spread rather than passed by reference: a store proxy read as one object
   // subscribes to the reference, and the reducer merges into it in place, so
   // the effect would never see the model that arrived.
-  createEffect(() => rememberWindows({ ...state.contextWindows }));
+  createEffect(
+    () => ({ ...state.contextWindows }),
+    (windows) => rememberWindows(windows),
+  );
 
   // The mode the pill shows: the session's own, else the mode the *adapter*
   // nominates. Never the literal "default", which is Claude's spelling and
@@ -2243,6 +2336,8 @@ export default function ChatView(props: {
   // handed one provider, so the only pair the palette can name is this one.
   function onSelectModel(_agentId: string, _profile: string | null, model: PickableModel) {
     edit((s) => selectModel(s, model));
+    // The effort and mode checks below read what the pick just changed.
+    flush();
     // Effort is sent with the model because that is how the command carries it:
     // a level the new model does not offer would be rejected, so it is dropped
     // rather than sent and blamed on the model switch.

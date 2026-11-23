@@ -1,4 +1,5 @@
-import { For, Show, createMemo, createResource, createSignal } from "solid-js";
+import { For, Show, createMemo, createSignal } from "solid-js";
+import { createFetchState } from "../../lib/fetchState";
 import type { JSX } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import type { ChatAccount, McpServer } from "../../utils/chatTypes";
@@ -122,7 +123,7 @@ export default function SessionInfo(props: {
 
   // Only fetched once the panel is open: this reads two files off disk, and a
   // collapsed panel has nothing to show for them.
-  const [configured, { mutate }] = createResource(
+  const [configured, { mutate }] = createFetchState(
     () => (open() && props.cwd ? props.cwd : null),
     (cwd) =>
       invoke<McpEntry[]>("chat_mcp_list", {

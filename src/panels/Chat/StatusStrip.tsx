@@ -1,4 +1,4 @@
-import { Show, createEffect, createSignal, on, onCleanup } from "solid-js";
+import { Show, createEffect, createSignal, onCleanup } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { Ellipsis } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
@@ -63,30 +63,28 @@ export default function StatusStrip(props: {
   let timer: number | undefined;
 
   createEffect(
-    on(
-      () => props.running,
-      (running) => {
-        window.clearInterval(timer);
-        if (!running) return;
-        const started = Date.now();
-        setElapsed(0);
-        timer = window.setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
-      },
-    ),
+    () => props.running,
+    (running) => {
+      window.clearInterval(timer);
+      if (!running) return;
+      const started = Date.now();
+      setElapsed(0);
+      timer = window.setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
+    },
   );
   onCleanup(() => window.clearInterval(timer));
 
   // The menu closes on any click outside the strip, the way every dropdown in
   // the app behaves; listening only while open keeps the document handler from
   // running for a menu nobody has touched.
-  createEffect(() => {
-    if (!menuOpen()) return;
+  createEffect(menuOpen, (open) => {
+    if (!open) return;
     const onDoc = (e: MouseEvent) => {
       if (root?.contains(e.target as Node)) return;
       setMenuOpen(false);
     };
     document.addEventListener("mousedown", onDoc);
-    onCleanup(() => document.removeEventListener("mousedown", onDoc));
+    return () => document.removeEventListener("mousedown", onDoc);
   });
 
   const waiting = () => !!props.background && props.background.agents + props.background.tasks > 0;
