@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, on, Show } from "solid-js";
+import { createEffect, createSignal, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import Select, { type SelectOption } from "../../../../components/Select/Select";
 import SegmentedControl from "../../../../components/SegmentedControl/SegmentedControl";
@@ -58,13 +58,11 @@ export default function ProjectContract(props: {
     setError(null);
   };
   createEffect(
-    on(
-      () => [props.project, JSON.stringify(props.contract.issues)],
-      () => {
-        discard();
-        setChoosing(false);
-      },
-    ),
+    () => [props.project, JSON.stringify(props.contract.issues)],
+    () => {
+      discard();
+      setChoosing(false);
+    },
   );
 
   const optionsKeeping = (current: string): SelectOption[] =>
@@ -73,7 +71,12 @@ export default function ProjectContract(props: {
       label: r,
     }));
   const dirty = () => JSON.stringify(draft()) !== JSON.stringify(props.contract.issues);
-  createEffect(() => props.onDirty?.(dirty()));
+  createEffect(
+    () => [props.onDirty, dirty()] as const,
+    ([onDirty, isDirty]) => {
+      onDirty?.(isDirty);
+    },
+  );
   const edit = (at: number, change: Partial<IssueQuery>) =>
     setDraft((prev) => prev.map((q, i) => (i === at ? { ...q, ...change } : q)));
 
@@ -144,19 +147,25 @@ export default function ProjectContract(props: {
         >
           <For each={draft()}>
             {(query, at) => {
-              const field = (label: string, value: () => string, change: (v: string) => Partial<IssueQuery>) => (
-                <label class={own.field}>
-                  <span>{label}</span>
-                  <input
-                    class={`${styles.input} ${own.fieldInput}`}
-                    value={value()}
-                    placeholder="Any"
-                    onChange={(e) => edit(at(), change(e.currentTarget.value))}
-                    aria-label={`Source ${at() + 1} ${label.toLowerCase()}`}
-                    spellcheck="false"
-                  />
-                </label>
-              );
+              const field = (label: string, value: () => string, change: (v: string) => Partial<IssueQuery>) => {
+                // Held as typed: the label follows the row index, and its change would
+                // otherwise write the stored value back over an uncommitted edit.
+                const [typed, setTyped] = createSignal(value);
+                return (
+                  <label class={own.field}>
+                    <span>{label}</span>
+                    <input
+                      class={`${styles.input} ${own.fieldInput}`}
+                      value={typed()}
+                      onInput={(e) => setTyped(e.currentTarget.value)}
+                      placeholder="Any"
+                      onChange={(e) => edit(at(), change(e.currentTarget.value))}
+                      aria-label={`Source ${at() + 1} ${label.toLowerCase()}`}
+                      spellcheck="false"
+                    />
+                  </label>
+                );
+              };
               return (
                 <fieldset class={own.source} aria-label={`Source ${at() + 1}`}>
                   <div class={own.sourceHead}>

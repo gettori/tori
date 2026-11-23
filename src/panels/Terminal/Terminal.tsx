@@ -1,4 +1,4 @@
-import { createSignal, createEffect, createMemo, on, onCleanup, onMount, untrack, For, Show } from "solid-js";
+import { createSignal, createEffect, createMemo, onCleanup, onSettled, untrack, For, Show } from "solid-js";
 import { Portal } from "@solidjs/web";
 import type { DaemonStatus } from "../../utils/daemonStatus";
 import { invoke } from "@tauri-apps/api/core";
@@ -339,6 +339,9 @@ export default function Terminal(props: {
   // run it a second time. A workspace with nothing stored counts as restored the
   // moment it is looked at: there is no second answer to give.
   const [restored, setRestored] = createSignal<Set<string>>(new Set());
+  // Read back at once by the callers below, where the signal would hand them the
+  // set from before this run's own write.
+  const restoredIds = new Set<string>();
 
   /**
    * What the backend is holding right now.
@@ -401,7 +404,8 @@ export default function Terminal(props: {
    * re-run freely while this is still in flight.
    */
   async function restoreWorkspace(ws: string) {
-    setRestored(new Set(restored()).add(ws));
+    restoredIds.add(ws);
+    setRestored(new Set(restoredIds));
     const entry = restorable[ws];
     if (!entry?.tabs.length) return;
     setRestoring((n) => n + 1);
@@ -438,21 +442,26 @@ export default function Terminal(props: {
   async function stripReady(ws: string) {
     const running = inFlight.get(ws);
     if (running) return running;
-    if (!restored().has(ws)) await restoreWorkspace(ws);
+    if (!restoredIds.has(ws)) await restoreWorkspace(ws);
   }
 
   // On first visit, per workspace. Suppressed while first-run onboarding is open
   // (and re-evaluated when it closes, since this reads the flag), so someone
   // meeting Tori does not get last run's tabs drawn behind the welcome.
-  createEffect(() => {
-    if (props.onboarding) return;
-    const ws = activeWorkspace();
-    if (!ws || restored().has(ws)) return;
-    // Only into an empty group: a workspace that already has tabs open is about
-    // to have its stored set overwritten by current truth anyway.
-    if (tabsIn(ws).length) return;
-    void restoreWorkspace(ws);
-  });
+  createEffect(
+    () => {
+      if (props.onboarding) return null;
+      const ws = activeWorkspace();
+      if (!ws || restored().has(ws)) return null;
+      // Only into an empty group: a workspace that already has tabs open is about
+      // to have its stored set overwritten by current truth anyway.
+      if (tabsIn(ws).length) return null;
+      return ws;
+    },
+    (ws) => {
+      if (ws && !restoredIds.has(ws)) void restoreWorkspace(ws);
+    },
+  );
 
   /**
    * Say what the backend is holding that no stored tab can reach.
@@ -834,9 +843,10 @@ export default function Terminal(props: {
   // `state` rides along because since lazy restore a tab is no longer proof
   // that anything is running; every consumer reads it rather than the tab's
   // mere existence.
-  createEffect(() =>
-    props.onOpenChange?.(
-      open().map((o) => {
+  createEffect(
+    () => ({
+      report: props.onOpenChange,
+      tabs: open().map((o) => {
         // A refused agent tab is its shell and nothing more, so it is counted as one.
         const refused = !!initRefusal(o.id);
         return {
@@ -849,7 +859,8 @@ export default function Terminal(props: {
           state: tabState(o),
         };
       }),
-    ),
+    }),
+    ({ report, tabs }) => report?.(tabs),
   );
 
   // Persist the tab strip so the next run can offer to restore it. Depends on
@@ -909,7 +920,10 @@ export default function Terminal(props: {
     saveTabs(mergeStore(restorable, live, touched));
   }
 
-  createEffect(() => saveTabStore(open(), activeByWorkspace(), sidesOf(open())));
+  createEffect(
+    () => [open(), activeByWorkspace(), sidesOf(open())] as const,
+    ([tabs, active, sides]) => saveTabStore(tabs, active, sides),
+  );
 
   // The same save, armed by a keystroke instead of run by one. Composer text
   // changes on every key, and this store is a single localStorage key covering
@@ -917,19 +931,21 @@ export default function Terminal(props: {
   // afford. What is lost by the delay is the last few hundred ms of typing in a
   // draft, on a quit that lands inside the window.
   const saveDrafts = debounce(() => saveTabStore(open(), activeByWorkspace()), DRAFT_SAVE_MS);
-  createEffect(() => {
-    for (const t of open()) {
-      // Read for the subscription, not for the value: touching these stores is
-      // the whole of what makes a keystroke, or a landed switch, arm the timer
-      // below.
-      if (t.kind !== "chat") continue;
-      // Every chat, live or not: a live one's pick moves when a model or mode
-      // switch lands, and that is what the next launch resumes it on.
-      draftPick(t.id);
-      if (!chatIsLive(t)) draftFor(t.id);
-    }
-    saveDrafts();
-  });
+  createEffect(
+    () => {
+      for (const t of open()) {
+        // Read for the subscription, not for the value: touching these stores is
+        // the whole of what makes a keystroke, or a landed switch, arm the timer
+        // below.
+        if (t.kind !== "chat") continue;
+        // Every chat, live or not: a live one's pick moves when a model or mode
+        // switch lands, and that is what the next launch resumes it on.
+        draftPick(t.id);
+        if (!chatIsLive(t)) draftFor(t.id);
+      }
+    },
+    () => saveDrafts(),
+  );
   onCleanup(() => saveDrafts.cancel());
 
   // Every tab key below is pane-scoped (plan phase 6): the editor panel
@@ -1177,7 +1193,7 @@ export default function Terminal(props: {
   let unlistenExit: UnlistenFn | undefined;
   let unlistenRefused: UnlistenFn | undefined;
   let unlistenSessions: UnlistenFn | undefined;
-  onMount(async () => {
+  const boot = async () => {
     offOpenTerminal = onWith<OpenTerminal>(OPEN_TERMINAL, (t) => {
       openOrActivate({
         id: t.id,
@@ -1296,6 +1312,9 @@ export default function Terminal(props: {
     unlistenSessions = await listen("sessions://changed", () => {
       void backfillFreshSessions().then(() => syncTabTitles());
     });
+  };
+  onSettled(() => {
+    void boot();
   });
 
   // Safe-send (src/utils/safeSend.ts `requestSend`): the sole consumer of
@@ -1405,13 +1424,15 @@ export default function Terminal(props: {
   }
 
   // Dock up for a command, progress, dock gone: it stays only for what is in it.
+  let dockCount: number | undefined;
   createEffect(
-    on(
-      () => tabsIn(SHELLS_KEY).length,
-      (count, prev) => {
-        if (count === 0 && prev) showDock(false);
-      },
-    ),
+    () => tabsIn(SHELLS_KEY).length,
+    (count) => {
+      const prev = dockCount;
+      dockCount = count;
+      // showDock writes layout state, which flushes: not allowed inside an effect callback.
+      if (count === 0 && prev) queueMicrotask(() => showDock(false));
+    },
   );
 
   /**
@@ -1527,10 +1548,14 @@ export default function Terminal(props: {
   // otherwise spawn a fresh resume tab. A branch-only selection just reveals the
   // group and spawns nothing. Resume runs at the session's OWN recorded cwd, but
   // the tab groups under the branch-unit folder, not that nested cwd.
+  let prevSelected: typeof props.selected;
   createEffect(
-    on(
-      () => props.selected,
-      (sel, prev) => {
+    () => props.selected,
+    (sel) => {
+      const prev = prevSelected;
+      prevSelected = sel;
+      // setActiveWorkspace is live state, whose setter flushes: not allowed inside an effect callback.
+      queueMicrotask(() => {
         const ws = workspaceKey(sel);
         if (!sel || !ws) return;
         setActiveWorkspace(ws);
@@ -1544,8 +1569,8 @@ export default function Terminal(props: {
           if (prev !== undefined) revealKindPane(ws, "shell");
           void openSelectedSession(sel);
         }
-      },
-    ),
+      });
+    },
   );
 
   // Only once both restores and any tabs joining are back: a strip still being
@@ -2640,7 +2665,7 @@ export default function Terminal(props: {
    * gate for a live PTY ([[lesson_a_mount_gate_is_a_destroy_gate]]), and this
    * makes that structurally impossible rather than a property of another file.
    */
-  const wokenMemo = (t: OpenTerm) => createMemo<boolean>((was) => was || tabState(t) !== "inert", false);
+  const wokenMemo = (t: OpenTerm) => createMemo<boolean>((was) => !!was || tabState(t) !== "inert");
 
   /**
    * A tab that is on screen is not inert: being looked at is the whole of what
@@ -2654,26 +2679,26 @@ export default function Terminal(props: {
    * inert.
    */
   const wakeOnScreen = (t: OpenTerm, active: () => boolean) =>
-    createEffect(() => {
-      // A restore brings a whole strip back one tab at a time, and `visibleId`
-      // falls back to the first tab whenever the workspace has no recorded
-      // active one - so mid-restore, whichever tab was created first reads as
-      // on screen and would wake. Nothing in a restore has been reached for
-      // until it settles and the stored active tab is focused.
-      //
-      // A signal, so clearing it re-runs this effect: the tab that is genuinely
-      // in front then wakes, and no wake is lost.
-      if (restoring()) return;
-      if (active()) advanceTabState(t, stateOnActivate(t));
-    });
+    createEffect(
+      () => !restoring() && active(),
+      (onTop) => {
+        // A restore brings a whole strip back one tab at a time, and `visibleId`
+        // falls back to the first tab whenever the workspace has no recorded
+        // active one - so mid-restore, whichever tab was created first reads as
+        // on screen and would wake. Nothing in a restore has been reached for
+        // until it settles and the stored active tab is focused.
+        //
+        // A signal, so clearing it re-runs this effect: the tab that is genuinely
+        // in front then wakes, and no wake is lost.
+        // advanceTabState writes tab state, which flushes: not allowed inside an effect callback.
+        if (onTop) queueMicrotask(() => advanceTabState(t, stateOnActivate(t)));
+      },
+    );
 
   const ptyStage = (u: UnifiedTab) => {
     const term = asTerm(u) as PtyTab;
     const active = createMemo(() => onScreen(term));
-    const woken = createMemo<boolean>(
-      (was) => was || (tabState(term) !== "inert" && (!isHeld(term.id) || active())),
-      false,
-    );
+    const woken = createMemo<boolean>((was) => !!was || (tabState(term) !== "inert" && (!isHeld(term.id) || active())));
     wakeOnScreen(term, active);
     // No fallback: an inert tab is a strip entry and nothing else, so there is
     // no PTY to spawn and nothing to draw. A terminal kind has no readable
@@ -3116,9 +3141,13 @@ export default function Terminal(props: {
     </>
   );
 
-  for (const kind of ["shell", "agent", "command", "chat", "task"] as TabKind[]) {
-    registerKind(kind, termDescriptor(kind));
-  }
+  // Registered once settled: the registry's generation signal is written by it,
+  // and a component body may not write.
+  onSettled(() => {
+    for (const kind of ["shell", "agent", "command", "chat", "task"] as TabKind[]) {
+      registerKind(kind, termDescriptor(kind));
+    }
+  });
 
   // A service host since phase 7: no visible output. Surfaces render through
   // Portals into stage hosts (adopted by PaneView), strip and overlays through

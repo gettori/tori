@@ -1,4 +1,4 @@
-import { createEffect, createSignal, on } from "solid-js";
+import { createEffect, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import type { ForgeHost, SignInStart } from "../../utils/forgeTypes";
 import { noteForgeAccounts, resetForgeResolutions } from "../../utils/forgeStatus";
@@ -29,7 +29,10 @@ export function createHostsSetup(opts: { onScreen: () => boolean }) {
 
   // Leaving the step ends a sign-in still waiting, and coming back reads the
   // accounts again, in case one landed as the step was left.
-  createEffect(on(opts.onScreen, (shown) => (shown ? void refresh() : cancel())));
+  createEffect(opts.onScreen, (shown) => {
+    if (shown) void refresh();
+    else cancel();
+  });
 
   // As Settings > Hosts does: the poll store hears about accounts from whoever
   // changes them, so the sidebar's chips appear without waiting for a focus.

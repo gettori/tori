@@ -1,4 +1,4 @@
-import { createResource, createSignal, Show } from "solid-js";
+import { createMemo, createSignal, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import Button from "../../../../components/Button/Button";
 import Select from "../../../../components/Select/Select";
@@ -38,11 +38,13 @@ export default function AccountKeys(props: {
   onChanged: () => Promise<void>;
   onError: (message: string | null) => void;
 }) {
-  const [keys] = createResource(() =>
-    invoke<SshKey[]>("forge_ssh_keys").catch((e) => {
-      props.onError(forgeErrorMessage(e));
-      return [] as SshKey[];
-    }),
+  const keys = createMemo<SshKey[] | undefined>(
+    () =>
+      invoke<SshKey[]>("forge_ssh_keys").catch((e) => {
+        props.onError(forgeErrorMessage(e));
+        return [] as SshKey[];
+      }),
+    { loadingValue: undefined },
   );
   const [test, setTest] = createSignal<KeyTest | null>(null);
   const [testing, setTesting] = createSignal(false);

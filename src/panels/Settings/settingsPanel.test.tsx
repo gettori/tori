@@ -6,6 +6,7 @@
 // is invisible rather than broken. The second is that `aria-modal` is a claim -
 // focus has to actually stay inside, or the attribute is a lie a screen reader
 // believes.
+import { flush } from "solid-js";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { render, screen, fireEvent, waitFor } from "../../test/harness";
 
@@ -366,6 +367,7 @@ describe("what a screen reader is told about the search", () => {
     expect(live().textContent).toBe("");
 
     vi.advanceTimersByTime(600);
+    flush();
 
     expect(live().textContent).toBe("8 settings match");
   });
@@ -379,6 +381,7 @@ describe("what a screen reader is told about the search", () => {
     expect(live().textContent).toBe("");
 
     vi.advanceTimersByTime(600);
+    flush();
 
     expect(live().textContent).toBe("1 setting matches");
   });
@@ -387,6 +390,7 @@ describe("what a screen reader is told about the search", () => {
     render(() => <Settings onClose={() => {}} />);
     type("zzzqqq");
     vi.advanceTimersByTime(600);
+    flush();
     expect(live().textContent).toBe("No settings match");
   });
 });

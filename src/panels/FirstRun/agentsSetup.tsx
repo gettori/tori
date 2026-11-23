@@ -1,4 +1,4 @@
-import { Show, createEffect, createSignal, onMount } from "solid-js";
+import { Show, createEffect, createSignal, onSettled } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import {
   agentHealth,
@@ -30,15 +30,15 @@ export function createAgentsSetup(opts: { home: () => string; onScreen: () => bo
   const [jobState, setJobState] = createSignal<JobState | null>(null);
   const running = () => jobState() === "running" || jobState() === "waiting";
 
-  onMount(() => {
+  onSettled(() => {
     ensureAgentHealthLoaded();
     void ensureAdaptersLoaded().then(loadRoutes);
   });
 
   // A job lives only while the step is on screen, and a job left here would
   // mount again, which runs it again, on the way back.
-  createEffect(() => {
-    if (!opts.onScreen()) clearJob();
+  createEffect(opts.onScreen, (shown) => {
+    if (!shown) clearJob();
   });
 
   async function loadRoutes() {

@@ -1,4 +1,5 @@
-import { For, Show, Switch, Match, createResource, createSignal } from "solid-js";
+import { For, Show, Switch, Match, createSignal } from "solid-js";
+import { createFetchState } from "../../../../lib/fetchState";
 import { invoke } from "@tauri-apps/api/core";
 import Toggle from "../../../../components/Switch/Switch";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
@@ -152,8 +153,14 @@ function DapCard(props: { adapter: DapHealth; onChange: () => Promise<DapHealth[
 }
 
 export default function DapSection() {
-  const [health, { refetch }] = createResource(() => invoke<DapHealth[]>("dap_health"));
+  const [health, { refetch }] = createFetchState(() => invoke<DapHealth[]>("dap_health"));
   onPacksChanged("dap", () => void refetch());
+  // Guarded like every IPC reply read in a pane: a reply that is not a list must
+  // empty the list rather than halt the reactive system.
+  const adapters = () => {
+    const h = health();
+    return Array.isArray(h) ? h : [];
+  };
 
   return (
     <section class={styles.section}>
@@ -172,7 +179,7 @@ export default function DapSection() {
         </Match>
         <Match when={health()}>
           <div class={styles.toolGrid}>
-            <For each={health()}>
+            <For each={adapters()}>
               {(adapter) => <DapCard adapter={adapter} onChange={() => Promise.resolve(refetch())} />}
             </For>
           </div>

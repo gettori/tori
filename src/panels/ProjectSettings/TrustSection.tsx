@@ -1,4 +1,4 @@
-import { createResource, createSignal, onCleanup, Show } from "solid-js";
+import { createMemo, createSignal, onCleanup, refresh, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 
 import { TriangleAlert } from "../../components/Icon/icons";
@@ -22,8 +22,11 @@ const toast = (message: string) => emitWith<ToastEvent>(TOAST, { message, kind: 
  * not name.
  */
 export default function TrustSection(props: { projectPath: string }) {
-  const [entries, { refetch }] = createResource(() => invoke<string[]>("trusted_projects"));
-  onCleanup(onTrustChange(() => void refetch()));
+  // Catches inside: an uncaught rejection would halt the reactive system.
+  const entries = createMemo<string[] | undefined>(() => invoke<string[]>("trusted_projects").catch(() => undefined), {
+    loadingValue: undefined,
+  });
+  onCleanup(onTrustChange(() => void refresh(entries)));
   const [busy, setBusy] = createSignal(false);
 
   const own = () => (entries() ?? []).find((e) => sameCwd(e, props.projectPath));
@@ -48,7 +51,7 @@ export default function TrustSection(props: { projectPath: string }) {
 
   return (
     <Section heading="Trust">
-      <Show when={entries.latest !== undefined}>
+      <Show when={entries() !== undefined}>
         <Show
           when={own()}
           fallback={

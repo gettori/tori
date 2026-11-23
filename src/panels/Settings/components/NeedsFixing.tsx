@@ -1,4 +1,4 @@
-import { For, Show, onMount } from "solid-js";
+import { For, Show, onSettled } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { RotateCcw, Trash2 } from "../../../components/Icon/icons";
 import Icon from "../../../components/Icon/Icon";
@@ -9,7 +9,9 @@ import styles from "../Settings.module.css";
 
 /** The files of one pack kind that did not load, with what to do about each. */
 export default function NeedsFixing(props: { kind: PackKind }) {
-  onMount(() => void refreshLoadErrors());
+  onSettled(() => {
+    void refreshLoadErrors();
+  });
   onPacksChanged(props.kind, () => void refreshLoadErrors());
   const mine = () => loadErrors().filter((e) => e.kind === props.kind);
   const act = (command: "packs_remove" | "packs_update", verb: string, id: string) =>

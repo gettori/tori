@@ -2,7 +2,8 @@
 // backend, applies typography to CSS tokens, and re-applies live when the
 // file changes (hand edit or set_settings) through the settings://changed
 // watcher event. The reactive store backs the settings panel (Phase 4).
-import { createMemo, createSignal, createStore } from "solid-js";
+import { createMemo } from "solid-js";
+import { createLiveSignal, createLiveStore } from "../../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { emit, emitWith, SETTINGS_CHANGED, TOAST } from "../../utils/events";
@@ -641,8 +642,18 @@ export const DEFAULT_SETTINGS: Settings = {
  */
 const BUILT_IN_EDITOR: EditorDefaults = { ...DEFAULT_SETTINGS.editorDefaults };
 
-const [settings, setSettings] = createStore<Settings>(DEFAULT_SETTINGS);
+const [settings, setSettingsDraft] = createLiveStore<Settings>(DEFAULT_SETTINGS);
 export { settings };
+
+// Merges shallowly, and a key set to undefined is deleted.
+function setSettings(next: Settings) {
+  setSettingsDraft((s) => {
+    for (const k of Object.keys(next) as (keyof Settings)[]) {
+      if (next[k] === undefined) delete s[k];
+      else (s as Record<string, unknown>)[k] = next[k];
+    }
+  });
+}
 
 // --- Global zoom (VSCode's "Zoom In/Out" model) ---------------------------
 //
@@ -669,7 +680,7 @@ function readStoredZoom(): number {
   return Number.isFinite(raw) && raw > 0 ? clampZoom(raw) : 1;
 }
 
-const [zoom, setZoomSignal] = createSignal(readStoredZoom());
+const [zoom, setZoomSignal] = createLiveSignal(readStoredZoom());
 export { zoom };
 
 /** Effective terminal font size in px (base setting × zoom), read by xterm.
@@ -769,7 +780,7 @@ function applyAll(s: Settings) {
 // consumer that refuses an action on an empty setting has to know whether the
 // setting is empty or merely unread. A failed read still counts as loaded - the
 // defaults are then the answer the whole app is running on.
-const [settingsLoaded, setSettingsLoaded] = createSignal(false);
+const [settingsLoaded, setSettingsLoaded] = createLiveSignal(false);
 export { settingsLoaded };
 
 /** Read settings from disk into the store and apply them. */
@@ -850,8 +861,8 @@ export function forgetChatPrefsUnder(projectPath: string): Promise<void> {
 // answers are ever in force: the editor reads them, the Settings panel badges
 // them, and a background workspace's overlay would be a cache with no reader.
 
-const [overlayRoot, setOverlayRoot] = createSignal<string | null>(null);
-const [overlay, setOverlay] = createSignal<EditorOverlay>({});
+const [overlayRoot, setOverlayRoot] = createLiveSignal<string | null>(null);
+const [overlay, setOverlay] = createLiveSignal<EditorOverlay>({});
 export { overlayRoot };
 
 /**
@@ -1185,8 +1196,7 @@ export const lanesFor = (space: string): LaneConfig =>
 
 /** Value-equal, since every save hands back a fresh object for every Space
  *  (gotcha_every_settings_save_replaces_every_per_project_map). */
-export const laneConfigFor = (space: () => string) =>
-  createMemo(() => lanesFor(space()), undefined, { equals: sameLanes });
+export const laneConfigFor = (space: () => string) => createMemo(() => lanesFor(space()), { equals: sameLanes });
 
 export function setLanes(space: string | null, patch: Partial<LaneConfig>): Promise<void> {
   const lanes = settings.sidebar.lanes;

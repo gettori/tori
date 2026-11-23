@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, on, onCleanup, onMount, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, onSettled, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { ChevronRight } from "../../components/Icon/icons";
 import Chevron from "../../components/Chevron/Chevron";
@@ -75,10 +75,8 @@ export default function HistoryPanel(props: {
   // rather than `onMount` because the panel is not re-created when the workspace
   // under it changes - only when it is closed and reopened.
   createEffect(
-    on(
-      () => props.folder,
-      (folder) => void checkHistorical(folder),
-    ),
+    () => props.folder,
+    (folder) => void checkHistorical(folder),
   );
 
   // Arrow keys and Enter, so `role="option"` is a description of how the list
@@ -108,8 +106,10 @@ export default function HistoryPanel(props: {
     // The highlight is useless if it walks off the bottom of a 47-row list.
     queueMicrotask(() => el?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" }));
   }
-  onMount(() => document.addEventListener("keydown", onKeyDown));
-  onCleanup(() => document.removeEventListener("keydown", onKeyDown));
+  onSettled(() => {
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  });
 
   const label = (s: SessionMeta) => s.name || s.title;
   const q = () => query().trim().toLowerCase();
@@ -149,10 +149,12 @@ export default function HistoryPanel(props: {
   const isActive = (s: SessionMeta) => visibleRows()[active()] === s;
   // Typing narrows the list under the highlight, so it must not be left past
   // the end of what is now shown.
-  createEffect(() => {
-    const n = visibleRows().length;
-    if (active() >= n) setActive(n ? n - 1 : 0);
-  });
+  createEffect(
+    () => [visibleRows().length, active()] as const,
+    ([n, at]) => {
+      if (at >= n) setActive(n ? n - 1 : 0);
+    },
+  );
 
   async function adopt() {
     try {

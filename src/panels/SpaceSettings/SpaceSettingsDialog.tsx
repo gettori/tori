@@ -1,4 +1,4 @@
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createSignal, For, onCleanup, onSettled, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import {
   Copy,
@@ -109,7 +109,9 @@ export default function SpaceSettingsDialog(props: {
     setQuery("");
     return true;
   };
-  onMount(() => requestAnimationFrame(() => searchEl?.focus()));
+  onSettled(() => {
+    requestAnimationFrame(() => searchEl?.focus());
+  });
   onCleanup(onWith(OPEN_SETTINGS, () => props.onClose()));
 
   function onRailKeyDown(e: KeyboardEvent) {

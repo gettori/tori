@@ -1,4 +1,5 @@
-import { For, Show, Switch, Match, createResource, createSignal } from "solid-js";
+import { For, Show, Switch, Match, createSignal } from "solid-js";
+import { createFetchState } from "../../../../lib/fetchState";
 import { invoke } from "@tauri-apps/api/core";
 import Toggle from "../../../../components/Switch/Switch";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
@@ -102,8 +103,14 @@ function FormatterCard(props: { formatter: FormatterHealth }) {
 }
 
 export default function FormattersSection() {
-  const [formatters, { refetch }] = createResource(() => invoke<FormatterHealth[]>("formatter_health"));
+  const [formatters, { refetch }] = createFetchState(() => invoke<FormatterHealth[]>("formatter_health"));
   onPacksChanged("formatters", () => void refetch());
+  // Guarded like every IPC reply read in a pane: a reply that is not a list must
+  // empty the list rather than halt the reactive system.
+  const list = () => {
+    const h = formatters();
+    return Array.isArray(h) ? h : [];
+  };
 
   return (
     <section class={styles.section}>
@@ -122,7 +129,7 @@ export default function FormattersSection() {
         </Match>
         <Match when={formatters()}>
           <div class={styles.toolGrid}>
-            <For each={formatters()}>{(formatter) => <FormatterCard formatter={formatter} />}</For>
+            <For each={list()}>{(formatter) => <FormatterCard formatter={formatter} />}</For>
           </div>
           <div class={styles.note}>
             Format Document, and format on save when it is on, use the formatter the project's config or{" "}

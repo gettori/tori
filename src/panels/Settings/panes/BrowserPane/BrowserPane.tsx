@@ -1,4 +1,4 @@
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createSignal, For, onSettled, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { Group, Row, idsIn, type PaneProps } from "../../components/paneKit";
 import styles from "../../Settings.module.css";
@@ -24,14 +24,14 @@ export default function BrowserPane(props: PaneProps) {
       .then(setStatus)
       .catch(() => setStatus((s) => s && { ...s, connected: false }));
 
-  onMount(() => {
+  onSettled(() => {
     load();
     const poll = setInterval(load, POLL_MS);
     window.addEventListener("focus", load);
-    onCleanup(() => {
+    return () => {
       clearInterval(poll);
       window.removeEventListener("focus", load);
-    });
+    };
   });
 
   const install = () =>

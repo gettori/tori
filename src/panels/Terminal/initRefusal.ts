@@ -1,9 +1,9 @@
 // Tabs whose shell gave the terminal to something else before their init was
 // typed, keyed by tab id, with what took it. A signal beside the tab model for
 // `commandStatus`'s reason: the strip keys tabs by identity.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../../lib/liveState";
 
-const [refused, setRefused] = createSignal<Record<string, string>>({});
+const [refused, setRefused] = createLiveSignal<Record<string, string>>({});
 
 /** What took the terminal from this tab's shell, or null when nothing did. */
 export const initRefusal = (id: string): string | null => refused()[id] ?? null;

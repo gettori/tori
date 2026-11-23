@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { TriangleAlert } from "../../components/Icon/icons";
@@ -152,7 +152,7 @@ function FixLoopSection(props: { projectPath: string }) {
 const UNPICKED: Partial<ReviewRule> = { agent: null, account: null, model: null, effort: null, mode: null };
 
 function ReviewRunsOn(props: { rule: ReviewRule; save: (patch: Partial<ReviewRule>) => void }) {
-  onMount(() => {
+  onSettled(() => {
     ensureAdaptersLoaded();
     ensureAgentHealthLoaded();
     void ensureModelCatalogsLoaded();
@@ -244,6 +244,9 @@ function ReviewRunsOn(props: { rule: ReviewRule; save: (patch: Partial<ReviewRul
 export default function AutomationsSection(props: { projectPath: string }) {
   const rule = () => reviewRule(props.projectPath);
   const save = (patch: Partial<ReviewRule>) => void setReviewRule(props.projectPath, patch);
+  // Held as typed: the placeholder changing re-runs the textarea's binding, which
+  // would write the stored prompt back over an uncommitted edit.
+  const [promptDraft, setPromptDraft] = createSignal(() => rule().prompt ?? "");
   const [paused, setPaused] = createSignal(false);
   const [defaultPrompt, setDefaultPrompt] = createSignal("");
   // A failed read keeps what was last known rather than hiding a pause.
@@ -255,12 +258,12 @@ export default function AutomationsSection(props: { projectPath: string }) {
       },
       () => {},
     );
-  onMount(() => {
+  onSettled(() => {
     void read();
     const off = listen<string>("review-rule://changed", (e) => {
       if (e.payload === props.projectPath) void read();
     });
-    onCleanup(() => void off.then((f) => f()));
+    return () => void off.then((f) => f());
   });
   const resume = async () => {
     await invoke("review_rule_resume", { projectPath: props.projectPath });
@@ -288,7 +291,8 @@ export default function AutomationsSection(props: { projectPath: string }) {
               aria-label="Review prompt"
               rows={8}
               placeholder={defaultPrompt()}
-              value={rule().prompt ?? ""}
+              value={promptDraft()}
+              onInput={(e) => setPromptDraft(e.currentTarget.value)}
               onChange={(e) => save({ prompt: e.currentTarget.value.trim() || null })}
             />
           </Row>
