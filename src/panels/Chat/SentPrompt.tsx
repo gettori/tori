@@ -1,12 +1,11 @@
-import { Show, createEffect, createMemo, createSignal, getOwner, onCleanup, runWithOwner, untrack } from "solid-js";
-import { render } from "@solidjs/web";
+import { Show, createEffect, createMemo, createSignal, getOwner, onCleanup, untrack } from "solid-js";
 import type { ContentBlock, RefTarget } from "../../utils/chatTypes";
 import { emitWith, NAVIGATE, OPEN_IN_EDITOR, SESSION_ACTION } from "../../utils/events";
 import type { NavTarget, OpenInEditor, SessionAction } from "../../utils/events";
 import { openPrByNumber } from "../../utils/openPrTab";
 import { AttachmentChip, AttachmentGrid, InlineChip, type HeldBlock } from "./AttachmentChip";
 import AttachmentPreview from "./AttachmentPreview";
-import { createPromptField, type ChipSpec } from "./composerField";
+import { createPromptField, mountChip, type ChipSpec } from "./composerField";
 import styles from "./Chat.module.css";
 
 function openRef(t: RefTarget, cwd: string) {
@@ -78,19 +77,18 @@ export default function SentPrompt(props: { blocks: readonly ContentBlock[]; cwd
     return {
       key: a.id,
       mount: (dom) =>
-        runWithOwner(owner, () =>
-          render(
-            () => (
-              <InlineChip
-                label={label}
-                block={a.block}
-                onPoint={(on) => setPointing(on ? a.id : null)}
-                onPreview={() => setPreviewing(a.block)}
-              />
-            ),
-            dom,
+        mountChip(
+          owner,
+          () => (
+            <InlineChip
+              label={label}
+              block={a.block}
+              onPoint={(on) => setPointing(on ? a.id : null)}
+              onPreview={() => setPreviewing(a.block)}
+            />
           ),
-        )!,
+          dom,
+        ),
     };
   };
 

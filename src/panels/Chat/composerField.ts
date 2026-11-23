@@ -6,6 +6,8 @@
 // markdown and code highlighting are in `composerFieldRich.ts`, which loads
 // behind a dynamic import and is slotted in when it arrives. Until then the
 // field is a plain editable box, which is all a first keystroke needs.
+import { createRoot, runWithOwner, type Owner } from "solid-js";
+import { insert, registerDelegatedRoot, unregisterDelegatedRoot, type JSX } from "@solidjs/web";
 import {
   Annotation,
   Compartment,
@@ -32,6 +34,23 @@ import {
  *  (a chip removed and another attached under the same name), so a widget is
  *  reused only while its key holds. */
 export type ChipSpec = { key: string; mount: (dom: HTMLElement) => () => void };
+
+// Not `render`: a chip can mount while its component is still setting up, and
+// render's flush would run that component's queued effects under its owner.
+export function mountChip(owner: Owner | null, view: () => JSX.Element, dom: HTMLElement): () => void {
+  registerDelegatedRoot(dom);
+  const dispose = runWithOwner(owner, () =>
+    createRoot((d) => {
+      insert(dom, view());
+      return d;
+    }),
+  );
+  return () => {
+    dispose();
+    unregisterDelegatedRoot(dom);
+    dom.textContent = "";
+  };
+}
 
 export type ComposerFieldOptions = {
   parent: HTMLElement;

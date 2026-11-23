@@ -1,3 +1,4 @@
+import { lazyArg } from "../../../.storybook/lazyArg";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { createSignal } from "solid-js";
 import ContextMenu from "./ContextMenu";
@@ -72,7 +73,7 @@ export const WithHeading: Story = {
  *  because they go through the same row layer. */
 export const CustomRows: Story = {
   args: {
-    menu: (
+    menu: lazyArg(() => (
       <>
         <MenuRow onClick={() => {}}>
           <span>main</span>
@@ -87,7 +88,7 @@ export const CustomRows: Story = {
           Delete this worktree
         </MenuRow>
       </>
-    ),
+    )),
   },
 };
 
