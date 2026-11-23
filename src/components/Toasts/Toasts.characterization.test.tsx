@@ -13,7 +13,10 @@ type Agent = {
 function mount(): Agent {
   render(() => <ToastRegion />);
   return {
-    push: (message) => pushToast(message, "info"),
+    push: (message) => {
+      pushToast(message, "info");
+      flush();
+    },
     hover: (message) => fireEvent.pointerMove(screen.getByText(message).closest('[role="status"]')!),
     unhover: (message) => fireEvent.pointerLeave(screen.getByText(message).closest('[role="status"]')!.parentElement!),
   };
@@ -45,6 +48,7 @@ describe("toast stack characterization", () => {
       "fourth: nothing is running",
     ];
     for (const m of messages) h.push(m);
+    flush();
     for (const m of messages) expect(visible(m), m).toBe(true);
     for (let i = 1; i < messages.length; i++) {
       expect(position(messages[i - 1])).toBeLessThan(position(messages[i]));

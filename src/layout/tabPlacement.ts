@@ -8,7 +8,7 @@
 // sequence, so a merged-in tab appends after what was there and a strip drag
 // still wins over both. `locks` is the user saying a pane takes one kind and
 // nothing else (phase 11), which outranks both of the first two.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal, getOwner, untrack } from "solid-js";
 import { deferredWrite } from "../utils/deferredWrite";
 import { leaves, resolvePinPane, type PaneNode } from "./paneLayout";
 import { pinSideOf } from "./pinRules";
@@ -83,11 +83,20 @@ function load(): Record<string, WsPlacement> {
   return out;
 }
 
-const [placements, setPlacements] = createLiveSignal<Record<string, WsPlacement>>(load());
+const [placements, setPlacements] = createSignal<Record<string, WsPlacement>>(load());
+
+// Edits build on what an earlier write in this tick left, which only an updater
+// can see. Under an owner a write is refused, so there it is a plain read.
+function latestPlacements(): Record<string, WsPlacement> {
+  if (getOwner()) return untrack(placements);
+  let held!: Record<string, WsPlacement>;
+  setPlacements((prev) => (held = prev));
+  return held;
+}
 
 const placementWrite = deferredWrite(() => {
   try {
-    localStorage.setItem(LS_PLACEMENT, JSON.stringify(placements()));
+    localStorage.setItem(LS_PLACEMENT, JSON.stringify(latestPlacements()));
   } catch {
     // ignore
   }
@@ -99,10 +108,25 @@ export function flushTabPlacement() {
   placementWrite.flush();
 }
 
-const wsOf = (ws: string): WsPlacement => placements()[ws] ?? empty();
+// Set while an edit works out its change, so the lookups it shares with readers
+// answer from the latest state too.
+let editing: Record<string, WsPlacement> | null = null;
+const wsOf = (ws: string): WsPlacement => (editing ?? placements())[ws] ?? empty();
+
+function atLatest<T>(read: () => T): T {
+  const was = editing;
+  editing = latestPlacements();
+  try {
+    return read();
+  } finally {
+    editing = was;
+  }
+}
+
+const latestWs = (ws: string): WsPlacement => latestPlacements()[ws] ?? empty();
 
 function write(ws: string, next: WsPlacement) {
-  setPlacements({ ...placements(), [ws]: next });
+  setPlacements((all) => ({ ...all, [ws]: next }));
   placementWrite.schedule();
 }
 
@@ -124,7 +148,7 @@ export const paneLock = (ws: string, paneId: string): string | null => wsOf(ws).
 
 /** Lock a pane to one kind, or clear it. */
 export function setPaneLock(ws: string, paneId: string, kind: string | null) {
-  const p = wsOf(ws);
+  const p = latestWs(ws);
   if ((p.locks[paneId] ?? null) === kind) return;
   const locks = { ...p.locks };
   if (kind) locks[paneId] = kind;
@@ -160,7 +184,7 @@ export function orderInPane<T extends TabRef>(ws: string, tabs: T[]): T[] {
 /** Restamp `ids` as one pane's sequence, after everything stamped so far. */
 export function stampOrder(ws: string, ids: string[]) {
   if (ids.length === 0) return;
-  const p = wsOf(ws);
+  const p = latestWs(ws);
   const order = { ...p.order };
   let seq = p.seq;
   for (const id of ids) order[id] = ++seq;
@@ -184,7 +208,7 @@ export function activeIdInPane(ws: string, paneId: string, idsInPane: string[], 
 }
 
 export function setPaneActive(ws: string, paneId: string, tabId: string) {
-  const p = wsOf(ws);
+  const p = latestWs(ws);
   if (p.active[paneId] === tabId) return;
   write(ws, { ...p, active: { ...p.active, [paneId]: tabId } });
 }
@@ -221,16 +245,20 @@ export function moveTabToPane(a: {
   root: PaneNode;
   tabsInWs: TabRef[];
 }): string | null {
-  const refusal = placementRefusal(a);
-  if (refusal) return refusal;
-  const p = wsOf(a.ws);
-  const from = paneOfTab(a.ws, a.tab, a.root);
-  const tabs = { ...p.tabs, [a.tab.id]: a.targetPaneId };
-  const groupLeft =
-    !!from &&
-    !a.tabsInWs.some((t) => t.kind === a.tab.kind && t.id !== a.tab.id && paneOfTab(a.ws, t, a.root) === from);
-  const kinds = groupLeft ? { ...p.kinds, [a.tab.kind]: a.targetPaneId } : p.kinds;
-  write(a.ws, { ...p, tabs, kinds, active: { ...p.active, [a.targetPaneId]: a.tab.id } });
+  const edit = atLatest(() => {
+    const refusal = placementRefusal(a);
+    if (refusal) return { refusal };
+    const p = wsOf(a.ws);
+    const from = paneOfTab(a.ws, a.tab, a.root);
+    const tabs = { ...p.tabs, [a.tab.id]: a.targetPaneId };
+    const groupLeft =
+      !!from &&
+      !a.tabsInWs.some((t) => t.kind === a.tab.kind && t.id !== a.tab.id && paneOfTab(a.ws, t, a.root) === from);
+    const kinds = groupLeft ? { ...p.kinds, [a.tab.kind]: a.targetPaneId } : p.kinds;
+    return { next: { ...p, tabs, kinds, active: { ...p.active, [a.targetPaneId]: a.tab.id } } };
+  });
+  if (edit.refusal) return edit.refusal;
+  write(a.ws, edit.next!);
   stampOrder(a.ws, [a.tab.id]);
   return null;
 }
@@ -244,28 +272,33 @@ export function moveTabToPane(a: {
  * down first makes the new rule what it says it is, a rule for what opens next.
  */
 export function pinCurrentPlacements(ws: string, root: PaneNode, tabsInWs: TabRef[]) {
-  const p = wsOf(ws);
-  const tabs = { ...p.tabs };
-  let changed = false;
-  for (const t of tabsInWs) {
-    if (tabs[t.id]) continue;
-    const pane = paneOfTab(ws, t, root);
-    if (!pane) continue;
-    tabs[t.id] = pane;
-    changed = true;
-  }
-  if (changed) write(ws, { ...p, tabs });
+  const next = atLatest(() => {
+    const p = wsOf(ws);
+    const tabs = { ...p.tabs };
+    let changed = false;
+    for (const t of tabsInWs) {
+      if (tabs[t.id]) continue;
+      const pane = paneOfTab(ws, t, root);
+      if (!pane) continue;
+      tabs[t.id] = pane;
+      changed = true;
+    }
+    return changed ? { ...p, tabs } : null;
+  });
+  if (next) write(ws, next);
 }
 
 /** Close-pane merge (plan phase 8 task 3): every tab in `from` lands in `to`,
  *  appended after what `to` already holds. Runs before the tree edit, while
  *  `from` still exists to resolve against. */
 export function mergePaneInto(a: { ws: string; from: string; to: string; root: PaneNode; tabsInWs: TabRef[] }) {
-  const moving = orderInPane(
-    a.ws,
-    a.tabsInWs.filter((t) => paneOfTab(a.ws, t, a.root) === a.from),
+  const moving = atLatest(() =>
+    orderInPane(
+      a.ws,
+      a.tabsInWs.filter((t) => paneOfTab(a.ws, t, a.root) === a.from),
+    ),
   );
-  const p = wsOf(a.ws);
+  const p = latestWs(a.ws);
   const tabs = { ...p.tabs };
   const kinds = { ...p.kinds };
   const active = { ...p.active };
@@ -290,7 +323,7 @@ export function mergePaneInto(a: { ws: string; from: string; to: string; root: P
  * on. Run wherever a pane closes, merge or no merge.
  */
 export function forgetPane(ws: string, paneId: string) {
-  const p = wsOf(ws);
+  const p = latestWs(ws);
   if (!(paneId in p.locks) && !(paneId in p.active)) return;
   const locks = { ...p.locks };
   const active = { ...p.active };
@@ -302,7 +335,7 @@ export function forgetPane(ws: string, paneId: string) {
 /** A closed tab leaves nothing behind: its entries would otherwise outlive it
  *  and be inherited by a future tab that reused the id (a file path does). */
 export function forgetTab(ws: string, tabId: string) {
-  const p = wsOf(ws);
+  const p = latestWs(ws);
   if (!(tabId in p.tabs) && !(tabId in p.order) && !Object.values(p.active).includes(tabId)) return;
   const tabs = { ...p.tabs };
   const order = { ...p.order };
@@ -317,14 +350,15 @@ export function forgetTab(ws: string, tabId: string) {
 // shell mounts once per app run, and repeated test mounts get a fresh model.
 /** Drop a workspace's placements outright: the key is gone, not empty. */
 export function forgetWorkspace(ws: string) {
-  if (!placements()[ws]) return;
-  const { [ws]: _gone, ...rest } = placements();
+  const all = latestPlacements();
+  if (!all[ws]) return;
+  const { [ws]: _gone, ...rest } = all;
   setPlacements(rest);
   placementWrite.schedule();
 }
 
 export function moveWorkspacePlacements(moves: readonly PathMove[]) {
-  setPlacements(moveDeep(placements(), moves));
+  setPlacements((all) => moveDeep(all, moves));
   placementWrite.schedule();
 }
 

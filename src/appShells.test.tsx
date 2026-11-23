@@ -3,7 +3,7 @@
 // are stubbed to what a real one does with focus.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent, cleanup } from "./test/harness";
-import { createEffect } from "solid-js";
+import { flush, createEffect } from "solid-js";
 
 // What the backend answers, from import time on: modules the real panels load
 // ask it for things before any test has started.
@@ -226,6 +226,7 @@ describe("the dock", () => {
     await waitFor(() => expect(screen.queryByText("Sign in to Claude is still running.")).toBeNull());
 
     focusWorkspace();
+    flush();
     emit(CLOSE_TAB);
     await waitFor(() => expect(open().some((t) => t.id === "sh:1")).toBe(false));
     expect(commandTabs().map((t) => t.id)).toEqual(["signin:claude"]);

@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 // The per-workspace layout envelope store (plan phase 5). A .tsx suite for the
 // jsdom project: the store's whole job is localStorage round-trips, which the
 // node project has no localStorage to run against.
@@ -105,6 +106,7 @@ describe("the envelope store", () => {
     ensureEnvelope("/w/a", seed);
     expect(updateLayout("/w/a", (root) => setPaneHidden(root, "right", true))).toBe(true);
     relaunch();
+    flush();
     expect(findPane(envelopeFor("/w/a", seed).layout, "right")!.hidden).toBe(true);
   });
 
@@ -114,6 +116,7 @@ describe("the envelope store", () => {
     setFocusedPane("/w/a", "right");
     setFocusedPane("/w/b", "left");
     relaunch();
+    flush();
     expect(focusedPaneId("/w/a")).toBe("right");
     expect(focusedPaneId("/w/b")).toBe("left");
   });
@@ -122,6 +125,7 @@ describe("the envelope store", () => {
     ensureEnvelope("/w/a", seed);
     setFocusedPane("/w/a", "right");
     updateLayout("/w/a", (root) => setPaneHidden(root, "right", true));
+    flush();
     expect(focusedPaneId("/w/a")).toBe("left");
   });
 

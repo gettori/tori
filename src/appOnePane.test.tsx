@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 // The single-pane default (plan phase 12). A workspace starts as one pane whose
 // strip holds every kind together; a split is something the user asks for and
 // keeps; and the editor chrome is workspace chrome, so it stays put through
@@ -144,6 +145,7 @@ describe("a workspace nobody has split", () => {
     render(() => <App />);
     await waitFor(() => expect(panes().length).toBe(1));
     emitWith<SplitPane>(SPLIT_PANE, { dir: "row" });
+    flush();
     expect(panes().length).toBe(2);
 
     // Remounted the way a relaunch would: the quit lands the deferred store

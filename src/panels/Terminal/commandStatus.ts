@@ -1,14 +1,14 @@
 // How a command tab's process exited, keyed by tab id. A signal beside the tab
 // model, never a field on `OpenTerm`: the strip keys by object identity, and
 // replacing a tab to record its exit remounts its surface (gotcha: For over items).
-import { createLiveSignal } from "../../lib/liveState";
+import { createSignal } from "solid-js";
 
 export type CommandStatus = "running" | "ok" | "failed";
 
 // The code, not the verdict it maps to: a failed tab says `exit 1` rather than
 // "failed", and a verdict cannot be un-derived back into a number. `null` is an
 // exit whose code never arrived.
-const [reported, setReported] = createLiveSignal<Record<string, number | null>>({});
+const [reported, setReported] = createSignal<Record<string, number | null>>({});
 
 /** A tab nothing has reported for is running: a command tab exists to run one. */
 export const commandStatus = (id: string): CommandStatus => {
@@ -32,18 +32,24 @@ export const commandVerdict = (id: string): string | null => {
  *  would re-toast and could flip a verdict. Returns whether this report was the
  *  one recorded. */
 export function reportCommandExit(id: string, code: number | null): boolean {
-  if (id in reported()) return false;
-  setReported({ ...reported(), [id]: code });
-  return true;
+  let recorded = false;
+  setReported((all) => {
+    if (id in all) return all;
+    recorded = true;
+    return { ...all, [id]: code };
+  });
+  return recorded;
 }
 
 /** A closed tab leaves nothing behind, or a later tab reusing the id (dedupe
  *  mints ids from what they act on) would inherit a verdict. */
 export function dropCommandStatus(id: string): void {
-  if (!(id in reported())) return;
-  const next = { ...reported() };
-  delete next[id];
-  setReported(next);
+  setReported((all) => {
+    if (!(id in all)) return all;
+    const next = { ...all };
+    delete next[id];
+    return next;
+  });
 }
 
 /** Test seam, mirroring `resetTerminalTabModel`. */

@@ -147,6 +147,7 @@ export default defineConfig(async ({ command }) => ({
             "onTrustChange",
             "onWith",
             "setDebugBreakpointSource",
+            "atLatest",
             "watchGit",
             "watchPr",
             "watchSync",
