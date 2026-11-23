@@ -361,6 +361,7 @@ describe("the tree's expanded set", () => {
     expect(isDirOpen(WS, `${WS}/src`)).toBe(false);
 
     emitWith(PURGE_UNDER_PATH, { path: `${WS}/lib` });
+    flush();
     expect(isDirOpen(WS, `${WS}/lib`)).toBe(false);
   });
 });

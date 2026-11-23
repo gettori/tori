@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import PaneView from "../../tabs/PaneView";
-import { createSignal } from "solid-js";
+import { flush, createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent, within } from "../../test/harness";
 import { pointerClick } from "../../test/menus";
 
@@ -270,6 +270,7 @@ describe("recording where you have been", () => {
     await arrive({ path: `${REPO}/other.ts` });
 
     emitWith(FILE_RENAMED, { from: `${REPO}/old.ts`, to: `${REPO}/new.ts` });
+    flush();
 
     await goBack(`${REPO}/new.ts`);
     expect(code?.goto).toMatchObject({ path: `${REPO}/new.ts`, line: 12 });
