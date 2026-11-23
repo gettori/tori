@@ -29,16 +29,6 @@
   min-height: 0;
 }
 
-/* The wrapper div Solid's Portal inserts between the slot and codeEditorWrap.
-   Without this it is an unstyled block in a flex row, so the wrap's flex:1 has
-   no flex parent and the whole editor takes its content height: CodeMirror's
-   scroller never ends up shorter than the document, which is the only state in
-   which it scrolls. Stage hosts solve the same problem the same way (App.css
-   `[data-stage-host] > div`). */
-.codeSlot > div {
-  display: contents;
-}
-
 /* A pane showing something that is not an editable buffer (a preview, an image,
    a commit view): the slot drops out of flow, or its flex:1 would keep half the
    column as an empty box above whatever is actually shown. display:none rather
