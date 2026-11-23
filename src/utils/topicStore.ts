@@ -2,7 +2,6 @@
 // screen never asks for the list.
 
 import { createSignal } from "solid-js";
-import { withoutFlush } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { noteTopics, type Topic } from "./topics";
@@ -88,12 +87,9 @@ function stop() {
   seq++;
   unlisten.forEach((off) => off());
   unlisten = [];
-  // Runs as an effect's cleanup, where a flush is refused.
-  withoutFlush(() => {
-    setRecords([]);
-    setReloads(0);
-    setLoadError(null);
-  });
+  setRecords([]);
+  setReloads(0);
+  setLoadError(null);
 }
 
 export function watchTopics(): () => void {
