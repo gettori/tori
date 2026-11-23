@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createResource, createSignal, For, on, Show, untrack } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show, untrack } from "solid-js";
 
 import Button from "../../components/Button/Button";
 import Checkbox from "../../components/Checkbox/Checkbox";
@@ -27,7 +27,7 @@ const ANY_OTHER = "";
 /** Who gives this project's second opinions: one agent and account, or by
  *  default the first enabled reviewer that is not the session's own agent. */
 function SecondOpinionPick(props: { projectPath: string }) {
-  const [choices] = createResource(reviewerChoices);
+  const choices = createMemo<string[] | undefined>(() => reviewerChoices(), { loadingValue: undefined });
   const stored = () => settings.secondOpinion?.[props.projectPath] ?? null;
   const options = () => {
     const rows = (choices() ?? []).flatMap((id) => {
@@ -130,7 +130,7 @@ export default function AgentsSection(props: {
     setMode(stored.length ? "only" : "every");
     setChecked(stored.map(rowKey));
   };
-  createEffect(on(storedKey, discard));
+  createEffect(storedKey, discard);
 
   const only = () => mode() === "only";
   const isOn = (key: string) => checked().includes(key);
@@ -143,7 +143,12 @@ export default function AgentsSection(props: {
       : [];
   const dirty = () => draft().map(rowKey).sort().join() !== storedKey();
   const canSave = () => dirty() && (!only() || checked().length > 0);
-  createEffect(() => props.onDirty?.("allowed", dirty()));
+  createEffect(
+    () => [props.onDirty, dirty()] as const,
+    ([onDirty, isDirty]) => {
+      onDirty?.("allowed", isDirty);
+    },
+  );
   const summary = () => {
     if (!only()) return "Every agent allowed";
     if (!checked().length) return "Tick at least one agent";

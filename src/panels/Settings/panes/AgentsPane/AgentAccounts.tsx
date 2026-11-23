@@ -1,4 +1,4 @@
-import { For, Show, createResource, createSignal, onCleanup } from "solid-js";
+import { For, Show, createDeferred, createMemo, createSignal, onCleanup, refresh } from "solid-js";
 import { Minus, Plus, RefreshCw } from "../../../../components/Icon/icons";
 import { invoke } from "@tauri-apps/api/core";
 import Button from "../../../../components/Button/Button";
@@ -845,15 +845,20 @@ export default function AgentAccounts(props: {
    *  somebody reopened the page. */
   onAccountsChanged?: () => void;
 }) {
-  const [view, { refetch }] = createResource(
-    () => props.agentId,
-    (id) => invoke<AccountsView>("agent_accounts", { adapterId: id }),
+  // Catches inside: an uncaught rejection would halt the reactive system.
+  const view = createDeferred<AccountsView | undefined>(
+    (was) => {
+      const id = props.agentId;
+      if (!id) return was;
+      return invoke<AccountsView>("agent_accounts", { adapterId: id }).catch(() => undefined);
+    },
+    { loadingValue: undefined },
   );
   // A login has no working directory of its own; a terminal needs somewhere to
   // be. Home is the one place that is always there and never surprising, and it
   // keeps this component from having to be told about the user's workspace for
   // a reason that has nothing to do with the workspace.
-  const [cwd] = createResource(() => homeDir().catch(() => "/"));
+  const cwd = createMemo<string | undefined>(() => homeDir().catch(() => "/"), { loadingValue: undefined });
   const [adding, setAdding] = createSignal(false);
   // The one transition nothing sends an event for: a window resets on a clock,
   // so without this a card left open would keep counting down past the reset it
@@ -917,7 +922,7 @@ export default function AgentAccounts(props: {
     // goes: the detail page holds its own copy of the sweep, so refreshing only
     // the shared store leaves the Models tabs naming an account that has been
     // renamed or removed until Settings is reopened.
-    void (props.onRecheck ? props.onRecheck() : refreshAgentHealth()).then(() => refetch());
+    void (props.onRecheck ? props.onRecheck() : refreshAgentHealth()).then(() => refresh(view));
     props.onAccountsChanged?.();
   };
 
@@ -928,7 +933,7 @@ export default function AgentAccounts(props: {
     setChecking(true);
     try {
       await (props.onRecheck ? props.onRecheck() : refreshAgentHealth());
-      await refetch();
+      await refresh(view);
     } finally {
       setChecking(false);
     }

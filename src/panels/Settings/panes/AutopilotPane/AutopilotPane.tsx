@@ -1,4 +1,4 @@
-import { createMemo, onMount, Show } from "solid-js";
+import { createMemo, onSettled, Show } from "solid-js";
 import {
   CardSection,
   Group,
@@ -35,7 +35,7 @@ import ProjectList from "../ProjectsPane/ProjectList";
 const percent = (n: number | null) => (n === null ? null : Math.min(95, Math.round(n)));
 
 export default function AutopilotPane(props: PaneProps) {
-  onMount(() => {
+  onSettled(() => {
     ensureAdaptersLoaded();
     ensureAgentHealthLoaded();
     void ensureModelCatalogsLoaded().then(() => probeAgent(agentId(), profile()));

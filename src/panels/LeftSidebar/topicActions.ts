@@ -112,18 +112,19 @@ export function createTopicActions(host: TopicActionsHost) {
   // `<For>` keys on, so a row's own open state would not survive a rename.
   // In localStorage so a restart reopens the rows that were open.
   const [expanded, setExpanded] = createSignal<Record<string, boolean>>(loadExpanded());
-  createEffect(() => {
-    const open = Object.keys(expanded()).filter((id) => expanded()[id]);
-    host.onExpanded?.(open);
-    try {
-      localStorage.setItem(LS_EXPANDED, JSON.stringify(open));
-    } catch {
-      // ignore quota
-    }
-  });
+  createEffect(
+    () => Object.keys(expanded()).filter((id) => expanded()[id]),
+    (open) => {
+      host.onExpanded?.(open);
+      try {
+        localStorage.setItem(LS_EXPANDED, JSON.stringify(open));
+      } catch {
+        // ignore quota
+      }
+    },
+  );
 
-  createEffect(() => {
-    topicsReloaded();
+  createEffect(topicsReloaded, () => {
     setError(null);
   });
   onCleanup(onPromoted((p) => promoted(p.topic, p.from, p.to)));

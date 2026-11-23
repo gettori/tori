@@ -1,4 +1,4 @@
-import { onCleanup, onMount, createEffect, createSignal, Show } from "solid-js";
+import { onCleanup, onSettled, createEffect, createSignal, Show } from "solid-js";
 import { Terminal, type ILink, type IDisposable } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
@@ -186,9 +186,9 @@ export default function TerminalView(props: {
     term?.focus();
   }
 
-  createEffect(() => {
+  createEffect(showSearch, (show) => {
     // The box is not in the document until this update renders.
-    if (showSearch()) queueMicrotask(() => searchInput?.focus());
+    if (show) queueMicrotask(() => searchInput?.focus());
   });
 
   // Both fits on the reveal path stay (an observer tick can miss a display:none
@@ -223,7 +223,7 @@ export default function TerminalView(props: {
     }
   }
 
-  onMount(async () => {
+  const start = async () => {
     // Before anything measures a cell. xterm lays its grid on one measurement of
     // this font and tells the pty the resulting size, so measuring the fallback
     // while the bundled face is still loading gets both wrong at once.
@@ -385,6 +385,9 @@ export default function TerminalView(props: {
       // Behind the reveal's own update, so the fit measures the visible pane.
       if (props.active) queueMicrotask(fitNow);
     });
+  };
+  onSettled(() => {
+    void start();
   });
 
   // Live font: xterm is canvas/WebGL, so CSS can't reach it - push the effective
@@ -392,39 +395,43 @@ export default function TerminalView(props: {
   // API, then refit so the cell grid and pty dimensions follow. Runs once term
   // exists and again on every zoom/font change; initial values are set at
   // construction above.
-  createEffect(() => {
-    const size = terminalFontSize();
-    const family = settings.typography.terminalFontFamily;
-    if (term && (term.options.fontSize !== size || term.options.fontFamily !== family)) {
-      term.options.fontSize = size;
-      term.options.fontFamily = family;
-      fitNow();
-      // A family typed in Settings can be one the page has not loaded yet, and
-      // the fit above then measured whatever was available. Fit again once the
-      // face is real; a font already loaded resolves on the spot and this is a
-      // second fit of the same numbers.
-      void ensureFontLoaded(family, size).then(fitNow);
-    }
-  });
+  createEffect(
+    () => ({ size: terminalFontSize(), family: settings.typography.terminalFontFamily }),
+    ({ size, family }) => {
+      if (term && (term.options.fontSize !== size || term.options.fontFamily !== family)) {
+        term.options.fontSize = size;
+        term.options.fontFamily = family;
+        fitNow();
+        // A family typed in Settings can be one the page has not loaded yet, and
+        // the fit above then measured whatever was available. Fit again once the
+        // face is real; a font already loaded resolves on the spot and this is a
+        // second fit of the same numbers.
+        void ensureFontLoaded(family, size).then(fitNow);
+      }
+    },
+  );
 
   // Fit + focus whenever this view becomes the active tab, and tell the WebGL
   // cap which side of the edge this is. `active` is a per-tab memo (phase 3),
   // so both branches run on real edges only.
-  createEffect(() => {
-    if (props.active) {
-      traceMark("term:reveal");
-      webgl?.reveal();
-      traceMark("term:revealed");
-      // Behind the reveal's render, so the fit and focus act on a visible pane.
-      queueMicrotask(() => {
-        fitNow();
-        if (takesFocus()) term?.focus();
-        traceMark("term:focused");
-      });
-    } else {
-      webgl?.conceal();
-    }
-  });
+  createEffect(
+    () => props.active,
+    (active) => {
+      if (active) {
+        traceMark("term:reveal");
+        webgl?.reveal();
+        traceMark("term:revealed");
+        // Behind the reveal's render, so the fit and focus act on a visible pane.
+        queueMicrotask(() => {
+          fitNow();
+          if (takesFocus()) term?.focus();
+          traceMark("term:focused");
+        });
+      } else {
+        webgl?.conceal();
+      }
+    },
+  );
 
   onCleanup(() => {
     linkProvider?.dispose();

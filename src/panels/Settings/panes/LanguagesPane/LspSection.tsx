@@ -1,4 +1,5 @@
-import { For, Show, Switch, Match, createResource, createSignal } from "solid-js";
+import { For, Show, Switch, Match, createSignal } from "solid-js";
+import { createFetchState } from "../../../../lib/fetchState";
 import { invoke } from "@tauri-apps/api/core";
 import Toggle from "../../../../components/Switch/Switch";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
@@ -207,7 +208,7 @@ export function LspCard(props: { server: LspHealth; onChange: () => Promise<LspH
 }
 
 export default function LspSection() {
-  const [health, { refetch }] = createResource(probeLspHealth);
+  const [health, { refetch }] = createFetchState(probeLspHealth);
   onPacksChanged("lsp", () => void refetch());
   const servers = () => (health() ?? []).filter((s) => s.role === "primary");
   const [query, setQuery] = createSignal("");

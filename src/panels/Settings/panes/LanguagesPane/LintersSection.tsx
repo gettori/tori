@@ -1,11 +1,12 @@
-import { For, Show, Switch, Match, createResource } from "solid-js";
+import { For, Show, Switch, Match } from "solid-js";
+import { createFetchState } from "../../../../lib/fetchState";
 import { LspCard, probeLspHealth } from "./LspSection";
 import { onPacksChanged } from "../../../../utils/packs";
 import BrowsePacks from "../../components/BrowsePacks";
 import styles from "../../Settings.module.css";
 
 export default function LintersSection() {
-  const [health, { refetch }] = createResource(probeLspHealth);
+  const [health, { refetch }] = createFetchState(probeLspHealth);
   onPacksChanged("lsp", () => void refetch());
   const linters = () => (health() ?? []).filter((s) => s.role === "secondary");
 

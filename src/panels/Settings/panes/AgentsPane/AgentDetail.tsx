@@ -1,4 +1,4 @@
-import { For, Show, Switch, Match, createResource, createSignal, onMount } from "solid-js";
+import { For, Show, Switch, Match, createDeferred, createSignal, onSettled } from "solid-js";
 import { Check, ChevronLeft, RefreshCw } from "../../../../components/Icon/icons";
 import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
@@ -348,6 +348,9 @@ export default function AgentDetail(props: {
         (t.kind === "agent" || t.kind === "chat") && tabState(t) !== "inert" && agentIdForProgram(t.program) === id,
     );
   const installed = () => a().status !== "notFound";
+  // Held as typed: any other attribute changing re-runs the input's binding,
+  // which would write the stored path back over an uncommitted edit.
+  const [pathDraft, setPathDraft] = createSignal(() => settings.agent.paths?.[a().id] ?? "");
   // The one drift direction worth surfacing: strictly older than the version
   // the adapter was measured against. Ahead of it is the steady state.
   const behind = () => a().status === "versionDrift" && behindVerified(a().version, a().verifiedAgainst);
@@ -380,27 +383,47 @@ export default function AgentDetail(props: {
   // what allows fetching them on every page open. Errors collapse to null: a
   // route Tori cannot resolve renders as "nothing declared" rather than a
   // broken step.
-  const [installRoute] = createResource(
-    () => a().id,
-    (id) => invoke<InstallRoute>("agent_install_route", { adapterId: id }).catch(() => null),
+  const installRoute = createDeferred<InstallRoute | null | undefined>(
+    (was) => {
+      const id = a().id;
+      if (!id) return was;
+      return invoke<InstallRoute>("agent_install_route", { adapterId: id }).catch(() => null);
+    },
+    { loadingValue: undefined },
   );
-  const [updateRoute] = createResource(
-    () => a().id,
-    (id) => invoke<InstallRoute>("agent_update_route", { adapterId: id }).catch(() => null),
+  const updateRoute = createDeferred<InstallRoute | null | undefined>(
+    (was) => {
+      const id = a().id;
+      if (!id) return was;
+      return invoke<InstallRoute>("agent_update_route", { adapterId: id }).catch(() => null);
+    },
+    { loadingValue: undefined },
   );
-  const [uninstallRoute] = createResource(
-    () => a().id,
-    (id) => invoke<InstallRoute>("agent_uninstall_route", { adapterId: id }).catch(() => null),
+  const uninstallRoute = createDeferred<InstallRoute | null | undefined>(
+    (was) => {
+      const id = a().id;
+      if (!id) return was;
+      return invoke<InstallRoute>("agent_uninstall_route", { adapterId: id }).catch(() => null);
+    },
+    { loadingValue: undefined },
   );
-  const [loginRoute] = createResource(
-    () => a().id,
-    (id) => invoke<LoginRoute>("agent_login_route", { adapterId: id }).catch(() => null),
+  const loginRoute = createDeferred<LoginRoute | null | undefined>(
+    (was) => {
+      const id = a().id;
+      if (!id) return was;
+      return invoke<LoginRoute>("agent_login_route", { adapterId: id }).catch(() => null);
+    },
+    { loadingValue: undefined },
   );
   // The same cached sweep the accounts list reads, asked here only for the one
   // fact the setup page needs and the hidden list would otherwise have shown.
-  const [accountsView] = createResource(
-    () => a().id,
-    (id) => invoke<AccountsView>("agent_accounts", { adapterId: id }).catch(() => null),
+  const accountsView = createDeferred<AccountsView | null | undefined>(
+    (was) => {
+      const id = a().id;
+      if (!id) return was;
+      return invoke<AccountsView>("agent_accounts", { adapterId: id }).catch(() => null);
+    },
+    { loadingValue: undefined },
   );
   const inheritedHome = () => accountsView()?.inheritedHome ?? null;
   const terminal = (r: InstallRoute | null | undefined) => (r && r.type === "terminal" ? r : null);
@@ -412,7 +435,9 @@ export default function AgentDetail(props: {
     return r && r.type === "terminal" ? r : null;
   };
 
-  onMount(() => backEl?.focus());
+  onSettled(() => {
+    backEl?.focus();
+  });
 
   // Tori never installs, updates, or removes anything itself: each button
   // starts a job running the vendor's own documented command (from the
@@ -852,8 +877,9 @@ export default function AgentDetail(props: {
         type="text"
         class={`${styles.input} ${styles.text} ${styles.pathInput}`}
         aria-label="Binary path"
-        value={settings.agent.paths?.[a().id] ?? ""}
+        value={pathDraft()}
         placeholder={installed() ? "found on your login shell" : "nothing found yet"}
+        onInput={(e) => setPathDraft(e.currentTarget.value)}
         onChange={(e) => savePath(e.currentTarget.value)}
       />
       <div class={styles.hint}>

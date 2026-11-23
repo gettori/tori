@@ -1,4 +1,14 @@
-import { createEffect, createMemo, createSignal, on, onCleanup, onMount, For, Show, type Component } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  onSettled,
+  untrack,
+  For,
+  Show,
+  type Component,
+} from "solid-js";
 import { dynamic } from "@solidjs/web";
 import {
   Bot,
@@ -235,21 +245,21 @@ export default function Settings(props: {
   let live = true;
   onCleanup(() => (live = false));
   const announce = debounce((text: string) => live && setAnnounced(text), ANNOUNCE_MS);
-  createEffect(
-    on(matches, (m) => {
-      if (!m) return announce("");
-      if (m.total === 0) return announce("No settings match");
-      announce(`${m.total} ${m.total === 1 ? "setting matches" : "settings match"}`);
-    }),
-  );
+  createEffect(matches, (m) => {
+    if (!m) return void announce("");
+    if (m.total === 0) return void announce("No settings match");
+    announce(`${m.total} ${m.total === 1 ? "setting matches" : "settings match"}`);
+  });
 
-  onMount(() => {
+  const openEntry = untrack(() => props.entry);
+  const openQuery = untrack(() => props.query);
+  onSettled(() => {
     ensureAgentHealthLoaded();
-    if (props.entry) revealEntry(props.entry);
-    else if (props.query) landOn(props.query);
+    if (openEntry) revealEntry(openEntry);
+    else if (openQuery) landOn(openQuery);
     // The search box takes focus on an ordinary open. A deep link has already
     // aimed focus at a row, so stealing it back would undo the whole point.
-    if (!props.entry) requestAnimationFrame(() => firstControl?.focus());
+    if (!openEntry) requestAnimationFrame(() => firstControl?.focus());
   });
 
   // A later command re-filters a panel that is already open. ⌘K reaches the
@@ -257,15 +267,13 @@ export default function Settings(props: {
   // without this the row would close the palette and appear to do nothing.
   // Deferred, so it is only a *change* of prop that overwrites what is typed.
   createEffect(
-    on(
-      () => [props.query, props.entry] as const,
-      ([q, entry]) => {
-        setQuery(q ?? "");
-        if (entry) revealEntry(entry);
-        else if (q) landOn(q);
-      },
-      { defer: true },
-    ),
+    () => [props.query, props.entry] as const,
+    ([q, entry]) => {
+      setQuery(q ?? "");
+      if (entry) revealEntry(entry);
+      else if (q) landOn(q);
+    },
+    { defer: true },
   );
 
   /** Escape in two stages: the first press clears a query, the next closes. */

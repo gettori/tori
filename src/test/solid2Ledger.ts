@@ -340,6 +340,11 @@ export const LEDGER: Partial<Record<IdiomClass, readonly LedgerEntry[]>> = {
       reason: "clears an action error on a topic reload; 2.0: createSignal(fn) keyed on the reload",
     },
     {
+      file: "src/panels/ProjectSettings/AgentsSection.tsx",
+      count: 1,
+      reason: "discards an edit in progress when the stored list changes; 2.0: createEffect(compute, apply)",
+    },
+    {
       file: "src/panels/ProjectSettings/ChecksSection.tsx",
       count: 1,
       reason:
@@ -408,6 +413,18 @@ export const LEDGER: Partial<Record<IdiomClass, readonly LedgerEntry[]>> = {
       file: "mobile/src/Pair.tsx",
       count: 1,
       reason: "seeds editable pairing fields from a link; 2.0: createSignal(fn) for each field",
+    },
+  ],
+  "function-signal": [
+    {
+      file: "src/panels/ProjectSettings/AutomationsSection.tsx",
+      count: 1,
+      reason: "the 2.0 writable derived form: holds typed text until the stored prompt changes",
+    },
+    {
+      file: "src/panels/Settings/panes/AgentsPane/AgentDetail.tsx",
+      count: 1,
+      reason: "the 2.0 writable derived form: holds typed text until the stored path changes",
     },
   ],
   "read-after-write": [

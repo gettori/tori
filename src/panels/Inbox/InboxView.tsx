@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createEffect, createSignal, onSettled } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import {
   ArrowRight,
@@ -261,8 +261,10 @@ function Empty(props: { text: string; onReview?: () => void }) {
 }
 
 function SinceList(props: { onReview: () => void }) {
-  onMount(showDigest);
-  onCleanup(hideDigest);
+  onSettled(() => {
+    showDigest();
+    return hideDigest;
+  });
   const happened = () => digest()?.happened ?? [];
   return (
     <Show
@@ -561,11 +563,11 @@ const firstTab = (): InboxTab => {
 
 export default function InboxView(props: { landing?: (el: HTMLElement) => void }) {
   const [tab, setTab] = createSignal<InboxTab>(askedTab() ?? firstTab());
-  createEffect(() => {
-    const asked = askedTab();
+  createEffect(askedTab, (asked) => {
     if (!asked) return;
     setTab(asked);
-    setAskedTab(null);
+    // askedTab is live state: its setter flushes, which an effect callback cannot do.
+    queueMicrotask(() => setAskedTab(null));
   });
   const views: { id: InboxTab; label: string; icon: IconGlyph; count: () => number }[] = [
     { id: "since", label: "Since you looked", icon: Clock, count: () => digestCount(digest()) },

@@ -1,5 +1,5 @@
 import type { SidebarDragProps } from "./sidebarDrag";
-import { For, Show, onMount } from "solid-js";
+import { For, Show, onSettled, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import {
   Activity,
@@ -403,9 +403,10 @@ export function GroupCard(props: {
     let input!: HTMLInputElement;
     const keep = () =>
       props.onDraft?.({ text: input.value, start: input.selectionStart ?? 0, end: input.selectionEnd ?? 0 });
-    onMount(() => {
+    const { start, end } = untrack(draft);
+    onSettled(() => {
       input.focus();
-      input.setSelectionRange(draft().start, draft().end);
+      input.setSelectionRange(start, end);
     });
     return (
       <input

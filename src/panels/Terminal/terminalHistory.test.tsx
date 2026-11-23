@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent } from "../../test/harness";
 
@@ -104,14 +105,22 @@ const branchSelection = {
 
 /** Mount the terminal pane, feeding its tab set to the activity store the way
  *  the app does (through the sidebar), so a tab's status can compose at all. */
-function mount(selected: Record<string, unknown> | null = branchSelection) {
-  return render(() => (
+async function mount(selected: Record<string, unknown> | null = branchSelection) {
+  const view = render(() => (
     <>
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-      <Terminal selected={selected as any} onOpenChange={(tabs: LiveTab[]) => noteLiveTabs(tabs)} />
+      <Terminal
+        selected={selected as any}
+        onOpenChange={(tabs: LiveTab[]) => queueMicrotask(() => noteLiveTabs(tabs))}
+      />
       <PaneView pinKind="shell" />
     </>
   ));
+  // Tab kinds register once settled, and the workspace lands a microtask later.
+  flush();
+  await Promise.resolve();
+  flush();
+  return view;
 }
 
 const historyBtn = () => screen.getByRole("button", { name: "Session history" });
@@ -131,7 +140,7 @@ describe("the History button on the tab bar", () => {
   });
 
   it("sits in the trailing cluster and opens the dropdown", async () => {
-    mount();
+    await mount();
     // Beside the launch control rather than in the scrolling tab area, so it
     // keeps its place however many tabs are open.
     expect(historyBtn().closest(".otab-trailing")).not.toBeNull();
@@ -141,11 +150,11 @@ describe("the History button on the tab bar", () => {
     await waitFor(() => expect(document.querySelector('[role="listbox"]')).not.toBeNull());
   });
 
-  it("sits to the right of the launch control", () => {
+  it("sits to the right of the launch control", async () => {
     // The pair reads left to right as "make one" then "find one you already
     // made", and history is the one reached for oftener, so it takes the place
     // nearer the strip's edge.
-    mount();
+    await mount();
     const trailing = historyBtn().closest(".otab-trailing") as HTMLElement;
     const names = [...trailing.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"));
 
@@ -158,7 +167,7 @@ describe("the History button on the tab bar", () => {
   // is not keydown, and the trigger *is* the button, so the tooltip opens
   // regardless - but that is the assertion, not the assumption.
   it("opens its tooltip on keyboard focus, with a terminal mounted below", async () => {
-    mount();
+    await mount();
     const btn = historyBtn();
     expect(screen.queryByRole("tooltip")).toBeNull();
 
@@ -171,8 +180,8 @@ describe("the History button on the tab bar", () => {
     expect(btn.getAttribute("aria-describedby")).toBe(screen.getByRole("tooltip").id);
   });
 
-  it("has nothing to show without a workspace on screen", () => {
-    mount(null);
+  it("has nothing to show without a workspace on screen", async () => {
+    await mount(null);
     expect((historyBtn() as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -180,7 +189,7 @@ describe("the History button on the tab bar", () => {
   // panel shut this badge is the only thing that says it is there at all.
   it("badges a session running here with no tab, and clears when it exits", async () => {
     bridge.listing = [session("outsider")];
-    mount();
+    await mount();
     await trackFolders([REPO]);
     noteDots([{ id: "outsider", dot: "hollow", certainty: "inferred", home: null }]);
 

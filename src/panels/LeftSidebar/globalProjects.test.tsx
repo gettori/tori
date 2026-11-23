@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { createSignal } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "../../test/harness";
 import { pointerClick } from "../../test/menus";
 import type { Selection } from "./LeftSidebar";
@@ -183,7 +183,10 @@ describe("Global's attached folders", () => {
     ];
     mount();
     fireEvent.contextMenu(await screen.findByText("acme-site"));
-    pointerClick(await screen.findByText("Detach…"));
+    await screen.findByText("Detach…");
+    // The origin lands as the menu opens and rebuilds the rows.
+    flush();
+    pointerClick(screen.getByText("Detach…"));
     const dialog = await screen.findByRole("dialog", { name: "Detach acme-site?" });
     expect(dialog.textContent).toContain("it leaves Pair");
     expect(dialog.textContent).toContain("Solo has no other project");

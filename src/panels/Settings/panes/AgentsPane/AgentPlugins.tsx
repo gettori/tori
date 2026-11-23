@@ -1,4 +1,4 @@
-import { For, Show, createResource, createSignal } from "solid-js";
+import { For, Show, createDeferred, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import styles from "../../Settings.module.css";
 
@@ -47,9 +47,14 @@ export default function AgentPlugins(props: {
    *  homes are re-resolved against the new set. */
   accountsNonce?: number;
 }) {
-  const [view] = createResource(
-    () => `${props.agentId}:${props.accountsNonce ?? 0}`,
-    (key) => invoke<PluginsView>("agent_plugins", { adapterId: key.split(":")[0] }),
+  // Catches inside: an uncaught rejection would halt the reactive system.
+  const view = createDeferred<PluginsView | undefined>(
+    (was) => {
+      const key = `${props.agentId}:${props.accountsNonce ?? 0}`;
+      if (!props.agentId) return was;
+      return invoke<PluginsView>("agent_plugins", { adapterId: key.split(":")[0] }).catch(() => undefined);
+    },
+    { loadingValue: undefined },
   );
 
   const profiles = () => view()?.profiles ?? [];

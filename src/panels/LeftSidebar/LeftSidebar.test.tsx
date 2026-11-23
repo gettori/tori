@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent } from "../../test/harness";
 import { pointerClick } from "../../test/menus";
@@ -159,7 +160,10 @@ describe("fan-out groups in the tree", () => {
     const project = (await screen.findByText("repo")).parentElement!;
 
     fireEvent.contextMenu(project);
-    pointerClick(await screen.findByText("Fan out"));
+    await screen.findByText("Fan out");
+    // The origin lands as the menu opens and rebuilds the rows.
+    flush();
+    pointerClick(screen.getByText("Fan out"));
 
     // Reached through the accessibility tree: since the prompt moved onto
     // `Dialog`, its title is the panel's heading and the input is no longer a
