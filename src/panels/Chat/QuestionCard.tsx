@@ -199,7 +199,11 @@ export default function QuestionCard(props: {
                     label={question.question}
                     options={options()}
                     value={picks()[0] ?? null}
-                    onChange={(value) => setDrafts(i(), { ...draft(), picks: [value] })}
+                    onChange={(value) =>
+                      setDrafts((s) => {
+                        s[i()] = { ...draft(), picks: [value] };
+                      })
+                    }
                     disabled={!open()}
                   />
                 }
@@ -208,7 +212,11 @@ export default function QuestionCard(props: {
                   label={question.question}
                   options={options()}
                   value={picks()}
-                  onChange={(picks) => setDrafts(i(), { ...draft(), picks })}
+                  onChange={(picks) =>
+                    setDrafts((s) => {
+                      s[i()] = { ...draft(), picks };
+                    })
+                  }
                   disabled={!open()}
                 />
               </Show>
@@ -232,7 +240,12 @@ export default function QuestionCard(props: {
                   disabled={!open()}
                   placeholder="Your own answer, if none of these fit."
                   value={typed()}
-                  onInput={(e) => setDrafts(i(), { ...draft(), freeText: e.currentTarget.value })}
+                  onInput={(e) => {
+                    const freeText = e.currentTarget.value;
+                    setDrafts((s) => {
+                      s[i()] = { ...draft(), freeText };
+                    });
+                  }}
                   onKeyDown={(e) => {
                     if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
                     e.preventDefault();

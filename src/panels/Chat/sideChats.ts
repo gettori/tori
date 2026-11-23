@@ -1,6 +1,6 @@
 // The lock itself lives in Rust, keyed by the `sideOf` every spawn carries, so
 // nothing here decides what a side chat may do.
-import { createSignal, createStore, produce } from "solid-js";
+import { createLiveSignal, createLiveStore } from "../../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import type { ChatItem, ToolItem, TurnRecord } from "./chatStore";
 import { canFork } from "../../utils/agentForks";
@@ -18,7 +18,7 @@ export type Drawer = { sides: SideChat[]; active: string | null; closed: SideCha
 
 const EMPTY: Drawer = { sides: [], active: null, closed: [] };
 
-const [sideAgents, setSideAgents] = createSignal<readonly string[]>([]);
+const [sideAgents, setSideAgents] = createLiveSignal<readonly string[]>([]);
 void Promise.resolve()
   .then(() => invoke<string[]>("chat_side_agents"))
   .then((ids) => setSideAgents(Array.isArray(ids) ? ids : []))
@@ -70,7 +70,7 @@ export function withSideReopened(drawer: Drawer, tabId: string, resumable: boole
   return withSide({ ...drawer, closed: drawer.closed.filter((s) => s.tabId !== tabId) }, back);
 }
 
-const [drawers, setDrawers] = createStore<Record<string, Drawer>>({});
+const [drawers, setDrawers] = createLiveStore<Record<string, Drawer>>({});
 
 export function drawerOf(parentTab: string): Drawer {
   return drawers[parentTab] ?? EMPTY;
@@ -79,21 +79,26 @@ export function drawerOf(parentTab: string): Drawer {
 export function openSide(parentTab: string): SideChat {
   const drawer = drawerOf(parentTab);
   const side = { tabId: `side:${crypto.randomUUID()}`, sessionId: crypto.randomUUID(), n: nextSideNumber(drawer) };
-  setDrawers(parentTab, withSide(drawer, side));
+  setDrawers((all) => {
+    all[parentTab] = withSide(drawer, side);
+  });
   return side;
 }
 
 export function closeSide(parentTab: string, tabId: string): void {
-  setDrawers(parentTab, withSideClosed(drawerOf(parentTab), tabId));
+  const next = withSideClosed(drawerOf(parentTab), tabId);
+  setDrawers((all) => {
+    all[parentTab] = next;
+  });
 }
 
 export function reopenSide(parentTab: string, tabId: string): void {
   const side = drawerOf(parentTab).closed.find((s) => s.tabId === tabId);
   const resumable = !!side && !!findSession(side.sessionId);
-  setDrawers(
-    parentTab,
-    withSideReopened(drawerOf(parentTab), tabId, resumable, () => crypto.randomUUID()),
-  );
+  const next = withSideReopened(drawerOf(parentTab), tabId, resumable, () => crypto.randomUUID());
+  setDrawers((all) => {
+    all[parentTab] = next;
+  });
 }
 
 // What a side chat leaves behind in the webview once it is gone.
@@ -106,19 +111,29 @@ function forget(side: SideChat): void {
 export function removeSide(parentTab: string, tabId: string): void {
   const drawer = drawerOf(parentTab);
   const side = [...drawer.sides, ...drawer.closed].find((s) => s.tabId === tabId);
-  setDrawers(parentTab, withoutSide(drawer, tabId));
+  const next = withoutSide(drawer, tabId);
+  setDrawers((all) => {
+    all[parentTab] = next;
+  });
   if (side) forget(side);
 }
 
 export function selectSide(parentTab: string, tabId: string): void {
-  setDrawers(parentTab, "active", tabId);
+  setDrawers((all) => {
+    const d = all[parentTab];
+    if (d) d.active = tabId;
+  });
 }
 
 export function markSideStarted(parentTab: string, tabId: string): void {
   const sides = drawerOf(parentTab).sides;
   const at = sides.findIndex((s) => s.tabId === tabId);
   const side = sides[at];
-  if (side?.restored) setDrawers(parentTab, "sides", at, { ...side, started: true });
+  if (side?.restored)
+    setDrawers((all) => {
+      const d = all[parentTab];
+      if (d) d.sides[at] = { ...side, started: true };
+    });
 }
 
 export function savedSides(drawer: Drawer): SavedSides | undefined {
@@ -148,13 +163,18 @@ export function restoredDrawer(saved: SavedSides, exists: (sessionId: string) =>
 
 export function restoreSides(parentTab: string, saved: SavedSides, exists: (sessionId: string) => boolean): void {
   const drawer = restoredDrawer(saved, exists, () => crypto.randomUUID());
-  if (drawer.sides.length || drawer.closed.length) setDrawers(parentTab, drawer);
+  if (drawer.sides.length || drawer.closed.length)
+    setDrawers((all) => {
+      all[parentTab] = drawer;
+    });
 }
 
 // The parent tab closed, so its side chats go too.
 export function dropSides(parentTab: string): void {
   const drawer = drawerOf(parentTab);
-  setDrawers(produce((all) => void delete all[parentTab]));
+  setDrawers((all) => {
+    delete all[parentTab];
+  });
   [...drawer.sides, ...drawer.closed].forEach(forget);
 }
 

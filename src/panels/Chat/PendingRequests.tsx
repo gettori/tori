@@ -1,4 +1,4 @@
-import { For, Show, createResource, createSignal, onCleanup } from "solid-js";
+import { For, Show, createDeferred, createSignal, onCleanup, refresh } from "solid-js";
 import { listen } from "@tauri-apps/api/event";
 import Button from "../../components/Button/Button";
 import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
@@ -52,21 +52,26 @@ function PendingRequest(props: { request: ChatRequest; sessionId: string; onDone
 }
 
 export default function PendingRequests(props: { sessionId: string }) {
-  const [requests, { refetch }] = createResource(
-    () => props.sessionId,
-    (session) =>
-      chatCall<ChatRequest[]>("chat_requests_list", { session }).catch((e) => {
+  const requests = createDeferred<ChatRequest[] | undefined>(
+    (was) => {
+      const session = props.sessionId;
+      if (!session) return was;
+      return chatCall<ChatRequest[]>("chat_requests_list", { session }).catch((e) => {
         emitWith<ToastEvent>(TOAST, { message: `Waiting messages could not be read: ${String(e)}`, kind: "error" });
         return [];
-      }),
+      });
+    },
+    { loadingValue: undefined },
   );
   const unlisten = listen<{ session: string }>(REQUESTS_CHANGED, ({ payload }) => {
-    if (payload.session === props.sessionId) void refetch();
+    if (payload.session === props.sessionId) void refresh(requests);
   });
   onCleanup(() => void unlisten.then((stop) => stop()));
   return (
     <For each={requests() ?? []}>
-      {(request) => <PendingRequest request={request} sessionId={props.sessionId} onDone={() => void refetch()} />}
+      {(request) => (
+        <PendingRequest request={request} sessionId={props.sessionId} onDone={() => void refresh(requests)} />
+      )}
     </For>
   );
 }

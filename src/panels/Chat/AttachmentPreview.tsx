@@ -1,4 +1,5 @@
-import { For, Match, Show, Switch, createResource } from "solid-js";
+import { For, Match, Show, Switch } from "solid-js";
+import { createFetchState } from "../../lib/fetchState";
 import type { JSX } from "@solidjs/web";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import Dialog from "../../components/Dialog/Dialog";
@@ -28,7 +29,7 @@ function regionOf(block: FileRef, file: string): string {
 function FileText(props: { block: FileRef }) {
   // A selection that carries its text needs no read at all, which is also what
   // keeps a preview working for a file deleted since it was selected.
-  const [file] = createResource(
+  const [file] = createFetchState(
     () => (props.block.text ? null : props.block.path),
     (path: string) => invoke<string>("fs_read_file", { path }),
   );

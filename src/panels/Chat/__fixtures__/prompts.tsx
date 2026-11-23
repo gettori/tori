@@ -1,4 +1,5 @@
-import { For, createSignal, onCleanup, createStore } from "solid-js";
+import { For, onCleanup, createStore } from "solid-js";
+import { createLiveSignal } from "../../../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import ToolCallCard from "../ToolCallCard";
 import AskCard from "../AskCard";
@@ -115,8 +116,8 @@ const ASKS = (): SocketAsk[] => [
   },
 ];
 
-const [heard, setHeard] = createSignal<string[]>([]);
-const [failNext, setFailNext] = createSignal(false);
+const [heard, setHeard] = createLiveSignal<string[]>([]);
+const [failNext, setFailNext] = createLiveSignal(false);
 
 export const promptsHost: HostHandler = (cmd, args) => {
   if (cmd === "chat_respond_permission") {
@@ -137,7 +138,9 @@ export const promptsHost: HostHandler = (cmd, args) => {
 export function createPrompts() {
   const [store, setStore] = createStore({ cards: PROMPTS() });
   const askAgain = () => {
-    setStore("cards", PROMPTS());
+    setStore((s) => {
+      s.cards = PROMPTS();
+    });
     ASKS().forEach(showAsk);
   };
   askAgain();
@@ -149,7 +152,14 @@ export function createPrompts() {
     setFailNext,
     heard,
     answer(card: ToolItem, answer: Answer) {
-      setStore("cards", (c) => c.toolUseId === card.toolUseId, { state: "running", approval: null });
+      setStore((s) => {
+        for (const c of s.cards) {
+          if (c.toolUseId === card.toolUseId) {
+            c.state = "running";
+            c.approval = null;
+          }
+        }
+      });
       void invoke("chat_respond_permission", {
         sessionId: SESSION,
         requestId: card.approval?.requestId,

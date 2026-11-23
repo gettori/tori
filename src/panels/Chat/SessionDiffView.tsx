@@ -1,4 +1,5 @@
-import { For, Show, createMemo, createResource, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createDeferred, createMemo, createSignal, onSettled } from "solid-js";
+import { createFetchState } from "../../lib/fetchState";
 import { invoke } from "@tauri-apps/api/core";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import { buildRows } from "../../utils/diffView";
@@ -77,14 +78,14 @@ export default function SessionDiffView(props: {
   // one way across the app.
   const twoColumn = () => sideBySide() && width() >= SIDE_BY_SIDE_MIN_WIDTH;
 
-  onMount(() => {
+  onSettled(() => {
     if (!host) return;
     const ro = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
     ro.observe(host);
-    onCleanup(() => ro.disconnect());
+    return () => ro.disconnect();
   });
 
-  const [files] = createResource(
+  const [files] = createFetchState(
     () => (props.live ? { sessionId: props.sessionId, cwd: props.cwd } : null),
     (args) => invoke<SessionFileDiff[]>("chat_session_diff", args).catch(() => [] as SessionFileDiff[]),
   );
@@ -92,13 +93,14 @@ export default function SessionDiffView(props: {
   // The worktree's own account of the same span, so the view can show what
   // changed *around* this session as well as what it wrote itself. Without it
   // a shared worktree reads as if this session were the only writer in it.
-  const [attribution] = createResource(
-    () =>
-      props.live && props.sinceTs !== null
-        ? { sessionId: props.sessionId, cwd: props.cwd, sinceTs: props.sinceTs }
-        : null,
-    (args) =>
-      invoke<CheckpointFile[]>("checkpoint_turn_files", {
+  const attribution = createDeferred<CheckpointFile[] | undefined>(
+    (was) => {
+      const args =
+        props.live && props.sinceTs !== null
+          ? { sessionId: props.sessionId, cwd: props.cwd, sinceTs: props.sinceTs }
+          : null;
+      if (args == null) return was;
+      return invoke<CheckpointFile[]>("checkpoint_turn_files", {
         repoPath: args.cwd,
         sessionId: args.sessionId,
         // Cumulative from this run's first turn to now: the same span the
@@ -108,7 +110,9 @@ export default function SessionDiffView(props: {
         others: chatsInFolder(args.cwd)
           .map((c) => c.sessionId)
           .filter((id) => id !== args.sessionId),
-      }).catch(() => [] as CheckpointFile[]),
+      }).catch(() => [] as CheckpointFile[]);
+    },
+    { loadingValue: undefined },
   );
 
   const attributionByPath = createMemo(() => {

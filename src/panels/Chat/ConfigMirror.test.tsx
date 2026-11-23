@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vite-plus/test";
 import { render, fireEvent, screen } from "../../test/harness";
-import { createSignal } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import { expectNoAxeViolations } from "../../test/axe";
 import { pointerClick } from "../../test/menus";
 import ConfigMirror from "./ConfigMirror";
@@ -80,6 +80,7 @@ function setup(options: ChatConfigOption[] = OPTIONS) {
   const result = render(() => <ConfigMirror options={live()} disabled={false} onSet={onSet} />);
   const openMenu = (pill: HTMLElement) => {
     pointerClick(pill);
+    flush();
     const menus = [...document.querySelectorAll('[role="menu"]')];
     const menu = menus[menus.length - 1];
     if (!menu) throw new Error("the pill opened no menu");
@@ -91,8 +92,18 @@ function setup(options: ChatConfigOption[] = OPTIONS) {
     );
     if (!row) throw new Error(`no row named ${label}`);
     pointerClick(row as HTMLElement);
+    flush();
   };
-  return { ...result, onSet, setLive, openMenu, pick };
+  return {
+    ...result,
+    onSet,
+    setLive: (next: ChatConfigOption[]) => {
+      setLive(next);
+      flush();
+    },
+    openMenu,
+    pick,
+  };
 }
 
 describe("the agent's own options in the composer bar", () => {
@@ -395,6 +406,7 @@ describe("a lever the agent published and refuses", () => {
     const { getByLabelText } = setup([REFUSED_SELECT]);
     const pill = getByLabelText("Verbosity");
     pointerClick(pill);
+    flush();
 
     expect(document.querySelectorAll('[role="menu"]')).toHaveLength(0);
     expect(pill.getAttribute("aria-disabled")).toBe("true");

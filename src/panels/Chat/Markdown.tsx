@@ -1,4 +1,4 @@
-import { For, Match, Switch, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
+import { For, Match, Switch, createEffect, createMemo, createSignal, onCleanup, untrack } from "solid-js";
 import type { Token } from "marked";
 import { invoke } from "@tauri-apps/api/core";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
@@ -137,16 +137,17 @@ export default function Markdown(props: { text: string; cwd: string; breaks?: bo
     frame = requestAnimationFrame(settle);
   };
   createEffect(
-    on(
-      () => props.text,
-      (next) => {
-        if (typeof requestAnimationFrame === "undefined") return setText(next);
-        if (frame !== undefined) return;
+    () => props.text,
+    (next) => {
+      if (typeof requestAnimationFrame === "undefined") {
         setText(next);
-        frame = requestAnimationFrame(settle);
-      },
-      { defer: true },
-    ),
+        return;
+      }
+      if (frame !== undefined) return;
+      setText(next);
+      frame = requestAnimationFrame(settle);
+    },
+    { defer: true },
   );
   onCleanup(() => {
     if (frame !== undefined) cancelAnimationFrame(frame);
@@ -182,10 +183,15 @@ export default function Markdown(props: { text: string; cwd: string; breaks?: bo
     return segs;
   });
 
-  createEffect(() => {
-    segments();
-    props.onRendered?.();
-  });
+  createEffect(
+    () => {
+      segments();
+      return props.onRendered;
+    },
+    (rendered) => {
+      rendered?.();
+    },
+  );
 
   function onLinkClick(e: MouseEvent) {
     const marked = (e.target as Element | null)?.closest?.<HTMLElement>("[data-path]");
@@ -221,7 +227,13 @@ export default function Markdown(props: { text: string; cwd: string; breaks?: bo
           <Match when={seg().kind === "prose" && seg()}>
             {(s) => {
               let prose!: HTMLDivElement;
-              createEffect(on(s, () => linkPaths(prose, props.cwd)));
+              createEffect(
+                () => {
+                  s();
+                  return untrack(() => props.cwd);
+                },
+                (cwd) => linkPaths(prose, cwd),
+              );
               return (
                 // The handler sits on the prose block rather than a wrapper: the
                 // transcript's spacing rules select `.mdProse` as a direct child

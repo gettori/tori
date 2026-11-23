@@ -14,6 +14,7 @@
 // origin: the resolved `RepoAccount` is what every pause and budget is read
 // through, so one account's 401 or rate limit leaves the others polling.
 
+import { createSignal } from "solid-js";
 import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -77,7 +78,9 @@ export function prWatchProjects(polled: readonly PrWatchPolled[]): WatchedProjec
   return polled.map((p) => ({ path: p.project, units: [{ branch: p.branch, visible: false }] }));
 }
 
-const [cardWatches, setCardWatches] = createLiveSignal<ReadonlyMap<string, number>>(new Map());
+// Not live: cards write this from an effect, where a flush is refused, and
+// nothing reads it back in the same run.
+const [cardWatches, setCardWatches] = createSignal<ReadonlyMap<string, number>>(new Map());
 const watchKey = (project: string, branch: string) => `${project}\n${branch}`;
 
 // Polling covers the active space only, so a card showing a pull request from
