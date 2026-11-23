@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 // Where a kind opens (plan phase 11 task 1). The resolver is pure and answers
 // against the tree it is handed, so the interesting cases are the trees a
 // session actually produces: one after a split, one after a close, one with a
@@ -98,6 +99,7 @@ describe("the rules the user sets", () => {
     expect(pinSideOf("shell")).toBe("leftmost");
 
     setPinSides({ file: "leftmost", terminal: "rightmost" });
+    flush();
     expect(pinSideOf("file")).toBe("leftmost");
     expect(pinSideOf("agent")).toBe("rightmost");
     // A partial answer leaves the rest on the default rather than unset.

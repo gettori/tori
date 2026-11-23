@@ -3,7 +3,7 @@
 // every consumer reads that one answer, instead of each paneTabs call filtering
 // the whole tab union per pane (O(tabs x panes) per click).
 import { describe, it, expect, beforeEach } from "vite-plus/test";
-import { createRoot } from "solid-js";
+import { flush, createRoot } from "solid-js";
 import { __placementComputesForTests, installPaneTabsMemo, paneActiveId, paneTabs } from "./paneTabs";
 import { installUnifiedTabsMemo, unifiedTabs } from "./unifiedTabs";
 import { ensureEnvelope, layoutRoot, resetPaneLayoutModel, seedTwoPane } from "../layout/layoutStore";
@@ -40,6 +40,7 @@ describe("the placement memo", () => {
     });
     {
       ensureEnvelope(WS, () => seedTwoPane({ rightShare: 50, showLeft: true, showRight: true }));
+      flush();
       const root = layoutRoot(WS)!;
       const [left, right] = leaves(root).map((l) => l.id);
       setOpen(Array.from({ length: 12 }, (_, i) => shell(i)));
@@ -63,6 +64,7 @@ describe("the placement memo", () => {
 
       // One click (a pane's active pick changes), many reads: one rebuild.
       setPaneActive(WS, left, "sh:3");
+      flush();
       paneTabs(WS, left);
       paneTabs(WS, right);
       paneActiveId(WS, left);
@@ -79,9 +81,11 @@ describe("the placement memo", () => {
 
   it("falls back to per-call derivation when nothing installed a memo", () => {
     ensureEnvelope(WS, () => seedTwoPane({ rightShare: 50, showLeft: true, showRight: true }));
+    flush();
     const root = layoutRoot(WS)!;
     const [left] = leaves(root).map((l) => l.id);
     setOpen([shell(1), shell(2)]);
+    flush();
     const before = __placementComputesForTests();
     expect(paneTabs(WS, left).map((t) => t.id)).toEqual(["sh:1", "sh:2"]);
     expect(__placementComputesForTests()).toBe(before + 1);

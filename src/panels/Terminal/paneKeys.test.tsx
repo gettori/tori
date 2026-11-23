@@ -5,7 +5,7 @@
 // programmatic "take me to this tab" paths reveal a hidden pane.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent } from "../../test/harness";
-import { createSignal } from "solid-js";
+import { flush, createSignal } from "solid-js";
 import { installAnimationFrame } from "../../test/frames";
 
 const REPO = "/root/work/repo";
@@ -153,14 +153,18 @@ describe("pane scoping", () => {
     focusTab(REPO, "sh:1");
 
     setFocusedPane(REPO, "right");
+    flush();
     emitWith(TAB_JUMP, { index: 1 });
     emit(CLOSE_TAB);
     // Neither key acted: same active tab, both tabs still open.
+    flush();
     expect(visibleId()).toBe("sh:1");
     expect(open()).toHaveLength(2);
 
     setFocusedPane(REPO, "left");
+    flush();
     emitWith(TAB_JUMP, { index: 1 });
+    flush();
     expect(visibleId()).toBe("sh:2");
     emit(CLOSE_TAB);
     await waitFor(() => expect(open()).toHaveLength(1));
@@ -173,6 +177,7 @@ describe("pane-aware focus", () => {
     ensureEnvelope(REPO, seed);
     openTab(tab("sh:1", "shell"));
     updateLayout(REPO, (root) => setPaneHidden(root, "left", true));
+    flush();
     expect(focusedPaneId(REPO)).toBe("right");
 
     emitWith(FOCUS_SESSION_TAB, { tabId: "sh:1" });

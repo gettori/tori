@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 // Tab placement (plan phase 8): the pane a tab is in, the guard that refuses a
 // move, and the close-pane merge. Pure model, so this runs without a DOM.
 import { describe, it, expect, beforeEach } from "vite-plus/test";
@@ -42,6 +43,7 @@ describe("where a tab is", () => {
     const root = threePane();
     const tabs = [sh("sh:1"), sh("sh:2")];
     expect(moveTabToPane({ ws: WS, tab: tabs[0], targetPaneId: "pane-1", root, tabsInWs: tabs })).toBeNull();
+    flush();
     expect(paneOfTab(WS, tabs[0], root)).toBe("pane-1");
     // Only that tab: its sibling is still there, so the next shell opens beside it.
     expect(paneOfTab(WS, tabs[1], root)).toBe("left");
@@ -52,6 +54,7 @@ describe("where a tab is", () => {
     const root = threePane();
     const tabs = [file("/a.ts")];
     expect(moveTabToPane({ ws: WS, tab: tabs[0], targetPaneId: "pane-1", root, tabsInWs: tabs })).toBeNull();
+    flush();
     expect(paneOfTab(WS, file("/c.ts"), root)).toBe("pane-1");
   });
 
@@ -71,6 +74,7 @@ describe("the placement guard", () => {
     const tabs = [file("/a.ts"), file("/b.ts")];
     expect(placementRefusal({ ws: WS, tab: tabs[0], targetPaneId: "pane-1", root, tabsInWs: tabs })).toBeNull();
     expect(moveTabToPane({ ws: WS, tab: tabs[0], targetPaneId: "pane-1", root, tabsInWs: tabs })).toBeNull();
+    flush();
     expect(paneOfTab(WS, tabs[0], root)).toBe("pane-1");
     // And only it: its sibling stays where the file kind opens.
     expect(paneOfTab(WS, tabs[1], root)).toBe("right");
@@ -143,6 +147,7 @@ describe("order inside a pane", () => {
     const tabs = [sh("a"), sh("b"), sh("c")];
     expect(orderInPane(WS, tabs).map((t) => t.id)).toEqual(["a", "b", "c"]);
     stampOrder(WS, ["c", "a", "b"]);
+    flush();
     expect(orderInPane(WS, tabs).map((t) => t.id)).toEqual(["c", "a", "b"]);
   });
 });

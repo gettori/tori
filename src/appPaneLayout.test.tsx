@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 // The app shell's pane layout (plan phase 5): the work-split renders from the
 // per-workspace envelope and the Cmd+Alt+J/E toggles resolve their pane through
 // it.
@@ -96,14 +97,17 @@ describe("the pane toggles", () => {
   it("Cmd+Alt+J hides the terminal pane and brings it back", () => {
     const { container } = render(() => <App />);
     chord("KeyJ");
+    flush();
     expect(pane(container, "terminal").classList.contains("hidden")).toBe(true);
     chord("KeyJ");
+    flush();
     expect(pane(container, "terminal").classList.contains("hidden")).toBe(false);
   });
 
   it("refuses to hide the last visible pane", () => {
     const { container } = render(() => <App />);
     chord("KeyE");
+    flush();
     expect(pane(container, "editor").classList.contains("hidden")).toBe(true);
     chord("KeyJ");
     expect(pane(container, "terminal").classList.contains("hidden")).toBe(false);
@@ -118,6 +122,7 @@ describe("the pane toggles", () => {
     const { container } = render(() => <App />);
     expect(pane(container, "editor").classList.contains("hidden")).toBe(true);
     chord("KeyE");
+    flush();
     expect(pane(container, "editor").classList.contains("hidden")).toBe(false);
   });
 });

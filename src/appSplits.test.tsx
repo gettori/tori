@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 // Splits and tab moves through the shell (plan phase 8): the palette commands
 // and the tab menu both emit, App runs the guards, and PaneTree draws whatever
 // comes out. The panels are stubbed down to what a pane actually needs of them
@@ -150,6 +151,7 @@ describe("splitting", () => {
     expect(panes()).toBe(2);
     // The command the palette lists runs exactly this.
     COMMANDS.find((c) => c.id === "split-pane-right")!.run!();
+    flush();
     expect(panes()).toBe(3);
     expect(document.querySelectorAll(".pane-split.row").length).toBe(1);
   });
@@ -157,6 +159,7 @@ describe("splitting", () => {
   it("nests a down-split under the pane it came from", () => {
     render(() => <App />);
     emitWith<SplitPane>(SPLIT_PANE, { dir: "column" });
+    flush();
     expect(document.querySelector(".pane-split.column")).toBeTruthy();
     expect(panes()).toBe(3);
   });
@@ -165,6 +168,7 @@ describe("splitting", () => {
     render(() => <App />);
     emitWith<SplitPane>(SPLIT_PANE, { dir: "row" });
     emitWith<SplitPane>(SPLIT_PANE, { dir: "row" });
+    flush();
     expect(panes()).toBe(4);
     emitWith<SplitPane>(SPLIT_PANE, { dir: "row" });
     expect(panes()).toBe(4);
@@ -233,6 +237,7 @@ describe("moving a tab", () => {
 
     await waitFor(() => expect(tabsIn(pane(1))).toEqual([`${REPO}/a.ts`]));
     // The editor's stage went with it: that is the pane holding it now.
+    flush();
     expect(pane(1).querySelector("[data-stage-host]")).toBeTruthy();
   });
 

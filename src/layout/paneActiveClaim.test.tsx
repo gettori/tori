@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 // Why opening a file has to write the pane's **pick** and not only its kind's
 // claim.
 //
@@ -45,6 +46,7 @@ describe("a pane holding both a chat and a file", () => {
     // and what opening from the tree now does too.
     setPaneActive(WS, PANE, "file:/a.ts");
 
+    flush();
     expect(activeIdInPane(WS, PANE, IN_PANE, ["chat:1", "file:/a.ts"])).toBe("file:/a.ts");
   });
 
@@ -79,6 +81,7 @@ describe("what the pane is showing, for something that draws", () => {
   it("answers with the file again once the file is picked back", () => {
     setPaneActive(WS, PANE, "file:/a.ts");
 
+    flush();
     expect(activeIdInPane(WS, PANE, [...IN_PANE, ...FILES], ["chat:1", "file:/a.ts"])).toBe("file:/a.ts");
   });
 });
