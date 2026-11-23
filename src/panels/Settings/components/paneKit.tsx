@@ -5,7 +5,7 @@
 // became six panes, and six components cannot share one closure. Nothing here
 // closes over anything per-render - only over the imported store - so the move
 // was a move rather than a rewrite.
-import { createSignal, For, Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { Check, Copy } from "../../../components/Icon/icons";
 import { copyText } from "../../../utils/clipboard";
@@ -524,6 +524,8 @@ function EditsRow<K extends Exclude<keyof EditorDefaults, EditorToggleKey>>(
 
 /** The TODO tags row: a text box where the rest of the group has checkboxes. */
 export function TodoTagsRow(props: PaneProps) {
+  // A memo: any other editor default changing would erase a pattern being typed.
+  const todoPatterns = createMemo(() => editorDefaults().todoPatterns);
   return (
     <EditsRow
       {...props}
@@ -534,7 +536,7 @@ export function TodoTagsRow(props: PaneProps) {
       <input
         class={`${styles.input} ${styles.text}`}
         aria-label={TODO_TAGS.label}
-        value={editorDefaults().todoPatterns}
+        value={todoPatterns()}
         onChange={(e) => setEditorDefault("todoPatterns", e.currentTarget.value)}
       />
     </EditsRow>
