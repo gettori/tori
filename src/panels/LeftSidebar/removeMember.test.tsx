@@ -8,7 +8,7 @@
 // longer has.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent } from "../../test/harness";
-import { createSignal } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import { pointerClick } from "../../test/menus";
 
 const REPO_A = "/w/api";
@@ -118,12 +118,18 @@ async function mount() {
   // this file is not served the first one's record from the cache.
   await waitFor(() => expect(handlers["topics://changed"]?.length).toBeTruthy());
   changed();
+  flush();
   fireEvent.click(await screen.findByRole("button", { name: "Show members of Auth" }));
+  flush();
+  // The first reads the sidebar asks for land and replace the rows once.
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  flush();
   return selected;
 }
 
 const removeRepo = async (repoPath: string) => {
   fireEvent.contextMenu(document.querySelector<HTMLElement>(`[data-member="${repoPath}"]`)!);
+  flush();
   pointerClick(await screen.findByText("Remove repository"));
   await screen.findByRole("dialog", { name: /Remove worktree/ });
 };

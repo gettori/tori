@@ -1,7 +1,7 @@
 // Every engine call runs on one chain, in the order asked: a Stop pressed while
 // a read is still being handed over must not reach the engine ahead of it, or
 // that read would speak after the Stop.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen as listenTo } from "@tauri-apps/api/event";
 import { emitWith, TOAST, type ToastEvent } from "./events";
@@ -25,10 +25,10 @@ export type Chunk = { text: string; block?: number; pause?: number };
 
 export type Reading = { source: string; block: number | undefined };
 
-const [reading, setReading] = createLiveSignal<Reading | null>(null);
+const [reading, setReading] = createSignal<Reading | null>(null);
 export { reading };
 
-const [frontReply, setFrontReply] = createLiveSignal<{ read: () => void } | null>(null);
+const [frontReply, setFrontReply] = createSignal<{ read: () => void } | null>(null);
 export { frontReply };
 
 export function offerLastReply(readLast: () => void): () => void {

@@ -12,8 +12,7 @@
 // Rust takes only a spend ceiling stop from it.
 import type { UnitOrigin } from "./unitOrigin";
 import type { PrState } from "./forgeTypes";
-import { createMemo, createEffect, createRoot } from "solid-js";
-import { createLiveSignal } from "../lib/liveState";
+import { createMemo, createEffect, createRoot, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { LiveTab } from "./events";
@@ -60,9 +59,9 @@ export type ForgeUnit = {
 
 // --- fed inputs -------------------------------------------------------------
 
-const [liveTabs, setLiveTabs] = createLiveSignal<readonly LiveTab[]>([]);
-const [folderOwners, setFolderOwners] = createLiveSignal<Record<string, FolderOwner>>({});
-const [forgeUnits, setForgeUnits] = createLiveSignal<readonly ForgeUnit[]>([]);
+const [liveTabs, setLiveTabs] = createSignal<readonly LiveTab[]>([]);
+const [folderOwners, setFolderOwners] = createSignal<Record<string, FolderOwner>>({});
+const [forgeUnits, setForgeUnits] = createSignal<readonly ForgeUnit[]>([]);
 
 /** The tab set, from whoever owns it (App, through the sidebar). */
 export function noteLiveTabs(tabs: readonly LiveTab[]) {
@@ -94,7 +93,7 @@ export function noteForgeUnits(units: readonly ForgeUnit[]) {
 // session id, plus the agent used (so a later re-probe of a detached session
 // does not need a session-store lookup). Probing is trigger-driven only (row
 // selection, sessions://changed, window focus) - never a periodic pgrep.
-const [probes, setProbes] = createLiveSignal<Record<string, { agent: string; running: boolean }>>({});
+const [probes, setProbes] = createSignal<Record<string, { agent: string; running: boolean }>>({});
 
 // What Rust last composed per session: the dot, how it knows it, and the unit
 // row the session sits under.
@@ -107,7 +106,7 @@ export type RustDot = {
   denied?: boolean;
   home: SessionHome | null;
 };
-const [rustDots, setRustDots] = createLiveSignal<Record<string, RustDot>>({});
+const [rustDots, setRustDots] = createSignal<Record<string, RustDot>>({});
 
 export function noteDots(changes: readonly RustDot[] | undefined) {
   if (!changes?.length) return;

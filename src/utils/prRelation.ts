@@ -3,7 +3,7 @@
 // surface that reads the poll, so a row and the Pull Requests panel cannot
 // disagree about a reused branch name.
 
-import { createLiveStore } from "../lib/liveState";
+import { createStore } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import type { BranchSync } from "./gitActions";
 import type { PullRequest } from "./forgeTypes";
@@ -19,7 +19,7 @@ export type PrRelation =
   | { kind: "unrelated" }
   | { kind: "unknown" };
 
-const [answers, setAnswers] = createLiveStore<Record<string, { stamp: string; relation: PrRelation }>>({});
+const [answers, setAnswers] = createStore<Record<string, { stamp: string; relation: PrRelation }>>({});
 const asking = new Set<string>();
 /** The newest stamp asked per branch, so a slower older reply cannot land last. */
 const latest = new Map<string, string>();

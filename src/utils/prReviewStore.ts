@@ -22,8 +22,7 @@
 // The cache it fills lives here because it is per pull request and a tab switch
 // must not throw away a stretch the reader already expanded.
 
-import { reconcile, snapshot } from "solid-js";
-import { createLiveSignal, createLiveStore } from "../lib/liveState";
+import { reconcile, snapshot, createSignal, createStore } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { parseDiffHunks } from "./diffHunks";
 import { newSideLines, oldSideLines } from "./reviewThreads";
@@ -149,8 +148,8 @@ const blank = (): PrReviewEntry => ({
 
 const EMPTY = blank();
 
-const [entries, writeEntries] = createLiveStore<Record<string, PrReviewEntry>>({});
-const [viewingMap, setViewingMap] = createLiveSignal<Record<string, number | null>>({});
+const [entries, writeEntries] = createStore<Record<string, PrReviewEntry>>({});
+const [viewingMap, setViewingMap] = createSignal<Record<string, number | null>>({});
 
 const key = (root: string, number: number) => `${root}\n${number}`;
 const anchorKey = (a: DraftAnchor) => `${a.path}\n${a.side}\n${a.startLine ?? ""}\n${a.line}`;
@@ -175,19 +174,31 @@ const ensured = new Set<string>();
 /** Pull requests whose head commit is already in the local object store. */
 const fetchedHeads = new Map<string, Promise<void>>();
 
-function edit(k: string, fn: (entry: PrReviewEntry) => void) {
+// `save` persists the draft from the entry as this edit leaves it, since a read
+// of the store after the write would still show the one before.
+function edit(k: string, fn: (entry: PrReviewEntry) => void, save = false) {
   writeEntries((all) => {
-    fn((all[k] ??= blank()));
+    const entry = (all[k] ??= blank());
+    fn(entry);
+    if (save) saveDraft(k, entry);
   });
 }
 
 type ListField = "threads" | "pending" | "composers" | "viewed" | "openGaps";
 
-function editList<F extends ListField>(k: string, field: F, fn: (list: PrReviewEntry[F]) => PrReviewEntry[F]) {
-  const next = fn(snapshot(entries[k][field]));
-  edit(k, (entry) => {
-    entry[field] = next;
-  });
+function editList<F extends ListField>(
+  k: string,
+  field: F,
+  fn: (list: PrReviewEntry[F]) => PrReviewEntry[F],
+  save = false,
+) {
+  edit(
+    k,
+    (entry) => {
+      entry[field] = fn(snapshot(entry[field]));
+    },
+    save,
+  );
 }
 
 function slot(k: string) {
@@ -258,13 +269,11 @@ export function fileExpanded(root: string, number: number, path: string): boolea
 export function setFileExpanded(root: string, number: number, path: string, on: boolean): void {
   const k = key(root, number);
   slot(k);
-  const e = entries[k];
-  // The first toggle is also what settles the default: past here the list says
-  // exactly which sections are open, including the ones nobody has touched.
-  const now = e.expandedFiles ?? e.files.slice(0, EXPANDED_ON_OPEN).map((f) => f.path);
-  const next = on ? (now.includes(path) ? [...now] : [...now, path]) : now.filter((p) => p !== path);
   edit(k, (entry) => {
-    entry.expandedFiles = next;
+    // The first toggle is also what settles the default: past here the list says
+    // exactly which sections are open, including the ones nobody has touched.
+    const now = entry.expandedFiles ?? entry.files.slice(0, EXPANDED_ON_OPEN).map((f) => f.path);
+    entry.expandedFiles = on ? (now.includes(path) ? [...now] : [...now, path]) : now.filter((p) => p !== path);
   });
 }
 
@@ -447,21 +456,26 @@ export function setThreadsError(root: string, number: number, message: string | 
 export function addPending(root: string, number: number, comment: DraftComment & { rowText: string }): void {
   const k = key(root, number);
   slot(k);
-  const held: PendingComment = {
-    ...comment,
-    anchor: anchorStateFor(entries[k].files, comment, comment.rowText),
-  };
-  editList(k, "pending", (list) => [...list, held]);
-  saveDraft(root, number);
+  edit(
+    k,
+    (entry) => {
+      const held: PendingComment = { ...comment, anchor: anchorStateFor(entry.files, comment, comment.rowText) };
+      entry.pending = [...snapshot(entry.pending), held];
+    },
+    true,
+  );
 }
 
 export function setReviewBody(root: string, number: number, body: string): void {
   const k = key(root, number);
   slot(k);
-  edit(k, (entry) => {
-    entry.reviewBody = body;
-  });
-  saveDraft(root, number);
+  edit(
+    k,
+    (entry) => {
+      entry.reviewBody = body;
+    },
+    true,
+  );
 }
 
 export function setReviewVerdict(root: string, number: number, event: ReviewEvent): void {
@@ -480,10 +494,13 @@ export function clearDraft(root: string, number: number): void {
   slot(k);
   // The verdict goes with it: the next review of this pull request starts from
   // the same place the first one did, not from the answer that just went out.
-  edit(k, (entry) => {
-    Object.assign(entry, { pending: [], reviewBody: "", composers: [], verdict: "comment" });
-  });
-  saveDraft(root, number);
+  edit(
+    k,
+    (entry) => {
+      Object.assign(entry, { pending: [], reviewBody: "", composers: [], verdict: "comment" });
+    },
+    true,
+  );
 }
 
 /** What goes on the wire: the anchor and the words, without the two fields that
@@ -503,11 +520,15 @@ export function setComposerText(root: string, number: number, anchor: DraftAncho
   const k = key(root, number);
   slot(k);
   const want = anchorKey(anchor);
-  editList(k, "composers", (list) => {
-    const rest = list.filter((c) => anchorKey(c.anchor) !== want);
-    return text ? [...rest, { path: anchor.path, anchor, text }] : rest;
-  });
-  saveDraft(root, number);
+  editList(
+    k,
+    "composers",
+    (list) => {
+      const rest = list.filter((c) => anchorKey(c.anchor) !== want);
+      return text ? [...rest, { path: anchor.path, anchor, text }] : rest;
+    },
+    true,
+  );
 }
 
 export function closeComposer(root: string, number: number, anchor: DraftAnchor): void {
@@ -517,10 +538,12 @@ export function closeComposer(root: string, number: number, anchor: DraftAnchor)
 export function setViewedFile(root: string, number: number, path: string, on: boolean): void {
   const k = key(root, number);
   slot(k);
-  editList(k, "viewed", (list) =>
-    on ? (list.includes(path) ? list : [...list, path]) : list.filter((p) => p !== path),
+  editList(
+    k,
+    "viewed",
+    (list) => (on ? (list.includes(path) ? list : [...list, path]) : list.filter((p) => p !== path)),
+    true,
   );
-  saveDraft(root, number);
 }
 
 // --- gap expansion ----------------------------------------------------------
@@ -584,13 +607,12 @@ export function anchorStateFor(files: readonly PrFile[], at: DraftAnchor, rowTex
 }
 
 function recheckAnchors(k: string): void {
-  const files = entries[k]?.files ?? [];
-  editList(k, "pending", (list) =>
-    list.map((c) => {
-      const anchor = anchorStateFor(files, c, c.rowText);
+  edit(k, (entry) => {
+    entry.pending = snapshot(entry.pending).map((c) => {
+      const anchor = anchorStateFor(entry.files, c, c.rowText);
       return anchor === c.anchor ? c : { ...c, anchor };
-    }),
-  );
+    });
+  });
 }
 
 // --- persistence ------------------------------------------------------------
@@ -662,9 +684,7 @@ function writeDrafts(store: DraftStore): void {
   }
 }
 
-function saveDraft(root: string, number: number, now = Date.now()): void {
-  const k = key(root, number);
-  const e = entries[k] ?? EMPTY;
+function saveDraft(k: string, e: PrReviewEntry, now = Date.now()): void {
   const store = readDrafts(now);
   const empty = e.pending.length === 0 && e.composers.length === 0 && e.viewed.length === 0 && e.reviewBody === "";
   if (empty) delete store[k];

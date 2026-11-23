@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
+import { flush } from "solid-js";
 
 const invokes: { cmd: string; args: Record<string, unknown> }[] = [];
 let scratchBroken = false;
@@ -67,9 +68,11 @@ describe("opening the draft in the editor", () => {
 describe("while linked", () => {
   it("mirrors a save of the linked file into the draft, and ignores any other path", async () => {
     await openDraftInEditor(key);
+    flush();
     expect(mirrorSaved(key, { path: "/space/proj/a.ts", contents: "nope" })).toBe(false);
     expect(draftFor(key)).toBe("");
     expect(mirrorSaved(key, { path: SCRATCH, contents: "edited in the editor" })).toBe(true);
+    flush();
     expect(draftFor(key)).toBe("edited in the editor");
   });
 

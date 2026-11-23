@@ -148,11 +148,11 @@ export function composerAttachments(
 
   // A path the agent already has. Labelled by kind so the prose can name it,
   // and refused by kind when this agent's Read would not open it.
-  function mention(path: string): string | null {
+  function mention(path: string, addedThisBatch = 0): string | null {
     const name = path.split("/").pop() || path;
     const verdict = checkAttachment(
       { name, mediaType: "", bytes: null },
-      pendingFor(key()).length,
+      pendingFor(key()).length + addedThisBatch,
       attachmentSources(tier(), capabilities()).mentions,
     );
     if (!verdict.ok) {
@@ -227,7 +227,14 @@ export function composerAttachments(
     onAttachFile: (relPath) => mention(`${cwd()}/${relPath}`),
     // A dragged path is a mention, not an upload: the agent has the filesystem,
     // so sending the bytes would be sending it something it can already read.
-    onAttachPaths: (absPaths) => absPaths.map(mention).filter((label) => label !== null),
+    onAttachPaths: (absPaths) => {
+      const labels: string[] = [];
+      for (const path of absPaths) {
+        const label = mention(path, labels.length);
+        if (label !== null) labels.push(label);
+      }
+      return labels;
+    },
     // Already checked against the upload source by the composer. Written one at
     // a time so the labels come out in the order the files were dropped.
     onAttachUploads: async (files) => {

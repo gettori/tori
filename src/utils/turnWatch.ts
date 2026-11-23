@@ -1,5 +1,4 @@
-import { createEffect, onCleanup } from "solid-js";
-import { createLiveSignal } from "../lib/liveState";
+import { createEffect, onCleanup, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { isUnderPath, sameCwd } from "./pathScope";
@@ -17,7 +16,7 @@ const BUSY_EVERY_MS = 10_000;
 /** Per-turn answers a backend command reads off each live session's
  *  transcript, kept for exactly the sessions a strip is driving. */
 export function turnWatch<T>(command: string) {
-  const [bySession, setBySession] = createLiveSignal<Record<string, T[]>>({});
+  const [bySession, setBySession] = createSignal<Record<string, T[]>>({});
   const asked = new Map<string, number>();
   const lastRead = new Map<string, number>();
   const due = new Map<string, ReturnType<typeof setTimeout>>();

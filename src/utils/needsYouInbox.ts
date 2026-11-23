@@ -1,11 +1,11 @@
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { emitWith, NAVIGATE, type NavTarget } from "./events";
 import { blocks, unanswered, type NeedsYouEvent } from "./needsYouSignals";
 import { setPendingCard } from "./pendingCard";
 
-const [needsYouEvents, setNeedsYouEvents] = createLiveSignal<NeedsYouEvent[]>([]);
+const [needsYouEvents, setNeedsYouEvents] = createSignal<NeedsYouEvent[]>([]);
 export { needsYouEvents };
 
 export const needsYouCount = () => unanswered(needsYouEvents());

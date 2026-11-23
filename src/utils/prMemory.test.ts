@@ -35,8 +35,10 @@ beforeEach(() => {
 
 describe("the remembered pull requests", () => {
   it("keeps the last pull request per branch and forgets one the forge says is gone", async () => {
+    const { flush } = await import("solid-js");
     const { rememberPrs, rememberedPr } = await import("./prMemory");
     rememberPrs(REPO, { "side-panel": status("side-panel", 214), main: status("main", 9, "merged") }, 1);
+    flush();
     expect(rememberedPr(REPO, "side-panel")).toEqual({
       number: 214,
       title: "PR 214",
@@ -45,6 +47,7 @@ describe("the remembered pull requests", () => {
       changedAt: 1,
     });
     rememberPrs(REPO, { main: status("main", null) }, 2);
+    flush();
     expect(rememberedPr(REPO, "main")).toBeNull();
     expect(rememberedPr(REPO, "side-panel")?.changedAt).toBe(1);
   });
@@ -54,6 +57,7 @@ describe("the remembered pull requests", () => {
     first.rememberPrs(REPO, { "side-panel": status("side-panel", 214) });
 
     vi.resetModules();
+    const { flush } = await import("solid-js");
     const { livePlaces, noteNavTree, placeNumbers } = await import("./navIndex");
     const { rank } = await import("./navRank");
     noteNavTree(
@@ -71,6 +75,7 @@ describe("the remembered pull requests", () => {
       ],
       { [REPO]: "git@github.com:gettori/tori.git" },
     );
+    flush();
     const top = rank(livePlaces(), "214", (p) => ({
       fields: [{ slot: "title", text: p.title }],
       numbers: placeNumbers(p),

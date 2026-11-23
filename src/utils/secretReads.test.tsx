@@ -94,6 +94,7 @@ describe("a live session's secret mark", () => {
     setTargets([]);
     flush();
     await Promise.resolve();
+    flush();
     expect(sessionSecret("s")).toBeNull();
   });
 

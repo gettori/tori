@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
 let held: { kind: string; id: string } | null = null;
@@ -26,6 +27,7 @@ describe("a pack link", () => {
   it("opens the install dialog for the pack it names, as a link", async () => {
     held = { kind: "themes", id: "nord" };
     openPackLink((await takePackLink())!);
+    flush();
     expect(pendingPackInstall()).toEqual({ kind: "themes", id: "nord", origin: "link" });
   });
 

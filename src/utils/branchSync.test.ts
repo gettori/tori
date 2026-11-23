@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import type { BranchSync } from "./gitActions";
 
@@ -334,9 +335,11 @@ describe("the sync store's bookkeeping", () => {
     batches.length = 0;
 
     adoptSync("/a", "main", base({ behind: 5 }));
+    flush();
     expect(syncState(syncFor("/a", "main")).level).toBe("baseBehind");
 
     adoptSync("/gone", "main", base({ behind: 5 }));
+    flush();
     expect(syncFor("/gone", "main")).toBe(null);
     expect(batches.length).toBe(0);
   });

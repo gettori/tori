@@ -11,7 +11,7 @@
 // consumer meant each held whatever the key said when it mounted. Two surfaces
 // then disagreed until a remount. Same shape as the zoom signal in
 // `panels/Settings/settingsStore.ts`, and for the same reason.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 
 export const BLAME_KEY = "tori.editor.blame";
 
@@ -21,7 +21,7 @@ export function readBlamePref(): boolean {
   return localStorage.getItem(BLAME_KEY) === "1";
 }
 
-const [blameOn, setBlameOnSignal] = createLiveSignal(readBlamePref());
+const [blameOn, setBlameOnSignal] = createSignal(readBlamePref());
 
 /** The live preference. Every surface reads this rather than localStorage, so a
  *  change anywhere reaches all of them at once. */

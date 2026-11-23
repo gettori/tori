@@ -60,6 +60,12 @@ async function flush(times = 8): Promise<void> {
   for (let i = 0; i < times; i++) await Promise.resolve();
 }
 
+// Solid is re-imported because freshModules resets the registry: the store's
+// signals belong to the instance loaded after the reset, not the static one.
+async function settle(): Promise<void> {
+  (await import("solid-js")).flush();
+}
+
 async function freshModules() {
   vi.resetModules();
   const sessions = await import("./dapSessions");
@@ -124,6 +130,7 @@ describe("the console", () => {
     output(id, "to stderr\n", "stderr");
     output(id, "from the adapter\n", "console");
     output(id, "vendor metrics\n", "telemetry");
+    await settle();
 
     const lines = store.consoleLines();
     expect(lines.map((l) => `${l.category}:${l.text}`)).toEqual([
@@ -144,6 +151,7 @@ describe("the console", () => {
 
     output(id, "no category\n");
     output(id, "from the future\n", "somethingNew");
+    await settle();
 
     // Dropping is reserved for telemetry: an unrecognised category is still
     // somebody's output, and hiding it is worse than mislabelling it.
@@ -166,6 +174,7 @@ describe("the console", () => {
 
     output(root!.handle.session, "from the root\n", "stdout");
     output(child, "from the child\n", "stdout");
+    await settle();
 
     // A run has several sessions and their output interleaves; which one said a
     // thing is most of what makes the interleaving readable.
@@ -180,9 +189,11 @@ describe("the console", () => {
     const root = await sessions.startDebugSession(start);
     await flush();
     output(root!.handle.session, "one line\n", "stdout");
+    await settle();
     expect(store.consoleLines()).toHaveLength(1);
 
     output(root!.handle.session, "two\nlines\n", "stdout");
+    await settle();
     expect(store.consoleLines().map((l) => l.text)).toEqual(["one line", "two", "lines"]);
   });
 
@@ -193,6 +204,7 @@ describe("the console", () => {
     const id = root!.handle.session;
     const chunk = Array.from({ length: 1000 }, (_, i) => `line ${i}`).join("\n") + "\n";
     for (let i = 0; i < 6; i++) output(id, chunk, "stdout");
+    await settle();
 
     // A runaway program outruns any reader, and this store lives as long as the
     // app does.
@@ -206,15 +218,18 @@ describe("the console", () => {
     const first = await sessions.startDebugSession(start);
     await flush();
     output(first!.handle.session, "from the first run\n", "stdout");
+    await settle();
     expect(store.consoleLines()).toHaveLength(1);
 
     event(first!.handle.session, "terminated");
     await flush();
+    await settle();
     // A finished run stays readable: its output is the answer to what happened.
     expect(store.consoleLines()).toHaveLength(1);
 
     await sessions.startDebugSession(start);
     await flush();
+    await settle();
     expect(store.consoleLines()).toHaveLength(0);
   });
 });
@@ -255,6 +270,7 @@ describe("the session tree", () => {
     expect(store.debugTree()[0].name).toBe(root!.name);
     // And it is wired, not merely counted.
     output(root!.handle.session, "after the fact\n", "stdout");
+    await settle();
     expect(store.consoleLines().map((l) => l.text)).toEqual(["after the fact"]);
   });
 
@@ -282,9 +298,11 @@ describe("the session tree", () => {
     expect(store.debugTree()[0].state).toBe("running");
 
     event(id, "stopped", { reason: "breakpoint", threadId: 0 });
+    await settle();
     expect(store.debugTree()[0].state).toBe("stopped");
 
     event(id, "continued", { threadId: 0 });
+    await settle();
     expect(store.debugTree()[0].state).toBe("running");
   });
 
@@ -298,9 +316,11 @@ describe("the session tree", () => {
     // and continues straight through it. Showing it would flash a paused state
     // nobody asked for at the start of every launch.
     event(id, "stopped", { reason: "entry", threadId: 0 });
+    await settle();
     expect(store.debugTree()[0].state).toBe("running");
 
     event(id, "stopped", { reason: "breakpoint", threadId: 0 });
+    await settle();
     expect(store.debugTree()[0].state).toBe("stopped");
   });
 

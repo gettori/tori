@@ -5,7 +5,7 @@
 // cached row and a live row are the same JSON and a picker can read one where it
 // reads the other. That is what makes "live wins, cache fills in before a
 // session exists" a swap of source rather than a swap of shape.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { agentVersion, asProfileId } from "./agentHealth";
 import type {
@@ -214,7 +214,7 @@ export function isStale(catalog: ModelCatalog | undefined, currentVersion: strin
 
 // Null means "not asked yet", which is distinct from an empty array: one is
 // ignorance, the other is an answer.
-const [modelCatalogs, setModelCatalogs] = createLiveSignal<ModelCatalog[] | null>(null);
+const [modelCatalogs, setModelCatalogs] = createSignal<ModelCatalog[] | null>(null);
 export { modelCatalogs };
 
 let reading: Promise<ModelCatalog[] | null> | null = null;
@@ -312,7 +312,7 @@ function absorb(next: ModelCatalog) {
 // set because a row renders from it, and it is what stops a second picker open
 // from asking again while the first answer is still on its way: the store cannot
 // say "already probed" until the probe lands.
-const [probing, setProbing] = createLiveSignal<readonly string[]>([]);
+const [probing, setProbing] = createSignal<readonly string[]>([]);
 
 /** Whether a probe for this account of this agent is in flight. */
 export function isProbing(agentId: string, profile: string | null = null): boolean {

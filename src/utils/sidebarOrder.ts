@@ -1,4 +1,4 @@
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -9,7 +9,7 @@ const NO_LANES: Readonly<Record<string, string>> = {};
 
 // `null` until the file has been read. Nothing saves before then, so a first
 // render, or a read that failed, cannot overwrite it with discovery order.
-const [orders, setOrders] = createLiveSignal<Record<string, ProjectOrder> | null>(null);
+const [orders, setOrders] = createSignal<Record<string, ProjectOrder> | null>(null);
 
 export const projectOrder = (path: string): readonly string[] => orders()?.[path]?.entries ?? NONE;
 export const projectLanes = (path: string): Readonly<Record<string, string>> => orders()?.[path]?.lanes ?? NO_LANES;
@@ -35,18 +35,24 @@ const same = (a: readonly string[], b: readonly string[]) => a.length === b.leng
 const sameLanes = (a: Readonly<Record<string, string>>, b: Readonly<Record<string, string>>) =>
   Object.keys(a).length === Object.keys(b).length && Object.entries(a).every(([k, v]) => b[k] === v);
 
-export const saveProjectOrder = (path: string, entries: string[]) =>
-  saveProjectOrderSeen(path, entries, projectLanes(path));
+export const saveProjectOrder = (path: string, entries: string[]) => saveOrder(path, entries, null);
 
-export function saveProjectOrderSeen(path: string, entries: string[], seen: Readonly<Record<string, string>>) {
-  const all = orders();
-  if (!all) return;
+export const saveProjectOrderSeen = (path: string, entries: string[], seen: Readonly<Record<string, string>>) =>
+  saveOrder(path, entries, seen);
+
+// `seen` null keeps the lanes the project already has.
+function saveOrder(path: string, entries: string[], seen: Readonly<Record<string, string>> | null) {
   const kept = new Set(entries);
-  const lanes = Object.fromEntries(Object.entries(seen).filter(([k]) => kept.has(k)));
-  if (same(entries, projectOrder(path)) && sameLanes(lanes, projectLanes(path))) return;
-  const order = { entries, lanes };
-  setOrders({ ...all, [path]: order });
-  void invoke("sidebar_order_write", { project: path, order }).catch(() => {});
+  let order = null as ProjectOrder | null;
+  setOrders((all) => {
+    if (!all) return all;
+    const cur = all[path];
+    const lanes = Object.fromEntries(Object.entries(seen ?? cur?.lanes ?? NO_LANES).filter(([k]) => kept.has(k)));
+    if (same(entries, cur?.entries ?? NONE) && sameLanes(lanes, cur?.lanes ?? NO_LANES)) return all;
+    order = { entries, lanes };
+    return { ...all, [path]: order };
+  });
+  if (order) void invoke("sidebar_order_write", { project: path, order }).catch(() => {});
 }
 
 export function resetSidebarOrderForTests() {

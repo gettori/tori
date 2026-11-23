@@ -2,7 +2,7 @@
 // mark, read-only, and its findings come back as held comments in the diff.
 // Rust runs the reviewer and keeps the findings; this side picks who reviews,
 // starts it, and turns stored findings into held comments.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { enabledChatAgents } from "./agentEnabled";
@@ -40,8 +40,8 @@ export type ReviewView = {
   findings: Finding[];
 };
 
-const [running, setRunning] = createLiveSignal<ReadonlySet<string>>(new Set());
-const [version, setVersion] = createLiveSignal(0);
+const [running, setRunning] = createSignal<ReadonlySet<string>>(new Set());
+const [version, setVersion] = createSignal(0);
 
 /** Bumps whenever a review starts, ends or a finding's status changes. */
 export const reviewsVersion = version;

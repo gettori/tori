@@ -16,7 +16,7 @@
 // So the fs signal degrades rather than lies: sole actor gives a filename,
 // anything else gives a file-less "editing…" pulse. Showing the wrong filename
 // is worse than showing no filename, because the user acts on it.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import { revertBlockers, type RevertCandidate } from "./revertGuard";
 
 export type EditingIndication = { kind: "file"; path: string } | { kind: "anonymous" } | null;
@@ -65,7 +65,7 @@ export function editingIndication(input: {
 // write) does not leave a file pulsing indefinitely.
 export const EDITING_QUIET_MS = 4000;
 
-const [editingNow, setEditingNowSignal] = createLiveSignal<EditingIndication>(null);
+const [editingNow, setEditingNowSignal] = createSignal<EditingIndication>(null);
 export { editingNow };
 
 /// Called by Editor, the sole owner of the signals this composes from (it

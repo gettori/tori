@@ -10,8 +10,7 @@
 // Reading the config here rather than through the sidebar: the sidebar's copy
 // is a signal private to that component, and the modal has to know the answer
 // before the sidebar has anything to draw.
-import { createEffect, createRoot } from "solid-js";
-import { createLiveSignal } from "../lib/liveState";
+import { createEffect, createRoot, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -50,11 +49,11 @@ export function deriveView(inputs: FirstRunInputs): FirstRunView {
   return inputs.introSeen ? "setup" : "intro";
 }
 
-const [config, setConfig] = createLiveSignal<FirstRunConfig | null>(null);
-const [introSeen, setIntroSeen] = createLiveSignal<boolean | null>(null);
-const [opened, setOpened] = createLiveSignal(false);
-const [finished, setFinished] = createLiveSignal(false);
-const [metBefore, setMetBefore] = createLiveSignal(false);
+const [config, setConfig] = createSignal<FirstRunConfig | null>(null);
+const [introSeen, setIntroSeen] = createSignal<boolean | null>(null);
+const [opened, setOpened] = createSignal(false);
+const [finished, setFinished] = createSignal(false);
+const [metBefore, setMetBefore] = createSignal(false);
 
 export { config as firstRunConfig };
 

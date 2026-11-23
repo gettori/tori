@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, beforeEach } from "vite-plus/test";
 
 // The rules the tree's open directories follow with no tree mounted: what a
@@ -77,10 +78,12 @@ describe("mapExpandedPaths", () => {
 describe("the live store", () => {
   it("opens and closes a directory, and says so per workspace", () => {
     setDirOpen(WS, `${A}/src`, true);
+    flush();
     expect(isDirOpen(WS, `${A}/src`)).toBe(true);
     expect(isDirOpen("/w/other", `${A}/src`)).toBe(false);
 
     setDirOpen(WS, `${A}/src`, false);
+    flush();
     expect(isDirOpen(WS, `${A}/src`)).toBe(false);
   });
 
@@ -89,6 +92,7 @@ describe("the live store", () => {
     expect(isDirOpen(WS, `${B}/src`)).toBe(false);
 
     setSectionOpen(WS, B, false);
+    flush();
     expect(isSectionOpen(WS, B)).toBe(false);
   });
 
@@ -98,6 +102,7 @@ describe("the live store", () => {
 
     collapseDirs(WS);
 
+    flush();
     expect(isDirOpen(WS, `${A}/src`)).toBe(false);
     expect(isSectionOpen(WS, B)).toBe(false);
   });

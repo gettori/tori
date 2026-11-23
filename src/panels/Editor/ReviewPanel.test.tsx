@@ -609,6 +609,7 @@ describe("conflicts", () => {
     const selected = { folderPath: "/proj", sessionId: "s1", agent: "claude", sessionCwd: "/proj" };
     render(() => <ReviewPanel root="/proj" selected={selected as never} />);
     await waitFor(() => expect(screen.getByText("Conflicts")).toBeTruthy());
+    await waitFor(() => expect(screen.getAllByText("Ask agent")).toHaveLength(2));
 
     // Nothing answers the requests: this is exactly the window in which the
     // second row has to stay usable.

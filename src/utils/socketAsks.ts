@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import type { DraftComment, MergeMethod, ReviewEvent } from "./forgeTypes";
 
 export type AskApproval = { project: string } & (
@@ -33,7 +33,7 @@ export type SocketAsk = {
   surface?: { kind: "chat" } | { kind: "tab"; id: string } | { kind: "window" };
 };
 
-const [asks, setAsks] = createLiveSignal<SocketAsk[]>([]);
+const [asks, setAsks] = createSignal<SocketAsk[]>([]);
 
 export const allAsks = asks;
 
