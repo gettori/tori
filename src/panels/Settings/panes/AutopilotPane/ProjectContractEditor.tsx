@@ -1,4 +1,5 @@
-import { createMemo, createResource, onCleanup, onMount } from "solid-js";
+import { createDeferred, createMemo, onCleanup, onSettled, refresh } from "solid-js";
+import { createFetchState } from "../../../../lib/fetchState";
 import { listen } from "@tauri-apps/api/event";
 import ModelPicker from "../../../Chat/ModelPicker";
 import { paletteProviders } from "../../../Chat/agentPaletteData";
@@ -32,7 +33,7 @@ import { ISSUE_REPOS_CHANGED, onWith, type IssueReposChanged } from "../../../..
 /** One project's contract, read and saved through Rust, with the worker model
  *  picker wired to the agent catalogue. */
 export default function ProjectContractEditor(props: { project: string; onDirty?: (dirty: boolean) => void }) {
-  onMount(() => {
+  onSettled(() => {
     ensureAdaptersLoaded();
     ensureAgentHealthLoaded();
     void ensureModelCatalogsLoaded();
@@ -51,16 +52,23 @@ export default function ProjectContractEditor(props: { project: string; onDirty?
     }),
   );
 
-  const [repos, { refetch: rereadRepos }] = createResource(
-    () => props.project,
-    (path) => issueRepos(path).then((r) => r.effective),
+  // Catches inside: an uncaught rejection would halt the reactive system.
+  const repos = createDeferred<string[] | undefined>(
+    (was) => {
+      const path = props.project;
+      if (!path) return was;
+      return issueRepos(path)
+        .then((r) => r.effective)
+        .catch(() => undefined);
+    },
+    { loadingValue: undefined },
   );
   onCleanup(
     onWith<IssueReposChanged>(ISSUE_REPOS_CHANGED, (e) => {
-      if (sameFolder(e.path, props.project)) void rereadRepos();
+      if (sameFolder(e.path, props.project)) void refresh(repos);
     }),
   );
-  const [contracts, { mutate }] = createResource(() => loadContracts().catch(() => ({})));
+  const [contracts, { mutate }] = createFetchState(() => loadContracts().catch(() => ({})));
   const contract = () => contractFor(contracts() ?? {}, props.project);
   // Rust keys a project by the first spelling it saw, so any other spelling of this folder goes.
   const keep = (path: string, saved: Contract) =>
@@ -72,14 +80,13 @@ export default function ProjectContractEditor(props: { project: string; onDirty?
     setContract(path, patch).then((saved) => keep(path, saved));
   // A save from anywhere (the other editor, an agent over the socket) is
   // published with the contract it left, so the open editor takes it as is.
-  let unlisten: (() => void) | undefined;
-  onMount(async () => {
-    unlisten = await listen<{ kind?: string; project?: string; contract?: Contract }>("autopilot://changed", (e) => {
+  onSettled(() => {
+    const unlisten = listen<{ kind?: string; project?: string; contract?: Contract }>("autopilot://changed", (e) => {
       const { kind, project, contract: saved } = e.payload ?? {};
       if (kind === "autopilot.changed" && project && saved) keep(project, saved);
     });
+    return () => void unlisten.then((stop) => stop());
   });
-  onCleanup(() => unlisten?.());
   const workerAgent = () => contract().agent ?? settings.autopilot.agent;
   const workerModels = () =>
     providers().find((p) => p.agentId === workerAgent() && p.profile === contract().account)?.models ?? [];

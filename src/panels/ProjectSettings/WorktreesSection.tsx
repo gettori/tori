@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, on, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import { CornerDownRight, Folder, GitBranch, RefreshCw, Trash2, TriangleAlert } from "../../components/Icon/icons";
@@ -85,10 +85,10 @@ export default function WorktreesSection(props: { workspace: string }) {
   }
 
   createEffect(
-    on(
-      () => props.workspace,
-      () => void load(),
-    ),
+    () => props.workspace,
+    () => {
+      void load();
+    },
   );
 
   function toast(message: string, kind?: ToastEvent["kind"]) {

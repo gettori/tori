@@ -29,7 +29,8 @@ const holds = (el: HTMLElement | undefined, q: string) => !!el?.textContent?.toL
  */
 export function Section(props: { heading: string; meta?: JSX.Element; children: JSX.Element }) {
   const search = useContext(ProjectSearch);
-  const [rows, setRows] = createSignal<Accessor<boolean>[]>([]);
+  // Rows register themselves from their own bodies, which is an owned write.
+  const [rows, setRows] = createSignal<Accessor<boolean>[]>([], { ownedWrite: true });
   let el: HTMLElement | undefined;
 
   const headingHit = () => !search.query() || search.paneHit() || props.heading.toLowerCase().includes(search.query());

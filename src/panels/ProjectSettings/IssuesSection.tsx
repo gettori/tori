@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, on, Show } from "solid-js";
+import { createEffect, createSignal, For, Show } from "solid-js";
 
 import Button from "../../components/Button/Button";
 import { emitWith, ISSUE_REPOS_CHANGED, TOAST, type IssueReposChanged, type ToastEvent } from "../../utils/events";
@@ -56,18 +56,22 @@ export default function IssuesSection(props: { projectPath: string; onDirty?: (d
   }
 
   createEffect(
-    on(
-      () => props.projectPath,
-      (path) =>
-        void issueRepos(path)
-          .then(show)
-          .catch((e) => toast(errorText(e))),
-    ),
+    () => props.projectPath,
+    (path) => {
+      void issueRepos(path)
+        .then(show)
+        .catch((e) => toast(errorText(e)));
+    },
   );
 
   const draft = () => lines(text());
   const dirty = () => draft().join("\n") !== (repos()?.stored ?? []).join("\n");
-  createEffect(() => props.onDirty?.(dirty()));
+  createEffect(
+    () => [props.onDirty, dirty()] as const,
+    ([onDirty, isDirty]) => {
+      onDirty?.(isDirty);
+    },
+  );
   const origin = () => repos()?.origin ?? "this project's origin";
 
   async function save() {

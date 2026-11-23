@@ -1,4 +1,4 @@
-import { createEffect, createSignal, on, onCleanup, untrack, Show } from "solid-js";
+import { createEffect, createSignal, untrack, Show } from "solid-js";
 import { type IconGlyph } from "../../components/Icon/icons";
 import ContextMenu from "../../components/Menu/ContextMenu";
 import { type MenuItem } from "../../components/Menu/rows";
@@ -21,16 +21,14 @@ import styles from "./SpaceTile.module.css";
 function afterPaint(active: () => boolean | undefined): () => boolean {
   const [seen, setSeen] = createSignal(!!untrack(active));
   createEffect(
-    on(
-      active,
-      (v) => {
-        let raf = requestAnimationFrame(() => {
-          raf = requestAnimationFrame(() => setSeen(!!v));
-        });
-        onCleanup(() => cancelAnimationFrame(raf));
-      },
-      { defer: true },
-    ),
+    active,
+    (v) => {
+      let raf = requestAnimationFrame(() => {
+        raf = requestAnimationFrame(() => setSeen(!!v));
+      });
+      return () => cancelAnimationFrame(raf);
+    },
+    { defer: true },
   );
   return seen;
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { createEffect, createRoot } from "solid-js";
+import { createEffect, createRoot, flush } from "solid-js";
 
 // `.tsx`, with no JSX in it: the extension is what puts a file in the jsdom
 // project (see vitest.config.ts), and the store reaches the theme module at
@@ -278,12 +278,15 @@ describe("PR lanes per Space", () => {
     let runs = 0;
     const dispose = createRoot((dispose) => {
       const lanes = laneConfigFor(() => "work");
-      createEffect(() => {
-        lanes();
-        runs++;
-      });
+      createEffect(
+        () => lanes(),
+        () => {
+          runs++;
+        },
+      );
       return dispose;
     });
+    flush();
     expect(runs).toBe(1);
     await saveSettings({ ...JSON.parse(JSON.stringify(settings)), appearance: { theme: "tori-light" } });
     expect(runs).toBe(1);

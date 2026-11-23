@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createResource, createSignal, on, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, Show } from "solid-js";
 
 import Button from "../../components/Button/Button";
 import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
@@ -33,23 +33,24 @@ export default function ChecksSection(props: {
   const [inForce, setInForce] = createSignal<string[]>([]);
   const [text, setText] = createSignal("");
   const [busy, setBusy] = createSignal(false);
-  const [builtIn] = createResource(() => builtInChecks().catch(() => [] as string[]));
+  const builtIn = createMemo<string[] | undefined>(() => builtInChecks().catch(() => [] as string[]), {
+    loadingValue: undefined,
+  });
 
   // Reread when this project's stored list changes by content, so a save
   // lands back in the field, but an unrelated save (which hands back a fresh
   // array) does not overwrite what is being typed.
   const storedKey = createMemo(() => JSON.stringify(settings.verification.commands[props.projectPath] ?? null));
   createEffect(
-    on(
-      () => [props.projectPath, storedKey()] as const,
-      ([path]) =>
-        void projectChecks(path)
-          .then((commands) => {
-            setInForce(commands);
-            setText(commands.join("\n"));
-          })
-          .catch((e) => toast(String(e))),
-    ),
+    () => [props.projectPath, storedKey()] as const,
+    ([path]) => {
+      void projectChecks(path)
+        .then((commands) => {
+          setInForce(commands);
+          setText(commands.join("\n"));
+        })
+        .catch((e) => toast(String(e)));
+    },
   );
 
   const own = () => !!settings.verification.commands[props.projectPath]?.length;
@@ -57,7 +58,12 @@ export default function ChecksSection(props: {
   const draft = () => lines(text());
   const dirty = () => draft().join("\n") !== inForce().join("\n");
   const isBuiltIn = () => draft().join("\n") === (builtIn() ?? []).join("\n");
-  createEffect(() => props.onDirty?.(dirty()));
+  createEffect(
+    () => [props.onDirty, dirty()] as const,
+    ([onDirty, isDirty]) => {
+      onDirty?.(isDirty);
+    },
+  );
 
   const status = () => {
     if (!dirty()) {

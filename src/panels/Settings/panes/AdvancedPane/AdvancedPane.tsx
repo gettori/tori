@@ -1,4 +1,4 @@
-import { createResource, createSignal, onMount, Show } from "solid-js";
+import { createMemo, createSignal, onSettled, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
 import { FileWarning, Folder, SquareTerminal } from "../../../../components/Icon/icons";
@@ -6,6 +6,7 @@ import Button from "../../../../components/Button/Button";
 import ConfirmDialog from "../../../../components/Dialogs/ConfirmDialog";
 import Icon from "../../../../components/Icon/Icon";
 import { emit, emitWith, OPEN_GROUPING, TOAST, type ToastEvent } from "../../../../utils/events";
+import { createFetchState } from "../../../../lib/fetchState";
 import { firstRunConfig, forgetIntro } from "../../../../utils/firstRun";
 import { shortHome } from "../../../../utils/names";
 import { ago } from "../../../../utils/relativeTime";
@@ -32,12 +33,11 @@ type ShellPath = { on: boolean; profile: string; dir: string };
  */
 export default function AdvancedPane(props: PaneProps) {
   const [home, setHome] = createSignal("/");
-  onMount(
-    () =>
-      void homeDir()
-        .then(setHome)
-        .catch(() => {}),
-  );
+  onSettled(() => {
+    void homeDir()
+      .then(setHome)
+      .catch(() => {});
+  });
 
   const root = () => firstRunConfig()?.roots?.[0] ?? null;
   const spaces = () => firstRunConfig()?.spaces ?? [];
@@ -50,7 +50,9 @@ export default function AdvancedPane(props: PaneProps) {
 
   // Read on every pane open rather than cached: a crash file appears between
   // launches, and the pane is where the user comes to find it.
-  const [crashes] = createResource(() => invoke<CrashLogs>("crash_logs").catch(() => null));
+  const crashes = createMemo<CrashLogs | null | undefined>(() => invoke<CrashLogs>("crash_logs").catch(() => null), {
+    loadingValue: undefined,
+  });
   // Guarded like every IPC reply read in a pane: a shape that is not the one
   // expected reads as "nothing answered", never as a thrown render.
   const crashFiles = () => {
@@ -64,7 +66,7 @@ export default function AdvancedPane(props: PaneProps) {
   const newestCrash = () => crashFiles()[0] ?? null;
 
   const [shellPathError, setShellPathError] = createSignal<string | null>(null);
-  const [shellPath, { mutate: setShellPath }] = createResource(() =>
+  const [shellPath, { mutate: setShellPath }] = createFetchState(() =>
     invoke<ShellPath>("shell_path_status").catch((e) => {
       setShellPathError(String(e));
       return null;

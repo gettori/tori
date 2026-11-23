@@ -40,7 +40,17 @@ vi.mock("@tauri-apps/api/core", () => ({
       return Promise.resolve([]);
     if (cmd === "folder_historical") return Promise.resolve(false);
     if (cmd === "git_origin") return Promise.resolve(null);
-    if (cmd === "worktree_status") return Promise.resolve({ dirty: false, unpushed: false, hasRemote: true });
+    if (cmd === "worktree_status")
+      return Promise.resolve({
+        dirty: false,
+        unpushed: false,
+        hasRemote: true,
+        ignoredWork: [],
+        operation: null,
+        largeFiles: [],
+        keepsCopy: false,
+        keepsCopyWithBranch: false,
+      });
     if (cmd === "branch_status") return Promise.resolve({ unpushed: false, hasRemote: true });
     return Promise.resolve(null);
   },

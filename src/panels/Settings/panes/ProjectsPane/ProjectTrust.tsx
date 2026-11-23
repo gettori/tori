@@ -1,4 +1,4 @@
-import { For, Show, createResource, createSignal, onCleanup } from "solid-js";
+import { For, Show, createMemo, createSignal, onCleanup, refresh } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { ChevronRight, ListX, ShieldCheck, ShieldOff, TriangleAlert } from "../../../../components/Icon/icons";
 
@@ -32,10 +32,11 @@ const FILTERS: { id: Filter; label: string }[] = [
  */
 export default function ProjectTrust() {
   const spaces = createSpaces();
-  const [trusted, { refetch: refetchTrusted }] = createResource(() =>
-    invoke<string[]>("trusted_projects").catch(() => [] as string[]),
+  const trusted = createMemo<string[] | undefined>(
+    () => invoke<string[]>("trusted_projects").catch(() => [] as string[]),
+    { loadingValue: undefined },
   );
-  onCleanup(onTrustChange(() => void refetchTrusted()));
+  onCleanup(onTrustChange(() => void refresh(trusted)));
   const [filter, setFilter] = createSignal<Filter>("all");
   const [query, setQuery] = createSignal("");
   const [confirming, setConfirming] = createSignal(false);

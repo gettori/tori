@@ -1,4 +1,5 @@
-import { For, Show, Switch, Match, createEffect, createMemo, createResource, createSignal, onMount } from "solid-js";
+import { For, Show, Switch, Match, createEffect, createMemo, createSignal, onSettled, refresh } from "solid-js";
+import { createFetchState } from "../../../../lib/fetchState";
 import { invoke } from "@tauri-apps/api/core";
 import { RefreshCw } from "../../../../components/Icon/icons";
 import Icon from "../../../../components/Icon/Icon";
@@ -270,12 +271,13 @@ function orderRows(rows: CardRow[]): CardRow[] {
 }
 
 export default function AgentsSection(props: { projectRoot?: string | null }) {
-  const [health, { refetch }] = createResource(() => invoke<AgentHealth[]>("agent_health"));
+  const [health, { refetch }] = createFetchState(() => invoke<AgentHealth[]>("agent_health"));
   onPacksChanged("agents", () => void reloadAdapters().then(() => refetch()));
   // Counts come from the stored accounts file, no subprocess behind them, so
   // fetching on every open is as cheap as the read it is.
-  const [accountCounts, { refetch: refetchCounts }] = createResource(() =>
-    invoke<Record<string, number>>("agent_account_counts").catch(() => ({}) as Record<string, number>),
+  const accountCounts = createMemo<Record<string, number> | undefined>(
+    () => invoke<Record<string, number>>("agent_account_counts").catch(() => ({}) as Record<string, number>),
+    { loadingValue: undefined },
   );
   const [rechecking, setRechecking] = createSignal(false);
   // const [checkingAll, setCheckingAll] = createSignal(false);
@@ -349,7 +351,7 @@ export default function AgentsSection(props: { projectRoot?: string | null }) {
     setOpenId(null);
     // The page is where accounts get added and removed, so the count a reader
     // returns to has to be the count they just changed.
-    void refetchCounts();
+    void refresh(accountCounts);
     requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(`[data-agent="${id}"]`)?.focus());
   };
 
@@ -368,7 +370,7 @@ export default function AgentsSection(props: { projectRoot?: string | null }) {
   // The tier is read off the resolved adapter, which the sidebar usually has
   // already asked for. Asking again is a no-op after the first call, and it is
   // what makes this section correct when Settings is the first thing opened.
-  onMount(() => {
+  onSettled(() => {
     ensureAdaptersLoaded();
     // Populate the shared store too, not just this resource. Otherwise the
     // claim above ("the picker reads the same answer") only becomes true after
@@ -383,10 +385,10 @@ export default function AgentsSection(props: { projectRoot?: string | null }) {
   // Somewhere else sent the reader here to fix one agent (the chat palette's
   // "Fix" row). An effect rather than a mount read, so an already-open panel
   // answers too; consumed, or it would re-open the card the user just closed.
-  createEffect(() => {
-    const id = wantedAgentCard();
+  createEffect(wantedAgentCard, (id) => {
     if (id === null) return;
-    clearWantedAgentCard();
+    // Module level state: flush() inside an effect callback is a no-op.
+    queueMicrotask(clearWantedAgentCard);
     setOpenId(id);
   });
 

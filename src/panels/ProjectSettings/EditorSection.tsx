@@ -1,4 +1,4 @@
-import { createResource, For, onCleanup, Show } from "solid-js";
+import { createDeferred, For, onCleanup, refresh, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 
 import Button from "../../components/Button/Button";
@@ -26,15 +26,19 @@ function leafKeys(value: unknown, prefix = ""): string[] {
  * a project that is one checkout: a bare container has one file per worktree.
  */
 export default function EditorSection(props: { projectPath: string }) {
-  const [overlay, { refetch }] = createResource(
-    () => props.projectPath,
-    (root) => invoke<unknown>("get_workspace_settings", { root }).catch(() => null),
+  const overlay = createDeferred<unknown>(
+    (was) => {
+      const root = props.projectPath;
+      if (!root) return was;
+      return invoke<unknown>("get_workspace_settings", { root }).catch(() => null);
+    },
+    { loadingValue: undefined },
   );
   const keys = () => leafKeys(overlay());
   const overlayFile = () => `${props.projectPath}/.tori/settings.json`;
   onCleanup(
     onWith<EditorFileSaved>(EDITOR_FILE_SAVED, (saved) => {
-      if (sameCwd(saved.path, overlayFile())) void refetch();
+      if (sameCwd(saved.path, overlayFile())) void refresh(overlay);
     }),
   );
 

@@ -1,17 +1,5 @@
 import { setPendingFileOpen } from "../../utils/pendingFileOpen";
-import {
-  createSignal,
-  For,
-  Match,
-  Show,
-  Switch,
-  onMount,
-  onCleanup,
-  createEffect,
-  createMemo,
-  on,
-  untrack,
-} from "solid-js";
+import { createSignal, For, Match, Show, Switch, onSettled, onCleanup, createEffect, createMemo } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { afterPaint } from "../../utils/afterPaint";
 import { isLocked } from "../../utils/autopilotStore";
@@ -529,6 +517,9 @@ function loadExpanded(): Set<string> {
   return new Set<string>();
 }
 
+// A live module setter flushes, which an effect callback cannot do: write after it.
+const later = (write: () => void) => queueMicrotask(write);
+
 export default function LeftSidebar(props: {
   selected: Selection | null;
   onSelect: (s: Selection | null) => void;
@@ -682,8 +673,7 @@ export default function LeftSidebar(props: {
   const globalProjects = () => (config()?.global?.projects ?? []).filter(projectVisible);
 
   const [activeSpaceName, setActiveSpaceName] = createSignal<string | null>(loadActiveSpace());
-  createEffect(() => {
-    const n = activeSpaceName();
+  createEffect(activeSpaceName, (n) => {
     try {
       if (n) localStorage.setItem(LS_ACTIVE_SPACE, n);
     } catch {
@@ -710,14 +700,6 @@ export default function LeftSidebar(props: {
     e.preventDefault();
     setSpaceAnchor({ x: e.clientX, y: e.clientY });
   }
-
-  // Every selection is also the bookmark for the way back to it: its space, or
-  // Global's slot. A Topic whose space is gone lists in Global, so that is
-  // where it is remembered.
-  createEffect(() => {
-    const s = props.selected;
-    rememberSelection(s?.kind === "topic" && goneSpace(s.spaceName) ? { ...s, spaceName: "" } : s);
-  });
 
   // Which unit of `p` a folder means. A worktree owns its folder, but a plain
   // repo's branch-units all share the repository's, so there the branch is the
@@ -1048,13 +1030,16 @@ export default function LeftSidebar(props: {
   // now: the tray, the dock badge and Phase 5's History panel need the same
   // composition, and none of them should have to mount a sidebar for it. What
   // stays here is feeding it the four things it cannot derive.
-  createEffect(() => noteLiveTabs(props.liveTabs ?? []));
+  createEffect(
+    () => props.liveTabs ?? [],
+    (tabs) => later(() => noteLiveTabs(tabs)),
+  );
   // A space Topic's chats run under its workspace key, so the key is what
   // carries the space to them; a global Topic's chats belong to no space.
-  createEffect(() => {
-    const known = new Set((config()?.spaces ?? []).map((g) => g.name));
-    noteFolderOwners(
-      Object.fromEntries([
+  createEffect(
+    () => {
+      const known = new Set((config()?.spaces ?? []).map((g) => g.name));
+      return Object.fromEntries([
         ...treeSpaces().flatMap((g) =>
           g.projects.flatMap((p) =>
             p.branchUnits.map((u) => [u.folderPath, { spaceName: g.name, projectName: p.name }]),
@@ -1063,9 +1048,10 @@ export default function LeftSidebar(props: {
         ...topics()
           .filter((t) => t.space && known.has(t.space))
           .map((t) => [topicKey(t.id), { spaceName: t.space!, projectName: t.name }]),
-      ]),
-    );
-  });
+      ]);
+    },
+    (owners) => later(() => noteFolderOwners(owners)),
+  );
   // The forge's half of the needs-you pipeline: every branch-unit and whether
   // its pull request wants looking at.
   //
@@ -1078,8 +1064,8 @@ export default function LeftSidebar(props: {
   //
   // It reads no dot and no session, so it cannot end up reacting to the statuses
   // it is about to change.
-  createEffect(() =>
-    noteForgeUnits(
+  createEffect(
+    () =>
       treeSpaces().flatMap((g) =>
         g.projects.flatMap((p) =>
           p.branchUnits.map((u) => {
@@ -1101,16 +1087,22 @@ export default function LeftSidebar(props: {
           }),
         ),
       ),
-    ),
+    (units) => later(() => noteForgeUnits(units)),
   );
 
-  createEffect(() => noteNavTree(spacesWithHome(), origins()));
+  createEffect(
+    () => [spacesWithHome(), origins()] as const,
+    ([spaces, urls]) => later(() => noteNavTree(spaces, urls)),
+  );
 
   // Attention, the one input the store cannot see for itself: it is the sidebar
   // that knows what is selected, and this component that owns the window-focus
   // listener.
   const [windowFocused, setWindowFocused] = createSignal(true);
-  createEffect(() => noteAttention(props.selected?.sessionId ?? null, windowFocused()));
+  createEffect(
+    () => [props.selected?.sessionId ?? null, windowFocused()] as const,
+    ([session, focused]) => noteAttention(session, focused),
+  );
 
   // Turn-level checkpoints (Finding E): snapshot the working tree at each new
   // human prompt, live-tab sessions only, gated by the checkpoints setting.
@@ -1143,10 +1135,8 @@ export default function LeftSidebar(props: {
     if (ticks.length) await noteCheckpointTicks(ticks, liveChatIds());
   }
   createEffect(
-    on(
-      () => [props.liveTabs, sessions()] as const,
-      () => void refreshCheckpointTicks(),
-    ),
+    () => [props.liveTabs, sessions()] as const,
+    () => void refreshCheckpointTicks(),
   );
 
   // Detached sessions (no live tab) cap at the hollow running dot - working/
@@ -1719,7 +1709,9 @@ export default function LeftSidebar(props: {
   const [unfinished, setUnfinished] = createSignal<PlannedMove[] | null>(null);
   const [grouping, setGrouping] = createSignal(false);
   onCleanup(onEvent(OPEN_GROUPING, () => setGrouping(true)));
-  onMount(() => void unfinishedMoves().then(setUnfinished, (e) => setError(String(e))));
+  onSettled(() => {
+    void unfinishedMoves().then(setUnfinished, (e) => setError(String(e)));
+  });
 
   async function resumeUnfinished() {
     try {
@@ -1916,13 +1908,16 @@ export default function LeftSidebar(props: {
   }
 
   // Persist expansion state so the tree reopens where you left it.
-  createEffect(() => {
-    try {
-      localStorage.setItem(LS_EXPANDED, JSON.stringify([...expanded()]));
-    } catch {
-      // ignore quota
-    }
-  });
+  createEffect(
+    () => [...expanded()],
+    (open) => {
+      try {
+        localStorage.setItem(LS_EXPANDED, JSON.stringify(open));
+      } catch {
+        // ignore quota
+      }
+    },
+  );
 
   // Latest request wins: a worktree made and then recorded raises two changes
   // in a row, and the older answer landing last would drop what the newer saw.
@@ -2927,12 +2922,17 @@ export default function LeftSidebar(props: {
 
   // A chat picked before its first send has no session yet; it takes the first
   // one the listing turns up.
-  createEffect(() => {
-    const sel = props.selected;
-    if (sel?.kind !== "chat" || sel.sessionId) return;
-    const c = chats().find((c) => c.id === sel.chatId);
-    if (c?.sessions.length) untrack(() => openChat(c));
-  });
+  createEffect(
+    () => {
+      const sel = props.selected;
+      if (sel?.kind !== "chat" || sel.sessionId) return null;
+      const c = chats().find((c) => c.id === sel.chatId);
+      return c?.sessions.length ? c : null;
+    },
+    (c) => {
+      if (c) openChat(c);
+    },
+  );
 
   async function startChat(space: string | null, prompt?: string) {
     try {
@@ -3358,18 +3358,16 @@ export default function LeftSidebar(props: {
   //   * the folder of every live tab, whatever space it belongs to, because a
   //     tab survives a space switch and its needs-you pipeline must survive it
   //     too.
-  // `on` runs its body untracked, which is what keeps reading the store inside
+  // The apply runs untracked, which is what keeps reading the store inside
   // trackFolders from re-triggering this on its own write.
   createEffect(
-    on(
-      () => [activeSpace(), props.liveTabs] as const,
-      ([space, tabs]) => {
-        void trackFolders([
-          ...(space?.projects ?? []).flatMap((p) => p.branchUnits.map((u) => u.folderPath)),
-          ...(tabs ?? []).map((t) => t.workspace),
-        ]);
-      },
-    ),
+    () => [activeSpace(), props.liveTabs] as const,
+    ([space, tabs]) => {
+      void trackFolders([
+        ...(space?.projects ?? []).flatMap((p) => p.branchUnits.map((u) => u.folderPath)),
+        ...(tabs ?? []).map((t) => t.workspace),
+      ]);
+    },
   );
 
   // The Historical section, its Adopt button and the verdict call that fed them
@@ -3883,6 +3881,17 @@ export default function LeftSidebar(props: {
   const topicsGroupSpace = () => (shownSpaceTopics().length > 0 ? activeSpace() : null);
   const knownSpaces = () => (config() ? visibleSpaces().map((g) => g.name) : null);
   const goneSpace = (name: string | undefined) => spaceGone(name, knownSpaces());
+
+  // Every selection is also the bookmark for the way back to it: its space, or
+  // Global's slot. A Topic whose space is gone lists in Global, so that is
+  // where it is remembered.
+  createEffect(
+    () => {
+      const s = props.selected;
+      return s?.kind === "topic" && goneSpace(s.spaceName) ? { ...s, spaceName: "" } : s;
+    },
+    (s) => rememberSelection(s),
+  );
   const inGlobalTree = (t: Topic) => listsInGlobal(t, knownSpaces());
   const gtkey = `t:${GLOBAL_KEY}`;
   const globalTopicsCollapsed = () => expanded().has(gtkey);
@@ -3950,11 +3959,16 @@ export default function LeftSidebar(props: {
       arrange(ps, { keysOf: (p) => [p.path], order: projectListOrder(g()?.name ?? "") })[0].shown;
     const sorted = createMemo(() => ranked(list()));
     const allPaths = () => ranked(g()?.projects ?? []).map((p) => p.path);
-    createEffect(() => {
-      const at = g();
-      if (!config() || !at || at.projects.length === 0) return;
-      saveProjectListOrder(at.name, allPaths());
-    });
+    createEffect(
+      () => {
+        const at = g();
+        if (!config() || !at || at.projects.length === 0) return null;
+        return { name: at.name, paths: allPaths() };
+      },
+      (order) => {
+        if (order) later(() => saveProjectListOrder(order.name, order.paths));
+      },
+    );
     const split = createMemo(() =>
       capped() && !open() ? capList(sorted(), GROUP_CAP, kept) : { shown: sorted(), hidden: [] as Project[] },
     );
@@ -4014,7 +4028,7 @@ export default function LeftSidebar(props: {
   let offNewChat: (() => void) | undefined;
   onCleanup(startSidebarOrder());
   onCleanup(startProjectListOrder());
-  onMount(async () => {
+  const boot = async () => {
     offActivateSpace = onWith<ActivateSpace>(ACTIVATE_SPACE, ({ name }) => setActiveSpaceName(name));
     offNewChat = onWith<NewChat | null>(
       NEW_CHAT,
@@ -4114,6 +4128,9 @@ export default function LeftSidebar(props: {
       setError(e.payload.error || "Fetch failed");
       setBranchReq((r) => (r && coversPicker(r, e.payload.repo) ? { ...r, fetching: false } : r));
     });
+  };
+  onSettled(() => {
+    void boot();
   });
   onCleanup(() => {
     unlistenConfig?.();
@@ -4137,7 +4154,10 @@ export default function LeftSidebar(props: {
   // The kill switch, straight from Settings. Read through an effect rather than
   // at mount so switching it off stops the schedule on the click, not on the
   // next launch.
-  createEffect(() => noteForgeEnabled(appSettings.forge?.enabled ?? true));
+  createEffect(
+    () => appSettings.forge?.enabled ?? true,
+    (on) => later(() => noteForgeEnabled(on)),
+  );
 
   const activeTopicId = () => (props.selected?.kind === "topic" ? (props.selected.topicId ?? null) : null);
   const activeTopicRoot = () => (props.selected?.kind === "topic" ? (props.selected.activeRoot ?? null) : null);
@@ -4185,25 +4205,29 @@ export default function LeftSidebar(props: {
   // the watched Topics change, which a promote or a demote always does.
   const [topicBranches, setTopicBranches] = createSignal<Record<string, true>>({});
   const probing = new Set<string>();
-  createEffect(() => {
-    for (const { topic } of watchedTopics()) {
-      for (const m of topic.members.filter(isReference)) {
-        const k = `${m.repoPath}\n${topic.branch}`;
-        if (untrack(topicBranches)[k] || probing.has(k)) continue;
-        probing.add(k);
-        void invoke<{ local: boolean; remote: boolean }>("probe_topic_branch", {
-          repoPath: m.repoPath,
-          branch: topic.branch,
-        })
-          .then((p) => p.local || p.remote)
-          .catch(() => false)
-          .then((known) => {
-            probing.delete(k);
-            if (known) setTopicBranches((prev) => ({ ...prev, [k]: true }));
-          });
+  createEffect(
+    () =>
+      watchedTopics().map(({ topic }) => ({
+        branch: topic.branch,
+        repos: topic.members.filter(isReference).map((m) => m.repoPath),
+      })),
+    (watching) => {
+      for (const { branch, repos } of watching) {
+        for (const repoPath of repos) {
+          const k = `${repoPath}\n${branch}`;
+          if (topicBranches()[k] || probing.has(k)) continue;
+          probing.add(k);
+          void invoke<{ local: boolean; remote: boolean }>("probe_topic_branch", { repoPath, branch })
+            .then((p) => p.local || p.remote)
+            .catch(() => false)
+            .then((known) => {
+              probing.delete(k);
+              if (known) setTopicBranches((prev) => ({ ...prev, [k]: true }));
+            });
+        }
       }
-    }
-  });
+    },
+  );
 
   // What the poller watches, and which of it is on screen.
   //
@@ -4231,49 +4255,56 @@ export default function LeftSidebar(props: {
       () => setPrWatches([]),
     );
   };
-  createEffect(on(() => appSettings.forge.prWatch, readPrWatches));
+  createEffect(
+    () => appSettings.forge.prWatch,
+    () => readPrWatches(),
+  );
 
-  createEffect(() => {
-    const g = activeSpace();
-    const seen = origins();
-    const hosts = forgeHosts();
-    const spaces: WatchedProject[] = (g?.projects ?? [])
-      .filter((p) => apiCanServe(seen[p.path] ?? null, hosts))
-      .map((p) => {
-        const open = expanded().has(pkey(g!, p));
-        return {
-          path: p.path,
-          units: p.branchUnits.filter((u) => u.branch).map((u) => ({ branch: u.branch, visible: open })),
-        };
+  createEffect(
+    () => {
+      const g = activeSpace();
+      const seen = origins();
+      const hosts = forgeHosts();
+      const spaces: WatchedProject[] = (g?.projects ?? [])
+        .filter((p) => apiCanServe(seen[p.path] ?? null, hosts))
+        .map((p) => {
+          const open = expanded().has(pkey(g!, p));
+          return {
+            path: p.path,
+            units: p.branchUnits.filter((u) => u.branch).map((u) => ({ branch: u.branch, visible: open })),
+          };
+        });
+      // A project whose review rule is on is asked about from any space, for its
+      // review requests only: no units, so no branch statuses.
+      const ruled: WatchedProject[] = treeSpaces()
+        .flatMap((s) => s.projects)
+        .filter((p) => reviewRule(p.path).action !== "off" && apiCanServe(seen[p.path] ?? null, hosts))
+        .map((p) => ({ path: p.path, units: [] }));
+      const watched = mergeWatched([
+        spaces,
+        ruled,
+        topicProjects(watchedTopics(), (repo, branch) => !!topicBranches()[`${repo}\n${branch}`]).filter((p) =>
+          apiCanServe(seen[p.path] ?? null, hosts),
+        ),
+        prWatchProjects(prWatchPolled()),
+        cardProjects().filter((p) => apiCanServe(seen[p.path] ?? null, hosts)),
+      ]);
+      return watched;
+    },
+    (watched) => {
+      // The opening tick. `startForgePolling` deliberately does not fire one at
+      // mount (nothing is watched yet), so the first ask is here, the moment there
+      // is something to ask about. Re-running on every disclosure toggle is safe:
+      // `mayPoll` holds each project to one tick per 30 seconds.
+      //
+      // Out of compute because polling reads the store it schedules against: tracked,
+      // this effect would re-run on every failed tick's backoff write.
+      later(() => {
+        noteWatchedProjects(watched);
+        if (watched.length) void pollNow("focus");
       });
-    // A project whose review rule is on is asked about from any space, for its
-    // review requests only: no units, so no branch statuses.
-    const ruled: WatchedProject[] = treeSpaces()
-      .flatMap((s) => s.projects)
-      .filter((p) => reviewRule(p.path).action !== "off" && apiCanServe(seen[p.path] ?? null, hosts))
-      .map((p) => ({ path: p.path, units: [] }));
-    const watched = mergeWatched([
-      spaces,
-      ruled,
-      topicProjects(watchedTopics(), (repo, branch) => !!topicBranches()[`${repo}\n${branch}`]).filter((p) =>
-        apiCanServe(seen[p.path] ?? null, hosts),
-      ),
-      prWatchProjects(prWatchPolled()),
-      cardProjects().filter((p) => apiCanServe(seen[p.path] ?? null, hosts)),
-    ]);
-    noteWatchedProjects(watched);
-    // The opening tick. `startForgePolling` deliberately does not fire one at
-    // mount (nothing is watched yet), so the first ask is here, the moment there
-    // is something to ask about. Re-running on every disclosure toggle is safe:
-    // `mayPoll` holds each project to one tick per 30 seconds.
-    //
-    // `untrack` because polling *reads* the store it is scheduling against - the
-    // backoff clocks, the auth state, the last-poll stamps. Tracked, this effect
-    // would inherit the change rate of all of them and re-run on every failed
-    // tick's backoff write, which is the exact shape
-    // `lesson_a_solid_effect_inherits_the_change_rate_of_what_it_reads` names.
-    if (watched.length) untrack(() => void pollNow("focus"));
-  });
+    },
+  );
 
   onCleanup(startForgePolling());
 
@@ -4281,10 +4312,13 @@ export default function LeftSidebar(props: {
   // inline custom property on `<html>` (see utils/spaceTint.ts for why that is
   // safe alongside the theme resolver), and cleared when there is no active
   // space at all so the token layer keeps the last word on an untinted window.
-  createEffect(() => {
-    const g = inGlobal() ? globalLook() : activeSpace();
-    applySpaceTint(g ? spaceHue(g.name, g.color) : null);
-  });
+  createEffect(
+    () => {
+      const g = inGlobal() ? globalLook() : activeSpace();
+      return g ? spaceHue(g.name, g.color) : null;
+    },
+    (hue) => applySpaceTint(hue),
+  );
   onCleanup(() => applySpaceTint(null));
 
   // ---- Each name's own width ----
@@ -4324,13 +4358,13 @@ export default function LeftSidebar(props: {
   // and report a narrower name than the one that ends up on screen - which the
   // tile then clips, because the target it was given is too small. `loadingdone`
   // as well as `ready`: the set resolves once, and a face can arrive later.
-  onMount(() => {
+  onSettled(() => {
     const fonts = document.fonts;
     if (!fonts) return;
     void fonts.ready.then(() => measureNames());
     const remeasure = () => measureNames();
     fonts.addEventListener("loadingdone", remeasure);
-    onCleanup(() => fonts.removeEventListener("loadingdone", remeasure));
+    return () => fonts.removeEventListener("loadingdone", remeasure);
   });
 
   // The other things that move a name's width without touching the names:
@@ -4338,22 +4372,22 @@ export default function LeftSidebar(props: {
   // changing size, since it keeps the last name it measured. The pass ends on
   // that same name, so the box it leaves is the box it found and the observer
   // does not fire again on its own work. Guarded because jsdom has no observer.
-  onMount(() => {
+  onSettled(() => {
     if (!probeNameEl || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => measureNames());
     ro.observe(probeNameEl);
-    onCleanup(() => ro.disconnect());
+    return () => ro.disconnect();
   });
 
   // The set of names is the other input. After paint, or the probe has no box.
   createEffect(
-    on(
-      () =>
-        visibleSpaces()
-          .map((g) => g.name)
-          .join(" "),
-      () => requestAnimationFrame(() => measureNames()),
-    ),
+    () =>
+      visibleSpaces()
+        .map((g) => g.name)
+        .join(" "),
+    () => {
+      requestAnimationFrame(() => measureNames());
+    },
   );
 
   // The strip's tile for one space. `SpaceTile` owns the shape; what is decided
@@ -4540,12 +4574,20 @@ export default function LeftSidebar(props: {
         }
       return seen;
     };
-    createEffect(() => {
-      if (missing() || p.branchUnits.length === 0) return;
-      if (!lanes().enabled) return saveProjectOrder(p.path, allUnitsOrder());
-      const seen = lanesOnScreen();
-      saveProjectOrderSeen(p.path, arrive(allUnitsOrder(), projectLanes(p.path), seen), seen);
-    });
+    createEffect(
+      () => {
+        if (missing() || p.branchUnits.length === 0) return null;
+        if (!lanes().enabled) return { entries: allUnitsOrder(), seen: null };
+        const seen = lanesOnScreen();
+        return { entries: arrive(allUnitsOrder(), projectLanes(p.path), seen), seen };
+      },
+      (plan) => {
+        if (!plan) return;
+        later(() =>
+          plan.seen ? saveProjectOrderSeen(p.path, plan.entries, plan.seen) : saveProjectOrder(p.path, plan.entries),
+        );
+      },
+    );
     const groupOpen = (name: string) => !expanded().has(collapsedKey(p, name));
     const visibleOrder = () =>
       [...section().shown, ...openLanes().flatMap((id) => laneSection(id)?.shown ?? [])].flatMap((e) =>
@@ -5269,40 +5311,38 @@ export default function LeftSidebar(props: {
       </Show>
 
       <Show when={deleteReq()}>
-        <ConfirmDeleteSpace
-          spaceName={deleteReq()!.name}
-          kind={deleteReq()!.mode}
-          path={shortHome(deleteReq()!.path, home())}
-          entries={deleteReq()!.entries}
-          loading={deleteReq()!.loading}
-          runningCount={deleteReq()!.runningCount}
-          sizeBytes={deleteReq()!.sizeBytes}
-          title={
-            deleteReq()!.mode === "folder"
-              ? `Remove folder “${deleteReq()!.name}”?`
-              : deleteReq()!.mode === "project"
-                ? `Remove project “${deleteReq()!.name}”?`
+        {(req) => (
+          <ConfirmDeleteSpace
+            spaceName={req().name}
+            kind={req().mode}
+            path={shortHome(req().path, home())}
+            entries={req().entries}
+            loading={req().loading}
+            runningCount={req().runningCount}
+            sizeBytes={req().sizeBytes}
+            title={
+              req().mode === "folder"
+                ? `Remove folder “${req().name}”?`
+                : req().mode === "project"
+                  ? `Remove project “${req().name}”?`
+                  : undefined
+            }
+            confirmLabel={
+              req().mode === "folder" ? "Remove folder" : req().mode === "project" ? "Remove project" : undefined
+            }
+            topics={req().mode === "space" ? topics() : undefined}
+            chats={
+              req().mode === "space"
+                ? chats()
+                    .filter((c) => c.space === req().name)
+                    .map((c) => c.name ?? NEW_CHAT_NAME)
                 : undefined
-          }
-          confirmLabel={
-            deleteReq()!.mode === "folder"
-              ? "Remove folder"
-              : deleteReq()!.mode === "project"
-                ? "Remove project"
-                : undefined
-          }
-          topics={deleteReq()!.mode === "space" ? topics() : undefined}
-          chats={
-            deleteReq()!.mode === "space"
-              ? chats()
-                  .filter((c) => c.space === deleteReq()!.name)
-                  .map((c) => c.name ?? NEW_CHAT_NAME)
-              : undefined
-          }
-          spaces={config()?.spaces}
-          onConfirm={() => confirmDeleteSpace()}
-          onCancel={() => setDeleteReq(null)}
-        />
+            }
+            spaces={config()?.spaces}
+            onConfirm={() => confirmDeleteSpace()}
+            onCancel={() => setDeleteReq(null)}
+          />
+        )}
       </Show>
 
       <Show when={confirmReq()}>
@@ -5317,23 +5357,25 @@ export default function LeftSidebar(props: {
       </Show>
 
       <Show when={wtReq()}>
-        <WorktreeRemoveDialog
-          label={displayBranch(wtReq()!.u)}
-          path={wtReq()!.u.folderPath}
-          branch={wtReq()!.u.branch}
-          dirty={wtReq()!.dirty}
-          unpushed={wtReq()!.unpushed}
-          hasRemote={wtReq()!.hasRemote}
-          ignoredWork={wtReq()!.ignoredWork}
-          operation={wtReq()!.operation}
-          largeFiles={wtReq()!.largeFiles}
-          keepsCopy={wtReq()!.keepsCopy}
-          keepsCopyWithBranch={wtReq()!.keepsCopyWithBranch}
-          runningCount={wtReq()!.runningCount}
-          busy={wtReq()!.busy}
-          onConfirm={(opts) => confirmRemoveWorktree(opts)}
-          onCancel={() => setWtReq(null)}
-        />
+        {(req) => (
+          <WorktreeRemoveDialog
+            label={displayBranch(req().u)}
+            path={req().u.folderPath}
+            branch={req().u.branch}
+            dirty={req().dirty}
+            unpushed={req().unpushed}
+            hasRemote={req().hasRemote}
+            ignoredWork={req().ignoredWork}
+            operation={req().operation}
+            largeFiles={req().largeFiles}
+            keepsCopy={req().keepsCopy}
+            keepsCopyWithBranch={req().keepsCopyWithBranch}
+            runningCount={req().runningCount}
+            busy={req().busy}
+            onConfirm={(opts) => confirmRemoveWorktree(opts)}
+            onCancel={() => setWtReq(null)}
+          />
+        )}
       </Show>
 
       <Show when={attachAt()} keyed>
@@ -5395,14 +5437,16 @@ export default function LeftSidebar(props: {
       </Show>
 
       <Show when={brReq()}>
-        <BranchRemoveDialog
-          branch={brReq()!.u.branch!}
-          unpushed={brReq()!.unpushed}
-          hasRemote={brReq()!.hasRemote}
-          busy={brReq()!.busy}
-          onConfirm={(opts) => confirmRemoveBranch(opts)}
-          onCancel={() => setBrReq(null)}
-        />
+        {(req) => (
+          <BranchRemoveDialog
+            branch={req().u.branch!}
+            unpushed={req().unpushed}
+            hasRemote={req().hasRemote}
+            busy={req().busy}
+            onConfirm={(opts) => confirmRemoveBranch(opts)}
+            onCancel={() => setBrReq(null)}
+          />
+        )}
       </Show>
 
       <Show when={convertReq()}>

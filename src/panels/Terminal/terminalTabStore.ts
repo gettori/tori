@@ -1,7 +1,7 @@
 // The terminal pane's tab model, module-level so the unified tab store (plan
 // phase 4) can compose it without mounting the panel; sessionStore is the
 // precedent. Terminal.tsx resets it at setup: the lifetime still tracks the panel.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../../lib/liveState";
 import { noteTabFocus } from "../../layout/layoutStore";
 import { isShellsKey, SHELLS_KEY } from "../../utils/topics";
 
@@ -147,7 +147,7 @@ const defaultState = (t: OpenTerm): TabState => (isChatDraft(t) ? "open" : "live
 // reason `tabTitles` below is: the strip keys tabs by identity (gotcha #64) and
 // never re-renders a still-mounted tab, so a plain-property read would not
 // repaint when a tab wakes up. A signal read does.
-const [tabStates, setTabStates] = createSignal<Record<string, TabState>>({});
+const [tabStates, setTabStates] = createLiveSignal<Record<string, TabState>>({}, { ownedWrite: true });
 
 export const tabState = (t: OpenTerm): TabState => tabStates()[t.id] ?? defaultState(t);
 
@@ -191,7 +191,7 @@ export const stateOnActivate = (t: OpenTerm): TabState =>
 
 // Restored terminals the daemon still runs. Mounting them all at once would
 // replay every ring at launch.
-const [held, setHeld] = createSignal<Set<string>>(new Set());
+const [held, setHeld] = createLiveSignal<Set<string>>(new Set(), { ownedWrite: true });
 
 export function markHeld(id: string): void {
   setHeld(new Set(held()).add(id));
@@ -213,21 +213,21 @@ export function dropTabState(id: string): void {
   setTabStates(next);
 }
 
-const [open, setOpen] = createSignal<OpenTerm[]>([]);
+const [open, setOpen] = createLiveSignal<OpenTerm[]>([], { ownedWrite: true });
 // Live tab labels that can change after a tab is created (a session rename),
 // keyed by tab id and overriding OpenTerm.title when present. Kept in a signal
 // rather than mutated onto the tab object because the tab bar keys tabs by
 // identity (gotcha #64) and never re-runs renderTab for a still-mounted tab,
 // so a plain-property title read would not repaint; a signal read does.
-const [tabTitles, setTabTitles] = createSignal<Record<string, string>>({});
+const [tabTitles, setTabTitles] = createLiveSignal<Record<string, string>>({}, { ownedWrite: true });
 const tabTitle = (t: OpenTerm) => tabTitles()[t.id] ?? t.title;
 // Tabs are grouped by workspace (branch-unit folder). Only the active
 // workspace's tabs show in the bar/stage, and the `shells:` group in the dock;
 // every other group stays mounted and CSS-hidden so its PTYs keep running
 // (gotcha #64). `activeWorkspace` is the workspace on screen and is never
 // `shells:`; `activeByWorkspace` remembers the focused tab per group.
-const [activeWorkspace, setActiveWorkspace] = createSignal<string | null>(null);
-const [activeByWorkspace, setActiveByWorkspace] = createSignal<Record<string, string>>({});
+const [activeWorkspace, setActiveWorkspace] = createLiveSignal<string | null>(null, { ownedWrite: true });
+const [activeByWorkspace, setActiveByWorkspace] = createLiveSignal<Record<string, string>>({}, { ownedWrite: true });
 
 const tabsIn = (ws: string) => open().filter((t) => t.workspace === ws);
 // A group's remembered tab, falling back to its first tab when that record is

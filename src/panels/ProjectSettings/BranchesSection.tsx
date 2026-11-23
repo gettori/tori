@@ -1,4 +1,4 @@
-import { createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createDeferred, createSignal, For, onSettled, refresh, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -27,33 +27,44 @@ const toast = (message: string) => emitWith<ToastEvent>(TOAST, { message, kind: 
  * checkouts of one repository share one pick.
  */
 export default function BranchesSection(props: { projectPath: string; projectName: string }) {
-  const [origin, { refetch: refetchOrigin }] = createResource(
-    () => props.projectPath,
-    (path) => invoke<string | null>("git_origin", { projectPath: path }).catch(() => null),
+  const origin = createDeferred<string | null | undefined>(
+    (was) => {
+      const path = props.projectPath;
+      if (!path) return was;
+      return invoke<string | null>("git_origin", { projectPath: path }).catch(() => null);
+    },
+    { loadingValue: undefined },
   );
-  const [base, { refetch: refetchBase }] = createResource(
-    () => props.projectPath,
-    (repo) => invoke<string | null>("repo_default_branch", { repo }).catch(() => null),
+  const base = createDeferred<string | null | undefined>(
+    (was) => {
+      const repo = props.projectPath;
+      if (!repo) return was;
+      return invoke<string | null>("repo_default_branch", { repo }).catch(() => null);
+    },
+    { loadingValue: undefined },
   );
-  const [author, { refetch: refetchAuthor }] = createResource(
-    () => props.projectPath,
-    (projectPath) => invoke<CommitIdentity>("forge_commit_identity", { projectPath }).catch(() => null),
+  const author = createDeferred<CommitIdentity | null | undefined>(
+    (was) => {
+      const projectPath = props.projectPath;
+      if (!projectPath) return was;
+      return invoke<CommitIdentity | null>("forge_commit_identity", { projectPath }).catch(() => null);
+    },
+    { loadingValue: undefined },
   );
   const [editing, setEditing] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
 
   // `git_remote_add` emits `config://changed`, as does anything else that moves
   // a remote, so one listener covers a change made here and one made elsewhere.
-  let unlisten: (() => void) | undefined;
-  onMount(async () => {
-    unlisten = await listen("config://changed", () => {
-      void refetchOrigin();
-      void refetchBase();
-      void refetchAuthor();
+  onSettled(() => {
+    const unlisten = listen("config://changed", () => {
+      void refresh(origin);
+      void refresh(base);
+      void refresh(author);
       void resolveForgeRepo(props.projectPath);
     });
+    return () => void unlisten.then((stop) => stop());
   });
-  onCleanup(() => unlisten?.());
   void resolveForgeRepo(props.projectPath);
 
   async function setOrigin(url: string) {
@@ -94,7 +105,7 @@ export default function BranchesSection(props: { projectPath: string; projectNam
     } catch (e) {
       toast(forgeErrorMessage(e));
     }
-    void refetchAuthor();
+    void refresh(author);
   }
 
   const authorHint = (a: CommitIdentity) => {
@@ -154,7 +165,7 @@ export default function BranchesSection(props: { projectPath: string; projectNam
                 onChange={(id) =>
                   void pickForgeAccount(props.projectPath, id)
                     .catch((e) => toast(forgeErrorMessage(e)))
-                    .then(() => refetchAuthor())
+                    .then(() => refresh(author))
                 }
               />
             </Show>

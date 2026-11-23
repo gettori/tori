@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createMemo, createSignal, onSettled } from "solid-js";
 import { MessageSquare } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import { providerMarkKey } from "../../components/Icon/ProviderIcon";
@@ -28,9 +28,9 @@ export default function ChatList(props: {
   onAdd: () => void;
 }) {
   const [now, setNow] = createSignal(Date.now());
-  onMount(() => {
+  onSettled(() => {
     const tick = setInterval(() => setNow(Date.now()), 60_000);
-    onCleanup(() => clearInterval(tick));
+    return () => clearInterval(tick);
   });
 
   const kept = (c: Chat) => props.selectedId === c.id || needsYouOrWorking(props.status(c));
