@@ -1,4 +1,15 @@
-import { For, Show, createEffect, createResource, createSignal, on, onCleanup, createStore, produce } from "solid-js";
+import {
+  For,
+  Show,
+  createDeferred,
+  createEffect,
+  createMemo,
+  createSignal,
+  createStore,
+  onCleanup,
+  refresh,
+  untrack,
+} from "solid-js";
 import { ArrowUp, ChevronLeft, Ellipsis, Paperclip, X } from "../../src/components/Icon/icons";
 import Icon from "../../src/components/Icon/Icon";
 import MessageList from "../../src/panels/Chat/MessageList";
@@ -85,10 +96,14 @@ function Levers(props: {
   config: ChatConfigOption[];
   onError: (message: string) => void;
 }) {
-  const [info, { refetch }] = createResource<Info | null, number>(
-    () => props.client.generation() || undefined,
-    () => props.client.request<Info>("session.info", { id: props.id }).catch(() => null),
+  const info = createDeferred<Info | null | undefined>(
+    (was) => {
+      if (!props.client.generation()) return was;
+      return untrack(() => props.client.request<Info>("session.info", { id: props.id }).catch(() => null));
+    },
+    { loadingValue: undefined },
   );
+  const refetch = () => refresh(info);
   const [model, setModel] = createSignal<Pick | null>(null);
   const [mode, setMode] = createSignal<Pick | null>(null);
   onCleanup(
@@ -337,17 +352,26 @@ export default function Chat(props: {
     chat: initialChat(id),
     error: null,
   });
+  const setError = (message: string) =>
+    setView((s) => {
+      s.error = message;
+    });
   const [next, setNext] = createSignal<unknown>(null);
   const [paging, setPaging] = createSignal(false);
   const [pending, setPending] = createSignal<PendingRow[]>([]);
   const [draft, setDraft] = createSignal("");
   const [sending, setSending] = createSignal(false);
-  const attached = createAttachments(props.client, (message) => setView("error", message));
+  const attached = createAttachments(props.client, (message) => setError(message));
   const [ask, setAsk] = createSignal<Ask | null>(null);
-  const [chatAgents] = createResource(() =>
-    props.client
-      .request<{ agents: { id: string }[] }>("agents.list", {})
-      .then((listed) => new Set(listed.agents.map((a) => a.id))),
+  const chatAgents = createMemo<Set<string> | undefined>(
+    () =>
+      untrack(() =>
+        props.client
+          .request<{ agents: { id: string }[] }>("agents.list", {})
+          .then((listed) => new Set(listed.agents.map((a) => a.id)))
+          .catch(() => undefined),
+      ),
+    { loadingValue: undefined },
   );
   // An ended chat resumes on the next message; an ended terminal session cannot.
   const resumable = () => props.session().live || chatAgents()?.has(props.session().agent ?? "") === true;
@@ -360,13 +384,18 @@ export default function Chat(props: {
       run: (name) => props.client.request("session.rename", { id, name: name || null }).then(changed),
     });
   const [changes, setChanges] = createSignal(false);
-  const [spent, { refetch: respend }] = createResource(
-    () => props.client.generation() || undefined,
-    () =>
-      props.client
-        .request<{ session: { costUsd: number | null } }>("session.call", { id, op: "usage_totals" })
-        .catch(() => null),
+  const spent = createDeferred<{ session: { costUsd: number | null } } | null | undefined>(
+    (was) => {
+      if (!props.client.generation()) return was;
+      return untrack(() =>
+        props.client
+          .request<{ session: { costUsd: number | null } }>("session.call", { id, op: "usage_totals" })
+          .catch(() => null),
+      );
+    },
+    { loadingValue: undefined },
   );
+  const respend = () => refresh(spent);
   onCleanup(
     props.client.subscribe(`session:${id}`, (data) => {
       if ((data as { kind?: string } | null)?.kind === "session.turn_ended") void respend();
@@ -389,11 +418,11 @@ export default function Chat(props: {
       forkOf,
     });
   };
-  const failed = (e: unknown) => setView("error", String(e instanceof Error ? e.message : e));
+  const failed = (e: unknown) => setError(String(e instanceof Error ? e.message : e));
   const fork = () => void spawnAs({ fork: id }, id).catch(failed);
   const sendToNew = () => {
     const attach = attached.paths();
-    if (!draft().trim() && attach.length === 0) return setView("error", "Type something first, or attach a file.");
+    if (!draft().trim() && attach.length === 0) return setError("Type something first, or attach a file.");
     void spawnAs({ prompt: draft().trim() || undefined, attach: attach.length ? attach : undefined })
       .then(() => {
         setDraft("");
@@ -473,7 +502,10 @@ export default function Chat(props: {
     for (const ev of history) applyEvent(chat, ev);
     settleBackfill(chat);
     for (const ev of live) applyEvent(chat, ev);
-    setView({ chat, error: null });
+    setView((s) => {
+      s.chat = chat;
+      s.error = null;
+    });
   };
 
   const onLive = (data: unknown) => {
@@ -483,13 +515,12 @@ export default function Chat(props: {
     }
     const ev = parseChatEvent(data);
     if (!ev) return;
-    if (ev.type === "modeRefused") setView("error", ev.reason);
+    if (ev.type === "modeRefused") setError(ev.reason);
     if (parked) return void parked.push(ev);
     live.push(ev);
-    setView(
-      "chat",
-      produce((chat) => applyEvent(chat, ev)),
-    );
+    setView((s) => {
+      applyEvent(s.chat, ev);
+    });
   };
 
   const page = (before: unknown) =>
@@ -519,7 +550,7 @@ export default function Chat(props: {
     } catch (e) {
       if (mine !== loads) return;
       parked = null;
-      setView("error", String(e instanceof Error ? e.message : e));
+      setError(String(e instanceof Error ? e.message : e));
     }
   }
 
@@ -535,7 +566,7 @@ export default function Chat(props: {
       setNext(older.next ?? null);
       refold();
     } catch (e) {
-      if (mine === loads) setView("error", String(e instanceof Error ? e.message : e));
+      if (mine === loads) setError(String(e instanceof Error ? e.message : e));
     } finally {
       setPaging(false);
     }
@@ -560,7 +591,7 @@ export default function Chat(props: {
         attached.clear();
       }
     } catch (e) {
-      setView("error", String(e instanceof Error ? e.message : e));
+      setError(String(e instanceof Error ? e.message : e));
     } finally {
       setSending(false);
     }
@@ -577,13 +608,11 @@ export default function Chat(props: {
       if (data && typeof data === "object" && "hold" in data) void refetchPending();
     }),
   );
-  createEffect(
-    on(props.client.generation, (n) => {
-      if (n === 0) return;
-      void load();
-      void refetchPending();
-    }),
-  );
+  createEffect(props.client.generation, (n) => {
+    if (n === 0) return;
+    void load();
+    void refetchPending();
+  });
 
   const sendable = () => !sending() && !attached.uploading() && (draft().trim() !== "" || attached.files().length > 0);
 
@@ -711,7 +740,7 @@ export default function Chat(props: {
                 refused={view.chat.refusedModes}
                 effort={view.chat.effort}
                 config={view.chat.configOptions}
-                onError={(message) => setView("error", message)}
+                onError={(message) => setError(message)}
               />
             </Show>
             <button type="submit" class={shell.send} aria-label="Send" disabled={!sendable()}>

@@ -33,9 +33,12 @@ beforeEach(() => {
 
 describe("the placement memo", () => {
   it("rebuilds once per change however many consumers read, and keeps the maps right", () => {
-    createRoot((dispose) => {
+    const dispose = createRoot((d) => {
       installUnifiedTabsMemo();
       installPaneTabsMemo();
+      return d;
+    });
+    {
       ensureEnvelope(WS, () => seedTwoPane({ rightShare: 50, showLeft: true, showRight: true }));
       const root = layoutRoot(WS)!;
       const [left, right] = leaves(root).map((l) => l.id);
@@ -71,7 +74,7 @@ describe("the placement memo", () => {
       expect(paneTabs(WS, left).map((t) => t.id)).toEqual(Array.from({ length: 8 }, (_, i) => `sh:${i}`));
       expect(paneActiveId(WS, left)).toBe("sh:3");
       dispose();
-    });
+    }
   });
 
   it("falls back to per-call derivation when nothing installed a memo", () => {

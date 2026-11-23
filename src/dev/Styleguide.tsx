@@ -164,12 +164,11 @@ export default function Styleguide() {
   // NOT through setTheme, which also persists the selection. Clicking through
   // five themes in a dev surface must not silently rewrite which theme the app
   // boots into.
-  createEffect(() => {
-    const theme = active();
+  createEffect(active, (theme) => {
     applyResolved(buildRoles(theme.palette), theme.appearance);
   });
-  createEffect(() => {
-    document.documentElement.style.setProperty("--ui-scale", String(scale()));
+  createEffect(scale, (s) => {
+    document.documentElement.style.setProperty("--ui-scale", String(s));
   });
 
   return (

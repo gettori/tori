@@ -213,6 +213,7 @@ import ContextMenu from "../../components/Menu/ContextMenu";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
 import { unifiedTabs, unifyTerm, type TerminalUnifiedTab, type UnifiedTab } from "../../tabs/unifiedTabs";
 import { registerKind, kindEntry, type TabDescriptor } from "../../tabs/registry";
+import { withoutFlush } from "../../lib/liveState";
 import { isLocked } from "../../utils/autopilotStore";
 import { LockMark } from "../../components/Autopilot/SessionMarks";
 import styles from "./Terminal.module.css";
@@ -860,7 +861,9 @@ export default function Terminal(props: {
         };
       }),
     }),
-    ({ report, tabs }) => report?.(tabs),
+    ({ report, tabs }) => {
+      report?.(tabs);
+    },
   );
 
   // Persist the tab strip so the next run can offer to restore it. Depends on
@@ -1554,11 +1557,11 @@ export default function Terminal(props: {
     (sel) => {
       const prev = prevSelected;
       prevSelected = sel;
-      // setActiveWorkspace is live state, whose setter flushes: not allowed inside an effect callback.
+      const ws = workspaceKey(sel);
+      if (!sel || !ws) return;
+      withoutFlush(() => setActiveWorkspace(ws));
+      // These write live state and read it back, which an effect callback cannot flush for.
       queueMicrotask(() => {
-        const ws = workspaceKey(sel);
-        if (!sel || !ws) return;
-        setActiveWorkspace(ws);
         if (sel.sessionId) {
           // A sidebar session click means "take me there": reveal and focus
           // the pane the session's tab lives in (or will open in), even when
@@ -2690,8 +2693,7 @@ export default function Terminal(props: {
         //
         // A signal, so clearing it re-runs this effect: the tab that is genuinely
         // in front then wakes, and no wake is lost.
-        // advanceTabState writes tab state, which flushes: not allowed inside an effect callback.
-        if (onTop) queueMicrotask(() => advanceTabState(t, stateOnActivate(t)));
+        if (onTop) withoutFlush(() => advanceTabState(t, stateOnActivate(t)));
       },
     );
 
@@ -3141,13 +3143,9 @@ export default function Terminal(props: {
     </>
   );
 
-  // Registered once settled: the registry's generation signal is written by it,
-  // and a component body may not write.
-  onSettled(() => {
-    for (const kind of ["shell", "agent", "command", "chat", "task"] as TabKind[]) {
-      registerKind(kind, termDescriptor(kind));
-    }
-  });
+  for (const kind of ["shell", "agent", "command", "chat", "task"] as TabKind[]) {
+    registerKind(kind, termDescriptor(kind));
+  }
 
   // A service host since phase 7: no visible output. Surfaces render through
   // Portals into stage hosts (adopted by PaneView), strip and overlays through

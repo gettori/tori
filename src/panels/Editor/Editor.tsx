@@ -3377,112 +3377,108 @@ export default function Editor(props: {
   const stripTabs = (): FileUnifiedTab[] =>
     unifiedTabs().filter((u): u is FileUnifiedTab => u.kind === "file" && u.workspace === ws());
 
-  // Registered once settled: the registry's generation signal is written by it,
-  // and a component body may not write.
-  onSettled(() => {
-    registerKind("file", {
-      // The chip composes *before* the file glyph rather than replacing it: `icon`
-      // is one slot, and the seti glyph is the other half of what a tab says.
-      icon: (u) => {
-        const t = asFile(u);
-        const m = tabMember(t.path);
-        return (
-          <>
-            {m && <TabMemberChip member={m} />}
-            {tabIcon(t)}
-          </>
-        );
-      },
-      // The repo reaches the accessible name through a hidden span, never
-      // `aria-label`: a name on a tab replaces its visible text rather than adding
-      // to it, and 34 `getByRole("tab", { name })` queries read that text.
-      title: (u) => {
-        const t = asFile(u);
-        const m = tabMember(t.path);
-        return (
-          <>
-            {m && <span class={patterns.srOnly}>{m.label} / </span>}
-            {tabLabel(t)}
-          </>
-        );
-      },
-      tooltip: (u) => {
-        const t = asFile(u);
-        const m = tabMember(t.path);
-        const base = tabTitle(t);
-        // A tab outlives its member's worktree, so the hover text is where the
-        // dimmed chip gets a name for what happened to it.
-        return m && !m.state.usable ? `${base}\n${m.label}: ${m.state.label}` : base;
-      },
-      dots: fileDots,
-      // The tab moves between panes either way (the registry says so); what a
-      // synthetic view cannot do is hand anyone a path, since dropping its id on
-      // a terminal would paste `tori://…`, which names nothing on disk.
-      onDragStart: (u, e) => {
-        const t = asFile(u);
-        if (isSyntheticId(t.path)) return;
-        e.dataTransfer?.setData(DRAG_PATH_MIME, t.path);
-        e.dataTransfer?.setData("text/plain", t.path);
-      },
-      // The menu wraps the tab instead of being the tab: `Tab` composes
-      // `Tooltip`, which already renders *as* the button, and two wrappers
-      // cannot own one element. The registry skips this wrap for the measuring
-      // ghost row, which is measured, never reached.
-      wrapTab: (u, tab) => (
-        <MaybeTabMenu when tab={asFile(u)}>
-          {tab}
-        </MaybeTabMenu>
-      ),
-      renderMenuItem: (u) => {
-        const t = asFile(u);
-        const m = tabMember(t.path);
-        // The overflow row is the one place two members' same-named files sit
-        // next to each other, so it spends the width on the whole `<repo> / <rel>`
-        // rather than on the basename the strip already showed.
-        const rel = m && repoRelative(t.path, m.key);
-        return (
-          <>
-            {m && <TabMemberChip member={m} />}
-            {tabIcon(t)}
-            <span class="tab-name">{m ? `${m.label} / ${rel ?? t.name}` : tabName(t)}</span>
-            {fileDots(u)}
-            <button
-              class="tab-close"
-              aria-label="Close"
-              onClick={(e) => {
-                e.stopPropagation();
-                closeTab(tabId(t));
-              }}
-            >
-              <Icon icon={X} />
-            </button>
-          </>
-        );
-      },
-      // No ranked cluster of its own any more: every control this panel had in
-      // the strip was about one file, and both went to the pane that holds it.
-      trailingEdge: editorFiletreeReveal,
-      activate: (u) => setActiveId(u.id),
-      close: (u) => void closeTab(u.id),
-      transient: (u) => !!asFile(u).transient,
-      onDoubleClick: (u) => pinTab(u.id),
-      // Pane hosting (plan phase 7): the file-pinned pane draws this panel's
-      // strip and adopts the one shared editor stage; every workspace's tabs
-      // render into it, so the pane never needs a host per file.
-      stripItems: stripTabs,
-      // The workspace's own pick, not the focused pane's: a pane's strip resolves
-      // its own active tab from this (see activeIdInPane), and answering with the
-      // pane-derived one would ask this question in a circle.
-      stripActiveId: () => activeByWs()[ws()] ?? null,
-      stripReorder: (next) => setTabs(next.filter((u): u is FileUnifiedTab => u.kind === "file").map((u) => u.file)),
-      stripClass: styles.editorTabs,
-      // One host per pane (phase 9), so two panes can each hold a view; a pane-less
-      // panel keeps the single host it has always rendered into.
-      hostIds: (paneId, tabs) =>
-        paneId === null || tabs.length || isKindHome(ws(), "file", paneId)
-          ? [editorStageId(paneId ?? "editor-stage")]
-          : [],
-    });
+  registerKind("file", {
+    // The chip composes *before* the file glyph rather than replacing it: `icon`
+    // is one slot, and the seti glyph is the other half of what a tab says.
+    icon: (u) => {
+      const t = asFile(u);
+      const m = tabMember(t.path);
+      return (
+        <>
+          {m && <TabMemberChip member={m} />}
+          {tabIcon(t)}
+        </>
+      );
+    },
+    // The repo reaches the accessible name through a hidden span, never
+    // `aria-label`: a name on a tab replaces its visible text rather than adding
+    // to it, and 34 `getByRole("tab", { name })` queries read that text.
+    title: (u) => {
+      const t = asFile(u);
+      const m = tabMember(t.path);
+      return (
+        <>
+          {m && <span class={patterns.srOnly}>{m.label} / </span>}
+          {tabLabel(t)}
+        </>
+      );
+    },
+    tooltip: (u) => {
+      const t = asFile(u);
+      const m = tabMember(t.path);
+      const base = tabTitle(t);
+      // A tab outlives its member's worktree, so the hover text is where the
+      // dimmed chip gets a name for what happened to it.
+      return m && !m.state.usable ? `${base}\n${m.label}: ${m.state.label}` : base;
+    },
+    dots: fileDots,
+    // The tab moves between panes either way (the registry says so); what a
+    // synthetic view cannot do is hand anyone a path, since dropping its id on
+    // a terminal would paste `tori://…`, which names nothing on disk.
+    onDragStart: (u, e) => {
+      const t = asFile(u);
+      if (isSyntheticId(t.path)) return;
+      e.dataTransfer?.setData(DRAG_PATH_MIME, t.path);
+      e.dataTransfer?.setData("text/plain", t.path);
+    },
+    // The menu wraps the tab instead of being the tab: `Tab` composes
+    // `Tooltip`, which already renders *as* the button, and two wrappers
+    // cannot own one element. The registry skips this wrap for the measuring
+    // ghost row, which is measured, never reached.
+    wrapTab: (u, tab) => (
+      <MaybeTabMenu when tab={asFile(u)}>
+        {tab}
+      </MaybeTabMenu>
+    ),
+    renderMenuItem: (u) => {
+      const t = asFile(u);
+      const m = tabMember(t.path);
+      // The overflow row is the one place two members' same-named files sit
+      // next to each other, so it spends the width on the whole `<repo> / <rel>`
+      // rather than on the basename the strip already showed.
+      const rel = m && repoRelative(t.path, m.key);
+      return (
+        <>
+          {m && <TabMemberChip member={m} />}
+          {tabIcon(t)}
+          <span class="tab-name">{m ? `${m.label} / ${rel ?? t.name}` : tabName(t)}</span>
+          {fileDots(u)}
+          <button
+            class="tab-close"
+            aria-label="Close"
+            onClick={(e) => {
+              e.stopPropagation();
+              closeTab(tabId(t));
+            }}
+          >
+            <Icon icon={X} />
+          </button>
+        </>
+      );
+    },
+    // No ranked cluster of its own any more: every control this panel had in
+    // the strip was about one file, and both went to the pane that holds it.
+    trailingEdge: editorFiletreeReveal,
+    activate: (u) => setActiveId(u.id),
+    close: (u) => void closeTab(u.id),
+    transient: (u) => !!asFile(u).transient,
+    onDoubleClick: (u) => pinTab(u.id),
+    // Pane hosting (plan phase 7): the file-pinned pane draws this panel's
+    // strip and adopts the one shared editor stage; every workspace's tabs
+    // render into it, so the pane never needs a host per file.
+    stripItems: stripTabs,
+    // The workspace's own pick, not the focused pane's: a pane's strip resolves
+    // its own active tab from this (see activeIdInPane), and answering with the
+    // pane-derived one would ask this question in a circle.
+    stripActiveId: () => activeByWs()[ws()] ?? null,
+    stripReorder: (next) => setTabs(next.filter((u): u is FileUnifiedTab => u.kind === "file").map((u) => u.file)),
+    stripClass: styles.editorTabs,
+    // One host per pane (phase 9), so two panes can each hold a view; a pane-less
+    // panel keeps the single host it has always rendered into.
+    hostIds: (paneId, tabs) =>
+      paneId === null || tabs.length || isKindHome(ws(), "file", paneId)
+        ? [editorStageId(paneId ?? "editor-stage")]
+        : [],
   });
 
   // A service host since phase 7: no visible output. The code side and the

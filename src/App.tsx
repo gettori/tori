@@ -1,4 +1,16 @@
-import { createSignal, createEffect, createMemo, on, onMount, onCleanup, lazy, Loading, Show, untrack } from "solid-js";
+import {
+  createSignal,
+  createEffect,
+  createMemo,
+  onSettled,
+  onCleanup,
+  lazy,
+  Loading,
+  runWithOwner,
+  Show,
+  untrack,
+} from "solid-js";
+import { createLiveSignal } from "./lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { forgetWorkspace as forgetLayout, moveWorkspaceLayouts } from "./layout/layoutStore";
@@ -288,17 +300,21 @@ function App() {
   }
 
   const initial = loadLayout();
-  const [sidebar, setSidebar] = createSignal(initial.sidebar);
-  const [showSidebar, setShowSidebar] = createSignal(initial.showSidebar);
+  // Live: `persistLayout` reads these back right after each write.
+  const [sidebar, setSidebar] = createLiveSignal(initial.sidebar);
+  const [showSidebar, setShowSidebar] = createLiveSignal(initial.showSidebar);
   // Hiding the sidebar hides its tree. With the space tiles in the rail, the
   // rail stays, since it is the way back to every space.
   const railOnly = () => !showSidebar() && settings.sidebar.spaceTiles === "side";
-  const [showFiletree, setShowFiletree] = createSignal(initial.showFiletree);
-  const [dock, setDock] = createSignal(initial.dock);
-  resetDock(initial.showDock);
-  resetPaneLayoutModel();
-  resetTabPlacement();
-  ensureShellsWorkspace();
+  const [showFiletree, setShowFiletree] = createLiveSignal(initial.showFiletree);
+  const [dock, setDock] = createLiveSignal(initial.dock);
+  // Ownerless so each write lands at once: the next reset reads the one before it.
+  runWithOwner(null, () => {
+    resetDock(initial.showDock);
+    resetPaneLayoutModel();
+    resetTabPlacement();
+    ensureShellsWorkspace();
+  });
   // Inside App's own root, so both memos are disposed with it (the module-level
   // concern documented in unifiedTabs.ts); a repeated test mount installs fresh.
   installUnifiedTabsMemo();
@@ -325,20 +341,23 @@ function App() {
   // A *change* freezes what is open first: a tab nobody moved resolves through
   // the rule, so a new rule would otherwise carry the whole strip across the
   // window rather than routing what opens next.
+  let pinsPushed = false;
   createEffect(
-    on(
-      () => ({ ...settings.panePins }),
-      (next, prev) => {
-        if (prev) freezePlacements();
+    () => ({ ...settings.panePins }),
+    (next) => {
+      const changed = pinsPushed;
+      pinsPushed = true;
+      // These write live layout state, which cannot flush inside an effect.
+      queueMicrotask(() => {
+        if (changed) freezePlacements();
         setPinSides(next);
-      },
-    ),
+      });
+    },
   );
 
   const wsKey = () => workspaceKey(selected());
   const seedEnvelope = () => seedOnePane();
   const env = () => envelopeFor(wsKey(), seedEnvelope);
-  createEffect(() => ensureEnvelope(wsKey(), seedEnvelope));
   const paneLeaves = () => leaves(env().layout);
   // Where each kind opens, so the shell knows which pane is the editor (chrome
   // and role) and which the terminal, wherever a move has since put them.
@@ -365,20 +384,22 @@ function App() {
   let bodyEl: HTMLDivElement | undefined;
   const [bodyW, setBodyW] = createSignal(window.innerWidth);
   const [bodyH, setBodyH] = createSignal(window.innerHeight);
-  onMount(watchInbox);
-  onMount(watchReadAloud);
-  onMount(watchNeedsYou);
-  onMount(watchPermissions);
-  onMount(watchDigest);
-  onMount(watchSecondOpinions);
-  onMount(() => {
+  onSettled(() => {
+    watchInbox();
+    watchReadAloud();
+    watchNeedsYou();
+    watchPermissions();
+    watchDigest();
+    watchSecondOpinions();
+  });
+  onSettled(() => {
     if (!bodyEl) return;
     const ro = new ResizeObserver(([entry]) => {
       setBodyW(entry.contentRect.width);
       setBodyH(entry.contentRect.height);
     });
     ro.observe(bodyEl);
-    onCleanup(() => ro.disconnect());
+    return () => ro.disconnect();
   });
   // Room the resizable panes actually share, once the gutters and padding on the
   // current layout are accounted for.
@@ -423,7 +444,14 @@ function App() {
   const dockMax = () => Math.max(px(DOCK_MIN), bodyH() - px(WORKSPACE_PAD) - px(GUTTER) - px(WORK_MIN));
   const dockH = () => Math.min(Math.max(dock(), px(DOCK_MIN)), dockMax());
 
-  const [selected, setSelected] = createSignal<Selection | null>(loadSelection(), { equals: sameSelection });
+  const [selected, setSelected] = createLiveSignal<Selection | null>(loadSelection(), { equals: sameSelection });
+  // Seeded here so the first render already has a tree to read.
+  const firstWs = untrack(wsKey);
+  runWithOwner(null, () => ensureEnvelope(firstWs, seedEnvelope));
+  createEffect(wsKey, (ws) => {
+    // A live layout write, which cannot flush inside an effect.
+    queueMicrotask(() => ensureEnvelope(ws, seedEnvelope));
+  });
   // The tree the shell renders. Two same-shape worktrees are two envelope
   // objects and PaneTree keys children by reference, so a switch between them
   // would dispose live subtrees; handing the drawn nodes back makes it a no-op.
@@ -494,8 +522,7 @@ function App() {
     ),
   );
 
-  createEffect(() => {
-    const s = selected();
+  createEffect(selected, (s) => {
     const at = s && placeIdOf(s);
     if (at) noteVisit(at);
     try {
@@ -516,19 +543,20 @@ function App() {
   }
 
   const topicSelected = createMemo(() => selected()?.kind === "topic");
-  createEffect(() => {
-    if (topicSelected()) onCleanup(watchTopics());
-  });
+  createEffect(topicSelected, (on) => (on ? watchTopics() : undefined));
   // A stored Topic Selection is a snapshot; the record is truth. Only a reload
   // re-resolves it: an applied record can be mid-promote, and the sidebar
   // moves the active root itself once the promote lands.
-  createEffect(() => {
-    if (!topicsReloaded()) return;
-    const list = untrack(topics);
-    const sel = untrack(selected);
-    if (sel?.kind !== "topic") return;
-    const topic = list.find((f) => f.id === sel.topicId);
-    setSelected(topic ? topicSelection(topic, sel.activeRoot) : null);
+  createEffect(topicsReloaded, (reloaded) => {
+    if (!reloaded) return;
+    // `selected` is live, and a live write cannot flush inside an effect.
+    queueMicrotask(() => {
+      const list = untrack(topics);
+      const sel = untrack(selected);
+      if (sel?.kind !== "topic") return;
+      const topic = list.find((f) => f.id === sel.topicId);
+      setSelected(topic ? topicSelection(topic, sel.activeRoot) : null);
+    });
   });
   let unlistenMenu: UnlistenFn | undefined;
   let unlistenSetup: UnlistenFn | undefined;
@@ -541,7 +569,9 @@ function App() {
     if (why) emitWith<ToastEvent>(TOAST, { message: `${c.label}: ${why}`, kind: "info" });
     else c?.run?.();
   };
-  onMount(async () => {
+  let disposed = false;
+  const startServices = async () => {
+    if (disposed) return;
     // The quota windows the last run knew, so the strip opens with them rather
     // than blank until the first turn of the day. The fired dedupe keys come
     // back with them, which is what stops a restart inside an already-announced
@@ -553,11 +583,18 @@ function App() {
     invoke("set_app_menu", { spec: menuSpec() }).catch((e) => console.error("menu bar not set:", e));
     unlistenSetup = await watchSetup();
     unlistenLinks = await watchPackLinks();
-  });
-  onCleanup(() => {
+    if (disposed) releaseServices();
+  };
+  // Later than settle: these write live state, which cannot flush inside it.
+  onSettled(() => queueMicrotask(() => void startServices()));
+  function releaseServices() {
     unlistenMenu?.();
     unlistenSetup?.();
     unlistenLinks?.();
+  }
+  onCleanup(() => {
+    disposed = true;
+    releaseServices();
   });
 
   // A deleted Topic: its pane tree and placements go, and if it was what
@@ -580,23 +617,19 @@ function App() {
   // the one that draws it. The span itself was opened by the sidebar click, so
   // whatever ran before this (a checkout, say) is inside the measurement.
   createEffect(
-    on(
-      () => selected()?.folderPath ?? null,
-      () => {
-        traceMark("ws:flip");
-        tracePaint();
-      },
-      { defer: true },
-    ),
+    () => selected()?.folderPath ?? null,
+    () => {
+      traceMark("ws:flip");
+      tracePaint();
+    },
+    { defer: true },
   );
 
   // Selecting a worktree, which creating one does, is when its proposal is first seen.
   const selectedRoot = createMemo(() => selectionRoot(selected()));
-  createEffect(
-    on(selectedRoot, (root) => {
-      if (root) void noticeProposal(root);
-    }),
-  );
+  createEffect(selectedRoot, (root) => {
+    if (root) void noticeProposal(root);
+  });
 
   // The selection signal and the pane tree are what the scripted perf recipe
   // cannot reach on its own. Registered unconditionally and consulted only by a
@@ -604,12 +637,12 @@ function App() {
   // at all. `leaves` is read from the model rather than counted in the DOM: the
   // mismatch pass has to prove the split it asked for survived, and a count of
   // rendered panes would answer with what the renderer did instead.
-  onMount(() =>
+  onSettled(() => {
     registerRecipeHost({
       select: (s) => setSelected(s as Selection),
       leaves: () => paneLeaves().length,
-    }),
-  );
+    });
+  });
 
   // Here rather than in the sidebar, which is where the forge poller starts:
   // this one answers for every repo in the config, not for the tree that
@@ -655,14 +688,12 @@ function App() {
   // The dock opens and closes from outside App too (a command, its group
   // emptying), so the write follows the state rather than the toggle.
   createEffect(
-    on(
-      dockOpen,
-      (open) => {
-        if (!open) blurIfInside("[data-dock]");
-        persistLayout();
-      },
-      { defer: true },
-    ),
+    dockOpen,
+    (open) => {
+      if (!open) blurIfInside("[data-dock]");
+      persistLayout();
+    },
+    { defer: true },
   );
 
   function toggleSidebar() {
@@ -834,22 +865,34 @@ function App() {
   }
 
   const held = new Set<string>();
-  createEffect(() => {
-    const ws = wsKey();
-    const root = env().layout;
-    const solo = leaves(root).length < 2;
-    let empty: string | null = null;
-    for (const leaf of leaves(root)) {
-      const key = `${ws}\u0000${leaf.id}`;
-      if (paneTabs(ws, leaf.id).length > 0) held.add(key);
-      else if (held.has(key) && !solo) empty = leaf.id;
-    }
-    if (empty) {
-      held.delete(`${ws}\u0000${empty}`);
-      forgetPane(ws, empty);
-      updateLayout(ws, (r) => closePane(r, empty!));
-    }
-  });
+  createEffect(
+    () => {
+      const ws = wsKey();
+      const panes = leaves(env().layout).map((leaf) => ({ id: leaf.id, tabs: paneTabs(ws, leaf.id).length }));
+      return { ws, panes };
+    },
+    ({ ws, panes }) => {
+      const solo = panes.length < 2;
+      let empty: string | null = null;
+      for (const pane of panes) {
+        const key = `${ws}\u0000${pane.id}`;
+        if (pane.tabs > 0) held.add(key);
+        else if (held.has(key) && !solo) empty = pane.id;
+      }
+      if (!empty) return;
+      const gone = empty;
+      held.delete(`${ws}\u0000${gone}`);
+      // Live layout writes, which cannot flush inside an effect.
+      queueMicrotask(() => {
+        if (paneTabs(ws, gone).length > 0) {
+          held.add(`${ws}\u0000${gone}`);
+          return;
+        }
+        forgetPane(ws, gone);
+        updateLayout(ws, (r) => closePane(r, gone));
+      });
+    },
+  );
 
   // What the tree needs from the shell: which pane plays which part, and where
   // the divider writes land.
@@ -889,23 +932,27 @@ function App() {
     layout: PaneNode;
   };
   const lastGeometry = new Map<string, PaneGeometry>();
-  createEffect(() => {
-    const ws = wsKey();
-    const now: PaneGeometry = {
-      s: showSidebar(),
-      t: showTerminal(),
-      e: showEditor(),
-      f: showFiletree(),
-      d: dockOpen(),
-      layout: env().layout,
-    };
-    const was = lastGeometry.get(ws);
-    lastGeometry.set(ws, now);
-    if (!was) return;
-    const revealed =
-      (now.s && !was.s) || (now.t && !was.t) || (now.e && !was.e) || (now.f && !was.f) || (now.d && !was.d);
-    if (revealed || now.layout !== was.layout) requestAnimationFrame(() => emit(REFIT_PANES));
-  });
+  createEffect(
+    () => ({
+      ws: wsKey(),
+      now: {
+        s: showSidebar(),
+        t: showTerminal(),
+        e: showEditor(),
+        f: showFiletree(),
+        d: dockOpen(),
+        layout: env().layout,
+      } as PaneGeometry,
+    }),
+    ({ ws, now }) => {
+      const was = lastGeometry.get(ws);
+      lastGeometry.set(ws, now);
+      if (!was) return;
+      const revealed =
+        (now.s && !was.s) || (now.t && !was.t) || (now.e && !was.e) || (now.f && !was.f) || (now.d && !was.d);
+      if (revealed || now.layout !== was.layout) requestAnimationFrame(() => emit(REFIT_PANES));
+    },
+  );
 
   // Every window hotkey is held while first run is up: anything a key opened
   // would land behind the modal.
@@ -941,7 +988,7 @@ function App() {
   let offStartRun: (() => void) | undefined;
   let offStopRun: (() => void) | undefined;
   let offFocusIn: (() => void) | undefined;
-  onMount(() => {
+  onSettled(() => {
     window.addEventListener("keydown", onKeyDown);
     // Which pane holds focus, for the per-workspace envelope. focusin bubbles
     // where focus does not, so one window listener sees every surface.
@@ -1060,26 +1107,29 @@ function App() {
         kind: "info",
       });
     });
-    initSettings();
-    invoke<GitReport>("git_health")
-      .then((r) => {
-        if (r.health.kind === "ready") return;
-        emitWith<ToastEvent>(TOAST, {
-          message: "git is not installed, fix it in Settings.",
-          kind: "error",
-          action: {
-            label: "Open Settings",
-            run: () => {
-              setSettingsEntry("git");
-              setSettingsOpen(true);
+    // Later than settle: these write live state, which cannot flush inside it.
+    queueMicrotask(() => {
+      initSettings();
+      invoke<GitReport>("git_health")
+        .then((r) => {
+          if (r.health.kind === "ready") return;
+          emitWith<ToastEvent>(TOAST, {
+            message: "git is not installed, fix it in Settings.",
+            kind: "error",
+            action: {
+              label: "Open Settings",
+              run: () => {
+                setSettingsEntry("git");
+                setSettingsOpen(true);
+              },
             },
-          },
+          });
+        })
+        .catch(() => {
+          // Never block startup on a notice.
         });
-      })
-      .catch(() => {
-        // Never block startup on a notice.
-      });
-    ensureFirstRunLoaded();
+      ensureFirstRunLoaded();
+    });
   });
   onCleanup(() => {
     window.removeEventListener("keydown", onKeyDown);

@@ -43,9 +43,12 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 vi.mock("./panels/Terminal/TerminalView", () => ({
   default: (props: { id: string; active: boolean; autoFocus?: boolean }) => {
     let el!: HTMLTextAreaElement;
-    createEffect(() => {
-      if (props.active && props.autoFocus !== false) queueMicrotask(() => el.focus());
-    });
+    createEffect(
+      () => props.active && props.autoFocus !== false,
+      (focus) => {
+        if (focus) queueMicrotask(() => el.focus());
+      },
+    );
     return <textarea ref={el} data-testid="pty" data-id={props.id} data-active={props.active ? "1" : "0"} />;
   },
 }));
@@ -54,7 +57,12 @@ vi.mock("./panels/Chat/ChatDraft", () => ({ default: () => <div data-testid="dra
 vi.mock("./panels/Editor/Editor", () => ({ default: () => <div data-testid="editor-panel" /> }));
 vi.mock("./panels/LeftSidebar/LeftSidebar", () => ({
   default: (props: { selected: unknown }) => {
-    createEffect(() => (bridge.selected = props.selected));
+    createEffect(
+      () => props.selected,
+      (s) => {
+        bridge.selected = s;
+      },
+    );
     return <div />;
   },
 }));
