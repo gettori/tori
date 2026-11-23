@@ -1563,7 +1563,7 @@ export default function Terminal(props: {
       const ws = workspaceKey(sel);
       if (!sel || !ws) return;
       setActiveWorkspace(ws);
-      // These write live state and read it back, which an effect callback cannot flush for.
+      // After the workspace written above has landed, which these read.
       queueMicrotask(() => {
         if (sel.sessionId) {
           // A sidebar session click means "take me there": reveal and focus

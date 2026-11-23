@@ -2647,8 +2647,7 @@ export default function CodeEditor(props: {
   createEffect(
     () => paneIds().map((id) => [id, pathOf(id)] as const),
     (wanted) => {
-      // Deferred: a swap publishes into live stores, and a flush from here is a no-op.
-      queueMicrotask(() => {
+      untrack(() => {
         for (const [id, path] of wanted) {
           const rec = views.get(id);
           if (rec && rec.path !== path) void swapTo(id, path);
@@ -2659,8 +2658,7 @@ export default function CodeEditor(props: {
   createEffect(
     () => focusedId(),
     (id) => {
-      // Deferred: refocusing republishes the file's state into live stores.
-      queueMicrotask(() => focusPane(id));
+      untrack(() => focusPane(id));
     },
     { defer: true },
   );
@@ -2835,14 +2833,11 @@ export default function CodeEditor(props: {
   function PaneEditor(p: { id: string }) {
     onCleanup(() => detachView(p.id));
     let host: HTMLDivElement | undefined;
-    let gone = false;
-    onCleanup(() => (gone = true));
     // The view is built once settled, not in the ref: a ref runs while the pane
     // is being created, where the update listeners' signal writes are refused.
     onSettled(() => {
-      // Deferred: building the view writes live state, and a flush from onSettled throws.
-      queueMicrotask(() => {
-        if (!gone && host) attachView(p.id, host);
+      untrack(() => {
+        if (host) attachView(p.id, host);
       });
     });
     const unopenable = () => {
