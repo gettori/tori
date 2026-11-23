@@ -1493,8 +1493,7 @@ export default function Editor(props: {
   // then stop the run anyway.
   const wsKey = createMemo(ws);
   createEffect(wsKey, () => {
-    // Deferred: the debug stores are live state, and a flush from here is a no-op.
-    queueMicrotask(() => {
+    untrack(() => {
       void stopAllDap();
       // A build still running would start its run in the project just left.
       debugBuild()?.cancel();
@@ -1519,8 +1518,7 @@ export default function Editor(props: {
       const { want, roots, w } = seen;
       const expired = Date.now() - want.at > PENDING_OPEN_TTL_MS;
       if (!expired && !roots.some((r) => isUnderPath(want.path, r))) return;
-      // Deferred: the pending open is live state, and a flush from here is a no-op.
-      queueMicrotask(() => {
+      untrack(() => {
         if (pendingFileOpen() !== want) return;
         setPendingFileOpen(null);
         if (expired) return;
@@ -1536,8 +1534,7 @@ export default function Editor(props: {
   // Start (and on folder switch, replace) the fs watcher so the gutter and the
   // review surface refresh on external changes.
   createEffect(root, (r) => {
-    // Deferred: these stores are live state, and a flush from here is a no-op.
-    queueMicrotask(() => {
+    untrack(() => {
       // Which slot the one-repo surfaces read. Only the pointer: the slots
       // themselves follow the member set, below, so moving the active member
       // inside a Topic costs no read at all.
@@ -1599,8 +1596,7 @@ export default function Editor(props: {
   // member's numbers have to be true for the section showing them, the palette
   // and the sidebar count, none of which is the member in front.
   createEffect(watchKey, (joined) => {
-    // Deferred: the git store is live state, and a flush from here is a no-op.
-    queueMicrotask(() => {
+    untrack(() => {
       const roots = joined ? joined.split("\n") : [];
       enterRoots(roots, root());
       void Promise.all(roots.map((r) => refreshGit(r))).then(() => traceSettle("git", ws()));
@@ -2042,9 +2038,7 @@ export default function Editor(props: {
   createEffect(
     () => [props.selected?.sessionPath, props.selected?.agent] as const,
     () => {
-      // Deferred: the touched and editing stores are live state, which a flush
-      // from here cannot reach, and the fetches read the selection.
-      queueMicrotask(() => {
+      untrack(() => {
         setTouchedPaths(new Set());
         void refreshTouched();
         clearEditing();
@@ -2324,20 +2318,13 @@ export default function Editor(props: {
     });
   }
 
-  let unmounted = false;
   createEffect(
     () => Object.keys(dirty()).filter((p) => dirty()[p]),
     (paths) => {
-      // Deferred: the published set is live state, and a flush from here is a no-op.
-      queueMicrotask(() => {
-        if (!unmounted) publishDirtyPaths(paths);
-      });
+      untrack(() => publishDirtyPaths(paths));
     },
   );
-  onCleanup(() => {
-    unmounted = true;
-    publishDirtyPaths([]);
-  });
+  onCleanup(() => publishDirtyPaths([]));
 
   onCleanup(clearEditorState);
 
@@ -2455,10 +2442,7 @@ export default function Editor(props: {
       };
     },
     (state) => {
-      // Deferred: the editor state is live state, and a flush from here is a no-op.
-      queueMicrotask(() => {
-        if (!unmounted) publishEditorState(state);
-      });
+      untrack(() => publishEditorState(state));
     },
   );
 

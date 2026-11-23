@@ -152,9 +152,7 @@ function PdfDocumentView(props: {
     ];
     const stopAll = () => stops.forEach((stop) => stop());
 
-    // Deferred: the document's view store is live state, and a flush from here is a no-op.
-    queueMicrotask(() => {
-      if (!live) return;
+    untrack(() => {
       loadPdf(props.path).then(
         async (d) => {
           const page = await d.getPage(1);
@@ -244,8 +242,7 @@ function PdfDocumentView(props: {
       if (!d || !g || g.path !== path || g.nonce === appliedNonce) return;
       appliedNonce = g.nonce;
       placed = true;
-      // Deferred: the reading position is live state, and a flush from here is a no-op.
-      queueMicrotask(() => scrollToPage(clampPage(g.line, d.numPages), 0));
+      untrack(() => scrollToPage(clampPage(g.line, d.numPages), 0));
     },
   );
 
@@ -260,8 +257,7 @@ function PdfDocumentView(props: {
       if (!d || !jump || jump.nonce === appliedJump) return;
       appliedJump = jump.nonce;
       placed = true;
-      // Deferred: the reading position is live state, and a flush from here is a no-op.
-      queueMicrotask(() => scrollToPage(clampPage(jump.page, d.numPages), 0));
+      untrack(() => scrollToPage(clampPage(jump.page, d.numPages), 0));
     },
   );
 
@@ -276,8 +272,7 @@ function PdfDocumentView(props: {
     (at) => {
       if (!at || placed) return;
       placed = true;
-      // Deferred: the reading position is live state, and a flush from here is a no-op.
-      if (at.page > 1 || at.offset !== 0) queueMicrotask(() => scrollToPage(at.page, at.offset));
+      if (at.page > 1 || at.offset !== 0) untrack(() => scrollToPage(at.page, at.offset));
     },
   );
 
@@ -316,8 +311,7 @@ function PdfDocumentView(props: {
     const held = anchor ?? { ...probeAnchor, viewportY: height() / 3 };
     anchor = null;
     const top = scrollTopFor(held.page, heights(), held.offset) - held.viewportY;
-    // Deferred: scrolling records the reading position into live state.
-    queueMicrotask(() => scrollTo(top));
+    untrack(() => scrollTo(top));
   });
 
   function scrollToPage(page: number, offset: number) {

@@ -10,7 +10,7 @@
 // Reading the config here rather than through the sidebar: the sidebar's copy
 // is a signal private to that component, and the modal has to know the answer
 // before the sidebar has anything to draw.
-import { createEffect, createRoot, createSignal } from "solid-js";
+import { untrack, createEffect, createRoot, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -76,8 +76,7 @@ export function firstRunOpen(): boolean {
 createRoot(() => {
   createEffect(config, (current) => {
     if (current === null) return;
-    // Live state flushes on write, which an effect callback cannot do.
-    queueMicrotask(() => {
+    untrack(() => {
       if (gateMet(current)) return void setMetBefore(true);
       setOpened(true);
       setFinished(false);
