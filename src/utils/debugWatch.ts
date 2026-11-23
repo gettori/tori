@@ -8,7 +8,7 @@
 // step. That is what a watch is for, and it is also why `MAX_WATCHES` exists.
 
 import { createEffect, createRoot } from "solid-js";
-import { createLiveSignal } from "../lib/liveState";
+import { createLiveSignal, withoutFlush } from "../lib/liveState";
 
 import { debugSession } from "./dapSessions";
 import { currentFrame, selectedFrame } from "./debugStack";
@@ -104,7 +104,8 @@ function forget(ws: string, expression: string): void {
 
 function note(ws: string, expression: string, answer: Answer, at: number): void {
   if (at !== generation) return;
-  setAnswers(new Map(answers()).set(answerKey(ws, expression), answer));
+  // An updater: every watch notes itself in one effect run, before any read sees the last.
+  setAnswers((prev) => new Map(prev).set(answerKey(ws, expression), answer));
 }
 
 async function evaluate(ws: string, expression: string, at: number): Promise<void> {
@@ -184,5 +185,5 @@ export function refreshWatches(): void {
 // any component reading it. No `defer`, so a module imported while something is
 // already paused answers that frame rather than waiting for the next one.
 createRoot(() => {
-  createEffect(selectedFrame, () => void refreshWatches());
+  createEffect(selectedFrame, () => withoutFlush(() => void refreshWatches()));
 });

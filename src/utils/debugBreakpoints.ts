@@ -117,13 +117,18 @@ export function breakpointsMoved(ws: string, path: string, lines: readonly numbe
  * save.
  */
 export function noteBufferDirty(ws: string, path: string, isDirty: boolean): void {
-  const now = dirty();
-  if (now.has(path) === isDirty) return;
-  const next = new Set(now);
-  if (isDirty) next.add(path);
-  else next.delete(path);
-  setDirty(next);
-  if (!isDirty) push(ws, path);
+  let changed = false;
+  // Decided in the updater: a restore marks several buffers inside one effect run,
+  // where a plain read still returns the value from before the run.
+  setDirty((now) => {
+    if (now.has(path) === isDirty) return now;
+    changed = true;
+    const next = new Set(now);
+    if (isDirty) next.add(path);
+    else next.delete(path);
+    return next;
+  });
+  if (changed && !isDirty) push(ws, path, true);
 }
 
 /**
@@ -218,8 +223,8 @@ function armedFor(ws: string): Map<string, number[]> {
 /** Send one file's set to every live session of this workspace, and take what
  *  the answer says about binding. A file with none left still sends: an empty
  *  array is how DAP says "clear this file". */
-function push(ws: string, path: string): void {
-  if (dirty().has(path)) return;
+function push(ws: string, path: string, clean = false): void {
+  if (!clean && dirty().has(path)) return;
   const lines = breakpointsFor(store(), ws, path);
   // A line this file no longer has cannot be bound. Without this, removing a
   // breakpoint and setting it again on the same line renders it filled at once,

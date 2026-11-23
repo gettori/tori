@@ -547,6 +547,9 @@ function VarRows(props: { parent: string; depth: number }) {
  * control at all rather than one that fails when used.
  */
 function VariableRow(props: { row: VarRow; depth: number }) {
+  // Memos: a refresh hands this row a new object, which would erase an edit being typed.
+  const shownValue = createMemo(() => props.row.value);
+  const valueLabel = createMemo(() => `Value of ${props.row.name}`);
   const [editing, setEditing] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const key = () => props.row.key;
@@ -602,8 +605,8 @@ function VariableRow(props: { row: VarRow; depth: number }) {
         >
           <input
             class={styles.varInput}
-            aria-label={`Value of ${props.row.name}`}
-            value={props.row.value}
+            aria-label={valueLabel()}
+            value={shownValue()}
             autofocus
             onBlur={(e) => void commit(e.currentTarget.value)}
             onKeyDown={(e) => {

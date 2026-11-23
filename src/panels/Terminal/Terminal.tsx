@@ -2683,7 +2683,12 @@ export default function Terminal(props: {
    */
   const wakeOnScreen = (t: OpenTerm, active: () => boolean) =>
     createEffect(
-      () => !restoring() && active(),
+      () => {
+        const onTop = !restoring() && active();
+        // A tab sent back to inert while it is in front has to wake again.
+        if (onTop) tabState(t);
+        return onTop;
+      },
       (onTop) => {
         // A restore brings a whole strip back one tab at a time, and `visibleId`
         // falls back to the first tab whenever the workspace has no recorded
