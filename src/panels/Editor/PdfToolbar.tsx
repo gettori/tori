@@ -30,6 +30,8 @@ const FITS: SegmentedOption<FitValue>[] = [
  */
 export default function PdfToolbar(props: { path: string }) {
   const view = () => pdfView(props.path);
+  // A memo: the view also reports scroll, and a rerun would erase a page being typed.
+  const page = createMemo(() => view().page);
   // What the zoom setting came out as at this pane's width. For a fit mode that
   // is only knowable from the view, which is why it is published rather than
   // recomputed here.
@@ -118,7 +120,7 @@ export default function PdfToolbar(props: { path: string }) {
           type="text"
           inputmode="numeric"
           aria-label="Page"
-          value={view().page}
+          value={page()}
           onBlur={(e) => commitPage(e.currentTarget)}
           onKeyDown={keys(commitPage, () => String(view().page))}
         />
