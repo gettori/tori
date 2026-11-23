@@ -1,7 +1,7 @@
 // The prompt stash. `chat/stash_store.rs` is the file's only writer, since
 // removing an entry sweeps the uploads it named, so this side only holds the
 // list the backend last answered.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import {
   checkAttachment,
@@ -29,7 +29,7 @@ export type StashEntry = { id: string; text: string; chips: ContentBlock[]; at: 
  *  bytes, everything else against what it reads as a mention. */
 export type StashSources = { mentions: AttachmentSource; uploads: AttachmentSource };
 
-const [entries, setEntries] = createSignal<StashEntry[]>([]);
+const [entries, setEntries] = createLiveSignal<StashEntry[]>([]);
 let loading: Promise<void> | null = null;
 // One chain, so the list a reply carries is never older than one already shown.
 let chain: Promise<unknown> = Promise.resolve();

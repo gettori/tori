@@ -2,6 +2,7 @@
 // block reads its colours through `createHighlight`, which answers null until
 // the first reply lands and repaints in place on each one after.
 import { createSignal, onCleanup } from "solid-js";
+import { createLiveSignal } from "../../lib/liveState";
 import { createQueue, type Answer, type Form, type Reply, type Request } from "./highlightQueue";
 import { escapeHtml } from "./escapeHtml";
 import { startWorker } from "../../utils/startWorker";
@@ -16,21 +17,29 @@ export const HIGHLIGHT_MAX = 100_000;
 // its message queue.
 type Mode = "off" | "worker" | "main";
 
-const [mode, setMode] = createSignal<Mode>("off");
+// `current` is what `read` branches on, written at once from inside the memo that
+// calls it; `mode` only wakes readers when the worker later gives up.
+let current: Mode = "off";
+const [mode, setMode] = createLiveSignal<Mode>("off");
 let worker: Worker | null = null;
 const queue = createQueue((req) => worker?.postMessage(req));
 
 function start(): void {
   // No Worker at all is the test environment, not a failure worth a warning.
-  if (typeof Worker === "undefined") return void setMode("main");
-  setMode("worker");
+  if (typeof Worker === "undefined") {
+    current = "main";
+    return;
+  }
+  current = "worker";
   worker = startWorker(
     () => new Worker(new URL("./shikiWorker.ts", import.meta.url), { type: "module" }),
     (data) => queue.receive(data as Reply),
     (why) => {
       worker = null;
       console.warn("[highlight] the syntax worker did not start; code will highlight on the main thread", why);
-      setMode("main");
+      current = "main";
+      // May run inside the memo that started the worker, where a write is refused.
+      queueMicrotask(() => setMode("main"));
     },
   );
 }
@@ -128,8 +137,9 @@ export function createHighlight() {
     if (code.length > HIGHLIGHT_MAX) return null;
     const name = lang.trim().toLowerCase();
     if (!name) return null;
-    if (mode() === "off") start();
-    if (mode() === "main") return onMain(form, code, name);
+    mode();
+    if (current === "off") start();
+    if (current === "main") return onMain(form, code, name);
     const slot = `${id}:${form}:${at}`;
     if (noGrammar.has(name) || failed.has(slot)) return null;
     const hit = cached(cacheKey(form, name, code));
@@ -175,7 +185,7 @@ export function langOfPath(path: string): string {
 
 // The main-thread engine: the fallback when the worker cannot start, and the
 // only path where there is no Worker (tests).
-const [version, setVersion] = createSignal(0);
+const [version, setVersion] = createLiveSignal(0);
 let engine: Engine | null = null;
 let engineRequested = false;
 const requestedLangs = new Set<string>();

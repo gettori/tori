@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { render, screen, fireEvent } from "../../test/harness";
 import { expectNoAxeViolations } from "../../test/axe";
@@ -113,6 +114,7 @@ describe("the lane strip", () => {
       const { container } = render(() => strip({ lanes: [lane({ startedAt: now })] }));
       expect(container.textContent).toContain("0s");
       vi.advanceTimersByTime(3000);
+      flush();
       expect(container.textContent).toContain("3s");
     } finally {
       vi.useRealTimers();
@@ -130,6 +132,7 @@ describe("the lane strip", () => {
       const { container } = render(() => strip({ lanes: [], tasks: [task] }));
       expect(container.textContent).toContain("0s");
       vi.advanceTimersByTime(3000);
+      flush();
       expect(container.textContent).toContain("3s");
     } finally {
       vi.useRealTimers();

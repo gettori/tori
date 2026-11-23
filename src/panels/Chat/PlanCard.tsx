@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, createSignal, on } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 import { Check, ChevronDown, Circle, LoaderCircle } from "../../components/Icon/icons";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import type { PlanItem } from "../../utils/chatTypes";
@@ -63,12 +63,13 @@ export default function PlanCard(props: {
   // The list opens at the top, so on a long plan the step in flight sat under
   // the fold behind the finished ones. Two of those stay above it for context.
   createEffect(
-    on([list, activeAt, () => props.items.length], ([el, at]) => {
+    () => [list(), activeAt(), props.items.length] as const,
+    ([el, at]) => {
       if (!el) return;
       const anchor = at >= 0 ? (el.children[Math.max(0, at - 2)] as HTMLElement | undefined) : undefined;
       if (anchor) el.scrollTop = anchor.offsetTop;
       edges();
-    }),
+    },
   );
 
   const rows = (ref?: (el: HTMLUListElement) => void) => (

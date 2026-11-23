@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vite-plus/test";
-import { createMemo, createStore, produce } from "solid-js";
+import { createMemo, createStore } from "solid-js";
 import { render } from "../../test/harness";
 import { renderCost, renderDrift } from "../../test/perfCounters";
 import type { ChatEvent } from "../../utils/chatTypes";
@@ -80,23 +80,21 @@ it("holds the render budget for one tool frame into a long transcript", async ()
   });
 
   const cost = await renderCost(container, () =>
-    setState(
-      produce((s) =>
-        applyEvent(
-          s,
-          frame({
-            type: "toolCallStarted",
-            turnId: `turn-${TURNS + 1}`,
-            toolUseId: "tool-1",
-            name: "Read",
-            input: { file_path: "/proj/a.ts" },
-            kind: "read",
-            locations: [],
-            title: null,
-          }),
-        ),
-      ),
-    ),
+    setState((s) => {
+      applyEvent(
+        s,
+        frame({
+          type: "toolCallStarted",
+          turnId: `turn-${TURNS + 1}`,
+          toolUseId: "tool-1",
+          name: "Read",
+          input: { file_path: "/proj/a.ts" },
+          kind: "read",
+          locations: [],
+          title: null,
+        }),
+      );
+    }),
   );
 
   expect(cost.mutations).toBeGreaterThan(0);

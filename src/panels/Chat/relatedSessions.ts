@@ -1,8 +1,8 @@
-import { createEffect, createMemo, createResource, onCleanup, untrack, type Accessor } from "solid-js";
+import { createDeferred, createEffect, createMemo, onCleanup, refresh, untrack, type Accessor } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ContentBlock } from "../../utils/chatTypes";
-import { findSession, trackFolders } from "../../utils/sessionStore";
+import { findSession, sessions, trackFolders } from "../../utils/sessionStore";
 import { sessionDot, unitAt } from "../../utils/sessionActivity";
 import { toriCall } from "./toriTool";
 import type { SessionMeta } from "../../utils/sessionStore";
@@ -96,14 +96,25 @@ export function createRelatedSessions(
     count();
     return incomingSenders(untrack(items));
   });
-  const [rows, { refetch }] = createResource(
-    () => [session(), ties()] as const,
-    ([id]) => invoke<RelationRow[]>("session_relations", { session: id }).catch(() => [] as RelationRow[]),
+  const rows = createDeferred<RelationRow[] | undefined>(
+    () => {
+      const id = session();
+      ties();
+      return invoke<RelationRow[]>("session_relations", { session: id }).catch(() => [] as RelationRow[]);
+    },
+    { loadingValue: undefined },
   );
   for (const event of ["links://changed", "config://changed"]) {
-    const unlisten = listen(event, () => void refetch());
+    const unlisten = listen(event, () => void refresh(rows));
     onCleanup(() => void unlisten.then((stop) => stop()));
   }
-  createEffect(() => void trackFolders(relatedFolders(rows() ?? [])));
+  createEffect(
+    () => {
+      // A folder the last fill skipped or did not return is asked for again.
+      sessions();
+      return relatedFolders(rows() ?? []);
+    },
+    (folders) => void trackFolders(folders),
+  );
   return createMemo(() => mergeRelated(rows() ?? [], senders(), look));
 }

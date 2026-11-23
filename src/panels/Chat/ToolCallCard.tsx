@@ -1,4 +1,5 @@
-import { For, Show, Switch, Match, createEffect, createMemo, createSignal, createResource } from "solid-js";
+import { For, Show, Switch, Match, createEffect, createMemo, createSignal } from "solid-js";
+import { createFetchState } from "../../lib/fetchState";
 import { ChevronRight, EyeOff, KeyRound } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import { parseDiffHunks } from "../../utils/diffHunks";
@@ -83,9 +84,12 @@ export default function ToolCallCard(props: {
         : null;
 
   const [open, setOpen] = createSignal(false);
-  createEffect(() => {
-    if (props.revealed) setOpen(true);
-  });
+  createEffect(
+    () => props.revealed,
+    (revealed) => {
+      if (revealed) setOpen(true);
+    },
+  );
   // Whether the user asked to see what is different on disk *now*, which is the
   // question the revert control answers and the only one worth a `git diff` per
   // file. The card's own diff is drawn from the call itself and costs nothing.
@@ -125,7 +129,7 @@ export default function ToolCallCard(props: {
 
   // Fetched only once the user opens the revert surface, never on every card: a
   // diff is a `git diff` per file, and a turn can make dozens of calls.
-  const [diffs, { refetch }] = createResource(
+  const [diffs, { refetch }] = createFetchState(
     () => (showTree() && settled() && isEditCall(props.card) ? props.card.toolUseId : null),
     async (toolUseId) =>
       await chatCall<ToolDiff[]>("chat_tool_diff", {
@@ -137,7 +141,7 @@ export default function ToolCallCard(props: {
 
   // Only once the user asks, and only while the card is open: an output over
   // the cap is large by definition, and a turn can make dozens of calls.
-  const [fullOutput] = createResource(
+  const [fullOutput] = createFetchState(
     () => (open() && wantFull() ? props.card.toolUseId : null),
     async (toolUseId) =>
       await chatCall<string | null>("chat_tool_output", {

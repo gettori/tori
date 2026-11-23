@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, fireEvent } from "../../test/harness";
 import WorktreeCard from "./WorktreeCard";
@@ -112,6 +113,7 @@ describe("WorktreeCard", () => {
     const { unmount } = render(() => <WorktreeCard card={card()} cwd="/p/main" />);
     expect(cardProjects()).toEqual([{ path: "/p", units: [{ branch: "fix-a", visible: true }] }]);
     unmount();
+    flush();
     expect(cardProjects()).toEqual([]);
   });
 });

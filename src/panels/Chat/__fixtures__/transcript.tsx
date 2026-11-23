@@ -1,4 +1,4 @@
-import { createMemo, createSignal, onCleanup, createStore, produce } from "solid-js";
+import { createMemo, createSignal, onCleanup, createStore } from "solid-js";
 import MessageList from "../MessageList";
 import StatusStrip from "../StatusStrip";
 import LaneStrip from "../LaneStrip";
@@ -240,7 +240,7 @@ function freshChat(): ChatState {
 
 export function createTranscript() {
   const [state, setState] = createStore(freshChat());
-  const edit = (fn: (s: ChatState) => void) => setState(produce(fn));
+  const edit = (fn: (s: ChatState) => void) => setState(fn);
   let timers: ReturnType<typeof setTimeout>[] = [];
   let turns = 0;
   let prompts = 0;
@@ -282,7 +282,9 @@ export function createTranscript() {
     reset() {
       stop();
       setPages(0);
-      setState(freshChat());
+      setState((s) => {
+        Object.assign(s, freshChat());
+      });
     },
   };
 }

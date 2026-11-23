@@ -1,7 +1,7 @@
 // Here and not in Rust: the spend ceiling and the queue hold exist only in the
 // webview, and a timer firing through `ChatHost::deliver` would walk past both.
 // A restart drops every arm, since restored tabs are inert by design.
-import { createStore } from "solid-js";
+import { createLiveStore } from "../../lib/liveState";
 
 export type Arm = {
   sessionId: string;
@@ -28,7 +28,7 @@ export const RESUME_BUSY = "The usage limit reset while a turn was running, so T
 export const RESUME_STOPPED =
   "The usage limit reset, but this chat is over its spend ceiling, so Tori did not continue it.";
 
-const [armed, setArmed] = createStore<Record<string, Arm | undefined>>({});
+const [armed, setArmed] = createLiveStore<Record<string, Arm | undefined>>({});
 const spent = new Set<string>();
 const fires = new Map<string, Fire>();
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -43,7 +43,9 @@ export function arm(a: Arm): boolean {
   const identity = `${a.sessionId} ${a.turnId} ${a.resetsAt}`;
   if ((spent.has(identity) && !a.byHand) || armed[a.sessionId]) return false;
   spent.add(identity);
-  setArmed(a.sessionId, a);
+  setArmed((all) => {
+    all[a.sessionId] = a;
+  });
   const delay = Math.max(0, a.resetsAt * 1000 + FIRE_GRACE_MS - Date.now());
   timers.set(
     a.sessionId,
@@ -57,7 +59,9 @@ export function cancel(sessionId: string) {
   timers.delete(sessionId);
   const a = armed[sessionId];
   if (!a) return;
-  setArmed(sessionId, undefined);
+  setArmed((all) => {
+    delete all[sessionId];
+  });
   const waiting = due.get(a.accountKey);
   if (waiting)
     due.set(
@@ -89,7 +93,9 @@ async function pump(accountKey: string) {
   if (next === undefined) return;
   busy.add(accountKey);
   const a = armed[next];
-  setArmed(next, undefined);
+  setArmed((all) => {
+    delete all[next];
+  });
   const fire = fires.get(next);
   try {
     if (a && fire) await fire(a);
@@ -104,7 +110,9 @@ async function pump(accountKey: string) {
 export function resetResumeAtResetForTests() {
   for (const t of timers.values()) clearTimeout(t);
   timers.clear();
-  for (const id of Object.keys(armed)) setArmed(id, undefined);
+  setArmed((all) => {
+    for (const id of Object.keys(all)) delete all[id];
+  });
   spent.clear();
   fires.clear();
   due.clear();

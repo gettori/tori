@@ -1,4 +1,16 @@
-import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, untrack } from "solid-js";
+import {
+  For,
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+  flush,
+  getOwner,
+  onCleanup,
+  onSettled,
+  runWithOwner,
+  untrack,
+} from "solid-js";
 import { type JSX, render } from "@solidjs/web";
 import {
   ArrowUp,
@@ -330,7 +342,6 @@ export default function Composer(props: {
   const [focusTick, setFocusTick] = createSignal(0);
   let picker: HTMLInputElement | undefined;
   let field: ComposerField | undefined;
-  let fieldHost: HTMLDivElement | undefined;
   let filesRequested = false;
   let prsRequested = false;
   // The `@` the session list was last read for, so each new mention reads it
@@ -361,15 +372,14 @@ export default function Composer(props: {
     if (!m || (m.scope !== "spaces" && m.scope !== "projects") || !spaces) return null;
     return navLevel(m.scope, m.query, spaces, props.navigator!.here());
   });
-  createEffect(() => {
-    const at = navAt();
-    const nav = props.navigator;
-    if (!nav) return;
-    untrack(() => {
+  createEffect(
+    () => ({ at: navAt(), nav: props.navigator }),
+    ({ at, nav }) => {
+      if (!nav) return;
       if (at?.level === "project") nav.loadSessionsOf(at.project.path);
       else if (at?.level === "files") nav.loadFilesOf(at.unit.folderPath);
-    });
-  });
+    },
+  );
   const navHits = createMemo((): NavRow[] => {
     const at = navAt();
     const nav = props.navigator;
@@ -425,11 +435,16 @@ export default function Composer(props: {
   const [stashOpen, setStashOpen] = createSignal(false);
   const [stashIndex, setStashIndex] = createSignal(0);
   const stashRows = createMemo(() => [...(props.stash ?? [])].reverse());
-  createEffect(() => {
-    const n = stashRows().length;
-    if (!n) setStashOpen(false);
-    else if (stashIndex() >= n) setStashIndex(n - 1);
-  });
+  createEffect(
+    () => {
+      const n = stashRows().length;
+      return [n, n ? stashIndex() : 0] as const;
+    },
+    ([n, at]) => {
+      if (!n) setStashOpen(false);
+      else if (at >= n) setStashIndex(n - 1);
+    },
+  );
   const menuOpen = () => menuLength() > 0;
 
   function closeMenu() {
@@ -622,6 +637,8 @@ export default function Composer(props: {
     const gone = end - start;
     const target = at === undefined ? undefined : at > start ? at - gone : at;
     setText(without);
+    // insertToken below reads the draft back through the prop.
+    flush();
     field?.set(without, Math.min(target ?? without.length, without.length));
     insertToken(token, target);
   }
@@ -640,7 +657,10 @@ export default function Composer(props: {
     const lead = before && !before.endsWith("\n") ? "\n" : "";
     setInputText(`${before}${lead}${block}${text().slice(caret)}`, caret + lead.length + block.length);
   }
-  onMount(() => props.handle?.({ insertBlock }));
+  const handle = untrack(() => props.handle);
+  onSettled(() => {
+    handle?.({ insertBlock });
+  });
 
   // Where in the text a drop landed. Undefined when the point is outside the
   // text, and then the caret is the answer: dropping a chip must put its token
@@ -739,21 +759,19 @@ export default function Composer(props: {
   // Entering or leaving an edit replaces the whole draft from outside, which no
   // keystroke measured, so the box is refitted and the caret put at the end.
   createEffect(
-    on(
-      () => props.editing,
-      () => {
-        setHistoryIndex(-1);
-        // Behind the render of the new draft, so the caret is measured against it.
-        queueMicrotask(() => {
-          if (!field) return;
-          const end = field.value().length;
-          field.select(end);
-          setCaret(end);
-          field.focus();
-        });
-      },
-      { defer: true },
-    ),
+    () => props.editing,
+    () => {
+      setHistoryIndex(-1);
+      // Behind the render of the new draft, so the caret is measured against it.
+      queueMicrotask(() => {
+        if (!field) return;
+        const end = field.value().length;
+        field.select(end);
+        setCaret(end);
+        field.focus();
+      });
+    },
+    { defer: true },
   );
 
   let queueStrip: HTMLDivElement | undefined;
@@ -956,66 +974,33 @@ export default function Composer(props: {
   // naming the attachment a second time.
   let movingFrom: number | null = null;
 
-  onMount(() => {
-    field = createComposerField({
-      parent: fieldHost!,
-      doc: text(),
-      placeholder: placeholderText(),
-      // One writer at a time: while a scratch tab holds the draft, typing here
-      // would be overwritten by the next save.
-      readOnly: !!props.linked || dictation() !== "idle",
-      disabled: props.disabled,
-      skills: props.skills ?? [],
-      chipFor: (label) => {
-        const a = untrack(held).get(label);
-        if (!a) return null;
-        return { key: a.id, mount: (dom) => render(() => <ComposerInlineChip a={a} label={label} />, dom) };
-      },
-      onInput: (value) => {
-        setText(value);
-        setHistoryIndex(-1);
-      },
-      // Every edit as well as every caret move: a click or an arrow can move the
-      // caret out of the token that opened the menu without changing a character.
-      onSelect: syncToken,
-      onKeyDown: (e) => {
-        onKeyDown(e);
-        return e.defaultPrevented;
-      },
-      onPaste: (e) => {
-        onPaste(e);
-        return e.defaultPrevented;
-      },
-      onDrop: (e) => {
-        const types = e.dataTransfer?.types ?? [];
-        const ours = [ATTACHMENT_TOKEN_MIME, DRAG_ABS_PATH_MIME, DRAG_PATH_MIME, "Files", "text/plain"];
-        if (!ours.some((t) => types.includes(t))) return false;
-        takeDrop(e);
-        return true;
-      },
-      onFocus: () => setFocusTick((t) => t + 1),
-      onBlur: closeMenu,
-    });
-    onCleanup(() => field?.destroy());
-  });
+  const initial = untrack(() => ({
+    doc: text(),
+    placeholder: placeholderText(),
+    // One writer at a time: while a scratch tab holds the draft, typing here
+    // would be overwritten by the next save.
+    readOnly: !!props.linked || dictation() !== "idle",
+    disabled: props.disabled,
+    skills: props.skills ?? [],
+  }));
   // The draft is owned outside (per session, surviving a tab switch), so a
   // change made there - a restored stash, a queued message taken back to edit -
   // is written into the field. Typing round-trips to the same text and is
   // left alone.
-  createEffect(() => {
-    const t = text();
+  createEffect(text, (t) => {
     if (field && field.value() !== t) field.set(t, t.length);
   });
-  createEffect(() => field?.setPlaceholder(placeholderText()));
+  createEffect(placeholderText, (placeholder) => field?.setPlaceholder(placeholder));
   createEffect(
-    on(
-      () => props.skills,
-      (names) => field?.setSkills(names ?? []),
-      { defer: true },
-    ),
+    () => props.skills,
+    (names) => field?.setSkills(names ?? []),
+    { defer: true },
   );
-  createEffect(() => field?.setReadOnly(!!props.linked || dictation() !== "idle", props.disabled));
-  createEffect(on(held, () => field?.refreshChips(), { defer: true }));
+  createEffect(
+    () => [!!props.linked || dictation() !== "idle", props.disabled] as const,
+    ([readOnly, disabled]) => field?.setReadOnly(readOnly, disabled),
+  );
+  createEffect(held, () => field?.refreshChips(), { defer: true });
 
   const ComposerInlineChip = (p: { a: PendingBlock; label: string }) => {
     const block = p.a.block;
@@ -1059,7 +1044,9 @@ export default function Composer(props: {
   // not read as a new arrival.
   const drawn = new Set<string>();
   let drawnOnce = false;
-  onMount(() => (drawnOnce = true));
+  onSettled(() => {
+    drawnOnce = true;
+  });
   const popIfNew = (key: string) => (el: HTMLElement) => {
     const fresh = drawnOnce && !drawn.has(key);
     drawn.add(key);
@@ -1076,15 +1063,11 @@ export default function Composer(props: {
     const missing = () => !!path && missingPaths().has(path);
     if (path && props.fileExists) {
       const ask = props.fileExists;
-      createEffect(
-        on(
-          focusTick,
-          () =>
-            void ask(path)
-              .then((ok) => markMissing(path, !ok))
-              .catch(() => {}),
-        ),
-      );
+      createEffect(focusTick, () => {
+        void ask(path)
+          .then((ok) => markMissing(path, !ok))
+          .catch(() => {});
+      });
     }
     return (
       <AttachmentChip
@@ -1098,6 +1081,52 @@ export default function Composer(props: {
       />
     );
   };
+
+  // Built here rather than from a ref or onSettled: the field renders its chips as it
+  // is made, which needs a root and a flush that neither of those allows.
+  const host = (<div class={styles.inputField} />) as HTMLDivElement;
+  const owner = getOwner();
+  field = createComposerField({
+    parent: host,
+    doc: initial.doc,
+    placeholder: initial.placeholder,
+    readOnly: initial.readOnly,
+    disabled: initial.disabled,
+    skills: initial.skills,
+    chipFor: (label) => {
+      const a = untrack(held).get(label);
+      if (!a) return null;
+      return {
+        key: a.id,
+        mount: (dom) => runWithOwner(owner, () => render(() => <ComposerInlineChip a={a} label={label} />, dom))!,
+      };
+    },
+    onInput: (value) => {
+      setText(value);
+      setHistoryIndex(-1);
+    },
+    // Every edit as well as every caret move: a click or an arrow can move the
+    // caret out of the token that opened the menu without changing a character.
+    onSelect: syncToken,
+    onKeyDown: (e) => {
+      onKeyDown(e);
+      return e.defaultPrevented;
+    },
+    onPaste: (e) => {
+      onPaste(e);
+      return e.defaultPrevented;
+    },
+    onDrop: (e) => {
+      const types = e.dataTransfer?.types ?? [];
+      const ours = [ATTACHMENT_TOKEN_MIME, DRAG_ABS_PATH_MIME, DRAG_PATH_MIME, "Files", "text/plain"];
+      if (!ours.some((t) => types.includes(t))) return false;
+      takeDrop(e);
+      return true;
+    },
+    onFocus: () => setFocusTick((t) => t + 1),
+    onBlur: closeMenu,
+  });
+  onCleanup(() => field?.destroy());
 
   return (
     <div
@@ -1442,7 +1471,7 @@ export default function Composer(props: {
       <Show when={props.notice}>{(notice) => <div class={styles.composerNotice}>{notice()}</div>}</Show>
       <div class={styles.composerBox}>
         <div class={styles.inputArea}>
-          <div ref={fieldHost} class={styles.inputField} />
+          {host}
           <Show when={dictation() !== "idle"}>
             <DictationWave levels={dictationLevels()} busy={dictation() === "transcribing"} />
           </Show>
