@@ -654,10 +654,7 @@ export default function ChatView(props: {
     (offered) => {
       if (!offered) return;
       let stop: (() => void) | undefined;
-      let gone = false;
-      // Deferred: the front reply is live state, and a flush from here is a no-op.
-      queueMicrotask(() => {
-        if (gone) return;
+      untrack(() => {
         stop = offerLastReply(() => {
           const last = lastReply(shownItems(), transcriptEl);
           if (!last) {
@@ -667,10 +664,7 @@ export default function ChatView(props: {
           void read(speakableChunks(last.body), `${props.sessionId}:${last.id}`);
         });
       });
-      return () => {
-        gone = true;
-        stop?.();
-      };
+      return () => stop?.();
     },
   );
 
@@ -762,8 +756,7 @@ export default function ChatView(props: {
     // the turn the user actually wanted is that plus their instruction rather
     // than a turn spent on the announcement alone. Only into an empty composer:
     // a remount must not overwrite what they have since typed.
-    // Deferred: the draft is live state, and a flush from here is a no-op.
-    queueMicrotask(() => {
+    untrack(() => {
       if (props.rewindTo && !draftFor(composerKey()).trim()) {
         setDraft(composerKey(), rewindSeed());
       }
@@ -1414,8 +1407,7 @@ export default function ChatView(props: {
     () => canSend() && pickApplied() && numberingSettled(),
     (ready) => {
       if (!ready) return;
-      // Deferred: the composer is live state, and a flush from here is a no-op.
-      queueMicrotask(() => {
+      untrack(() => {
         const held = takeAutoSend(composerKey());
         if (held === null) return;
         setDraft(composerKey(), "");
@@ -1437,9 +1429,7 @@ export default function ChatView(props: {
   // Gated on this tab having started one. A chat opened only to read mounts
   // over a session id it never claimed, and that id can be live in another tab:
   // closing the reader would end somebody else's child.
-  let disposed = false;
   onCleanup(() => {
-    disposed = true;
     dropLiveChat(props.sessionId);
     if (!props.started) return;
     if (props.detach) {
@@ -1461,8 +1451,7 @@ export default function ChatView(props: {
     },
     (waiting) => {
       if (waiting === null) return;
-      // Deferred: the pending card is live state, and a flush from here is a no-op.
-      queueMicrotask(() => {
+      untrack(() => {
         setPendingCard(null);
         if (!waiting) return;
         // The card renders from this same update, so it can only be found after it.
@@ -1550,9 +1539,7 @@ export default function ChatView(props: {
       };
     },
     (entry) => {
-      // Deferred: the registry is live state, and a flush from here is a no-op.
-      queueMicrotask(() => {
-        if (disposed) return;
+      untrack(() => {
         if (entry) setLiveChat(entry);
         else dropLiveChat(untrack(() => props.sessionId));
       });
@@ -1915,8 +1902,7 @@ export default function ChatView(props: {
     (current) => {
       if (!current) return;
       setQueueEdit(null);
-      // Deferred: the composer is live state, and a flush from here is a no-op.
-      queueMicrotask(() => {
+      untrack(() => {
         const changed = composerSnapshot() !== current.original;
         if (changed && !current.stash.draft.trim() && !current.stash.chips.length) return;
         if (changed) pushHistory(composerKey(), draftFor(composerKey()));
@@ -2081,8 +2067,7 @@ export default function ChatView(props: {
   createEffect(
     () => settings.chatDefaults.resumeAtReset,
     (enabled) => {
-      // Deferred: the resume table is live state, and a flush from here is a no-op.
-      queueMicrotask(() => {
+      untrack(() => {
         if (!enabled && armedFor(props.sessionId)?.byHand === false) cancelResume(props.sessionId);
       });
     },
