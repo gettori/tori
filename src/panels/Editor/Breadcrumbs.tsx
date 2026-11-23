@@ -1,4 +1,5 @@
-import { For, Show, createMemo, createResource } from "solid-js";
+import { For, Show, createMemo } from "solid-js";
+import { createFetchState } from "../../lib/fetchState";
 import type { JSX } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import { ChevronRight } from "../../components/Icon/icons";
@@ -165,13 +166,13 @@ function Crumb(props: { menu: JSX.Element; children: JSX.Element }) {
  * One folder's entries, with each subfolder as a level that opens beside it.
  *
  * Recursive, and lazily so: `MenuSub` mounts a level's contents only while that
- * level is open, so this `createResource` is what makes "one folder read per
+ * level is open, so this fetch is what makes "one folder read per
  * folder opened" true rather than a hope. Descending used to mutate the open
  * picker's `dir` in place, which meant the level you came from left the screen
  * and the only way back was Escape.
  */
 function DirLevel(props: { dir: string; here: string | null; onPick: (d: OpenInEditor) => void }) {
-  const [entries] = createResource(() => props.dir, readDir);
+  const [entries] = createFetchState(() => props.dir, readDir);
 
   return (
     <Show when={!entries.loading} fallback={<MenuRow disabled>Reading the folder…</MenuRow>}>

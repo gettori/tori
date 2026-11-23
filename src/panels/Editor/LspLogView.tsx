@@ -1,4 +1,4 @@
-import { Show, createEffect, createResource } from "solid-js";
+import { Show, createDeferred, createEffect } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 
 import styles from "./LspLogView.module.css";
@@ -10,16 +10,22 @@ import styles from "./LspLogView.module.css";
  * no file to save it to, so it has no dirty flag, no undo and no server.
  */
 export default function LspLogView(props: { root: string; serverId: string }) {
-  const [log] = createResource(
-    () => ({ serverId: props.serverId, root: props.root }),
-    (handle) => invoke<string>("lsp_log", { handle }).catch(() => ""),
+  const log = createDeferred<string | undefined>(
+    () => {
+      const handle = { serverId: props.serverId, root: props.root };
+      return invoke<string>("lsp_log", { handle }).catch(() => "");
+    },
+    { loadingValue: undefined },
   );
 
   // Opened at the end: the lines that explain a crash are the last ones written.
   let pre: HTMLPreElement | undefined;
-  createEffect(() => {
-    if (log() && pre) pre.scrollTop = pre.scrollHeight;
-  });
+  createEffect(
+    () => log(),
+    (text) => {
+      if (text && pre) pre.scrollTop = pre.scrollHeight;
+    },
+  );
 
   return (
     <div class={styles.logView}>

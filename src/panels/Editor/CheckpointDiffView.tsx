@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, on, onCleanup, onMount, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, onSettled, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { Columns2, Copy, FileCode } from "../../components/Icon/icons";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type ToastEvent } from "../../utils/events";
@@ -71,21 +71,24 @@ export default function CheckpointDiffView(props: { workspace: string; arg: stri
   let current = 0;
 
   createEffect(
-    on([() => props.workspace, target], async ([workspace, target]) => {
+    () => [props.workspace, target()] as const,
+    ([workspace, target]) => {
       const mine = ++current;
       setLoading(true);
       setDiff("");
       setError("");
       whyOpen.clear();
-      try {
-        const text = await checkpointFileDiff(workspace, target);
-        if (mine === current) setDiff(text);
-      } catch (e) {
-        if (mine === current) setError(String(e));
-      } finally {
-        if (mine === current) setLoading(false);
-      }
-    }),
+      void (async () => {
+        try {
+          const text = await checkpointFileDiff(workspace, target);
+          if (mine === current) setDiff(text);
+        } catch (e) {
+          if (mine === current) setError(String(e));
+        } finally {
+          if (mine === current) setLoading(false);
+        }
+      })();
+    },
   );
 
   async function copyDiff() {
@@ -102,11 +105,11 @@ export default function CheckpointDiffView(props: { workspace: string; arg: stri
   }
 
   let paneRef: HTMLDivElement | undefined;
-  onMount(() => {
+  onSettled(() => {
     if (!paneRef) return;
     const ro = new ResizeObserver(([e]) => setPaneWidth(e.contentRect.width));
     ro.observe(paneRef);
-    onCleanup(() => ro.disconnect());
+    return () => ro.disconnect();
   });
 
   return (

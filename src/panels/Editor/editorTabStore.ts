@@ -1,7 +1,7 @@
 // The editor pane's tab model, module-level so the unified tab store (plan
 // phase 4) can compose it without mounting the panel; terminalTabStore is the
 // sibling. Editor.tsx resets it at setup: the lifetime still tracks the panel.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../../lib/liveState";
 import type { ClosedStore } from "./reopenStack";
 
 // Every editor tab is a file now that the transcript viewer is gone, so a tab
@@ -26,12 +26,13 @@ export type FileTab = {
 // The empty-string key is the bucket for "no selection yet". Nothing can
 // select into it, so it is transient by construction, and `toStore` refuses to
 // persist under it.
-const [tabsByWs, setTabsByWs] = createSignal<Record<string, FileTab[]>>({});
-const [activeByWs, setActiveByWs] = createSignal<Record<string, string | null>>({});
+// Owned writes: `resetEditorTabModel` runs in the panel's body.
+const [tabsByWs, setTabsByWs] = createLiveSignal<Record<string, FileTab[]>>({}, { ownedWrite: true });
+const [activeByWs, setActiveByWs] = createLiveSignal<Record<string, string | null>>({}, { ownedWrite: true });
 // The tabs you closed, for Cmd+Shift+T. Session-lived on purpose: reopening
 // is an undo of something you just did, and last week's closes are what the
 // history pickers are for.
-const [closedByWs, setClosedByWs] = createSignal<ClosedStore>({});
+const [closedByWs, setClosedByWs] = createLiveSignal<ClosedStore>({}, { ownedWrite: true });
 
 export { tabsByWs, setTabsByWs, activeByWs, setActiveByWs, closedByWs, setClosedByWs };
 

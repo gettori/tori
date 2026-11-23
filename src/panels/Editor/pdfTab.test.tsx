@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import PaneView from "../../tabs/PaneView";
-import { createEffect } from "solid-js";
+import { createEffect, flush } from "solid-js";
 import { fireEvent, render, screen, waitFor } from "../../test/harness";
 import { closeOf } from "../../test/tabs";
 import { pointerClick } from "../../test/menus";
@@ -106,7 +106,12 @@ vi.mock("./pdfjsRuntime", () => {
 const handed: { activePath: string | null; openPaths: string[] }[] = [];
 vi.mock("./CodeEditor", () => ({
   default: (props: { activePath: string | null; openPaths: string[] }) => {
-    createEffect(() => handed.push({ activePath: props.activePath, openPaths: [...props.openPaths] }));
+    createEffect(
+      () => ({ activePath: props.activePath, openPaths: [...props.openPaths] }),
+      (seen) => {
+        handed.push({ activePath: seen.activePath, openPaths: [...seen.openPaths] });
+      },
+    );
     return null;
   },
 }));
@@ -165,6 +170,7 @@ function quotePage(page: number) {
   sel.removeAllRanges();
   sel.addRange(range);
   document.dispatchEvent(new Event("selectionchange"));
+  flush();
   fireEvent.click(screen.getByRole("button", { name: "Quote" }));
 }
 

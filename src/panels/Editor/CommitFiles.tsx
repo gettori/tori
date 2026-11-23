@@ -1,4 +1,5 @@
-import { createResource, For, Show } from "solid-js";
+import { For, Show } from "solid-js";
+import { createFetchState } from "../../lib/fetchState";
 import { invoke } from "@tauri-apps/api/core";
 
 import { emitWith, OPEN_IN_EDITOR } from "../../utils/events";
@@ -17,7 +18,7 @@ const dirName = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf("/"
  * A row opens that file's patch in a tab of its own.
  */
 export default function CommitFiles(props: { root: string; sha: string }) {
-  const [detail] = createResource(
+  const [detail] = createFetchState(
     () => ({ projectPath: props.root, sha: props.sha }),
     (args) => invoke<CommitDetailData>("git_commit_detail", args),
   );

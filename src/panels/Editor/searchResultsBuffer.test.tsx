@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test"
 import { render, screen, waitFor, fireEvent } from "../../test/harness";
 import { expectNoAxeViolations } from "../../test/axe";
 import { EditorView } from "@codemirror/view";
+import { flush } from "solid-js";
 
 // The editable results buffer, through the real component and the real
 // `liveBuffers` seam. What is pinned here is where an edit *goes*: to disk, to
@@ -134,6 +135,7 @@ function retype(id: string, row: number, text: string) {
   v.dispatch({
     changes: { from: line.from + prefixLen(searchBuffer(id)!.doc!), to: line.to, insert: text },
   });
+  flush();
 }
 
 const applyButton = () => screen.getByRole("button", { name: /Apply/ });
@@ -231,6 +233,7 @@ describe("coming back to a buffer another tab was shown over", () => {
     const before = view().state.doc.toString();
     const line = view().state.doc.line(ROW.b);
     view().dispatch({ changes: { from: line.to, insert: "\nan extra line" } });
+    flush();
     expect(view().state.doc.toString()).toBe(before);
     expect(screen.getByRole("status").textContent).toMatch(/cannot be added or removed/);
 
@@ -247,6 +250,7 @@ describe("what the buffer will not let you do", () => {
     const before = view().state.doc.toString();
     const line = view().state.doc.line(ROW.a);
     view().dispatch({ changes: { from: line.to, insert: "\nan extra line" } });
+    flush();
     expect(view().state.doc.toString()).toBe(before);
     expect(screen.getByRole("status").textContent).toMatch(/cannot be added or removed/);
     expect(searchBuffer(id)!.doc!.rows.length).toBe(11);
@@ -258,6 +262,7 @@ describe("what the buffer will not let you do", () => {
     const id = await mount();
     const line = view().state.doc.line(ROW.a);
     view().dispatch({ changes: { from: line.to, insert: "\nan extra line" } });
+    flush();
     expect(screen.getByRole("status").textContent).toMatch(/cannot be added or removed/);
     retype(id, ROW.a, "const pin = 1");
     // The row stays up to hold the Apply button, so it is the text that has to go.

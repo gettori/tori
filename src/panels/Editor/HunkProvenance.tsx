@@ -1,4 +1,5 @@
-import { createResource, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js";
+import { createFetchState } from "../../lib/fetchState";
+import { createSignal, For, Match, onCleanup, Show, Switch } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { Footprints } from "../../components/Icon/icons";
 import {
@@ -40,7 +41,7 @@ import hunkStyles from "./HunkCommentInput.module.css";
 /** One hunk's provenance, read when the panel opens: who wrote each run of its
  *  lines, in what turn, by which call, and what the agent said before it. */
 export default function HunkProvenance(props: { file: string; hunk: DiffHunk; read: ClaimReader }) {
-  const [ranges] = createResource(
+  const [ranges] = createFetchState(
     () => ({ hunk: props.hunk, read: props.read }),
     (k) => k.read(k.hunk),
   );

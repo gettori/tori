@@ -1,4 +1,4 @@
-import { For, createEffect, createSignal, on, onCleanup } from "solid-js";
+import { For, createEffect, createSignal, onCleanup } from "solid-js";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { traceNote, traceWork } from "../../utils/perfTrace";
@@ -63,10 +63,10 @@ export default function MarkdownDocument(props: {
   onCleanup(() => job !== undefined && cancelAnimationFrame(job));
 
   createEffect(
-    on([() => props.text, () => props.source], ([t, source]) => {
+    () => [props.text, props.source, props.base] as const,
+    ([t, source, base]) => {
       if (job !== undefined) cancelAnimationFrame(job);
       job = undefined;
-      const base = props.base;
       // A new document fills in from the top as it goes; an edit to the one on
       // screen swaps in whole, so typing never blanks the text below the caret.
       const fresh = renderedFor !== source;
@@ -132,7 +132,7 @@ export default function MarkdownDocument(props: {
         traceNote("preview-render", { blocks: blocks.length, slices, ms: Math.round(performance.now() - began) });
       };
       step();
-    }),
+    },
   );
 
   // An anchor the webview follows takes the whole app off the SPA. A link

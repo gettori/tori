@@ -1,4 +1,4 @@
-import { batch, createSignal, createMemo, createEffect, lazy, on, onMount, onCleanup, For, Show } from "solid-js";
+import { createSignal, createMemo, createEffect, lazy, onSettled, onCleanup, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
@@ -144,19 +144,24 @@ export default function DiffView(props: {
   // A reload that lands after a newer one would put back findings already sent.
   let reviewsAsked = 0;
   createEffect(
-    on([heldKey, () => props.workspace, reviewsVersion], ([key, folder]) => {
+    () => [heldKey(), props.workspace, reviewsVersion()] as const,
+    ([key, folder]) => {
       if (!key || !folder) return;
       const mine = ++reviewsAsked;
       void listReviews(folder).then((reviews) => {
         if (mine === reviewsAsked) syncReviewed(key, heldFromReviews(reviews));
       });
-    }),
+    },
   );
 
   // A line selection is indices into one hunk's body, so it means nothing once
   // the hunks move.
-  createEffect(on(diff, () => setPicked(null)));
-  createEffect(on(diff, () => whyOpen.clear()));
+  createEffect(diff, () => {
+    setPicked(null);
+  });
+  createEffect(diff, () => {
+    whyOpen.clear();
+  });
 
   const twoColumn = () => sideBySide() && paneWidth() >= SIDE_BY_SIDE_MIN_WIDTH;
   // Staging re-derives the diff without -w, so a hunk read with it matches
@@ -221,47 +226,46 @@ export default function DiffView(props: {
       editorLayout() ? fetchText() : null,
       editorLayout() ? fetchBlame() : null,
     ]);
-    batch(() => {
-      setDiff(text);
-      setFileText(body);
-      setBlame(blamed);
-      // The hunks just moved, so the cached gap contents no longer line up with
-      // the ranges they were fetched for.
-      setOpenGaps(new Set<string>());
-      setGapLines({});
-    });
+    setDiff(text);
+    setFileText(body);
+    setBlame(blamed);
+    // The hunks just moved, so the cached gap contents no longer line up with
+    // the ranges they were fetched for.
+    setOpenGaps(new Set<string>());
+    setGapLines({});
   }
 
   createEffect(
-    on([() => props.workspace, () => props.arg], async () => {
+    () => [props.workspace, props.arg] as const,
+    () => {
       setLoading(true);
-      await reload();
-      setLoading(false);
-    }),
+      void (async () => {
+        await reload();
+        setLoading(false);
+      })();
+    },
   );
 
   // Picks belong to the layout they were made in, the text is only fetched by a
   // reload, and another diff tab can flip the layout.
   createEffect(
-    on(
-      editorLayout,
-      () => {
-        setPicked(null);
-        void reload();
-      },
-      { defer: true },
-    ),
+    editorLayout,
+    () => {
+      setPicked(null);
+      void reload();
+    },
+    { defer: true },
   );
 
-  createEffect(on(ignoreWhitespace, () => void reload(), { defer: true }));
+  createEffect(ignoreWhitespace, () => void reload(), { defer: true });
   createEffect(
-    on(
-      [blameOn, () => gitStateFor(props.workspace).head],
-      async () => {
+    () => [blameOn(), gitStateFor(props.workspace).head] as const,
+    () => {
+      void (async () => {
         if (editorLayout()) setBlame(await fetchBlame());
-      },
-      { defer: true },
-    ),
+      })();
+    },
+    { defer: true },
   );
 
   /** Run one index-shuffling apply and put the view back in step with it. On
@@ -423,25 +427,28 @@ export default function DiffView(props: {
     void reload();
   }
 
-  onMount(async () => {
+  onSettled(() => {
+    let ro: ResizeObserver | undefined;
     if (paneRef) {
-      const ro = new ResizeObserver(([e]) => setPaneWidth(e.contentRect.width));
+      ro = new ResizeObserver(([e]) => setPaneWidth(e.contentRect.width));
       ro.observe(paneRef);
-      onCleanup(() => ro.disconnect());
     }
-    // An agent writing this file renumbers its hunks, so a stale view would
-    // carry a fingerprint the backend refuses. `file()` is porcelain's field
-    // rather than necessarily a path, so this is a suffix test against the
-    // watcher's absolute paths.
-    unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
-      const from = e.payload.root;
-      if (from && from !== props.workspace) return;
-      if (e.payload.paths.some((p) => p.endsWith(file()))) fileWritten();
-    });
-    offAgentWrites = onWith<AgentFilesWritten>(AGENT_FILES_WRITTEN, ({ paths }) => {
-      for (const p of paths) agentWritten.add(p);
-      flushAgentWrites();
-    });
+    void (async () => {
+      // An agent writing this file renumbers its hunks, so a stale view would
+      // carry a fingerprint the backend refuses. `file()` is porcelain's field
+      // rather than necessarily a path, so this is a suffix test against the
+      // watcher's absolute paths.
+      unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
+        const from = e.payload.root;
+        if (from && from !== props.workspace) return;
+        if (e.payload.paths.some((p) => p.endsWith(file()))) fileWritten();
+      });
+      offAgentWrites = onWith<AgentFilesWritten>(AGENT_FILES_WRITTEN, ({ paths }) => {
+        for (const p of paths) agentWritten.add(p);
+        flushAgentWrites();
+      });
+    })();
+    return () => ro?.disconnect();
   });
   onCleanup(() => {
     unlistenFs?.();

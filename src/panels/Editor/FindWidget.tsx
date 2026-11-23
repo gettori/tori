@@ -1,5 +1,6 @@
 import { createMemo, createSignal, Show } from "solid-js";
 import { render } from "@solidjs/web";
+import { createLiveSignal } from "../../lib/liveState";
 import { EditorSelection, type EditorState, type Extension, type SelectionRange } from "@codemirror/state";
 import { EditorView, keymap, runScopeHandlers, type Command, type Panel } from "@codemirror/view";
 import {
@@ -42,7 +43,7 @@ type QueryPatch = Partial<Pick<SearchQuery, "search" | "replace" | "caseSensitiv
 
 // Shared by every editor, so the replace row a user opened in one file is still
 // open in the next, as it is in VS Code.
-const [replaceOpen, setReplaceOpen] = createSignal(false);
+const [replaceOpen, setReplaceOpen] = createLiveSignal(false);
 
 function collectMatches(query: SearchQuery, state: EditorState): Matches {
   const ranges: Match[] = [];

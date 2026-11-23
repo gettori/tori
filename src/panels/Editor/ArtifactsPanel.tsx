@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createSignal, on, onCleanup, onMount } from "solid-js";
+import { For, Show, createEffect, createSignal, onCleanup, onSettled, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { File, FileCode, FileImage, FileSpreadsheet, FileText } from "../../components/Icon/icons";
@@ -39,33 +39,36 @@ export default function ArtifactsPanel(props: { chatId: string; root: string; ac
   const [addedOpen, setAddedOpen] = createSignal(true);
   const transcripts = () => (chatById(props.chatId)?.sessions ?? []).map((s) => s.path);
 
-  async function refresh() {
-    const next = await invoke<Artifacts | null>("chat_artifacts", {
-      folder: chatById(props.chatId)?.folder ?? props.root,
-      transcripts: transcripts(),
-    }).catch(() => null);
+  // Read apart from the refresh so the effect can take it in its compute: the
+  // parent passes these props as computed expressions, which an apply cannot read.
+  const request = () => ({ folder: chatById(props.chatId)?.folder ?? props.root, transcripts: transcripts() });
+
+  async function refresh(args = request()) {
+    const next = await invoke<Artifacts | null>("chat_artifacts", args).catch(() => null);
     if (next) setList(next);
   }
 
   // Keyed on the transcripts and their stamps, which move at each turn end:
   // that is when an attachment can first appear.
   createEffect(
-    on(
-      () =>
-        `${props.chatId}\n${(chatById(props.chatId)?.sessions ?? []).map((s) => `${s.path}@${s.last_active}`).join("\n")}`,
-      () => void refresh(),
-    ),
+    () => ({
+      key: `${props.chatId}\n${(chatById(props.chatId)?.sessions ?? []).map((s) => `${s.path}@${s.last_active}`).join("\n")}`,
+      args: untrack(request),
+    }),
+    ({ args }) => void refresh(args),
   );
 
   let unlisten: UnlistenFn | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  onMount(async () => {
-    unlisten = await listen<FsChanged>("fs://changed", (e) => {
-      const root = e.payload.root;
-      if (root && !isUnderPath(root, props.root) && !isUnderPath(props.root, root)) return;
-      clearTimeout(timer);
-      timer = setTimeout(() => void refresh(), 150);
-    });
+  onSettled(() => {
+    void (async () => {
+      unlisten = await listen<FsChanged>("fs://changed", (e) => {
+        const root = e.payload.root;
+        if (root && !isUnderPath(root, props.root) && !isUnderPath(props.root, root)) return;
+        clearTimeout(timer);
+        timer = setTimeout(() => void refresh(), 150);
+      });
+    })();
   });
   onCleanup(() => {
     unlisten?.();

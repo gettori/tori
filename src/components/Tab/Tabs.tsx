@@ -62,11 +62,16 @@ function Root(props: TabsRootProps) {
   // Owners learn of a fallback through `onChange`: closing the selected tab
   // relies on it to pick a neighbour, and a panel with no active member to pick one.
   createEffect(
-    () => ({ all: order.allKeys(), enabled: order.keys(), current: selected() }),
-    ({ all, enabled, current }) => {
+    () => ({
+      all: order.allKeys(),
+      enabled: order.keys(),
+      current: selected(),
+      controlled: props.value !== undefined,
+    }),
+    ({ all, enabled, current, controlled }) => {
       if (all.length > 0 && (current === undefined || !all.includes(current))) {
         const fallback = enabled[0] ?? all[0];
-        if (props.value === undefined) setUncontrolled(fallback);
+        if (!controlled) setUncontrolled(fallback);
         props.onChange?.(fallback);
       }
       if (!focusedTabRemoved) return;
