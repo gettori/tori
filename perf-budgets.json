@@ -234,14 +234,14 @@
     "name": "renders.editor.tab_switch.effects",
     "runtime": "webview",
     "unit": "count",
-    "budget": 13,
+    "budget": 12,
     "reason": "effects for back to an open file with CodeEditor mocked, so the pane writes no DOM of its own and only the runs mean anything. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
   },
   {
     "name": "renders.editor.tab_switch.reruns",
     "runtime": "webview",
     "unit": "count",
-    "budget": 32,
+    "budget": 31,
     "reason": "reruns for one switch back to an open editor tab. Counts every scope attribution saw re-run, including the ones inside Show, For and Switch that the memo and effect rows miss. A first run of a new scope is not a re-run"
   },
   {

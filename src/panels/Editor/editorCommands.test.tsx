@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent } from "../../test/harness";
 
@@ -147,6 +148,8 @@ describe("commands the editor answers", () => {
     await open(`${REPO}/src/b.ts`);
 
     emitWith(EDITOR_CLOSE_TAB, null);
+    await Promise.resolve();
+    flush();
 
     // A clean buffer closes with no discard prompt, which is why nothing has to
     // be answered here. The pane is still showing a file, and staging now names
