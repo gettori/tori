@@ -126,8 +126,9 @@ function tab(id: string, ws: string, kind: OpenTerm["kind"] = "shell"): OpenTerm
 
 function visit(t: OpenTerm) {
   ensureEnvelope(t.workspace, seedOnePane);
-  setOpen([...open(), t]);
+  setOpen((list) => [...list, t]);
   focusTab(t.workspace, t.id);
+  flush();
 }
 
 const activeIds = () =>
@@ -262,6 +263,7 @@ describe("workspace-scoped active", () => {
     await waitFor(() => expect(dockActiveId()).toBe("clone:2"));
     emitWith(REVEAL_DOCK, { tabId: "clone:1" });
     focusTab(SHELLS_KEY, "clone:2");
+    flush();
     expect(dockActiveId()).toBe("clone:1");
     showDock(false);
     await waitFor(() => expect(activeIds()).toEqual(["sh:1"]));
@@ -311,6 +313,7 @@ describe("workspace-scoped active", () => {
 
     expect(moved).toEqual([]);
     expect(document.querySelector("[data-drop-zone]")).toBeNull();
+    flush();
     expect(paneTabs(WS1, "main").map((t) => t.id)).toEqual(["sh:1"]);
   });
 });
