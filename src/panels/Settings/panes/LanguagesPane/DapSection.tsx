@@ -77,7 +77,7 @@ function DapCard(props: { adapter: DapHealth; onChange: () => Promise<DapHealth[
   return (
     <div class={[styles.toolCard, { [styles.toolCardWide]: actions.job() !== null }]}>
       <div class={styles.toolHead}>
-        <span class={`${styles.dot} ${off() ? styles.dotOff : TONE[a().status]}`} />
+        <span class={[styles.dot, off() ? styles.dotOff : TONE[a().status]]} />
         <span class={[styles.toolName, { [styles.toolNameOff]: off() }]}>{a().label}</span>
         <span class={styles.kindTag}>Debug</span>
         <ProvenanceTag provenance={a().provenance} contributor={a().contributor} />

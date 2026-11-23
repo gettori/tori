@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
+import { untrack } from "solid-js";
 import { render, waitFor } from "../../test/harness";
 
 // The other end of the run: the panel emits an `OPEN_TERMINAL` and *this* is
@@ -40,13 +41,15 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 // through), so this is where the seam can be read without a live terminal.
 vi.mock("./TerminalView", () => ({
   default: (props: { id: string; kind: string; init?: string; cwd: string; program: string }) => {
-    bridge.spawned.push({
-      id: props.id,
-      kind: props.kind,
-      init: props.init,
-      cwd: props.cwd,
-      program: props.program,
-    });
+    bridge.spawned.push(
+      untrack(() => ({
+        id: props.id,
+        kind: props.kind,
+        init: props.init,
+        cwd: props.cwd,
+        program: props.program,
+      })),
+    );
     return <div data-testid="pty" />;
   },
 }));

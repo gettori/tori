@@ -189,7 +189,7 @@ export function PromptsPane(props: { prompts: Prompts }) {
               cwd={CWD}
               onAnswer={(c, a) => props.prompts.answer(c, a)}
               onSetMode={() => {}}
-              onRevertHunk={async () => false}
+              onRevertHunk={() => Promise.resolve(false)}
             />
           )}
         </For>

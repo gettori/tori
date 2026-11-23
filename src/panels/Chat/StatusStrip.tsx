@@ -112,7 +112,7 @@ export default function StatusStrip(props: {
 
   return (
     <div class={styles.strip} ref={root}>
-      <span class={`${styles.stripStatus} ${tone()}`}>
+      <span class={[styles.stripStatus, tone()]}>
         <span class={styles.stripDot} aria-hidden="true" />
         {label()}
         <Show when={props.running}>

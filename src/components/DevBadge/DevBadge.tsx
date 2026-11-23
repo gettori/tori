@@ -7,7 +7,6 @@ import styles from "./DevBadge.module.css";
 // The stripe alone. There was a "dev" chip in the topbar beside it, saying the
 // same thing a second time and taking a slot from the bar's own controls; two
 // markers for one fact is one more than the fact needs.
-export default function DevBadge() {
-  if (!import.meta.env.DEV) return null;
-  return <div class={styles.stripe} aria-hidden="true" />;
-}
+const DevBadge = import.meta.env.DEV ? () => <div class={styles.stripe} aria-hidden="true" /> : () => null;
+
+export default DevBadge;

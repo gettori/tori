@@ -1,4 +1,4 @@
-import { createSignal, createEffect, onCleanup, For, Show } from "solid-js";
+import { createSignal, createEffect, onCleanup, For, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import { Search, Ticket, TriangleAlert, X } from "../Icon/icons";
@@ -105,7 +105,7 @@ export default function NewTopicDialog(props: {
   // One probe per (repo, branch). Typing is debounced; a check is not,
   // since the repo is the whole question there.
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let lastBranch = branch();
+  let lastBranch = untrack(branch);
   function probe(repoPath: string, forBranch: string) {
     setProbes((prev) => new Map(prev).set(repoPath, { branch: forBranch, result: null }));
     invoke<BranchProbe | null>("probe_topic_branch", { repoPath, branch: forBranch })

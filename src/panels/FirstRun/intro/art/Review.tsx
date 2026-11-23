@@ -333,7 +333,7 @@ export default function ReviewArt() {
               cwd={API}
               modelLabelFor={() => null}
               onSetMode={() => {}}
-              onRevertHunk={async () => false}
+              onRevertHunk={() => Promise.resolve(false)}
             />
           </div>
         </div>

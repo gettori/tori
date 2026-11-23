@@ -1,4 +1,4 @@
-import { For, Show, createSignal } from "solid-js";
+import { For, Show, createSignal, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { ChevronDown, ChevronUp } from "../../src/components/Icon/icons";
 import Icon from "../../src/components/Icon/Icon";
@@ -66,20 +66,22 @@ async function attempt(setBusy: (b: boolean) => void, setError: (e: string | nul
 }
 
 function SpaceForm(props: { client: RemoteClient; space: Space | null; onSaved: () => void; onDone: () => void }) {
-  const [name, setName] = createSignal(props.space?.name ?? "");
-  const [color, setColor] = createSignal<string | null>(props.space?.color ?? null);
-  const [icon, setIcon] = createSignal<string | null>(props.space?.icon ?? null);
+  const [name, setName] = createSignal(untrack(() => props.space?.name ?? ""));
+  const [color, setColor] = createSignal<string | null>(untrack(() => props.space?.color ?? null));
+  const [icon, setIcon] = createSignal<string | null>(untrack(() => props.space?.icon ?? null));
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
-  const current = PICKER_ICONS.find((i) => i.name === props.space?.icon);
+  const current = PICKER_ICONS.find((i) => i.name === untrack(() => props.space?.icon));
   const shelf = [...(current ? [current] : []), ...PICKER_ICONS.filter((i) => i !== current)].slice(0, ICON_SHELF);
   const save = () =>
-    attempt(setBusy, setError, async () => {
-      const params = { name: name().trim(), icon: icon(), color: color() };
-      await props.client.request(props.space ? "space.edit" : "space.new", params);
-      props.onSaved();
-      props.onDone();
-    });
+    attempt(setBusy, setError, () =>
+      untrack(async () => {
+        const params = { name: name().trim(), icon: icon(), color: color() };
+        await props.client.request(props.space ? "space.edit" : "space.new", params);
+        props.onSaved();
+        props.onDone();
+      }),
+    );
   const tint = () => spaceHueRgb(name() || "space", color());
   return (
     <Sheet
@@ -150,12 +152,14 @@ export function SpacesSheet(props: {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const move = (at: number, by: number) =>
-    attempt(setBusy, setError, async () => {
-      const names = props.spaces.map((s) => s.name);
-      [names[at], names[at + by]] = [names[at + by], names[at]];
-      await props.client.request("space.order", { names });
-      props.onChanged();
-    });
+    attempt(setBusy, setError, () =>
+      untrack(async () => {
+        const names = props.spaces.map((s) => s.name);
+        [names[at], names[at + by]] = [names[at + by], names[at]];
+        await props.client.request("space.order", { names });
+        props.onChanged();
+      }),
+    );
   return (
     <Show
       when={editing()}
@@ -270,7 +274,7 @@ export function TopicForm(props: {
   onDone: () => void;
 }) {
   const [name, setName] = createSignal("");
-  const [where, setWhere] = createSignal<"space" | "global">(props.space ? "space" : "global");
+  const [where, setWhere] = createSignal<"space" | "global">(untrack(() => (props.space ? "space" : "global")));
   const [picked, setPicked] = createSignal<Record<string, Mode>>({});
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
@@ -296,16 +300,18 @@ export function TopicForm(props: {
   const needsBranch = () => members().some((m) => m.mode === "worktree");
   const ready = () => name().trim() !== "" && members().length > 0 && (!needsBranch() || branch() !== "");
   const save = () =>
-    attempt(setBusy, setError, async () => {
-      await props.client.request("topic.new", {
-        name: name().trim(),
-        branch: branch(),
-        members: members(),
-        ...(where() === "space" && props.space ? { space: props.space } : {}),
-      });
-      props.onSaved();
-      props.onDone();
-    });
+    attempt(setBusy, setError, () =>
+      untrack(async () => {
+        await props.client.request("topic.new", {
+          name: name().trim(),
+          branch: branch(),
+          members: members(),
+          ...(where() === "space" && props.space ? { space: props.space } : {}),
+        });
+        props.onSaved();
+        props.onDone();
+      }),
+    );
   return (
     <Sheet
       title="New Topic"

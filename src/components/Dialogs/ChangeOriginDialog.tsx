@@ -1,4 +1,4 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, Show, untrack } from "solid-js";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
@@ -52,7 +52,7 @@ export default function ChangeOriginDialog(props: {
   onConfirm: (url: string) => void;
   onCancel: () => void;
 }) {
-  const [url, setUrl] = createSignal(props.current ?? "");
+  const [url, setUrl] = createSignal(untrack(() => props.current ?? ""));
   let first: HTMLInputElement | undefined;
 
   const typed = () => url().trim();

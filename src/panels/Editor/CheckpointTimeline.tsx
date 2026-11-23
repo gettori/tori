@@ -201,7 +201,8 @@ export default function CheckpointTimeline(props: {
         turns: entries.filter((e) => e.kind !== "backstop").reverse(),
       }))
       .filter((g) => g.turns.length);
-    const rank = (g: SessionGroup) => (g.sessionId === props.sessionId ? Infinity : g.turns[0].prompt_ts);
+    const own = props.sessionId;
+    const rank = (g: SessionGroup) => (g.sessionId === own ? Infinity : g.turns[0].prompt_ts);
     return out.sort((a, b) => rank(b) - rank(a));
   });
 
@@ -711,7 +712,7 @@ export default function CheckpointTimeline(props: {
     return (
       <div>
         <div class={styles.fileRow} onClick={() => void toggleDiff(f.path)}>
-          <span class={`${styles.fileStatus} ${styles[f.status] ?? ""}`}>{f.status[0].toUpperCase()}</span>
+          <span class={[styles.fileStatus, styles[f.status]]}>{f.status[0].toUpperCase()}</span>
           <button type="button" class={styles.fileMain} aria-expanded={expanded() === f.path ? "true" : "false"}>
             <span class={styles.fileName}>{baseName(f.path)}</span>
             <Show when={dirName(f.path)}>

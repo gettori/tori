@@ -71,7 +71,7 @@ it("holds the render budget for one tool frame into a long transcript", async ()
         cwd="/proj"
         modelLabelFor={() => null}
         onSetMode={() => {}}
-        onRevertHunk={async () => false}
+        onRevertHunk={() => Promise.resolve(false)}
         collapseWork={false}
         laneOpenedBy={() => null}
         onOpenLane={() => {}}

@@ -78,9 +78,7 @@ export default function SegmentedControl<T extends string>(props: SegmentedContr
       onPress={onPress}
       onKeyDown={onKeyDown}
       aria-label={props["aria-label"]}
-      class={[props.class, styles.group, styles[props.size ?? "md"], props.variant === "plain" && styles.plain]
-        .filter(Boolean)
-        .join(" ")}
+      class={[props.class, styles.group, styles[props.size ?? "md"], props.variant === "plain" && styles.plain]}
     >
       <For each={props.options}>
         {(opt) => (

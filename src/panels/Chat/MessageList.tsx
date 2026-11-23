@@ -380,7 +380,7 @@ export default function MessageList(props: {
   // initial condition, not something that should flip mid-life. Returning to a
   // remembered turn starts unpinned so the pin effect does not yank the reader
   // to the tail before the anchor is restored.
-  const [stuck, setStuck] = createSignal(!props.anchorTurnId);
+  const [stuck, setStuck] = createSignal(untrack(() => !props.anchorTurnId));
   let scroller: HTMLDivElement | undefined;
 
   const shown = createMemo(() => windowed(props.items, limit()));
@@ -1141,7 +1141,7 @@ export default function MessageList(props: {
             <Icon
               icon={ChevronRight}
               size={14}
-              class={`${styles.workChevron} ${open() ? styles.toolCaretOpen : ""}`}
+              class={[styles.workChevron, { [styles.toolCaretOpen]: open() }]}
               aria-hidden="true"
             />
             <span class={styles.workText}>

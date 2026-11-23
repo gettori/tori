@@ -65,7 +65,7 @@ function Surface(props: PopoverProps) {
       role="dialog"
       tabindex={-1}
       data-expanded=""
-      class={[styles.surface, props.class].filter(Boolean).join(" ")}
+      class={[styles.surface, props.class]}
       aria-label={props["aria-label"]}
     >
       {props.children}

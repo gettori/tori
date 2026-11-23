@@ -220,11 +220,13 @@ function RegionSurface(props: { duration: number }) {
 
   const pause = () => setPaused(true);
   const resume = () => setPaused(false);
-  window.addEventListener("blur", pause);
-  window.addEventListener("focus", resume);
-  onCleanup(() => {
-    window.removeEventListener("blur", pause);
-    window.removeEventListener("focus", resume);
+  onSettled(() => {
+    window.addEventListener("blur", pause);
+    window.addEventListener("focus", resume);
+    return () => {
+      window.removeEventListener("blur", pause);
+      window.removeEventListener("focus", resume);
+    };
   });
 
   const raise = (parent: HTMLElement, fresh?: Element | null) => {

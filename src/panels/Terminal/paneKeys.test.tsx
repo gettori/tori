@@ -183,7 +183,7 @@ describe("pane-aware focus", () => {
 
   it("a sidebar session click reveals and focuses the terminal pane", async () => {
     const [sel, setSel] = createSignal<Selection | null>(branchSelection);
-    mount(sel);
+    render(() => <Terminal selected={sel()} onOpenChange={() => {}} />);
     ensureEnvelope(REPO, seed);
     updateLayout(REPO, (root) => setPaneHidden(root, "left", true));
     setFocusedPane(REPO, "right");

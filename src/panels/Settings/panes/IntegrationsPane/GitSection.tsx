@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, Show } from "solid-js";
+import { createSignal, onSettled, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
 import Button from "../../../../components/Button/Button";
@@ -39,8 +39,10 @@ export default function GitSection() {
   const onFocus = () => {
     if (report()?.health.kind !== "ready") void probe("refresh_git_health");
   };
-  window.addEventListener("focus", onFocus);
-  onCleanup(() => window.removeEventListener("focus", onFocus));
+  onSettled(() => {
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  });
 
   const ready = () => {
     const h = report()?.health;
@@ -80,7 +82,7 @@ export default function GitSection() {
               </Show>
             </div>
           </div>
-          <span class={`${styles.statePill} ${ready() ? styles.statePillOk : ""}`}>
+          <span class={[styles.statePill, { [styles.statePillOk]: !!ready() }]}>
             {ready() ? "Ready" : "Not installed"}
           </span>
           <Show when={missing()}>

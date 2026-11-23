@@ -61,7 +61,7 @@ export default function Switch(props: {
   let input!: HTMLInputElement;
 
   return (
-    <div role="group" class={[styles.root, props.class].filter(Boolean).join(" ")} {...state}>
+    <div role="group" class={[styles.root, props.class]} {...state}>
       <input
         ref={input}
         id={inputId}

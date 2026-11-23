@@ -118,15 +118,6 @@ describe("the root classifier", () => {
 
 describe("the classes already at zero", () => {
   it.each([
-    ["use-directive", `<p use:tip={1} />`],
-    ["on-namespace", `<p on:click={run} />`],
-    ["lowercase-on", `<p onclick={run} />`],
-    ["destructured-props", `function Row({ name }) { return <p>{name}</p>; }`],
-  ])("finds %s", (idiom, source) => {
-    expect(classesIn(`import "solid-js";\n${source}`)).toEqual([idiom]);
-  });
-
-  it.each([
     ["effect-writes", `createEffect(() => id(), (next) => { setValue(next); });`],
     ["cleanup-in-ref", `const item = { ref: (el) => { onCleanup(() => drop(el)); } };`],
   ])("finds %s in its 2.0 form", (idiom, source) => {

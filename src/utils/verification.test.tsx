@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { createRoot, createSignal } from "solid-js";
+import { createRoot } from "solid-js";
 import { render, screen, waitFor } from "../test/harness";
 
 const answers: Record<string, unknown[]> = {};
@@ -33,7 +33,8 @@ describe("a live session's verification mark", () => {
 
   it("follows the latest turn that changed code, so a later fix clears it", async () => {
     answers["s"] = [turn(1, "unverified")];
-    const [targets] = createSignal([{ id: "s", agent: "claude", cwd: "/repo", status: "idle" }]);
+    const rows = [{ id: "s", agent: "claude", cwd: "/repo", status: "idle" }];
+    const targets = () => rows;
     createRoot(() => watchVerification(targets));
     await waitFor(() => expect(sessionVerdict("s")).toBe("unverified"));
 

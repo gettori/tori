@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, onCleanup, Show, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Decoration,
@@ -349,7 +349,7 @@ export default function SearchResultsBuffer(props: {
       // keystroke landing in between would leave a row locked as written back
       // while showing text that was never written.
       EditorState.transactionFilter.of((tr) => {
-        if (!tr.docChanged || tr.annotation(REWRITE) || !applying()) return tr;
+        if (!tr.docChanged || tr.annotation(REWRITE) || !untrack(() => applying())) return tr;
         setRefusal("Still writing the last apply back.");
         return [];
       }),
@@ -364,7 +364,7 @@ export default function SearchResultsBuffer(props: {
         const live = searchBuffer(id);
         if (live) live.state = u.state;
         if (u.docChanged) {
-          countPending();
+          untrack(() => countPending());
           // An edit that got through has answered whatever the last one was
           // refused for, and a complaint that outlives its keystroke reads as
           // one about the edit that just worked.
@@ -506,7 +506,7 @@ export default function SearchResultsBuffer(props: {
       if (searchBuffer(id) === e && props.id === id) showDoc();
     } else if (!e.doc && e.form.query) {
       // Run writes the live tab titles, and flush is refused in an effect callback.
-      queueMicrotask(() => void run());
+      queueMicrotask(() => void untrack(() => run()));
     }
     if (!e.form.query) requestAnimationFrame(() => queryEl?.focus());
   }

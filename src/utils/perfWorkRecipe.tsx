@@ -140,7 +140,7 @@ async function stream(): Promise<void> {
       cwd="/"
       modelLabelFor={() => "perf"}
       onSetMode={() => {}}
-      onRevertHunk={async () => false}
+      onRevertHunk={() => Promise.resolve(false)}
     />
   ));
   const text = streamedAnswer();

@@ -943,8 +943,8 @@ export default function ReviewPanel(props: {
       guarded("Stash", root, async () => {
         const created = await invoke<boolean>("git_stash_push", {
           projectPath: root,
-          message: commitText().trim().split("\n")[0] || null,
-          includeUntracked: includeUntracked(),
+          message: untrack(() => commitText().trim().split("\n")[0]) || null,
+          includeUntracked: untrack(() => includeUntracked()),
         });
         if (!created) {
           // git exits 0 on a clean tree, so silence here would read as success.
@@ -973,7 +973,7 @@ export default function ReviewPanel(props: {
         });
         // Same channel discard and checkpoint revert use: a stash laid back down
         // over an open buffer must offer Reload / Keep mine, not lose a side.
-        props.onReverted?.({ backstop_ts: null, ...outcome });
+        untrack(() => props.onReverted)?.({ backstop_ts: null, ...outcome });
         await Promise.all([refreshStatus(root), loadStashes()]);
       }),
     );
@@ -1445,7 +1445,11 @@ export default function ReviewPanel(props: {
         </Show>
         <MenuSub label="Rebase" disabled={applying() || op() !== "none"}>
           <Show when={baseBranch() && baseBranch() !== branch()}>
-            <MenuRow onClick={() => rewrite("Rebase", menuRoot(), (r) => rebaseOnto(r, `origin/${baseBranch()}`))}>
+            <MenuRow
+              onClick={() =>
+                rewrite("Rebase", menuRoot(), (r) => rebaseOnto(r, `origin/${untrack(() => baseBranch())}`))
+              }
+            >
               Onto origin/{baseBranch()}
             </MenuRow>
           </Show>

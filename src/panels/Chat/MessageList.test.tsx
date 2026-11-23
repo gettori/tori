@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vite-plus/test";
 import { render, screen, fireEvent, waitFor } from "../../test/harness";
-import { Show, createSignal, createStore, flush } from "solid-js";
+import { Show, createSignal, createStore, flush, untrack } from "solid-js";
 import { expectNoAxeViolations } from "../../test/axe";
 import MessageList from "./MessageList";
 import { lastReply, speakableChunks } from "./speakable";
@@ -91,11 +91,13 @@ function list(
       modelLabelFor={() => null}
       onAnswer={() => {}}
       onSetMode={() => {}}
-      onRevertHunk={async () => true}
+      onRevertHunk={() => Promise.resolve(true)}
       {...over}
     />
   );
 }
+
+const ListView = (props: Parameters<typeof list>[0]) => list(props);
 
 // A reopened chat used to show a question about a screenshot with no
 // screenshot in it, and lose an image-only prompt entirely.
@@ -417,7 +419,7 @@ describe("MessageList turn anchoring", () => {
         modelLabelFor={() => null}
         onAnswer={() => {}}
         onSetMode={() => {}}
-        onRevertHunk={async () => true}
+        onRevertHunk={() => Promise.resolve(true)}
       />
     ));
 
@@ -454,14 +456,14 @@ describe("MessageList turn anchoring", () => {
 
     setShowList(false);
     flush();
-    const left = anchor();
+    const left = untrack(() => anchor());
     expect(left).not.toBeNull();
 
     // Coming back re-renders the same turns, and the remembered anchor is what
     // the list opens on rather than being discarded for the tail.
     setShowList(true);
     flush();
-    expect(anchor()).toBe(left);
+    expect(untrack(() => anchor())).toBe(left);
   });
 });
 
@@ -557,16 +559,16 @@ describe("a send takes the reader back to the bottom", () => {
    *  than a value read once: `list({ items: items() })` would tear the whole
    *  component down and build a new one on every change, and a fresh mount
    *  pins by itself - which is the thing these tests have to not prove. */
-  const growing = (items: () => ChatItem[]) => (
+  const Growing = (props: { items: ChatItem[] }) => (
     <MessageList
-      items={items()}
+      items={props.items}
       streaming={false}
       sessionId="s1"
       cwd="/tmp"
       modelLabelFor={() => null}
       onAnswer={() => {}}
       onSetMode={() => {}}
-      onRevertHunk={async () => true}
+      onRevertHunk={() => Promise.resolve(true)}
     />
   );
 
@@ -577,7 +579,7 @@ describe("a send takes the reader back to the bottom", () => {
    *  itself and a spy installed before that lands would record it. */
   async function detached() {
     const [items, setItems] = createSignal(ITEMS);
-    const { container } = render(() => growing(items));
+    const { container } = render(() => <Growing items={items()} />);
     const scroller = container.firstElementChild as HTMLElement;
     const geom = stubScroll(scroller, 400);
     geom.setTop(100);
@@ -716,7 +718,7 @@ describe("a question in the transcript", () => {
         modelLabelFor={() => null}
         onAnswer={() => {}}
         onSetMode={() => {}}
-        onRevertHunk={async () => true}
+        onRevertHunk={() => Promise.resolve(true)}
         onAnswerQuestion={onAnswerQuestion}
       />
     ));
@@ -945,7 +947,7 @@ describe("agent work collapsed into a card", () => {
   // never show whether the card follows it.
   function mount(initial: ChatItem[]) {
     const [state, setState] = createStore({ items: initial });
-    const view = render(() => list({ items: state.items, collapseWork: true }));
+    const view = render(() => <ListView items={state.items} collapseWork />);
     return { ...view, setState };
   }
 
@@ -1032,7 +1034,7 @@ describe("agent work collapsed into a card", () => {
   });
 
   it("names the call in flight while the run is the streaming tail", () => {
-    const [state] = createStore({ items: [PROMPT, call("a", { state: "running" })] as ChatItem[] });
+    const state = { items: [PROMPT, call("a", { state: "running" })] as ChatItem[] };
     render(() => list({ items: state.items, collapseWork: true, streaming: true }));
     expect(screen.getByRole("button", { name: "Bash echo a" })).toBeTruthy();
   });
@@ -1234,9 +1236,9 @@ describe("the block being read aloud", () => {
       ] as ChatItem[],
     });
     const [block, setBlock] = createSignal<number | undefined>(0);
-    const { container } = render(() =>
-      list({ items: state.items, readingBlock: (id) => (id === "t1" ? block() : undefined) }),
-    );
+    const { container } = render(() => (
+      <ListView items={state.items} readingBlock={(id) => (id === "t1" ? block() : undefined)} />
+    ));
     expect(lit(container)).toEqual(["First part."]);
     setBlock(1);
     flush();

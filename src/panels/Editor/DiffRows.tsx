@@ -1,4 +1,4 @@
-import { createMemo, createSignal, onCleanup, For, Show } from "solid-js";
+import { createMemo, createSignal, onCleanup, For, Show, untrack } from "solid-js";
 import { changedRange, toSideBySide, type DiffRow } from "../../utils/diffView";
 import { overlay, paintRows, type Span } from "../../utils/syntaxRows";
 import { editorDefaults } from "../Settings/settingsStore";
@@ -42,9 +42,7 @@ function lineContent(r: DiffRow, spans: Span[] | null) {
     return (
       <>
         <span class={styles.marker}>{r.kind === "context" ? " " : r.text.slice(0, 1) || " "}</span>
-        <For each={pieces}>
-          {(p) => <span class={`${p.cls ?? ""} ${p.changed ? styles.wordChanged : ""}`}>{p.text}</span>}
-        </For>
+        <For each={pieces}>{(p) => <span class={[p.cls, { [styles.wordChanged]: p.changed }]}>{p.text}</span>}</For>
       </>
     );
   }
@@ -207,11 +205,18 @@ export default function DiffRows(allProps: {
         : undefined;
     return (
       <div
-        class={`${styles.diffLine} ${row ? (styles[rowClass(row)] ?? "") : styles.sideEmpty} ${
-          selectable ? styles.selectable : ""
-        } ${picked() ? styles.selected : ""} ${spans() ? styles.painted : ""} ${numbered() ? styles.numbered : ""} ${
-          commentable ? styles.commentable : ""
-        } ${editorDefaults().softWrap ? styles.wrap : ""}`}
+        class={[
+          styles.diffLine,
+          row ? styles[rowClass(row)] : styles.sideEmpty,
+          {
+            [styles.selectable]: !!selectable,
+            [styles.selected]: !!picked(),
+            [styles.painted]: !!spans(),
+            [styles.numbered]: !!numbered(),
+            [styles.commentable]: !!commentable,
+            [styles.wrap]: !!editorDefaults().softWrap,
+          },
+        ]}
         ref={(el) => {
           if (index === null || !row) return;
           const key = props.offset + index;
@@ -254,7 +259,19 @@ export default function DiffRows(allProps: {
   }
 
   return (
-    <Show when={props.twoColumn} fallback={<For each={props.rows}>{(r, i) => cell(r, i())}</For>}>
+    <Show
+      when={props.twoColumn}
+      fallback={
+        <For each={props.rows}>
+          {(r, i) =>
+            cell(
+              r,
+              untrack(() => i()),
+            )
+          }
+        </For>
+      }
+    >
       {/* Side-by-side: one scroll container holding both columns, so the two
           sides scroll together by construction rather than by syncing. */}
       <div class={styles.sideBySide}>

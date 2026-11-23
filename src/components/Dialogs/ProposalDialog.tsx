@@ -54,7 +54,7 @@ function Body(props: { review: Reviewing }) {
       <pre class={styles.diff} data-proposal-diff>
         <For each={lineDiff(previous() ?? "", proposal().content)}>
           {(row) => (
-            <div class={`${styles.line} ${row.kind === "ctx" ? "" : styles[row.kind]}`} data-kind={row.kind}>
+            <div class={[styles.line, row.kind !== "ctx" && styles[row.kind]]} data-kind={row.kind}>
               {MARK[row.kind]}
               {row.text}
             </div>

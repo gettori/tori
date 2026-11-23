@@ -68,7 +68,7 @@ export default function SyncMarks(props: {
       <Show
         when={props.label}
         fallback={
-          <span class={`${styles.marks} ${props.class ?? ""}`} data-sync-marks>
+          <span class={[styles.marks, props.class]} data-sync-marks>
             {glyphs()}
           </span>
         }
@@ -80,7 +80,7 @@ export default function SyncMarks(props: {
           // reach - and the native attribute this replaces was mouse-only too.
           <Tooltip<HTMLSpanElement>
             as="span"
-            class={`${styles.marks} ${props.class ?? ""}`}
+            class={[styles.marks, props.class]}
             label={<span class={styles.lines}>{text()}</span>}
             data-sync-marks
           >

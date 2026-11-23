@@ -1002,7 +1002,7 @@ export default function Composer(props: {
   createEffect(held, () => field?.refreshChips(), { defer: true });
 
   const ComposerInlineChip = (p: { a: PendingBlock; label: string }) => {
-    const block = p.a.block;
+    const block = untrack(() => p.a.block);
     const path = block.type === "fileRef" ? block.path : null;
     const missing = () => !!path && missingPaths().has(path);
     return (
@@ -1055,7 +1055,7 @@ export default function Composer(props: {
   // A component rather than a factory, so each chip owns its own `missing`
   // signal and the effect that keeps asking the disk about it.
   const Chip = (p: { a: PendingBlock }) => {
-    const block = p.a.block;
+    const block = untrack(() => p.a.block);
     const path = block.type === "fileRef" ? block.path : null;
     // Gone from disk since it was attached. The chip stays, because the
     // sentence still names it; both controls say why it is red.
@@ -1149,7 +1149,7 @@ export default function Composer(props: {
       onDrop={onDrop}
     >
       <Show when={props.queue.length}>
-        <div ref={queueStrip} class={`${styles.queue} ${props.parked ? styles.queueParked : ""}`}>
+        <div ref={queueStrip} class={[styles.queue, { [styles.queueParked]: props.parked }]}>
           {/* Its own line, with the held queue's decision at the end of it: the
               messages are a grid of equal cells, and a label or two buttons in
               among them would be cells of another width. */}

@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal, onCleanup, onSettled } from "solid-js";
+import { For, Show, createMemo, createSignal, onCleanup, onSettled, untrack } from "solid-js";
 import AgentGlyph from "../Icon/AgentGlyph";
 import UsageCard from "./UsageCard";
 import { asTabProfile } from "../../utils/agentHealth";
@@ -104,13 +104,11 @@ function UsageBar(props: {
     <span
       class={[
         styles.bar,
-        band() === "warm" ? styles.warm : "",
-        band() === "hot" ? styles.hot : "",
-        temporal() === "stale" ? styles.stale : "",
-        temporal() === "expired" ? styles.expired : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
+        band() === "warm" && styles.warm,
+        band() === "hot" && styles.hot,
+        temporal() === "stale" && styles.stale,
+        temporal() === "expired" && styles.expired,
+      ]}
       data-kind={props.reading.kind}
       data-state={state()}
       data-band={band()}
@@ -229,7 +227,7 @@ export default function UsageStrip() {
   // The palette's usage row, which has no button of its own to anchor on.
   onCleanup(
     onEventWith<OpenUsage>(OPEN_USAGE, ({ agentId, profile }) => {
-      const row = rows().find((r) => r.agentId === agentId && r.profile === profile);
+      const row = untrack(rows).find((r) => r.agentId === agentId && r.profile === profile);
       const button = [...(el?.querySelectorAll<HTMLElement>("[data-agent]") ?? [])].find(
         (b) => b.dataset.agent === agentId && b.dataset.profile === profile,
       );
@@ -256,7 +254,7 @@ export default function UsageStrip() {
               </Show>
               <button
                 type="button"
-                class={[styles.cluster, collapsed() ? styles.tight : ""].filter(Boolean).join(" ")}
+                class={[styles.cluster, collapsed() && styles.tight]}
                 data-agent={row().agentId}
                 data-profile={row().profile}
                 aria-label={clusterLabel(row(), clock())}

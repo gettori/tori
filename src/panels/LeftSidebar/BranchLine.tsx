@@ -94,41 +94,41 @@ export type BranchLineProps = {
   show?: { mode: BranchLineMode; items: Record<BranchLineItem, boolean> };
 };
 
-function shownPr(props: BranchLineProps) {
-  const st = props.status;
+function shownPr(line: BranchLineProps) {
+  const st = line.status;
   if (!st?.pullRequest) return null;
-  return props.release && !releaseShows(st, Date.now() / 1000) ? null : st.pullRequest;
+  return line.release && !releaseShows(st, Date.now() / 1000) ? null : st.pullRequest;
 }
 
-function shownStat(props: BranchLineProps) {
-  const s = props.base?.stat;
+function shownStat(line: BranchLineProps) {
+  const s = line.base?.stat;
   return s && s.files > 0 ? s : null;
 }
 
 /** The facts the line draws for these props. A row with none and no running
  *  operation has no second line. */
-export function drawnFacts(props: BranchLineProps): Set<BranchLineItem> {
-  const s = props.show;
+export function drawnFacts(line: BranchLineProps): Set<BranchLineItem> {
+  const s = line.show;
   const lit = (item: BranchLineItem) =>
     !s || (s.mode === "full" ? s.items[item] : s.mode === "pr" && (item === "pr" || item === "stack"));
   const out = new Set<BranchLineItem>();
   const add = (item: BranchLineItem, has: unknown) => has && lit(item) && out.add(item);
-  const p = shownPr(props);
+  const p = shownPr(line);
   if (p) {
-    const checks = forgeBadges(props.status).checks;
+    const checks = forgeBadges(line.status).checks;
     const finishedAt = p.state === "merged" ? p.mergedAt : p.closedAt;
     add("pr", true);
     add("stack", p.stack);
-    add("watched", props.watched);
+    add("watched", line.watched);
     add("checks", checks);
-    add("skipped", (checks?.tone === "good" || checks?.tone === "bad") && props.status!.checks.skipped > 0);
+    add("skipped", (checks?.tone === "good" || checks?.tone === "bad") && line.status!.checks.skipped > 0);
     add("age", !Number.isNaN(Date.parse((p.state === "open" ? p.createdAt : finishedAt) ?? "")));
     add("comments", p.comments > 0);
   }
-  const stat = shownStat(props);
+  const stat = shownStat(line);
   add("diff", stat);
   add("files", stat);
-  add("spend", spendView(props.branchSpend, "this branch"));
+  add("spend", spendView(line.branchSpend, "this branch"));
   return out;
 }
 
@@ -335,7 +335,7 @@ export default function BranchLine(props: BranchLineProps) {
               {(o) => (
                 <>
                   <span
-                    class={`${styles.item} ${o().conflicted ? styles.bad : styles.busy}`}
+                    class={[styles.item, o().conflicted ? styles.bad : styles.busy]}
                     data-operation={props.operation!.kind}
                   >
                     {o().text}

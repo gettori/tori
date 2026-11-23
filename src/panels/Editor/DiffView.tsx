@@ -1,4 +1,4 @@
-import { createSignal, createMemo, createEffect, lazy, onSettled, onCleanup, For, Show } from "solid-js";
+import { createSignal, createMemo, createEffect, lazy, onSettled, onCleanup, untrack, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
@@ -334,28 +334,34 @@ export default function DiffView(props: {
 
   function applyHunk(index: number, fingerprint: string) {
     return applied(() =>
-      invoke("git_apply_hunks", {
-        projectPath: props.workspace,
-        file: file(),
-        hunkIndices: [index],
-        fingerprints: [fingerprint],
-        reverse: staged(),
-        context: DIFF_CONTEXT,
-      }),
+      invoke(
+        "git_apply_hunks",
+        untrack(() => ({
+          projectPath: props.workspace,
+          file: file(),
+          hunkIndices: [index],
+          fingerprints: [fingerprint],
+          reverse: staged(),
+          context: DIFF_CONTEXT,
+        })),
+      ),
     );
   }
 
   function applyLines(index: number, fingerprint: string, lines: number[]) {
     return applied(() =>
-      invoke("git_apply_lines", {
-        projectPath: props.workspace,
-        file: file(),
-        hunkIndex: index,
-        fingerprint,
-        lines,
-        reverse: staged(),
-        context: DIFF_CONTEXT,
-      }),
+      invoke(
+        "git_apply_lines",
+        untrack(() => ({
+          projectPath: props.workspace,
+          file: file(),
+          hunkIndex: index,
+          fingerprint,
+          lines,
+          reverse: staged(),
+          context: DIFF_CONTEXT,
+        })),
+      ),
     );
   }
 
@@ -538,7 +544,9 @@ export default function DiffView(props: {
             tooltip={staged() ? "Unstage this file" : "Stage this file"}
             onClick={() =>
               void applied(() =>
-                staged() ? unstageFiles(props.workspace, [file()]) : stageFiles(props.workspace, [file()]),
+                untrack(() =>
+                  staged() ? unstageFiles(props.workspace, [file()]) : stageFiles(props.workspace, [file()]),
+                ),
               )
             }
           />

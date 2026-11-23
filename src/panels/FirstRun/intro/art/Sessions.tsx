@@ -231,7 +231,7 @@ function Session(): JSX.Element {
             cwd={API}
             modelLabelFor={() => "Opus"}
             onSetMode={() => {}}
-            onRevertHunk={async () => false}
+            onRevertHunk={() => Promise.resolve(false)}
           />
           <Composer
             running
@@ -242,14 +242,14 @@ function Session(): JSX.Element {
             parked={false}
             disabled={false}
             commands={[]}
-            loadFiles={async () => []}
+            loadFiles={() => Promise.resolve([])}
             onSend={() => {}}
             onInterrupt={() => {}}
             onDropQueued={() => {}}
             onDropAttachment={() => {}}
             onAttachFile={() => null}
             uploads={{ kinds: ["image"], gap: null }}
-            onAttachUploads={async () => []}
+            onAttachUploads={() => Promise.resolve([])}
             onAttachRejected={() => {}}
             onAttachPaths={() => []}
             draft=""

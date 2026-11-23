@@ -58,7 +58,7 @@ function mount(item: ToolItem, onSetMode: (mode: string) => void = () => {}) {
       cwd="/repo"
       onAnswer={() => {}}
       onSetMode={onSetMode}
-      onRevertHunk={async () => false}
+      onRevertHunk={() => Promise.resolve(false)}
     />
   ));
 }
@@ -233,7 +233,7 @@ describe("ToolCallCard", () => {
         sessionId="s1"
         cwd="/repo"
         onSetMode={() => {}}
-        onRevertHunk={async () => false}
+        onRevertHunk={() => Promise.resolve(false)}
       />
     ));
     expect(screen.queryByRole("img", { name: "Edited without reading" })).toBeNull();
@@ -298,7 +298,7 @@ describe("writes folded onto one card", () => {
         cwd="/repo"
         onAnswer={() => {}}
         onSetMode={() => {}}
-        onRevertHunk={async () => false}
+        onRevertHunk={() => Promise.resolve(false)}
       />
     ));
     // Two numbers, each with its own verdict and its own colour.
@@ -317,7 +317,7 @@ describe("writes folded onto one card", () => {
         cwd="/repo"
         onAnswer={() => {}}
         onSetMode={() => {}}
-        onRevertHunk={async () => false}
+        onRevertHunk={() => Promise.resolve(false)}
       />
     ));
     fireEvent.click(container.querySelector("button") as HTMLButtonElement);
@@ -333,7 +333,7 @@ describe("writes folded onto one card", () => {
         cwd="/repo"
         onAnswer={() => {}}
         onSetMode={() => {}}
-        onRevertHunk={async () => false}
+        onRevertHunk={() => Promise.resolve(false)}
       />
     ));
     fireEvent.click(container.querySelector("button") as HTMLButtonElement);
@@ -419,7 +419,7 @@ describe("the way back into a subagent's lane", () => {
         cwd="/repo"
         onAnswer={() => {}}
         onSetMode={() => {}}
-        onRevertHunk={async () => false}
+        onRevertHunk={() => Promise.resolve(false)}
         lane="acb01121756a92ca0"
         onOpenLane={(id) => opened.push(id)}
       />
@@ -444,7 +444,7 @@ describe("the way back into a subagent's lane", () => {
         cwd="/repo"
         onAnswer={() => {}}
         onSetMode={() => {}}
-        onRevertHunk={async () => false}
+        onRevertHunk={() => Promise.resolve(false)}
         inLane="acb01121756a92ca0"
         onOpenLane={(id) => opened.push(id)}
       />
@@ -463,7 +463,7 @@ describe("the way back into a subagent's lane", () => {
         cwd="/repo"
         onAnswer={() => {}}
         onSetMode={() => {}}
-        onRevertHunk={async () => false}
+        onRevertHunk={() => Promise.resolve(false)}
         lane="child"
         inLane="parent"
         onOpenLane={() => {}}

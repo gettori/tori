@@ -574,7 +574,9 @@ function TreeNode(props: {
   // contents are on screen and could go stale.
   // In the body rather than onSettled: `ctx` is built from props the parent
   // passes as computed expressions, which an onSettled callback cannot read.
-  if (props.entry.is_dir) props.ctx?.mounted.set(props.entry.path, reloadSelf);
+  untrack(() => {
+    if (props.entry.is_dir) props.ctx?.mounted.set(props.entry.path, reloadSelf);
+  });
   onCleanup(() => {
     if (props.entry.is_dir) props.ctx?.mounted.delete(props.entry.path);
   });
@@ -924,7 +926,11 @@ function RootBody(props: {
   // Every mounted directory's reload, this root's included, so a move can
   // refresh both ends.
   const mounted = new Map<string, () => Promise<void>>();
-  const view: ViewCtx = { root: props.path, repoPath: props.repoPath, container: props.container };
+  const view: ViewCtx = untrack(() => ({
+    root: props.path,
+    repoPath: props.repoPath,
+    container: props.container,
+  }));
 
   async function reloadRoot(compact = props.compactFolders) {
     await listChildrenCached(props.path, compact, setEntries);

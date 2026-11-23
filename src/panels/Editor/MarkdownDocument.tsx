@@ -7,6 +7,7 @@ import { marked } from "marked";
 import { emitWith, NAVIGATE, OPEN_IN_EDITOR, type NavTarget, type OpenInEditor } from "../../utils/events";
 import { linkTarget } from "../Chat/links";
 import PreviewCode from "./PreviewCode";
+import TrustedHtml from "../../components/TrustedHtml/TrustedHtml";
 import styles from "./MarkdownPreview.module.css";
 
 type Segment = { kind: "prose"; html: string } | { kind: "code"; lang: string; code: string };
@@ -161,7 +162,7 @@ export default function MarkdownDocument(props: {
             // `display: contents` on the carrier: the document's own
             // margins have to keep collapsing across a fence, or every
             // block boundary gains a seam the source does not have.
-            <div class={styles.prose} innerHTML={seg.html} />
+            <TrustedHtml class={styles.prose} html={seg.html} />
           ) : (
             <PreviewCode lang={seg.lang} code={seg.code} />
           )

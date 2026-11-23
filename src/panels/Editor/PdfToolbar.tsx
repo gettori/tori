@@ -64,16 +64,16 @@ export default function PdfToolbar(props: { path: string }) {
 
   /** Enter commits, Escape abandons. Both stop here: this sits inside a pane,
    *  and a bare Enter reaching the window is a command somewhere else. */
-  const keys = (commit: (el: HTMLInputElement) => void, revert: () => string) => (e: KeyboardEvent) => {
+  const keys = (o: { commit: (el: HTMLInputElement) => void; revert: () => string }) => (e: KeyboardEvent) => {
     const el = e.currentTarget as HTMLInputElement;
     if (e.key === "Enter") {
       e.preventDefault();
       e.stopPropagation();
-      commit(el);
+      o.commit(el);
       el.blur();
     } else if (e.key === "Escape") {
       e.stopPropagation();
-      el.value = revert();
+      el.value = o.revert();
       el.blur();
     }
   };
@@ -97,7 +97,7 @@ export default function PdfToolbar(props: { path: string }) {
         aria-label="Zoom percentage"
         value={percent()}
         onBlur={(e) => commitPercent(e.currentTarget)}
-        onKeyDown={keys(commitPercent, () => String(percent()))}
+        onKeyDown={keys({ commit: commitPercent, revert: () => String(percent()) })}
       />
       <span class={styles.unit}>%</span>
       <IconButton
@@ -122,7 +122,7 @@ export default function PdfToolbar(props: { path: string }) {
           aria-label="Page"
           value={page()}
           onBlur={(e) => commitPage(e.currentTarget)}
-          onKeyDown={keys(commitPage, () => String(view().page))}
+          onKeyDown={keys({ commit: commitPage, revert: () => String(view().page) })}
         />
         <span class={styles.unit}>/ {view().pages}</span>
       </span>
