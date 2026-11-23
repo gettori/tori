@@ -77,7 +77,6 @@ import {
 } from "./toolRenderers";
 import patterns from "../../styles/patterns.module.css";
 import { enterOnce } from "../../utils/enterOnce";
-import { createLiveSignal } from "../../lib/liveState";
 
 const VERDICT_ICON = { verified: CircleCheck, failed: CircleX, unverified: CircleDashed } as const;
 
@@ -145,7 +144,7 @@ export function stampLabel(at: number, now = Date.now()): string {
 
 // One clock for every stamp on screen, running only while one is mounted, so
 // "Just now" turns into "Today at ..." without each row keeping a timer.
-const [clock, setClock] = createLiveSignal(Date.now());
+const [clock, setClock] = createSignal(Date.now());
 let clockUsers = 0;
 let clockTimer: ReturnType<typeof setInterval> | undefined;
 function useClock(): () => number {

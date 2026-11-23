@@ -1,5 +1,4 @@
-import { For, onCleanup, createStore, runWithOwner } from "solid-js";
-import { createLiveSignal } from "../../../lib/liveState";
+import { For, onCleanup, createSignal, createStore, runWithOwner } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import ToolCallCard from "../ToolCallCard";
 import AskCard from "../AskCard";
@@ -116,18 +115,21 @@ const ASKS = (): SocketAsk[] => [
   },
 ];
 
-const [heard, setHeard] = createLiveSignal<string[]>([]);
-const [failNext, setFailNext] = createLiveSignal(false);
+const [heard, setHeard] = createSignal<string[]>([]);
+const [failNext, setFailNext] = createSignal(false);
 
 export const promptsHost: HostHandler = (cmd, args) => {
   if (cmd === "chat_respond_permission") {
-    setHeard([...heard(), `${String(args.toolUseId)}: ${String(args.decision)} ${String(args.scope)}`]);
+    setHeard((h) => [...h, `${String(args.toolUseId)}: ${String(args.decision)} ${String(args.scope)}`]);
     return null;
   }
   if (cmd === "rpc_ask_answer") {
-    const fail = failNext();
-    setFailNext(false);
-    setHeard([...heard(), `${String(args.id)}: ${String(args.answer)}${fail ? ", failed" : ""}`]);
+    let fail = false;
+    setFailNext((was) => {
+      fail = was;
+      return false;
+    });
+    setHeard((h) => [...h, `${String(args.id)}: ${String(args.answer)}${fail ? ", failed" : ""}`]);
     return new Promise((resolve, reject) =>
       setTimeout(() => (fail ? reject(new Error("the asker went away")) : resolve(true)), ANSWER_MS),
     );
