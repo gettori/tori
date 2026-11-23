@@ -284,12 +284,10 @@ function PdfDocumentView(props: {
   // What the toolbar needs and cannot work out: the page count, and what the
   // zoom setting actually resolved to at this pane's width.
   createEffect(pageCount, (pages) => {
-    // Deferred: the view store is live state, and a flush from here is a no-op.
-    queueMicrotask(() => setPdfView(props.path, { pages }));
+    setPdfView(props.path, { pages });
   });
   createEffect(scale, (scale) => {
-    // Deferred: the view store is live state, and a flush from here is a no-op.
-    queueMicrotask(() => setPdfView(props.path, { scale }));
+    setPdfView(props.path, { scale });
   });
 
   /**

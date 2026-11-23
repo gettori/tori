@@ -19,7 +19,7 @@
 // The price is that a branch the poller has not reached shows no checks, which
 // is the same honest blank the chip shows, for the same reason.
 
-import { createEffect, createMemo, onCleanup, For, Show } from "solid-js";
+import { untrack, createEffect, createMemo, onCleanup, For, Show } from "solid-js";
 import { onWith, PR_OPENED, type PrOpened } from "../../../utils/events";
 import { forgeBadges } from "../../../utils/forgeChip";
 import { projectPathFor } from "../../../utils/sessionActivity";
@@ -85,8 +85,7 @@ export default function PrList(props: {
     () => [props.root, paused()] as const,
     ([root, why]) => {
       if (!root) return;
-      // The list store is live state, and flush is refused in an effect callback.
-      queueMicrotask(() => (why !== null ? forgetPrList(root) : ensurePrList(root)));
+      untrack(() => (why !== null ? forgetPrList(root) : ensurePrList(root)));
     },
   );
 

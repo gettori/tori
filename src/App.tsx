@@ -451,8 +451,7 @@ function AppShell() {
   const firstWs = untrack(wsKey);
   runWithOwner(null, () => ensureEnvelope(firstWs, seedEnvelope));
   createEffect(wsKey, (ws) => {
-    // A live layout write, which cannot flush inside an effect.
-    queueMicrotask(() => ensureEnvelope(ws, seedEnvelope));
+    ensureEnvelope(ws, seedEnvelope);
   });
   // The tree the shell renders. Two same-shape worktrees are two envelope
   // objects and PaneTree keys children by reference, so a switch between them

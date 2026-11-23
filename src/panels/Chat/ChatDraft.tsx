@@ -199,8 +199,7 @@ export default function ChatDraft(props: {
     },
     (patch) => {
       if (!patch) return;
-      // The pick lives in module level state, where a write from an effect callback cannot flush.
-      queueMicrotask(() => setDraftPick(tabId, patch));
+      setDraftPick(tabId, patch);
     },
   );
 

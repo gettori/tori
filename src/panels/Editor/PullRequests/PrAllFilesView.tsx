@@ -18,7 +18,7 @@
 // It fetches nothing. `ensure` on mount and everything from `prReviewStore`, so
 // this tab open beside the panel and four diff tabs is still one read of each.
 
-import { createEffect, createMemo, createSignal, flush, For, onSettled, Show } from "solid-js";
+import { untrack, createEffect, createMemo, createSignal, flush, For, onSettled, Show } from "solid-js";
 import { Check, ChevronDown, ChevronRight, ExternalLink, MessageSquare } from "../../../components/Icon/icons";
 import { parsePrArg } from "../../../utils/syntheticTabs";
 import { sideBySideOn as sideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../../utils/sideBySide";
@@ -82,8 +82,9 @@ export default function PrAllFilesView(props: { workspace: string; arg: string }
 
   createEffect(
     () => [props.workspace, number()] as const,
-    // The review store is live state, and flush is refused in an effect callback.
-    ([root, n]) => queueMicrotask(() => ensure(root, n)),
+    ([root, n]) => {
+      void untrack(() => ensure(root, n));
+    },
   );
 
   let paneRef: HTMLDivElement | undefined;

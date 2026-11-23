@@ -9,7 +9,7 @@
 // `prReviewStore`, so nine files open at once are one `forge_pr_files` call and
 // a tab that opens after the read has landed shows its diff immediately.
 
-import { createEffect, createMemo, createSignal, onSettled, Show } from "solid-js";
+import { untrack, createEffect, createMemo, createSignal, onSettled, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { ArrowDown, Columns2, ExternalLink, FileCode } from "../../../components/Icon/icons";
 import { emitWith, OPEN_IN_EDITOR } from "../../../utils/events";
@@ -68,8 +68,9 @@ export default function PrDiffView(props: { workspace: string; arg: string }) {
 
   createEffect(
     () => [props.workspace, target().number] as const,
-    // The review store is live state, and flush is refused in an effect callback.
-    ([root, number]) => queueMicrotask(() => ensure(root, number)),
+    ([root, number]) => {
+      void untrack(() => ensure(root, number));
+    },
   );
 
   let paneRef: HTMLDivElement | undefined;
