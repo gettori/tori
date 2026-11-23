@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, For, Show, untrack } from "solid-js";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
 import Select from "../Select/Select";
@@ -20,8 +20,8 @@ export default function RemoveAccountDialog(props: {
   onConfirm: (moves: Record<string, string>) => void;
   onCancel: () => void;
 }) {
-  const initial = Object.fromEntries(
-    props.removals.map((r) => [r.remote, r.choices.find((c) => c.preselected)?.accountId ?? NONE]),
+  const initial = untrack(() =>
+    Object.fromEntries(props.removals.map((r) => [r.remote, r.choices.find((c) => c.preselected)?.accountId ?? NONE])),
   );
   const [chosen, setChosen] = createSignal<Record<string, string>>(initial);
 

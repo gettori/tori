@@ -220,12 +220,10 @@ function viewOf(root: string): RootView {
       createRoot(() => {
         const state = createMemo(() => slots().get(root) ?? NO_SLOT);
         const files = createMemo(() => state().files);
-        return {
-          state,
-          staged: createMemo(() => files().filter((f) => f.staged)),
-          changed: createMemo(() => files().filter((f) => f.unstaged)),
-          conflicted: createMemo(() => files().filter((f) => !!f.conflicted)),
-        };
+        const staged = createMemo(() => files().filter((f) => f.staged));
+        const changed = createMemo(() => files().filter((f) => f.unstaged));
+        const conflicted = createMemo(() => files().filter((f) => !!f.conflicted));
+        return { state, staged, changed, conflicted };
       }),
     )!;
     views.set(root, view);

@@ -107,15 +107,19 @@ function Levers(props: {
   const [model, setModel] = createSignal<Pick | null>(null);
   const [mode, setMode] = createSignal<Pick | null>(null);
   onCleanup(
-    props.client.subscribe(`session:${props.id}`, (data) => {
-      if ((data as { kind?: string } | null)?.kind === "session.state") void refetch();
-    }),
+    untrack(() =>
+      props.client.subscribe(`session:${props.id}`, (data) => {
+        if ((data as { kind?: string } | null)?.kind === "session.state") void refetch();
+      }),
+    ),
   );
   onCleanup(
-    props.client.subscribe("sessions", (data) => {
-      const ev = data as { kind?: string; id?: string } | null;
-      if (ev?.kind === "session.started" && ev.id === props.id) void refetch();
-    }),
+    untrack(() =>
+      props.client.subscribe("sessions", (data) => {
+        const ev = data as { kind?: string; id?: string } | null;
+        if (ev?.kind === "session.started" && ev.id === untrack(() => props.id)) void refetch();
+      }),
+    ),
   );
   const shown = (pick: Pick | null, confirmed: string | null) =>
     pick && pick.over === confirmed ? pick.value : confirmed;
@@ -253,18 +257,18 @@ function ChatMenu(props: {
       <Show when={open()}>
         <span class={shell.menuDim} onClick={() => setOpen(false)} />
         <span class={shell.menu} role="menu">
-          <button role="menuitem" disabled={!props.running} onClick={run(props.onStop)}>
+          <button role="menuitem" disabled={!props.running} onClick={() => run(props.onStop)()}>
             Stop
           </button>
-          <button role="menuitem" onClick={run(props.onRename)}>
+          <button role="menuitem" onClick={() => run(props.onRename)()}>
             Rename
           </button>
           <Show when={props.live}>
-            <button role="menuitem" onClick={run(props.onClose)}>
+            <button role="menuitem" onClick={() => run(props.onClose)()}>
               Close session
             </button>
           </Show>
-          <button role="menuitem" onClick={run(props.onChanges)}>
+          <button role="menuitem" onClick={() => run(props.onChanges)()}>
             Changes
           </button>
           <Show when={props.onSendToNew}>
@@ -281,7 +285,7 @@ function ChatMenu(props: {
               </button>
             )}
           </Show>
-          <button role="menuitem" onClick={run(props.onCopy)}>
+          <button role="menuitem" onClick={() => run(props.onCopy)()}>
             Copy session id
           </button>
           <Show when={props.onUnit}>
@@ -347,7 +351,7 @@ export default function Chat(props: {
   onOpen?: (row: SessionRow) => void;
   levers?: boolean;
 }) {
-  const id = props.session().id;
+  const id = untrack(() => props.session().id);
   const [view, setView] = createStore<{ chat: ChatState; error: string | null }>({
     chat: initialChat(id),
     error: null,
@@ -361,7 +365,10 @@ export default function Chat(props: {
   const [pending, setPending] = createSignal<PendingRow[]>([]);
   const [draft, setDraft] = createSignal("");
   const [sending, setSending] = createSignal(false);
-  const attached = createAttachments(props.client, (message) => setError(message));
+  const attached = createAttachments(
+    untrack(() => props.client),
+    (message) => setError(message),
+  );
   const [ask, setAsk] = createSignal<Ask | null>(null);
   const chatAgents = createMemo<Set<string> | undefined>(
     () =>
@@ -397,9 +404,11 @@ export default function Chat(props: {
   );
   const respend = () => refresh(spent);
   onCleanup(
-    props.client.subscribe(`session:${id}`, (data) => {
-      if ((data as { kind?: string } | null)?.kind === "session.turn_ended") void respend();
-    }),
+    untrack(() =>
+      props.client.subscribe(`session:${id}`, (data) => {
+        if ((data as { kind?: string } | null)?.kind === "session.turn_ended") void respend();
+      }),
+    ),
   );
   const spawnAs = async (extra: Record<string, unknown>, forkOf?: string) => {
     const row = props.session();
@@ -597,22 +606,29 @@ export default function Chat(props: {
     }
   };
 
-  onCleanup(props.client.subscribe(`chat:${id}`, onLive));
+  onCleanup(untrack(() => props.client.subscribe(`chat:${id}`, onLive)));
   onCleanup(
-    props.client.subscribe(`session:${id}`, (data) => {
-      if (PENDING_KINDS.has((data as { kind?: string } | null)?.kind ?? "")) void refetchPending();
-    }),
+    untrack(() =>
+      props.client.subscribe(`session:${id}`, (data) => {
+        if (PENDING_KINDS.has((data as { kind?: string } | null)?.kind ?? "")) void untrack(refetchPending);
+      }),
+    ),
   );
   onCleanup(
-    props.client.subscribe("autopilot", (data) => {
-      if (data && typeof data === "object" && "hold" in data) void refetchPending();
-    }),
+    untrack(() =>
+      props.client.subscribe("autopilot", (data) => {
+        if (data && typeof data === "object" && "hold" in data) void untrack(refetchPending);
+      }),
+    ),
   );
-  createEffect(props.client.generation, (n) => {
-    if (n === 0) return;
-    void load();
-    void refetchPending();
-  });
+  createEffect(
+    () => props.client.generation(),
+    (n) => {
+      if (n === 0) return;
+      void load();
+      void refetchPending();
+    },
+  );
 
   const sendable = () => !sending() && !attached.uploading() && (draft().trim() !== "" || attached.files().length > 0);
 

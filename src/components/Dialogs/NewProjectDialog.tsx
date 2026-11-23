@@ -1,4 +1,4 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, Show, untrack } from "solid-js";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import SegmentedControl from "../SegmentedControl/SegmentedControl";
@@ -43,7 +43,9 @@ export default function NewProjectDialog(props: {
   onCancel: () => void;
   move?: MoveHere;
 }) {
-  const [mode, setMode] = createSignal<NewProjectMode | "move">(props.move?.initial ? "move" : "folder");
+  const [mode, setMode] = createSignal<NewProjectMode | "move">(
+    untrack(() => (props.move?.initial ? "move" : "folder")),
+  );
   const [movePath, setMovePath] = createSignal<string | null>(null);
   const moveForm = createMoveForm({
     path: movePath,

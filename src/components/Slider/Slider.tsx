@@ -120,7 +120,7 @@ export default function Slider(props: {
   };
 
   return (
-    <div role="group" class={[styles.root, props.class].filter(Boolean).join(" ")} {...state}>
+    <div role="group" class={[styles.root, props.class]} {...state}>
       <Show when={props.label !== undefined}>
         <label id={labelId} class={styles.label} data-disabled={props.disabled ? "" : undefined}>
           {props.label}

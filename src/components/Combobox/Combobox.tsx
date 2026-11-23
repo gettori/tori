@@ -234,7 +234,7 @@ export default function Combobox(props: {
 
   return (
     <div role="group">
-      <div class={[styles.control, props.bare && styles.bare, props.class].filter(Boolean).join(" ")}>
+      <div class={[styles.control, props.bare && styles.bare, props.class]}>
         {props.leading}
         <input
           ref={props.inputRef}

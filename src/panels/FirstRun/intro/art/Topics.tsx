@@ -1,4 +1,4 @@
-import { For, Show, createMemo } from "solid-js";
+import { For, Show, createMemo, untrack } from "solid-js";
 import {
   Bug,
   ChevronRight,
@@ -186,7 +186,7 @@ const CARET_LINE = 13;
 // Coloured by the diff rows' highlighter, which runs the editor's own tag
 // table, so a keyword here is the colour it is in the real editor.
 function Code(props: { path: string; text: string }) {
-  const lines = props.text.split("\n");
+  const lines = untrack(() => props.text.split("\n"));
   const asRows: DiffRow[] = lines.map((text, i) => ({
     kind: "context",
     text: ` ${text}`,

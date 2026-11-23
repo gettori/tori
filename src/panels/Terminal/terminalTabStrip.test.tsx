@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
+import { untrack } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "../../test/harness";
 import { tab, tabs, closeOf } from "../../test/tabs";
 import { installAnimationFrame } from "../../test/frames";
@@ -52,7 +53,7 @@ vi.mock("./TerminalView", async () => {
   const { createEffect } = await import("solid-js");
   return {
     default: (props: { id: string; active?: boolean }) => {
-      bridge.mounted.push(props.id);
+      bridge.mounted.push(untrack(() => props.id));
       let el!: HTMLDivElement;
       // The real view focuses its term whenever it becomes the active tab;
       // the stub keeps that contract so focus-follows-active is observable.

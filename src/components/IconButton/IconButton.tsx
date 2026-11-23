@@ -1,4 +1,4 @@
-import { omit } from "solid-js";
+import { omit, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import Tooltip, { type TooltipPlacement } from "../Tooltip/Tooltip";
 import styles from "./IconButton.module.css";
@@ -52,7 +52,7 @@ export default function IconButton(props: IconButtonProps) {
     return props.active ? "true" : "false";
   };
 
-  if (import.meta.env.DEV && ariaLabel() == null) {
+  if (import.meta.env.DEV && untrack(() => ariaLabel() == null)) {
     console.warn("[IconButton] is missing an accessible name; pass `aria-label` (or a `tooltip`).");
   }
 

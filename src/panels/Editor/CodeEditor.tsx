@@ -1188,7 +1188,7 @@ export default function CodeEditor(props: {
     // rename and the path is only right at the moment of the click.
     conflictBands((v) => {
       const path = [...views.values()].find((rec) => rec.view === v)?.path;
-      if (path) props.onCompareConflict?.(path);
+      if (path) untrack(() => props.onCompareConflict)?.(path);
     }),
     blameConf.of([]),
     prefsConf.of(currentPrefExtensions(plain)),
@@ -1405,12 +1405,12 @@ export default function CodeEditor(props: {
       }),
       // A caret jump, for the pane's Back/Forward list. The rule for what counts
       // as one lives in `cursorJump.ts`.
-      cursorJumpListener((line) => props.onCursorJump?.(path, line)),
+      cursorJumpListener((line) => untrack(() => props.onCursorJump)?.(path, line)),
       // Every caret position, for the breadcrumb trail. Its own listener rather
       // than a second job for the one above: the two want opposite things from
       // the same updates, and the pair reads as one rule with an exception when
       // they share a body.
-      caretListener((line, column) => props.onCaretMove?.(path, line, column)),
+      caretListener((line, column) => untrack(() => props.onCaretMove)?.(path, line, column)),
       // Per buffer rather than in `commonExtensions`, because both handlers have
       // to name the file they are talking about and only this closure knows it.
       //
@@ -1437,7 +1437,7 @@ export default function CodeEditor(props: {
         if (!u.docChanged || follower) return;
         const text = u.state.sliceDoc();
         const buf = buffers.get(path);
-        if (buf) props.onDirty(path, text !== buf.savedText);
+        if (buf) untrack(() => props.onDirty)(path, text !== buf.savedText);
         // The same reading the dirty check just took, so the preview costs
         // nothing beyond the store write: it renders this buffer, unsaved
         // edits included, rather than the file underneath it.

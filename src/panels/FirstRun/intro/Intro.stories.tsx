@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { createSignal } from "solid-js";
+import { createSignal, untrack } from "solid-js";
 import Intro from "./Intro";
 
 function IntroAt(props: { slide: number }) {
-  const [slide, setSlide] = createSignal(props.slide);
+  const [slide, setSlide] = createSignal(untrack(() => props.slide));
   return <Intro slide={slide()} onSlide={setSlide} onDone={() => {}} />;
 }
 

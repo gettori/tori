@@ -6,6 +6,7 @@ import { createHighlight } from "./highlight";
 import { PROSE } from "./chatMarked";
 import Icon from "../../components/Icon/Icon";
 import Diagram from "../../components/Diagram/Diagram";
+import TrustedHtml from "../../components/TrustedHtml/TrustedHtml";
 import styles from "./Chat.module.css";
 
 // Front matter is metadata about the document, not the document: rendered,
@@ -77,16 +78,16 @@ export default function CodeBlock(props: { lang: string; code: string }) {
       </div>
       <Switch
         fallback={
-          <div
+          <TrustedHtml
             class={styles.codePreview}
-            innerHTML={sanitizeHtml(PROSE.parse(stripFrontMatter(props.code)) as string)}
+            html={sanitizeHtml(PROSE.parse(stripFrontMatter(props.code)) as string)}
           />
         }
       >
         <Match when={!rendered()}>
           <pre>
             <Show when={html()} fallback={<code>{props.code}</code>}>
-              {(h) => <code innerHTML={h()} />}
+              {(h) => <TrustedHtml as="code" html={h()} />}
             </Show>
           </pre>
         </Match>

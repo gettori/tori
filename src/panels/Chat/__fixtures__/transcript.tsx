@@ -317,7 +317,7 @@ export function TranscriptPane(props: { transcript: Transcript; collapseWork: bo
           cwd={CWD}
           modelLabelFor={() => null}
           onSetMode={() => {}}
-          onRevertHunk={async () => false}
+          onRevertHunk={() => Promise.resolve(false)}
           collapseWork={props.collapseWork}
           laneOpenedBy={laneOpenedBy}
           onOpenLane={(agentId) => t().selectLane(agentId)}

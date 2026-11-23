@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show, untrack } from "solid-js";
 import { Check, ChevronsUpDown, CircleDot, Cloud, GitCommitHorizontal, Plus, RefreshCw, Trash2 } from "../Icon/icons";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
@@ -141,11 +141,13 @@ export default function AddBranchDialog(props: {
   onConfirm: (pick: BranchPick) => void;
   onCancel: () => void;
 }) {
-  const [query, setQuery] = createSignal(props.prefill ?? "");
+  const [query, setQuery] = createSignal(untrack(() => props.prefill ?? ""));
   const [picked, setPicked] = createSignal<BranchPick | null>(
-    props.prefill && props.locals.includes(props.prefill) ? { name: props.prefill, kind: "local" } : null,
+    untrack(() =>
+      props.prefill && props.locals.includes(props.prefill) ? { name: props.prefill, kind: "local" } : null,
+    ),
   );
-  const [base, setBase] = createSignal(props.baseDefault ?? "");
+  const [base, setBase] = createSignal(untrack(() => props.baseDefault ?? ""));
   let input: HTMLInputElement | undefined;
   let primary: HTMLButtonElement | undefined;
   let deleteButton: HTMLButtonElement | undefined;
@@ -175,7 +177,7 @@ export default function AddBranchDialog(props: {
   // delete, and git refuses a branch that is checked out anywhere.
   const deletable = (name: string) => !!props.onDeleteAsk && kinds().get(name) === "local" && !taken().has(name);
 
-  const [source, setSource] = createSignal<"branch" | "issue">(props.issueKey ? "issue" : "branch");
+  const [source, setSource] = createSignal<"branch" | "issue">(untrack(() => (props.issueKey ? "issue" : "branch")));
   const [issueQuery, setIssueQuery] = createSignal("");
   const [assigned, setAssigned] = createSignal<IssueRef[] | null>(null);
   const [issueError, setIssueError] = createSignal<string | null>(null);
@@ -265,10 +267,12 @@ export default function AddBranchDialog(props: {
       .finally(() => setLoadingKey(null));
   }
 
-  if (props.issueKey) {
-    loadAssigned();
-    loadIssue(props.issueKey);
-  }
+  untrack(() => {
+    if (props.issueKey) {
+      loadAssigned();
+      loadIssue(props.issueKey);
+    }
+  });
 
   const issueKind = (name: string): BranchKind => kinds().get(name) ?? "new";
   // The host makes the branch from its own copy of the base, so the base has

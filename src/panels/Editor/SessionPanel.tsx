@@ -262,9 +262,7 @@ export default function SessionPanel(props: {
                     />
                   </div>
                   <For each={hunk.lines}>
-                    {(line) => (
-                      <div class={`${styles.diffLine} ${styles[diffLineClass(line)] ?? ""}`}>{line || " "}</div>
-                    )}
+                    {(line) => <div class={[styles.diffLine, styles[diffLineClass(line)]]}>{line || " "}</div>}
                   </For>
                 </div>
               )}
@@ -314,10 +312,10 @@ export default function SessionPanel(props: {
             </div>
           }
         >
-          <For each={inProject()}>{row}</For>
+          <For each={inProject()}>{(f) => row(f)}</For>
           <Show when={outsideProject().length}>
             <div class={styles.bucketHeader}>Outside project</div>
-            <For each={outsideProject()}>{row}</For>
+            <For each={outsideProject()}>{(f) => row(f)}</For>
           </Show>
         </Show>
       </div>

@@ -1,4 +1,4 @@
-import { For, Show, createDeferred, createMemo, createSignal, onCleanup, refresh } from "solid-js";
+import { For, Show, createDeferred, createMemo, createSignal, onSettled, refresh } from "solid-js";
 import { Minus, Plus, RefreshCw } from "../../../../components/Icon/icons";
 import { invoke } from "@tauri-apps/api/core";
 import Button from "../../../../components/Button/Button";
@@ -581,7 +581,7 @@ function AccountCard(props: {
       <div class={styles.acctHead}>
         {/* Green only for the agent's own "yes": unknown is dim, because most
             agents have no way to answer and dim must not read as broken. */}
-        <span class={`${styles.dot} ${p().signIn === "signedIn" ? styles.dotOk : styles.dotOff}`} />
+        <span class={[styles.dot, p().signIn === "signedIn" ? styles.dotOk : styles.dotOff]} />
         <button type="button" class={styles.accountName} onClick={() => setRenaming(true)}>
           {p().label}
         </button>
@@ -864,8 +864,10 @@ export default function AgentAccounts(props: {
   // so without this a card left open would keep counting down past the reset it
   // is counting down to. Same 60s tick the strip runs on, and the same reason.
   const [now, setNow] = createSignal(Date.now());
-  const tick = setInterval(() => setNow(Date.now()), 60_000);
-  onCleanup(() => clearInterval(tick));
+  onSettled(() => {
+    const tick = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(tick);
+  });
 
   // Both modals are the in-app ones. Tauri's macOS webview implements neither
   // `window.confirm` nor `window.prompt`, so the browser versions would silently

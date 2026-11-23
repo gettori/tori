@@ -4,7 +4,7 @@
 // that the view is *moved* to the pane that replaces it rather than rebuilt,
 // and that a view nobody claims is still destroyed.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { createSignal, For } from "solid-js";
+import { createSignal, For, untrack } from "solid-js";
 import { render, waitFor } from "../../test/harness";
 import { EditorView } from "@codemirror/view";
 
@@ -78,7 +78,7 @@ async function mountPanes(ids: string[]) {
     </>
   ));
   const viewIn = (id: string) => {
-    const el = hosts()[id]?.querySelector(".cm-editor");
+    const el = untrack(() => hosts())[id]?.querySelector(".cm-editor");
     return el ? EditorView.findFromDOM(el as HTMLElement) : null;
   };
   await waitFor(() => expect(viewIn(ids[0])?.state.sliceDoc()).toBe(disk[ONE]));

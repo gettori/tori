@@ -306,7 +306,7 @@ export default function Omnibox(props: {
   onOpenSettings: () => void;
   onClose: () => void;
 }) {
-  const [query, setQuery] = createSignal(props.prefix ?? "");
+  const [query, setQuery] = createSignal(untrack(() => props.prefix ?? ""));
   const [files, setFiles] = createSignal<ProjectFile[]>([]);
   const [tasks, setTasks] = createSignal<Task[]>([]);
   const [wsHits, setWsHits] = createSignal<SymbolNode[]>([]);
@@ -339,7 +339,7 @@ export default function Omnibox(props: {
   // Keyed the way the editor writes it: `topic:<id>` for a Topic, whose
   // members' files would otherwise be filed under whichever one was in front.
   const openedAt = Date.now();
-  const stats = loadFrecency(openedAt)[workspaceKey(props.selected)] ?? {};
+  const stats = loadFrecency(openedAt)[untrack(() => workspaceKey(props.selected))] ?? {};
 
   // Read before the prefix router, since an absolute path starts with the files
   // prefix. Every unit is watched while a port is typed: the sidebar watches only
@@ -867,6 +867,17 @@ export default function Omnibox(props: {
       .map((node) => symbolRow(node, true)),
   );
 
+  const openLater =
+    (...at: Parameters<typeof openAt>) =>
+    () =>
+      openAt(...at);
+  const browseLater = (port: number) => () => openPort(port);
+  const navigateLater = (target: NavTarget) => () => emitWith<NavTarget>(NAVIGATE, target);
+  const lookUpLater =
+    (...args: Parameters<typeof lookUp>) =>
+    () =>
+      lookUp(...args);
+
   const lineRows = createMemo((): Row[] => {
     const line = parseLine(term());
     const path = editorState().activePath;
@@ -877,7 +888,7 @@ export default function Omnibox(props: {
         id: `line:${line}`,
         label: `Go to line ${line}`,
         sub: basename(path),
-        run: () => openAt(path, line),
+        run: openLater(path, line),
       },
     ];
   });
@@ -931,12 +942,12 @@ export default function Omnibox(props: {
     const place = hit && placeAt(hit.folder);
     if (!hit || !place) return null;
     const row = { ...placeRow(place), id: PASTED };
-    if ("port" in hit) return { ...row, sub: `Serving localhost:${hit.port}`, browse: () => openPort(hit.port) };
+    if ("port" in hit) return { ...row, sub: `Serving localhost:${hit.port}`, browse: browseLater(hit.port) };
     if (!hit.rel) return row;
     return {
       ...row,
       sub: hit.line ? `${hit.rel}:${hit.line}` : hit.rel,
-      run: () => emitWith<NavTarget>(NAVIGATE, { ...place.target, file: hit.path, line: hit.line }),
+      run: navigateLater({ ...place.target, file: hit.path, line: hit.line }),
     };
   });
 
@@ -1036,7 +1047,7 @@ export default function Omnibox(props: {
         label: failed ?? `Look up ${ask}`,
         sub: failed ? `Look up ${ask} again` : undefined,
         pending: false,
-        run: () => lookUp(input, source.projectPath),
+        run: lookUpLater(input, source.projectPath),
       },
     ];
   });
@@ -1045,7 +1056,7 @@ export default function Omnibox(props: {
 
   const visits = loadVisits();
   const picks = loadPicks();
-  const here = props.selected ? placeIdOf(props.selected) : null;
+  const here = untrack(() => (props.selected ? placeIdOf(props.selected) : null));
 
   function needsYouRow(e: NeedsYouEvent, byId: Map<string, Place>): Row {
     const unit = e.branch ? placeIdOf({ folderPath: e.folder, branch: e.branch }) : null;

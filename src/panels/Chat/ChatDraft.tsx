@@ -19,7 +19,7 @@ import ConfigMirror from "./ConfigMirror";
 import FollowToggle from "./FollowToggle";
 import ModelPicker from "./ModelPicker";
 import ModeSelector from "./ModeSelector";
-import { composerAttachments } from "./composerAttachments";
+import { composerAttachmentsOf } from "./composerAttachments";
 import { isChatKey } from "../../utils/topics";
 import { attachmentSources, chatTier } from "../../utils/chatCapabilities";
 import { paletteProviders } from "./agentPaletteData";
@@ -106,14 +106,14 @@ export default function ChatDraft(props: {
   // window before the swap has drawn.
   const [starting, setStarting] = createSignal(false);
   const tier = () => chatTier(findAdapter(props.agentId).chat?.transport);
-  const attachments = composerAttachments(
-    () => props.tabId,
-    () => props.cwd,
+  const attachments = composerAttachmentsOf({
+    key: () => props.tabId,
+    cwd: () => props.cwd,
     tier,
-    () => catalogFor(props.agentId, props.profile)?.catalogue?.capabilities,
-    (reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" }),
-    () => !!findAdapter(props.agentId).chat?.tori_mcp,
-  );
+    capabilities: () => catalogFor(props.agentId, props.profile)?.catalogue?.capabilities,
+    onRejected: (reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" }),
+    toriMcp: () => !!findAdapter(props.agentId).chat?.tori_mcp,
+  });
 
   const tabId = untrack(() => props.tabId);
   onSettled(() => {
@@ -267,11 +267,11 @@ export default function ChatDraft(props: {
     // After the composer has finished its own submit - it clears the input right
     // after this returns - so replacing the tab record cannot race a write to a
     // surface that is already gone.
-    queueMicrotask(() => props.onStart());
+    queueMicrotask(() => untrack(() => props.onStart()));
   }
 
   return (
-    <div class={`${styles.chat} ${props.active ? styles.active : ""}`}>
+    <div class={[styles.chat, { [styles.active]: props.active }]}>
       <Show when={props.error}>
         {(message) => (
           <div class={styles.banner}>

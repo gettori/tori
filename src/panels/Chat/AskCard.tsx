@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, For, Show, untrack } from "solid-js";
 import Button from "../../components/Button/Button";
 import { findSession } from "../../utils/sessionStore";
 import type { SocketAsk } from "../../utils/socketAsks";
@@ -15,7 +15,7 @@ export default function AskCard(props: { ask: SocketAsk; here: string }) {
     return meta()?.name || meta()?.title || props.ask.session.slice(0, 8);
   };
   const [text, setText] = createSignal("");
-  const { sending, send } = answering(() => props.ask.id);
+  const { sending, send } = answering(() => untrack(() => props.ask.id));
   const [pressed, setPressed] = createSignal<string | null>(null);
   const chosen = () => (sending() ? pressed() : null);
 

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { createSignal } from "solid-js";
+import { createSignal, For } from "solid-js";
 import type { ControlSize } from "../controls";
 import Select, { type SelectGroup, type SelectOption } from "./Select";
 
@@ -79,15 +79,17 @@ export const Sizes: Story = {
     const [value, setValue] = createSignal("comfortable");
     return (
       <div style={{ display: "flex", "align-items": "center", gap: "var(--tori-space-4)" }}>
-        {SIZES.map((size) => (
-          <Select
-            options={DENSITY}
-            value={value()}
-            onChange={setValue}
-            size={size}
-            aria-label={`Transcript density (${size})`}
-          />
-        ))}
+        <For each={SIZES}>
+          {(size) => (
+            <Select
+              options={DENSITY}
+              value={value()}
+              onChange={setValue}
+              size={size}
+              aria-label={`Transcript density (${size})`}
+            />
+          )}
+        </For>
       </div>
     );
   },

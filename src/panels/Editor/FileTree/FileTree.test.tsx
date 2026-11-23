@@ -913,8 +913,9 @@ describe("one member of a Topic at a time", () => {
   const A = "/feat/api";
   const B = "/feat/web";
 
-  const mountMember = (root: () => string, overrides: Record<string, unknown> = {}) =>
-    render(() => (
+  const mountMember = (initial: string, overrides: Record<string, unknown> = {}) => {
+    const [root, setRoot] = createSignal(initial);
+    const view = render(() => (
       <FileTree
         root={root()}
         editable
@@ -924,6 +925,8 @@ describe("one member of a Topic at a time", () => {
         {...overrides}
       />
     ));
+    return Object.assign(view, { setRoot });
+  };
 
   function toasts() {
     const seen: { message: string }[] = [];
@@ -970,7 +973,7 @@ describe("one member of a Topic at a time", () => {
   });
 
   it("refreshes on its own root's bursts only, once per burst", async () => {
-    mountMember(() => A);
+    mountMember(A);
     await screen.findByText("README.md");
     bridge.calls = [];
 
@@ -992,8 +995,7 @@ describe("one member of a Topic at a time", () => {
 
   it("filters the member it switched to, not the one it left", async () => {
     bridge.filesByRoot = { [A]: ["src/config.ts"], [B]: ["lib/config.ts"] };
-    const [root, setRoot] = createSignal(A);
-    mountMember(root);
+    const { setRoot } = mountMember(A);
     await screen.findByText("README.md");
     const box = () => screen.getByLabelText("Filter files") as HTMLInputElement;
 
@@ -1011,8 +1013,7 @@ describe("one member of a Topic at a time", () => {
   });
 
   it("fences every mutation to the member it switched to", async () => {
-    const [root, setRoot] = createSignal(A);
-    mountMember(root, { askText: answering("moved") });
+    const { setRoot } = mountMember(A, { askText: answering("moved") });
     await screen.findByText("README.md");
 
     setRoot(B);
@@ -1035,8 +1036,7 @@ describe("one member of a Topic at a time", () => {
 
   it("refuses to paste a cut from another member before any command goes out", async () => {
     const notices = toasts();
-    const [root, setRoot] = createSignal(A);
-    mountMember(root);
+    const { setRoot } = mountMember(A);
     fireEvent.contextMenu(await screen.findByText("README.md"));
     pointerClick(await screen.findByText("Cut"));
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
@@ -1055,7 +1055,7 @@ describe("one member of a Topic at a time", () => {
   });
 
   it("offers no reveal for a file in another member", async () => {
-    mountMember(() => A, { activePath: `${B}/src/app.ts` });
+    mountMember(A, { activePath: `${B}/src/app.ts` });
     await screen.findByText("README.md");
 
     expect(screen.queryByLabelText("Reveal")).toBeNull();
@@ -1077,8 +1077,9 @@ describe("restoring what was open", () => {
     resetExpanded();
   };
 
-  const mountMember = (root: () => string, overrides: Record<string, unknown> = {}) =>
-    render(() => (
+  const mountMember = (initial: string, overrides: Record<string, unknown> = {}) => {
+    const [root, setRoot] = createSignal(initial);
+    const view = render(() => (
       <FileTree
         root={root()}
         persistKey={WS}
@@ -1089,6 +1090,8 @@ describe("restoring what was open", () => {
         {...overrides}
       />
     ));
+    return Object.assign(view, { setRoot });
+  };
 
   // Added to the single-root fixture rather than replacing it: half the cases
   // below mount the plain project tree.
@@ -1103,8 +1106,7 @@ describe("restoring what was open", () => {
 
   it("comes back open in the member that had it open, and only there", async () => {
     seed({ [WS]: { dirs: [`${B}/src`] } });
-    const [root, setRoot] = createSignal(A);
-    mountMember(root);
+    const { setRoot } = mountMember(A);
     await screen.findByText("README.md");
     await new Promise((r) => setTimeout(r, 0));
     expect(screen.queryByText("main.ts")).toBeNull();
@@ -1114,7 +1116,7 @@ describe("restoring what was open", () => {
   });
 
   it("keeps a reveal out of the record, so a remount does not re-open the chain", async () => {
-    const view = mountMember(() => B, { activePath: `${B}/src/app.ts` });
+    const view = mountMember(B, { activePath: `${B}/src/app.ts` });
     await screen.findByText("package.json");
 
     fireEvent.click(screen.getByLabelText("Reveal"));
@@ -1124,7 +1126,7 @@ describe("restoring what was open", () => {
     expect(stored()[WS]?.dirs ?? []).toEqual([]);
 
     view.unmount();
-    mountMember(() => B, { activePath: `${B}/src/app.ts` });
+    mountMember(B, { activePath: `${B}/src/app.ts` });
 
     await screen.findByText("package.json");
     expect(screen.queryByText("app.ts")).toBeNull();
@@ -1132,8 +1134,7 @@ describe("restoring what was open", () => {
 
   it("collapses the member on screen and leaves the others' folders open", async () => {
     seed({ [WS]: { dirs: [`${B}/src`] } });
-    const [root, setRoot] = createSignal(A);
-    mountMember(root);
+    const { setRoot } = mountMember(A);
     fireEvent.click(await screen.findByText("src"));
     await screen.findByText("main.ts");
 

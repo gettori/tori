@@ -115,7 +115,7 @@ export default function LaneStrip(props: {
             the working agent's own hue, the way its tab already does, because
             "main" is an identity and the four tones are outcomes. */}
         <span
-          class={`${styles.laneDot} ${p.lane ? laneTone(p.lane, blocked()) : mainTone()}`}
+          class={[styles.laneDot, p.lane ? laneTone(p.lane, blocked()) : mainTone()]}
           data-mark={p.lane === null && props.busy ? (props.mark ?? undefined) : undefined}
           aria-hidden="true"
         />

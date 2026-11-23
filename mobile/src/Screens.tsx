@@ -284,9 +284,18 @@ export function ProjectScreen(props: {
       run: (branch) =>
         props.client.request("branch.attach", { project: props.project.path, branch }).then(props.onChanged),
     });
-  const git = watchGit(props.client, () => props.project.units.map((unit) => unit.folder));
-  const sync = watchSync(props.client, () => props.project.units);
-  const pr = watchPr(props.client, () => props.project);
+  const git = watchGit(
+    untrack(() => props.client),
+    () => props.project.units.map((unit) => unit.folder),
+  );
+  const sync = watchSync(
+    untrack(() => props.client),
+    () => props.project.units,
+  );
+  const pr = watchPr(
+    untrack(() => props.client),
+    () => props.project,
+  );
   const sessions = () =>
     props.live().filter((row) => props.project.units.some((unit) => inUnit(row.home, unit))).length;
   const meta = () => {
@@ -488,7 +497,9 @@ export function TopicScreen(props: {
     [...props.topic.members]
       .sort((a, b) => a.order - b.order)
       .map((member) => ({ member, unit: memberUnit(props.tree, props.topic, member) }));
-  const { here, earlier } = unitSessions(props.client, () => members().map((m) => m.unit), props.live, props.topic);
+  const { here, earlier } = untrack(() =>
+    unitSessions(props.client, () => members().map((m) => m.unit), props.live, props.topic),
+  );
   const where = (row: SessionRow) => members().find((m) => atUnit(row, m.unit))?.member.displayName;
   return (
     <div class={styles.glow}>

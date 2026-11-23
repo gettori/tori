@@ -37,10 +37,6 @@ const LABEL_CLASS = {
   "createSignal: type arg contains a function type": "function-signal",
   "read of X() within 5 statements after setX()": "read-after-write",
   "JSX handler chosen by ternary (binds once in 2.0)": "handler-ternary",
-  "JSX lowercase on* on native element": "lowercase-on",
-  "component destructures props in body": "destructured-props",
-  "component reads props.x into a const at top of body": "top-prop-read",
-  batch: "batch",
 };
 
 const FREE_ARIA = new Set(
@@ -470,29 +466,10 @@ export function scan(ts, rel, src, report = {}) {
       call.arguments[1] === p
     );
   };
-  const componentName = (n) => {
-    if (ts.isFunctionDeclaration(n)) return n.name?.text;
-    if ((ts.isArrowFunction(n) || ts.isFunctionExpression(n)) && ts.isVariableDeclaration(n.parent))
-      return ts.isIdentifier(n.parent.name) ? n.parent.name.text : undefined;
-    return undefined;
-  };
-  const hasJsx = (n) => {
-    let found = false;
-    (function v(x) {
-      if (found) return;
-      if (ts.isJsxElement(x) || ts.isJsxSelfClosingElement(x) || ts.isJsxFragment(x)) found = true;
-      else ts.forEachChild(x, v);
-    })(n);
-    return found;
-  };
 
   (function guard(n) {
     if (ts.isJsxAttribute(n)) {
-      if (ts.isJsxNamespacedName(n.name)) {
-        const space = n.name.namespace.text;
-        if (space === "use") hit("use-directive", n);
-        if (space === "on" || space === "oncapture") hit("on-namespace", n);
-      } else {
+      if (!ts.isJsxNamespacedName(n.name)) {
         const name = n.name.text;
         if (isEnumerated(name)) {
           const init = n.initializer;
@@ -511,10 +488,6 @@ export function scan(ts, rel, src, report = {}) {
     }
     if (isDeferNow(n) && !hasReasonAbove(n)) hit("timing", n);
     if (callName(n) === "createRoot" && fnDepth(n) > 0 && !isDetachedRoot(n)) hit("nested-root", n);
-    if (ts.isFunctionLike(n) && n.parameters?.[0] && ts.isObjectBindingPattern(n.parameters[0].name)) {
-      const name = componentName(n);
-      if (name && /^[A-Z]/.test(name) && n.body && hasJsx(n.body)) hit("destructured-props", n);
-    }
     ts.forEachChild(n, guard);
   })(sf);
 

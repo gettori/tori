@@ -1,4 +1,4 @@
-import { createEffect, For, Show } from "solid-js";
+import { createEffect, For, Show, untrack } from "solid-js";
 import Button from "../../components/Button/Button";
 import ApprovalDraft from "../Chat/ApprovalDraft";
 import { answering } from "../Chat/answering";
@@ -7,7 +7,7 @@ import styles from "./Terminal.module.css";
 
 function TabApproval(props: { ask: SocketAsk; active: boolean }) {
   let reject: HTMLButtonElement | undefined;
-  const { sending, send } = answering(() => props.ask.id);
+  const { sending, send } = answering(() => untrack(() => props.ask.id));
   // Only on a shown tab: a hidden one taking focus would pull it out of whatever has it.
   createEffect(
     () => props.active,

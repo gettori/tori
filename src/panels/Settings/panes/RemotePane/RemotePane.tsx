@@ -2,6 +2,7 @@ import { createSignal, For, onSettled, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Group, Row, idsIn, rowLabelId, type PaneProps } from "../../components/paneKit";
+import TrustedHtml from "../../../../components/TrustedHtml/TrustedHtml";
 import styles from "../../Settings.module.css";
 import { settings } from "../../settingsStore";
 import {
@@ -263,7 +264,7 @@ export default function RemotePane(props: PaneProps) {
           {(o) => (
             <div class={styles.pairing}>
               {/* Rust renders the SVG from a URI it built, so nothing typed reaches it. */}
-              <div class={styles.pairQr} innerHTML={o().svg} role="img" aria-label="Pairing QR code" />
+              <TrustedHtml class={styles.pairQr} html={o().svg} role="img" aria-label="Pairing QR code" />
               <div class={styles.pairText}>
                 <span class={styles.pairCode}>{o().code}</span>
                 <span>{o().url}</span>

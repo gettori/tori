@@ -1,4 +1,4 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, Show, untrack } from "solid-js";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
@@ -46,7 +46,7 @@ export default function WorktreeRemoveDialog(props: {
   // Local delete on by default: the common case is discarding a finished branch's
   // worktree and its local branch. Remote delete off by default, it's a network op
   // that affects everyone, so it must be an explicit opt-in.
-  const [deleteLocal, setDeleteLocal] = createSignal(props.branch != null);
+  const [deleteLocal, setDeleteLocal] = createSignal(untrack(() => props.branch != null));
   const [deleteRemote, setDeleteRemote] = createSignal(false);
   const confirm = () => props.onConfirm({ deleteLocal: deleteLocal(), deleteRemote: deleteRemote() });
   const op = () => (props.operation ? operationChip(props.operation) : null);

@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal } from "solid-js";
+import { For, Show, createMemo, createSignal, untrack } from "solid-js";
 import { createFetchState } from "../../lib/fetchState";
 import type { JSX } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
@@ -45,7 +45,7 @@ function skillGroups(skills: readonly string[]): { name: string; skills: string[
 }
 
 function Fold(props: { label: string; count: number; open?: boolean; children: JSX.Element }) {
-  const [open, setOpen] = createSignal(!!props.open);
+  const [open, setOpen] = createSignal(untrack(() => !!props.open));
   return (
     <div>
       <button

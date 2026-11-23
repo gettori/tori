@@ -1,4 +1,4 @@
-import { For, Show, createSignal } from "solid-js";
+import { For, Show, createSignal, untrack } from "solid-js";
 import { mockConvertFileSrc } from "@tauri-apps/api/mocks";
 import Composer from "../Composer";
 import LaneStrip from "../LaneStrip";
@@ -461,15 +461,15 @@ export type ChatInputProps = {
 };
 
 export function ChatInput(props: ChatInputProps) {
-  const [draft, setDraft] = createSignal(props.draft ?? "");
-  const [attachments, setAttachments] = createSignal<PendingBlock[]>(props.attachments ?? []);
-  const [queue, setQueue] = createSignal<QueuedInput[]>(props.queue ?? []);
-  const [parked, setParked] = createSignal(props.parked ?? false);
-  const [editing, setEditing] = createSignal<string | null>(props.editing ?? null);
-  const [stash, setStash] = createSignal<StashEntry[]>(props.stash ?? []);
-  const [running, setRunning] = createSignal(props.running ?? false);
-  const [selected, setSelected] = createSignal<string | null>(props.selectedLane ?? null);
-  const [mode, setMode] = createSignal(props.mode ?? "default");
+  const [draft, setDraft] = createSignal(untrack(() => props.draft ?? ""));
+  const [attachments, setAttachments] = createSignal<PendingBlock[]>(untrack(() => props.attachments ?? []));
+  const [queue, setQueue] = createSignal<QueuedInput[]>(untrack(() => props.queue ?? []));
+  const [parked, setParked] = createSignal(untrack(() => props.parked ?? false));
+  const [editing, setEditing] = createSignal<string | null>(untrack(() => props.editing ?? null));
+  const [stash, setStash] = createSignal<StashEntry[]>(untrack(() => props.stash ?? []));
+  const [running, setRunning] = createSignal(untrack(() => props.running ?? false));
+  const [selected, setSelected] = createSignal<string | null>(untrack(() => props.selectedLane ?? null));
+  const [mode, setMode] = createSignal(untrack(() => props.mode ?? "default"));
   const [modelValue, setModelValue] = createSignal("opus");
   const [effort, setEffort] = createSignal<string | null>("high");
   const counters: Record<string, number> = {};

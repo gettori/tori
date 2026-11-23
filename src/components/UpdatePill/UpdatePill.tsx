@@ -1,4 +1,4 @@
-import { Match, Show, Switch, createMemo, createSignal, onCleanup } from "solid-js";
+import { Match, Show, Switch, createMemo, createSignal, onCleanup, onSettled } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
@@ -28,13 +28,15 @@ export default function UpdatePill(props: { suppressed?: boolean }) {
   let cancelling = false;
 
   // A window stays open for days, so a release must not wait for a relaunch.
-  const recheck = setInterval(() => {
-    if (stage().kind !== "found") return;
-    void invoke<UpdateInfo | null>("check_for_update")
-      .then((found) => found && mutate(found))
-      .catch((e) => console.error("check_for_update:", e));
-  }, RECHECK_MS);
-  onCleanup(() => clearInterval(recheck));
+  onSettled(() => {
+    const recheck = setInterval(() => {
+      if (stage().kind !== "found") return;
+      void invoke<UpdateInfo | null>("check_for_update")
+        .then((found) => found && mutate(found))
+        .catch((e) => console.error("check_for_update:", e));
+    }, RECHECK_MS);
+    return () => clearInterval(recheck);
+  });
 
   const offProgress = listen<{ received: number; total: number }>("update://progress", ({ payload }) => {
     if (stage().kind === "installing" && payload.total > 0)

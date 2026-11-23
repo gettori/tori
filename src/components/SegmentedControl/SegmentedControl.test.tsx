@@ -1,4 +1,4 @@
-import { flush } from "solid-js";
+import { flush, untrack } from "solid-js";
 // The pattern to copy for accessibility assertions on a component.
 //
 // `expectNoAxeViolations(container)` is the whole of it for an inline component.
@@ -160,7 +160,7 @@ describe("SegmentedControl keyboard", () => {
     changes.focus();
     fireEvent.keyDown(changes, { key: "Enter" });
 
-    expect(value()).toBe("changes");
+    expect(untrack(value)).toBe("changes");
     expect(onFormKeyDown).not.toHaveBeenCalled();
 
     // Outside the strip the dialog's own Enter is untouched.

@@ -348,6 +348,8 @@ export default function PullsPanel(props: {
   /// reading of the same facts here: a form this cannot submit and a compare
   /// page it sends you to instead are one decision, and the button has to be
   /// named for the one that will actually happen.
+  const addBranchLater = (projectPath: string, base: string) => () =>
+    emitWith<AddBranchUnit>(ADD_BRANCH_UNIT, { projectPath, base });
   const actions = createMemo<{ label: string; run: () => void; primary?: boolean; busy?: boolean }[]>(() => {
     const s = say();
     const root = props.root;
@@ -368,7 +370,7 @@ export default function PullsPanel(props: {
           {
             label: "New branch from base",
             primary: true,
-            run: () => emitWith<AddBranchUnit>(ADD_BRANCH_UNIT, { projectPath: root, base: s.branch }),
+            run: addBranchLater(root, s.branch),
           },
         ];
       case "noPrUnpushed":

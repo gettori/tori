@@ -152,7 +152,7 @@ export default function Settings(props: {
   /** The filter box. Seeded from the prop rather than bound to it, because a
    *  `Preferences: ...` command opens the panel *at* a setting and the user has
    *  to be able to type past it the moment it lands. */
-  const [query, setQuery] = createSignal(props.query ?? "");
+  const [query, setQuery] = createSignal(untrack(() => props.query ?? ""));
   const [active, setActive] = createSignal<SettingTab>("agents");
 
   /** Typed here, which is not the same as "the box is non-empty": a

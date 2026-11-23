@@ -104,7 +104,10 @@ export function createFetchState<S, T>(
     void load(lookup, false);
   });
 
-  const read = (() => value().current) as FetchValue<T | undefined>;
+  function current() {
+    return value().current;
+  }
+  const read = current as FetchValue<T | undefined>;
   Object.defineProperties(read, {
     loading: { get: () => phase() === "pending" || phase() === "refreshing" },
     error: { get: () => error().current },

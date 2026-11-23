@@ -64,7 +64,7 @@ export default function Checkbox(props: {
   );
 
   return (
-    <div role="group" class={[styles.root, props.class].filter(Boolean).join(" ")} {...state}>
+    <div role="group" class={[styles.root, props.class]} {...state}>
       <input
         ref={input}
         id={inputId}
@@ -86,7 +86,7 @@ export default function Checkbox(props: {
         {...state}
       />
       <div
-        class={[styles.control, props.size === "sm" && styles.sm].filter(Boolean).join(" ")}
+        class={[styles.control, props.size === "sm" && styles.sm]}
         onClick={() => {
           input.click();
           input.focus({ preventScroll: true });

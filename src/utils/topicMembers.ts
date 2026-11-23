@@ -332,8 +332,6 @@ export function createSpaceProject(path: () => string): {
   loaded: () => boolean;
 } {
   const spaces = createSpaces();
-  return {
-    found: createMemo(() => projectOfMember({ repoPath: path() }, spaces() ?? [])),
-    loaded: () => spaces() !== undefined,
-  };
+  const found = createMemo(() => projectOfMember({ repoPath: path() }, spaces() ?? []));
+  return { found, loaded: () => spaces() !== undefined };
 }

@@ -56,7 +56,7 @@ export default function ProjectSettingsDialog(props: { path: string; section?: P
   const sections = () => sectionsFor(kind());
   const name = () => found()?.project.name ?? basename(props.path);
 
-  const [picked, setPicked] = createSignal<ProjectSection>(props.section ?? "general");
+  const [picked, setPicked] = createSignal<ProjectSection>(untrack(() => props.section ?? "general"));
   // Held while the record loads, so a request for Worktrees is not lost to the
   // moment before the layout is known. Once it is known, a section this project
   // does not have is dropped, so it cannot surface later when one appears.

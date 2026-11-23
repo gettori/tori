@@ -1,8 +1,10 @@
 import { omit, untrack } from "solid-js";
 
 // `merge` lets an `undefined` override, and a default has to survive `attr={maybe}`.
-export const defined = <T extends Record<string, any>>(props: T) =>
-  omit(props, (key) => props[key as keyof T] === undefined) as T;
+export const defined = <T extends Record<string, any>>(props: T) => {
+  const kept = omit(props, (key) => props[key as keyof T] === undefined);
+  return kept as T;
+};
 
 // `defined` decides once per key, so an attribute that starts undefined and turns
 // defined later would be dropped for good. This falls back per read.

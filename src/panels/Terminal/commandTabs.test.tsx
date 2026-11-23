@@ -4,6 +4,7 @@
 // adr_jobs_leave_the_tab_model exists to prevent. `interactive` decides only
 // whether the keyboard follows.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
+import { untrack } from "solid-js";
 import { render, screen, waitFor, within } from "../../test/harness";
 
 const REPO = "/root/work/repo";
@@ -39,13 +40,15 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 // where the environment can be read without a live terminal.
 vi.mock("./TerminalView", () => ({
   default: (props: { id: string; env?: Record<string, string>; args: string[]; kind: string; autoFocus?: boolean }) => {
-    bridge.spawned.push({
-      id: props.id,
-      env: props.env,
-      args: props.args,
-      kind: props.kind,
-      autoFocus: props.autoFocus,
-    });
+    bridge.spawned.push(
+      untrack(() => ({
+        id: props.id,
+        env: props.env,
+        args: props.args,
+        kind: props.kind,
+        autoFocus: props.autoFocus,
+      })),
+    );
     return <div data-testid="pty" data-id={props.id} />;
   },
 }));

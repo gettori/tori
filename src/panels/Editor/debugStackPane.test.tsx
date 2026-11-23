@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import PaneView from "../../tabs/PaneView";
-import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent, cleanup, within } from "../../test/harness";
 
 // Execution controls and the call stack, from the pane's side.
@@ -245,17 +244,17 @@ describe("the call stack", () => {
 
 describe("from the pane to the editor", () => {
   async function mountEditor() {
-    const [selected] = createSignal<unknown>({
+    const selected: unknown = {
       spaceName: "space",
       projectName: "proj",
       projectPath: "/space/proj",
       folderPath: REPO,
       branch: "main",
       projectKind: "plain",
-    });
+    };
     render(() => (
       <>
-        <Editor selected={selected() as never} />
+        <Editor selected={selected as never} />
         <PaneView pinKind="file" />
       </>
     ));

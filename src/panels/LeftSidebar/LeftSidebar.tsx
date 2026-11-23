@@ -1,5 +1,16 @@
 import { setPendingFileOpen } from "../../utils/pendingFileOpen";
-import { createSignal, For, Match, Show, Switch, onSettled, onCleanup, createEffect, createMemo } from "solid-js";
+import {
+  createSignal,
+  For,
+  Match,
+  Show,
+  Switch,
+  onSettled,
+  onCleanup,
+  createEffect,
+  createMemo,
+  untrack,
+} from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { afterPaint } from "../../utils/afterPaint";
 import { isLocked } from "../../utils/autopilotStore";
@@ -610,9 +621,11 @@ export default function LeftSidebar(props: {
   };
   onCleanup(onEvent(GROUP_BRANCHES, () => picked() && projectActions.get(picked()!.path)?.groupPicked()));
   const clearPicked = (e: KeyboardEvent) => e.key === "Escape" && picked() && setPicked(null);
-  window.addEventListener("keydown", clearPicked);
-  onCleanup(() => window.removeEventListener("keydown", clearPicked));
-  function heldValue<T>(live: () => T): () => T {
+  onSettled(() => {
+    window.addEventListener("keydown", clearPicked);
+    return () => window.removeEventListener("keydown", clearPicked);
+  });
+  function createHeldValue<T>(live: () => T): () => T {
     let kept: { v: T } | null = null;
     return createMemo(() => {
       const v = live();
@@ -3331,11 +3344,11 @@ export default function LeftSidebar(props: {
   // chat is hosting. Without this a session started outside Tori stays invisible
   // until someone clicks its row, because nothing else ever probes it.
   function sweepDetached(scans: readonly FolderScan[]) {
-    const hosted = new Set<string>(liveChatIds());
+    const hosted = new Set<string>(untrack(() => liveChatIds()));
     // Only a live tab hosts anything. An inert tab naming a session would keep
     // this sweep from ever probing it, which is exactly the session the sweep
     // exists to find: one running with nothing in Tori driving it.
-    for (const t of props.liveTabs ?? []) if (t.sessionId && t.state === "live") hosted.add(t.sessionId);
+    for (const t of untrack(() => props.liveTabs ?? [])) if (t.sessionId && t.state === "live") hosted.add(t.sessionId);
     const want: { id: string; agent: string }[] = [];
     const seen = new Set<string>();
     for (const { list } of scans) {
@@ -3828,9 +3841,9 @@ export default function LeftSidebar(props: {
 
   // Looked up by number on every read, because the poll answers anew each tick
   // and a group object kept here would go stale.
-  function stackGroupNode(g: Group, p: Project, grp: () => StackGroup | undefined, drag?: SidebarDragProps) {
+  function stackGroupNode(g: Group, p: Project, grp: { get: () => StackGroup | undefined }, drag?: SidebarDragProps) {
     return (
-      <Show when={grp()}>
+      <Show when={grp.get()}>
         {(s) => {
           const key = () => skey(g, p, s().stack.number);
           const open = () => !expanded().has(key());
@@ -3942,7 +3955,7 @@ export default function LeftSidebar(props: {
     );
   }
 
-  function projectFold(g: () => Group | null, list: () => Project[], key: () => string) {
+  function projectFold({ g, list, key }: { g: () => Group | null; list: () => Project[]; key: () => string }) {
     const capped = () => !q();
     const open = () => expanded().has(key());
     const kept = (p: Project) => {
@@ -3983,12 +3996,12 @@ export default function LeftSidebar(props: {
         saveProjectListOrder(at.name, moveKeys(allPaths(), [from], [target], before ? "before" : "after"));
       },
     });
-    const dragFor = (p: Project, index: () => number) =>
+    const dragFor = (p: Project, at: { index: () => number }) =>
       drag.rowProps({
         key: p.path,
         section: "main",
         get index() {
-          return index();
+          return at.index();
         },
         paths: p.path,
       });
@@ -4005,12 +4018,16 @@ export default function LeftSidebar(props: {
     );
     return { shown: () => split().shown, row, dragFor };
   }
-  const globalFold = projectFold(
-    () => globalAsSpace(),
-    globalProjects,
-    () => `pm:${GLOBAL_KEY}`,
-  );
-  const spaceFold = projectFold(activeSpace, activeProjects, () => `pm:${activeSpace()?.name ?? ""}`);
+  const globalFold = projectFold({
+    g: () => globalAsSpace(),
+    list: globalProjects,
+    key: () => `pm:${GLOBAL_KEY}`,
+  });
+  const spaceFold = projectFold({
+    g: activeSpace,
+    list: activeProjects,
+    key: () => `pm:${activeSpace()?.name ?? ""}`,
+  });
 
   let unlistenConfig: UnlistenFn | undefined;
   let unlistenOperation: UnlistenFn | undefined;
@@ -4086,7 +4103,7 @@ export default function LeftSidebar(props: {
         void pollOnFocus();
         // An attached folder can leave with a drive and come back with it,
         // and nothing under the base folder watches outside it.
-        if (config()?.global?.projects.length) void loadConfig();
+        if (untrack(() => config()?.global?.projects.length)) void loadConfig();
       }
     });
     // Fold remote-only branches into the open add-branch dialog as they land.
@@ -4442,18 +4459,20 @@ export default function LeftSidebar(props: {
       menu={globalMenu()}
       rollup={() => {
         const shown = inGlobal() && !props.railOnly;
-        return bubbleFor((s) => {
-          if (isChatKey(s.folderPath)) {
-            const c = chatAtKey(s.folderPath);
-            if (c && chatSpace(c) !== GLOBAL_KEY) return false;
-            return !shown || globalChatsCollapsed() || !shownChats().some((c) => chatKey(c.id) === s.folderPath);
-          }
-          const t = s.home?.topic ? globalTopics().find((t) => t.id === s.home!.topic) : undefined;
-          if (t) return !shown || globalTopicsCollapsed() || !matchesTopic(t, query());
-          if (s.spaceName !== GLOBAL_KEY) return false;
-          const p = config()?.global?.projects.find((p) => p.branchUnits.some((u) => u.folderPath === s.folderPath));
-          return !shown || globalProjectsCollapsed() || (p != null && !projectVisible(p));
-        });
+        return rollupStatuses(
+          liveSessionStatuses().filter((s) => {
+            if (isChatKey(s.folderPath)) {
+              const c = chatAtKey(s.folderPath);
+              if (c && chatSpace(c) !== GLOBAL_KEY) return false;
+              return !shown || globalChatsCollapsed() || !shownChats().some((c) => chatKey(c.id) === s.folderPath);
+            }
+            const t = s.home?.topic ? globalTopics().find((t) => t.id === s.home!.topic) : undefined;
+            if (t) return !shown || globalTopicsCollapsed() || !matchesTopic(t, query());
+            if (s.spaceName !== GLOBAL_KEY) return false;
+            const p = config()?.global?.projects.find((p) => p.branchUnits.some((u) => u.folderPath === s.folderPath));
+            return !shown || globalProjectsCollapsed() || (p != null && !projectVisible(p));
+          }),
+        );
       }}
       onClick={switchToGlobal}
     />
@@ -4472,7 +4491,7 @@ export default function LeftSidebar(props: {
     // container arrives as an ordinary worktree unit, so it is lifted
     // out here rather than rendered twice.
     const split = () => groupAttempts(inSpaces(p.branchUnits), attempts()[p.path] ?? [], attemptStandIn);
-    const prStacks = heldValue(
+    const prStacks = createHeldValue(
       () => new Map(split().units.map((u) => [unitKey(u), shownPr(p, u)?.stack ?? null] as const)),
     );
     // A stack stands in the list as its number and an attempt group as its
@@ -4513,7 +4532,7 @@ export default function LeftSidebar(props: {
       const child = unitChild(p, u);
       return child === "pending" ? child : laneOf(child, lanes());
     };
-    const heldLanes = heldValue(() => {
+    const heldLanes = createHeldValue(() => {
       if (!lanes().enabled) return new Map<string, LaneId | null | "pending">();
       const all = [...split().units, ...split().groups.flatMap((grp) => grp.members.map((m) => m.unit))];
       return new Map(all.map((u) => [unitKey(u), liveLane(u)] as const));
@@ -4762,17 +4781,17 @@ export default function LeftSidebar(props: {
         </GroupCard>
       );
     }
-    const entryNode = (e: Entry, i: () => number, sec: string) =>
+    const entryNode = (e: Entry, at: { index: () => number }, sec: string) =>
       typeof e === "number" ? (
-        stackGroupNode(g, p, () => stackOf(e), dragFor(e, i, sec))
+        stackGroupNode(g, p, { get: () => stackOf(e) }, dragFor(e, at.index, sec))
       ) : isGroupEntry(e) ? (
-        groupCardNode((e as string).slice(6), i)
+        groupCardNode((e as string).slice(6), at.index)
       ) : typeof e === "string" ? (
         <Show when={attemptOf(e.slice(8))} keyed>
-          {(grp) => attemptGroupNode(g, p, grp, dragFor(e, i, sec))}
+          {(grp) => attemptGroupNode(g, p, grp, dragFor(e, at.index, sec))}
         </Show>
       ) : (
-        unitNode(g, p, e, undefined, false, dragFor(e, i, sec))
+        unitNode(g, p, e, undefined, false, dragFor(e, at.index, sec))
       );
     // Show the control only when it has something to say. Open, that is
     // "the list is longer than the cap"; closed, "something is actually
@@ -4872,7 +4891,7 @@ export default function LeftSidebar(props: {
               </Show>
             }
           >
-            {(e, i) => entryNode(e, i, "main")}
+            {(e, i) => entryNode(e, { index: i }, "main")}
           </For>
           <Show when={truncated()}>{moreNode(g, p, () => shown().hidden)}</Show>
           <For each={openLanes()}>
@@ -4883,7 +4902,7 @@ export default function LeftSidebar(props: {
                 hue={colourful() ? LANE_HUE[id] : null}
                 onPark={() => toggle(laneKey(id))}
               >
-                <For each={laneSection(id)?.shown ?? []}>{(e, i) => entryNode(e, i, `lane:${id}`)}</For>
+                <For each={laneSection(id)?.shown ?? []}>{(e, i) => entryNode(e, { index: i }, `lane:${id}`)}</For>
               </LaneCard>
             )}
           </For>
@@ -4929,15 +4948,17 @@ export default function LeftSidebar(props: {
     const inThis = (s: LiveSessionStatus) => (isChatKey(s.folderPath) ? chatHere(s) : s.spaceName === g.name);
     return () =>
       isActive()
-        ? bubbleFor((s) => {
-            if (!inThis(s)) return false;
-            if (isChatKey(s.folderPath)) return !shownSpaceChats().some((c) => chatKey(c.id) === s.folderPath);
-            const topic = s.home?.topic;
-            if (topic && spaceTopics().some((t) => t.id === topic))
-              return !shownSpaceTopics().some((t) => t.id === topic);
-            const p = g.projects.find((p) => p.branchUnits.some((u) => u.folderPath === s.folderPath));
-            return p != null && !projectVisible(p);
-          })
+        ? rollupStatuses(
+            liveSessionStatuses().filter((s) => {
+              if (!inThis(s)) return false;
+              if (isChatKey(s.folderPath)) return !shownSpaceChats().some((c) => chatKey(c.id) === s.folderPath);
+              const topic = s.home?.topic;
+              if (topic && spaceTopics().some((t) => t.id === topic))
+                return !shownSpaceTopics().some((t) => t.id === topic);
+              const p = g.projects.find((p) => p.branchUnits.some((u) => u.folderPath === s.folderPath));
+              return p != null && !projectVisible(p);
+            }),
+          )
         : bubbleFor(inThis);
   }
 
@@ -5056,7 +5077,9 @@ export default function LeftSidebar(props: {
             onToggle={() => toggle(gtkey)}
             end={statusBubble(() =>
               globalTopicsCollapsed()
-                ? bubbleFor((s) => shownGlobalTopics().some((t) => t.id === s.home?.topic))
+                ? rollupStatuses(
+                    liveSessionStatuses().filter((s) => shownGlobalTopics().some((t) => t.id === s.home?.topic)),
+                  )
                 : null,
             )}
             addLabel={`New Topic in ${GLOBAL_NAME}`}
@@ -5080,7 +5103,7 @@ export default function LeftSidebar(props: {
               />
               <Show when={!globalProjectsCollapsed()}>
                 <For each={globalFold.shown()} fallback={<EmptyRow>no matches in {GLOBAL_NAME}</EmptyRow>}>
-                  {(p, i) => projectNode(globalAsSpace(), p, globalFold.dragFor(p, i))}
+                  {(p, i) => projectNode(globalAsSpace(), p, globalFold.dragFor(p, { index: i }))}
                 </For>
                 {globalFold.row()}
               </Show>
@@ -5157,7 +5180,9 @@ export default function LeftSidebar(props: {
               onAdd={() => openNewProject(activeSpace()!)}
             />
             <Show when={!spaceProjectsCollapsed()}>
-              <For each={spaceFold.shown()}>{(p, i) => projectNode(activeSpace()!, p, spaceFold.dragFor(p, i))}</For>
+              <For each={spaceFold.shown()}>
+                {(p, i) => projectNode(activeSpace()!, p, spaceFold.dragFor(p, { index: i }))}
+              </For>
               {spaceFold.row()}
             </Show>
           </Show>

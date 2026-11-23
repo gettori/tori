@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent, cleanup } from "../../test/harness";
 import { tab, tabs } from "../../test/tabs";
 import { installAnimationFrame } from "../../test/frames";
@@ -119,8 +118,8 @@ const selection = {
 };
 
 async function mountEditor() {
-  const [selected] = createSignal<unknown>(selection);
-  render(() => <Editor selected={selected() as never} />);
+  const selected: unknown = selection;
+  render(() => <Editor selected={selected as never} />);
   await waitFor(() => expect(listening.ready).toBe(true));
 }
 

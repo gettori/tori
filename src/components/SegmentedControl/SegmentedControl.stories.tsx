@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { createSignal } from "solid-js";
+import { createSignal, For } from "solid-js";
 import { List, LayoutGrid, Rows3 } from "../Icon/icons";
 import Icon from "../Icon/Icon";
 import SegmentedControl from "./SegmentedControl";
@@ -53,15 +53,17 @@ export const Sizes: Story = {
     const [pane, setPane] = createSignal("files");
     return (
       <div style={{ display: "flex", "align-items": "center", gap: "var(--tori-space-4)" }}>
-        {SIZES.map((size) => (
-          <SegmentedControl
-            size={size}
-            options={PANES}
-            value={pane()}
-            onChange={setPane}
-            aria-label={`Right panel (${size})`}
-          />
-        ))}
+        <For each={SIZES}>
+          {(size) => (
+            <SegmentedControl
+              size={size}
+              options={PANES}
+              value={pane()}
+              onChange={setPane}
+              aria-label={`Right panel (${size})`}
+            />
+          )}
+        </For>
       </div>
     );
   },

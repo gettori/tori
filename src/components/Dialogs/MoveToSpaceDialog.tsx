@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createSignal, untrack } from "solid-js";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
 import Select from "../Select/Select";
@@ -15,12 +15,12 @@ export default function MoveToSpaceDialog(props: {
   onMoved: (to: string, warnings: string[]) => void;
   onCancel: () => void;
 }) {
-  const [space, setSpace] = createSignal(props.spaces[0] ?? "");
+  const [space, setSpace] = createSignal(untrack(() => props.spaces[0] ?? ""));
   const form = createMoveForm({
     path: () => props.path,
     base: () => props.base,
     space,
-    countRunning: props.countRunning,
+    countRunning: untrack(() => props.countRunning),
   });
 
   async function move() {
