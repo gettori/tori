@@ -371,8 +371,8 @@ import {
   setTabsByWs,
   activeByWs,
   setActiveByWs,
-  closedByWs,
   setClosedByWs,
+  latestTabModel,
   resetEditorTabModel,
   registerFileRestore,
   type FileTab,
@@ -652,15 +652,16 @@ export default function Editor(props: {
   const shownFileId = () => paneFileId(focusedEditorPane());
   function setTabs(next: FileTab[] | ((prev: FileTab[]) => FileTab[])) {
     const key = ws();
-    setTabsByWs((prev) => ({
-      ...prev,
-      [key]: typeof next === "function" ? next(prev[key] ?? []) : next,
-    }));
+    setTabsByWs((prev) => {
+      const held = prev[key] ?? [];
+      const list = typeof next === "function" ? next(held) : next;
+      return list === held ? prev : { ...prev, [key]: list };
+    });
   }
   function setActiveId(id: string | null) {
     if (id) noteTabFocus(id);
     const key = ws();
-    setActiveByWs((prev) => ({ ...prev, [key]: id }));
+    setActiveByWs((prev) => (prev[key] === id ? prev : { ...prev, [key]: id }));
   }
   // Dirty state and preview choices are keyed by absolute path, so they need no
   // workspace dimension: a path names exactly one file across every workspace.
@@ -1622,9 +1623,11 @@ export default function Editor(props: {
   // what makes a `.shared/` file - a real file that lives outside any project
   // root - land somewhere predictable instead of nowhere.
   function openFile(path: string) {
-    if (!tabs().some((t) => t.path === path)) {
-      setTabs([...tabs(), { path, name: isSyntheticId(path) ? syntheticTabName(path) : basename(path) }]);
-    }
+    setTabs((prev) =>
+      prev.some((t) => t.path === path)
+        ? prev
+        : [...prev, { path, name: isSyntheticId(path) ? syntheticTabName(path) : basename(path) }],
+    );
     setActiveId(path);
     // And the **pane's** stored pick, not only this kind's claim. A pane holds
     // file tabs and terminal tabs at once and `activeIdInPane` resolves the two:
@@ -1634,7 +1637,7 @@ export default function Editor(props: {
     // so that claim is never quiet. Writing only the claim therefore left the
     // file behind whatever chat the pane was showing. Clicking the tab worked
     // because `PaneView`'s `onActivate` writes both.
-    const pane = paneHoldingFile(path) ?? focusedEditorPane();
+    const pane = untrack(() => paneHoldingFile(path) ?? kindHomePane(ws(), "file") ?? focusedEditorPane());
     if (pane && pane !== SOLO_PANE) setPaneActive(ws(), pane, path);
   }
 
@@ -1711,11 +1714,12 @@ export default function Editor(props: {
     // every click would be somewhere new each time. Both orderings, because a
     // strip drawn straight from this list and one drawn through `orderInPane`
     // would otherwise disagree about where it went.
-    const list = tabs();
-    const at = list.findIndex((t) => t.path === path);
-    const next = list.map((t) => (t.path === path ? { ...t, transient: true } : t));
-    if (slot >= 0 && at >= 0 && at !== slot) next.splice(slot, 0, ...next.splice(at, 1));
-    setTabs(next);
+    setTabs((list) => {
+      const at = list.findIndex((t) => t.path === path);
+      const next = list.map((t) => (t.path === path ? { ...t, transient: true } : t));
+      if (slot >= 0 && at >= 0 && at !== slot) next.splice(slot, 0, ...next.splice(at, 1));
+      return next;
+    });
     if (old)
       stampOrder(
         ws(),
@@ -1724,8 +1728,11 @@ export default function Editor(props: {
   }
 
   function pinTab(id: string) {
-    if (!tabs().some((t) => tabId(t) === id && t.transient)) return;
-    setTabs(tabs().map((t) => (tabId(t) === id ? { ...t, transient: undefined } : t)));
+    setTabs((list) =>
+      list.some((t) => tabId(t) === id && t.transient)
+        ? list.map((t) => (tabId(t) === id ? { ...t, transient: undefined } : t))
+        : list,
+    );
   }
 
   /** The pane a file tab is already in, which is not always its kind's home:
@@ -1930,9 +1937,11 @@ export default function Editor(props: {
       );
     // Right neighbor, then left: the unified active-after-close policy (plan
     // phase 5). Computed before the list shrinks, or the closed id has no index.
-    const nextActive = nextActiveAfterClose(tabs().map(tabId), id);
-    const remaining = tabs().filter((t) => tabId(t) !== id);
-    setTabs(remaining);
+    let nextActive: string | null = null;
+    setTabs((list) => {
+      nextActive = nextActiveAfterClose(list.map(tabId), id);
+      return list.filter((t) => tabId(t) !== id);
+    });
     setDirty((d) => {
       const next = { ...d };
       delete next[tab.path];
@@ -1969,10 +1978,14 @@ export default function Editor(props: {
    * replaying an undo history into a document that has moved.
    */
   function reopenClosedTab() {
-    const taken = takeClosedTab(closedByWs(), ws());
-    if (!taken.path) return;
-    setClosedByWs(taken.store);
-    openFile(taken.path);
+    const key = ws();
+    let path: string | null = null;
+    setClosedByWs((store) => {
+      const taken = takeClosedTab(store, key);
+      path = taken.path;
+      return taken.path ? taken.store : store;
+    });
+    if (path) openFile(path);
   }
 
   /**
@@ -2153,9 +2166,11 @@ export default function Editor(props: {
   function forceCloseFile(path: string) {
     if (!tabs().some((t) => t.path === path)) return;
     dropStashEntry(path);
-    const nextActive = nextActiveAfterClose(tabs().map(tabId), path);
-    const remaining = tabs().filter((t) => t.path !== path);
-    setTabs(remaining);
+    let nextActive: string | null = null;
+    setTabs((list) => {
+      nextActive = nextActiveAfterClose(list.map(tabId), path);
+      return list.filter((t) => t.path !== path);
+    });
     setDirty((d) => {
       const next = { ...d };
       delete next[path];
@@ -2206,7 +2221,7 @@ export default function Editor(props: {
     // to click, so an entry naming it would sit in the store for good.
     mapExpandedFiles((p) => (isUnderPath(p, path) ? null : p));
     setClosedByWs((s) => sweepClosed(s, (p) => (isUnderPath(p, path) ? null : p)));
-    const next = purgeTabsUnder({ tabs: tabsByWs(), active: activeByWs() }, path);
+    const next = purgeTabsUnder(latestTabModel(), path);
     if (!next.removed.length) return;
     setTabsByWs(next.tabs);
     setActiveByWs(next.active);
@@ -2236,8 +2251,9 @@ export default function Editor(props: {
   // Dirty text and the stash go only for paths no other workspace still has
   // open: a member's file is usually open under the member's own unit as well.
   function purgeWorkspaceKey(ws: string) {
-    const elsewhere = new Set(Object.entries(tabsByWs()).flatMap(([w, ts]) => (w === ws ? [] : ts.map((t) => t.path))));
-    const removed = (tabsByWs()[ws] ?? []).map((t) => t.path).filter((p) => !elsewhere.has(p));
+    const { tabs: held } = latestTabModel();
+    const elsewhere = new Set(Object.entries(held).flatMap(([w, ts]) => (w === ws ? [] : ts.map((t) => t.path))));
+    const removed = (held[ws] ?? []).map((t) => t.path).filter((p) => !elsewhere.has(p));
     setTabsByWs((s) => dropWorkspaceKey(s, ws));
     setActiveByWs((s) => dropWorkspaceKey(s, ws));
     setClosedByWs((s) => dropWorkspaceKey(s, ws));
@@ -2292,7 +2308,7 @@ export default function Editor(props: {
     mapBreakpointFiles((p) => repoint(p, from, to) ?? p);
     mapExpandedFiles((p) => repoint(p, from, to) ?? p);
     setClosedByWs((s) => sweepClosed(s, (p) => repoint(p, from, to) ?? p));
-    const next = renameTabsUnder({ tabs: tabsByWs(), active: activeByWs() }, from, to);
+    const next = renameTabsUnder(latestTabModel(), from, to);
     if (!next.moved.length) return;
     setTabsByWs(next.tabs);
     setActiveByWs(next.active);
@@ -2834,7 +2850,8 @@ export default function Editor(props: {
       });
       offTabsJoined = onWith<TabsJoined>(TABS_JOINED, async ({ from, to }) => {
         await Promise.all([fileRestore(from), fileRestore(to)]);
-        const { [from]: moving = [], ...tabs } = tabsByWs();
+        const latest = latestTabModel();
+        const { [from]: moving = [], ...tabs } = latest.tabs;
         if (!moving.length) return;
         const have = tabs[to] ?? [];
         // One replaceable tab per strip: a second one coming in is kept instead.
@@ -2843,19 +2860,13 @@ export default function Editor(props: {
           .filter((m) => !have.some((h) => h.path === m.path))
           .map((m) => (transient && m.transient ? { path: m.path, name: m.name } : m));
         setTabsByWs({ ...tabs, [to]: [...have, ...add] });
-        const { [from]: was = null, ...active } = activeByWs();
+        const { [from]: was = null, ...active } = latest.active;
         setActiveByWs(was && !active[to] ? { ...active, [to]: was } : active);
         touchedWs.add(from);
         touchedWs.add(to);
       });
       offRootMoved = onWith<RootMoved>(ROOT_MOVED, ({ workspace, from, to }) => {
-        const next = retargetCleanTabs(
-          { tabs: tabsByWs(), active: activeByWs() },
-          workspace,
-          from,
-          to,
-          (p) => !!dirty()[p],
-        );
+        const next = retargetCleanTabs(latestTabModel(), workspace, from, to, (p) => !!dirty()[p]);
         setTabsByWs(next.tabs);
         setActiveByWs(next.active);
       });

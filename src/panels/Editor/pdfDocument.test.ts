@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import {
   PdfRuntimeError,
@@ -151,20 +152,24 @@ describe("the shared view state", () => {
     expect(pdfView(A).zoom).toBe("fitWidth");
 
     setPdfView(A, { page: 4, offset: 0.5 });
+    flush();
     expect(place(A)).toEqual({ page: 4, offset: 0.5 });
   });
 
   it("keeps a zoom the toolbar set, which is what survives a tab switch", async () => {
     await loadPdf(A);
     setPdfView(A, { zoom: 175 });
+    flush();
     expect(pdfView(A).zoom).toBe(175);
   });
 
   it("carries a page jump as a nonce, so asking twice for one page asks twice", async () => {
     await loadPdf(A);
     jumpToPdfPage(A, 7);
+    flush();
     const first = pdfView(A).jump;
     jumpToPdfPage(A, 7);
+    flush();
     const second = pdfView(A).jump;
     expect(first?.page).toBe(7);
     expect(second?.page).toBe(7);

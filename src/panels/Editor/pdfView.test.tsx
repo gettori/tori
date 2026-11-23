@@ -236,6 +236,7 @@ describe("PdfView", () => {
     const pane = layOut(container, 612 + 32, 900);
 
     pane.scrollTo(3000);
+    flush();
     const page = pdfView(PATH).page;
     expect(page).toBeGreaterThan(1);
 
@@ -244,6 +245,7 @@ describe("PdfView", () => {
     // same page is the whole of what the re-anchor is for.
     for (const zoom of [200, 300, 50, "fitWidth" as const]) {
       setPdfView(PATH, { zoom });
+      flush();
       await waitFor(() => expect(pdfView(PATH).page).toBe(page));
     }
     expect(pane.scrollTop()).toBeGreaterThan(0);
@@ -310,7 +312,10 @@ describe("PdfView", () => {
       // percentage. Measuring the next step from the last *applied* scale is
       // what lets them add up; measuring from the last event would throw each
       // one away and a gesture this gentle would never zoom at all.
-      for (let i = 1; i <= 40; i++) gesture(el, "gesturechange", 1 + i * 0.005);
+      for (let i = 1; i <= 40; i++) {
+        gesture(el, "gesturechange", 1 + i * 0.005);
+        flush();
+      }
       await waitFor(() => expect(pdfView(PATH).zoom).not.toBe(before));
       expect(pdfView(PATH).zoom).toBeGreaterThan(80);
     });

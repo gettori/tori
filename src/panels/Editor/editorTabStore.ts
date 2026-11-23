@@ -1,7 +1,7 @@
 // The editor pane's tab model, module-level so the unified tab store (plan
 // phase 4) can compose it without mounting the panel; terminalTabStore is the
 // sibling. Editor.tsx resets it at setup: the lifetime still tracks the panel.
-import { createLiveSignal } from "../../lib/liveState";
+import { createSignal } from "solid-js";
 import type { ClosedStore } from "./reopenStack";
 
 // Every editor tab is a file now that the transcript viewer is gone, so a tab
@@ -27,14 +27,24 @@ export type FileTab = {
 // select into it, so it is transient by construction, and `toStore` refuses to
 // persist under it.
 // Owned writes: `resetEditorTabModel` runs in the panel's body.
-const [tabsByWs, setTabsByWs] = createLiveSignal<Record<string, FileTab[]>>({}, { ownedWrite: true });
-const [activeByWs, setActiveByWs] = createLiveSignal<Record<string, string | null>>({}, { ownedWrite: true });
+const [tabsByWs, setTabsByWs] = createSignal<Record<string, FileTab[]>>({}, { ownedWrite: true });
+const [activeByWs, setActiveByWs] = createSignal<Record<string, string | null>>({}, { ownedWrite: true });
 // The tabs you closed, for Cmd+Shift+T. Session-lived on purpose: reopening
 // is an undo of something you just did, and last week's closes are what the
 // history pickers are for.
-const [closedByWs, setClosedByWs] = createLiveSignal<ClosedStore>({}, { ownedWrite: true });
+const [closedByWs, setClosedByWs] = createSignal<ClosedStore>({}, { ownedWrite: true });
 
 export { tabsByWs, setTabsByWs, activeByWs, setActiveByWs, closedByWs, setClosedByWs };
+
+// A sweep replaces both maps whole, so it has to start from what an earlier
+// write in this tick left. Updaters see that value and a plain read does not.
+export function latestTabModel() {
+  let tabs!: Record<string, FileTab[]>;
+  let active!: Record<string, string | null>;
+  setTabsByWs((prev) => (tabs = prev));
+  setActiveByWs((prev) => (active = prev));
+  return { tabs, active };
+}
 
 // Called from Editor.tsx's setup, nowhere else: the panel mounts once per app
 // run, so this keeps the model's lifetime what it was before the extraction
