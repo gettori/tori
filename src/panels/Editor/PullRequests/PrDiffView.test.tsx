@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
+import { flush } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "../../../test/harness";
 import { expectNoAxeViolations } from "../../../test/axe";
 import type { ForgeAccount, PrFile, PullRequest, ReviewThread, StatusReport } from "../../../utils/forgeTypes";
@@ -262,7 +263,9 @@ describe("a pull request file as a tab in the stage", () => {
     // a way to be told, the list tab would open a tab that renders "no pull
     // request here carries that number" over a diff it has in hand.
     resetForgeStatusForTests();
+    flush();
     await signIn();
+    flush();
     const orphan = openTab();
     await waitFor(() => expect(screen.queryByText(/No pull request here/)).toBeTruthy());
     orphan.unmount();

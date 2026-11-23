@@ -26,7 +26,7 @@
 // `id: 1`, in the `setBreakpoints` response *and* in every `breakpoint` event.
 // Trusting the id would flip the wrong marker.
 
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal, untrack } from "solid-js";
 
 import {
   breakpointFiles,
@@ -47,16 +47,16 @@ export type BreakpointState = "pending" | "armed" | "bound";
 /** One line and what it is currently doing, which is all the gutter renders. */
 export type BreakpointMark = { line: number; state: BreakpointState };
 
-const [store, setStore] = createLiveSignal<BreakpointStore>(loadBreakpoints());
+const [store, setStore] = createSignal<BreakpointStore>(loadBreakpoints());
 
 /** Bound lines as `path\nline`. A run's answer, not the reader's, so it is
  *  dropped when the run ends rather than persisted. */
-const [bound, setBound] = createLiveSignal<ReadonlySet<string>>(new Set());
+const [bound, setBound] = createSignal<ReadonlySet<string>>(new Set());
 
 /** Paths with unsaved edits. Kept here rather than read from the pane's own
  *  dirty map, because the answer is needed by the session-configuration seam
  *  below, which runs with no component in scope. */
-const [dirty, setDirty] = createLiveSignal<ReadonlySet<string>>(new Set());
+const [dirty, setDirty] = createSignal<ReadonlySet<string>>(new Set());
 
 const key = (path: string, line: number) => `${path}\n${line}`;
 const lineOf = (k: string) => Number(k.slice(k.lastIndexOf("\n") + 1));
@@ -85,8 +85,9 @@ export function breakpointMarks(ws: string, path: string): BreakpointMark[] {
 
 /** Set or clear a breakpoint, from a click on the gutter. */
 export function toggleBreakpointAt(ws: string, path: string, line: number): void {
-  write(toggleBreakpoint(store(), ws, path, line));
-  push(ws, path);
+  const next = toggleBreakpoint(store(), ws, path, line);
+  write(next);
+  push(ws, path, false, next);
 }
 
 /**
@@ -201,7 +202,7 @@ export function noteBufferClosed(ws: string, path: string): void {
   const next = new Set(dirty());
   next.delete(path);
   setDirty(next);
-  push(ws, path);
+  push(ws, path, true);
 }
 
 /**
@@ -223,9 +224,9 @@ function armedFor(ws: string): Map<string, number[]> {
 /** Send one file's set to every live session of this workspace, and take what
  *  the answer says about binding. A file with none left still sends: an empty
  *  array is how DAP says "clear this file". */
-function push(ws: string, path: string, clean = false): void {
+function push(ws: string, path: string, clean = false, current: BreakpointStore = store()): void {
   if (!clean && dirty().has(path)) return;
-  const lines = breakpointsFor(store(), ws, path);
+  const lines = breakpointsFor(current, ws, path);
   // A line this file no longer has cannot be bound. Without this, removing a
   // breakpoint and setting it again on the same line renders it filled at once,
   // claiming execution will stop there before the adapter has said anything.
@@ -258,17 +259,19 @@ function push(ws: string, path: string, clean = false): void {
  */
 function takeVerified(list: unknown[] | undefined, fallbackPath: string): void {
   if (!Array.isArray(list)) return;
-  const next = new Set(bound());
-  let changed = false;
-  for (const entry of list) {
-    const bp = (entry ?? {}) as { verified?: boolean; line?: number; source?: { path?: string } };
-    if (bp.verified !== true || typeof bp.line !== "number") continue;
-    const k = key(bp.source?.path ?? fallbackPath, bp.line);
-    if (next.has(k)) continue;
-    next.add(k);
-    changed = true;
-  }
-  if (changed) setBound(next);
+  setBound((now) => {
+    const next = new Set(now);
+    let changed = false;
+    for (const entry of list) {
+      const bp = (entry ?? {}) as { verified?: boolean; line?: number; source?: { path?: string } };
+      if (bp.verified !== true || typeof bp.line !== "number") continue;
+      const k = key(bp.source?.path ?? fallbackPath, bp.line);
+      if (next.has(k)) continue;
+      next.add(k);
+      changed = true;
+    }
+    return changed ? next : now;
+  });
 }
 
 const wired = new Set<string>();
@@ -292,12 +295,13 @@ function wire(session: DapSession): void {
     if (typeof path !== "string" || typeof line !== "number") return;
     const k = key(path, line);
     const isBound = b.reason !== "removed" && b.breakpoint?.verified === true;
-    const now = bound();
-    if (now.has(k) === isBound) return;
-    const next = new Set(now);
-    if (isBound) next.add(k);
-    else next.delete(k);
-    setBound(next);
+    setBound((now) => {
+      if (now.has(k) === isBound) return now;
+      const next = new Set(now);
+      if (isBound) next.add(k);
+      else next.delete(k);
+      return next;
+    });
   });
 }
 
@@ -308,7 +312,7 @@ function sync(): void {
   for (const id of [...wired]) if (!ids.has(id)) wired.delete(id);
   // Nothing is running, so nothing is bound. Left standing, a green marker would
   // outlive the run that earned it and claim the next one had already bound.
-  if (!live.length && bound().size) setBound(new Set<string>());
+  if (!live.length) setBound((now) => (now.size ? new Set<string>() : now));
 }
 
 // Installed at module load, so a run that starts before any pane has opened
@@ -317,4 +321,4 @@ setDebugBreakpointSource(armedFor);
 onDebugChange(sync);
 // And once now, for `debugStore`'s reason: subscribing alone would make this
 // module's import order load-bearing against a run that is already live.
-sync();
+untrack(sync);

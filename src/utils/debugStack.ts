@@ -10,7 +10,7 @@
 // the root never does. So the stack is a list of stopped sessions, each with its
 // own frames, and a selected frame names both.
 
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal, untrack } from "solid-js";
 
 import { debugRoots, debugSession, onDebugChange, type DapSession } from "./dapSessions";
 import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "./events";
@@ -52,8 +52,8 @@ export type FrameRef = { session: string; frameId: number };
  *  before anything could be drawn. */
 export const MAX_FRAMES = 50;
 
-const [stops, setStops] = createLiveSignal<readonly StoppedSession[]>([]);
-const [selected, setSelected] = createLiveSignal<FrameRef | null>(null);
+const [stops, setStops] = createSignal<readonly StoppedSession[]>([]);
+const [selected, setSelected] = createSignal<FrameRef | null>(null);
 
 /** Every paused session, in the order they stopped. Empty while the program is
  *  running. Arrival order rather than tree order, because it is append-only:
@@ -102,8 +102,11 @@ export function debugPaused(): boolean {
 /** The frame the pane is showing, with its session. */
 export function currentFrame(): { stop: StoppedSession; frame: StackFrame } | null {
   const ref = selected();
-  if (!ref) return null;
-  const stop = stops().find((s) => s.id === ref.session);
+  return ref ? frameAt(ref, stops()) : null;
+}
+
+function frameAt(ref: FrameRef, list: readonly StoppedSession[]): { stop: StoppedSession; frame: StackFrame } | null {
+  const stop = list.find((s) => s.id === ref.session);
   const frame = stop?.frames.find((f) => f.id === ref.frameId);
   return stop && frame ? { stop, frame } : null;
 }
@@ -135,9 +138,10 @@ export function fileOnStack(path: string): boolean {
 }
 
 /** Show a frame, and open what it points at. */
-export function selectFrame(session: string, frameId: number): void {
-  setSelected({ session, frameId });
-  const at = currentFrame();
+export function selectFrame(session: string, frameId: number, list: readonly StoppedSession[] = stops()): void {
+  const ref = { session, frameId };
+  setSelected(ref);
+  const at = frameAt(ref, list);
   if (at) void openFrame(session, at.frame);
 }
 
@@ -246,7 +250,7 @@ export function leafSessions(): DapSession[] {
 
 function clearStop(id: string): void {
   setStops((prev) => prev.filter((s) => s.id !== id));
-  if (selected()?.session === id) setSelected(null);
+  setSelected((prev) => (prev?.session === id ? null : prev));
 }
 
 /**
@@ -317,7 +321,7 @@ async function recordStop(session: DapSession, threadId: number, reason: string)
   // The first stop of a pause selects itself and opens where it is. Later stops
   // do not: several workers hitting the same breakpoint would otherwise take
   // turns yanking the editor to whichever answered last.
-  if (!selected() && frames.length) selectFrame(stop.id, frames[0].id);
+  if (!selected() && frames.length) selectFrame(stop.id, frames[0].id, [stop]);
 }
 
 const wired = new Set<string>();
@@ -361,4 +365,4 @@ function sync(): void {
 onDebugChange(sync);
 // And once now, for `debugStore`'s reason: subscribing alone would make this
 // module's import order load-bearing against a run that is already live.
-sync();
+untrack(sync);

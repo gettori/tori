@@ -1,7 +1,7 @@
 // Installing a language server from the editor. The backend does the work
 // (`src-tauri/src/lsp/managed.rs`); this module holds the banner's offers and
 // announces an arrival without importing the editor, so Settings can use it too.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 
 /** Mirrors `managed::NOT_INSTALLED`, what `lsp_start` rejects a server with
@@ -22,7 +22,7 @@ export type InstallOffer = {
   error: string | null;
 };
 
-const [offers, setOffers] = createLiveSignal<InstallOffer[]>([]);
+const [offers, setOffers] = createSignal<InstallOffer[]>([]);
 
 // Not now is an answer for the session: every file of that language would ask
 // again otherwise.
@@ -39,15 +39,18 @@ export function onServerInstalled(cb: (serverId: string) => void): () => void {
 }
 
 function patch(serverId: string, change: Partial<InstallOffer>) {
-  setOffers(offers().map((o) => (o.serverId === serverId ? { ...o, ...change } : o)));
+  setOffers((prev) => prev.map((o) => (o.serverId === serverId ? { ...o, ...change } : o)));
 }
 
 /** Record that `file` asked for a server that is not installed. */
 export function offerInstall(serverId: string, label: string, file: string): void {
   if (answered.has(serverId)) return;
-  const offer = offers().find((o) => o.serverId === serverId);
-  if (!offer) setOffers([...offers(), { serverId, label, files: [file], status: "offered", error: null }]);
-  else if (!offer.files.includes(file)) patch(serverId, { files: [...offer.files, file] });
+  setOffers((prev) => {
+    const offer = prev.find((o) => o.serverId === serverId);
+    if (!offer) return [...prev, { serverId, label, files: [file], status: "offered", error: null }];
+    if (offer.files.includes(file)) return prev;
+    return prev.map((o) => (o.serverId === serverId ? { ...o, files: [...o.files, file] } : o));
+  });
 }
 
 /** The offer for `file`, if one is open. */
@@ -58,7 +61,7 @@ export function offerFor(file: string | null): InstallOffer | null {
 /** Not now, or Never: drop the offer and do not make it again this session. */
 export function dismissOffer(serverId: string): void {
   answered.add(serverId);
-  setOffers(offers().filter((o) => o.serverId !== serverId));
+  setOffers((prev) => prev.filter((o) => o.serverId !== serverId));
 }
 
 /** Install (or update) Tori's copy of a server. On failure the offer, if there
@@ -77,6 +80,6 @@ export async function installServer(serverId: string): Promise<void> {
 /** A server just arrived, however it was installed: drop its offer and let the
  *  editor ask again for the files that wanted it. */
 export function serverInstalled(serverId: string): void {
-  setOffers(offers().filter((o) => o.serverId !== serverId));
+  setOffers((prev) => prev.filter((o) => o.serverId !== serverId));
   for (const l of [...listeners]) l(serverId);
 }

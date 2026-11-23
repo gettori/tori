@@ -13,7 +13,7 @@
 // later passive sample replaced the whole account, the scoped window would blink
 // out every turn. So a sample updates the kinds it names and leaves the rest
 // alone, and a window is missing only when nothing has ever returned it.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { asProfileId } from "./agentHealth";
 import type { QuotaReading, QuotaState } from "./chatRateLimit";
@@ -85,8 +85,8 @@ type Readings = Record<AccountKey, Record<string, WindowReading>>;
  */
 type Fired = Record<string, number | null>;
 
-const [readings, setReadings] = createLiveSignal<Readings>({});
-const [fired, setFired] = createLiveSignal<Fired>({});
+const [readings, setReadings] = createSignal<Readings>({});
+const [fired, setFired] = createSignal<Fired>({});
 
 /** Every account with at least one window on record, whatever state it is in. */
 export function accountsWithReadings(): AccountKey[] {
@@ -198,8 +198,13 @@ export const transitionKey = (
 export function shouldAnnounce(agentId: string, profile: string | null, r: WindowReading, state: QuotaState): boolean {
   if (state !== "approaching" && state !== "reached") return false;
   const key = transitionKey(agentId, profile, r.kind, r.resetsAt, state);
-  if (key in fired()) return false;
-  setFired((prev) => ({ ...prev, [key]: r.resetsAt }));
+  let fresh = false;
+  setFired((prev) => {
+    if (key in prev) return prev;
+    fresh = true;
+    return { ...prev, [key]: r.resetsAt };
+  });
+  if (!fresh) return false;
   // The one thing that must reach disk. A notice repeated after every restart is
   // the failure this whole set exists to prevent.
   scheduleSave();

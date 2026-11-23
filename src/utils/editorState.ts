@@ -9,7 +9,7 @@
 //
 // A snapshot rather than live signals, so a reader cannot half-update: the
 // active path and its dirty flag always describe the same moment.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import type { JumpEntry } from "./jumpList";
 
 export type EditorSnapshot = {
@@ -38,7 +38,7 @@ const EMPTY: EditorSnapshot = {
   recentJumps: [],
 };
 
-const [editorState, setEditorState] = createLiveSignal<EditorSnapshot>(EMPTY);
+const [editorState, setEditorState] = createSignal<EditorSnapshot>(EMPTY);
 export { editorState };
 
 /** The worktree the palette's per-worktree commands act on. */

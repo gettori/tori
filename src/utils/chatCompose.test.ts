@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, afterEach } from "vite-plus/test";
 import {
   attachmentKind,
@@ -143,6 +144,7 @@ describe("attachment labels", () => {
     expect(nextLabel(SESSION, "pdf")).toBe("[PDF 1]");
     expect(nextLabel(SESSION, "image")).toBe("[Image 2]");
     offerToComposer(SESSION, fileMentionBlocks("/x/a.png", "[Image 2]"));
+    flush();
     dropPending(SESSION, pendingFor(SESSION)[0].id);
     expect(nextLabel(SESSION, "image")).toBe("[Image 3]");
   });
@@ -151,6 +153,7 @@ describe("attachment labels", () => {
     offerToComposer(SESSION, fileMentionBlocks("/x/a.png", "[Image 1]"));
     setDraft(SESSION, "compare [Image 1] with [Image 10], then [Image 1] again");
     relabel(SESSION, "[Image 1]", "[Image 4]");
+    flush();
     expect(pendingFor(SESSION)[0].block).toMatchObject({ label: "[Image 4]" });
     expect(draftFor(SESSION)).toBe("compare [Image 4] with [Image 10], then [Image 4] again");
   });
@@ -162,10 +165,12 @@ describe("attachment labels", () => {
     offerToComposer(SESSION, fileMentionBlocks("/x/a.png", nextLabel(SESSION, "image")));
     setDraft(SESSION, "see [Image 1]");
     markAutoSend(SESSION, "see [Image 1]");
+    flush();
     expect(labelsSeeded(SESSION)).toBe(false);
 
     seedLabels(SESSION, ["[Image 2]", "[File 1]"]);
 
+    flush();
     expect(labelsSeeded(SESSION)).toBe(true);
     expect(pendingFor(SESSION)[0].block).toMatchObject({ label: "[Image 3]" });
     expect(draftFor(SESSION)).toBe("see [Image 3]");
@@ -175,7 +180,9 @@ describe("attachment labels", () => {
 
   it("leaves a chip alone when the transcript never used its number", () => {
     offerToComposer(SESSION, fileMentionBlocks("/x/a.png", nextLabel(SESSION, "image")));
+    flush();
     seedLabels(SESSION, ["[PDF 4]"]);
+    flush();
     expect(pendingFor(SESSION)[0].block).toMatchObject({ label: "[Image 1]" });
     expect(nextLabel(SESSION, "pdf")).toBe("[PDF 5]");
   });
@@ -186,19 +193,24 @@ describe("attachment labels", () => {
   it("takes the token out of the sentence when its chip is removed", () => {
     offerToComposer(SESSION, fileMentionBlocks("/x/a.png", "[Image 1]"));
     setDraft(SESSION, "look at [Image 1] and at [Image 1] again");
+    flush();
     dropPending(SESSION, pendingFor(SESSION)[0].id);
+    flush();
     expect(draftFor(SESSION)).toBe("look at and at again");
   });
 
   it("leaves a sentence that never named it exactly as it was", () => {
     offerToComposer(SESSION, fileMentionBlocks("/x/a.png", "[Image 1]"));
     setDraft(SESSION, "have a look at this");
+    flush();
     dropPending(SESSION, pendingFor(SESSION)[0].id);
+    flush();
     expect(draftFor(SESSION)).toBe("have a look at this");
   });
 
   it("is seeded even by an empty transcript, so a held send is not held forever", () => {
     seedLabels(SESSION, []);
+    flush();
     expect(labelsSeeded(SESSION)).toBe(true);
     expect(nextLabel(SESSION, "image")).toBe("[Image 1]");
   });
@@ -249,6 +261,7 @@ describe("the pending composer inbox", () => {
 
   it("holds what is offered instead of sending it", () => {
     offerToComposer(SESSION, selectionBlocks("/a.ts", 1, 2, "x"));
+    flush();
     expect(pendingFor(SESSION)).toHaveLength(1);
     expect(pendingFor("someone-else")).toEqual([]);
   });
@@ -256,8 +269,10 @@ describe("the pending composer inbox", () => {
   it("drops one chip without disturbing an identical sibling", () => {
     offerToComposer(SESSION, selectionBlocks("/a.ts", 1, 2, "x"));
     offerToComposer(SESSION, selectionBlocks("/a.ts", 1, 2, "x"));
+    flush();
     const [first] = pendingFor(SESSION);
     dropPending(SESSION, first.id);
+    flush();
     expect(pendingFor(SESSION)).toHaveLength(1);
     expect(pendingFor(SESSION)[0].id).not.toBe(first.id);
   });
@@ -275,11 +290,13 @@ describe("the pending composer inbox", () => {
     offerToComposer(SESSION, selectionBlocks("/a.ts", 1, 2, "x"));
     offerToComposer(SESSION, diagnosticBlocks("/b.ts", 3, 3, "error", "boom"));
     offerToComposer(SESSION, hunkCommentBlocks("/c.ts", 4, 5, "why"));
+    flush();
     expect(pendingFor(SESSION)).toHaveLength(5);
   });
 
   it("ignores an empty offer rather than showing an empty chip", () => {
     offerToComposer(SESSION, []);
+    flush();
     expect(pendingFor(SESSION)).toEqual([]);
   });
 });
@@ -289,6 +306,7 @@ describe("the draft and the chips clear together", () => {
 
   it("keeps a draft per session", () => {
     setDraft(SESSION, "half a thought");
+    flush();
     expect(draftFor(SESSION)).toBe("half a thought");
     expect(draftFor("other")).toBe("");
   });
@@ -299,6 +317,7 @@ describe("the draft and the chips clear together", () => {
     setDraft(SESSION, "text");
     offerToComposer(SESSION, selectionBlocks("/a.ts", 1, 2, "x"));
     clearComposer(SESSION);
+    flush();
     expect(draftFor(SESSION)).toBe("");
     expect(pendingFor(SESSION)).toEqual([]);
   });
@@ -310,11 +329,13 @@ describe("composer history", () => {
   it("records what was sent, newest first", () => {
     pushHistory(SESSION, "first");
     pushHistory(SESSION, "second");
+    flush();
     expect(historyFor(SESSION)).toEqual(["second", "first"]);
   });
 
   it("does not record blank sends, which an attachment-only turn produces", () => {
     pushHistory(SESSION, "   ");
+    flush();
     expect(historyFor(SESSION)).toEqual([]);
   });
 
@@ -323,11 +344,13 @@ describe("composer history", () => {
   it("does not record the same message twice in a row", () => {
     pushHistory(SESSION, "again");
     pushHistory(SESSION, "again");
+    flush();
     expect(historyFor(SESSION)).toEqual(["again"]);
   });
 
   it("stays bounded so a long session's composer is not a second transcript", () => {
     for (let i = 0; i < 60; i++) pushHistory(SESSION, `msg ${i}`);
+    flush();
     expect(historyFor(SESSION)).toHaveLength(50);
     expect(historyFor(SESSION)[0]).toBe("msg 59");
   });
@@ -345,7 +368,9 @@ describe("send to a new session", () => {
     setDraft(SESSION, "look at this");
     offerToComposer(SESSION, selectionBlocks("/a.ts", 1, 4, "x"));
 
+    flush();
     expect(seedForSend(SESSION, TARGET)).toBe(true);
+    flush();
     expect(draftFor(TARGET)).toBe("look at this");
     expect(pendingFor(TARGET)).toHaveLength(1);
     // Moved, not copied: leaving them behind would send the same thing twice.
@@ -357,6 +382,7 @@ describe("send to a new session", () => {
   // seeded tab *is* remounted, since a first send replaces the tab record.
   it("answers the held message exactly once", () => {
     setDraft(SESSION, "go");
+    flush();
     seedForSend(SESSION, TARGET);
     expect(takeAutoSend(TARGET)).toBe("go");
     expect(takeAutoSend(TARGET)).toBe(null);
@@ -376,9 +402,11 @@ describe("send to a new session", () => {
   it("reports a held message without consuming it", () => {
     expect(hasAutoSend(TARGET)).toBe(false);
     markAutoSend(TARGET, "go");
+    flush();
     expect(hasAutoSend(TARGET)).toBe(true);
     expect(hasAutoSend(TARGET)).toBe(true);
     expect(takeAutoSend(TARGET)).toBe("go");
+    flush();
     expect(hasAutoSend(TARGET)).toBe(false);
   });
 
@@ -386,6 +414,7 @@ describe("send to a new session", () => {
   // it as "nothing held" would strand the chips it was going to carry.
   it("tells an empty held message apart from none", () => {
     markAutoSend(TARGET, "");
+    flush();
     expect(hasAutoSend(TARGET)).toBe(true);
     expect(takeAutoSend(TARGET)).toBe("");
   });
@@ -394,6 +423,7 @@ describe("send to a new session", () => {
   // and the message is simply there again.
   it("puts a held message back into an untouched composer", () => {
     handBackHeldSend(TARGET, "the first thing");
+    flush();
     expect(draftFor(TARGET)).toBe("the first thing");
   });
 
@@ -404,8 +434,10 @@ describe("send to a new session", () => {
   // never got as far as recording it. So it goes to recall.
   it("leaves newer typing alone and keeps the held message recallable", () => {
     setDraft(TARGET, "something else entirely");
+    flush();
     handBackHeldSend(TARGET, "the first thing");
 
+    flush();
     expect(draftFor(TARGET)).toBe("something else entirely");
     expect(historyFor(TARGET)).toContain("the first thing");
   });
@@ -415,13 +447,16 @@ describe("send to a new session", () => {
   it("reports an empty composer as having nothing to send", () => {
     expect(hasSomethingToSend(SESSION)).toBe(false);
     setDraft(SESSION, "   ");
+    flush();
     expect(hasSomethingToSend(SESSION)).toBe(false);
     setDraft(SESSION, "go");
+    flush();
     expect(hasSomethingToSend(SESSION)).toBe(true);
   });
 
   it("counts attachments alone as something to send", () => {
     offerToComposer(SESSION, selectionBlocks("/a.ts", 1, 4, "x"));
+    flush();
     expect(hasSomethingToSend(SESSION)).toBe(true);
   });
 
@@ -436,8 +471,10 @@ describe("send to a new session", () => {
     offerToComposer(SESSION, fileMentionBlocks("/x/b.png", nextLabel(SESSION, "image")));
     setDraft(SESSION, "[Image 1] beside [Image 2]");
 
+    flush();
     expect(seedForSend(SESSION, TARGET)).toBe(true);
 
+    flush();
     const labels = pendingFor(TARGET).map((p) => (p.block.type === "fileRef" ? p.block.label : null));
     expect(labels).toEqual(["[Image 1]", "[Image 2]", "[Image 3]"]);
     expect(draftFor(TARGET)).toBe("[Image 2] beside [Image 3]");
@@ -446,7 +483,9 @@ describe("send to a new session", () => {
 
   it("seeds on attachments alone, which is a real thing to send", () => {
     offerToComposer(SESSION, selectionBlocks("/a.ts", 1, 4, "x"));
+    flush();
     expect(seedForSend(SESSION, TARGET)).toBe(true);
+    flush();
     expect(pendingFor(TARGET)).toHaveLength(1);
   });
 });
@@ -462,7 +501,9 @@ describe("restoreDraft", () => {
   it("puts back text whose send did not land", () => {
     setDraft(SESSION, "stop, just summarise");
     setDraft(SESSION, "");
+    flush();
     restoreDraft(SESSION, "stop, just summarise");
+    flush();
     expect(draftFor(SESSION)).toBe("stop, just summarise");
   });
 
@@ -470,12 +511,15 @@ describe("restoreDraft", () => {
     // The newer text is what the user is looking at. The older one is still
     // reachable through Up-arrow recall, so nothing is actually lost.
     setDraft(SESSION, "a newer thought");
+    flush();
     restoreDraft(SESSION, "stop, just summarise");
+    flush();
     expect(draftFor(SESSION)).toBe("a newer thought");
   });
 
   it("restores nothing for an attachment-only send", () => {
     restoreDraft(SESSION, "");
+    flush();
     expect(draftFor(SESSION)).toBe("");
   });
 });

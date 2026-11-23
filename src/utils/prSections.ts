@@ -10,7 +10,7 @@
 // request: it is where the reader likes to work, not a fact about the branch in
 // front of them.
 
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import { createSectionLayout } from "./sectionLayout";
 
 export type PrTab = "checks" | "review" | "merge";
@@ -35,7 +35,7 @@ function loadTab(): PrTab {
   return PR_TABS.some((t) => t.id === raw) ? (raw as PrTab) : "review";
 }
 
-const [prTab, setTabSignal] = createLiveSignal<PrTab>(loadTab());
+const [prTab, setTabSignal] = createSignal<PrTab>(loadTab());
 
 export { prTab };
 

@@ -10,8 +10,8 @@
 // changing the selection drops the whole tree rather than reconciling it: the
 // references it was built from belong to the frame that is gone.
 
-import { createEffect, createRoot } from "solid-js";
-import { createLiveSignal, withoutFlush } from "../lib/liveState";
+import { createEffect, createRoot, createSignal } from "solid-js";
+import { withoutFlush } from "../lib/liveState";
 
 import { debugSession } from "./dapSessions";
 import { currentFrame, selectedFrame } from "./debugStack";
@@ -60,13 +60,13 @@ export const VARIABLE_PAGE = 100;
 /** What a container needs for its next page. */
 type Paging = { reference: number; indexed: number; loaded: number };
 
-const [scopes, setScopes] = createLiveSignal<readonly VarScope[]>([]);
-const [rows, setRows] = createLiveSignal<ReadonlyMap<string, readonly VarRow[]>>(new Map());
-const [expanded, setExpanded] = createLiveSignal<ReadonlySet<string>>(new Set());
-const [busy, setBusy] = createLiveSignal<ReadonlySet<string>>(new Set());
+const [scopes, setScopes] = createSignal<readonly VarScope[]>([]);
+const [rows, setRows] = createSignal<ReadonlyMap<string, readonly VarRow[]>>(new Map());
+const [expanded, setExpanded] = createSignal<ReadonlySet<string>>(new Set());
+const [busy, setBusy] = createSignal<ReadonlySet<string>>(new Set());
 // A signal rather than a plain Map, because the "show more" row is drawn from
 // it: a page count the pane cannot see is a truncated list that says nothing.
-const [paging, setPaging] = createLiveSignal<ReadonlyMap<string, Paging>>(new Map());
+const [paging, setPaging] = createSignal<ReadonlyMap<string, Paging>>(new Map());
 
 function notePaging(key: string, page: Paging | null): void {
   const next = new Map(paging());
@@ -249,15 +249,18 @@ export async function loadMoreVariables(key: string): Promise<void> {
  */
 export function toggleVariables(key: string, reference: number, indexed = 0): void {
   if (!reference) return;
-  const next = new Set(expanded());
-  if (next.has(key)) {
-    next.delete(key);
-    setExpanded(next);
-    return;
-  }
-  next.add(key);
-  setExpanded(next);
-  if (!rows().has(key)) void loadChildren(key, reference, indexed);
+  let opened = false;
+  setExpanded((prev) => {
+    const next = new Set(prev);
+    if (next.has(key)) {
+      next.delete(key);
+    } else {
+      next.add(key);
+      opened = true;
+    }
+    return next;
+  });
+  if (opened && !rows().has(key)) void loadChildren(key, reference, indexed);
 }
 
 /**

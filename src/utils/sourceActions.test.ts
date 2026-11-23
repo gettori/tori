@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, beforeEach } from "vite-plus/test";
 import { SOURCE_KINDS } from "./events";
 import {
@@ -24,12 +25,14 @@ describe("before anything has answered", () => {
 describe("a server that enumerated its kinds", () => {
   it("offers the ones it named", () => {
     publishSourceActionKinds([SOURCE_KINDS.organizeImports, "quickfix"]);
+    flush();
     expect(offersSourceAction(SOURCE_KINDS.organizeImports)).toBe(true);
     expect(offersAnySourceAction()).toBe(true);
   });
 
   it("does not offer one it did not name", () => {
     publishSourceActionKinds([SOURCE_KINDS.organizeImports]);
+    flush();
     expect(offersSourceAction(SOURCE_KINDS.removeUnused)).toBe(false);
   });
 
@@ -37,12 +40,14 @@ describe("a server that enumerated its kinds", () => {
     // The spec's kinds are hierarchical and dotted, so a server advertising
     // `source` has answered for every `source.*`.
     publishSourceActionKinds(["source"]);
+    flush();
     expect(offersSourceAction(SOURCE_KINDS.organizeImports)).toBe(true);
     expect(offersSourceAction(SOURCE_KINDS.sortImports)).toBe(true);
   });
 
   it("hides every command when it named only kinds that are not source ones", () => {
     publishSourceActionKinds(["quickfix", "refactor.extract"]);
+    flush();
     expect(offersAnySourceAction()).toBe(false);
   });
 });
@@ -53,6 +58,7 @@ describe("a server that answered without enumerating", () => {
     // told you", not "I have none", and refusing there would hide
     // organize-imports against a conformant server.
     publishSourceActionKinds([]);
+    flush();
     expect(offersSourceAction(SOURCE_KINDS.organizeImports)).toBe(true);
     expect(offersAnySourceAction()).toBe(true);
   });
@@ -61,14 +67,17 @@ describe("a server that answered without enumerating", () => {
 describe("publishing", () => {
   it("keeps the same answer stable, so nothing rebuilds for nothing", () => {
     publishSourceActionKinds([SOURCE_KINDS.organizeImports]);
+    flush();
     const first = sourceActionKinds();
     publishSourceActionKinds([SOURCE_KINDS.organizeImports]);
+    flush();
     expect(sourceActionKinds(), "the same list is not a new one").toBe(first);
   });
 
   it("takes a new answer", () => {
     publishSourceActionKinds([SOURCE_KINDS.organizeImports]);
     publishSourceActionKinds([SOURCE_KINDS.removeUnused]);
+    flush();
     expect(offersSourceAction(SOURCE_KINDS.organizeImports)).toBe(false);
     expect(offersSourceAction(SOURCE_KINDS.removeUnused)).toBe(true);
   });
@@ -77,6 +86,7 @@ describe("publishing", () => {
     const mutable = [SOURCE_KINDS.organizeImports];
     publishSourceActionKinds(mutable);
     mutable.length = 0;
+    flush();
     expect(offersSourceAction(SOURCE_KINDS.organizeImports)).toBe(true);
   });
 });

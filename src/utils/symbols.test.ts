@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, beforeEach } from "vite-plus/test";
 import {
   normalizeDocumentSymbols,
@@ -269,6 +270,7 @@ describe("the store", () => {
   it("hands a file's tree back to whoever asks", () => {
     const tree = normalizeDocumentSymbols(HIERARCHICAL, PATH);
     publishSymbols(PATH, tree);
+    flush();
     expect(symbolsFor(PATH).map((n) => n.name)).toEqual(["Thing", "helper"]);
     expect(symbolsSupported(PATH)).toBe(true);
   });
@@ -278,8 +280,10 @@ describe("the store", () => {
     // the answer, so a file whose server is still starting must not count.
     expect(symbolsSupported(PATH)).toBe(false);
     publishSymbols(PATH, null);
+    flush();
     expect(symbolsSupported(PATH)).toBe(false);
     publishSymbols(PATH, []);
+    flush();
     expect(symbolsSupported(PATH)).toBe(true);
     expect(symbolsFor(PATH)).toEqual([]);
   });
@@ -291,22 +295,29 @@ describe("the store", () => {
 
   it("forgets a closed file", () => {
     publishSymbols(PATH, []);
+    flush();
     dropSymbols(PATH);
+    flush();
     expect(symbolsSupported(PATH)).toBe(false);
     expect(PATH in symbols()).toBe(false);
   });
 
   it("leaves the store alone when told to drop a path it never held", () => {
     publishSymbols(PATH, []);
+    flush();
     const before = symbols();
     dropSymbols("/proj/other.ts");
+    flush();
     expect(symbols()).toBe(before);
   });
 
   it("forgets everything on a project switch", () => {
     publishSymbols(PATH, []);
+    flush();
     publishSymbols("/proj/other.ts", []);
+    flush();
     clearSymbols();
+    flush();
     expect(Object.keys(symbols())).toEqual([]);
   });
 });

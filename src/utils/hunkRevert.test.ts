@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, afterEach } from "vite-plus/test";
 import { hunkRevertPermission } from "./hunkRevert";
 import type { RevertCandidate } from "./revertGuard";
@@ -64,6 +65,7 @@ describe("a chat's own turn blocks reverting its own edits", () => {
       visible: true,
       status: chatStatus(state),
     });
+    flush();
   }
 
   afterEach(() => dropLiveChat(SESSION));

@@ -185,6 +185,7 @@ describe("the symbol half of the bar", () => {
     render(() => <Breadcrumbs root={ROOT} path={PATH} caret={{ line: 2, column: 4 }} />);
     expect(crumbs()).toEqual(["src", "panels", "thing.ts"]);
     publishSymbols(PATH, TREE);
+    flush();
     expect(crumbs()).toEqual(["src", "panels", "thing.ts", "Thing", "go"]);
   });
 });

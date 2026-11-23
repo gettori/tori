@@ -1,3 +1,4 @@
+import { flush as settle } from "solid-js";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import type { AuthState, ForgeAccount, RepoAccount, StatusReport, UnitStatus } from "./forgeTypes";
 import { MIN_GAP_MS, POLL_INTERVAL_MS, PRIMARY_BACKOFF_MS } from "./forgePoll";
@@ -139,6 +140,7 @@ function on(accountId: string): RepoAccount {
 function noteAuth(state: AuthState) {
   accountList = state.kind === "signedOut" ? [] : [account("personal", state)];
   noteForgeAccounts(accountList);
+  settle();
 }
 
 function status(head: string, over: Partial<UnitStatus> = {}): UnitStatus {
@@ -192,6 +194,7 @@ function signedInWith(projects: WatchedProject[], accounts = [account("personal"
   noteForgeAccounts(accounts);
   noteForgeEnabled(true);
   noteWatchedProjects(projects);
+  settle();
 }
 
 beforeEach(() => {
@@ -204,6 +207,7 @@ beforeEach(() => {
   viewerAnswer = null;
   repoOf = {};
   resetForgeStatusForTests();
+  settle();
 });
 
 // The identity behind the review gate. Approve and request-changes are refused
@@ -353,10 +357,12 @@ describe("the poll schedule", () => {
     ];
     for (const [state, enabled, why] of cases) {
       resetForgeStatusForTests();
+      settle();
       asks.length = 0;
       noteAuth(state);
       noteForgeEnabled(enabled);
       noteWatchedProjects([project("/a", ["main"])]);
+      settle();
       await pollNow("interval", NOW);
       await pollNow("manual", NOW);
       expect(forgePause("/a")).not.toBeNull();
@@ -372,10 +378,12 @@ describe("the poll schedule", () => {
     await pollNow("interval", NOW);
     expect(pickups).toEqual(["/a", "/b"]);
     resetForgeStatusForTests();
+    settle();
     pickups.length = 0;
     noteAuth(SIGNED_IN);
     noteForgeEnabled(false);
     noteWatchedProjects([project("/a", ["main"])]);
+    settle();
     await pollNow("interval", NOW);
     expect(pickups).toEqual([]);
   });
@@ -412,6 +420,7 @@ describe("the poll schedule", () => {
         ],
       },
     ]);
+    settle();
     await pollNow("interval", NOW);
     expect(asks[0].branches).toEqual(["wave-3", "stale-1", "stale-2"]);
   });
@@ -608,6 +617,7 @@ describe("the background schedule", () => {
     // easily land after the sidebar has already asked for its first tick.
     noteForgeEnabled(true);
     noteWatchedProjects([project("/a", ["main"])]);
+    settle();
     await pollNow("interval", NOW);
     expect(asks.length, "polled while signed out").toBe(0);
 

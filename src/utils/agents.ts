@@ -2,7 +2,7 @@
 // returns). Backend-only fields (discovery dir, filename regex) aren't
 // exposed; everything else the frontend needs to launch/resume an agent
 // without hardcoding an agent id lives here.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import type { PackMeta, Provenance } from "./packs";
 
@@ -280,7 +280,7 @@ export const FALLBACK_ADAPTERS: Adapter[] = [
   },
 ];
 
-const [agents, setAgents] = createLiveSignal<Adapter[]>(FALLBACK_ADAPTERS);
+const [agents, setAgents] = createSignal<Adapter[]>(FALLBACK_ADAPTERS);
 export { agents };
 
 // The one in-flight load, kept so a caller who needs a *resolved* adapter (not

@@ -2,7 +2,7 @@
 // three tabs. Same store as the Changes tab's (`sectionLayout.ts`), its own
 // instance, plus the tab, which is a choice of its own.
 
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import { createSectionLayout, SECTION_MIN_H } from "./sectionLayout";
 
 export type FilesSection = "folders" | "views";
@@ -35,7 +35,7 @@ function loadTab(): FilesTab {
   return FILES_TABS.some((t) => t.id === raw) ? (raw as FilesTab) : "scripts";
 }
 
-const [filesTab, setFilesTabSignal] = createLiveSignal<FilesTab>(loadTab());
+const [filesTab, setFilesTabSignal] = createSignal<FilesTab>(loadTab());
 
 export { filesTab };
 

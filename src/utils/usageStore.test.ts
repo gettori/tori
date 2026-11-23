@@ -1,5 +1,6 @@
 // The account-level quota store: what merges, what is absent, and what is only
 // said once.
+import { flush } from "solid-js";
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
 const invokes: { cmd: string; args: Record<string, unknown> }[] = [];
@@ -61,7 +62,9 @@ describe("the account key", () => {
 describe("merging samples", () => {
   it("takes the newest sample when two chats report the same account", () => {
     recordReadings("claude", null, "sessions", [reading("five_hour", { utilization: 0.15 })], NOW);
+    flush();
     recordReadings("claude", null, "sessions", [reading("five_hour", { utilization: 0.42 })], NOW + 1000);
+    flush();
 
     expect(windowFor("claude", null, "five_hour")?.utilization).toBe(0.42);
     expect(windowsFor("claude", null)).toHaveLength(1);
@@ -69,7 +72,9 @@ describe("merging samples", () => {
 
   it("ignores a sample older than the one on record", () => {
     recordReadings("claude", null, "sessions", [reading("five_hour", { utilization: 0.42 })], NOW + 1000);
+    flush();
     recordReadings("claude", null, "sessions", [reading("five_hour", { utilization: 0.15 })], NOW);
+    flush();
 
     expect(windowFor("claude", null, "five_hour")?.utilization).toBe(0.42);
   });
@@ -86,6 +91,7 @@ describe("merging samples", () => {
       NOW,
     );
     recordReadings("claude", null, "sessions", [reading("five_hour"), reading("seven_day")], NOW + 1000);
+    flush();
 
     const scoped = windowFor("claude", null, "seven_day_opus");
     expect(scoped?.utilization).toBe(0.6);
@@ -98,6 +104,7 @@ describe("merging samples", () => {
   // quota.
   it("has no window nothing has ever returned", () => {
     recordReadings("claude", null, "sessions", [reading("five_hour")], NOW);
+    flush();
 
     expect(windowFor("claude", null, "seven_day")).toBeNull();
     expect(windowFor("codex", null, "five_hour")).toBeNull();
@@ -105,7 +112,9 @@ describe("merging samples", () => {
 
   it("keeps two accounts of one agent apart", () => {
     recordReadings("claude", null, "sessions", [reading("five_hour", { utilization: 0.1 })], NOW);
+    flush();
     recordReadings("claude", "globex", "sessions", [reading("five_hour", { utilization: 0.9 })], NOW);
+    flush();
 
     expect(windowFor("claude", null, "five_hour")?.utilization).toBe(0.1);
     expect(windowFor("claude", "globex", "five_hour")?.utilization).toBe(0.9);
@@ -116,11 +125,13 @@ describe("merging samples", () => {
 describe("how old a reading is", () => {
   it("is live when it was just taken", () => {
     recordReadings("claude", null, "sessions", [reading("five_hour")], NOW);
+    flush();
     expect(temporalOf(windowFor("claude", null, "five_hour")!, NOW)).toBe("live");
   });
 
   it("is stale once nobody has asked for a while", () => {
     recordReadings("claude", null, "sessions", [reading("five_hour")], NOW);
+    flush();
     expect(temporalOf(windowFor("claude", null, "five_hour")!, NOW + 20 * 60 * 1000)).toBe("stale");
   });
 
@@ -128,6 +139,7 @@ describe("how old a reading is", () => {
   // report 20% on a window that has since emptied.
   it("is expired past its reset, however fresh the sample", () => {
     recordReadings("claude", null, "sessions", [reading("five_hour")], NOW);
+    flush();
     const past = FUTURE * 1000 + 1000;
     expect(temporalOf(windowFor("claude", null, "five_hour")!, past)).toBe("expired");
   });
@@ -179,6 +191,7 @@ describe("the snapshot", () => {
   it("does not re-fire after a reload inside the same window", async () => {
     const r = { ...reading("seven_day", { utilization: 0.88 }), sampledAt: NOW, source: "sessions" as const };
     expect(shouldAnnounce("claude", null, r, "approaching")).toBe(true);
+    flush();
     const snap = usageSnapshot(NOW);
 
     resetUsageStoreForTests();
@@ -205,6 +218,7 @@ describe("the snapshot", () => {
     };
     shouldAnnounce("claude", null, live, "approaching");
     shouldAnnounce("claude", null, dead, "reached");
+    flush();
     expect(Object.keys(usageSnapshot(NOW).fired)).toHaveLength(1);
 
     await saveUsageStore(NOW);
@@ -215,12 +229,15 @@ describe("the snapshot", () => {
 
   it("reads its readings back", async () => {
     recordReadings("claude", "globex", "sessions", [reading("five_hour", { utilization: 0.33 })], NOW);
+    flush();
     const snap = usageSnapshot(NOW);
 
     resetUsageStoreForTests();
+    flush();
     expect(windowFor("claude", "globex", "five_hour")).toBeNull();
     loaded = snap;
     await loadUsageStore(NOW);
+    flush();
 
     expect(windowFor("claude", "globex", "five_hour")?.utilization).toBe(0.33);
   });

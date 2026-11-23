@@ -2,7 +2,7 @@
 // Ctrl+Tab act on the file tabs only while the file pane holds pane focus, and
 // Cmd+W rides closeTab, so a dirty buffer is asked about before it is lost.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { untrack } from "solid-js";
+import { flush, untrack } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "../../test/harness";
 
 globalThis.ResizeObserver ??= class {
@@ -166,6 +166,7 @@ describe("pane-scoped keys on the file pane", () => {
     await open(`${REPO}/src/a.ts`);
     await waitFor(() => expect(bridge.onDirty).not.toBeNull());
     bridge.onDirty!(`${REPO}/src/a.ts`, true);
+    flush();
 
     emit(CLOSE_TAB);
     await screen.findByText("Discard unsaved changes to a.ts?");

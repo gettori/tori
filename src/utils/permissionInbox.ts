@@ -1,4 +1,4 @@
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { pushToast } from "../components/Toasts/Toasts";
@@ -6,7 +6,7 @@ import { emitWith, NAVIGATE, type NavTarget } from "./events";
 import { setPendingCard } from "./pendingCard";
 import type { PermissionRow } from "./permissionGroups";
 
-const [permissionRows, setPermissionRows] = createLiveSignal<PermissionRow[]>([]);
+const [permissionRows, setPermissionRows] = createSignal<PermissionRow[]>([]);
 export { permissionRows };
 
 export const permissionCount = () => permissionRows().length;

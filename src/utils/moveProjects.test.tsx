@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -29,11 +30,13 @@ describe("moveProjects", () => {
 
   it("names a running tab and an unsaved file as blockers", () => {
     publishDirtyPaths(["/loose/app/src/a.ts", "/elsewhere/b.ts"]);
+    flush();
     expect(moveBlockers(1, ["/loose/app"])).toEqual([
       "1 terminal or agent tab is running in this folder. Close it first.",
       "1 file has unsaved changes. Save or discard it first.",
     ]);
     publishDirtyPaths([]);
+    flush();
     expect(moveBlockers(0, ["/loose/app"])).toEqual([]);
   });
 });

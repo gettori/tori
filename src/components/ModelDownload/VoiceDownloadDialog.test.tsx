@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, fireEvent } from "../../test/harness";
 
@@ -60,6 +61,8 @@ describe("the voice download dialog", () => {
   it("opens on a read with no voice, offers the smaller size first, and reads once it lands", async () => {
     await read([{ text: "a reply" }], "r1");
     expect(await screen.findByRole("dialog")).toBeTruthy();
+    await settled();
+    flush();
     expect((screen.getByRole("radio", { name: /Smaller, 107 MB/ }) as HTMLInputElement).checked).toBe(true);
     expect(screen.getAllByRole("radio").map((r) => (r as HTMLInputElement).value)).toEqual(["int8", "full", "fast"]);
     expect(screen.getByRole("radio", { name: /Fastest, 60 MB/ })).toBeTruthy();
@@ -76,7 +79,11 @@ describe("the voice download dialog", () => {
 
   it("downloads the larger size when picked", async () => {
     await read([{ text: "a reply" }], "r1");
+    await screen.findByRole("dialog");
+    await settled();
+    flush();
     fireEvent.click(await screen.findByRole("radio", { name: /Larger, 340 MB/ }));
+    flush();
     fireEvent.click(screen.getByRole("button", { name: "Download" }));
     await settled();
     expect(invoke).toHaveBeenCalledWith("speech_download", { size: "full" });

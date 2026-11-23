@@ -5,6 +5,7 @@
 // And **once per window per reset, across restarts**, because the record of
 // what has been said is on disk and a notice repeated on every launch is the
 // failure that record exists to prevent.
+import { flush } from "solid-js";
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
 const bench = vi.hoisted(() => ({
@@ -80,11 +81,13 @@ beforeEach(() => {
 describe("what earns a notification", () => {
   it("says nothing at ok", () => {
     seedUsageStoreForTests("claude", null, [win(0.4)], NOW);
+    flush();
     expect(takeQuotaNotifications(NOW, bench.focused)).toEqual([]);
   });
 
   it("names the account and says what the window says", () => {
     seedUsageStoreForTests("claude", null, [win(0.85)], NOW);
+    flush();
     const [n] = takeQuotaNotifications(NOW, bench.focused);
     expect(n.title).toBe("Claude");
     expect(n.body).toContain("You have used 85% of your rolling 5-hour limit");
@@ -92,11 +95,13 @@ describe("what earns a notification", () => {
 
   it("uses the account's own name when it has one", () => {
     seedUsageStoreForTests("claude", "work", [win(1)], NOW);
+    flush();
     expect(takeQuotaNotifications(NOW, bench.focused)[0].title).toBe("Work");
   });
 
   it("fires for approaching and reached, and for each window separately", () => {
     seedUsageStoreForTests("claude", null, [win(0.85), win(1, "seven_day")], NOW);
+    flush();
     const sent = takeQuotaNotifications(NOW, bench.focused);
     expect(sent).toHaveLength(2);
     expect(sent.map((n) => n.body).join(" ")).toContain("has been reached");
@@ -110,6 +115,7 @@ describe("the focus rule", () => {
   it("sends nothing while the window has focus", () => {
     bench.focused = true;
     seedUsageStoreForTests("claude", null, [win(1)], NOW);
+    flush();
     expect(takeQuotaNotifications(NOW, bench.focused)).toEqual([]);
   });
 
@@ -118,6 +124,7 @@ describe("the focus rule", () => {
   // about something already seen.
   it("counts a crossing seen while focused as said, so tabbing away does not repeat it", () => {
     seedUsageStoreForTests("claude", null, [win(1)], NOW);
+    flush();
     bench.focused = true;
     expect(takeQuotaNotifications(NOW, bench.focused)).toEqual([]);
 
@@ -129,6 +136,7 @@ describe("the focus rule", () => {
 describe("saying it once", () => {
   it("fires once however often the same reading is recomputed", () => {
     seedUsageStoreForTests("claude", null, [win(0.85)], NOW);
+    flush();
     expect(takeQuotaNotifications(NOW, bench.focused)).toHaveLength(1);
     expect(takeQuotaNotifications(NOW, bench.focused)).toEqual([]);
     expect(takeQuotaNotifications(NOW + 60_000, bench.focused)).toEqual([]);
@@ -136,13 +144,18 @@ describe("saying it once", () => {
 
   it("stays quiet across a restart inside the same window", async () => {
     seedUsageStoreForTests("claude", null, [win(0.85)], NOW);
+    flush();
     expect(takeQuotaNotifications(NOW, bench.focused)).toHaveLength(1);
+    flush();
     await saveUsageStore(NOW);
 
     // The restart: everything in memory goes, and the snapshot comes back.
     resetUsageStoreForTests();
+    flush();
     await loadUsageStore(NOW);
+    flush();
     seedUsageStoreForTests("claude", null, [win(0.86)], NOW);
+    flush();
 
     expect(takeQuotaNotifications(NOW, bench.focused)).toEqual([]);
   });
@@ -151,9 +164,12 @@ describe("saying it once", () => {
   // key carries the reset, and a key whose reset has passed is pruned on save.
   it("fires again for the next window", () => {
     seedUsageStoreForTests("claude", null, [win(0.85)], NOW);
+    flush();
     expect(takeQuotaNotifications(NOW, bench.focused)).toHaveLength(1);
 
     seedUsageStoreForTests("claude", null, [win(0.85, "five_hour", LATER + 5 * 3600)], NOW);
+
+    flush();
     expect(takeQuotaNotifications(NOW, bench.focused)).toHaveLength(1);
   });
 
@@ -161,9 +177,12 @@ describe("saying it once", () => {
   // carries the state too.
   it("fires again when the same window goes from approaching to reached", () => {
     seedUsageStoreForTests("claude", null, [win(0.85)], NOW);
+    flush();
     expect(takeQuotaNotifications(NOW, bench.focused)).toHaveLength(1);
 
     seedUsageStoreForTests("claude", null, [win(1)], NOW);
+
+    flush();
     expect(takeQuotaNotifications(NOW, bench.focused)[0].body).toContain("has been reached");
   });
 });
@@ -172,6 +191,7 @@ describe("what the settings silence", () => {
   it("sends nothing when notify is off, and does not burn the key doing it", () => {
     bench.usage = { claude: { accounts: { default: { notify: false } } } };
     seedUsageStoreForTests("claude", null, [win(1)], NOW);
+    flush();
     expect(takeQuotaNotifications(NOW, bench.focused)).toEqual([]);
 
     // Turning it back on still has the crossing to report: the window has not
@@ -183,6 +203,7 @@ describe("what the settings silence", () => {
   it("sends nothing for an account showing no windows, or an agent turned off", () => {
     bench.usage = { claude: { accounts: { default: { windows: [] } } } };
     seedUsageStoreForTests("claude", null, [win(1)], NOW);
+    flush();
     expect(takeQuotaNotifications(NOW, bench.focused)).toEqual([]);
 
     bench.usage = {};
@@ -195,11 +216,13 @@ describe("what the settings silence", () => {
   it("sends nothing about a window this account keeps off the titlebar", () => {
     bench.usage = { claude: { accounts: { work: { windows: ["seven_day"] } } } };
     seedUsageStoreForTests("claude", "work", [win(1)], NOW);
+    flush();
     expect(takeQuotaNotifications(NOW, bench.focused)).toEqual([]);
 
     // The other window on the same account still speaks: this is per window,
     // not per account.
     seedUsageStoreForTests("claude", "work", [win(1, "seven_day")], NOW);
+    flush();
     expect(takeQuotaNotifications(NOW, bench.focused)).toHaveLength(1);
   });
 
@@ -207,9 +230,12 @@ describe("what the settings silence", () => {
   it("warns at this account's own threshold", () => {
     bench.usage = { claude: { accounts: { default: { warnAt: 0.9 } } } };
     seedUsageStoreForTests("claude", null, [win(0.85)], NOW);
+    flush();
     expect(takeQuotaNotifications(NOW, bench.focused)).toEqual([]);
 
     seedUsageStoreForTests("claude", null, [win(0.92)], NOW);
+
+    flush();
     expect(takeQuotaNotifications(NOW, bench.focused)).toHaveLength(1);
   });
 });

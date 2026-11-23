@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vite-plus/test";
+import { flush } from "solid-js";
 
 const DIR = "/home/me/.config/tori/attachments";
 let file: Array<Record<string, unknown>> = [];
@@ -54,12 +55,14 @@ const labels = (key: string) => pendingFor(key).map((p) => (p.block.type === "fi
 function draftWithImage(key: string, text: string) {
   offerToComposer(key, fileMentionBlocks(`${DIR}/h1/shot.png`, "[Image 1]"));
   setDraft(key, text);
+  flush();
 }
 
 describe("stashing a draft", () => {
   it("parks the text and chips and leaves the composer empty", async () => {
     draftWithImage(FROM, "compare [Image 1]");
     expect(await stashDraft(FROM)).toBe(true);
+    flush();
     expect(draftFor(FROM)).toBe("");
     expect(pendingFor(FROM)).toEqual([]);
     expect(stashEntries().map((e) => e.text)).toEqual(["compare [Image 1]"]);
@@ -69,6 +72,7 @@ describe("stashing a draft", () => {
     draftWithImage(FROM, "compare [Image 1]");
     failPush = true;
     expect(await stashDraft(FROM)).toBe(false);
+    flush();
     expect(draftFor(FROM)).toBe("compare [Image 1]");
     expect(labels(FROM)).toEqual(["[Image 1]"]);
   });
@@ -78,8 +82,11 @@ describe("restoring an entry", () => {
   it("numbers its labels for the tab it lands in", async () => {
     draftWithImage(FROM, "compare [Image 1]");
     await stashDraft(FROM);
+    flush();
     nextLabel(TO, "image");
+    flush();
     await restoreEntry(TO, stashEntries()[0].id, EVERYTHING);
+    flush();
     expect(labels(TO)).toEqual(["[Image 2]"]);
     expect(draftFor(TO)).toBe("compare [Image 2]");
     expect(stashEntries()).toEqual([]);
@@ -89,8 +96,11 @@ describe("restoring an entry", () => {
     offerToComposer(FROM, fileMentionBlocks(`${DIR}/h1/shot.png`, "[Image 1]"));
     offerToComposer(FROM, fileMentionBlocks("/work/repo/notes.md", "[File 1]"));
     setDraft(FROM, "see [Image 1] and [File 1]");
+    flush();
     await stashDraft(FROM);
+    flush();
     await restoreEntry(TO, stashEntries()[0].id, NO_IMAGES);
+    flush();
     expect(labels(TO)).toEqual(["[File 1]"]);
     expect(draftFor(TO)).toBe("see and [File 1]");
     const left = stashEntries();
@@ -102,10 +112,13 @@ describe("restoring an entry", () => {
   it("puts the entry back untouched when text was typed before it arrived", async () => {
     draftWithImage(FROM, "compare [Image 1]");
     await stashDraft(FROM);
+    flush();
     const id = stashEntries()[0].id;
     const restoring = restoreEntry(TO, id, EVERYTHING);
     setDraft(TO, "typed meanwhile");
+    flush();
     await restoring;
+    flush();
     expect(draftFor(TO)).toBe("typed meanwhile");
     expect(pendingFor(TO)).toEqual([]);
     expect(stashEntries().map((e) => [e.id, e.text])).toEqual([[id, "compare [Image 1]"]]);

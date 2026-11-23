@@ -5,7 +5,7 @@
 // arrives only here: who the account is. Codex's `login status` names nobody
 // (`whoami_kind = "exit_code"`), so `account/read` is the only place an email or
 // a plan for it exists, and it rides on the same exchange as the windows.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { agentEnabled } from "./agentEnabled";
 import { ensureAdaptersLoaded } from "./agents";
@@ -64,14 +64,14 @@ export function canPollUsage(agentId: string, profile: string | null = null): bo
  *  would otherwise drift a whole period past a chat opening. */
 const TICK_MS = 60_000;
 
-const [identities, setIdentities] = createLiveSignal<Record<AccountKey, ProbeIdentity>>({});
-const [breakdowns, setBreakdowns] = createLiveSignal<Record<AccountKey, Share[]>>({});
+const [identities, setIdentities] = createSignal<Record<AccountKey, ProbeIdentity>>({});
+const [breakdowns, setBreakdowns] = createSignal<Record<AccountKey, Share[]>>({});
 
 /** Why the last read failed, per account, or null when it did not. Kept because
  *  a rung that cannot answer has to say so: an expired token and a signed-out
  *  account look identical as an absence. Per account because the answer is: one
  *  login can be signed out while the other reads fine. */
-const [reasons, setReasons] = createLiveSignal<Record<AccountKey, string | null>>({});
+const [reasons, setReasons] = createSignal<Record<AccountKey, string | null>>({});
 
 export function usageReason(agentId: string, profile: string | null = null): string | null {
   return reasons()[accountKey(agentId, profile)] ?? null;
@@ -99,7 +99,7 @@ const queues: Record<string, Promise<void>> = {};
  *  is dropped rather than queued: `manual` skips the rate floor on purpose, and
  *  without this a refresh button pressed three times was three reads of the
  *  same endpoint back to back, which is how it answered 429. */
-const [pending, setPending] = createLiveSignal<Record<AccountKey, boolean>>({});
+const [pending, setPending] = createSignal<Record<AccountKey, boolean>>({});
 
 export function usageReading(agentId: string, profile: string | null = null): boolean {
   return pending()[accountKey(agentId, profile)] === true;
@@ -175,9 +175,14 @@ export function pollUsage(agentId: string, trigger: Trigger, profile: string | n
   // one request, and is scheduled as one.
   const ctx = { visible: visibleNow(), chatOpen: chatOpenFor(agentId), spawns: path.rung === "cli" };
   if (!mayPoll(clock, trigger, Date.now(), ctx)) return;
-  if (pending()[key]) return;
+  let claimed = false;
+  setPending((prev) => {
+    if (prev[key]) return prev;
+    claimed = true;
+    return { ...prev, [key]: true };
+  });
+  if (!claimed) return;
   clock.lastPollAt = Date.now();
-  setPending((prev) => ({ ...prev, [key]: true }));
   queues[agentId] = (queues[agentId] ?? Promise.resolve()).then(() =>
     runProbe(key, agentId, profile, path.command, path.rung),
   );

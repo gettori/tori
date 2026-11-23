@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, afterEach } from "vite-plus/test";
 import { chatsInFolder, dropLiveChat, liveChats, setLiveChat, type LiveChat } from "./chatSessions";
 import { pastCap } from "./chatConcurrency";
@@ -22,6 +23,7 @@ describe("a side chat among the live chats", () => {
   it("is not a second chat on the worktree, and still counts toward the cap", () => {
     setLiveChat(chat("parent"));
     setLiveChat(chat("side", "parent"));
+    flush();
     expect(chatsInFolder("/repo").map((c) => c.sessionId)).toEqual(["parent"]);
     const ids = liveChats().map((c) => c.sessionId);
     expect(pastCap("side", ids, 1)).toBe(true);

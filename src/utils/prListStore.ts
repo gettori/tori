@@ -17,8 +17,7 @@
 // Uncached in Rust on purpose: `forge_list_prs` bypasses the poll layer's
 // pacing, which exists for a tick that runs forever and not for a click.
 
-import { reconcile } from "solid-js";
-import { createLiveStore } from "../lib/liveState";
+import { reconcile, createStore } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { forgeErrorMessage, type Paged, type PullRequest } from "./forgeTypes";
 
@@ -35,7 +34,7 @@ const blank = (): PrListEntry => ({ items: [], truncated: false, loading: false,
 
 const EMPTY = blank();
 
-const [entries, setEntries] = createLiveStore<Record<string, PrListEntry>>({});
+const [entries, setEntries] = createStore<Record<string, PrListEntry>>({});
 
 /** Roots `ensure` has already read, so remounting a view is free. */
 const read = new Set<string>();

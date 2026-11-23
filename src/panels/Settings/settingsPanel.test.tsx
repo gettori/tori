@@ -545,6 +545,7 @@ describe("the rows backed by localStorage rather than by settings.json", () => {
 
     writeBlamePref(true);
     writeSideBySide(true);
+    flush();
 
     expect(boxFor("Git blame").checked).toBe(true);
     expect(boxFor("Side-by-side diffs").checked).toBe(true);

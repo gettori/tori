@@ -8,7 +8,7 @@
 // including in the case that made this a bug - text that exists only in the
 // buffer, because it has not been saved.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { createSignal } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import { render, waitFor } from "../../test/harness";
 import { EditorView } from "@codemirror/view";
 
@@ -192,9 +192,11 @@ describe("previewing a file no buffer holds", () => {
     // rewrote the file.
     const { view, closeTab } = await openInEditor(NOTES);
     view.dispatch({ changes: { from: 0, insert: "# Unsaved\n\n" }, userEvent: "input.type" });
+    flush();
     expect(bufferTextOf(NOTES)).toContain("Unsaved");
 
     closeTab();
+    flush();
 
     await waitFor(() => expect(bufferTextOf(NOTES)).toBeUndefined());
     await showPreviewOf(NOTES);
